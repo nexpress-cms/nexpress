@@ -243,6 +243,15 @@ const id = await enqueueJob("media:processImage", {
 - Import pure client-safe types and parsers from
   `@nexpress/core/jobs-contract`. Server queue and handler functions remain in
   `@nexpress/core/jobs`.
+- Site-quota-aware code must use `enqueueJob()` rather than the adapter's raw
+  `enqueue()`. Handlers can opt into the rolling tenant budget with
+  `{ resolveSiteId, quota: "site" }`; the exact payload must carry the same
+  top-level canonical `siteId`. Bundled plugin scheduled executions opt in,
+  while required content/media convergence work stays exempt. See
+  [Site resource quotas](./site-quotas.md).
+- Admin/tooling code that must echo the exact persisted payload can use
+  `enqueueJobWithResult()`; it returns `{ id, type, data }` without running a
+  custom payload parser twice.
 
 ---
 
@@ -483,6 +492,8 @@ the endpoint directly if needed.
 - Admin list, schedule, health, log, enqueue, retry, cancel, pause, and resume
   responses are exact wire contracts. Unknown fields and missing required
   fields are errors instead of partially rendered state.
+- `sites.quotas` separately reports quota headroom and whether exact pg-boss
+  history is available for an enforced rolling site window.
 - Mutation endpoints also use exact inputs: retry/cancel/resume/retry-all take
   `{}`, pause takes only optional `reason`, and enqueue takes exactly `type` and
   `data`. Unsupported or repeated query parameters return 400 before queue work.

@@ -52,6 +52,11 @@ import { getStorageAdapter } from "../storage/registry.js";
 import type { NpStorageAdapter } from "../storage/types.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/id-contract.js";
+import {
+  npAssertSiteStorageQuotaDelta,
+  npLockSiteQuotas,
+  type NpSiteQuotaDb,
+} from "../sites/quotas.js";
 
 /**
  * Trailing-window for member upload quotas (`perDay` in
@@ -165,36 +170,28 @@ export async function uploadMedia(
   // uploaders serialize and the second one sees the updated
   // count.
   //
-  // Storage upload happens AFTER the DB row commits so the quota
-  // count is correct before bytes touch storage. If the upload
-  // fails (#138 follow-up), we hard-delete the just-inserted row
-  // so it stops counting against quota and doesn't strand the
-  // member with a permanent ghost. We do NOT just mark the row
-  // `error` here — there's no storage object to inspect, no
-  // processor will arrive (the job hasn't been enqueued yet),
-  // and the quota count filters by `deletedAt IS NULL`, not
-  // `status`. Hard delete is the right semantic.
-  if (resolvedUploader && resolvedUploader.kind === "member") {
-    const memberId = resolvedUploader.memberId;
-    const dbPg = getDb();
-    await dbPg.transaction(async (tx) => {
-      // `pg_advisory_xact_lock` auto-releases on commit/rollback.
-      // `hashtextextended` produces a stable int8 from a UUID
-      // string — including the site keeps one member's independent
-      // tenant quotas from contending. Hash collisions are
-      // benign (worst case some unrelated members serialize).
+  // Storage upload happens AFTER the DB row commits so the byte and member
+  // reservations are visible before storage work. A failed upload hard-deletes
+  // the row only when object cleanup is confirmed; an ambiguous cleanup keeps
+  // an error row as conservative accounting and an operator-visible artifact.
+  const dbPg = getDb();
+  await dbPg.transaction(async (tx) => {
+    const quotaDb = tx as unknown as NpSiteQuotaDb;
+    await npLockSiteQuotas(quotaDb, siteId);
+    await npAssertSiteStorageQuotaDelta(quotaDb, siteId, file.buffer.byteLength);
+    await assertMediaFolderSite(folderId, siteId, tx as unknown as DrizzleDatabaseLike);
+    if (resolvedUploader?.kind === "member") {
+      const memberId = resolvedUploader.memberId;
+      // The site resource lock is always acquired first. The member lock then
+      // serializes this uploader's separate count quota without introducing an
+      // inverse lock order between tenant-wide and member-wide enforcement.
       await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${siteId}:${memberId}`}, 0))`,
+        sql`select pg_advisory_xact_lock(hashtextextended(${`${siteId}:${memberId}`}, 0))`,
       );
-      await assertMediaFolderSite(folderId, siteId, tx as unknown as DrizzleDatabaseLike);
       await assertMemberUploadQuota(memberId, siteId, tx);
-      await tx.insert(npMedia).values(insertValues);
-    });
-  } else {
-    const db = getDb() as unknown as DrizzleDatabaseLike;
-    await assertMediaFolderSite(folderId, siteId, db);
-    await db.insert(npMedia).values(insertValues);
-  }
+    }
+    await tx.insert(npMedia).values(insertValues);
+  });
 
   const adapter = getStorageAdapter();
   try {
@@ -204,25 +201,37 @@ export async function uploadMedia(
       originalFilename: file.originalFilename,
     });
   } catch (err) {
-    // Storage failed after the DB row committed. Roll the row
-    // back so it doesn't (a) eat the member's quota allowance
-    // for nothing, (b) confuse operators with a permanent
-    // `processing` row that never gets a job. Cleanup is
-    // best-effort — if the delete itself fails we still surface
-    // the original storage error to the caller, since that's
-    // what they need to act on.
+    // Storage failed after the DB reservation committed. Release the row only
+    // after the object key is definitely absent; an ambiguous external cleanup
+    // keeps an error-state reservation so physical bytes cannot disappear from
+    // quota accounting.
+    let objectReclaimed = false;
+    try {
+      await npDeleteStorageObject(adapter, storageKey);
+      objectReclaimed = true;
+    } catch (cleanupErr) {
+      getLogger().warn("media upload object cleanup failed", {
+        mediaId: id,
+        storageKey,
+        error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+      });
+    }
     try {
       const cleanupDb = getDb() as unknown as DrizzleDatabaseLike;
-      await cleanupDb
-        .delete(npMedia)
-        .where(and(eq(npMedia.id, id), eq(npMedia.siteId, siteId)) as never);
+      if (objectReclaimed) {
+        await cleanupDb
+          .delete(npMedia)
+          .where(and(eq(npMedia.id, id), eq(npMedia.siteId, siteId)) as never);
+      } else {
+        await cleanupDb
+          .update(npMedia)
+          .set({ status: "error", updatedAt: new Date() })
+          .where(and(eq(npMedia.id, id), eq(npMedia.siteId, siteId)))
+          .returning();
+      }
     } catch (cleanupErr) {
-      // Swallow so the original storage error reaches the
-      // caller — that's what they need to act on. But don't go
-      // silent: a failed cleanup leaves a permanent ghost row
-      // in `processing` that eats the member's quota with no
-      // storage object to inspect and no job ever enqueued.
-      // Operators need a signal to find and remediate it.
+      // Swallow so the original storage error reaches the caller. A failed DB
+      // cleanup leaves the existing reservation in place and is operator-visible.
       getLogger().error("media upload cleanup failed", {
         mediaId: id,
         storageKey,
@@ -332,7 +341,12 @@ export async function processMediaImage(
   if (!media) {
     throw new Error(`Media '${mediaId}' not found.`);
   }
+  // A worker can finish the storage writes and DB update, then lose its
+  // acknowledgement. Treat the redelivery as complete so it cannot overwrite
+  // and subsequently delete already-published variants during a failed retry.
+  if (media.status === "ready") return;
 
+  let reservedVariants: PlannedImageVariant[] | null = null;
   try {
     const originalStream = await npGetStorageObjectStream(adapter, media.storageKey);
     const originalBuffer = await consumeBuffer(Readable.fromWeb(originalStream));
@@ -342,7 +356,8 @@ export async function processMediaImage(
     });
     const format = config.format ?? "webp";
     const mimeType = getFormatMimeType(format);
-    const sizes = await uploadImageVariants(adapter, siteId, media.id, processed, format, mimeType);
+    const planned = planImageVariants(siteId, media.id, processed, format, mimeType);
+    const sizes = Object.fromEntries(planned.map((variant) => [variant.name, variant.record]));
     const sizesValidation = npValidateMediaVariants(sizes);
     if (!sizesValidation.ok) {
       throw new Error(
@@ -350,26 +365,86 @@ export async function processMediaImage(
       );
     }
 
-    await db
+    const nextVariantBytes = sumVariantBytes(sizes);
+    let shouldUpload = true;
+    await db.transaction(async (tx) => {
+      const quotaDb = tx as unknown as NpSiteQuotaDb;
+      await npLockSiteQuotas(quotaDb, siteId);
+      const [currentRow] = await tx
+        .select()
+        .from(npMedia)
+        .where(and(eq(npMedia.id, media.id), eq(npMedia.siteId, siteId), isNull(npMedia.deletedAt)))
+        .limit(1)
+        .for("update");
+      if (!currentRow) throw new Error(`Media '${media.id}' became unavailable during processing.`);
+      const current = toMediaRecord(currentRow);
+      if (current.status === "ready") {
+        shouldUpload = false;
+        return;
+      }
+      const previousVariantBytes = sumVariantBytes(current.sizes);
+      await npAssertSiteStorageQuotaDelta(quotaDb, siteId, nextVariantBytes - previousVariantBytes);
+      const [reserved] = await tx
+        .update(npMedia)
+        .set({
+          sizes,
+          width: processed.source.width,
+          height: processed.source.height,
+          status: "processing",
+          updatedAt: new Date(),
+        })
+        .where(and(eq(npMedia.id, media.id), eq(npMedia.siteId, siteId), isNull(npMedia.deletedAt)))
+        .returning();
+      if (!reserved) throw new Error(`Media '${media.id}' became unavailable during processing.`);
+    });
+    if (!shouldUpload) return;
+    reservedVariants = planned;
+    await uploadPlannedImageVariants(adapter, planned);
+    const [completed] = await db
       .update(npMedia)
       .set({
-        sizes,
-        width: processed.source.width,
-        height: processed.source.height,
         status: "ready",
         updatedAt: new Date(),
       })
-      .where(and(eq(npMedia.id, media.id), eq(npMedia.siteId, siteId)))
+      .where(and(eq(npMedia.id, media.id), eq(npMedia.siteId, siteId), isNull(npMedia.deletedAt)))
       .returning();
+    if (!completed) throw new Error(`Media '${media.id}' became unavailable during processing.`);
   } catch (error) {
-    await db
-      .update(npMedia)
-      .set({
-        status: "error",
-        updatedAt: new Date(),
-      })
-      .where(and(eq(npMedia.id, media.id), eq(npMedia.siteId, siteId)))
-      .returning();
+    let variantsReclaimed = true;
+    if (reservedVariants) {
+      const cleanup = await Promise.allSettled(
+        reservedVariants.map((variant) =>
+          npDeleteStorageObject(adapter, variant.record.storageKey),
+        ),
+      );
+      cleanup.forEach((result, index) => {
+        if (result.status === "fulfilled") return;
+        variantsReclaimed = false;
+        getLogger().warn("processed media cleanup failed", {
+          mediaId: media.id,
+          siteId,
+          storageKey: reservedVariants?.[index]?.record.storageKey ?? "unknown",
+          error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+        });
+      });
+    }
+    try {
+      await db
+        .update(npMedia)
+        .set({
+          ...(reservedVariants && variantsReclaimed ? { sizes: null } : {}),
+          status: "error",
+          updatedAt: new Date(),
+        })
+        .where(and(eq(npMedia.id, media.id), eq(npMedia.siteId, siteId), isNull(npMedia.deletedAt)))
+        .returning();
+    } catch (cleanupError) {
+      getLogger().error("processed media reservation cleanup failed", {
+        mediaId: media.id,
+        siteId,
+        error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+      });
+    }
 
     throw error;
   }
@@ -641,40 +716,59 @@ async function getMediaRecordById(id: string, siteId: string): Promise<NpMediaRe
   return media ? toMediaRecord(media) : null;
 }
 
-async function uploadImageVariants(
-  adapter: NpStorageAdapter,
+interface PlannedImageVariant {
+  name: string;
+  buffer: Buffer;
+  record: NpMediaVariants[string];
+}
+
+function planImageVariants(
   siteId: string,
   mediaId: string,
   processed: NpProcessedImageResult,
   format: string,
   mimeType: string,
-): Promise<NpMediaVariants> {
-  const entries = await Promise.all(
-    processed.variants.map(async (variant) => {
-      const filename = `${variant.name}.${format}`;
-      const storageKey = `media/${siteId}/${mediaId}/${filename}`;
+): PlannedImageVariant[] {
+  return processed.variants.map((variant) => {
+    const filename = `${variant.name}.${format}`;
+    return {
+      name: variant.name,
+      buffer: variant.buffer,
+      record: {
+        filename,
+        mimeType,
+        filesize: variant.size,
+        width: variant.width,
+        height: variant.height,
+        storageKey: `media/${siteId}/${mediaId}/${filename}`,
+      },
+    };
+  });
+}
 
-      await npUploadStorageObject(adapter, storageKey, variant.buffer, {
-        contentType: mimeType,
-        contentLength: variant.size,
-        originalFilename: filename,
-      });
+async function uploadPlannedImageVariants(
+  adapter: NpStorageAdapter,
+  variants: readonly PlannedImageVariant[],
+): Promise<void> {
+  for (const variant of variants) {
+    await npUploadStorageObject(adapter, variant.record.storageKey, variant.buffer, {
+      contentType: variant.record.mimeType,
+      contentLength: variant.record.filesize,
+      originalFilename: variant.record.filename,
+    });
+  }
+}
 
-      return [
-        variant.name,
-        {
-          filename,
-          mimeType,
-          filesize: variant.size,
-          width: variant.width,
-          height: variant.height,
-          storageKey,
-        },
-      ] as const;
-    }),
-  );
-
-  return Object.fromEntries(entries);
+function sumVariantBytes(sizes: NpMediaVariants | null): number {
+  if (!sizes) return 0;
+  let total = 0;
+  for (const variant of Object.values(sizes)) {
+    total += variant.filesize;
+    if (!Number.isSafeInteger(total)) {
+      throw new Error("Processed media variant bytes exceed the safe integer range.");
+    }
+  }
+  return total;
 }
 
 async function resolveMediaReadSiteId(): Promise<string> {

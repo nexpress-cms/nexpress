@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   DEFAULT_SEO_SETTINGS,
+  DEFAULT_SITE_QUOTAS,
   isNpAdminSettingsSnapshot,
+  isNpSiteQuotaSnapshot,
   isNpSiteMembershipWireRecord,
   isNpSiteUsage,
   isNpSiteWireRecord,
@@ -13,6 +15,7 @@ import {
   npClassifySettingKey,
   npNormalizeCreateSiteInput,
   npNormalizeSeoSettings,
+  npNormalizeSiteQuotas,
   npNormalizeSiteHostHeader,
   npNormalizeSiteMembershipGrantInput,
   npNormalizeSiteGeneralSettings,
@@ -181,8 +184,37 @@ describe("framework settings contract", () => {
     expect(isNpSiteUsage({ ...usage, extra: 0 })).toBe(false);
   });
 
+  it("validates exact site quota limits and derived snapshots", () => {
+    const limits = {
+      storageBytes: 10_000,
+      documents: 20,
+      jobEnqueuesPerHour: 3,
+    };
+    expect(npNormalizeSiteQuotas(limits)).toEqual(limits);
+    expect(npNormalizeSiteQuotas(DEFAULT_SITE_QUOTAS)).toEqual(DEFAULT_SITE_QUOTAS);
+    expect(() => npNormalizeSiteQuotas({ ...limits, documents: -1 })).toThrow("documents");
+    expect(() => npNormalizeSiteQuotas({ ...limits, extra: null })).toThrow("extra");
+    expect(
+      isNpSiteQuotaSnapshot({
+        limits,
+        usage: { storageBytes: 12_000, documents: 20, jobEnqueuesLastHour: null },
+        exceeded: ["storageBytes"],
+        unavailable: ["jobEnqueuesPerHour"],
+      }),
+    ).toBe(true);
+    expect(
+      isNpSiteQuotaSnapshot({
+        limits,
+        usage: { storageBytes: 12_000, documents: 20, jobEnqueuesLastHour: null },
+        exceeded: [],
+        unavailable: [],
+      }),
+    ).toBe(false);
+  });
+
   it("classifies only owned static and dynamic setting keys", () => {
     expect(npClassifySettingKey("seo")).toBe("seo");
+    expect(npClassifySettingKey("site.quotas")).toBe("site-quotas");
     expect(npClassifySettingKey("theme.settings:portfolio")).toBe("theme-settings");
     expect(npClassifySettingKey("plugin.config:analytics-lite")).toBe("plugin-config");
     expect(npClassifySettingKey("plugin.config:@acme/analytics_lite")).toBe("plugin-config");
@@ -193,6 +225,7 @@ describe("framework settings contract", () => {
 
   it("validates every persisted registry family fail-closed", () => {
     expect(npAnalyzeSettingValue("seo", DEFAULT_SEO_SETTINGS)).toEqual([]);
+    expect(npAnalyzeSettingValue("site.quotas", DEFAULT_SITE_QUOTAS)).toEqual([]);
     expect(
       npAnalyzeSettingValue("community", {
         reactionKinds: ["like"],

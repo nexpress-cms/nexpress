@@ -74,6 +74,22 @@ describe("content transfer envelope contract", () => {
     ).toMatchObject({ partial: true, collectionsExported: ["posts"] });
   });
 
+  it("keeps deployment-owned site quotas out of portable settings", () => {
+    expect(
+      npAnalyzeContentTransferEnvelope({
+        ...fullTransfer(),
+        settings: {
+          activeTheme: "default",
+          "site.quotas": {
+            storageBytes: 1_000,
+            documents: 10,
+            jobEnqueuesPerHour: 20,
+          },
+        },
+      }).ok,
+    ).toBe(false);
+  });
+
   it("rejects version drift, unknown fields, and mismatched inventories", () => {
     expect(npAnalyzeContentTransferEnvelope({ ...fullTransfer(), version: "2" }).ok).toBe(false);
     expect(npAnalyzeContentTransferEnvelope({ ...fullTransfer(), extra: true }).ok).toBe(false);

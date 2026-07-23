@@ -9,6 +9,8 @@ import {
   npSettings,
   npSitePlugins,
   npSites,
+  getSiteQuotas,
+  setSiteQuotas,
   type NpContentTransferEnvelope,
 } from "@nexpress/core";
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
@@ -134,6 +136,32 @@ describe.skipIf(skipIfNoTestDb())("import/export API (integration)", () => {
     expect(body.collectionsExported).toEqual([...body.collectionsExported].sort());
     expect(body.collectionsExported).toEqual(Object.keys(body.collections));
     expect(body.media).toEqual([]);
+  });
+
+  it("does not export, import, or clear deployment-owned site quotas", async () => {
+    const session = await seedUser({ role: "admin" });
+    const limits = { storageBytes: 1_000, documents: 10, jobEnqueuesPerHour: 20 };
+    await setSiteQuotas(limits, session.userId, "default");
+
+    const payload = await exportPayload(session);
+    expect(payload.settings).not.toHaveProperty("site.quotas");
+    const imported = await importPOST(
+      buildRequest("/api/import", { method: "POST", session, body: payload }),
+    );
+    expect(imported.status).toBe(200);
+    await expect(getSiteQuotas("default")).resolves.toEqual(limits);
+
+    const rejected = await importPOST(
+      buildRequest("/api/import", {
+        method: "POST",
+        session,
+        body: {
+          ...payload,
+          settings: { ...payload.settings, "site.quotas": limits },
+        },
+      }),
+    );
+    expect(rejected.status).toBe(400);
   });
 
   it("exports a closed partial envelope for an exact collection filter", async () => {

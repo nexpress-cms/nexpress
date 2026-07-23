@@ -1,9 +1,10 @@
 import {
   NpForbiddenError,
+  NpJobPayloadValidationError,
   NpValidationError,
+  enqueueJobWithResult,
   getKnownJobTypes,
   getOptionalJobQueue,
-  normalizeRegisteredJobPayload,
   can,
 } from "@nexpress/core";
 import { npRequireEnqueueJobWire } from "@nexpress/core/jobs-contract";
@@ -58,21 +59,19 @@ export async function POST(request: NextRequest) {
       ]);
     }
 
-    let normalized;
+    let enqueued;
     try {
-      normalized = normalizeRegisteredJobPayload(type, data);
+      enqueued = await enqueueJobWithResult(type, data);
     } catch (error) {
+      if (!(error instanceof NpJobPayloadValidationError)) throw error;
       throw new NpValidationError("Invalid input", [
         {
           field: "data",
-          message: error instanceof Error ? error.message : "Payload does not match the handler",
+          message: error.message,
         },
       ]);
     }
-    const id = await queue.enqueue(type, normalized);
-    return npSuccessResponse(
-      npRequireJobApiResponse({ id, type, data: normalized }, npRequireEnqueueJobWire),
-    );
+    return npSuccessResponse(npRequireJobApiResponse(enqueued, npRequireEnqueueJobWire));
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

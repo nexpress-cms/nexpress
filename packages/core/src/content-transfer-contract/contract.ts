@@ -62,7 +62,7 @@ const CANONICAL_DATE = new RegExp(npContentTransferCanonicalDatePattern, "u");
 const SHA256 = new RegExp(npContentTransferSha256Pattern, "u");
 const MIME_TYPE = new RegExp(npContentTransferMimeTypePattern, "u");
 const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
-const PORTABLE_SETTING_EXCLUSIONS = ["theme", "jobs.paused"];
+const PORTABLE_SETTING_EXCLUSIONS = ["theme", "jobs.paused", "site.quotas"];
 const PORTABLE_SETTING_PREFIX_EXCLUSIONS = ["plugin.config:"];
 
 interface JsonState {

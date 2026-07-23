@@ -57,6 +57,7 @@ behavior they describe changes.
 | [scheduled-publishing.md](scheduled-publishing.md)     | Scheduled publish flow                                                 |
 | [seo.md](seo.md)                                       | Page metadata, JSON-LD, sitemap/feed, and theme contribution contracts |
 | [settings.md](settings.md)                             | Canonical site identity and closed persisted-settings registry         |
+| [site-quotas.md](site-quotas.md)                       | Exact per-site storage, document, and job ceilings                     |
 | [site-customization.md](site-customization.md)         | Track A — what to customise in a scaffolded site without forking       |
 | [storage.md](storage.md)                               | Runtime modes, object/adapter contract, lifecycle, and diagnostics     |
 | [testing.md](testing.md)                               | Unit + integration test setup                                          |

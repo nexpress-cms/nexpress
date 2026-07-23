@@ -681,6 +681,8 @@ export {
   getJobQueue,
   getOptionalJobQueue,
   enqueueJob,
+  enqueueJobWithResult,
+  NpJobPayloadValidationError,
   startWorker,
   stopWorker,
   startProducer,
@@ -708,6 +710,7 @@ export {
 } from "./jobs/index.js";
 export type {
   NpJobHandler,
+  NpEnqueuedJob,
   NpJobHandlerOptions,
   NpJobPayloadParser,
   NpJobSiteIdResolver,
@@ -929,6 +932,14 @@ export {
   resolveSiteAuthUser,
   isSuperAdmin,
 } from "./sites/memberships.js";
+export {
+  NP_SITE_JOB_QUOTA_WINDOW_MS,
+  NP_SITE_QUOTA_SETTING_KEY,
+  getSiteQuotaSnapshot,
+  getSiteQuotaUsage,
+  getSiteQuotas,
+  setSiteQuotas,
+} from "./sites/quotas.js";
 
 export { setI18nConfig, getI18nConfig, resetI18nConfig } from "./i18n/registry.js";
 export { resolveLocale, getCurrentLocale } from "./i18n/locale-resolver.js";

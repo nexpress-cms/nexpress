@@ -284,6 +284,24 @@ describe("PgBossAdapter persisted job contracts", () => {
     );
   });
 
+  it("counts exact site quota enqueue history across live and archive rows", async () => {
+    const executeSql = vi.fn().mockResolvedValue({ rows: [{ total: "7" }] });
+    const adapter = adapterWithSql(executeSql);
+    const since = new Date("2026-07-22T00:00:00.000Z");
+
+    await expect(
+      adapter.countSiteEnqueues("tenant-a", since, ["plugin:scheduledTask"]),
+    ).resolves.toBe(7);
+    expect(executeSql).toHaveBeenCalledWith(expect.stringContaining("data->>'siteId' = $1"), [
+      "tenant-a",
+      since.toISOString(),
+      ["plugin.scheduledTask"],
+    ]);
+    await expect(
+      adapter.countSiteEnqueues("Tenant A", since, ["plugin:scheduledTask"]),
+    ).rejects.toThrow("siteId must be canonical");
+  });
+
   it("rejects retrying non-terminal and handlerless jobs before enqueue", async () => {
     const send = vi.fn().mockResolvedValue("new-job");
     const completed = adapterWithBoss(

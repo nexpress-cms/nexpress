@@ -1,7 +1,14 @@
 export * from "../jobs-contract/index.js";
 export * from "./handlers.js";
-export { enqueueJob, getJobQueue, getOptionalJobQueue } from "./queue.js";
+export {
+  NpJobPayloadValidationError,
+  enqueueJob,
+  enqueueJobWithResult,
+  getJobQueue,
+  getOptionalJobQueue,
+} from "./queue.js";
 export type {
+  NpEnqueuedJob,
   NpJobCountOptions,
   NpJobListOptions,
   NpJobListResult,

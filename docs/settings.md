@@ -41,6 +41,7 @@ are no `np_settings.site` or `np_settings.description` mirrors.
 | Key                        | Value contract                                             |
 | -------------------------- | ---------------------------------------------------------- |
 | `seo`                      | Exact default image, Twitter handle, and locale object     |
+| `site.quotas`              | Exact nullable storage, document, and hourly job ceilings  |
 | `theme`                    | Canonical nested theme-token overlay                       |
 | `community`                | Exact community settings object                            |
 | `activeTheme`              | Canonical registered theme id                              |
@@ -60,6 +61,7 @@ Use dedicated domain services instead of writing `np_settings` directly:
 
 - `getSiteGeneralSettings` / `setSiteGeneralSettings`
 - `getSeoSettings` / `setSeoSettings`
+- `getSiteQuotas` / `setSiteQuotas` / `getSiteQuotaSnapshot`
 - theme, community, plugin-config, page-pattern, and jobs APIs
 
 Client-safe validators and types are exported from `@nexpress/core/settings`.
@@ -73,6 +75,8 @@ The same subpath owns the registry-level site contracts:
 analyzers reject unknown fields. `default` is a reserved permanent site id,
 and membership roles use named capabilities through `canOnSite()` rather than
 a numeric role hierarchy. See [Multi-Site / Multi-Tenancy](./multi-site.md).
+Per-site resource ceilings and their atomic enforcement rules are documented
+in [Site resource quotas](./site-quotas.md).
 
 ## Admin and plugin APIs
 
@@ -96,8 +100,14 @@ top-level `plugins` array so its loaded plugin schema can validate it. A dry
 run applies the same validation without writes.
 The process-wide `jobs.paused` row belongs to `_system` and is intentionally
 excluded from site-config import/export.
+The deployment-owned `site.quotas` row is also excluded and preserved during
+full imports; content operators cannot raise, lower, or erase resource limits
+through a portable content envelope.
 
 `pnpm run doctor` emits the blocking `settings.contract` check. It scans every
 `np_sites` record and `np_settings` row and reports unknown or malformed
 values. Repair the stored row or restore a known-good backup; do not add a
 fallback that hides the invalid value.
+The adjacent `sites.quotas` check measures configured resource usage and warns
+when a tenant is at capacity. A configured hourly job quota without readable
+pg-boss history is blocking because runtime admission fails closed too.

@@ -2,13 +2,16 @@
 
 import { useEffect, useState } from "react";
 import {
+  isNpSiteQuotaSnapshot,
   isNpSiteUsage,
   isNpSiteWireRecord,
+  type NpSiteQuotaSnapshot,
+  type NpSiteQuotas,
   type NpSiteUsage,
   type NpSiteWireRecord,
 } from "@nexpress/core/settings";
 import Link from "next/link";
-import { AlertTriangle, Globe2, Loader2, Plus, Star, Trash2, Users } from "lucide-react";
+import { AlertTriangle, Gauge, Globe2, Loader2, Plus, Star, Trash2, Users } from "lucide-react";
 
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
@@ -31,6 +34,13 @@ interface DeleteDialogState {
   usage: NpSiteUsage | null;
   loading: boolean;
   cascade: boolean;
+  busy: boolean;
+}
+
+interface QuotaDialogState {
+  site: Site;
+  snapshot: NpSiteQuotaSnapshot | null;
+  loading: boolean;
   busy: boolean;
 }
 
@@ -88,6 +98,7 @@ export function SitesView() {
   const [createOpen, setCreateOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
+  const [quotaDialog, setQuotaDialog] = useState<QuotaDialogState | null>(null);
 
   useEffect(() => {
     void load();
@@ -145,6 +156,52 @@ export function SitesView() {
     } catch {
       setError("Unable to load site usage.");
       setDeleteDialog(null);
+    }
+  }
+
+  async function openQuotaDialog(site: Site) {
+    setQuotaDialog({ site, snapshot: null, loading: true, busy: false });
+    setError(null);
+    try {
+      const res = await npFetch(`/api/admin/sites/${encodeURIComponent(site.id)}/quotas`);
+      const body = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok || !isNpSiteQuotaSnapshot(body)) {
+        setError(readApiError(body) ?? "Unable to load site quotas.");
+        setQuotaDialog(null);
+        return;
+      }
+      setQuotaDialog((prev) =>
+        prev && prev.site.id === site.id ? { ...prev, snapshot: body, loading: false } : prev,
+      );
+    } catch {
+      setError("Unable to load site quotas.");
+      setQuotaDialog(null);
+    }
+  }
+
+  async function saveQuotas(quotas: NpSiteQuotas) {
+    if (!quotaDialog) return;
+    setQuotaDialog({ ...quotaDialog, busy: true });
+    setError(null);
+    try {
+      const res = await npFetch(
+        `/api/admin/sites/${encodeURIComponent(quotaDialog.site.id)}/quotas`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(quotas),
+        },
+      );
+      const body = (await res.json().catch(() => null)) as unknown;
+      if (!res.ok || !isNpSiteQuotaSnapshot(body)) {
+        setError(readApiError(body) ?? "Unable to save site quotas.");
+        setQuotaDialog((prev) => (prev ? { ...prev, busy: false } : prev));
+        return;
+      }
+      setQuotaDialog(null);
+    } catch {
+      setError("Unable to save site quotas.");
+      setQuotaDialog((prev) => (prev ? { ...prev, busy: false } : prev));
     }
   }
 
@@ -248,6 +305,15 @@ export function SitesView() {
                   ) : null}
                 </div>
                 <div className="grid gap-2 sm:flex sm:items-center sm:justify-end">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="min-h-10 w-full sm:w-auto"
+                    onClick={() => void openQuotaDialog(site)}
+                  >
+                    <Gauge className="size-3" />
+                    Quotas
+                  </Button>
                   <Button variant="outline" size="sm" className="min-h-10 w-full sm:w-auto" asChild>
                     <Link href={`/admin/sites/${encodeURIComponent(site.id)}/members`}>
                       <Users className="size-3" />
@@ -294,7 +360,211 @@ export function SitesView() {
         }
         onConfirm={() => void handleConfirmDelete()}
       />
+      <SiteQuotaDialog
+        state={quotaDialog}
+        onClose={() => setQuotaDialog(null)}
+        onSave={(quotas) => void saveQuotas(quotas)}
+      />
     </div>
+  );
+}
+
+const MIB = 1024 * 1024;
+
+function quotaInput(value: number | null): string {
+  return value === null ? "" : value.toString();
+}
+
+function storageQuotaInput(value: number | null): string {
+  return value === null ? "" : (value / MIB).toString();
+}
+
+function parseIntegerQuota(value: string, label: string): number | null {
+  if (value.trim() === "") return null;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(`${label} must be a non-negative integer or blank for unlimited.`);
+  }
+  return parsed;
+}
+
+function parseStorageQuota(value: string): number | null {
+  if (value.trim() === "") return null;
+  const parsed = Number(value);
+  const bytes = Math.round(parsed * MIB);
+  if (!Number.isFinite(parsed) || parsed < 0 || !Number.isSafeInteger(bytes)) {
+    throw new Error("Storage must be a non-negative MiB value or blank for unlimited.");
+  }
+  return bytes;
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value.toString()} B`;
+  if (value < MIB) return `${(value / 1024).toFixed(1)} KiB`;
+  if (value < MIB * 1024) return `${(value / MIB).toFixed(1)} MiB`;
+  return `${(value / (MIB * 1024)).toFixed(2)} GiB`;
+}
+
+function SiteQuotaDialog({
+  state,
+  onClose,
+  onSave,
+}: {
+  state: QuotaDialogState | null;
+  onClose: () => void;
+  onSave: (quotas: NpSiteQuotas) => void;
+}) {
+  const snapshot = state?.snapshot;
+  return (
+    <Dialog
+      open={state !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent data-np-site-quota-dialog className="min-w-0 sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Site quotas{state ? ` — ${state.site.name}` : ""}</DialogTitle>
+          <DialogDescription>
+            Leave a field blank for unlimited. Limits apply independently to this tenant.
+          </DialogDescription>
+        </DialogHeader>
+
+        {!state || state.loading ? (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="size-3 animate-spin" /> Loading quotas…
+          </p>
+        ) : snapshot && state ? (
+          <SiteQuotaForm
+            key={state.site.id}
+            snapshot={snapshot}
+            busy={state.busy}
+            onClose={onClose}
+            onSave={onSave}
+          />
+        ) : null}
+        {!snapshot ? (
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose} disabled={state?.busy}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SiteQuotaForm({
+  snapshot,
+  busy,
+  onClose,
+  onSave,
+}: {
+  snapshot: NpSiteQuotaSnapshot;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (quotas: NpSiteQuotas) => void;
+}) {
+  const [storageMiB, setStorageMiB] = useState(() =>
+    storageQuotaInput(snapshot.limits.storageBytes),
+  );
+  const [documents, setDocuments] = useState(() => quotaInput(snapshot.limits.documents));
+  const [jobsPerHour, setJobsPerHour] = useState(() =>
+    quotaInput(snapshot.limits.jobEnqueuesPerHour),
+  );
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  return (
+    <>
+      <div className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="site-quota-storage">Storage (MiB)</Label>
+            <Input
+              id="site-quota-storage"
+              type="number"
+              min="0"
+              step="0.1"
+              placeholder="Unlimited"
+              value={storageMiB}
+              onChange={(event) => setStorageMiB(event.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Used: {formatBytes(snapshot.usage.storageBytes)}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="site-quota-documents">Documents</Label>
+            <Input
+              id="site-quota-documents"
+              type="number"
+              min="0"
+              step="1"
+              placeholder="Unlimited"
+              value={documents}
+              onChange={(event) => setDocuments(event.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Used: {snapshot.usage.documents.toLocaleString()}
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="site-quota-jobs">Job enqueues / hour</Label>
+            <Input
+              id="site-quota-jobs"
+              type="number"
+              min="0"
+              step="1"
+              placeholder="Unlimited"
+              value={jobsPerHour}
+              onChange={(event) => setJobsPerHour(event.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Used: {snapshot.usage.jobEnqueuesLastHour?.toLocaleString() ?? "Unavailable"}
+            </p>
+          </div>
+        </div>
+
+        {snapshot.exceeded.length > 0 ? (
+          <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-100">
+            Current usage exceeds: {snapshot.exceeded.join(", ")}. Existing data remains available;
+            new quota-sensitive work is blocked until usage or limits change.
+          </p>
+        ) : null}
+        {snapshot.unavailable.length > 0 ? (
+          <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-100">
+            Job history is unavailable from the active queue. A configured job quota fails closed
+            until exact counting is supported.
+          </p>
+        ) : null}
+        {validationError ? <p className="text-sm text-destructive">{validationError}</p> : null}
+      </div>
+
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        <Button
+          disabled={busy}
+          onClick={() => {
+            try {
+              setValidationError(null);
+              onSave({
+                storageBytes: parseStorageQuota(storageMiB),
+                documents: parseIntegerQuota(documents, "Documents"),
+                jobEnqueuesPerHour: parseIntegerQuota(jobsPerHour, "Job enqueues per hour"),
+              });
+            } catch (error) {
+              setValidationError(error instanceof Error ? error.message : "Invalid quota");
+            }
+          }}
+        >
+          {busy ? <Loader2 className="size-3 animate-spin" /> : <Gauge className="size-3" />}
+          Save quotas
+        </Button>
+      </DialogFooter>
+    </>
   );
 }
 

@@ -83,6 +83,32 @@ export interface NpSiteUsage {
   total: number;
 }
 
+export const npSiteQuotaMetrics = ["storageBytes", "documents", "jobEnqueuesPerHour"] as const;
+
+export type NpSiteQuotaMetric = (typeof npSiteQuotaMetrics)[number];
+
+/** Site-owned resource ceilings. `null` keeps that resource unlimited. */
+export interface NpSiteQuotas {
+  storageBytes: number | null;
+  documents: number | null;
+  jobEnqueuesPerHour: number | null;
+}
+
+/** Current resource usage measured against one site's quota contract. */
+export interface NpSiteQuotaUsage {
+  storageBytes: number;
+  documents: number;
+  /** `null` when the active queue cannot provide exact site history. */
+  jobEnqueuesLastHour: number | null;
+}
+
+export interface NpSiteQuotaSnapshot {
+  limits: NpSiteQuotas;
+  usage: NpSiteQuotaUsage;
+  exceeded: NpSiteQuotaMetric[];
+  unavailable: NpSiteQuotaMetric[];
+}
+
 /** Editable site identity projected from the canonical `np_sites` row. */
 export interface NpSiteGeneralSettings {
   name: string;
@@ -105,6 +131,7 @@ export interface NpAdminSettingsSnapshot {
 
 export type NpSettingContractKind =
   | "seo"
+  | "site-quotas"
   | "theme-tokens"
   | "community"
   | "active-theme"

@@ -720,7 +720,10 @@ export async function POST(request: NextRequest) {
             .map((row) => row.key)
             .filter(
               (key) =>
-                key !== "theme" && key !== "jobs.paused" && !key.startsWith("plugin.config:"),
+                key !== "theme" &&
+                key !== "jobs.paused" &&
+                key !== "site.quotas" &&
+                !key.startsWith("plugin.config:"),
             );
           for (const key of currentPortableSettings) {
             if (!Object.hasOwn(normalizedSettings, key)) {

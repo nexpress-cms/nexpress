@@ -113,7 +113,10 @@ export async function GET(request: NextRequest) {
     }
 
     const exportedSettingRows = settingsRows
-      .filter((row) => row.key !== "theme" && !row.key.startsWith("plugin.config:"))
+      .filter(
+        (row) =>
+          row.key !== "theme" && row.key !== "site.quotas" && !row.key.startsWith("plugin.config:"),
+      )
       .sort((left, right) => npCompareContentTransferText(left.key, right.key));
     for (const row of settingsRows.filter((entry) => entry.key.startsWith("plugin.config:"))) {
       const pluginId = row.key.slice("plugin.config:".length);
