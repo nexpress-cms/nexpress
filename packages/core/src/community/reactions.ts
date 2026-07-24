@@ -15,6 +15,7 @@ import { type CommunityScope } from "./roles.js";
 import { createNotification } from "./notifications.js";
 import { applyReputation } from "./reputation.js";
 import { getCommunitySettings } from "./settings.js";
+import { npEmitCommunityDocumentChanged } from "./realtime.js";
 import {
   npResolveDocumentEngagementTarget,
   npResolveDocumentPublicHref,
@@ -44,6 +45,7 @@ export type { NpReactionRow, NpReactToInput };
 
 interface NpResolvedReactionTarget extends NpResolvedDocumentEngagementTarget {
   collection: string;
+  documentTargetId: string;
   scopes: ReadonlyArray<{ type: CommunityScope; id: string }>;
 }
 
@@ -101,6 +103,7 @@ async function resolveReactionTarget(
     return {
       ...target,
       collection: target.targetType,
+      documentTargetId: target.targetId,
       scopes: npProjectDocumentCommunityScopes(
         getCollectionConfig(target.targetType),
         target.document,
@@ -142,6 +145,7 @@ async function resolveReactionTarget(
     targetType: checked.targetType,
     targetId: checked.targetId,
     collection: parent.collection,
+    documentTargetId: comment.targetId,
     document: parent.document,
     siteId: comment.siteId,
     recipientId: comment.memberId,
@@ -231,6 +235,7 @@ async function doAddReaction(
     });
   }
 
+  await npEmitCommunityDocumentChanged("reactions", target.collection, target.documentTargetId);
   return row;
 }
 
@@ -256,17 +261,31 @@ export async function removeReaction(input: NpReactToInput): Promise<void> {
   // resolver value, the row only deletes when both ids agree.
   const requestSiteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   let recipientId: string | null = null;
+  let realtimeTarget: { targetType: string; targetId: string } | null = null;
   if (checked.targetType === "comment") {
     const [comment] = (await db
-      .select({ memberId: npComments.memberId, siteId: npComments.siteId })
+      .select({
+        memberId: npComments.memberId,
+        siteId: npComments.siteId,
+        targetType: npComments.targetType,
+        targetId: npComments.targetId,
+      })
       .from(npComments)
       .where(eq(npComments.id, checked.targetId))
-      .limit(1)) as Array<{ memberId: string; siteId: string }>;
+      .limit(1)) as Array<{
+      memberId: string;
+      siteId: string;
+      targetType: string;
+      targetId: string;
+    }>;
     if (comment && comment.siteId !== requestSiteId) {
       throw new NpForbiddenError("reaction", "cross-site");
     }
     if (comment && comment.memberId !== input.memberId) {
       recipientId = comment.memberId;
+    }
+    if (comment) {
+      realtimeTarget = { targetType: comment.targetType, targetId: comment.targetId };
     }
   } else {
     try {
@@ -277,6 +296,7 @@ export async function removeReaction(input: NpReactToInput): Promise<void> {
         { requirePublic: false },
       );
       if (target.recipientId !== input.memberId) recipientId = target.recipientId;
+      realtimeTarget = { targetType: target.targetType, targetId: target.targetId };
     } catch (error) {
       if (error instanceof NpForbiddenError) throw error;
       if (!(error instanceof NpNotFoundError) && !(error instanceof NpValidationError)) {
@@ -315,6 +335,13 @@ export async function removeReaction(input: NpReactToInput): Promise<void> {
       targetType: checked.targetType,
       targetId: checked.targetId,
     });
+  }
+  if (deleted.length > 0 && realtimeTarget) {
+    await npEmitCommunityDocumentChanged(
+      "reactions",
+      realtimeTarget.targetType,
+      realtimeTarget.targetId,
+    );
   }
 }
 

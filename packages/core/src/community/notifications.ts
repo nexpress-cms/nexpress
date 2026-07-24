@@ -18,6 +18,7 @@ import { npNotifications } from "../db/schema/community.js";
 import { NpForbiddenError, NpValidationError } from "../errors.js";
 import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
+import { npEmitCommunityInboxChanged } from "./realtime.js";
 
 /**
  * Per-member notification inbox. Every event that generates a
@@ -97,7 +98,9 @@ export async function createNotification(
     })
     .returning()) as NpNotificationRow[];
   if (!row) throw new Error("Notification insert returned no row");
-  return npRequireNotificationRow(row);
+  const checked = npRequireNotificationRow(row);
+  await npEmitCommunityInboxChanged(memberId);
+  return checked;
 }
 
 export async function listNotifications(
@@ -188,6 +191,9 @@ export async function markNotificationsRead(input: MarkReadInput): Promise<numbe
       ),
     )
     .returning({ id: npNotifications.id })) as Array<{ id: string }>;
+  if (updated.length > 0) {
+    await npEmitCommunityInboxChanged(input.memberId);
+  }
   return updated.length;
 }
 
@@ -209,6 +215,9 @@ export async function markAllNotificationsRead(memberId: string): Promise<number
         isNull(npNotifications.readAt),
       ),
     );
+  if (before > 0) {
+    await npEmitCommunityInboxChanged(memberId);
+  }
   return before;
 }
 

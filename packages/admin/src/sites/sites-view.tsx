@@ -77,6 +77,7 @@ const SITE_USAGE_TABLES: ReadonlyArray<
   ["follows", "np_follows"],
   ["mutes", "np_member_mutes"],
   ["notifications", "np_notifications"],
+  ["realtimeEvents", "np_community_realtime_events"],
   ["reports", "np_reports"],
   ["auditEvents", "np_audit_events"],
   ["bans", "np_bans"],

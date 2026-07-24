@@ -16,6 +16,7 @@ export const npCommunityBanScopes = ["site", "category", "collection"] as const;
 export const npCommunityBanKinds = ["temporary", "permanent"] as const;
 export const npCommunityScopes = ["site", "category", "collection", "thread"] as const;
 export const npCommunityDigestCadences = ["off", "daily", "weekly"] as const;
+export const npCommunityRealtimeChannels = ["comments", "reactions", "notifications"] as const;
 export const npCommunityModerationVerdictKinds = ["pass", "flag", "reject"] as const;
 export const npCommunityAuditActorKinds = ["staff", "member", "system"] as const;
 export const npCommunityCapabilities = [
@@ -62,6 +63,7 @@ export type BanScope = (typeof npCommunityBanScopes)[number];
 export type BanKind = (typeof npCommunityBanKinds)[number];
 export type CommunityScope = (typeof npCommunityScopes)[number];
 export type NpDigestCadence = (typeof npCommunityDigestCadences)[number];
+export type NpCommunityRealtimeChannel = (typeof npCommunityRealtimeChannels)[number];
 export type NpModerationVerdictKind = (typeof npCommunityModerationVerdictKinds)[number];
 export type AuditActorKind = (typeof npCommunityAuditActorKinds)[number];
 export type CommunityCapability = (typeof npCommunityCapabilities)[number];
@@ -476,6 +478,41 @@ export interface NpNotificationListWire {
   unread: number;
 }
 
+/**
+ * Short-lived invalidation outbox row. Document channels are addressed by
+ * target while the private notification channel is addressed by member.
+ */
+export interface NpCommunityRealtimeEventRow {
+  id: string;
+  sequence: number;
+  channel: NpCommunityRealtimeChannel;
+  targetType: string | null;
+  targetId: string | null;
+  memberId: string | null;
+  siteId: string;
+  createdAt: Date;
+}
+
+export type NpCommunityRealtimeEventKind = `${NpCommunityRealtimeChannel}.changed`;
+
+/** PII-free SSE payload. Authorization and routing stay server-side. */
+export interface NpCommunityRealtimeEventWire {
+  version: 1;
+  id: string;
+  kind: NpCommunityRealtimeEventKind;
+  occurredAt: string;
+}
+
+export type NpCommunityRealtimeSubscription =
+  | {
+      scope: "document";
+      targetType: string;
+      targetId: string;
+    }
+  | {
+      scope: "inbox";
+    };
+
 export interface MarkReadInput {
   memberId: string;
   notificationIds: string[];
@@ -649,6 +686,7 @@ export interface NpCommunityRuntimeDiagnostic {
     | "notification-kinds"
     | "notification-prefs"
     | "notifications"
+    | "realtime"
     | "spam"
     | "profanity"
     | "reputation"

@@ -5,7 +5,7 @@ vi.mock("../../lib/init-core", () => ({ ensureFor: vi.fn(() => Promise.resolve()
 import { buildSpec } from "./route.js";
 
 describe("OpenAPI community engagement contract", () => {
-  it("publishes exact reaction, view, follow, and report contracts", () => {
+  it("publishes exact realtime, engagement, reaction, view, follow, and report contracts", () => {
     const spec = buildSpec() as {
       paths: Record<string, Record<string, Record<string, unknown>>>;
       components: { schemas: Record<string, Record<string, unknown>> };
@@ -31,6 +31,82 @@ describe("OpenAPI community engagement contract", () => {
           },
         },
       },
+    });
+    expect(spec.paths["/api/community/events"]?.get).toMatchObject({
+      parameters: expect.arrayContaining([
+        expect.objectContaining({
+          in: "query",
+          name: "scope",
+          required: true,
+          schema: { type: "string", enum: ["document", "inbox"] },
+        }),
+        expect.objectContaining({
+          in: "header",
+          name: "Last-Event-ID",
+          schema: { type: "string", format: "uuid" },
+        }),
+      ]),
+      responses: {
+        "200": {
+          content: {
+            "text/event-stream": {
+              schema: { type: "string" },
+            },
+          },
+        },
+        "401": {},
+        "403": {},
+      },
+    });
+    expect(spec.components.schemas.community_realtime_event).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: ["version", "id", "kind", "occurredAt"],
+      properties: {
+        version: { const: 1 },
+        id: { format: "uuid" },
+        kind: {
+          enum: ["comments.changed", "reactions.changed", "notifications.changed"],
+        },
+      },
+    });
+    expect(spec.paths["/api/engagement"]?.get).toMatchObject({
+      parameters: expect.arrayContaining([
+        expect.objectContaining({
+          in: "query",
+          name: "targetType",
+          required: true,
+        }),
+        expect.objectContaining({
+          in: "query",
+          name: "targetId",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        }),
+      ]),
+      responses: {
+        "200": {
+          content: {
+            "application/json": {
+              schema: {
+                $ref: "#/components/schemas/community_content_engagement_summary",
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(spec.components.schemas.community_content_engagement_summary).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "targetType",
+        "targetId",
+        "viewCount",
+        "commentCount",
+        "reactionCount",
+        "reactions",
+      ],
     });
     expect(spec.paths["/api/views"]?.post).toMatchObject({
       requestBody: {

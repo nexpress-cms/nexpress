@@ -303,6 +303,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
       createSite,
       npSettings,
       npNotifications,
+      npCommunityRealtimeEvents,
       npAuditEvents,
       npPluginStorage,
       hashPassword,
@@ -341,6 +342,11 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
       payload: {},
       siteId: created.id,
     });
+    await db.insert(npCommunityRealtimeEvents).values({
+      channel: "notifications",
+      memberId: member!.id,
+      siteId: created.id,
+    });
     await db.insert(npAuditEvents).values({
       actorKind: "system",
       action: "test.usage",
@@ -365,6 +371,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
       usage?: {
         settings: number;
         notifications: number;
+        realtimeEvents: number;
         auditEvents: number;
         pluginStorage: number;
         total: number;
@@ -373,9 +380,10 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
     expect(status).toBe(200);
     expect(body.usage?.settings).toBe(1);
     expect(body.usage?.notifications).toBe(1);
+    expect(body.usage?.realtimeEvents).toBe(1);
     expect(body.usage?.auditEvents).toBe(1);
     expect(body.usage?.pluginStorage).toBe(1);
-    expect(body.usage?.total).toBeGreaterThanOrEqual(4);
+    expect(body.usage?.total).toBeGreaterThanOrEqual(5);
   });
 
   it("Issue #220 — DELETE ?cascade=true clears community + plugin storage rows too", async () => {
@@ -384,6 +392,7 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
       createSite,
       npSettings,
       npNotifications,
+      npCommunityRealtimeEvents,
       npAuditEvents,
       npPluginStorage,
       hashPassword,
@@ -419,6 +428,11 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
       memberId: member!.id,
       kind: "system",
       payload: {},
+      siteId: created.id,
+    });
+    await db.insert(npCommunityRealtimeEvents).values({
+      channel: "notifications",
+      memberId: member!.id,
       siteId: created.id,
     });
     await db.insert(npAuditEvents).values({
@@ -457,11 +471,16 @@ describe.skipIf(skipIfNoTestDb())("admin sites API (Phase 15.3)", () => {
       .select({ value: count() })
       .from(npAuditEvents)
       .where(eq(npAuditEvents.siteId, created.id))) as Array<{ value: number }>;
+    const [{ value: realtimeLeft }] = (await db
+      .select({ value: count() })
+      .from(npCommunityRealtimeEvents)
+      .where(eq(npCommunityRealtimeEvents.siteId, created.id))) as Array<{ value: number }>;
     const [{ value: pluginLeft }] = (await db
       .select({ value: count() })
       .from(npPluginStorage)
       .where(eq(npPluginStorage.siteId, created.id))) as Array<{ value: number }>;
     expect(notifLeft).toBe(0);
+    expect(realtimeLeft).toBe(0);
     expect(auditLeft).toBe(0);
     expect(pluginLeft).toBe(0);
   });
