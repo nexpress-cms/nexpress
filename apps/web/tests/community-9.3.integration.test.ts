@@ -1,4 +1,5 @@
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
+import { npCommunityRealtimeEvents } from "@nexpress/core";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -173,6 +174,15 @@ describe.skipIf(skipIfNoTestDb())("9.3 reactions / follows / notifications (inte
     );
     const after = await readJson<{ counts: Record<string, number> }>(summaryAfter);
     expect(after.body.counts.like ?? 0).toBe(0);
+
+    const realtime = await (
+      await getTestDb()
+    )
+      .select({ channel: npCommunityRealtimeEvents.channel })
+      .from(npCommunityRealtimeEvents);
+    expect(realtime.map((event) => event.channel)).toEqual(
+      expect.arrayContaining(["comments", "reactions", "notifications"]),
+    );
   });
 
   it("reaction notification fans out to the comment author (skips self-reaction)", async () => {

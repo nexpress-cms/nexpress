@@ -266,6 +266,7 @@ export async function truncateAll(): Promise<void> {
     // wipes cleanly between cases.
     "np_audit_events",
     "np_reports",
+    "np_community_realtime_events",
     "np_notifications",
     "np_follows",
     "np_reactions",

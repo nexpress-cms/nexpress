@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import {
   npRequireMarkNotificationsReadWire,
   npRequireNotificationHref,
+  npRequireNotificationListWire,
   type NpNotificationWireRow,
 } from "@nexpress/core/community-contract";
+import { NP_COMMUNITY_INBOX_EVENTS_URL, useCommunityRealtime } from "@nexpress/next/client";
+import { useCallback, useState } from "react";
 
 export type NotificationInboxItem = NpNotificationWireRow;
 
@@ -31,11 +33,28 @@ export function NotificationsInbox({
   totalDocs,
 }: NotificationsInboxProps) {
   const [items, setItems] = useState(initialNotifications);
+  const [total, setTotal] = useState(totalDocs);
   const [unread, setUnread] = useState(initialUnread);
   const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
   const [markingAll, setMarkingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+
+  const refreshInbox = useCallback(async () => {
+    const response = await fetch("/api/notifications?limit=50&offset=0", {
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!response.ok) return;
+    const page = npRequireNotificationListWire(await response.json());
+    setItems(page.notifications);
+    setUnread(page.unread);
+    setTotal(page.totalDocs);
+  }, []);
+  useCommunityRealtime({
+    url: NP_COMMUNITY_INBOX_EVENTS_URL,
+    onInvalidate: refreshInbox,
+  });
 
   const markOneRead = async (id: string): Promise<void> => {
     if (busyIds.has(id)) return;
@@ -226,9 +245,9 @@ export function NotificationsInbox({
         </ul>
       )}
 
-      {totalDocs > items.length ? (
+      {total > items.length ? (
         <p style={{ color: "#64748b", fontSize: "0.875rem", margin: 0 }}>
-          Showing the latest {items.length} of {totalDocs} notifications.
+          Showing the latest {items.length} of {total} notifications.
         </p>
       ) : null}
 

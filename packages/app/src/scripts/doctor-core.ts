@@ -56,6 +56,7 @@ import {
   npRequireMemberRoleGrantRow,
   npRequireNotificationPrefs,
   npRequireNotificationRow,
+  npRequireCommunityRealtimeEventRow,
   npRequireReactionRow,
   npRequireReportRow,
   npIsCommunityDocumentAudience,
@@ -1392,6 +1393,7 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
       "np_reactions",
       "np_follows",
       "np_notifications",
+      "np_community_realtime_events",
       "np_reports",
       "np_bans",
       "np_member_roles",
@@ -1450,6 +1452,12 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
       `select id, member_id as "memberId", kind, payload, read_at as "readAt",
                   site_id as "siteId", created_at as "createdAt"
              from np_notifications`,
+    );
+    const realtimeEvents = await client.query<Record<string, unknown>>(
+      `select id, sequence::double precision as sequence, channel,
+                  target_type as "targetType", target_id as "targetId",
+                  member_id as "memberId", site_id as "siteId", created_at as "createdAt"
+             from np_community_realtime_events`,
     );
     const reports = await client.query<Record<string, unknown>>(
       `select id, reporter_id as "reporterId", target_type as "targetType",
@@ -1666,6 +1674,7 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
       ["contentViews", contentViews.rows, npRequireContentViewRow],
       ["follows", follows.rows, npRequireFollowRow],
       ["notifications", notifications.rows, npRequireNotificationRow],
+      ["realtimeEvents", realtimeEvents.rows, npRequireCommunityRealtimeEventRow],
       ["reports", reports.rows, npRequireReportRow],
       ["bans", bans.rows, npRequireBanRow],
       ["grants", grants.rows, npRequireMemberRoleGrantRow],
@@ -1682,6 +1691,7 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
       contentViews.rows.length +
       follows.rows.length +
       notifications.rows.length +
+      realtimeEvents.rows.length +
       reports.rows.length +
       bans.rows.length +
       grants.rows.length +
@@ -1699,7 +1709,7 @@ async function checkCommunityContracts(env: DoctorEnv): Promise<CheckResult> {
           state: "error",
           label: "Community persistence contracts",
           detail: `${issues.length.toString()} contract issue(s); first: ${issues[0]?.path ?? "community"} ${issues[0]?.message ?? "invalid"}`,
-          hint: "Repair malformed or orphaned community rows, role scopes, unresolved report duplicates, follow targets, and notification preferences before accepting member traffic.",
+          hint: "Repair malformed or orphaned community rows, realtime events, role scopes, unresolved report duplicates, follow targets, and notification preferences before accepting member traffic.",
         };
   } catch (error) {
     try {

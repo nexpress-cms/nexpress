@@ -158,6 +158,10 @@ const RATE_LIMITS: Array<{ pattern: RegExp; limit: number; windowMs: number }> =
   // Newsletter subscribe — anonymous public form, no CSRF gate, so the
   // IP bucket is the only floor against subscribe-spam. Keep tight.
   { pattern: /^\/api\/newsletter$/, limit: 5, windowMs: 60_000 },
+  // Each community SSE request remains open for up to 25 seconds. Bound
+  // connection starts per IP while leaving enough room for normal automatic
+  // reconnects across several tabs or users behind one shared address.
+  { pattern: /^\/api\/community\/events$/, limit: 60, windowMs: 60_000 },
   { pattern: /^\/api\/views$/, limit: 120, windowMs: 60_000 },
   // Phase 20.1 — job actions that do real work or bulk fan-out get
   // tighter limits than the general /api/admin/ bucket. Each

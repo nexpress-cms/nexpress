@@ -161,6 +161,22 @@ describe("shared application proxy rate limiting", () => {
     expect(check).toHaveBeenCalledWith(expect.any(String), 120, 60_000);
   });
 
+  it("bounds community SSE connection starts without blocking read access", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "memory");
+    const { proxyModule } = await loadModules();
+    const check = vi.fn().mockResolvedValue({ limited: false, retryAfterSeconds: 60 });
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: { kind: "memory", check },
+    });
+
+    const response = await handler(
+      request("/api/community/events?scope=document&targetType=posts&targetId=target"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(check).toHaveBeenCalledWith(expect.any(String), 60, 60_000);
+  });
+
   it("forwards the selected Admin site only to staff media-library routes", async () => {
     vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "memory");
     const { proxyModule } = await loadModules();

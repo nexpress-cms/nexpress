@@ -1,9 +1,13 @@
 "use client";
 
-import type { NpCommentListItemWire, NpCommentListWire } from "@nexpress/core/community-contract";
+import {
+  npRequireCommentListWire,
+  type NpCommentListItemWire,
+} from "@nexpress/core/community-contract";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { npBuildCommentTree, type NpCommentTreeNode } from "./comments-model.js";
+import { npCommunityDocumentEventsUrl, useCommunityRealtime } from "./community-realtime.js";
 
 type CommentSort = "newest" | "oldest" | "top";
 
@@ -220,10 +224,10 @@ export function Comments({
         if (moderation?.restore) params.set("includeHidden", "1");
         const response = await fetch(
           `/api/collections/${encodeURIComponent(collectionSlug)}/${encodeURIComponent(documentId)}/comments?${params.toString()}`,
-          { credentials: "include" },
+          { cache: "no-store", credentials: "include" },
         );
         if (!response.ok) throw await errorFromResponse(response, labels.loadFailed);
-        const body = (await response.json()) as NpCommentListWire;
+        const body = npRequireCommentListWire(await response.json());
         if (requestId !== listRequestId.current) return false;
         setComments(body.comments);
         setTotal(body.totalDocs);
@@ -265,6 +269,14 @@ export function Comments({
   }, []);
 
   const refresh = useCallback(async () => load(offset, sort), [load, offset, sort]);
+  const refreshFromRealtime = useCallback(async () => {
+    await refresh();
+  }, [refresh]);
+  const realtimeUrl = useMemo(
+    () => npCommunityDocumentEventsUrl(collectionSlug, documentId),
+    [collectionSlug, documentId],
+  );
+  useCommunityRealtime({ url: realtimeUrl, onInvalidate: refreshFromRealtime });
   const tree = useMemo(() => npBuildCommentTree(comments), [comments]);
 
   const submitComment = useCallback(

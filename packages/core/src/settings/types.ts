@@ -76,6 +76,7 @@ export interface NpSiteUsage {
   follows: number;
   mutes: number;
   notifications: number;
+  realtimeEvents: number;
   reports: number;
   auditEvents: number;
   bans: number;

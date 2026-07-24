@@ -173,6 +173,7 @@ describe("framework settings contract", () => {
       follows: 0,
       mutes: 0,
       notifications: 0,
+      realtimeEvents: 0,
       reports: 0,
       auditEvents: 0,
       bans: 0,

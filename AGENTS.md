@@ -6,6 +6,11 @@ This file provides guidance to Agents when working with code in this repository.
 now share one exact settings, atomic admission, Admin/OpenAPI, scaffold, and
 doctor/ops contract with unlimited defaults and fail-closed measurement.)
 
+**Earlier:** 2026-07-23 (community comments, document engagement, and member
+notification inboxes now share one site-scoped PII-free SSE invalidation
+contract with DB-sequence resume, bounded polling fallback, retention,
+Doctor/OpenAPI, scaffold, and deletion coverage.)
+
 **Earlier:** 2026-07-22 (media, folders, references, processing jobs,
 Admin, transfer, quotas, site deletion, and doctor now share one exact
 site-owned contract with fail-closed cross-tenant access.)
