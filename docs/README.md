@@ -98,9 +98,18 @@ If you want to know how something works **right now**, read the code and the
 matching live guide above. If you want to know **why** a subsystem is
 shaped the way it is, the design snapshot may have the rationale.
 
-The directory currently contains the original core, community, plugin,
-WordPress-import, universal-content, theme-extension, member-surface, route,
-plugin-config, authoring-field-note, alias-removal, and Phase 23 planning
-snapshots, plus the original Korean product brief and summary. The directory
-listing is the authoritative inventory; none of these files supersedes a live
+The current implementation design for the proposed agent-operable product
+track is indexed at
+[`design/agentic-platform/`](design/agentic-platform/README.md). It covers the
+Build Agent, external MCP gateway, durable Agent Runtime, ChangeSets,
+credentials, moderation/Guardian workflows, Admin UX, delivery order, and
+verification. None of those planned surfaces is shipped merely because it
+appears in that directory; implemented phases must add or update a focused live
 guide above.
+
+The directory currently contains the agentic-platform implementation set plus
+the original core, community, plugin, WordPress-import, universal-content,
+theme-extension, member-surface, route, plugin-config, authoring-field-note,
+alias-removal, and Phase 23 planning snapshots, plus the original Korean
+product brief and summary. The directory listing is the authoritative
+inventory; none of these files supersedes a live guide above.
