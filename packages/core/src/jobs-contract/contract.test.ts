@@ -153,6 +153,13 @@ describe("job runtime contract", () => {
       npAnalyzeJobPayload("search:reindex", { collection: "forum-posts", extra: true }).ok,
     ).toBe(false);
     expect(npAnalyzeJobPayload("media:cleanup", { unexpected: true }).ok).toBe(false);
+    expect(npAnalyzeJobPayload("system:communityRealtimePrune", {})).toEqual({
+      ok: true,
+      value: {},
+    });
+    expect(npAnalyzeJobPayload("system:communityRealtimePrune", { unexpected: true }).ok).toBe(
+      false,
+    );
     expect(npAnalyzeJobPayload("notifications:sendDigest", { cadence: "monthly" }).ok).toBe(false);
     expect(
       npAnalyzeJobPayload("auth:sendPasswordReset", {

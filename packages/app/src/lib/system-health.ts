@@ -22,7 +22,10 @@ import {
 } from "@nexpress/core/observability";
 import { getSearchAdapterDiagnostics } from "@nexpress/core/search";
 import { getI18nRuntimeDiagnostics } from "@nexpress/core/i18n";
-import { getCommunityRuntimeDiagnostics } from "@nexpress/core/community";
+import {
+  getCommunityRuntimeDiagnostics,
+  npGetCommunityRealtimeOutboxStats,
+} from "@nexpress/core/community";
 import { getCollectionRuntimeDiagnostics } from "@nexpress/core/collections";
 import {
   getOptionalStorageRuntimeConfig,
@@ -32,6 +35,7 @@ import {
 } from "@nexpress/core/storage";
 
 import { getDb } from "./db";
+import { evaluateCommunityRealtimeHealth } from "./community-realtime-health";
 
 /**
  * Read-only system diagnostics for `/admin/health`. Pairs with
@@ -625,6 +629,41 @@ export function checkCommunityRuntime(): Check {
   }
 }
 
+/** Persisted six-hour invalidation outbox backlog and oldest retained row. */
+export async function checkCommunityRealtimeOutbox(): Promise<Check> {
+  try {
+    const queue = getOptionalJobQueue();
+    const recentFailureSince = new Date(Date.now() - 24 * 60 * 60 * 1_000);
+    const recentCleanupFailures =
+      queue && typeof queue.listJobs === "function"
+        ? (
+            await Promise.all(
+              (["failed", "expired", "retry"] as const).map((state) =>
+                queue.listJobs!({
+                  name: "system.communityRealtimePrune",
+                  state,
+                  since: recentFailureSince,
+                  limit: 1,
+                }),
+              ),
+            )
+          ).reduce((total, result) => total + result.total, 0)
+        : 0;
+    return evaluateCommunityRealtimeHealth(
+      await npGetCommunityRealtimeOutboxStats(),
+      recentCleanupFailures,
+    );
+  } catch (error) {
+    return {
+      id: "community.realtime_retention",
+      label: "Community realtime retention",
+      state: "error",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Verify the community migration and hourly cleanup job before relying on realtime invalidation.",
+    };
+  }
+}
+
 /** Fail-closed collection hydration, hook-result, and API serialization boundaries. */
 export function checkCollectionRuntime(): Check {
   try {
@@ -718,6 +757,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
   checks.push(checkCacheInvalidation());
   checks.push(checkSearchAdapter());
   checks.push(checkI18nRuntime());
+  checks.push(await checkCommunityRealtimeOutbox());
   checks.push(checkCommunityRuntime());
   checks.push(checkCollectionRuntime());
   checks.push(checkSecret());

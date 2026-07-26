@@ -421,6 +421,9 @@ Implementation status:
   `ops:status` script so operators and agents can use the same entry.
 - `nexpress ops doctor --prod --json --fix-plan` delegates to the
   project-side doctor while preserving its stable `np.doctor.v1` output.
+- Status and Doctor include `community.realtime_retention`, with the exact
+  expired-row count and oldest outbox timestamp needed to distinguish a
+  healthy six-hour window from a stalled hourly cleanup worker.
 - `nexpress ops preflight --target <host> --json` combines deploy-plan and
   production doctor evidence plus `ops migrate plan` evidence into
   `schemaVersion: "np.ops-preflight.v1"`. Brief reports print a per-step

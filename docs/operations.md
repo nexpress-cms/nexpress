@@ -104,6 +104,13 @@ but pg-boss history cannot be measured, matching the runtime's fail-closed
 admission behavior. Super-admins inspect or adjust the exact values from
 Admin → Sites → Quotas.
 
+The shared `community.realtime_retention` check reports the expired-row count
+and oldest retained invalidation in local Doctor/ops, Admin Health, and remote
+ops evidence. Any expired row is a warning: verify the worker and the hourly
+`system:communityRealtimePrune` job. Cleanup is oldest-first and bounded, so a
+large backlog may need several hourly runs; new community writes retain a
+one-batch fallback when jobs are intentionally disabled.
+
 ## SITE_URL is required for email flows
 
 Three routes refuse to run when `SITE_URL` is unset, returning a 500

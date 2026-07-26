@@ -357,7 +357,11 @@ Connections close after a bounded interval so document/member authorization is
 rechecked on reconnect. The application proxy permits at most 60 stream
 connection starts per minute and client IP, leaving room for normal automatic
 reconnects while bounding long-lived request churn. Rows older than six hours
-are removed by opportunistic cleanup indexed by `created_at`.
+are removed oldest-first in fixed batches. The hourly
+`system:communityRealtimePrune` job runs at minute 45 and deletes at most ten
+1,000-row batches per invocation; the write path keeps a 15-minute, one-batch
+opportunistic fallback for installations without a worker. Both paths use the
+same exported retention and batch bounds.
 
 Clients refresh once when the stream opens to close the render/connect race,
 then refetch existing exact, audience-aware APIs after each invalidation.
@@ -744,8 +748,13 @@ tables carrying the canonical `audience` column
 are checked for invalid persisted values as part of `collections.contract`.
 It also reports collection grants whose collection table is
 missing and category/thread grants whose target document is missing or belongs
-to another site. Adapter and registry failures are contained in a bounded runtime
-diagnostic buffer and surface as the `community` row in Admin Health;
+to another site. `community.realtime_retention` separately reports the exact
+expired-row count and oldest retained row through Doctor, `nexpress ops
+status`, Admin Health, and the remote ops surfaces. A cleanup exception remains
+a normal failed built-in job with its bounded job log, so worker and recent-job
+diagnostics expose the failure rather than hiding it. Adapter and registry
+failures are contained in a bounded runtime diagnostic buffer and surface as
+the `community` row in Admin Health;
 they are not silently converted into successful moderation or reputation
 results. Malformed persisted notification preferences also emit a runtime
 diagnostic and fail closed for the notification side effect without rolling

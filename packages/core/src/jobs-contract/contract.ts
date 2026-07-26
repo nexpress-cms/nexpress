@@ -561,6 +561,7 @@ function parseBuiltinPayload(
     case "system:revisionPrune":
     case "system:sessionCleanup":
     case "system:jobLogPrune":
+    case "system:communityRealtimePrune":
       exactRecord(value, path, []);
       return {};
     default: {

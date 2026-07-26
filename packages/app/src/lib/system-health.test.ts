@@ -37,6 +37,10 @@ interface HealthTestRuntime {
   i18nLocales: number;
   i18nCompileFailures: number;
   i18nFormatFailures: number;
+  realtimeTotalRows: number;
+  realtimeExpiredRows: number;
+  realtimeOldestCreatedAt: Date | null;
+  realtimeCleanupFailures: number;
   communityFailures: number;
   collectionFailures: number;
 }
@@ -65,6 +69,10 @@ const runtime = vi.hoisted<HealthTestRuntime>(() => ({
   i18nLocales: 2,
   i18nCompileFailures: 0,
   i18nFormatFailures: 0,
+  realtimeTotalRows: 0,
+  realtimeExpiredRows: 0,
+  realtimeOldestCreatedAt: null,
+  realtimeCleanupFailures: 0,
   communityFailures: 0,
   collectionFailures: 0,
 }));
@@ -72,7 +80,13 @@ const runtime = vi.hoisted<HealthTestRuntime>(() => ({
 vi.mock("@nexpress/core", () => ({
   getAllPluginIds: vi.fn(),
   getJobsPauseState: vi.fn(),
-  getOptionalJobQueue: vi.fn(),
+  getOptionalJobQueue: () => ({
+    listJobs: (options: { state?: string }) =>
+      Promise.resolve({
+        jobs: [],
+        total: options.state === "failed" ? runtime.realtimeCleanupFailures : 0,
+      }),
+  }),
   listWorkerHealth: vi.fn(),
 }));
 
@@ -209,6 +223,13 @@ vi.mock("@nexpress/core/community", async (importOriginal) => {
   const actual = await importOriginal<typeof NpCommunityModule>();
   return {
     ...actual,
+    npGetCommunityRealtimeOutboxStats: () =>
+      Promise.resolve({
+        totalRows: runtime.realtimeTotalRows,
+        expiredRows: runtime.realtimeExpiredRows,
+        oldestCreatedAt: runtime.realtimeOldestCreatedAt,
+        cutoff: new Date("2026-07-26T06:00:00.000Z"),
+      }),
     getCommunityRuntimeDiagnostics: () =>
       Array.from({ length: runtime.communityFailures }, () => ({
         source: "spam" as const,
@@ -240,6 +261,7 @@ const {
   checkCacheInvalidation,
   checkObservabilityAdapters,
   checkI18nRuntime,
+  checkCommunityRealtimeOutbox,
   checkCommunityRuntime,
   checkCollectionRuntime,
   checkSearchAdapter,
@@ -271,6 +293,10 @@ afterEach(() => {
   runtime.i18nLocales = 2;
   runtime.i18nCompileFailures = 0;
   runtime.i18nFormatFailures = 0;
+  runtime.realtimeTotalRows = 0;
+  runtime.realtimeExpiredRows = 0;
+  runtime.realtimeOldestCreatedAt = null;
+  runtime.realtimeCleanupFailures = 0;
   runtime.communityFailures = 0;
   runtime.collectionFailures = 0;
 });
@@ -299,6 +325,31 @@ describe("live i18n health", () => {
 });
 
 describe("live community health", () => {
+  it("reports the persisted realtime retention backlog", async () => {
+    runtime.realtimeTotalRows = 5;
+    runtime.realtimeExpiredRows = 2;
+    runtime.realtimeOldestCreatedAt = new Date("2026-07-26T05:00:00.000Z");
+    await expect(checkCommunityRealtimeOutbox()).resolves.toEqual(
+      expect.objectContaining({
+        id: "community.realtime_retention",
+        state: "warn",
+        detail: expect.stringContaining("2 expired of 5"),
+      }),
+    );
+  });
+
+  it("surfaces a recent scheduled cleanup failure before backlog expires", async () => {
+    runtime.realtimeTotalRows = 1;
+    runtime.realtimeOldestCreatedAt = new Date("2026-07-26T07:00:00.000Z");
+    runtime.realtimeCleanupFailures = 1;
+    await expect(checkCommunityRealtimeOutbox()).resolves.toEqual(
+      expect.objectContaining({
+        state: "warn",
+        detail: expect.stringContaining("1 cleanup failure in 24h"),
+      }),
+    );
+  });
+
   it("reports a healthy validated runtime", () => {
     expect(checkCommunityRuntime()).toEqual(
       expect.objectContaining({ state: "ok", detail: "registries and adapters valid" }),

@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, lt, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, sql, type SQL } from "drizzle-orm";
 
 import {
   npRequireCommunityId,
@@ -17,7 +17,8 @@ import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 
 import { npRecordCommunityRuntimeDiagnostic } from "./diagnostics.js";
 
-const RETENTION_MS = 6 * 60 * 60 * 1_000;
+export const NP_COMMUNITY_REALTIME_RETENTION_MS = 6 * 60 * 60 * 1_000;
+export const NP_COMMUNITY_REALTIME_PRUNE_BATCH_SIZE = 1_000;
 const CLEANUP_INTERVAL_MS = 15 * 60 * 1_000;
 export const NP_COMMUNITY_REALTIME_BATCH_SIZE = 100;
 
@@ -40,6 +41,88 @@ export type NpCommunityRealtimeServerSubscription =
 export interface NpCommunityRealtimeCursor {
   id: string | null;
   sequence: number;
+}
+
+export interface NpCommunityRealtimeOutboxStats {
+  totalRows: number;
+  expiredRows: number;
+  oldestCreatedAt: Date | null;
+  cutoff: Date;
+}
+
+export interface NpCommunityRealtimePruneOptions {
+  now?: Date;
+  batchSize?: number;
+}
+
+export interface NpCommunityRealtimePruneResult {
+  deletedRows: number;
+  hasMore: boolean;
+  cutoff: Date;
+}
+
+function requireValidDate(value: unknown, path: string): Date {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime())) {
+    throw new Error(`${path} must be a valid Date.`);
+  }
+  return new Date(value);
+}
+
+function requirePersistedDate(value: unknown, path: string): Date {
+  if (typeof value !== "string" && !(value instanceof Date)) {
+    throw new Error(`${path} must be a valid persisted timestamp.`);
+  }
+  const normalized = new Date(value);
+  if (!Number.isFinite(normalized.getTime())) {
+    throw new Error(`${path} must be a valid persisted timestamp.`);
+  }
+  return normalized;
+}
+
+function requireNonNegativeSafeInteger(value: unknown, path: string): number {
+  const normalized =
+    typeof value === "string" && /^(0|[1-9][0-9]*)$/u.test(value) ? Number(value) : value;
+  if (!Number.isSafeInteger(normalized) || (normalized as number) < 0) {
+    throw new Error(`${path} must be a non-negative safe integer.`);
+  }
+  return normalized as number;
+}
+
+function requirePruneOptions(
+  value: NpCommunityRealtimePruneOptions,
+): Required<NpCommunityRealtimePruneOptions> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("community.realtime.prune options must be a plain object.");
+  }
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new Error("community.realtime.prune options must be a plain object.");
+  }
+  for (const key of Reflect.ownKeys(value)) {
+    if (key !== "now" && key !== "batchSize") {
+      throw new Error(`Unsupported community realtime prune option "${String(key)}".`);
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor?.enumerable || !("value" in descriptor)) {
+      throw new Error(`community.realtime.prune.${String(key)} must be a data property.`);
+    }
+  }
+  const now = value.now === undefined ? new Date() : requireValidDate(value.now, "prune.now");
+  const batchSize = value.batchSize ?? NP_COMMUNITY_REALTIME_PRUNE_BATCH_SIZE;
+  if (
+    !Number.isSafeInteger(batchSize) ||
+    batchSize < 1 ||
+    batchSize > NP_COMMUNITY_REALTIME_PRUNE_BATCH_SIZE
+  ) {
+    throw new Error(
+      `prune.batchSize must be an integer between 1 and ${NP_COMMUNITY_REALTIME_PRUNE_BATCH_SIZE.toString()}.`,
+    );
+  }
+  return { now, batchSize };
+}
+
+function retentionCutoff(now: Date): Date {
+  return new Date(now.getTime() - NP_COMMUNITY_REALTIME_RETENTION_MS);
 }
 
 function requireSubscription(
@@ -104,12 +187,86 @@ async function cleanExpiredEvents(now: Date): Promise<void> {
   if (now.getTime() < nextCleanupAt) return;
   nextCleanupAt = now.getTime() + CLEANUP_INTERVAL_MS;
   try {
-    await getDb()
-      .delete(npCommunityRealtimeEvents)
-      .where(lt(npCommunityRealtimeEvents.createdAt, new Date(now.getTime() - RETENTION_MS)));
+    await npPruneCommunityRealtimeEvents({ now });
   } catch (error) {
     recordRealtimeFailure(error);
   }
+}
+
+/** Read the exact retention backlog used by live health and operator diagnostics. */
+export async function npGetCommunityRealtimeOutboxStats(
+  now: Date = new Date(),
+): Promise<NpCommunityRealtimeOutboxStats> {
+  const checkedNow = requireValidDate(now, "community.realtime.stats.now");
+  const cutoff = retentionCutoff(checkedNow);
+  const [row] = (await getDb()
+    .select({
+      totalRows: sql<string>`count(*)::text`,
+      expiredRows: sql<string>`count(*) filter (
+        where ${npCommunityRealtimeEvents.createdAt} < ${cutoff}
+      )::text`,
+      oldestCreatedAt: sql<Date | null>`min(${npCommunityRealtimeEvents.createdAt})`,
+    })
+    .from(npCommunityRealtimeEvents)) as Array<{
+    totalRows: unknown;
+    expiredRows: unknown;
+    oldestCreatedAt: unknown;
+  }>;
+  if (!row) throw new Error("Community realtime outbox statistics returned no row.");
+  const totalRows = requireNonNegativeSafeInteger(
+    row.totalRows,
+    "community.realtime.stats.totalRows",
+  );
+  const expiredRows = requireNonNegativeSafeInteger(
+    row.expiredRows,
+    "community.realtime.stats.expiredRows",
+  );
+  if (expiredRows > totalRows) {
+    throw new Error("community.realtime.stats.expiredRows cannot exceed totalRows.");
+  }
+  const oldestCreatedAt =
+    row.oldestCreatedAt === null
+      ? null
+      : requirePersistedDate(row.oldestCreatedAt, "community.realtime.stats.oldestCreatedAt");
+  if ((totalRows === 0) !== (oldestCreatedAt === null)) {
+    throw new Error(
+      "community.realtime.stats.oldestCreatedAt must be null exactly when the outbox is empty.",
+    );
+  }
+  return { totalRows, expiredRows, oldestCreatedAt, cutoff };
+}
+
+/**
+ * Delete one fixed-size oldest-first retention batch. Concurrent callers may
+ * race on the same candidates, but every delete remains idempotent and no
+ * invocation can remove more than the validated batch bound.
+ */
+export async function npPruneCommunityRealtimeEvents(
+  options: NpCommunityRealtimePruneOptions = {},
+): Promise<NpCommunityRealtimePruneResult> {
+  const { now, batchSize } = requirePruneOptions(options);
+  const cutoff = retentionCutoff(now);
+  const candidates = (await getDb()
+    .select({ id: npCommunityRealtimeEvents.id })
+    .from(npCommunityRealtimeEvents)
+    .where(lt(npCommunityRealtimeEvents.createdAt, cutoff))
+    .orderBy(npCommunityRealtimeEvents.createdAt, npCommunityRealtimeEvents.sequence)
+    .limit(batchSize + 1)) as Array<{ id: unknown }>;
+  const ids = candidates
+    .slice(0, batchSize)
+    .map((row) => npRequireCommunityId(row.id, "community.realtime.prune.candidate.id"));
+  if (ids.length === 0) return { deletedRows: 0, hasMore: false, cutoff };
+
+  const deleted = (await getDb()
+    .delete(npCommunityRealtimeEvents)
+    .where(inArray(npCommunityRealtimeEvents.id, ids))
+    .returning({ id: npCommunityRealtimeEvents.id })) as Array<{ id: unknown }>;
+  deleted.forEach((row) => npRequireCommunityId(row.id, "community.realtime.prune.deleted.id"));
+  return {
+    deletedRows: deleted.length,
+    hasMore: candidates.length > batchSize,
+    cutoff,
+  };
 }
 
 async function insertEvent(input: {

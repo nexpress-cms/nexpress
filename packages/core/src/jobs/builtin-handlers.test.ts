@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const reindexCollection = vi.hoisted(() => vi.fn());
+const pruneCommunityRealtime = vi.hoisted(() => vi.fn());
 
 vi.mock("../collections/search-api.js", () => ({
   npReindexCollectionWithProgress: reindexCollection,
+}));
+
+vi.mock("../community/realtime.js", () => ({
+  NP_COMMUNITY_REALTIME_PRUNE_BATCH_SIZE: 1_000,
+  NP_COMMUNITY_REALTIME_RETENTION_MS: 6 * 60 * 60 * 1_000,
+  npPruneCommunityRealtimeEvents: pruneCommunityRealtime,
 }));
 
 import { configureBuiltinJobContext, registerBuiltinHandlers } from "./builtin-handlers.js";
@@ -16,6 +23,7 @@ import { resetDb, setDb } from "../db/runtime.js";
 import { setJobQueue } from "./queue.js";
 
 afterEach(() => {
+  pruneCommunityRealtime.mockReset();
   resetEmailAdapter();
   setJobQueue(null);
   resetDb();
@@ -74,6 +82,31 @@ describe("built-in media job contract", () => {
       getJobHandler("search:reindex")?.({ collection: "Posts", extra: true }),
     ).rejects.toThrow(/search:reindex/u);
     expect(reindexCollection).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounds scheduled community realtime cleanup and enforces an empty payload", async () => {
+    pruneCommunityRealtime
+      .mockResolvedValueOnce({ deletedRows: 1_000, hasMore: true, cutoff: new Date() })
+      .mockResolvedValueOnce({ deletedRows: 7, hasMore: false, cutoff: new Date() });
+    registerBuiltinHandlers();
+    const handler = getJobHandler("system:communityRealtimePrune");
+
+    await expect(handler?.({})).resolves.toBeUndefined();
+    expect(pruneCommunityRealtime).toHaveBeenCalledTimes(2);
+    await expect(handler?.({ unexpected: true })).rejects.toThrow(/system:communityRealtimePrune/u);
+    expect(pruneCommunityRealtime).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops community realtime cleanup after ten full batches", async () => {
+    pruneCommunityRealtime.mockResolvedValue({
+      deletedRows: 1_000,
+      hasMore: true,
+      cutoff: new Date(),
+    });
+    registerBuiltinHandlers();
+
+    await expect(getJobHandler("system:communityRealtimePrune")?.({})).resolves.toBeUndefined();
+    expect(pruneCommunityRealtime).toHaveBeenCalledTimes(10);
   });
 
   it("fails unknown plugin schedule jobs when no legacy dispatcher exists", async () => {

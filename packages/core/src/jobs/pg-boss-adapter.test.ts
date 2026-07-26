@@ -270,6 +270,7 @@ describe("PgBossAdapter persisted job contracts", () => {
     await adapter.scheduleRecurring();
     expect(unschedule).toHaveBeenCalledWith("notifications.sendDigest");
     expect(schedule).toHaveBeenCalledWith("media.cleanup", "15 3 * * *", {});
+    expect(schedule).toHaveBeenCalledWith("system.communityRealtimePrune", "45 * * * *", {});
     expect(schedule).toHaveBeenCalledWith(
       "notifications.sendDigest",
       "0 8 * * *",

@@ -95,6 +95,7 @@ import {
 import { messageForConnectionError } from "./setup-server-errors.js";
 import { findFreePort } from "./setup-server-ports.js";
 import { checkSiteQuotaUsage } from "./site-quota-check.js";
+import { checkCommunityRealtimeRetention } from "./community-realtime-check.js";
 
 type DoctorEnv = Record<string, string | undefined>;
 
@@ -187,6 +188,7 @@ export async function collectDoctorChecks(
   checks.push(await checkMediaContracts(env));
   checks.push(await checkCollectionContracts(env));
   checks.push(await checkCommunityContracts(env));
+  checks.push(await checkCommunityRealtimeRetention(env));
   checks.push(await checkRevisionContracts(env));
   checks.push(await checkJobContracts(env));
   checks.push(await checkMigrationsApplied({ prodMode, env, cwd }));
