@@ -51,6 +51,7 @@ import { getProfanityAdapter } from "./profanity-adapter.js";
 import { applyReputation } from "./reputation.js";
 import { getSpamAdapter } from "./spam-adapter.js";
 import { getMemberProfiles } from "./profiles.js";
+import { npEmitCommunityDocumentChanged } from "./realtime.js";
 
 /**
  * Service layer for `np_comments`. Routes call into here so the
@@ -360,6 +361,7 @@ async function doCreateComment(
         error instanceof Error ? error.message : String(error),
       );
     }
+    await npEmitCommunityDocumentChanged("comments", input.targetType, input.targetId);
   }
 
   return checkedRow;
@@ -799,6 +801,9 @@ export async function updateComment(input: NpCommentUpdateInput): Promise<NpComm
       payload: { collection: existing.targetType, byModerator: true },
     });
   }
+  if (existing.status === "visible" || checkedUpdated.status === "visible") {
+    await npEmitCommunityDocumentChanged("comments", existing.targetType, existing.targetId);
+  }
   return checkedUpdated;
 }
 
@@ -845,6 +850,9 @@ export async function deleteComment(input: NpCommentDeleteInput): Promise<void> 
     targetId: existing.id,
     payload: { collection: existing.targetType, byModerator: modCan },
   });
+  if (existing.status === "visible") {
+    await npEmitCommunityDocumentChanged("comments", existing.targetType, existing.targetId);
+  }
 }
 
 export async function hideComment(input: NpCommentHideInput): Promise<void> {
@@ -909,6 +917,9 @@ export async function hideComment(input: NpCommentHideInput): Promise<void> {
     byStaff: false,
     reason: input.reason ?? null,
   });
+  if (existing.status === "visible") {
+    await npEmitCommunityDocumentChanged("comments", existing.targetType, existing.targetId);
+  }
 }
 
 export async function restoreComment(input: NpCommentRestoreInput): Promise<void> {
@@ -957,6 +968,7 @@ export async function restoreComment(input: NpCommentRestoreInput): Promise<void
     targetId: existing.id,
     payload: { collection: existing.targetType },
   });
+  await npEmitCommunityDocumentChanged("comments", existing.targetType, existing.targetId);
 }
 
 /**
@@ -1049,6 +1061,9 @@ export async function staffHideComment(
     byStaff: true,
     reason: reason ?? null,
   });
+  if (existing.status === "visible") {
+    await npEmitCommunityDocumentChanged("comments", existing.targetType, existing.targetId);
+  }
 }
 
 export async function staffRestoreComment(commentId: string, staffUserId: string): Promise<void> {
@@ -1082,6 +1097,7 @@ export async function staffRestoreComment(commentId: string, staffUserId: string
     targetId: commentId,
     payload: { byStaff: true },
   });
+  await npEmitCommunityDocumentChanged("comments", existing.targetType, existing.targetId);
 }
 
 export async function staffDeleteComment(commentId: string, staffUserId: string): Promise<void> {
@@ -1104,4 +1120,7 @@ export async function staffDeleteComment(commentId: string, staffUserId: string)
     memberId: existing.memberId,
     byStaff: true,
   });
+  if (existing.status === "visible") {
+    await npEmitCommunityDocumentChanged("comments", existing.targetType, existing.targetId);
+  }
 }

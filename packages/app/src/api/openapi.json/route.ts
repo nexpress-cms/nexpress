@@ -39,6 +39,7 @@ import {
 import {
   npCommunityCommentStatuses,
   npCommunityContractLimits,
+  npCommunityRealtimeChannels,
   npCommunityReportResolutionActions,
   npCommunityThreadModerationActions,
 } from "@nexpress/core/community-contract";
@@ -782,6 +783,49 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
           maxItems: npCommunityContractLimits.reactionKinds,
           uniqueItems: true,
           items: { type: "string", pattern: "^[a-z][a-z0-9_-]{0,29}$" },
+        },
+      },
+    },
+    community_content_engagement_summary: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "targetType",
+        "targetId",
+        "viewCount",
+        "commentCount",
+        "reactionCount",
+        "reactions",
+      ],
+      properties: {
+        targetType: { ...communityTargetTypeSchema },
+        targetId: { type: "string", format: "uuid" },
+        viewCount: { type: "integer", minimum: 0 },
+        commentCount: { type: "integer", minimum: 0 },
+        reactionCount: { type: "integer", minimum: 0 },
+        reactions: {
+          type: "object",
+          maxProperties: npCommunityContractLimits.reactionKinds,
+          propertyNames: { pattern: "^[a-z][a-z0-9_-]{0,29}$" },
+          additionalProperties: { type: "integer", minimum: 0 },
+        },
+      },
+    },
+    community_realtime_event: {
+      type: "object",
+      additionalProperties: false,
+      required: ["version", "id", "kind", "occurredAt"],
+      properties: {
+        version: { type: "integer", const: 1 },
+        id: { type: "string", format: "uuid" },
+        kind: {
+          type: "string",
+          enum: npCommunityRealtimeChannels.map((channel) => `${channel}.changed`),
+        },
+        occurredAt: {
+          type: "string",
+          format: "date-time",
+          pattern: npAuthCanonicalDatePattern,
         },
       },
     },
@@ -1883,6 +1927,7 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
         "follows",
         "mutes",
         "notifications",
+        "realtimeEvents",
         "reports",
         "auditEvents",
         "bans",
@@ -1911,6 +1956,7 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
             "follows",
             "mutes",
             "notifications",
+            "realtimeEvents",
             "reports",
             "auditEvents",
             "bans",
@@ -4894,6 +4940,95 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
         "200": { description: "Visible again" },
         "400": { description: "Comment is not hidden" },
         "403": { description: "Caller lacks restore-comment for this scope" },
+      },
+    },
+  };
+
+  paths["/api/community/events"] = {
+    get: {
+      summary: "Subscribe to site-scoped community invalidations",
+      description:
+        "A short-lived Server-Sent Events stream. Document scope is public only when the current viewer may read the target; inbox scope requires member authentication. Frames carry only the exact `community_realtime_event` invalidation payload, so clients refetch the existing audience-aware APIs. EventSource resumes with `Last-Event-ID`; clients should poll their read API while SSE is unavailable.",
+      parameters: [
+        {
+          in: "query",
+          name: "scope",
+          required: true,
+          schema: { type: "string", enum: ["document", "inbox"] },
+        },
+        {
+          in: "query",
+          name: "targetType",
+          schema: { ...communityTargetTypeSchema },
+          description: "Required only for document scope.",
+        },
+        {
+          in: "query",
+          name: "targetId",
+          schema: { type: "string", format: "uuid" },
+          description: "Required only for document scope.",
+        },
+        {
+          in: "header",
+          name: "Last-Event-ID",
+          schema: { type: "string", format: "uuid" },
+          description: "Optional cursor supplied automatically by EventSource reconnects.",
+        },
+      ],
+      responses: {
+        "200": {
+          description:
+            "SSE frames whose JSON `data` field matches `community_realtime_event`; the connection closes after a bounded interval so authorization is rechecked.",
+          headers: {
+            "Cache-Control": {
+              schema: { type: "string", example: "private, no-cache, no-store, no-transform" },
+            },
+          },
+          content: {
+            "text/event-stream": {
+              schema: { type: "string" },
+            },
+          },
+        },
+        "400": { description: "Invalid scope or target" },
+        "401": { description: "Inbox scope requires member authentication" },
+        "403": { description: "Current viewer cannot read the document target" },
+        "404": { description: "Document target not found" },
+        "429": { description: "Too many stream connection starts from this client" },
+      },
+    },
+  };
+  paths["/api/engagement"] = {
+    get: {
+      summary: "Read the current engagement snapshot for one document",
+      description:
+        "Viewer-aware exact snapshot used after community realtime invalidations. The document must be readable by the current viewer.",
+      parameters: [
+        {
+          in: "query",
+          name: "targetType",
+          required: true,
+          schema: { ...communityTargetTypeSchema },
+        },
+        {
+          in: "query",
+          name: "targetId",
+          required: true,
+          schema: { type: "string", format: "uuid" },
+        },
+      ],
+      responses: {
+        "200": {
+          description: "Current views, comments, and reaction counts",
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/community_content_engagement_summary" },
+            },
+          },
+        },
+        "400": { description: "Invalid target" },
+        "403": { description: "Current viewer cannot read the target" },
+        "404": { description: "Target document not found" },
       },
     },
   };

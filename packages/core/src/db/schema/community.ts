@@ -1,7 +1,9 @@
 import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
+  bigserial,
   boolean,
+  check,
   date,
   index,
   integer,
@@ -457,6 +459,54 @@ export const npNotifications = pgTable(
   (table) => [
     index("np_notifications_inbox_idx").on(table.memberId, table.readAt, table.createdAt),
     index("np_notifications_site_inbox_idx").on(table.siteId, table.memberId, table.readAt),
+  ],
+);
+
+/**
+ * Short-lived, site-scoped invalidation outbox for public community SSE.
+ * Rows never contain comment bodies, notification payloads, or actor ids.
+ * Document events route by target; inbox events route by recipient.
+ */
+export const npCommunityRealtimeEvents = pgTable(
+  "np_community_realtime_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sequence: bigserial("sequence", { mode: "number" }).notNull(),
+    channel: text("channel").notNull(),
+    targetType: text("target_type"),
+    targetId: uuid("target_id"),
+    memberId: uuid("member_id").references(() => npMembers.id, { onDelete: "cascade" }),
+    siteId: text("site_id").default("default").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    check(
+      "np_community_realtime_channel_check",
+      sql`${table.channel} in ('comments', 'reactions', 'notifications')`,
+    ),
+    check(
+      "np_community_realtime_route_check",
+      sql`(
+        (${table.channel} in ('comments', 'reactions')
+          and ${table.targetType} is not null
+          and ${table.targetId} is not null
+          and ${table.memberId} is null)
+        or
+        (${table.channel} = 'notifications'
+          and ${table.targetType} is null
+          and ${table.targetId} is null
+          and ${table.memberId} is not null)
+      )`,
+    ),
+    index("np_community_realtime_document_idx").on(
+      table.siteId,
+      table.targetType,
+      table.targetId,
+      table.sequence,
+    ),
+    index("np_community_realtime_inbox_idx").on(table.siteId, table.memberId, table.sequence),
+    uniqueIndex("np_community_realtime_sequence_uidx").on(table.sequence),
+    index("np_community_realtime_retention_idx").on(table.createdAt),
   ],
 );
 

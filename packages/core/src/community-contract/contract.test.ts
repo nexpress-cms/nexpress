@@ -13,6 +13,9 @@ import {
   npRequireCommentListWire,
   npRequireCommunityJsonObject,
   npRequireCommunityPagination,
+  npRequireCommunityRealtimeEventRow,
+  npRequireCommunityRealtimeEventWire,
+  npRequireCommunityRealtimeSubscription,
   npRequireCommunityRoleCatalog,
   npRequireCommunityScopeCatalogWire,
   npRequireCommunitySettings,
@@ -43,6 +46,7 @@ import {
   npRequirePublicMemberProfileWire,
   npToCommentListItemWire,
   npToCommentWireRow,
+  npToCommunityRealtimeEventWire,
 } from "./contract.js";
 
 const MEMBER_ID = "11111111-1111-4111-8111-111111111111";
@@ -111,6 +115,85 @@ describe("community contract", () => {
         { source: "profiles", message: "invalid activity target", occurredAt: NOW },
       ]),
     ).toEqual([{ source: "profiles", message: "invalid activity target", occurredAt: NOW }]);
+  });
+
+  it("keeps realtime routing private and projects an exact PII-free wire event", () => {
+    const row = npRequireCommunityRealtimeEventRow({
+      id: COMMENT_ID,
+      sequence: 1,
+      channel: "comments",
+      targetType: "posts",
+      targetId: TARGET_ID,
+      memberId: null,
+      siteId: "default",
+      createdAt: new Date(NOW),
+    });
+    expect(npToCommunityRealtimeEventWire(row)).toEqual({
+      version: 1,
+      id: COMMENT_ID,
+      kind: "comments.changed",
+      occurredAt: NOW,
+    });
+    expect(
+      npRequireCommunityRealtimeEventWire({
+        version: 1,
+        id: COMMENT_ID,
+        kind: "notifications.changed",
+        occurredAt: NOW,
+      }),
+    ).toMatchObject({ version: 1, kind: "notifications.changed" });
+    expect(
+      npRequireCommunityRealtimeSubscription({
+        scope: "document",
+        targetType: "posts",
+        targetId: TARGET_ID,
+      }),
+    ).toEqual({ scope: "document", targetType: "posts", targetId: TARGET_ID });
+    expect(npRequireCommunityRealtimeSubscription({ scope: "inbox" })).toEqual({
+      scope: "inbox",
+    });
+  });
+
+  it("rejects mixed realtime routes, unknown channels, and wire extensions", () => {
+    expect(() =>
+      npRequireCommunityRealtimeEventRow({
+        id: COMMENT_ID,
+        sequence: 1,
+        channel: "comments",
+        targetType: "posts",
+        targetId: TARGET_ID,
+        memberId: MEMBER_ID,
+        siteId: "default",
+        createdAt: new Date(NOW),
+      }),
+    ).toThrow(NpCommunityContractError);
+    expect(() =>
+      npRequireCommunityRealtimeEventRow({
+        id: COMMENT_ID,
+        sequence: 1,
+        channel: "notifications",
+        targetType: null,
+        targetId: null,
+        memberId: null,
+        siteId: "default",
+        createdAt: new Date(NOW),
+      }),
+    ).toThrow(NpCommunityContractError);
+    expect(() =>
+      npRequireCommunityRealtimeEventWire({
+        version: 1,
+        id: COMMENT_ID,
+        kind: "comments.changed",
+        occurredAt: NOW,
+        targetId: TARGET_ID,
+      }),
+    ).toThrow(NpCommunityContractError);
+    expect(() =>
+      npRequireCommunityRealtimeSubscription({
+        scope: "inbox",
+        targetId: TARGET_ID,
+      }),
+    ).toThrow(NpCommunityContractError);
   });
 
   it("enforces exact audit input actors and target pairs before persistence", () => {

@@ -15,3 +15,12 @@ export type {
   NpCommentsLabels,
   NpCommentsModerationPermissions,
 } from "./comments.js";
+export {
+  NP_COMMUNITY_INBOX_EVENTS_URL,
+  npCommunityDocumentEventsUrl,
+  useCommunityRealtime,
+} from "./community-realtime.js";
+export type {
+  NpCommunityRealtimeInvalidation,
+  NpCommunityRealtimeOptions,
+} from "./community-realtime.js";

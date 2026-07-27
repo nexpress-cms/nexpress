@@ -256,6 +256,11 @@ for missing activity. Lists, skins, and home feeds use this batch contract
 instead of issuing per-post queries. Document deletion removes its comments,
 document reactions, and view receipts; site deletion and `plugin doctor`
 include the view table as well.
+The detail client subscribes to the framework's site-scoped document SSE
+invalidation stream and refetches `GET /api/engagement` after comment or
+reaction changes. If SSE is unavailable it uses the shared bounded polling
+fallback; the forum plugin does not own a transport, event table, or
+theme-specific realtime contract.
 
 `community.reports` adds a member-only report action to readable published forum
 post details. The request uses the configured forum-post collection slug, so a

@@ -127,6 +127,18 @@ export type {
   MarkReadInput,
 } from "./notifications.js";
 
+export {
+  NP_COMMUNITY_REALTIME_BATCH_SIZE,
+  npEmitCommunityDocumentChanged,
+  npEmitCommunityInboxChanged,
+  npListCommunityRealtimeEvents,
+  npResolveCommunityRealtimeCursor,
+} from "./realtime.js";
+export type {
+  NpCommunityRealtimeCursor,
+  NpCommunityRealtimeServerSubscription,
+} from "./realtime.js";
+
 export { principalCan } from "./principal.js";
 export type { Principal } from "./principal.js";
 

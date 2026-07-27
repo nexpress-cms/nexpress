@@ -169,6 +169,13 @@
       "when": 1784726992120,
       "tag": "0023_public_bloodaxe",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784805777754,
+      "tag": "0024_rainy_major_mapleleaf",
+      "breakpoints": true
     }
   ]
 }

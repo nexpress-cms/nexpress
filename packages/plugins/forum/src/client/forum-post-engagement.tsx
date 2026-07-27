@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
+  npRequireContentEngagementSummary,
   npRequireContentViewReceiptWire,
   npRequireReactionSummaryWire,
   type NpContentEngagementSummary,
 } from "@nexpress/core/community-contract";
+import { npCommunityDocumentEventsUrl, useCommunityRealtime } from "@nexpress/next/client";
 
 interface ForumPostEngagementProps {
   targetType: string;
@@ -45,6 +47,7 @@ export function ForumPostEngagement({
   labels,
 }: ForumPostEngagementProps) {
   const [viewCount, setViewCount] = useState(initial.viewCount);
+  const [commentCount, setCommentCount] = useState(initial.commentCount);
   const [counts, setCounts] = useState(initial.reactions);
   const [recommended, setRecommended] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -53,6 +56,7 @@ export function ForumPostEngagement({
   const readReactions = useCallback(async () => {
     const query = new URLSearchParams({ targetType, targetId, kind: "like" });
     const response = await fetch(`/api/reactions?${query.toString()}`, {
+      cache: "no-store",
       credentials: "include",
     });
     if (!response.ok) return;
@@ -60,6 +64,27 @@ export function ForumPostEngagement({
     setCounts(summary.counts);
     setRecommended(summary.mine.includes("like"));
   }, [targetId, targetType]);
+
+  const readEngagement = useCallback(async () => {
+    const query = new URLSearchParams({ targetType, targetId });
+    const response = await fetch(`/api/engagement?${query.toString()}`, {
+      cache: "no-store",
+      credentials: "include",
+    });
+    if (!response.ok) return;
+    const summary = npRequireContentEngagementSummary(await response.json());
+    setViewCount(summary.viewCount);
+    setCommentCount(summary.commentCount);
+    setCounts(summary.reactions);
+  }, [targetId, targetType]);
+
+  const refreshRealtime = useCallback(async () => {
+    await Promise.all([readEngagement(), ...(isAuthenticated ? [readReactions()] : [])]);
+  }, [isAuthenticated, readEngagement, readReactions]);
+  useCommunityRealtime({
+    url: npCommunityDocumentEventsUrl(targetType, targetId),
+    onInvalidate: refreshRealtime,
+  });
 
   useEffect(() => {
     if (trackViews) {
@@ -130,7 +155,7 @@ export function ForumPostEngagement({
         {labels.views} <strong>{viewCount.toLocaleString(locale)}</strong>
       </span>
       <span data-np-forum-metric="comments">
-        {labels.comments} <strong>{initial.commentCount.toLocaleString(locale)}</strong>
+        {labels.comments} <strong>{commentCount.toLocaleString(locale)}</strong>
       </span>
       <span data-np-forum-metric="reactions">
         {labels.reactions} <strong>{reactionTotal(counts).toLocaleString(locale)}</strong>

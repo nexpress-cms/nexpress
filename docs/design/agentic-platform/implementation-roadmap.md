@@ -1,0 +1,383 @@
+# Agentic Platform implementation roadmap
+
+> Status: dependency-ordered implementation plan.
+> Estimates are planning slices, not release commitments.
+> Baseline: `9b1c04e8927e195b8e8e23c7b1261756067ee25f` (2026-07-24).
+
+This roadmap turns the design set into mergeable work packages. It deliberately
+lands exact contracts, persistence, authorization, and safe no-op runtime
+behavior before model calls or production writes.
+
+## 1. Sequencing principles
+
+1. Shared client-safe contracts land before server, route, Admin, MCP, or
+   plugin consumers.
+2. One owner edits a shared contract/schema/config file in a given PR.
+3. New persisted rows land disabled and readable by Doctor before a worker or
+   route can create them.
+4. Read-only capability execution precedes ChangeSet writes.
+5. ChangeSet validation/preview precedes approval/apply.
+6. Deterministic event detection and budgets precede model-backed triage.
+7. Moderator and Operator templates precede Guardian auto-response.
+8. Runtime Agent work never blocks a normal NexPress site when the feature is
+   absent or disabled.
+9. Each published behavior phase includes a package changeset, scaffold
+   propagation, OpenAPI, live guide, and release acceptance.
+
+`R1`–`R7` are the dependency chain for the in-product Agent Gateway/Runtime.
+The Build plane is a separate acquisition track: `R8` may start in parallel
+after `R0` contract lock and the current CLI/scaffold foundation. It is listed
+last to keep the product narrative together, not because provider Runtime or
+Guardian is a prerequisite.
+
+## 2. Target package and ownership map
+
+| Area                       | Primary owner/files                                                      | Must not own                      |
+| -------------------------- | ------------------------------------------------------------------------ | --------------------------------- |
+| Client-safe agent contract | `packages/core/src/agent-contract/`, core exports/tsup/package map       | DB/services, Admin UI             |
+| Server agent domain        | `packages/core/src/agents/`                                              | Next route components, browser UI |
+| System persistence         | `packages/core/src/db/schema/agents.ts`, app/reference migrations        | Generated collection schema       |
+| Host/bootstrap             | `packages/next/src/`, framework-host bootstrap export                    | Core contract definitions         |
+| HTTP and worker adapters   | `packages/app/src/api/`, scripts/handlers, thin `apps/web` wrappers      | Browser component implementation  |
+| Agent Studio               | `packages/admin/src/agents/`, `packages/app/src/admin/protected/agents/` | Core server imports in browser    |
+| MCP transport              | proposed `packages/mcp/` (`@nexpress/mcp`)                               | Capability policy/execution logic |
+| Build-plane CLI/skill      | `packages/cli`, `packages/cli-nexpress`, scaffold templates              | Runtime production mutation       |
+| Provider adapters          | connection facade/fake in R1; inference modules/packages selected in R5  | Secret persistence outside vault  |
+
+High-conflict files include core schema barrels, root/core package exports,
+OpenAPI generation, app Admin layout/nav, scaffold manifests, and package
+manifests. Each PR names one owner for those files; downstream lanes hand back
+requirements instead of editing them concurrently.
+
+## 3. Release milestones
+
+### R0 — Contract lock and threat review
+
+Outcome: issue-ready contracts with no runtime behavior.
+
+Work:
+
+- `AP-000`: implement the normative
+  [canonical-contracts.md](canonical-contracts.md) appendix: all 32
+  canonical-purpose body interfaces/analyzers, explicit included/excluded
+  field-membership fixtures, purpose/body/owning-field maps, size bounds, and
+  independent golden vectors in the client-safe contract package; any
+  divergence blocks every R1+ digest column and migration;
+- `AP-001`: land the exhaustive Admin mutation operation map with stable
+  operation ids, named input/output/error schemas, staff capability,
+  idempotency, version/hash preconditions, one-time-secret behavior, effects,
+  approval/reauthentication, redaction, OpenAPI, and fixtures before any Agent
+  Studio mutation route is implemented;
+- confirm every locked choice in this design set in client-safe contract
+  fixtures;
+- freeze `NpAgentScope`, risk/autonomy/state inventories, bounds, capability
+  ids, error-code additions, and JSON schema versions;
+- freeze the built-in NexPress OAuth issuer/audience/site-consent profile for
+  remote MCP and its dedicated signing-key contract;
+- freeze the production custom-vault requirement, disabled default, and
+  explicit local-envelope development fallback;
+- produce data-flow and threat-model review with security sign-off;
+- write migration and backward-compatibility notes;
+- create the initial model-independent test fixtures.
+
+Gate:
+
+- all 32 canonical-purpose strings, exact appendix bodies, validators,
+  field-membership fixtures, owners, and golden vectors are exhaustive and no
+  implementation-local `NpAgent*CanonicalV1` substitute remains;
+- all inventories round-trip through proposed analyzers;
+- every proposed Admin mutation route has exactly one `AP-001` operation
+  descriptor and no route-local contract;
+- no document disagrees on names, states, scopes, or ownership;
+- destructive/runtime schema changes are explicitly out of the first slice.
+
+### R1 — Identity, persistence, vault, and diagnostics
+
+Outcome: operators can configure/revoke inbound agent principals and provider
+connections, but no model or capability is invoked.
+
+Suggested work packages:
+
+| ID     | Scope                                                                                                                                                                                         |
+| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AP-101 | Add `agent-contract` limits, identities, scopes, budgets, connection, run/action, and common wire analyzers                                                                                   |
+| AP-102 | Add principal, service-token, OAuth, connection, vault, and shared Admin invocation/idempotency schema plus reviewed migration; update exports                                                |
+| AP-103 | Add initial site deletion inventory/order and require every later agent-schema PR to extend its exact graph                                                                                   |
+| AP-104 | Implement principal/service-token lifecycle through shared Admin invocation admission, transport/audience binding, and scope narrowing                                                        |
+| AP-105 | Define vault adapter, explicit opt-in local-envelope development adapter, crash-safe operation journal/inspection, deterministic-CBOR envelope, rotation/revocation, and redaction            |
+| AP-106 | Add connection/provider metadata, fake adapter, atomic one-time OAuth callback→code-seal/exchange journal, destination/account HMACs, rotation, disable/enable/revoke, and safe probe service |
+| AP-107 | Add `agents.contract` Doctor and read-only Admin Health summary                                                                                                                               |
+| AP-108 | Add Agent Studio Connections/Principals read/create/revoke minimum UI                                                                                                                         |
+| AP-109 | Propagate disabled-by-default config and migration through scaffold                                                                                                                           |
+
+Gate:
+
+- a site with no agent settings behaves byte-for-byte/API-equivalently where
+  existing tests cover it;
+- no secret is returned by list/detail, logs, errors, audit, Doctor, or export;
+- multi-site and deletion tests pass;
+- malformed persisted rows fail closed.
+
+### R2 — Capability registry and read-only Agent Gateway
+
+Outcome: internal code, local MCP, and remote MCP call the same read-only
+capabilities.
+
+| ID     | Scope                                                                                                                                                                               |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AP-201 | Implement capability registry/definition validation and derived required scopes                                                                                                     |
+| AP-202 | Add `site.inspect`, `schema.get`, and `content.query` with exact bounded results                                                                                                    |
+| AP-203 | Extend shared invocation admission to capabilities; migrate the generalized `origin=gateway` task/run and action rows, audit correlation, and usage counters without provider calls |
+| AP-204 | Implement local stdio MCP with service-token/environment credential                                                                                                                 |
+| AP-205 | Implement remote Streamable HTTP MCP plus the built-in OAuth 2.1 Authorization Server, durable one-time consent requests, signing/JWKS, rotation, and resource-server validation    |
+| AP-206 | Project bounded resources, tools, exact negotiated MCP tasks/results/caps/TTL reconciliation, annotations, and protocol errors                                                      |
+| AP-207 | Add official Codex/Claude-compatible skill/instructions and connection command                                                                                                      |
+| AP-208 | Enforce the closed core capability inventory and diagnose/reject plugin-defined Agent Gateway capability ids in v1                                                                  |
+| AP-209 | Add Admin Activity views for principals, runs, actions, and revocation                                                                                                              |
+| AP-210 | Add the four machine Agent HTTP routes, full-origin `agent-http` audience-bound authentication, shared invocation/artifact facades, OpenAPI projection, and thin scaffold wrappers  |
+
+Through R4, capability policy evaluation uses the immutable framework hard
+rules plus the exact disabled-by-default deployment/site feature settings.
+There is no mutable Runtime Agent policy row to configure yet. R5 adds
+versioned site/agent policies as an additional narrowing layer; it cannot
+widen a capability that the earlier hard rules, principal grant, resource
+authorization, or human approval deny.
+
+Gate:
+
+- read-only calls never create content/revisions/settings/navigation/media refs;
+- service token, OAuth audience, issuer, site, and scope negative tests pass;
+- one tenant cannot infer another tenant's resources or counts;
+- protocol conformance and tool-schema snapshots pass;
+- no raw OpenAPI operation is automatically exposed as a tool.
+
+### R3 — ChangeSet proposal, validation, and preview
+
+Outcome: agents can prepare production-realistic plans but cannot apply them.
+
+| ID     | Scope                                                                                                                                                                                                                                                                                                                                                 |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AP-301 | Add ChangeSet/operation/approval client-safe contracts and persistence, including retained discriminated sealed plan bodies, frozen rollback duration, and exact before-snapshot `snapshot_hash`                                                                                                                                                      |
+| AP-302 | Implement draft/idempotency/resource canonicalization                                                                                                                                                                                                                                                                                                 |
+| AP-303 | Refactor required content/navigation/settings/theme/media services for transaction-aware callers                                                                                                                                                                                                                                                      |
+| AP-304 | Implement base fingerprint, conflict detection, exact validation, and deterministic risk                                                                                                                                                                                                                                                              |
+| AP-305 | Implement preview async-local overlay and side-effect-free hook intent                                                                                                                                                                                                                                                                                |
+| AP-306 | Add dedicated cross-site preview origin with one-time launch exchange/per-preview cookie, exact render ticket/session binding, route/audience bounds, atomic full-set artifact reservation, terminal adapter-operation inspection/fencing, row-first upload journal/private deletion facade, multipart report/header contracts, and screenshot option |
+| AP-307 | Add link/SEO/accessibility checks and structured validation evidence                                                                                                                                                                                                                                                                                  |
+| AP-308 | Add ChangeSet list/detail/diff/preview Admin views                                                                                                                                                                                                                                                                                                    |
+| AP-309 | Expose `changeset.create/get/list/validate/preview` through MCP/API                                                                                                                                                                                                                                                                                   |
+
+Gate:
+
+- preview causes zero persistent content/settings/revision/cache/side-effect
+  mutations;
+- conflicts and malformed plans fail before any mutation;
+- ChangeSet diff and preview are produced from the same sealed hash;
+- hostile generated text cannot alter Admin controls or approval facts.
+
+### R4 — Approval, apply, verification, and rollback
+
+Outcome: an authorized caller can complete a safe, reversible content operation
+through the full control loop.
+
+| ID     | Scope                                                                                                                                                                                                                     |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AP-401 | Implement the exact request/decision approval services and routes, keyed statement/decision integrity MACs and rotation-safe keyring, state/expiry, plan/hash/capability binding, reauthentication hook, and normal audit |
+| AP-402 | Implement transaction-scoped ChangeSet apply and per-site serialization                                                                                                                                                   |
+| AP-403 | Implement exact cancel plus apply/schedule/verify jobs, execution reservations, and crash recovery                                                                                                                        |
+| AP-404 | Implement post-commit cache/search/media/hook convergence evidence                                                                                                                                                        |
+| AP-405 | Implement forward-compensation rollback with current-state conflict checks                                                                                                                                                |
+| AP-406 | Add schedule/apply/rollback capabilities and long-running MCP task projection                                                                                                                                             |
+| AP-407 | Add request-approval/cancel, approval queue, execution timeline, verification, and rollback Admin flows                                                                                                                   |
+| AP-408 | Extend Doctor/Health/runbook and release checks for stuck/failed ChangeSets                                                                                                                                               |
+
+Gate:
+
+- all acceptance scenarios in
+  [changesets-and-approvals.md](changesets-and-approvals.md) pass;
+- no approval can be replayed or applied to a changed hash;
+- DB mutations, revisions, audit, approval consumption, and state commit
+  atomically;
+- rollback never overwrites later work;
+- remote mutations remain disabled unless exact deployment intent enables them.
+
+### R5 — Durable provider-backed Agent Runtime
+
+Outcome: one configured agent can run a bounded event/manual/scheduled workflow
+with budget and policy enforcement.
+
+| ID     | Scope                                                                                                                                                                                      |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| AP-500 | Add agent/version/policy/trigger/provider-call/usage-reservation/breaker/event schema; extend the R2 generalized run table with exact `runtime` fields, checks, and same-site foreign keys |
+| AP-501 | Extend the provider adapter to inference, add one reference provider, structured-output validation, and timeout/cancel                                                                     |
+| AP-502 | Add active policy resolution with hard rules separated from instructions                                                                                                                   |
+| AP-503 | Add exact event envelope, trigger registration/coalescing, and run jobs                                                                                                                    |
+| AP-504 | Add site/agent budgets, admission locking, usage/cost accounting, emergency pause, and local `nexpress agent runtime status/pause/resume` recovery contract                                |
+| AP-505 | Add run state machine, bounded context builder, redaction, and action planner                                                                                                              |
+| AP-506 | Add retry/circuit breaker/provider-unavailable behavior and fallback policy                                                                                                                |
+| AP-507 | Complete Agent Studio Agents/Triggers/Policies/Budgets/Run detail, per-Agent pause/resume, and bounded manual-run admission                                                                |
+| AP-508 | Add Agent Runtime readiness/health/ops evidence and retention jobs                                                                                                                         |
+
+Gate:
+
+- no provider call occurs before deterministic admission, redaction, policy,
+  and budget checks;
+- provider output cannot create an unvalidated capability/action;
+- duplicate events coalesce and duplicate jobs remain idempotent;
+- model/provider outage leaves normal CMS requests available;
+- denial-of-wallet tests trip bounded admission/circuit breakers.
+
+### R6 — Moderator, Operator, and Publisher recipes
+
+Outcome: the platform demonstrates useful unattended work before security
+auto-response.
+
+| ID     | Scope                                                                                                                                                                                                         |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AP-600 | Add shared signal (including exact `evidence_digest`), incident, timeline, notification, and moderation-feedback schema plus migration; implement bounded `incident.get/list` services/capabilities           |
+| AP-601 | Moderator signal collectors, deterministic scoring, quarantine/restore capability, and feedback labels                                                                                                        |
+| AP-602 | Operator jobs/storage/backup/plugin/readiness collectors, `audit.run`, `ops.status/plan`, and the three-action `ops.execute` subset (`cache.revalidate`, linked Agent-run retry, pre-commit Agent-run cancel) |
+| AP-603 | Publisher stale-content/SEO/internal-link recipe through ChangeSets                                                                                                                                           |
+| AP-604 | Notification delivery service/adapter for Admin plus optional email/Slack integration                                                                                                                         |
+| AP-605 | Template-specific Agent Studio setup, recommended scopes, policies, and budgets                                                                                                                               |
+| AP-606 | Curated evaluation datasets, operator review tooling, and recipe runbooks                                                                                                                                     |
+
+Gate:
+
+- moderation auto-action is quarantine, never delete;
+- Operator model has no direct shell/SQL and cannot bypass `ops.execute`
+  approval;
+- Publisher defaults to draft/preview;
+- false-positive and usefulness thresholds in the evaluation doc are met on
+  versioned fixtures.
+
+### R7 — Guardian and application security orchestration
+
+Outcome: application signals are correlated into incidents, with narrowly
+reversible responses.
+
+| ID     | Scope                                                                                                                                              |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AP-701 | Extend shared signal/incident contracts with PII-minimized security subjects and actor-restriction persistence, including exact `restriction_hash` |
+| AP-702 | Auth, rate-limit, audit, content-integrity, jobs, and health collectors                                                                            |
+| AP-703 | Incident fingerprint/coalescing, severity, deterministic rules, and model-assisted summary                                                         |
+| AP-704 | Temporary actor-limit and exact session-revocation capabilities                                                                                    |
+| AP-705 | WAF/Sentry-style external signal adapter boundary and one reference integration                                                                    |
+| AP-706 | Incident list/detail/timeline/action/notification Admin UX                                                                                         |
+| AP-707 | Security retention, evidence export, runbooks, Doctor, and recovery                                                                                |
+| AP-708 | Adversarial prompt-injection, approval-forging, exfiltration, tenant, and cost test gate                                                           |
+
+Gate:
+
+- Guardian is documented as complementary to WAF/IDS/SIEM;
+- untrusted evidence is never instruction or approval UI;
+- unattended responses are TTL-bound and reversible;
+- permanent bans, broad network blocks, plugin changes, migrations, restore,
+  secret rotation, and arbitrary code remain prohibited/approval gated;
+- security review approves the threat/test matrix.
+
+### R8 — Build-plane prompt-to-site
+
+Outcome: a coding agent can create a normal owned NexPress repository from a
+brief while following existing codegen/migration/release contracts.
+
+The artifact and workflow contract is
+[build-agent-and-site-blueprint.md](build-agent-and-site-blueprint.md).
+
+| ID     | Scope                                                                                                              |
+| ------ | ------------------------------------------------------------------------------------------------------------------ |
+| AP-801 | Versioned Site Brief and Site Blueprint schemas                                                                    |
+| AP-802 | CLI/skill workflow for brief, IA, collection, theme-token, pattern, and seed proposals                             |
+| AP-803 | Agent-authored three-direction DraftSet plus trusted deterministic render/seal and independent rerender validation |
+| AP-804 | Repository edits, schema generation, migration-plan review, tests, and local preview loop                          |
+| AP-805 | Git/PR/deploy-plan handoff with generated artifacts and ownership notes                                            |
+| AP-806 | Hosted/ephemeral Launchpad evaluation only after local workflow is stable                                          |
+
+Gate:
+
+- output is a normal NexPress project with no opaque hosted dependency;
+- generated collection changes include reviewed schema/migration evidence;
+- no Build Agent credential is copied into runtime settings or source;
+- `pnpm verify` and packed-scaffold acceptance pass.
+
+## 4. Deployment and migration strategy
+
+The first schema deployment uses a dark launch:
+
+1. release code that understands the new exact settings and tables but treats a
+   missing `agents.runtime` setting as disabled;
+2. ship reviewed migrations and update scaffold/reference migrations;
+3. run migration status/plan, verified backup, apply, Doctor, and readiness;
+4. verify no agent jobs, endpoints, schedules, or provider calls are active;
+5. enable read-only Agent Studio/Gateway for one test site;
+6. enable ChangeSet writes for one exact site/principal;
+7. enable Runtime Agent admission only after budgets and emergency pause are
+   tested;
+8. expand per site with audit/usage observation.
+
+Rollback before runtime enablement is ordinary application rollback with unused
+tables retained. After agent rows exist, package rollback must remain
+read-compatible with the newest rows or be accompanied by a reviewed
+forward-fix migration; never delete agent history to downgrade.
+
+## 5. Configuration defaults
+
+- Agent Runtime: disabled when setting is absent.
+- Remote MCP: disabled until explicit deployment intent and the built-in OAuth
+  origin, signing key/JWKS, consent, and audience configuration are valid.
+- Local stdio MCP: opt-in command, read-only recommended token.
+- Provider calls: impossible without a ready connection and budget.
+- Agent triggers: disabled on creation until explicitly activated.
+- Agent autonomy: `observe`.
+- ChangeSet public writes: human approval.
+- Moderator automatic action: disabled until site policy enables reversible
+  quarantine.
+- Guardian automatic action: disabled until site policy enables one bounded
+  TTL action.
+- Arbitrary network fetch, shell, SQL, package install, schema migration,
+  restore, secret display, and scope escalation: unavailable.
+
+## 6. Documentation transition
+
+While work is pending, this directory remains a design snapshot. As phases
+ship:
+
+- create focused live guides such as `docs/agents.md`,
+  `docs/agent-changesets.md`, `docs/mcp.md`, and `docs/guardian.md`;
+- update `docs/agent-integration.md` and `docs/agent-operated-ops.md` rather than
+  leaving conflicting auth/ops instructions;
+- update the root `AGENTS.md` only for genuinely current architecture/package
+  boundaries;
+- mark implemented sections here with PR/commit references without pretending
+  unimplemented later phases are live;
+- add changesets for all affected published packages.
+
+## 7. Definition of done for every work package
+
+- exact contract and negative tests;
+- site authorization, principal scope, policy, quota, and idempotency where
+  relevant;
+- safe errors with no secret/PII leakage;
+- unit plus required Postgres integration coverage;
+- malformed persisted state Doctor coverage;
+- Admin/CLI/API/MCP/OpenAPI parity for the surfaces in scope;
+- multi-site deletion and transfer exclusion;
+- scaffold propagation and packed-scaffold verification;
+- observability and operator recovery;
+- format, targeted lint/typecheck/test, then `pnpm verify` for schema,
+  migration, cross-package, or release-sensitive changes;
+- package changeset and live documentation.
+
+## 8. Product release boundary
+
+The first credible public release should include R1–R4 plus:
+
+- one official external-agent connection path;
+- one Provider-free deterministic demo;
+- one model-backed Publisher or Moderator demo from R5/R6;
+- Agent Studio activity and approvals;
+- complete safety/evaluation evidence.
+
+Guardian may be preview/beta until R7 adversarial and false-positive gates are
+met. Prompt-to-site is a separate acquisition track and should not delay the
+safe runtime foundation.

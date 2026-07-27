@@ -342,7 +342,7 @@ keep the `SITE_URL` env fallback.
 **Deletion safety** (Phase 15.9): `deleteSite()` defaults to
 the safe path — refuses if any site-scoped data exists
 (registered collections plus every site-scoped framework/community table,
-including slug history, in
+including slug history and the short-lived community realtime outbox, in
 the usage contract). Pass `cascade: true` (or `?cascade=true` on
 the admin API) to delete the dependent rows alongside. The usage
 scan, dependent deletes, and registry delete run in one transaction;
@@ -388,7 +388,8 @@ isolation know where the boundary stops:
   the active site through automatically.
 - **`np_comments` / `np_reactions` / `np_follows` /
   `np_member_mutes` / `np_notifications` / `np_reports` /
-  `np_bans`** — Phase 18 added `site_id` columns + indexes
+  `np_bans` / `np_community_realtime_events`** — Phase 18 and the realtime
+  contract added `site_id` columns + indexes
   so per-site queues, mutes, mod reports, and notification
   inboxes are first-class. `np_members` is intentionally
   still global (one identity, many tenants); per-site

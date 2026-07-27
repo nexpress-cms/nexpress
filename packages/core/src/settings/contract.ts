@@ -114,6 +114,7 @@ const siteUsageKeys = new Set([
   "follows",
   "mutes",
   "notifications",
+  "realtimeEvents",
   "reports",
   "auditEvents",
   "bans",

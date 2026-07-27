@@ -13,6 +13,7 @@ import {
   npCommunityDigestCadences,
   npCommunityFollowActivityKinds,
   npCommunityModerationVerdictKinds,
+  npCommunityRealtimeChannels,
   npCommunityReportResolutionActions,
   npCommunityReportStatuses,
   npCommunityScopes,
@@ -43,6 +44,10 @@ import {
   type NpCommunityJsonObject,
   type NpCommunityJsonValue,
   type NpCommunityRuntimeDiagnostic,
+  type NpCommunityRealtimeChannel,
+  type NpCommunityRealtimeEventRow,
+  type NpCommunityRealtimeEventWire,
+  type NpCommunityRealtimeSubscription,
   type NpCommunitySettings,
   type NpCommunitySettingsPatch,
   type NpFollowRow,
@@ -144,6 +149,10 @@ const BAN_SCOPES = new Set<string>(npCommunityBanScopes);
 const BAN_KINDS = new Set<string>(npCommunityBanKinds);
 const SCOPES = new Set<string>(npCommunityScopes);
 const DIGEST_CADENCES = new Set<string>(npCommunityDigestCadences);
+const REALTIME_CHANNELS = new Set<string>(npCommunityRealtimeChannels);
+const REALTIME_EVENT_KINDS = new Set<string>(
+  npCommunityRealtimeChannels.map((channel) => `${channel}.changed`),
+);
 const VERDICT_KINDS = new Set<string>(npCommunityModerationVerdictKinds);
 const AUDIT_ACTORS = new Set<string>(npCommunityAuditActorKinds);
 const CAPABILITIES = new Set<string>(npCommunityCapabilities);
@@ -1526,6 +1535,72 @@ export function npToNotificationWireRow(value: unknown): NpNotificationWireRow {
   });
 }
 
+export function npRequireCommunityRealtimeEventRow(value: unknown): NpCommunityRealtimeEventRow {
+  const path = "community.realtimeEvent";
+  const raw = exactRecord(value, path, [
+    "id",
+    "sequence",
+    "channel",
+    "targetType",
+    "targetId",
+    "memberId",
+    "siteId",
+    "createdAt",
+  ]);
+  const channel = enumString<NpCommunityRealtimeChannel>(
+    raw.channel,
+    `${path}.channel`,
+    REALTIME_CHANNELS,
+  );
+  const documentChannel = channel === "comments" || channel === "reactions";
+  if (
+    documentChannel
+      ? raw.targetType === null || raw.targetId === null || raw.memberId !== null
+      : raw.targetType !== null || raw.targetId !== null || raw.memberId === null
+  ) {
+    fail(
+      path,
+      documentChannel
+        ? "document events require targetType/targetId and forbid memberId"
+        : "notification events require memberId and forbid document targets",
+      "invariant",
+    );
+  }
+  return {
+    id: uuid(raw.id, `${path}.id`),
+    sequence: nonNegativeInteger(raw.sequence, `${path}.sequence`),
+    channel,
+    targetType:
+      raw.targetType === null ? null : engagementTargetType(raw.targetType, `${path}.targetType`),
+    targetId: raw.targetId === null ? null : uuid(raw.targetId, `${path}.targetId`),
+    memberId: raw.memberId === null ? null : uuid(raw.memberId, `${path}.memberId`),
+    siteId: siteId(raw.siteId, `${path}.siteId`),
+    createdAt: validDate(raw.createdAt, `${path}.createdAt`),
+  };
+}
+
+export function npRequireCommunityRealtimeEventWire(value: unknown): NpCommunityRealtimeEventWire {
+  const path = "community.realtimeEventWire";
+  const raw = exactRecord(value, path, ["version", "id", "kind", "occurredAt"]);
+  if (raw.version !== 1) fail(`${path}.version`, "must be 1");
+  return {
+    version: 1,
+    id: uuid(raw.id, `${path}.id`),
+    kind: enumString(raw.kind, `${path}.kind`, REALTIME_EVENT_KINDS),
+    occurredAt: canonicalIso(raw.occurredAt, `${path}.occurredAt`),
+  };
+}
+
+export function npToCommunityRealtimeEventWire(value: unknown): NpCommunityRealtimeEventWire {
+  const row = npRequireCommunityRealtimeEventRow(value);
+  return npRequireCommunityRealtimeEventWire({
+    version: 1,
+    id: row.id,
+    kind: `${row.channel}.changed`,
+    occurredAt: row.createdAt.toISOString(),
+  });
+}
+
 function parseReportCommon(
   value: unknown,
   path: string,
@@ -2324,6 +2399,24 @@ export function npRequireEngagementTarget(value: unknown): NpEngagementTarget {
   };
 }
 
+export function npRequireCommunityRealtimeSubscription(
+  value: unknown,
+): NpCommunityRealtimeSubscription {
+  const path = "community.realtimeSubscription";
+  if (!isPlainRecord(value)) fail(path, "must be a plain object");
+  if (value.scope === "inbox") {
+    exactRecord(value, path, ["scope"]);
+    return { scope: "inbox" };
+  }
+  const raw = exactRecord(value, path, ["scope", "targetType", "targetId"]);
+  if (raw.scope !== "document") fail(`${path}.scope`, "must be document or inbox");
+  const target = npRequireEngagementTarget({
+    targetType: raw.targetType,
+    targetId: raw.targetId,
+  });
+  return { scope: "document", ...target };
+}
+
 export function npRequireReactionTarget(value: unknown): NpEngagementTarget & {
   targetId: string;
   kind: string;
@@ -2840,6 +2933,7 @@ export function npRequireRuntimeDiagnostics(value: unknown): NpCommunityRuntimeD
         "notification-kinds",
         "notification-prefs",
         "notifications",
+        "realtime",
         "spam",
         "profanity",
         "reputation",

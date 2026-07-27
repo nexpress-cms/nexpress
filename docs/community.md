@@ -324,7 +324,50 @@ Document deletion removes its polymorphic follow rows in the same transaction.
 
 Counts remain available through `countReactions(targetType, targetId)`. The
 forum detail updates its recommendation state after a successful request and
-refreshes the canonical summary; no realtime push is implied.
+refreshes the canonical summary. It also subscribes to the document's
+site-scoped realtime invalidations, so comment and reaction totals converge
+without a full navigation.
+
+### Realtime invalidation and polling fallback
+
+The framework comments UI, forum engagement summary, and authenticated
+notification inbox use one PII-free invalidation contract:
+
+- `GET /api/community/events?scope=document&targetType=posts&targetId=<uuid>`
+  authorizes the current viewer against that document.
+- `GET /api/community/events?scope=inbox` requires member authentication and
+  is routed only to that member on the current site.
+- Each SSE `data` value is the exact v1 shape
+  `{ version, id, kind, occurredAt }`; `kind` is
+  `comments.changed`, `reactions.changed`, or `notifications.changed`.
+  It never contains bodies, notification payloads, actor ids, target ids, or
+  member ids.
+
+Client components can reuse `useCommunityRealtime`,
+`npCommunityDocumentEventsUrl`, and `NP_COMMUNITY_INBOX_EVENTS_URL` from
+`@nexpress/next/client`; the hook validates every frame, serializes debounced
+refreshes, and owns the polling/reconnect fallback.
+
+The short-lived `np_community_realtime_events` outbox works across processes
+and serverless instances. An internal database sequence provides monotonic
+resume ordering; the public UUID remains the EventSource `Last-Event-ID`.
+Missing, expired, malformed, or foreign cursors start at the current authorized
+scope watermark without disclosing whether another scope's event exists.
+Connections close after a bounded interval so document/member authorization is
+rechecked on reconnect. The application proxy permits at most 60 stream
+connection starts per minute and client IP, leaving room for normal automatic
+reconnects while bounding long-lived request churn. Rows older than six hours
+are removed by opportunistic cleanup indexed by `created_at`.
+
+Clients refresh once when the stream opens to close the render/connect race,
+then refetch existing exact, audience-aware APIs after each invalidation.
+Transport errors, malformed frames, and browsers without EventSource switch to
+15-second bounded polling; when EventSource is available, reconnect attempts
+continue. Outbox insertion is best-effort after the durable community write:
+an unavailable outbox records a `realtime` runtime diagnostic, while polling
+still converges the UI.
+`GET /api/engagement?targetType=<slug>&targetId=<uuid>` supplies the exact
+viewer-aware single-document engagement snapshot used by forum details.
 
 Collections opt into document reports independently with
 `community.reports: true`. The report target is the canonical collection slug,
@@ -369,6 +412,9 @@ cadence at `/members/me/notifications`. The
 notifications into daily or weekly email summaries for members who
 opt in. With `NoopEmailAdapter` (default), rows stay in DB and the
 in-app inbox still works, but digest mail is not delivered.
+The open inbox also consumes the private realtime invalidation channel and
+refetches its exact list/unread totals; it never receives another member's id or
+notification payload through SSE.
 
 Notification preferences are an exact JSONB contract. `{}` is the compact
 default and expands to `disabled: []`, `digest: "off"`, and empty digest
@@ -692,8 +738,9 @@ must name the same recipient whose score would be updated.
 
 `plugin doctor` reports malformed community settings and persisted rows as
 `community.contract`, including malformed `np_content_views` rows, invalid or
-orphaned report/follow targets, cross-site document targets, and unresolved
-report duplicates. Collection tables carrying the canonical `audience` column
+orphaned report/follow targets, malformed realtime route/channel rows,
+cross-site document targets, and unresolved report duplicates. Collection
+tables carrying the canonical `audience` column
 are checked for invalid persisted values as part of `collections.contract`.
 It also reports collection grants whose collection table is
 missing and category/thread grants whose target document is missing or belongs
@@ -714,8 +761,6 @@ write merely because an inbox side effect failed.
 
 In rough order of likely impact:
 
-- **Real-time push** — counts and lists update on next
-  render, no WebSocket / SSE.
 - **Comment sort orders beyond `newest`, `oldest`, and `top`** —
   "Controversial" remains intentionally unimplemented.
 - **DMs / private messaging** — design doc explicitly
@@ -725,6 +770,9 @@ In rough order of likely impact:
 
 ### Recently closed
 
+- **Realtime comments, engagement, and inbox invalidation** — site-scoped SSE
+  with UUID resume, DB sequence ordering, bounded polling fallback, and
+  PII-free frames.
 - **Member-to-member block / mute** — Phase 16.1 (#204).
 - **`@mention` notifications** — Phase 16.2 (#205).
   `@handle` fan-out fires `notification:mention` rows.
@@ -737,7 +785,7 @@ In rough order of likely impact:
 - **Site-scoped community tables** — Phase 18 (#211)
   added `site_id` to `np_comments`, `np_reactions`,
   `np_content_views`, `np_follows`, `np_member_mutes`, `np_notifications`,
-  `np_reports`, and `np_bans`. `np_members` itself is
+  `np_community_realtime_events`, `np_reports`, and `np_bans`. `np_members` itself is
   still global (one identity, many tenants).
 
 These aren't blockers. The shipped surface is enough to run

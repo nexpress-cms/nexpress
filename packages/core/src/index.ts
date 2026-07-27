@@ -1293,6 +1293,11 @@ export {
   listMemberProfileActivity,
   npListContentEngagement,
   npRecordContentView,
+  NP_COMMUNITY_REALTIME_BATCH_SIZE,
+  npEmitCommunityDocumentChanged,
+  npEmitCommunityInboxChanged,
+  npListCommunityRealtimeEvents,
+  npResolveCommunityRealtimeCursor,
 } from "./community/index.js";
 export type {
   CommunityCapability,
@@ -1376,6 +1381,8 @@ export type {
   NpEngagementTarget,
   NpRecordContentViewInput,
   NpRecordContentViewOptions,
+  NpCommunityRealtimeCursor,
+  NpCommunityRealtimeServerSubscription,
 } from "./community/index.js";
 
 export {

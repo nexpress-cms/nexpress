@@ -7,6 +7,7 @@ import {
   npAuditEvents,
   npBans,
   npComments,
+  npCommunityRealtimeEvents,
   npContentViews,
   npFollows,
   npMembers,
@@ -326,6 +327,10 @@ async function getSiteUsageSummaryWithDb(
   const follows = await countWhere(npFollows, eq(npFollows.siteId, id));
   const mutes = await countWhere(npMemberMutes, eq(npMemberMutes.siteId, id));
   const notifications = await countWhere(npNotifications, eq(npNotifications.siteId, id));
+  const realtimeEvents = await countWhere(
+    npCommunityRealtimeEvents,
+    eq(npCommunityRealtimeEvents.siteId, id),
+  );
   const reports = await countWhere(npReports, eq(npReports.siteId, id));
   // Audit events with `site_id IS NULL` are the cross-tenant /
   // background-job rows; we deliberately don't count them here.
@@ -352,6 +357,7 @@ async function getSiteUsageSummaryWithDb(
     follows,
     mutes,
     notifications,
+    realtimeEvents,
     reports,
     auditEvents,
     bans,
@@ -373,6 +379,7 @@ async function getSiteUsageSummaryWithDb(
       follows +
       mutes +
       notifications +
+      realtimeEvents +
       reports +
       auditEvents +
       bans +
@@ -507,6 +514,7 @@ export async function deleteSite(id: string, options?: NpDeleteSiteOptions): Pro
       await tx.delete(npFollows).where(eq(npFollows.siteId, id));
       await tx.delete(npMemberMutes).where(eq(npMemberMutes.siteId, id));
       await tx.delete(npNotifications).where(eq(npNotifications.siteId, id));
+      await tx.delete(npCommunityRealtimeEvents).where(eq(npCommunityRealtimeEvents.siteId, id));
       await tx.delete(npReports).where(eq(npReports.siteId, id));
       await tx.delete(npAuditEvents).where(eq(npAuditEvents.siteId, id));
       await tx.delete(npBans).where(eq(npBans.siteId, id));
