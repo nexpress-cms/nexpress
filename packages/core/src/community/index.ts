@@ -129,13 +129,20 @@ export type {
 
 export {
   NP_COMMUNITY_REALTIME_BATCH_SIZE,
+  NP_COMMUNITY_REALTIME_PRUNE_BATCH_SIZE,
+  NP_COMMUNITY_REALTIME_RETENTION_MS,
   npEmitCommunityDocumentChanged,
   npEmitCommunityInboxChanged,
+  npGetCommunityRealtimeOutboxStats,
   npListCommunityRealtimeEvents,
+  npPruneCommunityRealtimeEvents,
   npResolveCommunityRealtimeCursor,
 } from "./realtime.js";
 export type {
   NpCommunityRealtimeCursor,
+  NpCommunityRealtimeOutboxStats,
+  NpCommunityRealtimePruneOptions,
+  NpCommunityRealtimePruneResult,
   NpCommunityRealtimeServerSubscription,
 } from "./realtime.js";
 

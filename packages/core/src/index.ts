@@ -1294,9 +1294,13 @@ export {
   npListContentEngagement,
   npRecordContentView,
   NP_COMMUNITY_REALTIME_BATCH_SIZE,
+  NP_COMMUNITY_REALTIME_PRUNE_BATCH_SIZE,
+  NP_COMMUNITY_REALTIME_RETENTION_MS,
   npEmitCommunityDocumentChanged,
   npEmitCommunityInboxChanged,
+  npGetCommunityRealtimeOutboxStats,
   npListCommunityRealtimeEvents,
+  npPruneCommunityRealtimeEvents,
   npResolveCommunityRealtimeCursor,
 } from "./community/index.js";
 export type {
@@ -1382,6 +1386,9 @@ export type {
   NpRecordContentViewInput,
   NpRecordContentViewOptions,
   NpCommunityRealtimeCursor,
+  NpCommunityRealtimeOutboxStats,
+  NpCommunityRealtimePruneOptions,
+  NpCommunityRealtimePruneResult,
   NpCommunityRealtimeServerSubscription,
 } from "./community/index.js";
 

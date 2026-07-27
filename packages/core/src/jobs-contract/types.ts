@@ -10,6 +10,7 @@ export const NP_BUILTIN_JOB_TYPES = [
   "system:revisionPrune",
   "system:sessionCleanup",
   "system:jobLogPrune",
+  "system:communityRealtimePrune",
   "auth:sendPasswordReset",
   "members:sendVerifyEmail",
   "members:sendPasswordReset",
@@ -137,6 +138,7 @@ export interface NpBuiltinJobPayloadMap {
   "system:revisionPrune": NpEmptyJobData;
   "system:sessionCleanup": NpEmptyJobData;
   "system:jobLogPrune": NpEmptyJobData;
+  "system:communityRealtimePrune": NpEmptyJobData;
   "auth:sendPasswordReset": NpPasswordResetJobData;
   "members:sendVerifyEmail": NpMemberVerifyEmailJobData;
   "members:sendPasswordReset": NpMemberPasswordResetJobData;

@@ -329,6 +329,9 @@ export class PgBossAdapter implements NpJobQueue {
     // Offset 30 min from revisionPrune so the two cleanup jobs
     // don't pile DB load on the same minute.
     await this.boss.schedule(toQueueName("system:jobLogPrune"), "30 3 * * *", {});
+    // Realtime invalidations retain only six hours. Sweep hourly at an offset
+    // minute so idle sites converge even when no request triggers fallback cleanup.
+    await this.boss.schedule(toQueueName("system:communityRealtimePrune"), "45 * * * *", {});
     // Phase 16.4 — daily digest at 08:00 UTC, weekly digest Mondays
     // 08:00 UTC. Members opt in via their notification prefs;
     // the handler short-circuits when nobody matches.

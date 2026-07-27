@@ -134,6 +134,9 @@ The framework registers a handful of system handlers via
   (cron: `0 * * * *`)
 - `system:jobLogPrune` — sweep `np_job_logs` rows older
   than 14 days (cron: `30 3 * * *`, Phase 20.3a)
+- `system:communityRealtimePrune` — hourly oldest-first cleanup of the
+  six-hour community invalidation outbox (cron: `45 * * * *`), bounded to ten
+  1,000-row batches per run
 - `notifications:sendDigest` — send daily / weekly member
   notification digests for members who opted in
 - `import:wordpressApply` — apply an admin-uploaded WXR export
@@ -494,6 +497,8 @@ the endpoint directly if needed.
   fields are errors instead of partially rendered state.
 - `sites.quotas` separately reports quota headroom and whether exact pg-boss
   history is available for an enforced rolling site window.
+- `community.realtime_retention` reports expired invalidation rows and the
+  oldest retained timestamp across Doctor, `ops status`, and Admin Health.
 - Mutation endpoints also use exact inputs: retry/cancel/resume/retry-all take
   `{}`, pause takes only optional `reason`, and enqueue takes exactly `type` and
   `data`. Unsupported or repeated query parameters return 400 before queue work.

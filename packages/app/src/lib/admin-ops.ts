@@ -81,6 +81,8 @@ export function commandForHealthCheck(check: Check): string | null {
       return check.detail === "paused"
         ? "pnpm --silent run ops:jobs -- resume --json"
         : "pnpm --silent run ops:jobs -- --json";
+    case "community.realtime_retention":
+      return "pnpm --silent run ops:jobs -- status --json";
     case "plugins":
       return "pnpm --silent run ops:plugins -- doctor --json";
     case "site_url":
@@ -110,6 +112,11 @@ export function relatedLinksForHealthCheck(id: Check["id"]): AdminOpsLink[] {
       ];
     case "queue":
       return [{ label: "Jobs", href: "/admin/jobs" }];
+    case "community.realtime_retention":
+      return [
+        { label: "Jobs", href: "/admin/jobs" },
+        { label: "Health", href: "/admin/health" },
+      ];
     case "plugins":
       return [{ label: "Plugins", href: "/admin/plugins" }];
     default:

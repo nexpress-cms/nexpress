@@ -107,6 +107,7 @@ describe("doctor core", () => {
         "media.contract",
         "collections.contract",
         "community.contract",
+        "community.realtime_retention",
         "revisions.contract",
         "jobs.contract",
         "migrations.applied",

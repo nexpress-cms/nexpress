@@ -35,6 +35,11 @@ if (!process.env.SITE_URL) {
 }
 if (process.env.TEST_DATABASE_URL) {
   process.env.DATABASE_URL = getTestDatabaseUrl() ?? process.env.TEST_DATABASE_URL;
+} else if (!process.env.DATABASE_URL) {
+  // Pure unit tests may import the shared health module, whose app-owned DB
+  // accessor resolves the validated bootstrap at module load. They never open
+  // this connection, but the config contract still requires a valid URL.
+  process.env.DATABASE_URL = "postgres://nexpress:nexpress@localhost:5433/nexpress_test";
 }
 if (!process.env.NODE_ENV) {
   process.env.NODE_ENV = "test";

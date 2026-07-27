@@ -3,7 +3,9 @@ import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import {
   npEmitCommunityDocumentChanged,
   npEmitCommunityInboxChanged,
+  npGetCommunityRealtimeOutboxStats,
   npListCommunityRealtimeEvents,
+  npPruneCommunityRealtimeEvents,
   npResolveCommunityRealtimeCursor,
   type NpCommunityRealtimeServerSubscription,
 } from "@nexpress/core/community";
@@ -166,6 +168,59 @@ describe.skipIf(skipIfNoTestDb())("community realtime outbox (integration)", () 
         siteId: "default",
       }),
     ).rejects.toMatchObject({ cause: { code: "23514" } });
+  });
+
+  it("measures and prunes expired rows in fixed oldest-first batches", async () => {
+    const db = await getTestDb();
+    const now = new Date("2026-07-26T12:00:00.000Z");
+    await db.insert(npCommunityRealtimeEvents).values([
+      {
+        channel: "comments",
+        targetType: "posts",
+        targetId: TARGET_ID,
+        siteId: "default",
+        createdAt: new Date("2026-07-26T04:00:00.000Z"),
+      },
+      {
+        channel: "reactions",
+        targetType: "posts",
+        targetId: TARGET_ID,
+        siteId: "default",
+        createdAt: new Date("2026-07-26T05:00:00.000Z"),
+      },
+      {
+        channel: "comments",
+        targetType: "posts",
+        targetId: TARGET_ID,
+        siteId: "default",
+        createdAt: new Date("2026-07-26T05:30:00.000Z"),
+      },
+      {
+        channel: "comments",
+        targetType: "posts",
+        targetId: TARGET_ID,
+        siteId: "default",
+        createdAt: new Date("2026-07-26T07:00:00.000Z"),
+      },
+    ]);
+
+    await expect(npGetCommunityRealtimeOutboxStats(now)).resolves.toEqual({
+      totalRows: 4,
+      expiredRows: 3,
+      oldestCreatedAt: new Date("2026-07-26T04:00:00.000Z"),
+      cutoff: new Date("2026-07-26T06:00:00.000Z"),
+    });
+    await expect(npPruneCommunityRealtimeEvents({ now, batchSize: 2 })).resolves.toEqual({
+      deletedRows: 2,
+      hasMore: true,
+      cutoff: new Date("2026-07-26T06:00:00.000Z"),
+    });
+    await expect(npGetCommunityRealtimeOutboxStats(now)).resolves.toEqual({
+      totalRows: 2,
+      expiredRows: 1,
+      oldestCreatedAt: new Date("2026-07-26T05:30:00.000Z"),
+      cutoff: new Date("2026-07-26T06:00:00.000Z"),
+    });
   });
 
   it("fails closed before opening unauthorized or malformed streams", async () => {

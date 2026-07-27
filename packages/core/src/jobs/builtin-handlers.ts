@@ -119,6 +119,7 @@ export function registerBuiltinHandlers(): void {
   registerJobHandler("system:revisionPrune", handleRevisionPrune);
   registerJobHandler("system:sessionCleanup", handleSessionCleanup);
   registerJobHandler("system:jobLogPrune", handleJobLogPrune);
+  registerJobHandler("system:communityRealtimePrune", handleCommunityRealtimePrune);
   registerJobHandler("auth:sendPasswordReset", handleAuthSendPasswordReset);
   registerJobHandler("members:sendVerifyEmail", handleMemberSendVerifyEmail);
   registerJobHandler("members:sendPasswordReset", handleMemberSendPasswordReset);
@@ -296,6 +297,51 @@ async function handleJobLogPrune(_: NpJobData): Promise<void> {
   if (deleted > 0) {
     console.info(`[nexpress] system:jobLogPrune deleted ${deleted} log row(s)`);
   }
+}
+
+/**
+ * Sweep at most ten fixed batches per hourly invocation. A large backlog
+ * remains visible and converges over later runs without monopolizing a worker.
+ */
+async function handleCommunityRealtimePrune(_: NpJobData): Promise<void> {
+  const [{ recordJobLog }, realtime] = await Promise.all([
+    import("./job-log.js"),
+    import("../community/realtime.js"),
+  ]);
+  const maxBatches = 10;
+  let batches = 0;
+  let deletedRows = 0;
+  let hasMore: boolean;
+  try {
+    do {
+      const result = await realtime.npPruneCommunityRealtimeEvents();
+      batches += 1;
+      deletedRows += result.deletedRows;
+      hasMore = result.hasMore;
+      if (result.deletedRows === 0) break;
+    } while (hasMore && batches < maxBatches);
+  } catch (error) {
+    await recordJobLog("error", "Community realtime outbox prune failed.", {
+      batches,
+      deletedRows,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+
+  await recordJobLog(
+    hasMore ? "warn" : "info",
+    hasMore
+      ? "Community realtime outbox prune reached its per-run bound."
+      : "Community realtime outbox prune completed.",
+    {
+      batches,
+      deletedRows,
+      hasMore,
+      batchSize: realtime.NP_COMMUNITY_REALTIME_PRUNE_BATCH_SIZE,
+      retentionMs: realtime.NP_COMMUNITY_REALTIME_RETENTION_MS,
+    },
+  );
 }
 
 /**
