@@ -1,5 +1,36 @@
 # @nexpress/plugin-oauth-google
 
+## 0.4.2
+
+### Patch Changes
+
+- 375234b: Scope plugin activation to one site through sparse activation overrides while
+  keeping configured code loaded process-wide. Gate dispatch, Admin and public
+  contributions, OAuth, transfer, ops, and scheduled executions by the same site
+  snapshot; preserve active owners across block, pattern, and template collisions.
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+  - @nexpress/core@0.4.2
+  - @nexpress/plugin-sdk@0.4.2
+  - @nexpress/oauth-providers@0.4.2
+
 ## 0.4.1
 
 ### Patch Changes

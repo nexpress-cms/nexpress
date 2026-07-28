@@ -1,5 +1,30 @@
 # @nexpress/editor
 
+## 0.4.2
+
+### Patch Changes
+
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+  - @nexpress/core@0.4.2
+
 ## 0.4.1
 
 ### Patch Changes

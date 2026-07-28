@@ -1,5 +1,87 @@
 # @nexpress/plugin-forum
 
+## 0.4.2
+
+### Patch Changes
+
+- 375234b: Complete the shared public comment experience with exact enriched list windows,
+  batched public author and reaction projections, reply trees, owner edit/delete,
+  pagination, localized forum copy, and stable theme hooks. Keep all mutations on
+  the existing community routes and add exact OpenAPI, integration, model, and
+  contract coverage without a new forum-specific schema.
+- 375234b: Complete the forum skin contract across index, list, detail, create, edit, and
+  authentication-gated composer surfaces. Fix classic mobile table alignment,
+  preserve primary CTA styling, and ship forum-owned rich-text typography.
+- 375234b: Complete the community report contract with report-enabled collection targets,
+  race-safe unresolved deduplication, contextual Admin rows, and target-serialized
+  dismiss, comment-hide, and document-unpublish actions. Add localized forum post
+  reporting that follows configured collection slugs and update OpenAPI, doctor,
+  and docs.
+- 375234b: Add validated member attachments with board-specific forum policy, race-safe reference/deletion ownership, owner/public download authorization, exact client and OpenAPI contracts, generated app routes, and bundled skin support.
+- 375234b: Add one fail-closed community document audience contract and apply it across forum boards, posts, discovery, engagement, notifications, profiles, and protected attachments.
+- 375234b: Add opt-in document reactions and privacy-preserving daily-unique views, one
+  bounded batch engagement summary contract, forum list/detail metrics and
+  recommendation UI, and a recent-popularity home feed. Include migration,
+  OpenAPI, doctor, site cleanup, scaffold, theme hooks, and operator guidance.
+- 375234b: Add site-scoped forum board-directory and latest/notice feed blocks plus a
+  community-home pattern. The blocks close over configured forum paths and
+  collection slugs, reject unsafe board keys before querying, filter stale or
+  orphaned cross-board rows, and publish stable theme hooks with complete
+  fallback styles.
+- 375234b: Replace placeholder thread and tag follows with opt-in collection document
+  subscriptions, bounded activity fan-out, actionable notification destinations,
+  transactional cleanup, and orphan diagnostics. Add board and post subscription
+  controls to both bundled forum skins with deduplicated new-post and new-comment
+  notifications.
+- 375234b: Add the multi-board forum factory, classic Korean-style skin, row-aware member-write policy, board moderation, locked comment UI, and default scaffold registration.
+- 375234b: Add explicit collection-owned public member activity with PII-free profile and
+  exact document/comment page contracts, validated API and OpenAPI surfaces,
+  prepared theme renderer props, forum opt-in, a complete community-theme view,
+  comment anchors, and scaffolded route coverage.
+
+  `GET /api/members/{handle}` now returns the exact profile fields directly;
+  clients using the previous `{ member: ... }` wrapper should read those fields
+  from the response root.
+
+- 375234b: Add a site-scoped, PII-free community realtime invalidation contract for
+  comments, document engagement, and member notifications. Events use a
+  short-lived database outbox with monotonic resume ordering, exact SSE wires,
+  bounded polling fallback, Doctor/OpenAPI/site-deletion coverage, and scaffolded
+  route wrappers.
+- 375234b: Add one declarative thread/category/collection moderation contract across member document writes, comments, reports, Admin role targets, doctor diagnostics, OpenAPI, and both forum skins. Scoped moderators now receive exact edit, delete, hide, restore, lock, pin, and report actions without a plugin-specific role system.
+- 375234b: Add bounded board-scoped title/body search, category and member filters,
+  filter-preserving pagination, and discovery controls to the forum list skin
+  contract. Malformed filters and out-of-range pages now fail closed, while
+  pinned notices remain limited to the unfiltered public first page.
+- 375234b: Add the bundled `community-full` forum skin with policy summaries, author
+  identity, notices, status-rich rows, numbered pagination, complete detail and
+  composer surfaces, and responsive mobile layouts. Publish theme-token and
+  style-slot metadata plus optional `--np-forum-*` overrides while moving
+  self-contained forum structure into the `np-blocks` layer.
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+  - @nexpress/core@0.4.2
+  - @nexpress/next@0.4.2
+  - @nexpress/plugin-sdk@0.4.2
+  - @nexpress/editor@0.4.2
+
 ## 0.4.1
 
 ### Patch Changes

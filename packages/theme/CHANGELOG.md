@@ -1,5 +1,40 @@
 # @nexpress/theme
 
+## 0.4.2
+
+### Patch Changes
+
+- 375234b: Add explicit collection-owned public member activity with PII-free profile and
+  exact document/comment page contracts, validated API and OpenAPI surfaces,
+  prepared theme renderer props, forum opt-in, a complete community-theme view,
+  comment anchors, and scaffolded route coverage.
+
+  `GET /api/members/{handle}` now returns the exact profile fields directly;
+  clients using the previous `{ member: ... }` wrapper should read those fields
+  from the response root.
+
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+  - @nexpress/core@0.4.2
+  - @nexpress/blocks@0.4.2
+
 ## 0.4.1
 
 ### Patch Changes

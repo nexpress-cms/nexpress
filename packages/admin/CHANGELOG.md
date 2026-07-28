@@ -1,5 +1,56 @@
 # @nexpress/admin
 
+## 0.4.2
+
+### Patch Changes
+
+- 375234b: Promote responsive block placement to the exact top-level `NpBlockInstance.layout` wire contract across validation, OpenAPI, rendering, and Admin editing. Grid layouts no longer read the retired experimental `props._layout` convention.
+- 375234b: Complete the community report contract with report-enabled collection targets,
+  race-safe unresolved deduplication, contextual Admin rows, and target-serialized
+  dismiss, comment-hide, and document-unpublish actions. Add localized forum post
+  reporting that follows configured collection slugs and update OpenAPI, doctor,
+  and docs.
+- 375234b: Run search reindexing through an exact durable collection job with fixed cursor batches, cross-worker serialization, bounded job progress, Admin collection selection, and non-blocking internal trigger outcomes while preserving the synchronous Core API.
+- 375234b: Stabilize the exact block prop schema contract across author types, runtime validation, Admin controls, public discovery, OpenAPI, plugin doctor, and generated plugin scaffolds. The unfinished `media` alias is removed in favor of `image`, and `patternMessage` is replaced by the type-neutral `validationMessage`.
+- 375234b: Add opt-in document reactions and privacy-preserving daily-unique views, one
+  bounded batch engagement summary contract, forum list/detail metrics and
+  recommendation UI, and a recent-popularity home feed. Include migration,
+  OpenAPI, doctor, site cleanup, scaffold, theme hooks, and operator guidance.
+- 375234b: Add a site-scoped, PII-free community realtime invalidation contract for
+  comments, document engagement, and member notifications. Events use a
+  short-lived database outbox with monotonic resume ordering, exact SSE wires,
+  bounded polling fallback, Doctor/OpenAPI/site-deletion coverage, and scaffolded
+  route wrappers.
+- 375234b: Add one declarative thread/category/collection moderation contract across member document writes, comments, reports, Admin role targets, doctor diagnostics, OpenAPI, and both forum skins. Scoped moderators now receive exact edit, delete, hide, restore, lock, pin, and report actions without a plugin-specific role system.
+- 375234b: Scope media records, folders, references, processing jobs, Admin surfaces, transfers, quotas, diagnostics, and site deletion to one canonical site owner.
+- 375234b: Add exact per-site storage, document, and hourly job quotas with atomic enforcement, Admin and OpenAPI surfaces, operational diagnostics, and scaffold support.
+- 375234b: Scope plugin activation to one site through sparse activation overrides while
+  keeping configured code loaded process-wide. Gate dispatch, Admin and public
+  contributions, OAuth, transfer, ops, and scheduled executions by the same site
+  snapshot; preserve active owners across block, pattern, and template collisions.
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+  - @nexpress/core@0.4.2
+  - @nexpress/blocks@0.4.2
+  - @nexpress/editor@0.4.2
+
 ## 0.4.1
 
 ### Patch Changes

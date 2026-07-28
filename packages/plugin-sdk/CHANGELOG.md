@@ -1,5 +1,32 @@
 # @nexpress/plugin-sdk
 
+## 0.4.2
+
+### Patch Changes
+
+- 375234b: Stabilize the exact block prop schema contract across author types, runtime validation, Admin controls, public discovery, OpenAPI, plugin doctor, and generated plugin scaffolds. The unfinished `media` alias is removed in favor of `image`, and `patternMessage` is replaced by the type-neutral `validationMessage`.
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+  - @nexpress/core@0.4.2
+  - @nexpress/blocks@0.4.2
+
 ## 0.4.1
 
 ### Patch Changes

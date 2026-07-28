@@ -1,5 +1,31 @@
 # @nexpress/wp-import
 
+## 0.4.2
+
+### Patch Changes
+
+- 375234b: Raise vulnerable XML parsing dependencies to their patched floor and force newly scaffolded projects onto the safe Sharp/libvips release selected by NexPress Core.
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+  - @nexpress/core@0.4.2
+
 ## 0.4.1
 
 ### Patch Changes
