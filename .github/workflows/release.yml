@@ -25,15 +25,17 @@ name: Release
 # short-lived OIDC token for publish rights, gated by each package's
 # Trusted Publisher config on npmjs.com (which pins this exact repo +
 # workflow). Sigstore provenance attaches automatically via
-# `NPM_CONFIG_PROVENANCE: "true"`. `NPM_BOOTSTRAP_TOKEN` is an
-# optional, short-lived repository secret used only for the first
-# publish of a new package name; remove it immediately afterwards.
+# `NPM_CONFIG_PROVENANCE: "true"`. `NPM_BOOTSTRAP_TOKEN` and
+# `NPM_BOOTSTRAP_PACKAGE` are optional, short-lived repository settings used
+# only for the first publish of a new package name; remove both immediately
+# afterwards.
 #
 # **First-publish prerequisite.** A package must either (a)
 # already exist on npm with Trusted Publishers configured for
 # this workflow, OR (b) be published once by this workflow with a
-# short-lived `NPM_BOOTSTRAP_TOKEN`, then have its TP config added
-# on npmjs.com afterwards. See
+# short-lived `NPM_BOOTSTRAP_TOKEN` plus the exact
+# `NPM_BOOTSTRAP_PACKAGE`, then have its TP config added on npmjs.com
+# afterwards. See
 # `docs/releasing.md` § "Trusted Publisher setup" for the
 # step-by-step. Never replace that bootstrap command with direct
 # `npm publish`: npm does not rewrite pnpm's `workspace:*`
@@ -155,16 +157,10 @@ jobs:
           # temporarily set this repository secret to a granular token with
           # publish access and 2FA bypass. Keeping the publish in GitHub
           # Actions preserves the provenance attestation required by the
-          # post-publish gate. Delete the secret immediately after bootstrap.
+          # post-publish gate. Pair it with the NPM_BOOTSTRAP_PACKAGE Actions
+          # variable and delete both immediately after bootstrap.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
-          # One-time recovery for the accidental 0.5.0 family publish.
-          # `release.mts` uses the token only to bootstrap the new package and
-          # repair @nexpress dist-tags/deprecation metadata; it removes the
-          # token from the environment before Changesets publishes all existing
-          # packages through OIDC. Remove these three variables after v0.4.2.
-          NP_NPM_BOOTSTRAP_PACKAGE: "@nexpress/theme-community"
-          NP_RELEASE_REPAIR_FROM: "0.5.0"
-          NP_RELEASE_REPAIR_TO: "0.4.2"
+          NP_NPM_BOOTSTRAP_PACKAGE: ${{ vars.NPM_BOOTSTRAP_PACKAGE }}
           NPM_CONFIG_PROVENANCE: "true"
 
       # `changesets/action` uses `GITHUB_TOKEN`, and GitHub suppresses
