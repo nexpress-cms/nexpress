@@ -157,6 +157,14 @@ jobs:
           # Actions preserves the provenance attestation required by the
           # post-publish gate. Delete the secret immediately after bootstrap.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
+          # One-time recovery for the accidental 0.5.0 family publish.
+          # `release.mts` uses the token only to bootstrap the new package and
+          # repair @nexpress dist-tags/deprecation metadata; it removes the
+          # token from the environment before Changesets publishes all existing
+          # packages through OIDC. Remove these three variables after v0.4.2.
+          NP_NPM_BOOTSTRAP_PACKAGE: "@nexpress/theme-community"
+          NP_RELEASE_REPAIR_FROM: "0.5.0"
+          NP_RELEASE_REPAIR_TO: "0.4.2"
           NPM_CONFIG_PROVENANCE: "true"
 
       # `changesets/action` uses `GITHUB_TOKEN`, and GitHub suppresses

@@ -26,6 +26,7 @@ test("the Version PR bridge keeps releases draft and gates on scaffold smoke", a
 
 test("the Release workflow delegates conditional verification to the release script", async () => {
   const workflow = await readFile(resolve(repoRoot, ".github/workflows/release.yml"), "utf8");
+  const releaseScript = await readFile(resolve(repoRoot, "scripts/release.mts"), "utf8");
   const rootManifest = JSON.parse(await readFile(resolve(repoRoot, "package.json"), "utf8")) as {
     scripts?: Record<string, string>;
   };
@@ -41,6 +42,24 @@ test("the Release workflow delegates conditional verification to the release scr
     workflow,
     /secrets\.NPM_TOKEN/,
     "normal releases must not regain a standing npm token",
+  );
+  assert.match(workflow, /NP_NPM_BOOTSTRAP_PACKAGE:\s*"@nexpress\/theme-community"/);
+  assert.match(workflow, /NP_RELEASE_REPAIR_FROM:\s*"0\.5\.0"/);
+  assert.match(workflow, /NP_RELEASE_REPAIR_TO:\s*"0\.4\.2"/);
+  assert.ok(
+    releaseScript.indexOf("delete process.env.NODE_AUTH_TOKEN") <
+      releaseScript.indexOf('run("pnpm", ["test:repo"]'),
+    "the temporary token must be removed before repository code executes",
+  );
+  assert.ok(
+    releaseScript.indexOf('run("pnpm", ["typecheck"]') <
+      releaseScript.indexOf("[release] bootstrapping new npm package"),
+    "the package must build and pass its gates before its first publish",
+  );
+  assert.ok(
+    releaseScript.indexOf("[release] bootstrapping new npm package") <
+      releaseScript.indexOf('run("pnpm", ["exec", "changeset", "publish"'),
+    "the new package name must be claimed before OIDC publishes the existing packages",
   );
   assert.equal(rootManifest.scripts?.release, "tsx scripts/release.mts");
 });
