@@ -274,6 +274,7 @@ export const forumBoardsTable = pgTable(
   },
   (table) => [
     index("np_c_forum-boards_status_idx").on(table.status),
+    uniqueIndex("np_c_forum-boards_site_key_uidx").on(table.siteId, table.key),
     uniqueIndex("np_c_forum-boards_site_slug_idx").on(table.siteId, table.slug),
     index("np_c_forum-boards_site_idx").on(table.siteId),
   ],
@@ -383,6 +384,193 @@ export const forumPostsAttachmentsTableRelations = relations(
       references: [forumPostsTable.id],
     }),
     file: one(npMedia, { fields: [forumPostsAttachmentsTable.file], references: [npMedia.id] }),
+  }),
+);
+
+export const shopCategoriesTable = pgTable(
+  "np_c_shop-categories",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] })
+      .default("draft")
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: uuid("created_by").references((): AnyPgColumn => npUsers.id),
+    updatedBy: uuid("updated_by").references((): AnyPgColumn => npUsers.id),
+    visibility: text("visibility", { enum: ["public", "private"] })
+      .default("public")
+      .notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    image: uuid("image").references((): AnyPgColumn => npMedia.id),
+    featured: boolean("featured").default(false),
+    displayOrder: integer("display_order").default(0).notNull(),
+    slug: text("slug").notNull(),
+    siteId: text("site_id").default("default").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    searchVector: tsvector("search_vector"),
+  },
+  (table) => [
+    index("np_c_shop-categories_status_idx").on(table.status),
+    uniqueIndex("np_c_shop-categories_site_slug_idx").on(table.siteId, table.slug),
+    index("np_c_shop-categories_site_idx").on(table.siteId),
+  ],
+);
+
+export const shopCategoriesTableRelations = relations(shopCategoriesTable, ({ many, one }) => ({
+  createdByUser: one(npUsers, {
+    fields: [shopCategoriesTable.createdBy],
+    references: [npUsers.id],
+  }),
+  updatedByUser: one(npUsers, {
+    fields: [shopCategoriesTable.updatedBy],
+    references: [npUsers.id],
+  }),
+  image: one(npMedia, { fields: [shopCategoriesTable.image], references: [npMedia.id] }),
+}));
+
+export const shopProductsTable = pgTable(
+  "np_c_shop-products",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] })
+      .default("draft")
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: uuid("created_by").references((): AnyPgColumn => npUsers.id),
+    updatedBy: uuid("updated_by").references((): AnyPgColumn => npUsers.id),
+    visibility: text("visibility", { enum: ["public", "private"] })
+      .default("public")
+      .notNull(),
+    name: text("name").notNull(),
+    summary: text("summary"),
+    description: jsonb("description").notNull(),
+    primaryImage: uuid("primary_image").references((): AnyPgColumn => npMedia.id),
+    currency: text("currency").default("KRW").notNull(),
+    priceMinor: integer("price_minor").default(0).notNull(),
+    compareAtPriceMinor: integer("compare_at_price_minor"),
+    taxIncluded: boolean("tax_included").default(true),
+    sku: text("sku"),
+    trackInventory: boolean("track_inventory").default(true),
+    stockQuantity: integer("stock_quantity").default(0).notNull(),
+    lowStockThreshold: integer("low_stock_threshold").default(5).notNull(),
+    featured: boolean("featured").default(false),
+    available: boolean("available").default(false).notNull(),
+    inventoryState: text("inventory_state").default("out-of-stock").notNull(),
+    skin: text("skin").default("classic").notNull(),
+    slug: text("slug").notNull(),
+    siteId: text("site_id").default("default").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    searchVector: tsvector("search_vector"),
+  },
+  (table) => [
+    index("np_c_shop-products_status_idx").on(table.status),
+    uniqueIndex("np_c_shop-products_site_sku_uidx").on(table.siteId, table.sku),
+    uniqueIndex("np_c_shop-products_site_slug_idx").on(table.siteId, table.slug),
+    index("np_c_shop-products_site_idx").on(table.siteId),
+  ],
+);
+
+export const shopProductsTableRelations = relations(shopProductsTable, ({ many, one }) => ({
+  createdByUser: one(npUsers, { fields: [shopProductsTable.createdBy], references: [npUsers.id] }),
+  updatedByUser: one(npUsers, { fields: [shopProductsTable.updatedBy], references: [npUsers.id] }),
+  primaryImage: one(npMedia, {
+    fields: [shopProductsTable.primaryImage],
+    references: [npMedia.id],
+  }),
+}));
+
+export const shopProductsCategoriesTable = pgTable(
+  "np_c_shop-products__categories",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    shopProductsId: uuid("shop_products_id")
+      .notNull()
+      .references((): AnyPgColumn => shopProductsTable.id, { onDelete: "cascade" }),
+    targetId: uuid("target_id")
+      .notNull()
+      .references((): AnyPgColumn => shopCategoriesTable.id, { onDelete: "cascade" }),
+    order: integer("order").default(0).notNull(),
+  },
+  (table) => [
+    index("np_c_shop-products__categories_shop_products_id_idx").on(table.shopProductsId),
+    uniqueIndex("np_c_shop-products__categories_parent_target_uidx").on(
+      table.shopProductsId,
+      table.targetId,
+    ),
+  ],
+);
+
+export const shopProductsCategoriesTableRelations = relations(
+  shopProductsCategoriesTable,
+  ({ many, one }) => ({
+    parent: one(shopProductsTable, {
+      fields: [shopProductsCategoriesTable.shopProductsId],
+      references: [shopProductsTable.id],
+    }),
+    target: one(shopCategoriesTable, {
+      fields: [shopProductsCategoriesTable.targetId],
+      references: [shopCategoriesTable.id],
+    }),
+  }),
+);
+
+export const shopProductsGalleryTable = pgTable(
+  "np_c_shop-products__gallery",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    parentId: uuid("parent_id")
+      .notNull()
+      .references((): AnyPgColumn => shopProductsTable.id, { onDelete: "cascade" }),
+    order: integer("order").default(0).notNull(),
+    image: uuid("image")
+      .references((): AnyPgColumn => npMedia.id)
+      .notNull(),
+  },
+  (table) => [index("np_c_shop-products__gallery_parent_idx").on(table.parentId)],
+);
+
+export const shopProductsGalleryTableRelations = relations(
+  shopProductsGalleryTable,
+  ({ many, one }) => ({
+    parent: one(shopProductsTable, {
+      fields: [shopProductsGalleryTable.parentId],
+      references: [shopProductsTable.id],
+    }),
+    image: one(npMedia, { fields: [shopProductsGalleryTable.image], references: [npMedia.id] }),
+  }),
+);
+
+export const shopProductsVariantsTable = pgTable(
+  "np_c_shop-products__variants",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    parentId: uuid("parent_id")
+      .notNull()
+      .references((): AnyPgColumn => shopProductsTable.id, { onDelete: "cascade" }),
+    order: integer("order").default(0).notNull(),
+    name: text("name").notNull(),
+    sku: text("sku").notNull(),
+    optionSummary: text("option_summary"),
+    priceMinor: integer("price_minor"),
+    stockQuantity: integer("stock_quantity").default(0).notNull(),
+    enabled: boolean("enabled").default(true).notNull(),
+  },
+  (table) => [
+    index("np_c_shop-products__variants_parent_idx").on(table.parentId),
+    uniqueIndex("np_c_shop-products__variants_parent_sku_uidx").on(table.parentId, table.sku),
+  ],
+);
+
+export const shopProductsVariantsTableRelations = relations(
+  shopProductsVariantsTable,
+  ({ many, one }) => ({
+    parent: one(shopProductsTable, {
+      fields: [shopProductsVariantsTable.parentId],
+      references: [shopProductsTable.id],
+    }),
   }),
 );
 

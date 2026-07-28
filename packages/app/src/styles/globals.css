@@ -12,6 +12,7 @@
 @layer np-base, np-blocks, np-theme, np-overrides;
 
 @import "@nexpress/plugin-forum/styles.css";
+@import "@nexpress/plugin-shop/styles.css";
 
 /* Tailwind v4's source scanner can drop arbitrary-value classes that
  * live inside long multi-utility strings (e.g. the AuthCard's

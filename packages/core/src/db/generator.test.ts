@@ -42,6 +42,24 @@ describe("generateDrizzleSchema", () => {
     expect(out).toContain('uniqueIndex("np_c_posts_site_slug_idx").on(table.siteId, table.slug)');
   });
 
+  it("enforces unique text fields inside each site", () => {
+    const out = generateDrizzleSchema([
+      collection("products", [
+        { type: "text", name: "sku", unique: true },
+        {
+          type: "group",
+          name: "identity",
+          fields: [{ type: "text", name: "externalId", unique: true }],
+        },
+      ]),
+    ]);
+
+    expect(out).toContain('uniqueIndex("np_c_products_site_sku_uidx").on(table.siteId, table.sku)');
+    expect(out).toContain(
+      'uniqueIndex("np_c_products_site_identity_external_id_uidx").on(table.siteId, table.identityExternalId)',
+    );
+  });
+
   it("uses canonical status plus publishedAt when versions.drafts is true", () => {
     const out = generateDrizzleSchema([
       {
@@ -124,6 +142,22 @@ describe("generateDrizzleSchema", () => {
     expect(out).toContain("export const postsTagsTable = pgTable(");
     expect(out).toContain(
       'parentId: uuid("parent_id").notNull().references((): AnyPgColumn => postsTable.id',
+    );
+  });
+
+  it("enforces unique array text fields within their parent document", () => {
+    const out = generateDrizzleSchema([
+      collection("products", [
+        {
+          type: "array",
+          name: "variants",
+          fields: [{ type: "text", name: "sku", required: true, unique: true }],
+        },
+      ]),
+    ]);
+
+    expect(out).toContain(
+      'uniqueIndex("np_c_products__variants_parent_sku_uidx").on(table.parentId, table.sku)',
     );
   });
 

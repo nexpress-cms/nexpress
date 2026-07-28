@@ -105,6 +105,11 @@ export function generateDrizzleSchema(
     const scalarResult = collectScalarColumns(collection.fields, [], collectionTables);
     columns.push(...scalarResult.columns);
     relations.push(...scalarResult.relations);
+    for (const fieldName of collectUniqueTextFieldNames(collection.fields)) {
+      indexes.push(
+        `uniqueIndex("${tableName}_site_${toSnakeCase(fieldName)}_uidx").on(table.siteId, table.${fieldName})`,
+      );
+    }
 
     if (hasSlugField(collection)) {
       columns.push('slug: text("slug").notNull()');
@@ -196,6 +201,24 @@ export function generateDrizzleSchema(
   ].join("\n");
 }
 
+function collectUniqueTextFieldNames(fields: NpFieldConfig[], prefix: string[] = []): string[] {
+  const names: string[] = [];
+  for (const field of fields) {
+    if (field.type === "group") {
+      names.push(...collectUniqueTextFieldNames(field.fields, [...prefix, field.name]));
+      continue;
+    }
+    if (field.type === "row" || field.type === "collapsible") {
+      names.push(...collectUniqueTextFieldNames(field.fields, prefix));
+      continue;
+    }
+    if (field.type === "text" && field.unique === true) {
+      names.push(getFlattenedFieldName(prefix, field.name));
+    }
+  }
+  return names;
+}
+
 function createNestedTables(
   context: TableContext,
   fields: NpFieldConfig[],
@@ -269,11 +292,18 @@ function createArrayTable(
 
   createNestedTables(nestedContext, field.fields, tables, collectionTables);
 
+  const indexes = [`index("${tableName}_parent_idx").on(table.parentId)`];
+  for (const fieldName of collectUniqueTextFieldNames(field.fields)) {
+    indexes.push(
+      `uniqueIndex("${tableName}_parent_${toSnakeCase(fieldName)}_uidx").on(table.parentId, table.${fieldName})`,
+    );
+  }
+
   return {
     identifier,
     tableName,
     columns,
-    indexes: [`index("${tableName}_parent_idx").on(table.parentId)`],
+    indexes,
     relations,
   };
 }

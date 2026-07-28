@@ -175,6 +175,10 @@ export interface NpTextField extends NpFieldBase {
   type: "text";
   minLength?: number;
   maxLength?: number;
+  /**
+   * Adds a database unique index. Main/group fields are unique per site;
+   * array-child fields are unique within their parent document.
+   */
   unique?: boolean;
 }
 

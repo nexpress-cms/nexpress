@@ -176,6 +176,13 @@
       "when": 1784805777754,
       "tag": "0024_rainy_major_mapleleaf",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1785261168761,
+      "tag": "0025_aspiring_luckman",
+      "breakpoints": true
     }
   ]
 }

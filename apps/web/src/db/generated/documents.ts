@@ -162,6 +162,67 @@ export interface ForumPostsDocument {
 }
 export type ForumPostsDocumentWire = NpCollectionDocumentWire<ForumPostsDocument>;
 
+export interface ShopCategoriesDocument {
+  id: string;
+  status: "draft" | "scheduled" | "published" | "archived" | "pending";
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+  updatedBy: string | null;
+  slug: string;
+  publishedAt: Date | null;
+  visibility: "public" | "private";
+  siteId: string;
+  name: string;
+  description: string | null;
+  image: string | null;
+  featured: boolean | null;
+  displayOrder: number;
+}
+export type ShopCategoriesDocumentWire = NpCollectionDocumentWire<ShopCategoriesDocument>;
+
+export interface ShopProductsDocument {
+  id: string;
+  status: "draft" | "scheduled" | "published" | "archived" | "pending";
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+  updatedBy: string | null;
+  slug: string;
+  publishedAt: Date | null;
+  visibility: "public" | "private";
+  siteId: string;
+  name: string;
+  summary: string | null;
+  description: NpRichTextContent;
+  categories: string[];
+  primaryImage: string | null;
+  gallery: Array<{
+    image: string;
+  }>;
+  currency: string;
+  priceMinor: number;
+  compareAtPriceMinor: number | null;
+  taxIncluded: boolean | null;
+  sku: string | null;
+  trackInventory: boolean | null;
+  stockQuantity: number;
+  lowStockThreshold: number;
+  featured: boolean | null;
+  available: boolean;
+  inventoryState: string;
+  skin: string;
+  variants: Array<{
+    name: string;
+    sku: string;
+    optionSummary: string | null;
+    priceMinor: number | null;
+    stockQuantity: number;
+    enabled: boolean;
+  }>;
+}
+export type ShopProductsDocumentWire = NpCollectionDocumentWire<ShopProductsDocument>;
+
 export interface DiscussionsDocument {
   id: string;
   status: "draft" | "scheduled" | "published" | "archived" | "pending";
@@ -267,6 +328,38 @@ export function getForumPostsDocument(
   user?: NpAuthUser,
 ): Promise<ForumPostsDocument | null> {
   return getDocumentById<ForumPostsDocument>("forum-posts", id, user);
+}
+
+/** Typed listing query for the `shop-categories` collection. */
+export function findShopCategories(
+  options: NpFindOptions<ShopCategoriesDocument> = {},
+  user?: NpAuthUser,
+): Promise<NpFindResult<ShopCategoriesDocument>> {
+  return findDocuments<ShopCategoriesDocument>("shop-categories", options, user);
+}
+
+/** Typed by-id fetch for the `shop-categories` collection. */
+export function getShopCategoriesDocument(
+  id: string,
+  user?: NpAuthUser,
+): Promise<ShopCategoriesDocument | null> {
+  return getDocumentById<ShopCategoriesDocument>("shop-categories", id, user);
+}
+
+/** Typed listing query for the `shop-products` collection. */
+export function findShopProducts(
+  options: NpFindOptions<ShopProductsDocument> = {},
+  user?: NpAuthUser,
+): Promise<NpFindResult<ShopProductsDocument>> {
+  return findDocuments<ShopProductsDocument>("shop-products", options, user);
+}
+
+/** Typed by-id fetch for the `shop-products` collection. */
+export function getShopProductsDocument(
+  id: string,
+  user?: NpAuthUser,
+): Promise<ShopProductsDocument | null> {
+  return getDocumentById<ShopProductsDocument>("shop-products", id, user);
 }
 
 /** Typed listing query for the `discussions` collection. */
