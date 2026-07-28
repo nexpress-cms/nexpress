@@ -4,7 +4,7 @@
 
 NexPress is pre-1.0. Security fixes target the current `main` branch and the
 latest published `0.x` release line. The current framework release line is
-`0.4.x`.
+`0.5.x`.
 
 ## Reporting a Vulnerability
 
