@@ -1,6 +1,6 @@
 # Releasing
 
-**Current published baseline:** NexPress `0.4.1` and `create-nexpress 0.1.36`
+**Current published baseline:** NexPress `0.4.1` and `create-nexpress 0.1.37`
 (tag `v0.4.1`). The Version Packages PR remains the only supported path for
 normal package version bumps; merge it only after its generated changelogs,
 package versions, local verification, and required CI have been reviewed.
@@ -175,6 +175,12 @@ If both pre-merge commands pass, the PR is safe to merge — the next push to
 Version PRs still need explicit maintainer approval before merge. Do not merge
 or auto-merge them just because the Changesets PR exists; first confirm that
 the queued release is the batch you intended to publish.
+
+A fixed-family minor bump requires a separate, explicit approval naming the
+exact target version (for example, “publish 0.5.0”). Generic instructions to
+publish, release, or update the demo authorize no minor bump. If the Version
+PR crosses a minor boundary without that exact approval, stop and report both
+the proposed versions and every `minor` changeset that caused the bump.
 
 The default branch is guarded by a repository ruleset, not the legacy branch
 protection endpoint. If `gh api repos/nexpress-cms/nexpress/branches/main/protection`

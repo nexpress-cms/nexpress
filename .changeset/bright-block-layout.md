@@ -1,7 +1,7 @@
 ---
-"@nexpress/core": minor
-"@nexpress/blocks": minor
-"@nexpress/admin": minor
+"@nexpress/core": patch
+"@nexpress/blocks": patch
+"@nexpress/admin": patch
 "@nexpress/app": patch
 ---
 

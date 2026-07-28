@@ -1,5 +1,5 @@
 ---
-"@nexpress/core": minor
+"@nexpress/core": patch
 "@nexpress/app": patch
 ---
 
