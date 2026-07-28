@@ -204,12 +204,12 @@
     }
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1079.0",
+    "@aws-sdk/client-s3": "^3.1090.0",
     "@node-rs/argon2": "^2.0.2",
     "arctic": "^3.7.0",
-    "cron-parser": "^5.6.0",
+    "cron-parser": "^5.6.2",
     "drizzle-orm": "^0.45.2",
-    "intl-messageformat": "^11.2.8",
+    "intl-messageformat": "^11.2.12",
     "jose": "^6.2.3",
     "pg": "^8.22.0",
     "pg-boss": "^12.26.0",
