@@ -39,6 +39,7 @@ import {
   renderMigrationStatus,
   type MigrationStatus,
 } from "./migration-status.js";
+import { npReadCommunityRealtimeCapacityConfig } from "../lib/community-realtime-capacity.js";
 
 /**
  * `PROJECT_DIR` is the project root — where `package.json` lives.
@@ -367,6 +368,11 @@ function extractDbPort(databaseUrl: string): number | null {
 }
 
 async function saveEnv(body: SetupBody): Promise<void> {
+  const existingEnv = await readExistingEnvValues();
+  const realtimeCapacity = npReadCommunityRealtimeCapacityConfig({
+    ...existingEnv,
+    ...process.env,
+  });
   // Backup any prior .env so a slip on the form never destroys
   // an operator's existing values.
   if (await fileExists(ENV_PATH)) {
@@ -410,6 +416,10 @@ async function saveEnv(body: SetupBody): Promise<void> {
     "# API rate limiting (exact modes: memory or custom)",
     "# Multi-node deploys inject a shared adapter from src/proxy.ts.",
     "NP_RATE_LIMIT_ADAPTER=memory",
+    "",
+    "# Community realtime SSE capacity (canonical integers in 1..10000)",
+    `NP_COMMUNITY_REALTIME_MAX_STREAMS=${realtimeCapacity.maxStreams.toString()}`,
+    `NP_COMMUNITY_REALTIME_MAX_SITE_STREAMS=${realtimeCapacity.maxSiteStreams.toString()}`,
   );
 
   if (body.adminEmail || body.adminName || body.adminThemeId) {

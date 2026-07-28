@@ -11,7 +11,7 @@ import {
 } from "@nexpress/core/community";
 import { eq } from "drizzle-orm";
 import { NextRequest } from "next/server";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as engagementGET } from "@/app/api/engagement/route";
 import { GET as realtimeGET } from "@/app/api/community/events/route";
@@ -28,6 +28,10 @@ describe.skipIf(skipIfNoTestDb())("community realtime outbox (integration)", () 
 
   beforeEach(async () => {
     await truncateAll();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   afterAll(async () => {
@@ -317,5 +321,51 @@ describe.skipIf(skipIfNoTestDb())("community realtime outbox (integration)", () 
 
     await reader.cancel();
     abort.abort();
+  });
+
+  it("rejects excess site streams with a polling-friendly retry contract", async () => {
+    vi.stubEnv("NP_COMMUNITY_REALTIME_MAX_STREAMS", "2");
+    vi.stubEnv("NP_COMMUNITY_REALTIME_MAX_SITE_STREAMS", "1");
+    const [post] = await (
+      await getTestDb()
+    )
+      .insert(postsTable)
+      .values({
+        title: "Capacity target",
+        content: npCreateEmptyRichTextContent(),
+        slug: "capacity-target",
+        status: "published",
+        publishedAt: new Date(),
+        siteId: "default",
+      })
+      .returning({ id: postsTable.id });
+    if (!post) throw new Error("Failed to seed capacity target.");
+
+    const firstAbort = new AbortController();
+    const url = `http://localhost:3000/api/community/events?scope=document&targetType=posts&targetId=${post.id}`;
+    const first = await realtimeGET(new NextRequest(url, { signal: firstAbort.signal }));
+    expect(first.status).toBe(200);
+    try {
+      const rejected = await realtimeGET(new NextRequest(url));
+      expect(rejected.status).toBe(503);
+      expect(rejected.headers.get("retry-after")).toBe("15");
+      expect(rejected.headers.get("cache-control")).toBe("private, no-store");
+      await expect(rejected.json()).resolves.toEqual(
+        expect.objectContaining({
+          status: 503,
+          error: expect.objectContaining({
+            code: "SERVICE_UNAVAILABLE",
+            message: expect.stringContaining("this site"),
+          }),
+        }),
+      );
+    } finally {
+      await first.body?.cancel();
+      firstAbort.abort();
+    }
+
+    const replacement = await realtimeGET(new NextRequest(url));
+    expect(replacement.status).toBe(200);
+    await replacement.body?.cancel();
   });
 });

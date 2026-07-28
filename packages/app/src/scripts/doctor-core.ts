@@ -96,6 +96,7 @@ import { messageForConnectionError } from "./setup-server-errors.js";
 import { findFreePort } from "./setup-server-ports.js";
 import { checkSiteQuotaUsage } from "./site-quota-check.js";
 import { checkCommunityRealtimeRetention } from "./community-realtime-check.js";
+import { npCheckCommunityRealtimeCapacityConfig } from "../lib/community-realtime-capacity.js";
 
 type DoctorEnv = Record<string, string | undefined>;
 
@@ -174,6 +175,7 @@ export async function collectDoctorChecks(
   checks.push(checkEmailRuntimeContract(env));
   checks.push(checkObservabilityRuntimeContract(env));
   checks.push(checkRateLimitRuntimeContract(env, prodMode));
+  checks.push(npCheckCommunityRealtimeCapacityConfig(env));
   checks.push(checkStorageRuntimeContract(env));
   checks.push(await checkCustomRoutesContract(options, cwd));
   checks.push(await checkI18nContract(options, cwd));

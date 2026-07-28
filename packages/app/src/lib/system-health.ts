@@ -35,6 +35,7 @@ import {
 } from "@nexpress/core/storage";
 
 import { getDb } from "./db";
+import { npGetCommunityRealtimeCapacitySnapshot } from "./community-realtime-capacity";
 import { evaluateCommunityRealtimeHealth } from "./community-realtime-health";
 
 /**
@@ -664,6 +665,56 @@ export async function checkCommunityRealtimeOutbox(): Promise<Check> {
   }
 }
 
+/** Process-local SSE admission, queue pressure, and polling diagnostics. */
+export function checkCommunityRealtimeCapacity(): Check {
+  try {
+    const snapshot = npGetCommunityRealtimeCapacitySnapshot();
+    const state =
+      snapshot.rejectedStreams > 0 || snapshot.backpressureCloses > 0 || snapshot.pollFailures > 0
+        ? "warn"
+        : "ok";
+    const detail =
+      `${snapshot.activeStreams.toString()}/${snapshot.maxStreams.toString()} active process streams` +
+      ` · ${snapshot.activeSites.toString()} active site(s)` +
+      ` · ${snapshot.maxSiteStreams.toString()} per-site limit` +
+      ` · peak ${snapshot.peakActiveStreams.toString()}` +
+      ` · ${snapshot.admittedStreams.toString()} admitted` +
+      ` · ${snapshot.rejectedStreams.toString()} rejected` +
+      ` · ${snapshot.backpressureCloses.toString()} pressure close(s)` +
+      ` · ${snapshot.pollFailures.toString()} poll failure(s)` +
+      ` · since ${snapshot.startedAt}`;
+    if (state === "ok") {
+      return {
+        id: "community.realtime_capacity",
+        label: "Community realtime capacity",
+        state,
+        detail,
+      };
+    }
+    const hint =
+      snapshot.pollFailures > 0
+        ? "Inspect Postgres and community runtime diagnostics; clients are polling while failed SSE reads reconnect."
+        : snapshot.backpressureCloses > 0
+          ? "Inspect slow clients and reverse-proxy buffering. Pressure closes resume from the last delivered SSE event id."
+          : "Inspect connection-start traffic, then tune NP_COMMUNITY_REALTIME_MAX_STREAMS and NP_COMMUNITY_REALTIME_MAX_SITE_STREAMS if this process has spare capacity.";
+    return {
+      id: "community.realtime_capacity",
+      label: "Community realtime capacity",
+      state,
+      detail,
+      hint,
+    };
+  } catch (error) {
+    return {
+      id: "community.realtime_capacity",
+      label: "Community realtime capacity",
+      state: "error",
+      detail: error instanceof Error ? error.message : String(error),
+      hint: "Set canonical positive stream limits with the per-site limit no greater than the process limit.",
+    };
+  }
+}
+
 /** Fail-closed collection hydration, hook-result, and API serialization boundaries. */
 export function checkCollectionRuntime(): Check {
   try {
@@ -758,6 +809,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
   checks.push(checkSearchAdapter());
   checks.push(checkI18nRuntime());
   checks.push(await checkCommunityRealtimeOutbox());
+  checks.push(checkCommunityRealtimeCapacity());
   checks.push(checkCommunityRuntime());
   checks.push(checkCollectionRuntime());
   checks.push(checkSecret());

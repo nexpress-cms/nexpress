@@ -98,6 +98,7 @@ describe("doctor core", () => {
         "email.contract",
         "observability.contract",
         "rate-limit.contract",
+        "community.realtime_capacity",
         "storage.contract",
         "routes.contract",
         "i18n.contract",
@@ -289,6 +290,25 @@ describe("doctor core", () => {
       expect.objectContaining({
         state: "error",
         detail: expect.stringContaining("NP_RATE_LIMIT_ADAPTER"),
+      }),
+    );
+  });
+
+  it("fails closed on malformed community realtime capacity without booting the app", async () => {
+    const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-core-"));
+    const checks = await collectDoctorChecks({
+      cwd,
+      nodeVersion: "24.11.1",
+      env: {
+        NP_COMMUNITY_REALTIME_MAX_STREAMS: "10",
+        NP_COMMUNITY_REALTIME_MAX_SITE_STREAMS: "20",
+      },
+    });
+
+    expect(checks.find((check) => check.id === "community.realtime_capacity")).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: expect.stringContaining("must be less than or equal"),
       }),
     );
   });

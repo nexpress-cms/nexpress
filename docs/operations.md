@@ -111,6 +111,14 @@ ops evidence. Any expired row is a warning: verify the worker and the hourly
 large backlog may need several hourly runs; new community writes retain a
 one-batch fallback when jobs are intentionally disabled.
 
+`community.realtime_capacity` validates the process-local SSE limits in Doctor
+and local/remote ops status. Admin Health adds the live process counters:
+active and peak streams, active sites, rejected admissions, backpressure
+closes, and polling-query failures. A malformed limit is blocking; non-zero
+runtime failure counters are warnings. Admission saturation returns `503` with
+`Retry-After: 15`, so clients keep using the documented bounded polling
+fallback while an operator inspects traffic or adjusts the capacity.
+
 ## SITE_URL is required for email flows
 
 Three routes refuse to run when `SITE_URL` is unset, returning a 500

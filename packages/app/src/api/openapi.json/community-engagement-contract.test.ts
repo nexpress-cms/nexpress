@@ -56,6 +56,13 @@ describe("OpenAPI community engagement contract", () => {
         },
         "401": {},
         "403": {},
+        "503": {
+          headers: {
+            "Retry-After": {
+              schema: { type: "integer", minimum: 1, example: 15 },
+            },
+          },
+        },
       },
     });
     expect(spec.components.schemas.community_realtime_event).toMatchObject({

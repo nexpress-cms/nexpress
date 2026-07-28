@@ -3,15 +3,23 @@ import {
   npRequireReadableCommunityDocument,
   npResolveCommunityRealtimeCursor,
   npResolveDocumentCommunityTarget,
+  type NpCommunityRealtimeCursor,
   type NpCommunityRealtimeServerSubscription,
 } from "@nexpress/core/community";
 import { npRequireCommunityRealtimeSubscription } from "@nexpress/core/community-contract";
+import { NpServiceUnavailableError } from "@nexpress/core";
 import { requireSiteId } from "@nexpress/core/sites";
 import type { NextRequest } from "next/server";
 
 import { ensureFor } from "../../../lib/init-core";
 import { npErrorResponse } from "../../../lib/api-response";
 import { npRequireCommunityRequest } from "../../../lib/community-contract";
+import {
+  NP_COMMUNITY_REALTIME_STREAM_BUFFER_BYTES,
+  npAcquireCommunityRealtimeStream,
+  npRecordCommunityRealtimeBackpressureClose,
+  npRecordCommunityRealtimePollFailure,
+} from "../../../lib/community-realtime-capacity";
 import { optionalMember, requireMember } from "../../../lib/member-auth-helpers";
 
 const STREAM_LIFETIME_MS = 25_000;
@@ -52,6 +60,14 @@ function waitForPoll(signal: AbortSignal): Promise<void> {
   });
 }
 
+function hasQueueCapacity(
+  controller: ReadableStreamDefaultController<Uint8Array>,
+  frame: Uint8Array,
+): boolean {
+  const desiredSize = controller.desiredSize;
+  return desiredSize !== null && desiredSize >= frame.byteLength;
+}
+
 /**
  * Site-scoped SSE invalidations. The stream carries no content or member ids:
  * clients refetch the existing exact, audience-aware APIs after each event.
@@ -82,51 +98,117 @@ export async function GET(request: NextRequest) {
       subscription = { ...requested, siteId };
     }
 
-    let cursor = await npResolveCommunityRealtimeCursor(
-      subscription,
-      request.headers.get("last-event-id"),
-    );
+    const admission = npAcquireCommunityRealtimeStream(siteId);
+    if (!admission.accepted) {
+      return npErrorResponse(
+        new NpServiceUnavailableError(
+          admission.reason === "site"
+            ? "Community realtime capacity is full for this site"
+            : "Community realtime capacity is full for this process",
+        ),
+        {
+          headers: {
+            "Cache-Control": "private, no-store",
+            "Retry-After": admission.retryAfterSeconds.toString(),
+          },
+        },
+      );
+    }
+    const lease = admission.lease;
+    const releaseLease = () => {
+      request.signal.removeEventListener("abort", releaseLease);
+      lease.release();
+    };
+    request.signal.addEventListener("abort", releaseLease, { once: true });
+    if (request.signal.aborted) releaseLease();
+
+    let cursor: NpCommunityRealtimeCursor;
+    try {
+      cursor = await npResolveCommunityRealtimeCursor(
+        subscription,
+        request.headers.get("last-event-id"),
+      );
+    } catch (error) {
+      releaseLease();
+      throw error;
+    }
     const encoder = new TextEncoder();
     const startedAt = Date.now();
     let cancelled = false;
     const cancelController = new AbortController();
     const streamSignal = AbortSignal.any([request.signal, cancelController.signal]);
-    const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        controller.enqueue(encoder.encode(`retry: ${RETRY_MS.toString()}\n: connected\n\n`));
-        let heartbeatAt = Date.now() + HEARTBEAT_INTERVAL_MS;
-        try {
-          while (
-            !cancelled &&
-            !streamSignal.aborted &&
-            Date.now() - startedAt < STREAM_LIFETIME_MS
-          ) {
-            const page = await npListCommunityRealtimeEvents(subscription, cursor);
-            cursor = page.cursor;
-            for (const event of page.events) {
-              if (cancelled || streamSignal.aborted) break;
-              controller.enqueue(
-                encoder.encode(`id: ${event.id}\ndata: ${JSON.stringify(event)}\n\n`),
-              );
-            }
-            if (cancelled || streamSignal.aborted) break;
-            if (Date.now() >= heartbeatAt) {
-              controller.enqueue(encoder.encode(`: heartbeat ${Date.now().toString()}\n\n`));
-              heartbeatAt = Date.now() + HEARTBEAT_INTERVAL_MS;
-            }
-            await waitForPoll(streamSignal);
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        start(controller) {
+          const connected = encoder.encode(`retry: ${RETRY_MS.toString()}\n: connected\n\n`);
+          if (!hasQueueCapacity(controller, connected)) {
+            npRecordCommunityRealtimeBackpressureClose();
+            releaseLease();
+            controller.close();
+            return;
           }
-        } catch (error) {
-          if (!cancelled) controller.error(error);
-          return;
+          controller.enqueue(connected);
+          void pump(controller);
+        },
+        cancel() {
+          cancelled = true;
+          cancelController.abort();
+          releaseLease();
+        },
+      },
+      {
+        highWaterMark: NP_COMMUNITY_REALTIME_STREAM_BUFFER_BYTES,
+        size: (chunk) => chunk.byteLength,
+      },
+    );
+
+    async function pump(controller: ReadableStreamDefaultController<Uint8Array>): Promise<void> {
+      let errored = false;
+      let heartbeatAt = Date.now() + HEARTBEAT_INTERVAL_MS;
+      try {
+        while (!cancelled && !streamSignal.aborted && Date.now() - startedAt < STREAM_LIFETIME_MS) {
+          const page = await npListCommunityRealtimeEvents(subscription, cursor);
+          for (const event of page.events) {
+            if (cancelled || streamSignal.aborted) break;
+            const frame = encoder.encode(`id: ${event.id}\ndata: ${JSON.stringify(event)}\n\n`);
+            if (!hasQueueCapacity(controller, frame)) {
+              npRecordCommunityRealtimeBackpressureClose();
+              return;
+            }
+            controller.enqueue(frame);
+          }
+          if (cancelled || streamSignal.aborted) break;
+          // Advance only after every event in the page reached the stream queue.
+          // A pressure close therefore reconnects from the last delivered SSE id.
+          cursor = page.cursor;
+          if (Date.now() >= heartbeatAt) {
+            const heartbeat = encoder.encode(`: heartbeat ${Date.now().toString()}\n\n`);
+            if (!hasQueueCapacity(controller, heartbeat)) {
+              npRecordCommunityRealtimeBackpressureClose();
+              return;
+            }
+            controller.enqueue(heartbeat);
+            heartbeatAt = Date.now() + HEARTBEAT_INTERVAL_MS;
+          }
+          await waitForPoll(streamSignal);
         }
-        if (!cancelled) controller.close();
-      },
-      cancel() {
-        cancelled = true;
-        cancelController.abort();
-      },
-    });
+      } catch (error) {
+        if (!cancelled && !streamSignal.aborted) {
+          npRecordCommunityRealtimePollFailure();
+          errored = true;
+          controller.error(error);
+        }
+      } finally {
+        releaseLease();
+        if (!cancelled && !errored) {
+          try {
+            controller.close();
+          } catch {
+            // A concurrent consumer cancellation already closed the controller.
+          }
+        }
+      }
+    }
 
     return new Response(stream, {
       headers: {

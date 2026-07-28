@@ -16,6 +16,7 @@ import { checkMigrationStatusReadiness } from "./doctor-readiness.js";
 import type * as OpsJobsCore from "./ops-jobs-core.js";
 import { checkSiteQuotaUsage } from "./site-quota-check.js";
 import { checkCommunityRealtimeRetention } from "./community-realtime-check.js";
+import { npCheckCommunityRealtimeCapacityConfig } from "../lib/community-realtime-capacity.js";
 
 type OpsEnv = Record<string, string | undefined>;
 
@@ -153,6 +154,7 @@ export async function collectOpsStatusChecks(env: OpsEnv = process.env): Promise
   checks.push(await checkDatabase(env));
   checks.push(await checkSiteQuotaUsage(env));
   checks.push(await checkCommunityRealtimeRetention(env));
+  checks.push(npCheckCommunityRealtimeCapacityConfig(env));
   checks.push(await checkMigrations(env));
   return checks;
 }

@@ -7,6 +7,13 @@ import type * as NpI18nModule from "@nexpress/core/i18n";
 import type * as NpCommunityModule from "@nexpress/core/community";
 import type * as NpCollectionsModule from "@nexpress/core/collections";
 
+import {
+  npAcquireCommunityRealtimeStream,
+  npRecordCommunityRealtimeBackpressureClose,
+  npRecordCommunityRealtimePollFailure,
+  npResetCommunityRealtimeCapacityForTests,
+} from "./community-realtime-capacity.js";
+
 interface HealthTestRuntime {
   config: {
     adapter: "s3";
@@ -261,6 +268,7 @@ const {
   checkCacheInvalidation,
   checkObservabilityAdapters,
   checkI18nRuntime,
+  checkCommunityRealtimeCapacity,
   checkCommunityRealtimeOutbox,
   checkCommunityRuntime,
   checkCollectionRuntime,
@@ -270,6 +278,7 @@ const {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  npResetCommunityRealtimeCapacityForTests();
   runtime.config = null;
   runtime.kind = "memory";
   runtime.observabilityConfig = null;
@@ -325,6 +334,54 @@ describe("live i18n health", () => {
 });
 
 describe("live community health", () => {
+  it("reports exact process and site realtime capacity", () => {
+    vi.stubEnv("NP_COMMUNITY_REALTIME_MAX_STREAMS", "3");
+    vi.stubEnv("NP_COMMUNITY_REALTIME_MAX_SITE_STREAMS", "2");
+    const admission = npAcquireCommunityRealtimeStream("default");
+    if (!admission.accepted) throw new Error("Expected a stream slot.");
+
+    expect(checkCommunityRealtimeCapacity()).toEqual(
+      expect.objectContaining({
+        id: "community.realtime_capacity",
+        state: "ok",
+        detail: expect.stringMatching(/1\/3 active process streams.*2 per-site limit/u),
+      }),
+    );
+    admission.lease.release();
+  });
+
+  it("surfaces admission, pressure, and poll failures", () => {
+    vi.stubEnv("NP_COMMUNITY_REALTIME_MAX_STREAMS", "1");
+    vi.stubEnv("NP_COMMUNITY_REALTIME_MAX_SITE_STREAMS", "1");
+    const admission = npAcquireCommunityRealtimeStream("default");
+    if (!admission.accepted) throw new Error("Expected a stream slot.");
+    expect(npAcquireCommunityRealtimeStream("default")).toEqual(
+      expect.objectContaining({ accepted: false, reason: "process" }),
+    );
+    npRecordCommunityRealtimeBackpressureClose();
+    npRecordCommunityRealtimePollFailure();
+
+    expect(checkCommunityRealtimeCapacity()).toEqual(
+      expect.objectContaining({
+        state: "warn",
+        detail: expect.stringMatching(/1 rejected.*1 pressure close.*1 poll failure/u),
+        hint: expect.stringContaining("Postgres"),
+      }),
+    );
+    admission.lease.release();
+  });
+
+  it("fails closed on malformed realtime capacity settings", () => {
+    vi.stubEnv("NP_COMMUNITY_REALTIME_MAX_STREAMS", "10");
+    vi.stubEnv("NP_COMMUNITY_REALTIME_MAX_SITE_STREAMS", "11");
+    expect(checkCommunityRealtimeCapacity()).toEqual(
+      expect.objectContaining({
+        state: "error",
+        detail: expect.stringContaining("must be less than or equal"),
+      }),
+    );
+  });
+
   it("reports the persisted realtime retention backlog", async () => {
     runtime.realtimeTotalRows = 5;
     runtime.realtimeExpiredRows = 2;

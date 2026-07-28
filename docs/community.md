@@ -356,8 +356,34 @@ scope watermark without disclosing whether another scope's event exists.
 Connections close after a bounded interval so document/member authorization is
 rechecked on reconnect. The application proxy permits at most 60 stream
 connection starts per minute and client IP, leaving room for normal automatic
-reconnects while bounding long-lived request churn. Rows older than six hours
-are removed oldest-first in fixed batches. The hourly
+reconnects while bounding long-lived request churn.
+
+Each web process also admits at most 200 active streams and 50 active streams
+for one site by default. Operators can set
+`NP_COMMUNITY_REALTIME_MAX_STREAMS` and
+`NP_COMMUNITY_REALTIME_MAX_SITE_STREAMS` to canonical integers from 1 through
+10,000; the per-site value cannot exceed the process value. These limits are
+intentionally process-local, so every replica owns the same bounded budget.
+Doctor fails closed on malformed settings. A full budget returns `503
+Service Unavailable`, `Retry-After: 15`, and `Cache-Control: private,
+no-store`; the browser hook treats the failed EventSource as unavailable and
+continues its existing 15-second polling fallback while reconnect attempts
+continue.
+
+Every admitted stream has a fixed 64 KiB output queue. If a slow client or
+buffering proxy fills it, the server closes that stream and records a
+backpressure diagnostic instead of growing memory without a bound. The
+in-memory cursor advances only after the complete fetched page reaches the
+queue, while each queued frame carries its own SSE id. Reconnect therefore
+resumes from the browser's last delivered `Last-Event-ID` and may replay a
+harmless invalidation, but cannot skip an undelivered one.
+
+Admin Health reports active/peak streams, active sites, admission rejections,
+backpressure closes, and polling-query failures since process start. The same
+capacity setting contract appears in `pnpm run doctor` and
+`pnpm --silent run ops:status -- --json`.
+
+Rows older than six hours are removed oldest-first in fixed batches. The hourly
 `system:communityRealtimePrune` job runs at minute 45 and deletes at most ten
 1,000-row batches per invocation; the write path keeps a 15-minute, one-batch
 opportunistic fallback for installations without a worker. Both paths use the
@@ -752,9 +778,13 @@ to another site. `community.realtime_retention` separately reports the exact
 expired-row count and oldest retained row through Doctor, `nexpress ops
 status`, Admin Health, and the remote ops surfaces. A cleanup exception remains
 a normal failed built-in job with its bounded job log, so worker and recent-job
-diagnostics expose the failure rather than hiding it. Adapter and registry
-failures are contained in a bounded runtime diagnostic buffer and surface as
-the `community` row in Admin Health;
+diagnostics expose the failure rather than hiding it.
+`community.realtime_capacity` validates the process/per-site stream limits in
+Doctor and ops, while Admin Health adds the serving process's active, peak,
+rejected, backpressure-close, and poll-failure counters.
+
+Adapter and registry failures are contained in a bounded runtime diagnostic
+buffer and surface as the `community` row in Admin Health;
 they are not silently converted into successful moderation or reputation
 results. Malformed persisted notification preferences also emit a runtime
 diagnostic and fail closed for the notification side effect without rolling
