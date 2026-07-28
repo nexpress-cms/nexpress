@@ -1,5 +1,62 @@
 # @nexpress/next
 
+## 0.4.2
+
+### Patch Changes
+
+- 375234b: Complete the shared public comment experience with exact enriched list windows,
+  batched public author and reaction projections, reply trees, owner edit/delete,
+  pagination, localized forum copy, and stable theme hooks. Keep all mutations on
+  the existing community routes and add exact OpenAPI, integration, model, and
+  contract coverage without a new forum-specific schema.
+- 375234b: Complete the community report contract with report-enabled collection targets,
+  race-safe unresolved deduplication, contextual Admin rows, and target-serialized
+  dismiss, comment-hide, and document-unpublish actions. Add localized forum post
+  reporting that follows configured collection slugs and update OpenAPI, doctor,
+  and docs.
+- 375234b: Add the multi-board forum factory, classic Korean-style skin, row-aware member-write policy, board moderation, locked comment UI, and default scaffold registration.
+- 375234b: Add explicit collection-owned public member activity with PII-free profile and
+  exact document/comment page contracts, validated API and OpenAPI surfaces,
+  prepared theme renderer props, forum opt-in, a complete community-theme view,
+  comment anchors, and scaffolded route coverage.
+
+  `GET /api/members/{handle}` now returns the exact profile fields directly;
+  clients using the previous `{ member: ... }` wrapper should read those fields
+  from the response root.
+
+- 375234b: Add a site-scoped, PII-free community realtime invalidation contract for
+  comments, document engagement, and member notifications. Events use a
+  short-lived database outbox with monotonic resume ordering, exact SSE wires,
+  bounded polling fallback, Doctor/OpenAPI/site-deletion coverage, and scaffolded
+  route wrappers.
+- 375234b: Add one declarative thread/category/collection moderation contract across member document writes, comments, reports, Admin role targets, doctor diagnostics, OpenAPI, and both forum skins. Scoped moderators now receive exact edit, delete, hide, restore, lock, pin, and report actions without a plugin-specific role system.
+- 375234b: Scope plugin activation to one site through sparse activation overrides while
+  keeping configured code loaded process-wide. Gate dispatch, Admin and public
+  contributions, OAuth, transfer, ops, and scheduled executions by the same site
+  snapshot; preserve active owners across block, pattern, and template collisions.
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+- Updated dependencies [375234b]
+  - @nexpress/core@0.4.2
+  - @nexpress/blocks@0.4.2
+  - @nexpress/theme@0.4.2
+
 ## 0.4.1
 
 ### Patch Changes
