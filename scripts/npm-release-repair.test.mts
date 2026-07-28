@@ -22,12 +22,12 @@ test("plans only the fixed @nexpress family and skips a missing accidental versi
     packages,
     "0.5.0",
     "0.4.2",
-    async (input) =>
-      new Response(
-        JSON.stringify({
-          versions: String(input).includes("theme-community") ? { "0.4.2": {} } : { "0.5.0": {} },
-        }),
-      ),
+    async (input) => {
+      assert.match(String(input), /\/0\.5\.0$/);
+      return String(input).includes("theme-community")
+        ? new Response(null, { status: 404 })
+        : new Response(JSON.stringify({ version: "0.5.0" }));
+    },
   );
 
   assert.deepEqual(
@@ -58,23 +58,14 @@ test("deprecates existing accidental versions, resets latest, and verifies both"
   const commands: string[][] = [];
   let repaired = false;
   const fetchImpl: typeof fetch = async (input) => {
-    const isTheme = String(input).includes("theme-community");
+    const url = String(input);
+    const isTheme = url.includes("theme-community");
     const message = "Accidental @nexpress/core@0.5.0 release; use @nexpress/core@0.4.2.";
-    return new Response(
-      JSON.stringify(
-        repaired
-          ? {
-              "dist-tags": { latest: "0.4.2" },
-              versions: isTheme
-                ? { "0.4.2": {} }
-                : { "0.4.2": {}, "0.5.0": { deprecated: message } },
-            }
-          : {
-              "dist-tags": { latest: "0.5.0" },
-              versions: isTheme ? { "0.4.2": {} } : { "0.4.2": {}, "0.5.0": {} },
-            },
-      ),
-    );
+    if (url.includes("/-/package/")) {
+      return new Response(JSON.stringify({ latest: repaired ? "0.4.2" : "0.5.0" }));
+    }
+    if (isTheme) return new Response(null, { status: 404 });
+    return new Response(JSON.stringify(repaired ? { deprecated: message } : {}));
   };
 
   await repairAccidentalFamilyRelease(packages, "0.5.0", "0.4.2", {

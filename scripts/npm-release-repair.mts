@@ -15,9 +15,8 @@ interface PackageRepairPlan {
   deprecationMessage: string;
 }
 
-interface RegistryPackageMetadata {
-  "dist-tags"?: unknown;
-  versions?: unknown;
+interface RegistryPackageVersionMetadata {
+  deprecated?: unknown;
 }
 
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/u;
@@ -28,25 +27,64 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-function registryPackageUrl(packageName: string): string {
-  const encodedName = packageName.startsWith("@")
-    ? packageName.replace("/", "%2f")
-    : encodeURIComponent(packageName);
-  return `https://registry.npmjs.org/${encodedName}`;
+function encodedPackageName(packageName: string): string {
+  return encodeURIComponent(packageName);
 }
 
-async function readRegistryPackage(
-  packageName: string,
+function registryPackageVersionUrl(packageName: string, version: string): string {
+  return `https://registry.npmjs.org/${encodedPackageName(packageName)}/${encodeURIComponent(version)}`;
+}
+
+function registryPackageDistTagsUrl(packageName: string): string {
+  return `https://registry.npmjs.org/-/package/${encodedPackageName(packageName)}/dist-tags`;
+}
+
+async function readRegistryJson(
+  url: string,
+  label: string,
   fetchImpl: typeof fetch,
-): Promise<RegistryPackageMetadata> {
-  const response = await fetchImpl(registryPackageUrl(packageName), {
+  allowNotFound = false,
+): Promise<unknown | null> {
+  const response = await fetchImpl(url, {
     headers: { accept: "application/json" },
     signal: AbortSignal.timeout(15_000),
   });
+  if (response.status === 404 && allowNotFound) return null;
   if (!response.ok) {
-    throw new Error(`${packageName}: registry returned HTTP ${response.status}`);
+    throw new Error(`${label}: registry returned HTTP ${response.status}`);
   }
-  return (await response.json()) as RegistryPackageMetadata;
+  return (await response.json()) as unknown;
+}
+
+async function readRegistryPackageVersion(
+  packageName: string,
+  version: string,
+  fetchImpl: typeof fetch,
+  allowNotFound = false,
+): Promise<RegistryPackageVersionMetadata | null> {
+  const value = await readRegistryJson(
+    registryPackageVersionUrl(packageName, version),
+    `${packageName}@${version}`,
+    fetchImpl,
+    allowNotFound,
+  );
+  return value === null ? null : (value as RegistryPackageVersionMetadata);
+}
+
+async function readRegistryPackageDistTags(
+  packageName: string,
+  fetchImpl: typeof fetch,
+): Promise<Record<string, unknown>> {
+  const value = await readRegistryJson(
+    registryPackageDistTagsUrl(packageName),
+    `${packageName} dist-tags`,
+    fetchImpl,
+  );
+  const distTags = asRecord(value);
+  if (!distTags) {
+    throw new Error(`${packageName}: registry dist-tags are not an object`);
+  }
+  return distTags;
 }
 
 function deprecationMessage(packageName: string, previousVersion: string, targetVersion: string) {
@@ -89,11 +127,10 @@ export async function planAccidentalFamilyReleaseRepair(
   const family = validateAccidentalFamilyReleaseRepair(packages, previousVersion, targetVersion);
   return Promise.all(
     family.map(async (pkg) => {
-      const metadata = await readRegistryPackage(pkg.name, fetchImpl);
-      const versions = asRecord(metadata.versions);
+      const previous = await readRegistryPackageVersion(pkg.name, previousVersion, fetchImpl, true);
       return {
         name: pkg.name,
-        previousVersionExists: versions?.[previousVersion] !== undefined,
+        previousVersionExists: previous !== null,
         deprecationMessage: deprecationMessage(pkg.name, previousVersion, targetVersion),
       };
     }),
@@ -102,14 +139,14 @@ export async function planAccidentalFamilyReleaseRepair(
 
 function collectRepairProblems(
   plans: PackageRepairPlan[],
-  metadataByName: Map<string, RegistryPackageMetadata>,
+  distTagsByName: Map<string, Record<string, unknown>>,
+  previousVersionsByName: Map<string, RegistryPackageVersionMetadata | null>,
   previousVersion: string,
   targetVersion: string,
 ): string[] {
   const problems: string[] = [];
   for (const plan of plans) {
-    const metadata = metadataByName.get(plan.name);
-    const distTags = asRecord(metadata?.["dist-tags"]);
+    const distTags = distTagsByName.get(plan.name);
     if (distTags?.latest !== targetVersion) {
       problems.push(
         `${plan.name}: latest is ${String(distTags?.latest)}, expected ${targetVersion}`,
@@ -117,8 +154,7 @@ function collectRepairProblems(
     }
 
     if (!plan.previousVersionExists) continue;
-    const versions = asRecord(metadata?.versions);
-    const previous = asRecord(versions?.[previousVersion]);
+    const previous = previousVersionsByName.get(plan.name);
     if (previous?.deprecated !== plan.deprecationMessage) {
       problems.push(`${plan.name}@${previousVersion}: deprecation message is not synchronized`);
     }
@@ -157,12 +193,34 @@ export async function repairAccidentalFamilyRelease(
   const deadline = Date.now() + timeoutMs;
   let problems: string[] = [];
   while (true) {
-    const metadata = await Promise.all(
-      plans.map(
-        async (plan) => [plan.name, await readRegistryPackage(plan.name, fetchImpl)] as const,
+    const distTags = new Map(
+      await Promise.all(
+        plans.map(
+          async (plan) =>
+            [plan.name, await readRegistryPackageDistTags(plan.name, fetchImpl)] as const,
+        ),
       ),
     );
-    problems = collectRepairProblems(plans, new Map(metadata), previousVersion, targetVersion);
+    const previousVersions = new Map(
+      await Promise.all(
+        plans.map(
+          async (plan) =>
+            [
+              plan.name,
+              plan.previousVersionExists
+                ? await readRegistryPackageVersion(plan.name, previousVersion, fetchImpl)
+                : null,
+            ] as const,
+        ),
+      ),
+    );
+    problems = collectRepairProblems(
+      plans,
+      distTags,
+      previousVersions,
+      previousVersion,
+      targetVersion,
+    );
     if (problems.length === 0) return;
     if (Date.now() >= deadline) {
       throw new Error(`Release repair verification timed out:\n${problems.join("\n")}`);

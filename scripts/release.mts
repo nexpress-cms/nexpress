@@ -94,9 +94,28 @@ export async function release(repoRoot: string): Promise<void> {
     }
   }
 
-  run("pnpm", ["exec", "changeset", "publish", "--no-git-tag"], repoRoot);
-
-  await verifyPublishedWorkspacePackages(packages);
+  let publishError: unknown;
+  try {
+    run("pnpm", ["exec", "changeset", "publish", "--no-git-tag"], repoRoot);
+  } catch (error) {
+    publishError = error;
+  }
+  try {
+    await verifyPublishedWorkspacePackages(packages);
+  } catch (verificationError) {
+    if (publishError) {
+      throw new AggregateError(
+        [publishError, verificationError],
+        "Changesets publish failed and the exact registry contract did not converge.",
+      );
+    }
+    throw verificationError;
+  }
+  if (publishError) {
+    console.warn(
+      "[release] Changesets exited non-zero, but every exact package manifest and provenance attestation is present; continuing.",
+    );
+  }
   console.log(`[release] verified ${packages.length} package manifests and attestations on npm.`);
   if (repairFrom && repairTo && bootstrapToken) {
     await withNodeAuthToken(bootstrapToken, () =>
