@@ -20,18 +20,20 @@ name: Release
 # (no remaining changesets), the same step runs `pnpm release`
 # to validate, publish, verify registry metadata, and tag the release.
 #
-# **No NPM_TOKEN.** Auth uses GitHub's OIDC: the workflow's
-# `id-token: write` permission lets npm exchange the short-lived
-# OIDC token for publish rights, gated by each package's Trusted
-# Publisher config on npmjs.com (which pins this exact repo +
+# **No standing NPM token.** Auth normally uses GitHub's OIDC: the
+# workflow's `id-token: write` permission lets npm exchange the
+# short-lived OIDC token for publish rights, gated by each package's
+# Trusted Publisher config on npmjs.com (which pins this exact repo +
 # workflow). Sigstore provenance attaches automatically via
-# `NPM_CONFIG_PROVENANCE: "true"`.
+# `NPM_CONFIG_PROVENANCE: "true"`. `NPM_BOOTSTRAP_TOKEN` is an
+# optional, short-lived repository secret used only for the first
+# publish of a new package name; remove it immediately afterwards.
 #
 # **First-publish prerequisite.** A package must either (a)
 # already exist on npm with Trusted Publishers configured for
-# this workflow, OR (b) be published once via local
-# `pnpm publish --access public` with 2FA, then have its TP
-# config added on npmjs.com afterwards. See
+# this workflow, OR (b) be published once by this workflow with a
+# short-lived `NPM_BOOTSTRAP_TOKEN`, then have its TP config added
+# on npmjs.com afterwards. See
 # `docs/releasing.md` § "Trusted Publisher setup" for the
 # step-by-step. Never replace that bootstrap command with direct
 # `npm publish`: npm does not rewrite pnpm's `workspace:*`
@@ -148,6 +150,13 @@ jobs:
           createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Empty during normal releases, so npm uses OIDC Trusted
+          # Publishing. For a brand-new package name only, an operator may
+          # temporarily set this repository secret to a granular token with
+          # publish access and 2FA bypass. Keeping the publish in GitHub
+          # Actions preserves the provenance attestation required by the
+          # post-publish gate. Delete the secret immediately after bootstrap.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
 
       # `changesets/action` uses `GITHUB_TOKEN`, and GitHub suppresses

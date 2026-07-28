@@ -32,6 +32,16 @@ test("the Release workflow delegates conditional verification to the release scr
 
   assert.doesNotMatch(workflow, /^\s+- name: Build$/m);
   assert.doesNotMatch(workflow, /^\s+- name: Typecheck$/m);
+  assert.match(
+    workflow,
+    /NODE_AUTH_TOKEN:\s*\${{\s*secrets\.NPM_BOOTSTRAP_TOKEN\s*}}/,
+    "new package names need an explicitly temporary CI bootstrap credential",
+  );
+  assert.doesNotMatch(
+    workflow,
+    /secrets\.NPM_TOKEN/,
+    "normal releases must not regain a standing npm token",
+  );
   assert.equal(rootManifest.scripts?.release, "tsx scripts/release.mts");
 });
 
