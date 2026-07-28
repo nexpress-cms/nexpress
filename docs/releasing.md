@@ -1,7 +1,7 @@
 # Releasing
 
-**Current published baseline:** NexPress `0.5.0` and `create-nexpress 0.1.37`
-(tag `v0.5.0`). The Version Packages PR remains the only supported path for
+**Current published baseline:** NexPress `0.4.1` and `create-nexpress 0.1.37`
+(tag `v0.4.1`). The Version Packages PR remains the only supported path for
 normal package version bumps; merge it only after its generated changelogs,
 package versions, local verification, and required CI have been reviewed.
 
@@ -61,11 +61,16 @@ an unpublished line early.
 
 ## Auth: Trusted Publishing (OIDC)
 
-The workflow does **not** use `NPM_TOKEN`. npm 2024+ recommends
+The workflow does **not** use a standing npm token. npm 2024+ recommends
 [**Trusted Publishing**][tp-docs] — a token-less auth model
 backed by GitHub's OIDC. The same `id-token: write` workflow
 permission that signs Sigstore provenance also lets npm verify
 the workflow run's identity and grant publish access.
+
+The optional `NPM_BOOTSTRAP_TOKEN` repository secret is reserved for the
+first publish of a brand-new package name. It must be short-lived, scoped to
+the NexPress packages being bootstrapped, and deleted immediately after that
+publish succeeds.
 
 [tp-docs]: https://docs.npmjs.com/trusted-publishers
 
@@ -86,13 +91,12 @@ clicking once for every package in the fixed Changesets group:
 
 1. **Package must already exist on npm.** TP can't be configured
    for a name that doesn't exist yet. For first-time publishes,
-   either:
-   - **Path A:** Publish each package once locally with
-     `pnpm publish --access public` + 2FA. Then proceed to step 2.
-   - **Path B:** Use a one-shot classic Automation token for
-     the first CI publish, then add TP configs, then revoke
-     the token. ("Bypass 2FA" warning is acceptable for a
-     token that lives only minutes.)
+   create a granular npm access token with read/write package permission and
+   2FA bypass, scoped as narrowly as npm allows. Add it to the GitHub
+   repository as `NPM_BOOTSTRAP_TOKEN`, then rerun the Release workflow.
+   Keeping the first publish in GitHub Actions preserves the provenance
+   attestation required by the post-publish gate. Do not publish locally:
+   local publishes cannot carry this workflow's provenance.
 
    > **Do not substitute `npm publish` for `pnpm publish`.** Source
    > manifests intentionally use pnpm's `workspace:*` protocol. A direct
@@ -100,18 +104,21 @@ clicking once for every package in the fixed Changesets group:
    > replacing them with the current fixed-group version, leaving the package
    > impossible to install outside this monorepo. Before a first publish,
    > `pnpm pack --dry-run --json` must show the expected package contents; the
-   > actual publish must still run through `pnpm publish`.
+   > actual publish must still run through the repository's pnpm/Changesets
+   > release path.
 
-2. **Go to the package settings page on npmjs.com:**
+2. **Delete the `NPM_BOOTSTRAP_TOKEN` repository secret and revoke the npm
+   token** as soon as the first CI publish succeeds.
+3. **Go to the package settings page on npmjs.com:**
    `https://www.npmjs.com/package/@nexpress/<name>/access`
-3. **"Trusted Publishers" tab → Add a publisher.**
-4. **Fill GitHub Actions config:**
+4. **"Trusted Publishers" tab → Add a publisher.**
+5. **Fill GitHub Actions config:**
    - Publisher type: GitHub Actions
    - Organization or user: `nexpress-cms`
    - Repository: `nexpress`
    - Workflow filename: `release.yml`
    - Environment name: leave blank (no GH environment used)
-5. **Repeat for every published package.** Including `@nexpress/*`
+6. **Repeat for every published package.** Including `@nexpress/*`
    scoped + the unscoped `create-nexpress`. The post-publish
    verification step below lists what was published — use it
    as the worklist.
@@ -168,6 +175,12 @@ If both pre-merge commands pass, the PR is safe to merge — the next push to
 Version PRs still need explicit maintainer approval before merge. Do not merge
 or auto-merge them just because the Changesets PR exists; first confirm that
 the queued release is the batch you intended to publish.
+
+A fixed-family minor bump requires a separate, explicit approval naming the
+exact target version (for example, “publish 0.5.0”). Generic instructions to
+publish, release, or update the demo authorize no minor bump. If the Version
+PR crosses a minor boundary without that exact approval, stop and report both
+the proposed versions and every `minor` changeset that caused the bump.
 
 The default branch is guarded by a repository ruleset, not the legacy branch
 protection endpoint. If `gh api repos/nexpress-cms/nexpress/branches/main/protection`

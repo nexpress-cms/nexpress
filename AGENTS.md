@@ -404,6 +404,18 @@ When a leaf package changes and you used the default `pnpm dev`, the leaf's `dis
 - `pnpm verify` — pre-merge gate. Runs `turbo run build typecheck test` in one shot. CI also runs on PRs and selected `push: main` changes (see NOTES below), but this is still the fastest local equivalent — run it before merging anything that touches schema, migrations, codegen, or risky surface a typecheck-only pass might miss (#586). Cheap thanks to turbo caching when you've been building during dev.
 - `pnpm changeset` opens the changesets prompt — run it whenever you make a user-facing change to a `@nexpress/*` package (Phase 22.1). The generated file in `.changeset/` is committed with the code. See `.changeset/README.md` for the rule of thumb on when a changeset is needed.
 
+### Release authorization (hard rule)
+
+Never merge or publish a Version PR that raises the fixed `@nexpress/*`
+family across a minor boundary (for example, `0.4.x` to `0.5.0`) unless the
+user has explicitly approved that exact target minor version in the current
+release discussion. A general request such as “publish the version”,
+“release”, or “update the demo” does **not** authorize a minor bump. If the
+generated Version PR proposes an unapproved minor, stop before merge, report
+the exact proposed versions and the changesets causing the bump, and ask for
+approval. This rule also applies when the Version PR is already open and all
+CI checks are green.
+
 Running a single package's build/typecheck:
 
 ```bash
