@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-26 (community realtime retention now uses bounded
+**Last refreshed:** 2026-07-28 (community realtime SSE now has exact
+process/site admission limits, bounded output queues, cursor-safe backpressure
+closure, and shared Doctor, Admin Health, ops, OpenAPI, scaffold, and polling
+fallback guidance.)
+
+**Earlier:** 2026-07-26 (community realtime retention now uses bounded
 oldest-first batches, an hourly built-in cleanup job, write-time fallback,
 and one expired/oldest-row diagnostic across Doctor, Admin Health, and ops.)
 

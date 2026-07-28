@@ -53,6 +53,7 @@ describe.skipIf(skipIfNoTestDb())("system-health diagnostics (#F)", () => {
       "search",
       "i18n",
       "community.realtime_retention",
+      "community.realtime_capacity",
       "community",
       "collections",
       "secret",

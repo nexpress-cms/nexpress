@@ -147,6 +147,10 @@ describe("ops status core", () => {
           id: "community.realtime_retention",
           state: "warn",
         }),
+        expect.objectContaining({
+          id: "community.realtime_capacity",
+          state: "ok",
+        }),
       ]),
     );
   });

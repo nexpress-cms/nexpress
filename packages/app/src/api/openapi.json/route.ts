@@ -4948,7 +4948,7 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
     get: {
       summary: "Subscribe to site-scoped community invalidations",
       description:
-        "A short-lived Server-Sent Events stream. Document scope is public only when the current viewer may read the target; inbox scope requires member authentication. Frames carry only the exact `community_realtime_event` invalidation payload, so clients refetch the existing audience-aware APIs. EventSource resumes with `Last-Event-ID`; clients should poll their read API while SSE is unavailable.",
+        "A short-lived Server-Sent Events stream. Document scope is public only when the current viewer may read the target; inbox scope requires member authentication. Frames carry only the exact `community_realtime_event` invalidation payload, so clients refetch the existing audience-aware APIs. EventSource resumes with `Last-Event-ID`; admission rejection and bounded queue pressure close the transport without advancing past an undelivered event, and clients should poll their read API while SSE is unavailable.",
       parameters: [
         {
           in: "query",
@@ -4995,6 +4995,16 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
         "403": { description: "Current viewer cannot read the document target" },
         "404": { description: "Document target not found" },
         "429": { description: "Too many stream connection starts from this client" },
+        "503": {
+          description:
+            "This process or site has no free realtime stream slot; poll the read API and retry later.",
+          headers: {
+            "Retry-After": {
+              description: "Seconds before another stream admission attempt is recommended.",
+              schema: { type: "integer", minimum: 1, example: 15 },
+            },
+          },
+        },
       },
     },
   };

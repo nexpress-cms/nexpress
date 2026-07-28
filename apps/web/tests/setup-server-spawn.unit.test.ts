@@ -144,6 +144,8 @@ describe("setup-server.ts end-to-end (spawn)", () => {
       expect(result.envContent).not.toBeNull();
       expect(result.envContent).toMatch(/DATABASE_URL=postgres:\/\/.*:6137\/testproj/);
       expect(result.envContent).toMatch(new RegExp(`^NP_SECRET=${TEST_SECRET}$`, "m"));
+      expect(result.envContent).toMatch(/^NP_COMMUNITY_REALTIME_MAX_STREAMS=200$/m);
+      expect(result.envContent).toMatch(/^NP_COMMUNITY_REALTIME_MAX_SITE_STREAMS=50$/m);
     });
 
     it("writes NEXPRESS_DB_PORT line when DATABASE_URL port != 5433", async () => {
@@ -230,6 +232,31 @@ describe("setup-server.ts end-to-end (spawn)", () => {
       );
       expect(result.envContent).toMatch(/^NEXPRESS_DB_PORT=6138$/m);
       expect(result.envContent).toMatch(/^SITE_URL=http:\/\/localhost:4010$/m);
+    });
+
+    it("preserves valid community realtime capacity across setup rewrites", async () => {
+      writeFileSync(
+        envPath,
+        [
+          "DATABASE_URL=postgres://nexpress:nexpress@localhost:6138/existingproj",
+          `NP_SECRET=${TEST_SECRET}`,
+          "SITE_URL=http://localhost:3000",
+          "NP_COMMUNITY_REALTIME_MAX_STREAMS=120",
+          "NP_COMMUNITY_REALTIME_MAX_SITE_STREAMS=30",
+        ].join("\n"),
+      );
+      const result = await runWizard({
+        envPath,
+        env: {
+          NP_SETUP_NONINTERACTIVE: "1",
+          NP_SETUP_RUN_MIGRATIONS: "false",
+          NP_SETUP_CREATE_ADMIN: "false",
+        },
+      });
+
+      expect(result.code, result.stderr).toBe(0);
+      expect(result.envContent).toMatch(/^NP_COMMUNITY_REALTIME_MAX_STREAMS=120$/m);
+      expect(result.envContent).toMatch(/^NP_COMMUNITY_REALTIME_MAX_SITE_STREAMS=30$/m);
     });
 
     it("exits non-zero with a helpful error when DATABASE_URL is missing", async () => {

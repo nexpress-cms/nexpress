@@ -424,6 +424,10 @@ Implementation status:
 - Status and Doctor include `community.realtime_retention`, with the exact
   expired-row count and oldest outbox timestamp needed to distinguish a
   healthy six-hour window from a stalled hourly cleanup worker.
+- Status and Doctor include `community.realtime_capacity`, validating the
+  process and per-site SSE limits before traffic. Admin and remote health
+  evidence add the live active, rejected, backpressure, and poll-failure
+  counters from the serving process.
 - `nexpress ops preflight --target <host> --json` combines deploy-plan and
   production doctor evidence plus `ops migrate plan` evidence into
   `schemaVersion: "np.ops-preflight.v1"`. Brief reports print a per-step
