@@ -7,10 +7,6 @@ import {
   readPublishableWorkspacePackages,
   verifyPublishedWorkspacePackages,
 } from "./published-release-contract.mjs";
-import {
-  repairAccidentalFamilyRelease,
-  validateAccidentalFamilyReleaseRepair,
-} from "./npm-release-repair.mjs";
 
 function run(command: string, args: string[], repoRoot: string): void {
   execFileSync(command, args, { cwd: repoRoot, stdio: "inherit" });
@@ -36,9 +32,6 @@ export async function release(repoRoot: string): Promise<void> {
   const bootstrapPackageName = process.env.NP_NPM_BOOTSTRAP_PACKAGE;
   const bootstrapToken = process.env.NODE_AUTH_TOKEN;
   delete process.env.NODE_AUTH_TOKEN;
-  const repairFrom = process.env.NP_RELEASE_REPAIR_FROM;
-  const repairTo = process.env.NP_RELEASE_REPAIR_TO;
-  const repairRequested = repairFrom !== undefined || repairTo !== undefined;
 
   if (bootstrapPackageName && !bootstrapToken) {
     throw new Error(
@@ -48,25 +41,9 @@ export async function release(repoRoot: string): Promise<void> {
   if (bootstrapPackageName && !packages.some((pkg) => pkg.name === bootstrapPackageName)) {
     throw new Error(`Bootstrap package ${bootstrapPackageName} is not a publishable workspace.`);
   }
-  if (repairRequested && (!repairFrom || !repairTo || !bootstrapToken)) {
-    throw new Error(
-      "Release repair requires NP_RELEASE_REPAIR_FROM, NP_RELEASE_REPAIR_TO, and NPM_BOOTSTRAP_TOKEN.",
-    );
-  }
-  if (repairFrom && repairTo) {
-    validateAccidentalFamilyReleaseRepair(packages, repairFrom, repairTo);
-  }
 
   if (unpublished.length === 0) {
-    await verifyPublishedWorkspacePackages(packages);
-    if (repairFrom && repairTo && bootstrapToken) {
-      await withNodeAuthToken(bootstrapToken, () =>
-        repairAccidentalFamilyRelease(packages, repairFrom, repairTo),
-      );
-      run("pnpm", ["exec", "tsx", "scripts/tag-release.mts"], repoRoot);
-    } else {
-      console.log("[release] every workspace version is already published; nothing to do.");
-    }
+    console.log("[release] every workspace version is already published; nothing to do.");
     return;
   }
 
@@ -117,14 +94,6 @@ export async function release(repoRoot: string): Promise<void> {
     );
   }
   console.log(`[release] verified ${packages.length} package manifests and attestations on npm.`);
-  if (repairFrom && repairTo && bootstrapToken) {
-    await withNodeAuthToken(bootstrapToken, () =>
-      repairAccidentalFamilyRelease(packages, repairFrom, repairTo),
-    );
-    console.log(
-      `[release] deprecated the accidental ${repairFrom} family and restored latest=${repairTo}.`,
-    );
-  }
   run("pnpm", ["exec", "tsx", "scripts/tag-release.mts"], repoRoot);
 }
 

@@ -67,10 +67,10 @@ backed by GitHub's OIDC. The same `id-token: write` workflow
 permission that signs Sigstore provenance also lets npm verify
 the workflow run's identity and grant publish access.
 
-The optional `NPM_BOOTSTRAP_TOKEN` repository secret is reserved for the
-first publish of a brand-new package name. It must be short-lived, scoped to
-the NexPress packages being bootstrapped, and deleted immediately after that
-publish succeeds.
+The optional `NPM_BOOTSTRAP_TOKEN` repository secret and exact
+`NPM_BOOTSTRAP_PACKAGE` repository variable are reserved for the first publish
+of a brand-new package name. They must be short-lived, narrowly scoped, and
+deleted immediately after that publish succeeds.
 
 [tp-docs]: https://docs.npmjs.com/trusted-publishers
 
@@ -93,7 +93,9 @@ clicking once for every package in the fixed Changesets group:
    for a name that doesn't exist yet. For first-time publishes,
    create a granular npm access token with read/write package permission and
    2FA bypass, scoped as narrowly as npm allows. Add it to the GitHub
-   repository as `NPM_BOOTSTRAP_TOKEN`, then rerun the Release workflow.
+   repository as `NPM_BOOTSTRAP_TOKEN`, set the repository Actions variable
+   `NPM_BOOTSTRAP_PACKAGE` to the exact new package name, then rerun the
+   Release workflow.
    Keeping the first publish in GitHub Actions preserves the provenance
    attestation required by the post-publish gate. Do not publish locally:
    local publishes cannot carry this workflow's provenance.
@@ -107,8 +109,9 @@ clicking once for every package in the fixed Changesets group:
    > actual publish must still run through the repository's pnpm/Changesets
    > release path.
 
-2. **Delete the `NPM_BOOTSTRAP_TOKEN` repository secret and revoke the npm
-   token** as soon as the first CI publish succeeds.
+2. **Delete the `NPM_BOOTSTRAP_TOKEN` repository secret and
+   `NPM_BOOTSTRAP_PACKAGE` repository variable, then revoke the npm token** as
+   soon as the first CI publish succeeds.
 3. **Go to the package settings page on npmjs.com:**
    `https://www.npmjs.com/package/@nexpress/<name>/access`
 4. **"Trusted Publishers" tab → Add a publisher.**

@@ -38,14 +38,16 @@ test("the Release workflow delegates conditional verification to the release scr
     /NODE_AUTH_TOKEN:\s*\${{\s*secrets\.NPM_BOOTSTRAP_TOKEN\s*}}/,
     "new package names need an explicitly temporary CI bootstrap credential",
   );
+  assert.match(
+    workflow,
+    /NP_NPM_BOOTSTRAP_PACKAGE:\s*\${{\s*vars\.NPM_BOOTSTRAP_PACKAGE\s*}}/,
+    "the exact first-publish package must be an explicitly temporary Actions variable",
+  );
   assert.doesNotMatch(
     workflow,
     /secrets\.NPM_TOKEN/,
     "normal releases must not regain a standing npm token",
   );
-  assert.match(workflow, /NP_NPM_BOOTSTRAP_PACKAGE:\s*"@nexpress\/theme-community"/);
-  assert.match(workflow, /NP_RELEASE_REPAIR_FROM:\s*"0\.5\.0"/);
-  assert.match(workflow, /NP_RELEASE_REPAIR_TO:\s*"0\.4\.2"/);
   assert.ok(
     releaseScript.indexOf("delete process.env.NODE_AUTH_TOKEN") <
       releaseScript.indexOf('run("pnpm", ["test:repo"]'),
