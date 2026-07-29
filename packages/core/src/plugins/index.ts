@@ -74,6 +74,7 @@ export {
 
 export type {
   NpPluginApiRouteMethod,
+  NpPluginApiRouteMember,
   NpPluginApiRouteRequest,
   NpPluginApiRouteRequestMethod,
   NpPluginApiRouteResponse,

@@ -7,6 +7,11 @@ export type NpPluginApiRouteRequestMethod = NpPluginApiRouteMethod | "HEAD";
 
 export type NpPluginApiRouteUser = NpPluginUser;
 
+/** Active public member identity, when the request carries a valid member session. */
+export interface NpPluginApiRouteMember {
+  readonly id: string;
+}
+
 export interface NpPluginApiRouteRequest {
   readonly method: NpPluginApiRouteRequestMethod;
   readonly path: string;
@@ -15,6 +20,7 @@ export interface NpPluginApiRouteRequest {
   readonly body: unknown;
   readonly headers: Readonly<Record<string, string>>;
   readonly user?: NpPluginApiRouteUser;
+  readonly member?: NpPluginApiRouteMember;
 }
 
 export interface NpPluginApiRouteResponse {

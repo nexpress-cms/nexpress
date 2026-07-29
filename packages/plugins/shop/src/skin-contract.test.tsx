@@ -37,6 +37,24 @@ const messages = {
   stock: "재고",
   taxIncluded: "세금 포함",
   catalogOnly: "카탈로그 전용",
+  cart: "장바구니",
+  addToCart: "담기",
+  addingToCart: "담는 중",
+  addedToCart: "담음",
+  cartEmpty: "비어 있음",
+  cartQuantity: "수량",
+  cartRemove: "삭제",
+  cartClear: "비우기",
+  cartSubtotal: "합계",
+  cartUnavailable: "구매 불가",
+  cartPriceChanged: "가격 변경",
+  cartInsufficientStock: "재고 부족",
+  cartMixedCurrency: "통화 혼합",
+  cartReady: "준비됨",
+  cartNotReady: "준비 안 됨",
+  cartCheckoutUnavailable: "결제 없음",
+  cartUpdateFailed: "갱신 실패",
+  selectVariant: "옵션 선택",
   previous: "이전",
   next: "다음",
   backToCatalog: "돌아가기",
@@ -161,5 +179,31 @@ describe("shop skin contract", () => {
     expect(html).toContain('role="search"');
     expect(html).toContain('name="q"');
     expect(html).toContain(">추천</span>");
+  });
+
+  it("renders the complete cart fallback through the skin contract", async () => {
+    const html = renderToStaticMarkup(
+      <>
+        {await classicShopSkin.renderCart?.({
+          basePath: "/shop",
+          apiPath: "/api/plugins/shop/cart",
+          quote: {
+            contract: "np.shop-cart-quote.v1",
+            revision: 0,
+            lines: [],
+            totals: [],
+            totalUnits: 0,
+            ready: false,
+            issues: [],
+            fingerprint: "a".repeat(64),
+            updatedAt: null,
+          },
+          messages,
+        })}
+      </>,
+    );
+    expect(html).toContain('data-np-shop-surface="cart"');
+    expect(html).toContain("장바구니");
+    expect(html).toContain("비어 있음");
   });
 });

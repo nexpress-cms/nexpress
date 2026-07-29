@@ -12,6 +12,7 @@ import { readJsonBody } from "@nexpress/next";
 import { optionalAuth } from "../../../../lib/auth-helpers";
 import { npErrorResponse } from "../../../../lib/api-response";
 import { ensureFor } from "../../../../lib/init-core";
+import { optionalMember } from "../../../../lib/member-auth-helpers";
 import { npCreatePluginApiRouteResponse } from "../../plugin-route-response";
 
 export const dynamic = "force-dynamic";
@@ -39,13 +40,13 @@ async function handlePluginRoute(
   { params }: { params: Promise<{ pluginId: string; path: string[] }> },
 ) {
   try {
-    await ensureFor("plugins");
-    const { pluginId, path } = await params;
-    const routePath = `/${path.join("/")}`;
     const method = resolveRequestMethod(request.method);
     if (!method) {
       throw new NpMethodNotAllowedError("Plugin route method not allowed");
     }
+    await ensureFor(method === "GET" || method === "HEAD" ? "plugins" : "write");
+    const { pluginId, path } = await params;
+    const routePath = `/${path.join("/")}`;
     const registeredMethod = registeredMethodForRequest(method);
 
     const routes = getPluginRoutes();
@@ -62,7 +63,10 @@ async function handlePluginRoute(
 
     // Honor the route's `auth: true` declaration. The plugin route itself may
     // apply stricter authorization inside its handler.
-    const sessionUser = await optionalAuth(request);
+    const [sessionUser, member] = await Promise.all([
+      optionalAuth(request),
+      optionalMember(request),
+    ]);
     if (matched.auth && !sessionUser) {
       throw new NpAuthError("Authentication required");
     }
@@ -96,6 +100,7 @@ async function handlePluginRoute(
       user: sessionUser
         ? { id: sessionUser.id, email: sessionUser.email, role: sessionUser.role }
         : undefined,
+      member: member ? { id: member.id } : undefined,
     });
 
     return npCreatePluginApiRouteResponse(result, method);

@@ -4,6 +4,8 @@ import { buildPageMetadata } from "@nexpress/next";
 import type { NpRouteRenderProps } from "@nexpress/next";
 import { notFound } from "next/navigation";
 
+import { ShopAddToCart } from "@nexpress/plugin-shop/client";
+
 import {
   findShopProduct,
   getShopMessages,
@@ -11,6 +13,7 @@ import {
   resolveShopSkin,
   type NpShopRuntime,
 } from "../runtime.js";
+import { getShopCartClientMessages } from "../skins/shared.js";
 
 export function createShopProductMetadata(runtime: NpShopRuntime) {
   return async function shopProductMetadata({ params }: NpRouteRenderProps) {
@@ -44,6 +47,13 @@ export function createShopProductRoute(runtime: NpShopRuntime) {
       product,
       categories,
       description,
+      cartAction: (
+        <ShopAddToCart
+          apiPath="/api/plugins/shop/cart"
+          product={product}
+          messages={getShopCartClientMessages(messages)}
+        />
+      ),
       messages,
     });
   };
