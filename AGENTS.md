@@ -2,7 +2,13 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-28 (community realtime SSE now has exact
+**Last refreshed:** 2026-07-29 (the first-party Shop catalog and independent
+Storefront theme now share bounded product/category, integer-money, SKU,
+inventory, Admin, route, skin, block, SEO/search, scaffold, and migration
+contracts without implying checkout or making either package depend on the
+other.)
+
+**Earlier:** 2026-07-28 (community realtime SSE now has exact
 process/site admission limits, bounded output queues, cursor-safe backpressure
 closure, and shared Doctor, Admin Health, ops, OpenAPI, scaffold, and polling
 fallback guidance.)

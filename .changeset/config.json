@@ -27,6 +27,7 @@
       "@nexpress/plugin-reading-time",
       "@nexpress/plugin-sdk",
       "@nexpress/plugin-seo-audit",
+      "@nexpress/plugin-shop",
       "@nexpress/plugin-webhook-relay",
       "@nexpress/rate-limiter-redis",
       "@nexpress/theme",
@@ -35,6 +36,7 @@
       "@nexpress/theme-docs",
       "@nexpress/theme-magazine",
       "@nexpress/theme-portfolio",
+      "@nexpress/theme-storefront",
       "@nexpress/translation",
       "@nexpress/wp-import",
       "@nexpress/xliff"

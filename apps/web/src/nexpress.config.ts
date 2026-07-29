@@ -1,6 +1,7 @@
 import { defineConfig } from "@nexpress/core";
 import { defaultCollections, defaultThemes, storageFromEnv } from "@nexpress/app/config-defaults";
 import { forumPlugin } from "@nexpress/plugin-forum";
+import { shopPlugin } from "@nexpress/plugin-shop";
 // @nexpress:plugins-imports-start
 import { calloutPlugin } from "@nexpress/plugin-block-callout";
 import { embedPlugin } from "@nexpress/plugin-block-embed";
@@ -44,6 +45,7 @@ export default defineConfig({
   ],
   plugins: [
     forumPlugin,
+    shopPlugin,
     // @nexpress:plugins-list-start
     calloutPlugin,
     embedPlugin,

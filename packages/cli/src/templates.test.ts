@@ -228,6 +228,7 @@ describe("getProjectFiles", () => {
       "@nexpress/theme-docs",
       "@nexpress/theme-magazine",
       "@nexpress/theme-portfolio",
+      "@nexpress/theme-storefront",
       "@nexpress/xliff",
     ];
     for (const dep of families) {

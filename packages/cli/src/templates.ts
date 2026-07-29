@@ -203,6 +203,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "@nexpress/theme-docs": nexpressVersion,
         "@nexpress/theme-magazine": nexpressVersion,
         "@nexpress/theme-portfolio": nexpressVersion,
+        "@nexpress/theme-storefront": nexpressVersion,
         "@nexpress/next": nexpressVersion,
         "@nexpress/plugin-sdk": nexpressVersion,
         "@nexpress/xliff": nexpressVersion,
@@ -318,7 +319,7 @@ function nexpressConfigTemplate(config: TemplateConfig): string {
   // Built-in collections + themes + i18n are sourced from
   // `@nexpress/app/config-defaults` so the single source of truth
   // lives in the framework, not in scaffolded boilerplate.
-  // The five built-in themes + example collections + default plugins
+  // The six built-in themes + example collections + default plugins
   // are always wired in — the operator picks the active theme and
   // seeds (or skips) sample content in the first-boot admin setup
   // wizard, not at scaffold time.

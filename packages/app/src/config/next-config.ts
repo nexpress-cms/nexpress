@@ -55,6 +55,7 @@ export const defaultTranspilePackages = [
   "@nexpress/theme-docs",
   "@nexpress/theme-magazine",
   "@nexpress/theme-portfolio",
+  "@nexpress/theme-storefront",
   "@nexpress/next",
   "@nexpress/plugin-sdk",
 ] as const;

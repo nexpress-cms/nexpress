@@ -1,0 +1,70 @@
+{
+  "name": "@nexpress/plugin-shop",
+  "version": "0.4.2",
+  "description": "Catalog and storefront plugin for NexPress.",
+  "license": "MIT",
+  "author": "Nexpress",
+  "homepage": "https://github.com/nexpress-cms/nexpress#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nexpress-cms/nexpress.git",
+    "directory": "packages/plugins/shop"
+  },
+  "bugs": {
+    "url": "https://github.com/nexpress-cms/nexpress/issues"
+  },
+  "keywords": [
+    "nexpress",
+    "plugin",
+    "shop",
+    "catalog",
+    "storefront"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./styles.css": "./src/styles.css"
+  },
+  "files": [
+    "dist",
+    "src/styles.css"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "next": ">=15",
+    "react": "^19.0.0"
+  },
+  "dependencies": {
+    "@nexpress/core": "workspace:*",
+    "@nexpress/editor": "workspace:*",
+    "@nexpress/next": "workspace:*",
+    "@nexpress/plugin-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.0.0",
+    "next": "^16.2.11",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.10"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch --no-clean",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint",
+    "test": "vitest run"
+  }
+}

@@ -33,6 +33,12 @@ bounded recursive JSON values; functions, `undefined`, custom prototypes,
 circular references, excessive depth, and excessive inventories are rejected
 at the write boundary.
 
+Top-level or group-nested text fields declared with `unique: true` receive a
+database unique index over `(site_id, field)`. Uniqueness is therefore
+site-local and race-safe; optional fields may still have multiple `NULL`
+values under PostgreSQL semantics. Array-child text fields use
+`(parent_id, field)` instead, enforcing uniqueness within one parent document.
+
 Every document includes `id`, canonical `status`, `createdBy`, `updatedBy`,
 `visibility`, and `siteId`. Timestamp-enabled collections also include
 `createdAt` and `updatedAt`; slug, i18n, member-author, and framework

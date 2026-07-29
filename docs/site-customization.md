@@ -104,7 +104,7 @@ install/remove flow.
 
 Built-in packs already wired by the scaffold:
 `@nexpress/theme-default`, `@nexpress/theme-community`, `@nexpress/theme-magazine`,
-`@nexpress/theme-portfolio`, `@nexpress/theme-docs`. Switch the active
+`@nexpress/theme-portfolio`, `@nexpress/theme-storefront`, `@nexpress/theme-docs`. Switch the active
 one from admin → Appearance.
 
 To install a third-party theme, one command from the project root:

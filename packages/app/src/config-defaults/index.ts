@@ -6,6 +6,7 @@ import { communityTheme } from "@nexpress/theme-community";
 import { docsTheme } from "@nexpress/theme-docs";
 import { magazineTheme } from "@nexpress/theme-magazine";
 import { portfolioTheme } from "@nexpress/theme-portfolio";
+import { storefrontTheme } from "@nexpress/theme-storefront";
 
 import { calloutPlugin } from "@nexpress/plugin-block-callout";
 import { embedPlugin } from "@nexpress/plugin-block-embed";
@@ -14,6 +15,7 @@ import { newsletterPlugin } from "@nexpress/plugin-block-newsletter";
 import { pricingPlugin } from "@nexpress/plugin-block-pricing";
 import { statsBlockPlugin } from "@nexpress/plugin-block-stats";
 import { forumCollections, forumPlugin } from "@nexpress/plugin-forum";
+import { shopCollections, shopPlugin } from "@nexpress/plugin-shop";
 import { githubOAuthPlugin } from "@nexpress/plugin-oauth-github";
 import { googleOAuthPlugin } from "@nexpress/plugin-oauth-google";
 import { readingTimePlugin } from "@nexpress/plugin-reading-time";
@@ -49,6 +51,7 @@ export const defaultCollections: NpConfig["collections"] = [
   categoriesCollection,
   tagsCollection,
   ...forumCollections,
+  ...shopCollections,
 ];
 
 /**
@@ -64,6 +67,8 @@ export const defaultCollections: NpConfig["collections"] = [
  *     surface.
  *   - forum — uses the board/post collections pre-included in
  *     `defaultCollections` and owns the public routes under `/boards`.
+ *   - shop — owns catalog categories/products, `/shop` routes, skins,
+ *     homepage blocks, and Admin inventory metrics; checkout is not implied.
  *   - oauth-github, oauth-google — register OAuth provider entries
  *     but only become reachable when the corresponding env vars
  *     (or admin auto-form values) are populated; the empty case logs
@@ -85,6 +90,7 @@ export const defaultPlugins: NonNullable<NpConfig["plugins"]> = [
   seoAuditPlugin,
   // Surface-contributing plugins.
   forumPlugin,
+  shopPlugin,
   // Env / admin-form gated — register-safe, no side effect without
   // credentials.
   githubOAuthPlugin,
@@ -105,6 +111,7 @@ export const defaultThemes: NpRegisteredTheme[] = [
   communityTheme,
   magazineTheme,
   portfolioTheme,
+  storefrontTheme,
   docsTheme,
 ];
 

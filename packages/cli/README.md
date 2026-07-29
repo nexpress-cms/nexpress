@@ -14,9 +14,9 @@ pnpm run setup    # browser env wizard: DB, NP_SECRET, storage, migrations
 pnpm dev
 ```
 
-Every scaffold ships the five built-in themes (`default`, `community`,
-`magazine`, `portfolio`, `docs`) along with example collections and plugins. The
-active theme and whether to seed sample content are picked in the
+Every scaffold ships the six built-in themes (`default`, `community`,
+`magazine`, `portfolio`, `storefront`, `docs`) along with example collections
+and plugins. The active theme and whether to seed sample content are picked in the
 first-boot admin setup wizard at [`/admin/setup`](http://localhost:3000/admin/setup),
 not at scaffold time.
 
