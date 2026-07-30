@@ -274,6 +274,10 @@ export const storefrontCss = `
 }
 .np-storefront-shell .np-shop-product-image,
 .np-storefront-shell .np-shop-category-grid > a { border-radius: 0; }
+.np-storefront-shell [data-np-shop-surface="cart"] .np-shop-cart-lines > li,
+.np-storefront-shell [data-np-shop-surface="cart"] .np-shop-cart-summary {
+  border-radius: 0;
+}
 @media (max-width: 52rem) {
   .np-storefront-header-main { grid-template-columns: 1fr auto; min-height: 4.5rem; }
   .np-storefront-header nav { grid-column: 1 / -1; justify-content: flex-start; padding-bottom: 1rem; overflow-x: auto; }

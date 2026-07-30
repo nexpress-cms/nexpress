@@ -183,6 +183,13 @@
       "when": 1785261168761,
       "tag": "0025_aspiring_luckman",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1785325953178,
+      "tag": "0026_loose_lester",
+      "breakpoints": true
     }
   ]
 }

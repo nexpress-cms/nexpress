@@ -24,14 +24,15 @@ It provides:
 - product and category collections;
 - exact integer-minor-unit prices and bounded variants;
 - inventory availability projection;
-- catalog, category, and product routes;
+- catalog, category, product, and cart routes;
+- bounded guest/member carts with revision-safe mutations and live price/stock quotes;
 - classic and storefront-full skins;
 - featured-product and category-grid blocks.
 
-Cart, checkout, payment, orders, and fulfillment are intentionally outside
-this foundation package version. The catalog does not imply that a visitor can
-purchase a product.
+Checkout, payment, orders, inventory reservation, and fulfillment remain
+outside this package. A cart is a short-lived intent and does not imply that a
+visitor purchased or reserved a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
-for the exact price, SKU, inventory, query, skin, block, and theme-integration
+for the exact price, SKU, inventory, cart, skin, block, and theme-integration
 contracts.

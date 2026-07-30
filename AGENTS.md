@@ -2,7 +2,11 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-29 (the first-party Shop catalog and independent
+**Last refreshed:** 2026-07-29 (Shop carts now share one exact site-owned
+guest/member identity, TTL storage, revision, merge, live quote, CSRF, Admin,
+scheduled cleanup, route, skin, and theme contract without implying checkout.)
+
+**Earlier:** 2026-07-29 (the first-party Shop catalog and independent
 Storefront theme now share bounded product/category, integer-money, SKU,
 inventory, Admin, route, skin, block, SEO/search, scaffold, and migration
 contracts without implying checkout or making either package depend on the

@@ -2,16 +2,17 @@
 
 `@nexpress/plugin-shop` is the first-party catalog foundation for NexPress.
 It owns product and category data, inventory projection, public catalog
-routes, Admin collection forms, dashboard metrics, blocks, and skins.
+routes, bounded guest/member carts, Admin collection forms and health actions,
+blocks, and skins.
 
 `@nexpress/theme-storefront` is a separate brand/content theme. It works with
 ordinary pages and posts when Shop is absent. When both packages are active,
 the theme enhances Shop through documented CSS variables, classes, data
 attributes, and optional page blocks; neither package imports the other.
 
-This release is deliberately **catalog-only**. It does not create carts,
-checkout sessions, payments, orders, fulfillment, refunds, or claim that a
-visitor completed a purchase.
+The cart is deliberately a **pre-checkout intent**. It does not create checkout
+sessions, reserve or decrement inventory, collect customer PII, create orders,
+take payments, fulfill, refund, or claim that a visitor completed a purchase.
 
 ## Default setup
 
@@ -22,8 +23,9 @@ migration:
 1. Open Admin → Commerce → Shop categories and publish categories.
 2. Open Admin → Commerce → Products and publish products.
 3. Visit `/shop`.
-4. Optionally activate Storefront from Admin → Appearance.
-5. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
+4. Add a product to the cart and visit `/shop/cart`.
+5. Optionally activate Storefront from Admin → Appearance.
+6. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
    or insert the `shop.storefront-home` pattern.
 
 Sites upgrading from a version without Shop must generate, review, and apply
@@ -77,6 +79,7 @@ remove the relationship first.
 | `/shop`                          | Published product catalog             |
 | `/shop/categories/:categorySlug` | One published category                |
 | `/shop/products/:productSlug`    | Product detail, variants, and gallery |
+| `/shop/cart`                     | Current guest or member cart          |
 
 Catalog and category routes recognize:
 
@@ -92,16 +95,66 @@ parameters are ignored. Filter state survives pagination. Collection SEO paths
 feed the shared sitemap/search contracts, and product metadata includes its
 summary and primary image.
 
+## Cart and quote contract
+
+Shop exposes `GET`, `POST`, `PATCH`, and `DELETE` at
+`/api/plugins/shop/cart`. The public route is browser-oriented and owns its
+CSRF checks because plugin API routes are framework-CSRF-exempt:
+
+- guests receive an HttpOnly, SameSite=Lax `np-shop-cart` cookie containing a
+  random opaque id and HMAC signature; only its SHA-256 digest reaches storage;
+- guest mutation tokens are derived from that signed identity and returned by
+  the cart `GET`;
+- active members use their site-scoped member id and the existing
+  `np-mb-csrf` double-submit token;
+- signing requires the framework `NP_SECRET` (at least 32 characters).
+
+Cart rows live in site-scoped `np_plugin_storage`, not content collections.
+They therefore do not enter search, revisions, content export, or document
+quotas. Guest carts expire after 30 days and member carts after 180 days.
+Every mutation refreshes expiry. Each cart accepts at most 50 distinct product
+option lines and 99 units per line. An hourly scheduled task deletes at most
+500 expired rows per active site, while Admin offers the same bounded cleanup.
+
+Every write includes `expectedRevision`. A stale concurrent write receives
+HTTP 409 and must refresh before retrying. When an authenticated member first
+reads a browser's guest cart, Shop locks both owner keys in canonical order,
+merges quantities deterministically while retaining the member's existing
+lines first, caps the public bounds, deletes the guest row, and expires the
+guest cookie.
+
+Stored cart lines contain only display snapshots and identity:
+
+- product id, slug, and name;
+- optional canonical variant SKU and name;
+- quantity, currency, and integer unit price.
+
+Every response re-reads published products and enabled variants. The returned
+`np.shop-cart-quote.v1` quote recomputes current prices, stock, per-currency
+subtotals, total units, a deterministic fingerprint, and exact issue codes:
+`product-unavailable`, `variant-required`, `variant-unavailable`,
+`insufficient-stock`, `price-changed`, and `mixed-currency`. Price changes are
+visible but do not alone block readiness. Unavailable products/options,
+insufficient stock, and mixed currencies do. Checkout integrations must quote
+again and establish their own order, payment, inventory reservation,
+idempotency, tax, and shipping contracts.
+
 ## Admin surfaces
 
 The two collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
-The plugin also declares two typed dashboard metric actions:
+The plugin declares three typed dashboard metric actions:
 
 - total product rows;
 - published low-stock products.
+- active unexpired carts.
+
+Admin also exposes cart storage health (active, expired, or invalid rows) and a
+confirmed bounded expiry cleanup action. The scheduled-task and action
+registries make these contracts visible to plugin doctor without executing
+them.
 
 The manifest-level action registry binds each metric widget to its exact
 handler kind, so plugin validation and doctor can inspect the relationship
@@ -116,7 +169,7 @@ Every Shop factory registers:
 | `classic`         | Compact, neutral catalog and detail fallback               |
 | `storefront-full` | Larger editorial header and image-led product presentation |
 
-Both skins implement catalog, category, and product rendering. They receive
+Both skins implement catalog, category, product, and cart rendering. They receive
 prepared products, localized messages, safe formatted money, and rendered
 rich text; they do not own collection policy.
 
@@ -137,6 +190,8 @@ with core-token fallbacks:
 
 The main public hooks are `.np-shop`, `.np-shop-product-card`,
 `.np-shop-product-grid`, `.np-shop-category-grid`, `.np-shop-filters`,
+`.np-shop-cart-client`, `[data-np-shop-cart-action]`,
+`[data-np-shop-cart-line]`,
 `[data-np-shop-surface]`, `[data-np-shop-skin]`,
 `[data-np-shop-inventory]`, and `[data-np-shop-block]`.
 
@@ -174,19 +229,21 @@ collection and plugin arrays: handlers, relationships, routes, blocks, and
 Admin actions intentionally close over one runtime definition.
 
 Custom build-time skins implement `NpShopSkin` and may be added through the
-factory's `skins` option. Existing `classic` and `storefront-full` ids cannot
-be replaced.
+factory's `skins` option. `renderCart` is additive and optional; when omitted,
+the complete shared cart surface is used. Routes own identity, mutation, and
+quote policy while skins receive a prepared client surface. Existing `classic`
+and `storefront-full` ids cannot be replaced.
 
 ## Next commerce slices
 
 Future transaction work should remain separable from this foundation:
 
-1. cart and checkout intent;
+1. checkout intent over a fresh cart quote;
 2. payment-provider adapters and idempotent webhook intake;
 3. order, refund, fulfillment, and customer Admin workflows;
 4. stock reservation and transactional decrement;
 5. legal/tax/shipping policy integrations.
 
 Those features require explicit payment, security, and operational contracts.
-The current catalog data and independent theme do not pre-authorize or emulate
-them.
+The current catalog/cart data and independent theme do not pre-authorize or
+emulate them.

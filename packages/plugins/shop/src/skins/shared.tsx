@@ -1,13 +1,45 @@
 import Link from "next/link";
 
+import { ShopCart } from "@nexpress/plugin-shop/client";
+
 import { buildShopCatalogHref } from "../runtime.js";
 import type {
+  NpShopCartClientMessages,
+  NpShopCartSkinProps,
   NpShopCatalogSkinProps,
   NpShopCategorySkinProps,
   NpShopMessages,
   NpShopProductSkinProps,
   NpShopProductSummary,
 } from "../types.js";
+
+function cartClientMessages(messages: NpShopMessages): NpShopCartClientMessages {
+  return {
+    locale: messages.locale,
+    cart: messages.cart,
+    addToCart: messages.addToCart,
+    addingToCart: messages.addingToCart,
+    addedToCart: messages.addedToCart,
+    cartEmpty: messages.cartEmpty,
+    cartQuantity: messages.cartQuantity,
+    cartRemove: messages.cartRemove,
+    cartClear: messages.cartClear,
+    cartSubtotal: messages.cartSubtotal,
+    cartUnavailable: messages.cartUnavailable,
+    cartPriceChanged: messages.cartPriceChanged,
+    cartInsufficientStock: messages.cartInsufficientStock,
+    cartMixedCurrency: messages.cartMixedCurrency,
+    cartReady: messages.cartReady,
+    cartNotReady: messages.cartNotReady,
+    cartCheckoutUnavailable: messages.cartCheckoutUnavailable,
+    cartUpdateFailed: messages.cartUpdateFailed,
+    selectVariant: messages.selectVariant,
+  };
+}
+
+export function getShopCartClientMessages(messages: NpShopMessages): NpShopCartClientMessages {
+  return cartClientMessages(messages);
+}
 
 function InventoryLabel({
   product,
@@ -297,6 +329,10 @@ export function ShopProductSurface({ skin, ...props }: NpShopProductSkinProps & 
           <div className="np-shop-catalog-notice">
             <strong>{props.messages.catalogOnly}</strong>
           </div>
+          {props.cartAction}
+          <Link className="np-shop-cart-link" href={`${props.basePath}/cart`}>
+            {props.messages.cart}
+          </Link>
         </aside>
       </div>
       {variants.length > 0 ? (
@@ -334,6 +370,24 @@ export function ShopProductSurface({ skin, ...props }: NpShopProductSkinProps & 
         </section>
       ) : null}
       <article className="np-shop-product-description">{props.description}</article>
+    </main>
+  );
+}
+
+export function ShopCartSurface({ skin, ...props }: NpShopCartSkinProps & { skin: string }) {
+  return (
+    <main className="np-shop np-shop-cart" data-np-shop-surface="cart" data-np-shop-skin={skin}>
+      <header className="np-shop-page-header">
+        <p>{props.messages.catalogOnly}</p>
+        <h1>{props.messages.cart}</h1>
+        <Link href={props.basePath}>{props.messages.backToCatalog}</Link>
+      </header>
+      <ShopCart
+        apiPath={props.apiPath}
+        basePath={props.basePath}
+        initialQuote={props.quote}
+        messages={cartClientMessages(props.messages)}
+      />
     </main>
   );
 }

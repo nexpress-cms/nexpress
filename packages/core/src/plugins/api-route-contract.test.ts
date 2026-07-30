@@ -8,6 +8,7 @@ import {
   npValidatePluginApiRoutePath,
   npValidatePluginApiRouteResponse,
   type NpPluginApiRouteMethod,
+  type NpPluginApiRouteRequest,
 } from "./api-route-contract.js";
 
 describe("plugin API route contract", () => {
@@ -19,6 +20,22 @@ describe("plugin API route contract", () => {
     expect(npIsPluginApiRouteMethod("PATCH")).toBe(true);
     expect(npIsPluginApiRouteMethod("HEAD")).toBe(false);
     expect(npIsPluginApiRouteMethod("get")).toBe(false);
+  });
+
+  it("exposes staff and active-member identities as independent additive summaries", () => {
+    const request = {
+      method: "GET",
+      path: "/cart",
+      params: { pluginId: "shop" },
+      query: {},
+      body: undefined,
+      headers: {},
+      user: { id: "staff-id", email: "staff@example.com", role: "admin" },
+      member: { id: "123e4567-e89b-42d3-a456-426614174000" },
+    } satisfies NpPluginApiRouteRequest;
+
+    expect(request.user.id).toBe("staff-id");
+    expect(request.member.id).toBe("123e4567-e89b-42d3-a456-426614174000");
   });
 
   it.each(["/health", "/v1/health-check", "/.well-known/status", "/under_score/~user"])(

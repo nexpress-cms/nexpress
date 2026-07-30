@@ -1,0 +1,1 @@
+CREATE INDEX "np_plugin_storage_plugin_site_expiry_idx" ON "np_plugin_storage" USING btree ("plugin_id","site_id","expires_at");

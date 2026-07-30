@@ -377,6 +377,11 @@ export const npPluginStorage = pgTable(
     pk: primaryKey({ columns: [table.pluginId, table.siteId, table.key] }),
     pluginIdx: index("np_plugin_storage_plugin_id_idx").on(table.pluginId),
     siteIdx: index("np_plugin_storage_site_idx").on(table.siteId),
+    expiryIdx: index("np_plugin_storage_plugin_site_expiry_idx").on(
+      table.pluginId,
+      table.siteId,
+      table.expiresAt,
+    ),
   }),
 );
 

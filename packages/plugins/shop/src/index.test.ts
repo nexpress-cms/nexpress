@@ -32,6 +32,7 @@ describe("shop factory", () => {
       "/shop",
       "/shop/categories/:categorySlug",
       "/shop/products/:productSlug",
+      "/shop/cart",
     ]);
     expect(shopPlugin.blocks?.map((block) => block.type)).toEqual([
       "shop.featured-products",
@@ -46,7 +47,17 @@ describe("shop factory", () => {
     ).toEqual([
       { id: "countProducts", kind: "metric" },
       { id: "countLowStockProducts", kind: "metric" },
+      { id: "countActiveCarts", kind: "metric" },
+      { id: "cartHealth", kind: "status" },
+      { id: "cleanupExpiredCarts", kind: "action" },
     ]);
+    expect(shopPlugin.routes?.map((route) => `${route.method} ${route.path}`)).toEqual([
+      "GET /cart",
+      "POST /cart",
+      "PATCH /cart",
+      "DELETE /cart",
+    ]);
+    expect(shopPlugin.scheduled?.map((task) => task.id)).toEqual(["cleanup-expired-carts"]);
     expect([...createShop().runtime.skins.keys()]).toEqual(["classic", "storefront-full"]);
     expect(storefrontFullShopSkin.id).toBe("storefront-full");
   });
