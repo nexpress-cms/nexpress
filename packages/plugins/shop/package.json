@@ -1,7 +1,7 @@
 {
   "name": "@nexpress/plugin-shop",
   "version": "0.4.2",
-  "description": "Catalog, cart, checkout-intent, private order-draft, and storefront plugin for NexPress.",
+  "description": "Catalog, cart, checkout-intent, private order-draft, pending-order, and storefront plugin for NexPress.",
   "license": "MIT",
   "author": "Nexpress",
   "homepage": "https://github.com/nexpress-cms/nexpress#readme",

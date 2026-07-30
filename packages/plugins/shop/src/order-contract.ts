@@ -1,0 +1,608 @@
+import {
+  npShopCurrencies,
+  npShopOrderCancellationReasons,
+  npShopOrderPrivateDataStatuses,
+  npShopOrderStatuses,
+  type NpShopCheckoutIntentLine,
+  type NpShopCurrency,
+  type NpShopOrder,
+  type NpShopOrderList,
+  type NpShopOrderCancellationReason,
+  type NpShopOrderDraftCustomer,
+  type NpShopOrderDraftShipping,
+  type NpShopOrderPrivateDataStatus,
+  type NpShopOrderStatus,
+} from "./types.js";
+
+export const NP_SHOP_ORDER_CONTRACT = "np.shop-order.v1" as const;
+export const NP_SHOP_ORDER_LIST_CONTRACT = "np.shop-order-list.v1" as const;
+export const NP_SHOP_ORDER_STORAGE_CONTRACT = "np.shop-order-storage.v1" as const;
+export const NP_SHOP_ORDER_PRIVATE_CONTRACT = "np.shop-order-private.v1" as const;
+
+export const npShopOrderLimits = {
+  pendingTtlSeconds: 60 * 60 * 24,
+  commercialRetentionSeconds: 60 * 60 * 24 * 365,
+  maximumPendingPerOwner: 3,
+  ownerListSize: 20,
+  adminListSize: 50,
+  cleanupBatchSize: 500,
+  diagnosticSampleSize: 500,
+} as const;
+
+export interface NpShopOrderCreateInput {
+  idempotencyKey: string;
+  draftId: string;
+  expectedRevision: number;
+}
+
+export interface NpShopOrderCancelInput {
+  orderId: string;
+  expectedRevision: number;
+}
+
+export interface NpShopStoredOrder {
+  contract: typeof NP_SHOP_ORDER_STORAGE_CONTRACT;
+  id: string;
+  status: NpShopOrderStatus;
+  revision: number;
+  ownerSegment: string;
+  sourceDraftId: string;
+  checkoutIntentId: string;
+  cartRevision: number;
+  cartFingerprint: string;
+  currency: NpShopCurrency;
+  subtotalMinor: number;
+  totalUnits: number;
+  lines: NpShopCheckoutIntentLine[];
+  privateDataStatus: NpShopOrderPrivateDataStatus;
+  createdAt: string;
+  updatedAt: string;
+  pendingExpiresAt: string;
+  cancelledAt: string | null;
+  cancellationReason: NpShopOrderCancellationReason | null;
+  purgeAt: string;
+}
+
+export interface NpShopStoredOrderPrivate {
+  contract: typeof NP_SHOP_ORDER_PRIVATE_CONTRACT;
+  orderId: string;
+  customer: NpShopOrderDraftCustomer;
+  shipping: NpShopOrderDraftShipping;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export class NpShopOrderContractError extends Error {
+  readonly issues: string[];
+
+  constructor(message: string, issues: string[]) {
+    super(message);
+    this.name = "NpShopOrderContractError";
+    this.issues = issues;
+  }
+}
+
+export class NpShopOrderConflictError extends Error {
+  readonly code:
+    | "order_revision_conflict"
+    | "order_idempotency_conflict"
+    | "order_source_stale"
+    | "order_pending_limit";
+
+  constructor(code: NpShopOrderConflictError["code"], message: string) {
+    super(message);
+    this.name = "NpShopOrderConflictError";
+    this.code = code;
+  }
+}
+
+export class NpShopOrderNotFoundError extends Error {
+  constructor() {
+    super("The order does not exist for this browser identity.");
+    this.name = "NpShopOrderNotFoundError";
+  }
+}
+
+const canonicalUuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const canonicalIsoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
+const digestPattern = /^[0-9a-f]{64}$/u;
+const guestOwnerSegmentPattern = /^guest:[0-9a-f]{64}$/u;
+const lineKeys = [
+  "key",
+  "productId",
+  "productSlug",
+  "productName",
+  "variantSku",
+  "variantName",
+  "quantity",
+  "unitPriceMinor",
+  "lineTotalMinor",
+] as const;
+const customerKeys = ["fullName", "email", "phone"] as const;
+const shippingKeys = [
+  "recipientName",
+  "phone",
+  "countryCode",
+  "postalCode",
+  "addressLine1",
+  "addressLine2",
+  "locality",
+  "administrativeArea",
+] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  return prototype === Object.prototype || prototype === null;
+}
+
+function exactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+  path: string,
+  issues: string[],
+): void {
+  for (const key of Object.keys(value)) {
+    if (!expected.includes(key)) issues.push(`${path}.${key} is not supported.`);
+  }
+  for (const key of expected) {
+    if (!Object.hasOwn(value, key)) issues.push(`${path}.${key} is required.`);
+  }
+}
+
+function isCanonicalUuid(value: unknown): value is string {
+  return typeof value === "string" && canonicalUuidPattern.test(value);
+}
+
+function isOwnerSegment(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    (guestOwnerSegmentPattern.test(value) ||
+      (value.startsWith("member:") && isCanonicalUuid(value.slice("member:".length))))
+  );
+}
+
+function isCanonicalIso(value: unknown): value is string {
+  if (typeof value !== "string" || !canonicalIsoPattern.test(value)) return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
+}
+
+function isPositiveSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 1;
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0;
+}
+
+function isBoundedText(value: unknown, maximum: number): value is string {
+  return (
+    typeof value === "string" &&
+    value.length >= 1 &&
+    value.length <= maximum &&
+    value.trim() === value
+  );
+}
+
+function analyzeLine(value: unknown, path: string, issues: string[]): void {
+  if (!isRecord(value)) {
+    issues.push(`${path} must be a plain object.`);
+    return;
+  }
+  exactKeys(value, lineKeys, path, issues);
+  if (!isBoundedText(value.key, 300)) issues.push(`${path}.key is invalid.`);
+  if (!isCanonicalUuid(value.productId)) issues.push(`${path}.productId is invalid.`);
+  if (!isBoundedText(value.productSlug, 160)) issues.push(`${path}.productSlug is invalid.`);
+  if (!isBoundedText(value.productName, 200)) issues.push(`${path}.productName is invalid.`);
+  if (value.variantSku !== null && !isBoundedText(value.variantSku, 80)) {
+    issues.push(`${path}.variantSku is invalid.`);
+  }
+  if (value.variantName !== null && !isBoundedText(value.variantName, 120)) {
+    issues.push(`${path}.variantName is invalid.`);
+  }
+  if (!isPositiveSafeInteger(value.quantity)) issues.push(`${path}.quantity is invalid.`);
+  if (!isNonNegativeSafeInteger(value.unitPriceMinor)) {
+    issues.push(`${path}.unitPriceMinor is invalid.`);
+  }
+  if (
+    !isNonNegativeSafeInteger(value.lineTotalMinor) ||
+    (isPositiveSafeInteger(value.quantity) &&
+      isNonNegativeSafeInteger(value.unitPriceMinor) &&
+      value.lineTotalMinor !== value.quantity * value.unitPriceMinor)
+  ) {
+    issues.push(`${path}.lineTotalMinor is invalid.`);
+  }
+}
+
+function analyzeCustomer(value: unknown, path: string, issues: string[]): void {
+  if (!isRecord(value)) {
+    issues.push(`${path} must be a plain object.`);
+    return;
+  }
+  exactKeys(value, customerKeys, path, issues);
+  if (!isBoundedText(value.fullName, 120)) issues.push(`${path}.fullName is invalid.`);
+  if (
+    !isBoundedText(value.email, 254) ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(value.email) ||
+    value.email !== value.email.toLowerCase()
+  ) {
+    issues.push(`${path}.email is invalid.`);
+  }
+  if (!isBoundedText(value.phone, 32) || !/^\+?[0-9 ()-]{7,32}$/u.test(value.phone)) {
+    issues.push(`${path}.phone is invalid.`);
+  }
+}
+
+function analyzeShipping(value: unknown, path: string, issues: string[]): void {
+  if (!isRecord(value)) {
+    issues.push(`${path} must be a plain object.`);
+    return;
+  }
+  exactKeys(value, shippingKeys, path, issues);
+  if (!isBoundedText(value.recipientName, 120)) {
+    issues.push(`${path}.recipientName is invalid.`);
+  }
+  if (!isBoundedText(value.phone, 32) || !/^\+?[0-9 ()-]{7,32}$/u.test(value.phone)) {
+    issues.push(`${path}.phone is invalid.`);
+  }
+  if (typeof value.countryCode !== "string" || !/^[A-Z]{2}$/u.test(value.countryCode)) {
+    issues.push(`${path}.countryCode is invalid.`);
+  }
+  if (!isBoundedText(value.postalCode, 20)) issues.push(`${path}.postalCode is invalid.`);
+  if (!isBoundedText(value.addressLine1, 200)) issues.push(`${path}.addressLine1 is invalid.`);
+  if (value.addressLine2 !== null && !isBoundedText(value.addressLine2, 200)) {
+    issues.push(`${path}.addressLine2 is invalid.`);
+  }
+  if (!isBoundedText(value.locality, 100)) issues.push(`${path}.locality is invalid.`);
+  if (value.administrativeArea !== null && !isBoundedText(value.administrativeArea, 100)) {
+    issues.push(`${path}.administrativeArea is invalid.`);
+  }
+}
+
+const storedOrderKeys = [
+  "contract",
+  "id",
+  "status",
+  "revision",
+  "ownerSegment",
+  "sourceDraftId",
+  "checkoutIntentId",
+  "cartRevision",
+  "cartFingerprint",
+  "currency",
+  "subtotalMinor",
+  "totalUnits",
+  "lines",
+  "privateDataStatus",
+  "createdAt",
+  "updatedAt",
+  "pendingExpiresAt",
+  "cancelledAt",
+  "cancellationReason",
+  "purgeAt",
+] as const;
+
+export function npAnalyzeStoredShopOrder(value: unknown): string[] {
+  const issues: string[] = [];
+  if (!isRecord(value)) return ["order must be a plain object."];
+  exactKeys(value, storedOrderKeys, "order", issues);
+  if (value.contract !== NP_SHOP_ORDER_STORAGE_CONTRACT) {
+    issues.push(`order.contract must equal "${NP_SHOP_ORDER_STORAGE_CONTRACT}".`);
+  }
+  if (!isCanonicalUuid(value.id)) issues.push("order.id is invalid.");
+  if (!(npShopOrderStatuses as readonly unknown[]).includes(value.status)) {
+    issues.push("order.status is invalid.");
+  }
+  if (!isPositiveSafeInteger(value.revision)) issues.push("order.revision is invalid.");
+  if (!isOwnerSegment(value.ownerSegment)) {
+    issues.push("order.ownerSegment is invalid.");
+  }
+  if (!isCanonicalUuid(value.sourceDraftId)) issues.push("order.sourceDraftId is invalid.");
+  if (!isCanonicalUuid(value.checkoutIntentId)) issues.push("order.checkoutIntentId is invalid.");
+  if (!isPositiveSafeInteger(value.cartRevision)) issues.push("order.cartRevision is invalid.");
+  if (typeof value.cartFingerprint !== "string" || !digestPattern.test(value.cartFingerprint)) {
+    issues.push("order.cartFingerprint is invalid.");
+  }
+  if (!(npShopCurrencies as readonly unknown[]).includes(value.currency)) {
+    issues.push("order.currency is invalid.");
+  }
+  if (!isNonNegativeSafeInteger(value.subtotalMinor)) {
+    issues.push("order.subtotalMinor is invalid.");
+  }
+  if (!isPositiveSafeInteger(value.totalUnits)) issues.push("order.totalUnits is invalid.");
+  if (!Array.isArray(value.lines) || value.lines.length < 1 || value.lines.length > 100) {
+    issues.push("order.lines must contain between 1 and 100 entries.");
+  } else {
+    value.lines.forEach((line, index) =>
+      analyzeLine(line, `order.lines[${index.toString()}]`, issues),
+    );
+    const lineKeys = value.lines
+      .filter(isRecord)
+      .map((line) => line.key)
+      .filter((key): key is string => typeof key === "string");
+    if (new Set(lineKeys).size !== lineKeys.length) {
+      issues.push("order.lines keys must be unique.");
+    }
+  }
+  if (!(npShopOrderPrivateDataStatuses as readonly unknown[]).includes(value.privateDataStatus)) {
+    issues.push("order.privateDataStatus is invalid.");
+  }
+  for (const key of ["createdAt", "updatedAt", "pendingExpiresAt", "purgeAt"] as const) {
+    if (!isCanonicalIso(value[key])) issues.push(`order.${key} is invalid.`);
+  }
+  if (value.cancelledAt !== null && !isCanonicalIso(value.cancelledAt)) {
+    issues.push("order.cancelledAt is invalid.");
+  }
+  if (
+    value.cancellationReason !== null &&
+    !(npShopOrderCancellationReasons as readonly unknown[]).includes(value.cancellationReason)
+  ) {
+    issues.push("order.cancellationReason is invalid.");
+  }
+  if (
+    value.status === "pending-payment" &&
+    (value.cancelledAt !== null ||
+      value.cancellationReason !== null ||
+      value.privateDataStatus !== "retained")
+  ) {
+    issues.push(
+      "pending-payment orders require retained private data and no cancellation metadata.",
+    );
+  }
+  if (
+    value.status === "cancelled" &&
+    (value.cancelledAt === null ||
+      value.cancellationReason === null ||
+      value.privateDataStatus !== "redacted")
+  ) {
+    issues.push("cancelled orders require cancellation metadata and redacted private data.");
+  }
+  if (
+    isCanonicalIso(value.createdAt) &&
+    isCanonicalIso(value.updatedAt) &&
+    new Date(value.updatedAt) < new Date(value.createdAt)
+  ) {
+    issues.push("order.updatedAt cannot precede order.createdAt.");
+  }
+  if (
+    isCanonicalIso(value.createdAt) &&
+    isCanonicalIso(value.pendingExpiresAt) &&
+    new Date(value.pendingExpiresAt).getTime() - new Date(value.createdAt).getTime() !==
+      npShopOrderLimits.pendingTtlSeconds * 1_000
+  ) {
+    issues.push("order.pendingExpiresAt must equal the fixed pending lifetime.");
+  }
+  if (
+    isCanonicalIso(value.createdAt) &&
+    isCanonicalIso(value.purgeAt) &&
+    new Date(value.purgeAt).getTime() - new Date(value.createdAt).getTime() !==
+      npShopOrderLimits.commercialRetentionSeconds * 1_000
+  ) {
+    issues.push("order.purgeAt must equal the fixed commercial retention lifetime.");
+  }
+  if (
+    isCanonicalIso(value.createdAt) &&
+    isCanonicalIso(value.cancelledAt) &&
+    new Date(value.cancelledAt) < new Date(value.createdAt)
+  ) {
+    issues.push("order.cancelledAt cannot precede order.createdAt.");
+  }
+  if (
+    isCanonicalIso(value.cancelledAt) &&
+    isCanonicalIso(value.updatedAt) &&
+    new Date(value.updatedAt) < new Date(value.cancelledAt)
+  ) {
+    issues.push("order.updatedAt cannot precede order.cancelledAt.");
+  }
+  if (
+    Array.isArray(value.lines) &&
+    value.lines.every(isRecord) &&
+    isNonNegativeSafeInteger(value.subtotalMinor)
+  ) {
+    const subtotal = value.lines.reduce(
+      (sum, line) =>
+        isNonNegativeSafeInteger(line.lineTotalMinor) ? sum + line.lineTotalMinor : sum,
+      0,
+    );
+    if (subtotal !== value.subtotalMinor)
+      issues.push("order.subtotalMinor must equal line totals.");
+  }
+  if (
+    Array.isArray(value.lines) &&
+    value.lines.every(isRecord) &&
+    isPositiveSafeInteger(value.totalUnits)
+  ) {
+    const units = value.lines.reduce(
+      (sum, line) => (isPositiveSafeInteger(line.quantity) ? sum + line.quantity : sum),
+      0,
+    );
+    if (units !== value.totalUnits) issues.push("order.totalUnits must equal line quantities.");
+  }
+  return issues;
+}
+
+export function npRequireStoredShopOrder(value: unknown): NpShopStoredOrder {
+  const issues = npAnalyzeStoredShopOrder(value);
+  if (issues.length > 0) {
+    throw new NpShopOrderContractError("Invalid stored Shop order", issues);
+  }
+  return value as NpShopStoredOrder;
+}
+
+const privateKeys = ["contract", "orderId", "customer", "shipping", "createdAt", "expiresAt"];
+
+export function npAnalyzeStoredShopOrderPrivate(value: unknown): string[] {
+  const issues: string[] = [];
+  if (!isRecord(value)) return ["private order data must be a plain object."];
+  exactKeys(value, privateKeys, "private", issues);
+  if (value.contract !== NP_SHOP_ORDER_PRIVATE_CONTRACT) {
+    issues.push(`private.contract must equal "${NP_SHOP_ORDER_PRIVATE_CONTRACT}".`);
+  }
+  if (!isCanonicalUuid(value.orderId)) issues.push("private.orderId is invalid.");
+  analyzeCustomer(value.customer, "private.customer", issues);
+  analyzeShipping(value.shipping, "private.shipping", issues);
+  if (!isCanonicalIso(value.createdAt)) issues.push("private.createdAt is invalid.");
+  if (!isCanonicalIso(value.expiresAt)) issues.push("private.expiresAt is invalid.");
+  if (
+    isCanonicalIso(value.createdAt) &&
+    isCanonicalIso(value.expiresAt) &&
+    new Date(value.expiresAt).getTime() - new Date(value.createdAt).getTime() !==
+      npShopOrderLimits.pendingTtlSeconds * 1_000
+  ) {
+    issues.push("private.expiresAt must equal the fixed pending lifetime.");
+  }
+  return issues;
+}
+
+export function npRequireStoredShopOrderPrivate(value: unknown): NpShopStoredOrderPrivate {
+  const issues = npAnalyzeStoredShopOrderPrivate(value);
+  if (issues.length > 0) {
+    throw new NpShopOrderContractError("Invalid stored Shop order private data", issues);
+  }
+  return value as NpShopStoredOrderPrivate;
+}
+
+const publicOrderKeys = [
+  "contract",
+  "id",
+  "status",
+  "revision",
+  "sourceDraftId",
+  "checkoutIntentId",
+  "cartRevision",
+  "cartFingerprint",
+  "currency",
+  "subtotalMinor",
+  "totalUnits",
+  "lines",
+  "privateDataStatus",
+  "customer",
+  "shipping",
+  "createdAt",
+  "updatedAt",
+  "pendingExpiresAt",
+  "cancelledAt",
+  "cancellationReason",
+  "purgeAt",
+] as const;
+
+export function npAnalyzeShopOrder(value: unknown): string[] {
+  const issues: string[] = [];
+  if (!isRecord(value)) return ["order must be a plain object."];
+  exactKeys(value, publicOrderKeys, "order", issues);
+  const storedCandidate: Record<string, unknown> = {
+    ...value,
+    contract: NP_SHOP_ORDER_STORAGE_CONTRACT,
+    ownerSegment: "guest:".padEnd(70, "0"),
+  };
+  delete storedCandidate.customer;
+  delete storedCandidate.shipping;
+  issues.push(...npAnalyzeStoredShopOrder(storedCandidate));
+  if (value.contract !== NP_SHOP_ORDER_CONTRACT) {
+    issues.push(`order.contract must equal "${NP_SHOP_ORDER_CONTRACT}".`);
+  }
+  if (value.privateDataStatus === "retained") {
+    analyzeCustomer(value.customer, "order.customer", issues);
+    analyzeShipping(value.shipping, "order.shipping", issues);
+  } else if (value.customer !== null || value.shipping !== null) {
+    issues.push("redacted orders cannot expose customer or shipping data.");
+  }
+  return issues.filter(
+    (issue) =>
+      issue !== `order.contract must equal "${NP_SHOP_ORDER_STORAGE_CONTRACT}".` &&
+      issue !== "order.ownerSegment is invalid.",
+  );
+}
+
+export function npRequireShopOrder(value: unknown): NpShopOrder {
+  const issues = npAnalyzeShopOrder(value);
+  if (issues.length > 0) throw new NpShopOrderContractError("Invalid Shop order", issues);
+  return value as NpShopOrder;
+}
+
+export function npRequireShopOrderList(value: unknown): NpShopOrderList {
+  const issues: string[] = [];
+  if (!isRecord(value)) {
+    throw new NpShopOrderContractError("Invalid Shop order list", [
+      "order list must be a plain object.",
+    ]);
+  }
+  exactKeys(value, ["contract", "orders", "total"], "order list", issues);
+  if (value.contract !== NP_SHOP_ORDER_LIST_CONTRACT) {
+    issues.push(`order list.contract must equal "${NP_SHOP_ORDER_LIST_CONTRACT}".`);
+  }
+  if (!Array.isArray(value.orders) || value.orders.length > npShopOrderLimits.ownerListSize) {
+    issues.push(
+      `order list.orders must contain at most ${npShopOrderLimits.ownerListSize.toString()} entries.`,
+    );
+  } else {
+    value.orders.forEach((order, index) => {
+      issues.push(
+        ...npAnalyzeShopOrder(order).map(
+          (issue) => `order list.orders[${index.toString()}]: ${issue}`,
+        ),
+      );
+    });
+  }
+  if (!isNonNegativeSafeInteger(value.total)) issues.push("order list.total is invalid.");
+  if (
+    Array.isArray(value.orders) &&
+    isNonNegativeSafeInteger(value.total) &&
+    value.total < value.orders.length
+  ) {
+    issues.push("order list.total cannot be smaller than the returned order count.");
+  }
+  if (issues.length > 0) throw new NpShopOrderContractError("Invalid Shop order list", issues);
+  return value as unknown as NpShopOrderList;
+}
+
+function requireInput(
+  value: unknown,
+  keys: readonly string[],
+  path: string,
+): Record<string, unknown> {
+  const issues: string[] = [];
+  if (!isRecord(value))
+    throw new NpShopOrderContractError(`Invalid ${path}`, [`${path} is invalid.`]);
+  exactKeys(value, keys, path, issues);
+  if (issues.length > 0) throw new NpShopOrderContractError(`Invalid ${path}`, issues);
+  return value;
+}
+
+export function npRequireShopOrderCreateInput(value: unknown): NpShopOrderCreateInput {
+  const input = requireInput(
+    value,
+    ["idempotencyKey", "draftId", "expectedRevision"],
+    "order create request",
+  );
+  const issues: string[] = [];
+  if (!isCanonicalUuid(input.idempotencyKey)) {
+    issues.push("order create request.idempotencyKey is invalid.");
+  }
+  if (!isCanonicalUuid(input.draftId)) issues.push("order create request.draftId is invalid.");
+  if (!isPositiveSafeInteger(input.expectedRevision)) {
+    issues.push("order create request.expectedRevision is invalid.");
+  }
+  if (issues.length > 0) throw new NpShopOrderContractError("Invalid order create request", issues);
+  return input as unknown as NpShopOrderCreateInput;
+}
+
+export function npRequireShopOrderCancelInput(value: unknown): NpShopOrderCancelInput {
+  const input = requireInput(value, ["orderId", "expectedRevision"], "order cancel request");
+  const issues: string[] = [];
+  if (!isCanonicalUuid(input.orderId)) issues.push("order cancel request.orderId is invalid.");
+  if (!isPositiveSafeInteger(input.expectedRevision)) {
+    issues.push("order cancel request.expectedRevision is invalid.");
+  }
+  if (issues.length > 0) throw new NpShopOrderContractError("Invalid order cancel request", issues);
+  return input as unknown as NpShopOrderCancelInput;
+}
+
+export function npRequireShopOrderId(value: unknown): string {
+  if (!isCanonicalUuid(value)) {
+    throw new NpShopOrderContractError("Invalid order id", ["order id must be a canonical UUID."]);
+  }
+  return value;
+}

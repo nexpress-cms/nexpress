@@ -3,7 +3,8 @@
 `@nexpress/plugin-shop` is the first-party catalog foundation for NexPress.
 It owns product and category data, inventory projection, public catalog
 routes, bounded guest/member carts, checkout intents, private order drafts,
-Admin collection forms and health actions, blocks, and skins.
+durable pending orders, Admin collection forms and health actions, blocks,
+and skins.
 
 `@nexpress/theme-storefront` is a separate brand/content theme. It works with
 ordinary pages and posts when Shop is absent. When both packages are active,
@@ -11,9 +12,9 @@ the theme enhances Shop through documented CSS variables, classes, data
 attributes, and optional page blocks; neither package imports the other.
 
 The cart, checkout intent, and order draft are deliberately **pre-transaction
-state**. Only the private order draft collects the bounded customer and
-shipping fields documented below. None of these surfaces reserve or decrement
-inventory, create a finalized order, take payment, calculate tax or shipping,
+state**. A reviewable draft can now create a durable `pending-payment` order
+reference, but no current code can mark it paid. None of these surfaces
+reserve or decrement inventory, take payment, calculate tax or shipping,
 fulfill, refund, or claim that a visitor completed a purchase.
 
 ## Default setup
@@ -26,7 +27,8 @@ migration:
 2. Open Admin → Commerce → Products and publish products.
 3. Visit `/shop`.
 4. Add a product to the cart, visit `/shop/cart`, create a short-lived
-   checkout intent, and optionally continue to the 24-hour private order draft.
+   checkout intent, continue to the 24-hour private order draft, and optionally
+   create a durable pending order reference.
 5. Optionally activate Storefront from Admin → Appearance.
 6. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
    or insert the `shop.storefront-home` pattern.
@@ -85,6 +87,8 @@ remove the relationship first.
 | `/shop/cart`                     | Current guest or member cart          |
 | `/shop/checkout/:intentId`       | Owner-scoped checkout intent snapshot |
 | `/shop/order-drafts/:draftId`    | Private customer and delivery draft   |
+| `/shop/orders`                   | Bounded owner-scoped order history    |
+| `/shop/orders/:orderId`          | Owner-scoped pending order detail     |
 
 Catalog and category routes recognize:
 
@@ -245,13 +249,81 @@ database access, encryption and backup-retention policy. Restoring a database
 backup can restore data that existed when that backup was taken, so backup
 expiry and deletion procedures must match the site's policy.
 
+## Durable pending order and PII separation
+
+Shop exposes `GET`, `POST`, and `DELETE` at
+`/api/plugins/shop/orders`. The exact owner-facing commercial envelope is
+`np.shop-order.v1`; bounded history uses `np.shop-order-list.v1`.
+
+- `POST { idempotencyKey, draftId, expectedRevision }` accepts only a
+  same-owner `reviewable` draft whose cart revision and fingerprint still
+  match a fresh live quote.
+- The canonical idempotency UUID becomes the order id. Repeating the same
+  order-id/draft pair converges on one row. Reusing it for another draft
+  returns HTTP 409.
+- Draft, cart, owner, and order locks serialize the transition. Commercial
+  snapshot creation, private-sidecar creation, pending-expiry marker creation,
+  and source-draft deletion commit atomically.
+- Each owner may have at most three unexpired pending orders. A different key
+  cannot bypass the limit under concurrent creation.
+- `GET ?id=<uuid>` reads one same-owner order. `GET` without an id returns the
+  newest 20 same-owner orders and an exact total.
+- `DELETE { orderId, expectedRevision }` is revision-safe. Repeating a
+  successful cancellation is idempotent.
+
+The only creatable status is `pending-payment`. It means that the immutable
+product, option, integer price, currency, quantity, cart revision, and cart
+fingerprint snapshot has a durable order reference. It does **not** mean that
+payment was initiated or authorized. The other current status is `cancelled`;
+there is deliberately no `paid`, `fulfilled`, or `refunded` transition until a
+separate payment-provider contract can prove the corresponding external
+effect.
+
+Storage separates commercial and private values:
+
+- `np.shop-order-storage.v1` contains the owner storage segment, source ids,
+  commercial snapshot, status, revision, timestamps, and private-data state.
+  It contains no name, email, phone, or address.
+- `np.shop-order-private.v1` is a separate same-owner sidecar containing the
+  customer and shipping pair copied from the draft.
+- a pending marker indexes the next required maintenance without duplicating
+  private or commercial values.
+
+Pending orders expire after 24 hours. Owner cancellation, lazy read after that
+deadline, and the hourly maintenance job all atomically change the durable
+order to `cancelled`, mark private data `redacted`, and physically delete both
+the private sidecar and pending marker. The commercial snapshot remains for
+365 days and is then physically purged. Each scheduled or confirmed Admin pass
+cancels at most 500 due orders and purges at most 500 expired commercial
+snapshots, oldest first. Site deletion remains the final tenant-wide deletion
+boundary.
+
+Owner responses are `private, no-store`. Owner history can include private
+details only while their matching pending sidecar exists; cancelled orders
+always return `customer: null` and `shipping: null`. Admin exposes aggregate
+counts and the newest 50 commercial rows with order id, status, integer total,
+currency, unit count, private-data state, and creation time. It never reads or
+returns names, email addresses, phone numbers, addresses, or owner segments.
+Doctor inspects only the declarative API, action, table, page-route, and
+scheduled-task inventory.
+
+Guest ownership remains bound to the signed `np-shop-cart` browser cookie.
+That cookie uses a rolling 30-day lifetime, so a guest who clears it or does
+not revisit before it expires cannot recover the otherwise-retained commercial
+snapshot. Member ownership remains tied to the authenticated member id.
+
+The 24-hour private-data and 365-day commercial defaults are application
+cleanup guarantees, not jurisdiction-specific accounting or privacy advice.
+Backup retention can outlive physical row deletion and must be governed
+separately.
+
 ## Admin surfaces
 
 The two collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
-The plugin declares five typed dashboard metric actions:
+The plugin declares six typed dashboard metric actions:
 
 - total product rows;
 - published low-stock products;
@@ -260,12 +332,15 @@ The plugin declares five typed dashboard metric actions:
   revalidate the current cart).
 - unexpired private order-draft records, without any customer or shipping
   values.
+- durable pending and cancelled commercial order records, without owner or PII
+  values.
 
 Admin also exposes separate cart, checkout-intent, and private-order-draft
-storage health plus confirmed bounded expiry cleanup actions. Order-draft
-health reports only aggregate states and withholds private values. The
-scheduled-task and action registries make these contracts visible to plugin
-doctor without executing them.
+storage health plus confirmed bounded expiry cleanup actions. Order health,
+the confirmed maintenance action, and the newest-50 table expose only
+commercial metadata. Order-draft and order diagnostics withhold private
+values. The scheduled-task and action registries make these contracts visible
+to plugin doctor without executing them.
 
 The manifest-level action registry binds each metric widget to its exact
 handler kind, so plugin validation and doctor can inspect the relationship
@@ -280,10 +355,11 @@ Every Shop factory registers:
 | `classic`         | Compact, neutral catalog and detail fallback               |
 | `storefront-full` | Larger editorial header and image-led product presentation |
 
-Both skins implement catalog, category, product, cart, checkout-intent, and
-private order-draft rendering. They receive prepared products, localized
-messages, safe formatted money, and rendered rich text; they do not own
-identity, private-data, collection, or transaction policy.
+Both skins implement catalog, category, product, cart, checkout-intent,
+private order-draft, order-history, and order-detail rendering. They receive
+prepared products, localized messages, safe formatted money, and rendered
+rich text; they do not own identity, private-data, collection, or transaction
+policy.
 
 Plugin structure ships in `@layer np-blocks` and consumes stable properties
 with core-token fallbacks:
@@ -308,6 +384,8 @@ The main public hooks are `.np-shop`, `.np-shop-product-card`,
 `[data-np-shop-checkout-status]`,
 `.np-shop-order-draft-client`, `[data-np-shop-order-draft-line]`,
 `[data-np-shop-order-draft-status]`,
+`.np-shop-order-list`, `.np-shop-order-client`,
+`[data-np-shop-order-line]`, `[data-np-shop-order-status]`,
 `[data-np-shop-surface]`, `[data-np-shop-skin]`,
 `[data-np-shop-inventory]`, and `[data-np-shop-block]`.
 
@@ -345,21 +423,22 @@ collection and plugin arrays: handlers, relationships, routes, blocks, and
 Admin actions intentionally close over one runtime definition.
 
 Custom build-time skins implement `NpShopSkin` and may be added through the
-factory's `skins` option. `renderCart`, `renderCheckout`, and
-`renderOrderDraft` are additive and optional; when omitted, the complete
-shared surfaces are used. Routes own identity, mutation, private-data, and
-quote policy while skins receive prepared client surfaces. Existing `classic`
-and `storefront-full` ids cannot be replaced.
+factory's `skins` option. `renderCart`, `renderCheckout`, `renderOrderDraft`,
+`renderOrders`, and `renderOrder` are additive and optional; when omitted, the
+complete shared surfaces are used. Routes own identity, mutation,
+private-data, and quote policy while skins receive prepared client surfaces.
+Existing `classic` and `storefront-full` ids cannot be replaced.
 
 ## Next commerce slices
 
 Future transaction work should remain separable from this foundation:
 
-1. payment-provider adapters and idempotent webhook intake;
-2. finalized order, refund, fulfillment, and customer Admin workflows;
+1. payment-provider adapters, signed idempotent webhook intake, and a proven
+   transition out of `pending-payment`;
+2. paid-order, refund, fulfillment, and customer-service Admin workflows;
 3. stock reservation and transactional decrement;
 4. legal/tax/shipping policy integrations.
 
 Those features require explicit payment, security, and operational contracts.
-The current catalog/cart/checkout-intent/order-draft data and independent
-theme do not pre-authorize or emulate them.
+The current catalog/cart/checkout-intent/order-draft/pending-order data and
+independent theme do not pre-authorize or emulate them.

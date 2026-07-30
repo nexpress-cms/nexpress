@@ -279,7 +279,10 @@ export const storefrontCss = `
 .np-storefront-shell [data-np-shop-surface="checkout"] .np-shop-checkout-intent,
 .np-storefront-shell [data-np-shop-surface="checkout"] .np-shop-checkout-summary,
 .np-storefront-shell [data-np-shop-surface="order-draft"] fieldset,
-.np-storefront-shell [data-np-shop-surface="order-draft"] .np-shop-order-draft-summary {
+.np-storefront-shell [data-np-shop-surface="order-draft"] .np-shop-order-draft-summary,
+.np-storefront-shell [data-np-shop-surface="orders"] .np-shop-order-list article,
+.np-storefront-shell [data-np-shop-surface="order"] .np-shop-order-layout > section,
+.np-storefront-shell [data-np-shop-surface="order"] .np-shop-order-layout > aside {
   border-radius: 0;
 }
 @media (max-width: 52rem) {

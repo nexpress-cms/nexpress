@@ -311,16 +311,21 @@ real product domain, not just blog/community. Ship as a plugin package
   customer/shipping contract. Cancellation physically deletes it; read-time
   and bounded hourly cleanup enforce expiry. Search, revisions, transfer,
   logs, public discovery, and Admin values exclude its PII.
+- **Durable pending order (shipped)** — a reviewable draft atomically becomes
+  one idempotent `pending-payment` commercial snapshot plus a separate private
+  sidecar. No paid state exists. Cancellation or the 24-hour pending deadline
+  deletes PII; the commercial record is purged after 365 days.
 - **Payment adapters (future)** — explicit Stripe / Toss / KG Inicis adapter
-  and webhook contracts built on a separately authorized finalized-order
+  and signed idempotent webhook contracts built on the shipped durable order
   boundary.
-- **Order admin (future)** — orders collection with status workflow, refunds,
-  fulfillment notes. Slots into the existing admin shell.
+- **Order admin (partially shipped)** — PII-free aggregate health and bounded
+  recent commercial rows exist. Paid status workflows, refunds, fulfillment
+  notes, and customer-service access remain future work.
 - **Inventory (partially shipped)** — catalog stock and low-stock projection
   exist; reservation and transactional decrement remain future work.
 - **Public surfaces (shipped)** — product detail, listing, cart,
-  checkout-intent, and private order-draft pages use independent plugin skins
-  and stable theme hooks.
+  checkout-intent, private order-draft, order-history, and order-detail pages
+  use independent plugin skins and stable theme hooks.
 - **Tax & shipping (future)** — extension points require region-specific
   policy rather than implied defaults.
 
@@ -330,6 +335,10 @@ Resolved foundation decision:
   collections or a Shop-specific Core table. That keeps PII outside the
   collection search/revision/transfer graph while generic site deletion still
   owns the final tenant boundary.
+- Durable orders use the same site owner but split the PII-free commercial
+  snapshot, short-lived private sidecar, and maintenance marker into separate
+  exact rows. This avoids generic collection search/revision/transfer leakage
+  and does not add a Shop table to Core.
 
 Open question for future transaction slices:
 

@@ -121,6 +121,35 @@ async function orderDraftCall(
   );
 }
 
+async function orderCall(
+  method: "GET" | "POST" | "DELETE",
+  input: {
+    cookie?: string;
+    csrf?: string;
+    body?: unknown;
+    orderId?: string;
+    member?: { id: string };
+  } = {},
+) {
+  return withCurrentSite("default", () =>
+    route(method, "/orders")(
+      {
+        method,
+        path: "/orders",
+        params: { pluginId: "shop" },
+        query: input.orderId ? { id: input.orderId } : {},
+        body: input.body,
+        headers: {
+          ...(input.cookie ? { cookie: input.cookie } : {}),
+          ...(input.csrf ? { "x-csrf-token": input.csrf } : {}),
+        },
+        member: input.member,
+      },
+      {} as never,
+    ),
+  );
+}
+
 describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
   beforeAll(async () => {
     await ensureMigrated();
@@ -712,5 +741,348 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       .where(and(eq(npPluginStorage.pluginId, "shop"), eq(npPluginStorage.siteId, "default")));
     expect(remaining.map((row) => row.key)).toContain("order-cache:expired");
     expect(remaining.some((row) => row.key.startsWith("order-draft:"))).toBe(false);
+  });
+
+  it("creates one durable pending order while isolating and deleting private data", async () => {
+    const initial = await call("GET");
+    const cookie = initial.headers?.["Set-Cookie"];
+    const initialBody = initial.body as { csrfToken: string };
+    const added = await call("POST", {
+      cookie,
+      csrf: initialBody.csrfToken,
+      body: { productId, variantSku: null, quantity: 1, expectedRevision: 0 },
+    });
+    const addedBody = added.body as {
+      csrfToken: string;
+      quote: { revision: number; fingerprint: string };
+    };
+    const intentId = "a33e4567-e89b-42d3-a456-426614174000";
+    const draftId = "b33e4567-e89b-42d3-a456-426614174000";
+    const orderId = "c33e4567-e89b-42d3-a456-426614174000";
+    await checkoutCall("POST", {
+      cookie,
+      csrf: addedBody.csrfToken,
+      body: {
+        idempotencyKey: intentId,
+        expectedRevision: addedBody.quote.revision,
+        expectedFingerprint: addedBody.quote.fingerprint,
+      },
+    });
+    await orderDraftCall("POST", {
+      cookie,
+      csrf: addedBody.csrfToken,
+      body: { idempotencyKey: draftId, checkoutIntentId: intentId },
+    });
+    const privateEmail = "durable-order@example.com";
+    await orderDraftCall("PATCH", {
+      cookie,
+      csrf: addedBody.csrfToken,
+      body: {
+        draftId,
+        expectedRevision: 1,
+        customer: {
+          fullName: "홍길동",
+          email: privateEmail,
+          phone: "010-1234-5678",
+        },
+        shipping: {
+          recipientName: "홍길동",
+          phone: "010-1234-5678",
+          countryCode: "KR",
+          postalCode: "04524",
+          addressLine1: "서울특별시 중구 세종대로 110",
+          addressLine2: null,
+          locality: "중구",
+          administrativeArea: "서울특별시",
+        },
+      },
+    });
+
+    const createInput = {
+      cookie,
+      csrf: addedBody.csrfToken,
+      body: { idempotencyKey: orderId, draftId, expectedRevision: 2 },
+    };
+    const [created, repeated] = await Promise.all([
+      orderCall("POST", createInput),
+      orderCall("POST", createInput),
+    ]);
+    expect(created).toMatchObject({
+      status: 200,
+      body: {
+        order: {
+          contract: "np.shop-order.v1",
+          id: orderId,
+          status: "pending-payment",
+          revision: 1,
+          privateDataStatus: "retained",
+          customer: { email: privateEmail },
+        },
+      },
+    });
+    expect(repeated.body).toEqual(created.body);
+    expect(await orderDraftCall("GET", { cookie, draftId })).toMatchObject({
+      status: 404,
+      body: { error: "order_draft_not_found" },
+    });
+    expect(await orderCall("GET", { orderId, member: { id: memberId } })).toMatchObject({
+      status: 404,
+      body: { error: "order_not_found" },
+    });
+    expect(await orderCall("GET", { cookie })).toMatchObject({
+      status: 200,
+      body: { list: { contract: "np.shop-order-list.v1", total: 1, orders: [{ id: orderId }] } },
+    });
+
+    const db = await getTestDb();
+    const stored = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          like(npPluginStorage.key, "order%:%"),
+        ),
+      );
+    const commercial = stored.find((row) => row.key.startsWith("order:"));
+    const privateSidecar = stored.find((row) => row.key.startsWith("order-private:"));
+    const pendingMarker = stored.find((row) => row.key.startsWith("order-pending:"));
+    expect(commercial).toBeDefined();
+    expect(privateSidecar).toBeDefined();
+    expect(pendingMarker).toBeDefined();
+    expect(JSON.stringify(commercial)).not.toContain(privateEmail);
+    expect(JSON.stringify(privateSidecar)).toContain(privateEmail);
+
+    const recentAction = shopPlugin.actions?.recentOrders;
+    const recent = await withCurrentSite("default", () =>
+      recentAction?.handler(undefined, {} as never),
+    );
+    expect(recent).toMatchObject({
+      ok: true,
+      data: { total: 1, rows: [{ id: orderId, status: "pending-payment" }] },
+    });
+    expect(JSON.stringify(recent)).not.toContain(privateEmail);
+    const orderHealth = await withCurrentSite("default", () =>
+      shopPlugin.actions?.orderHealth?.handler(undefined, {} as never),
+    );
+    expect(orderHealth).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(JSON.stringify(orderHealth)).not.toContain(privateEmail);
+
+    const cancelled = await orderCall("DELETE", {
+      cookie,
+      csrf: addedBody.csrfToken,
+      body: { orderId, expectedRevision: 1 },
+    });
+    expect(cancelled).toMatchObject({
+      status: 200,
+      body: {
+        order: {
+          id: orderId,
+          status: "cancelled",
+          revision: 2,
+          privateDataStatus: "redacted",
+          customer: null,
+          shipping: null,
+          cancellationReason: "customer",
+        },
+      },
+    });
+    const repeatedCancel = await orderCall("DELETE", {
+      cookie,
+      csrf: addedBody.csrfToken,
+      body: { orderId, expectedRevision: 1 },
+    });
+    expect(repeatedCancel.body).toEqual(cancelled.body);
+    const remainingPrivate = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          like(npPluginStorage.key, "order-%"),
+        ),
+      );
+    expect(remainingPrivate).toHaveLength(0);
+    expect(JSON.stringify(remainingPrivate)).not.toContain(privateEmail);
+    expect(await orderCall("GET", { cookie, orderId })).toMatchObject({
+      body: { order: { status: "cancelled", privateDataStatus: "redacted" } },
+    });
+
+    const expiredPurgeAt = new Date(Date.now() - 1_000);
+    const expiredCreatedAt = new Date(expiredPurgeAt.getTime() - 365 * 24 * 60 * 60 * 1_000);
+    const expiredPendingAt = new Date(expiredCreatedAt.getTime() + 24 * 60 * 60 * 1_000);
+    await db
+      .update(npPluginStorage)
+      .set({
+        value: {
+          ...((commercial?.value ?? {}) as Record<string, unknown>),
+          status: "cancelled",
+          revision: 2,
+          privateDataStatus: "redacted",
+          createdAt: expiredCreatedAt.toISOString(),
+          updatedAt: expiredPendingAt.toISOString(),
+          pendingExpiresAt: expiredPendingAt.toISOString(),
+          cancelledAt: expiredPendingAt.toISOString(),
+          cancellationReason: "customer",
+          purgeAt: expiredPurgeAt.toISOString(),
+        },
+        expiresAt: expiredPurgeAt,
+      })
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          eq(npPluginStorage.key, commercial?.key ?? ""),
+        ),
+      );
+    expect(await orderCall("GET", { cookie })).toMatchObject({
+      status: 200,
+      body: { list: { total: 0, orders: [] } },
+    });
+  });
+
+  it("cancels expired pending orders and purges old commercial snapshots in bounded passes", async () => {
+    const db = await getTestDb();
+    const now = new Date();
+    const createdAt = new Date(now.getTime() - 48 * 60 * 60 * 1_000);
+    const pendingExpiresAt = new Date(now.getTime() - 24 * 60 * 60 * 1_000);
+    const purgeAt = new Date(createdAt.getTime() + 365 * 24 * 60 * 60 * 1_000);
+    const ownerSegment = `guest:${"a".repeat(64)}`;
+    const orderId = "d33e4567-e89b-42d3-a456-426614174000";
+    const draftId = "e33e4567-e89b-42d3-a456-426614174000";
+    const intentId = "f33e4567-e89b-42d3-a456-426614174000";
+    const order = {
+      contract: "np.shop-order-storage.v1",
+      id: orderId,
+      status: "pending-payment",
+      revision: 1,
+      ownerSegment,
+      sourceDraftId: draftId,
+      checkoutIntentId: intentId,
+      cartRevision: 1,
+      cartFingerprint: "b".repeat(64),
+      currency: "KRW",
+      subtotalMinor: 25_000,
+      totalUnits: 1,
+      lines: [
+        {
+          key: `${productId}:_`,
+          productId,
+          productSlug: "everyday-cup",
+          productName: "Everyday cup",
+          variantSku: null,
+          variantName: null,
+          quantity: 1,
+          unitPriceMinor: 25_000,
+          lineTotalMinor: 25_000,
+        },
+      ],
+      privateDataStatus: "retained",
+      createdAt: createdAt.toISOString(),
+      updatedAt: createdAt.toISOString(),
+      pendingExpiresAt: pendingExpiresAt.toISOString(),
+      cancelledAt: null,
+      cancellationReason: null,
+      purgeAt: purgeAt.toISOString(),
+    };
+    await db.insert(npPluginStorage).values([
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `order:${ownerSegment}:${orderId}`,
+        value: order,
+        expiresAt: purgeAt,
+        updatedAt: createdAt,
+      },
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `order-private:${ownerSegment}:${orderId}`,
+        value: {
+          contract: "np.shop-order-private.v1",
+          orderId,
+          customer: {
+            fullName: "홍길동",
+            email: "expired-private@example.com",
+            phone: "010-1234-5678",
+          },
+          shipping: {
+            recipientName: "홍길동",
+            phone: "010-1234-5678",
+            countryCode: "KR",
+            postalCode: "04524",
+            addressLine1: "서울특별시 중구 세종대로 110",
+            addressLine2: null,
+            locality: "중구",
+            administrativeArea: "서울특별시",
+          },
+          createdAt: createdAt.toISOString(),
+          expiresAt: pendingExpiresAt.toISOString(),
+        },
+        expiresAt: pendingExpiresAt,
+        updatedAt: createdAt,
+      },
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `order-pending:${ownerSegment}:${orderId}`,
+        value: {
+          contract: "np.shop-order-pending.v1",
+          orderId,
+          ownerSegment,
+          dueAt: pendingExpiresAt.toISOString(),
+        },
+        expiresAt: pendingExpiresAt,
+        updatedAt: createdAt,
+      },
+    ]);
+    const maintenance = shopPlugin.scheduled?.find((task) => task.id === "maintain-orders");
+    expect(maintenance).toBeDefined();
+    await withCurrentSite("default", () => maintenance?.handler({} as never));
+    const afterCancellation = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          like(npPluginStorage.key, "order%:%"),
+        ),
+      );
+    expect(afterCancellation).toHaveLength(1);
+    expect(afterCancellation[0]).toMatchObject({
+      key: `order:${ownerSegment}:${orderId}`,
+      value: {
+        status: "cancelled",
+        privateDataStatus: "redacted",
+        cancellationReason: "payment-timeout",
+      },
+    });
+    expect(JSON.stringify(afterCancellation)).not.toContain("expired-private@example.com");
+
+    const expiredPurgeAt = new Date(now.getTime() - 1_000);
+    const expiredCreatedAt = new Date(expiredPurgeAt.getTime() - 365 * 24 * 60 * 60 * 1_000);
+    const expiredPendingAt = new Date(expiredCreatedAt.getTime() + 24 * 60 * 60 * 1_000);
+    await db
+      .update(npPluginStorage)
+      .set({
+        value: {
+          ...(afterCancellation[0]?.value as Record<string, unknown>),
+          createdAt: expiredCreatedAt.toISOString(),
+          pendingExpiresAt: expiredPendingAt.toISOString(),
+          purgeAt: expiredPurgeAt.toISOString(),
+        },
+        expiresAt: expiredPurgeAt,
+      })
+      .where(eq(npPluginStorage.key, `order:${ownerSegment}:${orderId}`));
+    await withCurrentSite("default", () => maintenance?.handler({} as never));
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `order:${ownerSegment}:${orderId}`)),
+    ).toHaveLength(0);
   });
 });

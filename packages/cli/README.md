@@ -21,11 +21,12 @@ first-boot admin setup wizard at [`/admin/setup`](http://localhost:3000/admin/se
 not at scaffold time.
 
 The default Shop plugin includes products, categories, bounded guest/member
-carts at `/shop/cart`, and owner-scoped 15-minute checkout intents. It does not
-take payment, create finalized orders, or reserve inventory. An open intent can
-continue to an owner-scoped 24-hour private order draft; its bounded
-customer/shipping values stay outside search and content export and are
-physically deleted on cancellation or bounded expiry cleanup.
+carts at `/shop/cart`, owner-scoped 15-minute checkout intents, 24-hour private
+order drafts, and durable `pending-payment` order references. It does not take
+payment, confirm paid status, or reserve inventory. Pending-order
+customer/shipping values live in a separate private sidecar and are physically
+deleted on cancellation or the 24-hour deadline; commercial snapshots are
+purged after 365 days.
 
 `create-nexpress` writes both `.env.example` and `.env` for you. Use the
 setup wizard to confirm the DB connection, generate or accept the auth
