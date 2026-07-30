@@ -83,6 +83,13 @@ describe("shop order draft contract", () => {
         "draft.reviewable state requires customer and shipping data.",
       ]),
     );
+    expect(
+      npAnalyzeShopOrderDraft({
+        ...draft(),
+        sourceCreatedAt: "2026-07-30T00:06:00.000Z",
+        sourceExpiresAt: "2026-07-30T00:21:00.000Z",
+      }),
+    ).toContain("draft.createdAt must not precede source checkout creation.");
   });
 
   it("normalizes complete update values without reflecting them in validation errors", () => {

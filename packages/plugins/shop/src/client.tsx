@@ -34,6 +34,16 @@ interface OrderDraftDeleteResponse {
   csrfToken: string | null;
 }
 
+class ShopOrderDraftRequestError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "ShopOrderDraftRequestError";
+    this.code = code;
+  }
+}
+
 function formatMoney(locale: string, amountMinor: number, currency: NpShopCurrency): string {
   const fractionDigits = currency === "KRW" || currency === "JPY" ? 0 : 2;
   return new Intl.NumberFormat(locale, {
@@ -125,7 +135,10 @@ async function requestOrderDraft(
     OrderDraftResponse | OrderDraftDeleteResponse | { message?: string; error?: string };
   if (!response.ok) {
     const failure = payload as { message?: string; error?: string };
-    throw new Error(failure.message ?? failure.error ?? "Order draft request failed.");
+    throw new ShopOrderDraftRequestError(
+      failure.error ?? "order_draft_request_failed",
+      failure.message ?? failure.error ?? "Order draft request failed.",
+    );
   }
   if ("draft" in payload) {
     return { ...payload, draft: npRequireShopOrderDraft(payload.draft) };
@@ -626,6 +639,30 @@ export function ShopOrderDraft({
       setDraft(response.draft);
       setCsrfToken(response.csrfToken);
     } catch (caught) {
+      if (caught instanceof ShopOrderDraftRequestError) {
+        if (caught.code === "order_draft_expired" || caught.code === "order_draft_not_found") {
+          setDraft(null);
+        } else if (
+          caught.code === "order_draft_revision_conflict" ||
+          caught.code === "order_draft_source_stale"
+        ) {
+          try {
+            const refreshed = await requestOrderDraft(apiPath, "GET", { draftId });
+            if ("draft" in refreshed) {
+              setDraft(refreshed.draft);
+              setCsrfToken(refreshed.csrfToken);
+            }
+          } catch (refreshError) {
+            if (
+              refreshError instanceof ShopOrderDraftRequestError &&
+              (refreshError.code === "order_draft_expired" ||
+                refreshError.code === "order_draft_not_found")
+            ) {
+              setDraft(null);
+            }
+          }
+        }
+      }
       setError(caught instanceof Error ? caught.message : messages.orderDraftFailed);
     } finally {
       setSaving(false);
@@ -831,7 +868,9 @@ export function ShopOrderDraft({
         </>
       ) : loading ? (
         <p>{messages.orderDraftCreating}</p>
-      ) : null}
+      ) : (
+        <a href={`${basePath}/cart`}>{messages.checkoutBackToCart}</a>
+      )}
     </div>
   );
 }

@@ -280,6 +280,13 @@ export function npAnalyzeShopOrderDraft(value: unknown): string[] {
     issues.push("draft.updatedAt must fall within the draft lifetime.");
   }
   if (
+    isCanonicalIso(value.sourceCreatedAt) &&
+    isCanonicalIso(value.createdAt) &&
+    value.createdAt < value.sourceCreatedAt
+  ) {
+    issues.push("draft.createdAt must not precede source checkout creation.");
+  }
+  if (
     isCanonicalIso(value.sourceExpiresAt) &&
     isCanonicalIso(value.createdAt) &&
     value.createdAt >= value.sourceExpiresAt
