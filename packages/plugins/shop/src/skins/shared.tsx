@@ -1,12 +1,13 @@
 import Link from "next/link";
 
-import { ShopCart, ShopCheckout } from "@nexpress/plugin-shop/client";
+import { ShopCart, ShopCheckout, ShopOrderDraft } from "@nexpress/plugin-shop/client";
 
 import { buildShopCatalogHref } from "../runtime.js";
 import type {
   NpShopCartClientMessages,
   NpShopCartSkinProps,
   NpShopCheckoutSkinProps,
+  NpShopOrderDraftSkinProps,
   NpShopCatalogSkinProps,
   NpShopCategorySkinProps,
   NpShopMessages,
@@ -47,6 +48,31 @@ function cartClientMessages(messages: NpShopMessages): NpShopCartClientMessages 
     checkoutPaymentUnavailable: messages.checkoutPaymentUnavailable,
     checkoutBackToCart: messages.checkoutBackToCart,
     checkoutFailed: messages.checkoutFailed,
+    orderDraft: messages.orderDraft,
+    orderDraftCreate: messages.orderDraftCreate,
+    orderDraftCreating: messages.orderDraftCreating,
+    orderDraftCollecting: messages.orderDraftCollecting,
+    orderDraftReviewable: messages.orderDraftReviewable,
+    orderDraftStale: messages.orderDraftStale,
+    orderDraftExpires: messages.orderDraftExpires,
+    orderDraftCustomer: messages.orderDraftCustomer,
+    orderDraftShipping: messages.orderDraftShipping,
+    orderDraftFullName: messages.orderDraftFullName,
+    orderDraftEmail: messages.orderDraftEmail,
+    orderDraftPhone: messages.orderDraftPhone,
+    orderDraftRecipientName: messages.orderDraftRecipientName,
+    orderDraftCountryCode: messages.orderDraftCountryCode,
+    orderDraftPostalCode: messages.orderDraftPostalCode,
+    orderDraftAddressLine1: messages.orderDraftAddressLine1,
+    orderDraftAddressLine2: messages.orderDraftAddressLine2,
+    orderDraftLocality: messages.orderDraftLocality,
+    orderDraftAdministrativeArea: messages.orderDraftAdministrativeArea,
+    orderDraftSave: messages.orderDraftSave,
+    orderDraftSaving: messages.orderDraftSaving,
+    orderDraftDelete: messages.orderDraftDelete,
+    orderDraftPrivacy: messages.orderDraftPrivacy,
+    orderDraftPaymentUnavailable: messages.orderDraftPaymentUnavailable,
+    orderDraftFailed: messages.orderDraftFailed,
   };
 }
 
@@ -423,8 +449,29 @@ export function ShopCheckoutSurface({
       </header>
       <ShopCheckout
         apiPath={props.apiPath}
+        orderDraftApiPath={props.orderDraftApiPath}
         basePath={props.basePath}
         intentId={props.intentId}
+        messages={cartClientMessages(props.messages)}
+      />
+    </main>
+  );
+}
+
+export function ShopOrderDraftSurface({
+  skin,
+  ...props
+}: NpShopOrderDraftSkinProps & { skin: string }) {
+  return (
+    <main
+      className="np-shop np-shop-order-draft"
+      data-np-shop-surface="order-draft"
+      data-np-shop-skin={skin}
+    >
+      <ShopOrderDraft
+        apiPath={props.apiPath}
+        basePath={props.basePath}
+        draftId={props.draftId}
         messages={cartClientMessages(props.messages)}
       />
     </main>

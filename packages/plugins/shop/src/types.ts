@@ -121,6 +121,31 @@ export interface NpShopMessages {
   checkoutPaymentUnavailable: string;
   checkoutBackToCart: string;
   checkoutFailed: string;
+  orderDraft: string;
+  orderDraftCreate: string;
+  orderDraftCreating: string;
+  orderDraftCollecting: string;
+  orderDraftReviewable: string;
+  orderDraftStale: string;
+  orderDraftExpires: string;
+  orderDraftCustomer: string;
+  orderDraftShipping: string;
+  orderDraftFullName: string;
+  orderDraftEmail: string;
+  orderDraftPhone: string;
+  orderDraftRecipientName: string;
+  orderDraftCountryCode: string;
+  orderDraftPostalCode: string;
+  orderDraftAddressLine1: string;
+  orderDraftAddressLine2: string;
+  orderDraftLocality: string;
+  orderDraftAdministrativeArea: string;
+  orderDraftSave: string;
+  orderDraftSaving: string;
+  orderDraftDelete: string;
+  orderDraftPrivacy: string;
+  orderDraftPaymentUnavailable: string;
+  orderDraftFailed: string;
   previous: string;
   next: string;
   backToCatalog: string;
@@ -235,6 +260,31 @@ export interface NpShopCartClientMessages {
   checkoutPaymentUnavailable: string;
   checkoutBackToCart: string;
   checkoutFailed: string;
+  orderDraft: string;
+  orderDraftCreate: string;
+  orderDraftCreating: string;
+  orderDraftCollecting: string;
+  orderDraftReviewable: string;
+  orderDraftStale: string;
+  orderDraftExpires: string;
+  orderDraftCustomer: string;
+  orderDraftShipping: string;
+  orderDraftFullName: string;
+  orderDraftEmail: string;
+  orderDraftPhone: string;
+  orderDraftRecipientName: string;
+  orderDraftCountryCode: string;
+  orderDraftPostalCode: string;
+  orderDraftAddressLine1: string;
+  orderDraftAddressLine2: string;
+  orderDraftLocality: string;
+  orderDraftAdministrativeArea: string;
+  orderDraftSave: string;
+  orderDraftSaving: string;
+  orderDraftDelete: string;
+  orderDraftPrivacy: string;
+  orderDraftPaymentUnavailable: string;
+  orderDraftFailed: string;
 }
 
 export interface NpShopCartSkinProps {
@@ -279,7 +329,57 @@ export interface NpShopCheckoutIntent {
 export interface NpShopCheckoutSkinProps {
   basePath: string;
   apiPath: string;
+  orderDraftApiPath: string;
   intentId: string;
+  messages: NpShopMessages;
+}
+
+export const npShopOrderDraftStatuses = ["collecting", "reviewable", "stale"] as const;
+
+export type NpShopOrderDraftStatus = (typeof npShopOrderDraftStatuses)[number];
+
+export interface NpShopOrderDraftCustomer {
+  fullName: string;
+  email: string;
+  phone: string;
+}
+
+export interface NpShopOrderDraftShipping {
+  recipientName: string;
+  phone: string;
+  countryCode: string;
+  postalCode: string;
+  addressLine1: string;
+  addressLine2: string | null;
+  locality: string;
+  administrativeArea: string | null;
+}
+
+export interface NpShopOrderDraft {
+  contract: "np.shop-order-draft.v1";
+  id: string;
+  status: NpShopOrderDraftStatus;
+  revision: number;
+  checkoutIntentId: string;
+  cartRevision: number;
+  cartFingerprint: string;
+  currency: NpShopCurrency;
+  subtotalMinor: number;
+  totalUnits: number;
+  lines: NpShopCheckoutIntentLine[];
+  customer: NpShopOrderDraftCustomer | null;
+  shipping: NpShopOrderDraftShipping | null;
+  sourceCreatedAt: string;
+  sourceExpiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+}
+
+export interface NpShopOrderDraftSkinProps {
+  basePath: string;
+  apiPath: string;
+  draftId: string;
   messages: NpShopMessages;
 }
 
@@ -291,4 +391,5 @@ export interface NpShopSkin {
   renderProduct: (props: NpShopProductSkinProps) => ReactNode | Promise<ReactNode>;
   renderCart?: (props: NpShopCartSkinProps) => ReactNode | Promise<ReactNode>;
   renderCheckout?: (props: NpShopCheckoutSkinProps) => ReactNode | Promise<ReactNode>;
+  renderOrderDraft?: (props: NpShopOrderDraftSkinProps) => ReactNode | Promise<ReactNode>;
 }

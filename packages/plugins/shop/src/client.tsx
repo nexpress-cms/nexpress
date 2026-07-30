@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 
 import { npRequireShopCartQuote } from "./cart-contract.js";
 import { npRequireShopCheckoutIntent } from "./checkout-contract.js";
+import { npRequireShopOrderDraft } from "./order-draft-contract.js";
 import type {
   NpShopCartClientMessages,
   NpShopCartQuote,
   NpShopCheckoutIntent,
   NpShopCurrency,
+  NpShopOrderDraft,
   NpShopProduct,
 } from "./types.js";
 
@@ -20,6 +22,26 @@ interface CartResponse {
 interface CheckoutResponse {
   intent: NpShopCheckoutIntent;
   csrfToken: string | null;
+}
+
+interface OrderDraftResponse {
+  draft: NpShopOrderDraft;
+  csrfToken: string | null;
+}
+
+interface OrderDraftDeleteResponse {
+  deleted: true;
+  csrfToken: string | null;
+}
+
+class ShopOrderDraftRequestError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "ShopOrderDraftRequestError";
+    this.code = code;
+  }
 }
 
 function formatMoney(locale: string, amountMinor: number, currency: NpShopCurrency): string {
@@ -86,6 +108,43 @@ async function requestCheckout(
     throw new Error(failure.message ?? failure.error ?? "Checkout intent request failed.");
   }
   return { ...payload, intent: npRequireShopCheckoutIntent(payload.intent) };
+}
+
+async function requestOrderDraft(
+  apiPath: string,
+  method: "GET" | "POST" | "PATCH" | "DELETE",
+  input: {
+    draftId?: string;
+    csrfToken?: string | null;
+    body?: unknown;
+  } = {},
+): Promise<OrderDraftResponse | OrderDraftDeleteResponse> {
+  const query = input.draftId ? `?id=${encodeURIComponent(input.draftId)}` : "";
+  const response = await fetch(`${apiPath}${query}`, {
+    method,
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json",
+      ...(input.body === undefined ? {} : { "Content-Type": "application/json" }),
+      ...(input.csrfToken ? { "x-csrf-token": input.csrfToken } : {}),
+    },
+    body: input.body === undefined ? undefined : JSON.stringify(input.body),
+  });
+  const payload = (await response.json()) as
+    OrderDraftResponse | OrderDraftDeleteResponse | { message?: string; error?: string };
+  if (!response.ok) {
+    const failure = payload as { message?: string; error?: string };
+    throw new ShopOrderDraftRequestError(
+      failure.error ?? "order_draft_request_failed",
+      failure.message ?? failure.error ?? "Order draft request failed.",
+    );
+  }
+  if ("draft" in payload) {
+    return { ...payload, draft: npRequireShopOrderDraft(payload.draft) };
+  }
+  if ("deleted" in payload && payload.deleted === true) return payload;
+  throw new Error("Order draft response was invalid.");
 }
 
 export function ShopAddToCart({
@@ -365,11 +424,13 @@ function checkoutStatusMessage(
 
 export function ShopCheckout({
   apiPath,
+  orderDraftApiPath,
   basePath,
   intentId,
   messages,
 }: {
   apiPath: string;
+  orderDraftApiPath: string;
   basePath: string;
   intentId: string;
   messages: NpShopCartClientMessages;
@@ -377,7 +438,9 @@ export function ShopCheckout({
   const [intent, setIntent] = useState<NpShopCheckoutIntent | null>(null);
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [creatingDraft, setCreatingDraft] = useState(false);
   const [error, setError] = useState("");
+  const draftAttempt = useRef<{ intentId: string; idempotencyKey: string } | null>(null);
 
   useEffect(() => {
     void requestCheckout(apiPath, "GET", { intentId })
@@ -405,6 +468,31 @@ export function ShopCheckout({
       setError(caught instanceof Error ? caught.message : messages.checkoutFailed);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function createDraft(): Promise<void> {
+    if (!intent || intent.status !== "open") return;
+    setLoading(true);
+    setCreatingDraft(true);
+    setError("");
+    try {
+      if (draftAttempt.current?.intentId !== intent.id) {
+        draftAttempt.current = { intentId: intent.id, idempotencyKey: crypto.randomUUID() };
+      }
+      const response = await requestOrderDraft(orderDraftApiPath, "POST", {
+        csrfToken,
+        body: {
+          idempotencyKey: draftAttempt.current.idempotencyKey,
+          checkoutIntentId: intent.id,
+        },
+      });
+      if (!("draft" in response)) throw new Error(messages.orderDraftFailed);
+      window.location.assign(`${basePath}/order-drafts/${response.draft.id}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : messages.orderDraftFailed);
+      setLoading(false);
+      setCreatingDraft(false);
     }
   }
 
@@ -454,6 +542,11 @@ export function ShopCheckout({
               }).format(new Date(intent.expiresAt))}
             </p>
             <p>{messages.checkoutPaymentUnavailable}</p>
+            {intent.status === "open" ? (
+              <button type="button" disabled={loading} onClick={() => void createDraft()}>
+                {creatingDraft ? messages.orderDraftCreating : messages.orderDraftCreate}
+              </button>
+            ) : null}
             {intent.status === "open" || intent.status === "stale" ? (
               <button type="button" disabled={loading} onClick={() => void cancel()}>
                 {messages.checkoutCancel}
@@ -465,6 +558,319 @@ export function ShopCheckout({
       ) : loading ? (
         <p>{messages.checkoutCreating}</p>
       ) : null}
+    </div>
+  );
+}
+
+function orderDraftStatusMessage(
+  draft: NpShopOrderDraft,
+  messages: NpShopCartClientMessages,
+): string {
+  if (draft.status === "collecting") return messages.orderDraftCollecting;
+  if (draft.status === "reviewable") return messages.orderDraftReviewable;
+  return messages.orderDraftStale;
+}
+
+function formString(form: FormData, key: string): string {
+  const value = form.get(key);
+  return typeof value === "string" ? value : "";
+}
+
+export function ShopOrderDraft({
+  apiPath,
+  basePath,
+  draftId,
+  messages,
+}: {
+  apiPath: string;
+  basePath: string;
+  draftId: string;
+  messages: NpShopCartClientMessages;
+}) {
+  const [draft, setDraft] = useState<NpShopOrderDraft | null>(null);
+  const [csrfToken, setCsrfToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    void requestOrderDraft(apiPath, "GET", { draftId })
+      .then((response) => {
+        if (!("draft" in response)) throw new Error(messages.orderDraftFailed);
+        setDraft(response.draft);
+        setCsrfToken(response.csrfToken);
+      })
+      .catch((caught: unknown) => {
+        setError(caught instanceof Error ? caught.message : messages.orderDraftFailed);
+      })
+      .finally(() => setLoading(false));
+  }, [apiPath, draftId]);
+
+  async function save(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!draft || draft.status === "stale") return;
+    setSaving(true);
+    setError("");
+    const form = new FormData(event.currentTarget);
+    try {
+      const response = await requestOrderDraft(apiPath, "PATCH", {
+        csrfToken,
+        body: {
+          draftId,
+          expectedRevision: draft.revision,
+          customer: {
+            fullName: formString(form, "customerFullName"),
+            email: formString(form, "customerEmail"),
+            phone: formString(form, "customerPhone"),
+          },
+          shipping: {
+            recipientName: formString(form, "recipientName"),
+            phone: formString(form, "shippingPhone"),
+            countryCode: formString(form, "countryCode"),
+            postalCode: formString(form, "postalCode"),
+            addressLine1: formString(form, "addressLine1"),
+            addressLine2: formString(form, "addressLine2") || null,
+            locality: formString(form, "locality"),
+            administrativeArea: formString(form, "administrativeArea") || null,
+          },
+        },
+      });
+      if (!("draft" in response)) throw new Error(messages.orderDraftFailed);
+      setDraft(response.draft);
+      setCsrfToken(response.csrfToken);
+    } catch (caught) {
+      if (caught instanceof ShopOrderDraftRequestError) {
+        if (caught.code === "order_draft_expired" || caught.code === "order_draft_not_found") {
+          setDraft(null);
+        } else if (
+          caught.code === "order_draft_revision_conflict" ||
+          caught.code === "order_draft_source_stale"
+        ) {
+          try {
+            const refreshed = await requestOrderDraft(apiPath, "GET", { draftId });
+            if ("draft" in refreshed) {
+              setDraft(refreshed.draft);
+              setCsrfToken(refreshed.csrfToken);
+            }
+          } catch (refreshError) {
+            if (
+              refreshError instanceof ShopOrderDraftRequestError &&
+              (refreshError.code === "order_draft_expired" ||
+                refreshError.code === "order_draft_not_found")
+            ) {
+              setDraft(null);
+            }
+          }
+        }
+      }
+      setError(caught instanceof Error ? caught.message : messages.orderDraftFailed);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(): Promise<void> {
+    setSaving(true);
+    setError("");
+    try {
+      await requestOrderDraft(apiPath, "DELETE", {
+        csrfToken,
+        body: { draftId },
+      });
+      setDraft(null);
+      window.location.assign(`${basePath}/cart`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : messages.orderDraftFailed);
+      setSaving(false);
+    }
+  }
+
+  const disabled = saving || draft?.status === "stale";
+  return (
+    <div className="np-shop-order-draft-client" aria-busy={loading || saving}>
+      {error ? (
+        <p role="alert" className="np-shop-cart-error">
+          {error}
+        </p>
+      ) : null}
+      {draft ? (
+        <>
+          <header className="np-shop-order-draft-header">
+            <div>
+              <p>{messages.orderDraft}</p>
+              <h1>{messages.orderDraftCustomer}</h1>
+            </div>
+            <span data-np-shop-order-draft-status={draft.status}>
+              {orderDraftStatusMessage(draft, messages)}
+            </span>
+          </header>
+          <div className="np-shop-order-draft-layout">
+            <form key={draft.revision} onSubmit={(event) => void save(event)}>
+              <fieldset disabled={disabled}>
+                <legend>{messages.orderDraftCustomer}</legend>
+                <label className="np-shop-order-draft-wide">
+                  <span>{messages.orderDraftFullName}</span>
+                  <input
+                    name="customerFullName"
+                    required
+                    maxLength={120}
+                    autoComplete="name"
+                    defaultValue={draft.customer?.fullName ?? ""}
+                  />
+                </label>
+                <label>
+                  <span>{messages.orderDraftEmail}</span>
+                  <input
+                    name="customerEmail"
+                    required
+                    type="email"
+                    maxLength={254}
+                    autoComplete="email"
+                    defaultValue={draft.customer?.email ?? ""}
+                  />
+                </label>
+                <label>
+                  <span>{messages.orderDraftPhone}</span>
+                  <input
+                    name="customerPhone"
+                    required
+                    type="tel"
+                    maxLength={32}
+                    autoComplete="tel"
+                    defaultValue={draft.customer?.phone ?? ""}
+                  />
+                </label>
+              </fieldset>
+              <fieldset disabled={disabled}>
+                <legend>{messages.orderDraftShipping}</legend>
+                <label>
+                  <span>{messages.orderDraftRecipientName}</span>
+                  <input
+                    name="recipientName"
+                    required
+                    maxLength={120}
+                    autoComplete="shipping name"
+                    defaultValue={draft.shipping?.recipientName ?? ""}
+                  />
+                </label>
+                <label>
+                  <span>{messages.orderDraftPhone}</span>
+                  <input
+                    name="shippingPhone"
+                    required
+                    type="tel"
+                    maxLength={32}
+                    autoComplete="shipping tel"
+                    defaultValue={draft.shipping?.phone ?? ""}
+                  />
+                </label>
+                <div className="np-shop-order-draft-row">
+                  <label>
+                    <span>{messages.orderDraftCountryCode}</span>
+                    <input
+                      name="countryCode"
+                      required
+                      minLength={2}
+                      maxLength={2}
+                      autoComplete="shipping country"
+                      defaultValue={draft.shipping?.countryCode ?? ""}
+                    />
+                  </label>
+                  <label>
+                    <span>{messages.orderDraftPostalCode}</span>
+                    <input
+                      name="postalCode"
+                      required
+                      maxLength={20}
+                      autoComplete="shipping postal-code"
+                      defaultValue={draft.shipping?.postalCode ?? ""}
+                    />
+                  </label>
+                </div>
+                <label className="np-shop-order-draft-wide">
+                  <span>{messages.orderDraftAddressLine1}</span>
+                  <input
+                    name="addressLine1"
+                    required
+                    maxLength={200}
+                    autoComplete="shipping address-line1"
+                    defaultValue={draft.shipping?.addressLine1 ?? ""}
+                  />
+                </label>
+                <label className="np-shop-order-draft-wide">
+                  <span>{messages.orderDraftAddressLine2}</span>
+                  <input
+                    name="addressLine2"
+                    maxLength={200}
+                    autoComplete="shipping address-line2"
+                    defaultValue={draft.shipping?.addressLine2 ?? ""}
+                  />
+                </label>
+                <div className="np-shop-order-draft-row">
+                  <label>
+                    <span>{messages.orderDraftLocality}</span>
+                    <input
+                      name="locality"
+                      required
+                      maxLength={100}
+                      autoComplete="shipping address-level2"
+                      defaultValue={draft.shipping?.locality ?? ""}
+                    />
+                  </label>
+                  <label>
+                    <span>{messages.orderDraftAdministrativeArea}</span>
+                    <input
+                      name="administrativeArea"
+                      maxLength={100}
+                      autoComplete="shipping address-level1"
+                      defaultValue={draft.shipping?.administrativeArea ?? ""}
+                    />
+                  </label>
+                </div>
+              </fieldset>
+              <p className="np-shop-order-draft-privacy">{messages.orderDraftPrivacy}</p>
+              <button type="submit" disabled={disabled}>
+                {saving ? messages.orderDraftSaving : messages.orderDraftSave}
+              </button>
+            </form>
+            <aside className="np-shop-order-draft-summary">
+              <h2>{messages.checkoutIntent}</h2>
+              <ul>
+                {draft.lines.map((line) => (
+                  <li key={line.key} data-np-shop-order-draft-line={line.key}>
+                    <span>
+                      {line.productName} × {line.quantity.toLocaleString(messages.locale)}
+                    </span>
+                    <strong>
+                      {formatMoney(messages.locale, line.lineTotalMinor, draft.currency)}
+                    </strong>
+                  </li>
+                ))}
+              </ul>
+              <div>
+                <span>{messages.cartSubtotal}</span>
+                <strong>{formatMoney(messages.locale, draft.subtotalMinor, draft.currency)}</strong>
+              </div>
+              <p>
+                {messages.orderDraftExpires}{" "}
+                {new Intl.DateTimeFormat(messages.locale, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                }).format(new Date(draft.expiresAt))}
+              </p>
+              <p>{messages.orderDraftPaymentUnavailable}</p>
+              <button type="button" disabled={saving} onClick={() => void remove()}>
+                {messages.orderDraftDelete}
+              </button>
+              <a href={`${basePath}/cart`}>{messages.checkoutBackToCart}</a>
+            </aside>
+          </div>
+        </>
+      ) : loading ? (
+        <p>{messages.orderDraftCreating}</p>
+      ) : (
+        <a href={`${basePath}/cart`}>{messages.checkoutBackToCart}</a>
+      )}
     </div>
   );
 }

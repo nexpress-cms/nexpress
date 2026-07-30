@@ -306,22 +306,33 @@ real product domain, not just blog/community. Ship as a plugin package
 - **Cart and checkout intent (shipped)** — bounded guest/member carts plus
   owner-scoped, idempotent 15-minute quote snapshots. These do not collect PII,
   reserve stock, create orders, or take payment.
+- **Private order draft (shipped)** — an open checkout intent can create one
+  owner-scoped, revision-safe 24-hour draft with a minimal all-or-nothing
+  customer/shipping contract. Cancellation physically deletes it; read-time
+  and bounded hourly cleanup enforce expiry. Search, revisions, transfer,
+  logs, public discovery, and Admin values exclude its PII.
 - **Payment adapters (future)** — explicit Stripe / Toss / KG Inicis adapter
-  and webhook contracts after order-draft and PII lifecycles are defined.
+  and webhook contracts built on a separately authorized finalized-order
+  boundary.
 - **Order admin (future)** — orders collection with status workflow, refunds,
   fulfillment notes. Slots into the existing admin shell.
 - **Inventory (partially shipped)** — catalog stock and low-stock projection
   exist; reservation and transactional decrement remain future work.
-- **Public surfaces (shipped)** — product detail, listing, cart, and
-  checkout-intent pages use independent plugin skins and stable theme hooks.
+- **Public surfaces (shipped)** — product detail, listing, cart,
+  checkout-intent, and private order-draft pages use independent plugin skins
+  and stable theme hooks.
 - **Tax & shipping (future)** — extension points require region-specific
   policy rather than implied defaults.
 
-Open questions for future transaction slices:
+Resolved foundation decision:
 
-- Should order drafts remain plugin-owned collections, or use dedicated
-  immutable persistence with explicit customer/shipping PII retention and
-  deletion rules?
+- Order drafts use bounded, site-owned plugin storage rather than content
+  collections or a Shop-specific Core table. That keeps PII outside the
+  collection search/revision/transfer graph while generic site deletion still
+  owns the final tenant boundary.
+
+Open question for future transaction slices:
+
 - Payment adapter contract — single shared interface, or per-plugin
   implementation? The latter is simpler; the former lets users swap
   providers without changing other plugins.

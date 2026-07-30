@@ -22,7 +22,10 @@ not at scaffold time.
 
 The default Shop plugin includes products, categories, bounded guest/member
 carts at `/shop/cart`, and owner-scoped 15-minute checkout intents. It does not
-take payment, create orders, collect customer PII, or reserve inventory.
+take payment, create finalized orders, or reserve inventory. An open intent can
+continue to an owner-scoped 24-hour private order draft; its bounded
+customer/shipping values stay outside search and content export and are
+physically deleted on cancellation or bounded expiry cleanup.
 
 `create-nexpress` writes both `.env.example` and `.env` for you. Use the
 setup wizard to confirm the DB connection, generate or accept the auth

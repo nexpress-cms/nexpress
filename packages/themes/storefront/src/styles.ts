@@ -277,7 +277,9 @@ export const storefrontCss = `
 .np-storefront-shell [data-np-shop-surface="cart"] .np-shop-cart-lines > li,
 .np-storefront-shell [data-np-shop-surface="cart"] .np-shop-cart-summary,
 .np-storefront-shell [data-np-shop-surface="checkout"] .np-shop-checkout-intent,
-.np-storefront-shell [data-np-shop-surface="checkout"] .np-shop-checkout-summary {
+.np-storefront-shell [data-np-shop-surface="checkout"] .np-shop-checkout-summary,
+.np-storefront-shell [data-np-shop-surface="order-draft"] fieldset,
+.np-storefront-shell [data-np-shop-surface="order-draft"] .np-shop-order-draft-summary {
   border-radius: 0;
 }
 @media (max-width: 52rem) {
