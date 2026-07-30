@@ -24,13 +24,15 @@ import {
 import type { NpShopRuntime } from "./runtime.js";
 import type { NpShopOrderDraft } from "./types.js";
 
-const SHOP_PLUGIN_ID = "shop";
+export const NP_SHOP_PLUGIN_ID = "shop";
 
-function storageKey(owner: NpShopCartOwner, draftId: string): string {
+export function npShopOrderDraftStorageKey(owner: NpShopCartOwner, draftId: string): string {
   return `order-draft:${npShopCartOwnerStorageSegment(owner)}:${draftId}`;
 }
 
-type ShopTransaction = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
+export type NpShopTransaction = Parameters<
+  Parameters<ReturnType<typeof getDb>["transaction"]>[0]
+>[0];
 
 function requireStoredDraft(value: unknown, expiresAt: Date | null): NpShopOrderDraft {
   const draft = npRequireShopOrderDraft(value);
@@ -42,19 +44,19 @@ function requireStoredDraft(value: unknown, expiresAt: Date | null): NpShopOrder
   return draft;
 }
 
-async function lockDraft(
-  tx: ShopTransaction,
+export async function npLockShopOrderDraft(
+  tx: NpShopTransaction,
   siteId: string,
   owner: NpShopCartOwner,
   draftId: string,
 ): Promise<void> {
   await tx.execute(
-    sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-order-draft:${siteId}:${storageKey(owner, draftId)}`}, 0))`,
+    sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-order-draft:${siteId}:${npShopOrderDraftStorageKey(owner, draftId)}`}, 0))`,
   );
 }
 
-async function lockDraftOwner(
-  tx: ShopTransaction,
+export async function npLockShopOrderDraftOwner(
+  tx: NpShopTransaction,
   siteId: string,
   owner: NpShopCartOwner,
 ): Promise<void> {
@@ -73,17 +75,17 @@ async function readStoredDraft(
     .from(npPluginStorage)
     .where(
       and(
-        eq(npPluginStorage.pluginId, SHOP_PLUGIN_ID),
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        eq(npPluginStorage.key, storageKey(owner, draftId)),
+        eq(npPluginStorage.key, npShopOrderDraftStorageKey(owner, draftId)),
       ),
     )
     .limit(1);
   return row ? requireStoredDraft(row.value, row.expiresAt) : null;
 }
 
-async function readStoredDraftForUpdate(
-  tx: ShopTransaction,
+export async function npReadStoredShopOrderDraftForUpdate(
+  tx: NpShopTransaction,
   siteId: string,
   owner: NpShopCartOwner,
   draftId: string,
@@ -93,9 +95,9 @@ async function readStoredDraftForUpdate(
     .from(npPluginStorage)
     .where(
       and(
-        eq(npPluginStorage.pluginId, SHOP_PLUGIN_ID),
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        eq(npPluginStorage.key, storageKey(owner, draftId)),
+        eq(npPluginStorage.key, npShopOrderDraftStorageKey(owner, draftId)),
       ),
     )
     .limit(1);
@@ -103,7 +105,7 @@ async function readStoredDraftForUpdate(
 }
 
 async function persistDraft(
-  tx: ShopTransaction,
+  tx: NpShopTransaction,
   siteId: string,
   owner: NpShopCartOwner,
   draft: NpShopOrderDraft,
@@ -111,9 +113,9 @@ async function persistDraft(
   await tx
     .insert(npPluginStorage)
     .values({
-      pluginId: SHOP_PLUGIN_ID,
+      pluginId: NP_SHOP_PLUGIN_ID,
       siteId,
-      key: storageKey(owner, draft.id),
+      key: npShopOrderDraftStorageKey(owner, draft.id),
       value: draft,
       expiresAt: new Date(draft.expiresAt),
       updatedAt: new Date(draft.updatedAt),
@@ -138,16 +140,16 @@ async function deleteExpiredDraft(
     .delete(npPluginStorage)
     .where(
       and(
-        eq(npPluginStorage.pluginId, SHOP_PLUGIN_ID),
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        eq(npPluginStorage.key, storageKey(owner, draftId)),
+        eq(npPluginStorage.key, npShopOrderDraftStorageKey(owner, draftId)),
         eq(npPluginStorage.expiresAt, new Date(expiresAt)),
       ),
     );
 }
 
 async function requireOwnerCapacity(
-  tx: ShopTransaction,
+  tx: NpShopTransaction,
   siteId: string,
   owner: NpShopCartOwner,
 ): Promise<void> {
@@ -156,7 +158,7 @@ async function requireOwnerCapacity(
     .from(npPluginStorage)
     .where(
       and(
-        eq(npPluginStorage.pluginId, SHOP_PLUGIN_ID),
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, `order-draft:${npShopCartOwnerStorageSegment(owner)}:%`),
         gt(npPluginStorage.expiresAt, new Date()),
@@ -243,10 +245,15 @@ export async function npCreateShopOrderDraft(
   }
 
   return getDb().transaction(async (tx) => {
-    await lockDraftOwner(tx, siteId, owner);
+    await npLockShopOrderDraftOwner(tx, siteId, owner);
     await npLockShopCart(tx, siteId, owner);
-    await lockDraft(tx, siteId, owner, input.idempotencyKey);
-    const existing = await readStoredDraftForUpdate(tx, siteId, owner, input.idempotencyKey);
+    await npLockShopOrderDraft(tx, siteId, owner, input.idempotencyKey);
+    const existing = await npReadStoredShopOrderDraftForUpdate(
+      tx,
+      siteId,
+      owner,
+      input.idempotencyKey,
+    );
     if (existing) {
       requireIdempotencyMatch(existing, input);
       return withDerivedStatus(runtime, owner, existing);
@@ -302,10 +309,10 @@ export async function npUpdateShopOrderDraft(
 ): Promise<NpShopOrderDraft> {
   const siteId = await requireSiteId();
   const result = await getDb().transaction(async (tx) => {
-    await lockDraftOwner(tx, siteId, owner);
+    await npLockShopOrderDraftOwner(tx, siteId, owner);
     await npLockShopCart(tx, siteId, owner);
-    await lockDraft(tx, siteId, owner, input.draftId);
-    const current = await readStoredDraftForUpdate(tx, siteId, owner, input.draftId);
+    await npLockShopOrderDraft(tx, siteId, owner, input.draftId);
+    const current = await npReadStoredShopOrderDraftForUpdate(tx, siteId, owner, input.draftId);
     if (!current) throw new NpShopOrderDraftNotFoundError();
     const now = new Date();
     if (new Date(current.expiresAt) <= now) {
@@ -313,9 +320,9 @@ export async function npUpdateShopOrderDraft(
         .delete(npPluginStorage)
         .where(
           and(
-            eq(npPluginStorage.pluginId, SHOP_PLUGIN_ID),
+            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
             eq(npPluginStorage.siteId, siteId),
-            eq(npPluginStorage.key, storageKey(owner, input.draftId)),
+            eq(npPluginStorage.key, npShopOrderDraftStorageKey(owner, input.draftId)),
           ),
         );
       return null;
@@ -355,15 +362,15 @@ export async function npDeleteShopOrderDraft(
 ): Promise<void> {
   const siteId = await requireSiteId();
   await getDb().transaction(async (tx) => {
-    await lockDraftOwner(tx, siteId, owner);
-    await lockDraft(tx, siteId, owner, draftId);
+    await npLockShopOrderDraftOwner(tx, siteId, owner);
+    await npLockShopOrderDraft(tx, siteId, owner, draftId);
     await tx
       .delete(npPluginStorage)
       .where(
         and(
-          eq(npPluginStorage.pluginId, SHOP_PLUGIN_ID),
+          eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
           eq(npPluginStorage.siteId, siteId),
-          eq(npPluginStorage.key, storageKey(owner, draftId)),
+          eq(npPluginStorage.key, npShopOrderDraftStorageKey(owner, draftId)),
         ),
       );
   });
@@ -378,7 +385,7 @@ export async function npCleanupExpiredShopOrderDrafts(): Promise<number> {
     .from(npPluginStorage)
     .where(
       and(
-        eq(npPluginStorage.pluginId, SHOP_PLUGIN_ID),
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, "order-draft:%"),
         lte(npPluginStorage.expiresAt, cleanupNow),
@@ -394,7 +401,7 @@ export async function npCleanupExpiredShopOrderDrafts(): Promise<number> {
         .delete(npPluginStorage)
         .where(
           and(
-            eq(npPluginStorage.pluginId, SHOP_PLUGIN_ID),
+            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
             eq(npPluginStorage.siteId, siteId),
             eq(npPluginStorage.key, row.key),
             lte(npPluginStorage.expiresAt, cleanupNow),
@@ -419,7 +426,7 @@ export async function npCountShopOrderDrafts(): Promise<{
     .from(npPluginStorage)
     .where(
       and(
-        eq(npPluginStorage.pluginId, SHOP_PLUGIN_ID),
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, "order-draft:%"),
       ),

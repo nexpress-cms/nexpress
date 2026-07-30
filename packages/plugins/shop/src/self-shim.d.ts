@@ -1,3 +1,10 @@
 declare module "@nexpress/plugin-shop/client" {
-  export { ShopAddToCart, ShopCart, ShopCheckout, ShopOrderDraft } from "./client.js";
+  export {
+    ShopAddToCart,
+    ShopCart,
+    ShopCheckout,
+    ShopOrder,
+    ShopOrderDraft,
+    ShopOrders,
+  } from "./client.js";
 }

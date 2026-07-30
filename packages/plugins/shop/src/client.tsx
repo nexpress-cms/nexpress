@@ -5,12 +5,15 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { npRequireShopCartQuote } from "./cart-contract.js";
 import { npRequireShopCheckoutIntent } from "./checkout-contract.js";
 import { npRequireShopOrderDraft } from "./order-draft-contract.js";
+import { npRequireShopOrder, npRequireShopOrderList } from "./order-contract.js";
 import type {
   NpShopCartClientMessages,
   NpShopCartQuote,
   NpShopCheckoutIntent,
   NpShopCurrency,
+  NpShopOrder,
   NpShopOrderDraft,
+  NpShopOrderList,
   NpShopProduct,
 } from "./types.js";
 
@@ -34,12 +37,22 @@ interface OrderDraftDeleteResponse {
   csrfToken: string | null;
 }
 
-class ShopOrderDraftRequestError extends Error {
+interface OrderResponse {
+  order: NpShopOrder;
+  csrfToken: string | null;
+}
+
+interface OrderListResponse {
+  list: NpShopOrderList;
+  csrfToken: string | null;
+}
+
+class ShopRequestError extends Error {
   readonly code: string;
 
   constructor(code: string, message: string) {
     super(message);
-    this.name = "ShopOrderDraftRequestError";
+    this.name = "ShopRequestError";
     this.code = code;
   }
 }
@@ -135,7 +148,7 @@ async function requestOrderDraft(
     OrderDraftResponse | OrderDraftDeleteResponse | { message?: string; error?: string };
   if (!response.ok) {
     const failure = payload as { message?: string; error?: string };
-    throw new ShopOrderDraftRequestError(
+    throw new ShopRequestError(
       failure.error ?? "order_draft_request_failed",
       failure.message ?? failure.error ?? "Order draft request failed.",
     );
@@ -145,6 +158,41 @@ async function requestOrderDraft(
   }
   if ("deleted" in payload && payload.deleted === true) return payload;
   throw new Error("Order draft response was invalid.");
+}
+
+async function requestOrder(
+  apiPath: string,
+  method: "GET" | "POST" | "DELETE",
+  input: {
+    orderId?: string;
+    csrfToken?: string | null;
+    body?: unknown;
+  } = {},
+): Promise<OrderResponse | OrderListResponse> {
+  const query = input.orderId ? `?id=${encodeURIComponent(input.orderId)}` : "";
+  const response = await fetch(`${apiPath}${query}`, {
+    method,
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json",
+      ...(input.body === undefined ? {} : { "Content-Type": "application/json" }),
+      ...(input.csrfToken ? { "x-csrf-token": input.csrfToken } : {}),
+    },
+    body: input.body === undefined ? undefined : JSON.stringify(input.body),
+  });
+  const payload = (await response.json()) as
+    OrderResponse | OrderListResponse | { message?: string; error?: string };
+  if (!response.ok) {
+    const failure = payload as { message?: string; error?: string };
+    throw new ShopRequestError(
+      failure.error ?? "order_request_failed",
+      failure.message ?? failure.error ?? "Order request failed.",
+    );
+  }
+  if ("order" in payload) return { ...payload, order: npRequireShopOrder(payload.order) };
+  if ("list" in payload) return { ...payload, list: npRequireShopOrderList(payload.list) };
+  throw new Error("Order response was invalid.");
 }
 
 export function ShopAddToCart({
@@ -335,6 +383,7 @@ export function ShopCart({
         <div className="np-shop-cart-empty">
           <p>{messages.cartEmpty}</p>
           <a href={basePath}>{messages.cart}</a>
+          <a href={`${basePath}/orders`}>{messages.orderHistory}</a>
         </div>
       ) : (
         <>
@@ -405,6 +454,7 @@ export function ShopCart({
             >
               {messages.cartClear}
             </button>
+            <a href={`${basePath}/orders`}>{messages.orderHistory}</a>
           </aside>
         </>
       )}
@@ -578,11 +628,13 @@ function formString(form: FormData, key: string): string {
 
 export function ShopOrderDraft({
   apiPath,
+  orderApiPath,
   basePath,
   draftId,
   messages,
 }: {
   apiPath: string;
+  orderApiPath: string;
   basePath: string;
   draftId: string;
   messages: NpShopCartClientMessages;
@@ -592,6 +644,7 @@ export function ShopOrderDraft({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const orderAttempt = useRef<{ draftId: string; idempotencyKey: string } | null>(null);
 
   useEffect(() => {
     void requestOrderDraft(apiPath, "GET", { draftId })
@@ -639,7 +692,7 @@ export function ShopOrderDraft({
       setDraft(response.draft);
       setCsrfToken(response.csrfToken);
     } catch (caught) {
-      if (caught instanceof ShopOrderDraftRequestError) {
+      if (caught instanceof ShopRequestError) {
         if (caught.code === "order_draft_expired" || caught.code === "order_draft_not_found") {
           setDraft(null);
         } else if (
@@ -654,7 +707,7 @@ export function ShopOrderDraft({
             }
           } catch (refreshError) {
             if (
-              refreshError instanceof ShopOrderDraftRequestError &&
+              refreshError instanceof ShopRequestError &&
               (refreshError.code === "order_draft_expired" ||
                 refreshError.code === "order_draft_not_found")
             ) {
@@ -681,6 +734,30 @@ export function ShopOrderDraft({
       window.location.assign(`${basePath}/cart`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : messages.orderDraftFailed);
+      setSaving(false);
+    }
+  }
+
+  async function createOrder(): Promise<void> {
+    if (!draft || draft.status !== "reviewable") return;
+    setSaving(true);
+    setError("");
+    try {
+      if (orderAttempt.current?.draftId !== draft.id) {
+        orderAttempt.current = { draftId: draft.id, idempotencyKey: crypto.randomUUID() };
+      }
+      const response = await requestOrder(orderApiPath, "POST", {
+        csrfToken,
+        body: {
+          idempotencyKey: orderAttempt.current.idempotencyKey,
+          draftId: draft.id,
+          expectedRevision: draft.revision,
+        },
+      });
+      if (!("order" in response)) throw new Error(messages.orderFailed);
+      window.location.assign(`${basePath}/orders/${response.order.id}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : messages.orderFailed);
       setSaving(false);
     }
   }
@@ -859,6 +936,11 @@ export function ShopOrderDraft({
                 }).format(new Date(draft.expiresAt))}
               </p>
               <p>{messages.orderDraftPaymentUnavailable}</p>
+              {draft.status === "reviewable" ? (
+                <button type="button" disabled={saving} onClick={() => void createOrder()}>
+                  {saving ? messages.orderCreating : messages.orderCreate}
+                </button>
+              ) : null}
               <button type="button" disabled={saving} onClick={() => void remove()}>
                 {messages.orderDraftDelete}
               </button>
@@ -870,6 +952,194 @@ export function ShopOrderDraft({
         <p>{messages.orderDraftCreating}</p>
       ) : (
         <a href={`${basePath}/cart`}>{messages.checkoutBackToCart}</a>
+      )}
+    </div>
+  );
+}
+
+function orderStatusMessage(order: NpShopOrder, messages: NpShopCartClientMessages): string {
+  return order.status === "pending-payment"
+    ? messages.orderPendingPayment
+    : messages.orderCancelled;
+}
+
+export function ShopOrders({
+  apiPath,
+  basePath,
+  messages,
+}: {
+  apiPath: string;
+  basePath: string;
+  messages: NpShopCartClientMessages;
+}) {
+  const [list, setList] = useState<NpShopOrderList | null>(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    void requestOrder(apiPath, "GET")
+      .then((response) => {
+        if (!("list" in response)) throw new Error(messages.orderFailed);
+        setList(response.list);
+      })
+      .catch((caught: unknown) => {
+        setError(caught instanceof Error ? caught.message : messages.orderFailed);
+      });
+  }, [apiPath]);
+
+  if (error) {
+    return (
+      <p role="alert" className="np-shop-cart-error">
+        {error}
+      </p>
+    );
+  }
+  if (!list) return <p>{messages.orderCreating}</p>;
+  if (list.orders.length === 0) return <p>{messages.orderEmpty}</p>;
+  return (
+    <div className="np-shop-order-list">
+      {list.orders.map((order) => (
+        <article key={order.id} data-np-shop-order-status={order.status}>
+          <div>
+            <span>{messages.orderReference}</span>
+            <code>{order.id}</code>
+          </div>
+          <strong>{orderStatusMessage(order, messages)}</strong>
+          <span>{formatMoney(messages.locale, order.subtotalMinor, order.currency)}</span>
+          <time dateTime={order.createdAt}>
+            {new Intl.DateTimeFormat(messages.locale, {
+              dateStyle: "medium",
+              timeStyle: "short",
+            }).format(new Date(order.createdAt))}
+          </time>
+          <a href={`${basePath}/orders/${order.id}`}>{messages.order}</a>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+export function ShopOrder({
+  apiPath,
+  basePath,
+  orderId,
+  messages,
+}: {
+  apiPath: string;
+  basePath: string;
+  orderId: string;
+  messages: NpShopCartClientMessages;
+}) {
+  const [order, setOrder] = useState<NpShopOrder | null>(null);
+  const [csrfToken, setCsrfToken] = useState<string | null>(null);
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    void requestOrder(apiPath, "GET", { orderId })
+      .then((response) => {
+        if (!("order" in response)) throw new Error(messages.orderFailed);
+        setOrder(response.order);
+        setCsrfToken(response.csrfToken);
+      })
+      .catch((caught: unknown) => {
+        setError(caught instanceof Error ? caught.message : messages.orderFailed);
+      })
+      .finally(() => setBusy(false));
+  }, [apiPath, orderId]);
+
+  async function cancel(): Promise<void> {
+    if (!order || order.status !== "pending-payment") return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await requestOrder(apiPath, "DELETE", {
+        csrfToken,
+        body: { orderId: order.id, expectedRevision: order.revision },
+      });
+      if (!("order" in response)) throw new Error(messages.orderFailed);
+      setOrder(response.order);
+      setCsrfToken(response.csrfToken);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : messages.orderFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="np-shop-order-client" aria-busy={busy}>
+      {error ? (
+        <p role="alert" className="np-shop-cart-error">
+          {error}
+        </p>
+      ) : null}
+      {order ? (
+        <>
+          <header className="np-shop-order-header">
+            <div>
+              <p>{messages.orderReference}</p>
+              <h1>{order.id}</h1>
+            </div>
+            <span data-np-shop-order-status={order.status}>
+              {orderStatusMessage(order, messages)}
+            </span>
+          </header>
+          <div className="np-shop-order-layout">
+            <section>
+              <h2>{messages.order}</h2>
+              <ul>
+                {order.lines.map((line) => (
+                  <li key={line.key} data-np-shop-order-line={line.key}>
+                    <span>
+                      {line.productName} × {line.quantity.toLocaleString(messages.locale)}
+                    </span>
+                    <strong>
+                      {formatMoney(messages.locale, line.lineTotalMinor, order.currency)}
+                    </strong>
+                  </li>
+                ))}
+              </ul>
+              <div>
+                <span>{messages.cartSubtotal}</span>
+                <strong>{formatMoney(messages.locale, order.subtotalMinor, order.currency)}</strong>
+              </div>
+            </section>
+            <aside>
+              <p>{messages.orderPaymentUnavailable}</p>
+              <p>
+                {order.privateDataStatus === "retained"
+                  ? messages.orderPrivateRetained
+                  : messages.orderPrivateRedacted}
+              </p>
+              <p>
+                {messages.orderCreated}{" "}
+                {new Intl.DateTimeFormat(messages.locale, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                }).format(new Date(order.createdAt))}
+              </p>
+              {order.status === "pending-payment" ? (
+                <>
+                  <p>
+                    {messages.orderExpires}{" "}
+                    {new Intl.DateTimeFormat(messages.locale, {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    }).format(new Date(order.pendingExpiresAt))}
+                  </p>
+                  <button type="button" disabled={busy} onClick={() => void cancel()}>
+                    {messages.orderCancel}
+                  </button>
+                </>
+              ) : null}
+              <a href={`${basePath}/orders`}>{messages.orderHistory}</a>
+            </aside>
+          </div>
+        </>
+      ) : busy ? (
+        <p>{messages.orderCreating}</p>
+      ) : (
+        <a href={`${basePath}/orders`}>{messages.orderHistory}</a>
       )}
     </div>
   );

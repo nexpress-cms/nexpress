@@ -1,13 +1,21 @@
 import Link from "next/link";
 
-import { ShopCart, ShopCheckout, ShopOrderDraft } from "@nexpress/plugin-shop/client";
+import {
+  ShopCart,
+  ShopCheckout,
+  ShopOrder,
+  ShopOrderDraft,
+  ShopOrders,
+} from "@nexpress/plugin-shop/client";
 
 import { buildShopCatalogHref } from "../runtime.js";
 import type {
   NpShopCartClientMessages,
   NpShopCartSkinProps,
   NpShopCheckoutSkinProps,
+  NpShopOrderSkinProps,
   NpShopOrderDraftSkinProps,
+  NpShopOrdersSkinProps,
   NpShopCatalogSkinProps,
   NpShopCategorySkinProps,
   NpShopMessages,
@@ -73,6 +81,22 @@ function cartClientMessages(messages: NpShopMessages): NpShopCartClientMessages 
     orderDraftPrivacy: messages.orderDraftPrivacy,
     orderDraftPaymentUnavailable: messages.orderDraftPaymentUnavailable,
     orderDraftFailed: messages.orderDraftFailed,
+    order: messages.order,
+    orders: messages.orders,
+    orderCreate: messages.orderCreate,
+    orderCreating: messages.orderCreating,
+    orderPendingPayment: messages.orderPendingPayment,
+    orderCancelled: messages.orderCancelled,
+    orderPrivateRetained: messages.orderPrivateRetained,
+    orderPrivateRedacted: messages.orderPrivateRedacted,
+    orderExpires: messages.orderExpires,
+    orderCreated: messages.orderCreated,
+    orderCancel: messages.orderCancel,
+    orderHistory: messages.orderHistory,
+    orderEmpty: messages.orderEmpty,
+    orderReference: messages.orderReference,
+    orderPaymentUnavailable: messages.orderPaymentUnavailable,
+    orderFailed: messages.orderFailed,
   };
 }
 
@@ -470,8 +494,39 @@ export function ShopOrderDraftSurface({
     >
       <ShopOrderDraft
         apiPath={props.apiPath}
+        orderApiPath={props.orderApiPath}
         basePath={props.basePath}
         draftId={props.draftId}
+        messages={cartClientMessages(props.messages)}
+      />
+    </main>
+  );
+}
+
+export function ShopOrdersSurface({ skin, ...props }: NpShopOrdersSkinProps & { skin: string }) {
+  return (
+    <main className="np-shop np-shop-orders" data-np-shop-surface="orders" data-np-shop-skin={skin}>
+      <header className="np-shop-page-header">
+        <p>{props.messages.catalogOnly}</p>
+        <h1>{props.messages.orders}</h1>
+        <Link href={props.basePath}>{props.messages.backToCatalog}</Link>
+      </header>
+      <ShopOrders
+        apiPath={props.apiPath}
+        basePath={props.basePath}
+        messages={cartClientMessages(props.messages)}
+      />
+    </main>
+  );
+}
+
+export function ShopOrderSurface({ skin, ...props }: NpShopOrderSkinProps & { skin: string }) {
+  return (
+    <main className="np-shop np-shop-order" data-np-shop-surface="order" data-np-shop-skin={skin}>
+      <ShopOrder
+        apiPath={props.apiPath}
+        basePath={props.basePath}
+        orderId={props.orderId}
         messages={cartClientMessages(props.messages)}
       />
     </main>

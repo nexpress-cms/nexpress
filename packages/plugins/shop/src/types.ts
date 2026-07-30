@@ -146,6 +146,22 @@ export interface NpShopMessages {
   orderDraftPrivacy: string;
   orderDraftPaymentUnavailable: string;
   orderDraftFailed: string;
+  order: string;
+  orders: string;
+  orderCreate: string;
+  orderCreating: string;
+  orderPendingPayment: string;
+  orderCancelled: string;
+  orderPrivateRetained: string;
+  orderPrivateRedacted: string;
+  orderExpires: string;
+  orderCreated: string;
+  orderCancel: string;
+  orderHistory: string;
+  orderEmpty: string;
+  orderReference: string;
+  orderPaymentUnavailable: string;
+  orderFailed: string;
   previous: string;
   next: string;
   backToCatalog: string;
@@ -285,6 +301,22 @@ export interface NpShopCartClientMessages {
   orderDraftPrivacy: string;
   orderDraftPaymentUnavailable: string;
   orderDraftFailed: string;
+  order: string;
+  orders: string;
+  orderCreate: string;
+  orderCreating: string;
+  orderPendingPayment: string;
+  orderCancelled: string;
+  orderPrivateRetained: string;
+  orderPrivateRedacted: string;
+  orderExpires: string;
+  orderCreated: string;
+  orderCancel: string;
+  orderHistory: string;
+  orderEmpty: string;
+  orderReference: string;
+  orderPaymentUnavailable: string;
+  orderFailed: string;
 }
 
 export interface NpShopCartSkinProps {
@@ -379,7 +411,63 @@ export interface NpShopOrderDraft {
 export interface NpShopOrderDraftSkinProps {
   basePath: string;
   apiPath: string;
+  orderApiPath: string;
   draftId: string;
+  messages: NpShopMessages;
+}
+
+export const npShopOrderStatuses = ["pending-payment", "cancelled"] as const;
+
+export type NpShopOrderStatus = (typeof npShopOrderStatuses)[number];
+
+export const npShopOrderPrivateDataStatuses = ["retained", "redacted"] as const;
+
+export type NpShopOrderPrivateDataStatus = (typeof npShopOrderPrivateDataStatuses)[number];
+
+export const npShopOrderCancellationReasons = ["customer", "payment-timeout"] as const;
+
+export type NpShopOrderCancellationReason = (typeof npShopOrderCancellationReasons)[number];
+
+export interface NpShopOrder {
+  contract: "np.shop-order.v1";
+  id: string;
+  status: NpShopOrderStatus;
+  revision: number;
+  sourceDraftId: string;
+  checkoutIntentId: string;
+  cartRevision: number;
+  cartFingerprint: string;
+  currency: NpShopCurrency;
+  subtotalMinor: number;
+  totalUnits: number;
+  lines: NpShopCheckoutIntentLine[];
+  privateDataStatus: NpShopOrderPrivateDataStatus;
+  customer: NpShopOrderDraftCustomer | null;
+  shipping: NpShopOrderDraftShipping | null;
+  createdAt: string;
+  updatedAt: string;
+  pendingExpiresAt: string;
+  cancelledAt: string | null;
+  cancellationReason: NpShopOrderCancellationReason | null;
+  purgeAt: string;
+}
+
+export interface NpShopOrderList {
+  contract: "np.shop-order-list.v1";
+  orders: NpShopOrder[];
+  total: number;
+}
+
+export interface NpShopOrdersSkinProps {
+  basePath: string;
+  apiPath: string;
+  messages: NpShopMessages;
+}
+
+export interface NpShopOrderSkinProps {
+  basePath: string;
+  apiPath: string;
+  orderId: string;
   messages: NpShopMessages;
 }
 
@@ -392,4 +480,6 @@ export interface NpShopSkin {
   renderCart?: (props: NpShopCartSkinProps) => ReactNode | Promise<ReactNode>;
   renderCheckout?: (props: NpShopCheckoutSkinProps) => ReactNode | Promise<ReactNode>;
   renderOrderDraft?: (props: NpShopOrderDraftSkinProps) => ReactNode | Promise<ReactNode>;
+  renderOrders?: (props: NpShopOrdersSkinProps) => ReactNode | Promise<ReactNode>;
+  renderOrder?: (props: NpShopOrderSkinProps) => ReactNode | Promise<ReactNode>;
 }

@@ -18,6 +18,7 @@ export function createShopOrderDraftRoute(runtime: NpShopRuntime) {
     const props = {
       basePath: runtime.basePath,
       apiPath: "/api/plugins/shop/order-drafts",
+      orderApiPath: "/api/plugins/shop/orders",
       draftId,
       messages,
     };

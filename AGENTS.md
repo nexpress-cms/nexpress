@@ -2,7 +2,14 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-30 (Shop private order drafts now share one exact,
+**Last refreshed:** 2026-07-30 (Shop durable pending orders now split exact
+owner/site-scoped commercial, private-sidecar, and maintenance contracts across
+idempotent draft conversion, API, history/detail skins, Storefront hooks,
+PII-free Admin/Doctor diagnostics, revision-safe cancellation, 24-hour
+private-data deletion, and 365-day commercial cleanup without implying payment
+success, inventory reservation, tax, shipping, fulfillment, or refunds.)
+
+**Earlier:** 2026-07-30 (Shop private order drafts now share one exact,
 owner/site-scoped, revision-safe, 24-hour customer/shipping PII contract across
 open-intent derivation, API, both skins, Storefront hooks, masked Admin/Doctor
 health, immediate cancellation deletion, and bounded expiry cleanup without

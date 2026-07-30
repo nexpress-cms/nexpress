@@ -1,6 +1,7 @@
 import {
   definePlugin,
   npAdminStatus,
+  npAdminTable,
   type NpPluginPageRouteRegistration,
 } from "@nexpress/plugin-sdk";
 
@@ -15,11 +16,19 @@ import { defineShopCategoriesCollection, defineShopProductsCollection } from "./
 import { createShopHomeBlocks, shopHomePatterns } from "./home-blocks.js";
 import { createShopOrderDraftApiHandler } from "./order-draft-api.js";
 import { npCleanupExpiredShopOrderDrafts, npCountShopOrderDrafts } from "./order-draft-service.js";
+import { createShopOrderApiHandler } from "./order-api.js";
+import {
+  npCountShopOrders,
+  npListRecentShopOrders,
+  npMaintainShopOrders,
+} from "./order-service.js";
 import { createShopCatalogMetadata, createShopCatalogRoute } from "./routes/catalog.js";
 import { createShopCartRoute } from "./routes/cart.js";
 import { createShopCheckoutRoute } from "./routes/checkout.js";
 import { createShopCategoryMetadata, createShopCategoryRoute } from "./routes/category.js";
 import { createShopOrderDraftRoute } from "./routes/order-draft.js";
+import { createShopOrderRoute } from "./routes/order.js";
+import { createShopOrdersRoute } from "./routes/orders.js";
 import { createShopProductMetadata, createShopProductRoute } from "./routes/product.js";
 import type { NpShopRuntime } from "./runtime.js";
 import { classicShopSkin } from "./skins/classic.js";
@@ -72,7 +81,9 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
       typeof skin.renderProduct !== "function" ||
       (skin.renderCart !== undefined && typeof skin.renderCart !== "function") ||
       (skin.renderCheckout !== undefined && typeof skin.renderCheckout !== "function") ||
-      (skin.renderOrderDraft !== undefined && typeof skin.renderOrderDraft !== "function")
+      (skin.renderOrderDraft !== undefined && typeof skin.renderOrderDraft !== "function") ||
+      (skin.renderOrders !== undefined && typeof skin.renderOrders !== "function") ||
+      (skin.renderOrder !== undefined && typeof skin.renderOrder !== "function")
     ) {
       throw new Error(`Shop skin "${skin.id}" is incomplete.`);
     }
@@ -190,6 +201,23 @@ const messages = {
     "shop.orderDraftPaymentUnavailable":
       "Saving these details does not place an order, reserve inventory, calculate shipping or tax, or take payment.",
     "shop.orderDraftFailed": "The order draft could not be updated.",
+    "shop.order": "Order",
+    "shop.orders": "Orders",
+    "shop.orderCreate": "Create pending order",
+    "shop.orderCreating": "Creating order…",
+    "shop.orderPendingPayment": "Pending payment",
+    "shop.orderCancelled": "Cancelled",
+    "shop.orderPrivateRetained": "Private delivery details are retained until this order expires.",
+    "shop.orderPrivateRedacted": "Private delivery details were permanently deleted.",
+    "shop.orderExpires": "Pending order expires",
+    "shop.orderCreated": "Created",
+    "shop.orderCancel": "Cancel order and delete private details",
+    "shop.orderHistory": "Order history",
+    "shop.orderEmpty": "No orders have been created for this browser identity.",
+    "shop.orderReference": "Order reference",
+    "shop.orderPaymentUnavailable":
+      "This durable order reference is pending only. Payment, inventory reservation, tax, shipping rates, fulfillment, and refunds are not connected.",
+    "shop.orderFailed": "The order could not be updated.",
     "shop.previous": "Previous",
     "shop.next": "Next",
     "shop.backToCatalog": "Back to shop",
@@ -284,6 +312,23 @@ const messages = {
     "shop.orderDraftPaymentUnavailable":
       "정보를 저장해도 주문 생성, 재고 예약, 배송비·세금 계산 또는 결제가 실행되지 않습니다.",
     "shop.orderDraftFailed": "주문 초안을 갱신하지 못했습니다.",
+    "shop.order": "주문",
+    "shop.orders": "주문 내역",
+    "shop.orderCreate": "결제 대기 주문 만들기",
+    "shop.orderCreating": "주문 만드는 중…",
+    "shop.orderPendingPayment": "결제 대기",
+    "shop.orderCancelled": "취소됨",
+    "shop.orderPrivateRetained": "배송 개인정보는 이 주문의 대기 시간이 끝날 때까지 보관됩니다.",
+    "shop.orderPrivateRedacted": "배송 개인정보가 영구 삭제되었습니다.",
+    "shop.orderExpires": "결제 대기 만료",
+    "shop.orderCreated": "생성",
+    "shop.orderCancel": "주문 취소 및 개인정보 삭제",
+    "shop.orderHistory": "주문 내역",
+    "shop.orderEmpty": "이 브라우저 식별자로 만든 주문이 없습니다.",
+    "shop.orderReference": "주문 번호",
+    "shop.orderPaymentUnavailable":
+      "이 영속 주문 번호는 결제 대기 상태일 뿐입니다. 결제, 재고 예약, 세금·배송비, 배송 처리 및 환불은 연결되지 않았습니다.",
+    "shop.orderFailed": "주문을 갱신하지 못했습니다.",
     "shop.previous": "이전",
     "shop.next": "다음",
     "shop.backToCatalog": "스토어로 돌아가기",
@@ -306,6 +351,7 @@ export function createShop(options: NpShopOptions = {}) {
   const cartApiHandler = createShopCartApiHandler(runtime);
   const checkoutApiHandler = createShopCheckoutApiHandler(runtime);
   const orderDraftApiHandler = createShopOrderDraftApiHandler(runtime);
+  const orderApiHandler = createShopOrderApiHandler(runtime);
   const pageRoutes = [
     {
       pattern: runtime.basePath,
@@ -334,6 +380,14 @@ export function createShop(options: NpShopOptions = {}) {
       pattern: `${runtime.basePath}/order-drafts/:draftId`,
       component: createShopOrderDraftRoute(runtime),
     },
+    {
+      pattern: `${runtime.basePath}/orders`,
+      component: createShopOrdersRoute(runtime),
+    },
+    {
+      pattern: `${runtime.basePath}/orders/:orderId`,
+      component: createShopOrderRoute(runtime),
+    },
   ] satisfies NpPluginPageRouteRegistration[];
 
   const plugin = definePlugin({
@@ -342,7 +396,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, pending orders, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -370,13 +424,17 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-order-drafts",
           "widget:shop-order-draft-health",
           "action:shop-order-draft-cleanup",
+          "dashboard:shop-orders",
+          "widget:shop-order-health",
+          "table:shop-recent-orders",
+          "action:shop-order-maintenance",
         ],
-        apiRoutes: ["/cart", "/checkout", "/order-drafts"],
+        apiRoutes: ["/cart", "/checkout", "/order-drafts", "/orders"],
         hooks: [],
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, and private order-draft foundation for products, variants, categories, prices, inventory, and short-lived delivery details. Payment and finalized orders are deliberately not implied.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, and durable pending-order foundation. Payment success, inventory reservation, tax, shipping rates, fulfillment, and refunds are deliberately not implied.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -404,12 +462,16 @@ export function createShop(options: NpShopOptions = {}) {
         cart: '[data-np-shop-surface="cart"]',
         checkout: '[data-np-shop-surface="checkout"]',
         "order-draft": '[data-np-shop-surface="order-draft"]',
+        orders: '[data-np-shop-surface="orders"]',
+        order: '[data-np-shop-surface="order"]',
         "cart-action": "[data-np-shop-cart-action]",
         "cart-line": "[data-np-shop-cart-line]",
         "checkout-line": "[data-np-shop-checkout-line]",
         "checkout-status": "[data-np-shop-checkout-status]",
         "order-draft-line": "[data-np-shop-order-draft-line]",
         "order-draft-status": "[data-np-shop-order-draft-status]",
+        "order-line": "[data-np-shop-order-line]",
+        "order-status": "[data-np-shop-order-status]",
         "product-card": ".np-shop-product-card",
         "product-grid": ".np-shop-product-grid",
         "category-grid": ".np-shop-category-grid",
@@ -466,6 +528,15 @@ export function createShop(options: NpShopOptions = {}) {
             "Unexpired owner-scoped drafts; customer and shipping values are never exposed here.",
           priority: 26,
         },
+        {
+          id: "shop-orders-total",
+          label: "Orders",
+          kind: "metric",
+          actionId: "countOrders",
+          description:
+            "Durable commercial snapshots only; customer and shipping values are excluded.",
+          priority: 27,
+        },
       ],
       widgets: [
         {
@@ -485,6 +556,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Private order draft storage",
           kind: "status",
           actionId: "orderDraftHealth",
+        },
+        {
+          id: "shop-order-health",
+          label: "Order storage",
+          kind: "status",
+          actionId: "orderHealth",
         },
       ],
       actions: [
@@ -506,6 +583,29 @@ export function createShop(options: NpShopOptions = {}) {
           actionId: "cleanupExpiredOrderDrafts",
           confirm:
             "Permanently delete expired Shop order drafts and their private customer/shipping data for this site?",
+        },
+        {
+          id: "shop-order-maintenance",
+          label: "Maintain pending orders",
+          actionId: "maintainOrders",
+          confirm:
+            "Cancel expired pending orders, permanently delete their private data, and purge commercial snapshots past 365 days?",
+        },
+      ],
+      tables: [
+        {
+          id: "shop-recent-orders",
+          label: "Recent orders (private values withheld)",
+          columns: [
+            { name: "id", label: "Order" },
+            { name: "status", label: "Status" },
+            { name: "total", label: "Total" },
+            { name: "units", label: "Units" },
+            { name: "privateData", label: "Private data" },
+            { name: "createdAt", label: "Created" },
+          ],
+          rowsActionId: "recentOrders",
+          emptyMessage: "No durable Shop orders exist for this site.",
         },
       ],
     },
@@ -704,6 +804,75 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      countOrders: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npCountShopOrders();
+            return {
+              ok: true,
+              data: {
+                value: counts.total,
+                delta: `${counts.pending.toString()} pending, ${counts.cancelled.toString()} cancelled`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      orderHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopOrders();
+            return counts.invalidSample > 0 || counts.invalidMetadata > 0
+              ? npAdminStatus(
+                  "error",
+                  `${counts.invalidSample.toString()} malformed commercial row(s) in the newest bounded sample and ${counts.invalidMetadata.toString()} storage metadata issue(s); private values are withheld.`,
+                )
+              : counts.due > 0
+                ? npAdminStatus(
+                    "warn",
+                    `${counts.pending.toString()} pending, ${counts.cancelled.toString()} cancelled, ${counts.due.toString()} due for maintenance; private values are withheld.`,
+                  )
+                : npAdminStatus(
+                    "ok",
+                    `${counts.pending.toString()} pending, ${counts.cancelled.toString()} cancelled order(s); private values are withheld.`,
+                  );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Order health check failed.",
+            );
+          }
+        },
+      },
+      recentOrders: {
+        kind: "table",
+        handler: async () => {
+          try {
+            const result = await npListRecentShopOrders();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      maintainOrders: {
+        kind: "action",
+        handler: async () => {
+          try {
+            const result = await npMaintainShopOrders();
+            return {
+              ok: true,
+              data: `Cancelled ${result.cancelled.toString()} expired pending order(s) and purged ${result.purged.toString()} expired commercial snapshot(s).`,
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
     },
     routes: [
       {
@@ -772,6 +941,26 @@ export function createShop(options: NpShopOptions = {}) {
         description: "Permanently delete one owner-scoped private order draft.",
         handler: orderDraftApiHandler,
       },
+      {
+        method: "GET",
+        path: "/orders",
+        description: "Read one owner-scoped order or the bounded owner order history.",
+        handler: orderApiHandler,
+      },
+      {
+        method: "POST",
+        path: "/orders",
+        description:
+          "Atomically create one idempotent pending-payment order from a reviewable private draft.",
+        handler: orderApiHandler,
+      },
+      {
+        method: "DELETE",
+        path: "/orders",
+        description:
+          "Cancel one owner-scoped pending order and permanently delete its private sidecar.",
+        handler: orderApiHandler,
+      },
     ],
     scheduled: [
       {
@@ -797,6 +986,15 @@ export function createShop(options: NpShopOptions = {}) {
           "Permanently delete one bounded oldest-first batch of expired private order drafts for each active site.",
         handler: async () => {
           await npCleanupExpiredShopOrderDrafts();
+        },
+      },
+      {
+        id: "maintain-orders",
+        cron: "31 * * * *",
+        description:
+          "Cancel expired pending orders, redact their private sidecars, and purge old commercial snapshots in bounded batches.",
+        handler: async () => {
+          await npMaintainShopOrders();
         },
       },
     ],
@@ -828,7 +1026,10 @@ export {
 export {
   npShopCheckoutIntentStatuses,
   npShopCurrencies,
+  npShopOrderCancellationReasons,
   npShopOrderDraftStatuses,
+  npShopOrderPrivateDataStatuses,
+  npShopOrderStatuses,
 } from "./types.js";
 export {
   NP_SHOP_CART_QUOTE_CONTRACT,
@@ -875,6 +1076,22 @@ export {
   npRequireShopOrderDraftUpdateInput,
   npShopOrderDraftLimits,
 } from "./order-draft-contract.js";
+export {
+  NP_SHOP_ORDER_CONTRACT,
+  NP_SHOP_ORDER_LIST_CONTRACT,
+  NP_SHOP_ORDER_PRIVATE_CONTRACT,
+  NP_SHOP_ORDER_STORAGE_CONTRACT,
+  npAnalyzeShopOrder,
+  npAnalyzeStoredShopOrder,
+  npAnalyzeStoredShopOrderPrivate,
+  npRequireShopOrder,
+  npRequireShopOrderCancelInput,
+  npRequireShopOrderCreateInput,
+  npRequireShopOrderId,
+  npRequireShopOrderList,
+  npShopOrderLimits,
+} from "./order-contract.js";
+export type { NpShopOrderCancelInput, NpShopOrderCreateInput } from "./order-contract.js";
 export type {
   NpShopOrderDraftCreateInput,
   NpShopOrderDraftDeleteInput,
@@ -896,6 +1113,13 @@ export type {
   NpShopOrderDraftShipping,
   NpShopOrderDraftSkinProps,
   NpShopOrderDraftStatus,
+  NpShopOrder,
+  NpShopOrderCancellationReason,
+  NpShopOrderList,
+  NpShopOrderPrivateDataStatus,
+  NpShopOrderSkinProps,
+  NpShopOrdersSkinProps,
+  NpShopOrderStatus,
   NpShopCatalogQuery,
   NpShopCatalogSkinProps,
   NpShopCategory,

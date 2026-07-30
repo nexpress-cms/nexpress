@@ -3,6 +3,8 @@ import {
   ShopCartSurface,
   ShopCheckoutSurface,
   ShopOrderDraftSurface,
+  ShopOrderSurface,
+  ShopOrdersSurface,
   ShopCatalogSurface,
   ShopCategorySurface,
   ShopProductSurface,
@@ -17,4 +19,6 @@ export const classicShopSkin: NpShopSkin = {
   renderCart: (props) => <ShopCartSurface {...props} skin="classic" />,
   renderCheckout: (props) => <ShopCheckoutSurface {...props} skin="classic" />,
   renderOrderDraft: (props) => <ShopOrderDraftSurface {...props} skin="classic" />,
+  renderOrders: (props) => <ShopOrdersSurface {...props} skin="classic" />,
+  renderOrder: (props) => <ShopOrderSurface {...props} skin="classic" />,
 };

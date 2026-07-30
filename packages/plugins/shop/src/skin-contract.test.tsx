@@ -92,6 +92,22 @@ const messages = {
   orderDraftPrivacy: "24시간 후 삭제",
   orderDraftPaymentUnavailable: "결제 없음",
   orderDraftFailed: "초안 실패",
+  order: "주문",
+  orders: "주문 내역",
+  orderCreate: "주문 만들기",
+  orderCreating: "주문 만드는 중",
+  orderPendingPayment: "결제 대기",
+  orderCancelled: "취소됨",
+  orderPrivateRetained: "개인정보 보관",
+  orderPrivateRedacted: "개인정보 삭제",
+  orderExpires: "주문 만료",
+  orderCreated: "생성",
+  orderCancel: "주문 취소",
+  orderHistory: "주문 내역",
+  orderEmpty: "주문 없음",
+  orderReference: "주문 번호",
+  orderPaymentUnavailable: "결제 없음",
+  orderFailed: "주문 실패",
   previous: "이전",
   next: "다음",
   backToCatalog: "돌아가기",
@@ -268,6 +284,7 @@ describe("shop skin contract", () => {
         {await classicShopSkin.renderOrderDraft?.({
           basePath: "/shop",
           apiPath: "/api/plugins/shop/order-drafts",
+          orderApiPath: "/api/plugins/shop/orders",
           draftId: "123e4567-e89b-42d3-a456-426614174000",
           messages,
         })}
@@ -275,5 +292,32 @@ describe("shop skin contract", () => {
     );
     expect(html).toContain('data-np-shop-surface="order-draft"');
     expect(html).toContain("초안 준비 중");
+  });
+
+  it("renders order history and detail through independent skin hooks", async () => {
+    const history = renderToStaticMarkup(
+      <>
+        {await classicShopSkin.renderOrders?.({
+          basePath: "/shop",
+          apiPath: "/api/plugins/shop/orders",
+          messages,
+        })}
+      </>,
+    );
+    expect(history).toContain('data-np-shop-surface="orders"');
+    expect(history).toContain("주문 내역");
+
+    const detail = renderToStaticMarkup(
+      <>
+        {await classicShopSkin.renderOrder?.({
+          basePath: "/shop",
+          apiPath: "/api/plugins/shop/orders",
+          orderId: "123e4567-e89b-42d3-a456-426614174000",
+          messages,
+        })}
+      </>,
+    );
+    expect(detail).toContain('data-np-shop-surface="order"');
+    expect(detail).toContain("주문 만드는 중");
   });
 });
