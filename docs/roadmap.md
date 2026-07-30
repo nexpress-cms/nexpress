@@ -317,11 +317,11 @@ real product domain, not just blog/community. Ship as a plugin package
 - **Tax & shipping (future)** — extension points require region-specific
   policy rather than implied defaults.
 
-Open questions before committing:
+Open questions for future transaction slices:
 
-- Does this stay a plugin, or does the product catalog _collection
-  pattern_ prove general enough to belong in core (and the rest of
-  e-commerce stays a plugin)?
+- Should order drafts remain plugin-owned collections, or use dedicated
+  immutable persistence with explicit customer/shipping PII retention and
+  deletion rules?
 - Payment adapter contract — single shared interface, or per-plugin
   implementation? The latter is simpler; the former lets users swap
   providers without changing other plugins.
