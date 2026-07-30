@@ -625,7 +625,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     npRequireShopOrderDraft(expiredDraft);
     await db
       .update(npPluginStorage)
-      .set({ value: expiredDraft, expiresAt })
+      .set({ value: expiredDraft, expiresAt: expiredAt })
       .where(
         and(
           eq(npPluginStorage.pluginId, "shop"),
