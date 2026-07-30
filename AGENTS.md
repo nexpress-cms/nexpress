@@ -2,7 +2,12 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-29 (Shop carts now share one exact site-owned
+**Last refreshed:** 2026-07-30 (Shop checkout intents now share one exact,
+owner-scoped, 15-minute, idempotent cart-snapshot contract across API, skins,
+Admin, cleanup, Doctor, scaffold, Storefront hooks, and integration tests
+without creating orders, taking payment, reserving stock, or collecting PII.)
+
+**Earlier:** 2026-07-29 (Shop carts now share one exact site-owned
 guest/member identity, TTL storage, revision, merge, live quote, CSRF, Admin,
 scheduled cleanup, route, skin, and theme contract without implying checkout.)
 

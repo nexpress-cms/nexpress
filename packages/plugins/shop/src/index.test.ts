@@ -33,6 +33,7 @@ describe("shop factory", () => {
       "/shop/categories/:categorySlug",
       "/shop/products/:productSlug",
       "/shop/cart",
+      "/shop/checkout/:intentId",
     ]);
     expect(shopPlugin.blocks?.map((block) => block.type)).toEqual([
       "shop.featured-products",
@@ -50,14 +51,23 @@ describe("shop factory", () => {
       { id: "countActiveCarts", kind: "metric" },
       { id: "cartHealth", kind: "status" },
       { id: "cleanupExpiredCarts", kind: "action" },
+      { id: "countActiveCheckoutIntents", kind: "metric" },
+      { id: "checkoutIntentHealth", kind: "status" },
+      { id: "cleanupExpiredCheckoutIntents", kind: "action" },
     ]);
     expect(shopPlugin.routes?.map((route) => `${route.method} ${route.path}`)).toEqual([
       "GET /cart",
       "POST /cart",
       "PATCH /cart",
       "DELETE /cart",
+      "GET /checkout",
+      "POST /checkout",
+      "DELETE /checkout",
     ]);
-    expect(shopPlugin.scheduled?.map((task) => task.id)).toEqual(["cleanup-expired-carts"]);
+    expect(shopPlugin.scheduled?.map((task) => task.id)).toEqual([
+      "cleanup-expired-carts",
+      "cleanup-expired-checkout-intents",
+    ]);
     expect([...createShop().runtime.skins.keys()]).toEqual(["classic", "storefront-full"]);
     expect(storefrontFullShopSkin.id).toBe("storefront-full");
   });
@@ -194,6 +204,20 @@ describe("shop factory", () => {
         ],
       }),
     ).toThrow(/more than once/u);
+    expect(() =>
+      createShop({
+        skins: [
+          {
+            id: "broken",
+            label: "Broken",
+            renderCatalog: () => null,
+            renderCategory: () => null,
+            renderProduct: () => null,
+            renderCheckout: "invalid",
+          } as never,
+        ],
+      }),
+    ).toThrow(/incomplete/u);
 
     const beforeCreate = shopCollections[1].hooks?.beforeCreate?.[0];
     let compareAtError: unknown;

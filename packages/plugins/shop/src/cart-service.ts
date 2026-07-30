@@ -45,8 +45,12 @@ export class NpShopCartRevisionError extends Error {
   }
 }
 
+export function npShopCartOwnerStorageSegment(owner: NpShopCartOwner): string {
+  return owner.kind === "member" ? `member:${owner.memberId}` : `guest:${owner.idHash}`;
+}
+
 function storageKey(owner: NpShopCartOwner): string {
-  return owner.kind === "member" ? `cart:member:${owner.memberId}` : `cart:guest:${owner.idHash}`;
+  return `cart:${npShopCartOwnerStorageSegment(owner)}`;
 }
 
 function ownerTtlSeconds(owner: NpShopCartOwner): number {
@@ -93,7 +97,7 @@ async function readStoredCart(
   return npRequireShopCartStorageValue(row.value);
 }
 
-async function lockCart(
+export async function npLockShopCart(
   tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
   siteId: string,
   owner: NpShopCartOwner,
@@ -103,7 +107,7 @@ async function lockCart(
   );
 }
 
-async function readStoredCartForUpdate(
+export async function npReadStoredShopCartForUpdate(
   tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
   siteId: string,
   owner: NpShopCartOwner,
@@ -307,8 +311,8 @@ export async function npAddShopCartLine(
   const key = npShopCartLineKey(product.id, variantSku);
   const siteId = await requireSiteId();
   await getDb().transaction(async (tx) => {
-    await lockCart(tx, siteId, owner);
-    const current = await readStoredCartForUpdate(tx, siteId, owner);
+    await npLockShopCart(tx, siteId, owner);
+    const current = await npReadStoredShopCartForUpdate(tx, siteId, owner);
     requireRevision(current, expectedRevision);
     const existing = current?.lines.find((line) => line.key === key);
     const nextQuantity = Math.min(
@@ -355,8 +359,8 @@ export async function npSetShopCartQuantity(
 ): Promise<NpShopCartQuote> {
   const siteId = await requireSiteId();
   await getDb().transaction(async (tx) => {
-    await lockCart(tx, siteId, owner);
-    const current = await readStoredCartForUpdate(tx, siteId, owner);
+    await npLockShopCart(tx, siteId, owner);
+    const current = await npReadStoredShopCartForUpdate(tx, siteId, owner);
     requireRevision(current, expectedRevision);
     if (!current?.lines.some((line) => line.key === lineKey)) {
       throw new NpShopCartContractError("Invalid cart quantity request", [
@@ -382,8 +386,8 @@ export async function npDeleteShopCartLine(
 ): Promise<NpShopCartQuote> {
   const siteId = await requireSiteId();
   await getDb().transaction(async (tx) => {
-    await lockCart(tx, siteId, owner);
-    const current = await readStoredCartForUpdate(tx, siteId, owner);
+    await npLockShopCart(tx, siteId, owner);
+    const current = await npReadStoredShopCartForUpdate(tx, siteId, owner);
     requireRevision(current, expectedRevision);
     const nextLines =
       lineKey === null ? [] : (current?.lines ?? []).filter((line) => line.key !== lineKey);
@@ -425,11 +429,11 @@ export async function npMergeShopGuestCart(
     for (const owner of [member, guest].sort((a, b) =>
       storageKey(a).localeCompare(storageKey(b)),
     )) {
-      await lockCart(tx, siteId, owner);
+      await npLockShopCart(tx, siteId, owner);
     }
     const [memberCart, guestCart] = await Promise.all([
-      readStoredCartForUpdate(tx, siteId, member),
-      readStoredCartForUpdate(tx, siteId, guest),
+      npReadStoredShopCartForUpdate(tx, siteId, member),
+      npReadStoredShopCartForUpdate(tx, siteId, guest),
     ]);
     if (!guestCart) return;
     const memberLines = memberCart?.lines ?? [];

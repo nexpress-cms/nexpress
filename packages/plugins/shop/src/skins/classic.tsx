@@ -1,6 +1,7 @@
 import type { NpShopSkin } from "../types.js";
 import {
   ShopCartSurface,
+  ShopCheckoutSurface,
   ShopCatalogSurface,
   ShopCategorySurface,
   ShopProductSurface,
@@ -13,4 +14,5 @@ export const classicShopSkin: NpShopSkin = {
   renderCategory: (props) => <ShopCategorySurface {...props} skin="classic" />,
   renderProduct: (props) => <ShopProductSurface {...props} skin="classic" />,
   renderCart: (props) => <ShopCartSurface {...props} skin="classic" />,
+  renderCheckout: (props) => <ShopCheckoutSurface {...props} skin="classic" />,
 };

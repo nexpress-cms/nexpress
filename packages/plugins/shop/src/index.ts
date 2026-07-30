@@ -6,10 +6,16 @@ import {
 
 import { createShopCartApiHandler } from "./cart-api.js";
 import { npCleanupExpiredShopCarts, npCountShopCarts } from "./cart-service.js";
+import { createShopCheckoutApiHandler } from "./checkout-api.js";
+import {
+  npCleanupExpiredShopCheckoutIntents,
+  npCountShopCheckoutIntents,
+} from "./checkout-service.js";
 import { defineShopCategoriesCollection, defineShopProductsCollection } from "./collections.js";
 import { createShopHomeBlocks, shopHomePatterns } from "./home-blocks.js";
 import { createShopCatalogMetadata, createShopCatalogRoute } from "./routes/catalog.js";
 import { createShopCartRoute } from "./routes/cart.js";
+import { createShopCheckoutRoute } from "./routes/checkout.js";
 import { createShopCategoryMetadata, createShopCategoryRoute } from "./routes/category.js";
 import { createShopProductMetadata, createShopProductRoute } from "./routes/product.js";
 import type { NpShopRuntime } from "./runtime.js";
@@ -60,7 +66,9 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
       !skin.label.trim() ||
       typeof skin.renderCatalog !== "function" ||
       typeof skin.renderCategory !== "function" ||
-      typeof skin.renderProduct !== "function"
+      typeof skin.renderProduct !== "function" ||
+      (skin.renderCart !== undefined && typeof skin.renderCart !== "function") ||
+      (skin.renderCheckout !== undefined && typeof skin.renderCheckout !== "function")
     ) {
       throw new Error(`Shop skin "${skin.id}" is incomplete.`);
     }
@@ -118,7 +126,7 @@ const messages = {
     "shop.price": "Price",
     "shop.stock": "Stock",
     "shop.taxIncluded": "Tax included where applicable.",
-    "shop.catalogOnly": "Catalog preview — checkout is not enabled.",
+    "shop.catalogOnly": "Catalog and checkout-intent preview — payment is not enabled.",
     "shop.cart": "Cart",
     "shop.addToCart": "Add to cart",
     "shop.addingToCart": "Adding…",
@@ -132,11 +140,25 @@ const messages = {
     "shop.cartPriceChanged": "The current price has changed.",
     "shop.cartInsufficientStock": "The requested quantity is unavailable.",
     "shop.cartMixedCurrency": "Items in different currencies cannot be checked out together.",
-    "shop.cartReady": "The cart is ready for a checkout integration.",
+    "shop.cartReady": "The cart can create a short-lived checkout intent.",
     "shop.cartNotReady": "Resolve the cart issues before checkout.",
-    "shop.cartCheckoutUnavailable": "Checkout and payment are not enabled by this plugin.",
+    "shop.cartCheckoutUnavailable":
+      "A checkout intent freezes this quote briefly; it does not place an order or take payment.",
     "shop.cartUpdateFailed": "The cart could not be updated.",
     "shop.selectVariant": "Select an option",
+    "shop.checkout": "Checkout",
+    "shop.checkoutCreating": "Preparing checkout…",
+    "shop.checkoutIntent": "Checkout intent",
+    "shop.checkoutOpen": "Current cart verified",
+    "shop.checkoutStale": "Cart changed — create a new checkout intent",
+    "shop.checkoutCancelled": "Checkout intent cancelled",
+    "shop.checkoutExpired": "Checkout intent expired",
+    "shop.checkoutCancel": "Cancel checkout intent",
+    "shop.checkoutExpires": "Expires",
+    "shop.checkoutPaymentUnavailable":
+      "Payment, orders, inventory reservation, tax, and shipping are not connected.",
+    "shop.checkoutBackToCart": "Back to cart",
+    "shop.checkoutFailed": "The checkout intent could not be loaded.",
     "shop.previous": "Previous",
     "shop.next": "Next",
     "shop.backToCatalog": "Back to shop",
@@ -171,7 +193,7 @@ const messages = {
     "shop.price": "가격",
     "shop.stock": "재고",
     "shop.taxIncluded": "표시 가격에는 해당되는 세금이 포함되어 있습니다.",
-    "shop.catalogOnly": "카탈로그 체험 — 결제 기능은 아직 연결되지 않았습니다.",
+    "shop.catalogOnly": "카탈로그·결제 의도 체험 — 실제 결제는 연결되지 않았습니다.",
     "shop.cart": "장바구니",
     "shop.addToCart": "장바구니 담기",
     "shop.addingToCart": "담는 중…",
@@ -185,11 +207,25 @@ const messages = {
     "shop.cartPriceChanged": "현재 판매 가격이 변경되었습니다.",
     "shop.cartInsufficientStock": "요청한 수량만큼 재고가 없습니다.",
     "shop.cartMixedCurrency": "통화가 다른 상품은 함께 결제할 수 없습니다.",
-    "shop.cartReady": "결제 연동을 연결할 수 있는 상태입니다.",
+    "shop.cartReady": "짧은 수명의 결제 의도를 만들 수 있는 상태입니다.",
     "shop.cartNotReady": "결제 전에 장바구니 문제를 해결해 주세요.",
-    "shop.cartCheckoutUnavailable": "이 플러그인은 주문과 결제를 제공하지 않습니다.",
+    "shop.cartCheckoutUnavailable":
+      "결제 의도는 이 견적을 잠시 고정하지만 주문을 만들거나 결제하지 않습니다.",
     "shop.cartUpdateFailed": "장바구니를 갱신하지 못했습니다.",
     "shop.selectVariant": "옵션 선택",
+    "shop.checkout": "결제 준비",
+    "shop.checkoutCreating": "결제 준비 중…",
+    "shop.checkoutIntent": "결제 의도",
+    "shop.checkoutOpen": "현재 장바구니 확인 완료",
+    "shop.checkoutStale": "장바구니가 변경됨 — 새 결제 의도를 만들어 주세요",
+    "shop.checkoutCancelled": "결제 의도가 취소되었습니다",
+    "shop.checkoutExpired": "결제 의도가 만료되었습니다",
+    "shop.checkoutCancel": "결제 의도 취소",
+    "shop.checkoutExpires": "만료",
+    "shop.checkoutPaymentUnavailable":
+      "결제, 주문, 재고 예약, 세금 및 배송은 아직 연결되지 않았습니다.",
+    "shop.checkoutBackToCart": "장바구니로 돌아가기",
+    "shop.checkoutFailed": "결제 의도를 불러오지 못했습니다.",
     "shop.previous": "이전",
     "shop.next": "다음",
     "shop.backToCatalog": "스토어로 돌아가기",
@@ -210,6 +246,7 @@ export function createShop(options: NpShopOptions = {}) {
   ] as const;
   const blocks = createShopHomeBlocks(runtime);
   const cartApiHandler = createShopCartApiHandler(runtime);
+  const checkoutApiHandler = createShopCheckoutApiHandler(runtime);
   const pageRoutes = [
     {
       pattern: runtime.basePath,
@@ -230,6 +267,10 @@ export function createShop(options: NpShopOptions = {}) {
       pattern: `${runtime.basePath}/cart`,
       component: createShopCartRoute(runtime),
     },
+    {
+      pattern: `${runtime.basePath}/checkout/:intentId`,
+      component: createShopCheckoutRoute(runtime),
+    },
   ] satisfies NpPluginPageRouteRegistration[];
 
   const plugin = definePlugin({
@@ -238,7 +279,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded guest/member carts, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded guest/member carts and checkout intents, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -260,13 +301,16 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-carts",
           "widget:shop-cart-health",
           "action:shop-cart-cleanup",
+          "dashboard:shop-checkout-intents",
+          "widget:shop-checkout-health",
+          "action:shop-checkout-cleanup",
         ],
-        apiRoutes: ["/cart"],
+        apiRoutes: ["/cart", "/checkout"],
         hooks: [],
       },
       agent: {
         description:
-          "Catalog and bounded cart foundation for products, variants, categories, prices, and inventory. Checkout and payment are deliberately not implied.",
+          "Catalog, bounded cart, and short-lived checkout-intent foundation for products, variants, categories, prices, and inventory. Payment and orders are deliberately not implied.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -292,8 +336,11 @@ export function createShop(options: NpShopOptions = {}) {
         category: '[data-np-shop-surface="category"]',
         product: '[data-np-shop-surface="product"]',
         cart: '[data-np-shop-surface="cart"]',
+        checkout: '[data-np-shop-surface="checkout"]',
         "cart-action": "[data-np-shop-cart-action]",
         "cart-line": "[data-np-shop-cart-line]",
+        "checkout-line": "[data-np-shop-checkout-line]",
+        "checkout-status": "[data-np-shop-checkout-status]",
         "product-card": ".np-shop-product-card",
         "product-grid": ".np-shop-product-grid",
         "category-grid": ".np-shop-category-grid",
@@ -332,6 +379,15 @@ export function createShop(options: NpShopOptions = {}) {
           description: "Unexpired member and guest carts for this site.",
           priority: 24,
         },
+        {
+          id: "shop-checkout-intents-total",
+          label: "Unexpired checkout intents",
+          kind: "metric",
+          actionId: "countActiveCheckoutIntents",
+          description:
+            "Unexpired non-cancelled intent records; each public read revalidates its cart.",
+          priority: 25,
+        },
       ],
       widgets: [
         {
@@ -340,6 +396,12 @@ export function createShop(options: NpShopOptions = {}) {
           kind: "status",
           actionId: "cartHealth",
         },
+        {
+          id: "shop-checkout-health",
+          label: "Checkout intent storage",
+          kind: "status",
+          actionId: "checkoutIntentHealth",
+        },
       ],
       actions: [
         {
@@ -347,6 +409,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Clean expired carts",
           actionId: "cleanupExpiredCarts",
           confirm: "Delete expired Shop carts for this site?",
+        },
+        {
+          id: "shop-checkout-cleanup",
+          label: "Clean expired checkout intents",
+          actionId: "cleanupExpiredCheckoutIntents",
+          confirm: "Delete expired Shop checkout intents for this site?",
         },
       ],
     },
@@ -432,6 +500,61 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      countActiveCheckoutIntents: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npCountShopCheckoutIntents();
+            return {
+              ok: true,
+              data: { value: counts.active, delta: `${counts.expired.toString()} expired` },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      checkoutIntentHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopCheckoutIntents();
+            return counts.invalid > 0
+              ? npAdminStatus(
+                  "error",
+                  `${counts.invalid.toString()} invalid checkout intent row(s).`,
+                )
+              : counts.expired > 0
+                ? npAdminStatus(
+                    "warn",
+                    `${counts.active.toString()} active, ${counts.cancelled.toString()} cancelled, ${counts.expired.toString()} expired intent(s).`,
+                  )
+                : npAdminStatus(
+                    "ok",
+                    `${counts.active.toString()} active, ${counts.cancelled.toString()} cancelled intent(s).`,
+                  );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Checkout intent health check failed.",
+            );
+          }
+        },
+      },
+      cleanupExpiredCheckoutIntents: {
+        kind: "action",
+        handler: async () => {
+          try {
+            const deleted = await npCleanupExpiredShopCheckoutIntents();
+            return {
+              ok: true,
+              data: `Deleted ${deleted.toString()} expired checkout intent(s).`,
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
     },
     routes: [
       {
@@ -458,6 +581,24 @@ export function createShop(options: NpShopOptions = {}) {
         description: "Remove one cart line or clear the current cart.",
         handler: cartApiHandler,
       },
+      {
+        method: "GET",
+        path: "/checkout",
+        description: "Read one owner-scoped checkout intent and revalidate its cart snapshot.",
+        handler: checkoutApiHandler,
+      },
+      {
+        method: "POST",
+        path: "/checkout",
+        description: "Create one idempotent short-lived checkout intent from a current cart quote.",
+        handler: checkoutApiHandler,
+      },
+      {
+        method: "DELETE",
+        path: "/checkout",
+        description: "Cancel one owner-scoped checkout intent.",
+        handler: checkoutApiHandler,
+      },
     ],
     scheduled: [
       {
@@ -466,6 +607,14 @@ export function createShop(options: NpShopOptions = {}) {
         description: "Delete one bounded batch of expired cart rows for each active site.",
         handler: async () => {
           await npCleanupExpiredShopCarts();
+        },
+      },
+      {
+        id: "cleanup-expired-checkout-intents",
+        cron: "23 * * * *",
+        description: "Delete one bounded batch of expired checkout intents for each active site.",
+        handler: async () => {
+          await npCleanupExpiredShopCheckoutIntents();
         },
       },
     ],
@@ -494,7 +643,7 @@ export {
   npShopSlugPattern,
   parseShopCatalogQuery,
 } from "./runtime.js";
-export { npShopCurrencies } from "./types.js";
+export { npShopCheckoutIntentStatuses, npShopCurrencies } from "./types.js";
 export {
   NP_SHOP_CART_QUOTE_CONTRACT,
   NP_SHOP_CART_STORAGE_CONTRACT,
@@ -516,6 +665,18 @@ export type {
   NpShopCartStorageValue,
   NpShopCartStoredLine,
 } from "./cart-contract.js";
+export {
+  NP_SHOP_CHECKOUT_INTENT_CONTRACT,
+  npAnalyzeShopCheckoutIntent,
+  npIsShopCheckoutIntentStatus,
+  npRequireShopCheckoutCancelInput,
+  npRequireShopCheckoutCreateInput,
+  npRequireShopCheckoutIntent,
+  npRequireShopCheckoutIntentId,
+  npRequireShopCheckoutReadQuery,
+  npShopCheckoutLimits,
+} from "./checkout-contract.js";
+export type { NpShopCheckoutCancelInput, NpShopCheckoutCreateInput } from "./checkout-contract.js";
 export type {
   NpShopCartClientMessages,
   NpShopCartIssueCode,
@@ -523,6 +684,10 @@ export type {
   NpShopCartQuote,
   NpShopCartSkinProps,
   NpShopCartTotal,
+  NpShopCheckoutIntent,
+  NpShopCheckoutIntentLine,
+  NpShopCheckoutIntentStatus,
+  NpShopCheckoutSkinProps,
   NpShopCatalogQuery,
   NpShopCatalogSkinProps,
   NpShopCategory,

@@ -20,9 +20,9 @@ and plugins. The active theme and whether to seed sample content are picked in t
 first-boot admin setup wizard at [`/admin/setup`](http://localhost:3000/admin/setup),
 not at scaffold time.
 
-The default Shop plugin includes products, categories, and bounded guest/member
-carts at `/shop/cart`. It does not imply checkout, payment, orders, or inventory
-reservation.
+The default Shop plugin includes products, categories, bounded guest/member
+carts at `/shop/cart`, and owner-scoped 15-minute checkout intents. It does not
+take payment, create orders, collect customer PII, or reserve inventory.
 
 `create-nexpress` writes both `.env.example` and `.env` for you. Use the
 setup wizard to confirm the DB connection, generate or accept the auth
