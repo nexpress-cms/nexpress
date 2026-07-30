@@ -275,7 +275,9 @@ export const storefrontCss = `
 .np-storefront-shell .np-shop-product-image,
 .np-storefront-shell .np-shop-category-grid > a { border-radius: 0; }
 .np-storefront-shell [data-np-shop-surface="cart"] .np-shop-cart-lines > li,
-.np-storefront-shell [data-np-shop-surface="cart"] .np-shop-cart-summary {
+.np-storefront-shell [data-np-shop-surface="cart"] .np-shop-cart-summary,
+.np-storefront-shell [data-np-shop-surface="checkout"] .np-shop-checkout-intent,
+.np-storefront-shell [data-np-shop-surface="checkout"] .np-shop-checkout-summary {
   border-radius: 0;
 }
 @media (max-width: 52rem) {

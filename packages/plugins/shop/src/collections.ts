@@ -251,7 +251,7 @@ export function defineShopProductsCollection(runtime: NpShopRuntime): NpCollecti
       ],
       defaultSort: "-createdAt",
       description:
-        "Catalog products use integer minor-unit prices. Publishing does not enable checkout.",
+        "Catalog products use integer minor-unit prices. Publishing does not enable payment or orders.",
     },
     versions: { drafts: true, max: 30 },
     access: {

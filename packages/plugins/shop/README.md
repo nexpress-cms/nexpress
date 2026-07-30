@@ -24,15 +24,17 @@ It provides:
 - product and category collections;
 - exact integer-minor-unit prices and bounded variants;
 - inventory availability projection;
-- catalog, category, product, and cart routes;
+- catalog, category, product, cart, and checkout-intent routes;
 - bounded guest/member carts with revision-safe mutations and live price/stock quotes;
+- owner-scoped, idempotent 15-minute checkout intents that become stale when
+  the cart or live commercial state changes;
 - classic and storefront-full skins;
 - featured-product and category-grid blocks.
 
-Checkout, payment, orders, inventory reservation, and fulfillment remain
-outside this package. A cart is a short-lived intent and does not imply that a
-visitor purchased or reserved a product.
+Payment, orders, customer PII, inventory reservation, and fulfillment remain
+outside this package. A checkout intent is a short-lived quote snapshot and
+does not imply that a visitor purchased or reserved a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
-for the exact price, SKU, inventory, cart, skin, block, and theme-integration
-contracts.
+for the exact price, SKU, inventory, cart, checkout-intent, skin, block, and
+theme-integration contracts.

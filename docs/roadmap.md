@@ -294,25 +294,28 @@ The MVP could ship on top of v1 as a _curated index page_ that just deep-
 links to `npm install` instructions — that's a reasonable 1.0 step, with
 the install-flow work waiting for Plugin v2.
 
-### 10. First vertical: e-commerce / shop plugin (deferred — 1.x)
+### 10. First vertical: e-commerce / shop plugin (in progress — v0.x)
 
 A reference vertical plugin that proves the plugin model can carry a
 real product domain, not just blog/community. Ship as a plugin package
 (`@nexpress/plugin-shop`) so the core stays a CMS.
 
-- **Product catalog** — collections for products, variants, categories.
+- **Product catalog (shipped)** — collections for products, variants, categories.
   Built on top of the existing `defineCollection()` so admins get the
   full editing surface for free.
-- **Cart & checkout** — member-scoped cart (reuses the member model),
-  pluggable payment adapter (Stripe / Toss / KG Inicis as reference
-  implementations).
-- **Order admin** — orders collection with status workflow, refunds,
+- **Cart and checkout intent (shipped)** — bounded guest/member carts plus
+  owner-scoped, idempotent 15-minute quote snapshots. These do not collect PII,
+  reserve stock, create orders, or take payment.
+- **Payment adapters (future)** — explicit Stripe / Toss / KG Inicis adapter
+  and webhook contracts after order-draft and PII lifecycles are defined.
+- **Order admin (future)** — orders collection with status workflow, refunds,
   fulfillment notes. Slots into the existing admin shell.
-- **Inventory** — stock tracking, low-stock alerts via the jobs queue.
-- **Public surfaces** — product detail, listing, cart, checkout pages
-  shipped as theme partials so any active theme can adopt them.
-- **Tax & shipping** — extension points; plugin ships sane defaults but
-  not a full ruleset (region-specific).
+- **Inventory (partially shipped)** — catalog stock and low-stock projection
+  exist; reservation and transactional decrement remain future work.
+- **Public surfaces (shipped)** — product detail, listing, cart, and
+  checkout-intent pages use independent plugin skins and stable theme hooks.
+- **Tax & shipping (future)** — extension points require region-specific
+  policy rather than implied defaults.
 
 Open questions before committing:
 

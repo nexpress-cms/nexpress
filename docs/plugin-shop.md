@@ -2,16 +2,16 @@
 
 `@nexpress/plugin-shop` is the first-party catalog foundation for NexPress.
 It owns product and category data, inventory projection, public catalog
-routes, bounded guest/member carts, Admin collection forms and health actions,
-blocks, and skins.
+routes, bounded guest/member carts and checkout intents, Admin collection forms
+and health actions, blocks, and skins.
 
 `@nexpress/theme-storefront` is a separate brand/content theme. It works with
 ordinary pages and posts when Shop is absent. When both packages are active,
 the theme enhances Shop through documented CSS variables, classes, data
 attributes, and optional page blocks; neither package imports the other.
 
-The cart is deliberately a **pre-checkout intent**. It does not create checkout
-sessions, reserve or decrement inventory, collect customer PII, create orders,
+The cart and checkout intent are deliberately **pre-transaction state**. They
+do not reserve or decrement inventory, collect customer PII, create orders,
 take payments, fulfill, refund, or claim that a visitor completed a purchase.
 
 ## Default setup
@@ -23,7 +23,8 @@ migration:
 1. Open Admin → Commerce → Shop categories and publish categories.
 2. Open Admin → Commerce → Products and publish products.
 3. Visit `/shop`.
-4. Add a product to the cart and visit `/shop/cart`.
+4. Add a product to the cart, visit `/shop/cart`, and create a short-lived
+   checkout intent.
 5. Optionally activate Storefront from Admin → Appearance.
 6. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
    or insert the `shop.storefront-home` pattern.
@@ -80,6 +81,7 @@ remove the relationship first.
 | `/shop/categories/:categorySlug` | One published category                |
 | `/shop/products/:productSlug`    | Product detail, variants, and gallery |
 | `/shop/cart`                     | Current guest or member cart          |
+| `/shop/checkout/:intentId`       | Owner-scoped checkout intent snapshot |
 
 Catalog and category routes recognize:
 
@@ -139,22 +141,67 @@ insufficient stock, and mixed currencies do. Checkout integrations must quote
 again and establish their own order, payment, inventory reservation,
 idempotency, tax, and shipping contracts.
 
+## Checkout intent contract
+
+Shop exposes `GET`, `POST`, and `DELETE` at
+`/api/plugins/shop/checkout`. A checkout intent is an exact,
+owner-scoped snapshot of one current cart quote:
+
+- `POST` accepts only `idempotencyKey`, `expectedRevision`, and
+  `expectedFingerprint`;
+- the idempotency key is a canonical UUID and also becomes the opaque public
+  intent id;
+- the current cart must be non-empty, ready, and use exactly one currency;
+- the snapshot stores product identity/display fields, canonical variant SKU,
+  integer prices, subtotal, quantity, cart revision, and cart fingerprint;
+- each owner may hold at most five unexpired, non-cancelled intents and 20
+  total unexpired records including cancellations;
+- every intent expires exactly 15 minutes after creation;
+- `GET ?id=<uuid>` and `DELETE { intentId }` require the same signed guest or
+  active member identity that created it;
+- mutation requests reuse the Shop CSRF token returned by cart/checkout reads.
+
+The exact public envelope is `np.shop-checkout-intent.v1`. Its status is
+derived as:
+
+| Status      | Meaning                                                             |
+| ----------- | ------------------------------------------------------------------- |
+| `open`      | Current cart remains ready and its revision/fingerprint still match |
+| `stale`     | Cart contents, price, inventory, publication, or options changed    |
+| `cancelled` | The owner explicitly cancelled the intent                           |
+| `expired`   | The fixed 15-minute lifetime elapsed                                |
+
+Creation and repeated use of the same idempotency key serialize per owner and
+converge on one stored row. Reusing it for a different cart snapshot fails with
+HTTP 409. Different keys are admitted under an owner-level lock so concurrent
+requests cannot exceed the five-intent limit. The intent remains only a quote
+boundary: it does not clear the cart, create an order, reserve inventory, or
+authorize later payment. Every future consumer must read it again and require
+`open` immediately before its own external effect.
+
+Checkout intent rows share site-scoped `np_plugin_storage` with carts and stay
+outside content search, revisions, transfer, and document quotas. An hourly
+oldest-first task and confirmed Admin action each delete at most 500 expired
+`checkout-intent:%` rows per site without touching other Shop KV data.
+
 ## Admin surfaces
 
 The two collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
-The plugin declares three typed dashboard metric actions:
+The plugin declares four typed dashboard metric actions:
 
 - total product rows;
-- published low-stock products.
-- active unexpired carts.
+- published low-stock products;
+- active unexpired carts;
+- unexpired non-cancelled checkout-intent records (public reads still
+  revalidate the current cart).
 
-Admin also exposes cart storage health (active, expired, or invalid rows) and a
-confirmed bounded expiry cleanup action. The scheduled-task and action
-registries make these contracts visible to plugin doctor without executing
-them.
+Admin also exposes separate cart and checkout-intent storage health
+(active/cancelled/expired/invalid rows) plus confirmed bounded expiry cleanup
+actions. The scheduled-task and action registries make these contracts visible
+to plugin doctor without executing them.
 
 The manifest-level action registry binds each metric widget to its exact
 handler kind, so plugin validation and doctor can inspect the relationship
@@ -169,9 +216,10 @@ Every Shop factory registers:
 | `classic`         | Compact, neutral catalog and detail fallback               |
 | `storefront-full` | Larger editorial header and image-led product presentation |
 
-Both skins implement catalog, category, product, and cart rendering. They receive
-prepared products, localized messages, safe formatted money, and rendered
-rich text; they do not own collection policy.
+Both skins implement catalog, category, product, cart, and checkout-intent
+rendering. They receive prepared products, localized messages, safe formatted
+money, and rendered rich text; they do not own collection or transaction
+policy.
 
 Plugin structure ships in `@layer np-blocks` and consumes stable properties
 with core-token fallbacks:
@@ -192,6 +240,8 @@ The main public hooks are `.np-shop`, `.np-shop-product-card`,
 `.np-shop-product-grid`, `.np-shop-category-grid`, `.np-shop-filters`,
 `.np-shop-cart-client`, `[data-np-shop-cart-action]`,
 `[data-np-shop-cart-line]`,
+`.np-shop-checkout-client`, `[data-np-shop-checkout-line]`,
+`[data-np-shop-checkout-status]`,
 `[data-np-shop-surface]`, `[data-np-shop-skin]`,
 `[data-np-shop-inventory]`, and `[data-np-shop-block]`.
 
@@ -229,21 +279,21 @@ collection and plugin arrays: handlers, relationships, routes, blocks, and
 Admin actions intentionally close over one runtime definition.
 
 Custom build-time skins implement `NpShopSkin` and may be added through the
-factory's `skins` option. `renderCart` is additive and optional; when omitted,
-the complete shared cart surface is used. Routes own identity, mutation, and
-quote policy while skins receive a prepared client surface. Existing `classic`
-and `storefront-full` ids cannot be replaced.
+factory's `skins` option. `renderCart` and `renderCheckout` are additive and
+optional; when omitted, the complete shared surfaces are used. Routes own
+identity, mutation, and quote policy while skins receive prepared client
+surfaces. Existing `classic` and `storefront-full` ids cannot be replaced.
 
 ## Next commerce slices
 
 Future transaction work should remain separable from this foundation:
 
-1. checkout intent over a fresh cart quote;
+1. order draft plus customer/shipping PII lifecycle and deletion policy;
 2. payment-provider adapters and idempotent webhook intake;
 3. order, refund, fulfillment, and customer Admin workflows;
 4. stock reservation and transactional decrement;
 5. legal/tax/shipping policy integrations.
 
 Those features require explicit payment, security, and operational contracts.
-The current catalog/cart data and independent theme do not pre-authorize or
-emulate them.
+The current catalog/cart/checkout-intent data and independent theme do not
+pre-authorize or emulate them.

@@ -67,8 +67,9 @@ export const defaultCollections: NpConfig["collections"] = [
  *     surface.
  *   - forum — uses the board/post collections pre-included in
  *     `defaultCollections` and owns the public routes under `/boards`.
- *   - shop — owns catalog categories/products, `/shop` routes, bounded carts,
- *     skins, homepage blocks, and Admin catalog/cart health; checkout is not implied.
+ *   - shop — owns catalog categories/products, `/shop` routes, bounded carts
+ *     and checkout intents, skins, homepage blocks, and Admin health; payment
+ *     and orders are not implied.
  *   - oauth-github, oauth-google — register OAuth provider entries
  *     but only become reachable when the corresponding env vars
  *     (or admin auto-form values) are populated; the empty case logs

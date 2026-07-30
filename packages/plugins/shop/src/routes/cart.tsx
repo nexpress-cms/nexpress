@@ -11,6 +11,7 @@ export function createShopCartRoute(runtime: NpShopRuntime) {
     const props = {
       basePath: runtime.basePath,
       apiPath: "/api/plugins/shop/cart",
+      checkoutApiPath: "/api/plugins/shop/checkout",
       quote: npEmptyShopCartQuote(),
       messages,
     };

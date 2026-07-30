@@ -109,6 +109,18 @@ export interface NpShopMessages {
   cartCheckoutUnavailable: string;
   cartUpdateFailed: string;
   selectVariant: string;
+  checkout: string;
+  checkoutCreating: string;
+  checkoutIntent: string;
+  checkoutOpen: string;
+  checkoutStale: string;
+  checkoutCancelled: string;
+  checkoutExpired: string;
+  checkoutCancel: string;
+  checkoutExpires: string;
+  checkoutPaymentUnavailable: string;
+  checkoutBackToCart: string;
+  checkoutFailed: string;
   previous: string;
   next: string;
   backToCatalog: string;
@@ -211,12 +223,63 @@ export interface NpShopCartClientMessages {
   cartCheckoutUnavailable: string;
   cartUpdateFailed: string;
   selectVariant: string;
+  checkout: string;
+  checkoutCreating: string;
+  checkoutIntent: string;
+  checkoutOpen: string;
+  checkoutStale: string;
+  checkoutCancelled: string;
+  checkoutExpired: string;
+  checkoutCancel: string;
+  checkoutExpires: string;
+  checkoutPaymentUnavailable: string;
+  checkoutBackToCart: string;
+  checkoutFailed: string;
 }
 
 export interface NpShopCartSkinProps {
   basePath: string;
   apiPath: string;
+  checkoutApiPath: string;
   quote: NpShopCartQuote;
+  messages: NpShopMessages;
+}
+
+export const npShopCheckoutIntentStatuses = ["open", "stale", "cancelled", "expired"] as const;
+
+export type NpShopCheckoutIntentStatus = (typeof npShopCheckoutIntentStatuses)[number];
+
+export interface NpShopCheckoutIntentLine {
+  key: string;
+  productId: string;
+  productSlug: string;
+  productName: string;
+  variantSku: string | null;
+  variantName: string | null;
+  quantity: number;
+  unitPriceMinor: number;
+  lineTotalMinor: number;
+}
+
+export interface NpShopCheckoutIntent {
+  contract: "np.shop-checkout-intent.v1";
+  id: string;
+  status: NpShopCheckoutIntentStatus;
+  cartRevision: number;
+  cartFingerprint: string;
+  currency: NpShopCurrency;
+  subtotalMinor: number;
+  totalUnits: number;
+  lines: NpShopCheckoutIntentLine[];
+  createdAt: string;
+  expiresAt: string;
+  cancelledAt: string | null;
+}
+
+export interface NpShopCheckoutSkinProps {
+  basePath: string;
+  apiPath: string;
+  intentId: string;
   messages: NpShopMessages;
 }
 
@@ -227,4 +290,5 @@ export interface NpShopSkin {
   renderCategory: (props: NpShopCategorySkinProps) => ReactNode | Promise<ReactNode>;
   renderProduct: (props: NpShopProductSkinProps) => ReactNode | Promise<ReactNode>;
   renderCart?: (props: NpShopCartSkinProps) => ReactNode | Promise<ReactNode>;
+  renderCheckout?: (props: NpShopCheckoutSkinProps) => ReactNode | Promise<ReactNode>;
 }

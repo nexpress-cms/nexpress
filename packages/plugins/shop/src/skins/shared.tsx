@@ -1,11 +1,12 @@
 import Link from "next/link";
 
-import { ShopCart } from "@nexpress/plugin-shop/client";
+import { ShopCart, ShopCheckout } from "@nexpress/plugin-shop/client";
 
 import { buildShopCatalogHref } from "../runtime.js";
 import type {
   NpShopCartClientMessages,
   NpShopCartSkinProps,
+  NpShopCheckoutSkinProps,
   NpShopCatalogSkinProps,
   NpShopCategorySkinProps,
   NpShopMessages,
@@ -34,6 +35,18 @@ function cartClientMessages(messages: NpShopMessages): NpShopCartClientMessages 
     cartCheckoutUnavailable: messages.cartCheckoutUnavailable,
     cartUpdateFailed: messages.cartUpdateFailed,
     selectVariant: messages.selectVariant,
+    checkout: messages.checkout,
+    checkoutCreating: messages.checkoutCreating,
+    checkoutIntent: messages.checkoutIntent,
+    checkoutOpen: messages.checkoutOpen,
+    checkoutStale: messages.checkoutStale,
+    checkoutCancelled: messages.checkoutCancelled,
+    checkoutExpired: messages.checkoutExpired,
+    checkoutCancel: messages.checkoutCancel,
+    checkoutExpires: messages.checkoutExpires,
+    checkoutPaymentUnavailable: messages.checkoutPaymentUnavailable,
+    checkoutBackToCart: messages.checkoutBackToCart,
+    checkoutFailed: messages.checkoutFailed,
   };
 }
 
@@ -384,8 +397,34 @@ export function ShopCartSurface({ skin, ...props }: NpShopCartSkinProps & { skin
       </header>
       <ShopCart
         apiPath={props.apiPath}
+        checkoutApiPath={props.checkoutApiPath}
         basePath={props.basePath}
         initialQuote={props.quote}
+        messages={cartClientMessages(props.messages)}
+      />
+    </main>
+  );
+}
+
+export function ShopCheckoutSurface({
+  skin,
+  ...props
+}: NpShopCheckoutSkinProps & { skin: string }) {
+  return (
+    <main
+      className="np-shop np-shop-checkout"
+      data-np-shop-surface="checkout"
+      data-np-shop-skin={skin}
+    >
+      <header className="np-shop-page-header">
+        <p>{props.messages.catalogOnly}</p>
+        <h1>{props.messages.checkout}</h1>
+        <Link href={`${props.basePath}/cart`}>{props.messages.checkoutBackToCart}</Link>
+      </header>
+      <ShopCheckout
+        apiPath={props.apiPath}
+        basePath={props.basePath}
+        intentId={props.intentId}
         messages={cartClientMessages(props.messages)}
       />
     </main>

@@ -55,6 +55,18 @@ const messages = {
   cartCheckoutUnavailable: "결제 없음",
   cartUpdateFailed: "갱신 실패",
   selectVariant: "옵션 선택",
+  checkout: "결제 준비",
+  checkoutCreating: "준비 중",
+  checkoutIntent: "결제 의도",
+  checkoutOpen: "확인 완료",
+  checkoutStale: "변경됨",
+  checkoutCancelled: "취소됨",
+  checkoutExpired: "만료됨",
+  checkoutCancel: "취소",
+  checkoutExpires: "만료",
+  checkoutPaymentUnavailable: "결제 없음",
+  checkoutBackToCart: "장바구니로",
+  checkoutFailed: "실패",
   previous: "이전",
   next: "다음",
   backToCatalog: "돌아가기",
@@ -187,6 +199,7 @@ describe("shop skin contract", () => {
         {await classicShopSkin.renderCart?.({
           basePath: "/shop",
           apiPath: "/api/plugins/shop/cart",
+          checkoutApiPath: "/api/plugins/shop/checkout",
           quote: {
             contract: "np.shop-cart-quote.v1",
             revision: 0,
@@ -205,5 +218,21 @@ describe("shop skin contract", () => {
     expect(html).toContain('data-np-shop-surface="cart"');
     expect(html).toContain("장바구니");
     expect(html).toContain("비어 있음");
+  });
+
+  it("renders the complete checkout fallback through the optional skin contract", async () => {
+    const html = renderToStaticMarkup(
+      <>
+        {await classicShopSkin.renderCheckout?.({
+          basePath: "/shop",
+          apiPath: "/api/plugins/shop/checkout",
+          intentId: "123e4567-e89b-42d3-a456-426614174000",
+          messages,
+        })}
+      </>,
+    );
+    expect(html).toContain('data-np-shop-surface="checkout"');
+    expect(html).toContain("결제 준비");
+    expect(html).toContain("준비 중");
   });
 });
