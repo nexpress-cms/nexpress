@@ -1,10 +1,12 @@
 import {
   npShopCurrencies,
+  npShopInventoryReservationStatuses,
   npShopOrderCancellationReasons,
   npShopOrderPrivateDataStatuses,
   npShopOrderStatuses,
   type NpShopCheckoutIntentLine,
   type NpShopCurrency,
+  type NpShopInventoryReservationStatus,
   type NpShopOrder,
   type NpShopOrderList,
   type NpShopOrderCancellationReason,
@@ -55,6 +57,8 @@ export interface NpShopStoredOrder {
   totalUnits: number;
   lines: NpShopCheckoutIntentLine[];
   privateDataStatus: NpShopOrderPrivateDataStatus;
+  inventoryReservationStatus: NpShopInventoryReservationStatus;
+  inventoryReservationLineKeys: string[];
   createdAt: string;
   updatedAt: string;
   pendingExpiresAt: string;
@@ -86,6 +90,7 @@ export class NpShopOrderConflictError extends Error {
   readonly code:
     | "order_revision_conflict"
     | "order_idempotency_conflict"
+    | "order_inventory_unavailable"
     | "order_source_stale"
     | "order_pending_limit";
 
@@ -276,6 +281,8 @@ const storedOrderKeys = [
   "totalUnits",
   "lines",
   "privateDataStatus",
+  "inventoryReservationStatus",
+  "inventoryReservationLineKeys",
   "createdAt",
   "updatedAt",
   "pendingExpiresAt",
@@ -329,6 +336,37 @@ export function npAnalyzeStoredShopOrder(value: unknown): string[] {
   if (!(npShopOrderPrivateDataStatuses as readonly unknown[]).includes(value.privateDataStatus)) {
     issues.push("order.privateDataStatus is invalid.");
   }
+  if (
+    !(npShopInventoryReservationStatuses as readonly unknown[]).includes(
+      value.inventoryReservationStatus,
+    )
+  ) {
+    issues.push("order.inventoryReservationStatus is invalid.");
+  }
+  if (
+    !Array.isArray(value.inventoryReservationLineKeys) ||
+    value.inventoryReservationLineKeys.length > 100 ||
+    value.inventoryReservationLineKeys.some((key) => typeof key !== "string") ||
+    new Set(value.inventoryReservationLineKeys).size !== value.inventoryReservationLineKeys.length
+  ) {
+    issues.push("order.inventoryReservationLineKeys is invalid.");
+  } else if (Array.isArray(value.lines) && value.lines.every(isRecord)) {
+    const storedLineKeys = new Set(value.lines.map((line) => line.key));
+    if (value.inventoryReservationLineKeys.some((key) => !storedLineKeys.has(key))) {
+      issues.push("order.inventoryReservationLineKeys must reference stored order lines.");
+    }
+  }
+  if (
+    (value.inventoryReservationStatus === "not-required" &&
+      Array.isArray(value.inventoryReservationLineKeys) &&
+      value.inventoryReservationLineKeys.length !== 0) ||
+    ((value.inventoryReservationStatus === "held" ||
+      value.inventoryReservationStatus === "released") &&
+      Array.isArray(value.inventoryReservationLineKeys) &&
+      value.inventoryReservationLineKeys.length === 0)
+  ) {
+    issues.push("order inventory reservation status must match its reserved line keys.");
+  }
   for (const key of ["createdAt", "updatedAt", "pendingExpiresAt", "purgeAt"] as const) {
     if (!isCanonicalIso(value[key])) issues.push(`order.${key} is invalid.`);
   }
@@ -345,19 +383,23 @@ export function npAnalyzeStoredShopOrder(value: unknown): string[] {
     value.status === "pending-payment" &&
     (value.cancelledAt !== null ||
       value.cancellationReason !== null ||
-      value.privateDataStatus !== "retained")
+      value.privateDataStatus !== "retained" ||
+      value.inventoryReservationStatus === "released")
   ) {
     issues.push(
-      "pending-payment orders require retained private data and no cancellation metadata.",
+      "pending-payment orders require retained private data, an active reservation state, and no cancellation metadata.",
     );
   }
   if (
     value.status === "cancelled" &&
     (value.cancelledAt === null ||
       value.cancellationReason === null ||
-      value.privateDataStatus !== "redacted")
+      value.privateDataStatus !== "redacted" ||
+      value.inventoryReservationStatus === "held")
   ) {
-    issues.push("cancelled orders require cancellation metadata and redacted private data.");
+    issues.push(
+      "cancelled orders require cancellation metadata, redacted private data, and no held inventory.",
+    );
   }
   if (
     isCanonicalIso(value.createdAt) &&
@@ -478,6 +520,8 @@ const publicOrderKeys = [
   "totalUnits",
   "lines",
   "privateDataStatus",
+  "inventoryReservationStatus",
+  "inventoryReservationLineKeys",
   "customer",
   "shipping",
   "createdAt",

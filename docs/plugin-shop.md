@@ -3,19 +3,20 @@
 `@nexpress/plugin-shop` is the first-party catalog foundation for NexPress.
 It owns product and category data, inventory projection, public catalog
 routes, bounded guest/member carts, checkout intents, private order drafts,
-durable pending orders, Admin collection forms and health actions, blocks,
-and skins.
+durable pending orders, transaction-safe inventory reservations, Admin
+collection forms and health actions, blocks, and skins.
 
 `@nexpress/theme-storefront` is a separate brand/content theme. It works with
 ordinary pages and posts when Shop is absent. When both packages are active,
 the theme enhances Shop through documented CSS variables, classes, data
 attributes, and optional page blocks; neither package imports the other.
 
-The cart, checkout intent, and order draft are deliberately **pre-transaction
-state**. A reviewable draft can now create a durable `pending-payment` order
-reference, but no current code can mark it paid. None of these surfaces
-reserve or decrement inventory, take payment, calculate tax or shipping,
-fulfill, refund, or claim that a visitor completed a purchase.
+The cart, checkout intent, and order draft are deliberately **pre-order
+state**. A reviewable draft can create a durable `pending-payment` order that
+reserves tracked product or variant inventory for its 24-hour lifetime. No
+current code can mark it paid or decrement on-hand stock. None of these
+surfaces takes payment, calculates tax or shipping, fulfills, refunds, or
+claims that a visitor completed a purchase.
 
 ## Default setup
 
@@ -73,6 +74,13 @@ The write hook derives hidden `available` and `inventoryState` fields before
 persistence. Public queries use those stored fields for bounded filtering,
 while the runtime recomputes and validates the projection before rendering so
 malformed persisted commercial values fail closed.
+
+Catalog cards and the `stock=available` filter intentionally describe
+persisted on-hand stock. Active pending-order holds are transient and are not
+folded into collection pagination totals. Cart quotes subtract active holds,
+and order creation rechecks that sellable quantity under product locks before
+committing, so the order boundary remains authoritative even when a catalog
+page is older or another visitor is ordering concurrently.
 
 Categories cannot be deleted while any product still references them. Move or
 remove the relationship first.
@@ -145,8 +153,9 @@ subtotals, total units, a deterministic fingerprint, and exact issue codes:
 `insufficient-stock`, `price-changed`, and `mixed-currency`. Price changes are
 visible but do not alone block readiness. Unavailable products/options,
 insufficient stock, and mixed currencies do. Checkout integrations must quote
-again and establish their own order, payment, inventory reservation,
-idempotency, tax, and shipping contracts.
+again and establish their own payment, stock-decrement, idempotency, tax, and
+shipping contracts. Quotes subtract every unexpired pending-order reservation
+for the same product or canonical variant SKU.
 
 ## Checkout intent contract
 
@@ -261,9 +270,15 @@ Shop exposes `GET`, `POST`, and `DELETE` at
 - The canonical idempotency UUID becomes the order id. Repeating the same
   order-id/draft pair converges on one row. Reusing it for another draft
   returns HTTP 409.
-- Draft, cart, owner, and order locks serialize the transition. Commercial
-  snapshot creation, private-sidecar creation, pending-expiry marker creation,
-  and source-draft deletion commit atomically.
+- Draft, cart, owner, order, and canonical product-id locks serialize the
+  transition. A fresh quote subtracts existing active holds. Commercial
+  snapshot creation, PII-free product/variant reservation rows,
+  private-sidecar creation, pending-expiry marker creation, and source-draft
+  deletion commit atomically.
+- If another order consumed the final sellable unit first, creation returns
+  HTTP 409 `order_inventory_unavailable`. Deterministic product locking keeps
+  multi-line orders deadlock-safe and prevents two pending orders from holding
+  the same final unit.
 - Each owner may have at most three unexpired pending orders. A different key
   cannot bypass the limit under concurrent creation.
 - `GET ?id=<uuid>` reads one same-owner order. `GET` without an id returns the
@@ -273,8 +288,12 @@ Shop exposes `GET`, `POST`, and `DELETE` at
 
 The only creatable status is `pending-payment`. It means that the immutable
 product, option, integer price, currency, quantity, cart revision, and cart
-fingerprint snapshot has a durable order reference. It does **not** mean that
-payment was initiated or authorized. The other current status is `cancelled`;
+fingerprint snapshot has a durable order reference. Tracked lines have
+`inventoryReservationStatus: "held"`; an untracked-only order uses
+`"not-required"`. `inventoryReservationLineKeys` records exactly which
+commercial lines require matching PII-free holds. This does **not** mean that
+payment was initiated or authorized, and no on-hand quantity is decremented
+yet. The other current status is `cancelled`;
 there is deliberately no `paid`, `fulfilled`, or `refunded` transition until a
 separate payment-provider contract can prove the corresponding external
 effect.
@@ -288,11 +307,16 @@ Storage separates commercial and private values:
   customer and shipping pair copied from the draft.
 - a pending marker indexes the next required maintenance without duplicating
   private or commercial values.
+- `np.shop-inventory-reservation.v1` rows contain only order ownership,
+  product id, optional canonical variant SKU, quantity, and timestamps. They
+  contain no customer or shipping values and expire with the pending order.
 
 Pending orders expire after 24 hours. Owner cancellation, lazy read after that
 deadline, and the hourly maintenance job all atomically change the durable
 order to `cancelled`, mark private data `redacted`, and physically delete both
-the private sidecar and pending marker. The commercial snapshot remains for
+the private sidecar and pending marker. They also release every matching
+inventory row and change the order reservation state to `released`. The
+commercial snapshot remains for
 365 days and is then physically purged. Each scheduled or confirmed Admin pass
 cancels at most 500 due orders and purges at most 500 expired commercial
 snapshots, oldest first. Site deletion remains the final tenant-wide deletion
@@ -323,7 +347,7 @@ The two collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
-The plugin declares six typed dashboard metric actions:
+The plugin declares seven typed dashboard metric actions:
 
 - total product rows;
 - published low-stock products;
@@ -334,13 +358,17 @@ The plugin declares six typed dashboard metric actions:
   values.
 - durable pending and cancelled commercial order records, without owner or PII
   values.
+- active PII-free inventory reservation rows.
 
 Admin also exposes separate cart, checkout-intent, and private-order-draft
 storage health plus confirmed bounded expiry cleanup actions. Order health,
 the confirmed maintenance action, and the newest-50 table expose only
-commercial metadata. Order-draft and order diagnostics withhold private
-values. The scheduled-task and action registries make these contracts visible
-to plugin doctor without executing them.
+commercial metadata. Inventory reservation health reports malformed, expired,
+order-orphaned, or pending-order-missing rows from bounded samples, and its
+newest-50 table exposes only order id, product id, variant SKU, quantity, and
+expiry. Order-draft, order, and inventory diagnostics withhold private and
+owner values. The scheduled-task and action registries make these contracts
+visible to plugin doctor without executing them.
 
 The manifest-level action registry binds each metric widget to its exact
 handler kind, so plugin validation and doctor can inspect the relationship
@@ -435,10 +463,11 @@ Future transaction work should remain separable from this foundation:
 
 1. payment-provider adapters, signed idempotent webhook intake, and a proven
    transition out of `pending-payment`;
-2. paid-order, refund, fulfillment, and customer-service Admin workflows;
-3. stock reservation and transactional decrement;
+2. atomic on-hand decrement when a payment transition consumes a reservation,
+   plus compensation for failed or reversed payment;
+3. paid-order, refund, fulfillment, and customer-service Admin workflows;
 4. legal/tax/shipping policy integrations.
 
 Those features require explicit payment, security, and operational contracts.
-The current catalog/cart/checkout-intent/order-draft/pending-order data and
-independent theme do not pre-authorize or emulate them.
+The current catalog/cart/checkout-intent/order-draft/pending-order/reservation
+data and independent theme do not pre-authorize or emulate them.

@@ -47,6 +47,8 @@ const storedOrder = {
   totalUnits: 2,
   lines: [line],
   privateDataStatus: "retained",
+  inventoryReservationStatus: "held",
+  inventoryReservationLineKeys: [line.key],
   createdAt,
   updatedAt: createdAt,
   pendingExpiresAt,
@@ -109,7 +111,7 @@ describe("Shop order contract", () => {
       }),
     ).toEqual(
       expect.arrayContaining([
-        "cancelled orders require cancellation metadata and redacted private data.",
+        "cancelled orders require cancellation metadata, redacted private data, and no held inventory.",
         "order.subtotalMinor must equal line totals.",
       ]),
     );

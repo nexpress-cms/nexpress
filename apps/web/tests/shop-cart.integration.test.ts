@@ -816,6 +816,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           status: "pending-payment",
           revision: 1,
           privateDataStatus: "retained",
+          inventoryReservationStatus: "held",
+          inventoryReservationLineKeys: [`${productId}:_`],
           customer: { email: privateEmail },
         },
       },
@@ -853,6 +855,34 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(pendingMarker).toBeDefined();
     expect(JSON.stringify(commercial)).not.toContain(privateEmail);
     expect(JSON.stringify(privateSidecar)).toContain(privateEmail);
+    const [reservation] = await db
+      .select({
+        key: npPluginStorage.key,
+        value: npPluginStorage.value,
+        expiresAt: npPluginStorage.expiresAt,
+      })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          like(npPluginStorage.key, "inventory-reservation:%"),
+        ),
+      );
+    expect(reservation).toMatchObject({
+      key: `inventory-reservation:${productId}:_:${orderId}`,
+      value: {
+        contract: "np.shop-inventory-reservation.v1",
+        orderId,
+        productId,
+        variantSku: null,
+        quantity: 1,
+      },
+    });
+    expect(JSON.stringify(reservation)).not.toContain(privateEmail);
+    expect(await call("GET", { cookie })).toMatchObject({
+      body: { quote: { lines: [{ stockQuantity: 7 }] } },
+    });
 
     const recentAction = shopPlugin.actions?.recentOrders;
     const recent = await withCurrentSite("default", () =>
@@ -868,6 +898,26 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     );
     expect(orderHealth).toMatchObject({ ok: true, data: { level: "ok" } });
     expect(JSON.stringify(orderHealth)).not.toContain(privateEmail);
+    const inventoryHealth = await withCurrentSite("default", () =>
+      shopPlugin.actions?.inventoryReservationHealth?.handler(undefined, {} as never),
+    );
+    expect(inventoryHealth).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(JSON.stringify(inventoryHealth)).not.toContain(privateEmail);
+    await db.delete(npPluginStorage).where(eq(npPluginStorage.key, reservation?.key ?? ""));
+    const missingInventoryHealth = await withCurrentSite("default", () =>
+      shopPlugin.actions?.inventoryReservationHealth?.handler(undefined, {} as never),
+    );
+    expect(missingInventoryHealth).toMatchObject({
+      ok: true,
+      data: { level: "error", message: expect.stringContaining("1 missing") },
+    });
+    await db.insert(npPluginStorage).values({
+      pluginId: "shop",
+      siteId: "default",
+      key: reservation?.key ?? "",
+      value: reservation?.value ?? {},
+      expiresAt: reservation?.expiresAt,
+    });
 
     const cancelled = await orderCall("DELETE", {
       cookie,
@@ -882,6 +932,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           status: "cancelled",
           revision: 2,
           privateDataStatus: "redacted",
+          inventoryReservationStatus: "released",
           customer: null,
           shipping: null,
           cancellationReason: "customer",
@@ -906,6 +957,15 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       );
     expect(remainingPrivate).toHaveLength(0);
     expect(JSON.stringify(remainingPrivate)).not.toContain(privateEmail);
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(like(npPluginStorage.key, "inventory-reservation:%")),
+    ).toHaveLength(0);
+    expect(await call("GET", { cookie })).toMatchObject({
+      body: { quote: { lines: [{ stockQuantity: 8 }] } },
+    });
     expect(await orderCall("GET", { cookie, orderId })).toMatchObject({
       body: { order: { status: "cancelled", privateDataStatus: "redacted" } },
     });
@@ -921,6 +981,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           status: "cancelled",
           revision: 2,
           privateDataStatus: "redacted",
+          inventoryReservationStatus: "released",
           createdAt: expiredCreatedAt.toISOString(),
           updatedAt: expiredPendingAt.toISOString(),
           pendingExpiresAt: expiredPendingAt.toISOString(),
@@ -941,6 +1002,100 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       status: 200,
       body: { list: { total: 0, orders: [] } },
     });
+  });
+
+  it("serializes competing orders and allows only one reservation for the final unit", async () => {
+    const db = await getTestDb();
+    await db
+      .update(shopProductsTable)
+      .set({ stockQuantity: 1, lowStockThreshold: 0 })
+      .where(eq(shopProductsTable.id, productId));
+
+    async function prepareOrder(ids: { intentId: string; draftId: string; orderId: string }) {
+      const initial = await call("GET");
+      const cookie = initial.headers?.["Set-Cookie"];
+      const csrfToken = (initial.body as { csrfToken: string }).csrfToken;
+      const added = await call("POST", {
+        cookie,
+        csrf: csrfToken,
+        body: { productId, variantSku: null, quantity: 1, expectedRevision: 0 },
+      });
+      const quote = (
+        added.body as {
+          quote: { revision: number; fingerprint: string };
+        }
+      ).quote;
+      await checkoutCall("POST", {
+        cookie,
+        csrf: csrfToken,
+        body: {
+          idempotencyKey: ids.intentId,
+          expectedRevision: quote.revision,
+          expectedFingerprint: quote.fingerprint,
+        },
+      });
+      await orderDraftCall("POST", {
+        cookie,
+        csrf: csrfToken,
+        body: { idempotencyKey: ids.draftId, checkoutIntentId: ids.intentId },
+      });
+      await orderDraftCall("PATCH", {
+        cookie,
+        csrf: csrfToken,
+        body: {
+          draftId: ids.draftId,
+          expectedRevision: 1,
+          customer: {
+            fullName: "Inventory customer",
+            email: `${ids.orderId.slice(0, 8)}@example.com`,
+            phone: "010-1234-5678",
+          },
+          shipping: {
+            recipientName: "Inventory customer",
+            phone: "010-1234-5678",
+            countryCode: "KR",
+            postalCode: "04524",
+            addressLine1: "1 Sejong-daero",
+            addressLine2: null,
+            locality: "Jung-gu",
+            administrativeArea: "Seoul",
+          },
+        },
+      });
+      return {
+        cookie,
+        csrf: csrfToken,
+        body: {
+          idempotencyKey: ids.orderId,
+          draftId: ids.draftId,
+          expectedRevision: 2,
+        },
+      };
+    }
+
+    const [first, second] = await Promise.all([
+      prepareOrder({
+        intentId: "a43e4567-e89b-42d3-a456-426614174000",
+        draftId: "b43e4567-e89b-42d3-a456-426614174000",
+        orderId: "c43e4567-e89b-42d3-a456-426614174000",
+      }),
+      prepareOrder({
+        intentId: "a53e4567-e89b-42d3-a456-426614174000",
+        draftId: "b53e4567-e89b-42d3-a456-426614174000",
+        orderId: "c53e4567-e89b-42d3-a456-426614174000",
+      }),
+    ]);
+    const responses = await Promise.all([orderCall("POST", first), orderCall("POST", second)]);
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+    expect(responses.find((response) => response.status === 409)?.body).toMatchObject({
+      error: "order_inventory_unavailable",
+    });
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(like(npPluginStorage.key, "inventory-reservation:%")),
+    ).toHaveLength(1);
   });
 
   it("cancels expired pending orders and purges old commercial snapshots in bounded passes", async () => {
@@ -980,6 +1135,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         },
       ],
       privateDataStatus: "retained",
+      inventoryReservationStatus: "held",
+      inventoryReservationLineKeys: [`${productId}:_`],
       createdAt: createdAt.toISOString(),
       updatedAt: createdAt.toISOString(),
       pendingExpiresAt: pendingExpiresAt.toISOString(),
@@ -994,6 +1151,23 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         key: `order:${ownerSegment}:${orderId}`,
         value: order,
         expiresAt: purgeAt,
+        updatedAt: createdAt,
+      },
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `inventory-reservation:${productId}:_:${orderId}`,
+        value: {
+          contract: "np.shop-inventory-reservation.v1",
+          orderId,
+          ownerSegment,
+          productId,
+          variantSku: null,
+          quantity: 1,
+          createdAt: createdAt.toISOString(),
+          expiresAt: pendingExpiresAt.toISOString(),
+        },
+        expiresAt: pendingExpiresAt,
         updatedAt: createdAt,
       },
       {
@@ -1057,6 +1231,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       value: {
         status: "cancelled",
         privateDataStatus: "redacted",
+        inventoryReservationStatus: "released",
         cancellationReason: "payment-timeout",
       },
     });

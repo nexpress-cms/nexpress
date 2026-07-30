@@ -62,6 +62,9 @@ describe("shop factory", () => {
       { id: "cleanupExpiredOrderDrafts", kind: "action" },
       { id: "countOrders", kind: "metric" },
       { id: "orderHealth", kind: "status" },
+      { id: "countActiveInventoryReservations", kind: "metric" },
+      { id: "inventoryReservationHealth", kind: "status" },
+      { id: "recentInventoryReservations", kind: "table" },
       { id: "recentOrders", kind: "table" },
       { id: "maintainOrders", kind: "action" },
     ]);

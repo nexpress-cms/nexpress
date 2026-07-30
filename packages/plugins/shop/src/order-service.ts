@@ -3,6 +3,13 @@ import { requireSiteId } from "@nexpress/core/sites";
 import { and, asc, desc, eq, gt, like, lte, sql } from "drizzle-orm";
 
 import {
+  npCleanupExpiredShopInventoryReservations,
+  npLockShopInventoryProducts,
+  npPersistShopInventoryReservations,
+  npPurgeShopInventoryReservations,
+  npReleaseShopInventoryReservations,
+} from "./inventory-reservation-service.js";
+import {
   NP_SHOP_ORDER_CONTRACT,
   NP_SHOP_ORDER_PRIVATE_CONTRACT,
   NP_SHOP_ORDER_STORAGE_CONTRACT,
@@ -49,6 +56,7 @@ export interface NpShopAdminOrderRow {
   total: string;
   units: number;
   privateData: string;
+  inventory: string;
   createdAt: string;
 }
 
@@ -338,11 +346,27 @@ async function cancelStoredOrder(
   now: Date,
 ): Promise<NpShopStoredOrder> {
   if (order.status === "cancelled") return order;
+  await npLockShopInventoryProducts(
+    tx,
+    siteId,
+    order.lines.map((line) => line.productId),
+  );
+  if (order.inventoryReservationStatus === "held") {
+    const reservedLineKeys = new Set(order.inventoryReservationLineKeys);
+    await npReleaseShopInventoryReservations(
+      tx,
+      siteId,
+      order.id,
+      order.lines.filter((line) => reservedLineKeys.has(line.key)),
+    );
+  }
   const cancelled = {
     ...order,
     status: "cancelled",
     revision: order.revision + 1,
     privateDataStatus: "redacted",
+    inventoryReservationStatus:
+      order.inventoryReservationStatus === "held" ? "released" : "not-required",
     updatedAt: now.toISOString(),
     cancelledAt: now.toISOString(),
     cancellationReason: reason,
@@ -357,6 +381,18 @@ async function purgeOrder(
   siteId: string,
   order: NpShopStoredOrder,
 ): Promise<void> {
+  await npLockShopInventoryProducts(
+    tx,
+    siteId,
+    order.lines.map((line) => line.productId),
+  );
+  const reservedLineKeys = new Set(order.inventoryReservationLineKeys);
+  await npPurgeShopInventoryReservations(
+    tx,
+    siteId,
+    order.id,
+    order.lines.filter((line) => reservedLineKeys.has(line.key)),
+  );
   await tx
     .delete(npPluginStorage)
     .where(
@@ -400,17 +436,7 @@ export async function npCreateShopOrder(
     if (!draft) {
       throw new NpShopOrderConflictError("order_source_stale", "The order draft no longer exists.");
     }
-    const now = new Date();
-    if (new Date(draft.expiresAt) <= now) {
-      await tx
-        .delete(npPluginStorage)
-        .where(
-          and(
-            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
-            eq(npPluginStorage.siteId, siteId),
-            eq(npPluginStorage.key, npShopOrderDraftStorageKey(owner, input.draftId)),
-          ),
-        );
+    if (new Date(draft.expiresAt) <= new Date()) {
       throw new NpShopOrderConflictError("order_source_stale", "The order draft expired.");
     }
     if (draft.revision !== input.expectedRevision) {
@@ -425,7 +451,18 @@ export async function npCreateShopOrder(
         "The order draft is not reviewable.",
       );
     }
+    await npLockShopInventoryProducts(
+      tx,
+      siteId,
+      draft.lines.map((line) => line.productId),
+    );
     const quote = await npQuoteShopCart(runtime, owner);
+    if (quote.issues.includes("insufficient-stock")) {
+      throw new NpShopOrderConflictError(
+        "order_inventory_unavailable",
+        "The requested inventory is no longer available.",
+      );
+    }
     if (
       !quote.ready ||
       quote.revision !== draft.cartRevision ||
@@ -436,12 +473,19 @@ export async function npCreateShopOrder(
         "The cart changed after the order draft was reviewed.",
       );
     }
+    const now = new Date();
+    if (new Date(draft.expiresAt) <= now) {
+      throw new NpShopOrderConflictError("order_source_stale", "The order draft expired.");
+    }
     const pendingExpiresAt = new Date(
       now.getTime() + npShopOrderLimits.pendingTtlSeconds * 1_000,
     ).toISOString();
     const purgeAt = new Date(
       now.getTime() + npShopOrderLimits.commercialRetentionSeconds * 1_000,
     ).toISOString();
+    const inventoryReservationLineKeys = quote.lines
+      .filter((line) => line.stockQuantity !== null)
+      .map((line) => line.key);
     const order: NpShopStoredOrder = {
       contract: NP_SHOP_ORDER_STORAGE_CONTRACT,
       id: input.idempotencyKey,
@@ -457,6 +501,8 @@ export async function npCreateShopOrder(
       totalUnits: draft.totalUnits,
       lines: draft.lines,
       privateDataStatus: "retained",
+      inventoryReservationStatus: inventoryReservationLineKeys.length > 0 ? "held" : "not-required",
+      inventoryReservationLineKeys,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
       pendingExpiresAt,
@@ -473,6 +519,18 @@ export async function npCreateShopOrder(
       expiresAt: pendingExpiresAt,
     };
     await persistOrder(tx, siteId, order);
+    if (order.inventoryReservationStatus === "held") {
+      const trackedLineKeys = new Set(order.inventoryReservationLineKeys);
+      await npPersistShopInventoryReservations(
+        tx,
+        siteId,
+        ownerSegment,
+        order.id,
+        order.lines.filter((line) => trackedLineKeys.has(line.key)),
+        order.createdAt,
+        order.pendingExpiresAt,
+      );
+    }
     await persistPrivate(tx, siteId, ownerSegment, privateData);
     await persistPendingMarker(tx, siteId, {
       contract: "np.shop-order-pending.v1",
@@ -585,7 +643,11 @@ export async function npCancelShopOrder(
   });
 }
 
-export async function npMaintainShopOrders(): Promise<{ cancelled: number; purged: number }> {
+export async function npMaintainShopOrders(): Promise<{
+  cancelled: number;
+  purged: number;
+  reservationsCleaned: number;
+}> {
   const siteId = await requireSiteId();
   const db = getDb();
   const now = new Date();
@@ -659,7 +721,8 @@ export async function npMaintainShopOrders(): Promise<{ cancelled: number; purge
       return 1;
     });
   }
-  return { cancelled, purged };
+  const reservationsCleaned = await npCleanupExpiredShopInventoryReservations();
+  return { cancelled, purged, reservationsCleaned };
 }
 
 export async function npCountShopOrders(): Promise<{
@@ -799,6 +862,7 @@ export async function npListRecentShopOrders(): Promise<{
         total: `${order.currency} ${order.subtotalMinor.toString()}`,
         units: order.totalUnits,
         privateData: order.privateDataStatus,
+        inventory: order.inventoryReservationStatus,
         createdAt: order.createdAt,
       };
     }),
