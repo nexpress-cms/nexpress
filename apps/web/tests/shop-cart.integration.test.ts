@@ -909,6 +909,38 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(await orderCall("GET", { cookie, orderId })).toMatchObject({
       body: { order: { status: "cancelled", privateDataStatus: "redacted" } },
     });
+
+    const expiredPurgeAt = new Date(Date.now() - 1_000);
+    const expiredCreatedAt = new Date(expiredPurgeAt.getTime() - 365 * 24 * 60 * 60 * 1_000);
+    const expiredPendingAt = new Date(expiredCreatedAt.getTime() + 24 * 60 * 60 * 1_000);
+    await db
+      .update(npPluginStorage)
+      .set({
+        value: {
+          ...((commercial?.value ?? {}) as Record<string, unknown>),
+          status: "cancelled",
+          revision: 2,
+          privateDataStatus: "redacted",
+          createdAt: expiredCreatedAt.toISOString(),
+          updatedAt: expiredPendingAt.toISOString(),
+          pendingExpiresAt: expiredPendingAt.toISOString(),
+          cancelledAt: expiredPendingAt.toISOString(),
+          cancellationReason: "customer",
+          purgeAt: expiredPurgeAt.toISOString(),
+        },
+        expiresAt: expiredPurgeAt,
+      })
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          eq(npPluginStorage.key, commercial?.key ?? ""),
+        ),
+      );
+    expect(await orderCall("GET", { cookie })).toMatchObject({
+      status: 200,
+      body: { list: { total: 0, orders: [] } },
+    });
   });
 
   it("cancels expired pending orders and purges old commercial snapshots in bounded passes", async () => {

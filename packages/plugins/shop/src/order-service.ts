@@ -1,6 +1,6 @@
 import { getDb, npPluginStorage } from "@nexpress/core/db";
 import { requireSiteId } from "@nexpress/core/sites";
-import { and, asc, desc, eq, like, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, like, lte, sql } from "drizzle-orm";
 
 import {
   NP_SHOP_ORDER_CONTRACT,
@@ -521,6 +521,7 @@ export async function npListShopOrders(owner: NpShopCartOwner): Promise<NpShopOr
   const siteId = await requireSiteId();
   const ownerSegment = npShopCartOwnerStorageSegment(owner);
   const db = getDb();
+  const now = new Date();
   const rows = await db
     .select({
       key: npPluginStorage.key,
@@ -533,6 +534,7 @@ export async function npListShopOrders(owner: NpShopCartOwner): Promise<NpShopOr
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, `order:${ownerSegment}:%`),
+        gt(npPluginStorage.expiresAt, now),
       ),
     )
     .orderBy(desc(npPluginStorage.updatedAt), desc(npPluginStorage.key))
@@ -554,6 +556,7 @@ export async function npListShopOrders(owner: NpShopCartOwner): Promise<NpShopOr
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, `order:${ownerSegment}:%`),
+        gt(npPluginStorage.expiresAt, now),
       ),
     );
   return { contract: "np.shop-order-list.v1", orders, total: currentTotal };
