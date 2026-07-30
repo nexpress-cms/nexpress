@@ -933,7 +933,7 @@ pnpm dev
 2. Start \`pnpm dev\` and open \`http://localhost:3000/admin\`.
 3. Create the first admin, name the site, pick a theme, and seed sample
    content if useful.
-4. Publish a page, post, or Shop product; the bounded cart and checkout-intent preview start at \`/shop/cart\`, while payment and orders remain separate.
+4. Publish a page, post, or Shop product; the bounded cart, checkout-intent, and 24-hour private order-draft preview start at \`/shop/cart\`, while payment and finalized orders remain separate.
 
 ## Useful Checks
 

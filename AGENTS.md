@@ -2,7 +2,13 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-30 (Shop checkout intents now share one exact,
+**Last refreshed:** 2026-07-30 (Shop private order drafts now share one exact,
+owner/site-scoped, revision-safe, 24-hour customer/shipping PII contract across
+open-intent derivation, API, both skins, Storefront hooks, masked Admin/Doctor
+health, immediate cancellation deletion, and bounded expiry cleanup without
+implying finalized orders or payment.)
+
+**Earlier:** 2026-07-30 (Shop checkout intents now share one exact,
 owner-scoped, 15-minute, idempotent cart-snapshot contract across API, skins,
 Admin, cleanup, Doctor, scaffold, Storefront hooks, and integration tests
 without creating orders, taking payment, reserving stock, or collecting PII.)

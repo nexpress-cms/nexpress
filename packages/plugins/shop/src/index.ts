@@ -13,10 +13,13 @@ import {
 } from "./checkout-service.js";
 import { defineShopCategoriesCollection, defineShopProductsCollection } from "./collections.js";
 import { createShopHomeBlocks, shopHomePatterns } from "./home-blocks.js";
+import { createShopOrderDraftApiHandler } from "./order-draft-api.js";
+import { npCleanupExpiredShopOrderDrafts, npCountShopOrderDrafts } from "./order-draft-service.js";
 import { createShopCatalogMetadata, createShopCatalogRoute } from "./routes/catalog.js";
 import { createShopCartRoute } from "./routes/cart.js";
 import { createShopCheckoutRoute } from "./routes/checkout.js";
 import { createShopCategoryMetadata, createShopCategoryRoute } from "./routes/category.js";
+import { createShopOrderDraftRoute } from "./routes/order-draft.js";
 import { createShopProductMetadata, createShopProductRoute } from "./routes/product.js";
 import type { NpShopRuntime } from "./runtime.js";
 import { classicShopSkin } from "./skins/classic.js";
@@ -68,7 +71,8 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
       typeof skin.renderCategory !== "function" ||
       typeof skin.renderProduct !== "function" ||
       (skin.renderCart !== undefined && typeof skin.renderCart !== "function") ||
-      (skin.renderCheckout !== undefined && typeof skin.renderCheckout !== "function")
+      (skin.renderCheckout !== undefined && typeof skin.renderCheckout !== "function") ||
+      (skin.renderOrderDraft !== undefined && typeof skin.renderOrderDraft !== "function")
     ) {
       throw new Error(`Shop skin "${skin.id}" is incomplete.`);
     }
@@ -126,7 +130,7 @@ const messages = {
     "shop.price": "Price",
     "shop.stock": "Stock",
     "shop.taxIncluded": "Tax included where applicable.",
-    "shop.catalogOnly": "Catalog and checkout-intent preview — payment is not enabled.",
+    "shop.catalogOnly": "Catalog and private order-draft preview — payment is not enabled.",
     "shop.cart": "Cart",
     "shop.addToCart": "Add to cart",
     "shop.addingToCart": "Adding…",
@@ -156,9 +160,36 @@ const messages = {
     "shop.checkoutCancel": "Cancel checkout intent",
     "shop.checkoutExpires": "Expires",
     "shop.checkoutPaymentUnavailable":
-      "Payment, orders, inventory reservation, tax, and shipping are not connected.",
+      "Payment, finalized orders, inventory reservation, tax, and shipping are not connected.",
     "shop.checkoutBackToCart": "Back to cart",
     "shop.checkoutFailed": "The checkout intent could not be loaded.",
+    "shop.orderDraft": "Order draft",
+    "shop.orderDraftCreate": "Continue to delivery details",
+    "shop.orderDraftCreating": "Preparing order draft…",
+    "shop.orderDraftCollecting": "Contact and delivery details needed",
+    "shop.orderDraftReviewable": "Details saved for review",
+    "shop.orderDraftStale": "Cart changed — delete this draft and start again",
+    "shop.orderDraftExpires": "Private details expire",
+    "shop.orderDraftCustomer": "Customer details",
+    "shop.orderDraftShipping": "Delivery address",
+    "shop.orderDraftFullName": "Full name",
+    "shop.orderDraftEmail": "Email",
+    "shop.orderDraftPhone": "Phone",
+    "shop.orderDraftRecipientName": "Recipient name",
+    "shop.orderDraftCountryCode": "Country code",
+    "shop.orderDraftPostalCode": "Postal code",
+    "shop.orderDraftAddressLine1": "Address",
+    "shop.orderDraftAddressLine2": "Address detail (optional)",
+    "shop.orderDraftLocality": "City / locality",
+    "shop.orderDraftAdministrativeArea": "State / province (optional)",
+    "shop.orderDraftSave": "Save details",
+    "shop.orderDraftSaving": "Saving…",
+    "shop.orderDraftDelete": "Delete private draft",
+    "shop.orderDraftPrivacy":
+      "These details stay outside search and content export. Cancellation deletes them immediately; they expire after 24 hours and hourly cleanup permanently removes untouched expired drafts.",
+    "shop.orderDraftPaymentUnavailable":
+      "Saving these details does not place an order, reserve inventory, calculate shipping or tax, or take payment.",
+    "shop.orderDraftFailed": "The order draft could not be updated.",
     "shop.previous": "Previous",
     "shop.next": "Next",
     "shop.backToCatalog": "Back to shop",
@@ -193,7 +224,7 @@ const messages = {
     "shop.price": "가격",
     "shop.stock": "재고",
     "shop.taxIncluded": "표시 가격에는 해당되는 세금이 포함되어 있습니다.",
-    "shop.catalogOnly": "카탈로그·결제 의도 체험 — 실제 결제는 연결되지 않았습니다.",
+    "shop.catalogOnly": "카탈로그·비공개 주문 초안 체험 — 실제 결제는 연결되지 않았습니다.",
     "shop.cart": "장바구니",
     "shop.addToCart": "장바구니 담기",
     "shop.addingToCart": "담는 중…",
@@ -223,9 +254,36 @@ const messages = {
     "shop.checkoutCancel": "결제 의도 취소",
     "shop.checkoutExpires": "만료",
     "shop.checkoutPaymentUnavailable":
-      "결제, 주문, 재고 예약, 세금 및 배송은 아직 연결되지 않았습니다.",
+      "결제, 확정 주문, 재고 예약, 세금 및 배송은 아직 연결되지 않았습니다.",
     "shop.checkoutBackToCart": "장바구니로 돌아가기",
     "shop.checkoutFailed": "결제 의도를 불러오지 못했습니다.",
+    "shop.orderDraft": "주문 초안",
+    "shop.orderDraftCreate": "배송정보 입력으로 계속",
+    "shop.orderDraftCreating": "주문 초안 준비 중…",
+    "shop.orderDraftCollecting": "연락처와 배송정보를 입력해 주세요",
+    "shop.orderDraftReviewable": "검토할 정보를 저장했습니다",
+    "shop.orderDraftStale": "장바구니가 변경됨 — 초안을 삭제하고 다시 시작해 주세요",
+    "shop.orderDraftExpires": "개인정보 만료",
+    "shop.orderDraftCustomer": "주문자 정보",
+    "shop.orderDraftShipping": "배송지",
+    "shop.orderDraftFullName": "이름",
+    "shop.orderDraftEmail": "이메일",
+    "shop.orderDraftPhone": "전화번호",
+    "shop.orderDraftRecipientName": "받는 분",
+    "shop.orderDraftCountryCode": "국가 코드",
+    "shop.orderDraftPostalCode": "우편번호",
+    "shop.orderDraftAddressLine1": "주소",
+    "shop.orderDraftAddressLine2": "상세주소 (선택)",
+    "shop.orderDraftLocality": "시·군·구",
+    "shop.orderDraftAdministrativeArea": "시·도 (선택)",
+    "shop.orderDraftSave": "정보 저장",
+    "shop.orderDraftSaving": "저장 중…",
+    "shop.orderDraftDelete": "개인정보 초안 삭제",
+    "shop.orderDraftPrivacy":
+      "입력 정보는 검색·콘텐츠 내보내기에 포함되지 않습니다. 취소하면 즉시 삭제되며 24시간 후 만료된 초안은 시간별 정리 작업이 영구 삭제합니다.",
+    "shop.orderDraftPaymentUnavailable":
+      "정보를 저장해도 주문 생성, 재고 예약, 배송비·세금 계산 또는 결제가 실행되지 않습니다.",
+    "shop.orderDraftFailed": "주문 초안을 갱신하지 못했습니다.",
     "shop.previous": "이전",
     "shop.next": "다음",
     "shop.backToCatalog": "스토어로 돌아가기",
@@ -247,6 +305,7 @@ export function createShop(options: NpShopOptions = {}) {
   const blocks = createShopHomeBlocks(runtime);
   const cartApiHandler = createShopCartApiHandler(runtime);
   const checkoutApiHandler = createShopCheckoutApiHandler(runtime);
+  const orderDraftApiHandler = createShopOrderDraftApiHandler(runtime);
   const pageRoutes = [
     {
       pattern: runtime.basePath,
@@ -271,6 +330,10 @@ export function createShop(options: NpShopOptions = {}) {
       pattern: `${runtime.basePath}/checkout/:intentId`,
       component: createShopCheckoutRoute(runtime),
     },
+    {
+      pattern: `${runtime.basePath}/order-drafts/:draftId`,
+      component: createShopOrderDraftRoute(runtime),
+    },
   ] satisfies NpPluginPageRouteRegistration[];
 
   const plugin = definePlugin({
@@ -279,7 +342,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded guest/member carts and checkout intents, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -304,13 +367,16 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-checkout-intents",
           "widget:shop-checkout-health",
           "action:shop-checkout-cleanup",
+          "dashboard:shop-order-drafts",
+          "widget:shop-order-draft-health",
+          "action:shop-order-draft-cleanup",
         ],
-        apiRoutes: ["/cart", "/checkout"],
+        apiRoutes: ["/cart", "/checkout", "/order-drafts"],
         hooks: [],
       },
       agent: {
         description:
-          "Catalog, bounded cart, and short-lived checkout-intent foundation for products, variants, categories, prices, and inventory. Payment and orders are deliberately not implied.",
+          "Catalog, bounded cart, checkout-intent, and private order-draft foundation for products, variants, categories, prices, inventory, and short-lived delivery details. Payment and finalized orders are deliberately not implied.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -337,10 +403,13 @@ export function createShop(options: NpShopOptions = {}) {
         product: '[data-np-shop-surface="product"]',
         cart: '[data-np-shop-surface="cart"]',
         checkout: '[data-np-shop-surface="checkout"]',
+        "order-draft": '[data-np-shop-surface="order-draft"]',
         "cart-action": "[data-np-shop-cart-action]",
         "cart-line": "[data-np-shop-cart-line]",
         "checkout-line": "[data-np-shop-checkout-line]",
         "checkout-status": "[data-np-shop-checkout-status]",
+        "order-draft-line": "[data-np-shop-order-draft-line]",
+        "order-draft-status": "[data-np-shop-order-draft-status]",
         "product-card": ".np-shop-product-card",
         "product-grid": ".np-shop-product-grid",
         "category-grid": ".np-shop-category-grid",
@@ -388,6 +457,15 @@ export function createShop(options: NpShopOptions = {}) {
             "Unexpired non-cancelled intent records; each public read revalidates its cart.",
           priority: 25,
         },
+        {
+          id: "shop-order-drafts-total",
+          label: "Private order drafts",
+          kind: "metric",
+          actionId: "countActiveOrderDrafts",
+          description:
+            "Unexpired owner-scoped drafts; customer and shipping values are never exposed here.",
+          priority: 26,
+        },
       ],
       widgets: [
         {
@@ -402,6 +480,12 @@ export function createShop(options: NpShopOptions = {}) {
           kind: "status",
           actionId: "checkoutIntentHealth",
         },
+        {
+          id: "shop-order-draft-health",
+          label: "Private order draft storage",
+          kind: "status",
+          actionId: "orderDraftHealth",
+        },
       ],
       actions: [
         {
@@ -415,6 +499,13 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Clean expired checkout intents",
           actionId: "cleanupExpiredCheckoutIntents",
           confirm: "Delete expired Shop checkout intents for this site?",
+        },
+        {
+          id: "shop-order-draft-cleanup",
+          label: "Clean expired private order drafts",
+          actionId: "cleanupExpiredOrderDrafts",
+          confirm:
+            "Permanently delete expired Shop order drafts and their private customer/shipping data for this site?",
         },
       ],
     },
@@ -555,6 +646,64 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      countActiveOrderDrafts: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npCountShopOrderDrafts();
+            return {
+              ok: true,
+              data: {
+                value: counts.collecting + counts.reviewable,
+                delta: `${counts.expired.toString()} expired`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      orderDraftHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopOrderDrafts();
+            return counts.invalid > 0
+              ? npAdminStatus(
+                  "error",
+                  `${counts.invalid.toString()} invalid private order draft row(s); values are withheld.`,
+                )
+              : counts.expired > 0
+                ? npAdminStatus(
+                    "warn",
+                    `${counts.collecting.toString()} collecting, ${counts.reviewable.toString()} reviewable, ${counts.expired.toString()} expired draft(s); values are withheld.`,
+                  )
+                : npAdminStatus(
+                    "ok",
+                    `${counts.collecting.toString()} collecting, ${counts.reviewable.toString()} reviewable private draft(s); values are withheld.`,
+                  );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Order draft health check failed.",
+            );
+          }
+        },
+      },
+      cleanupExpiredOrderDrafts: {
+        kind: "action",
+        handler: async () => {
+          try {
+            const deleted = await npCleanupExpiredShopOrderDrafts();
+            return {
+              ok: true,
+              data: `Permanently deleted ${deleted.toString()} expired private order draft(s).`,
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
     },
     routes: [
       {
@@ -599,6 +748,30 @@ export function createShop(options: NpShopOptions = {}) {
         description: "Cancel one owner-scoped checkout intent.",
         handler: checkoutApiHandler,
       },
+      {
+        method: "GET",
+        path: "/order-drafts",
+        description: "Read one owner-scoped private order draft.",
+        handler: orderDraftApiHandler,
+      },
+      {
+        method: "POST",
+        path: "/order-drafts",
+        description: "Create one idempotent private order draft from an open checkout intent.",
+        handler: orderDraftApiHandler,
+      },
+      {
+        method: "PATCH",
+        path: "/order-drafts",
+        description: "Replace one private order draft's bounded customer and shipping details.",
+        handler: orderDraftApiHandler,
+      },
+      {
+        method: "DELETE",
+        path: "/order-drafts",
+        description: "Permanently delete one owner-scoped private order draft.",
+        handler: orderDraftApiHandler,
+      },
     ],
     scheduled: [
       {
@@ -615,6 +788,15 @@ export function createShop(options: NpShopOptions = {}) {
         description: "Delete one bounded batch of expired checkout intents for each active site.",
         handler: async () => {
           await npCleanupExpiredShopCheckoutIntents();
+        },
+      },
+      {
+        id: "cleanup-expired-order-drafts",
+        cron: "29 * * * *",
+        description:
+          "Permanently delete one bounded oldest-first batch of expired private order drafts for each active site.",
+        handler: async () => {
+          await npCleanupExpiredShopOrderDrafts();
         },
       },
     ],
@@ -643,7 +825,11 @@ export {
   npShopSlugPattern,
   parseShopCatalogQuery,
 } from "./runtime.js";
-export { npShopCheckoutIntentStatuses, npShopCurrencies } from "./types.js";
+export {
+  npShopCheckoutIntentStatuses,
+  npShopCurrencies,
+  npShopOrderDraftStatuses,
+} from "./types.js";
 export {
   NP_SHOP_CART_QUOTE_CONTRACT,
   NP_SHOP_CART_STORAGE_CONTRACT,
@@ -677,6 +863,23 @@ export {
   npShopCheckoutLimits,
 } from "./checkout-contract.js";
 export type { NpShopCheckoutCancelInput, NpShopCheckoutCreateInput } from "./checkout-contract.js";
+export {
+  NP_SHOP_ORDER_DRAFT_CONTRACT,
+  npAnalyzeShopOrderDraft,
+  npIsShopOrderDraftStatus,
+  npRequireShopOrderDraft,
+  npRequireShopOrderDraftCreateInput,
+  npRequireShopOrderDraftDeleteInput,
+  npRequireShopOrderDraftId,
+  npRequireShopOrderDraftReadQuery,
+  npRequireShopOrderDraftUpdateInput,
+  npShopOrderDraftLimits,
+} from "./order-draft-contract.js";
+export type {
+  NpShopOrderDraftCreateInput,
+  NpShopOrderDraftDeleteInput,
+  NpShopOrderDraftUpdateInput,
+} from "./order-draft-contract.js";
 export type {
   NpShopCartClientMessages,
   NpShopCartIssueCode,
@@ -688,6 +891,11 @@ export type {
   NpShopCheckoutIntentLine,
   NpShopCheckoutIntentStatus,
   NpShopCheckoutSkinProps,
+  NpShopOrderDraft,
+  NpShopOrderDraftCustomer,
+  NpShopOrderDraftShipping,
+  NpShopOrderDraftSkinProps,
+  NpShopOrderDraftStatus,
   NpShopCatalogQuery,
   NpShopCatalogSkinProps,
   NpShopCategory,

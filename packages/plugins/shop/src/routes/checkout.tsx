@@ -18,6 +18,7 @@ export function createShopCheckoutRoute(runtime: NpShopRuntime) {
     const props = {
       basePath: runtime.basePath,
       apiPath: "/api/plugins/shop/checkout",
+      orderDraftApiPath: "/api/plugins/shop/order-drafts",
       intentId,
       messages,
     };

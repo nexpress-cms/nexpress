@@ -67,6 +67,31 @@ const messages = {
   checkoutPaymentUnavailable: "결제 없음",
   checkoutBackToCart: "장바구니로",
   checkoutFailed: "실패",
+  orderDraft: "주문 초안",
+  orderDraftCreate: "배송정보 입력",
+  orderDraftCreating: "초안 준비 중",
+  orderDraftCollecting: "정보 필요",
+  orderDraftReviewable: "검토 가능",
+  orderDraftStale: "변경됨",
+  orderDraftExpires: "만료",
+  orderDraftCustomer: "주문자",
+  orderDraftShipping: "배송지",
+  orderDraftFullName: "이름",
+  orderDraftEmail: "이메일",
+  orderDraftPhone: "전화번호",
+  orderDraftRecipientName: "받는 분",
+  orderDraftCountryCode: "국가",
+  orderDraftPostalCode: "우편번호",
+  orderDraftAddressLine1: "주소",
+  orderDraftAddressLine2: "상세주소",
+  orderDraftLocality: "시군구",
+  orderDraftAdministrativeArea: "시도",
+  orderDraftSave: "저장",
+  orderDraftSaving: "저장 중",
+  orderDraftDelete: "삭제",
+  orderDraftPrivacy: "24시간 후 삭제",
+  orderDraftPaymentUnavailable: "결제 없음",
+  orderDraftFailed: "초안 실패",
   previous: "이전",
   next: "다음",
   backToCatalog: "돌아가기",
@@ -226,6 +251,7 @@ describe("shop skin contract", () => {
         {await classicShopSkin.renderCheckout?.({
           basePath: "/shop",
           apiPath: "/api/plugins/shop/checkout",
+          orderDraftApiPath: "/api/plugins/shop/order-drafts",
           intentId: "123e4567-e89b-42d3-a456-426614174000",
           messages,
         })}
@@ -234,5 +260,20 @@ describe("shop skin contract", () => {
     expect(html).toContain('data-np-shop-surface="checkout"');
     expect(html).toContain("결제 준비");
     expect(html).toContain("준비 중");
+  });
+
+  it("renders the private order draft form through the skin contract", async () => {
+    const html = renderToStaticMarkup(
+      <>
+        {await classicShopSkin.renderOrderDraft?.({
+          basePath: "/shop",
+          apiPath: "/api/plugins/shop/order-drafts",
+          draftId: "123e4567-e89b-42d3-a456-426614174000",
+          messages,
+        })}
+      </>,
+    );
+    expect(html).toContain('data-np-shop-surface="order-draft"');
+    expect(html).toContain("초안 준비 중");
   });
 });

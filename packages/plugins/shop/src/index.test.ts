@@ -34,6 +34,7 @@ describe("shop factory", () => {
       "/shop/products/:productSlug",
       "/shop/cart",
       "/shop/checkout/:intentId",
+      "/shop/order-drafts/:draftId",
     ]);
     expect(shopPlugin.blocks?.map((block) => block.type)).toEqual([
       "shop.featured-products",
@@ -54,6 +55,9 @@ describe("shop factory", () => {
       { id: "countActiveCheckoutIntents", kind: "metric" },
       { id: "checkoutIntentHealth", kind: "status" },
       { id: "cleanupExpiredCheckoutIntents", kind: "action" },
+      { id: "countActiveOrderDrafts", kind: "metric" },
+      { id: "orderDraftHealth", kind: "status" },
+      { id: "cleanupExpiredOrderDrafts", kind: "action" },
     ]);
     expect(shopPlugin.routes?.map((route) => `${route.method} ${route.path}`)).toEqual([
       "GET /cart",
@@ -63,10 +67,15 @@ describe("shop factory", () => {
       "GET /checkout",
       "POST /checkout",
       "DELETE /checkout",
+      "GET /order-drafts",
+      "POST /order-drafts",
+      "PATCH /order-drafts",
+      "DELETE /order-drafts",
     ]);
     expect(shopPlugin.scheduled?.map((task) => task.id)).toEqual([
       "cleanup-expired-carts",
       "cleanup-expired-checkout-intents",
+      "cleanup-expired-order-drafts",
     ]);
     expect([...createShop().runtime.skins.keys()]).toEqual(["classic", "storefront-full"]);
     expect(storefrontFullShopSkin.id).toBe("storefront-full");

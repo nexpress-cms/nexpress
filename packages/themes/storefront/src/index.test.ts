@@ -34,5 +34,6 @@ describe("storefront theme contract", () => {
     expect(storefrontCss).toContain("[data-np-shop-block]");
     expect(storefrontCss).toContain('[data-np-shop-surface="cart"]');
     expect(storefrontCss).toContain('[data-np-shop-surface="checkout"]');
+    expect(storefrontCss).toContain('[data-np-shop-surface="order-draft"]');
   });
 });

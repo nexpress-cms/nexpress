@@ -2,17 +2,19 @@
 
 `@nexpress/plugin-shop` is the first-party catalog foundation for NexPress.
 It owns product and category data, inventory projection, public catalog
-routes, bounded guest/member carts and checkout intents, Admin collection forms
-and health actions, blocks, and skins.
+routes, bounded guest/member carts, checkout intents, private order drafts,
+Admin collection forms and health actions, blocks, and skins.
 
 `@nexpress/theme-storefront` is a separate brand/content theme. It works with
 ordinary pages and posts when Shop is absent. When both packages are active,
 the theme enhances Shop through documented CSS variables, classes, data
 attributes, and optional page blocks; neither package imports the other.
 
-The cart and checkout intent are deliberately **pre-transaction state**. They
-do not reserve or decrement inventory, collect customer PII, create orders,
-take payments, fulfill, refund, or claim that a visitor completed a purchase.
+The cart, checkout intent, and order draft are deliberately **pre-transaction
+state**. Only the private order draft collects the bounded customer and
+shipping fields documented below. None of these surfaces reserve or decrement
+inventory, create a finalized order, take payment, calculate tax or shipping,
+fulfill, refund, or claim that a visitor completed a purchase.
 
 ## Default setup
 
@@ -23,8 +25,8 @@ migration:
 1. Open Admin → Commerce → Shop categories and publish categories.
 2. Open Admin → Commerce → Products and publish products.
 3. Visit `/shop`.
-4. Add a product to the cart, visit `/shop/cart`, and create a short-lived
-   checkout intent.
+4. Add a product to the cart, visit `/shop/cart`, create a short-lived
+   checkout intent, and optionally continue to the 24-hour private order draft.
 5. Optionally activate Storefront from Admin → Appearance.
 6. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
    or insert the `shop.storefront-home` pattern.
@@ -82,6 +84,7 @@ remove the relationship first.
 | `/shop/products/:productSlug`    | Product detail, variants, and gallery |
 | `/shop/cart`                     | Current guest or member cart          |
 | `/shop/checkout/:intentId`       | Owner-scoped checkout intent snapshot |
+| `/shop/order-drafts/:draftId`    | Private customer and delivery draft   |
 
 Catalog and category routes recognize:
 
@@ -184,24 +187,85 @@ outside content search, revisions, transfer, and document quotas. An hourly
 oldest-first task and confirmed Admin action each delete at most 500 expired
 `checkout-intent:%` rows per site without touching other Shop KV data.
 
+## Private order draft and PII lifecycle
+
+Shop exposes `GET`, `POST`, `PATCH`, and `DELETE` at
+`/api/plugins/shop/order-drafts`. The exact owner-facing envelope is
+`np.shop-order-draft.v1`.
+
+- `POST { idempotencyKey, checkoutIntentId }` accepts only an `open`,
+  same-owner checkout intent. The canonical UUID idempotency key becomes the
+  draft id. Repeating the same pair converges on one draft; reusing the key
+  for another intent returns HTTP 409.
+- A newly created draft is `collecting` and contains no PII.
+- `PATCH { draftId, expectedRevision, customer, shipping }` atomically
+  replaces the complete bounded customer/shipping pair. Stale revisions and
+  carts return HTTP 409. Partial private records are never persisted.
+- A saved draft is `reviewable`. This means only that its fields satisfy the
+  draft contract; it does not mean that an order, payment, tax, shipping rate,
+  or inventory reservation is ready.
+- Any cart, price, inventory, product, or option change makes the owner-facing
+  projection `stale` and blocks another private-data save.
+- `DELETE { draftId }` is idempotent and physically removes the owner-scoped
+  row immediately. It returns only `{ deleted: true }`, including when no
+  same-owner row remains.
+
+Each owner may retain at most three unexpired drafts. Every draft expires
+exactly 24 hours after creation. A read at or after expiry physically deletes
+the row before returning HTTP 410. An hourly oldest-first task and the
+confirmed Admin action permanently delete at most 500 expired
+`order-draft:%` rows per site. Framework site deletion also removes every
+site-scoped plugin-storage row.
+
+The only private fields are:
+
+- customer full name, canonical lowercase email, and phone;
+- recipient name and phone;
+- two-letter country code, postal code, address line, optional address detail,
+  locality, and optional administrative area.
+
+Names are limited to 120 characters, email to 254, phone to 32, address lines
+to 200, locality/administrative area to 100, and postal code to 20. Unknown
+fields fail closed. Validation diagnostics name fields but never echo their
+values.
+
+Private drafts use site-scoped `np_plugin_storage`, not collections. Their
+values therefore stay out of public discovery, search indexes, revisions,
+content transfer, document quotas, job payloads, and Shop logs. Owner API
+responses are `private, no-store`. Admin and Doctor expose only contract
+and non-PII operational metadata: Admin reports aggregate `collecting` /
+`reviewable` / `expired` / `invalid` counts, while Doctor inspects the
+declarative route, action, Admin, and scheduled-task inventory without
+executing a PII read. Neither lists
+names, email addresses, phone numbers, addresses, owner ids, or draft ids.
+
+This is an application retention boundary, not a complete privacy-compliance
+policy. Operators remain responsible for their lawful basis, privacy notice,
+database access, encryption and backup-retention policy. Restoring a database
+backup can restore data that existed when that backup was taken, so backup
+expiry and deletion procedures must match the site's policy.
+
 ## Admin surfaces
 
 The two collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
-The plugin declares four typed dashboard metric actions:
+The plugin declares five typed dashboard metric actions:
 
 - total product rows;
 - published low-stock products;
 - active unexpired carts;
 - unexpired non-cancelled checkout-intent records (public reads still
   revalidate the current cart).
+- unexpired private order-draft records, without any customer or shipping
+  values.
 
-Admin also exposes separate cart and checkout-intent storage health
-(active/cancelled/expired/invalid rows) plus confirmed bounded expiry cleanup
-actions. The scheduled-task and action registries make these contracts visible
-to plugin doctor without executing them.
+Admin also exposes separate cart, checkout-intent, and private-order-draft
+storage health plus confirmed bounded expiry cleanup actions. Order-draft
+health reports only aggregate states and withholds private values. The
+scheduled-task and action registries make these contracts visible to plugin
+doctor without executing them.
 
 The manifest-level action registry binds each metric widget to its exact
 handler kind, so plugin validation and doctor can inspect the relationship
@@ -216,10 +280,10 @@ Every Shop factory registers:
 | `classic`         | Compact, neutral catalog and detail fallback               |
 | `storefront-full` | Larger editorial header and image-led product presentation |
 
-Both skins implement catalog, category, product, cart, and checkout-intent
-rendering. They receive prepared products, localized messages, safe formatted
-money, and rendered rich text; they do not own collection or transaction
-policy.
+Both skins implement catalog, category, product, cart, checkout-intent, and
+private order-draft rendering. They receive prepared products, localized
+messages, safe formatted money, and rendered rich text; they do not own
+identity, private-data, collection, or transaction policy.
 
 Plugin structure ships in `@layer np-blocks` and consumes stable properties
 with core-token fallbacks:
@@ -242,6 +306,8 @@ The main public hooks are `.np-shop`, `.np-shop-product-card`,
 `[data-np-shop-cart-line]`,
 `.np-shop-checkout-client`, `[data-np-shop-checkout-line]`,
 `[data-np-shop-checkout-status]`,
+`.np-shop-order-draft-client`, `[data-np-shop-order-draft-line]`,
+`[data-np-shop-order-draft-status]`,
 `[data-np-shop-surface]`, `[data-np-shop-skin]`,
 `[data-np-shop-inventory]`, and `[data-np-shop-block]`.
 
@@ -279,21 +345,21 @@ collection and plugin arrays: handlers, relationships, routes, blocks, and
 Admin actions intentionally close over one runtime definition.
 
 Custom build-time skins implement `NpShopSkin` and may be added through the
-factory's `skins` option. `renderCart` and `renderCheckout` are additive and
-optional; when omitted, the complete shared surfaces are used. Routes own
-identity, mutation, and quote policy while skins receive prepared client
-surfaces. Existing `classic` and `storefront-full` ids cannot be replaced.
+factory's `skins` option. `renderCart`, `renderCheckout`, and
+`renderOrderDraft` are additive and optional; when omitted, the complete
+shared surfaces are used. Routes own identity, mutation, private-data, and
+quote policy while skins receive prepared client surfaces. Existing `classic`
+and `storefront-full` ids cannot be replaced.
 
 ## Next commerce slices
 
 Future transaction work should remain separable from this foundation:
 
-1. order draft plus customer/shipping PII lifecycle and deletion policy;
-2. payment-provider adapters and idempotent webhook intake;
-3. order, refund, fulfillment, and customer Admin workflows;
-4. stock reservation and transactional decrement;
-5. legal/tax/shipping policy integrations.
+1. payment-provider adapters and idempotent webhook intake;
+2. finalized order, refund, fulfillment, and customer Admin workflows;
+3. stock reservation and transactional decrement;
+4. legal/tax/shipping policy integrations.
 
 Those features require explicit payment, security, and operational contracts.
-The current catalog/cart/checkout-intent data and independent theme do not
-pre-authorize or emulate them.
+The current catalog/cart/checkout-intent/order-draft data and independent
+theme do not pre-authorize or emulate them.
