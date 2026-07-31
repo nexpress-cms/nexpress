@@ -939,16 +939,7 @@ pnpm dev
 2. Start \`pnpm dev\` and open \`http://localhost:3000/admin\`.
 3. Create the first admin, name the site, pick a theme, and seed sample
    content if useful.
-4. Publish a page, post, or Shop product; the bounded cart, checkout-intent, 24-hour private draft, durable pending order, and tracked-inventory reservation preview start at \`/shop/cart\`. Payment processing stays disabled until the project registers a build-time provider adapter for exact server confirmation and verified callbacks.
-
-## Optional Toss Payments
-
-\`pnpm add @nexpress/shop-payment-toss\`, then replace the disabled Shop entry
-from \`defaultPlugins\` with one \`createShop({ payment: { adapter } })\` factory
-used for both its collections and plugin. Set matching
-\`NP_TOSS_PAYMENTS_CLIENT_KEY\` and \`NP_TOSS_PAYMENTS_SECRET_KEY\`; only the
-client key reaches the browser. The exact replacement example and attempt /
-confirmation boundaries live in the [Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md#payment-initiation-and-toss-payments).
+4. Publish a page, post, or Shop product; the bounded cart, checkout-intent, 24-hour private draft, durable pending order, and tracked-inventory reservation preview start at \`/shop/cart\`. Payment stays disabled until a build-time provider adapter is registered. For Toss, run \`pnpm add @nexpress/shop-payment-toss\` and replace the \`defaultPlugins\` Shop as shown in the [Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md#payment-initiation-and-toss-payments).
 
 ## Useful Checks
 
