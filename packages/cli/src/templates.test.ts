@@ -377,6 +377,17 @@ describe("getProjectFiles", () => {
     expect(env).toContain("exact modes are noop, smtp, or custom");
   });
 
+  it("scaffolds opt-in Toss payment guidance without enabling credentials", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const env = files[".env.example"];
+    const readme = files["README.md"];
+    expect(env).toContain("# NP_TOSS_PAYMENTS_CLIENT_KEY=");
+    expect(env).toContain("# NP_TOSS_PAYMENTS_SECRET_KEY=");
+    expect(env).not.toMatch(/^NP_TOSS_PAYMENTS_(?:CLIENT|SECRET)_KEY=/m);
+    expect(readme).toContain("pnpm add @nexpress/shop-payment-toss");
+    expect(readme).toContain("defaultPlugins");
+  });
+
   it(".env.example documents the exact storage runtime contract", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const env = files[".env.example"];

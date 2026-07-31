@@ -2,7 +2,15 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-31 (Shop now accepts an optional build-time,
+**Last refreshed:** 2026-07-31 (Shop payment adapters may now add one all-or-none
+prepare/confirm/launcher contract over 15-minute owner-scoped attempts, exact
+stored-order matching, bounded public handoffs, server confirmation, existing
+atomic receipts/inventory transitions, and PII-free Admin/Doctor diagnostics;
+the bundled Toss Payments v2 package supplies a KRW browser handoff,
+secret-key confirmation, and query-verified terminal webhooks. Settlement,
+reversals, refunds, fulfillment, tax, and shipping remain external.)
+
+**Earlier:** 2026-07-31 (Shop now accepts an optional build-time,
 provider-neutral payment adapter over exact raw callbacks; verified events use
 one replay-bounded, amount-matched, idempotent, PII-free receipt contract and
 atomically resolve pending orders by consuming or releasing inventory. Provider

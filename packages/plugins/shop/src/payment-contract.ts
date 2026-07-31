@@ -1,9 +1,17 @@
 import { createHash } from "node:crypto";
 
+import type {
+  NpShopPaymentConfirmAdapterInput,
+  NpShopPaymentLauncher,
+  NpShopPaymentPrepareInput,
+  NpShopPaymentPrepareResult,
+} from "./payment-attempt-contract.js";
 import { npShopCurrencies, type NpShopCurrency } from "./types.js";
 
 export const NP_SHOP_PAYMENT_EVENT_CONTRACT = "np.shop-payment-event.v1" as const;
 export const NP_SHOP_PAYMENT_RECEIPT_CONTRACT = "np.shop-payment-receipt.v1" as const;
+export const NP_SHOP_PAYMENT_WEBHOOK_IGNORED_CONTRACT =
+  "np.shop-payment-webhook-ignored.v1" as const;
 
 export const npShopPaymentEventTypes = ["payment.succeeded", "payment.failed"] as const;
 export type NpShopPaymentEventType = (typeof npShopPaymentEventTypes)[number];
@@ -38,18 +46,64 @@ export interface NpShopPaymentWebhookInput {
   receivedAt: string;
 }
 
+export interface NpShopIgnoredPaymentWebhook {
+  contract: typeof NP_SHOP_PAYMENT_WEBHOOK_IGNORED_CONTRACT;
+  ignored: true;
+  reason: "non-terminal" | "unsupported-event";
+}
+
+export type NpShopPaymentWebhookResult =
+  NpShopVerifiedPaymentEvent | NpShopIgnoredPaymentWebhook | null;
+
 export interface NpShopPaymentAdapter {
   /** Stable lowercase identifier persisted with PII-free payment receipts. */
   id: string;
   /**
-   * Authenticate the exact raw bytes, including a provider-signed timestamp,
-   * before returning one canonical event. Project `payment.failed` only for a
-   * definitive terminal failure. Return `null` for an invalid signature.
-   * Never return unverified parsed input.
+   * Authenticate the exact raw bytes or verify their payment projection
+   * through a server-authenticated provider query before returning one
+   * canonical event. Project `payment.failed` only for a definitive terminal
+   * failure. An authenticated non-terminal or unsupported event may return the
+   * exact ignored result. Return `null` for unverifiable input and never
+   * return unverified parsed fields.
    */
   verifyWebhook(
     input: NpShopPaymentWebhookInput,
-  ): NpShopVerifiedPaymentEvent | null | Promise<NpShopVerifiedPaymentEvent | null>;
+  ): NpShopPaymentWebhookResult | Promise<NpShopPaymentWebhookResult>;
+  /**
+   * Prepare one public payment handoff. Implementations must be idempotent for
+   * the same attempt id and must never return credentials or private order data.
+   */
+  preparePayment?(
+    input: NpShopPaymentPrepareInput,
+  ): NpShopPaymentPrepareResult | Promise<NpShopPaymentPrepareResult>;
+  /**
+   * Exchange provider-returned public confirmation data through a
+   * server-authenticated provider API. A rejected or ambiguous provider call
+   * must throw and leave the Shop order pending.
+   */
+  confirmPayment?(
+    input: NpShopPaymentConfirmAdapterInput,
+  ): NpShopVerifiedPaymentEvent | Promise<NpShopVerifiedPaymentEvent>;
+  /** Build one provider-owned client launcher without exposing server secrets. */
+  renderPaymentLauncher?: NpShopPaymentLauncher;
+}
+
+export type NpShopPaymentInitiationAdapter = NpShopPaymentAdapter &
+  Required<
+    Pick<NpShopPaymentAdapter, "preparePayment" | "confirmPayment" | "renderPaymentLauncher">
+  >;
+
+export function npIsIgnoredPaymentWebhook(value: unknown): value is NpShopIgnoredPaymentWebhook {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.getPrototypeOf(value) === Object.prototype &&
+    Object.keys(value).length === 3 &&
+    (value as { contract?: unknown }).contract === NP_SHOP_PAYMENT_WEBHOOK_IGNORED_CONTRACT &&
+    (value as { ignored?: unknown }).ignored === true &&
+    ["non-terminal", "unsupported-event"].includes((value as { reason?: unknown }).reason as string)
+  );
 }
 
 export interface NpShopStoredPaymentReceipt {

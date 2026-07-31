@@ -806,6 +806,15 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, `payment-attempt:${order.ownerSegment}:${order.id}:%`),
+      ),
+    );
+  await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, "payment-event:%"),
         sql`${npPluginStorage.value}->'event'->>'orderId' = ${order.id}`,
       ),

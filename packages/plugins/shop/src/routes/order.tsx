@@ -15,10 +15,22 @@ export function createShopOrderRoute(runtime: NpShopRuntime) {
     }
     const messages = await getShopMessages();
     const skin = resolveShopSkin(runtime);
+    const paymentAction = runtime.paymentInitiationAdapter?.renderPaymentLauncher({
+      attemptApiPath: "/api/plugins/shop/payments/attempts",
+      orderId,
+      label: messages.orderPay ?? "Pay with configured provider",
+      preparingLabel: messages.orderPaymentPreparing ?? "Preparing secure payment…",
+      confirmingLabel: messages.orderPaymentConfirming ?? "Confirming payment with the provider…",
+      retryLabel: messages.orderPaymentRetry ?? "Prepare another payment attempt",
+      failedLabel:
+        messages.orderPaymentStartFailed ??
+        "Payment could not be started or confirmed. The order remains pending.",
+    });
     const props = {
       basePath: runtime.basePath,
       apiPath: "/api/plugins/shop/orders",
       orderId,
+      paymentAction,
       messages,
     };
     return skin.renderOrder?.(props) ?? <ShopOrderSurface {...props} skin={skin.id} />;

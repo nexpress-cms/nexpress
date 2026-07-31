@@ -169,6 +169,11 @@ export interface NpShopMessages {
   orderEmpty: string;
   orderReference: string;
   orderPaymentUnavailable: string;
+  orderPay?: string;
+  orderPaymentPreparing?: string;
+  orderPaymentConfirming?: string;
+  orderPaymentRetry?: string;
+  orderPaymentStartFailed?: string;
   orderFailed: string;
   previous: string;
   next: string;
@@ -504,6 +509,7 @@ export interface NpShopOrderSkinProps {
   basePath: string;
   apiPath: string;
   orderId: string;
+  paymentAction?: ReactNode;
   messages: NpShopMessages;
 }
 

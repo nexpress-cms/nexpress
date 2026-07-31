@@ -30,6 +30,7 @@
       "@nexpress/plugin-shop",
       "@nexpress/plugin-webhook-relay",
       "@nexpress/rate-limiter-redis",
+      "@nexpress/shop-payment-toss",
       "@nexpress/theme",
       "@nexpress/theme-community",
       "@nexpress/theme-default",

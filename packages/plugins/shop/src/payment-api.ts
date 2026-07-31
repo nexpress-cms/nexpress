@@ -4,6 +4,7 @@ import {
   NpShopPaymentConflictError,
   NpShopPaymentContractError,
   NpShopPaymentVerificationError,
+  npIsIgnoredPaymentWebhook,
   npRequireFreshShopPaymentEvent,
 } from "./payment-contract.js";
 import { npApplyShopPaymentEvent } from "./order-service.js";
@@ -29,6 +30,13 @@ export function createShopPaymentApiHandler(runtime: NpShopRuntime) {
         receivedAt: receivedAt.toISOString(),
       });
       if (verified === null) throw new NpShopPaymentVerificationError();
+      if (npIsIgnoredPaymentWebhook(verified)) {
+        return {
+          status: 200,
+          body: { ignored: true, reason: verified.reason },
+          headers: noStoreHeaders,
+        };
+      }
       const event = npRequireFreshShopPaymentEvent(verified, receivedAt);
       const result = await npApplyShopPaymentEvent(runtime, adapter.id, event, receivedAt);
       return {

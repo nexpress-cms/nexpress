@@ -24,8 +24,11 @@ The default Shop plugin includes products, categories, bounded guest/member
 carts at `/shop/cart`, owner-scoped 15-minute checkout intents, 24-hour private
 order drafts, durable `pending-payment` order references, and tracked-inventory
 reservations. Payment processing is disabled by default; projects may register
-a build-time provider adapter for exact signed callbacks, idempotent paid or
-failed transitions, and atomic reservation consumption or release. Order
+a build-time provider adapter for bounded owner-scoped attempts, server-side
+confirmation, exact verified callbacks, idempotent paid or failed transitions,
+and atomic reservation consumption or release. The bundled
+`@nexpress/shop-payment-toss` adapter supplies a Toss Payments v2 browser/server
+flow when explicitly installed and configured. Order
 customer/shipping values live in a separate private sidecar and are physically
 deleted on cancellation or the 24-hour deadline; commercial snapshots are
 purged after 365 days.

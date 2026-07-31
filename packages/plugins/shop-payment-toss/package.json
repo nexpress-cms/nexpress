@@ -1,24 +1,24 @@
 {
-  "name": "@nexpress/plugin-shop",
+  "name": "@nexpress/shop-payment-toss",
   "version": "0.4.2",
-  "description": "Catalog, cart, checkout, durable order, inventory reservation, optional payment initiation and verified event, and storefront plugin for NexPress.",
+  "description": "Toss Payments v2 initiation, confirmation, and verified webhook adapter for @nexpress/plugin-shop.",
   "license": "MIT",
   "author": "Nexpress",
   "homepage": "https://github.com/nexpress-cms/nexpress#readme",
   "repository": {
     "type": "git",
     "url": "https://github.com/nexpress-cms/nexpress.git",
-    "directory": "packages/plugins/shop"
+    "directory": "packages/plugins/shop-payment-toss"
   },
   "bugs": {
     "url": "https://github.com/nexpress-cms/nexpress/issues"
   },
   "keywords": [
     "nexpress",
-    "plugin",
     "shop",
-    "catalog",
-    "storefront"
+    "payment",
+    "toss-payments",
+    "korea"
   ],
   "type": "module",
   "main": "./dist/index.js",
@@ -33,34 +33,24 @@
       "types": "./dist/client.d.ts",
       "import": "./dist/client.js",
       "default": "./dist/client.js"
-    },
-    "./styles.css": "./src/styles.css"
+    }
   },
   "files": [
     "dist",
-    "src/styles.css"
+    "README.md"
   ],
   "engines": {
     "node": ">=20"
   },
   "peerDependencies": {
-    "next": ">=15",
+    "@nexpress/plugin-shop": "workspace:*",
     "react": "^19.0.0"
   },
-  "dependencies": {
-    "@nexpress/core": "workspace:*",
-    "@nexpress/editor": "workspace:*",
-    "@nexpress/next": "workspace:*",
-    "@nexpress/plugin-sdk": "workspace:*",
-    "drizzle-orm": "^0.45.1"
-  },
   "devDependencies": {
+    "@nexpress/plugin-shop": "workspace:*",
     "@types/node": "^26.0.1",
     "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.0.0",
-    "next": "^16.2.11",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7",
     "tsup": "^8.5.0",
     "typescript": "^5.8.0",
     "vitest": "^4.1.10"

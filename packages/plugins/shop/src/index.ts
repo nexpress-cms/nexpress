@@ -29,7 +29,16 @@ import {
   npMaintainShopOrders,
 } from "./order-service.js";
 import { createShopPaymentApiHandler } from "./payment-api.js";
-import { npRequireShopPaymentProviderId, type NpShopPaymentAdapter } from "./payment-contract.js";
+import { createShopPaymentAttemptApiHandler } from "./payment-attempt-api.js";
+import {
+  npCountShopPaymentAttempts,
+  npListRecentShopPaymentAttempts,
+} from "./payment-attempt-service.js";
+import {
+  npRequireShopPaymentProviderId,
+  type NpShopPaymentAdapter,
+  type NpShopPaymentInitiationAdapter,
+} from "./payment-contract.js";
 import { createShopCatalogMetadata, createShopCatalogRoute } from "./routes/catalog.js";
 import { createShopCartRoute } from "./routes/cart.js";
 import { createShopCheckoutRoute } from "./routes/checkout.js";
@@ -54,7 +63,7 @@ export interface NpShopOptions {
   skins?: readonly NpShopSkin[];
   /** Default list/category skin and product fallback skin. */
   defaultSkinId?: string;
-  /** Build-time provider adapter for the exact signed payment webhook contract. */
+  /** Build-time provider adapter for verified events and optional payment initiation. */
   payment?: {
     adapter: NpShopPaymentAdapter;
   };
@@ -117,13 +126,37 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   }
   const configuredPaymentAdapter = options.payment?.adapter ?? null;
   let paymentAdapter: NpShopPaymentAdapter | null = null;
+  let paymentInitiationAdapter: NpShopPaymentInitiationAdapter | null = null;
   if (configuredPaymentAdapter) {
     const id = npRequireShopPaymentProviderId(configuredPaymentAdapter.id);
     if (typeof configuredPaymentAdapter.verifyWebhook !== "function") {
       throw new Error("Shop payment adapter verifyWebhook must be a function.");
     }
     const verifyWebhook = configuredPaymentAdapter.verifyWebhook.bind(configuredPaymentAdapter);
-    paymentAdapter = Object.freeze({ id, verifyWebhook });
+    const initiationMethods = [
+      typeof configuredPaymentAdapter.preparePayment === "function",
+      typeof configuredPaymentAdapter.confirmPayment === "function",
+      typeof configuredPaymentAdapter.renderPaymentLauncher === "function",
+    ];
+    const initiationMethodCount = initiationMethods.filter(Boolean).length;
+    if (initiationMethodCount !== 0 && initiationMethodCount !== 3) {
+      throw new Error(
+        "Shop payment initiation requires preparePayment, confirmPayment, and renderPaymentLauncher together.",
+      );
+    }
+    if (initiationMethodCount === 3) {
+      paymentInitiationAdapter = Object.freeze({
+        id,
+        verifyWebhook,
+        preparePayment: configuredPaymentAdapter.preparePayment!.bind(configuredPaymentAdapter),
+        confirmPayment: configuredPaymentAdapter.confirmPayment!.bind(configuredPaymentAdapter),
+        renderPaymentLauncher:
+          configuredPaymentAdapter.renderPaymentLauncher!.bind(configuredPaymentAdapter),
+      });
+      paymentAdapter = paymentInitiationAdapter;
+    } else {
+      paymentAdapter = Object.freeze({ id, verifyWebhook });
+    }
   }
   return {
     basePath: requireBasePath(options.basePath ?? "/shop"),
@@ -131,6 +164,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     defaultSkinId,
     skins,
     paymentAdapter,
+    paymentInitiationAdapter,
   };
 }
 
@@ -252,6 +286,12 @@ const messages = {
     "shop.orderReference": "Order reference",
     "shop.orderPaymentUnavailable":
       "This order remains pending until an enabled provider supplies a verified callback. Tax, shipping rates, fulfillment, and refunds are not connected.",
+    "shop.orderPay": "Pay with configured provider",
+    "shop.orderPaymentPreparing": "Preparing secure payment…",
+    "shop.orderPaymentConfirming": "Confirming payment with the provider…",
+    "shop.orderPaymentRetry": "Prepare another payment attempt",
+    "shop.orderPaymentStartFailed":
+      "Payment could not be started or confirmed. The order remains pending and no success was assumed.",
     "shop.orderFailed": "The order could not be updated.",
     "shop.previous": "Previous",
     "shop.next": "Next",
@@ -373,6 +413,12 @@ const messages = {
     "shop.orderReference": "주문 번호",
     "shop.orderPaymentUnavailable":
       "활성 결제사가 검증된 콜백을 보낼 때까지 결제 대기 상태입니다. 세금·배송비, 배송 처리 및 환불은 연결되지 않았습니다.",
+    "shop.orderPay": "연결된 결제사로 결제하기",
+    "shop.orderPaymentPreparing": "안전한 결제를 준비하는 중…",
+    "shop.orderPaymentConfirming": "결제사에서 결제를 승인하는 중…",
+    "shop.orderPaymentRetry": "새 결제 시도 준비",
+    "shop.orderPaymentStartFailed":
+      "결제를 시작하거나 승인하지 못했습니다. 주문은 결제 대기로 유지되며 성공으로 간주하지 않았습니다.",
     "shop.orderFailed": "주문을 갱신하지 못했습니다.",
     "shop.previous": "이전",
     "shop.next": "다음",
@@ -398,6 +444,9 @@ export function createShop(options: NpShopOptions = {}) {
   const orderDraftApiHandler = createShopOrderDraftApiHandler(runtime);
   const orderApiHandler = createShopOrderApiHandler(runtime);
   const paymentApiHandler = runtime.paymentAdapter ? createShopPaymentApiHandler(runtime) : null;
+  const paymentAttemptApiHandler = runtime.paymentInitiationAdapter
+    ? createShopPaymentAttemptApiHandler(runtime)
+    : null;
   const pageRoutes = [
     {
       pattern: runtime.basePath,
@@ -442,7 +491,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, durable orders, optional verified payment events, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, durable orders, optional payment initiation and verified events, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -480,6 +529,13 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-payment-events",
           "widget:shop-payment-event-health",
           "table:shop-payment-events",
+          ...(paymentAttemptApiHandler
+            ? [
+                "dashboard:shop-payment-attempts",
+                "widget:shop-payment-attempt-health",
+                "table:shop-payment-attempts",
+              ]
+            : []),
         ],
         apiRoutes: [
           "/cart",
@@ -487,12 +543,13 @@ export function createShop(options: NpShopOptions = {}) {
           "/order-drafts",
           "/orders",
           ...(paymentApiHandler ? ["/payments/webhook"] : []),
+          ...(paymentAttemptApiHandler ? ["/payments/attempts"] : []),
         ],
         hooks: [],
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, durable orders, transaction-safe inventory reservations, and optional provider-neutral verified payment events. Payment initiation, provider signatures, settlement, reversals, refunds, tax, shipping rates, and fulfillment remain external.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, and verified payment events. Provider implementations, settlement, reversals, refunds, tax, shipping rates, and fulfillment remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -612,6 +669,19 @@ export function createShop(options: NpShopOptions = {}) {
             "Verified, PII-free provider event receipts retained with their commercial orders.",
           priority: 29,
         },
+        ...(paymentAttemptApiHandler
+          ? [
+              {
+                id: "shop-payment-attempts-total",
+                label: "Payment attempts",
+                kind: "metric" as const,
+                actionId: "countPaymentAttempts",
+                description:
+                  "PII-free owner-scoped handoffs retained with their commercial orders.",
+                priority: 30,
+              },
+            ]
+          : []),
       ],
       widgets: [
         {
@@ -650,6 +720,16 @@ export function createShop(options: NpShopOptions = {}) {
           kind: "status",
           actionId: "paymentEventHealth",
         },
+        ...(paymentAttemptApiHandler
+          ? [
+              {
+                id: "shop-payment-attempt-health",
+                label: "Payment initiation contract",
+                kind: "status" as const,
+                actionId: "paymentAttemptHealth",
+              },
+            ]
+          : []),
       ],
       actions: [
         {
@@ -723,6 +803,24 @@ export function createShop(options: NpShopOptions = {}) {
           rowsActionId: "recentPaymentEvents",
           emptyMessage: "No verified Shop payment events exist for this site.",
         },
+        ...(paymentAttemptApiHandler
+          ? [
+              {
+                id: "shop-payment-attempts",
+                label: "Recent payment attempts (owner and handoff withheld)",
+                columns: [
+                  { name: "provider", label: "Provider" },
+                  { name: "attemptId", label: "Attempt" },
+                  { name: "orderId", label: "Order" },
+                  { name: "status", label: "Status" },
+                  { name: "total", label: "Total" },
+                  { name: "createdAt", label: "Created" },
+                ],
+                rowsActionId: "recentPaymentAttempts",
+                emptyMessage: "No Shop payment attempts exist for this site.",
+              },
+            ]
+          : []),
       ],
     },
     actions: {
@@ -1087,6 +1185,73 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      ...(paymentAttemptApiHandler
+        ? {
+            countPaymentAttempts: {
+              kind: "metric" as const,
+              handler: async () => {
+                try {
+                  const counts = await npCountShopPaymentAttempts();
+                  return {
+                    ok: true as const,
+                    data: {
+                      value: counts.total,
+                      delta: `${counts.prepared.toString()} prepared, ${counts.confirmed.toString()} confirmed, ${counts.expired.toString()} expired`,
+                    },
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+            paymentAttemptHealth: {
+              kind: "status" as const,
+              handler: async () => {
+                try {
+                  const counts = await npCountShopPaymentAttempts();
+                  if (counts.invalidSample > 0) {
+                    return npAdminStatus(
+                      "error",
+                      `${counts.invalidSample.toString()} malformed payment attempt row(s) in the newest bounded sample; owner, handoff, and private values are withheld.`,
+                    );
+                  }
+                  if (counts.expired > 0) {
+                    return npAdminStatus(
+                      "warn",
+                      `${counts.prepared.toString()} prepared, ${counts.confirmed.toString()} confirmed, and ${counts.expired.toString()} expired attempt(s); provider "${runtime.paymentInitiationAdapter!.id}" is configured.`,
+                    );
+                  }
+                  return npAdminStatus(
+                    "ok",
+                    `${counts.prepared.toString()} prepared and ${counts.confirmed.toString()} confirmed attempt(s); provider "${runtime.paymentInitiationAdapter!.id}" is configured.`,
+                  );
+                } catch (error) {
+                  return npAdminStatus(
+                    "error",
+                    error instanceof Error ? error.message : "Payment attempt health check failed.",
+                  );
+                }
+              },
+            },
+            recentPaymentAttempts: {
+              kind: "table" as const,
+              handler: async () => {
+                try {
+                  const result = await npListRecentShopPaymentAttempts();
+                  return npAdminTable(result.rows, result.total);
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+          }
+        : {}),
       maintainOrders: {
         kind: "action",
         handler: async () => {
@@ -1189,6 +1354,30 @@ export function createShop(options: NpShopOptions = {}) {
           "Cancel one owner-scoped pending order and permanently delete its private sidecar.",
         handler: orderApiHandler,
       },
+      ...(paymentAttemptApiHandler
+        ? [
+            {
+              method: "GET" as const,
+              path: "/payments/attempts",
+              description: "Read one owner-scoped payment attempt or acquire its mutation token.",
+              handler: paymentAttemptApiHandler,
+            },
+            {
+              method: "POST" as const,
+              path: "/payments/attempts",
+              description:
+                "Prepare one idempotent, provider-owned payment handoff for an exact pending order.",
+              handler: paymentAttemptApiHandler,
+            },
+            {
+              method: "PATCH" as const,
+              path: "/payments/attempts",
+              description:
+                "Server-confirm one provider return without trusting browser amount or success state.",
+              handler: paymentAttemptApiHandler,
+            },
+          ]
+        : []),
       ...(paymentApiHandler
         ? [
             {
@@ -1285,12 +1474,14 @@ export type { NpShopInventoryReservation } from "./inventory-reservation-contrac
 export {
   NP_SHOP_PAYMENT_EVENT_CONTRACT,
   NP_SHOP_PAYMENT_RECEIPT_CONTRACT,
+  NP_SHOP_PAYMENT_WEBHOOK_IGNORED_CONTRACT,
   NpShopPaymentConflictError,
   NpShopPaymentContractError,
   NpShopPaymentVerificationError,
   npAnalyzeShopPaymentEvent,
   npAnalyzeStoredShopPaymentReceipt,
   npRequireFreshShopPaymentEvent,
+  npIsIgnoredPaymentWebhook,
   npRequireShopPaymentEvent,
   npRequireShopPaymentProviderId,
   npRequireStoredShopPaymentReceipt,
@@ -1302,12 +1493,47 @@ export {
 } from "./payment-contract.js";
 export type {
   NpShopPaymentAdapter,
+  NpShopPaymentInitiationAdapter,
   NpShopPaymentEventType,
+  NpShopIgnoredPaymentWebhook,
   NpShopPaymentReceiptOutcome,
+  NpShopPaymentWebhookResult,
   NpShopPaymentWebhookInput,
   NpShopStoredPaymentReceipt,
   NpShopVerifiedPaymentEvent,
 } from "./payment-contract.js";
+export {
+  NP_SHOP_PAYMENT_ATTEMPT_CONTRACT,
+  NP_SHOP_PAYMENT_HANDOFF_CONTRACT,
+  NpShopPaymentAttemptConflictError,
+  NpShopPaymentAttemptContractError,
+  NpShopPaymentAttemptNotFoundError,
+  NpShopPaymentProviderError,
+  npAnalyzeStoredShopPaymentAttempt,
+  npProjectShopPaymentAttempt,
+  npRequireShopPaymentAttemptConfirmInput,
+  npRequireShopPaymentAttemptCreateInput,
+  npRequireShopPaymentPrepareResult,
+  npRequireStoredShopPaymentAttempt,
+  npShopPaymentAttemptLimits,
+  npShopPaymentAttemptStoredStatuses,
+  npShopPaymentHandoffKinds,
+} from "./payment-attempt-contract.js";
+export type {
+  NpShopPaymentAttempt,
+  NpShopPaymentAttemptConfirmInput,
+  NpShopPaymentAttemptCreateInput,
+  NpShopPaymentAttemptStatus,
+  NpShopPaymentConfirmAdapterInput,
+  NpShopPaymentHandoff,
+  NpShopPaymentHandoffKind,
+  NpShopPaymentJson,
+  NpShopPaymentLauncher,
+  NpShopPaymentLauncherProps,
+  NpShopPaymentPrepareInput,
+  NpShopPaymentPrepareResult,
+  NpShopStoredPaymentAttempt,
+} from "./payment-attempt-contract.js";
 export {
   NP_SHOP_CART_QUOTE_CONTRACT,
   NP_SHOP_CART_STORAGE_CONTRACT,

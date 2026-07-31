@@ -4,8 +4,8 @@
 It owns product and category data, inventory projection, public catalog
 routes, bounded guest/member carts, checkout intents, private order drafts,
 durable orders, transaction-safe inventory reservations, an optional
-provider-neutral payment-event boundary, Admin collection forms and health
-actions, blocks, and skins.
+provider-neutral payment initiation and verified-event boundary, Admin
+collection forms and health actions, blocks, and skins.
 
 `@nexpress/theme-storefront` is a separate brand/content theme. It works with
 ordinary pages and posts when Shop is absent. When both packages are active,
@@ -15,10 +15,11 @@ attributes, and optional page blocks; neither package imports the other.
 The cart, checkout intent, and order draft are deliberately **pre-order
 state**. A reviewable draft can create a durable `pending-payment` order that
 reserves tracked product or variant inventory for its 24-hour lifetime. An
-optional build-time adapter may authenticate an external callback and project
+optional build-time adapter may prepare a provider handoff, confirm the
+browser return on the server, authenticate an external callback, and project
 the exact provider-neutral event that moves that order to `paid` or
-`payment-failed`. Shop does not initiate payment, calculate tax or shipping,
-fulfill, refund, or choose a provider signature algorithm.
+`payment-failed`. Shop owns attempts and order transitions but does not choose
+a provider protocol, calculate tax or shipping, fulfill, or refund.
 
 ## Default setup
 
@@ -370,8 +371,9 @@ import {
 const adapter: NpShopPaymentAdapter = {
   id: "my-provider",
   async verifyWebhook({ rawBody, headers, receivedAt }) {
-    // Authenticate the exact bytes and provider-signed timestamp here.
-    // Return null for an invalid signature; never project unverified input.
+    // Authenticate the exact bytes/signature, or query the provider with
+    // server credentials and compare its authoritative payment projection.
+    // Return null for unverifiable input; never project unverified fields.
     const verified = await verifyProviderCallback(rawBody, headers, receivedAt);
     return verified
       ? {
@@ -391,15 +393,18 @@ const adapter: NpShopPaymentAdapter = {
 const shop = createShop({ payment: { adapter } });
 ```
 
-The adapter owns the provider endpoint format, signature algorithm,
-constant-time comparison, credentials and rotation, and the mapping from
-provider fields to `np.shop-payment-event.v1`. Its event and payment references
+The adapter owns the provider endpoint format, signature or authenticated-query
+algorithm, constant-time comparison where applicable, credentials and
+rotation, and the mapping from provider fields to `np.shop-payment-event.v1`.
+Its event and payment references
 must be opaque non-PII identifiers using only letters, numbers, `.`, `_`, `:`,
 or `-`. The framework first bounds the
-raw body to 1 MiB. Shop then requires an exact canonical event, accepts a
-provider-signed timestamp at most five minutes old (with 30 seconds of future
-clock tolerance), requires exact order currency and integer minor-unit amount,
-and serializes each provider/event id.
+raw body to 1 MiB. Shop then requires an exact canonical event, accepts its
+provider-authenticated effective timestamp at most five minutes old (with 30
+seconds of future clock tolerance), requires exact order currency and integer
+minor-unit amount, and serializes each provider/event id. An adapter that
+authoritatively re-queries a provider without signed webhook timestamps uses
+the server receive time after the query succeeds.
 
 The first exact event writes one PII-free receipt. Repeating the same
 provider/event id and canonical digest returns that receipt without another
@@ -419,13 +424,88 @@ This boundary proves callback authentication and one local transition; it does
 not prove settlement, initiate payment, model authorization/capture,
 compensate reversals, or implement refunds and fulfillment.
 
+## Payment initiation and Toss Payments
+
+An adapter can add initiation without changing the verified-event contract by
+implementing all three optional methods together:
+
+- `preparePayment` creates either bounded public client handoff data or an
+  HTTPS redirect for the exact stored order;
+- `renderPaymentLauncher` receives prepared labels and the owner-scoped
+  attempt API path, then renders the provider UI;
+- `confirmPayment` validates provider-returned fields on the server and emits
+  one canonical successful event. It must never trust a browser amount or
+  order id as the commercial source of truth.
+
+When those methods exist, Shop exposes owner-scoped `GET`, `POST`, and `PATCH`
+at `/api/plugins/shop/payments/attempts`. `POST` prepares one idempotent
+`np.shop-payment-attempt.v1` for the current `pending-payment` order. The
+attempt lasts 15 minutes, snapshots the exact order revision/currency/amount,
+contains only bounded public handoff data, and is capped at five active
+prepared attempts and 100 retained attempts per order. Attempts are purged
+with the commercial order. `PATCH` calls the adapter on the server and feeds its
+canonical success event into the same serialized receipt, order, and inventory
+transition as a webhook. Provider timeouts and ambiguous failures leave the
+order pending with its inventory reservation held so the visitor can retry.
+After a provider success redirect, the launcher retains the exact return
+parameters until server confirmation succeeds and retries that same attempt;
+it does not prepare a second payment after an ambiguous confirmation failure.
+
+The bundled Korean provider implementation uses Toss Payments v2:
+
+```bash
+pnpm add @nexpress/shop-payment-toss
+```
+
+```ts
+import { defineConfig } from "@nexpress/core";
+import { defaultCollections, defaultPlugins } from "@nexpress/app/config-defaults";
+import { createShop } from "@nexpress/plugin-shop";
+import { tossPaymentsFromEnv } from "@nexpress/shop-payment-toss";
+
+const shop = createShop({
+  payment: {
+    adapter: tossPaymentsFromEnv({
+      siteUrl: process.env.SITE_URL ?? "http://localhost:3000",
+    }),
+  },
+});
+
+export default defineConfig({
+  // Keep the rest of the site config unchanged.
+  collections: [
+    ...defaultCollections.filter(
+      (collection) => !shop.collections.some((item) => item.slug === collection.slug),
+    ),
+    ...shop.collections,
+  ],
+  plugins: [...defaultPlugins.filter((plugin) => plugin.manifest.id !== "shop"), shop.plugin],
+});
+```
+
+Set matching `NP_TOSS_PAYMENTS_CLIENT_KEY` and
+`NP_TOSS_PAYMENTS_SECRET_KEY` values from the same test/live mode and key
+family (`ck`/`sk` or `gck`/`gsk`). Only the client key is included in the
+browser handoff. The adapter currently supports KRW standard card/easy-pay
+requests. Its success redirect retrieves the stored attempt and confirms it
+server-side with the secret key and attempt UUID idempotency key. General
+payment webhooks are not accepted at face value: the adapter queries Toss with
+the secret key, compares the exact payment projection, and only then emits a
+terminal event. Unsupported or unverifiable callbacks fail closed.
+
+In a generated project, `defaultCollections` and `defaultPlugins` already
+contain the disabled default Shop instance. Filter the two Shop collections
+and the plugin whose manifest id is `shop`, then append `shop.collections` and
+`shop.plugin` from the single configured factory above. Do not register both
+Shop instances.
+
 ## Admin surfaces
 
 The two collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
-The plugin declares eight typed dashboard metric actions:
+The plugin declares eight baseline typed dashboard metric actions:
 
 - total product rows;
 - published low-stock products;
@@ -438,6 +518,11 @@ The plugin declares eight typed dashboard metric actions:
   values.
 - active PII-free inventory reservation rows.
 - verified PII-free payment-event receipts.
+
+A complete initiation adapter adds a ninth metric for PII-free payment
+attempts, a bounded recent-attempt table, and payment-attempt health. Attempt
+diagnostics expose provider, status, order id, exact amount, and timestamps;
+they withhold owner segments, private order data, and provider handoff values.
 
 Admin also exposes separate cart, checkout-intent, and private-order-draft
 storage health plus confirmed bounded expiry cleanup actions. Order health,
@@ -495,6 +580,7 @@ The main public hooks are `.np-shop`, `.np-shop-product-card`,
 `.np-shop-order-draft-client`, `[data-np-shop-order-draft-line]`,
 `[data-np-shop-order-draft-status]`,
 `.np-shop-order-list`, `.np-shop-order-client`,
+`.np-shop-payment-action`, `.np-shop-toss-payment`,
 `[data-np-shop-order-line]`, `[data-np-shop-order-status]`,
 `[data-np-shop-surface]`, `[data-np-shop-skin]`,
 `[data-np-shop-inventory]`, and `[data-np-shop-block]`.
@@ -544,7 +630,7 @@ Existing `classic` and `storefront-full` ids cannot be replaced.
 
 Future transaction work should remain separable from this foundation:
 
-1. provider packages for Stripe, Toss, or KG Inicis plus payment-initiation UX;
+1. additional provider packages for Stripe or KG Inicis;
 2. authorization/capture, settlement, reversal, refund, and inventory
    compensation contracts;
 3. fulfillment and customer-service Admin workflows with deliberate PII
