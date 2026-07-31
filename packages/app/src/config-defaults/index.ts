@@ -68,8 +68,9 @@ export const defaultCollections: NpConfig["collections"] = [
  *   - forum — uses the board/post collections pre-included in
  *     `defaultCollections` and owns the public routes under `/boards`.
  *   - shop — owns catalog categories/products, `/shop` routes, bounded carts
- *     and checkout intents, skins, homepage blocks, and Admin health; payment
- *     and orders are not implied.
+ *     and checkout intents, pending orders, inventory reservations, skins,
+ *     homepage blocks, and Admin health; payment processing stays disabled
+ *     unless a custom project registers a build-time provider adapter.
  *   - oauth-github, oauth-google — register OAuth provider entries
  *     but only become reachable when the corresponding env vars
  *     (or admin auto-form values) are populated; the empty case logs

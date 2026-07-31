@@ -958,9 +958,16 @@ export function ShopOrderDraft({
 }
 
 function orderStatusMessage(order: NpShopOrder, messages: NpShopCartClientMessages): string {
-  return order.status === "pending-payment"
-    ? messages.orderPendingPayment
-    : messages.orderCancelled;
+  switch (order.status) {
+    case "pending-payment":
+      return messages.orderPendingPayment;
+    case "paid":
+      return messages.orderPaid;
+    case "payment-failed":
+      return messages.orderPaymentFailed;
+    case "cancelled":
+      return messages.orderCancelled;
+  }
 }
 
 export function ShopOrders({
@@ -1105,7 +1112,13 @@ export function ShopOrder({
               </div>
             </section>
             <aside>
-              <p>{messages.orderPaymentUnavailable}</p>
+              <p>
+                {order.status === "paid"
+                  ? messages.orderPaymentVerified
+                  : order.status === "payment-failed"
+                    ? messages.orderPaymentFailedDetail
+                    : messages.orderPaymentUnavailable}
+              </p>
               <p>
                 {order.privateDataStatus === "retained"
                   ? messages.orderPrivateRetained
@@ -1114,9 +1127,11 @@ export function ShopOrder({
               <p>
                 {order.inventoryReservationStatus === "held"
                   ? messages.orderInventoryHeld
-                  : order.inventoryReservationStatus === "released"
-                    ? messages.orderInventoryReleased
-                    : messages.orderInventoryNotRequired}
+                  : order.inventoryReservationStatus === "consumed"
+                    ? messages.orderInventoryConsumed
+                    : order.inventoryReservationStatus === "released"
+                      ? messages.orderInventoryReleased
+                      : messages.orderInventoryNotRequired}
               </p>
               <p>
                 {messages.orderCreated}{" "}

@@ -493,6 +493,14 @@
     color: var(--np-shop-subtle, var(--np-color-muted-foreground, #6b6b68));
   }
 
+  .np-shop-order-header > span[data-np-shop-order-status="paid"] {
+    color: var(--np-shop-accent, var(--np-color-primary, #205c46));
+  }
+
+  .np-shop-order-header > span[data-np-shop-order-status="payment-failed"] {
+    color: var(--np-color-destructive, #b42318);
+  }
+
   .np-shop-order-layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(17rem, 24rem);

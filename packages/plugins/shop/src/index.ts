@@ -23,9 +23,13 @@ import { npCleanupExpiredShopOrderDrafts, npCountShopOrderDrafts } from "./order
 import { createShopOrderApiHandler } from "./order-api.js";
 import {
   npCountShopOrders,
+  npCountShopPaymentEvents,
   npListRecentShopOrders,
+  npListRecentShopPaymentEvents,
   npMaintainShopOrders,
 } from "./order-service.js";
+import { createShopPaymentApiHandler } from "./payment-api.js";
+import { npRequireShopPaymentProviderId, type NpShopPaymentAdapter } from "./payment-contract.js";
 import { createShopCatalogMetadata, createShopCatalogRoute } from "./routes/catalog.js";
 import { createShopCartRoute } from "./routes/cart.js";
 import { createShopCheckoutRoute } from "./routes/checkout.js";
@@ -50,6 +54,10 @@ export interface NpShopOptions {
   skins?: readonly NpShopSkin[];
   /** Default list/category skin and product fallback skin. */
   defaultSkinId?: string;
+  /** Build-time provider adapter for the exact signed payment webhook contract. */
+  payment?: {
+    adapter: NpShopPaymentAdapter;
+  };
 }
 
 function requireBasePath(value: string): string {
@@ -107,11 +115,22 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   if (collections.categories === collections.products) {
     throw new Error("Shop category and product collection slugs must be different.");
   }
+  const configuredPaymentAdapter = options.payment?.adapter ?? null;
+  let paymentAdapter: NpShopPaymentAdapter | null = null;
+  if (configuredPaymentAdapter) {
+    const id = npRequireShopPaymentProviderId(configuredPaymentAdapter.id);
+    if (typeof configuredPaymentAdapter.verifyWebhook !== "function") {
+      throw new Error("Shop payment adapter verifyWebhook must be a function.");
+    }
+    const verifyWebhook = configuredPaymentAdapter.verifyWebhook.bind(configuredPaymentAdapter);
+    paymentAdapter = Object.freeze({ id, verifyWebhook });
+  }
   return {
     basePath: requireBasePath(options.basePath ?? "/shop"),
     collections,
     defaultSkinId,
     skins,
+    paymentAdapter,
   };
 }
 
@@ -145,7 +164,8 @@ const messages = {
     "shop.price": "Price",
     "shop.stock": "Stock",
     "shop.taxIncluded": "Tax included where applicable.",
-    "shop.catalogOnly": "Catalog and private order-draft preview — payment is not enabled.",
+    "shop.catalogOnly":
+      "Catalog and checkout preview — payment-provider availability depends on site configuration.",
     "shop.cart": "Cart",
     "shop.addToCart": "Add to cart",
     "shop.addingToCart": "Adding…",
@@ -175,7 +195,7 @@ const messages = {
     "shop.checkoutCancel": "Cancel checkout intent",
     "shop.checkoutExpires": "Expires",
     "shop.checkoutPaymentUnavailable":
-      "Payment, finalized orders, inventory reservation, tax, and shipping are not connected.",
+      "This intent only freezes a quote; it does not place an order or take payment.",
     "shop.checkoutBackToCart": "Back to cart",
     "shop.checkoutFailed": "The checkout intent could not be loaded.",
     "shop.orderDraft": "Order draft",
@@ -210,10 +230,18 @@ const messages = {
     "shop.orderCreate": "Create pending order",
     "shop.orderCreating": "Creating order…",
     "shop.orderPendingPayment": "Pending payment",
+    "shop.orderPaid": "Paid",
+    "shop.orderPaymentFailed": "Payment failed",
     "shop.orderCancelled": "Cancelled",
-    "shop.orderPrivateRetained": "Private delivery details are retained until this order expires.",
+    "shop.orderPaymentVerified":
+      "The provider callback was verified and this order was marked paid.",
+    "shop.orderPaymentFailedDetail":
+      "The provider reported a failed payment. Inventory was released and private details were deleted.",
+    "shop.orderPrivateRetained":
+      "Private delivery details are retained only until the original 24-hour privacy deadline.",
     "shop.orderPrivateRedacted": "Private delivery details were permanently deleted.",
     "shop.orderInventoryHeld": "Tracked inventory is reserved until this order expires.",
+    "shop.orderInventoryConsumed": "Reserved tracked inventory was deducted.",
     "shop.orderInventoryReleased": "The inventory reservation was released.",
     "shop.orderInventoryNotRequired": "This order does not use tracked inventory.",
     "shop.orderExpires": "Pending order expires",
@@ -223,7 +251,7 @@ const messages = {
     "shop.orderEmpty": "No orders have been created for this browser identity.",
     "shop.orderReference": "Order reference",
     "shop.orderPaymentUnavailable":
-      "This durable order reference is pending only. Tracked inventory is reserved, but payment, tax, shipping rates, fulfillment, and refunds are not connected.",
+      "This order remains pending until an enabled provider supplies a verified callback. Tax, shipping rates, fulfillment, and refunds are not connected.",
     "shop.orderFailed": "The order could not be updated.",
     "shop.previous": "Previous",
     "shop.next": "Next",
@@ -259,7 +287,8 @@ const messages = {
     "shop.price": "가격",
     "shop.stock": "재고",
     "shop.taxIncluded": "표시 가격에는 해당되는 세금이 포함되어 있습니다.",
-    "shop.catalogOnly": "카탈로그·비공개 주문 초안 체험 — 실제 결제는 연결되지 않았습니다.",
+    "shop.catalogOnly":
+      "카탈로그·결제 흐름 체험 — 결제사 사용 가능 여부는 사이트 설정에 따라 다릅니다.",
     "shop.cart": "장바구니",
     "shop.addToCart": "장바구니 담기",
     "shop.addingToCart": "담는 중…",
@@ -289,7 +318,7 @@ const messages = {
     "shop.checkoutCancel": "결제 의도 취소",
     "shop.checkoutExpires": "만료",
     "shop.checkoutPaymentUnavailable":
-      "결제, 확정 주문, 재고 예약, 세금 및 배송은 아직 연결되지 않았습니다.",
+      "결제 의도는 견적만 잠시 고정하며 주문을 만들거나 결제하지 않습니다.",
     "shop.checkoutBackToCart": "장바구니로 돌아가기",
     "shop.checkoutFailed": "결제 의도를 불러오지 못했습니다.",
     "shop.orderDraft": "주문 초안",
@@ -324,10 +353,16 @@ const messages = {
     "shop.orderCreate": "결제 대기 주문 만들기",
     "shop.orderCreating": "주문 만드는 중…",
     "shop.orderPendingPayment": "결제 대기",
+    "shop.orderPaid": "결제 완료",
+    "shop.orderPaymentFailed": "결제 실패",
     "shop.orderCancelled": "취소됨",
-    "shop.orderPrivateRetained": "배송 개인정보는 이 주문의 대기 시간이 끝날 때까지 보관됩니다.",
+    "shop.orderPaymentVerified": "결제사 콜백을 검증했고 주문을 결제 완료로 전환했습니다.",
+    "shop.orderPaymentFailedDetail":
+      "결제사가 실패를 알렸습니다. 재고 예약을 해제하고 배송 개인정보를 삭제했습니다.",
+    "shop.orderPrivateRetained": "배송 개인정보는 최초 24시간 개인정보 보관 기한까지만 유지됩니다.",
     "shop.orderPrivateRedacted": "배송 개인정보가 영구 삭제되었습니다.",
     "shop.orderInventoryHeld": "재고 추적 상품은 이 주문이 만료될 때까지 예약됩니다.",
+    "shop.orderInventoryConsumed": "예약된 추적 재고를 차감했습니다.",
     "shop.orderInventoryReleased": "재고 예약이 해제되었습니다.",
     "shop.orderInventoryNotRequired": "이 주문에는 재고 추적 상품이 없습니다.",
     "shop.orderExpires": "결제 대기 만료",
@@ -337,7 +372,7 @@ const messages = {
     "shop.orderEmpty": "이 브라우저 식별자로 만든 주문이 없습니다.",
     "shop.orderReference": "주문 번호",
     "shop.orderPaymentUnavailable":
-      "이 영속 주문 번호는 결제 대기 상태일 뿐입니다. 재고 추적 상품은 예약되지만 결제, 세금·배송비, 배송 처리 및 환불은 연결되지 않았습니다.",
+      "활성 결제사가 검증된 콜백을 보낼 때까지 결제 대기 상태입니다. 세금·배송비, 배송 처리 및 환불은 연결되지 않았습니다.",
     "shop.orderFailed": "주문을 갱신하지 못했습니다.",
     "shop.previous": "이전",
     "shop.next": "다음",
@@ -362,6 +397,7 @@ export function createShop(options: NpShopOptions = {}) {
   const checkoutApiHandler = createShopCheckoutApiHandler(runtime);
   const orderDraftApiHandler = createShopOrderDraftApiHandler(runtime);
   const orderApiHandler = createShopOrderApiHandler(runtime);
+  const paymentApiHandler = runtime.paymentAdapter ? createShopPaymentApiHandler(runtime) : null;
   const pageRoutes = [
     {
       pattern: runtime.basePath,
@@ -406,7 +442,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, pending orders, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, durable orders, optional verified payment events, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -441,13 +477,22 @@ export function createShop(options: NpShopOptions = {}) {
           "widget:shop-inventory-reservation-health",
           "table:shop-inventory-reservations",
           "action:shop-order-maintenance",
+          "dashboard:shop-payment-events",
+          "widget:shop-payment-event-health",
+          "table:shop-payment-events",
         ],
-        apiRoutes: ["/cart", "/checkout", "/order-drafts", "/orders"],
+        apiRoutes: [
+          "/cart",
+          "/checkout",
+          "/order-drafts",
+          "/orders",
+          ...(paymentApiHandler ? ["/payments/webhook"] : []),
+        ],
         hooks: [],
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, durable pending orders, and transaction-safe inventory reservations. Payment success, stock decrement, tax, shipping rates, fulfillment, and refunds are deliberately not implied.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, durable orders, transaction-safe inventory reservations, and optional provider-neutral verified payment events. Payment initiation, provider signatures, settlement, reversals, refunds, tax, shipping rates, and fulfillment remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -558,6 +603,15 @@ export function createShop(options: NpShopOptions = {}) {
           description: "PII-free product and variant holds owned by pending orders for this site.",
           priority: 28,
         },
+        {
+          id: "shop-payment-events-total",
+          label: "Payment events",
+          kind: "metric",
+          actionId: "countPaymentEvents",
+          description:
+            "Verified, PII-free provider event receipts retained with their commercial orders.",
+          priority: 29,
+        },
       ],
       widgets: [
         {
@@ -589,6 +643,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Inventory reservation storage",
           kind: "status",
           actionId: "inventoryReservationHealth",
+        },
+        {
+          id: "shop-payment-event-health",
+          label: "Payment event contract",
+          kind: "status",
+          actionId: "paymentEventHealth",
         },
       ],
       actions: [
@@ -647,6 +707,21 @@ export function createShop(options: NpShopOptions = {}) {
           ],
           rowsActionId: "recentInventoryReservations",
           emptyMessage: "No active tracked-inventory reservations exist for this site.",
+        },
+        {
+          id: "shop-payment-events",
+          label: "Recent verified payment events (PII withheld)",
+          columns: [
+            { name: "provider", label: "Provider" },
+            { name: "eventId", label: "Event" },
+            { name: "type", label: "Type" },
+            { name: "orderId", label: "Order" },
+            { name: "outcome", label: "Outcome" },
+            { name: "orderStatus", label: "Order status" },
+            { name: "processedAt", label: "Processed" },
+          ],
+          rowsActionId: "recentPaymentEvents",
+          emptyMessage: "No verified Shop payment events exist for this site.",
         },
       ],
     },
@@ -854,7 +929,7 @@ export function createShop(options: NpShopOptions = {}) {
               ok: true,
               data: {
                 value: counts.total,
-                delta: `${counts.pending.toString()} pending, ${counts.cancelled.toString()} cancelled`,
+                delta: `${counts.pending.toString()} pending, ${counts.paid.toString()} paid, ${counts.paymentFailed.toString()} failed`,
               },
             };
           } catch (error) {
@@ -875,11 +950,11 @@ export function createShop(options: NpShopOptions = {}) {
               : counts.due > 0
                 ? npAdminStatus(
                     "warn",
-                    `${counts.pending.toString()} pending, ${counts.cancelled.toString()} cancelled, ${counts.due.toString()} due for maintenance; private values are withheld.`,
+                    `${counts.pending.toString()} pending, ${counts.paid.toString()} paid, ${counts.paymentFailed.toString()} failed, ${counts.cancelled.toString()} cancelled, ${counts.due.toString()} due for maintenance; private values are withheld.`,
                   )
                 : npAdminStatus(
                     "ok",
-                    `${counts.pending.toString()} pending, ${counts.cancelled.toString()} cancelled order(s); private values are withheld.`,
+                    `${counts.pending.toString()} pending, ${counts.paid.toString()} paid, ${counts.paymentFailed.toString()} failed, ${counts.cancelled.toString()} cancelled order(s); private values are withheld.`,
                   );
           } catch (error) {
             return npAdminStatus(
@@ -949,6 +1024,63 @@ export function createShop(options: NpShopOptions = {}) {
         handler: async () => {
           try {
             const result = await npListRecentShopOrders();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      countPaymentEvents: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npCountShopPaymentEvents();
+            return {
+              ok: true,
+              data: {
+                value: counts.total,
+                delta: runtime.paymentAdapter?.id ?? "webhook disabled",
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      paymentEventHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopPaymentEvents();
+            if (counts.invalidSample > 0 || counts.orphanSample > 0) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed and ${counts.orphanSample.toString()} orphan payment receipt(s) in the newest bounded sample; raw callbacks and private values are never retained.`,
+              );
+            }
+            if (!runtime.paymentAdapter) {
+              return npAdminStatus(
+                "ok",
+                `${counts.total.toString()} retained receipt(s); no payment adapter is configured and the webhook route is disabled.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.total.toString()} valid receipt(s); provider "${runtime.paymentAdapter.id}" is configured.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Payment event health check failed.",
+            );
+          }
+        },
+      },
+      recentPaymentEvents: {
+        kind: "table",
+        handler: async () => {
+          try {
+            const result = await npListRecentShopPaymentEvents();
             return npAdminTable(result.rows, result.total);
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
@@ -1057,6 +1189,19 @@ export function createShop(options: NpShopOptions = {}) {
           "Cancel one owner-scoped pending order and permanently delete its private sidecar.",
         handler: orderApiHandler,
       },
+      ...(paymentApiHandler
+        ? [
+            {
+              method: "POST" as const,
+              path: "/payments/webhook",
+              description:
+                "Verify one exact provider callback and idempotently resolve its pending order.",
+              auth: false,
+              bodyMode: "raw" as const,
+              handler: paymentApiHandler,
+            },
+          ]
+        : []),
     ],
     scheduled: [
       {
@@ -1137,6 +1282,32 @@ export {
   npShopInventoryStockKey,
 } from "./inventory-reservation-contract.js";
 export type { NpShopInventoryReservation } from "./inventory-reservation-contract.js";
+export {
+  NP_SHOP_PAYMENT_EVENT_CONTRACT,
+  NP_SHOP_PAYMENT_RECEIPT_CONTRACT,
+  NpShopPaymentConflictError,
+  NpShopPaymentContractError,
+  NpShopPaymentVerificationError,
+  npAnalyzeShopPaymentEvent,
+  npAnalyzeStoredShopPaymentReceipt,
+  npRequireFreshShopPaymentEvent,
+  npRequireShopPaymentEvent,
+  npRequireShopPaymentProviderId,
+  npRequireStoredShopPaymentReceipt,
+  npShopPaymentEventDigest,
+  npShopPaymentEventTypes,
+  npShopPaymentLimits,
+  npShopPaymentReceiptOutcomes,
+  npShopPaymentReceiptStorageKey,
+} from "./payment-contract.js";
+export type {
+  NpShopPaymentAdapter,
+  NpShopPaymentEventType,
+  NpShopPaymentReceiptOutcome,
+  NpShopPaymentWebhookInput,
+  NpShopStoredPaymentReceipt,
+  NpShopVerifiedPaymentEvent,
+} from "./payment-contract.js";
 export {
   NP_SHOP_CART_QUOTE_CONTRACT,
   NP_SHOP_CART_STORAGE_CONTRACT,

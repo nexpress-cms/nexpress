@@ -22,8 +22,10 @@ not at scaffold time.
 
 The default Shop plugin includes products, categories, bounded guest/member
 carts at `/shop/cart`, owner-scoped 15-minute checkout intents, 24-hour private
-order drafts, and durable `pending-payment` order references. It does not take
-payment, confirm paid status, or reserve inventory. Pending-order
+order drafts, durable `pending-payment` order references, and tracked-inventory
+reservations. Payment processing is disabled by default; projects may register
+a build-time provider adapter for exact signed callbacks, idempotent paid or
+failed transitions, and atomic reservation consumption or release. Order
 customer/shipping values live in a separate private sidecar and are physically
 deleted on cancellation or the 24-hour deadline; commercial snapshots are
 purged after 365 days.
