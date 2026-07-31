@@ -30,6 +30,7 @@ import type {
   NpPluginHookName,
   NpPluginMember,
   NpPluginUser as NpCorePluginUser,
+  NpPluginApiRouteBodyMode,
   NpPluginApiRouteMethod,
   NpPluginApiRouteRequest as NpCorePluginApiRouteRequest,
   NpPluginApiRouteResponse as NpCorePluginApiRouteResponse,
@@ -178,6 +179,7 @@ export const npRouteMethods = [
 ] as const satisfies readonly NpPluginApiRouteMethod[];
 
 export type NpRouteMethod = NpPluginApiRouteMethod;
+export type NpRouteBodyMode = NpPluginApiRouteBodyMode;
 
 export type NpPluginUser = NpCorePluginUser;
 export type NpHookPrincipal = NpCoreHookPrincipal;
@@ -745,6 +747,11 @@ export interface NpRouteRegistration<TConfig = Record<string, unknown>> {
   handler: NpRouteHandler<TConfig>;
   description?: string;
   auth?: boolean;
+  /**
+   * Mutating routes parse JSON by default. Use `raw` when a signed callback
+   * must verify the exact bounded request bytes before parsing or mutating.
+   */
+  bodyMode?: NpPluginApiRouteBodyMode;
 }
 
 export interface NpScheduledTask<TConfig = Record<string, unknown>> {

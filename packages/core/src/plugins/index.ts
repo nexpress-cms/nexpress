@@ -64,8 +64,11 @@ export type {
 } from "./admin-action-contract.js";
 
 export {
+  npIsPluginApiRouteBodyMode,
   npIsPluginApiRouteMethod,
+  npPluginApiRouteBodyModes,
   npPluginApiRouteKey,
+  npPluginApiRouteLimits,
   npPluginApiRouteMethods,
   npValidatePluginApiRouteDefinition,
   npValidatePluginApiRoutePath,
@@ -73,10 +76,12 @@ export {
 } from "./api-route-contract.js";
 
 export type {
+  NpPluginApiRouteBodyMode,
   NpPluginApiRouteMethod,
   NpPluginApiRouteMember,
   NpPluginApiRouteRequest,
   NpPluginApiRouteRequestMethod,
+  NpPluginApiRouteResolvedBodyMode,
   NpPluginApiRouteResponse,
   NpPluginApiRouteUser,
   NpPluginApiRouteValidationResult,

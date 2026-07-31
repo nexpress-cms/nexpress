@@ -40,7 +40,9 @@ import {
   npValidatePluginApiRouteDefinition,
   npValidatePluginApiRouteResponse,
   type NpPluginApiRouteMethod,
+  type NpPluginApiRouteBodyMode,
   type NpPluginApiRouteRequest,
+  type NpPluginApiRouteResolvedBodyMode,
   type NpPluginApiRouteResponse,
 } from "./api-route-contract.js";
 import {
@@ -109,6 +111,8 @@ export interface PluginRouteHandler {
   pluginId: string;
   path: string;
   method: NpPluginApiRouteMethod;
+  /** Resolved request-body projection used by the HTTP dispatcher. */
+  bodyMode: NpPluginApiRouteResolvedBodyMode;
   description?: string;
   /** When true, the dispatcher must verify a staff session before
    *  invoking `handler` and pass the resolved user as `req.user`.
@@ -414,6 +418,7 @@ export interface ResolvedPluginLike {
     handler: unknown;
     description?: string;
     auth?: boolean;
+    bodyMode?: string;
   }>;
   pageRoutes?: ReadonlyArray<{
     pattern: string;
@@ -468,6 +473,7 @@ interface ValidatedApiRoute {
   handler: ResolvedRouteFn;
   description?: string;
   auth?: boolean;
+  bodyMode?: NpPluginApiRouteBodyMode;
 }
 
 interface ValidatedScheduledTask {
@@ -809,6 +815,7 @@ function materializePluginDiscoveryItem(registration: PluginRegistration): NpPlu
         path: route.path,
         ...(route.description ? { description: route.description } : {}),
         auth: route.auth,
+        bodyMode: route.bodyMode,
       }))
       .sort((a, b) => `${a.method} ${a.path}`.localeCompare(`${b.method} ${b.path}`)),
     pageRoutes: registration.pageRoutes
@@ -1030,6 +1037,8 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
 
     const auth = route.auth === true;
     const method = route.method;
+    const bodyMode: NpPluginApiRouteResolvedBodyMode =
+      method === "GET" ? "none" : (route.bodyMode ?? "json");
 
     // #316 — public plugin routes carry the framework's least-
     // protected default rate limit (proxy.ts caps the catch-all at
@@ -1057,6 +1066,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
       pluginId: manifest.id,
       path: route.path,
       method,
+      bodyMode,
       description: route.description,
       auth,
       handler: wrapped,

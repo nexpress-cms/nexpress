@@ -82,18 +82,26 @@ describe("non-block scaffold generators", () => {
       expect(source).toContain("`render:beforePage`");
       expect(source).toContain("`content:beforeUnpublish`");
       expect(source).not.toContain("render:afterPage");
+      expect(source).not.toContain('from "node:crypto"');
     });
   });
 
   describe("route plugin", () => {
     commonAssertions("route", scaffoldRoutePlugin);
 
-    it("declares a GET /health route in the starter source", async () => {
+    it("declares JSON-free health and exact-byte route examples", async () => {
       const result = await scaffoldRoutePlugin({ slug: "ping", outDir: workdir });
       const source = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
       expect(source).toMatch(/method: "GET"/);
       expect(source).toMatch(/path: "\/health"/);
       expect(source).toMatch(/auth: false/);
+      expect(source).toMatch(/path: "\/body-digest"/);
+      expect(source).toMatch(/bodyMode: "raw"/);
+      expect(source).toMatch(/auth: true/);
+      expect(source).toContain("req.rawBody");
+      expect(source).toContain('import { createHash } from "node:crypto"');
+      expect(source).toContain('createHash("sha256")');
+      expect(source).toContain("timing-safe provider-signature check");
       expect(source).toContain("statuses 204, 205, and 304 must not include a body");
       expect(source).not.toContain("Promise.resolve");
       expect(source).not.toMatch(/from "zod"/);

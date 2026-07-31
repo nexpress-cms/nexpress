@@ -3,6 +3,7 @@ import {
   getCollectionConfig,
   getPluginRoutes,
   listEnabledPluginIds,
+  npPluginApiRouteLimits,
   type NpCollectionConfig,
 } from "@nexpress/core";
 import {
@@ -1700,12 +1701,13 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
           items: {
             type: "object",
             additionalProperties: false,
-            required: ["method", "path", "auth"],
+            required: ["method", "path", "auth", "bodyMode"],
             properties: {
               method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
               path: { type: "string" },
               description: { type: "string" },
               auth: { type: "boolean" },
+              bodyMode: { type: "string", enum: ["none", "json", "raw"] },
             },
           },
         },
@@ -6018,6 +6020,31 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
       summary: `Plugin route: ${route.method} ${route.path}`,
       tags: [`plugin:${route.pluginId}`],
       description: route.description ?? `Exposed by plugin \`${route.pluginId}\`.`,
+      security: route.auth ? [{ sessionCookie: [] }] : [],
+      ...(route.bodyMode === "raw"
+        ? {
+            requestBody: {
+              required: false,
+              description: `Exact request bytes, limited to ${npPluginApiRouteLimits.rawBodyBytes.toString()} bytes.`,
+              content: {
+                "*/*": {
+                  schema: { type: "string", format: "binary" },
+                },
+              },
+            },
+          }
+        : route.bodyMode === "json"
+          ? {
+              requestBody: {
+                required: false,
+                content: {
+                  "application/json": {
+                    schema: {},
+                  },
+                },
+              },
+            }
+          : {}),
       responses: {
         "200": { description: "Plugin response (shape depends on the plugin)" },
         "404": { description: "Plugin or route not found" },

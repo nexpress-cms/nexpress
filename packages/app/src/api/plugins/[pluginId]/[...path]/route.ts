@@ -14,6 +14,7 @@ import { npErrorResponse } from "../../../../lib/api-response";
 import { ensureFor } from "../../../../lib/init-core";
 import { optionalMember } from "../../../../lib/member-auth-helpers";
 import { npCreatePluginApiRouteResponse } from "../../plugin-route-response";
+import { npReadPluginApiRawBody } from "../../plugin-route-request";
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +84,10 @@ async function handlePluginRoute(
     });
 
     let body: unknown = undefined;
-    if (method !== "GET" && method !== "HEAD") {
+    let rawBody: Uint8Array | undefined;
+    if (matched.bodyMode === "raw") {
+      rawBody = await npReadPluginApiRawBody(request);
+    } else if (matched.bodyMode === "json") {
       const contentType = request.headers.get("content-type") || "";
       if (contentType.includes("application/json")) {
         body = await readJsonBody(request);
@@ -95,7 +99,9 @@ async function handlePluginRoute(
       path: routePath,
       params: { pluginId },
       query,
+      bodyMode: matched.bodyMode,
       body,
+      rawBody,
       headers,
       user: sessionUser
         ? { id: sessionUser.id, email: sessionUser.email, role: sessionUser.role }

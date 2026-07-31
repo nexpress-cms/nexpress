@@ -1,8 +1,11 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
+  npIsPluginApiRouteBodyMode,
   npIsPluginApiRouteMethod,
+  npPluginApiRouteBodyModes,
   npPluginApiRouteKey,
+  npPluginApiRouteLimits,
   npPluginApiRouteMethods,
   npValidatePluginApiRouteDefinition,
   npValidatePluginApiRoutePath,
@@ -22,13 +25,22 @@ describe("plugin API route contract", () => {
     expect(npIsPluginApiRouteMethod("get")).toBe(false);
   });
 
+  it("publishes the exact raw-body mode and byte limit", () => {
+    expect(npPluginApiRouteBodyModes).toEqual(["json", "raw"]);
+    expect(npIsPluginApiRouteBodyMode("raw")).toBe(true);
+    expect(npIsPluginApiRouteBodyMode("text")).toBe(false);
+    expect(npPluginApiRouteLimits.rawBodyBytes).toBe(1024 * 1024);
+  });
+
   it("exposes staff and active-member identities as independent additive summaries", () => {
     const request = {
       method: "GET",
       path: "/cart",
       params: { pluginId: "shop" },
       query: {},
+      bodyMode: "none",
       body: undefined,
+      rawBody: undefined,
       headers: {},
       user: { id: "staff-id", email: "staff@example.com", role: "admin" },
       member: { id: "123e4567-e89b-42d3-a456-426614174000" },
@@ -73,6 +85,17 @@ describe("plugin API route contract", () => {
     expect(npPluginApiRouteKey(route)).toBe("GET /health");
   });
 
+  it("accepts an explicit raw body only on mutating routes", () => {
+    expect(
+      npValidatePluginApiRouteDefinition({
+        method: "POST",
+        path: "/webhook",
+        bodyMode: "raw",
+        handler: () => ({ status: 202 }),
+      }),
+    ).toEqual({ ok: true });
+  });
+
   it.each([
     [{ method: "get", path: "/health", handler: () => ({ status: 200 }) }, /method/],
     [{ method: "GET", path: "/health", handler: "./handler.js" }, /handler/],
@@ -84,6 +107,24 @@ describe("plugin API route contract", () => {
     [
       { method: "GET", path: "/health", handler: () => ({ status: 200 }), timeoutMs: 10 },
       /only method/,
+    ],
+    [
+      {
+        method: "POST",
+        path: "/webhook",
+        handler: () => ({ status: 202 }),
+        bodyMode: "text",
+      },
+      /bodyMode/,
+    ],
+    [
+      {
+        method: "GET",
+        path: "/health",
+        handler: () => ({ status: 200 }),
+        bodyMode: "raw",
+      },
+      /mutating routes/,
     ],
   ])("rejects malformed route definition %#", (definition, message) => {
     const result = npValidatePluginApiRouteDefinition(definition);

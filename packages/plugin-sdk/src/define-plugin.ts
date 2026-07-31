@@ -23,7 +23,14 @@ import {
 const supportedHookNames = new Set<string>(npHookNames);
 const supportedRouteMethods = new Set<string>(npRouteMethods);
 const hookDescriptorKeys = new Set(["handler", "priority", "timeoutMs"]);
-const routeDefinitionKeys = new Set(["method", "path", "handler", "description", "auth"]);
+const routeDefinitionKeys = new Set([
+  "method",
+  "path",
+  "handler",
+  "description",
+  "auth",
+  "bodyMode",
+]);
 const routeSegmentPattern = /^[A-Za-z0-9._~-]+$/;
 
 function validateBlockRegistry(pluginId: string, blocks: unknown): void {
@@ -175,6 +182,16 @@ function validateRouteRegistry(pluginId: string, routes: unknown): void {
     if (route.auth !== undefined && typeof route.auth !== "boolean") {
       throw new Error(
         `[plugin:${pluginId}] API route "${route.method} ${route.path}" auth must be boolean.`,
+      );
+    }
+    if (route.bodyMode !== undefined && route.bodyMode !== "json" && route.bodyMode !== "raw") {
+      throw new Error(
+        `[plugin:${pluginId}] API route "${route.method} ${route.path}" bodyMode must be json or raw.`,
+      );
+    }
+    if (route.method === "GET" && route.bodyMode !== undefined) {
+      throw new Error(
+        `[plugin:${pluginId}] API route "${route.method} ${route.path}" bodyMode is only valid for mutating routes.`,
       );
     }
 

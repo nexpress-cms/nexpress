@@ -265,6 +265,7 @@ export interface NpPluginDiscoveryItem {
     readonly path: string;
     readonly description?: string;
     readonly auth: boolean;
+    readonly bodyMode: "none" | "json" | "raw";
   }>;
   readonly pageRoutes: Array<{
     readonly pattern: string;

@@ -1015,8 +1015,11 @@ export {
   npAnalyzePluginAdminActionContract,
   npCollectPluginAdminActionReferences,
   npValidatePluginActionResult,
+  npIsPluginApiRouteBodyMode,
   npIsPluginApiRouteMethod,
+  npPluginApiRouteBodyModes,
   npPluginApiRouteKey,
+  npPluginApiRouteLimits,
   npPluginApiRouteMethods,
   npValidatePluginApiRouteDefinition,
   npValidatePluginApiRoutePath,
@@ -1048,9 +1051,11 @@ export {
 
 export type { NpPluginConfigResult } from "./plugins/index.js";
 export type {
+  NpPluginApiRouteBodyMode,
   NpPluginApiRouteMethod,
   NpPluginApiRouteRequest,
   NpPluginApiRouteRequestMethod,
+  NpPluginApiRouteResolvedBodyMode,
   NpPluginApiRouteResponse,
   NpPluginApiRouteUser,
   NpPluginApiRouteValidationResult,

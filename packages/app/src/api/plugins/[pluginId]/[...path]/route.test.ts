@@ -6,18 +6,22 @@ const runtime = vi.hoisted(() => ({
   handler: vi.fn(),
   optionalAuth: vi.fn(),
   optionalMember: vi.fn(),
+  readJsonBody: vi.fn((request: NextRequest) => request.json()),
 }));
 
 vi.mock("@nexpress/core", () => ({
   NpAuthError: class NpAuthError extends Error {},
   NpMethodNotAllowedError: class NpMethodNotAllowedError extends Error {},
   NpNotFoundError: class NpNotFoundError extends Error {},
+  NpValidationError: class NpValidationError extends Error {},
+  npPluginApiRouteLimits: { rawBodyBytes: 1024 * 1024 },
   getPluginRoutes: () => [
     {
       pluginId: "shop",
       method: "GET",
       path: "/cart",
       auth: false,
+      bodyMode: "none",
       handler: runtime.handler,
     },
     {
@@ -25,6 +29,15 @@ vi.mock("@nexpress/core", () => ({
       method: "POST",
       path: "/cart",
       auth: false,
+      bodyMode: "json",
+      handler: runtime.handler,
+    },
+    {
+      pluginId: "shop",
+      method: "POST",
+      path: "/webhook",
+      auth: false,
+      bodyMode: "raw",
       handler: runtime.handler,
     },
   ],
@@ -32,7 +45,7 @@ vi.mock("@nexpress/core", () => ({
 }));
 
 vi.mock("@nexpress/next", () => ({
-  readJsonBody: (request: NextRequest) => request.json(),
+  readJsonBody: runtime.readJsonBody,
 }));
 
 vi.mock("../../../../lib/auth-helpers", () => ({
@@ -50,6 +63,9 @@ vi.mock("../../../../lib/init-core", () => ({
 import { GET, POST } from "./route.js";
 
 const params = { params: Promise.resolve({ pluginId: "shop", path: ["cart"] }) };
+const webhookParams = {
+  params: Promise.resolve({ pluginId: "shop", path: ["webhook"] }),
+};
 
 beforeEach(() => {
   runtime.ensureFor.mockReset().mockResolvedValue(undefined);
@@ -58,6 +74,7 @@ beforeEach(() => {
   runtime.optionalMember.mockReset().mockResolvedValue({
     id: "123e4567-e89b-42d3-a456-426614174000",
   });
+  runtime.readJsonBody.mockClear();
 });
 
 describe("plugin API route member projection", () => {
@@ -69,6 +86,8 @@ describe("plugin API route member projection", () => {
     expect(runtime.handler).toHaveBeenCalledWith(
       expect.objectContaining({
         method: "GET",
+        bodyMode: "none",
+        rawBody: undefined,
         member: { id: "123e4567-e89b-42d3-a456-426614174000" },
       }),
     );
@@ -89,8 +108,36 @@ describe("plugin API route member projection", () => {
     expect(runtime.handler).toHaveBeenCalledWith(
       expect.objectContaining({
         method: "POST",
+        bodyMode: "json",
         body: { expectedRevision: 0 },
+        rawBody: undefined,
         member: { id: "123e4567-e89b-42d3-a456-426614174000" },
+      }),
+    );
+  });
+
+  it("preserves exact bytes for a raw-body route without invoking JSON parsing", async () => {
+    const source = '{ "event": "paid", "id": 7 }\n';
+    const response = await POST(
+      new NextRequest("http://localhost/api/plugins/shop/webhook", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": new TextEncoder().encode(source).byteLength.toString(),
+        },
+        body: source,
+      }),
+      webhookParams,
+    );
+
+    expect(response.status).toBe(200);
+    expect(runtime.readJsonBody).not.toHaveBeenCalled();
+    expect(runtime.handler).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "POST",
+        bodyMode: "raw",
+        body: undefined,
+        rawBody: new TextEncoder().encode(source),
       }),
     );
   });
