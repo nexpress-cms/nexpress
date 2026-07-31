@@ -89,5 +89,11 @@ describe("Shop payment event contract", () => {
         eventDigest: npShopPaymentEventDigest({ ...event, type: "payment.failed" }),
       }),
     ).toContain("paid receipts require a succeeded event and paid order status.");
+    expect(
+      npAnalyzeStoredShopPaymentReceipt({
+        ...receipt,
+        processedAt: "2026-07-31T00:05:01.000Z",
+      }),
+    ).toContain("payment receipt event timestamp is outside its processing replay window.");
   });
 });

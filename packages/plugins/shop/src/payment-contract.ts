@@ -321,6 +321,20 @@ export function npAnalyzeStoredShopPaymentReceipt(value: unknown): string[] {
   if (!isCanonicalIso(value.processedAt)) issues.push("payment receipt.processedAt is invalid.");
   if (!isCanonicalIso(value.purgeAt)) issues.push("payment receipt.purgeAt is invalid.");
   if (
+    isRecord(value.event) &&
+    isCanonicalIso(value.event.signedAt) &&
+    isCanonicalIso(value.processedAt)
+  ) {
+    const signedAt = new Date(value.event.signedAt).getTime();
+    const processedAt = new Date(value.processedAt).getTime();
+    if (
+      signedAt < processedAt - npShopPaymentLimits.replayWindowSeconds * 1_000 ||
+      signedAt > processedAt + npShopPaymentLimits.futureToleranceSeconds * 1_000
+    ) {
+      issues.push("payment receipt event timestamp is outside its processing replay window.");
+    }
+  }
+  if (
     isCanonicalIso(value.processedAt) &&
     isCanonicalIso(value.purgeAt) &&
     new Date(value.purgeAt) <= new Date(value.processedAt)

@@ -158,6 +158,10 @@ async function orderCall(
 async function createPendingOrder(
   ids: { intentId: string; draftId: string; orderId: string },
   privateEmail: string,
+  line: { variantSku: string | null; quantity: number } = {
+    variantSku: null,
+    quantity: 1,
+  },
 ) {
   const initial = await call("GET");
   const cookie = initial.headers?.["Set-Cookie"];
@@ -165,7 +169,12 @@ async function createPendingOrder(
   const added = await call("POST", {
     cookie,
     csrf,
-    body: { productId, variantSku: null, quantity: 1, expectedRevision: 0 },
+    body: {
+      productId,
+      variantSku: line.variantSku,
+      quantity: line.quantity,
+      expectedRevision: 0,
+    },
   });
   const addedBody = added.body as {
     csrfToken: string;
@@ -1334,6 +1343,57 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         paymentShop.plugin.actions?.paymentEventHealth?.handler(undefined, {} as never),
       ),
     ).toMatchObject({ ok: true, data: { level: "ok" } });
+
+    await db.insert(shopProductsVariantsTable).values({
+      parentId: productId,
+      order: 0,
+      name: "Large",
+      sku: "CUP-L",
+      optionSummary: "500 ml",
+      priceMinor: 30_000,
+      stockQuantity: 3,
+      enabled: true,
+    });
+    const variantIds = {
+      intentId: "733e4567-e89b-42d3-a456-426614174000",
+      draftId: "833e4567-e89b-42d3-a456-426614174000",
+      orderId: "933e4567-e89b-42d3-a456-426614174000",
+    };
+    await createPendingOrder(variantIds, "variant-private@example.com", {
+      variantSku: "CUP-L",
+      quantity: 2,
+    });
+    expect(
+      await paymentCall({
+        ...succeededEvent,
+        eventId: "evt_variant_success",
+        orderId: variantIds.orderId,
+        paymentReference: "pay_variant_success",
+        amountMinor: 60_000,
+        signedAt: new Date().toISOString(),
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: { receipt: { outcome: "paid", orderStatus: "paid" } },
+    });
+    expect(
+      await db
+        .select({
+          sku: shopProductsVariantsTable.sku,
+          stockQuantity: shopProductsVariantsTable.stockQuantity,
+        })
+        .from(shopProductsVariantsTable)
+        .where(eq(shopProductsVariantsTable.parentId, productId)),
+    ).toEqual([{ sku: "CUP-L", stockQuantity: 1 }]);
+    expect(
+      await db
+        .select({
+          available: shopProductsTable.available,
+          inventoryState: shopProductsTable.inventoryState,
+        })
+        .from(shopProductsTable)
+        .where(eq(shopProductsTable.id, productId)),
+    ).toEqual([{ available: true, inventoryState: "low-stock" }]);
   });
 
   it("cancels expired pending orders and purges old commercial snapshots in bounded passes", async () => {
