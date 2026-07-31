@@ -48,6 +48,10 @@ These notes come from building two bundled example plugins in May 2026:
   and validates every handler result. `GET` routes support `HEAD`, no-body
   statuses stay bodyless, and plugin doctor scopes duplicate checks to the
   owning plugin id instead of warning on valid cross-plugin namespaces.
+  Mutating routes may additionally opt into a fixed 1 MiB exact-byte body
+  projection for signed callbacks; definition validation, bounded dispatch,
+  public discovery, OpenAPI, and the route scaffold share that mode without
+  assuming a provider signature or payment transition.
 - Plugin page routes now share one pattern and definition contract across the
   SDK, core host, Next dispatcher, and plugin doctor. Invalid or duplicate
   patterns fail during module evaluation or boot instead of being dropped;

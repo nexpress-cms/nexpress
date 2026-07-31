@@ -175,7 +175,9 @@ export async function scaffoldRoutePlugin(options: ScaffoldOptions): Promise<Sca
   assertDirAvailable(names.pluginDir);
 
   const description = `API route plugin: ${names.packageName}`;
-  const indexSource = `import { definePlugin } from "@nexpress/plugin-sdk";
+  const indexSource = `import { createHash } from "node:crypto";
+
+import { definePlugin } from "@nexpress/plugin-sdk";
 
 /**
  * API route plugin scaffold. Plugin routes mount under
@@ -188,6 +190,12 @@ export async function scaffoldRoutePlugin(options: ScaffoldOptions): Promise<Sca
  *     should add their own validator (signature header, captcha, etc.).
  *   - \`auth: true\` — verifies a staff session and passes
  *     \`req.user\` into the handler. Use for diagnostics / admin actions.
+ *
+ * Mutating routes parse JSON by default. \`bodyMode: "raw"\` instead exposes
+ * the exact request bytes as \`req.rawBody\` (bounded to 1 MiB), which signed
+ * callbacks must verify before parsing or mutating state. The digest route
+ * below keeps staff auth enabled; make a real webhook public only after adding
+ * a timing-safe provider-signature check.
  *
  * \`definePlugin\` auto-adds \`api:route\` to \`manifest.capabilities\`
  * because at least one route is declared — the host gates registration
@@ -229,6 +237,26 @@ export const ${names.exportName} = definePlugin({
         };
       },
     },
+    {
+      method: "POST",
+      path: "/body-digest",
+      auth: true,
+      bodyMode: "raw",
+      description: "Hash the exact bounded request bytes for contract verification.",
+      handler: (req, _ctx) => {
+        const bytes = req.rawBody;
+        if (!bytes) {
+          return { status: 400, body: { error: "Raw request body was not projected." } };
+        }
+        return {
+          status: 200,
+          body: {
+            bytes: bytes.byteLength,
+            sha256: createHash("sha256").update(bytes).digest("hex"),
+          },
+        };
+      },
+    },
   ],
 });
 
@@ -240,8 +268,11 @@ export default ${names.exportName};
 An API-route plugin scaffolded by \`nexpress create route-plugin\`.
 
 The starter exposes \`GET /api/plugins/${names.pluginId}/health\` returning
-\`{ ok: true, now, echo }\`. Edit \`src/index.tsx\` to add real handlers
-or chain in your own auth / validation.
+\`{ ok: true, now, echo }\`. Its staff-only
+\`POST /api/plugins/${names.pluginId}/body-digest\` route demonstrates the
+bounded exact-byte contract required by signed callbacks. Edit
+\`src/index.tsx\` to add real handlers or chain in your own auth / validation;
+never make a mutating callback public before its signature check is complete.
 `;
 
   const files: Record<string, string> = {

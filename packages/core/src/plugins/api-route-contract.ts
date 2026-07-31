@@ -1,9 +1,15 @@
 import { type NpPluginUser } from "./hook-contract.js";
 
 export const npPluginApiRouteMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"] as const;
+export const npPluginApiRouteBodyModes = ["json", "raw"] as const;
+export const npPluginApiRouteLimits = Object.freeze({
+  rawBodyBytes: 1024 * 1024,
+});
 
 export type NpPluginApiRouteMethod = (typeof npPluginApiRouteMethods)[number];
 export type NpPluginApiRouteRequestMethod = NpPluginApiRouteMethod | "HEAD";
+export type NpPluginApiRouteBodyMode = (typeof npPluginApiRouteBodyModes)[number];
+export type NpPluginApiRouteResolvedBodyMode = NpPluginApiRouteBodyMode | "none";
 
 export type NpPluginApiRouteUser = NpPluginUser;
 
@@ -17,7 +23,15 @@ export interface NpPluginApiRouteRequest {
   readonly path: string;
   readonly params: Readonly<Record<string, string>>;
   readonly query: Readonly<Record<string, string>>;
+  /**
+   * How the framework projected the incoming body. GET/HEAD requests use
+   * `none`; mutating routes default to `json` unless they opt into `raw`.
+   */
+  readonly bodyMode: NpPluginApiRouteResolvedBodyMode;
+  /** Parsed JSON in `json` mode; otherwise `undefined`. */
   readonly body: unknown;
+  /** Exact bounded request bytes in `raw` mode; otherwise `undefined`. */
+  readonly rawBody: Uint8Array | undefined;
   readonly headers: Readonly<Record<string, string>>;
   readonly user?: NpPluginApiRouteUser;
   readonly member?: NpPluginApiRouteMember;
@@ -33,7 +47,15 @@ export type NpPluginApiRouteValidationResult =
   { readonly ok: true } | { readonly ok: false; readonly message: string };
 
 const routeMethodSet = new Set<string>(npPluginApiRouteMethods);
-const routeDefinitionKeys = ["method", "path", "handler", "description", "auth"] as const;
+const routeBodyModeSet = new Set<string>(npPluginApiRouteBodyModes);
+const routeDefinitionKeys = [
+  "method",
+  "path",
+  "handler",
+  "description",
+  "auth",
+  "bodyMode",
+] as const;
 const routeResponseKeys = ["status", "body", "headers"] as const;
 const nullBodyStatuses = new Set([204, 205, 304]);
 const routeSegmentPattern = /^[A-Za-z0-9._~-]+$/;
@@ -54,6 +76,10 @@ function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[])
 
 export function npIsPluginApiRouteMethod(value: string): value is NpPluginApiRouteMethod {
   return routeMethodSet.has(value);
+}
+
+export function npIsPluginApiRouteBodyMode(value: string): value is NpPluginApiRouteBodyMode {
+  return routeBodyModeSet.has(value);
 }
 
 export function npValidatePluginApiRoutePath(path: unknown): NpPluginApiRouteValidationResult {
@@ -85,7 +111,9 @@ export function npValidatePluginApiRouteDefinition(
   value: unknown,
 ): NpPluginApiRouteValidationResult {
   if (!isRecord(value) || !hasOnlyKeys(value, routeDefinitionKeys)) {
-    return invalid("route must contain only method, path, handler, description, and auth.");
+    return invalid(
+      "route must contain only method, path, handler, description, auth, and bodyMode.",
+    );
   }
   if (typeof value.method !== "string" || !npIsPluginApiRouteMethod(value.method)) {
     return invalid(
@@ -105,6 +133,15 @@ export function npValidatePluginApiRouteDefinition(
   }
   if (value.auth !== undefined && typeof value.auth !== "boolean") {
     return invalid("route.auth must be a boolean when provided.");
+  }
+  if (
+    value.bodyMode !== undefined &&
+    (typeof value.bodyMode !== "string" || !npIsPluginApiRouteBodyMode(value.bodyMode))
+  ) {
+    return invalid('route.bodyMode must be either "json" or "raw" when provided.');
+  }
+  if (value.method === "GET" && value.bodyMode !== undefined) {
+    return invalid("route.bodyMode may be declared only for mutating routes.");
   }
   return { ok: true };
 }

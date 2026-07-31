@@ -258,6 +258,47 @@ describe("ops plugins core", () => {
     );
   });
 
+  it("accepts raw mutating routes and diagnoses meaningless GET body modes", () => {
+    const valid = analyzePlugins([
+      {
+        manifest: { id: "payments", name: "Payments" },
+        routes: [
+          {
+            method: "POST",
+            path: "/webhook",
+            bodyMode: "raw",
+            handler: () => ({ status: 202 }),
+          },
+        ],
+      },
+    ]);
+    expect(valid.checks.find((check) => check.id === "plugins.route_invalid")).toBeUndefined();
+
+    const invalid = analyzePlugins([
+      {
+        manifest: { id: "payments", name: "Payments" },
+        routes: [
+          {
+            method: "GET",
+            path: "/health",
+            bodyMode: "raw",
+            handler: () => ({ status: 200 }),
+          },
+        ],
+      },
+    ]);
+    expect(invalid.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.route_invalid",
+          state: "error",
+          detail: expect.stringContaining("bodyMode may be declared only for mutating routes"),
+          pluginIds: ["payments"],
+        }),
+      ]),
+    );
+  });
+
   it("rejects malformed and same-plugin duplicate block definitions", () => {
     const report = analyzePlugins([
       {

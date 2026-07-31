@@ -320,9 +320,13 @@ real product domain, not just blog/community. Ship as a plugin package
   stock, and atomically writes one exact PII-free reservation per tracked
   line. Cancellation and timeout release the hold; Admin exposes bounded
   aggregate, orphan, malformed, expiry, and recent-row diagnostics.
+- **Signed callback transport (shipped)** — mutating plugin API routes may opt
+  into one exact 1 MiB raw-body projection. The dispatcher validates declared
+  length, bounds streamed bytes, skips JSON normalization, and advertises the
+  mode through discovery and OpenAPI without choosing provider/payment policy.
 - **Payment adapters (future)** — explicit Stripe / Toss / KG Inicis adapter
   and signed idempotent webhook contracts built on the shipped durable order
-  boundary.
+  and raw callback boundaries.
 - **Order admin (partially shipped)** — PII-free aggregate health and bounded
   recent commercial rows exist. Paid status workflows, refunds, fulfillment
   notes, and customer-service access remain future work.

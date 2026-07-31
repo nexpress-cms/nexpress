@@ -77,7 +77,7 @@ the right starter for what you're building:
 | `nexpress create block-plugin <slug> --workspace`               | One static page-builder block under `packages/plugins/<slug>`.                                                           |
 | `nexpress create block-plugin <slug> --interactive --workspace` | Static block + a `"use client"` form, with the directive / `splitting: false` / self-import wiring pre-configured.       |
 | `nexpress create hook-plugin <slug> --workspace`                | One `content:afterCreate` hook handler.                                                                                  |
-| `nexpress create route-plugin <slug> --workspace`               | One public `GET /health` route.                                                                                          |
+| `nexpress create route-plugin <slug> --workspace`               | Public `GET /health` plus a staff-only exact-byte `POST /body-digest` contract example.                                  |
 | `nexpress create page-plugin <slug> --workspace`                | Typed public page route plus page-template and ICU translation examples.                                                 |
 | `nexpress create admin-plugin <slug> --workspace`               | `configSchema` settings form + status widget + manual action, wired through a typed definition-level `actions` registry. |
 | `nexpress create scheduled-plugin <slug> --workspace`           | One typed nightly cron task at 02:00 UTC.                                                                                |
@@ -217,6 +217,12 @@ route/request/response contract, and [`plugin-capabilities.md`](plugin-capabilit
 the capabilities `definePlugin` can't auto-derive (such as
 `storage:kv` or `network:fetch`). Hook payloads are listed in
 [`plugin-hooks.md`](plugin-hooks.md).
+
+The route scaffold also includes a staff-only `POST /body-digest` example.
+It declares `bodyMode: "raw"` and hashes `request.rawBody` so authors can
+verify that whitespace and byte ordering survive dispatch. Signed public
+callbacks must authenticate those exact bytes before parsing or changing
+state; see [`plugin-api-routes.md`](plugin-api-routes.md#signed-callbacks-and-exact-bytes).
 
 ## Step 2b — Operator-tunable config (optional)
 

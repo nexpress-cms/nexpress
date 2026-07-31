@@ -65,6 +65,26 @@ describe("definePlugin — capability derivation", () => {
     expect(plugin.manifest.provides.apiRoutes).toContain("GET /health");
   });
 
+  it("accepts a raw-body webhook route and derives its inventory", () => {
+    const plugin = definePlugin({
+      manifest: { ...baseManifest },
+      routes: [
+        {
+          method: "POST",
+          path: "/webhook",
+          bodyMode: "raw",
+          handler: (request) => {
+            expectTypeOf(request.rawBody).toEqualTypeOf<Uint8Array | undefined>();
+            return { status: 202 };
+          },
+        },
+      ],
+    });
+
+    expect(plugin.routes?.[0]?.bodyMode).toBe("raw");
+    expect(plugin.manifest.provides.apiRoutes).toContain("POST /webhook");
+  });
+
   it.each([
     [
       [{ method: "get", path: "/health", handler: () => ({ status: 200 }) }],
@@ -79,6 +99,28 @@ describe("definePlugin — capability derivation", () => {
     [
       [{ method: "GET", path: "/health", handler: () => ({ status: 200 }), auth: "yes" }],
       /auth must be boolean/,
+    ],
+    [
+      [
+        {
+          method: "POST",
+          path: "/webhook",
+          handler: () => ({ status: 202 }),
+          bodyMode: "text",
+        },
+      ],
+      /bodyMode must be json or raw/,
+    ],
+    [
+      [
+        {
+          method: "GET",
+          path: "/health",
+          handler: () => ({ status: 200 }),
+          bodyMode: "raw",
+        },
+      ],
+      /only valid for mutating routes/,
     ],
   ])("rejects malformed API route definitions during evaluation", (routes, message) => {
     const definition = { manifest: { ...baseManifest }, routes } as unknown as NpPluginDefinition;

@@ -57,6 +57,7 @@ Each route has these fields:
 | `handler`     | A function returning a route result directly or through a promise.     |
 | `description` | Optional non-empty text used by the generated OpenAPI document.        |
 | `auth`        | Optional boolean. `true` requires a staff session; default is `false`. |
+| `bodyMode`    | Mutating routes only: `json` (default) or exact bounded `raw` bytes.   |
 
 Paths must start with `/`, contain at least one segment, have no trailing or
 empty segments, and be at most 256 characters. Segments may contain ASCII
@@ -80,7 +81,9 @@ handler: async (request, ctx) => {
   // request.path: the declared route path
   // request.params.pluginId: the owning plugin id
   // request.query: flattened string query values
-  // request.body: parsed JSON for non-GET/HEAD requests, otherwise undefined
+  // request.bodyMode: none | json | raw
+  // request.body: parsed JSON in json mode, otherwise undefined
+  // request.rawBody: Uint8Array only when the route declares bodyMode: "raw"
   // request.headers: request headers as a string record
   // request.user: staff summary when the request has a valid session
   // request.member: { id } when the request has a valid active member session
@@ -95,6 +98,46 @@ body before sending it. A route cannot register `HEAD` separately.
 JSON request bodies are parsed only when the method can carry a body and the
 `Content-Type` includes `application/json`. Repeated query parameters are
 flattened to their last value.
+
+### Signed callbacks and exact bytes
+
+Signature schemes normally authenticate the bytes as received, not a
+parse-and-reserialized JSON value. Opt a mutating route into `raw` mode before
+implementing a webhook or provider callback:
+
+```ts
+{
+  method: "POST",
+  path: "/webhook",
+  auth: false,
+  bodyMode: "raw",
+  handler: async (request, ctx) => {
+    const bytes = request.rawBody;
+    if (!bytes) return { status: 400, body: { error: "Missing raw body" } };
+
+    const signature = request.headers["x-provider-signature"];
+    const verified = await verifyProviderSignature(bytes, signature);
+    if (!verified) return { status: 401, body: { error: "Invalid signature" } };
+
+    // Parse and validate only after the exact bytes have been authenticated.
+    const event = parseProviderEvent(bytes);
+    await applyIdempotentEvent(event, ctx);
+    return { status: 202, body: { accepted: true } };
+  },
+}
+```
+
+Raw mode ignores `Content-Type` and exposes the exact body as a `Uint8Array`;
+`request.body` stays `undefined`. NexPress rejects a non-canonical or
+mismatched `Content-Length` and caps the streamed body at 1 MiB before the
+handler runs. Empty bodies are preserved as a zero-length array so the
+provider-specific validator remains authoritative. `GET` registrations cannot
+declare a body mode and dispatch as `bodyMode: "none"`.
+
+Do not decode, parse, normalize, or log the body before signature verification.
+The framework supplies bytes and a bound; the plugin still owns the provider's
+algorithm, timestamp/replay window, secret rotation, idempotency key, and
+state-transition policy.
 
 ## Response contract
 
@@ -150,7 +193,8 @@ pnpm --silent run ops:plugins -- doctor --json
 
 The generated `/api/openapi.json` document includes every loaded route, its
 description, an automatic `HEAD` operation for each `GET` route, and the
-canonical host-error envelope as its fallback response.
+canonical host-error envelope as its fallback response. Mutating operations
+also advertise whether they accept parsed JSON or an exact binary body.
 
 See also [`plugin-capabilities.md`](plugin-capabilities.md) for context gates
 and [`plugin-manifest.md`](plugin-manifest.md) for definition-level fields.

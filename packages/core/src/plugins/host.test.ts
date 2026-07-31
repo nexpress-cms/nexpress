@@ -35,7 +35,14 @@ function resolvedPlugin(
   options: {
     capabilities?: readonly string[];
     hooks?: Record<string, (ctx: { hook: string; data: Record<string, unknown> }) => unknown>;
-    routes?: Array<{ method: string; path: string; handler: unknown }>;
+    routes?: Array<{
+      method: string;
+      path: string;
+      handler: unknown;
+      bodyMode?: string;
+      auth?: boolean;
+      description?: string;
+    }>;
     scheduled?: Array<{
       id: string;
       cron: string;
@@ -51,7 +58,14 @@ function resolvedPlugin(
     capabilities: readonly string[];
   };
   hooks?: Record<string, unknown>;
-  routes?: ReadonlyArray<{ method: string; path: string; handler: unknown }>;
+  routes?: ReadonlyArray<{
+    method: string;
+    path: string;
+    handler: unknown;
+    bodyMode?: string;
+    auth?: boolean;
+    description?: string;
+  }>;
   scheduled?: ReadonlyArray<{
     id: string;
     cron: string;
@@ -209,6 +223,7 @@ describe("plugin host", () => {
             {
               method: "POST",
               path: "/echo",
+              bodyMode: "raw",
               handler: () => Promise.resolve({ status: 201 }),
             },
           ],
@@ -229,6 +244,7 @@ describe("plugin host", () => {
       expect(routes).toHaveLength(1);
       expect(routes[0]?.method).toBe("POST");
       expect(routes[0]?.path).toBe("/echo");
+      expect(routes[0]?.bodyMode).toBe("raw");
 
       const reg = getPluginRegistration("full");
       expect(reg?.capabilities).toEqual(["hooks:content", "api:route"]);
@@ -285,7 +301,7 @@ describe("plugin host", () => {
           id: "discoverable",
           author: { name: "NexPress", url: "https://example.com" },
           hooks: ["content:afterCreate"],
-          routes: [{ method: "GET", path: "/ping", auth: false }],
+          routes: [{ method: "GET", path: "/ping", auth: false, bodyMode: "none" }],
           actions: [
             {
               id: "inspect",
@@ -687,7 +703,9 @@ describe("plugin host", () => {
           path: "/health",
           params: { pluginId: "sync-route" },
           query: {},
+          bodyMode: "none",
           body: undefined,
+          rawBody: undefined,
           headers: {},
         }),
       ).resolves.toEqual({ status: 200, body: { ok: true } });
@@ -714,7 +732,9 @@ describe("plugin host", () => {
           path: "/health",
           params: { pluginId: "invalid-response" },
           query: {},
+          bodyMode: "none",
           body: undefined,
+          rawBody: undefined,
           headers: {},
         }),
       ).rejects.toThrow(

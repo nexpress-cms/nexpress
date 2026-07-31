@@ -461,8 +461,9 @@ Existing `classic` and `storefront-full` ids cannot be replaced.
 
 Future transaction work should remain separable from this foundation:
 
-1. payment-provider adapters, signed idempotent webhook intake, and a proven
-   transition out of `pending-payment`;
+1. payment-provider adapters, signed idempotent webhook intake over the shipped
+   bounded raw-body route contract, and a proven transition out of
+   `pending-payment`;
 2. atomic on-hand decrement when a payment transition consumes a reservation,
    plus compensation for failed or reversed payment;
 3. paid-order, refund, fulfillment, and customer-service Admin workflows;
@@ -470,4 +471,7 @@ Future transaction work should remain separable from this foundation:
 
 Those features require explicit payment, security, and operational contracts.
 The current catalog/cart/checkout-intent/order-draft/pending-order/reservation
-data and independent theme do not pre-authorize or emulate them.
+data, raw callback transport, and independent theme do not pre-authorize or
+emulate them. The framework preserves callback bytes but deliberately does not
+choose a provider algorithm, replay window, secret-rotation policy, or payment
+state transition.

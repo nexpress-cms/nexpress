@@ -293,6 +293,7 @@ function route(
     pluginId,
     method,
     path,
+    bodyMode: method === "GET" ? "none" : "json",
     auth: false,
     handler: () => Promise.resolve({ status: 200 }),
   };

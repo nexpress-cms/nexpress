@@ -66,5 +66,22 @@ describe("OpenAPI public discovery contracts", () => {
     ).toMatchObject({
       defaultValue: { $ref: "#/components/schemas/block_discovery_rich_text_content" },
     });
+
+    const pluginDiscoverySchema = spec.components.schemas.plugin_discovery_item as {
+      properties: {
+        routes: {
+          items: {
+            required: string[];
+            properties: Record<string, unknown>;
+          };
+        };
+      };
+    };
+    expect(pluginDiscoverySchema.properties.routes.items).toMatchObject({
+      required: ["method", "path", "auth", "bodyMode"],
+      properties: {
+        bodyMode: { type: "string", enum: ["none", "json", "raw"] },
+      },
+    });
   });
 });

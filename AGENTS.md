@@ -2,7 +2,13 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-30 (Shop pending orders now hold tracked
+**Last refreshed:** 2026-07-31 (Mutating plugin API routes now opt into one
+exact bounded raw-body contract across definition/host validation, dispatch,
+public discovery, OpenAPI, Doctor-compatible scaffolds, tests, and live guides;
+provider signatures, replay defense, idempotency, and payment transitions
+remain plugin-owned.)
+
+**Earlier:** 2026-07-30 (Shop pending orders now hold tracked
 product/variant inventory through one PII-free, product-locked,
 transaction-safe reservation contract with cart quote, cancellation/expiry,
 Admin, Doctor, scaffold, and integration-test coverage; payment and on-hand
