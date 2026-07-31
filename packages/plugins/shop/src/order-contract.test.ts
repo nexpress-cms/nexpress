@@ -52,6 +52,10 @@ const storedOrder = {
   createdAt,
   updatedAt: createdAt,
   pendingExpiresAt,
+  paymentProvider: null,
+  paymentReference: null,
+  paymentEventId: null,
+  paymentResolvedAt: null,
   cancelledAt: null,
   cancellationReason: null,
   purgeAt,
@@ -121,6 +125,35 @@ describe("Shop order contract", () => {
         privateDataStatus: "redacted",
       }),
     ).toContain("redacted orders cannot expose customer or shipping data.");
+  });
+
+  it("accepts exact paid and failed terminal payment states", () => {
+    const payment = {
+      paymentProvider: "test-pay",
+      paymentReference: "pay_123",
+      paymentEventId: "evt_123",
+      paymentResolvedAt: "2026-07-30T00:05:00.000Z",
+      updatedAt: "2026-07-30T00:05:00.000Z",
+    };
+    expect(
+      npAnalyzeStoredShopOrder({
+        ...storedOrder,
+        ...payment,
+        status: "paid",
+        revision: 2,
+        inventoryReservationStatus: "consumed",
+      }),
+    ).toEqual([]);
+    expect(
+      npAnalyzeStoredShopOrder({
+        ...storedOrder,
+        ...payment,
+        status: "payment-failed",
+        revision: 2,
+        privateDataStatus: "redacted",
+        inventoryReservationStatus: "released",
+      }),
+    ).toEqual([]);
   });
 
   it("requires canonical guest hashes or member UUIDs for stored ownership", () => {

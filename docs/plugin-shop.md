@@ -3,8 +3,9 @@
 `@nexpress/plugin-shop` is the first-party catalog foundation for NexPress.
 It owns product and category data, inventory projection, public catalog
 routes, bounded guest/member carts, checkout intents, private order drafts,
-durable pending orders, transaction-safe inventory reservations, Admin
-collection forms and health actions, blocks, and skins.
+durable orders, transaction-safe inventory reservations, an optional
+provider-neutral payment-event boundary, Admin collection forms and health
+actions, blocks, and skins.
 
 `@nexpress/theme-storefront` is a separate brand/content theme. It works with
 ordinary pages and posts when Shop is absent. When both packages are active,
@@ -13,10 +14,11 @@ attributes, and optional page blocks; neither package imports the other.
 
 The cart, checkout intent, and order draft are deliberately **pre-order
 state**. A reviewable draft can create a durable `pending-payment` order that
-reserves tracked product or variant inventory for its 24-hour lifetime. No
-current code can mark it paid or decrement on-hand stock. None of these
-surfaces takes payment, calculates tax or shipping, fulfills, refunds, or
-claims that a visitor completed a purchase.
+reserves tracked product or variant inventory for its 24-hour lifetime. An
+optional build-time adapter may authenticate an external callback and project
+the exact provider-neutral event that moves that order to `paid` or
+`payment-failed`. Shop does not initiate payment, calculate tax or shipping,
+fulfill, refund, or choose a provider signature algorithm.
 
 ## Default setup
 
@@ -96,7 +98,7 @@ remove the relationship first.
 | `/shop/checkout/:intentId`       | Owner-scoped checkout intent snapshot |
 | `/shop/order-drafts/:draftId`    | Private customer and delivery draft   |
 | `/shop/orders`                   | Bounded owner-scoped order history    |
-| `/shop/orders/:orderId`          | Owner-scoped pending order detail     |
+| `/shop/orders/:orderId`          | Owner-scoped durable order detail     |
 
 Catalog and category routes recognize:
 
@@ -152,9 +154,10 @@ subtotals, total units, a deterministic fingerprint, and exact issue codes:
 `product-unavailable`, `variant-required`, `variant-unavailable`,
 `insufficient-stock`, `price-changed`, and `mixed-currency`. Price changes are
 visible but do not alone block readiness. Unavailable products/options,
-insufficient stock, and mixed currencies do. Checkout integrations must quote
-again and establish their own payment, stock-decrement, idempotency, tax, and
-shipping contracts. Quotes subtract every unexpired pending-order reservation
+insufficient stock, and mixed currencies do. Order creation quotes again;
+payment initiation, tax, and shipping integrations retain their own contracts,
+while the optional verified event boundary owns terminal idempotency and
+reservation consumption. Quotes subtract every unexpired pending-order reservation
 for the same product or canonical variant SKU.
 
 ## Checkout intent contract
@@ -286,17 +289,19 @@ Shop exposes `GET`, `POST`, and `DELETE` at
 - `DELETE { orderId, expectedRevision }` is revision-safe. Repeating a
   successful cancellation is idempotent.
 
-The only creatable status is `pending-payment`. It means that the immutable
+The only browser-creatable status is `pending-payment`. It means that the immutable
 product, option, integer price, currency, quantity, cart revision, and cart
 fingerprint snapshot has a durable order reference. Tracked lines have
 `inventoryReservationStatus: "held"`; an untracked-only order uses
 `"not-required"`. `inventoryReservationLineKeys` records exactly which
 commercial lines require matching PII-free holds. This does **not** mean that
 payment was initiated or authorized, and no on-hand quantity is decremented
-yet. The other current status is `cancelled`;
-there is deliberately no `paid`, `fulfilled`, or `refunded` transition until a
-separate payment-provider contract can prove the corresponding external
-effect.
+yet. A verified `payment.succeeded` event moves only a live pending order to
+`paid`, changes held inventory to `consumed`, and decrements every exact
+product/variant quantity in the same transaction. A verified `payment.failed`
+event moves it to terminal `payment-failed`, releases its holds, and deletes
+its private sidecar. Owner or timeout cancellation remains `cancelled`.
+`fulfilled`, `refunded`, and reversed-payment states are deliberately absent.
 
 Storage separates commercial and private values:
 
@@ -305,31 +310,39 @@ Storage separates commercial and private values:
   It contains no name, email, phone, or address.
 - `np.shop-order-private.v1` is a separate same-owner sidecar containing the
   customer and shipping pair copied from the draft.
-- a pending marker indexes the next required maintenance without duplicating
-  private or commercial values.
+- a global PII-free order lookup lets callbacks locate the otherwise
+  owner-scoped commercial row; a maintenance marker indexes the next private
+  deletion or timeout without duplicating private or commercial values.
 - `np.shop-inventory-reservation.v1` rows contain only order ownership,
   product id, optional canonical variant SKU, quantity, and timestamps. They
   contain no customer or shipping values and expire with the pending order.
+- `np.shop-payment-receipt.v1` stores only the canonical provider/event/order
+  references, integer amount/currency, digest, outcome, order revision, and
+  timestamps. Raw bytes, headers, signatures, names, email, phone, address,
+  and owner segment are never retained.
 
 Pending orders expire after 24 hours. Owner cancellation, lazy read after that
 deadline, and the hourly maintenance job all atomically change the durable
 order to `cancelled`, mark private data `redacted`, and physically delete both
-the private sidecar and pending marker. They also release every matching
-inventory row and change the order reservation state to `released`. The
-commercial snapshot remains for
-365 days and is then physically purged. Each scheduled or confirmed Admin pass
+the private sidecar and maintenance marker. They also release every matching
+inventory row and change the order reservation state to `released`. Paid
+orders retain their private sidecar only until the same original 24-hour
+deadline, when owner reads or maintenance redact it without changing the paid
+state. The
+commercial snapshot and matching payment receipts remain for 365 days and are
+then physically purged. Each scheduled or confirmed Admin pass
 cancels at most 500 due orders and purges at most 500 expired commercial
 snapshots, oldest first. Site deletion remains the final tenant-wide deletion
 boundary.
 
 Owner responses are `private, no-store`. Owner history can include private
-details only while their matching pending sidecar exists; cancelled orders
+details only while their matching sidecar exists; failed/cancelled orders
 always return `customer: null` and `shipping: null`. Admin exposes aggregate
 counts and the newest 50 commercial rows with order id, status, integer total,
 currency, unit count, private-data state, and creation time. It never reads or
 returns names, email addresses, phone numbers, addresses, or owner segments.
-Doctor inspects only the declarative API, action, table, page-route, and
-scheduled-task inventory.
+Doctor inspects only the declarative API—including the conditional exact-raw
+webhook—action, table, page-route, and scheduled-task inventory.
 
 Guest ownership remains bound to the signed `np-shop-cart` browser cookie.
 That cookie uses a rolling 30-day lifetime, so a guest who clears it or does
@@ -341,13 +354,78 @@ cleanup guarantees, not jurisdiction-specific accounting or privacy advice.
 Backup retention can outlive physical row deletion and must be governed
 separately.
 
+## Verified payment-event contract
+
+Payment processing is disabled in the default `shopPlugin`. A custom project
+enables `/api/plugins/shop/payments/webhook` by passing one server-only adapter
+to the same `createShop()` call used for its collections and plugin:
+
+```ts
+import {
+  NP_SHOP_PAYMENT_EVENT_CONTRACT,
+  createShop,
+  type NpShopPaymentAdapter,
+} from "@nexpress/plugin-shop";
+
+const adapter: NpShopPaymentAdapter = {
+  id: "my-provider",
+  async verifyWebhook({ rawBody, headers, receivedAt }) {
+    // Authenticate the exact bytes and provider-signed timestamp here.
+    // Return null for an invalid signature; never project unverified input.
+    const verified = await verifyProviderCallback(rawBody, headers, receivedAt);
+    return verified
+      ? {
+          contract: NP_SHOP_PAYMENT_EVENT_CONTRACT,
+          eventId: verified.eventId,
+          type: verified.succeeded ? "payment.succeeded" : "payment.failed",
+          orderId: verified.orderId,
+          paymentReference: verified.paymentReference,
+          currency: verified.currency,
+          amountMinor: verified.amountMinor,
+          signedAt: verified.signedAt,
+        }
+      : null;
+  },
+};
+
+const shop = createShop({ payment: { adapter } });
+```
+
+The adapter owns the provider endpoint format, signature algorithm,
+constant-time comparison, credentials and rotation, and the mapping from
+provider fields to `np.shop-payment-event.v1`. Its event and payment references
+must be opaque non-PII identifiers using only letters, numbers, `.`, `_`, `:`,
+or `-`. The framework first bounds the
+raw body to 1 MiB. Shop then requires an exact canonical event, accepts a
+provider-signed timestamp at most five minutes old (with 30 seconds of future
+clock tolerance), requires exact order currency and integer minor-unit amount,
+and serializes each provider/event id.
+
+The first exact event writes one PII-free receipt. Repeating the same
+provider/event id and canonical digest returns that receipt without another
+stock or order mutation. Provider redelivery may carry a fresh signed
+timestamp; that transport timestamp is replay-checked but deliberately omitted
+from the semantic event digest. Reusing an event id for different commercial
+content returns HTTP 409. A verified event for an unknown, commercially expired, or
+mismatched-amount order also returns HTTP 409. An event arriving after the
+24-hour pending deadline but before commercial purge cancels the order and is
+recorded as `ignored-terminal`; any event for another terminal order is also
+recorded without reviving or overwriting it. Operators must
+reconcile such external effects with the provider. `payment.failed` is
+terminal in v1, so adapters must project it only for a definitive failure; a
+retry requires a new order.
+
+This boundary proves callback authentication and one local transition; it does
+not prove settlement, initiate payment, model authorization/capture,
+compensate reversals, or implement refunds and fulfillment.
+
 ## Admin surfaces
 
 The two collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
-The plugin declares seven typed dashboard metric actions:
+The plugin declares eight typed dashboard metric actions:
 
 - total product rows;
 - published low-stock products;
@@ -356,9 +434,10 @@ The plugin declares seven typed dashboard metric actions:
   revalidate the current cart).
 - unexpired private order-draft records, without any customer or shipping
   values.
-- durable pending and cancelled commercial order records, without owner or PII
+- durable pending, paid, failed, and cancelled commercial order records, without owner or PII
   values.
 - active PII-free inventory reservation rows.
+- verified PII-free payment-event receipts.
 
 Admin also exposes separate cart, checkout-intent, and private-order-draft
 storage health plus confirmed bounded expiry cleanup actions. Order health,
@@ -366,9 +445,12 @@ the confirmed maintenance action, and the newest-50 table expose only
 commercial metadata. Inventory reservation health reports malformed, expired,
 order-orphaned, or pending-order-missing rows from bounded samples, and its
 newest-50 table exposes only order id, product id, variant SKU, quantity, and
-expiry. Order-draft, order, and inventory diagnostics withhold private and
-owner values. The scheduled-task and action registries make these contracts
-visible to plugin doctor without executing them.
+expiry. Payment health reports malformed or order-orphaned receipts from a
+bounded sample; its newest-50 table exposes only provider, event/type, order,
+outcome/status, and processing time. Order-draft, order, inventory, and
+payment diagnostics withhold private and owner values. The scheduled-task and
+action registries make these contracts visible to plugin doctor without
+executing them.
 
 The manifest-level action registry binds each metric widget to its exact
 handler kind, so plugin validation and doctor can inspect the relationship
@@ -437,6 +519,7 @@ const shop = createShop({
     products: "catalog-products",
   },
   defaultSkinId: "storefront-full",
+  payment: { adapter }, // optional; omitted means the webhook route does not exist
 });
 
 export default defineConfig({
@@ -461,17 +544,12 @@ Existing `classic` and `storefront-full` ids cannot be replaced.
 
 Future transaction work should remain separable from this foundation:
 
-1. payment-provider adapters, signed idempotent webhook intake over the shipped
-   bounded raw-body route contract, and a proven transition out of
-   `pending-payment`;
-2. atomic on-hand decrement when a payment transition consumes a reservation,
-   plus compensation for failed or reversed payment;
-3. paid-order, refund, fulfillment, and customer-service Admin workflows;
+1. provider packages for Stripe, Toss, or KG Inicis plus payment-initiation UX;
+2. authorization/capture, settlement, reversal, refund, and inventory
+   compensation contracts;
+3. fulfillment and customer-service Admin workflows with deliberate PII
+   retention and authorization;
 4. legal/tax/shipping policy integrations.
 
-Those features require explicit payment, security, and operational contracts.
-The current catalog/cart/checkout-intent/order-draft/pending-order/reservation
-data, raw callback transport, and independent theme do not pre-authorize or
-emulate them. The framework preserves callback bytes but deliberately does not
-choose a provider algorithm, replay window, secret-rotation policy, or payment
-state transition.
+Those features require their own payment, security, and operational contracts.
+The provider-neutral event boundary does not pre-authorize or emulate them.

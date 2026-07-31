@@ -1,6 +1,11 @@
 import { npPluginStorage, withCurrentSite } from "@nexpress/core";
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
-import { npRequireShopOrderDraft, shopCollections, shopPlugin } from "@nexpress/plugin-shop";
+import {
+  createShop,
+  npRequireShopOrderDraft,
+  shopCollections,
+  shopPlugin,
+} from "@nexpress/plugin-shop";
 import { and, eq, like } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -148,6 +153,75 @@ async function orderCall(
       {} as never,
     ),
   );
+}
+
+async function createPendingOrder(
+  ids: { intentId: string; draftId: string; orderId: string },
+  privateEmail: string,
+) {
+  const initial = await call("GET");
+  const cookie = initial.headers?.["Set-Cookie"];
+  const csrf = (initial.body as { csrfToken: string }).csrfToken;
+  const added = await call("POST", {
+    cookie,
+    csrf,
+    body: { productId, variantSku: null, quantity: 1, expectedRevision: 0 },
+  });
+  const addedBody = added.body as {
+    csrfToken: string;
+    quote: { revision: number; fingerprint: string };
+  };
+  await checkoutCall("POST", {
+    cookie,
+    csrf: addedBody.csrfToken,
+    body: {
+      idempotencyKey: ids.intentId,
+      expectedRevision: addedBody.quote.revision,
+      expectedFingerprint: addedBody.quote.fingerprint,
+    },
+  });
+  await orderDraftCall("POST", {
+    cookie,
+    csrf: addedBody.csrfToken,
+    body: { idempotencyKey: ids.draftId, checkoutIntentId: ids.intentId },
+  });
+  await orderDraftCall("PATCH", {
+    cookie,
+    csrf: addedBody.csrfToken,
+    body: {
+      draftId: ids.draftId,
+      expectedRevision: 1,
+      customer: {
+        fullName: "홍길동",
+        email: privateEmail,
+        phone: "010-1234-5678",
+      },
+      shipping: {
+        recipientName: "홍길동",
+        phone: "010-1234-5678",
+        countryCode: "KR",
+        postalCode: "04524",
+        addressLine1: "서울특별시 중구 세종대로 110",
+        addressLine2: null,
+        locality: "중구",
+        administrativeArea: "서울특별시",
+      },
+    },
+  });
+  const created = await orderCall("POST", {
+    cookie,
+    csrf: addedBody.csrfToken,
+    body: {
+      idempotencyKey: ids.orderId,
+      draftId: ids.draftId,
+      expectedRevision: 2,
+    },
+  });
+  expect(created).toMatchObject({
+    status: 200,
+    body: { order: { id: ids.orderId, status: "pending-payment" } },
+  });
+  return { cookie, csrf: addedBody.csrfToken };
 }
 
 describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
@@ -849,10 +923,12 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       );
     const commercial = stored.find((row) => row.key.startsWith("order:"));
     const privateSidecar = stored.find((row) => row.key.startsWith("order-private:"));
-    const pendingMarker = stored.find((row) => row.key.startsWith("order-pending:"));
+    const pendingMarker = stored.find((row) => row.key.startsWith("order-maintenance:"));
+    const lookup = stored.find((row) => row.key.startsWith("order-lookup:"));
     expect(commercial).toBeDefined();
     expect(privateSidecar).toBeDefined();
     expect(pendingMarker).toBeDefined();
+    expect(lookup).toBeDefined();
     expect(JSON.stringify(commercial)).not.toContain(privateEmail);
     expect(JSON.stringify(privateSidecar)).toContain(privateEmail);
     const [reservation] = await db
@@ -955,7 +1031,12 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           like(npPluginStorage.key, "order-%"),
         ),
       );
-    expect(remainingPrivate).toHaveLength(0);
+    expect(
+      remainingPrivate.filter(
+        (row) => row.key.startsWith("order-private:") || row.key.startsWith("order-maintenance:"),
+      ),
+    ).toHaveLength(0);
+    expect(remainingPrivate.some((row) => row.key.startsWith("order-lookup:"))).toBe(true);
     expect(JSON.stringify(remainingPrivate)).not.toContain(privateEmail);
     expect(
       await db
@@ -1098,6 +1179,163 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     ).toHaveLength(1);
   });
 
+  it("idempotently resolves verified payment events and atomically consumes or releases stock", async () => {
+    const successIds = {
+      intentId: "133e4567-e89b-42d3-a456-426614174000",
+      draftId: "233e4567-e89b-42d3-a456-426614174000",
+      orderId: "333e4567-e89b-42d3-a456-426614174000",
+    };
+    const failedIds = {
+      intentId: "433e4567-e89b-42d3-a456-426614174000",
+      draftId: "533e4567-e89b-42d3-a456-426614174000",
+      orderId: "633e4567-e89b-42d3-a456-426614174000",
+    };
+    const successOwner = await createPendingOrder(successIds, "paid-private@example.com");
+    const paymentShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
+    });
+    const paymentHandler = paymentShop.plugin.routes?.find(
+      (candidate) => candidate.path === "/payments/webhook",
+    )?.handler;
+    expect(paymentHandler).toBeDefined();
+    async function paymentCall(event: Record<string, unknown>) {
+      const rawBody = new TextEncoder().encode(JSON.stringify(event));
+      return withCurrentSite("default", () =>
+        paymentHandler?.(
+          {
+            method: "POST",
+            path: "/payments/webhook",
+            params: { pluginId: "shop" },
+            query: {},
+            bodyMode: "raw",
+            body: undefined,
+            rawBody,
+            headers: { "x-test-signature": "verified-by-adapter" },
+          },
+          {} as never,
+        ),
+      );
+    }
+    const succeededEvent = {
+      contract: "np.shop-payment-event.v1",
+      eventId: "evt_success_1",
+      type: "payment.succeeded",
+      orderId: successIds.orderId,
+      paymentReference: "pay_success_1",
+      currency: "KRW",
+      amountMinor: 25_000,
+      signedAt: new Date().toISOString(),
+    };
+    const paid = await paymentCall(succeededEvent);
+    expect(paid).toMatchObject({
+      status: 200,
+      body: {
+        duplicate: false,
+        receipt: { outcome: "paid", orderStatus: "paid", orderRevision: 2 },
+      },
+    });
+    const repeated = await paymentCall(succeededEvent);
+    expect(repeated).toMatchObject({
+      status: 200,
+      body: { duplicate: true, receipt: { outcome: "paid" } },
+    });
+    expect(
+      await paymentCall({ ...succeededEvent, paymentReference: "pay_conflict" }),
+    ).toMatchObject({
+      status: 409,
+      body: { error: "payment_event_conflict" },
+    });
+    const db = await getTestDb();
+    expect(
+      await db
+        .select({ stockQuantity: shopProductsTable.stockQuantity })
+        .from(shopProductsTable)
+        .where(eq(shopProductsTable.id, productId)),
+    ).toEqual([{ stockQuantity: 7 }]);
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(like(npPluginStorage.key, `inventory-reservation:%:${successIds.orderId}`)),
+    ).toHaveLength(0);
+    expect(await orderCall("GET", { ...successOwner, orderId: successIds.orderId })).toMatchObject({
+      body: {
+        order: {
+          status: "paid",
+          inventoryReservationStatus: "consumed",
+          paymentProvider: "test-pay",
+        },
+      },
+    });
+    expect(
+      await orderCall("DELETE", {
+        ...successOwner,
+        body: { orderId: successIds.orderId, expectedRevision: 2 },
+      }),
+    ).toMatchObject({ status: 409, body: { error: "order_not_cancellable" } });
+
+    const failedOwner = await createPendingOrder(failedIds, "failed-private@example.com");
+    expect(
+      await paymentCall({
+        ...succeededEvent,
+        eventId: "evt_wrong_amount",
+        orderId: failedIds.orderId,
+        paymentReference: "pay_wrong_amount",
+        amountMinor: 1,
+        signedAt: new Date().toISOString(),
+      }),
+    ).toMatchObject({
+      status: 409,
+      body: { error: "payment_amount_mismatch" },
+    });
+    const failed = await paymentCall({
+      ...succeededEvent,
+      eventId: "evt_failed_1",
+      type: "payment.failed",
+      orderId: failedIds.orderId,
+      paymentReference: "pay_failed_1",
+      signedAt: new Date().toISOString(),
+    });
+    expect(failed).toMatchObject({
+      status: 200,
+      body: { receipt: { outcome: "payment-failed", orderStatus: "payment-failed" } },
+    });
+    expect(await orderCall("GET", { ...failedOwner, orderId: failedIds.orderId })).toMatchObject({
+      body: {
+        order: {
+          status: "payment-failed",
+          privateDataStatus: "redacted",
+          inventoryReservationStatus: "released",
+          customer: null,
+          shipping: null,
+        },
+      },
+    });
+    expect(
+      await db
+        .select({ stockQuantity: shopProductsTable.stockQuantity })
+        .from(shopProductsTable)
+        .where(eq(shopProductsTable.id, productId)),
+    ).toEqual([{ stockQuantity: 7 }]);
+    const paymentRows = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(like(npPluginStorage.key, "payment-event:%"));
+    expect(paymentRows).toHaveLength(2);
+    expect(JSON.stringify(paymentRows)).not.toContain("paid-private@example.com");
+    expect(JSON.stringify(paymentRows)).not.toContain("failed-private@example.com");
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.paymentEventHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+  });
+
   it("cancels expired pending orders and purges old commercial snapshots in bounded passes", async () => {
     const db = await getTestDb();
     const now = new Date();
@@ -1140,6 +1378,10 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       createdAt: createdAt.toISOString(),
       updatedAt: createdAt.toISOString(),
       pendingExpiresAt: pendingExpiresAt.toISOString(),
+      paymentProvider: null,
+      paymentReference: null,
+      paymentEventId: null,
+      paymentResolvedAt: null,
       cancelledAt: null,
       cancellationReason: null,
       purgeAt: purgeAt.toISOString(),
@@ -1201,14 +1443,27 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       {
         pluginId: "shop",
         siteId: "default",
-        key: `order-pending:${ownerSegment}:${orderId}`,
+        key: `order-maintenance:${ownerSegment}:${orderId}`,
         value: {
-          contract: "np.shop-order-pending.v1",
+          contract: "np.shop-order-maintenance.v1",
           orderId,
           ownerSegment,
           dueAt: pendingExpiresAt.toISOString(),
         },
         expiresAt: pendingExpiresAt,
+        updatedAt: createdAt,
+      },
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `order-lookup:${orderId}`,
+        value: {
+          contract: "np.shop-order-lookup.v1",
+          orderId,
+          ownerSegment,
+          purgeAt: purgeAt.toISOString(),
+        },
+        expiresAt: purgeAt,
         updatedAt: createdAt,
       },
     ]);
@@ -1225,8 +1480,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           like(npPluginStorage.key, "order%:%"),
         ),
       );
-    expect(afterCancellation).toHaveLength(1);
-    expect(afterCancellation[0]).toMatchObject({
+    const cancelledOrder = afterCancellation.find((row) => row.key.startsWith("order:"));
+    expect(cancelledOrder).toMatchObject({
       key: `order:${ownerSegment}:${orderId}`,
       value: {
         status: "cancelled",
@@ -1244,7 +1499,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       .update(npPluginStorage)
       .set({
         value: {
-          ...(afterCancellation[0]?.value as Record<string, unknown>),
+          ...(cancelledOrder?.value as Record<string, unknown>),
           createdAt: expiredCreatedAt.toISOString(),
           pendingExpiresAt: expiredPendingAt.toISOString(),
           purgeAt: expiredPurgeAt.toISOString(),

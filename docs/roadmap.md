@@ -313,8 +313,9 @@ real product domain, not just blog/community. Ship as a plugin package
   logs, public discovery, and Admin values exclude its PII.
 - **Durable pending order (shipped)** — a reviewable draft atomically becomes
   one idempotent `pending-payment` commercial snapshot plus a separate private
-  sidecar. No paid state exists. Cancellation or the 24-hour pending deadline
-  deletes PII; the commercial record is purged after 365 days.
+  sidecar. Cancellation, payment failure, or the 24-hour pending deadline
+  deletes PII; paid-side private data expires on the same deadline and the
+  commercial record is purged after 365 days.
 - **Inventory reservation (shipped)** — pending-order creation locks product
   ids canonically, subtracts active holds from current tracked product/variant
   stock, and atomically writes one exact PII-free reservation per tracked
@@ -324,15 +325,18 @@ real product domain, not just blog/community. Ship as a plugin package
   into one exact 1 MiB raw-body projection. The dispatcher validates declared
   length, bounds streamed bytes, skips JSON normalization, and advertises the
   mode through discovery and OpenAPI without choosing provider/payment policy.
-- **Payment adapters (future)** — explicit Stripe / Toss / KG Inicis adapter
-  and signed idempotent webhook contracts built on the shipped durable order
-  and raw callback boundaries.
+- **Provider-neutral payment events (shipped)** — an optional build-time
+  adapter authenticates exact callback bytes and projects one canonical event.
+  Shop enforces a five-minute replay bound, site/order lookup, exact
+  amount/currency matching, idempotent PII-free receipts, and terminal
+  `paid` / `payment-failed` transitions. Provider-specific Stripe / Toss /
+  KG Inicis packages remain future work.
 - **Order admin (partially shipped)** — PII-free aggregate health and bounded
   recent commercial rows exist. Paid status workflows, refunds, fulfillment
   notes, and customer-service access remain future work.
-- **Inventory (partially shipped)** — catalog stock/low-stock projection and
-  transaction-safe pending holds exist; paid-order on-hand decrement and
-  compensation remain future work.
+- **Inventory (partially shipped)** — catalog stock/low-stock projection,
+  transaction-safe pending holds, and atomic paid-order on-hand decrement
+  exist; reversed-payment compensation remains future work.
 - **Public surfaces (shipped)** — product detail, listing, cart,
   checkout-intent, private order-draft, order-history, and order-detail pages
   use independent plugin skins and stable theme hooks.

@@ -1,6 +1,8 @@
 import { getDb, npPluginStorage } from "@nexpress/core/db";
+import { getCollectionRegistration } from "@nexpress/core/collections";
 import { requireSiteId } from "@nexpress/core/sites";
-import { and, asc, desc, eq, gt, inArray, like, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, gt, inArray, like, lte, sql } from "drizzle-orm";
+import type { PgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import {
   NP_SHOP_INVENTORY_RESERVATION_CONTRACT,
@@ -13,9 +15,17 @@ import {
 } from "./inventory-reservation-contract.js";
 import { NP_SHOP_ORDER_STORAGE_CONTRACT, npRequireStoredShopOrder } from "./order-contract.js";
 import { NP_SHOP_PLUGIN_ID, type NpShopTransaction } from "./order-draft-service.js";
+import { NpShopPaymentConflictError } from "./payment-contract.js";
+import type { NpShopRuntime } from "./runtime.js";
 import type { NpShopCheckoutIntentLine } from "./types.js";
 
 type NpShopDb = ReturnType<typeof getDb> | NpShopTransaction;
+
+function tableColumn(table: PgTable, key: string): PgColumn {
+  const column = (getTableColumns(table) as Record<string, PgColumn>)[key];
+  if (!column) throw new Error(`Shop inventory table is missing the "${key}" column.`);
+  return column;
+}
 
 export interface NpShopAdminInventoryReservationRow {
   [key: string]: unknown;
@@ -195,6 +205,184 @@ export async function npReleaseShopInventoryReservations(
     );
   }
   return rows.length;
+}
+
+/**
+ * Consume every held reservation and decrement the matching product/variant
+ * stock inside the caller's order transaction. Product advisory locks must be
+ * held before calling this function.
+ */
+export async function npConsumeShopInventoryReservations(
+  tx: NpShopTransaction,
+  siteId: string,
+  runtime: NpShopRuntime,
+  orderId: string,
+  lines: readonly NpShopCheckoutIntentLine[],
+): Promise<number> {
+  if (lines.length === 0) return 0;
+  const registration = getCollectionRegistration(runtime.collections.products);
+  const productTable = registration.table as PgTable;
+  const variantTable = registration.childTables?.variants as PgTable | undefined;
+  const productIdColumn = tableColumn(productTable, "id");
+  const productSiteIdColumn = tableColumn(productTable, "siteId");
+  const productTrackInventoryColumn = tableColumn(productTable, "trackInventory");
+  const productStockColumn = tableColumn(productTable, "stockQuantity");
+  const productThresholdColumn = tableColumn(productTable, "lowStockThreshold");
+
+  const byProduct = new Map<string, NpShopCheckoutIntentLine[]>();
+  for (const line of lines) {
+    const grouped = byProduct.get(line.productId) ?? [];
+    grouped.push(line);
+    byProduct.set(line.productId, grouped);
+  }
+
+  for (const [productId, productLines] of [...byProduct].sort(([a], [b]) => a.localeCompare(b))) {
+    const [product] = (await tx
+      .select({
+        trackInventory: productTrackInventoryColumn,
+        stockQuantity: productStockColumn,
+        lowStockThreshold: productThresholdColumn,
+      })
+      .from(productTable)
+      .where(and(eq(productIdColumn, productId), eq(productSiteIdColumn, siteId)))
+      .limit(1)
+      .for("update")) as Array<{
+      trackInventory: boolean | null;
+      stockQuantity: number;
+      lowStockThreshold: number;
+    }>;
+    if (
+      !product ||
+      product.trackInventory !== true ||
+      !Number.isSafeInteger(product.stockQuantity) ||
+      product.stockQuantity < 0 ||
+      !Number.isSafeInteger(product.lowStockThreshold) ||
+      product.lowStockThreshold < 0
+    ) {
+      throw new NpShopPaymentConflictError(
+        "payment_inventory_conflict",
+        "Tracked inventory no longer matches the paid order.",
+      );
+    }
+
+    for (const line of productLines) {
+      if (line.variantSku === null) {
+        const updated = await tx
+          .update(productTable)
+          .set({
+            stockQuantity: sql`${productStockColumn} - ${line.quantity}`,
+          })
+          .where(
+            and(
+              eq(productIdColumn, productId),
+              eq(productSiteIdColumn, siteId),
+              sql`${productStockColumn} >= ${line.quantity}`,
+            ),
+          )
+          .returning({ id: productIdColumn });
+        if (updated.length !== 1) {
+          throw new NpShopPaymentConflictError(
+            "payment_inventory_conflict",
+            "Reserved base-product inventory could not be consumed.",
+          );
+        }
+        continue;
+      }
+      if (!variantTable) {
+        throw new NpShopPaymentConflictError(
+          "payment_inventory_conflict",
+          "The paid order references a missing variant inventory table.",
+        );
+      }
+      const variantParentColumn = tableColumn(variantTable, "parentId");
+      const variantSkuColumn = tableColumn(variantTable, "sku");
+      const variantStockColumn = tableColumn(variantTable, "stockQuantity");
+      const variantEnabledColumn = tableColumn(variantTable, "enabled");
+      const updated = await tx
+        .update(variantTable)
+        .set({
+          stockQuantity: sql`${variantStockColumn} - ${line.quantity}`,
+        })
+        .where(
+          and(
+            eq(variantParentColumn, productId),
+            eq(variantSkuColumn, line.variantSku),
+            eq(variantEnabledColumn, true),
+            sql`${variantStockColumn} >= ${line.quantity}`,
+          ),
+        )
+        .returning({ id: tableColumn(variantTable, "id") });
+      if (updated.length !== 1) {
+        throw new NpShopPaymentConflictError(
+          "payment_inventory_conflict",
+          "Reserved variant inventory could not be consumed.",
+        );
+      }
+    }
+
+    let remainingStock: number;
+    if (variantTable) {
+      const variantParentColumn = tableColumn(variantTable, "parentId");
+      const variantStockColumn = tableColumn(variantTable, "stockQuantity");
+      const variantEnabledColumn = tableColumn(variantTable, "enabled");
+      const [variantTotals] = (await tx
+        .select({
+          count: sql<number>`count(*)::int`,
+          stock: sql<number>`coalesce(sum(${variantStockColumn}), 0)::int`,
+        })
+        .from(variantTable)
+        .where(and(eq(variantParentColumn, productId), eq(variantEnabledColumn, true)))) as Array<{
+        count: number;
+        stock: number;
+      }>;
+      if ((variantTotals?.count ?? 0) > 0) {
+        remainingStock = variantTotals?.stock ?? 0;
+      } else {
+        const [base] = (await tx
+          .select({ stock: productStockColumn })
+          .from(productTable)
+          .where(and(eq(productIdColumn, productId), eq(productSiteIdColumn, siteId)))
+          .limit(1)) as Array<{ stock: number }>;
+        remainingStock = base?.stock ?? -1;
+      }
+    } else {
+      const [base] = (await tx
+        .select({ stock: productStockColumn })
+        .from(productTable)
+        .where(and(eq(productIdColumn, productId), eq(productSiteIdColumn, siteId)))
+        .limit(1)) as Array<{ stock: number }>;
+      remainingStock = base?.stock ?? -1;
+    }
+    if (!Number.isSafeInteger(remainingStock) || remainingStock < 0) {
+      throw new NpShopPaymentConflictError(
+        "payment_inventory_conflict",
+        "Remaining inventory is malformed after reservation consumption.",
+      );
+    }
+    const inventoryState =
+      remainingStock === 0
+        ? "out-of-stock"
+        : remainingStock <= product.lowStockThreshold
+          ? "low-stock"
+          : "in-stock";
+    await tx
+      .update(productTable)
+      .set({
+        available: remainingStock > 0,
+        inventoryState,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(productIdColumn, productId), eq(productSiteIdColumn, siteId)));
+  }
+
+  const released = await npReleaseShopInventoryReservations(tx, siteId, orderId, lines);
+  if (released !== lines.length) {
+    throw new NpShopPaymentConflictError(
+      "payment_inventory_conflict",
+      "The paid order is missing one or more exact inventory reservations.",
+    );
+  }
+  return released;
 }
 
 export async function npPurgeShopInventoryReservations(

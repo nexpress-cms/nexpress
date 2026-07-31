@@ -2,7 +2,14 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-31 (Mutating plugin API routes now opt into one
+**Last refreshed:** 2026-07-31 (Shop now accepts an optional build-time,
+provider-neutral payment adapter over exact raw callbacks; verified events use
+one replay-bounded, amount-matched, idempotent, PII-free receipt contract and
+atomically resolve pending orders by consuming or releasing inventory. Provider
+signatures/secrets, payment initiation, settlement, reversals, refunds,
+fulfillment, tax, and shipping remain external.)
+
+**Earlier:** 2026-07-31 (Mutating plugin API routes now opt into one
 exact bounded raw-body contract across definition/host validation, dispatch,
 public discovery, OpenAPI, Doctor-compatible scaffolds, tests, and live guides;
 provider signatures, replay defense, idempotency, and payment transitions

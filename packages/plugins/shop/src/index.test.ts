@@ -66,6 +66,9 @@ describe("shop factory", () => {
       { id: "inventoryReservationHealth", kind: "status" },
       { id: "recentInventoryReservations", kind: "table" },
       { id: "recentOrders", kind: "table" },
+      { id: "countPaymentEvents", kind: "metric" },
+      { id: "paymentEventHealth", kind: "status" },
+      { id: "recentPaymentEvents", kind: "table" },
       { id: "maintainOrders", kind: "action" },
     ]);
     expect(shopPlugin.routes?.map((route) => `${route.method} ${route.path}`)).toEqual([
@@ -92,6 +95,33 @@ describe("shop factory", () => {
     ]);
     expect([...createShop().runtime.skins.keys()]).toEqual(["classic", "storefront-full"]);
     expect(storefrontFullShopSkin.id).toBe("storefront-full");
+  });
+
+  it("adds the exact public raw webhook only when a payment adapter is configured", () => {
+    const shop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: () => null,
+        },
+      },
+    });
+    expect(shop.plugin.manifest.provides.apiRoutes).toContain("/payments/webhook");
+    expect(shop.plugin.routes?.find((route) => route.path === "/payments/webhook")).toMatchObject({
+      method: "POST",
+      auth: false,
+      bodyMode: "raw",
+    });
+    expect(() =>
+      createShop({
+        payment: {
+          adapter: {
+            id: "Invalid Provider",
+            verifyWebhook: () => null,
+          },
+        },
+      }),
+    ).toThrow(/provider id/u);
   });
 
   it("applies custom paths, collection slugs, and skins across the contract", () => {

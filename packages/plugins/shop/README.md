@@ -36,14 +36,18 @@ It provides:
   separate 24-hour private sidecars, revision-safe cancellation, bounded
   history/Admin views, transaction-safe product/variant holds, cancellation
   release, and 365-day commercial cleanup;
+- an optional build-time payment adapter, exact raw webhook intake, five-minute
+  replay bound, idempotent PII-free receipts, `paid` / `payment-failed`
+  transitions, and atomic reservation consumption or release;
 - classic and storefront-full skins;
 - featured-product and category-grid blocks.
 
-Payment success, on-hand stock decrement, fulfillment, and refunds remain
+Provider-specific signature algorithms, credentials and rotation, payment
+initiation, refunds/reversals, tax, shipping rates, and fulfillment remain
 outside this package. Customer/shipping PII exists only in the short-lived
-private draft or pending-order sidecar and stays outside content search,
-revisions, and transfer. A durable `pending-payment` order reference still
-does not imply that a visitor paid for a product.
+private draft or order sidecar and stays outside content search, revisions,
+payment receipts, and transfer. A durable `pending-payment` order reference
+still does not imply that a visitor paid for a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
 for the exact price, SKU, inventory, cart, checkout-intent, private-draft,

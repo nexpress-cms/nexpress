@@ -62,6 +62,10 @@ export interface NpShopStoredOrder {
   createdAt: string;
   updatedAt: string;
   pendingExpiresAt: string;
+  paymentProvider: string | null;
+  paymentReference: string | null;
+  paymentEventId: string | null;
+  paymentResolvedAt: string | null;
   cancelledAt: string | null;
   cancellationReason: NpShopOrderCancellationReason | null;
   purgeAt: string;
@@ -92,7 +96,8 @@ export class NpShopOrderConflictError extends Error {
     | "order_idempotency_conflict"
     | "order_inventory_unavailable"
     | "order_source_stale"
-    | "order_pending_limit";
+    | "order_pending_limit"
+    | "order_not_cancellable";
 
   constructor(code: NpShopOrderConflictError["code"], message: string) {
     super(message);
@@ -112,6 +117,8 @@ const canonicalUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const canonicalIsoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 const digestPattern = /^[0-9a-f]{64}$/u;
+const paymentProviderPattern = /^[a-z][a-z0-9-]{0,31}$/u;
+const opaquePaymentReferencePattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/u;
 const guestOwnerSegmentPattern = /^guest:[0-9a-f]{64}$/u;
 const lineKeys = [
   "key",
@@ -286,6 +293,10 @@ const storedOrderKeys = [
   "createdAt",
   "updatedAt",
   "pendingExpiresAt",
+  "paymentProvider",
+  "paymentReference",
+  "paymentEventId",
+  "paymentResolvedAt",
   "cancelledAt",
   "cancellationReason",
   "purgeAt",
@@ -361,6 +372,7 @@ export function npAnalyzeStoredShopOrder(value: unknown): string[] {
       Array.isArray(value.inventoryReservationLineKeys) &&
       value.inventoryReservationLineKeys.length !== 0) ||
     ((value.inventoryReservationStatus === "held" ||
+      value.inventoryReservationStatus === "consumed" ||
       value.inventoryReservationStatus === "released") &&
       Array.isArray(value.inventoryReservationLineKeys) &&
       value.inventoryReservationLineKeys.length === 0)
@@ -374,6 +386,24 @@ export function npAnalyzeStoredShopOrder(value: unknown): string[] {
     issues.push("order.cancelledAt is invalid.");
   }
   if (
+    value.paymentProvider !== null &&
+    (typeof value.paymentProvider !== "string" ||
+      !paymentProviderPattern.test(value.paymentProvider))
+  ) {
+    issues.push("order.paymentProvider is invalid.");
+  }
+  for (const key of ["paymentReference", "paymentEventId"] as const) {
+    if (
+      value[key] !== null &&
+      (!isBoundedText(value[key], 200) || !opaquePaymentReferencePattern.test(value[key]))
+    ) {
+      issues.push(`order.${key} is invalid.`);
+    }
+  }
+  if (value.paymentResolvedAt !== null && !isCanonicalIso(value.paymentResolvedAt)) {
+    issues.push("order.paymentResolvedAt is invalid.");
+  }
+  if (
     value.cancellationReason !== null &&
     !(npShopOrderCancellationReasons as readonly unknown[]).includes(value.cancellationReason)
   ) {
@@ -383,19 +413,59 @@ export function npAnalyzeStoredShopOrder(value: unknown): string[] {
     value.status === "pending-payment" &&
     (value.cancelledAt !== null ||
       value.cancellationReason !== null ||
+      value.paymentProvider !== null ||
+      value.paymentReference !== null ||
+      value.paymentEventId !== null ||
+      value.paymentResolvedAt !== null ||
       value.privateDataStatus !== "retained" ||
-      value.inventoryReservationStatus === "released")
+      (value.inventoryReservationStatus !== "held" &&
+        value.inventoryReservationStatus !== "not-required"))
   ) {
     issues.push(
       "pending-payment orders require retained private data, an active reservation state, and no cancellation metadata.",
+    );
+  }
+  const hasPaymentMetadata =
+    typeof value.paymentProvider === "string" &&
+    typeof value.paymentReference === "string" &&
+    typeof value.paymentEventId === "string" &&
+    isCanonicalIso(value.paymentResolvedAt);
+  if (
+    value.status === "paid" &&
+    (!hasPaymentMetadata ||
+      value.cancelledAt !== null ||
+      value.cancellationReason !== null ||
+      (value.inventoryReservationStatus !== "consumed" &&
+        value.inventoryReservationStatus !== "not-required"))
+  ) {
+    issues.push(
+      "paid orders require payment metadata, no cancellation metadata, and consumed or untracked inventory.",
+    );
+  }
+  if (
+    value.status === "payment-failed" &&
+    (!hasPaymentMetadata ||
+      value.cancelledAt !== null ||
+      value.cancellationReason !== null ||
+      value.privateDataStatus !== "redacted" ||
+      (value.inventoryReservationStatus !== "released" &&
+        value.inventoryReservationStatus !== "not-required"))
+  ) {
+    issues.push(
+      "payment-failed orders require payment metadata, redacted private data, and released or untracked inventory.",
     );
   }
   if (
     value.status === "cancelled" &&
     (value.cancelledAt === null ||
       value.cancellationReason === null ||
+      value.paymentProvider !== null ||
+      value.paymentReference !== null ||
+      value.paymentEventId !== null ||
+      value.paymentResolvedAt !== null ||
       value.privateDataStatus !== "redacted" ||
-      value.inventoryReservationStatus === "held")
+      (value.inventoryReservationStatus !== "released" &&
+        value.inventoryReservationStatus !== "not-required"))
   ) {
     issues.push(
       "cancelled orders require cancellation metadata, redacted private data, and no held inventory.",
@@ -430,6 +500,13 @@ export function npAnalyzeStoredShopOrder(value: unknown): string[] {
     new Date(value.cancelledAt) < new Date(value.createdAt)
   ) {
     issues.push("order.cancelledAt cannot precede order.createdAt.");
+  }
+  if (
+    isCanonicalIso(value.paymentResolvedAt) &&
+    isCanonicalIso(value.updatedAt) &&
+    new Date(value.updatedAt) < new Date(value.paymentResolvedAt)
+  ) {
+    issues.push("order.updatedAt cannot precede order.paymentResolvedAt.");
   }
   if (
     isCanonicalIso(value.cancelledAt) &&
@@ -527,6 +604,10 @@ const publicOrderKeys = [
   "createdAt",
   "updatedAt",
   "pendingExpiresAt",
+  "paymentProvider",
+  "paymentReference",
+  "paymentEventId",
+  "paymentResolvedAt",
   "cancelledAt",
   "cancellationReason",
   "purgeAt",

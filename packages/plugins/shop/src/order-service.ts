@@ -1,14 +1,28 @@
+import { createHash } from "node:crypto";
+
 import { getDb, npPluginStorage } from "@nexpress/core/db";
 import { requireSiteId } from "@nexpress/core/sites";
-import { and, asc, desc, eq, gt, like, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, like, lte, sql } from "drizzle-orm";
 
 import {
   npCleanupExpiredShopInventoryReservations,
+  npConsumeShopInventoryReservations,
   npLockShopInventoryProducts,
   npPersistShopInventoryReservations,
   npPurgeShopInventoryReservations,
   npReleaseShopInventoryReservations,
 } from "./inventory-reservation-service.js";
+import {
+  NP_SHOP_PAYMENT_RECEIPT_CONTRACT,
+  NpShopPaymentConflictError,
+  npRequireShopPaymentProviderId,
+  npRequireStoredShopPaymentReceipt,
+  npShopPaymentEventDigest,
+  npShopPaymentLimits,
+  npShopPaymentReceiptStorageKey,
+  type NpShopStoredPaymentReceipt,
+  type NpShopVerifiedPaymentEvent,
+} from "./payment-contract.js";
 import {
   NP_SHOP_ORDER_CONTRACT,
   NP_SHOP_ORDER_PRIVATE_CONTRACT,
@@ -42,11 +56,42 @@ import {
 import type { NpShopRuntime } from "./runtime.js";
 import type { NpShopOrder, NpShopOrderList } from "./types.js";
 
-interface NpShopOrderPendingMarker {
-  contract: "np.shop-order-pending.v1";
+interface NpShopOrderMaintenanceMarker {
+  contract: "np.shop-order-maintenance.v1";
   orderId: string;
   ownerSegment: string;
   dueAt: string;
+}
+
+interface NpShopOrderLookup {
+  contract: "np.shop-order-lookup.v1";
+  orderId: string;
+  ownerSegment: string;
+  purgeAt: string;
+}
+
+const canonicalUuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const guestOwnerSegmentPattern = /^guest:[0-9a-f]{64}$/u;
+
+function isCanonicalIso(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
+}
+
+function isOwnerSegment(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    (guestOwnerSegmentPattern.test(value) ||
+      (value.startsWith("member:") && canonicalUuidPattern.test(value.slice("member:".length))))
+  );
+}
+
+export interface NpShopPaymentApplyResult {
+  receipt: NpShopStoredPaymentReceipt;
+  duplicate: boolean;
+  orderStatus: "paid" | "payment-failed" | "cancelled";
 }
 
 export interface NpShopAdminOrderRow {
@@ -60,6 +105,17 @@ export interface NpShopAdminOrderRow {
   createdAt: string;
 }
 
+export interface NpShopAdminPaymentEventRow {
+  [key: string]: unknown;
+  provider: string;
+  eventId: string;
+  type: string;
+  orderId: string;
+  outcome: string;
+  orderStatus: string;
+  processedAt: string;
+}
+
 function orderStorageKey(ownerSegment: string, orderId: string): string {
   return `order:${ownerSegment}:${orderId}`;
 }
@@ -68,8 +124,12 @@ function privateStorageKey(ownerSegment: string, orderId: string): string {
   return `order-private:${ownerSegment}:${orderId}`;
 }
 
-function pendingStorageKey(ownerSegment: string, orderId: string): string {
-  return `order-pending:${ownerSegment}:${orderId}`;
+function maintenanceStorageKey(ownerSegment: string, orderId: string): string {
+  return `order-maintenance:${ownerSegment}:${orderId}`;
+}
+
+function lookupStorageKey(orderId: string): string {
+  return `order-lookup:${orderId}`;
 }
 
 function requireStoredOrder(value: unknown, expiresAt: Date | null): NpShopStoredOrder {
@@ -106,7 +166,10 @@ function requireStoredPrivate(value: unknown, expiresAt: Date | null): NpShopSto
   return privateData;
 }
 
-function requirePendingMarker(value: unknown, expiresAt: Date | null): NpShopOrderPendingMarker {
+function requireMaintenanceMarker(
+  value: unknown,
+  expiresAt: Date | null,
+): NpShopOrderMaintenanceMarker {
   const candidate = value as Record<string, unknown>;
   if (
     typeof value !== "object" ||
@@ -114,18 +177,47 @@ function requirePendingMarker(value: unknown, expiresAt: Date | null): NpShopOrd
     Array.isArray(value) ||
     Object.getPrototypeOf(value) !== Object.prototype ||
     Object.keys(value).length !== 4 ||
-    candidate.contract !== "np.shop-order-pending.v1" ||
+    candidate.contract !== "np.shop-order-maintenance.v1" ||
     typeof candidate.orderId !== "string" ||
-    typeof candidate.ownerSegment !== "string" ||
-    typeof candidate.dueAt !== "string" ||
+    !canonicalUuidPattern.test(candidate.orderId) ||
+    !isOwnerSegment(candidate.ownerSegment) ||
+    !isCanonicalIso(candidate.dueAt) ||
     expiresAt === null ||
     expiresAt.toISOString() !== candidate.dueAt
   ) {
-    throw new NpShopOrderContractError("Invalid Shop pending order marker", [
-      "Pending order maintenance metadata is malformed.",
+    throw new NpShopOrderContractError("Invalid Shop order maintenance marker", [
+      "Order maintenance metadata is malformed.",
     ]);
   }
-  return value as NpShopOrderPendingMarker;
+  return value as NpShopOrderMaintenanceMarker;
+}
+
+function requireOrderLookup(
+  value: unknown,
+  expiresAt: Date | null,
+  key: string,
+): NpShopOrderLookup {
+  const candidate = value as Record<string, unknown>;
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype ||
+    Object.keys(value).length !== 4 ||
+    candidate.contract !== "np.shop-order-lookup.v1" ||
+    typeof candidate.orderId !== "string" ||
+    !canonicalUuidPattern.test(candidate.orderId) ||
+    !isOwnerSegment(candidate.ownerSegment) ||
+    !isCanonicalIso(candidate.purgeAt) ||
+    key !== lookupStorageKey(candidate.orderId) ||
+    expiresAt === null ||
+    expiresAt.toISOString() !== candidate.purgeAt
+  ) {
+    throw new NpShopOrderContractError("Invalid Shop order lookup", [
+      "Order lookup metadata is malformed.",
+    ]);
+  }
+  return value as NpShopOrderLookup;
 }
 
 async function lockOrder(
@@ -136,6 +228,27 @@ async function lockOrder(
 ): Promise<void> {
   await tx.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-order:${siteId}:${ownerSegment}:${orderId}`}, 0))`,
+  );
+}
+
+async function lockOrderLookup(
+  tx: NpShopTransaction,
+  siteId: string,
+  orderId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-order-lookup:${siteId}:${orderId}`}, 0))`,
+  );
+}
+
+async function lockPaymentEvent(
+  tx: NpShopTransaction,
+  siteId: string,
+  providerId: string,
+  eventId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-payment-event:${siteId}:${providerId}:${createHash("sha256").update(eventId).digest("hex")}`}, 0))`,
   );
 }
 
@@ -161,6 +274,69 @@ async function readStoredOrderForUpdate(
     )
     .limit(1);
   return row ? requireStoredOrderAtKey(row.value, row.expiresAt, row.key) : null;
+}
+
+async function readOrderLookupForUpdate(
+  tx: NpShopTransaction,
+  siteId: string,
+  orderId: string,
+): Promise<NpShopOrderLookup | null> {
+  const [row] = await tx
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        eq(npPluginStorage.key, lookupStorageKey(orderId)),
+      ),
+    )
+    .limit(1)
+    .for("update");
+  return row ? requireOrderLookup(row.value, row.expiresAt, row.key) : null;
+}
+
+async function readPaymentReceiptForUpdate(
+  tx: NpShopTransaction,
+  siteId: string,
+  providerId: string,
+  eventId: string,
+): Promise<NpShopStoredPaymentReceipt | null> {
+  const key = npShopPaymentReceiptStorageKey(providerId, eventId);
+  const [row] = await tx
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        eq(npPluginStorage.key, key),
+      ),
+    )
+    .limit(1)
+    .for("update");
+  if (!row) return null;
+  const receipt = npRequireStoredShopPaymentReceipt(row.value);
+  if (
+    row.key !== key ||
+    row.expiresAt === null ||
+    row.expiresAt.toISOString() !== receipt.purgeAt ||
+    receipt.providerId !== providerId ||
+    receipt.event.eventId !== eventId
+  ) {
+    throw new NpShopOrderContractError("Invalid Shop payment receipt storage metadata", [
+      "Payment receipt key and expiry must match its canonical value.",
+    ]);
+  }
+  return receipt;
 }
 
 async function readStoredPrivate(
@@ -216,6 +392,38 @@ async function persistOrder(
     });
 }
 
+async function persistOrderLookup(
+  tx: NpShopTransaction,
+  siteId: string,
+  lookup: NpShopOrderLookup,
+): Promise<void> {
+  requireOrderLookup(lookup, new Date(lookup.purgeAt), lookupStorageKey(lookup.orderId));
+  await tx.insert(npPluginStorage).values({
+    pluginId: NP_SHOP_PLUGIN_ID,
+    siteId,
+    key: lookupStorageKey(lookup.orderId),
+    value: lookup,
+    expiresAt: new Date(lookup.purgeAt),
+    updatedAt: new Date(),
+  });
+}
+
+async function persistPaymentReceipt(
+  tx: NpShopTransaction,
+  siteId: string,
+  receipt: NpShopStoredPaymentReceipt,
+): Promise<void> {
+  npRequireStoredShopPaymentReceipt(receipt);
+  await tx.insert(npPluginStorage).values({
+    pluginId: NP_SHOP_PLUGIN_ID,
+    siteId,
+    key: npShopPaymentReceiptStorageKey(receipt.providerId, receipt.event.eventId),
+    value: receipt,
+    expiresAt: new Date(receipt.purgeAt),
+    updatedAt: new Date(receipt.processedAt),
+  });
+}
+
 async function persistPrivate(
   tx: NpShopTransaction,
   siteId: string,
@@ -233,22 +441,23 @@ async function persistPrivate(
   });
 }
 
-async function persistPendingMarker(
+async function persistMaintenanceMarker(
   tx: NpShopTransaction,
   siteId: string,
-  marker: NpShopOrderPendingMarker,
+  marker: NpShopOrderMaintenanceMarker,
 ): Promise<void> {
+  requireMaintenanceMarker(marker, new Date(marker.dueAt));
   await tx.insert(npPluginStorage).values({
     pluginId: NP_SHOP_PLUGIN_ID,
     siteId,
-    key: pendingStorageKey(marker.ownerSegment, marker.orderId),
+    key: maintenanceStorageKey(marker.ownerSegment, marker.orderId),
     value: marker,
     expiresAt: new Date(marker.dueAt),
     updatedAt: new Date(),
   });
 }
 
-async function removePrivateAndPending(
+async function removePrivateAndMaintenance(
   tx: NpShopTransaction,
   siteId: string,
   ownerSegment: string,
@@ -260,7 +469,7 @@ async function removePrivateAndPending(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${privateStorageKey(ownerSegment, orderId)}, ${pendingStorageKey(ownerSegment, orderId)})`,
+        sql`${npPluginStorage.key} in (${privateStorageKey(ownerSegment, orderId)}, ${maintenanceStorageKey(ownerSegment, orderId)})`,
       ),
     );
 }
@@ -346,6 +555,12 @@ async function cancelStoredOrder(
   now: Date,
 ): Promise<NpShopStoredOrder> {
   if (order.status === "cancelled") return order;
+  if (order.status !== "pending-payment") {
+    throw new NpShopOrderConflictError(
+      "order_not_cancellable",
+      "Only a pending-payment order can be cancelled.",
+    );
+  }
   await npLockShopInventoryProducts(
     tx,
     siteId,
@@ -372,8 +587,191 @@ async function cancelStoredOrder(
     cancellationReason: reason,
   } satisfies NpShopStoredOrder;
   await persistOrder(tx, siteId, cancelled);
-  await removePrivateAndPending(tx, siteId, order.ownerSegment, order.id);
+  await removePrivateAndMaintenance(tx, siteId, order.ownerSegment, order.id);
   return cancelled;
+}
+
+async function redactStoredOrderPrivate(
+  tx: NpShopTransaction,
+  siteId: string,
+  order: NpShopStoredOrder,
+  now: Date,
+): Promise<NpShopStoredOrder> {
+  if (order.privateDataStatus === "redacted") {
+    await removePrivateAndMaintenance(tx, siteId, order.ownerSegment, order.id);
+    return order;
+  }
+  const redacted = {
+    ...order,
+    revision: order.revision + 1,
+    privateDataStatus: "redacted",
+    updatedAt: now.toISOString(),
+  } satisfies NpShopStoredOrder;
+  await persistOrder(tx, siteId, redacted);
+  await removePrivateAndMaintenance(tx, siteId, order.ownerSegment, order.id);
+  return redacted;
+}
+
+export async function npApplyShopPaymentEvent(
+  runtime: NpShopRuntime,
+  providerId: string,
+  event: NpShopVerifiedPaymentEvent,
+  receivedAt: Date,
+): Promise<NpShopPaymentApplyResult> {
+  npRequireShopPaymentProviderId(providerId);
+  const siteId = await requireSiteId();
+  const eventDigest = npShopPaymentEventDigest(event);
+  return getDb().transaction(async (tx) => {
+    await lockPaymentEvent(tx, siteId, providerId, event.eventId);
+    const existingReceipt = await readPaymentReceiptForUpdate(
+      tx,
+      siteId,
+      providerId,
+      event.eventId,
+    );
+    if (existingReceipt) {
+      if (existingReceipt.eventDigest !== eventDigest) {
+        throw new NpShopPaymentConflictError(
+          "payment_event_conflict",
+          "The provider event id was already used for a different canonical event.",
+        );
+      }
+      return {
+        receipt: existingReceipt,
+        duplicate: true,
+        orderStatus: existingReceipt.orderStatus,
+      };
+    }
+
+    await lockOrderLookup(tx, siteId, event.orderId);
+    const lookup = await readOrderLookupForUpdate(tx, siteId, event.orderId);
+    if (!lookup) {
+      throw new NpShopPaymentConflictError(
+        "payment_order_not_found",
+        "The verified payment event references no Shop order in this site.",
+      );
+    }
+    await lockOrder(tx, siteId, lookup.ownerSegment, event.orderId);
+    let order = await readStoredOrderForUpdate(tx, siteId, lookup.ownerSegment, event.orderId);
+    if (!order) {
+      throw new NpShopPaymentConflictError(
+        "payment_order_not_found",
+        "The verified payment event references a missing Shop order.",
+      );
+    }
+    if (new Date(order.purgeAt) <= receivedAt) {
+      throw new NpShopPaymentConflictError(
+        "payment_order_expired",
+        "The verified payment event references an order past its commercial retention window.",
+      );
+    }
+    if (order.currency !== event.currency || order.subtotalMinor !== event.amountMinor) {
+      throw new NpShopPaymentConflictError(
+        "payment_amount_mismatch",
+        "The verified payment amount or currency does not match the immutable order.",
+      );
+    }
+
+    let outcome: NpShopStoredPaymentReceipt["outcome"];
+    if (
+      order.status === "paid" &&
+      order.privateDataStatus === "retained" &&
+      new Date(order.pendingExpiresAt) <= receivedAt
+    ) {
+      order = await redactStoredOrderPrivate(tx, siteId, order, receivedAt);
+    }
+    if (order.status !== "pending-payment") {
+      outcome = "ignored-terminal";
+    } else if (new Date(order.pendingExpiresAt) <= receivedAt) {
+      order = await cancelStoredOrder(tx, siteId, order, "payment-timeout", receivedAt);
+      outcome = "ignored-terminal";
+    } else if (event.type === "payment.succeeded") {
+      await npLockShopInventoryProducts(
+        tx,
+        siteId,
+        order.lines.map((line) => line.productId),
+      );
+      if (order.inventoryReservationStatus === "held") {
+        const reservedLineKeys = new Set(order.inventoryReservationLineKeys);
+        await npConsumeShopInventoryReservations(
+          tx,
+          siteId,
+          runtime,
+          order.id,
+          order.lines.filter((line) => reservedLineKeys.has(line.key)),
+        );
+      }
+      order = {
+        ...order,
+        status: "paid",
+        revision: order.revision + 1,
+        inventoryReservationStatus:
+          order.inventoryReservationStatus === "held" ? "consumed" : "not-required",
+        paymentProvider: providerId,
+        paymentReference: event.paymentReference,
+        paymentEventId: event.eventId,
+        paymentResolvedAt: receivedAt.toISOString(),
+        updatedAt: receivedAt.toISOString(),
+      };
+      await persistOrder(tx, siteId, order);
+      outcome = "paid";
+    } else {
+      await npLockShopInventoryProducts(
+        tx,
+        siteId,
+        order.lines.map((line) => line.productId),
+      );
+      if (order.inventoryReservationStatus === "held") {
+        const reservedLineKeys = new Set(order.inventoryReservationLineKeys);
+        const released = await npReleaseShopInventoryReservations(
+          tx,
+          siteId,
+          order.id,
+          order.lines.filter((line) => reservedLineKeys.has(line.key)),
+        );
+        if (released !== reservedLineKeys.size) {
+          throw new NpShopPaymentConflictError(
+            "payment_inventory_conflict",
+            "The failed payment order is missing one or more exact inventory reservations.",
+          );
+        }
+      }
+      order = {
+        ...order,
+        status: "payment-failed",
+        revision: order.revision + 1,
+        privateDataStatus: "redacted",
+        inventoryReservationStatus:
+          order.inventoryReservationStatus === "held" ? "released" : "not-required",
+        paymentProvider: providerId,
+        paymentReference: event.paymentReference,
+        paymentEventId: event.eventId,
+        paymentResolvedAt: receivedAt.toISOString(),
+        updatedAt: receivedAt.toISOString(),
+      };
+      await persistOrder(tx, siteId, order);
+      await removePrivateAndMaintenance(tx, siteId, order.ownerSegment, order.id);
+      outcome = "payment-failed";
+    }
+
+    const receipt: NpShopStoredPaymentReceipt = {
+      contract: NP_SHOP_PAYMENT_RECEIPT_CONTRACT,
+      providerId,
+      event,
+      eventDigest,
+      outcome,
+      orderStatus: order.status as NpShopStoredPaymentReceipt["orderStatus"],
+      orderRevision: order.revision,
+      processedAt: receivedAt.toISOString(),
+      purgeAt: order.purgeAt,
+    };
+    await persistPaymentReceipt(tx, siteId, receipt);
+    return {
+      receipt,
+      duplicate: false,
+      orderStatus: receipt.orderStatus,
+    };
+  });
 }
 
 async function purgeOrder(
@@ -399,7 +797,17 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${pendingStorageKey(order.ownerSegment, order.id)})`,
+        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)})`,
+      ),
+    );
+  await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "payment-event:%"),
+        sql`${npPluginStorage.value}->'event'->>'orderId' = ${order.id}`,
       ),
     );
 }
@@ -415,6 +823,14 @@ export async function npCreateShopOrder(
     await npLockShopOrderDraftOwner(tx, siteId, owner);
     await npLockShopCart(tx, siteId, owner);
     await npLockShopOrderDraft(tx, siteId, owner, input.draftId);
+    await lockOrderLookup(tx, siteId, input.idempotencyKey);
+    const existingLookup = await readOrderLookupForUpdate(tx, siteId, input.idempotencyKey);
+    if (existingLookup && existingLookup.ownerSegment !== ownerSegment) {
+      throw new NpShopOrderConflictError(
+        "order_idempotency_conflict",
+        "The idempotency key already belongs to another browser identity.",
+      );
+    }
     await lockOrder(tx, siteId, ownerSegment, input.idempotencyKey);
     const existingAfterLock = await readStoredOrderForUpdate(
       tx,
@@ -430,6 +846,11 @@ export async function npCreateShopOrder(
           ? await cancelStoredOrder(tx, siteId, existingAfterLock, "payment-timeout", new Date())
           : existingAfterLock;
       return projectOrder(tx, siteId, current);
+    }
+    if (existingLookup) {
+      throw new NpShopOrderContractError("Shop order lookup is orphaned", [
+        "The global order lookup exists without its commercial order.",
+      ]);
     }
     await requirePendingCapacity(tx, siteId, ownerSegment);
     const draft = await npReadStoredShopOrderDraftForUpdate(tx, siteId, owner, input.draftId);
@@ -506,6 +927,10 @@ export async function npCreateShopOrder(
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
       pendingExpiresAt,
+      paymentProvider: null,
+      paymentReference: null,
+      paymentEventId: null,
+      paymentResolvedAt: null,
       cancelledAt: null,
       cancellationReason: null,
       purgeAt,
@@ -519,6 +944,12 @@ export async function npCreateShopOrder(
       expiresAt: pendingExpiresAt,
     };
     await persistOrder(tx, siteId, order);
+    await persistOrderLookup(tx, siteId, {
+      contract: "np.shop-order-lookup.v1",
+      orderId: order.id,
+      ownerSegment,
+      purgeAt,
+    });
     if (order.inventoryReservationStatus === "held") {
       const trackedLineKeys = new Set(order.inventoryReservationLineKeys);
       await npPersistShopInventoryReservations(
@@ -532,8 +963,8 @@ export async function npCreateShopOrder(
       );
     }
     await persistPrivate(tx, siteId, ownerSegment, privateData);
-    await persistPendingMarker(tx, siteId, {
-      contract: "np.shop-order-pending.v1",
+    await persistMaintenanceMarker(tx, siteId, {
+      contract: "np.shop-order-maintenance.v1",
       orderId: order.id,
       ownerSegment,
       dueAt: pendingExpiresAt,
@@ -568,6 +999,12 @@ export async function npReadShopOrder(
     }
     if (order.status === "pending-payment" && new Date(order.pendingExpiresAt) <= now) {
       order = await cancelStoredOrder(tx, siteId, order, "payment-timeout", now);
+    } else if (
+      order.status === "paid" &&
+      order.privateDataStatus === "retained" &&
+      new Date(order.pendingExpiresAt) <= now
+    ) {
+      order = await redactStoredOrderPrivate(tx, siteId, order, now);
     }
     return projectOrder(tx, siteId, order);
   });
@@ -632,6 +1069,12 @@ export async function npCancelShopOrder(
     const current = await readStoredOrderForUpdate(tx, siteId, ownerSegment, input.orderId);
     if (!current) throw new NpShopOrderNotFoundError();
     if (current.status === "cancelled") return projectOrder(tx, siteId, current);
+    if (current.status !== "pending-payment") {
+      throw new NpShopOrderConflictError(
+        "order_not_cancellable",
+        "Only a pending-payment order can be cancelled.",
+      );
+    }
     if (current.revision !== input.expectedRevision) {
       throw new NpShopOrderConflictError(
         "order_revision_conflict",
@@ -662,7 +1105,7 @@ export async function npMaintainShopOrders(): Promise<{
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        like(npPluginStorage.key, "order-pending:%"),
+        like(npPluginStorage.key, "order-maintenance:%"),
         lte(npPluginStorage.expiresAt, now),
       ),
     )
@@ -670,21 +1113,26 @@ export async function npMaintainShopOrders(): Promise<{
     .limit(npShopOrderLimits.cleanupBatchSize);
   let cancelled = 0;
   for (const row of pendingRows) {
-    const marker = requirePendingMarker(row.value, row.expiresAt);
-    if (row.key !== pendingStorageKey(marker.ownerSegment, marker.orderId)) {
-      throw new NpShopOrderContractError("Invalid Shop pending order storage key", [
-        "Pending order key must match its owner segment and order id.",
+    const marker = requireMaintenanceMarker(row.value, row.expiresAt);
+    if (row.key !== maintenanceStorageKey(marker.ownerSegment, marker.orderId)) {
+      throw new NpShopOrderContractError("Invalid Shop order maintenance storage key", [
+        "Order maintenance key must match its owner segment and order id.",
       ]);
     }
     cancelled += await db.transaction(async (tx) => {
       await lockOrder(tx, siteId, marker.ownerSegment, marker.orderId);
       const order = await readStoredOrderForUpdate(tx, siteId, marker.ownerSegment, marker.orderId);
       if (!order) {
-        await removePrivateAndPending(tx, siteId, marker.ownerSegment, marker.orderId);
+        await removePrivateAndMaintenance(tx, siteId, marker.ownerSegment, marker.orderId);
+        return 0;
+      }
+      if (order.status === "paid" && order.privateDataStatus === "retained") {
+        if (new Date(order.pendingExpiresAt) > now) return 0;
+        await redactStoredOrderPrivate(tx, siteId, order, now);
         return 0;
       }
       if (order.status !== "pending-payment") {
-        await removePrivateAndPending(tx, siteId, marker.ownerSegment, marker.orderId);
+        await removePrivateAndMaintenance(tx, siteId, marker.ownerSegment, marker.orderId);
         return 0;
       }
       if (new Date(order.pendingExpiresAt) > now) return 0;
@@ -728,6 +1176,8 @@ export async function npMaintainShopOrders(): Promise<{
 export async function npCountShopOrders(): Promise<{
   total: number;
   pending: number;
+  paid: number;
+  paymentFailed: number;
   cancelled: number;
   due: number;
   invalidSample: number;
@@ -739,6 +1189,8 @@ export async function npCountShopOrders(): Promise<{
     .select({
       total: sql<number>`count(*)::int`,
       pending: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_ORDER_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'pending-payment')::int`,
+      paid: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_ORDER_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'paid')::int`,
+      paymentFailed: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_ORDER_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'payment-failed')::int`,
       cancelled: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_ORDER_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'cancelled')::int`,
     })
     .from(npPluginStorage)
@@ -756,7 +1208,7 @@ export async function npCountShopOrders(): Promise<{
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        like(npPluginStorage.key, "order-pending:%"),
+        like(npPluginStorage.key, "order-maintenance:%"),
         lte(npPluginStorage.expiresAt, new Date()),
       ),
     );
@@ -773,19 +1225,89 @@ export async function npCountShopOrders(): Promise<{
         like(npPluginStorage.key, "order-private:%"),
       ),
     );
-  const [markerCounts] = await db
+  const [retainedCounts] = await db
     .select({
-      total: sql<number>`count(*)::int`,
-      invalid: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' is distinct from 'np.shop-order-pending.v1')::int`,
+      total: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'privateDataStatus' = 'retained')::int`,
     })
     .from(npPluginStorage)
     .where(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        like(npPluginStorage.key, "order-pending:%"),
+        like(npPluginStorage.key, "order:%"),
       ),
     );
+  const [markerCounts] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      invalid: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' is distinct from 'np.shop-order-maintenance.v1')::int`,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "order-maintenance:%"),
+      ),
+    );
+  const [lookupCounts] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      invalid: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' is distinct from 'np.shop-order-lookup.v1')::int`,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "order-lookup:%"),
+      ),
+    );
+  const lookupSample = await db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "order-lookup:%"),
+      ),
+    )
+    .orderBy(desc(npPluginStorage.updatedAt), desc(npPluginStorage.key))
+    .limit(npShopOrderLimits.diagnosticSampleSize);
+  const validLookups: NpShopOrderLookup[] = [];
+  let invalidLookupSample = 0;
+  for (const row of lookupSample) {
+    try {
+      validLookups.push(requireOrderLookup(row.value, row.expiresAt, row.key));
+    } catch {
+      invalidLookupSample += 1;
+    }
+  }
+  const lookupOrderKeys = validLookups.map((lookup) =>
+    orderStorageKey(lookup.ownerSegment, lookup.orderId),
+  );
+  const lookupOrderRows =
+    lookupOrderKeys.length === 0
+      ? []
+      : await db
+          .select({ key: npPluginStorage.key })
+          .from(npPluginStorage)
+          .where(
+            and(
+              eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+              eq(npPluginStorage.siteId, siteId),
+              inArray(npPluginStorage.key, lookupOrderKeys),
+            ),
+          );
+  const lookupOrderKeySet = new Set(lookupOrderRows.map((row) => row.key));
+  const orphanLookupSample = validLookups.filter(
+    (lookup) => !lookupOrderKeySet.has(orderStorageKey(lookup.ownerSegment, lookup.orderId)),
+  ).length;
   const sample = await db
     .select({
       key: npPluginStorage.key,
@@ -813,11 +1335,17 @@ export async function npCountShopOrders(): Promise<{
   const invalidMetadata =
     counts.total -
     counts.pending -
+    counts.paid -
+    counts.paymentFailed -
     counts.cancelled +
     privateCounts.invalid +
     markerCounts.invalid +
-    Math.abs(privateCounts.total - counts.pending) +
-    Math.abs(markerCounts.total - counts.pending);
+    lookupCounts.invalid +
+    invalidLookupSample +
+    orphanLookupSample +
+    Math.abs(privateCounts.total - retainedCounts.total) +
+    Math.abs(markerCounts.total - retainedCounts.total) +
+    Math.abs(lookupCounts.total - counts.total);
   return { ...counts, due: dueCounts.due, invalidSample, invalidMetadata };
 }
 
@@ -864,6 +1392,137 @@ export async function npListRecentShopOrders(): Promise<{
         privateData: order.privateDataStatus,
         inventory: order.inventoryReservationStatus,
         createdAt: order.createdAt,
+      };
+    }),
+    total,
+  };
+}
+
+export async function npCountShopPaymentEvents(): Promise<{
+  total: number;
+  invalidSample: number;
+  orphanSample: number;
+}> {
+  const siteId = await requireSiteId();
+  const db = getDb();
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "payment-event:%"),
+      ),
+    );
+  const rows = await db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "payment-event:%"),
+      ),
+    )
+    .orderBy(desc(npPluginStorage.updatedAt), desc(npPluginStorage.key))
+    .limit(npShopPaymentLimits.diagnosticSampleSize);
+  const receipts: NpShopStoredPaymentReceipt[] = [];
+  let invalidSample = 0;
+  for (const row of rows) {
+    try {
+      const receipt = npRequireStoredShopPaymentReceipt(row.value);
+      if (
+        row.key !== npShopPaymentReceiptStorageKey(receipt.providerId, receipt.event.eventId) ||
+        row.expiresAt === null ||
+        row.expiresAt.toISOString() !== receipt.purgeAt
+      ) {
+        throw new Error("payment receipt metadata mismatch");
+      }
+      receipts.push(receipt);
+    } catch {
+      invalidSample += 1;
+    }
+  }
+  const lookupKeys = [
+    ...new Set(receipts.map((receipt) => lookupStorageKey(receipt.event.orderId))),
+  ];
+  const existingLookups =
+    lookupKeys.length === 0
+      ? []
+      : await db
+          .select({ key: npPluginStorage.key })
+          .from(npPluginStorage)
+          .where(
+            and(
+              eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+              eq(npPluginStorage.siteId, siteId),
+              inArray(npPluginStorage.key, lookupKeys),
+            ),
+          );
+  const lookupSet = new Set(existingLookups.map((row) => row.key));
+  const orphanSample = receipts.filter(
+    (receipt) => !lookupSet.has(lookupStorageKey(receipt.event.orderId)),
+  ).length;
+  return { total, invalidSample, orphanSample };
+}
+
+export async function npListRecentShopPaymentEvents(): Promise<{
+  rows: NpShopAdminPaymentEventRow[];
+  total: number;
+}> {
+  const siteId = await requireSiteId();
+  const db = getDb();
+  const rows = await db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "payment-event:%"),
+      ),
+    )
+    .orderBy(desc(npPluginStorage.updatedAt), desc(npPluginStorage.key))
+    .limit(npShopPaymentLimits.adminListSize);
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "payment-event:%"),
+      ),
+    );
+  return {
+    rows: rows.map((row) => {
+      const receipt = npRequireStoredShopPaymentReceipt(row.value);
+      if (
+        row.key !== npShopPaymentReceiptStorageKey(receipt.providerId, receipt.event.eventId) ||
+        row.expiresAt === null ||
+        row.expiresAt.toISOString() !== receipt.purgeAt
+      ) {
+        throw new NpShopOrderContractError("Invalid Shop payment receipt storage metadata", [
+          "Payment receipt key and expiry must match its canonical value.",
+        ]);
+      }
+      return {
+        provider: receipt.providerId,
+        eventId: receipt.event.eventId,
+        type: receipt.event.type,
+        orderId: receipt.event.orderId,
+        outcome: receipt.outcome,
+        orderStatus: receipt.orderStatus,
+        processedAt: receipt.processedAt,
       };
     }),
     total,

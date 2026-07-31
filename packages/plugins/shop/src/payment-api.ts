@@ -1,0 +1,74 @@
+import type { NpRouteRequest, NpRouteResponse } from "@nexpress/plugin-sdk";
+
+import {
+  NpShopPaymentConflictError,
+  NpShopPaymentContractError,
+  NpShopPaymentVerificationError,
+  npRequireFreshShopPaymentEvent,
+} from "./payment-contract.js";
+import { npApplyShopPaymentEvent } from "./order-service.js";
+import type { NpShopRuntime } from "./runtime.js";
+
+const noStoreHeaders = { "Cache-Control": "private, no-store" } as const;
+
+export function createShopPaymentApiHandler(runtime: NpShopRuntime) {
+  const adapter = runtime.paymentAdapter;
+  if (!adapter) throw new Error("Shop payment API requires a configured payment adapter.");
+
+  return async function shopPaymentApiHandler(request: NpRouteRequest): Promise<NpRouteResponse> {
+    try {
+      if (request.bodyMode !== "raw" || request.rawBody === undefined) {
+        throw new NpShopPaymentContractError("Invalid Shop payment callback body", [
+          "payment callbacks require the exact raw request bytes.",
+        ]);
+      }
+      const receivedAt = new Date();
+      const verified = await adapter.verifyWebhook({
+        rawBody: request.rawBody,
+        headers: request.headers,
+        receivedAt: receivedAt.toISOString(),
+      });
+      if (verified === null) throw new NpShopPaymentVerificationError();
+      const event = npRequireFreshShopPaymentEvent(verified, receivedAt);
+      const result = await npApplyShopPaymentEvent(runtime, adapter.id, event, receivedAt);
+      return {
+        status: 200,
+        body: {
+          receipt: {
+            providerId: result.receipt.providerId,
+            eventId: result.receipt.event.eventId,
+            outcome: result.receipt.outcome,
+            orderStatus: result.receipt.orderStatus,
+            orderRevision: result.receipt.orderRevision,
+            processedAt: result.receipt.processedAt,
+          },
+          duplicate: result.duplicate,
+        },
+        headers: noStoreHeaders,
+      };
+    } catch (error) {
+      if (error instanceof NpShopPaymentVerificationError) {
+        return {
+          status: 401,
+          body: { error: "payment_verification_failed", message: error.message },
+          headers: noStoreHeaders,
+        };
+      }
+      if (error instanceof NpShopPaymentConflictError) {
+        return {
+          status: 409,
+          body: { error: error.code, message: error.message },
+          headers: noStoreHeaders,
+        };
+      }
+      if (error instanceof NpShopPaymentContractError) {
+        return {
+          status: 400,
+          body: { error: "invalid_payment_event", message: error.issues.join(" ") },
+          headers: noStoreHeaders,
+        };
+      }
+      throw error;
+    }
+  };
+}

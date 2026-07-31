@@ -14,6 +14,7 @@ import {
   type NpShopVariant,
   type NpShopCollectionSlugs,
 } from "./types.js";
+import type { NpShopPaymentAdapter } from "./payment-contract.js";
 
 export const npShopSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 export const npShopSkuPattern = /^[A-Z0-9][A-Z0-9._-]{0,63}$/u;
@@ -34,6 +35,7 @@ export interface NpShopRuntime {
   collections: NpShopCollectionSlugs;
   defaultSkinId: string;
   skins: ReadonlyMap<string, NpShopSkin>;
+  paymentAdapter: NpShopPaymentAdapter | null;
 }
 
 export interface ShopCategoryDocument extends Record<string, unknown> {
@@ -513,10 +515,15 @@ export async function getShopMessages(): Promise<NpShopMessages> {
     "orderCreate",
     "orderCreating",
     "orderPendingPayment",
+    "orderPaid",
+    "orderPaymentFailed",
     "orderCancelled",
+    "orderPaymentVerified",
+    "orderPaymentFailedDetail",
     "orderPrivateRetained",
     "orderPrivateRedacted",
     "orderInventoryHeld",
+    "orderInventoryConsumed",
     "orderInventoryReleased",
     "orderInventoryNotRequired",
     "orderExpires",

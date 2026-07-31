@@ -151,10 +151,15 @@ export interface NpShopMessages {
   orderCreate: string;
   orderCreating: string;
   orderPendingPayment: string;
+  orderPaid: string;
+  orderPaymentFailed: string;
   orderCancelled: string;
+  orderPaymentVerified: string;
+  orderPaymentFailedDetail: string;
   orderPrivateRetained: string;
   orderPrivateRedacted: string;
   orderInventoryHeld: string;
+  orderInventoryConsumed: string;
   orderInventoryReleased: string;
   orderInventoryNotRequired: string;
   orderExpires: string;
@@ -309,10 +314,15 @@ export interface NpShopCartClientMessages {
   orderCreate: string;
   orderCreating: string;
   orderPendingPayment: string;
+  orderPaid: string;
+  orderPaymentFailed: string;
   orderCancelled: string;
+  orderPaymentVerified: string;
+  orderPaymentFailedDetail: string;
   orderPrivateRetained: string;
   orderPrivateRedacted: string;
   orderInventoryHeld: string;
+  orderInventoryConsumed: string;
   orderInventoryReleased: string;
   orderInventoryNotRequired: string;
   orderExpires: string;
@@ -422,7 +432,12 @@ export interface NpShopOrderDraftSkinProps {
   messages: NpShopMessages;
 }
 
-export const npShopOrderStatuses = ["pending-payment", "cancelled"] as const;
+export const npShopOrderStatuses = [
+  "pending-payment",
+  "paid",
+  "payment-failed",
+  "cancelled",
+] as const;
 
 export type NpShopOrderStatus = (typeof npShopOrderStatuses)[number];
 
@@ -434,7 +449,12 @@ export const npShopOrderCancellationReasons = ["customer", "payment-timeout"] as
 
 export type NpShopOrderCancellationReason = (typeof npShopOrderCancellationReasons)[number];
 
-export const npShopInventoryReservationStatuses = ["held", "released", "not-required"] as const;
+export const npShopInventoryReservationStatuses = [
+  "held",
+  "consumed",
+  "released",
+  "not-required",
+] as const;
 
 export type NpShopInventoryReservationStatus = (typeof npShopInventoryReservationStatuses)[number];
 
@@ -459,6 +479,10 @@ export interface NpShopOrder {
   createdAt: string;
   updatedAt: string;
   pendingExpiresAt: string;
+  paymentProvider: string | null;
+  paymentReference: string | null;
+  paymentEventId: string | null;
+  paymentResolvedAt: string | null;
   cancelledAt: string | null;
   cancellationReason: NpShopOrderCancellationReason | null;
   purgeAt: string;
