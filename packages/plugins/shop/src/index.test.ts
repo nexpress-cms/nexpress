@@ -124,6 +124,46 @@ describe("shop factory", () => {
     ).toThrow(/provider id/u);
   });
 
+  it("adds owner-scoped attempt routes and diagnostics only for a complete initiation adapter", () => {
+    const shop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: () => null,
+          preparePayment: () => ({ kind: "client", data: { clientKey: "public" } }),
+          confirmPayment: () => {
+            throw new Error("not called");
+          },
+          renderPaymentLauncher: () => null,
+        },
+      },
+    });
+    expect(
+      shop.plugin.routes
+        ?.filter((route) => route.path === "/payments/attempts")
+        .map((route) => route.method),
+    ).toEqual(["GET", "POST", "PATCH"]);
+    expect(Object.keys(shop.plugin.actions ?? {})).toEqual(
+      expect.arrayContaining([
+        "countPaymentAttempts",
+        "paymentAttemptHealth",
+        "recentPaymentAttempts",
+      ]),
+    );
+    expect(shop.runtime.paymentInitiationAdapter?.id).toBe("test-pay");
+    expect(() =>
+      createShop({
+        payment: {
+          adapter: {
+            id: "test-pay",
+            verifyWebhook: () => null,
+            preparePayment: () => ({ kind: "client", data: {} }),
+          },
+        },
+      }),
+    ).toThrow(/requires preparePayment, confirmPayment, and renderPaymentLauncher/u);
+  });
+
   it("applies custom paths, collection slugs, and skins across the contract", () => {
     const editorial = {
       id: "editorial",

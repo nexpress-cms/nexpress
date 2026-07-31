@@ -14,7 +14,7 @@ import {
   type NpShopVariant,
   type NpShopCollectionSlugs,
 } from "./types.js";
-import type { NpShopPaymentAdapter } from "./payment-contract.js";
+import type { NpShopPaymentAdapter, NpShopPaymentInitiationAdapter } from "./payment-contract.js";
 
 export const npShopSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 export const npShopSkuPattern = /^[A-Z0-9][A-Z0-9._-]{0,63}$/u;
@@ -36,6 +36,7 @@ export interface NpShopRuntime {
   defaultSkinId: string;
   skins: ReadonlyMap<string, NpShopSkin>;
   paymentAdapter: NpShopPaymentAdapter | null;
+  paymentInitiationAdapter: NpShopPaymentInitiationAdapter | null;
 }
 
 export interface ShopCategoryDocument extends Record<string, unknown> {

@@ -544,6 +544,32 @@
     line-height: 1.5;
   }
 
+  .np-shop-payment-action,
+  .np-shop-toss-payment {
+    display: grid;
+    gap: 0.65rem;
+  }
+
+  .np-shop-payment-action {
+    padding-top: 1rem;
+    border-top: 1px solid var(--np-shop-line, var(--np-color-border, #deddd8));
+  }
+
+  .np-shop-toss-payment p {
+    margin: 0;
+    color: var(--np-shop-subtle, var(--np-color-muted-foreground, #6b6b68));
+    font-size: 0.82rem;
+    line-height: 1.5;
+  }
+
+  .np-shop-toss-payment p[role="alert"] {
+    color: var(--np-color-destructive, #b42318);
+  }
+
+  .np-shop-toss-payment button {
+    width: 100%;
+  }
+
   .np-shop-page-header {
     display: grid;
     grid-template-columns: 1fr auto;

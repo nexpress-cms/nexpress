@@ -377,6 +377,18 @@ describe("getProjectFiles", () => {
     expect(env).toContain("exact modes are noop, smtp, or custom");
   });
 
+  it("scaffolds opt-in Toss payment guidance without enabling credentials", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const env = files[".env.example"];
+    const readme = files["README.md"];
+    expect(env).toContain("# NP_TOSS_PAYMENTS_CLIENT_KEY=");
+    expect(env).toContain("# NP_TOSS_PAYMENTS_SECRET_KEY=");
+    expect(env).not.toMatch(/^NP_TOSS_PAYMENTS_(?:CLIENT|SECRET)_KEY=/m);
+    expect(readme).toContain("## Optional Toss Payments");
+    expect(readme).toContain("pnpm add @nexpress/shop-payment-toss");
+    expect(readme).toContain("defaultPlugins");
+  });
+
   it(".env.example documents the exact storage runtime contract", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const env = files[".env.example"];
@@ -598,7 +610,7 @@ describe("getProjectFiles", () => {
     );
     expect(readme).not.toContain("pnpm --silent run ops:backup -- status --json");
     expect(readme).not.toContain('schemaVersion: "np.ops.v1"');
-    expect(readme.split(/\r?\n/).length).toBeLessThanOrEqual(100);
+    expect(readme.split(/\r?\n/).length).toBeLessThanOrEqual(110);
 
     expect(ops).toContain("## Deploy Bridge");
     expect(ops).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");

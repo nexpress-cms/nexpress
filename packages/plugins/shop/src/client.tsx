@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 
 import { npRequireShopCartQuote } from "./cart-contract.js";
 import { npRequireShopCheckoutIntent } from "./checkout-contract.js";
@@ -1029,11 +1029,13 @@ export function ShopOrder({
   apiPath,
   basePath,
   orderId,
+  paymentAction,
   messages,
 }: {
   apiPath: string;
   basePath: string;
   orderId: string;
+  paymentAction?: ReactNode;
   messages: NpShopCartClientMessages;
 }) {
   const [order, setOrder] = useState<NpShopOrder | null>(null);
@@ -1142,6 +1144,11 @@ export function ShopOrder({
               </p>
               {order.status === "pending-payment" ? (
                 <>
+                  {paymentAction ? (
+                    <div className="np-shop-payment-action" data-np-shop-payment-action>
+                      {paymentAction}
+                    </div>
+                  ) : null}
                   <p>
                     {messages.orderExpires}{" "}
                     {new Intl.DateTimeFormat(messages.locale, {

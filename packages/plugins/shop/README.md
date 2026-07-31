@@ -36,19 +36,21 @@ It provides:
   separate 24-hour private sidecars, revision-safe cancellation, bounded
   history/Admin views, transaction-safe product/variant holds, cancellation
   release, and 365-day commercial cleanup;
-- an optional build-time payment adapter, exact raw webhook intake, five-minute
-  replay bound, idempotent PII-free receipts, `paid` / `payment-failed`
-  transitions, and atomic reservation consumption or release;
+- an optional build-time payment adapter with bounded owner-scoped initiation
+  attempts, exact raw webhook intake, five-minute event replay bound,
+  idempotent PII-free receipts, `paid` / `payment-failed` transitions, and
+  atomic reservation consumption or release;
 - classic and storefront-full skins;
 - featured-product and category-grid blocks.
 
-Provider-specific signature algorithms, credentials and rotation, payment
-initiation, refunds/reversals, tax, shipping rates, and fulfillment remain
-outside this package. Customer/shipping PII exists only in the short-lived
+Provider-specific browser/server protocols, signature algorithms, credentials
+and rotation, refunds/reversals, tax, shipping rates, and fulfillment remain
+outside this package. `@nexpress/shop-payment-toss` is the bundled Toss
+Payments v2 adapter. Customer/shipping PII exists only in the short-lived
 private draft or order sidecar and stays outside content search, revisions,
 payment receipts, and transfer. A durable `pending-payment` order reference
 still does not imply that a visitor paid for a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
 for the exact price, SKU, inventory, cart, checkout-intent, private-draft,
-pending-order, skin, block, and theme-integration contracts.
+pending-order, payment-attempt, skin, block, and theme-integration contracts.

@@ -2,6 +2,7 @@ import { npPluginStorage, withCurrentSite } from "@nexpress/core";
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import {
   createShop,
+  NpShopPaymentProviderError,
   npRequireShopOrderDraft,
   shopCollections,
   shopPlugin,
@@ -1394,6 +1395,272 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         .from(shopProductsTable)
         .where(eq(shopProductsTable.id, productId)),
     ).toEqual([{ available: true, inventoryState: "low-stock" }]);
+  });
+
+  it("prepares and server-confirms idempotent payment attempts against the stored order", async () => {
+    const ids = {
+      intentId: "a63e4567-e89b-42d3-a456-426614174000",
+      draftId: "b63e4567-e89b-42d3-a456-426614174000",
+      orderId: "c63e4567-e89b-42d3-a456-426614174000",
+    };
+    const owner = await createPendingOrder(ids, "attempt-private@example.com");
+    const preparePayment = vi.fn((input: { attemptId: string; amountMinor: number }) => ({
+      kind: "client" as const,
+      data: { clientKey: "public-test-key", amountMinor: input.amountMinor },
+    }));
+    const confirmPayment = vi.fn(
+      (input: {
+        attempt: { id: string; orderId: string; currency: string; amountMinor: number };
+        confirmation: Readonly<Record<string, unknown>>;
+        receivedAt: string;
+      }) => {
+        if (input.confirmation.paymentKey === "pay_transient") {
+          throw new NpShopPaymentProviderError(
+            "provider_unavailable",
+            "The provider is temporarily unavailable.",
+            true,
+          );
+        }
+        if (
+          input.confirmation.paymentKey !== "pay_attempt_1" ||
+          input.confirmation.orderId !== input.attempt.orderId ||
+          input.confirmation.amount !== input.attempt.amountMinor
+        ) {
+          throw new Error("provider confirmation mismatch");
+        }
+        return {
+          contract: "np.shop-payment-event.v1" as const,
+          eventId: `confirm:${input.confirmation.paymentKey}`,
+          type: "payment.succeeded" as const,
+          orderId: input.attempt.orderId,
+          paymentReference: input.confirmation.paymentKey,
+          currency: input.attempt.currency,
+          amountMinor: input.attempt.amountMinor,
+          signedAt: input.receivedAt,
+        };
+      },
+    );
+    const paymentShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: () => null,
+          preparePayment,
+          confirmPayment,
+          renderPaymentLauncher: () => null,
+        },
+      },
+    });
+    const attemptHandler = paymentShop.plugin.routes?.find(
+      (candidate) => candidate.path === "/payments/attempts",
+    )?.handler;
+    expect(attemptHandler).toBeDefined();
+    async function attemptCall(
+      method: "GET" | "POST" | "PATCH",
+      input: { body?: unknown; attemptId?: string } = {},
+    ) {
+      return withCurrentSite("default", () =>
+        attemptHandler?.(
+          {
+            method,
+            path: "/payments/attempts",
+            params: { pluginId: "shop" },
+            query: input.attemptId ? { orderId: ids.orderId, attemptId: input.attemptId } : {},
+            body: input.body,
+            headers: {
+              cookie: owner.cookie ?? "",
+              "x-csrf-token": owner.csrf,
+            },
+          },
+          {} as never,
+        ),
+      );
+    }
+
+    const attemptId = "d63e4567-e89b-42d3-a456-426614174000";
+    const prepared = await attemptCall("POST", {
+      body: { orderId: ids.orderId, idempotencyKey: attemptId },
+    });
+    expect(prepared).toMatchObject({
+      status: 200,
+      body: {
+        attempt: {
+          id: attemptId,
+          orderId: ids.orderId,
+          providerId: "test-pay",
+          status: "prepared",
+          amountMinor: 25_000,
+          handoff: {
+            kind: "client",
+            data: { clientKey: "public-test-key", amountMinor: 25_000 },
+          },
+        },
+      },
+    });
+    expect(JSON.stringify(prepared)).not.toContain("attempt-private@example.com");
+    expect(
+      await attemptCall("POST", {
+        body: { orderId: ids.orderId, idempotencyKey: attemptId },
+      }),
+    ).toMatchObject({ status: 200, body: { attempt: { id: attemptId } } });
+    expect(preparePayment).toHaveBeenCalledOnce();
+    expect(await attemptCall("GET", { attemptId })).toMatchObject({
+      status: 200,
+      body: { attempt: { id: attemptId, status: "prepared" } },
+    });
+
+    const foreign = await call("GET");
+    expect(
+      await withCurrentSite("default", () =>
+        attemptHandler?.(
+          {
+            method: "GET",
+            path: "/payments/attempts",
+            params: { pluginId: "shop" },
+            query: { orderId: ids.orderId, attemptId },
+            body: undefined,
+            headers: { cookie: foreign.headers?.["Set-Cookie"] ?? "" },
+          },
+          {} as never,
+        ),
+      ),
+    ).toMatchObject({ status: 404 });
+
+    expect(
+      await attemptCall("PATCH", {
+        body: {
+          attemptId,
+          orderId: ids.orderId,
+          confirmation: {
+            paymentKey: "pay_transient",
+            orderId: ids.orderId,
+            amount: 25_000,
+          },
+        },
+      }),
+    ).toMatchObject({ status: 502, body: { error: "provider_unavailable" } });
+    expect(await orderCall("GET", { cookie: owner.cookie, orderId: ids.orderId })).toMatchObject({
+      status: 200,
+      body: {
+        order: { status: "pending-payment", inventoryReservationStatus: "held" },
+      },
+    });
+
+    const confirmed = await attemptCall("PATCH", {
+      body: {
+        attemptId,
+        orderId: ids.orderId,
+        confirmation: {
+          paymentKey: "pay_attempt_1",
+          orderId: ids.orderId,
+          amount: 25_000,
+        },
+      },
+    });
+    expect(confirmed).toMatchObject({
+      status: 200,
+      body: {
+        duplicate: false,
+        attempt: { status: "confirmed", paymentReference: "pay_attempt_1" },
+        order: { status: "paid", inventoryReservationStatus: "consumed" },
+      },
+    });
+    expect(confirmPayment).toHaveBeenCalledTimes(2);
+    expect(
+      await attemptCall("PATCH", {
+        body: {
+          attemptId,
+          orderId: ids.orderId,
+          confirmation: {
+            paymentKey: "pay_attempt_1",
+            orderId: ids.orderId,
+            amount: 25_000,
+          },
+        },
+      }),
+    ).toMatchObject({ status: 200, body: { duplicate: true } });
+    expect(confirmPayment).toHaveBeenCalledTimes(2);
+
+    const db = await getTestDb();
+    const [confirmedAttemptRow] = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(like(npPluginStorage.key, "payment-attempt:%"));
+    expect(confirmedAttemptRow).toBeDefined();
+    await db
+      .update(npPluginStorage)
+      .set({
+        value: {
+          ...(confirmedAttemptRow?.value as Record<string, unknown>),
+          status: "prepared",
+          confirmedAt: null,
+          paymentReference: null,
+          eventId: null,
+        },
+      })
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          eq(npPluginStorage.key, confirmedAttemptRow!.key),
+        ),
+      );
+    expect(
+      await attemptCall("PATCH", {
+        body: {
+          attemptId,
+          orderId: ids.orderId,
+          confirmation: {
+            paymentKey: "pay_attempt_1",
+            orderId: ids.orderId,
+            amount: 25_000,
+          },
+        },
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: { duplicate: true, attempt: { status: "confirmed" }, order: { status: "paid" } },
+    });
+    expect(confirmPayment).toHaveBeenCalledTimes(3);
+
+    expect(
+      await db
+        .select({ stockQuantity: shopProductsTable.stockQuantity })
+        .from(shopProductsTable)
+        .where(eq(shopProductsTable.id, productId)),
+    ).toEqual([{ stockQuantity: 7 }]);
+    const attemptRows = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(like(npPluginStorage.key, "payment-attempt:%"));
+    expect(attemptRows).toHaveLength(1);
+    expect(attemptRows[0]).toMatchObject({ value: { status: "confirmed" } });
+    expect(JSON.stringify(attemptRows)).not.toContain("attempt-private@example.com");
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.paymentAttemptHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+    await db
+      .update(npPluginStorage)
+      .set({
+        value: {
+          ...(attemptRows[0]?.value as Record<string, unknown>),
+          expiresAt: "not-a-timestamp",
+        },
+      })
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          eq(npPluginStorage.key, attemptRows[0]!.key),
+        ),
+      );
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.paymentAttemptHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "error" } });
   });
 
   it("cancels expired pending orders and purges old commercial snapshots in bounded passes", async () => {

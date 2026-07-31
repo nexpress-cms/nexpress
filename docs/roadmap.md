@@ -329,8 +329,17 @@ real product domain, not just blog/community. Ship as a plugin package
   adapter authenticates exact callback bytes and projects one canonical event.
   Shop enforces a five-minute replay bound, site/order lookup, exact
   amount/currency matching, idempotent PII-free receipts, and terminal
-  `paid` / `payment-failed` transitions. Provider-specific Stripe / Toss /
-  KG Inicis packages remain future work.
+  `paid` / `payment-failed` transitions.
+- **Provider-neutral payment initiation (shipped)** — the same adapter may
+  implement one all-or-none prepare/confirm/launcher contract. Shop owns
+  15-minute owner-scoped idempotent attempts, exact order snapshot matching,
+  bounded public handoffs, server confirmation, retry-safe ambiguous failure,
+  PII-free Admin/Doctor inventory, and the existing atomic payment-event
+  transition.
+- **Toss Payments v2 adapter (shipped)** —
+  `@nexpress/shop-payment-toss` owns the KRW browser SDK handoff, secret-key
+  confirmation with attempt UUID idempotency, and query-verified terminal
+  general-payment webhooks. Stripe and KG Inicis packages remain future work.
 - **Order admin (partially shipped)** — PII-free aggregate health and bounded
   recent commercial rows exist. Paid status workflows, refunds, fulfillment
   notes, and customer-service access remain future work.
@@ -354,11 +363,12 @@ Resolved foundation decision:
   exact rows. This avoids generic collection search/revision/transfer leakage
   and does not add a Shop table to Core.
 
-Open question for future transaction slices:
+Resolved transaction decision:
 
-- Payment adapter contract — single shared interface, or per-plugin
-  implementation? The latter is simpler; the former lets users swap
-  providers without changing other plugins.
+- Shop owns one provider-neutral adapter and attempt lifecycle. Provider
+  packages implement that contract without becoming standalone NexPress
+  plugins or owning order/inventory persistence, so a project swaps providers
+  in one build-time `createShop()` configuration.
 
 This is the strongest signal that the v1 plugin model "works for real
 verticals." If shop hits a wall the v1 plugin couldn't get over, that

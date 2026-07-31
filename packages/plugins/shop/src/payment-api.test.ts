@@ -4,6 +4,7 @@ import { createShopPaymentApiHandler } from "./payment-api.js";
 import {
   NP_SHOP_PAYMENT_EVENT_CONTRACT,
   NP_SHOP_PAYMENT_RECEIPT_CONTRACT,
+  NP_SHOP_PAYMENT_WEBHOOK_IGNORED_CONTRACT,
   npShopPaymentEventDigest,
 } from "./payment-contract.js";
 
@@ -99,6 +100,21 @@ describe("Shop payment webhook", () => {
       ).status,
     ).toBe(400);
     expect((await createShopPaymentApiHandler(runtime(() => null))(request())).status).toBe(401);
+    expect(applyPaymentEvent).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges authenticated non-terminal provider events without mutating orders", async () => {
+    const response = await createShopPaymentApiHandler(
+      runtime(() => ({
+        contract: NP_SHOP_PAYMENT_WEBHOOK_IGNORED_CONTRACT,
+        ignored: true,
+        reason: "non-terminal",
+      })),
+    )(request());
+    expect(response).toMatchObject({
+      status: 200,
+      body: { ignored: true, reason: "non-terminal" },
+    });
     expect(applyPaymentEvent).not.toHaveBeenCalled();
   });
 });
