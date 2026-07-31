@@ -25,7 +25,9 @@ family (`ck`/`sk` or `gck`/`gsk`). Only the client key reaches the browser.
 The current adapter opens the v2 standard card/easy-pay window for KRW orders.
 It compares the returned order and amount with the stored Shop attempt before
 calling `/v1/payments/confirm` using the secret key and the attempt UUID as the
-provider idempotency key.
+provider idempotency key. If server confirmation is interrupted, the launcher
+keeps the success return parameters and retries that exact attempt instead of
+starting another payment.
 
 Register the Shop raw webhook URL
 `/api/plugins/shop/payments/webhook` as a Toss

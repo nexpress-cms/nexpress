@@ -185,11 +185,45 @@ export function TossPaymentLauncher(props: NpShopPaymentLauncherProps) {
     if (!isRecord(response.attempt)) throw new Error("The payment attempt was missing.");
     const nextAttempt = response.attempt as unknown as NpShopPaymentAttempt;
     const nextData = requireTossData(nextAttempt);
-    await loadSdk(nextData.sdkUrl);
-    if (generation.current !== currentGeneration) return;
     setAttempt(nextAttempt);
     setData(nextData);
+    await loadSdk(nextData.sdkUrl);
+    if (generation.current !== currentGeneration) return;
     setState("ready");
+  }
+
+  async function confirmProviderReturn(): Promise<void> {
+    const query = new URL(window.location.href).searchParams;
+    const attemptId = query.get("attempt");
+    if (query.get("npPayment") !== "success" || !attemptId) {
+      throw new Error(props.failedLabel);
+    }
+    setState("confirming");
+    setError("");
+    const tokenResponse = await requestJson(
+      `${props.attemptApiPath}?orderId=${encodeURIComponent(props.orderId)}&attemptId=${encodeURIComponent(attemptId)}`,
+      "GET",
+    );
+    const csrfToken = typeof tokenResponse.csrfToken === "string" ? tokenResponse.csrfToken : null;
+    const paymentKey = query.get("paymentKey");
+    const returnedOrderId = query.get("orderId");
+    const amountText = query.get("amount");
+    const amount = amountText && /^\d+$/u.test(amountText) ? Number(amountText) : NaN;
+    await requestJson(props.attemptApiPath, "PATCH", {
+      csrfToken,
+      body: {
+        attemptId,
+        orderId: props.orderId,
+        confirmation: { paymentKey, orderId: returnedOrderId, amount },
+      },
+    });
+    clearProviderQuery();
+    window.location.reload();
+  }
+
+  function reportFailure(caught: unknown): void {
+    setError(caught instanceof Error ? caught.message : props.failedLabel);
+    setState("error");
   }
 
   useEffect(() => {
@@ -197,34 +231,7 @@ export function TossPaymentLauncher(props: NpShopPaymentLauncherProps) {
     const mode = query.get("npPayment");
     const attemptId = query.get("attempt");
     if (mode === "success" && attemptId) {
-      setState("confirming");
-      void requestJson(
-        `${props.attemptApiPath}?orderId=${encodeURIComponent(props.orderId)}&attemptId=${encodeURIComponent(attemptId)}`,
-        "GET",
-      )
-        .then(async (tokenResponse) => {
-          const csrfToken =
-            typeof tokenResponse.csrfToken === "string" ? tokenResponse.csrfToken : null;
-          const paymentKey = query.get("paymentKey");
-          const returnedOrderId = query.get("orderId");
-          const amountText = query.get("amount");
-          const amount = amountText && /^\d+$/u.test(amountText) ? Number(amountText) : NaN;
-          await requestJson(props.attemptApiPath, "PATCH", {
-            csrfToken,
-            body: {
-              attemptId,
-              orderId: props.orderId,
-              confirmation: { paymentKey, orderId: returnedOrderId, amount },
-            },
-          });
-          clearProviderQuery();
-          window.location.reload();
-        })
-        .catch((caught: unknown) => {
-          clearProviderQuery();
-          setError(caught instanceof Error ? caught.message : props.failedLabel);
-          setState("error");
-        });
+      void confirmProviderReturn().catch(reportFailure);
       return;
     }
     if (mode === "fail") {
@@ -233,10 +240,7 @@ export function TossPaymentLauncher(props: NpShopPaymentLauncherProps) {
       setState("error");
       return;
     }
-    void prepare().catch((caught: unknown) => {
-      setError(caught instanceof Error ? caught.message : props.failedLabel);
-      setState("error");
-    });
+    void prepare().catch(reportFailure);
   }, [props.attemptApiPath, props.failedLabel, props.orderId]);
 
   async function launch(): Promise<void> {
@@ -260,6 +264,26 @@ export function TossPaymentLauncher(props: NpShopPaymentLauncherProps) {
     }
   }
 
+  async function retry(): Promise<void> {
+    const query = new URL(window.location.href).searchParams;
+    try {
+      if (query.get("npPayment") === "success" && query.get("attempt")) {
+        await confirmProviderReturn();
+        return;
+      }
+      if (attempt && data) {
+        setState("preparing");
+        setError("");
+        await loadSdk(data.sdkUrl);
+        setState("ready");
+        return;
+      }
+      await prepare();
+    } catch (caught) {
+      reportFailure(caught);
+    }
+  }
+
   return (
     <div className="np-shop-toss-payment" data-np-shop-payment-provider="toss-payments">
       {error ? <p role="alert">{error}</p> : null}
@@ -271,7 +295,7 @@ export function TossPaymentLauncher(props: NpShopPaymentLauncherProps) {
         </button>
       ) : null}
       {state === "error" ? (
-        <button type="button" onClick={() => void prepare()}>
+        <button type="button" onClick={() => void retry()}>
           {props.retryLabel}
         </button>
       ) : null}

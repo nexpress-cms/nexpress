@@ -447,6 +447,9 @@ with the commercial order. `PATCH` calls the adapter on the server and feeds its
 canonical success event into the same serialized receipt, order, and inventory
 transition as a webhook. Provider timeouts and ambiguous failures leave the
 order pending with its inventory reservation held so the visitor can retry.
+After a provider success redirect, the launcher retains the exact return
+parameters until server confirmation succeeds and retries that same attempt;
+it does not prepare a second payment after an ambiguous confirmation failure.
 
 The bundled Korean provider implementation uses Toss Payments v2:
 
