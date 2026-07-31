@@ -315,14 +315,20 @@ real product domain, not just blog/community. Ship as a plugin package
   one idempotent `pending-payment` commercial snapshot plus a separate private
   sidecar. No paid state exists. Cancellation or the 24-hour pending deadline
   deletes PII; the commercial record is purged after 365 days.
+- **Inventory reservation (shipped)** — pending-order creation locks product
+  ids canonically, subtracts active holds from current tracked product/variant
+  stock, and atomically writes one exact PII-free reservation per tracked
+  line. Cancellation and timeout release the hold; Admin exposes bounded
+  aggregate, orphan, malformed, expiry, and recent-row diagnostics.
 - **Payment adapters (future)** — explicit Stripe / Toss / KG Inicis adapter
   and signed idempotent webhook contracts built on the shipped durable order
   boundary.
 - **Order admin (partially shipped)** — PII-free aggregate health and bounded
   recent commercial rows exist. Paid status workflows, refunds, fulfillment
   notes, and customer-service access remain future work.
-- **Inventory (partially shipped)** — catalog stock and low-stock projection
-  exist; reservation and transactional decrement remain future work.
+- **Inventory (partially shipped)** — catalog stock/low-stock projection and
+  transaction-safe pending holds exist; paid-order on-hand decrement and
+  compensation remain future work.
 - **Public surfaces (shipped)** — product detail, listing, cart,
   checkout-intent, private order-draft, order-history, and order-detail pages
   use independent plugin skins and stable theme hooks.

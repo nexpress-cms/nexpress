@@ -14,6 +14,10 @@ import {
 } from "./checkout-service.js";
 import { defineShopCategoriesCollection, defineShopProductsCollection } from "./collections.js";
 import { createShopHomeBlocks, shopHomePatterns } from "./home-blocks.js";
+import {
+  npCountShopInventoryReservations,
+  npListRecentShopInventoryReservations,
+} from "./inventory-reservation-service.js";
 import { createShopOrderDraftApiHandler } from "./order-draft-api.js";
 import { npCleanupExpiredShopOrderDrafts, npCountShopOrderDrafts } from "./order-draft-service.js";
 import { createShopOrderApiHandler } from "./order-api.js";
@@ -209,6 +213,9 @@ const messages = {
     "shop.orderCancelled": "Cancelled",
     "shop.orderPrivateRetained": "Private delivery details are retained until this order expires.",
     "shop.orderPrivateRedacted": "Private delivery details were permanently deleted.",
+    "shop.orderInventoryHeld": "Tracked inventory is reserved until this order expires.",
+    "shop.orderInventoryReleased": "The inventory reservation was released.",
+    "shop.orderInventoryNotRequired": "This order does not use tracked inventory.",
     "shop.orderExpires": "Pending order expires",
     "shop.orderCreated": "Created",
     "shop.orderCancel": "Cancel order and delete private details",
@@ -216,7 +223,7 @@ const messages = {
     "shop.orderEmpty": "No orders have been created for this browser identity.",
     "shop.orderReference": "Order reference",
     "shop.orderPaymentUnavailable":
-      "This durable order reference is pending only. Payment, inventory reservation, tax, shipping rates, fulfillment, and refunds are not connected.",
+      "This durable order reference is pending only. Tracked inventory is reserved, but payment, tax, shipping rates, fulfillment, and refunds are not connected.",
     "shop.orderFailed": "The order could not be updated.",
     "shop.previous": "Previous",
     "shop.next": "Next",
@@ -320,6 +327,9 @@ const messages = {
     "shop.orderCancelled": "취소됨",
     "shop.orderPrivateRetained": "배송 개인정보는 이 주문의 대기 시간이 끝날 때까지 보관됩니다.",
     "shop.orderPrivateRedacted": "배송 개인정보가 영구 삭제되었습니다.",
+    "shop.orderInventoryHeld": "재고 추적 상품은 이 주문이 만료될 때까지 예약됩니다.",
+    "shop.orderInventoryReleased": "재고 예약이 해제되었습니다.",
+    "shop.orderInventoryNotRequired": "이 주문에는 재고 추적 상품이 없습니다.",
     "shop.orderExpires": "결제 대기 만료",
     "shop.orderCreated": "생성",
     "shop.orderCancel": "주문 취소 및 개인정보 삭제",
@@ -327,7 +337,7 @@ const messages = {
     "shop.orderEmpty": "이 브라우저 식별자로 만든 주문이 없습니다.",
     "shop.orderReference": "주문 번호",
     "shop.orderPaymentUnavailable":
-      "이 영속 주문 번호는 결제 대기 상태일 뿐입니다. 결제, 재고 예약, 세금·배송비, 배송 처리 및 환불은 연결되지 않았습니다.",
+      "이 영속 주문 번호는 결제 대기 상태일 뿐입니다. 재고 추적 상품은 예약되지만 결제, 세금·배송비, 배송 처리 및 환불은 연결되지 않았습니다.",
     "shop.orderFailed": "주문을 갱신하지 못했습니다.",
     "shop.previous": "이전",
     "shop.next": "다음",
@@ -427,6 +437,9 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-orders",
           "widget:shop-order-health",
           "table:shop-recent-orders",
+          "dashboard:shop-inventory-reservations",
+          "widget:shop-inventory-reservation-health",
+          "table:shop-inventory-reservations",
           "action:shop-order-maintenance",
         ],
         apiRoutes: ["/cart", "/checkout", "/order-drafts", "/orders"],
@@ -434,7 +447,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, and durable pending-order foundation. Payment success, inventory reservation, tax, shipping rates, fulfillment, and refunds are deliberately not implied.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, durable pending orders, and transaction-safe inventory reservations. Payment success, stock decrement, tax, shipping rates, fulfillment, and refunds are deliberately not implied.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -537,6 +550,14 @@ export function createShop(options: NpShopOptions = {}) {
             "Durable commercial snapshots only; customer and shipping values are excluded.",
           priority: 27,
         },
+        {
+          id: "shop-inventory-reservations-total",
+          label: "Active inventory reservations",
+          kind: "metric",
+          actionId: "countActiveInventoryReservations",
+          description: "PII-free product and variant holds owned by pending orders for this site.",
+          priority: 28,
+        },
       ],
       widgets: [
         {
@@ -562,6 +583,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Order storage",
           kind: "status",
           actionId: "orderHealth",
+        },
+        {
+          id: "shop-inventory-reservation-health",
+          label: "Inventory reservation storage",
+          kind: "status",
+          actionId: "inventoryReservationHealth",
         },
       ],
       actions: [
@@ -602,10 +629,24 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "total", label: "Total" },
             { name: "units", label: "Units" },
             { name: "privateData", label: "Private data" },
+            { name: "inventory", label: "Inventory" },
             { name: "createdAt", label: "Created" },
           ],
           rowsActionId: "recentOrders",
           emptyMessage: "No durable Shop orders exist for this site.",
+        },
+        {
+          id: "shop-inventory-reservations",
+          label: "Active inventory reservations (PII withheld)",
+          columns: [
+            { name: "orderId", label: "Order" },
+            { name: "productId", label: "Product" },
+            { name: "variantSku", label: "Variant SKU" },
+            { name: "quantity", label: "Quantity" },
+            { name: "expiresAt", label: "Expires" },
+          ],
+          rowsActionId: "recentInventoryReservations",
+          emptyMessage: "No active tracked-inventory reservations exist for this site.",
         },
       ],
     },
@@ -848,6 +889,61 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      countActiveInventoryReservations: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npCountShopInventoryReservations();
+            return {
+              ok: true,
+              data: {
+                value: counts.active,
+                delta: `${counts.expired.toString()} expired`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      inventoryReservationHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopInventoryReservations();
+            return counts.invalidSample > 0 || counts.orphanSample > 0 || counts.missingSample > 0
+              ? npAdminStatus(
+                  "error",
+                  `${counts.invalidSample.toString()} malformed, ${counts.orphanSample.toString()} orphan, and ${counts.missingSample.toString()} missing reservation row(s) in the newest bounded samples; owner and private values are withheld.`,
+                )
+              : counts.expired > 0
+                ? npAdminStatus(
+                    "warn",
+                    `${counts.active.toString()} active and ${counts.expired.toString()} expired reservation(s) awaiting maintenance.`,
+                  )
+                : npAdminStatus(
+                    "ok",
+                    `${counts.active.toString()} active tracked-inventory reservation(s).`,
+                  );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Inventory reservation health check failed.",
+            );
+          }
+        },
+      },
+      recentInventoryReservations: {
+        kind: "table",
+        handler: async () => {
+          try {
+            const result = await npListRecentShopInventoryReservations();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
       recentOrders: {
         kind: "table",
         handler: async () => {
@@ -866,7 +962,7 @@ export function createShop(options: NpShopOptions = {}) {
             const result = await npMaintainShopOrders();
             return {
               ok: true,
-              data: `Cancelled ${result.cancelled.toString()} expired pending order(s) and purged ${result.purged.toString()} expired commercial snapshot(s).`,
+              data: `Cancelled ${result.cancelled.toString()} expired pending order(s), purged ${result.purged.toString()} expired commercial snapshot(s), and removed ${result.reservationsCleaned.toString()} leftover expired reservation row(s).`,
             };
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
@@ -992,7 +1088,7 @@ export function createShop(options: NpShopOptions = {}) {
         id: "maintain-orders",
         cron: "31 * * * *",
         description:
-          "Cancel expired pending orders, redact their private sidecars, and purge old commercial snapshots in bounded batches.",
+          "Cancel expired pending orders, release inventory, redact private sidecars, remove leftover expired reservations, and purge old commercial snapshots in bounded batches.",
         handler: async () => {
           await npMaintainShopOrders();
         },
@@ -1026,11 +1122,21 @@ export {
 export {
   npShopCheckoutIntentStatuses,
   npShopCurrencies,
+  npShopInventoryReservationStatuses,
   npShopOrderCancellationReasons,
   npShopOrderDraftStatuses,
   npShopOrderPrivateDataStatuses,
   npShopOrderStatuses,
 } from "./types.js";
+export {
+  NP_SHOP_INVENTORY_RESERVATION_CONTRACT,
+  npAnalyzeShopInventoryReservation,
+  npRequireShopInventoryReservation,
+  npShopInventoryReservationLimits,
+  npShopInventoryReservationStorageKey,
+  npShopInventoryStockKey,
+} from "./inventory-reservation-contract.js";
+export type { NpShopInventoryReservation } from "./inventory-reservation-contract.js";
 export {
   NP_SHOP_CART_QUOTE_CONTRACT,
   NP_SHOP_CART_STORAGE_CONTRACT,
@@ -1127,6 +1233,7 @@ export type {
   NpShopCollectionSlugs,
   NpShopCurrency,
   NpShopInventoryState,
+  NpShopInventoryReservationStatus,
   NpShopMessages,
   NpShopProduct,
   NpShopProductSkinProps,

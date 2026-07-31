@@ -154,6 +154,9 @@ export interface NpShopMessages {
   orderCancelled: string;
   orderPrivateRetained: string;
   orderPrivateRedacted: string;
+  orderInventoryHeld: string;
+  orderInventoryReleased: string;
+  orderInventoryNotRequired: string;
   orderExpires: string;
   orderCreated: string;
   orderCancel: string;
@@ -309,6 +312,9 @@ export interface NpShopCartClientMessages {
   orderCancelled: string;
   orderPrivateRetained: string;
   orderPrivateRedacted: string;
+  orderInventoryHeld: string;
+  orderInventoryReleased: string;
+  orderInventoryNotRequired: string;
   orderExpires: string;
   orderCreated: string;
   orderCancel: string;
@@ -428,6 +434,10 @@ export const npShopOrderCancellationReasons = ["customer", "payment-timeout"] as
 
 export type NpShopOrderCancellationReason = (typeof npShopOrderCancellationReasons)[number];
 
+export const npShopInventoryReservationStatuses = ["held", "released", "not-required"] as const;
+
+export type NpShopInventoryReservationStatus = (typeof npShopInventoryReservationStatuses)[number];
+
 export interface NpShopOrder {
   contract: "np.shop-order.v1";
   id: string;
@@ -442,6 +452,8 @@ export interface NpShopOrder {
   totalUnits: number;
   lines: NpShopCheckoutIntentLine[];
   privateDataStatus: NpShopOrderPrivateDataStatus;
+  inventoryReservationStatus: NpShopInventoryReservationStatus;
+  inventoryReservationLineKeys: string[];
   customer: NpShopOrderDraftCustomer | null;
   shipping: NpShopOrderDraftShipping | null;
   createdAt: string;

@@ -15,6 +15,8 @@ import {
   type NpShopCartStorageValue,
   type NpShopCartStoredLine,
 } from "./cart-contract.js";
+import { npGetShopReservedQuantities } from "./inventory-reservation-service.js";
+import { npShopInventoryStockKey } from "./inventory-reservation-contract.js";
 import { normalizeShopProduct, type NpShopRuntime, type ShopProductDocument } from "./runtime.js";
 import type {
   NpShopCartIssueCode,
@@ -175,6 +177,7 @@ async function findPublishedProducts(
 function resolveCurrentLine(
   stored: NpShopCartStoredLine,
   product: NpShopProduct | undefined,
+  reservedQuantities: ReadonlyMap<string, number>,
 ): NpShopCartLine {
   const issues: NpShopCartIssueCode[] = [];
   let price = stored.unitPriceMinor;
@@ -201,13 +204,27 @@ function resolveCurrentLine(
         issues.push("variant-unavailable");
       } else {
         price = variant.priceMinor ?? product.priceMinor;
-        stock = product.inventoryState === "untracked" ? null : variant.stockQuantity;
+        stock =
+          product.inventoryState === "untracked"
+            ? null
+            : Math.max(
+                0,
+                variant.stockQuantity -
+                  (reservedQuantities.get(npShopInventoryStockKey(product.id, variant.sku)) ?? 0),
+              );
         variantName = variant.name;
         available = stock === null || stock >= stored.quantity;
       }
     } else {
       price = product.priceMinor;
-      stock = product.inventoryState === "untracked" ? null : product.stockQuantity;
+      stock =
+        product.inventoryState === "untracked"
+          ? null
+          : Math.max(
+              0,
+              product.stockQuantity -
+                (reservedQuantities.get(npShopInventoryStockKey(product.id, null)) ?? 0),
+            );
       available = stock === null || stock >= stored.quantity;
     }
     if (stock !== null && stock < stored.quantity) issues.push("insufficient-stock");
@@ -242,7 +259,10 @@ export async function npQuoteShopCart(
     runtime,
     cart.lines.map((line) => line.productId),
   );
-  const lines = cart.lines.map((line) => resolveCurrentLine(line, products.get(line.productId)));
+  const reservedQuantities = await npGetShopReservedQuantities(siteId, [...products.keys()]);
+  const lines = cart.lines.map((line) =>
+    resolveCurrentLine(line, products.get(line.productId), reservedQuantities),
+  );
   const currencies = [...new Set(lines.map((line) => line.currency))];
   if (currencies.length > 1) {
     for (const line of lines) {

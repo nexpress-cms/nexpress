@@ -2,7 +2,13 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-30 (Shop durable pending orders now split exact
+**Last refreshed:** 2026-07-30 (Shop pending orders now hold tracked
+product/variant inventory through one PII-free, product-locked,
+transaction-safe reservation contract with cart quote, cancellation/expiry,
+Admin, Doctor, scaffold, and integration-test coverage; payment and on-hand
+decrement remain separate.)
+
+**Earlier:** 2026-07-30 (Shop durable pending orders now split exact
 owner/site-scoped commercial, private-sidecar, and maintenance contracts across
 idempotent draft conversion, API, history/detail skins, Storefront hooks,
 PII-free Admin/Doctor diagnostics, revision-safe cancellation, 24-hour

@@ -1112,6 +1112,13 @@ export function ShopOrder({
                   : messages.orderPrivateRedacted}
               </p>
               <p>
+                {order.inventoryReservationStatus === "held"
+                  ? messages.orderInventoryHeld
+                  : order.inventoryReservationStatus === "released"
+                    ? messages.orderInventoryReleased
+                    : messages.orderInventoryNotRequired}
+              </p>
+              <p>
                 {messages.orderCreated}{" "}
                 {new Intl.DateTimeFormat(messages.locale, {
                   dateStyle: "medium",
