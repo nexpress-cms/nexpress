@@ -2,7 +2,14 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-07-31 (Shop payment adapters may now add one all-or-none
+**Last refreshed:** 2026-08-01 (Shop paid orders now atomically create an
+independent revision-safe awaiting/processing/shipped fulfillment contract;
+explicit staff-only audited PII reads, shipment/30-day deletion, owner-safe
+status, generic Admin table row actions, Doctor diagnostics, and scaffolds
+share the same bounded contract. Refunds, returns, carrier booking, tax, and
+shipping rates remain external.)
+
+**Earlier:** 2026-07-31 (Shop payment adapters may now add one all-or-none
 prepare/confirm/launcher contract over 15-minute owner-scoped attempts, exact
 stored-order matching, bounded public handoffs, server confirmation, existing
 atomic receipts/inventory transitions, and PII-free Admin/Doctor diagnostics;

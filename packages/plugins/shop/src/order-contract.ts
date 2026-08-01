@@ -15,11 +15,13 @@ import {
   type NpShopOrderPrivateDataStatus,
   type NpShopOrderStatus,
 } from "./types.js";
+import { npAnalyzeShopFulfillment, npShopFulfillmentLimits } from "./fulfillment-contract.js";
 
 export const NP_SHOP_ORDER_CONTRACT = "np.shop-order.v1" as const;
 export const NP_SHOP_ORDER_LIST_CONTRACT = "np.shop-order-list.v1" as const;
 export const NP_SHOP_ORDER_STORAGE_CONTRACT = "np.shop-order-storage.v1" as const;
 export const NP_SHOP_ORDER_PRIVATE_CONTRACT = "np.shop-order-private.v1" as const;
+export const NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT = "np.shop-order-private.v2" as const;
 
 export const npShopOrderLimits = {
   pendingTtlSeconds: 60 * 60 * 24,
@@ -79,6 +81,19 @@ export interface NpShopStoredOrderPrivate {
   createdAt: string;
   expiresAt: string;
 }
+
+export interface NpShopStoredOrderFulfillmentPrivate {
+  contract: typeof NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT;
+  orderId: string;
+  customer: NpShopOrderDraftCustomer;
+  shipping: NpShopOrderDraftShipping;
+  createdAt: string;
+  retainedAt: string;
+  expiresAt: string;
+}
+
+export type NpShopStoredOrderPrivateData =
+  NpShopStoredOrderPrivate | NpShopStoredOrderFulfillmentPrivate;
 
 export class NpShopOrderContractError extends Error {
   readonly issues: string[];
@@ -555,16 +570,28 @@ const privateKeys = ["contract", "orderId", "customer", "shipping", "createdAt",
 export function npAnalyzeStoredShopOrderPrivate(value: unknown): string[] {
   const issues: string[] = [];
   if (!isRecord(value)) return ["private order data must be a plain object."];
-  exactKeys(value, privateKeys, "private", issues);
-  if (value.contract !== NP_SHOP_ORDER_PRIVATE_CONTRACT) {
-    issues.push(`private.contract must equal "${NP_SHOP_ORDER_PRIVATE_CONTRACT}".`);
+  const fulfillment = value.contract === NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT;
+  exactKeys(
+    value,
+    fulfillment ? [...privateKeys.slice(0, -1), "retainedAt", "expiresAt"] : privateKeys,
+    "private",
+    issues,
+  );
+  if (!fulfillment && value.contract !== NP_SHOP_ORDER_PRIVATE_CONTRACT) {
+    issues.push(
+      `private.contract must equal "${NP_SHOP_ORDER_PRIVATE_CONTRACT}" or "${NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT}".`,
+    );
   }
   if (!isCanonicalUuid(value.orderId)) issues.push("private.orderId is invalid.");
   analyzeCustomer(value.customer, "private.customer", issues);
   analyzeShipping(value.shipping, "private.shipping", issues);
   if (!isCanonicalIso(value.createdAt)) issues.push("private.createdAt is invalid.");
+  if (fulfillment && !isCanonicalIso(value.retainedAt)) {
+    issues.push("private.retainedAt is invalid.");
+  }
   if (!isCanonicalIso(value.expiresAt)) issues.push("private.expiresAt is invalid.");
   if (
+    !fulfillment &&
     isCanonicalIso(value.createdAt) &&
     isCanonicalIso(value.expiresAt) &&
     new Date(value.expiresAt).getTime() - new Date(value.createdAt).getTime() !==
@@ -572,15 +599,32 @@ export function npAnalyzeStoredShopOrderPrivate(value: unknown): string[] {
   ) {
     issues.push("private.expiresAt must equal the fixed pending lifetime.");
   }
+  if (
+    fulfillment &&
+    isCanonicalIso(value.createdAt) &&
+    isCanonicalIso(value.retainedAt) &&
+    new Date(value.retainedAt) < new Date(value.createdAt)
+  ) {
+    issues.push("private.retainedAt cannot precede private.createdAt.");
+  }
+  if (
+    fulfillment &&
+    isCanonicalIso(value.retainedAt) &&
+    isCanonicalIso(value.expiresAt) &&
+    new Date(value.expiresAt).getTime() - new Date(value.retainedAt).getTime() !==
+      npShopFulfillmentLimits.privateRetentionSeconds * 1_000
+  ) {
+    issues.push("private.expiresAt must equal the fixed fulfillment retention lifetime.");
+  }
   return issues;
 }
 
-export function npRequireStoredShopOrderPrivate(value: unknown): NpShopStoredOrderPrivate {
+export function npRequireStoredShopOrderPrivate(value: unknown): NpShopStoredOrderPrivateData {
   const issues = npAnalyzeStoredShopOrderPrivate(value);
   if (issues.length > 0) {
     throw new NpShopOrderContractError("Invalid stored Shop order private data", issues);
   }
-  return value as NpShopStoredOrderPrivate;
+  return value as NpShopStoredOrderPrivateData;
 }
 
 const publicOrderKeys = [
@@ -616,7 +660,14 @@ const publicOrderKeys = [
 export function npAnalyzeShopOrder(value: unknown): string[] {
   const issues: string[] = [];
   if (!isRecord(value)) return ["order must be a plain object."];
-  exactKeys(value, publicOrderKeys, "order", issues);
+  for (const key of Object.keys(value)) {
+    if (![...publicOrderKeys, "fulfillment"].includes(key)) {
+      issues.push(`order.${key} is not supported.`);
+    }
+  }
+  for (const key of publicOrderKeys) {
+    if (!Object.hasOwn(value, key)) issues.push(`order.${key} is required.`);
+  }
   const storedCandidate: Record<string, unknown> = {
     ...value,
     contract: NP_SHOP_ORDER_STORAGE_CONTRACT,
@@ -624,6 +675,7 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
   };
   delete storedCandidate.customer;
   delete storedCandidate.shipping;
+  delete storedCandidate.fulfillment;
   issues.push(...npAnalyzeStoredShopOrder(storedCandidate));
   if (value.contract !== NP_SHOP_ORDER_CONTRACT) {
     issues.push(`order.contract must equal "${NP_SHOP_ORDER_CONTRACT}".`);
@@ -633,6 +685,9 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
     analyzeShipping(value.shipping, "order.shipping", issues);
   } else if (value.customer !== null || value.shipping !== null) {
     issues.push("redacted orders cannot expose customer or shipping data.");
+  }
+  if (Object.hasOwn(value, "fulfillment")) {
+    issues.push(...npAnalyzeShopFulfillment(value.fulfillment).map((issue) => `order.${issue}`));
   }
   return issues.filter(
     (issue) =>

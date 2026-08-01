@@ -1,4 +1,4 @@
-import { npPluginStorage, withCurrentSite } from "@nexpress/core";
+import { npAuditEvents, npPluginStorage, withCurrentSite } from "@nexpress/core";
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import {
   createShop,
@@ -23,6 +23,7 @@ import {
   ensureMigrated,
   getTestDb,
   registerTestCollections,
+  seedUser,
   skipIfNoTestDb,
   truncateAll,
 } from "./harness.js";
@@ -1279,7 +1280,162 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           status: "paid",
           inventoryReservationStatus: "consumed",
           paymentProvider: "test-pay",
+          fulfillment: {
+            contract: "np.shop-fulfillment.v1",
+            status: "awaiting",
+            revision: 1,
+            privateDataStatus: "retained",
+          },
         },
+      },
+    });
+    const paidStorage = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          like(npPluginStorage.key, `%${successIds.orderId}`),
+        ),
+      );
+    const paidPrivate = paidStorage.find((row) => row.key.startsWith("order-private:"))?.value as
+      { contract?: string; retainedAt?: string; expiresAt?: string } | undefined;
+    const fulfillment = paidStorage.find((row) => row.key.startsWith("fulfillment:"))?.value as
+      { contract?: string; createdAt?: string; privateExpiresAt?: string } | undefined;
+    expect(paidPrivate).toMatchObject({ contract: "np.shop-order-private.v2" });
+    expect(fulfillment).toMatchObject({ contract: "np.shop-fulfillment-storage.v1" });
+    expect(paidPrivate?.retainedAt).toBe(fulfillment?.createdAt);
+    expect(paidPrivate?.expiresAt).toBe(fulfillment?.privateExpiresAt);
+    expect(
+      new Date(paidPrivate?.expiresAt ?? 0).getTime() -
+        new Date(paidPrivate?.retainedAt ?? 0).getTime(),
+    ).toBe(30 * 24 * 60 * 60 * 1_000);
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.orderHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.fulfillmentHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+    const staff = await seedUser({ email: "fulfillment@example.com" });
+    const actionContext = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    const row = { id: successIds.orderId, fulfillmentRevision: 1 };
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.readFulfillmentPrivate?.handler({ row, values: {} }, {
+          actionInvocation: { kind: "plugin", pluginId: "test" },
+        } as never),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("direct staff") });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.readFulfillmentPrivate?.handler({ row, values: {} }, {
+          actionInvocation: {
+            kind: "staff",
+            userId: "a33e4567-e89b-42d3-a456-426614174000",
+          },
+        } as never),
+      ),
+    ).toMatchObject({ ok: false });
+    const privateResult = await withCurrentSite("default", () =>
+      paymentShop.plugin.actions?.readFulfillmentPrivate?.handler(
+        { row, values: {} },
+        actionContext,
+      ),
+    );
+    expect(privateResult).toMatchObject({
+      ok: true,
+      data: {
+        customer: { email: "paid-private@example.com" },
+        shipping: { postalCode: "04524" },
+      },
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.processFulfillment?.handler(
+          { row, values: { operatorNote: "Packed without private values" } },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("revision 2") });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.shipFulfillment?.handler(
+          {
+            row,
+            values: { carrier: "Parcel Co", trackingNumber: "TRACK-123", operatorNote: "" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("changed") });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.shipFulfillment?.handler(
+          {
+            row: { ...row, fulfillmentRevision: 2 },
+            values: { carrier: "Parcel Co", trackingNumber: "TRACK-123", operatorNote: "" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("revision 3") });
+    expect(await orderCall("GET", { ...successOwner, orderId: successIds.orderId })).toMatchObject({
+      body: {
+        order: {
+          status: "paid",
+          revision: 3,
+          privateDataStatus: "redacted",
+          customer: null,
+          shipping: null,
+          fulfillment: {
+            status: "shipped",
+            revision: 3,
+            privateDataStatus: "redacted",
+            carrier: "Parcel Co",
+            trackingNumber: "TRACK-123",
+          },
+        },
+      },
+    });
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(like(npPluginStorage.key, `order-private:%:${successIds.orderId}`)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select({ action: npAuditEvents.action, targetId: npAuditEvents.targetId })
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.targetId, successIds.orderId)),
+    ).toEqual(
+      expect.arrayContaining([
+        { action: "shop.fulfillment.private.read", targetId: successIds.orderId },
+        { action: "shop.fulfillment.process", targetId: successIds.orderId },
+        { action: "shop.fulfillment.ship", targetId: successIds.orderId },
+      ]),
+    );
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.recentFulfillments?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: {
+        rows: [
+          {
+            id: successIds.orderId,
+            status: "shipped",
+            operatorNote: "Packed without private values",
+          },
+        ],
       },
     });
     expect(

@@ -33,6 +33,12 @@ These notes come from building two bundled example plugins in May 2026:
   while plugin doctor reports missing, mismatched, duplicate, untyped, and
   admin-unreferenced actions. The setup-time `ctx.actions.register*` API
   remains compatible for existing and dynamic plugins.
+- Admin tables may now declare typed `rowActions`. Each action explicitly
+  selects row fields, optionally collects a small host-rendered form, and must
+  resolve to a general action handler. Static validation, runtime doctor, and
+  the Admin scaffold inspect the same reference. Direct staff and inter-plugin
+  calls are distinguishable through `ctx.actionInvocation`, so sensitive
+  actions do not trust actor data supplied by their payload.
 - Render contributions now use one typed `render:beforePage` hook. Its
   result separates `head` and `bodyEnd`; `definePlugin()` rejects unknown
   hook names and malformed descriptors, and the host validates returned
@@ -100,8 +106,8 @@ These notes come from building two bundled example plugins in May 2026:
   removed. Collection field types remain codegen-owned; plugin admin settings
   use `configSchema` rather than string component indirection.
 - CLI plugin scaffold tests cover package-shape consistency, the canonical
-  hook inventory, and typed Admin status helpers instead of hand-built
-  payloads.
+  hook inventory, typed Admin helpers, and revision-safe table row actions
+  instead of hand-built payloads.
 
 That keeps sample plugin manifests focused on the capabilities that cannot be
 inferred from syntax, such as `storage:kv` and `network:fetch`.

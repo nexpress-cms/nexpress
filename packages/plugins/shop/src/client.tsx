@@ -970,6 +970,21 @@ function orderStatusMessage(order: NpShopOrder, messages: NpShopCartClientMessag
   }
 }
 
+function fulfillmentStatusMessage(
+  order: NpShopOrder,
+  messages: NpShopCartClientMessages,
+): string | null {
+  if (!order.fulfillment) return null;
+  switch (order.fulfillment.status) {
+    case "awaiting":
+      return messages.orderFulfillmentAwaiting;
+    case "processing":
+      return messages.orderFulfillmentProcessing;
+    case "shipped":
+      return messages.orderFulfillmentShipped;
+  }
+}
+
 export function ShopOrders({
   apiPath,
   basePath,
@@ -1011,6 +1026,11 @@ export function ShopOrders({
             <code>{order.id}</code>
           </div>
           <strong>{orderStatusMessage(order, messages)}</strong>
+          {fulfillmentStatusMessage(order, messages) ? (
+            <span data-np-shop-fulfillment-status={order.fulfillment?.status}>
+              {fulfillmentStatusMessage(order, messages)}
+            </span>
+          ) : null}
           <span>{formatMoney(messages.locale, order.subtotalMinor, order.currency)}</span>
           <time dateTime={order.createdAt}>
             {new Intl.DateTimeFormat(messages.locale, {
@@ -1121,6 +1141,19 @@ export function ShopOrder({
                     ? messages.orderPaymentFailedDetail
                     : messages.orderPaymentUnavailable}
               </p>
+              {order.fulfillment ? (
+                <div data-np-shop-fulfillment-status={order.fulfillment.status}>
+                  <p>{fulfillmentStatusMessage(order, messages)}</p>
+                  {order.fulfillment.status === "shipped" &&
+                  order.fulfillment.carrier &&
+                  order.fulfillment.trackingNumber ? (
+                    <p>
+                      {messages.orderFulfillmentTracking}: {order.fulfillment.carrier}{" "}
+                      {order.fulfillment.trackingNumber}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               <p>
                 {order.privateDataStatus === "retained"
                   ? messages.orderPrivateRetained

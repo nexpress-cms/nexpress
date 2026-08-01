@@ -63,9 +63,11 @@ Restart the server — the hook fires after every document create.
 - **`hooks`** — typed `content:*`, `auth:*`, `media:*`, plus the single
   `render:beforePage` contribution hook
 - **`actions`** — definition-level typed `action | metric | status | table`
-  handlers dispatched by Admin widgets, buttons, tables, or
+  handlers dispatched by Admin widgets, buttons, tables, explicit table row
+  actions, or
   `/api/plugins/<id>/actions/<name>`; setup-time `ctx.actions.register*`
-  remains available for compatibility
+  remains available for compatibility. Sensitive handlers can distinguish
+  direct staff from inter-plugin calls through `ctx.actionInvocation`.
 - **`routes`** — full route handlers at `/api/plugins/<id>/<...path>`
   (rate-limited at the framework level — see
   [AGENTS.md](https://github.com/nexpress-cms/nexpress/blob/main/AGENTS.md))

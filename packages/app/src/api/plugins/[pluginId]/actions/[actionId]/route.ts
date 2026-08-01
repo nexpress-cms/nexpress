@@ -44,8 +44,13 @@ export async function POST(
       }
     }
 
-    const result = await dispatchPluginAction(pluginId, actionId, payload);
-    return npSuccessResponse(result);
+    const result = await dispatchPluginAction(pluginId, actionId, payload, {
+      kind: "staff",
+      userId: user.id,
+    });
+    return npSuccessResponse(result, {
+      headers: { "Cache-Control": "private, no-store" },
+    });
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

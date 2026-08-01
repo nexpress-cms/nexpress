@@ -302,7 +302,10 @@ yet. A verified `payment.succeeded` event moves only a live pending order to
 product/variant quantity in the same transaction. A verified `payment.failed`
 event moves it to terminal `payment-failed`, releases its holds, and deletes
 its private sidecar. Owner or timeout cancellation remains `cancelled`.
-`fulfilled`, `refunded`, and reversed-payment states are deliberately absent.
+Payment status remains independent from fulfillment. A successful payment
+atomically creates `np.shop-fulfillment-storage.v1` in `awaiting` state; staff
+can revision-safely move it to `processing` and then `shipped` without changing
+the terminal `paid` meaning. Refund and reversed-payment states remain absent.
 
 Storage separates commercial and private values:
 
@@ -310,7 +313,11 @@ Storage separates commercial and private values:
   commercial snapshot, status, revision, timestamps, and private-data state.
   It contains no name, email, phone, or address.
 - `np.shop-order-private.v1` is a separate same-owner sidecar containing the
-  customer and shipping pair copied from the draft.
+  customer and shipping pair copied from the draft while payment is pending.
+- verified payment promotes that sidecar to `np.shop-order-private.v2`, with a
+  fixed 30-day maximum fulfillment retention measured from payment resolution.
+  The PII-free fulfillment row stores status, revision, bounded carrier,
+  tracking, PII-free operator note, and timestamps.
 - a global PII-free order lookup lets callbacks locate the otherwise
   owner-scoped commercial row; a maintenance marker indexes the next private
   deletion or timeout without duplicating private or commercial values.
@@ -327,9 +334,11 @@ deadline, and the hourly maintenance job all atomically change the durable
 order to `cancelled`, mark private data `redacted`, and physically delete both
 the private sidecar and maintenance marker. They also release every matching
 inventory row and change the order reservation state to `released`. Paid
-orders retain their private sidecar only until the same original 24-hour
-deadline, when owner reads or maintenance redact it without changing the paid
-state. The
+orders retain their promoted private sidecar until shipment or at most 30 days
+after verified payment. Marking a fulfillment shipped atomically stores
+carrier/tracking, redacts both order and fulfillment projections, and
+physically deletes the private sidecar. Owner reads and hourly maintenance
+enforce the same maximum deadline without changing the paid state. The
 commercial snapshot and matching payment receipts remain for 365 days and are
 then physically purged. Each scheduled or confirmed Admin pass
 cancels at most 500 due orders and purges at most 500 expired commercial
@@ -337,11 +346,14 @@ snapshots, oldest first. Site deletion remains the final tenant-wide deletion
 boundary.
 
 Owner responses are `private, no-store`. Owner history can include private
-details only while their matching sidecar exists; failed/cancelled orders
-always return `customer: null` and `shipping: null`. Admin exposes aggregate
-counts and the newest 50 commercial rows with order id, status, integer total,
-currency, unit count, private-data state, and creation time. It never reads or
-returns names, email addresses, phone numbers, addresses, or owner segments.
+details only while their matching sidecar exists; failed/cancelled/shipped
+orders always return `customer: null` and `shipping: null`. Admin exposes
+aggregate counts and bounded commercial/fulfillment tables. Normal rows never
+read or return names, email addresses, phone numbers, addresses, or owner
+segments. Explicit shipping-data access requires a direct staff action,
+matches the current fulfillment revision, and commits an append-only audit row
+before private values are returned. Inter-plugin dispatch cannot invoke these
+staff operations.
 Doctor inspects only the declarative API—including the conditional exact-raw
 webhook—action, table, page-route, and scheduled-task inventory.
 
@@ -422,7 +434,7 @@ retry requires a new order.
 
 This boundary proves callback authentication and one local transition; it does
 not prove settlement, initiate payment, model authorization/capture,
-compensate reversals, or implement refunds and fulfillment.
+compensate reversals, implement refunds, or book a carrier shipment.
 
 ## Payment initiation and Toss Payments
 
@@ -505,7 +517,7 @@ The two collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
-The plugin declares eight baseline typed dashboard metric actions:
+The plugin declares nine baseline typed dashboard metric actions:
 
 - total product rows;
 - published low-stock products;
@@ -517,9 +529,10 @@ The plugin declares eight baseline typed dashboard metric actions:
 - durable pending, paid, failed, and cancelled commercial order records, without owner or PII
   values.
 - active PII-free inventory reservation rows.
+- fulfillment rows split across awaiting, processing, and shipped states.
 - verified PII-free payment-event receipts.
 
-A complete initiation adapter adds a ninth metric for PII-free payment
+A complete initiation adapter adds a tenth metric for PII-free payment
 attempts, a bounded recent-attempt table, and payment-attempt health. Attempt
 diagnostics expose provider, status, order id, exact amount, and timestamps;
 they withhold owner segments, private order data, and provider handoff values.
@@ -533,7 +546,11 @@ newest-50 table exposes only order id, product id, variant SKU, quantity, and
 expiry. Payment health reports malformed or order-orphaned receipts from a
 bounded sample; its newest-50 table exposes only provider, event/type, order,
 outcome/status, and processing time. Order-draft, order, inventory, and
-payment diagnostics withhold private and owner values. The scheduled-task and
+payment diagnostics withhold private and owner values. Fulfillment health
+reports malformed, orphaned, paid-without-fulfillment, and overdue-private rows
+from bounded samples. Its row actions support processing, shipment, and an
+audited explicit private read; every mutation uses the current fulfillment
+revision. The scheduled-task and
 action registries make these contracts visible to plugin doctor without
 executing them.
 
@@ -582,6 +599,7 @@ The main public hooks are `.np-shop`, `.np-shop-product-card`,
 `.np-shop-order-list`, `.np-shop-order-client`,
 `.np-shop-payment-action`, `.np-shop-toss-payment`,
 `[data-np-shop-order-line]`, `[data-np-shop-order-status]`,
+`[data-np-shop-fulfillment-status]`,
 `[data-np-shop-surface]`, `[data-np-shop-skin]`,
 `[data-np-shop-inventory]`, and `[data-np-shop-block]`.
 
@@ -633,8 +651,7 @@ Future transaction work should remain separable from this foundation:
 1. additional provider packages for Stripe or KG Inicis;
 2. authorization/capture, settlement, reversal, refund, and inventory
    compensation contracts;
-3. fulfillment and customer-service Admin workflows with deliberate PII
-   retention and authorization;
+3. fulfillment carrier integrations, returns, and customer-service policy;
 4. legal/tax/shipping policy integrations.
 
 Those features require their own payment, security, and operational contracts.

@@ -295,7 +295,40 @@ export interface NpAdminTableExtension {
   columns: Array<{ name: string; label: string }>;
   /** Table action that returns `{ rows: Record<string, unknown>[], total: number }`. */
   rowsActionId: string;
+  /** Optional actions rendered for each returned row. */
+  rowActions?: NpAdminTableRowActionExtension[];
   emptyMessage?: string;
+}
+
+interface NpAdminTableRowActionFieldBase {
+  name: string;
+  label: string;
+  required?: boolean;
+  placeholder?: string;
+}
+
+export type NpAdminTableRowActionField = NpAdminTableRowActionFieldBase &
+  (
+    | { type: "text" | "textarea"; options?: never }
+    | { type: "select"; options: Array<{ label: string; value: string }> }
+  );
+
+/**
+ * General action dispatched from one Admin table row. Only the named
+ * `rowFields` are copied from the table result, so hidden row values never
+ * become an implicit client-to-handler contract.
+ */
+export interface NpAdminTableRowActionExtension {
+  id: string;
+  label: string;
+  actionId: string;
+  rowFields: string[];
+  fields?: NpAdminTableRowActionField[];
+  visibleWhen?: { field: string; oneOf: Array<string | number | boolean> };
+  confirm?: string;
+  description?: string;
+  /** `details` keeps successful structured data visible until dismissed. */
+  result?: "toast" | "details";
 }
 
 export interface NpAdminMetricResult {
@@ -594,10 +627,15 @@ export type NpPluginActionRegistry<TConfig = Record<string, unknown>> = Readonly
   Record<string, NpPluginActionDefinition<TConfig>>
 >;
 
+export type NpPluginActionInvocation =
+  { kind: "staff"; userId: string } | { kind: "plugin"; pluginId: string };
+
 export interface NpPluginContext<TConfig = Record<string, unknown>> {
   readonly pluginId: string;
   readonly config: Readonly<TConfig>;
   readonly capabilities: readonly NpPluginCapability[];
+  /** Present only while an action is being dispatched by a known caller. */
+  readonly actionInvocation?: NpPluginActionInvocation;
   readonly content: {
     find(collection: string, query?: NpContentQuery): Promise<NpContentResult>;
     findOne(collection: string, id: string): Promise<NpContentItem | null>;

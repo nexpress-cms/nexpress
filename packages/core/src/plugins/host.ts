@@ -31,6 +31,7 @@ import {
   npAnalyzePluginAdminActionContract,
   npValidatePluginActionResult,
   type NpPluginActionKind,
+  type NpPluginActionInvocation,
   type NpPluginActionRegistrationConflict,
   type NpPluginAdminActionIssue,
   type NpRegisteredPluginAction,
@@ -220,7 +221,13 @@ interface PluginRegistration {
   admin?: PluginAdminExtension;
   hooks: Map<string, PluginHookHandler[]>;
   routes: PluginRouteHandler[];
-  actions: Map<string, (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>>;
+  actions: Map<
+    string,
+    (
+      data: unknown,
+      invocation?: NpPluginActionInvocation,
+    ) => Promise<{ ok: boolean; data?: unknown; error?: string }>
+  >;
   actionMetadata: Map<string, NpRegisteredPluginAction>;
   actionConflicts: NpPluginActionRegistrationConflict[];
   schedules: Map<string, PluginScheduleHandler>;
@@ -584,7 +591,10 @@ async function loadPluginConfig(pluginId: string): Promise<Record<string, unknow
   return {};
 }
 
-async function buildCtxFor(pluginId: string): Promise<Record<string, unknown>> {
+async function buildCtxFor(
+  pluginId: string,
+  actionInvocation?: NpPluginActionInvocation,
+): Promise<Record<string, unknown>> {
   const registration = pluginRegistry.get(pluginId);
   if (!registration) {
     throw new Error(`[plugin:${pluginId}] attempted to build ctx before registration.`);
@@ -597,7 +607,8 @@ async function buildCtxFor(pluginId: string): Promise<Record<string, unknown>> {
     config,
     registration,
     lookupRegistration: (id) => pluginRegistry.get(id),
-    resolveActionContext: () => buildCtxFor(pluginId),
+    resolveActionContext: (invocation) => buildCtxFor(pluginId, invocation),
+    actionInvocation,
   });
 }
 
@@ -953,10 +964,10 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
       source: "definition",
       description: rawAction.description,
     });
-    registration.actions.set(actionId, async (data) => {
+    registration.actions.set(actionId, async (data, invocation) => {
       // Build the context at dispatch time so config changes made after boot
       // are visible to definition-level handlers.
-      const ctx = await buildCtxFor(manifest.id);
+      const ctx = await buildCtxFor(manifest.id, invocation);
       return npValidatePluginActionResult(manifest.id, actionId, kind, await handler(data, ctx));
     });
   }
@@ -1567,6 +1578,7 @@ export async function dispatchPluginAction(
   pluginId: string,
   actionId: string,
   data?: unknown,
+  invocation?: NpPluginActionInvocation,
 ): Promise<{ ok: boolean; data?: unknown; error?: string }> {
   const registration = pluginRegistry.get(pluginId);
   if (!registration) {
@@ -1579,7 +1591,7 @@ export async function dispatchPluginAction(
   if (!handler) {
     return { ok: false, error: `Action "${actionId}" not found on plugin "${pluginId}"` };
   }
-  return handler(data);
+  return handler(data, invocation);
 }
 
 export async function schedulePluginTask(pluginId: string, taskId: string): Promise<void> {

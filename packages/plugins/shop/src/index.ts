@@ -24,10 +24,20 @@ import { createShopOrderApiHandler } from "./order-api.js";
 import {
   npCountShopOrders,
   npCountShopPaymentEvents,
+  npCountShopFulfillments,
+  npListRecentShopFulfillments,
   npListRecentShopOrders,
   npListRecentShopPaymentEvents,
   npMaintainShopOrders,
+  npProcessShopFulfillment,
+  npReadShopFulfillmentPrivate,
+  npShipShopFulfillment,
 } from "./order-service.js";
+import {
+  npRequireShopFulfillmentPrivateReadInput,
+  npRequireShopFulfillmentProcessInput,
+  npRequireShopFulfillmentShipInput,
+} from "./fulfillment-contract.js";
 import { createShopPaymentApiHandler } from "./payment-api.js";
 import { createShopPaymentAttemptApiHandler } from "./payment-attempt-api.js";
 import {
@@ -272,12 +282,16 @@ const messages = {
     "shop.orderPaymentFailedDetail":
       "The provider reported a failed payment. Inventory was released and private details were deleted.",
     "shop.orderPrivateRetained":
-      "Private delivery details are retained only until the original 24-hour privacy deadline.",
+      "Private delivery details are deleted after shipment or within 30 days of verified payment.",
     "shop.orderPrivateRedacted": "Private delivery details were permanently deleted.",
     "shop.orderInventoryHeld": "Tracked inventory is reserved until this order expires.",
     "shop.orderInventoryConsumed": "Reserved tracked inventory was deducted.",
     "shop.orderInventoryReleased": "The inventory reservation was released.",
     "shop.orderInventoryNotRequired": "This order does not use tracked inventory.",
+    "shop.orderFulfillmentAwaiting": "Fulfillment is awaiting processing.",
+    "shop.orderFulfillmentProcessing": "This order is being prepared for shipment.",
+    "shop.orderFulfillmentShipped": "This order was shipped.",
+    "shop.orderFulfillmentTracking": "Tracking",
     "shop.orderExpires": "Pending order expires",
     "shop.orderCreated": "Created",
     "shop.orderCancel": "Cancel order and delete private details",
@@ -399,12 +413,17 @@ const messages = {
     "shop.orderPaymentVerified": "결제사 콜백을 검증했고 주문을 결제 완료로 전환했습니다.",
     "shop.orderPaymentFailedDetail":
       "결제사가 실패를 알렸습니다. 재고 예약을 해제하고 배송 개인정보를 삭제했습니다.",
-    "shop.orderPrivateRetained": "배송 개인정보는 최초 24시간 개인정보 보관 기한까지만 유지됩니다.",
+    "shop.orderPrivateRetained":
+      "배송 개인정보는 출고 즉시 또는 결제 확인 후 최대 30일 안에 영구 삭제됩니다.",
     "shop.orderPrivateRedacted": "배송 개인정보가 영구 삭제되었습니다.",
     "shop.orderInventoryHeld": "재고 추적 상품은 이 주문이 만료될 때까지 예약됩니다.",
     "shop.orderInventoryConsumed": "예약된 추적 재고를 차감했습니다.",
     "shop.orderInventoryReleased": "재고 예약이 해제되었습니다.",
     "shop.orderInventoryNotRequired": "이 주문에는 재고 추적 상품이 없습니다.",
+    "shop.orderFulfillmentAwaiting": "배송 처리를 기다리고 있습니다.",
+    "shop.orderFulfillmentProcessing": "상품을 출고 준비 중입니다.",
+    "shop.orderFulfillmentShipped": "상품이 출고되었습니다.",
+    "shop.orderFulfillmentTracking": "배송 조회",
     "shop.orderExpires": "결제 대기 만료",
     "shop.orderCreated": "생성",
     "shop.orderCancel": "주문 취소 및 개인정보 삭제",
@@ -491,7 +510,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, durable orders, optional payment initiation and verified events, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, durable orders, optional payment initiation and verified events, fulfillment operations, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -522,6 +541,9 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-orders",
           "widget:shop-order-health",
           "table:shop-recent-orders",
+          "dashboard:shop-fulfillments",
+          "widget:shop-fulfillment-health",
+          "table:shop-fulfillments",
           "dashboard:shop-inventory-reservations",
           "widget:shop-inventory-reservation-health",
           "table:shop-inventory-reservations",
@@ -549,7 +571,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, and verified payment events. Provider implementations, settlement, reversals, refunds, tax, shipping rates, and fulfillment remain external.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, and revision-safe fulfillment operations. Provider settlement, reversals, refunds, tax, shipping rates, and carrier integrations remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -587,6 +609,7 @@ export function createShop(options: NpShopOptions = {}) {
         "order-draft-status": "[data-np-shop-order-draft-status]",
         "order-line": "[data-np-shop-order-line]",
         "order-status": "[data-np-shop-order-status]",
+        "fulfillment-status": "[data-np-shop-fulfillment-status]",
         "product-card": ".np-shop-product-card",
         "product-grid": ".np-shop-product-grid",
         "category-grid": ".np-shop-category-grid",
@@ -658,6 +681,14 @@ export function createShop(options: NpShopOptions = {}) {
           kind: "metric",
           actionId: "countActiveInventoryReservations",
           description: "PII-free product and variant holds owned by pending orders for this site.",
+          priority: 29,
+        },
+        {
+          id: "shop-fulfillments-total",
+          label: "Fulfillments",
+          kind: "metric",
+          actionId: "countFulfillments",
+          description: "Paid orders tracked through awaiting, processing, and shipped states.",
           priority: 28,
         },
         {
@@ -667,7 +698,7 @@ export function createShop(options: NpShopOptions = {}) {
           actionId: "countPaymentEvents",
           description:
             "Verified, PII-free provider event receipts retained with their commercial orders.",
-          priority: 29,
+          priority: 30,
         },
         ...(paymentAttemptApiHandler
           ? [
@@ -678,7 +709,7 @@ export function createShop(options: NpShopOptions = {}) {
                 actionId: "countPaymentAttempts",
                 description:
                   "PII-free owner-scoped handoffs retained with their commercial orders.",
-                priority: 30,
+                priority: 31,
               },
             ]
           : []),
@@ -713,6 +744,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Inventory reservation storage",
           kind: "status",
           actionId: "inventoryReservationHealth",
+        },
+        {
+          id: "shop-fulfillment-health",
+          label: "Fulfillment storage",
+          kind: "status",
+          actionId: "fulfillmentHealth",
         },
         {
           id: "shop-payment-event-health",
@@ -770,10 +807,80 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "units", label: "Units" },
             { name: "privateData", label: "Private data" },
             { name: "inventory", label: "Inventory" },
+            { name: "fulfillment", label: "Fulfillment" },
             { name: "createdAt", label: "Created" },
           ],
           rowsActionId: "recentOrders",
           emptyMessage: "No durable Shop orders exist for this site.",
+        },
+        {
+          id: "shop-fulfillments",
+          label: "Paid order fulfillment (private values withheld)",
+          columns: [
+            { name: "id", label: "Order" },
+            { name: "status", label: "Status" },
+            { name: "fulfillmentRevision", label: "Revision" },
+            { name: "privateData", label: "Private data" },
+            { name: "carrier", label: "Carrier" },
+            { name: "trackingNumber", label: "Tracking" },
+            { name: "operatorNote", label: "Operations note" },
+            { name: "updatedAt", label: "Updated" },
+          ],
+          rowsActionId: "recentFulfillments",
+          rowActions: [
+            {
+              id: "read-private",
+              label: "View shipping data",
+              actionId: "readFulfillmentPrivate",
+              rowFields: ["id", "fulfillmentRevision"],
+              visibleWhen: { field: "privateData", oneOf: ["retained"] },
+              result: "details",
+              confirm: "View retained customer and shipping data? This access is audited.",
+              description:
+                "Available only before shipment and the 30-day maximum retention deadline.",
+            },
+            {
+              id: "process",
+              label: "Start processing",
+              actionId: "processFulfillment",
+              rowFields: ["id", "fulfillmentRevision"],
+              visibleWhen: { field: "status", oneOf: ["awaiting", "processing"] },
+              fields: [
+                {
+                  name: "operatorNote",
+                  label: "Operations note",
+                  type: "textarea",
+                  placeholder: "Optional PII-free internal note",
+                },
+              ],
+              confirm: "Move this fulfillment to processing?",
+            },
+            {
+              id: "ship",
+              label: "Mark shipped",
+              actionId: "shipFulfillment",
+              rowFields: ["id", "fulfillmentRevision"],
+              visibleWhen: { field: "status", oneOf: ["awaiting", "processing"] },
+              fields: [
+                { name: "carrier", label: "Carrier", type: "text", required: true },
+                {
+                  name: "trackingNumber",
+                  label: "Tracking number",
+                  type: "text",
+                  required: true,
+                },
+                {
+                  name: "operatorNote",
+                  label: "Operations note",
+                  type: "textarea",
+                  placeholder: "Optional PII-free internal note",
+                },
+              ],
+              confirm:
+                "Mark this fulfillment shipped and permanently delete retained customer and shipping data?",
+            },
+          ],
+          emptyMessage: "No paid order fulfillment records exist for this site.",
         },
         {
           id: "shop-inventory-reservations",
@@ -1128,6 +1235,126 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      countFulfillments: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npCountShopFulfillments();
+            return {
+              ok: true,
+              data: {
+                value: counts.total,
+                delta: `${counts.awaiting.toString()} awaiting, ${counts.processing.toString()} processing, ${counts.shipped.toString()} shipped`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      fulfillmentHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopFulfillments();
+            if (
+              counts.invalidSample > 0 ||
+              counts.orphanSample > 0 ||
+              counts.missingPaidSample > 0
+            ) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed, ${counts.orphanSample.toString()} orphan, and ${counts.missingPaidSample.toString()} paid-without-fulfillment row(s) in bounded samples; private values are withheld.`,
+              );
+            }
+            if (counts.privateDue > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.privateDue.toString()} fulfillment private sidecar(s) await deletion maintenance.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.awaiting.toString()} awaiting, ${counts.processing.toString()} processing, and ${counts.shipped.toString()} shipped fulfillment(s).`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Fulfillment health check failed.",
+            );
+          }
+        },
+      },
+      recentFulfillments: {
+        kind: "table",
+        handler: async () => {
+          try {
+            const result = await npListRecentShopFulfillments();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      processFulfillment: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return { ok: false, error: "Fulfillment operations require a direct staff action." };
+            }
+            const result = await npProcessShopFulfillment(
+              npRequireShopFulfillmentProcessInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return {
+              ok: true,
+              data: `Fulfillment moved to ${result.status} at revision ${result.revision.toString()}.`,
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      shipFulfillment: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return { ok: false, error: "Fulfillment operations require a direct staff action." };
+            }
+            const result = await npShipShopFulfillment(
+              npRequireShopFulfillmentShipInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return {
+              ok: true,
+              data: `Fulfillment shipped at revision ${result.revision.toString()}; retained private data was deleted.`,
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      readFulfillmentPrivate: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return { ok: false, error: "Private order data requires a direct staff action." };
+            }
+            return {
+              ok: true,
+              data: await npReadShopFulfillmentPrivate(
+                npRequireShopFulfillmentPrivateReadInput(data),
+                ctx.actionInvocation.userId,
+              ),
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
       countPaymentEvents: {
         kind: "metric",
         handler: async () => {
@@ -1259,7 +1486,7 @@ export function createShop(options: NpShopOptions = {}) {
             const result = await npMaintainShopOrders();
             return {
               ok: true,
-              data: `Cancelled ${result.cancelled.toString()} expired pending order(s), purged ${result.purged.toString()} expired commercial snapshot(s), and removed ${result.reservationsCleaned.toString()} leftover expired reservation row(s).`,
+              data: `Cancelled ${result.cancelled.toString()} expired pending order(s), deleted ${result.privateRedacted.toString()} overdue fulfillment private sidecar(s), purged ${result.purged.toString()} expired commercial snapshot(s), and removed ${result.reservationsCleaned.toString()} leftover expired reservation row(s).`,
             };
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
@@ -1457,6 +1684,7 @@ export {
   npShopCheckoutIntentStatuses,
   npShopCurrencies,
   npShopInventoryReservationStatuses,
+  npShopFulfillmentStatuses,
   npShopOrderCancellationReasons,
   npShopOrderDraftStatuses,
   npShopOrderPrivateDataStatuses,
@@ -1583,6 +1811,7 @@ export {
   NP_SHOP_ORDER_CONTRACT,
   NP_SHOP_ORDER_LIST_CONTRACT,
   NP_SHOP_ORDER_PRIVATE_CONTRACT,
+  NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT,
   NP_SHOP_ORDER_STORAGE_CONTRACT,
   npAnalyzeShopOrder,
   npAnalyzeStoredShopOrder,
@@ -1595,6 +1824,26 @@ export {
   npShopOrderLimits,
 } from "./order-contract.js";
 export type { NpShopOrderCancelInput, NpShopOrderCreateInput } from "./order-contract.js";
+export {
+  NP_SHOP_FULFILLMENT_CONTRACT,
+  NP_SHOP_FULFILLMENT_STORAGE_CONTRACT,
+  NpShopFulfillmentConflictError,
+  NpShopFulfillmentContractError,
+  npAnalyzeShopFulfillment,
+  npAnalyzeStoredShopFulfillment,
+  npProjectShopFulfillment,
+  npRequireShopFulfillmentPrivateReadInput,
+  npRequireShopFulfillmentProcessInput,
+  npRequireShopFulfillmentShipInput,
+  npRequireStoredShopFulfillment,
+  npShopFulfillmentLimits,
+} from "./fulfillment-contract.js";
+export type {
+  NpShopFulfillmentPrivateReadInput,
+  NpShopFulfillmentProcessInput,
+  NpShopFulfillmentShipInput,
+  NpShopStoredFulfillment,
+} from "./fulfillment-contract.js";
 export type {
   NpShopOrderDraftCreateInput,
   NpShopOrderDraftDeleteInput,
@@ -1631,6 +1880,8 @@ export type {
   NpShopCurrency,
   NpShopInventoryState,
   NpShopInventoryReservationStatus,
+  NpShopFulfillment,
+  NpShopFulfillmentStatus,
   NpShopMessages,
   NpShopProduct,
   NpShopProductSkinProps,

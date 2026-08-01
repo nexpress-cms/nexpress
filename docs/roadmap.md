@@ -314,8 +314,8 @@ real product domain, not just blog/community. Ship as a plugin package
 - **Durable pending order (shipped)** — a reviewable draft atomically becomes
   one idempotent `pending-payment` commercial snapshot plus a separate private
   sidecar. Cancellation, payment failure, or the 24-hour pending deadline
-  deletes PII; paid-side private data expires on the same deadline and the
-  commercial record is purged after 365 days.
+  deletes PII; successful payment promotes the sidecar to a fulfillment-only
+  30-day maximum and the commercial record is purged after 365 days.
 - **Inventory reservation (shipped)** — pending-order creation locks product
   ids canonically, subtracts active holds from current tracked product/variant
   stock, and atomically writes one exact PII-free reservation per tracked
@@ -340,9 +340,11 @@ real product domain, not just blog/community. Ship as a plugin package
   `@nexpress/shop-payment-toss` owns the KRW browser SDK handoff, secret-key
   confirmation with attempt UUID idempotency, and query-verified terminal
   general-payment webhooks. Stripe and KG Inicis packages remain future work.
-- **Order admin (partially shipped)** — PII-free aggregate health and bounded
-  recent commercial rows exist. Paid status workflows, refunds, fulfillment
-  notes, and customer-service access remain future work.
+- **Order fulfillment Admin (shipped)** — paid orders atomically create an
+  independent awaiting/processing/shipped record. Revision-safe row actions,
+  bounded PII-free notes and tracking, audited direct-staff private reads,
+  shipment/30-day deletion, owner status, and bounded Doctor/Admin diagnostics
+  share one contract. Refunds, returns, and carrier integrations remain future.
 - **Inventory (partially shipped)** — catalog stock/low-stock projection,
   transaction-safe pending holds, and atomic paid-order on-hand decrement
   exist; reversed-payment compensation remains future work.

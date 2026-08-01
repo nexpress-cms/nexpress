@@ -416,6 +416,13 @@ function collectAdminActionReferences(admin: NpAdminExtension | undefined): Admi
       expectedKind: "table",
       location: `admin.tables.${table.id}`,
     });
+    for (const action of table.rowActions ?? []) {
+      references.push({
+        actionId: action.actionId,
+        expectedKind: "action",
+        location: `admin.tables.${table.id}.rowActions.${action.id}`,
+      });
+    }
   }
   for (const tab of admin.collectionTabs ?? []) {
     addWidgets(tab.widgets, `admin.collectionTabs.${tab.id}.widgets`);
@@ -476,8 +483,10 @@ function validateActionRegistry(
       );
     }
     if (reference.expectedKind !== null && action.kind !== reference.expectedKind) {
+      const expectedLabel =
+        reference.expectedKind === "action" ? "an action" : `a ${reference.expectedKind} action`;
       throw new Error(
-        `[plugin:${pluginId}] ${reference.location} expects a ${reference.expectedKind} action, ` +
+        `[plugin:${pluginId}] ${reference.location} expects ${expectedLabel}, ` +
           `but "${reference.actionId}" is registered as ${action.kind}.`,
       );
     }

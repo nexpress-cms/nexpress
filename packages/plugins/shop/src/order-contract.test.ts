@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   NP_SHOP_ORDER_CONTRACT,
   NP_SHOP_ORDER_PRIVATE_CONTRACT,
+  NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT,
   NP_SHOP_ORDER_STORAGE_CONTRACT,
   npAnalyzeShopOrder,
   npAnalyzeStoredShopOrder,
@@ -200,5 +201,16 @@ describe("Shop order contract", () => {
         expiresAt: createdAt,
       }),
     ).toContain("private.expiresAt must equal the fixed pending lifetime.");
+  });
+
+  it("accepts the paid fulfillment private sidecar for exactly 30 days", () => {
+    expect(
+      npAnalyzeStoredShopOrderPrivate({
+        ...privateData,
+        contract: NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT,
+        retainedAt: "2026-07-30T00:05:00.000Z",
+        expiresAt: "2026-08-29T00:05:00.000Z",
+      }),
+    ).toEqual([]);
   });
 });

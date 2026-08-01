@@ -421,11 +421,11 @@ export async function scaffoldAdminPlugin(options: ScaffoldOptions): Promise<Sca
   assertDirAvailable(names.pluginDir);
 
   const description = `Admin extension plugin: ${names.packageName}`;
-  const indexSource = `import { definePlugin, npAdminStatus } from "@nexpress/plugin-sdk";
+  const indexSource = `import { definePlugin, npAdminStatus, npAdminTable } from "@nexpress/plugin-sdk";
 import { z } from "zod";
 
 /**
- * Admin-extension plugin scaffold. Demonstrates the three most useful
+ * Admin-extension plugin scaffold. Demonstrates four useful
  * declarative surfaces:
  *   - \`configSchema\` — a typed auto-form rendered by the admin.
  *     Values persist as plugin config via PUT \`/api/admin/plugins/:id/config\`.
@@ -433,6 +433,8 @@ import { z } from "zod";
  *     dashboard at \`/admin/plugins/<id>\`.
  *   - \`actions\` — buttons that dispatch a registered action handler
  *     from the definition-level \`actions\` registry.
+ *   - \`tables.rowActions\` — explicit row fields plus optional form values
+ *     dispatched to a general action handler.
  *
  * The action and the widget both reference \`actionId: "syncStatus"\`,
  * which the typed registry below declares. Click the action
@@ -448,6 +450,29 @@ const configSchema = z.object({
 });
 
 export type ${names.componentName}Config = z.infer<typeof configSchema>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasExactKeys(value: Record<string, unknown>, keys: string[]): boolean {
+  const actual = Object.keys(value);
+  return actual.length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+}
+
+function parseRetrySyncInput(value: unknown): { id: string; revision: number } | null {
+  if (!isRecord(value) || !hasExactKeys(value, ["row", "values"])) return null;
+  if (!isRecord(value.row) || !hasExactKeys(value.row, ["id", "revision"])) return null;
+  if (!isRecord(value.values) || !hasExactKeys(value.values, [])) return null;
+  if (
+    typeof value.row.id !== "string" ||
+    !Number.isSafeInteger(value.row.revision) ||
+    (value.row.revision as number) < 1
+  ) {
+    return null;
+  }
+  return { id: value.row.id, revision: value.row.revision as number };
+}
 
 export const ${names.exportName} = definePlugin<${names.componentName}Config>({
   manifest: {
@@ -478,6 +503,27 @@ export const ${names.exportName} = definePlugin<${names.componentName}Config>({
         description: "Manually trigger the same status check the widget runs.",
       },
     ],
+    tables: [
+      {
+        id: "recent-syncs",
+        label: "Recent syncs",
+        columns: [
+          { name: "id", label: "ID" },
+          { name: "status", label: "Status" },
+        ],
+        rowsActionId: "recentSyncs",
+        rowActions: [
+          {
+            id: "retry",
+            label: "Retry",
+            actionId: "retrySync",
+            rowFields: ["id", "revision"],
+            visibleWhen: { field: "status", oneOf: ["ready"] },
+            confirm: "Retry this sync?",
+          },
+        ],
+      },
+    ],
   },
   actions: {
     // The registry keeps action id, result kind, and handler together so
@@ -498,6 +544,22 @@ export const ${names.exportName} = definePlugin<${names.componentName}Config>({
         return npAdminStatus("ok", "All systems go.");
       },
     },
+    recentSyncs: {
+      kind: "table",
+      handler: async () =>
+        npAdminTable([{ id: "example", revision: 1, status: "ready" }], 1),
+    },
+    retrySync: {
+      kind: "action",
+      handler: async (data) => {
+        const input = parseRetrySyncInput(data);
+        if (!input) {
+          return { ok: false, error: "Invalid retry row payload." };
+        }
+        // Lock and compare input.revision again before replacing this with a real write.
+        return { ok: true, data: \`Retry queued for \${input.id}.\` };
+      },
+    },
   },
 });
 
@@ -513,6 +575,7 @@ The starter ships:
 - a configSchema-powered settings form (\`apiKey\`, \`enabled\`)
 - a status widget that shows up / down
 - a manual "Ping now" action button
+- a data table with an explicit revision-safe row action
 
 Both the widget and the action call the same typed \`syncStatus\` handler
 declared in the definition-level \`actions\` registry. Replace the body with a
