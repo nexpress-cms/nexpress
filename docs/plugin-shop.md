@@ -4,8 +4,9 @@
 It owns product and category data, inventory projection, public catalog
 routes, bounded guest/member carts, checkout intents, private order drafts,
 durable orders, transaction-safe inventory reservations, an optional
-provider-neutral payment initiation and verified-event boundary, Admin
-collection forms and health actions, blocks, and skins.
+provider-neutral payment initiation and verified-event boundary, revision-safe
+fulfillment operations, Admin collection forms and health actions, blocks, and
+skins.
 
 `@nexpress/theme-storefront` is a separate brand/content theme. It works with
 ordinary pages and posts when Shop is absent. When both packages are active,
@@ -18,8 +19,9 @@ reserves tracked product or variant inventory for its 24-hour lifetime. An
 optional build-time adapter may prepare a provider handoff, confirm the
 browser return on the server, authenticate an external callback, and project
 the exact provider-neutral event that moves that order to `paid` or
-`payment-failed`. Shop owns attempts and order transitions but does not choose
-a provider protocol, calculate tax or shipping, fulfill, or refund.
+`payment-failed`. Shop owns attempts, order transitions, and fulfillment state,
+but does not choose a provider protocol, calculate tax or shipping rates,
+physically fulfill goods, book a carrier, or refund.
 
 ## Default setup
 
@@ -362,10 +364,10 @@ That cookie uses a rolling 30-day lifetime, so a guest who clears it or does
 not revisit before it expires cannot recover the otherwise-retained commercial
 snapshot. Member ownership remains tied to the authenticated member id.
 
-The 24-hour private-data and 365-day commercial defaults are application
-cleanup guarantees, not jurisdiction-specific accounting or privacy advice.
-Backup retention can outlive physical row deletion and must be governed
-separately.
+The 24-hour pending-private, 30-day fulfillment-private, and 365-day commercial
+defaults are application cleanup guarantees, not jurisdiction-specific
+accounting or privacy advice. Backup retention can outlive physical row
+deletion and must be governed separately.
 
 ## Verified payment-event contract
 

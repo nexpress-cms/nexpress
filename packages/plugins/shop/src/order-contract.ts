@@ -688,6 +688,17 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
   }
   if (Object.hasOwn(value, "fulfillment")) {
     issues.push(...npAnalyzeShopFulfillment(value.fulfillment).map((issue) => `order.${issue}`));
+    if (
+      isRecord(value.fulfillment) &&
+      (value.fulfillment.orderId !== value.id ||
+        value.status !== "paid" ||
+        value.fulfillment.privateDataStatus !== value.privateDataStatus ||
+        value.fulfillment.createdAt !== value.paymentResolvedAt)
+    ) {
+      issues.push(
+        "order.fulfillment must match the paid order id, payment timestamp, and private-data state.",
+      );
+    }
   }
   return issues.filter(
     (issue) =>

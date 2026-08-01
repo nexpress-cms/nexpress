@@ -761,6 +761,11 @@ async function redactStoredOrderPrivate(
   now: Date,
 ): Promise<NpShopStoredOrder> {
   const fulfillment = await readStoredFulfillment(tx, siteId, order.id, true);
+  if (fulfillment && !fulfillmentMatchesOrder(fulfillment, order)) {
+    throw new NpShopOrderContractError("Shop fulfillment does not match its order", [
+      "Fulfillment must match the paid order before private data can be redacted.",
+    ]);
+  }
   if (fulfillment?.privateDataStatus === "retained") {
     await persistFulfillment(tx, siteId, {
       ...fulfillment,
@@ -1909,7 +1914,6 @@ export async function npCountShopFulfillments(): Promise<{
       awaiting: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_FULFILLMENT_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'awaiting')::int`,
       processing: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_FULFILLMENT_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'processing')::int`,
       shipped: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_FULFILLMENT_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'shipped')::int`,
-      privateDue: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_FULFILLMENT_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'privateDataStatus' = 'retained' and ${npPluginStorage.expiresAt} <= now())::int`,
     })
     .from(npPluginStorage)
     .where(
@@ -1917,6 +1921,18 @@ export async function npCountShopFulfillments(): Promise<{
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, "fulfillment:%"),
+      ),
+    );
+  const [{ privateDue }] = await db
+    .select({ privateDue: sql<number>`count(*)::int` })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "order-private:%"),
+        sql`${npPluginStorage.value}->>'contract' = ${NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT}`,
+        lte(npPluginStorage.expiresAt, new Date()),
       ),
     );
   const rows = await db
@@ -2004,7 +2020,7 @@ export async function npCountShopFulfillments(): Promise<{
     const order = requireStoredOrderAtKey(row.value, row.expiresAt, row.key);
     if (!(await readStoredFulfillment(db, siteId, order.id))) missingPaidSample += 1;
   }
-  return { ...counts, invalidSample, orphanSample, missingPaidSample };
+  return { ...counts, privateDue, invalidSample, orphanSample, missingPaidSample };
 }
 
 export async function npCountShopPaymentEvents(): Promise<{

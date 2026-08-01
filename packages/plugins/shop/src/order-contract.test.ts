@@ -145,6 +145,34 @@ describe("Shop order contract", () => {
         inventoryReservationStatus: "consumed",
       }),
     ).toEqual([]);
+    const paidPublicOrder = {
+      ...publicOrder,
+      ...payment,
+      status: "paid",
+      revision: 2,
+      inventoryReservationStatus: "consumed",
+      fulfillment: {
+        contract: "np.shop-fulfillment.v1",
+        orderId,
+        status: "awaiting",
+        revision: 1,
+        privateDataStatus: "retained",
+        carrier: null,
+        trackingNumber: null,
+        createdAt: payment.paymentResolvedAt,
+        updatedAt: payment.paymentResolvedAt,
+        shippedAt: null,
+      },
+    } as const;
+    expect(npAnalyzeShopOrder(paidPublicOrder)).toEqual([]);
+    expect(
+      npAnalyzeShopOrder({
+        ...paidPublicOrder,
+        fulfillment: { ...paidPublicOrder.fulfillment, orderId: draftId },
+      }),
+    ).toContain(
+      "order.fulfillment must match the paid order id, payment timestamp, and private-data state.",
+    );
     expect(
       npAnalyzeStoredShopOrder({
         ...storedOrder,

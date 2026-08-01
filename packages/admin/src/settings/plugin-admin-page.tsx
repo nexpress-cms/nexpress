@@ -89,10 +89,24 @@ interface TableRowActionDef {
   result?: "toast" | "details";
 }
 
-function isTableRowActionVisible(action: TableRowActionDef, row: Record<string, unknown>): boolean {
+export function npIsTableRowActionVisible(
+  action: TableRowActionDef,
+  row: Record<string, unknown>,
+): boolean {
   const condition = action.visibleWhen;
   if (!condition) return true;
   return condition.oneOf.some((value) => Object.is(value, row[condition.field]));
+}
+
+export function npBuildTableRowActionPayload(
+  action: TableRowActionDef,
+  row: Record<string, unknown>,
+  values: Record<string, string>,
+): { row: Record<string, unknown>; values: Record<string, string> } {
+  return {
+    row: Object.fromEntries(action.rowFields.map((field) => [field, row[field]])),
+    values,
+  };
 }
 
 interface AdminExtension {
@@ -631,7 +645,7 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
                   {table.rowActions?.length ? (
                     <div className="flex flex-wrap justify-end gap-2 pt-2">
                       {table.rowActions
-                        .filter((action) => isTableRowActionVisible(action, row))
+                        .filter((action) => npIsTableRowActionVisible(action, row))
                         .map((action) => (
                           <Button
                             key={action.id}
@@ -679,7 +693,7 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
                         <td className="whitespace-nowrap px-3 py-2 text-right align-top">
                           <div className="flex justify-end gap-2">
                             {table.rowActions
-                              .filter((action) => isTableRowActionVisible(action, row))
+                              .filter((action) => npIsTableRowActionVisible(action, row))
                               .map((action) => (
                                 <Button
                                   key={action.id}
@@ -748,15 +762,12 @@ function TableRowActionDialog({
       return;
     }
     if (selected.action.confirm && !window.confirm(selected.action.confirm)) return;
-    const row = Object.fromEntries(
-      selected.action.rowFields.map((field) => [field, selected.row[field]]),
-    );
+    const payload = npBuildTableRowActionPayload(selected.action, selected.row, values);
     setRunning(true);
     setError(null);
     setDetails(null);
     const result = await npDispatchPluginAction(pluginId, selected.action.actionId, "action", {
-      row,
-      values,
+      ...payload,
     });
     setRunning(false);
     onSettled();
