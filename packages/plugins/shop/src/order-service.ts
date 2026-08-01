@@ -267,6 +267,24 @@ function fulfillmentMatchesOrder(
   );
 }
 
+function refundMatchesOrder(refund: NpShopStoredRefund, order: NpShopStoredOrder): boolean {
+  // Refund intents use provider-compatible whole-second precision.
+  const requestedAtEnd = new Date(refund.requestedAt).getTime() + 999;
+  return (
+    refund.orderId === order.id &&
+    refund.providerId === order.paymentProvider &&
+    refund.paymentReference === order.paymentReference &&
+    refund.currency === order.currency &&
+    refund.amountMinor === order.subtotalMinor &&
+    refund.purgeAt === order.purgeAt &&
+    order.paymentResolvedAt !== null &&
+    requestedAtEnd >= new Date(order.paymentResolvedAt).getTime() &&
+    (refund.status === "refunded"
+      ? order.status === "refunded" && refund.orderRevision === order.revision
+      : order.status === "paid" && refund.orderRevision <= order.revision)
+  );
+}
+
 function requireStoredRefundAtKey(
   value: unknown,
   expiresAt: Date | null,
@@ -757,18 +775,9 @@ async function projectOrder(
     ]);
   }
   const refund = await readStoredRefund(db, siteId, order.id);
-  if (
-    refund &&
-    (refund.orderId !== order.id ||
-      refund.providerId !== order.paymentProvider ||
-      refund.paymentReference !== order.paymentReference ||
-      refund.currency !== order.currency ||
-      refund.amountMinor !== order.subtotalMinor ||
-      (refund.status === "refunded" &&
-        (order.status !== "refunded" || refund.orderRevision !== order.revision)))
-  ) {
+  if (refund && !refundMatchesOrder(refund, order)) {
     throw new NpShopOrderContractError("Shop refund does not match its order", [
-      "Refund identity, payment, amount, and terminal revision must match the commercial order.",
+      "Refund identity, payment, amount, retention, time, status, and revision must match the commercial order.",
     ]);
   }
   if (
@@ -1902,15 +1911,7 @@ export async function npCountShopRefunds(): Promise<{
     }
     try {
       const order = requireStoredOrderAtKey(orderRow.value, orderRow.expiresAt, orderRow.key);
-      if (
-        refund.providerId !== order.paymentProvider ||
-        refund.paymentReference !== order.paymentReference ||
-        refund.currency !== order.currency ||
-        refund.amountMinor !== order.subtotalMinor ||
-        (refund.status === "refunded"
-          ? order.status !== "refunded" || refund.orderRevision !== order.revision
-          : order.status !== "paid" || refund.orderRevision > order.revision)
-      ) {
+      if (!refundMatchesOrder(refund, order)) {
         invalidSample += 1;
       }
     } catch {
@@ -2252,12 +2253,7 @@ export async function npRefundShopOrder(
     }
     if (
       currentRefund.status !== "provider-confirmed" ||
-      order.status !== "paid" ||
-      order.paymentProvider !== currentRefund.providerId ||
-      order.paymentReference !== currentRefund.paymentReference ||
-      order.currency !== currentRefund.currency ||
-      order.subtotalMinor !== currentRefund.amountMinor ||
-      order.revision < currentRefund.orderRevision
+      !refundMatchesOrder(currentRefund, order)
     ) {
       throw new NpShopRefundConflictError(
         "refund_order_revision_conflict",
