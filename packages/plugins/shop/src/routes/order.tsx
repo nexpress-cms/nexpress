@@ -29,6 +29,7 @@ export function createShopOrderRoute(runtime: NpShopRuntime) {
     const props = {
       basePath: runtime.basePath,
       apiPath: "/api/plugins/shop/orders",
+      returnApiPath: "/api/plugins/shop/returns",
       orderId,
       paymentAction,
       messages,

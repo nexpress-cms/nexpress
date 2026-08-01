@@ -544,6 +544,44 @@
     line-height: 1.5;
   }
 
+  .np-shop-return-form,
+  .np-shop-return-summary {
+    display: grid;
+    gap: 0.75rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--np-shop-line, var(--np-color-border, #deddd8));
+  }
+
+  .np-shop-return-form label {
+    display: grid;
+    gap: 0.35rem;
+    color: var(--np-shop-subtle, var(--np-color-muted-foreground, #6b6b68));
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
+  .np-shop-return-form input,
+  .np-shop-return-form select,
+  .np-shop-return-form textarea {
+    width: 100%;
+    min-width: 0;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--np-shop-line, var(--np-color-border, #deddd8));
+    border-radius: var(--np-radius-sm, 0.35rem);
+    background: var(--np-color-background, #fff);
+    color: var(--np-color-foreground, #171716);
+    font: inherit;
+  }
+
+  .np-shop-return-form textarea {
+    min-height: 6rem;
+    resize: vertical;
+  }
+
+  .np-shop-return-summary[data-np-shop-return-status="received"] {
+    color: var(--np-shop-accent, var(--np-color-primary, #205c46));
+  }
+
   .np-shop-payment-action,
   .np-shop-toss-payment {
     display: grid;

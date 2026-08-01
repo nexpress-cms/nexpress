@@ -939,7 +939,7 @@ pnpm dev
 2. Start \`pnpm dev\` and open \`http://localhost:3000/admin\`.
 3. Create the first admin, name the site, pick a theme, and seed sample
    content if useful.
-4. Publish a page, post, or Shop product; the bounded cart, checkout-intent, 24-hour private draft, durable pending order, and tracked-inventory reservation preview start at \`/shop/cart\`. Payment stays disabled until a build-time provider adapter is registered. For Toss initiation and audited Admin full refunds, run \`pnpm add @nexpress/shop-payment-toss\` and replace the \`defaultPlugins\` Shop as shown in the [Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md#payment-initiation-and-toss-payments).
+4. Publish a page, post, or Shop product; the bounded cart, checkout-intent, 24-hour private draft, durable pending order, tracked-inventory reservation, fulfillment, and item-return preview start at \`/shop/cart\`. Payment stays disabled until a build-time provider adapter is registered. Physical return intake remains separate from payment refunds and carrier booking. For Toss initiation and audited Admin full refunds, run \`pnpm add @nexpress/shop-payment-toss\` and replace the \`defaultPlugins\` Shop as shown in the [Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md#payment-initiation-and-toss-payments).
 
 ## Useful Checks
 

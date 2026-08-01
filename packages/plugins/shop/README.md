@@ -46,11 +46,14 @@ It provides:
 - provider-neutral, staff-audited full refunds with one durable idempotency id,
   cancelled unshipped fulfillment, all-or-none tracked-inventory restoration,
   and explicit manual-compensation diagnostics;
+- owner-scoped item-level physical return requests for shipped orders, with
+  revision-safe cancellation, audited staff approval/rejection/receipt,
+  all-or-none tracked-inventory restoration, and manual-reconciliation health;
 - classic and storefront-full skins;
 - featured-product and category-grid blocks.
 
 Provider-specific browser/server protocols, signature algorithms, credentials
-and rotation, partial refunds, reversals, returns, carrier booking, tax, and
+and rotation, partial refunds, reversals, exchanges, carrier booking, tax, and
 shipping rates remain outside this package. `@nexpress/shop-payment-toss` is the bundled Toss
 Payments v2 initiation and full-refund adapter. Customer/shipping PII exists only in the short-lived
 private draft or order sidecar and stays outside content search, revisions,
@@ -59,4 +62,4 @@ still does not imply that a visitor paid for a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
 for the exact price, SKU, inventory, cart, checkout-intent, private-draft,
-pending-order, payment-attempt, fulfillment, refund, skin, block, and theme-integration contracts.
+pending-order, payment-attempt, fulfillment, refund, return, skin, block, and theme-integration contracts.

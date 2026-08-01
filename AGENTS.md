@@ -2,7 +2,15 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-01 (Shop payment adapters may now add one exact
+**Last refreshed:** 2026-08-01 (Shop shipped orders now add one independent
+owner-scoped item-return contract with closed PII-free reasons, revision-safe
+request/cancel/approve/reject/receive transitions, direct-staff audit,
+all-or-none receipt-time tracked inventory restoration, owner-safe projection,
+Admin/Doctor diagnostics, skins, scaffold guidance, and integration coverage.
+Exchanges, carrier pickup/labels, jurisdiction policy, and payment refunds
+remain separate.)
+
+**Earlier:** 2026-08-01 (Shop payment adapters may now add one exact
 full-refund capability over durable provider idempotency, separately persisted
 provider confirmation, direct-staff audit, refunded order and cancelled/shipped
 fulfillment outcomes, all-or-none unshipped inventory restoration, explicit

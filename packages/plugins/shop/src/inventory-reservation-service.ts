@@ -494,7 +494,8 @@ export async function npRestoreShopOrderInventory(
           .set({ stockQuantity: sql`${productStockColumn} + ${line.quantity}` })
           .where(and(eq(productIdColumn, product.id), eq(productSiteIdColumn, siteId)))
           .returning({ id: productIdColumn });
-        if (updated.length !== 1) throw new Error("Shop base inventory disappeared during refund.");
+        if (updated.length !== 1)
+          throw new Error("Shop base inventory disappeared during restore.");
       } else {
         const variantParentColumn = tableColumn(variantTable!, "parentId");
         const variantSkuColumn = tableColumn(variantTable!, "sku");
@@ -505,7 +506,7 @@ export async function npRestoreShopOrderInventory(
           .where(and(eq(variantParentColumn, product.id), eq(variantSkuColumn, line.variantSku)))
           .returning({ id: tableColumn(variantTable!, "id") });
         if (updated.length !== 1) {
-          throw new Error("Shop variant inventory disappeared during refund.");
+          throw new Error("Shop variant inventory disappeared during restore.");
         }
       }
     }

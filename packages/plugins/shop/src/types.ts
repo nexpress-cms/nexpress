@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { NpShopRefund } from "./refund-contract.js";
+import type { NpShopReturn } from "./return-contract.js";
 
 export const npShopCurrencies = ["KRW", "USD", "EUR", "JPY"] as const;
 export type NpShopCurrency = (typeof npShopCurrencies)[number];
@@ -174,6 +175,28 @@ export interface NpShopMessages {
   orderFulfillmentShipped: string;
   orderFulfillmentCancelled: string;
   orderFulfillmentTracking: string;
+  orderReturn: string;
+  orderReturnRequested: string;
+  orderReturnApproved: string;
+  orderReturnRejected: string;
+  orderReturnReceived: string;
+  orderReturnCancelled: string;
+  orderReturnReason: string;
+  orderReturnReasonDamaged: string;
+  orderReturnReasonDefective: string;
+  orderReturnReasonWrongItem: string;
+  orderReturnReasonChangedMind: string;
+  orderReturnReasonOther: string;
+  orderReturnDetail: string;
+  orderReturnSubmit: string;
+  orderReturnSubmitting: string;
+  orderReturnSelectItem: string;
+  orderReturnCancel: string;
+  orderReturnPolicy: string;
+  orderReturnInventoryRestocked: string;
+  orderReturnInventoryManual: string;
+  orderReturnInventoryNotRequired: string;
+  orderReturnFailed: string;
   orderExpires: string;
   orderCreated: string;
   orderCancel: string;
@@ -352,6 +375,28 @@ export interface NpShopCartClientMessages {
   orderFulfillmentShipped: string;
   orderFulfillmentCancelled: string;
   orderFulfillmentTracking: string;
+  orderReturn: string;
+  orderReturnRequested: string;
+  orderReturnApproved: string;
+  orderReturnRejected: string;
+  orderReturnReceived: string;
+  orderReturnCancelled: string;
+  orderReturnReason: string;
+  orderReturnReasonDamaged: string;
+  orderReturnReasonDefective: string;
+  orderReturnReasonWrongItem: string;
+  orderReturnReasonChangedMind: string;
+  orderReturnReasonOther: string;
+  orderReturnDetail: string;
+  orderReturnSubmit: string;
+  orderReturnSubmitting: string;
+  orderReturnSelectItem: string;
+  orderReturnCancel: string;
+  orderReturnPolicy: string;
+  orderReturnInventoryRestocked: string;
+  orderReturnInventoryManual: string;
+  orderReturnInventoryNotRequired: string;
+  orderReturnFailed: string;
   orderExpires: string;
   orderCreated: string;
   orderCancel: string;
@@ -539,6 +584,8 @@ export interface NpShopOrder {
   fulfillment?: NpShopFulfillment;
   /** Present after a refund request has been durably recorded. */
   refund?: NpShopRefund;
+  /** Present after the owner requests a physical return. */
+  returnRequest?: NpShopReturn;
   purgeAt: string;
 }
 
@@ -557,6 +604,7 @@ export interface NpShopOrdersSkinProps {
 export interface NpShopOrderSkinProps {
   basePath: string;
   apiPath: string;
+  returnApiPath: string;
   orderId: string;
   paymentAction?: ReactNode;
   messages: NpShopMessages;

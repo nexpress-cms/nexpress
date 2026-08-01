@@ -107,6 +107,28 @@ function cartClientMessages(messages: NpShopMessages): NpShopCartClientMessages 
     orderFulfillmentShipped: messages.orderFulfillmentShipped,
     orderFulfillmentCancelled: messages.orderFulfillmentCancelled,
     orderFulfillmentTracking: messages.orderFulfillmentTracking,
+    orderReturn: messages.orderReturn,
+    orderReturnRequested: messages.orderReturnRequested,
+    orderReturnApproved: messages.orderReturnApproved,
+    orderReturnRejected: messages.orderReturnRejected,
+    orderReturnReceived: messages.orderReturnReceived,
+    orderReturnCancelled: messages.orderReturnCancelled,
+    orderReturnReason: messages.orderReturnReason,
+    orderReturnReasonDamaged: messages.orderReturnReasonDamaged,
+    orderReturnReasonDefective: messages.orderReturnReasonDefective,
+    orderReturnReasonWrongItem: messages.orderReturnReasonWrongItem,
+    orderReturnReasonChangedMind: messages.orderReturnReasonChangedMind,
+    orderReturnReasonOther: messages.orderReturnReasonOther,
+    orderReturnDetail: messages.orderReturnDetail,
+    orderReturnSubmit: messages.orderReturnSubmit,
+    orderReturnSubmitting: messages.orderReturnSubmitting,
+    orderReturnSelectItem: messages.orderReturnSelectItem,
+    orderReturnCancel: messages.orderReturnCancel,
+    orderReturnPolicy: messages.orderReturnPolicy,
+    orderReturnInventoryRestocked: messages.orderReturnInventoryRestocked,
+    orderReturnInventoryManual: messages.orderReturnInventoryManual,
+    orderReturnInventoryNotRequired: messages.orderReturnInventoryNotRequired,
+    orderReturnFailed: messages.orderReturnFailed,
     orderExpires: messages.orderExpires,
     orderCreated: messages.orderCreated,
     orderCancel: messages.orderCancel,
@@ -543,8 +565,10 @@ export function ShopOrderSurface({ skin, ...props }: NpShopOrderSkinProps & { sk
     <main className="np-shop np-shop-order" data-np-shop-surface="order" data-np-shop-skin={skin}>
       <ShopOrder
         apiPath={props.apiPath}
+        returnApiPath={props.returnApiPath}
         basePath={props.basePath}
         orderId={props.orderId}
+        paymentAction={props.paymentAction}
         messages={cartClientMessages(props.messages)}
       />
     </main>

@@ -70,6 +70,12 @@ describe("shop factory", () => {
       { id: "refundHealth", kind: "status" },
       { id: "recentRefunds", kind: "table" },
       { id: "refundOrder", kind: "action" },
+      { id: "countReturns", kind: "metric" },
+      { id: "returnHealth", kind: "status" },
+      { id: "recentReturns", kind: "table" },
+      { id: "approveReturn", kind: "action" },
+      { id: "rejectReturn", kind: "action" },
+      { id: "receiveReturn", kind: "action" },
       { id: "countFulfillments", kind: "metric" },
       { id: "fulfillmentHealth", kind: "status" },
       { id: "recentFulfillments", kind: "table" },
@@ -96,6 +102,8 @@ describe("shop factory", () => {
       "GET /orders",
       "POST /orders",
       "DELETE /orders",
+      "POST /returns",
+      "DELETE /returns",
     ]);
     expect(shopPlugin.scheduled?.map((task) => task.id)).toEqual([
       "cleanup-expired-carts",

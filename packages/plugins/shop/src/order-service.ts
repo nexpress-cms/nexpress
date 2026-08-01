@@ -82,6 +82,19 @@ import {
   type NpShopPaymentRefundResult,
   type NpShopStoredRefund,
 } from "./refund-contract.js";
+import {
+  NP_SHOP_RETURN_STORAGE_CONTRACT,
+  NpShopReturnConflictError,
+  NpShopReturnContractError,
+  npProjectShopReturn,
+  npRequireStoredShopReturn,
+  npShopReturnLimits,
+  type NpShopReturn,
+  type NpShopReturnCancelInput,
+  type NpShopReturnRequestInput,
+  type NpShopReturnStaffInput,
+  type NpShopStoredReturn,
+} from "./return-contract.js";
 
 interface NpShopOrderMaintenanceMarker {
   contract: "np.shop-order-maintenance.v1";
@@ -133,7 +146,23 @@ export interface NpShopAdminOrderRow {
   fulfillmentRevision: number | null;
   revision: number;
   refund: string;
+  returnRequest: string;
   createdAt: string;
+}
+
+export interface NpShopAdminReturnRow {
+  [key: string]: unknown;
+  id: string;
+  returnId: string;
+  status: string;
+  returnRevision: number;
+  orderRevision: number;
+  reason: string;
+  detail: string;
+  units: number;
+  inventory: string;
+  operatorNote: string;
+  updatedAt: string;
 }
 
 export interface NpShopAdminRefundRow {
@@ -188,6 +217,10 @@ function fulfillmentStorageKey(orderId: string): string {
 
 function refundStorageKey(orderId: string): string {
   return `refund:${orderId}`;
+}
+
+function returnStorageKey(orderId: string): string {
+  return `return:${orderId}`;
 }
 
 function maintenanceStorageKey(ownerSegment: string, orderId: string): string {
@@ -301,6 +334,38 @@ function requireStoredRefundAtKey(
     ]);
   }
   return refund;
+}
+
+function requireStoredReturnAtKey(
+  value: unknown,
+  expiresAt: Date | null,
+  key: string,
+): NpShopStoredReturn {
+  const returnRequest = npRequireStoredShopReturn(value);
+  if (
+    key !== returnStorageKey(returnRequest.orderId) ||
+    expiresAt === null ||
+    expiresAt.toISOString() !== returnRequest.purgeAt
+  ) {
+    throw new NpShopOrderContractError("Invalid Shop return storage metadata", [
+      "Return storage key and expiry must match its canonical value.",
+    ]);
+  }
+  return returnRequest;
+}
+
+function returnMatchesOrder(returnRequest: NpShopStoredReturn, order: NpShopStoredOrder): boolean {
+  return (
+    returnRequest.orderId === order.id &&
+    returnRequest.ownerSegment === order.ownerSegment &&
+    returnRequest.purgeAt === order.purgeAt &&
+    returnRequest.orderRevision <= order.revision &&
+    (order.status === "paid" || order.status === "refunded") &&
+    returnRequest.lines.every((requestedLine) => {
+      const line = order.lines.find((candidate) => candidate.key === requestedLine.lineKey);
+      return Boolean(line && requestedLine.quantity <= line.quantity);
+    })
+  );
 }
 
 function requireMaintenanceMarker(
@@ -555,6 +620,32 @@ async function readStoredRefund(
   return row ? requireStoredRefundAtKey(row.value, row.expiresAt, row.key) : null;
 }
 
+async function readStoredReturn(
+  db: ReturnType<typeof getDb> | NpShopTransaction,
+  siteId: string,
+  orderId: string,
+  forUpdate = false,
+): Promise<NpShopStoredReturn | null> {
+  let query = db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        eq(npPluginStorage.key, returnStorageKey(orderId)),
+      ),
+    )
+    .limit(1);
+  if (forUpdate) query = query.for("update") as typeof query;
+  const [row] = await query;
+  return row ? requireStoredReturnAtKey(row.value, row.expiresAt, row.key) : null;
+}
+
 async function persistOrder(
   tx: NpShopTransaction,
   siteId: string,
@@ -700,6 +791,32 @@ async function persistRefund(
     });
 }
 
+async function persistReturn(
+  tx: NpShopTransaction,
+  siteId: string,
+  returnRequest: NpShopStoredReturn,
+): Promise<void> {
+  npRequireStoredShopReturn(returnRequest);
+  await tx
+    .insert(npPluginStorage)
+    .values({
+      pluginId: NP_SHOP_PLUGIN_ID,
+      siteId,
+      key: returnStorageKey(returnRequest.orderId),
+      value: returnRequest,
+      expiresAt: new Date(returnRequest.purgeAt),
+      updatedAt: new Date(returnRequest.updatedAt),
+    })
+    .onConflictDoUpdate({
+      target: [npPluginStorage.pluginId, npPluginStorage.siteId, npPluginStorage.key],
+      set: {
+        value: returnRequest,
+        expiresAt: new Date(returnRequest.purgeAt),
+        updatedAt: new Date(returnRequest.updatedAt),
+      },
+    });
+}
+
 async function persistMaintenanceMarker(
   tx: NpShopTransaction,
   siteId: string,
@@ -780,6 +897,17 @@ async function projectOrder(
       "Refund identity, payment, amount, retention, time, status, and revision must match the commercial order.",
     ]);
   }
+  const returnRequest = await readStoredReturn(db, siteId, order.id);
+  if (returnRequest && !returnMatchesOrder(returnRequest, order)) {
+    throw new NpShopOrderContractError("Shop return does not match its order", [
+      "Return owner, order revision, retention, status, and line quantities must match the order.",
+    ]);
+  }
+  if (returnRequest && fulfillment?.status !== "shipped") {
+    throw new NpShopOrderContractError("Shop return requires shipped fulfillment", [
+      "A physical return can exist only for one shipped fulfillment.",
+    ]);
+  }
   if (
     privateData?.contract === NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT &&
     (!fulfillment ||
@@ -798,6 +926,7 @@ async function projectOrder(
     shipping: privateData?.shipping ?? null,
     ...(fulfillment ? { fulfillment: npProjectShopFulfillment(fulfillment) } : {}),
     ...(refund ? { refund: npProjectShopRefund(refund) } : {}),
+    ...(returnRequest ? { returnRequest: npProjectShopReturn(returnRequest) } : {}),
   });
 }
 
@@ -1154,7 +1283,7 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${refundStorageKey(order.id)})`,
+        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)})`,
       ),
     );
   await tx
@@ -1769,6 +1898,7 @@ export async function npListRecentShopOrders(): Promise<{
         const order = requireStoredOrderAtKey(row.value, row.expiresAt, row.key);
         const fulfillment = await readStoredFulfillment(db, siteId, order.id);
         const refund = await readStoredRefund(db, siteId, order.id);
+        const returnRequest = await readStoredReturn(db, siteId, order.id);
         return {
           id: order.id,
           revision: order.revision,
@@ -1780,6 +1910,7 @@ export async function npListRecentShopOrders(): Promise<{
           fulfillment: fulfillment?.status ?? "not-created",
           fulfillmentRevision: fulfillment?.revision ?? null,
           refund: refund?.status ?? "not-requested",
+          returnRequest: returnRequest?.status ?? "not-requested",
           createdAt: order.createdAt,
         };
       }),
@@ -2827,4 +2958,472 @@ export async function npListRecentShopPaymentEvents(): Promise<{
     }),
     total,
   };
+}
+
+function requireReturnRevision(returnRequest: NpShopStoredReturn, expectedRevision: number): void {
+  if (returnRequest.revision !== expectedRevision) {
+    throw new NpShopReturnConflictError(
+      "return_revision_conflict",
+      "The return changed before this action was applied.",
+    );
+  }
+}
+
+function requireReturnOrderRetained(order: NpShopStoredOrder): void {
+  if (new Date(order.purgeAt) <= new Date()) {
+    throw new NpShopReturnConflictError(
+      "return_order_expired",
+      "The return order is past its commercial retention window.",
+    );
+  }
+}
+
+function requireReturnableOrderLines(
+  order: NpShopStoredOrder,
+  requestedLines: readonly { lineKey: string; quantity: number }[],
+): void {
+  for (const requestedLine of requestedLines) {
+    const orderLine = order.lines.find((line) => line.key === requestedLine.lineKey);
+    if (!orderLine || requestedLine.quantity > orderLine.quantity) {
+      throw new NpShopReturnContractError("Invalid Shop return lines", [
+        "Every returned line and quantity must be contained in the immutable order snapshot.",
+      ]);
+    }
+  }
+}
+
+async function readReturnOrderForStaff(
+  tx: NpShopTransaction,
+  siteId: string,
+  orderId: string,
+): Promise<{ order: NpShopStoredOrder; returnRequest: NpShopStoredReturn }> {
+  await lockOrderLookup(tx, siteId, orderId);
+  const lookup = await readOrderLookupForUpdate(tx, siteId, orderId);
+  if (!lookup) {
+    throw new NpShopReturnConflictError("return_not_found", "The Shop return order is missing.");
+  }
+  await lockOrder(tx, siteId, lookup.ownerSegment, orderId);
+  const order = await readStoredOrderForUpdate(tx, siteId, lookup.ownerSegment, orderId);
+  const returnRequest = await readStoredReturn(tx, siteId, orderId, true);
+  if (!order || !returnRequest || !returnMatchesOrder(returnRequest, order)) {
+    throw new NpShopReturnConflictError(
+      "return_not_found",
+      "The Shop return or its exact order is missing.",
+    );
+  }
+  requireReturnOrderRetained(order);
+  const fulfillment = await readStoredFulfillment(tx, siteId, orderId, true);
+  if (
+    !fulfillment ||
+    fulfillment.status !== "shipped" ||
+    !fulfillmentMatchesOrder(fulfillment, order)
+  ) {
+    throw new NpShopReturnConflictError(
+      "return_order_not_shipped",
+      "A physical return requires one matching shipped fulfillment.",
+    );
+  }
+  return { order, returnRequest };
+}
+
+export async function npRequestShopReturn(
+  owner: NpShopCartOwner,
+  input: NpShopReturnRequestInput,
+): Promise<NpShopReturn> {
+  const siteId = await requireSiteId();
+  const ownerSegment = npShopCartOwnerStorageSegment(owner);
+  return getDb().transaction(async (tx) => {
+    await lockOrder(tx, siteId, ownerSegment, input.orderId);
+    const order = await readStoredOrderForUpdate(tx, siteId, ownerSegment, input.orderId);
+    if (!order) {
+      throw new NpShopReturnConflictError("return_not_found", "The Shop order does not exist.");
+    }
+    if (order.revision !== input.expectedOrderRevision) {
+      throw new NpShopReturnConflictError(
+        "return_order_revision_conflict",
+        "The order changed before the return was requested.",
+      );
+    }
+    requireReturnOrderRetained(order);
+    if (order.status !== "paid" && order.status !== "refunded") {
+      throw new NpShopReturnConflictError(
+        "return_order_not_shipped",
+        "Only one paid or refunded shipped order can request a return.",
+      );
+    }
+    const fulfillment = await readStoredFulfillment(tx, siteId, order.id, true);
+    if (
+      !fulfillment ||
+      fulfillment.status !== "shipped" ||
+      !fulfillmentMatchesOrder(fulfillment, order)
+    ) {
+      throw new NpShopReturnConflictError(
+        "return_order_not_shipped",
+        "The order must have one exact shipped fulfillment before a return can be requested.",
+      );
+    }
+    if (await readStoredReturn(tx, siteId, order.id, true)) {
+      throw new NpShopReturnConflictError(
+        "return_already_exists",
+        "This order already has one durable return record.",
+      );
+    }
+    requireReturnableOrderLines(order, input.lines);
+    const now = new Date().toISOString();
+    const returnRequest: NpShopStoredReturn = {
+      contract: NP_SHOP_RETURN_STORAGE_CONTRACT,
+      id: randomUUID(),
+      orderId: order.id,
+      ownerSegment,
+      status: "requested",
+      revision: 1,
+      orderRevision: order.revision,
+      lines: input.lines,
+      reason: input.reason,
+      detail: input.detail,
+      operatorNote: null,
+      inventoryOutcome: "pending",
+      requestedAt: now,
+      updatedAt: now,
+      decidedAt: null,
+      receivedAt: null,
+      purgeAt: order.purgeAt,
+    };
+    await persistReturn(tx, siteId, returnRequest);
+    return npProjectShopReturn(returnRequest);
+  });
+}
+
+export async function npCancelShopReturn(
+  owner: NpShopCartOwner,
+  input: NpShopReturnCancelInput,
+): Promise<NpShopReturn> {
+  const siteId = await requireSiteId();
+  const ownerSegment = npShopCartOwnerStorageSegment(owner);
+  return getDb().transaction(async (tx) => {
+    await lockOrder(tx, siteId, ownerSegment, input.orderId);
+    const order = await readStoredOrderForUpdate(tx, siteId, ownerSegment, input.orderId);
+    const current = await readStoredReturn(tx, siteId, input.orderId, true);
+    if (!order || !current || !returnMatchesOrder(current, order)) {
+      throw new NpShopReturnConflictError("return_not_found", "The Shop return does not exist.");
+    }
+    requireReturnOrderRetained(order);
+    requireReturnRevision(current, input.expectedRevision);
+    if (current.status !== "requested") {
+      throw new NpShopReturnConflictError(
+        "return_invalid_transition",
+        "Only a return awaiting staff review can be cancelled by its owner.",
+      );
+    }
+    const now = new Date().toISOString();
+    const cancelled: NpShopStoredReturn = {
+      ...current,
+      status: "cancelled",
+      revision: current.revision + 1,
+      inventoryOutcome: "not-required",
+      updatedAt: now,
+      decidedAt: now,
+    };
+    await persistReturn(tx, siteId, cancelled);
+    return npProjectShopReturn(cancelled);
+  });
+}
+
+export async function npApproveShopReturn(
+  input: NpShopReturnStaffInput,
+  staffUserId: string,
+): Promise<NpShopReturn> {
+  const siteId = await requireSiteId();
+  return getDb().transaction(async (tx) => {
+    const { returnRequest } = await readReturnOrderForStaff(tx, siteId, input.orderId);
+    requireReturnRevision(returnRequest, input.expectedRevision);
+    if (returnRequest.status !== "requested") {
+      throw new NpShopReturnConflictError(
+        "return_invalid_transition",
+        "Only a requested return can be approved.",
+      );
+    }
+    const now = new Date().toISOString();
+    const approved: NpShopStoredReturn = {
+      ...returnRequest,
+      status: "approved",
+      revision: returnRequest.revision + 1,
+      operatorNote: input.operatorNote,
+      updatedAt: now,
+      decidedAt: now,
+    };
+    await persistReturn(tx, siteId, approved);
+    await recordRequiredShopFulfillmentAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.return.approve",
+      input.orderId,
+      {
+        returnId: approved.id,
+        returnRevision: approved.revision,
+        lineCount: approved.lines.length,
+      },
+    );
+    return npProjectShopReturn(approved);
+  });
+}
+
+export async function npRejectShopReturn(
+  input: NpShopReturnStaffInput,
+  staffUserId: string,
+): Promise<NpShopReturn> {
+  const siteId = await requireSiteId();
+  return getDb().transaction(async (tx) => {
+    const { returnRequest } = await readReturnOrderForStaff(tx, siteId, input.orderId);
+    requireReturnRevision(returnRequest, input.expectedRevision);
+    if (returnRequest.status !== "requested") {
+      throw new NpShopReturnConflictError(
+        "return_invalid_transition",
+        "Only a requested return can be rejected.",
+      );
+    }
+    const now = new Date().toISOString();
+    const rejected: NpShopStoredReturn = {
+      ...returnRequest,
+      status: "rejected",
+      revision: returnRequest.revision + 1,
+      operatorNote: input.operatorNote,
+      inventoryOutcome: "not-required",
+      updatedAt: now,
+      decidedAt: now,
+    };
+    await persistReturn(tx, siteId, rejected);
+    await recordRequiredShopFulfillmentAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.return.reject",
+      input.orderId,
+      {
+        returnId: rejected.id,
+        returnRevision: rejected.revision,
+      },
+    );
+    return npProjectShopReturn(rejected);
+  });
+}
+
+export async function npReceiveShopReturn(
+  runtime: NpShopRuntime,
+  input: NpShopReturnStaffInput,
+  staffUserId: string,
+): Promise<NpShopReturn> {
+  const siteId = await requireSiteId();
+  return getDb().transaction(async (tx) => {
+    const { order, returnRequest } = await readReturnOrderForStaff(tx, siteId, input.orderId);
+    requireReturnRevision(returnRequest, input.expectedRevision);
+    if (returnRequest.status !== "approved") {
+      throw new NpShopReturnConflictError(
+        "return_invalid_transition",
+        "Only an approved return can be marked received.",
+      );
+    }
+    const requestedByKey = new Map(
+      returnRequest.lines.map((line) => [line.lineKey, line.quantity]),
+    );
+    const trackedKeys = new Set(order.inventoryReservationLineKeys);
+    const trackedLines = order.lines
+      .filter((line) => trackedKeys.has(line.key) && requestedByKey.has(line.key))
+      .map((line) => {
+        const quantity = requestedByKey.get(line.key)!;
+        return { ...line, quantity, lineTotalMinor: line.unitPriceMinor * quantity };
+      });
+    const inventoryOutcome =
+      trackedLines.length === 0
+        ? "not-required"
+        : (await npRestoreShopOrderInventory(tx, siteId, runtime, trackedLines))
+          ? "restocked"
+          : "manual-required";
+    const now = new Date().toISOString();
+    const received: NpShopStoredReturn = {
+      ...returnRequest,
+      status: "received",
+      revision: returnRequest.revision + 1,
+      operatorNote: input.operatorNote ?? returnRequest.operatorNote,
+      inventoryOutcome,
+      updatedAt: now,
+      receivedAt: now,
+    };
+    await persistReturn(tx, siteId, received);
+    await recordRequiredShopFulfillmentAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.return.receive",
+      input.orderId,
+      {
+        returnId: received.id,
+        returnRevision: received.revision,
+        inventoryOutcome,
+        trackedLineCount: trackedLines.length,
+      },
+    );
+    return npProjectShopReturn(received);
+  });
+}
+
+export async function npListRecentShopReturns(): Promise<{
+  rows: NpShopAdminReturnRow[];
+  total: number;
+}> {
+  const siteId = await requireSiteId();
+  const db = getDb();
+  const rows = await db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "return:%"),
+      ),
+    )
+    .orderBy(desc(npPluginStorage.updatedAt), desc(npPluginStorage.key))
+    .limit(npShopReturnLimits.adminListSize);
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "return:%"),
+      ),
+    );
+  return {
+    rows: rows.map((row) => {
+      const returnRequest = requireStoredReturnAtKey(row.value, row.expiresAt, row.key);
+      return {
+        id: returnRequest.orderId,
+        returnId: returnRequest.id,
+        status: returnRequest.status,
+        returnRevision: returnRequest.revision,
+        orderRevision: returnRequest.orderRevision,
+        reason: returnRequest.reason,
+        detail: returnRequest.detail ?? "—",
+        units: returnRequest.lines.reduce((totalUnits, line) => totalUnits + line.quantity, 0),
+        inventory: returnRequest.inventoryOutcome,
+        operatorNote: returnRequest.operatorNote ?? "—",
+        updatedAt: returnRequest.updatedAt,
+      };
+    }),
+    total,
+  };
+}
+
+export async function npCountShopReturns(): Promise<{
+  total: number;
+  requested: number;
+  approved: number;
+  rejected: number;
+  received: number;
+  cancelled: number;
+  manualInventory: number;
+  invalidSample: number;
+  orphanSample: number;
+}> {
+  const siteId = await requireSiteId();
+  const db = getDb();
+  const [counts] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      requested: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_RETURN_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'requested')::int`,
+      approved: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_RETURN_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'approved')::int`,
+      rejected: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_RETURN_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'rejected')::int`,
+      received: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_RETURN_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'received')::int`,
+      cancelled: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_RETURN_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'cancelled')::int`,
+      manualInventory: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_RETURN_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'inventoryOutcome' = 'manual-required')::int`,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "return:%"),
+      ),
+    );
+  const rows = await db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "return:%"),
+      ),
+    )
+    .orderBy(desc(npPluginStorage.updatedAt))
+    .limit(npShopReturnLimits.diagnosticSampleSize);
+  let invalidSample = 0;
+  let orphanSample = 0;
+  for (const row of rows) {
+    try {
+      const returnRequest = requireStoredReturnAtKey(row.value, row.expiresAt, row.key);
+      const [lookupRow] = await db
+        .select({
+          key: npPluginStorage.key,
+          value: npPluginStorage.value,
+          expiresAt: npPluginStorage.expiresAt,
+        })
+        .from(npPluginStorage)
+        .where(
+          and(
+            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+            eq(npPluginStorage.siteId, siteId),
+            eq(npPluginStorage.key, lookupStorageKey(returnRequest.orderId)),
+          ),
+        )
+        .limit(1);
+      if (!lookupRow) {
+        orphanSample += 1;
+        continue;
+      }
+      const lookup = requireOrderLookup(lookupRow.value, lookupRow.expiresAt, lookupRow.key);
+      const [orderRow] = await db
+        .select({
+          key: npPluginStorage.key,
+          value: npPluginStorage.value,
+          expiresAt: npPluginStorage.expiresAt,
+        })
+        .from(npPluginStorage)
+        .where(
+          and(
+            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+            eq(npPluginStorage.siteId, siteId),
+            eq(npPluginStorage.key, orderStorageKey(lookup.ownerSegment, returnRequest.orderId)),
+          ),
+        )
+        .limit(1);
+      const order = orderRow
+        ? requireStoredOrderAtKey(orderRow.value, orderRow.expiresAt, orderRow.key)
+        : null;
+      const fulfillment = await readStoredFulfillment(db, siteId, returnRequest.orderId);
+      if (
+        !order ||
+        !returnMatchesOrder(returnRequest, order) ||
+        !fulfillment ||
+        fulfillment.status !== "shipped" ||
+        !fulfillmentMatchesOrder(fulfillment, order)
+      ) {
+        orphanSample += 1;
+      }
+    } catch {
+      invalidSample += 1;
+    }
+  }
+  return { ...counts, invalidSample, orphanSample };
 }

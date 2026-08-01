@@ -17,6 +17,7 @@ import {
 } from "./types.js";
 import { npAnalyzeShopFulfillment, npShopFulfillmentLimits } from "./fulfillment-contract.js";
 import { NP_SHOP_REFUND_CONTRACT, npAnalyzeStoredShopRefund } from "./refund-contract.js";
+import { NP_SHOP_RETURN_CONTRACT, npAnalyzeShopReturn } from "./return-contract.js";
 
 export const NP_SHOP_ORDER_CONTRACT = "np.shop-order.v1" as const;
 export const NP_SHOP_ORDER_LIST_CONTRACT = "np.shop-order-list.v1" as const;
@@ -675,7 +676,7 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
   const issues: string[] = [];
   if (!isRecord(value)) return ["order must be a plain object."];
   for (const key of Object.keys(value)) {
-    if (![...publicOrderKeys, "fulfillment", "refund"].includes(key)) {
+    if (![...publicOrderKeys, "fulfillment", "refund", "returnRequest"].includes(key)) {
       issues.push(`order.${key} is not supported.`);
     }
   }
@@ -691,6 +692,7 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
   delete storedCandidate.shipping;
   delete storedCandidate.fulfillment;
   delete storedCandidate.refund;
+  delete storedCandidate.returnRequest;
   issues.push(...npAnalyzeStoredShopOrder(storedCandidate));
   if (value.contract !== NP_SHOP_ORDER_CONTRACT) {
     issues.push(`order.contract must equal "${NP_SHOP_ORDER_CONTRACT}".`);
@@ -788,6 +790,19 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
     }
   } else if (value.status === "refunded") {
     issues.push("refunded orders require a projected refund.");
+  }
+  if (Object.hasOwn(value, "returnRequest")) {
+    issues.push(...npAnalyzeShopReturn(value.returnRequest).map((issue) => `order.${issue}`));
+    if (
+      !isRecord(value.returnRequest) ||
+      value.returnRequest.contract !== NP_SHOP_RETURN_CONTRACT ||
+      value.returnRequest.orderId !== value.id ||
+      (value.status !== "paid" && value.status !== "refunded") ||
+      !isRecord(value.fulfillment) ||
+      value.fulfillment.status !== "shipped"
+    ) {
+      issues.push("order.returnRequest must match one shipped paid or refunded order.");
+    }
   }
   return issues.filter(
     (issue) =>

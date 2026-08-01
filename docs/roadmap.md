@@ -354,12 +354,19 @@ real product domain, not just blog/community. Ship as a plugin package
   all-or-none exact restock, manual-compensation state, audit, owner projection,
   Admin, and Doctor share the same contract. Partial refunds and external
   reversals remain future.
+- **Physical returns and receipt inventory (shipped)** — one shipped order may
+  own one exact item-level return with owner request/cancellation, audited
+  revision-safe staff approval/rejection/receipt, closed PII-free reasons,
+  owner-safe projection, and all-or-none tracked inventory restoration.
+  Exchanges, carrier labels/pickup, jurisdiction policy, and payment refunds
+  remain separate.
 - **Inventory (shipped foundation)** — catalog stock/low-stock projection,
   transaction-safe pending holds, and atomic paid-order on-hand decrement
   plus exact unshipped full-refund restoration exist; partial/external reversal
   compensation remains future work.
 - **Public surfaces (shipped)** — product detail, listing, cart,
-  checkout-intent, private order-draft, order-history, and order-detail pages
+  checkout-intent, private order-draft, order-history, order-detail, and return
+  intake pages
   use independent plugin skins and stable theme hooks.
 - **Tax & shipping (future)** — extension points require region-specific
   policy rather than implied defaults.

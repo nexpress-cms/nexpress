@@ -6,6 +6,7 @@ import { npRequireShopCartQuote } from "./cart-contract.js";
 import { npRequireShopCheckoutIntent } from "./checkout-contract.js";
 import { npRequireShopOrderDraft } from "./order-draft-contract.js";
 import { npRequireShopOrder, npRequireShopOrderList } from "./order-contract.js";
+import { npRequireShopReturn, type NpShopReturn } from "./return-contract.js";
 import type {
   NpShopCartClientMessages,
   NpShopCartQuote,
@@ -44,6 +45,11 @@ interface OrderResponse {
 
 interface OrderListResponse {
   list: NpShopOrderList;
+  csrfToken: string | null;
+}
+
+interface ReturnResponse {
+  returnRequest: NpShopReturn;
   csrfToken: string | null;
 }
 
@@ -193,6 +199,34 @@ async function requestOrder(
   if ("order" in payload) return { ...payload, order: npRequireShopOrder(payload.order) };
   if ("list" in payload) return { ...payload, list: npRequireShopOrderList(payload.list) };
   throw new Error("Order response was invalid.");
+}
+
+async function requestReturn(
+  apiPath: string,
+  method: "POST" | "DELETE",
+  csrfToken: string | null,
+  body: unknown,
+): Promise<ReturnResponse> {
+  const response = await fetch(apiPath, {
+    method,
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = (await response.json()) as ReturnResponse | { message?: string; error?: string };
+  if (!response.ok || !("returnRequest" in payload)) {
+    const failure = payload as { message?: string; error?: string };
+    throw new ShopRequestError(
+      failure.error ?? "return_request_failed",
+      failure.message ?? failure.error ?? "Return request failed.",
+    );
+  }
+  return { ...payload, returnRequest: npRequireShopReturn(payload.returnRequest) };
 }
 
 export function ShopAddToCart({
@@ -1051,12 +1085,14 @@ export function ShopOrders({
 
 export function ShopOrder({
   apiPath,
+  returnApiPath,
   basePath,
   orderId,
   paymentAction,
   messages,
 }: {
   apiPath: string;
+  returnApiPath: string;
   basePath: string;
   orderId: string;
   paymentAction?: ReactNode;
@@ -1097,6 +1133,79 @@ export function ShopOrder({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function requestPhysicalReturn(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!order || order.fulfillment?.status !== "shipped" || order.returnRequest) return;
+    const form = new FormData(event.currentTarget);
+    const detailValue = form.get("detail");
+    const lines = order.lines.flatMap((line) => {
+      const raw = form.get(`line:${line.key}`);
+      const quantity = typeof raw === "string" ? Number(raw) : 0;
+      return Number.isSafeInteger(quantity) && quantity > 0
+        ? [{ lineKey: line.key, quantity }]
+        : [];
+    });
+    if (lines.length === 0) {
+      setError(messages.orderReturnSelectItem);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const response = await requestReturn(returnApiPath, "POST", csrfToken, {
+        orderId: order.id,
+        expectedOrderRevision: order.revision,
+        lines,
+        reason: form.get("reason"),
+        detail: typeof detailValue === "string" && detailValue.trim() ? detailValue.trim() : null,
+      });
+      setOrder({ ...order, returnRequest: response.returnRequest });
+      setCsrfToken(response.csrfToken);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : messages.orderReturnFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelPhysicalReturn(): Promise<void> {
+    if (!order?.returnRequest || order.returnRequest.status !== "requested") return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await requestReturn(returnApiPath, "DELETE", csrfToken, {
+        orderId: order.id,
+        expectedRevision: order.returnRequest.revision,
+      });
+      setOrder({ ...order, returnRequest: response.returnRequest });
+      setCsrfToken(response.csrfToken);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : messages.orderReturnFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function returnStatusMessage(returnRequest: NpShopReturn): string {
+    return {
+      requested: messages.orderReturnRequested,
+      approved: messages.orderReturnApproved,
+      rejected: messages.orderReturnRejected,
+      received: messages.orderReturnReceived,
+      cancelled: messages.orderReturnCancelled,
+    }[returnRequest.status];
+  }
+
+  function returnReasonMessage(reason: NpShopReturn["reason"]): string {
+    return {
+      damaged: messages.orderReturnReasonDamaged,
+      defective: messages.orderReturnReasonDefective,
+      "wrong-item": messages.orderReturnReasonWrongItem,
+      "changed-mind": messages.orderReturnReasonChangedMind,
+      other: messages.orderReturnReasonOther,
+    }[reason];
   }
 
   return (
@@ -1205,6 +1314,86 @@ export function ShopOrder({
                     {messages.orderCancel}
                   </button>
                 </>
+              ) : null}
+              {order.returnRequest ? (
+                <section
+                  className="np-shop-return-summary"
+                  data-np-shop-return-status={order.returnRequest.status}
+                >
+                  <h2>{messages.orderReturn}</h2>
+                  <p>{returnStatusMessage(order.returnRequest)}</p>
+                  <p>
+                    {messages.orderReturnReason}: {returnReasonMessage(order.returnRequest.reason)}
+                  </p>
+                  <ul>
+                    {order.returnRequest.lines.map((requestedLine) => {
+                      const line = order.lines.find(
+                        (candidate) => candidate.key === requestedLine.lineKey,
+                      );
+                      return (
+                        <li key={requestedLine.lineKey}>
+                          {line?.productName ?? requestedLine.lineKey} × {requestedLine.quantity}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {order.returnRequest.status === "received" ? (
+                    <p>
+                      {order.returnRequest.inventoryOutcome === "restocked"
+                        ? messages.orderReturnInventoryRestocked
+                        : order.returnRequest.inventoryOutcome === "manual-required"
+                          ? messages.orderReturnInventoryManual
+                          : messages.orderReturnInventoryNotRequired}
+                    </p>
+                  ) : null}
+                  {order.returnRequest.status === "requested" ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void cancelPhysicalReturn()}
+                    >
+                      {messages.orderReturnCancel}
+                    </button>
+                  ) : null}
+                </section>
+              ) : order.fulfillment?.status === "shipped" ? (
+                <form
+                  className="np-shop-return-form"
+                  onSubmit={(event) => void requestPhysicalReturn(event)}
+                >
+                  <h2>{messages.orderReturn}</h2>
+                  <p>{messages.orderReturnPolicy}</p>
+                  {order.lines.map((line) => (
+                    <label key={line.key}>
+                      <span>{line.productName}</span>
+                      <input
+                        type="number"
+                        name={`line:${line.key}`}
+                        min={0}
+                        max={line.quantity}
+                        defaultValue={0}
+                        disabled={busy}
+                      />
+                    </label>
+                  ))}
+                  <label>
+                    <span>{messages.orderReturnReason}</span>
+                    <select name="reason" defaultValue="changed-mind" disabled={busy}>
+                      <option value="damaged">{messages.orderReturnReasonDamaged}</option>
+                      <option value="defective">{messages.orderReturnReasonDefective}</option>
+                      <option value="wrong-item">{messages.orderReturnReasonWrongItem}</option>
+                      <option value="changed-mind">{messages.orderReturnReasonChangedMind}</option>
+                      <option value="other">{messages.orderReturnReasonOther}</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>{messages.orderReturnDetail}</span>
+                    <textarea name="detail" maxLength={500} disabled={busy} />
+                  </label>
+                  <button type="submit" disabled={busy}>
+                    {busy ? messages.orderReturnSubmitting : messages.orderReturnSubmit}
+                  </button>
+                </form>
               ) : null}
               <a href={`${basePath}/orders`}>{messages.orderHistory}</a>
             </aside>
