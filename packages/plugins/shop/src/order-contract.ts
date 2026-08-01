@@ -16,6 +16,7 @@ import {
   type NpShopOrderStatus,
 } from "./types.js";
 import { npAnalyzeShopFulfillment, npShopFulfillmentLimits } from "./fulfillment-contract.js";
+import { NP_SHOP_REFUND_CONTRACT, npAnalyzeStoredShopRefund } from "./refund-contract.js";
 
 export const NP_SHOP_ORDER_CONTRACT = "np.shop-order.v1" as const;
 export const NP_SHOP_ORDER_LIST_CONTRACT = "np.shop-order-list.v1" as const;
@@ -458,6 +459,19 @@ export function npAnalyzeStoredShopOrder(value: unknown): string[] {
     );
   }
   if (
+    value.status === "refunded" &&
+    (!hasPaymentMetadata ||
+      value.cancelledAt !== null ||
+      value.cancellationReason !== null ||
+      value.privateDataStatus !== "redacted" ||
+      (value.inventoryReservationStatus !== "consumed" &&
+        value.inventoryReservationStatus !== "not-required"))
+  ) {
+    issues.push(
+      "refunded orders require payment metadata, redacted private data, and the original inventory consumption state.",
+    );
+  }
+  if (
     value.status === "payment-failed" &&
     (!hasPaymentMetadata ||
       value.cancelledAt !== null ||
@@ -661,7 +675,7 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
   const issues: string[] = [];
   if (!isRecord(value)) return ["order must be a plain object."];
   for (const key of Object.keys(value)) {
-    if (![...publicOrderKeys, "fulfillment"].includes(key)) {
+    if (![...publicOrderKeys, "fulfillment", "refund"].includes(key)) {
       issues.push(`order.${key} is not supported.`);
     }
   }
@@ -676,6 +690,7 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
   delete storedCandidate.customer;
   delete storedCandidate.shipping;
   delete storedCandidate.fulfillment;
+  delete storedCandidate.refund;
   issues.push(...npAnalyzeStoredShopOrder(storedCandidate));
   if (value.contract !== NP_SHOP_ORDER_CONTRACT) {
     issues.push(`order.contract must equal "${NP_SHOP_ORDER_CONTRACT}".`);
@@ -691,7 +706,7 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
     if (
       isRecord(value.fulfillment) &&
       (value.fulfillment.orderId !== value.id ||
-        value.status !== "paid" ||
+        (value.status !== "paid" && value.status !== "refunded") ||
         value.fulfillment.privateDataStatus !== value.privateDataStatus ||
         value.fulfillment.createdAt !== value.paymentResolvedAt)
     ) {
@@ -699,6 +714,80 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
         "order.fulfillment must match the paid order id, payment timestamp, and private-data state.",
       );
     }
+  }
+  if (Object.hasOwn(value, "refund")) {
+    if (!isRecord(value.refund)) {
+      issues.push("order.refund must be a plain object.");
+    } else {
+      const publicRefundKeys = [
+        "contract",
+        "id",
+        "status",
+        "currency",
+        "amountMinor",
+        "inventoryOutcome",
+        "fulfillmentOutcome",
+        "requestedAt",
+        "refundedAt",
+      ] as const;
+      exactKeys(value.refund, publicRefundKeys, "order.refund", issues);
+      const candidate = {
+        contract: "np.shop-refund-storage.v1",
+        id: value.refund.id,
+        orderId: value.id,
+        providerId: value.paymentProvider,
+        status: value.refund.status,
+        orderRevision: value.revision,
+        paymentReference: value.paymentReference,
+        refundReference:
+          value.refund.status === "refunded" || value.refund.status === "provider-confirmed"
+            ? "projected"
+            : null,
+        currency: value.refund.currency,
+        amountMinor: value.refund.amountMinor,
+        reason: "projected",
+        inventoryOutcome: value.refund.inventoryOutcome,
+        fulfillmentOutcome: value.refund.fulfillmentOutcome,
+        providerErrorCode: value.refund.status === "manual-review" ? "projected" : null,
+        requestedAt: value.refund.requestedAt,
+        updatedAt:
+          typeof value.refund.refundedAt === "string" &&
+          typeof value.refund.requestedAt === "string" &&
+          new Date(value.refund.refundedAt) > new Date(value.refund.requestedAt)
+            ? value.refund.refundedAt
+            : value.refund.requestedAt,
+        refundedAt: value.refund.refundedAt,
+        purgeAt: value.purgeAt,
+      };
+      issues.push(
+        ...npAnalyzeStoredShopRefund(candidate)
+          .filter((issue) => issue !== "refund.orderRevision is invalid.")
+          .map((issue) => `order.${issue}`),
+      );
+      if (
+        value.refund.contract !== NP_SHOP_REFUND_CONTRACT ||
+        value.refund.currency !== value.currency ||
+        value.refund.amountMinor !== value.subtotalMinor ||
+        (value.refund.status === "refunded" && value.status !== "refunded")
+      ) {
+        issues.push("order.refund must match the order currency, amount, and terminal status.");
+      }
+      if (
+        value.refund.status === "refunded" &&
+        (!isRecord(value.fulfillment) ||
+          (value.refund.fulfillmentOutcome === "cancelled"
+            ? value.fulfillment.status !== "cancelled"
+            : value.refund.fulfillmentOutcome === "shipped-retained"
+              ? value.fulfillment.status !== "shipped"
+              : true) ||
+          (value.refund.inventoryOutcome === "not-applicable-shipped" &&
+            value.fulfillment.status !== "shipped"))
+      ) {
+        issues.push("order.refund outcomes must match cancelled or shipped fulfillment state.");
+      }
+    }
+  } else if (value.status === "refunded") {
+    issues.push("refunded orders require a projected refund.");
   }
   return issues.filter(
     (issue) =>

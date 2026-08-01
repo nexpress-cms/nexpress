@@ -26,9 +26,10 @@ order drafts, durable `pending-payment` order references, and tracked-inventory
 reservations. Payment processing is disabled by default; projects may register
 a build-time provider adapter for bounded owner-scoped attempts, server-side
 confirmation, exact verified callbacks, idempotent paid or failed transitions,
-and atomic reservation consumption or release. The bundled
+atomic reservation consumption or release, and optional audited full refunds
+with safe inventory compensation. The bundled
 `@nexpress/shop-payment-toss` adapter supplies a Toss Payments v2 browser/server
-flow when explicitly installed and configured. Order
+flow plus exact full cancellation when explicitly installed and configured. Order
 customer/shipping values live in a separate private sidecar and are physically
 deleted on cancellation or the 24-hour deadline; commercial snapshots are
 purged after 365 days.

@@ -6,6 +6,7 @@ import type {
   NpShopPaymentPrepareInput,
   NpShopPaymentPrepareResult,
 } from "./payment-attempt-contract.js";
+import type { NpShopPaymentRefundInput, NpShopPaymentRefundResult } from "./refund-contract.js";
 import { npShopCurrencies, type NpShopCurrency } from "./types.js";
 
 export const NP_SHOP_PAYMENT_EVENT_CONTRACT = "np.shop-payment-event.v1" as const;
@@ -86,7 +87,17 @@ export interface NpShopPaymentAdapter {
   ): NpShopVerifiedPaymentEvent | Promise<NpShopVerifiedPaymentEvent>;
   /** Build one provider-owned client launcher without exposing server secrets. */
   renderPaymentLauncher?: NpShopPaymentLauncher;
+  /**
+   * Cancel the entire captured payment. Implementations must use refundId as
+   * the provider idempotency key and must reject partial cancellation.
+   */
+  refundPayment?(
+    input: NpShopPaymentRefundInput,
+  ): NpShopPaymentRefundResult | Promise<NpShopPaymentRefundResult>;
 }
+
+export type NpShopPaymentRefundAdapter = NpShopPaymentAdapter &
+  Required<Pick<NpShopPaymentAdapter, "refundPayment">>;
 
 export type NpShopPaymentInitiationAdapter = NpShopPaymentAdapter &
   Required<
@@ -112,7 +123,7 @@ export interface NpShopStoredPaymentReceipt {
   event: NpShopVerifiedPaymentEvent;
   eventDigest: string;
   outcome: NpShopPaymentReceiptOutcome;
-  orderStatus: "paid" | "payment-failed" | "cancelled";
+  orderStatus: "paid" | "refunded" | "payment-failed" | "cancelled";
   orderRevision: number;
   processedAt: string;
   purgeAt: string;
@@ -350,7 +361,7 @@ export function npAnalyzeStoredShopPaymentReceipt(value: unknown): string[] {
   if (!(npShopPaymentReceiptOutcomes as readonly unknown[]).includes(value.outcome)) {
     issues.push("payment receipt.outcome is invalid.");
   }
-  if (!["paid", "payment-failed", "cancelled"].includes(value.orderStatus as string)) {
+  if (!["paid", "refunded", "payment-failed", "cancelled"].includes(value.orderStatus as string)) {
     issues.push("payment receipt.orderStatus is invalid.");
   }
   if (

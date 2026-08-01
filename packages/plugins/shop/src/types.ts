@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import type { NpShopRefund } from "./refund-contract.js";
+
 export const npShopCurrencies = ["KRW", "USD", "EUR", "JPY"] as const;
 export type NpShopCurrency = (typeof npShopCurrencies)[number];
 
@@ -152,9 +154,11 @@ export interface NpShopMessages {
   orderCreating: string;
   orderPendingPayment: string;
   orderPaid: string;
+  orderRefunded: string;
   orderPaymentFailed: string;
   orderCancelled: string;
   orderPaymentVerified: string;
+  orderRefundedDetail: string;
   orderPaymentFailedDetail: string;
   orderPrivateRetained: string;
   orderPrivateRedacted: string;
@@ -162,9 +166,13 @@ export interface NpShopMessages {
   orderInventoryConsumed: string;
   orderInventoryReleased: string;
   orderInventoryNotRequired: string;
+  orderRefundInventoryRestocked: string;
+  orderRefundInventoryManual: string;
+  orderRefundInventoryShipped: string;
   orderFulfillmentAwaiting: string;
   orderFulfillmentProcessing: string;
   orderFulfillmentShipped: string;
+  orderFulfillmentCancelled: string;
   orderFulfillmentTracking: string;
   orderExpires: string;
   orderCreated: string;
@@ -324,9 +332,11 @@ export interface NpShopCartClientMessages {
   orderCreating: string;
   orderPendingPayment: string;
   orderPaid: string;
+  orderRefunded: string;
   orderPaymentFailed: string;
   orderCancelled: string;
   orderPaymentVerified: string;
+  orderRefundedDetail: string;
   orderPaymentFailedDetail: string;
   orderPrivateRetained: string;
   orderPrivateRedacted: string;
@@ -334,9 +344,13 @@ export interface NpShopCartClientMessages {
   orderInventoryConsumed: string;
   orderInventoryReleased: string;
   orderInventoryNotRequired: string;
+  orderRefundInventoryRestocked: string;
+  orderRefundInventoryManual: string;
+  orderRefundInventoryShipped: string;
   orderFulfillmentAwaiting: string;
   orderFulfillmentProcessing: string;
   orderFulfillmentShipped: string;
+  orderFulfillmentCancelled: string;
   orderFulfillmentTracking: string;
   orderExpires: string;
   orderCreated: string;
@@ -448,6 +462,7 @@ export interface NpShopOrderDraftSkinProps {
 export const npShopOrderStatuses = [
   "pending-payment",
   "paid",
+  "refunded",
   "payment-failed",
   "cancelled",
 ] as const;
@@ -471,7 +486,12 @@ export const npShopInventoryReservationStatuses = [
 
 export type NpShopInventoryReservationStatus = (typeof npShopInventoryReservationStatuses)[number];
 
-export const npShopFulfillmentStatuses = ["awaiting", "processing", "shipped"] as const;
+export const npShopFulfillmentStatuses = [
+  "awaiting",
+  "processing",
+  "shipped",
+  "cancelled",
+] as const;
 
 export type NpShopFulfillmentStatus = (typeof npShopFulfillmentStatuses)[number];
 
@@ -517,6 +537,8 @@ export interface NpShopOrder {
   cancellationReason: NpShopOrderCancellationReason | null;
   /** Present for orders paid after fulfillment support was enabled. */
   fulfillment?: NpShopFulfillment;
+  /** Present after a refund request has been durably recorded. */
+  refund?: NpShopRefund;
   purgeAt: string;
 }
 

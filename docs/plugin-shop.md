@@ -5,8 +5,8 @@ It owns product and category data, inventory projection, public catalog
 routes, bounded guest/member carts, checkout intents, private order drafts,
 durable orders, transaction-safe inventory reservations, an optional
 provider-neutral payment initiation and verified-event boundary, revision-safe
-fulfillment operations, Admin collection forms and health actions, blocks, and
-skins.
+fulfillment operations, provider-neutral full refunds with safe inventory
+compensation, Admin collection forms and health actions, blocks, and skins.
 
 `@nexpress/theme-storefront` is a separate brand/content theme. It works with
 ordinary pages and posts when Shop is absent. When both packages are active,
@@ -19,9 +19,10 @@ reserves tracked product or variant inventory for its 24-hour lifetime. An
 optional build-time adapter may prepare a provider handoff, confirm the
 browser return on the server, authenticate an external callback, and project
 the exact provider-neutral event that moves that order to `paid` or
-`payment-failed`. Shop owns attempts, order transitions, and fulfillment state,
-but does not choose a provider protocol, calculate tax or shipping rates,
-physically fulfill goods, book a carrier, or refund.
+`payment-failed`. A refund-capable adapter may also cancel one entire provider
+payment. Shop owns attempts, order/refund transitions, fulfillment state, and
+local compensation, but does not choose a provider protocol, calculate tax or
+shipping rates, physically fulfill goods, or book a carrier.
 
 ## Default setup
 
@@ -307,7 +308,9 @@ its private sidecar. Owner or timeout cancellation remains `cancelled`.
 Payment status remains independent from fulfillment. A successful payment
 atomically creates `np.shop-fulfillment-storage.v1` in `awaiting` state; staff
 can revision-safely move it to `processing` and then `shipped` without changing
-the terminal `paid` meaning. Refund and reversed-payment states remain absent.
+the paid meaning. A completed full refund moves the order to `refunded`; an
+unshipped fulfillment moves to `cancelled`, while an already shipped
+fulfillment stays shipped and is never silently reopened.
 
 Storage separates commercial and private values:
 
@@ -330,6 +333,10 @@ Storage separates commercial and private values:
   references, integer amount/currency, digest, outcome, order revision, and
   timestamps. Raw bytes, headers, signatures, names, email, phone, address,
   and owner segment are never retained.
+- `np.shop-refund-storage.v1` stores one stable refund UUID, exact payment and
+  amount identity, PII-free reason, provider result reference, local
+  fulfillment/inventory outcomes, and timestamps. It never stores raw provider
+  bodies, credentials, customer values, addresses, or owner segments.
 
 Pending orders expire after 24 hours. Owner cancellation, lazy read after that
 deadline, and the hourly maintenance job all atomically change the durable
@@ -341,14 +348,14 @@ after verified payment. Marking a fulfillment shipped atomically stores
 carrier/tracking, redacts both order and fulfillment projections, and
 physically deletes the private sidecar. Owner reads and hourly maintenance
 enforce the same maximum deadline without changing the paid state. The
-commercial snapshot and matching payment receipts remain for 365 days and are
+commercial snapshot, matching payment receipts, and refund record remain for 365 days and are
 then physically purged. Each scheduled or confirmed Admin pass
 cancels at most 500 due orders and purges at most 500 expired commercial
 snapshots, oldest first. Site deletion remains the final tenant-wide deletion
 boundary.
 
 Owner responses are `private, no-store`. Owner history can include private
-details only while their matching sidecar exists; failed/cancelled/shipped
+details only while their matching sidecar exists; failed/cancelled/refunded/shipped
 orders always return `customer: null` and `shipping: null`. Admin exposes
 aggregate counts and bounded commercial/fulfillment tables. Normal rows never
 read or return names, email addresses, phone numbers, addresses, or owner
@@ -436,7 +443,41 @@ retry requires a new order.
 
 This boundary proves callback authentication and one local transition; it does
 not prove settlement, initiate payment, model authorization/capture,
-compensate reversals, implement refunds, or book a carrier shipment.
+compensate provider-initiated reversals, or book a carrier shipment.
+
+## Full refunds and inventory compensation
+
+`refundPayment` is an additive adapter capability. When present, the recent
+orders table exposes a direct-staff-only **Full refund** action for `paid`
+orders. Partial refund amounts are deliberately absent from the action and
+adapter input. Shop first writes one PII-free `pending` refund with a canonical
+UUID and append-only staff audit event, then calls the provider outside the
+database transaction. Every retry reuses that UUID as the provider idempotency
+key; a second local refund cannot be created for the order.
+
+The provider must return one exact `np.shop-refund-result.v1` matching the
+stored order id, payment reference, currency, and complete order amount.
+Retryable ambiguity leaves the durable refund pending. A definitive provider
+rejection moves it to `manual-review` with only a bounded error code. A
+matching provider success is durably stored as `provider-confirmed` before
+local reconciliation, so a delayed retry no longer needs another provider
+call. One local transaction then:
+
+- changes the commercial order from `paid` to `refunded` and deletes any
+  retained customer/shipping sidecar;
+- changes an awaiting/processing fulfillment to `cancelled`; an already
+  shipped fulfillment remains `shipped`;
+- for an unshipped tracked order, locks every product id, preflights every
+  exact product/variant and integer bound, and restores all quantities or none;
+- records `restocked`, `not-required`, `not-applicable-shipped`, or
+  `manual-required` so catalog drift never hides a partial compensation; and
+- writes a second append-only staff audit event without PII or provider body.
+
+Provider cancellation cannot be rolled back by PostgreSQL. If the process
+stops after the provider succeeds, the pending record and stable idempotency
+key make the same action safe to retry and converge. Operators must treat a
+pending or manual compensation diagnostic as reconciliation work; Shop never
+claims inventory was restored when exact catalog rows no longer match.
 
 ## Payment initiation and Toss Payments
 
@@ -506,6 +547,11 @@ server-side with the secret key and attempt UUID idempotency key. General
 payment webhooks are not accepted at face value: the adapter queries Toss with
 the secret key, compares the exact payment projection, and only then emits a
 terminal event. Unsupported or unverifiable callbacks fail closed.
+The same adapter implements `refundPayment` with Toss's full-cancel endpoint,
+the Shop refund UUID as `Idempotency-Key`, no `cancelAmount`, and exact
+validation of `CANCELED`, zero remaining balance, completed cancellation
+amount, transaction key, and timestamp. A partial cancellation response fails
+closed and cannot become a Shop refund.
 
 In a generated project, `defaultCollections` and `defaultPlugins` already
 contain the disabled default Shop instance. Filter the two Shop collections
@@ -519,7 +565,7 @@ The two collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
-The plugin declares nine baseline typed dashboard metric actions:
+The plugin declares ten baseline typed dashboard metric actions:
 
 - total product rows;
 - published low-stock products;
@@ -528,13 +574,14 @@ The plugin declares nine baseline typed dashboard metric actions:
   revalidate the current cart).
 - unexpired private order-draft records, without any customer or shipping
   values.
-- durable pending, paid, failed, and cancelled commercial order records, without owner or PII
+- durable pending, paid, refunded, failed, and cancelled commercial order records, without owner or PII
   values.
 - active PII-free inventory reservation rows.
 - fulfillment rows split across awaiting, processing, and shipped states.
 - verified PII-free payment-event receipts.
+- durable full-refund attempts and compensation outcomes.
 
-A complete initiation adapter adds a tenth metric for PII-free payment
+A complete initiation adapter adds an eleventh metric for PII-free payment
 attempts, a bounded recent-attempt table, and payment-attempt health. Attempt
 diagnostics expose provider, status, order id, exact amount, and timestamps;
 they withhold owner segments, private order data, and provider handoff values.
@@ -549,12 +596,20 @@ expiry. Payment health reports malformed or order-orphaned receipts from a
 bounded sample; its newest-50 table exposes only provider, event/type, order,
 outcome/status, and processing time. Order-draft, order, inventory, and
 payment diagnostics withhold private and owner values. Fulfillment health
-reports malformed, orphaned, paid-without-fulfillment, and overdue-private rows
+reports malformed, orphaned, paid/refunded-without-fulfillment, and overdue-private rows
 from bounded samples. Its row actions support processing, shipment, and an
 audited explicit private read; every mutation uses the current fulfillment
 revision. The scheduled-task and
 action registries make these contracts visible to plugin doctor without
 executing them.
+Refund health reports pending provider calls, definitive provider review,
+manual inventory compensation, malformed rows, and missing order lookups. Its
+bounded table contains only provider/order/refund ids, integer amount,
+terminal outcomes, bounded error code, and timestamps. Starting a full refund
+from the order table remains conditional on `refundPayment`; the refund table
+always references the same direct-staff handler so a `provider-confirmed` row
+can finish local reconciliation even after the provider adapter is removed.
+Doctor therefore sees neither a dangling handler nor a missing recovery path.
 
 The manifest-level action registry binds each metric widget to its exact
 handler kind, so plugin validation and doctor can inspect the relationship
@@ -651,8 +706,8 @@ Existing `classic` and `storefront-full` ids cannot be replaced.
 Future transaction work should remain separable from this foundation:
 
 1. additional provider packages for Stripe or KG Inicis;
-2. authorization/capture, settlement, reversal, refund, and inventory
-   compensation contracts;
+2. authorization/capture, settlement, provider-initiated reversal, and partial
+   refund contracts;
 3. fulfillment carrier integrations, returns, and customer-service policy;
 4. legal/tax/shipping policy integrations.
 

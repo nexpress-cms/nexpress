@@ -191,6 +191,9 @@ export function npAnalyzeStoredShopFulfillment(value: unknown): string[] {
   ) {
     issues.push("unshipped fulfillment cannot contain shipping completion metadata.");
   }
+  if (value.status === "cancelled" && value.privateDataStatus !== "redacted") {
+    issues.push("cancelled fulfillment requires redacted private data.");
+  }
   if (
     isCanonicalIso(value.createdAt) &&
     isCanonicalIso(value.updatedAt) &&
