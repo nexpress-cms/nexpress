@@ -419,6 +419,35 @@
     font-weight: 800;
   }
 
+  .np-shop-shipping-methods {
+    display: grid;
+    gap: 0.65rem;
+    padding-block: 0.75rem;
+    border-block: 1px solid var(--np-shop-line, var(--np-color-border, #deddd8));
+  }
+
+  .np-shop-shipping-methods h3 {
+    margin: 0;
+    font-size: 0.9rem;
+  }
+
+  .np-shop-shipping-methods li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.35rem 0.75rem;
+    padding: 0.65rem;
+    border: 1px solid var(--np-shop-line, var(--np-color-border, #deddd8));
+    border-radius: var(--np-radius-sm, 0.35rem);
+    background: var(--np-shop-surface, var(--np-color-card, #fff));
+  }
+
+  .np-shop-shipping-methods small,
+  .np-shop-shipping-methods button,
+  .np-shop-shipping-methods li > span[aria-current="true"] {
+    grid-column: 1 / -1;
+  }
+
   .np-shop-order-list {
     display: grid;
     gap: 0.8rem;

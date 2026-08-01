@@ -19,6 +19,7 @@ import type {
   NpShopPaymentInitiationAdapter,
   NpShopPaymentRefundAdapter,
 } from "./payment-contract.js";
+import type { NpShopShippingAdapter } from "./shipping-contract.js";
 
 export const npShopSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 export const npShopSkuPattern = /^[A-Z0-9][A-Z0-9._-]{0,63}$/u;
@@ -42,6 +43,7 @@ export interface NpShopRuntime {
   paymentAdapter: NpShopPaymentAdapter | null;
   paymentInitiationAdapter: NpShopPaymentInitiationAdapter | null;
   paymentRefundAdapter: NpShopPaymentRefundAdapter | null;
+  shippingAdapter: NpShopShippingAdapter | null;
 }
 
 export interface ShopCategoryDocument extends Record<string, unknown> {
@@ -500,6 +502,12 @@ export async function getShopMessages(): Promise<NpShopMessages> {
     "orderDraftExpires",
     "orderDraftCustomer",
     "orderDraftShipping",
+    "orderDraftShippingMethods",
+    "orderDraftShippingSelect",
+    "orderDraftShippingSelecting",
+    "orderDraftShippingRequired",
+    "orderDraftShippingUnavailable",
+    "orderDraftShippingDays",
     "orderDraftFullName",
     "orderDraftEmail",
     "orderDraftPhone",
@@ -516,6 +524,8 @@ export async function getShopMessages(): Promise<NpShopMessages> {
     "orderDraftPrivacy",
     "orderDraftPaymentUnavailable",
     "orderDraftFailed",
+    "shippingAmount",
+    "orderTotal",
     "order",
     "orders",
     "orderCreate",

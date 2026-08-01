@@ -4,6 +4,7 @@
 It owns product and category data, inventory projection, public catalog
 routes, bounded guest/member carts, checkout intents, private order drafts,
 durable orders, transaction-safe inventory reservations, an optional
+provider-neutral shipping quote and selected delivery snapshot, an optional
 provider-neutral payment initiation and verified-event boundary, revision-safe
 fulfillment operations, provider-neutral full refunds with safe inventory
 compensation, owner-scoped item return intake with audited receipt inventory,
@@ -23,7 +24,7 @@ the exact provider-neutral event that moves that order to `paid` or
 `payment-failed`. A refund-capable adapter may also cancel one entire provider
 payment. Shop owns attempts, order/refund transitions, fulfillment and return
 state, and local compensation, but does not choose a provider protocol,
-calculate tax or shipping rates, physically fulfill goods, book a carrier, or
+calculate tax, physically fulfill goods, book a carrier, or
 decide jurisdiction-specific return eligibility.
 
 ## Default setup
@@ -161,7 +162,7 @@ subtotals, total units, a deterministic fingerprint, and exact issue codes:
 `insufficient-stock`, `price-changed`, and `mixed-currency`. Price changes are
 visible but do not alone block readiness. Unavailable products/options,
 insufficient stock, and mixed currencies do. Order creation quotes again;
-payment initiation, tax, and shipping integrations retain their own contracts,
+payment initiation, tax, and delivery-quote integrations retain their own contracts,
 while the optional verified event boundary owns terminal idempotency and
 reservation consumption. Quotes subtract every unexpired pending-order reservation
 for the same product or canonical variant SKU.
@@ -211,7 +212,7 @@ oldest-first task and confirmed Admin action each delete at most 500 expired
 
 ## Private order draft and PII lifecycle
 
-Shop exposes `GET`, `POST`, `PATCH`, and `DELETE` at
+Shop exposes `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` at
 `/api/plugins/shop/order-drafts`. The exact owner-facing envelope is
 `np.shop-order-draft.v1`.
 
@@ -221,11 +222,18 @@ Shop exposes `GET`, `POST`, `PATCH`, and `DELETE` at
   for another intent returns HTTP 409.
 - A newly created draft is `collecting` and contains no PII.
 - `PATCH { draftId, expectedRevision, customer, shipping }` atomically
-  replaces the complete bounded customer/shipping pair. Stale revisions and
-  carts return HTTP 409. Partial private records are never persisted.
-- A saved draft is `reviewable`. This means only that its fields satisfy the
-  draft contract; it does not mean that an order, payment, tax, shipping rate,
-  or inventory reservation is ready.
+  replaces the complete bounded customer/shipping pair. With no shipping
+  adapter, the draft becomes `reviewable` with zero shipping amount. With an
+  adapter, Shop requests fresh methods outside the database transaction and
+  persists them only after rechecking the same draft revision. Stale provider
+  responses therefore cannot overwrite a newer address.
+- A quoted draft becomes `shipping-selection-required`. `PUT { draftId,
+expectedRevision, methodId }` accepts only one method from the current,
+  unexpired quote and freezes its PII-free snapshot, shipping amount, and
+  `subtotalMinor + shippingMinor = totalMinor`. It then becomes `reviewable`.
+- A `reviewable` draft means only that its fields and any configured delivery
+  selection satisfy the draft contract; it does not mean that payment, tax,
+  inventory, carrier booking, or legal policy is ready.
 - Any cart, price, inventory, product, or option change makes the owner-facing
   projection `stale` and blocks another private-data save.
 - `DELETE { draftId }` is idempotent and physically removes the owner-scoped
@@ -256,16 +264,79 @@ values therefore stay out of public discovery, search indexes, revisions,
 content transfer, document quotas, job payloads, and Shop logs. Owner API
 responses are `private, no-store`. Admin and Doctor expose only contract
 and non-PII operational metadata: Admin reports aggregate `collecting` /
-`reviewable` / `expired` / `invalid` counts, while Doctor inspects the
-declarative route, action, Admin, and scheduled-task inventory without
-executing a PII read. Neither lists
-names, email addresses, phone numbers, addresses, owner ids, or draft ids.
+`shipping-selection-required` / `reviewable` / `expired` / `invalid` counts,
+plus the configured provider id and its last closed success/failure code.
+Doctor inspects the declarative route, action, Admin, and scheduled-task
+inventory without executing a PII read. Neither surface lists names, email
+addresses, phone numbers, addresses, owner ids, or draft ids.
 
 This is an application retention boundary, not a complete privacy-compliance
 policy. Operators remain responsible for their lawful basis, privacy notice,
 database access, encryption and backup-retention policy. Restoring a database
 backup can restore data that existed when that backup was taken, so backup
 expiry and deletion procedures must match the site's policy.
+
+## Shipping quote and delivery selection
+
+Shipping is disabled in the default `shopPlugin`, preserving the existing
+zero-shipping checkout. A project can register one server-only adapter on the
+same `createShop()` factory used for collections and routes:
+
+```ts
+import {
+  NP_SHOP_SHIPPING_QUOTE_RESULT_CONTRACT,
+  createShop,
+  type NpShopShippingAdapter,
+} from "@nexpress/plugin-shop";
+
+const shippingAdapter: NpShopShippingAdapter = {
+  id: "my-shipping",
+  async quoteShipping(request) {
+    // request.destination is private and must never enter logs or provider
+    // metadata. Query the carrier/rate service with server credentials.
+    const quote = await quoteProvider(request);
+    return {
+      contract: NP_SHOP_SHIPPING_QUOTE_RESULT_CONTRACT,
+      quoteId: quote.id,
+      methods: quote.methods.map((method) => ({
+        id: method.id,
+        label: method.label,
+        amountMinor: method.amountMinor,
+        estimatedDelivery: method.days
+          ? { minimumDays: method.days.minimum, maximumDays: method.days.maximum }
+          : null,
+      })),
+      expiresAt: quote.expiresAt,
+    };
+  },
+};
+
+const shop = createShop({ shipping: { adapter: shippingAdapter } });
+```
+
+The exact request includes draft id/revision, currency, item subtotal, unit
+count, immutable checkout lines, the private destination, request time, and a
+maximum allowed expiry. Adapter results contain one opaque quote id and 1–20
+methods. Method ids and labels are bounded; amounts are non-negative safe
+integers; optional minimum/maximum delivery estimates are 0–365 days; ids are
+unique. A quote must expire after the request and no later than either one hour
+or the private draft expiry. Unknown fields, duplicated methods, invalid money,
+and out-of-window expiry fail closed as HTTP 503.
+
+Shop never holds a database transaction open across the provider call. After a
+successful selection, `np.shop-delivery-method.v1` copies only provider/quote/
+method ids, label, amount, estimate, and quote timestamps into the durable
+commercial order. It contains no destination or owner identity. The immutable
+order stores `subtotalMinor`, `shippingMinor`, and `totalMinor`; payment
+preparation, verified event matching, and full refunds use `totalMinor`.
+
+The PII-free `shipping-health` row records only provider id, `ok | error`, the
+closed `provider-error | invalid-result` code, and timestamps. Admin health can
+expose that state without reading a destination; plugin doctor verifies the
+declarative health action and route contracts without executing them. Carrier
+booking, labels, pickup, tracking API integration, tax, customs, free-shipping
+policy, and jurisdiction rules remain separate from this quote/selection
+boundary.
 
 ## Durable pending order and PII separation
 
@@ -296,8 +367,9 @@ Shop exposes `GET`, `POST`, and `DELETE` at
   successful cancellation is idempotent.
 
 The only browser-creatable status is `pending-payment`. It means that the immutable
-product, option, integer price, currency, quantity, cart revision, and cart
-fingerprint snapshot has a durable order reference. Tracked lines have
+product, option, item subtotal, selected delivery method and amount, exact
+total, currency, quantity, cart revision, and cart fingerprint snapshot has a
+durable order reference. Tracked lines have
 `inventoryReservationStatus: "held"`; an untracked-only order uses
 `"not-required"`. `inventoryReservationLineKeys` records exactly which
 commercial lines require matching PII-free holds. This does **not** mean that
@@ -635,7 +707,8 @@ diagnostics expose provider, status, order id, exact amount, and timestamps;
 they withhold owner segments, private order data, and provider handoff values.
 
 Admin also exposes separate cart, checkout-intent, and private-order-draft
-storage health plus confirmed bounded expiry cleanup actions. Order health,
+storage health plus configured shipping-provider success/failure state and
+confirmed bounded expiry cleanup actions. Order health,
 the confirmed maintenance action, and the newest-50 table expose only
 commercial metadata. Inventory reservation health reports malformed, expired,
 order-orphaned, or pending-order-missing rows from bounded samples, and its
@@ -739,6 +812,7 @@ const shop = createShop({
   },
   defaultSkinId: "storefront-full",
   payment: { adapter }, // optional; omitted means the webhook route does not exist
+  shipping: { adapter: shippingAdapter }, // optional; omitted means zero shipping
 });
 
 export default defineConfig({
@@ -766,8 +840,8 @@ Future transaction work should remain separable from this foundation:
 1. additional provider packages for Stripe or KG Inicis;
 2. authorization/capture, settlement, provider-initiated reversal, and partial
    refund contracts;
-3. fulfillment carrier integrations, exchanges, and customer-service policy;
-4. legal/tax/shipping policy integrations.
+3. fulfillment carrier booking/labels/tracking, exchanges, and customer-service policy;
+4. legal/tax/customs and shipping-policy integrations.
 
 Those features require their own payment, security, and operational contracts.
 The provider-neutral event boundary does not pre-authorize or emulate them.

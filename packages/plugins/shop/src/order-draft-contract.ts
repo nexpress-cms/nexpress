@@ -1,5 +1,10 @@
 import { npAnalyzeShopCheckoutIntent } from "./checkout-contract.js";
 import {
+  npAnalyzeShopDeliveryMethod,
+  npAnalyzeShopShippingQuote,
+  type NpShopShippingMethodSelectInput,
+} from "./shipping-contract.js";
+import {
   npShopOrderDraftStatuses,
   type NpShopOrderDraft,
   type NpShopOrderDraftCustomer,
@@ -38,10 +43,14 @@ const draftKeys = [
   "cartFingerprint",
   "currency",
   "subtotalMinor",
+  "shippingMinor",
+  "totalMinor",
   "totalUnits",
   "lines",
   "customer",
   "shipping",
+  "shippingQuote",
+  "deliveryMethod",
   "sourceCreatedAt",
   "sourceExpiresAt",
   "createdAt",
@@ -314,16 +323,107 @@ export function npAnalyzeShopOrderDraft(value: unknown): string[] {
     ),
   );
 
+  if (!Number.isSafeInteger(value.shippingMinor) || (value.shippingMinor as number) < 0) {
+    issues.push("draft.shippingMinor is invalid.");
+  }
+  if (!Number.isSafeInteger(value.totalMinor) || (value.totalMinor as number) < 0) {
+    issues.push("draft.totalMinor is invalid.");
+  }
+  if (
+    Number.isSafeInteger(value.subtotalMinor) &&
+    Number.isSafeInteger(value.shippingMinor) &&
+    Number.isSafeInteger(value.totalMinor) &&
+    (value.subtotalMinor as number) + (value.shippingMinor as number) !== value.totalMinor
+  ) {
+    issues.push("draft.totalMinor must equal subtotalMinor plus shippingMinor.");
+  }
+
   if (value.customer !== null) analyzeCustomer(value.customer, "draft.customer", issues);
   if (value.shipping !== null) analyzeShipping(value.shipping, "draft.shipping", issues);
+  if (value.shippingQuote !== null) {
+    issues.push(
+      ...npAnalyzeShopShippingQuote(value.shippingQuote).map(
+        (issue) => `draft.${issue.replace(/^shipping quote/u, "shippingQuote")}`,
+      ),
+    );
+  }
+  if (value.deliveryMethod !== null) {
+    issues.push(
+      ...npAnalyzeShopDeliveryMethod(value.deliveryMethod).map(
+        (issue) => `draft.${issue.replace(/^delivery method/u, "deliveryMethod")}`,
+      ),
+    );
+  }
   if ((value.customer === null) !== (value.shipping === null)) {
     issues.push("draft.customer and draft.shipping must both be null or both be present.");
   }
-  if (value.status === "collecting" && (value.customer !== null || value.shipping !== null)) {
-    issues.push("draft.collecting state must not contain customer or shipping data.");
+  if (
+    value.status === "collecting" &&
+    (value.customer !== null ||
+      value.shipping !== null ||
+      value.shippingQuote !== null ||
+      value.deliveryMethod !== null)
+  ) {
+    issues.push("draft.collecting state must not contain customer, shipping, or quote data.");
+  }
+  if (
+    value.status === "shipping-selection-required" &&
+    (value.customer === null ||
+      value.shipping === null ||
+      value.shippingQuote === null ||
+      value.deliveryMethod !== null)
+  ) {
+    issues.push(
+      "draft.shipping-selection-required state requires private data and one unselected quote.",
+    );
   }
   if (value.status === "reviewable" && (value.customer === null || value.shipping === null)) {
     issues.push("draft.reviewable state requires customer and shipping data.");
+  }
+  if (
+    value.status === "reviewable" &&
+    (value.shippingQuote === null) !== (value.deliveryMethod === null)
+  ) {
+    issues.push("draft.reviewable state requires a selected method for its shipping quote.");
+  }
+  if (isRecord(value.shippingQuote) && isRecord(value.deliveryMethod)) {
+    const selectedMethodId = value.deliveryMethod.methodId;
+    const selected = Array.isArray(value.shippingQuote.methods)
+      ? value.shippingQuote.methods.find(
+          (method) => isRecord(method) && method.id === selectedMethodId,
+        )
+      : undefined;
+    if (
+      !isRecord(selected) ||
+      value.deliveryMethod.providerId !== value.shippingQuote.providerId ||
+      value.deliveryMethod.quoteId !== value.shippingQuote.quoteId ||
+      value.deliveryMethod.label !== selected.label ||
+      value.deliveryMethod.amountMinor !== selected.amountMinor ||
+      JSON.stringify(value.deliveryMethod.estimatedDelivery) !==
+        JSON.stringify(selected.estimatedDelivery) ||
+      value.deliveryMethod.quotedAt !== value.shippingQuote.quotedAt ||
+      value.deliveryMethod.quoteExpiresAt !== value.shippingQuote.expiresAt
+    ) {
+      issues.push("draft.deliveryMethod must exactly snapshot one quoted shipping method.");
+    }
+  }
+  if (
+    isRecord(value.deliveryMethod) &&
+    Number.isSafeInteger(value.shippingMinor) &&
+    value.deliveryMethod.amountMinor !== value.shippingMinor
+  ) {
+    issues.push("draft.shippingMinor must equal the selected delivery method amount.");
+  }
+  if (value.deliveryMethod === null && value.shippingMinor !== 0) {
+    issues.push("draft without a delivery method must have zero shippingMinor.");
+  }
+  if (
+    isRecord(value.shippingQuote) &&
+    isCanonicalIso(value.shippingQuote.expiresAt) &&
+    isCanonicalIso(value.expiresAt) &&
+    value.shippingQuote.expiresAt > value.expiresAt
+  ) {
+    issues.push("draft shipping quote must not outlive the private draft.");
   }
   return issues;
 }
@@ -443,6 +543,8 @@ export function npRequireShopOrderDraftUpdateInput(value: unknown): NpShopOrderD
     shipping: requireShipping(input.shipping, "order draft update request.shipping"),
   };
 }
+
+export type { NpShopShippingMethodSelectInput };
 
 export function npRequireShopOrderDraftDeleteInput(value: unknown): NpShopOrderDraftDeleteInput {
   const input = requireInput(value, ["draftId"], "order draft delete request");

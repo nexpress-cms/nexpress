@@ -3,6 +3,7 @@ import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import {
   createShop,
   NpShopPaymentProviderError,
+  npAnalyzeStoredShopOrder,
   npRequireShopOrderDraft,
   shopCollections,
   shopPlugin,
@@ -32,7 +33,7 @@ const productId = "123e4567-e89b-42d3-a456-426614174000";
 const memberId = "223e4567-e89b-42d3-a456-426614174000";
 
 type RouteHandler = NonNullable<typeof shopPlugin.routes>[number]["handler"];
-type ShopMethod = "GET" | "POST" | "PATCH" | "DELETE";
+type ShopMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 function route(method: ShopMethod, path = "/cart"): RouteHandler {
   const registration = shopPlugin.routes?.find(
@@ -58,6 +59,41 @@ async function call(
         path: "/cart",
         params: { pluginId: "shop" },
         query: {},
+        body: input.body,
+        headers: {
+          ...(input.cookie ? { cookie: input.cookie } : {}),
+          ...(input.csrf ? { "x-csrf-token": input.csrf } : {}),
+        },
+        member: input.member,
+      },
+      {} as never,
+    ),
+  );
+}
+
+async function configuredShopCall(
+  shop: ReturnType<typeof createShop>,
+  method: ShopMethod,
+  path: string,
+  input: {
+    cookie?: string;
+    csrf?: string;
+    body?: unknown;
+    id?: string;
+    member?: { id: string };
+  } = {},
+) {
+  const handler = shop.plugin.routes?.find(
+    (candidate) => candidate.method === method && candidate.path === path,
+  )?.handler;
+  if (!handler) throw new Error(`Missing ${method} configured Shop route ${path}.`);
+  return withCurrentSite("default", () =>
+    handler(
+      {
+        method,
+        path,
+        params: { pluginId: "shop" },
+        query: input.id ? { id: input.id } : {},
         body: input.body,
         headers: {
           ...(input.cookie ? { cookie: input.cookie } : {}),
@@ -859,6 +895,287 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       );
     expect(remaining).toHaveLength(0);
     expect(JSON.stringify(remaining)).not.toContain(privateEmail);
+  });
+
+  it("quotes and selects one revision-safe delivery method before freezing the order total", async () => {
+    const quoteShipping = vi.fn(() => ({
+      contract: "np.shop-shipping-quote-result.v1" as const,
+      quoteId: "quote_integration_1",
+      methods: [
+        {
+          id: "parcel-standard",
+          label: "Standard parcel",
+          amountMinor: 3_000,
+          estimatedDelivery: { minimumDays: 2, maximumDays: 4 },
+        },
+      ],
+      expiresAt: new Date(Date.now() + 15 * 60 * 1_000).toISOString(),
+    }));
+    const refundPayment = vi.fn(
+      (input: {
+        refundId: string;
+        orderId: string;
+        paymentReference: string;
+        currency: "KRW";
+        amountMinor: number;
+      }) => ({
+        contract: "np.shop-refund-result.v1" as const,
+        refundId: input.refundId,
+        orderId: input.orderId,
+        paymentReference: input.paymentReference,
+        refundReference: "shipping_total_refund",
+        currency: input.currency,
+        amountMinor: input.amountMinor,
+        refundedAt: new Date().toISOString(),
+      }),
+    );
+    const preparePayment = vi.fn((input: { amountMinor: number }) => ({
+      kind: "client" as const,
+      data: { publicAmount: input.amountMinor },
+    }));
+    const shippingShop = createShop({
+      shipping: {
+        adapter: {
+          id: "test-shipping",
+          quoteShipping: (input) => quoteShipping(input),
+        },
+      },
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+          preparePayment: (input) => preparePayment(input),
+          confirmPayment: () => {
+            throw new Error("not called");
+          },
+          renderPaymentLauncher: () => null,
+          refundPayment: (input) => refundPayment(input),
+        },
+      },
+    });
+    const initial = await configuredShopCall(shippingShop, "GET", "/cart");
+    const cookie = initial.headers?.["Set-Cookie"];
+    const csrf = (initial.body as { csrfToken: string }).csrfToken;
+    const added = await configuredShopCall(shippingShop, "POST", "/cart", {
+      cookie,
+      csrf,
+      body: { productId, variantSku: null, quantity: 1, expectedRevision: 0 },
+    });
+    const addedQuote = (
+      added.body as {
+        quote: { revision: number; fingerprint: string };
+      }
+    ).quote;
+    const intentId = "123e4567-e89b-42d3-b456-426614174001";
+    const draftId = "123e4567-e89b-42d3-b456-426614174002";
+    const orderId = "123e4567-e89b-42d3-b456-426614174003";
+    await configuredShopCall(shippingShop, "POST", "/checkout", {
+      cookie,
+      csrf,
+      body: {
+        idempotencyKey: intentId,
+        expectedRevision: addedQuote.revision,
+        expectedFingerprint: addedQuote.fingerprint,
+      },
+    });
+    await configuredShopCall(shippingShop, "POST", "/order-drafts", {
+      cookie,
+      csrf,
+      body: { idempotencyKey: draftId, checkoutIntentId: intentId },
+    });
+    const privateEmail = "shipping-private@example.com";
+    const quoted = await configuredShopCall(shippingShop, "PATCH", "/order-drafts", {
+      cookie,
+      csrf,
+      body: {
+        draftId,
+        expectedRevision: 1,
+        customer: {
+          fullName: "홍길동",
+          email: privateEmail,
+          phone: "010-1234-5678",
+        },
+        shipping: {
+          recipientName: "홍길동",
+          phone: "010-1234-5678",
+          countryCode: "KR",
+          postalCode: "04524",
+          addressLine1: "서울특별시 중구 세종대로 110",
+          addressLine2: null,
+          locality: "중구",
+          administrativeArea: "서울특별시",
+        },
+      },
+    });
+    expect(quoted).toMatchObject({ status: 200 });
+    expect(quoteShipping).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contract: "np.shop-shipping-quote-request.v1",
+        draftId,
+        draftRevision: 1,
+        subtotalMinor: 25_000,
+        destination: expect.objectContaining({ postalCode: "04524" }),
+      }),
+    );
+    expect(quoted).toMatchObject({
+      status: 200,
+      body: {
+        draft: {
+          status: "shipping-selection-required",
+          revision: 2,
+          shippingMinor: 0,
+          totalMinor: 25_000,
+          shippingQuote: { providerId: "test-shipping", quoteId: "quote_integration_1" },
+          deliveryMethod: null,
+        },
+      },
+    });
+    expect(
+      await configuredShopCall(shippingShop, "POST", "/orders", {
+        cookie,
+        csrf,
+        body: { idempotencyKey: orderId, draftId, expectedRevision: 2 },
+      }),
+    ).toMatchObject({ status: 409, body: { error: "order_source_stale" } });
+    const selected = await configuredShopCall(shippingShop, "PUT", "/order-drafts", {
+      cookie,
+      csrf,
+      body: { draftId, expectedRevision: 2, methodId: "parcel-standard" },
+    });
+    expect(selected).toMatchObject({
+      status: 200,
+      body: {
+        draft: {
+          status: "reviewable",
+          revision: 3,
+          shippingMinor: 3_000,
+          totalMinor: 28_000,
+          deliveryMethod: {
+            providerId: "test-shipping",
+            methodId: "parcel-standard",
+            amountMinor: 3_000,
+          },
+        },
+      },
+    });
+    const created = await configuredShopCall(shippingShop, "POST", "/orders", {
+      cookie,
+      csrf,
+      body: { idempotencyKey: orderId, draftId, expectedRevision: 3 },
+    });
+    expect(created).toMatchObject({
+      status: 200,
+      body: {
+        order: {
+          id: orderId,
+          subtotalMinor: 25_000,
+          shippingMinor: 3_000,
+          totalMinor: 28_000,
+          deliveryMethod: { methodId: "parcel-standard", amountMinor: 3_000 },
+        },
+      },
+    });
+    expect(
+      JSON.stringify((created.body as { order: { deliveryMethod: unknown } }).order.deliveryMethod),
+    ).not.toContain(privateEmail);
+    expect(
+      await configuredShopCall(shippingShop, "POST", "/payments/attempts", {
+        cookie,
+        csrf,
+        body: {
+          orderId,
+          idempotencyKey: "123e4567-e89b-42d3-b456-426614174006",
+        },
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: { attempt: { currency: "KRW", amountMinor: 28_000 } },
+    });
+    expect(preparePayment).toHaveBeenCalledWith(expect.objectContaining({ amountMinor: 28_000 }));
+    expect(
+      await payPendingOrder(shippingShop, {
+        orderId,
+        eventId: "evt_shipping_total",
+        paymentReference: "pay_shipping_total",
+        amountMinor: 28_000,
+      }),
+    ).toMatchObject({ status: 200, body: { receipt: { outcome: "paid" } } });
+    const staff = await seedUser({ email: "shipping-refund-operator@example.com" });
+    expect(
+      await withCurrentSite("default", () =>
+        shippingShop.plugin.actions?.refundOrder?.handler(
+          {
+            row: { id: orderId, revision: 2 },
+            values: { reason: "Refund exact delivery total" },
+          },
+          { actionInvocation: { kind: "staff", userId: staff.userId } } as never,
+        ),
+      ),
+    ).toMatchObject({ ok: true });
+    expect(refundPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ orderId, currency: "KRW", amountMinor: 28_000 }),
+    );
+    expect(
+      await withCurrentSite("default", () =>
+        shippingShop.plugin.actions?.orderDraftHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+
+    quoteShipping.mockImplementationOnce(() => {
+      throw new Error(`provider rejected ${privateEmail}`);
+    });
+    const failedIntentId = "123e4567-e89b-42d3-b456-426614174004";
+    const failedDraftId = "123e4567-e89b-42d3-b456-426614174005";
+    await configuredShopCall(shippingShop, "POST", "/checkout", {
+      cookie,
+      csrf,
+      body: {
+        idempotencyKey: failedIntentId,
+        expectedRevision: addedQuote.revision,
+        expectedFingerprint: addedQuote.fingerprint,
+      },
+    });
+    await configuredShopCall(shippingShop, "POST", "/order-drafts", {
+      cookie,
+      csrf,
+      body: { idempotencyKey: failedDraftId, checkoutIntentId: failedIntentId },
+    });
+    const unavailable = await configuredShopCall(shippingShop, "PATCH", "/order-drafts", {
+      cookie,
+      csrf,
+      body: {
+        draftId: failedDraftId,
+        expectedRevision: 1,
+        customer: {
+          fullName: "홍길동",
+          email: privateEmail,
+          phone: "010-1234-5678",
+        },
+        shipping: {
+          recipientName: "홍길동",
+          phone: "010-1234-5678",
+          countryCode: "KR",
+          postalCode: "04524",
+          addressLine1: "서울특별시 중구 세종대로 110",
+          addressLine2: null,
+          locality: "중구",
+          administrativeArea: "서울특별시",
+        },
+      },
+    });
+    expect(unavailable).toMatchObject({
+      status: 503,
+      body: { error: "shipping_unavailable" },
+    });
+    expect(JSON.stringify(unavailable)).not.toContain(privateEmail);
+    const failedHealth = await withCurrentSite("default", () =>
+      shippingShop.plugin.actions?.orderDraftHealth?.handler(undefined, {} as never),
+    );
+    expect(failedHealth).toMatchObject({
+      ok: true,
+      data: { level: "error", message: expect.stringContaining("provider-error") },
+    });
+    expect(JSON.stringify(failedHealth)).not.toContain(privateEmail);
   });
 
   it("cleans only expired private order-draft keys", async () => {
@@ -2694,6 +3011,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       cartFingerprint: "b".repeat(64),
       currency: "KRW",
       subtotalMinor: 25_000,
+      shippingMinor: 0,
+      totalMinor: 25_000,
       totalUnits: 1,
       lines: [
         {
@@ -2708,6 +3027,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           lineTotalMinor: 25_000,
         },
       ],
+      deliveryMethod: null,
       privateDataStatus: "retained",
       inventoryReservationStatus: "held",
       inventoryReservationLineKeys: [`${productId}:_`],
@@ -2722,6 +3042,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       cancellationReason: null,
       purgeAt: purgeAt.toISOString(),
     };
+    expect(npAnalyzeStoredShopOrder(order)).toEqual([]);
     await db.insert(npPluginStorage).values([
       {
         pluginId: "shop",

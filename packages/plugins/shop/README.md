@@ -31,8 +31,10 @@ It provides:
 - owner-scoped, idempotent 15-minute checkout intents that become stale when
   the cart or live commercial state changes;
 - owner-scoped 24-hour order drafts with revision-safe, bounded customer and
-  shipping details, immediate cancellation deletion, and hourly expiry cleanup;
+  shipping details, optional provider-neutral delivery quotes and selection,
+  immediate cancellation deletion, and hourly expiry cleanup;
 - owner-scoped durable pending orders with immutable commercial snapshots,
+  exact item subtotal, shipping amount, and payment total,
   separate pending-payment private sidecars, revision-safe cancellation, bounded
   history/Admin views, transaction-safe product/variant holds, cancellation
   release, and 365-day commercial cleanup;
@@ -53,8 +55,11 @@ It provides:
 - featured-product and category-grid blocks.
 
 Provider-specific browser/server protocols, signature algorithms, credentials
-and rotation, partial refunds, reversals, exchanges, carrier booking, tax, and
-shipping rates remain outside this package. `@nexpress/shop-payment-toss` is the bundled Toss
+and rotation, partial refunds, reversals, exchanges, carrier booking/labels,
+tax, customs, and shipping policy remain outside this package. A server-only
+`NpShopShippingAdapter` may supply exact bounded delivery methods; Shop owns
+revision-safe selection and the PII-free commercial snapshot.
+`@nexpress/shop-payment-toss` is the bundled Toss
 Payments v2 initiation and full-refund adapter. Customer/shipping PII exists only in the short-lived
 private draft or order sidecar and stays outside content search, revisions,
 payment receipts, and transfer. A durable `pending-payment` order reference
@@ -62,4 +67,5 @@ still does not imply that a visitor paid for a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
 for the exact price, SKU, inventory, cart, checkout-intent, private-draft,
-pending-order, payment-attempt, fulfillment, refund, return, skin, block, and theme-integration contracts.
+shipping-quote, pending-order, payment-attempt, fulfillment, refund, return,
+skin, block, and theme-integration contracts.

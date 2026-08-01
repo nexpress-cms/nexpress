@@ -75,7 +75,7 @@ function formatMoney(locale: string, amountMinor: number, currency: NpShopCurren
 
 async function requestCart(
   apiPath: string,
-  method: "GET" | "POST" | "PATCH" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   csrfToken?: string | null,
   body?: unknown,
 ): Promise<CartResponse> {
@@ -131,7 +131,7 @@ async function requestCheckout(
 
 async function requestOrderDraft(
   apiPath: string,
-  method: "GET" | "POST" | "PATCH" | "DELETE",
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
   input: {
     draftId?: string;
     csrfToken?: string | null;
@@ -651,6 +651,9 @@ function orderDraftStatusMessage(
   messages: NpShopCartClientMessages,
 ): string {
   if (draft.status === "collecting") return messages.orderDraftCollecting;
+  if (draft.status === "shipping-selection-required") {
+    return messages.orderDraftShippingRequired;
+  }
   if (draft.status === "reviewable") return messages.orderDraftReviewable;
   return messages.orderDraftStale;
 }
@@ -792,6 +795,25 @@ export function ShopOrderDraft({
       window.location.assign(`${basePath}/orders/${response.order.id}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : messages.orderFailed);
+      setSaving(false);
+    }
+  }
+
+  async function selectShippingMethod(methodId: string): Promise<void> {
+    if (!draft || draft.status !== "shipping-selection-required") return;
+    setSaving(true);
+    setError("");
+    try {
+      const response = await requestOrderDraft(apiPath, "PUT", {
+        csrfToken,
+        body: { draftId: draft.id, expectedRevision: draft.revision, methodId },
+      });
+      if (!("draft" in response)) throw new Error(messages.orderDraftFailed);
+      setDraft(response.draft);
+      setCsrfToken(response.csrfToken);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : messages.orderDraftFailed);
+    } finally {
       setSaving(false);
     }
   }
@@ -962,6 +984,51 @@ export function ShopOrderDraft({
                 <span>{messages.cartSubtotal}</span>
                 <strong>{formatMoney(messages.locale, draft.subtotalMinor, draft.currency)}</strong>
               </div>
+              {draft.shippingQuote ? (
+                <section className="np-shop-shipping-methods">
+                  <h3>{messages.orderDraftShippingMethods}</h3>
+                  <ul>
+                    {draft.shippingQuote.methods.map((method) => (
+                      <li key={method.id}>
+                        <span>{method.label}</span>
+                        <strong>
+                          {formatMoney(messages.locale, method.amountMinor, draft.currency)}
+                        </strong>
+                        {method.estimatedDelivery ? (
+                          <small>
+                            {method.estimatedDelivery.minimumDays.toLocaleString(messages.locale)}–
+                            {method.estimatedDelivery.maximumDays.toLocaleString(messages.locale)}{" "}
+                            {messages.orderDraftShippingDays}
+                          </small>
+                        ) : null}
+                        {draft.status === "shipping-selection-required" ? (
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => void selectShippingMethod(method.id)}
+                          >
+                            {saving
+                              ? messages.orderDraftShippingSelecting
+                              : messages.orderDraftShippingSelect}
+                          </button>
+                        ) : draft.deliveryMethod?.methodId === method.id ? (
+                          <span aria-current="true">{messages.orderDraftReviewable}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : draft.status === "shipping-selection-required" ? (
+                <p>{messages.orderDraftShippingUnavailable}</p>
+              ) : null}
+              <div>
+                <span>{messages.shippingAmount}</span>
+                <strong>{formatMoney(messages.locale, draft.shippingMinor, draft.currency)}</strong>
+              </div>
+              <div>
+                <span>{messages.orderTotal}</span>
+                <strong>{formatMoney(messages.locale, draft.totalMinor, draft.currency)}</strong>
+              </div>
               <p>
                 {messages.orderDraftExpires}{" "}
                 {new Intl.DateTimeFormat(messages.locale, {
@@ -1069,7 +1136,7 @@ export function ShopOrders({
               {fulfillmentStatusMessage(order, messages)}
             </span>
           ) : null}
-          <span>{formatMoney(messages.locale, order.subtotalMinor, order.currency)}</span>
+          <span>{formatMoney(messages.locale, order.totalMinor, order.currency)}</span>
           <time dateTime={order.createdAt}>
             {new Intl.DateTimeFormat(messages.locale, {
               dateStyle: "medium",
@@ -1244,6 +1311,14 @@ export function ShopOrder({
               <div>
                 <span>{messages.cartSubtotal}</span>
                 <strong>{formatMoney(messages.locale, order.subtotalMinor, order.currency)}</strong>
+              </div>
+              <div>
+                <span>{messages.shippingAmount}</span>
+                <strong>{formatMoney(messages.locale, order.shippingMinor, order.currency)}</strong>
+              </div>
+              <div>
+                <span>{messages.orderTotal}</span>
+                <strong>{formatMoney(messages.locale, order.totalMinor, order.currency)}</strong>
               </div>
             </section>
             <aside>

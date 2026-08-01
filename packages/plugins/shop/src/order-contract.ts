@@ -18,6 +18,7 @@ import {
 import { npAnalyzeShopFulfillment, npShopFulfillmentLimits } from "./fulfillment-contract.js";
 import { NP_SHOP_REFUND_CONTRACT, npAnalyzeStoredShopRefund } from "./refund-contract.js";
 import { NP_SHOP_RETURN_CONTRACT, npAnalyzeShopReturn } from "./return-contract.js";
+import { npAnalyzeShopDeliveryMethod, type NpShopDeliveryMethod } from "./shipping-contract.js";
 
 export const NP_SHOP_ORDER_CONTRACT = "np.shop-order.v1" as const;
 export const NP_SHOP_ORDER_LIST_CONTRACT = "np.shop-order-list.v1" as const;
@@ -58,8 +59,11 @@ export interface NpShopStoredOrder {
   cartFingerprint: string;
   currency: NpShopCurrency;
   subtotalMinor: number;
+  shippingMinor: number;
+  totalMinor: number;
   totalUnits: number;
   lines: NpShopCheckoutIntentLine[];
+  deliveryMethod: NpShopDeliveryMethod | null;
   privateDataStatus: NpShopOrderPrivateDataStatus;
   inventoryReservationStatus: NpShopInventoryReservationStatus;
   inventoryReservationLineKeys: string[];
@@ -302,8 +306,11 @@ const storedOrderKeys = [
   "cartFingerprint",
   "currency",
   "subtotalMinor",
+  "shippingMinor",
+  "totalMinor",
   "totalUnits",
   "lines",
+  "deliveryMethod",
   "privateDataStatus",
   "inventoryReservationStatus",
   "inventoryReservationLineKeys",
@@ -346,6 +353,20 @@ export function npAnalyzeStoredShopOrder(value: unknown): string[] {
   if (!isNonNegativeSafeInteger(value.subtotalMinor)) {
     issues.push("order.subtotalMinor is invalid.");
   }
+  if (!isNonNegativeSafeInteger(value.shippingMinor)) {
+    issues.push("order.shippingMinor is invalid.");
+  }
+  if (!isNonNegativeSafeInteger(value.totalMinor)) {
+    issues.push("order.totalMinor is invalid.");
+  }
+  if (
+    isNonNegativeSafeInteger(value.subtotalMinor) &&
+    isNonNegativeSafeInteger(value.shippingMinor) &&
+    isNonNegativeSafeInteger(value.totalMinor) &&
+    value.subtotalMinor + value.shippingMinor !== value.totalMinor
+  ) {
+    issues.push("order.totalMinor must equal subtotalMinor plus shippingMinor.");
+  }
   if (!isPositiveSafeInteger(value.totalUnits)) issues.push("order.totalUnits is invalid.");
   if (!Array.isArray(value.lines) || value.lines.length < 1 || value.lines.length > 100) {
     issues.push("order.lines must contain between 1 and 100 entries.");
@@ -360,6 +381,23 @@ export function npAnalyzeStoredShopOrder(value: unknown): string[] {
     if (new Set(lineKeys).size !== lineKeys.length) {
       issues.push("order.lines keys must be unique.");
     }
+  }
+  if (value.deliveryMethod !== null) {
+    issues.push(
+      ...npAnalyzeShopDeliveryMethod(value.deliveryMethod).map(
+        (issue) => `order.${issue.replace(/^delivery method/u, "deliveryMethod")}`,
+      ),
+    );
+  }
+  if (
+    isRecord(value.deliveryMethod) &&
+    isNonNegativeSafeInteger(value.shippingMinor) &&
+    value.deliveryMethod.amountMinor !== value.shippingMinor
+  ) {
+    issues.push("order.shippingMinor must equal the delivery method amount.");
+  }
+  if (value.deliveryMethod === null && value.shippingMinor !== 0) {
+    issues.push("order without a delivery method must have zero shippingMinor.");
   }
   if (!(npShopOrderPrivateDataStatuses as readonly unknown[]).includes(value.privateDataStatus)) {
     issues.push("order.privateDataStatus is invalid.");
@@ -653,8 +691,11 @@ const publicOrderKeys = [
   "cartFingerprint",
   "currency",
   "subtotalMinor",
+  "shippingMinor",
+  "totalMinor",
   "totalUnits",
   "lines",
+  "deliveryMethod",
   "privateDataStatus",
   "inventoryReservationStatus",
   "inventoryReservationLineKeys",
@@ -769,7 +810,7 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
       if (
         value.refund.contract !== NP_SHOP_REFUND_CONTRACT ||
         value.refund.currency !== value.currency ||
-        value.refund.amountMinor !== value.subtotalMinor ||
+        value.refund.amountMinor !== value.totalMinor ||
         (value.refund.status === "refunded" && value.status !== "refunded")
       ) {
         issues.push("order.refund must match the order currency, amount, and terminal status.");

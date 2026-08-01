@@ -316,7 +316,7 @@ export async function npPrepareShopPaymentAttempt(
       orderId: order.id,
       orderName: orderName(order),
       currency: order.currency,
-      amountMinor: order.subtotalMinor,
+      amountMinor: order.totalMinor,
       expiresAt: expiresAt.toISOString(),
       successPath,
       failPath,
@@ -341,7 +341,7 @@ export async function npPrepareShopPaymentAttempt(
     if (
       current.revision !== order.revision ||
       current.currency !== order.currency ||
-      current.subtotalMinor !== order.subtotalMinor
+      current.totalMinor !== order.totalMinor
     ) {
       throw new NpShopPaymentAttemptConflictError(
         "payment_attempt_order_changed",
@@ -363,7 +363,7 @@ export async function npPrepareShopPaymentAttempt(
       status: "prepared",
       orderRevision: order.revision,
       currency: order.currency,
-      amountMinor: order.subtotalMinor,
+      amountMinor: order.totalMinor,
       orderName: orderName(order),
       handoff,
       createdAt: createdAt.toISOString(),
@@ -445,7 +445,7 @@ export async function npConfirmShopPaymentAttempt(
       }
       requirePendingOrder(order, new Date());
     }
-    if (order.currency !== attempt.currency || order.subtotalMinor !== attempt.amountMinor) {
+    if (order.currency !== attempt.currency || order.totalMinor !== attempt.amountMinor) {
       throw new NpShopPaymentAttemptConflictError(
         "payment_attempt_order_changed",
         "The immutable order no longer matches its payment attempt.",
