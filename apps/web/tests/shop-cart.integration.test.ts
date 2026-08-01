@@ -157,6 +157,34 @@ async function orderCall(
   );
 }
 
+async function returnCall(
+  method: "POST" | "DELETE",
+  input: {
+    cookie?: string;
+    csrf?: string;
+    body?: unknown;
+    member?: { id: string };
+  } = {},
+) {
+  return withCurrentSite("default", () =>
+    route(method, "/returns")(
+      {
+        method,
+        path: "/returns",
+        params: { pluginId: "shop" },
+        query: {},
+        body: input.body,
+        headers: {
+          ...(input.cookie ? { cookie: input.cookie } : {}),
+          ...(input.csrf ? { "x-csrf-token": input.csrf } : {}),
+        },
+        member: input.member,
+      },
+      {} as never,
+    ),
+  );
+}
+
 async function createPendingOrder(
   ids: { intentId: string; draftId: string; orderId: string },
   privateEmail: string,
@@ -2305,6 +2333,343 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         paymentShop.plugin.actions?.paymentAttemptHealth?.handler(undefined, {} as never),
       ),
     ).toMatchObject({ ok: true, data: { level: "error" } });
+  });
+
+  it("runs owner-scoped item returns through audited receipt and atomic inventory restoration", async () => {
+    const ids = {
+      intentId: "a83e4567-e89b-42d3-a456-426614174000",
+      draftId: "b83e4567-e89b-42d3-a456-426614174000",
+      orderId: "c83e4567-e89b-42d3-a456-426614174000",
+    };
+    const owner = await createPendingOrder(ids, "return-owner@example.com", {
+      variantSku: null,
+      quantity: 2,
+    });
+    const paymentShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
+    });
+    expect(
+      await payPendingOrder(paymentShop, {
+        orderId: ids.orderId,
+        eventId: "evt_return_success",
+        paymentReference: "pay_return_success",
+        amountMinor: 50_000,
+      }),
+    ).toMatchObject({ status: 200, body: { receipt: { outcome: "paid" } } });
+    const staff = await seedUser({ email: "return-operator@example.com" });
+    const actionContext = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.shipFulfillment?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 1 },
+            values: { carrier: "Parcel Co", trackingNumber: "RETURN-TRACK", operatorNote: "" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true });
+    const shipped = await orderCall("GET", { ...owner, orderId: ids.orderId });
+    const shippedOrder = (
+      shipped.body as { order: { revision: number; lines: Array<{ key: string }> } }
+    ).order;
+    expect(
+      await returnCall("POST", {
+        ...owner,
+        body: {
+          orderId: ids.orderId,
+          expectedOrderRevision: shippedOrder.revision,
+          lines: [{ lineKey: shippedOrder.lines[0]!.key, quantity: 1 }],
+          reason: "defective",
+          detail: "Handle is cracked",
+        },
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: { returnRequest: { status: "requested", revision: 1, inventoryOutcome: "pending" } },
+    });
+    expect(
+      await returnCall("POST", {
+        ...owner,
+        body: {
+          orderId: ids.orderId,
+          expectedOrderRevision: shippedOrder.revision,
+          lines: [{ lineKey: shippedOrder.lines[0]!.key, quantity: 1 }],
+          reason: "defective",
+          detail: null,
+        },
+      }),
+    ).toMatchObject({ status: 409, body: { error: "return_already_exists" } });
+    const foreignOwner = await call("GET");
+    expect(
+      await returnCall("DELETE", {
+        cookie: foreignOwner.headers?.["Set-Cookie"],
+        csrf: (foreignOwner.body as { csrfToken: string }).csrfToken,
+        body: { orderId: ids.orderId, expectedRevision: 1 },
+      }),
+    ).toMatchObject({ status: 409, body: { error: "return_not_found" } });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.approveReturn?.handler(
+          {
+            row: { id: ids.orderId, returnRevision: 1 },
+            values: { operatorNote: "Inspect on receipt" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("revision 2") });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.receiveReturn?.handler(
+          {
+            row: { id: ids.orderId, returnRevision: 1 },
+            values: { operatorNote: "Received intact package" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("changed") });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.receiveReturn?.handler(
+          {
+            row: { id: ids.orderId, returnRevision: 2 },
+            values: { operatorNote: "Received intact package" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("inventory restocked") });
+    expect(await orderCall("GET", { ...owner, orderId: ids.orderId })).toMatchObject({
+      body: {
+        order: {
+          status: "paid",
+          fulfillment: { status: "shipped" },
+          returnRequest: {
+            status: "received",
+            revision: 3,
+            inventoryOutcome: "restocked",
+            lines: [{ quantity: 1 }],
+          },
+        },
+      },
+    });
+    const db = await getTestDb();
+    expect(
+      await db
+        .select({ stockQuantity: shopProductsTable.stockQuantity })
+        .from(shopProductsTable)
+        .where(eq(shopProductsTable.id, productId)),
+    ).toEqual([{ stockQuantity: 7 }]);
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.returnHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.recentReturns?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: { rows: [{ id: ids.orderId, status: "received", inventory: "restocked" }] },
+    });
+    expect(
+      await db
+        .select({ action: npAuditEvents.action })
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.targetId, ids.orderId)),
+    ).toEqual(
+      expect.arrayContaining([
+        { action: "shop.return.approve" },
+        { action: "shop.return.receive" },
+      ]),
+    );
+  });
+
+  it("lets only the owner cancel a return that still awaits review", async () => {
+    const ids = {
+      intentId: "aa3e4567-e89b-42d3-a456-426614174000",
+      draftId: "ba3e4567-e89b-42d3-a456-426614174000",
+      orderId: "ca3e4567-e89b-42d3-a456-426614174000",
+    };
+    const owner = await createPendingOrder(ids, "return-cancel@example.com");
+    const paymentShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
+    });
+    await payPendingOrder(paymentShop, {
+      orderId: ids.orderId,
+      eventId: "evt_return_cancel",
+      paymentReference: "pay_return_cancel",
+    });
+    const staff = await seedUser({ email: "return-cancel-operator@example.com" });
+    const actionContext = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    await withCurrentSite("default", () =>
+      paymentShop.plugin.actions?.shipFulfillment?.handler(
+        {
+          row: { id: ids.orderId, fulfillmentRevision: 1 },
+          values: { carrier: "Parcel Co", trackingNumber: "CANCEL-TRACK", operatorNote: "" },
+        },
+        actionContext,
+      ),
+    );
+    const shipped = await orderCall("GET", { ...owner, orderId: ids.orderId });
+    const shippedOrder = (
+      shipped.body as { order: { revision: number; lines: Array<{ key: string }> } }
+    ).order;
+    expect(
+      await returnCall("POST", {
+        ...owner,
+        body: {
+          orderId: ids.orderId,
+          expectedOrderRevision: shippedOrder.revision,
+          lines: [{ lineKey: shippedOrder.lines[0]!.key, quantity: 1 }],
+          reason: "changed-mind",
+          detail: null,
+        },
+      }),
+    ).toMatchObject({ status: 200, body: { returnRequest: { status: "requested", revision: 1 } } });
+    expect(
+      await returnCall("DELETE", {
+        ...owner,
+        body: { orderId: ids.orderId, expectedRevision: 1 },
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: {
+        returnRequest: {
+          status: "cancelled",
+          revision: 2,
+          inventoryOutcome: "not-required",
+          decidedAt: expect.any(String),
+        },
+      },
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.approveReturn?.handler(
+          {
+            row: { id: ids.orderId, returnRevision: 2 },
+            values: { operatorNote: "Too late" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("requested") });
+    expect(await orderCall("GET", { ...owner, orderId: ids.orderId })).toMatchObject({
+      body: {
+        order: {
+          status: "paid",
+          fulfillment: { status: "shipped" },
+          returnRequest: { status: "cancelled", inventoryOutcome: "not-required" },
+        },
+      },
+    });
+  });
+
+  it("receives a return without partially restoring drifted catalog inventory", async () => {
+    const ids = {
+      intentId: "a93e4567-e89b-42d3-a456-426614174000",
+      draftId: "b93e4567-e89b-42d3-a456-426614174000",
+      orderId: "c93e4567-e89b-42d3-a456-426614174000",
+    };
+    const owner = await createPendingOrder(ids, "return-drift@example.com");
+    const paymentShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
+    });
+    await payPendingOrder(paymentShop, {
+      orderId: ids.orderId,
+      eventId: "evt_return_drift",
+      paymentReference: "pay_return_drift",
+    });
+    const staff = await seedUser({ email: "return-drift-operator@example.com" });
+    const actionContext = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    await withCurrentSite("default", () =>
+      paymentShop.plugin.actions?.shipFulfillment?.handler(
+        {
+          row: { id: ids.orderId, fulfillmentRevision: 1 },
+          values: { carrier: "Parcel Co", trackingNumber: "DRIFT-TRACK", operatorNote: "" },
+        },
+        actionContext,
+      ),
+    );
+    const shipped = await orderCall("GET", { ...owner, orderId: ids.orderId });
+    const shippedOrder = (
+      shipped.body as { order: { revision: number; lines: Array<{ key: string }> } }
+    ).order;
+    await returnCall("POST", {
+      ...owner,
+      body: {
+        orderId: ids.orderId,
+        expectedOrderRevision: shippedOrder.revision,
+        lines: [{ lineKey: shippedOrder.lines[0]!.key, quantity: 1 }],
+        reason: "damaged",
+        detail: null,
+      },
+    });
+    await withCurrentSite("default", () =>
+      paymentShop.plugin.actions?.approveReturn?.handler(
+        {
+          row: { id: ids.orderId, returnRevision: 1 },
+          values: { operatorNote: "Awaiting inspection" },
+        },
+        actionContext,
+      ),
+    );
+    const db = await getTestDb();
+    await db
+      .update(shopProductsTable)
+      .set({ trackInventory: false, inventoryState: "untracked" })
+      .where(eq(shopProductsTable.id, productId));
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.receiveReturn?.handler(
+          {
+            row: { id: ids.orderId, returnRevision: 2 },
+            values: { operatorNote: "Catalog tracking changed" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("inventory manual-required") });
+    expect(
+      await db
+        .select({ stockQuantity: shopProductsTable.stockQuantity })
+        .from(shopProductsTable)
+        .where(eq(shopProductsTable.id, productId)),
+    ).toEqual([{ stockQuantity: 7 }]);
+    expect(await orderCall("GET", { ...owner, orderId: ids.orderId })).toMatchObject({
+      body: {
+        order: { returnRequest: { status: "received", inventoryOutcome: "manual-required" } },
+      },
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.returnHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "warn" } });
   });
 
   it("cancels expired pending orders and purges old commercial snapshots in bounded passes", async () => {

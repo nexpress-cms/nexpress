@@ -6,7 +6,8 @@ routes, bounded guest/member carts, checkout intents, private order drafts,
 durable orders, transaction-safe inventory reservations, an optional
 provider-neutral payment initiation and verified-event boundary, revision-safe
 fulfillment operations, provider-neutral full refunds with safe inventory
-compensation, Admin collection forms and health actions, blocks, and skins.
+compensation, owner-scoped item return intake with audited receipt inventory,
+Admin collection forms and health actions, blocks, and skins.
 
 `@nexpress/theme-storefront` is a separate brand/content theme. It works with
 ordinary pages and posts when Shop is absent. When both packages are active,
@@ -20,9 +21,10 @@ optional build-time adapter may prepare a provider handoff, confirm the
 browser return on the server, authenticate an external callback, and project
 the exact provider-neutral event that moves that order to `paid` or
 `payment-failed`. A refund-capable adapter may also cancel one entire provider
-payment. Shop owns attempts, order/refund transitions, fulfillment state, and
-local compensation, but does not choose a provider protocol, calculate tax or
-shipping rates, physically fulfill goods, or book a carrier.
+payment. Shop owns attempts, order/refund transitions, fulfillment and return
+state, and local compensation, but does not choose a provider protocol,
+calculate tax or shipping rates, physically fulfill goods, book a carrier, or
+decide jurisdiction-specific return eligibility.
 
 ## Default setup
 
@@ -337,6 +339,12 @@ Storage separates commercial and private values:
   amount identity, PII-free reason, provider result reference, local
   fulfillment/inventory outcomes, and timestamps. It never stores raw provider
   bodies, credentials, customer values, addresses, or owner segments.
+- `np.shop-return-storage.v1` stores one return UUID per order, its owner
+  segment, exact order revision and item quantities, a closed PII-free reason,
+  bounded optional customer detail/operator note, revision-safe status,
+  inventory outcome, and timestamps. Owner projection omits the owner segment
+  and operator note. Doctor/health withholds both free-text fields as well as
+  every shipping address and payment/provider value.
 
 Pending orders expire after 24 hours. Owner cancellation, lazy read after that
 deadline, and the hourly maintenance job all atomically change the durable
@@ -348,8 +356,9 @@ after verified payment. Marking a fulfillment shipped atomically stores
 carrier/tracking, redacts both order and fulfillment projections, and
 physically deletes the private sidecar. Owner reads and hourly maintenance
 enforce the same maximum deadline without changing the paid state. The
-commercial snapshot, matching payment receipts, and refund record remain for 365 days and are
-then physically purged. Each scheduled or confirmed Admin pass
+commercial snapshot, matching payment receipts, refund record, and physical
+return record remain for 365 days and are then physically purged. Each
+scheduled or confirmed Admin pass
 cancels at most 500 due orders and purges at most 500 expired commercial
 snapshots, oldest first. Site deletion remains the final tenant-wide deletion
 boundary.
@@ -481,6 +490,41 @@ key make the same action safe to retry and converge. Operators must treat a
 pending or manual compensation diagnostic as reconciliation work; Shop never
 claims inventory was restored when exact catalog rows no longer match.
 
+## Physical returns and receipt inventory
+
+A shipped `paid` or post-shipment `refunded` order may create one durable,
+owner-scoped item return through `POST /api/plugins/shop/returns`. The request
+must match the current commercial order revision and select one or more exact
+order line keys with quantities no greater than the immutable purchase
+snapshot. Reasons are closed to `damaged`, `defective`, `wrong-item`,
+`changed-mind`, or `other`; optional detail is bounded customer-supplied text
+and should not contain sensitive data. It is visible only to that owner and
+direct staff, never Doctor/health output. Creating a return does not alter the
+order, fulfillment, payment, refund, or inventory. While status is
+`requested`, the owner may revision-safely cancel it through
+`DELETE /api/plugins/shop/returns`.
+
+Admin exposes three direct-staff-only, audited transitions:
+
+- `requested → approved` records an optional PII-free receiving note;
+- `requested → rejected` requires a bounded PII-free reason; and
+- `approved → received` confirms all requested physical units arrived.
+
+Only the final receipt transition can restore inventory. Shop derives the
+tracked subset from the original order's `inventoryReservationLineKeys`, locks
+catalog rows in canonical order, and preflights every exact product/variant,
+quantity, and integer bound before the first update. It then restores every
+tracked requested quantity or none. The return records `restocked`,
+`not-required`, or `manual-required`; catalog drift never produces a partial
+restock or an implied success. Payment refunds remain a separate explicit
+staff/provider operation, and a received return does not change the shipped
+fulfillment.
+
+This contract deliberately does not implement exchanges, automatic approval
+windows, return shipping fees, labels, pickup booking, warehouse inspection
+policy, or payment refunds. Sites must publish and enforce their own legal and
+customer-service policy around this neutral intake state machine.
+
 ## Payment initiation and Toss Payments
 
 An adapter can add initiation without changing the verified-event contract by
@@ -567,7 +611,7 @@ The two collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
-The plugin declares ten baseline typed dashboard metric actions:
+The plugin declares eleven baseline typed dashboard metric actions:
 
 - total product rows;
 - published low-stock products;
@@ -582,8 +626,10 @@ The plugin declares ten baseline typed dashboard metric actions:
 - fulfillment rows split across awaiting, processing, and shipped states.
 - verified PII-free payment-event receipts.
 - durable full-refund attempts and compensation outcomes.
+- item-level physical returns split across requested, approved, rejected,
+  received, and owner-cancelled states.
 
-A complete initiation adapter adds an eleventh metric for PII-free payment
+A complete initiation adapter adds a twelfth metric for PII-free payment
 attempts, a bounded recent-attempt table, and payment-attempt health. Attempt
 diagnostics expose provider, status, order id, exact amount, and timestamps;
 they withhold owner segments, private order data, and provider handoff values.
@@ -612,6 +658,14 @@ from the order table remains conditional on `refundPayment`; the refund table
 always references the same direct-staff handler so a `provider-confirmed` row
 can finish local reconciliation even after the provider adapter is removed.
 Doctor therefore sees neither a dangling handler nor a missing recovery path.
+Return health reports only counts for malformed/orphan rows, requests awaiting
+review, approved returns awaiting receipt, and manual inventory reconciliation.
+The direct-staff bounded table additionally exposes order/return ids,
+revisions, closed reason, bounded customer request detail, unit count, status,
+inventory outcome, bounded operator note, and timestamp while withholding
+shipping, payment, provider, and owner-identity values.
+The same definition-level registry binds approve/reject/receive row actions to
+their exact handlers, so Doctor validates them before an operator click.
 
 The manifest-level action registry binds each metric widget to its exact
 handler kind, so plugin validation and doctor can inspect the relationship
@@ -659,6 +713,8 @@ The main public hooks are `.np-shop`, `.np-shop-product-card`,
 `.np-shop-payment-action`, `.np-shop-toss-payment`,
 `[data-np-shop-order-line]`, `[data-np-shop-order-status]`,
 `[data-np-shop-fulfillment-status]`,
+`.np-shop-return-form`, `.np-shop-return-summary`,
+`[data-np-shop-return-status]`,
 `[data-np-shop-surface]`, `[data-np-shop-skin]`,
 `[data-np-shop-inventory]`, and `[data-np-shop-block]`.
 
@@ -710,7 +766,7 @@ Future transaction work should remain separable from this foundation:
 1. additional provider packages for Stripe or KG Inicis;
 2. authorization/capture, settlement, provider-initiated reversal, and partial
    refund contracts;
-3. fulfillment carrier integrations, returns, and customer-service policy;
+3. fulfillment carrier integrations, exchanges, and customer-service policy;
 4. legal/tax/shipping policy integrations.
 
 Those features require their own payment, security, and operational contracts.

@@ -26,14 +26,19 @@ import {
   npCountShopPaymentEvents,
   npCountShopFulfillments,
   npCountShopRefunds,
+  npCountShopReturns,
   npListRecentShopFulfillments,
   npListRecentShopOrders,
   npListRecentShopPaymentEvents,
   npListRecentShopRefunds,
+  npListRecentShopReturns,
   npMaintainShopOrders,
   npProcessShopFulfillment,
   npReadShopFulfillmentPrivate,
   npRefundShopOrder,
+  npApproveShopReturn,
+  npReceiveShopReturn,
+  npRejectShopReturn,
   npShipShopFulfillment,
 } from "./order-service.js";
 import {
@@ -42,6 +47,12 @@ import {
   npRequireShopFulfillmentShipInput,
 } from "./fulfillment-contract.js";
 import { npRequireShopRefundActionInput } from "./refund-contract.js";
+import { createShopReturnApiHandler } from "./return-api.js";
+import {
+  npRequireShopReturnApproveInput,
+  npRequireShopReturnReceiveInput,
+  npRequireShopReturnRejectInput,
+} from "./return-contract.js";
 import { createShopPaymentApiHandler } from "./payment-api.js";
 import { createShopPaymentAttemptApiHandler } from "./payment-attempt-api.js";
 import {
@@ -317,6 +328,30 @@ const messages = {
     "shop.orderFulfillmentShipped": "This order was shipped.",
     "shop.orderFulfillmentCancelled": "Fulfillment was cancelled after the full refund.",
     "shop.orderFulfillmentTracking": "Tracking",
+    "shop.orderReturn": "Return items",
+    "shop.orderReturnRequested": "Return requested — awaiting staff review.",
+    "shop.orderReturnApproved": "Return approved — send items according to the site's policy.",
+    "shop.orderReturnRejected": "Return request rejected.",
+    "shop.orderReturnReceived": "Returned items received.",
+    "shop.orderReturnCancelled": "Return request cancelled.",
+    "shop.orderReturnReason": "Return reason",
+    "shop.orderReturnReasonDamaged": "Damaged in transit",
+    "shop.orderReturnReasonDefective": "Defective",
+    "shop.orderReturnReasonWrongItem": "Wrong item",
+    "shop.orderReturnReasonChangedMind": "Changed mind",
+    "shop.orderReturnReasonOther": "Other",
+    "shop.orderReturnDetail": "Details (optional, do not include sensitive data)",
+    "shop.orderReturnSubmit": "Request return",
+    "shop.orderReturnSubmitting": "Requesting return…",
+    "shop.orderReturnSelectItem": "Select at least one item to return.",
+    "shop.orderReturnCancel": "Cancel return request",
+    "shop.orderReturnPolicy":
+      "This request records physical item intake only. It does not issue a refund, buy a shipping label, schedule pickup, or guarantee policy eligibility.",
+    "shop.orderReturnInventoryRestocked": "Received tracked inventory was restored.",
+    "shop.orderReturnInventoryManual":
+      "The return was received, but inventory requires operator reconciliation.",
+    "shop.orderReturnInventoryNotRequired": "No tracked inventory restoration was required.",
+    "shop.orderReturnFailed": "The return request could not be updated.",
     "shop.orderExpires": "Pending order expires",
     "shop.orderCreated": "Created",
     "shop.orderCancel": "Cancel order and delete private details",
@@ -456,6 +491,29 @@ const messages = {
     "shop.orderFulfillmentShipped": "상품이 출고되었습니다.",
     "shop.orderFulfillmentCancelled": "전액 환불 후 배송 작업이 취소되었습니다.",
     "shop.orderFulfillmentTracking": "배송 조회",
+    "shop.orderReturn": "상품 반품",
+    "shop.orderReturnRequested": "반품을 요청했습니다. 관리자 검토를 기다리고 있습니다.",
+    "shop.orderReturnApproved": "반품이 승인되었습니다. 사이트 정책에 따라 상품을 보내 주세요.",
+    "shop.orderReturnRejected": "반품 요청이 거절되었습니다.",
+    "shop.orderReturnReceived": "반품 상품 입고가 확인되었습니다.",
+    "shop.orderReturnCancelled": "반품 요청을 취소했습니다.",
+    "shop.orderReturnReason": "반품 사유",
+    "shop.orderReturnReasonDamaged": "배송 중 파손",
+    "shop.orderReturnReasonDefective": "상품 불량",
+    "shop.orderReturnReasonWrongItem": "다른 상품 배송",
+    "shop.orderReturnReasonChangedMind": "단순 변심",
+    "shop.orderReturnReasonOther": "기타",
+    "shop.orderReturnDetail": "상세 사유 (선택, 민감정보 입력 금지)",
+    "shop.orderReturnSubmit": "반품 요청",
+    "shop.orderReturnSubmitting": "반품 요청 중…",
+    "shop.orderReturnSelectItem": "반품할 상품을 하나 이상 선택해 주세요.",
+    "shop.orderReturnCancel": "반품 요청 취소",
+    "shop.orderReturnPolicy":
+      "이 요청은 실물 상품 반품 접수만 기록합니다. 결제 환불, 반품 운송장 구매, 수거 예약 또는 정책상 승인 여부를 보장하지 않습니다.",
+    "shop.orderReturnInventoryRestocked": "입고 확인된 추적 재고를 복원했습니다.",
+    "shop.orderReturnInventoryManual": "입고는 확인했지만 재고는 관리자가 직접 조정해야 합니다.",
+    "shop.orderReturnInventoryNotRequired": "복원할 추적 재고가 없습니다.",
+    "shop.orderReturnFailed": "반품 요청을 갱신하지 못했습니다.",
     "shop.orderExpires": "결제 대기 만료",
     "shop.orderCreated": "생성",
     "shop.orderCancel": "주문 취소 및 개인정보 삭제",
@@ -494,6 +552,7 @@ export function createShop(options: NpShopOptions = {}) {
   const checkoutApiHandler = createShopCheckoutApiHandler(runtime);
   const orderDraftApiHandler = createShopOrderDraftApiHandler(runtime);
   const orderApiHandler = createShopOrderApiHandler(runtime);
+  const returnApiHandler = createShopReturnApiHandler();
   const paymentApiHandler = runtime.paymentAdapter ? createShopPaymentApiHandler(runtime) : null;
   const paymentAttemptApiHandler = runtime.paymentInitiationAdapter
     ? createShopPaymentAttemptApiHandler(runtime)
@@ -542,7 +601,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, durable orders, optional payment initiation, verified events, full refunds, fulfillment operations, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, durable orders, optional payment initiation, verified events, full refunds, fulfillment and return operations, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -586,6 +645,9 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-refunds",
           "widget:shop-refund-health",
           "table:shop-refunds",
+          "dashboard:shop-returns",
+          "widget:shop-return-health",
+          "table:shop-returns",
           ...(paymentAttemptApiHandler
             ? [
                 "dashboard:shop-payment-attempts",
@@ -599,6 +661,7 @@ export function createShop(options: NpShopOptions = {}) {
           "/checkout",
           "/order-drafts",
           "/orders",
+          "/returns",
           ...(paymentApiHandler ? ["/payments/webhook"] : []),
           ...(paymentAttemptApiHandler ? ["/payments/attempts"] : []),
         ],
@@ -606,7 +669,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, and revision-safe fulfillment operations. Provider settlement, reversals, partial refunds, tax, shipping rates, and carrier integrations remain external.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment, and physical return intake. Provider settlement, reversals, partial refunds, exchanges, tax, shipping rates, and carrier integrations remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -645,6 +708,7 @@ export function createShop(options: NpShopOptions = {}) {
         "order-line": "[data-np-shop-order-line]",
         "order-status": "[data-np-shop-order-status]",
         "fulfillment-status": "[data-np-shop-fulfillment-status]",
+        "return-status": "[data-np-shop-return-status]",
         "product-card": ".np-shop-product-card",
         "product-grid": ".np-shop-product-grid",
         "category-grid": ".np-shop-category-grid",
@@ -743,6 +807,14 @@ export function createShop(options: NpShopOptions = {}) {
           description: "Durable full-refund attempts and completed inventory compensation.",
           priority: 32,
         },
+        {
+          id: "shop-returns-total",
+          label: "Returns",
+          kind: "metric",
+          actionId: "countReturns",
+          description: "Durable item-level physical return requests for shipped orders.",
+          priority: 33,
+        },
         ...(paymentAttemptApiHandler
           ? [
               {
@@ -806,6 +878,12 @@ export function createShop(options: NpShopOptions = {}) {
           kind: "status",
           actionId: "refundHealth",
         },
+        {
+          id: "shop-return-health",
+          label: "Return contract",
+          kind: "status",
+          actionId: "returnHealth",
+        },
         ...(paymentAttemptApiHandler
           ? [
               {
@@ -859,6 +937,7 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "inventory", label: "Inventory" },
             { name: "fulfillment", label: "Fulfillment" },
             { name: "refund", label: "Refund" },
+            { name: "returnRequest", label: "Return" },
             { name: "createdAt", label: "Created" },
           ],
           rowsActionId: "recentOrders",
@@ -1021,6 +1100,77 @@ export function createShop(options: NpShopOptions = {}) {
             },
           ],
           emptyMessage: "No Shop full-refund attempt exists for this site.",
+        },
+        {
+          id: "shop-returns",
+          label: "Physical returns and receipt inventory (shipping/payment PII withheld)",
+          columns: [
+            { name: "id", label: "Order" },
+            { name: "returnId", label: "Return" },
+            { name: "status", label: "Status" },
+            { name: "returnRevision", label: "Return revision" },
+            { name: "orderRevision", label: "Order revision" },
+            { name: "reason", label: "Reason" },
+            { name: "detail", label: "Request detail" },
+            { name: "units", label: "Units" },
+            { name: "inventory", label: "Inventory" },
+            { name: "operatorNote", label: "Operations note" },
+            { name: "updatedAt", label: "Updated" },
+          ],
+          rowsActionId: "recentReturns",
+          rowActions: [
+            {
+              id: "approve-return",
+              label: "Approve return",
+              actionId: "approveReturn",
+              rowFields: ["id", "returnRevision"],
+              visibleWhen: { field: "status", oneOf: ["requested"] },
+              fields: [
+                {
+                  name: "operatorNote",
+                  label: "Operations note",
+                  type: "textarea",
+                  placeholder: "Optional PII-free receiving instructions",
+                },
+              ],
+              confirm: "Approve this physical return request without issuing a payment refund?",
+            },
+            {
+              id: "reject-return",
+              label: "Reject return",
+              actionId: "rejectReturn",
+              rowFields: ["id", "returnRevision"],
+              visibleWhen: { field: "status", oneOf: ["requested"] },
+              fields: [
+                {
+                  name: "operatorNote",
+                  label: "Rejection reason",
+                  type: "textarea",
+                  required: true,
+                  placeholder: "Required PII-free reason",
+                },
+              ],
+              confirm: "Reject this return request?",
+            },
+            {
+              id: "receive-return",
+              label: "Confirm receipt",
+              actionId: "receiveReturn",
+              rowFields: ["id", "returnRevision"],
+              visibleWhen: { field: "status", oneOf: ["approved"] },
+              fields: [
+                {
+                  name: "operatorNote",
+                  label: "Receipt note",
+                  type: "textarea",
+                  placeholder: "Optional PII-free inspection note",
+                },
+              ],
+              confirm:
+                "Confirm every requested unit was received? Tracked inventory is restored atomically only when all exact catalog rows still match.",
+            },
+          ],
+          emptyMessage: "No Shop physical return exists for this site.",
         },
         ...(paymentAttemptApiHandler
           ? [
@@ -1430,6 +1580,124 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      countReturns: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npCountShopReturns();
+            return {
+              ok: true,
+              data: {
+                value: counts.total,
+                delta: `${counts.requested.toString()} requested, ${counts.approved.toString()} approved, ${counts.received.toString()} received`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      returnHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopReturns();
+            if (counts.invalidSample > 0 || counts.orphanSample > 0) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed and ${counts.orphanSample.toString()} orphan return row(s) in bounded samples.`,
+              );
+            }
+            if (counts.manualInventory > 0 || counts.requested > 0 || counts.approved > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.requested.toString()} awaiting review, ${counts.approved.toString()} awaiting receipt, and ${counts.manualInventory.toString()} requiring manual inventory reconciliation.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.received.toString()} received, ${counts.rejected.toString()} rejected, and ${counts.cancelled.toString()} owner-cancelled return(s).`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Return health check failed.",
+            );
+          }
+        },
+      },
+      recentReturns: {
+        kind: "table",
+        handler: async () => {
+          try {
+            const result = await npListRecentShopReturns();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      approveReturn: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return { ok: false, error: "Return operations require a direct staff action." };
+            }
+            const result = await npApproveShopReturn(
+              npRequireShopReturnApproveInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return {
+              ok: true,
+              data: `Return approved at revision ${result.revision.toString()}; payment and inventory are unchanged.`,
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      rejectReturn: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return { ok: false, error: "Return operations require a direct staff action." };
+            }
+            const result = await npRejectShopReturn(
+              npRequireShopReturnRejectInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return {
+              ok: true,
+              data: `Return rejected at revision ${result.revision.toString()}; payment and inventory are unchanged.`,
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      receiveReturn: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return { ok: false, error: "Return operations require a direct staff action." };
+            }
+            const result = await npReceiveShopReturn(
+              runtime,
+              npRequireShopReturnReceiveInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return {
+              ok: true,
+              data: `Return received at revision ${result.revision.toString()}; inventory ${result.inventoryOutcome}.`,
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
       countFulfillments: {
         kind: "metric",
         handler: async () => {
@@ -1776,6 +2044,19 @@ export function createShop(options: NpShopOptions = {}) {
           "Cancel one owner-scoped pending order and permanently delete its private sidecar.",
         handler: orderApiHandler,
       },
+      {
+        method: "POST",
+        path: "/returns",
+        description:
+          "Request one item-level physical return for an owner-scoped shipped order without changing payment or inventory.",
+        handler: returnApiHandler,
+      },
+      {
+        method: "DELETE",
+        path: "/returns",
+        description: "Cancel one owner-scoped return while it still awaits staff review.",
+        handler: returnApiHandler,
+      },
       ...(paymentAttemptApiHandler
         ? [
             {
@@ -2060,6 +2341,37 @@ export {
   npRequireStoredShopFulfillment,
   npShopFulfillmentLimits,
 } from "./fulfillment-contract.js";
+export {
+  NP_SHOP_RETURN_CONTRACT,
+  NP_SHOP_RETURN_STORAGE_CONTRACT,
+  NpShopReturnConflictError,
+  NpShopReturnContractError,
+  npAnalyzeShopReturn,
+  npAnalyzeStoredShopReturn,
+  npProjectShopReturn,
+  npRequireShopReturn,
+  npRequireShopReturnApproveInput,
+  npRequireShopReturnCancelInput,
+  npRequireShopReturnReceiveInput,
+  npRequireShopReturnRejectInput,
+  npRequireShopReturnRequestInput,
+  npRequireStoredShopReturn,
+  npShopReturnInventoryOutcomes,
+  npShopReturnLimits,
+  npShopReturnReasons,
+  npShopReturnStatuses,
+} from "./return-contract.js";
+export type {
+  NpShopReturn,
+  NpShopReturnCancelInput,
+  NpShopReturnInventoryOutcome,
+  NpShopReturnLine,
+  NpShopReturnReason,
+  NpShopReturnRequestInput,
+  NpShopReturnStaffInput,
+  NpShopReturnStatus,
+  NpShopStoredReturn,
+} from "./return-contract.js";
 export type {
   NpShopFulfillmentPrivateReadInput,
   NpShopFulfillmentProcessInput,

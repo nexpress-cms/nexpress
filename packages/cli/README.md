@@ -27,7 +27,9 @@ reservations. Payment processing is disabled by default; projects may register
 a build-time provider adapter for bounded owner-scoped attempts, server-side
 confirmation, exact verified callbacks, idempotent paid or failed transitions,
 atomic reservation consumption or release, and optional audited full refunds
-with safe inventory compensation. The bundled
+with safe inventory compensation. Shipped orders also expose owner-scoped
+item-level return intake and audited receipt inventory without implying a
+payment refund or carrier booking. The bundled
 `@nexpress/shop-payment-toss` adapter supplies a Toss Payments v2 browser/server
 flow plus exact full cancellation when explicitly installed and configured. Order
 customer/shipping values live in a separate private sidecar and are physically
