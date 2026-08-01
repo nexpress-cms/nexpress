@@ -25,12 +25,15 @@ import {
   npCountShopOrders,
   npCountShopPaymentEvents,
   npCountShopFulfillments,
+  npCountShopRefunds,
   npListRecentShopFulfillments,
   npListRecentShopOrders,
   npListRecentShopPaymentEvents,
+  npListRecentShopRefunds,
   npMaintainShopOrders,
   npProcessShopFulfillment,
   npReadShopFulfillmentPrivate,
+  npRefundShopOrder,
   npShipShopFulfillment,
 } from "./order-service.js";
 import {
@@ -38,6 +41,7 @@ import {
   npRequireShopFulfillmentProcessInput,
   npRequireShopFulfillmentShipInput,
 } from "./fulfillment-contract.js";
+import { npRequireShopRefundActionInput } from "./refund-contract.js";
 import { createShopPaymentApiHandler } from "./payment-api.js";
 import { createShopPaymentAttemptApiHandler } from "./payment-attempt-api.js";
 import {
@@ -48,6 +52,7 @@ import {
   npRequireShopPaymentProviderId,
   type NpShopPaymentAdapter,
   type NpShopPaymentInitiationAdapter,
+  type NpShopPaymentRefundAdapter,
 } from "./payment-contract.js";
 import { createShopCatalogMetadata, createShopCatalogRoute } from "./routes/catalog.js";
 import { createShopCartRoute } from "./routes/cart.js";
@@ -137,12 +142,23 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   const configuredPaymentAdapter = options.payment?.adapter ?? null;
   let paymentAdapter: NpShopPaymentAdapter | null = null;
   let paymentInitiationAdapter: NpShopPaymentInitiationAdapter | null = null;
+  let paymentRefundAdapter: NpShopPaymentRefundAdapter | null = null;
   if (configuredPaymentAdapter) {
     const id = npRequireShopPaymentProviderId(configuredPaymentAdapter.id);
     if (typeof configuredPaymentAdapter.verifyWebhook !== "function") {
       throw new Error("Shop payment adapter verifyWebhook must be a function.");
     }
     const verifyWebhook = configuredPaymentAdapter.verifyWebhook.bind(configuredPaymentAdapter);
+    if (configuredPaymentAdapter.refundPayment !== undefined) {
+      if (typeof configuredPaymentAdapter.refundPayment !== "function") {
+        throw new Error("Shop payment adapter refundPayment must be a function when provided.");
+      }
+      paymentRefundAdapter = Object.freeze({
+        id,
+        verifyWebhook,
+        refundPayment: configuredPaymentAdapter.refundPayment.bind(configuredPaymentAdapter),
+      });
+    }
     const initiationMethods = [
       typeof configuredPaymentAdapter.preparePayment === "function",
       typeof configuredPaymentAdapter.confirmPayment === "function",
@@ -175,6 +191,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     skins,
     paymentAdapter,
     paymentInitiationAdapter,
+    paymentRefundAdapter,
   };
 }
 
@@ -275,10 +292,12 @@ const messages = {
     "shop.orderCreating": "Creating order…",
     "shop.orderPendingPayment": "Pending payment",
     "shop.orderPaid": "Paid",
+    "shop.orderRefunded": "Refunded",
     "shop.orderPaymentFailed": "Payment failed",
     "shop.orderCancelled": "Cancelled",
     "shop.orderPaymentVerified":
       "The provider callback was verified and this order was marked paid.",
+    "shop.orderRefundedDetail": "The configured provider completed a full payment refund.",
     "shop.orderPaymentFailedDetail":
       "The provider reported a failed payment. Inventory was released and private details were deleted.",
     "shop.orderPrivateRetained":
@@ -288,9 +307,15 @@ const messages = {
     "shop.orderInventoryConsumed": "Reserved tracked inventory was deducted.",
     "shop.orderInventoryReleased": "The inventory reservation was released.",
     "shop.orderInventoryNotRequired": "This order does not use tracked inventory.",
+    "shop.orderRefundInventoryRestocked": "Tracked inventory was restored after the refund.",
+    "shop.orderRefundInventoryManual":
+      "The refund completed, but inventory requires operator reconciliation.",
+    "shop.orderRefundInventoryShipped":
+      "This order was already shipped, so the refund did not automatically restore inventory.",
     "shop.orderFulfillmentAwaiting": "Fulfillment is awaiting processing.",
     "shop.orderFulfillmentProcessing": "This order is being prepared for shipment.",
     "shop.orderFulfillmentShipped": "This order was shipped.",
+    "shop.orderFulfillmentCancelled": "Fulfillment was cancelled after the full refund.",
     "shop.orderFulfillmentTracking": "Tracking",
     "shop.orderExpires": "Pending order expires",
     "shop.orderCreated": "Created",
@@ -408,9 +433,11 @@ const messages = {
     "shop.orderCreating": "주문 만드는 중…",
     "shop.orderPendingPayment": "결제 대기",
     "shop.orderPaid": "결제 완료",
+    "shop.orderRefunded": "전액 환불",
     "shop.orderPaymentFailed": "결제 실패",
     "shop.orderCancelled": "취소됨",
     "shop.orderPaymentVerified": "결제사 콜백을 검증했고 주문을 결제 완료로 전환했습니다.",
+    "shop.orderRefundedDetail": "설정된 결제사가 결제 전액을 환불했습니다.",
     "shop.orderPaymentFailedDetail":
       "결제사가 실패를 알렸습니다. 재고 예약을 해제하고 배송 개인정보를 삭제했습니다.",
     "shop.orderPrivateRetained":
@@ -420,9 +447,14 @@ const messages = {
     "shop.orderInventoryConsumed": "예약된 추적 재고를 차감했습니다.",
     "shop.orderInventoryReleased": "재고 예약이 해제되었습니다.",
     "shop.orderInventoryNotRequired": "이 주문에는 재고 추적 상품이 없습니다.",
+    "shop.orderRefundInventoryRestocked": "환불 후 추적 재고를 복원했습니다.",
+    "shop.orderRefundInventoryManual": "환불은 완료됐지만 재고는 운영자가 직접 조정해야 합니다.",
+    "shop.orderRefundInventoryShipped":
+      "이미 출고된 주문이므로 환불 시 재고를 자동 복원하지 않았습니다.",
     "shop.orderFulfillmentAwaiting": "배송 처리를 기다리고 있습니다.",
     "shop.orderFulfillmentProcessing": "상품을 출고 준비 중입니다.",
     "shop.orderFulfillmentShipped": "상품이 출고되었습니다.",
+    "shop.orderFulfillmentCancelled": "전액 환불 후 배송 작업이 취소되었습니다.",
     "shop.orderFulfillmentTracking": "배송 조회",
     "shop.orderExpires": "결제 대기 만료",
     "shop.orderCreated": "생성",
@@ -510,7 +542,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, durable orders, optional payment initiation and verified events, fulfillment operations, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, durable orders, optional payment initiation, verified events, full refunds, fulfillment operations, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -551,6 +583,9 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-payment-events",
           "widget:shop-payment-event-health",
           "table:shop-payment-events",
+          "dashboard:shop-refunds",
+          "widget:shop-refund-health",
+          "table:shop-refunds",
           ...(paymentAttemptApiHandler
             ? [
                 "dashboard:shop-payment-attempts",
@@ -571,7 +606,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, and revision-safe fulfillment operations. Provider settlement, reversals, refunds, tax, shipping rates, and carrier integrations remain external.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, and revision-safe fulfillment operations. Provider settlement, reversals, partial refunds, tax, shipping rates, and carrier integrations remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -700,6 +735,14 @@ export function createShop(options: NpShopOptions = {}) {
             "Verified, PII-free provider event receipts retained with their commercial orders.",
           priority: 30,
         },
+        {
+          id: "shop-refunds-total",
+          label: "Refunds",
+          kind: "metric",
+          actionId: "countRefunds",
+          description: "Durable full-refund attempts and completed inventory compensation.",
+          priority: 32,
+        },
         ...(paymentAttemptApiHandler
           ? [
               {
@@ -757,6 +800,12 @@ export function createShop(options: NpShopOptions = {}) {
           kind: "status",
           actionId: "paymentEventHealth",
         },
+        {
+          id: "shop-refund-health",
+          label: "Refund contract",
+          kind: "status",
+          actionId: "refundHealth",
+        },
         ...(paymentAttemptApiHandler
           ? [
               {
@@ -802,15 +851,40 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Recent orders (private values withheld)",
           columns: [
             { name: "id", label: "Order" },
+            { name: "revision", label: "Revision" },
             { name: "status", label: "Status" },
             { name: "total", label: "Total" },
             { name: "units", label: "Units" },
             { name: "privateData", label: "Private data" },
             { name: "inventory", label: "Inventory" },
             { name: "fulfillment", label: "Fulfillment" },
+            { name: "refund", label: "Refund" },
             { name: "createdAt", label: "Created" },
           ],
           rowsActionId: "recentOrders",
+          rowActions: runtime.paymentRefundAdapter
+            ? [
+                {
+                  id: "full-refund",
+                  label: "Full refund",
+                  actionId: "refundOrder",
+                  rowFields: ["id", "revision"],
+                  visibleWhen: { field: "status", oneOf: ["paid"] },
+                  fields: [
+                    {
+                      name: "reason",
+                      label: "Refund reason",
+                      type: "textarea" as const,
+                      required: true,
+                      placeholder: "PII-free provider cancellation reason",
+                    },
+                  ],
+                  confirm:
+                    "Cancel the entire provider payment? Unshipped tracked inventory is restored only when the exact catalog rows still match.",
+                  description: "Partial refunds are not supported.",
+                },
+              ]
+            : [],
           emptyMessage: "No durable Shop orders exist for this site.",
         },
         {
@@ -909,6 +983,44 @@ export function createShop(options: NpShopOptions = {}) {
           ],
           rowsActionId: "recentPaymentEvents",
           emptyMessage: "No verified Shop payment events exist for this site.",
+        },
+        {
+          id: "shop-refunds",
+          label: "Full refunds and compensation (PII withheld)",
+          columns: [
+            { name: "id", label: "Order" },
+            { name: "refundId", label: "Refund" },
+            { name: "revision", label: "Order revision" },
+            { name: "provider", label: "Provider" },
+            { name: "status", label: "Status" },
+            { name: "total", label: "Amount" },
+            { name: "inventory", label: "Inventory" },
+            { name: "fulfillment", label: "Fulfillment" },
+            { name: "providerError", label: "Provider error" },
+            { name: "updatedAt", label: "Updated" },
+          ],
+          rowsActionId: "recentRefunds",
+          rowActions: [
+            {
+              id: "resume-full-refund",
+              label: "Resume reconciliation",
+              actionId: "refundOrder",
+              rowFields: ["id", "revision"],
+              visibleWhen: { field: "status", oneOf: ["pending", "provider-confirmed"] },
+              fields: [
+                {
+                  name: "reason",
+                  label: "Original refund reason",
+                  type: "textarea",
+                  required: true,
+                  placeholder: "Re-enter the PII-free reason; the durable original is preserved",
+                },
+              ],
+              confirm:
+                "Resume this durable full refund? A provider-confirmed row performs only local reconciliation.",
+            },
+          ],
+          emptyMessage: "No Shop full-refund attempt exists for this site.",
         },
         ...(paymentAttemptApiHandler
           ? [
@@ -1235,6 +1347,89 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      countRefunds: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npCountShopRefunds();
+            return {
+              ok: true,
+              data: {
+                value: counts.total,
+                delta: `${counts.refunded.toString()} completed, ${(counts.pending + counts.providerConfirmed).toString()} pending reconciliation`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      refundHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopRefunds();
+            if (counts.invalidSample > 0 || counts.orphanSample > 0) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed and ${counts.orphanSample.toString()} orphan refund row(s) in bounded samples.`,
+              );
+            }
+            if (
+              counts.manualReview > 0 ||
+              counts.manualInventory > 0 ||
+              counts.pending > 0 ||
+              counts.providerConfirmed > 0
+            ) {
+              return npAdminStatus(
+                "warn",
+                `${counts.pending.toString()} provider-pending, ${counts.providerConfirmed.toString()} provider-confirmed awaiting local reconciliation, ${counts.manualReview.toString()} provider review, and ${counts.manualInventory.toString()} manual inventory compensation refund(s).`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.refunded.toString()} completed full refund(s); ${runtime.paymentRefundAdapter ? `provider "${runtime.paymentRefundAdapter.id}" is enabled` : "no refund-capable provider is configured"}.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Refund health check failed.",
+            );
+          }
+        },
+      },
+      recentRefunds: {
+        kind: "table",
+        handler: async () => {
+          try {
+            const result = await npListRecentShopRefunds();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      refundOrder: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return { ok: false, error: "Refunds require a direct staff action." };
+            }
+            const result = await npRefundShopOrder(
+              runtime,
+              npRequireShopRefundActionInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return {
+              ok: true,
+              data: `Full refund ${result.duplicate ? "already reconciled" : "completed"}; inventory ${result.refund.inventoryOutcome}, fulfillment ${result.refund.fulfillmentOutcome}.`,
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
       countFulfillments: {
         kind: "metric",
         handler: async () => {
@@ -1244,7 +1439,7 @@ export function createShop(options: NpShopOptions = {}) {
               ok: true,
               data: {
                 value: counts.total,
-                delta: `${counts.awaiting.toString()} awaiting, ${counts.processing.toString()} processing, ${counts.shipped.toString()} shipped`,
+                delta: `${counts.awaiting.toString()} awaiting, ${counts.processing.toString()} processing, ${counts.shipped.toString()} shipped, ${counts.cancelled.toString()} refunded`,
               },
             };
           } catch (error) {
@@ -1275,7 +1470,7 @@ export function createShop(options: NpShopOptions = {}) {
             }
             return npAdminStatus(
               "ok",
-              `${counts.awaiting.toString()} awaiting, ${counts.processing.toString()} processing, and ${counts.shipped.toString()} shipped fulfillment(s).`,
+              `${counts.awaiting.toString()} awaiting, ${counts.processing.toString()} processing, ${counts.shipped.toString()} shipped, and ${counts.cancelled.toString()} refund-cancelled fulfillment(s).`,
             );
           } catch (error) {
             return npAdminStatus(
@@ -1722,6 +1917,7 @@ export {
 export type {
   NpShopPaymentAdapter,
   NpShopPaymentInitiationAdapter,
+  NpShopPaymentRefundAdapter,
   NpShopPaymentEventType,
   NpShopIgnoredPaymentWebhook,
   NpShopPaymentReceiptOutcome,
@@ -1730,6 +1926,32 @@ export type {
   NpShopStoredPaymentReceipt,
   NpShopVerifiedPaymentEvent,
 } from "./payment-contract.js";
+export {
+  NP_SHOP_REFUND_CONTRACT,
+  NP_SHOP_REFUND_RESULT_CONTRACT,
+  NP_SHOP_REFUND_STORAGE_CONTRACT,
+  NpShopRefundConflictError,
+  NpShopRefundContractError,
+  npAnalyzeStoredShopRefund,
+  npProjectShopRefund,
+  npRequireShopPaymentRefundResult,
+  npRequireShopRefundActionInput,
+  npRequireStoredShopRefund,
+  npShopRefundFulfillmentOutcomes,
+  npShopRefundInventoryOutcomes,
+  npShopRefundLimits,
+  npShopRefundStatuses,
+} from "./refund-contract.js";
+export type {
+  NpShopPaymentRefundInput,
+  NpShopPaymentRefundResult,
+  NpShopRefund,
+  NpShopRefundActionInput,
+  NpShopRefundFulfillmentOutcome,
+  NpShopRefundInventoryOutcome,
+  NpShopRefundStatus,
+  NpShopStoredRefund,
+} from "./refund-contract.js";
 export {
   NP_SHOP_PAYMENT_ATTEMPT_CONTRACT,
   NP_SHOP_PAYMENT_HANDOFF_CONTRACT,

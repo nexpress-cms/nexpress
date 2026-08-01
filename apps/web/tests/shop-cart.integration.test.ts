@@ -235,6 +235,42 @@ async function createPendingOrder(
   return { cookie, csrf: addedBody.csrfToken };
 }
 
+async function payPendingOrder(
+  shop: ReturnType<typeof createShop>,
+  input: { orderId: string; eventId: string; paymentReference: string; amountMinor?: number },
+) {
+  const handler = shop.plugin.routes?.find(
+    (candidate) => candidate.path === "/payments/webhook",
+  )?.handler;
+  const rawBody = new TextEncoder().encode(
+    JSON.stringify({
+      contract: "np.shop-payment-event.v1",
+      eventId: input.eventId,
+      type: "payment.succeeded",
+      orderId: input.orderId,
+      paymentReference: input.paymentReference,
+      currency: "KRW",
+      amountMinor: input.amountMinor ?? 25_000,
+      signedAt: new Date().toISOString(),
+    }),
+  );
+  return withCurrentSite("default", () =>
+    handler?.(
+      {
+        method: "POST",
+        path: "/payments/webhook",
+        params: { pluginId: "shop" },
+        query: {},
+        bodyMode: "raw",
+        body: undefined,
+        rawBody,
+        headers: {},
+      },
+      {} as never,
+    ),
+  );
+}
+
 describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
   beforeAll(async () => {
     await ensureMigrated();
@@ -1207,6 +1243,16 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         adapter: {
           id: "test-pay",
           verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+          refundPayment: (input) => ({
+            contract: "np.shop-refund-result.v1",
+            refundId: input.refundId,
+            orderId: input.orderId,
+            paymentReference: input.paymentReference,
+            refundReference: "refund_shipped_transaction",
+            currency: input.currency,
+            amountMinor: input.amountMinor,
+            refundedAt: new Date().toISOString(),
+          }),
         },
       },
     });
@@ -1444,6 +1490,41 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         body: { orderId: successIds.orderId, expectedRevision: 2 },
       }),
     ).toMatchObject({ status: 409, body: { error: "order_not_cancellable" } });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.refundOrder?.handler(
+          {
+            row: { id: successIds.orderId, revision: 3 },
+            values: { reason: "Customer requested post-shipment refund" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: expect.stringContaining(
+        "inventory not-applicable-shipped, fulfillment shipped-retained",
+      ),
+    });
+    expect(await orderCall("GET", { ...successOwner, orderId: successIds.orderId })).toMatchObject({
+      body: {
+        order: {
+          status: "refunded",
+          revision: 4,
+          fulfillment: { status: "shipped", revision: 3 },
+          refund: {
+            inventoryOutcome: "not-applicable-shipped",
+            fulfillmentOutcome: "shipped-retained",
+          },
+        },
+      },
+    });
+    expect(
+      await db
+        .select({ stockQuantity: shopProductsTable.stockQuantity })
+        .from(shopProductsTable)
+        .where(eq(shopProductsTable.id, productId)),
+    ).toEqual([{ stockQuantity: 7 }]);
 
     const failedOwner = await createPendingOrder(failedIds, "failed-private@example.com");
     expect(
@@ -1551,6 +1632,413 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         .from(shopProductsTable)
         .where(eq(shopProductsTable.id, productId)),
     ).toEqual([{ available: true, inventoryState: "low-stock" }]);
+  });
+
+  it("fully refunds an unshipped paid order and atomically restores exact inventory", async () => {
+    const ids = {
+      intentId: "143e4567-e89b-42d3-a456-426614174000",
+      draftId: "243e4567-e89b-42d3-a456-426614174000",
+      orderId: "343e4567-e89b-42d3-a456-426614174000",
+    };
+    const owner = await createPendingOrder(ids, "refund-private@example.com");
+    const refundPayment = vi.fn(
+      (input: {
+        refundId: string;
+        orderId: string;
+        paymentReference: string;
+        currency: "KRW";
+        amountMinor: number;
+      }) => ({
+        contract: "np.shop-refund-result.v1" as const,
+        refundId: input.refundId,
+        orderId: input.orderId,
+        paymentReference: input.paymentReference,
+        refundReference: "refund_transaction_1",
+        currency: input.currency,
+        amountMinor: input.amountMinor,
+        refundedAt: new Date().toISOString(),
+      }),
+    );
+    const refundShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+          refundPayment,
+        },
+      },
+    });
+    const paymentHandler = refundShop.plugin.routes?.find(
+      (candidate) => candidate.path === "/payments/webhook",
+    )?.handler;
+    const paidAt = new Date().toISOString();
+    const rawBody = new TextEncoder().encode(
+      JSON.stringify({
+        contract: "np.shop-payment-event.v1",
+        eventId: "evt_refund_success_1",
+        type: "payment.succeeded",
+        orderId: ids.orderId,
+        paymentReference: "pay_refund_success_1",
+        currency: "KRW",
+        amountMinor: 25_000,
+        signedAt: paidAt,
+      }),
+    );
+    expect(
+      await withCurrentSite("default", () =>
+        paymentHandler?.(
+          {
+            method: "POST",
+            path: "/payments/webhook",
+            params: { pluginId: "shop" },
+            query: {},
+            bodyMode: "raw",
+            body: undefined,
+            rawBody,
+            headers: {},
+          },
+          {} as never,
+        ),
+      ),
+    ).toMatchObject({ status: 200, body: { receipt: { outcome: "paid" } } });
+    const db = await getTestDb();
+    expect(
+      await db
+        .select({ stockQuantity: shopProductsTable.stockQuantity })
+        .from(shopProductsTable)
+        .where(eq(shopProductsTable.id, productId)),
+    ).toEqual([{ stockQuantity: 7 }]);
+
+    const staff = await seedUser({ email: "refund-operator@example.com" });
+    const payload = {
+      row: { id: ids.orderId, revision: 2 },
+      values: { reason: "Customer requested cancellation" },
+    };
+    const actionContext = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    expect(
+      await withCurrentSite("default", () =>
+        refundShop.plugin.actions?.refundOrder?.handler(payload, {
+          actionInvocation: { kind: "plugin", pluginId: "test" },
+        } as never),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("direct staff") });
+    expect(
+      await withCurrentSite("default", () =>
+        refundShop.plugin.actions?.refundOrder?.handler(payload, actionContext),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: expect.stringContaining("inventory restocked, fulfillment cancelled"),
+    });
+    expect(refundPayment).toHaveBeenCalledTimes(1);
+    expect(refundPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: ids.orderId,
+        paymentReference: "pay_refund_success_1",
+        currency: "KRW",
+        amountMinor: 25_000,
+        reason: "Customer requested cancellation",
+        refundId: expect.stringMatching(/^[0-9a-f-]{36}$/u),
+      }),
+    );
+    expect(
+      await db
+        .select({ stockQuantity: shopProductsTable.stockQuantity })
+        .from(shopProductsTable)
+        .where(eq(shopProductsTable.id, productId)),
+    ).toEqual([{ stockQuantity: 8 }]);
+    expect(await orderCall("GET", { ...owner, orderId: ids.orderId })).toMatchObject({
+      body: {
+        order: {
+          status: "refunded",
+          revision: 3,
+          privateDataStatus: "redacted",
+          inventoryReservationStatus: "consumed",
+          customer: null,
+          shipping: null,
+          fulfillment: { status: "cancelled", revision: 2, privateDataStatus: "redacted" },
+          refund: {
+            status: "refunded",
+            amountMinor: 25_000,
+            inventoryOutcome: "restocked",
+            fulfillmentOutcome: "cancelled",
+          },
+        },
+      },
+    });
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(like(npPluginStorage.key, `order-private:%:${ids.orderId}`)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select({ action: npAuditEvents.action })
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.targetId, ids.orderId)),
+    ).toEqual(
+      expect.arrayContaining([
+        { action: "shop.refund.request" },
+        { action: "shop.refund.complete" },
+      ]),
+    );
+    expect(
+      await withCurrentSite("default", () =>
+        refundShop.plugin.actions?.refundOrder?.handler(payload, actionContext),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("already reconciled") });
+    expect(refundPayment).toHaveBeenCalledTimes(1);
+    expect(
+      await withCurrentSite("default", () =>
+        refundShop.plugin.actions?.refundHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+  });
+
+  it("completes the provider refund without partially compensating drifted inventory", async () => {
+    const ids = {
+      intentId: "153e4567-e89b-42d3-a456-426614174000",
+      draftId: "253e4567-e89b-42d3-a456-426614174000",
+      orderId: "353e4567-e89b-42d3-a456-426614174000",
+    };
+    await createPendingOrder(ids, "refund-drift@example.com");
+    const refundShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+          refundPayment: (input) => ({
+            contract: "np.shop-refund-result.v1",
+            refundId: input.refundId,
+            orderId: input.orderId,
+            paymentReference: input.paymentReference,
+            refundReference: "refund_drift_transaction",
+            currency: input.currency,
+            amountMinor: input.amountMinor,
+            refundedAt: new Date().toISOString(),
+          }),
+        },
+      },
+    });
+    expect(
+      await payPendingOrder(refundShop, {
+        orderId: ids.orderId,
+        eventId: "evt_refund_drift",
+        paymentReference: "pay_refund_drift",
+      }),
+    ).toMatchObject({ status: 200, body: { receipt: { outcome: "paid" } } });
+    const db = await getTestDb();
+    await db
+      .update(shopProductsTable)
+      .set({ trackInventory: false })
+      .where(eq(shopProductsTable.id, productId));
+    const staff = await seedUser({ email: "refund-drift-operator@example.com" });
+    expect(
+      await withCurrentSite("default", () =>
+        refundShop.plugin.actions?.refundOrder?.handler(
+          {
+            row: { id: ids.orderId, revision: 2 },
+            values: { reason: "Customer requested cancellation" },
+          },
+          {
+            actionInvocation: { kind: "staff", userId: staff.userId },
+          } as never,
+        ),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: expect.stringContaining("inventory manual-required, fulfillment cancelled"),
+    });
+    expect(
+      await db
+        .select({ stockQuantity: shopProductsTable.stockQuantity })
+        .from(shopProductsTable)
+        .where(eq(shopProductsTable.id, productId)),
+    ).toEqual([{ stockQuantity: 7 }]);
+    expect(
+      await withCurrentSite("default", () =>
+        refundShop.plugin.actions?.recentRefunds?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: { rows: [{ orderId: ids.orderId, status: "refunded", inventory: "manual-required" }] },
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        refundShop.plugin.actions?.refundHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "warn" } });
+  });
+
+  it("fails closed on a mismatched provider refund and blocks fulfillment", async () => {
+    const ids = {
+      intentId: "173e4567-e89b-42d3-a456-426614174000",
+      draftId: "273e4567-e89b-42d3-a456-426614174000",
+      orderId: "373e4567-e89b-42d3-a456-426614174000",
+    };
+    const owner = await createPendingOrder(ids, "refund-mismatch@example.com");
+    const refundShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+          refundPayment: (input) => ({
+            contract: "np.shop-refund-result.v1",
+            refundId: input.refundId,
+            orderId: input.orderId,
+            paymentReference: input.paymentReference,
+            refundReference: "refund_mismatch_transaction",
+            currency: input.currency,
+            amountMinor: input.amountMinor - 1,
+            refundedAt: new Date().toISOString(),
+          }),
+        },
+      },
+    });
+    await payPendingOrder(refundShop, {
+      orderId: ids.orderId,
+      eventId: "evt_refund_mismatch",
+      paymentReference: "pay_refund_mismatch",
+    });
+    const staff = await seedUser({ email: "refund-mismatch-operator@example.com" });
+    const context = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    expect(
+      await withCurrentSite("default", () =>
+        refundShop.plugin.actions?.refundOrder?.handler(
+          {
+            row: { id: ids.orderId, revision: 2 },
+            values: { reason: "Customer requested cancellation" },
+          },
+          context,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("does not match") });
+    expect(await orderCall("GET", { ...owner, orderId: ids.orderId })).toMatchObject({
+      body: {
+        order: {
+          status: "paid",
+          inventoryReservationStatus: "consumed",
+          fulfillment: { status: "awaiting", revision: 1 },
+          refund: { status: "manual-review", inventoryOutcome: "pending" },
+        },
+      },
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        refundShop.plugin.actions?.processFulfillment?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 1 },
+            values: { operatorNote: "Must remain blocked" },
+          },
+          context,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("operator reconciliation") });
+    expect(
+      await withCurrentSite("default", () =>
+        refundShop.plugin.actions?.recentRefunds?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: {
+        rows: [
+          {
+            orderId: ids.orderId,
+            status: "manual-review",
+            providerError: "provider-result-mismatch",
+          },
+        ],
+      },
+    });
+  });
+
+  it("resumes local reconciliation from a durable provider-confirmed refund", async () => {
+    const ids = {
+      intentId: "163e4567-e89b-42d3-a456-426614174000",
+      draftId: "263e4567-e89b-42d3-a456-426614174000",
+      orderId: "363e4567-e89b-42d3-a456-426614174000",
+    };
+    await createPendingOrder(ids, "refund-resume@example.com");
+    const refundPayment = vi.fn(
+      (input: {
+        refundId: string;
+        orderId: string;
+        paymentReference: string;
+        currency: "KRW";
+        amountMinor: number;
+      }) => ({
+        contract: "np.shop-refund-result.v1" as const,
+        refundId: input.refundId,
+        orderId: input.orderId,
+        paymentReference: input.paymentReference,
+        refundReference: "refund_resume_transaction",
+        currency: input.currency,
+        amountMinor: input.amountMinor,
+        refundedAt: new Date().toISOString(),
+      }),
+    );
+    const refundShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+          refundPayment,
+        },
+      },
+    });
+    await payPendingOrder(refundShop, {
+      orderId: ids.orderId,
+      eventId: "evt_refund_resume",
+      paymentReference: "pay_refund_resume",
+    });
+    const db = await getTestDb();
+    const [fulfillmentRow] = await db
+      .select({
+        pluginId: npPluginStorage.pluginId,
+        siteId: npPluginStorage.siteId,
+        key: npPluginStorage.key,
+        value: npPluginStorage.value,
+        expiresAt: npPluginStorage.expiresAt,
+        updatedAt: npPluginStorage.updatedAt,
+      })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `fulfillment:${ids.orderId}`))
+      .limit(1);
+    expect(fulfillmentRow).toBeDefined();
+    if (!fulfillmentRow) throw new Error("Missing paid-order fulfillment fixture.");
+    await db.delete(npPluginStorage).where(eq(npPluginStorage.key, `fulfillment:${ids.orderId}`));
+    const staff = await seedUser({ email: "refund-resume-operator@example.com" });
+    const payload = {
+      row: { id: ids.orderId, revision: 2 },
+      values: { reason: "Customer requested cancellation" },
+    };
+    const context = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    expect(
+      await withCurrentSite("default", () =>
+        refundShop.plugin.actions?.refundOrder?.handler(payload, context),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("fulfillment") });
+    expect(refundPayment).toHaveBeenCalledTimes(1);
+    expect(
+      await withCurrentSite("default", () =>
+        refundShop.plugin.actions?.recentRefunds?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { rows: [{ status: "provider-confirmed" }] } });
+    await db.insert(npPluginStorage).values(fulfillmentRow);
+    const recoveryShop = createShop();
+    expect(
+      await withCurrentSite("default", () =>
+        recoveryShop.plugin.actions?.refundOrder?.handler(payload, context),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("completed") });
+    expect(refundPayment).toHaveBeenCalledTimes(1);
   });
 
   it("prepares and server-confirms idempotent payment attempts against the stored order", async () => {

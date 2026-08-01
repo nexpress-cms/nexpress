@@ -43,17 +43,20 @@ It provides:
 - independent revision-safe `awaiting` / `processing` / `shipped` fulfillment,
   audited direct-staff shipping-data access, owner-visible tracking, and
   shipment-or-30-day private-data deletion;
+- provider-neutral, staff-audited full refunds with one durable idempotency id,
+  cancelled unshipped fulfillment, all-or-none tracked-inventory restoration,
+  and explicit manual-compensation diagnostics;
 - classic and storefront-full skins;
 - featured-product and category-grid blocks.
 
 Provider-specific browser/server protocols, signature algorithms, credentials
-and rotation, refunds/reversals, returns, carrier booking, tax, and shipping
-rates remain outside this package. `@nexpress/shop-payment-toss` is the bundled Toss
-Payments v2 adapter. Customer/shipping PII exists only in the short-lived
+and rotation, partial refunds, reversals, returns, carrier booking, tax, and
+shipping rates remain outside this package. `@nexpress/shop-payment-toss` is the bundled Toss
+Payments v2 initiation and full-refund adapter. Customer/shipping PII exists only in the short-lived
 private draft or order sidecar and stays outside content search, revisions,
 payment receipts, and transfer. A durable `pending-payment` order reference
 still does not imply that a visitor paid for a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
 for the exact price, SKU, inventory, cart, checkout-intent, private-draft,
-pending-order, payment-attempt, fulfillment, skin, block, and theme-integration contracts.
+pending-order, payment-attempt, fulfillment, refund, skin, block, and theme-integration contracts.

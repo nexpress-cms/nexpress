@@ -14,7 +14,11 @@ import {
   type NpShopVariant,
   type NpShopCollectionSlugs,
 } from "./types.js";
-import type { NpShopPaymentAdapter, NpShopPaymentInitiationAdapter } from "./payment-contract.js";
+import type {
+  NpShopPaymentAdapter,
+  NpShopPaymentInitiationAdapter,
+  NpShopPaymentRefundAdapter,
+} from "./payment-contract.js";
 
 export const npShopSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 export const npShopSkuPattern = /^[A-Z0-9][A-Z0-9._-]{0,63}$/u;
@@ -37,6 +41,7 @@ export interface NpShopRuntime {
   skins: ReadonlyMap<string, NpShopSkin>;
   paymentAdapter: NpShopPaymentAdapter | null;
   paymentInitiationAdapter: NpShopPaymentInitiationAdapter | null;
+  paymentRefundAdapter: NpShopPaymentRefundAdapter | null;
 }
 
 export interface ShopCategoryDocument extends Record<string, unknown> {
@@ -517,9 +522,11 @@ export async function getShopMessages(): Promise<NpShopMessages> {
     "orderCreating",
     "orderPendingPayment",
     "orderPaid",
+    "orderRefunded",
     "orderPaymentFailed",
     "orderCancelled",
     "orderPaymentVerified",
+    "orderRefundedDetail",
     "orderPaymentFailedDetail",
     "orderPrivateRetained",
     "orderPrivateRedacted",
@@ -527,9 +534,13 @@ export async function getShopMessages(): Promise<NpShopMessages> {
     "orderInventoryConsumed",
     "orderInventoryReleased",
     "orderInventoryNotRequired",
+    "orderRefundInventoryRestocked",
+    "orderRefundInventoryManual",
+    "orderRefundInventoryShipped",
     "orderFulfillmentAwaiting",
     "orderFulfillmentProcessing",
     "orderFulfillmentShipped",
+    "orderFulfillmentCancelled",
     "orderFulfillmentTracking",
     "orderExpires",
     "orderCreated",

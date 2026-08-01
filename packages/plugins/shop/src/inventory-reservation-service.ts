@@ -16,7 +16,7 @@ import {
 import { NP_SHOP_ORDER_STORAGE_CONTRACT, npRequireStoredShopOrder } from "./order-contract.js";
 import { NP_SHOP_PLUGIN_ID, type NpShopTransaction } from "./order-draft-service.js";
 import { NpShopPaymentConflictError } from "./payment-contract.js";
-import type { NpShopRuntime } from "./runtime.js";
+import { npShopCatalogLimits, type NpShopRuntime } from "./runtime.js";
 import type { NpShopCheckoutIntentLine } from "./types.js";
 
 type NpShopDb = ReturnType<typeof getDb> | NpShopTransaction;
@@ -383,6 +383,182 @@ export async function npConsumeShopInventoryReservations(
     );
   }
   return released;
+}
+
+/**
+ * Restore an already-consumed exact order snapshot. Every product and variant
+ * is preflighted before the first write, so a catalog drift returns false
+ * without partially restocking the order.
+ */
+export async function npRestoreShopOrderInventory(
+  tx: NpShopTransaction,
+  siteId: string,
+  runtime: NpShopRuntime,
+  lines: readonly NpShopCheckoutIntentLine[],
+): Promise<boolean> {
+  if (lines.length === 0) return true;
+  const registration = getCollectionRegistration(runtime.collections.products);
+  const productTable = registration.table as PgTable;
+  const variantTable = registration.childTables?.variants as PgTable | undefined;
+  const productIdColumn = tableColumn(productTable, "id");
+  const productSiteIdColumn = tableColumn(productTable, "siteId");
+  const productTrackInventoryColumn = tableColumn(productTable, "trackInventory");
+  const productStockColumn = tableColumn(productTable, "stockQuantity");
+  const productThresholdColumn = tableColumn(productTable, "lowStockThreshold");
+  const byProduct = new Map<string, NpShopCheckoutIntentLine[]>();
+  for (const line of lines) {
+    const grouped = byProduct.get(line.productId) ?? [];
+    grouped.push(line);
+    byProduct.set(line.productId, grouped);
+  }
+
+  const products: Array<{
+    id: string;
+    lines: NpShopCheckoutIntentLine[];
+    lowStockThreshold: number;
+  }> = [];
+  for (const [productId, productLines] of [...byProduct].sort(([a], [b]) => a.localeCompare(b))) {
+    const [product] = (await tx
+      .select({
+        trackInventory: productTrackInventoryColumn,
+        stockQuantity: productStockColumn,
+        lowStockThreshold: productThresholdColumn,
+      })
+      .from(productTable)
+      .where(and(eq(productIdColumn, productId), eq(productSiteIdColumn, siteId)))
+      .limit(1)
+      .for("update")) as Array<{
+      trackInventory: boolean | null;
+      stockQuantity: number;
+      lowStockThreshold: number;
+    }>;
+    if (
+      !product ||
+      product.trackInventory !== true ||
+      !Number.isSafeInteger(product.stockQuantity) ||
+      product.stockQuantity < 0 ||
+      !Number.isSafeInteger(product.lowStockThreshold) ||
+      product.lowStockThreshold < 0
+    ) {
+      return false;
+    }
+    let baseIncrease = 0;
+    const variantIncreases = new Map<string, number>();
+    for (const line of productLines) {
+      if (line.variantSku === null) {
+        baseIncrease += line.quantity;
+        continue;
+      }
+      variantIncreases.set(
+        line.variantSku,
+        (variantIncreases.get(line.variantSku) ?? 0) + line.quantity,
+      );
+    }
+    if (variantIncreases.size > 0 && !variantTable) return false;
+    const refundVariantTable = variantTable;
+    for (const [variantSku, increase] of variantIncreases) {
+      if (!refundVariantTable) return false;
+      const variantParentColumn = tableColumn(refundVariantTable, "parentId");
+      const variantSkuColumn = tableColumn(refundVariantTable, "sku");
+      const variantStockColumn = tableColumn(refundVariantTable, "stockQuantity");
+      const [variant] = (await tx
+        .select({ stockQuantity: variantStockColumn })
+        .from(refundVariantTable)
+        .where(and(eq(variantParentColumn, productId), eq(variantSkuColumn, variantSku)))
+        .limit(1)
+        .for("update")) as Array<{ stockQuantity: number }>;
+      if (
+        !variant ||
+        !Number.isSafeInteger(variant.stockQuantity) ||
+        variant.stockQuantity < 0 ||
+        variant.stockQuantity + increase > npShopCatalogLimits.maximumStockQuantity
+      ) {
+        return false;
+      }
+    }
+    if (product.stockQuantity + baseIncrease > npShopCatalogLimits.maximumStockQuantity) {
+      return false;
+    }
+    products.push({
+      id: productId,
+      lines: productLines,
+      lowStockThreshold: product.lowStockThreshold,
+    });
+  }
+
+  for (const product of products) {
+    for (const line of product.lines) {
+      if (line.variantSku === null) {
+        const updated = await tx
+          .update(productTable)
+          .set({ stockQuantity: sql`${productStockColumn} + ${line.quantity}` })
+          .where(and(eq(productIdColumn, product.id), eq(productSiteIdColumn, siteId)))
+          .returning({ id: productIdColumn });
+        if (updated.length !== 1) throw new Error("Shop base inventory disappeared during refund.");
+      } else {
+        const variantParentColumn = tableColumn(variantTable!, "parentId");
+        const variantSkuColumn = tableColumn(variantTable!, "sku");
+        const variantStockColumn = tableColumn(variantTable!, "stockQuantity");
+        const updated = await tx
+          .update(variantTable!)
+          .set({ stockQuantity: sql`${variantStockColumn} + ${line.quantity}` })
+          .where(and(eq(variantParentColumn, product.id), eq(variantSkuColumn, line.variantSku)))
+          .returning({ id: tableColumn(variantTable!, "id") });
+        if (updated.length !== 1) {
+          throw new Error("Shop variant inventory disappeared during refund.");
+        }
+      }
+    }
+
+    let restoredStock: number;
+    if (variantTable) {
+      const variantParentColumn = tableColumn(variantTable, "parentId");
+      const variantStockColumn = tableColumn(variantTable, "stockQuantity");
+      const variantEnabledColumn = tableColumn(variantTable, "enabled");
+      const [totals] = (await tx
+        .select({
+          count: sql<number>`count(*) filter (where ${variantEnabledColumn} = true)::int`,
+          stock: sql<number>`coalesce(sum(${variantStockColumn}) filter (where ${variantEnabledColumn} = true), 0)::int`,
+        })
+        .from(variantTable)
+        .where(eq(variantParentColumn, product.id))) as Array<{ count: number; stock: number }>;
+      if ((totals?.count ?? 0) > 0) {
+        restoredStock = totals?.stock ?? -1;
+      } else {
+        const [base] = (await tx
+          .select({ stock: productStockColumn })
+          .from(productTable)
+          .where(and(eq(productIdColumn, product.id), eq(productSiteIdColumn, siteId)))
+          .limit(1)) as Array<{ stock: number }>;
+        restoredStock = base?.stock ?? -1;
+      }
+    } else {
+      const [base] = (await tx
+        .select({ stock: productStockColumn })
+        .from(productTable)
+        .where(and(eq(productIdColumn, product.id), eq(productSiteIdColumn, siteId)))
+        .limit(1)) as Array<{ stock: number }>;
+      restoredStock = base?.stock ?? -1;
+    }
+    if (!Number.isSafeInteger(restoredStock) || restoredStock < 0) {
+      throw new Error("Restored Shop inventory aggregate is malformed.");
+    }
+    const inventoryState =
+      restoredStock === 0
+        ? "out-of-stock"
+        : restoredStock <= product.lowStockThreshold
+          ? "low-stock"
+          : "in-stock";
+    await tx
+      .update(productTable)
+      .set({
+        available: restoredStock > 0,
+        inventoryState,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(productIdColumn, product.id), eq(productSiteIdColumn, siteId)));
+  }
+  return true;
 }
 
 export async function npPurgeShopInventoryReservations(

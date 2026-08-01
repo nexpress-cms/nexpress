@@ -963,6 +963,8 @@ function orderStatusMessage(order: NpShopOrder, messages: NpShopCartClientMessag
       return messages.orderPendingPayment;
     case "paid":
       return messages.orderPaid;
+    case "refunded":
+      return messages.orderRefunded;
     case "payment-failed":
       return messages.orderPaymentFailed;
     case "cancelled":
@@ -982,6 +984,8 @@ function fulfillmentStatusMessage(
       return messages.orderFulfillmentProcessing;
     case "shipped":
       return messages.orderFulfillmentShipped;
+    case "cancelled":
+      return messages.orderFulfillmentCancelled;
   }
 }
 
@@ -1137,9 +1141,11 @@ export function ShopOrder({
               <p>
                 {order.status === "paid"
                   ? messages.orderPaymentVerified
-                  : order.status === "payment-failed"
-                    ? messages.orderPaymentFailedDetail
-                    : messages.orderPaymentUnavailable}
+                  : order.status === "refunded"
+                    ? messages.orderRefundedDetail
+                    : order.status === "payment-failed"
+                      ? messages.orderPaymentFailedDetail
+                      : messages.orderPaymentUnavailable}
               </p>
               {order.fulfillment ? (
                 <div data-np-shop-fulfillment-status={order.fulfillment.status}>
@@ -1160,13 +1166,19 @@ export function ShopOrder({
                   : messages.orderPrivateRedacted}
               </p>
               <p>
-                {order.inventoryReservationStatus === "held"
-                  ? messages.orderInventoryHeld
-                  : order.inventoryReservationStatus === "consumed"
-                    ? messages.orderInventoryConsumed
-                    : order.inventoryReservationStatus === "released"
-                      ? messages.orderInventoryReleased
-                      : messages.orderInventoryNotRequired}
+                {order.refund?.inventoryOutcome === "restocked"
+                  ? messages.orderRefundInventoryRestocked
+                  : order.refund?.inventoryOutcome === "manual-required"
+                    ? messages.orderRefundInventoryManual
+                    : order.refund?.inventoryOutcome === "not-applicable-shipped"
+                      ? messages.orderRefundInventoryShipped
+                      : order.inventoryReservationStatus === "held"
+                        ? messages.orderInventoryHeld
+                        : order.inventoryReservationStatus === "consumed"
+                          ? messages.orderInventoryConsumed
+                          : order.inventoryReservationStatus === "released"
+                            ? messages.orderInventoryReleased
+                            : messages.orderInventoryNotRequired}
               </p>
               <p>
                 {messages.orderCreated}{" "}

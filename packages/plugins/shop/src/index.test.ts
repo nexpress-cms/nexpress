@@ -66,6 +66,10 @@ describe("shop factory", () => {
       { id: "inventoryReservationHealth", kind: "status" },
       { id: "recentInventoryReservations", kind: "table" },
       { id: "recentOrders", kind: "table" },
+      { id: "countRefunds", kind: "metric" },
+      { id: "refundHealth", kind: "status" },
+      { id: "recentRefunds", kind: "table" },
+      { id: "refundOrder", kind: "action" },
       { id: "countFulfillments", kind: "metric" },
       { id: "fulfillmentHealth", kind: "status" },
       { id: "recentFulfillments", kind: "table" },
@@ -168,6 +172,42 @@ describe("shop factory", () => {
         },
       }),
     ).toThrow(/requires preparePayment, confirmPayment, and renderPaymentLauncher/u);
+  });
+
+  it("exposes the full-refund row action only for a refund-capable adapter", () => {
+    const withoutRefund = createShop({
+      payment: { adapter: { id: "test-pay", verifyWebhook: () => null } },
+    });
+    expect(withoutRefund.runtime.paymentRefundAdapter).toBeNull();
+    expect(withoutRefund.plugin.actions?.refundOrder?.kind).toBe("action");
+    expect(
+      withoutRefund.plugin.admin?.tables?.find((table) => table.id === "shop-recent-orders")
+        ?.rowActions,
+    ).toEqual([]);
+    expect(
+      withoutRefund.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-refunds")
+        ?.rowActions?.map((action) => action.actionId),
+    ).toEqual(["refundOrder"]);
+
+    const withRefund = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: () => null,
+          refundPayment: () => {
+            throw new Error("not called");
+          },
+        },
+      },
+    });
+    expect(withRefund.runtime.paymentRefundAdapter?.id).toBe("test-pay");
+    expect(withRefund.plugin.actions?.refundOrder?.kind).toBe("action");
+    expect(
+      withRefund.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-recent-orders")
+        ?.rowActions?.map((action) => action.actionId),
+    ).toEqual(["refundOrder"]);
   });
 
   it("applies custom paths, collection slugs, and skins across the contract", () => {

@@ -2,7 +2,15 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-01 (Shop paid orders now atomically create an
+**Last refreshed:** 2026-08-01 (Shop payment adapters may now add one exact
+full-refund capability over durable provider idempotency, separately persisted
+provider confirmation, direct-staff audit, refunded order and cancelled/shipped
+fulfillment outcomes, all-or-none unshipped inventory restoration, explicit
+manual compensation, owner-safe projections, Admin/Doctor diagnostics, and the
+bundled Toss full-cancel API. Partial refunds, provider-initiated reversals,
+returns, settlement, and carrier integrations remain external.)
+
+**Earlier:** 2026-08-01 (Shop paid orders now atomically create an
 independent revision-safe awaiting/processing/shipped fulfillment contract;
 explicit staff-only audited PII reads, shipment/30-day deletion, owner-safe
 status, generic Admin table row actions, Doctor diagnostics, and scaffolds

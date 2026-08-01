@@ -11,9 +11,26 @@ import { createTossPaymentsAdapter } from "./index.js";
 const orderId = "123e4567-e89b-42d3-a456-426614174000";
 const attemptId = "223e4567-e89b-42d3-a456-426614174000";
 const paymentKey = "tviva20260731payment";
+const refundId = "323e4567-e89b-42d3-a456-426614174000";
 
 function payment(status = "DONE") {
   return { paymentKey, orderId, status, totalAmount: 25_000, currency: "KRW" };
+}
+
+function cancelledPayment(status = "CANCELED") {
+  return {
+    ...payment(status),
+    balanceAmount: 0,
+    cancels: [
+      {
+        cancelAmount: 25_000,
+        canceledAt: "2026-08-01T09:05:00+09:00",
+        transactionKey: "refund_transaction_123",
+        cancelStatus: "DONE",
+        refundableAmount: 0,
+      },
+    ],
+  };
 }
 
 function adapter(fetcher = vi.fn()) {
@@ -143,6 +160,60 @@ describe("Toss Payments Shop adapter", () => {
       }),
     ).rejects.toThrow(/did not match/u);
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("cancels the entire payment with the durable refund UUID", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(cancelledPayment()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const result = await adapter(fetcher).refundPayment({
+      refundId,
+      orderId,
+      paymentReference: paymentKey,
+      currency: "KRW",
+      amountMinor: 25_000,
+      reason: "Customer requested cancellation",
+      requestedAt: "2026-08-01T00:04:00.000Z",
+    });
+    expect(result).toEqual({
+      contract: "np.shop-refund-result.v1",
+      refundId,
+      orderId,
+      paymentReference: paymentKey,
+      refundReference: "refund_transaction_123",
+      currency: "KRW",
+      amountMinor: 25_000,
+      refundedAt: "2026-08-01T00:05:00.000Z",
+    });
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain(`/v1/payments/${paymentKey}/cancel`);
+    expect(init.headers).toMatchObject({ "Idempotency-Key": refundId });
+    expect(init.body).toBe(JSON.stringify({ cancelReason: "Customer requested cancellation" }));
+    expect(init.body).not.toContain("cancelAmount");
+  });
+
+  it("fails closed when Toss returns a partial cancellation", async () => {
+    const partial = cancelledPayment("PARTIAL_CANCELED");
+    partial.balanceAmount = 10_000;
+    partial.cancels[0].cancelAmount = 15_000;
+    partial.cancels[0].refundableAmount = 10_000;
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(partial), { status: 200 }));
+    await expect(
+      adapter(fetcher).refundPayment({
+        refundId,
+        orderId,
+        paymentReference: paymentKey,
+        currency: "KRW",
+        amountMinor: 25_000,
+        reason: "Customer requested cancellation",
+        requestedAt: "2026-08-01T00:04:00.000Z",
+      }),
+    ).rejects.toMatchObject({ code: "toss_refund_mismatch", retryable: false });
   });
 
   it("bounds provider responses before parsing them", async () => {

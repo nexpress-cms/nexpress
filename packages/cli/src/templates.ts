@@ -799,7 +799,7 @@ function envExampleTemplate(config: TemplateConfig): string {
     'NP_SMTP_FROM="NexPress dev <noreply@nexpress.local>"',
     "NP_SMTP_SECURE=false",
     "",
-    "# Optional Toss Payments v2 adapter for the Shop plugin.",
+    "# Optional Toss Payments v2 initiation and full-refund adapter for Shop.",
     "# Install @nexpress/shop-payment-toss and replace the default Shop instance",
     "# with one createShop({ payment: { adapter } }) factory before uncommenting.",
     "# NP_TOSS_PAYMENTS_CLIENT_KEY=",
@@ -939,7 +939,7 @@ pnpm dev
 2. Start \`pnpm dev\` and open \`http://localhost:3000/admin\`.
 3. Create the first admin, name the site, pick a theme, and seed sample
    content if useful.
-4. Publish a page, post, or Shop product; the bounded cart, checkout-intent, 24-hour private draft, durable pending order, and tracked-inventory reservation preview start at \`/shop/cart\`. Payment stays disabled until a build-time provider adapter is registered. For Toss, run \`pnpm add @nexpress/shop-payment-toss\` and replace the \`defaultPlugins\` Shop as shown in the [Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md#payment-initiation-and-toss-payments).
+4. Publish a page, post, or Shop product; the bounded cart, checkout-intent, 24-hour private draft, durable pending order, and tracked-inventory reservation preview start at \`/shop/cart\`. Payment stays disabled until a build-time provider adapter is registered. For Toss initiation and audited Admin full refunds, run \`pnpm add @nexpress/shop-payment-toss\` and replace the \`defaultPlugins\` Shop as shown in the [Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md#payment-initiation-and-toss-payments).
 
 ## Useful Checks
 

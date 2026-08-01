@@ -339,15 +339,25 @@ real product domain, not just blog/community. Ship as a plugin package
 - **Toss Payments v2 adapter (shipped)** —
   `@nexpress/shop-payment-toss` owns the KRW browser SDK handoff, secret-key
   confirmation with attempt UUID idempotency, and query-verified terminal
-  general-payment webhooks. Stripe and KG Inicis packages remain future work.
+  general-payment webhooks. It also owns exact full cancellation with the
+  durable refund UUID as idempotency key and rejects partial results. Stripe
+  and KG Inicis packages remain future work.
 - **Order fulfillment Admin (shipped)** — paid orders atomically create an
   independent awaiting/processing/shipped record. Revision-safe row actions,
   bounded PII-free notes and tracking, audited direct-staff private reads,
   shipment/30-day deletion, owner status, and bounded Doctor/Admin diagnostics
-  share one contract. Refunds, returns, and carrier integrations remain future.
-- **Inventory (partially shipped)** — catalog stock/low-stock projection,
+  share one contract. Returns and carrier integrations remain future.
+- **Full refunds and inventory compensation (shipped)** — a refund-capable
+  adapter receives one stable PII-free full-refund intent. Direct staff action,
+  provider idempotency, exact result matching, `refunded` orders,
+  refund-cancelled unshipped fulfillment, retained shipped fulfillment,
+  all-or-none exact restock, manual-compensation state, audit, owner projection,
+  Admin, and Doctor share the same contract. Partial refunds and external
+  reversals remain future.
+- **Inventory (shipped foundation)** — catalog stock/low-stock projection,
   transaction-safe pending holds, and atomic paid-order on-hand decrement
-  exist; reversed-payment compensation remains future work.
+  plus exact unshipped full-refund restoration exist; partial/external reversal
+  compensation remains future work.
 - **Public surfaces (shipped)** — product detail, listing, cart,
   checkout-intent, private order-draft, order-history, and order-detail pages
   use independent plugin skins and stable theme hooks.

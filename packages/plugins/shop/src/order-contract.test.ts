@@ -168,6 +168,35 @@ describe("Shop order contract", () => {
     expect(
       npAnalyzeShopOrder({
         ...paidPublicOrder,
+        status: "refunded",
+        revision: 3,
+        privateDataStatus: "redacted",
+        customer: null,
+        shipping: null,
+        fulfillment: {
+          ...paidPublicOrder.fulfillment,
+          status: "cancelled",
+          revision: 2,
+          privateDataStatus: "redacted",
+          updatedAt: "2026-07-30T00:10:00.000Z",
+        },
+        updatedAt: "2026-07-30T00:10:00.000Z",
+        refund: {
+          contract: "np.shop-refund.v1",
+          id: "523e4567-e89b-42d3-a456-426614174000",
+          status: "refunded",
+          currency: "KRW",
+          amountMinor: 24_000,
+          inventoryOutcome: "restocked",
+          fulfillmentOutcome: "cancelled",
+          requestedAt: "2026-07-30T00:09:00.000Z",
+          refundedAt: "2026-07-30T00:09:59.000Z",
+        },
+      }),
+    ).toEqual([]);
+    expect(
+      npAnalyzeShopOrder({
+        ...paidPublicOrder,
         fulfillment: { ...paidPublicOrder.fulfillment, orderId: draftId },
       }),
     ).toContain(
