@@ -360,6 +360,15 @@ real product domain, not just blog/community. Ship as a plugin package
   owner-safe projection, and all-or-none tracked inventory restoration.
   Exchanges, carrier labels/pickup, jurisdiction policy, and payment refunds
   remain separate.
+- **Provider-neutral shipping quote and selection (shipped)** — one optional
+  build-time server adapter receives the exact private draft destination and
+  bounded cart snapshot outside database transactions. Exact short-lived
+  methods become a revision-safe owner selection and one PII-free durable
+  delivery snapshot; orders, payment attempts/events, and full refunds share
+  `subtotalMinor + shippingMinor = totalMinor`. Closed PII-free provider health
+  reaches Admin while Doctor verifies its declarative diagnostic contract.
+  Carrier booking/labels/pickup/tracking, tax, customs, and jurisdiction policy
+  remain separate.
 - **Inventory (shipped foundation)** — catalog stock/low-stock projection,
   transaction-safe pending holds, and atomic paid-order on-hand decrement
   plus exact unshipped full-refund restoration exist; partial/external reversal
@@ -368,8 +377,9 @@ real product domain, not just blog/community. Ship as a plugin package
   checkout-intent, private order-draft, order-history, order-detail, and return
   intake pages
   use independent plugin skins and stable theme hooks.
-- **Tax & shipping (future)** — extension points require region-specific
-  policy rather than implied defaults.
+- **Tax, carrier, and shipping policy (future)** — the neutral quote/selection
+  boundary is shipped; tax/customs, free-shipping eligibility, carrier booking,
+  labels, pickup, tracking APIs, and regional policy require separate contracts.
 
 Resolved foundation decision:
 

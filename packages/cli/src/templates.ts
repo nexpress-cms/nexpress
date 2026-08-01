@@ -805,6 +805,10 @@ function envExampleTemplate(config: TemplateConfig): string {
     "# NP_TOSS_PAYMENTS_CLIENT_KEY=",
     "# NP_TOSS_PAYMENTS_SECRET_KEY=",
     "",
+    "# Optional server-only Shop shipping quote adapter.",
+    "# Replace the default Shop instance with one createShop({ shipping: { adapter } })",
+    "# factory. Destination PII must stay out of logs and adapter results.",
+    "",
     "# First-boot setup wizard — pre-fills the form on /admin/setup",
     "# so headless / CI installs don't have to click through it.",
     "# These values DO NOT persist; the wizard writes the actual",
@@ -939,7 +943,7 @@ pnpm dev
 2. Start \`pnpm dev\` and open \`http://localhost:3000/admin\`.
 3. Create the first admin, name the site, pick a theme, and seed sample
    content if useful.
-4. Publish a page, post, or Shop product; the bounded cart, checkout-intent, 24-hour private draft, durable pending order, tracked-inventory reservation, fulfillment, and item-return preview start at \`/shop/cart\`. Payment stays disabled until a build-time provider adapter is registered. Physical return intake remains separate from payment refunds and carrier booking. For Toss initiation and audited Admin full refunds, run \`pnpm add @nexpress/shop-payment-toss\` and replace the \`defaultPlugins\` Shop as shown in the [Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md#payment-initiation-and-toss-payments).
+4. Publish a page, post, or Shop product; the bounded cart, checkout-intent, 24-hour private draft, durable pending order, tracked-inventory reservation, fulfillment, and item-return preview start at \`/shop/cart\`. Payment stays disabled until a build-time payment adapter is registered. Shipping remains zero until a server-only quote adapter is registered; Shop then requires one current delivery selection and freezes item subtotal, shipping amount, and payment total. Physical return intake remains separate from payment refunds and carrier booking. For Toss, run \`pnpm add @nexpress/shop-payment-toss\`; payment and shipping adapters both replace the \`defaultPlugins\` Shop with one configured factory. See the [Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md#shipping-quote-and-delivery-selection).
 
 ## Useful Checks
 

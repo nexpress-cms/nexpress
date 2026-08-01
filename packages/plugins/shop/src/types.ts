@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import type { NpShopDeliveryMethod, NpShopShippingQuote } from "./shipping-contract.js";
+
 import type { NpShopRefund } from "./refund-contract.js";
 import type { NpShopReturn } from "./return-contract.js";
 
@@ -133,6 +135,12 @@ export interface NpShopMessages {
   orderDraftExpires: string;
   orderDraftCustomer: string;
   orderDraftShipping: string;
+  orderDraftShippingMethods: string;
+  orderDraftShippingSelect: string;
+  orderDraftShippingSelecting: string;
+  orderDraftShippingRequired: string;
+  orderDraftShippingUnavailable: string;
+  orderDraftShippingDays: string;
   orderDraftFullName: string;
   orderDraftEmail: string;
   orderDraftPhone: string;
@@ -149,6 +157,8 @@ export interface NpShopMessages {
   orderDraftPrivacy: string;
   orderDraftPaymentUnavailable: string;
   orderDraftFailed: string;
+  shippingAmount: string;
+  orderTotal: string;
   order: string;
   orders: string;
   orderCreate: string;
@@ -333,6 +343,12 @@ export interface NpShopCartClientMessages {
   orderDraftExpires: string;
   orderDraftCustomer: string;
   orderDraftShipping: string;
+  orderDraftShippingMethods: string;
+  orderDraftShippingSelect: string;
+  orderDraftShippingSelecting: string;
+  orderDraftShippingRequired: string;
+  orderDraftShippingUnavailable: string;
+  orderDraftShippingDays: string;
   orderDraftFullName: string;
   orderDraftEmail: string;
   orderDraftPhone: string;
@@ -349,6 +365,8 @@ export interface NpShopCartClientMessages {
   orderDraftPrivacy: string;
   orderDraftPaymentUnavailable: string;
   orderDraftFailed: string;
+  shippingAmount: string;
+  orderTotal: string;
   order: string;
   orders: string;
   orderCreate: string;
@@ -454,7 +472,12 @@ export interface NpShopCheckoutSkinProps {
   messages: NpShopMessages;
 }
 
-export const npShopOrderDraftStatuses = ["collecting", "reviewable", "stale"] as const;
+export const npShopOrderDraftStatuses = [
+  "collecting",
+  "shipping-selection-required",
+  "reviewable",
+  "stale",
+] as const;
 
 export type NpShopOrderDraftStatus = (typeof npShopOrderDraftStatuses)[number];
 
@@ -485,10 +508,14 @@ export interface NpShopOrderDraft {
   cartFingerprint: string;
   currency: NpShopCurrency;
   subtotalMinor: number;
+  shippingMinor: number;
+  totalMinor: number;
   totalUnits: number;
   lines: NpShopCheckoutIntentLine[];
   customer: NpShopOrderDraftCustomer | null;
   shipping: NpShopOrderDraftShipping | null;
+  shippingQuote: NpShopShippingQuote | null;
+  deliveryMethod: NpShopDeliveryMethod | null;
   sourceCreatedAt: string;
   sourceExpiresAt: string;
   createdAt: string;
@@ -564,8 +591,11 @@ export interface NpShopOrder {
   cartFingerprint: string;
   currency: NpShopCurrency;
   subtotalMinor: number;
+  shippingMinor: number;
+  totalMinor: number;
   totalUnits: number;
   lines: NpShopCheckoutIntentLine[];
+  deliveryMethod: NpShopDeliveryMethod | null;
   privateDataStatus: NpShopOrderPrivateDataStatus;
   inventoryReservationStatus: NpShopInventoryReservationStatus;
   inventoryReservationLineKeys: string[];

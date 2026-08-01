@@ -16,6 +16,7 @@ import {
   npDeleteShopOrderDraft,
   npReadShopOrderDraft,
   npUpdateShopOrderDraft,
+  npSelectShopShippingMethod,
 } from "./order-draft-service.js";
 import {
   npRequireShopMutationCsrf,
@@ -23,6 +24,11 @@ import {
   npShopRequestCsrfToken,
 } from "./request-identity.js";
 import type { NpShopRuntime } from "./runtime.js";
+import {
+  NpShopShippingContractError,
+  NpShopShippingUnavailableError,
+  npRequireShopShippingMethodSelectInput,
+} from "./shipping-contract.js";
 
 function errorResponse(
   error:
@@ -30,7 +36,9 @@ function errorResponse(
     | NpShopOrderDraftContractError
     | NpShopOrderDraftConflictError
     | NpShopOrderDraftNotFoundError
-    | NpShopOrderDraftExpiredError,
+    | NpShopOrderDraftExpiredError
+    | NpShopShippingContractError
+    | NpShopShippingUnavailableError,
 ): NpRouteResponse {
   const headers = { "Cache-Control": "private, no-store" };
   if (error instanceof NpShopOrderDraftConflictError) {
@@ -51,6 +59,13 @@ function errorResponse(
     return {
       status: 404,
       body: { error: "order_draft_not_found", message: error.message },
+      headers,
+    };
+  }
+  if (error instanceof NpShopShippingUnavailableError) {
+    return {
+      status: 503,
+      body: { error: "shipping_unavailable", message: error.message },
       headers,
     };
   }
@@ -94,6 +109,11 @@ export function createShopOrderDraftApiHandler(runtime: NpShopRuntime) {
         const draft = await npUpdateShopOrderDraft(runtime, resolved.owner, input);
         return { status: 200, body: { draft, csrfToken }, headers };
       }
+      if (request.method === "PUT") {
+        const input = npRequireShopShippingMethodSelectInput(request.body);
+        const draft = await npSelectShopShippingMethod(runtime, resolved.owner, input);
+        return { status: 200, body: { draft, csrfToken }, headers };
+      }
       if (request.method === "DELETE") {
         const input = npRequireShopOrderDraftDeleteInput(request.body);
         await npDeleteShopOrderDraft(resolved.owner, input.draftId);
@@ -106,7 +126,9 @@ export function createShopOrderDraftApiHandler(runtime: NpShopRuntime) {
         error instanceof NpShopOrderDraftContractError ||
         error instanceof NpShopOrderDraftConflictError ||
         error instanceof NpShopOrderDraftNotFoundError ||
-        error instanceof NpShopOrderDraftExpiredError
+        error instanceof NpShopOrderDraftExpiredError ||
+        error instanceof NpShopShippingContractError ||
+        error instanceof NpShopShippingUnavailableError
       ) {
         return errorResponse(error);
       }

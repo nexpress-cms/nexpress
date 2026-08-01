@@ -2,7 +2,16 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-01 (Shop shipped orders now add one independent
+**Last refreshed:** 2026-08-01 (Shop private order drafts may now use one
+optional server-only provider-neutral shipping quote adapter; exact bounded
+methods are requested outside DB transactions, revision-safe selection freezes
+one PII-free delivery snapshot, orders/payment/full refunds share item subtotal,
+shipping amount, and total, closed provider health reaches Admin, and Doctor
+verifies the declarative diagnostic contract.
+Tax/customs, free-shipping policy, carrier booking/labels/pickup/tracking, and
+jurisdiction rules remain separate.)
+
+**Earlier:** 2026-08-01 (Shop shipped orders now add one independent
 owner-scoped item-return contract with closed PII-free reasons, revision-safe
 request/cancel/approve/reject/receive transitions, direct-staff audit,
 all-or-none receipt-time tracked inventory restoration, owner-safe projection,

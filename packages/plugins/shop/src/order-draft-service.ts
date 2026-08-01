@@ -22,9 +22,25 @@ import {
   type NpShopCartOwner,
 } from "./cart-service.js";
 import type { NpShopRuntime } from "./runtime.js";
+import {
+  NP_SHOP_DELIVERY_METHOD_CONTRACT,
+  NP_SHOP_SHIPPING_HEALTH_CONTRACT,
+  NP_SHOP_SHIPPING_QUOTE_REQUEST_CONTRACT,
+  NpShopShippingContractError,
+  NpShopShippingUnavailableError,
+  npRequireShopDeliveryMethod,
+  npRequireShopShippingQuoteResult,
+  npRequireShopShippingQuoteRequest,
+  npRequireShopShippingHealth,
+  npShopShippingLimits,
+  type NpShopShippingMethodSelectInput,
+  type NpShopShippingQuote,
+  type NpShopShippingHealth,
+} from "./shipping-contract.js";
 import type { NpShopOrderDraft } from "./types.js";
 
 export const NP_SHOP_PLUGIN_ID = "shop";
+const NP_SHOP_SHIPPING_HEALTH_KEY = "shipping-health";
 
 export function npShopOrderDraftStorageKey(owner: NpShopCartOwner, draftId: string): string {
   return `order-draft:${npShopCartOwnerStorageSegment(owner)}:${draftId}`;
@@ -128,6 +144,51 @@ async function persistDraft(
         updatedAt: new Date(draft.updatedAt),
       },
     });
+}
+
+async function persistShippingHealth(siteId: string, health: NpShopShippingHealth): Promise<void> {
+  npRequireShopShippingHealth(health);
+  await getDb()
+    .insert(npPluginStorage)
+    .values({
+      pluginId: NP_SHOP_PLUGIN_ID,
+      siteId,
+      key: NP_SHOP_SHIPPING_HEALTH_KEY,
+      value: health,
+      expiresAt: null,
+      updatedAt: new Date(health.attemptedAt),
+    })
+    .onConflictDoUpdate({
+      target: [npPluginStorage.pluginId, npPluginStorage.siteId, npPluginStorage.key],
+      set: {
+        value: health,
+        expiresAt: null,
+        updatedAt: new Date(health.attemptedAt),
+      },
+      setWhere: sql`${npPluginStorage.value}->>'attemptedAt' <= ${health.attemptedAt}`,
+    });
+}
+
+export async function npReadShopShippingHealth(): Promise<NpShopShippingHealth | null> {
+  const siteId = await requireSiteId();
+  const [row] = await getDb()
+    .select({ value: npPluginStorage.value, expiresAt: npPluginStorage.expiresAt })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        eq(npPluginStorage.key, NP_SHOP_SHIPPING_HEALTH_KEY),
+      ),
+    )
+    .limit(1);
+  if (!row) return null;
+  if (row.expiresAt !== null) {
+    throw new NpShopShippingContractError("Invalid Shop shipping health storage metadata", [
+      "Shipping health must not have storage expiry.",
+    ]);
+  }
+  return npRequireShopShippingHealth(row.value);
 }
 
 async function deleteExpiredDraft(
@@ -271,10 +332,14 @@ export async function npCreateShopOrderDraft(
       cartFingerprint: intent.cartFingerprint,
       currency: intent.currency,
       subtotalMinor: intent.subtotalMinor,
+      shippingMinor: 0,
+      totalMinor: intent.subtotalMinor,
       totalUnits: intent.totalUnits,
       lines: intent.lines,
       customer: null,
       shipping: null,
+      shippingQuote: null,
+      deliveryMethod: null,
       sourceCreatedAt: intent.createdAt,
       sourceExpiresAt: intent.expiresAt,
       createdAt: now.toISOString(),
@@ -308,6 +373,81 @@ export async function npUpdateShopOrderDraft(
   input: NpShopOrderDraftUpdateInput,
 ): Promise<NpShopOrderDraft> {
   const siteId = await requireSiteId();
+  const snapshot = await npReadShopOrderDraft(runtime, owner, input.draftId);
+  if (snapshot.revision !== input.expectedRevision) {
+    throw new NpShopOrderDraftConflictError(
+      "order_draft_revision_conflict",
+      "The order draft changed before this update.",
+    );
+  }
+  if (snapshot.status === "stale") {
+    throw new NpShopOrderDraftConflictError(
+      "order_draft_source_stale",
+      "The cart changed after this order draft was created.",
+    );
+  }
+  let shippingQuote: NpShopShippingQuote | null = null;
+  if (runtime.shippingAdapter) {
+    const requestedAt = new Date();
+    const maximumExpiresAt = new Date(
+      Math.min(
+        requestedAt.getTime() + npShopShippingLimits.maximumQuoteLifetimeSeconds * 1_000,
+        new Date(snapshot.expiresAt).getTime(),
+      ),
+    );
+    if (maximumExpiresAt <= requestedAt) throw new NpShopOrderDraftExpiredError();
+    const request = npRequireShopShippingQuoteRequest({
+      contract: NP_SHOP_SHIPPING_QUOTE_REQUEST_CONTRACT,
+      draftId: snapshot.id,
+      draftRevision: snapshot.revision,
+      currency: snapshot.currency,
+      subtotalMinor: snapshot.subtotalMinor,
+      totalUnits: snapshot.totalUnits,
+      lines: snapshot.lines,
+      destination: input.shipping,
+      requestedAt: requestedAt.toISOString(),
+      maximumExpiresAt: maximumExpiresAt.toISOString(),
+    });
+    let result: unknown;
+    try {
+      result = await runtime.shippingAdapter.quoteShipping(request);
+    } catch {
+      await persistShippingHealth(siteId, {
+        contract: NP_SHOP_SHIPPING_HEALTH_CONTRACT,
+        providerId: runtime.shippingAdapter.id,
+        status: "error",
+        errorCode: "provider-error",
+        attemptedAt: requestedAt.toISOString(),
+        succeededAt: null,
+      });
+      throw new NpShopShippingUnavailableError();
+    }
+    try {
+      shippingQuote = npRequireShopShippingQuoteResult(result, {
+        providerId: runtime.shippingAdapter.id,
+        requestedAt: requestedAt.toISOString(),
+        maximumExpiresAt: maximumExpiresAt.toISOString(),
+      });
+    } catch (error) {
+      await persistShippingHealth(siteId, {
+        contract: NP_SHOP_SHIPPING_HEALTH_CONTRACT,
+        providerId: runtime.shippingAdapter.id,
+        status: "error",
+        errorCode: "invalid-result",
+        attemptedAt: requestedAt.toISOString(),
+        succeededAt: null,
+      });
+      throw new NpShopShippingUnavailableError();
+    }
+    await persistShippingHealth(siteId, {
+      contract: NP_SHOP_SHIPPING_HEALTH_CONTRACT,
+      providerId: runtime.shippingAdapter.id,
+      status: "ok",
+      errorCode: null,
+      attemptedAt: requestedAt.toISOString(),
+      succeededAt: requestedAt.toISOString(),
+    });
+  }
   const result = await getDb().transaction(async (tx) => {
     await npLockShopOrderDraftOwner(tx, siteId, owner);
     await npLockShopCart(tx, siteId, owner);
@@ -342,10 +482,14 @@ export async function npUpdateShopOrderDraft(
     }
     const updated = {
       ...current,
-      status: "reviewable",
+      status: shippingQuote ? "shipping-selection-required" : "reviewable",
       revision: current.revision + 1,
       customer: input.customer,
       shipping: input.shipping,
+      shippingQuote,
+      deliveryMethod: null,
+      shippingMinor: 0,
+      totalMinor: current.subtotalMinor,
       updatedAt: now.toISOString(),
     } satisfies NpShopOrderDraft;
     npRequireShopOrderDraft(updated);
@@ -354,6 +498,90 @@ export async function npUpdateShopOrderDraft(
   });
   if (!result) throw new NpShopOrderDraftExpiredError();
   return result;
+}
+
+export async function npSelectShopShippingMethod(
+  runtime: NpShopRuntime,
+  owner: NpShopCartOwner,
+  input: NpShopShippingMethodSelectInput,
+): Promise<NpShopOrderDraft> {
+  const siteId = await requireSiteId();
+  return getDb().transaction(async (tx) => {
+    await npLockShopOrderDraftOwner(tx, siteId, owner);
+    await npLockShopCart(tx, siteId, owner);
+    await npLockShopOrderDraft(tx, siteId, owner, input.draftId);
+    const current = await npReadStoredShopOrderDraftForUpdate(tx, siteId, owner, input.draftId);
+    if (!current) throw new NpShopOrderDraftNotFoundError();
+    const now = new Date();
+    if (new Date(current.expiresAt) <= now) throw new NpShopOrderDraftExpiredError();
+    if (current.revision !== input.expectedRevision) {
+      throw new NpShopOrderDraftConflictError(
+        "order_draft_revision_conflict",
+        "The order draft changed before this selection.",
+      );
+    }
+    const derived = await withDerivedStatus(runtime, owner, current);
+    if (derived.status === "stale") {
+      throw new NpShopOrderDraftConflictError(
+        "order_draft_source_stale",
+        "The cart changed after this shipping quote was prepared.",
+      );
+    }
+    if (
+      current.status !== "shipping-selection-required" ||
+      !current.shippingQuote ||
+      !current.customer ||
+      !current.shipping
+    ) {
+      throw new NpShopOrderDraftConflictError(
+        "order_draft_source_stale",
+        "The order draft has no shipping quote to select.",
+      );
+    }
+    if (
+      !runtime.shippingAdapter ||
+      current.shippingQuote.providerId !== runtime.shippingAdapter.id ||
+      new Date(current.shippingQuote.expiresAt) <= now
+    ) {
+      throw new NpShopShippingUnavailableError(
+        "The shipping quote expired or its provider is no longer configured.",
+      );
+    }
+    const method = current.shippingQuote.methods.find((entry) => entry.id === input.methodId);
+    if (!method) {
+      throw new NpShopOrderDraftConflictError(
+        "order_draft_source_stale",
+        "The selected shipping method is not present in the current quote.",
+      );
+    }
+    const deliveryMethod = npRequireShopDeliveryMethod({
+      contract: NP_SHOP_DELIVERY_METHOD_CONTRACT,
+      providerId: current.shippingQuote.providerId,
+      quoteId: current.shippingQuote.quoteId,
+      methodId: method.id,
+      label: method.label,
+      amountMinor: method.amountMinor,
+      estimatedDelivery: method.estimatedDelivery,
+      quotedAt: current.shippingQuote.quotedAt,
+      quoteExpiresAt: current.shippingQuote.expiresAt,
+    });
+    const totalMinor = current.subtotalMinor + method.amountMinor;
+    if (!Number.isSafeInteger(totalMinor)) {
+      throw new NpShopShippingUnavailableError("The selected shipping total is outside bounds.");
+    }
+    const updated = {
+      ...current,
+      status: "reviewable",
+      revision: current.revision + 1,
+      deliveryMethod,
+      shippingMinor: method.amountMinor,
+      totalMinor,
+      updatedAt: now.toISOString(),
+    } satisfies NpShopOrderDraft;
+    npRequireShopOrderDraft(updated);
+    await persistDraft(tx, siteId, owner, updated);
+    return updated;
+  });
 }
 
 export async function npDeleteShopOrderDraft(
@@ -416,6 +644,7 @@ export async function npCleanupExpiredShopOrderDrafts(): Promise<number> {
 
 export async function npCountShopOrderDrafts(): Promise<{
   collecting: number;
+  shippingSelectionRequired: number;
   reviewable: number;
   expired: number;
   invalid: number;
@@ -440,13 +669,15 @@ export async function npCountShopOrderDrafts(): Promise<{
         try {
           const draft = requireStoredDraft(row.value, row.expiresAt);
           if (draft.status === "reviewable") counts.reviewable += 1;
-          else counts.collecting += 1;
+          else if (draft.status === "shipping-selection-required") {
+            counts.shippingSelectionRequired += 1;
+          } else counts.collecting += 1;
         } catch {
           counts.invalid += 1;
         }
       }
       return counts;
     },
-    { collecting: 0, reviewable: 0, expired: 0, invalid: 0 },
+    { collecting: 0, shippingSelectionRequired: 0, reviewable: 0, expired: 0, invalid: 0 },
   );
 }

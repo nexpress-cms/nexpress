@@ -98,6 +98,7 @@ describe("shop factory", () => {
       "GET /order-drafts",
       "POST /order-drafts",
       "PATCH /order-drafts",
+      "PUT /order-drafts",
       "DELETE /order-drafts",
       "GET /orders",
       "POST /orders",
@@ -140,6 +141,37 @@ describe("shop factory", () => {
         },
       }),
     ).toThrow(/provider id/u);
+  });
+
+  it("accepts only one complete server-side shipping quote adapter", () => {
+    const shop = createShop({
+      shipping: {
+        adapter: {
+          id: "test-shipping",
+          quoteShipping: () => ({
+            contract: "np.shop-shipping-quote-result.v1",
+            quoteId: "quote_123",
+            methods: [
+              {
+                id: "parcel",
+                label: "Parcel",
+                amountMinor: 3_000,
+                estimatedDelivery: null,
+              },
+            ],
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          }),
+        },
+      },
+    });
+    expect(shop.runtime.shippingAdapter?.id).toBe("test-shipping");
+    expect(() =>
+      createShop({
+        shipping: {
+          adapter: { id: "Invalid Provider", quoteShipping: () => Promise.reject() },
+        },
+      }),
+    ).toThrow(/shipping provider id/u);
   });
 
   it("adds owner-scoped attempt routes and diagnostics only for a complete initiation adapter", () => {

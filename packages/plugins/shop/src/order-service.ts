@@ -308,7 +308,7 @@ function refundMatchesOrder(refund: NpShopStoredRefund, order: NpShopStoredOrder
     refund.providerId === order.paymentProvider &&
     refund.paymentReference === order.paymentReference &&
     refund.currency === order.currency &&
-    refund.amountMinor === order.subtotalMinor &&
+    refund.amountMinor === order.totalMinor &&
     refund.purgeAt === order.purgeAt &&
     order.paymentResolvedAt !== null &&
     requestedAtEnd >= new Date(order.paymentResolvedAt).getTime() &&
@@ -1102,7 +1102,7 @@ export async function npApplyShopPaymentEvent(
         "The verified payment event references an order past its commercial retention window.",
       );
     }
-    if (order.currency !== event.currency || order.subtotalMinor !== event.amountMinor) {
+    if (order.currency !== event.currency || order.totalMinor !== event.amountMinor) {
       throw new NpShopPaymentConflictError(
         "payment_amount_mismatch",
         "The verified payment amount or currency does not match the immutable order.",
@@ -1393,6 +1393,18 @@ export async function npCreateShopOrder(
     if (new Date(draft.expiresAt) <= now) {
       throw new NpShopOrderConflictError("order_source_stale", "The order draft expired.");
     }
+    if (
+      (runtime.shippingAdapter &&
+        (!draft.deliveryMethod ||
+          draft.deliveryMethod.providerId !== runtime.shippingAdapter.id ||
+          new Date(draft.deliveryMethod.quoteExpiresAt) <= now)) ||
+      (!runtime.shippingAdapter && draft.deliveryMethod !== null)
+    ) {
+      throw new NpShopOrderConflictError(
+        "order_source_stale",
+        "The selected shipping method expired or its provider configuration changed.",
+      );
+    }
     const pendingExpiresAt = new Date(
       now.getTime() + npShopOrderLimits.pendingTtlSeconds * 1_000,
     ).toISOString();
@@ -1414,8 +1426,11 @@ export async function npCreateShopOrder(
       cartFingerprint: draft.cartFingerprint,
       currency: draft.currency,
       subtotalMinor: draft.subtotalMinor,
+      shippingMinor: draft.shippingMinor,
+      totalMinor: draft.totalMinor,
       totalUnits: draft.totalUnits,
       lines: draft.lines,
+      deliveryMethod: draft.deliveryMethod,
       privateDataStatus: "retained",
       inventoryReservationStatus: inventoryReservationLineKeys.length > 0 ? "held" : "not-required",
       inventoryReservationLineKeys,
@@ -1903,7 +1918,7 @@ export async function npListRecentShopOrders(): Promise<{
           id: order.id,
           revision: order.revision,
           status: order.status,
-          total: `${order.currency} ${order.subtotalMinor.toString()}`,
+          total: `${order.currency} ${order.totalMinor.toString()}`,
           units: order.totalUnits,
           privateData: order.privateDataStatus,
           inventory: order.inventoryReservationStatus,
@@ -2213,7 +2228,7 @@ export async function npRefundShopOrder(
       paymentReference: order.paymentReference,
       refundReference: null,
       currency: order.currency,
-      amountMinor: order.subtotalMinor,
+      amountMinor: order.totalMinor,
       reason: input.reason,
       inventoryOutcome: "pending",
       fulfillmentOutcome: "pending",

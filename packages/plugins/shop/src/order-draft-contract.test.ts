@@ -25,6 +25,8 @@ function draft() {
     cartFingerprint: "a".repeat(64),
     currency: "KRW",
     subtotalMinor: 50_000,
+    shippingMinor: 0,
+    totalMinor: 50_000,
     totalUnits: 2,
     lines: [
       {
@@ -54,6 +56,8 @@ function draft() {
       locality: "중구",
       administrativeArea: "서울특별시",
     },
+    shippingQuote: null,
+    deliveryMethod: null,
     sourceCreatedAt: "2026-07-30T00:00:00.000Z",
     sourceExpiresAt: "2026-07-30T00:15:00.000Z",
     createdAt: "2026-07-30T00:05:00.000Z",
