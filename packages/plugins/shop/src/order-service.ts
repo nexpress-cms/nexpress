@@ -118,7 +118,7 @@ function isOwnerSegment(value: unknown): value is string {
 export interface NpShopPaymentApplyResult {
   receipt: NpShopStoredPaymentReceipt;
   duplicate: boolean;
-  orderStatus: "paid" | "refunded" | "payment-failed" | "cancelled";
+  orderStatus: "paid" | "payment-failed" | "cancelled";
 }
 
 export interface NpShopAdminOrderRow {
@@ -1826,48 +1826,81 @@ export async function npCountShopRefunds(): Promise<{
     .limit(npShopRefundLimits.diagnosticSampleSize);
   let invalidSample = 0;
   let orphanSample = 0;
+  const refunds: NpShopStoredRefund[] = [];
   for (const row of rows) {
     try {
-      const refund = requireStoredRefundAtKey(row.value, row.expiresAt, row.key);
-      const [lookupRow] = await db
-        .select({
-          key: npPluginStorage.key,
-          value: npPluginStorage.value,
-          expiresAt: npPluginStorage.expiresAt,
-        })
-        .from(npPluginStorage)
-        .where(
-          and(
-            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
-            eq(npPluginStorage.siteId, siteId),
-            eq(npPluginStorage.key, lookupStorageKey(refund.orderId)),
-          ),
-        )
-        .limit(1);
-      if (!lookupRow) {
-        orphanSample += 1;
-        continue;
-      }
-      const lookup = requireOrderLookup(lookupRow.value, lookupRow.expiresAt, lookupRow.key);
-      const [orderRow] = await db
-        .select({
-          key: npPluginStorage.key,
-          value: npPluginStorage.value,
-          expiresAt: npPluginStorage.expiresAt,
-        })
-        .from(npPluginStorage)
-        .where(
-          and(
-            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
-            eq(npPluginStorage.siteId, siteId),
-            eq(npPluginStorage.key, orderStorageKey(lookup.ownerSegment, refund.orderId)),
-          ),
-        )
-        .limit(1);
-      if (!orderRow) {
-        orphanSample += 1;
-        continue;
-      }
+      refunds.push(requireStoredRefundAtKey(row.value, row.expiresAt, row.key));
+    } catch {
+      invalidSample += 1;
+    }
+  }
+  const lookupRows =
+    refunds.length === 0
+      ? []
+      : await db
+          .select({
+            key: npPluginStorage.key,
+            value: npPluginStorage.value,
+            expiresAt: npPluginStorage.expiresAt,
+          })
+          .from(npPluginStorage)
+          .where(
+            and(
+              eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+              eq(npPluginStorage.siteId, siteId),
+              inArray(
+                npPluginStorage.key,
+                refunds.map((refund) => lookupStorageKey(refund.orderId)),
+              ),
+            ),
+          );
+  const lookupRowsByKey = new Map(lookupRows.map((row) => [row.key, row]));
+  const resolved: Array<{ refund: NpShopStoredRefund; lookup: NpShopOrderLookup }> = [];
+  for (const refund of refunds) {
+    const lookupRow = lookupRowsByKey.get(lookupStorageKey(refund.orderId));
+    if (!lookupRow) {
+      orphanSample += 1;
+      continue;
+    }
+    try {
+      resolved.push({
+        refund,
+        lookup: requireOrderLookup(lookupRow.value, lookupRow.expiresAt, lookupRow.key),
+      });
+    } catch {
+      invalidSample += 1;
+    }
+  }
+  const orderRows =
+    resolved.length === 0
+      ? []
+      : await db
+          .select({
+            key: npPluginStorage.key,
+            value: npPluginStorage.value,
+            expiresAt: npPluginStorage.expiresAt,
+          })
+          .from(npPluginStorage)
+          .where(
+            and(
+              eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+              eq(npPluginStorage.siteId, siteId),
+              inArray(
+                npPluginStorage.key,
+                resolved.map(({ refund, lookup }) =>
+                  orderStorageKey(lookup.ownerSegment, refund.orderId),
+                ),
+              ),
+            ),
+          );
+  const orderRowsByKey = new Map(orderRows.map((row) => [row.key, row]));
+  for (const { refund, lookup } of resolved) {
+    const orderRow = orderRowsByKey.get(orderStorageKey(lookup.ownerSegment, refund.orderId));
+    if (!orderRow) {
+      orphanSample += 1;
+      continue;
+    }
+    try {
       const order = requireStoredOrderAtKey(orderRow.value, orderRow.expiresAt, orderRow.key);
       if (
         refund.providerId !== order.paymentProvider ||
@@ -2322,10 +2355,10 @@ async function readFulfillmentForAction(
   }
   await lockOrder(tx, siteId, candidate.ownerSegment, orderId);
   const refund = await readStoredRefund(tx, siteId, orderId, true);
-  if (refund?.status === "pending" || refund?.status === "provider-confirmed") {
+  if (refund && refund.status !== "refunded") {
     throw new NpShopFulfillmentConflictError(
       "fulfillment_terminal",
-      "Fulfillment cannot change while a full refund is pending reconciliation.",
+      "Fulfillment cannot change while a full refund requires provider or operator reconciliation.",
     );
   }
   const locked = await readStoredFulfillment(tx, siteId, orderId, true);

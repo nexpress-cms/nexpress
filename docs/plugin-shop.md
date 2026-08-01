@@ -461,7 +461,9 @@ Retryable ambiguity leaves the durable refund pending. A definitive provider
 rejection moves it to `manual-review` with only a bounded error code. A
 matching provider success is durably stored as `provider-confirmed` before
 local reconciliation, so a delayed retry no longer needs another provider
-call. One local transaction then:
+call. Any unresolved refund blocks fulfillment changes until provider or
+operator reconciliation establishes a terminal result. One local transaction
+then:
 
 - changes the commercial order from `paid` to `refunded` and deletes any
   retained customer/shipping sidecar;

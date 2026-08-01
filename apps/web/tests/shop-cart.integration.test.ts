@@ -1873,6 +1873,90 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     ).toMatchObject({ ok: true, data: { level: "warn" } });
   });
 
+  it("fails closed on a mismatched provider refund and blocks fulfillment", async () => {
+    const ids = {
+      intentId: "173e4567-e89b-42d3-a456-426614174000",
+      draftId: "273e4567-e89b-42d3-a456-426614174000",
+      orderId: "373e4567-e89b-42d3-a456-426614174000",
+    };
+    const owner = await createPendingOrder(ids, "refund-mismatch@example.com");
+    const refundShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+          refundPayment: (input) => ({
+            contract: "np.shop-refund-result.v1",
+            refundId: input.refundId,
+            orderId: input.orderId,
+            paymentReference: input.paymentReference,
+            refundReference: "refund_mismatch_transaction",
+            currency: input.currency,
+            amountMinor: input.amountMinor - 1,
+            refundedAt: new Date().toISOString(),
+          }),
+        },
+      },
+    });
+    await payPendingOrder(refundShop, {
+      orderId: ids.orderId,
+      eventId: "evt_refund_mismatch",
+      paymentReference: "pay_refund_mismatch",
+    });
+    const staff = await seedUser({ email: "refund-mismatch-operator@example.com" });
+    const context = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    expect(
+      await withCurrentSite("default", () =>
+        refundShop.plugin.actions?.refundOrder?.handler(
+          {
+            row: { id: ids.orderId, revision: 2 },
+            values: { reason: "Customer requested cancellation" },
+          },
+          context,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("does not match") });
+    expect(await orderCall("GET", { ...owner, orderId: ids.orderId })).toMatchObject({
+      body: {
+        order: {
+          status: "paid",
+          inventoryReservationStatus: "consumed",
+          fulfillment: { status: "awaiting", revision: 1 },
+          refund: { status: "manual-review", inventoryOutcome: "pending" },
+        },
+      },
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        refundShop.plugin.actions?.processFulfillment?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 1 },
+            values: { operatorNote: "Must remain blocked" },
+          },
+          context,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("operator reconciliation") });
+    expect(
+      await withCurrentSite("default", () =>
+        refundShop.plugin.actions?.recentRefunds?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: {
+        rows: [
+          {
+            orderId: ids.orderId,
+            status: "manual-review",
+            providerError: "provider-result-mismatch",
+          },
+        ],
+      },
+    });
+  });
+
   it("resumes local reconciliation from a durable provider-confirmed refund", async () => {
     const ids = {
       intentId: "163e4567-e89b-42d3-a456-426614174000",

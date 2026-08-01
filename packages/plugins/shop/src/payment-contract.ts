@@ -123,7 +123,7 @@ export interface NpShopStoredPaymentReceipt {
   event: NpShopVerifiedPaymentEvent;
   eventDigest: string;
   outcome: NpShopPaymentReceiptOutcome;
-  orderStatus: "paid" | "refunded" | "payment-failed" | "cancelled";
+  orderStatus: "paid" | "payment-failed" | "cancelled";
   orderRevision: number;
   processedAt: string;
   purgeAt: string;
@@ -361,7 +361,7 @@ export function npAnalyzeStoredShopPaymentReceipt(value: unknown): string[] {
   if (!(npShopPaymentReceiptOutcomes as readonly unknown[]).includes(value.outcome)) {
     issues.push("payment receipt.outcome is invalid.");
   }
-  if (!["paid", "refunded", "payment-failed", "cancelled"].includes(value.orderStatus as string)) {
+  if (!["paid", "payment-failed", "cancelled"].includes(value.orderStatus as string)) {
     issues.push("payment receipt.orderStatus is invalid.");
   }
   if (

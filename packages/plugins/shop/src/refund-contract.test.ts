@@ -49,7 +49,7 @@ describe("Shop refund contract", () => {
     });
   });
 
-  it("rejects partial or internally inconsistent terminal state", () => {
+  it("rejects an internally inconsistent terminal state", () => {
     expect(
       npAnalyzeStoredShopRefund({
         ...refund,
