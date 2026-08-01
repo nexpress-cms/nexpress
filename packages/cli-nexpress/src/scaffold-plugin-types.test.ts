@@ -134,10 +134,10 @@ describe("non-block scaffold generators", () => {
   describe("admin plugin", () => {
     commonAssertions("admin", scaffoldAdminPlugin);
 
-    it("declares configSchema + widget + action wired through the typed action registry", async () => {
+    it("declares config, widget, button, table, and row action through the typed registry", async () => {
       const result = await scaffoldAdminPlugin({ slug: "status-card", outDir: workdir });
       const source = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
-      // All three admin surface kinds.
+      // Every starter admin surface kind.
       expect(source).toMatch(/import \{ z \} from "zod"/);
       expect(source).toMatch(/const configSchema = z\.object/);
       expect(source).toMatch(/configSchema,/);
@@ -145,8 +145,11 @@ describe("non-block scaffold generators", () => {
       expect(source).not.toMatch(/fields:\s*\[/);
       expect(source).toMatch(/widgets:\s*\[/);
       expect(source).toMatch(/actions:\s*\[/);
+      expect(source).toMatch(/tables:\s*\[/);
+      expect(source).toMatch(/rowActions:\s*\[/);
+      expect(source).toContain('rowFields: ["id", "revision"]');
       // Definition-level registry owns the shared action handler.
-      expect(source).toMatch(/import \{ definePlugin, npAdminStatus \}/);
+      expect(source).toMatch(/import \{ definePlugin, npAdminStatus, npAdminTable \}/);
       expect(source).toMatch(/actions:\s*\{/);
       expect(source).toMatch(/syncStatus:\s*\{/);
       expect(source).toMatch(/kind:\s*"status"/);
@@ -154,6 +157,10 @@ describe("non-block scaffold generators", () => {
       expect(source).not.toMatch(/setup:\s*\(ctx\)\s*=>/);
       expect(source).not.toMatch(/ctx\.actions\.register/);
       expect(source).toMatch(/npAdminStatus\("ok", "All systems go\."\)/);
+      expect(source).toMatch(/recentSyncs:\s*\{/);
+      expect(source).toMatch(/retrySync:\s*\{/);
+      expect(source).toMatch(/parseRetrySyncInput/);
+      expect(source).toMatch(/hasExactKeys\(value\.row, \["id", "revision"\]\)/);
     });
 
     it("omits manually declared admin:panel because definePlugin derives it", async () => {

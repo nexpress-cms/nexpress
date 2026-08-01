@@ -58,6 +58,27 @@ describe("npCollectPluginAdminActionReferences", () => {
       },
     ]);
   });
+
+  it("collects table row actions as general action consumers", () => {
+    expect(
+      npCollectPluginAdminActionReferences({
+        tables: [
+          {
+            id: "orders",
+            rowsActionId: "rows",
+            rowActions: [{ id: "ship", actionId: "ship", rowFields: ["id"] }],
+          },
+        ],
+      }),
+    ).toEqual([
+      { actionId: "rows", expectedKind: "table", location: "admin.tables.orders" },
+      {
+        actionId: "ship",
+        expectedKind: "action",
+        location: "admin.tables.orders.rowActions.ship",
+      },
+    ]);
+  });
 });
 
 describe("npAnalyzePluginAdminActionContract", () => {

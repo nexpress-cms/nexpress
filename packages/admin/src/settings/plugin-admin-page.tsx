@@ -10,7 +10,18 @@ import { npDispatchPluginAction } from "../lib/plugin-action-results.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog.js";
 import { Form } from "../ui/form.js";
+import { Input } from "../ui/input.js";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
+import { Textarea } from "../ui/textarea.js";
 import { ZodForm, type ZodFormValue } from "../zod-form/index.js";
 import { PageHeader } from "../layout/page-header.js";
 import { useForm } from "react-hook-form";
@@ -53,7 +64,49 @@ interface TableDef {
   label: string;
   columns: ColumnDef[];
   rowsActionId: string;
+  rowActions?: TableRowActionDef[];
   emptyMessage?: string;
+}
+
+interface TableRowActionFieldDef {
+  name: string;
+  label: string;
+  type: "text" | "textarea" | "select";
+  required?: boolean;
+  placeholder?: string;
+  options?: Array<{ label: string; value: string }>;
+}
+
+interface TableRowActionDef {
+  id: string;
+  label: string;
+  actionId: string;
+  rowFields: string[];
+  fields?: TableRowActionFieldDef[];
+  visibleWhen?: { field: string; oneOf: Array<string | number | boolean> };
+  confirm?: string;
+  description?: string;
+  result?: "toast" | "details";
+}
+
+export function npIsTableRowActionVisible(
+  action: TableRowActionDef,
+  row: Record<string, unknown>,
+): boolean {
+  const condition = action.visibleWhen;
+  if (!condition) return true;
+  return condition.oneOf.some((value) => Object.is(value, row[condition.field]));
+}
+
+export function npBuildTableRowActionPayload(
+  action: TableRowActionDef,
+  row: Record<string, unknown>,
+  values: Record<string, string>,
+): { row: Record<string, unknown>; values: Record<string, string> } {
+  return {
+    row: Object.fromEntries(action.rowFields.map((field) => [field, row[field]])),
+    values,
+  };
 }
 
 interface AdminExtension {
@@ -511,6 +564,11 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
       }
     | { kind: "error"; message: string }
   >({ kind: "loading" });
+  const [selected, setSelected] = useState<{
+    action: TableRowActionDef;
+    row: Record<string, unknown>;
+  } | null>(null);
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
@@ -529,6 +587,14 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
     return () => window.cancelAnimationFrame(frame);
   }, [load]);
 
+  const selectedKey = selected
+    ? `${selected.action.id}:${
+        typeof selected.row.id === "string" || typeof selected.row.id === "number"
+          ? selected.row.id
+          : "row"
+      }`
+    : "closed";
+
   return (
     <Card className="min-w-0">
       <CardHeader className="grid gap-2 space-y-0 sm:flex sm:flex-row sm:items-center sm:justify-between">
@@ -536,6 +602,17 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
         {state.kind === "ready" ? <Badge variant="secondary">{state.total}</Badge> : null}
       </CardHeader>
       <CardContent className="min-w-0">
+        {toast ? (
+          <p
+            className={
+              toast.type === "success"
+                ? "mb-3 break-words text-sm text-emerald-700 dark:text-emerald-200"
+                : "mb-3 break-words text-sm text-rose-700 dark:text-rose-200"
+            }
+          >
+            {toast.message}
+          </p>
+        ) : null}
         {state.kind === "loading" ? (
           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
         ) : state.kind === "error" ? (
@@ -565,6 +642,23 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
                       </dd>
                     </div>
                   ))}
+                  {table.rowActions?.length ? (
+                    <div className="flex flex-wrap justify-end gap-2 pt-2">
+                      {table.rowActions
+                        .filter((action) => npIsTableRowActionVisible(action, row))
+                        .map((action) => (
+                          <Button
+                            key={action.id}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSelected({ action, row })}
+                          >
+                            {action.label}
+                          </Button>
+                        ))}
+                    </div>
+                  ) : null}
                 </dl>
               ))}
             </div>
@@ -580,6 +674,11 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
                         {col.label}
                       </th>
                     ))}
+                    {table.rowActions?.length ? (
+                      <th className="h-9 px-3 text-right text-[11px] font-medium uppercase tracking-[0.08em] text-neutral-500 dark:text-neutral-400">
+                        Actions
+                      </th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -590,6 +689,25 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
                           <span className="break-words">{renderCell(row[col.name])}</span>
                         </td>
                       ))}
+                      {table.rowActions?.length ? (
+                        <td className="whitespace-nowrap px-3 py-2 text-right align-top">
+                          <div className="flex justify-end gap-2">
+                            {table.rowActions
+                              .filter((action) => npIsTableRowActionVisible(action, row))
+                              .map((action) => (
+                                <Button
+                                  key={action.id}
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => setSelected({ action, row })}
+                                >
+                                  {action.label}
+                                </Button>
+                              ))}
+                          </div>
+                        </td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>
@@ -598,7 +716,153 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
           </>
         )}
       </CardContent>
+      <TableRowActionDialog
+        key={selectedKey}
+        pluginId={pluginId}
+        selected={selected}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null);
+        }}
+        onComplete={(message) => {
+          setToast({ type: "success", message });
+        }}
+        onSettled={() => void load()}
+      />
     </Card>
+  );
+}
+
+function TableRowActionDialog({
+  pluginId,
+  selected,
+  onOpenChange,
+  onComplete,
+  onSettled,
+}: {
+  pluginId: string;
+  selected: { action: TableRowActionDef; row: Record<string, unknown> } | null;
+  onOpenChange: (open: boolean) => void;
+  onComplete: (message: string) => void;
+  onSettled: () => void;
+}) {
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries((selected?.action.fields ?? []).map((field) => [field.name, ""])),
+  );
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [details, setDetails] = useState<{ value: unknown } | null>(null);
+
+  const run = useCallback(async () => {
+    if (!selected) return;
+    const missing = (selected.action.fields ?? []).find(
+      (field) => field.required && !(values[field.name] ?? "").trim(),
+    );
+    if (missing) {
+      setError(`${missing.label} is required.`);
+      return;
+    }
+    if (selected.action.confirm && !window.confirm(selected.action.confirm)) return;
+    const payload = npBuildTableRowActionPayload(selected.action, selected.row, values);
+    setRunning(true);
+    setError(null);
+    setDetails(null);
+    const result = await npDispatchPluginAction(pluginId, selected.action.actionId, "action", {
+      ...payload,
+    });
+    setRunning(false);
+    onSettled();
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    if (selected.action.result === "details") {
+      setDetails({ value: result.data });
+      return;
+    }
+    onComplete(typeof result.data === "string" ? result.data : `${selected.action.label}: done.`);
+    onOpenChange(false);
+  }, [onComplete, onOpenChange, onSettled, pluginId, selected, values]);
+
+  return (
+    <Dialog open={selected !== null} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{selected?.action.label ?? "Row action"}</DialogTitle>
+          {selected?.action.description ? (
+            <DialogDescription>{selected.action.description}</DialogDescription>
+          ) : null}
+        </DialogHeader>
+        {details === null ? (
+          <div className="space-y-3">
+            {(selected?.action.fields ?? []).map((field) => (
+              <label key={field.name} className="block space-y-1.5 text-sm">
+                <span className="font-medium">
+                  {field.label}
+                  {field.required ? " *" : ""}
+                </span>
+                {field.type === "textarea" ? (
+                  <Textarea
+                    value={values[field.name] ?? ""}
+                    placeholder={field.placeholder}
+                    onChange={(event) =>
+                      setValues((current) => ({ ...current, [field.name]: event.target.value }))
+                    }
+                  />
+                ) : field.type === "select" ? (
+                  <Select
+                    value={values[field.name] ?? ""}
+                    onValueChange={(value) =>
+                      setValues((current) => ({ ...current, [field.name]: value }))
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={field.placeholder ?? "Select"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(field.options ?? []).map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={values[field.name] ?? ""}
+                    placeholder={field.placeholder}
+                    onChange={(event) =>
+                      setValues((current) => ({ ...current, [field.name]: event.target.value }))
+                    }
+                  />
+                )}
+              </label>
+            ))}
+          </div>
+        ) : (
+          <pre className="max-h-[50vh] overflow-auto whitespace-pre-wrap break-words rounded-lg border bg-muted/30 p-3 text-xs">
+            {details.value === undefined
+              ? "No details returned."
+              : typeof details.value === "string"
+                ? details.value
+                : JSON.stringify(details.value, null, 2)}
+          </pre>
+        )}
+        {error ? (
+          <p className="break-words text-sm text-rose-600 dark:text-rose-300">{error}</p>
+        ) : null}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            {details === null ? "Cancel" : "Close"}
+          </Button>
+          {details === null ? (
+            <Button type="button" onClick={() => void run()} disabled={running}>
+              {running ? <Loader2 className="size-3.5 animate-spin" /> : null}
+              Run
+            </Button>
+          ) : null}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

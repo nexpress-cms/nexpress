@@ -597,6 +597,109 @@ describe("definePlugin — admin action contract", () => {
     ).toThrow(/expects a table action.*registered as action/);
   });
 
+  it("validates table row actions against general action handlers", () => {
+    expect(() =>
+      definePlugin({
+        manifest: { ...baseManifest },
+        actions: {
+          rows: {
+            kind: "table",
+            handler: () => Promise.resolve({ ok: true, data: { rows: [], total: 0 } }),
+          },
+          update: {
+            kind: "action",
+            handler: () => Promise.resolve({ ok: true }),
+          },
+        },
+        admin: {
+          tables: [
+            {
+              id: "rows",
+              label: "Rows",
+              columns: [{ name: "id", label: "ID" }],
+              rowsActionId: "rows",
+              rowActions: [
+                {
+                  id: "update",
+                  label: "Update",
+                  actionId: "update",
+                  rowFields: ["id", "revision"],
+                  fields: [
+                    {
+                      name: "status",
+                      label: "Status",
+                      type: "select",
+                      options: [{ label: "Ready", value: "ready" }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects a table row action backed by a typed table handler", () => {
+    expect(() =>
+      definePlugin({
+        manifest: { ...baseManifest },
+        actions: {
+          rows: {
+            kind: "table",
+            handler: () => Promise.resolve({ ok: true, data: { rows: [], total: 0 } }),
+          },
+        },
+        admin: {
+          tables: [
+            {
+              id: "rows",
+              label: "Rows",
+              columns: [{ name: "id", label: "ID" }],
+              rowsActionId: "rows",
+              rowActions: [{ id: "bad", label: "Bad", actionId: "rows", rowFields: ["id"] }],
+            },
+          ],
+        },
+      }),
+    ).toThrow(/expects an action.*registered as table/u);
+  });
+
+  it("rejects incomplete row-action form and row selection contracts", () => {
+    expect(() =>
+      definePlugin({
+        manifest: { ...baseManifest },
+        actions: {
+          rows: {
+            kind: "table",
+            handler: () => Promise.resolve({ ok: true, data: { rows: [], total: 0 } }),
+          },
+          update: { kind: "action", handler: () => Promise.resolve({ ok: true }) },
+        },
+        admin: {
+          tables: [
+            {
+              id: "rows",
+              label: "Rows",
+              columns: [{ name: "id", label: "ID" }],
+              rowsActionId: "rows",
+              rowActions: [
+                {
+                  id: "update",
+                  label: "Update",
+                  actionId: "update",
+                  rowFields: ["id", "id"],
+                  fields: [{ name: "status", label: "Status", type: "select" }],
+                },
+              ],
+            },
+          ],
+        },
+      } as never),
+    ).toThrow();
+  });
+
   it("keeps setup-only action registration compatible", () => {
     expect(() =>
       definePlugin({

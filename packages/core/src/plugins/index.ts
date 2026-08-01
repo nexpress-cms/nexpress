@@ -55,6 +55,7 @@ export {
 
 export type {
   NpPluginActionKind,
+  NpPluginActionInvocation,
   NpPluginActionRegistrationConflict,
   NpPluginActionRegistrationSource,
   NpPluginAdminActionIssue,

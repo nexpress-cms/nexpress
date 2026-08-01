@@ -36,6 +36,7 @@ import {
   npValidatePluginActionResult,
   type NpPluginActionRegistrationConflict,
   type NpPluginActionKind,
+  type NpPluginActionInvocation,
   type NpRegisteredPluginAction,
 } from "./admin-action-contract.js";
 
@@ -81,7 +82,13 @@ const pluginPrincipal = (pluginId: string): NpAuthUser => ({
 });
 
 interface RegistrationLike {
-  actions: Map<string, (data: unknown) => Promise<{ ok: boolean; data?: unknown; error?: string }>>;
+  actions: Map<
+    string,
+    (
+      data: unknown,
+      invocation?: NpPluginActionInvocation,
+    ) => Promise<{ ok: boolean; data?: unknown; error?: string }>
+  >;
   actionMetadata?: Map<string, NpRegisteredPluginAction>;
   actionConflicts?: NpPluginActionRegistrationConflict[];
 }
@@ -101,7 +108,10 @@ interface BuildContextOptions {
   lookupRegistration: (pluginId: string) => RegistrationLike | undefined;
   /** Rebuild setup-registered action context at dispatch time so site-scoped
    * config follows the active request rather than the bootstrap site. */
-  resolveActionContext?: () => Promise<Record<string, unknown>>;
+  resolveActionContext?: (
+    invocation?: NpPluginActionInvocation,
+  ) => Promise<Record<string, unknown>>;
+  actionInvocation?: NpPluginActionInvocation;
 }
 
 /**
@@ -199,10 +209,12 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
       });
     }
     registration.actionMetadata?.set(actionName, metadata);
-    registration.actions.set(actionName, async (data) => {
+    registration.actions.set(actionName, async (data, invocation) => {
       const actionContext = options.resolveActionContext
-        ? await options.resolveActionContext()
-        : runtimeContext;
+        ? await options.resolveActionContext(invocation)
+        : invocation
+          ? { ...runtimeContext, actionInvocation: invocation }
+          : runtimeContext;
       return npValidatePluginActionResult(
         pluginId,
         actionName,
@@ -216,6 +228,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
     pluginId,
     config,
     capabilities,
+    ...(options.actionInvocation ? { actionInvocation: options.actionInvocation } : {}),
 
     content: {
       async find(collection: string, query?: Partial<NpFindOptions>) {
@@ -745,7 +758,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
             error: `Plugin "${targetPluginId}" is disabled for the active site`,
           };
         }
-        return action(data);
+        return action(data, { kind: "plugin", pluginId });
       },
     },
   };

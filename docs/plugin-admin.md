@@ -51,6 +51,13 @@ const configSchema = z.object({
   syncOnSave: z.boolean().default(true).describe("Sync on save"),
 });
 
+const retryFailureSchema = z
+  .object({
+    row: z.object({ documentId: z.string(), revision: z.number().int().positive() }).strict(),
+    values: z.object({ note: z.string().max(500) }).strict(),
+  })
+  .strict();
+
 export default definePlugin({
   manifest: {/* ... */},
   configSchema,
@@ -82,10 +89,20 @@ export default definePlugin({
         const result = await ctx.content.find("posts", { where: { status: "archived" } });
         const rows = result.docs.map((document) => ({
           documentId: document.id,
+          revision: document.revision,
           reason: "stale",
           at: document.updatedAt,
         }));
         return npAdminTable(rows, result.totalDocs);
+      },
+    },
+    retryFailure: {
+      kind: "action",
+      handler: async (data) => {
+        const input = retryFailureSchema.safeParse(data);
+        if (!input.success) return { ok: false, error: "Invalid retry payload." };
+        // Lock the row and compare input.data.row.revision again before a real write.
+        return { ok: true, data: `Retry queued for ${input.data.row.documentId}.` };
       },
     },
   },
@@ -113,6 +130,17 @@ export default definePlugin({
           { name: "at", label: "Time" },
         ],
         rowsActionId: "listFailures",
+        rowActions: [
+          {
+            id: "retry",
+            label: "Retry",
+            actionId: "retryFailure",
+            rowFields: ["documentId", "revision"],
+            visibleWhen: { field: "reason", oneOf: ["stale"] },
+            fields: [{ name: "note", label: "Operations note", type: "textarea" }],
+            confirm: "Retry this failure?",
+          },
+        ],
         emptyMessage: "Nothing has failed recently.",
       },
     ],
@@ -164,11 +192,22 @@ One-click operations. Admin calls the registered action handler; result
 is surfaced as a toast. Optional `confirm` shows a dialog before dispatch
 — use it for anything destructive or expensive.
 
-### `tables` — read-only data
+### `tables` — data with optional row actions
 
 Action returns `{ rows: Array<Record>, total: number }`. Admin renders
 using its built-in table primitive. Columns are declared up front; cells
 render via `JSON.stringify` for object values, `String(...)` for scalars.
+
+`rowActions` adds host-rendered operations without custom Admin React. Each row
+action references a definition-level `kind: "action"` handler and names one or
+more `rowFields`. Admin copies only those fields and dispatches
+`{ row, values }`; undeclared hidden row values are never forwarded. Optional
+form fields support `text`, `textarea`, and `select`. The handler must still
+validate the exact revision and values before writing. Use `result: "details"`
+only for bounded data that should remain in a dismissible dialog; the default
+result is a toast followed by a table refresh. `visibleWhen` can hide an action
+unless one returned row field strictly matches a declared primitive value; it
+is presentation only and never replaces handler authorization or validation.
 
 ### `collectionTabs` — per-document widgets + actions
 
@@ -251,8 +290,9 @@ doctor before an Admin request is constructed.
 
 `definePlugin()` checks registry-backed widget/table references as soon as the
 plugin module is evaluated. A missing id (when no `setup` callback can supply
-it) or metric/status/table kind mismatch fails there instead of waiting for an
-operator click. General buttons may reference any kind, so a status or metric
+it) or metric/status/table/row-action kind mismatch fails there instead of
+waiting for an operator click. Row actions require a general `action` handler.
+General buttons may reference any kind, so a status or metric
 handler can still power both a widget and a manual refresh button.
 
 The original setup-time API remains available for existing plugins and truly
@@ -281,9 +321,16 @@ the target plugin's activation for the current site. Setup-registered handlers
 also receive a freshly rebuilt request-site `ctx`, not the bootstrap site's
 config snapshot.
 
+During a direct Admin HTTP action, `ctx.actionInvocation` is
+`{ kind: "staff", userId }`. Inter-plugin dispatch instead receives
+`{ kind: "plugin", pluginId }`; lifecycle and direct host calls may omit it.
+Sensitive handlers must require the staff variant rather than trusting a user
+id in their payload.
+
 The admin dispatches through `POST /api/plugins/:id/actions/:actionId`,
 which is admin-only + CSRF-protected + rate-limited by the existing
-`/api/plugins` bucket.
+`/api/plugins` bucket. Successful action responses are always
+`Cache-Control: private, no-store`.
 
 ---
 

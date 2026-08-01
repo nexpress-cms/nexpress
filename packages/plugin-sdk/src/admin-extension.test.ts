@@ -113,6 +113,65 @@ describe("npAdminTableSchema", () => {
       }),
     ).not.toThrow();
   });
+
+  it("accepts a bounded row action contract", () => {
+    expect(() =>
+      npAdminTableSchema.parse({
+        id: "orders",
+        label: "Orders",
+        columns: [{ name: "status", label: "Status" }],
+        rowsActionId: "listOrders",
+        rowActions: [
+          {
+            id: "ship",
+            label: "Ship",
+            actionId: "shipOrder",
+            rowFields: ["id", "revision"],
+            visibleWhen: { field: "status", oneOf: ["paid"] },
+            fields: [
+              {
+                name: "carrier",
+                label: "Carrier",
+                type: "select",
+                options: [{ label: "Parcel", value: "parcel" }],
+              },
+            ],
+            result: "details",
+          },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
+  it("rejects ambiguous row action fields and select values", () => {
+    expect(() =>
+      npAdminTableSchema.parse({
+        id: "orders",
+        label: "Orders",
+        columns: [{ name: "status", label: "Status" }],
+        rowsActionId: "listOrders",
+        rowActions: [
+          {
+            id: "ship",
+            label: "Ship",
+            actionId: "shipOrder",
+            rowFields: ["id", "id"],
+            fields: [
+              {
+                name: "carrier",
+                label: "Carrier",
+                type: "select",
+                options: [
+                  { label: "Parcel A", value: "parcel" },
+                  { label: "Parcel B", value: "parcel" },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow();
+  });
 });
 
 describe("npAdminExtensionSchema", () => {

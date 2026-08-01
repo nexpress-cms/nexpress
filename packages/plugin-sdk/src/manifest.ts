@@ -134,13 +134,80 @@ export const npAdminActionSchema = z.object({
   description: z.string().optional(),
 });
 
-export const npAdminTableSchema = z.object({
+const npAdminTableRowActionFieldSchema = z
+  .object({
+    name: z.string().min(1),
+    label: z.string().min(1),
+    type: z.enum(["text", "textarea", "select"]),
+    required: z.boolean().optional(),
+    placeholder: z.string().optional(),
+    options: z
+      .array(z.object({ label: z.string().min(1), value: z.string().min(1) }))
+      .min(1)
+      .optional(),
+  })
+  .superRefine((field, ctx) => {
+    if (field.type === "select" && !field.options) {
+      ctx.addIssue({ code: "custom", message: "select fields require options" });
+    }
+    if (field.type !== "select" && field.options) {
+      ctx.addIssue({ code: "custom", message: "only select fields may declare options" });
+    }
+    const optionValues = field.options?.map((option) => option.value) ?? [];
+    if (new Set(optionValues).size !== optionValues.length) {
+      ctx.addIssue({ code: "custom", message: "select option values must be unique" });
+    }
+  });
+
+const npAdminTableRowActionSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
-  columns: z.array(z.object({ name: z.string().min(1), label: z.string().min(1) })).min(1),
-  rowsActionId: z.string().min(1),
-  emptyMessage: z.string().optional(),
+  actionId: z.string().min(1),
+  rowFields: z.array(z.string().min(1)).min(1),
+  fields: z.array(npAdminTableRowActionFieldSchema).optional(),
+  visibleWhen: z
+    .object({
+      field: z.string().min(1),
+      oneOf: z.array(z.union([z.string(), z.number().finite(), z.boolean()])).min(1),
+    })
+    .optional(),
+  confirm: z.string().optional(),
+  description: z.string().optional(),
+  result: z.enum(["toast", "details"]).optional(),
 });
+
+export const npAdminTableSchema = z
+  .object({
+    id: z.string().min(1),
+    label: z.string().min(1),
+    columns: z.array(z.object({ name: z.string().min(1), label: z.string().min(1) })).min(1),
+    rowsActionId: z.string().min(1),
+    rowActions: z.array(npAdminTableRowActionSchema).optional(),
+    emptyMessage: z.string().optional(),
+  })
+  .superRefine((table, ctx) => {
+    const actionIds = table.rowActions?.map((action) => action.id) ?? [];
+    if (new Set(actionIds).size !== actionIds.length) {
+      ctx.addIssue({ code: "custom", message: "table row action ids must be unique" });
+    }
+    for (const [index, action] of (table.rowActions ?? []).entries()) {
+      if (new Set(action.rowFields).size !== action.rowFields.length) {
+        ctx.addIssue({
+          code: "custom",
+          message: "rowFields must be unique",
+          path: ["rowActions", index, "rowFields"],
+        });
+      }
+      const fieldNames = action.fields?.map((field) => field.name) ?? [];
+      if (new Set(fieldNames).size !== fieldNames.length) {
+        ctx.addIssue({
+          code: "custom",
+          message: "field names must be unique",
+          path: ["rowActions", index, "fields"],
+        });
+      }
+    }
+  });
 
 export const npCollectionTabSchema = z
   .object({

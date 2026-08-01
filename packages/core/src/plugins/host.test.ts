@@ -413,6 +413,35 @@ describe("plugin host", () => {
       }
     });
 
+    it("projects a trusted action invocation only for that dispatch", async () => {
+      await loadPlugins([
+        {
+          ...resolvedPlugin("invocation-context"),
+          actions: {
+            caller: {
+              kind: "action",
+              handler: (_data: unknown, ctx: { actionInvocation?: unknown }) =>
+                Promise.resolve({ ok: true, data: ctx.actionInvocation ?? null }),
+            },
+          },
+        } as never,
+      ]);
+
+      await expect(
+        dispatchPluginAction("invocation-context", "caller", undefined, {
+          kind: "staff",
+          userId: "123e4567-e89b-42d3-a456-426614174000",
+        }),
+      ).resolves.toEqual({
+        ok: true,
+        data: { kind: "staff", userId: "123e4567-e89b-42d3-a456-426614174000" },
+      });
+      await expect(dispatchPluginAction("invocation-context", "caller")).resolves.toEqual({
+        ok: true,
+        data: null,
+      });
+    });
+
     it("diagnoses setup-only kind mismatches without dropping the plugin", async () => {
       await loadPlugins([
         {

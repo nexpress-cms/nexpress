@@ -162,6 +162,10 @@ export interface NpShopMessages {
   orderInventoryConsumed: string;
   orderInventoryReleased: string;
   orderInventoryNotRequired: string;
+  orderFulfillmentAwaiting: string;
+  orderFulfillmentProcessing: string;
+  orderFulfillmentShipped: string;
+  orderFulfillmentTracking: string;
   orderExpires: string;
   orderCreated: string;
   orderCancel: string;
@@ -330,6 +334,10 @@ export interface NpShopCartClientMessages {
   orderInventoryConsumed: string;
   orderInventoryReleased: string;
   orderInventoryNotRequired: string;
+  orderFulfillmentAwaiting: string;
+  orderFulfillmentProcessing: string;
+  orderFulfillmentShipped: string;
+  orderFulfillmentTracking: string;
   orderExpires: string;
   orderCreated: string;
   orderCancel: string;
@@ -463,6 +471,23 @@ export const npShopInventoryReservationStatuses = [
 
 export type NpShopInventoryReservationStatus = (typeof npShopInventoryReservationStatuses)[number];
 
+export const npShopFulfillmentStatuses = ["awaiting", "processing", "shipped"] as const;
+
+export type NpShopFulfillmentStatus = (typeof npShopFulfillmentStatuses)[number];
+
+export interface NpShopFulfillment {
+  contract: "np.shop-fulfillment.v1";
+  orderId: string;
+  status: NpShopFulfillmentStatus;
+  revision: number;
+  privateDataStatus: NpShopOrderPrivateDataStatus;
+  carrier: string | null;
+  trackingNumber: string | null;
+  createdAt: string;
+  updatedAt: string;
+  shippedAt: string | null;
+}
+
 export interface NpShopOrder {
   contract: "np.shop-order.v1";
   id: string;
@@ -490,6 +515,8 @@ export interface NpShopOrder {
   paymentResolvedAt: string | null;
   cancelledAt: string | null;
   cancellationReason: NpShopOrderCancellationReason | null;
+  /** Present for orders paid after fulfillment support was enabled. */
+  fulfillment?: NpShopFulfillment;
   purgeAt: string;
 }
 

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { getDb, npPluginStorage } from "@nexpress/core/db";
+import { getDb, npAuditEvents, npPluginStorage } from "@nexpress/core/db";
 import { requireSiteId } from "@nexpress/core/sites";
 import { and, asc, desc, eq, gt, inArray, like, lte, sql } from "drizzle-orm";
 
@@ -25,6 +25,7 @@ import {
 } from "./payment-contract.js";
 import {
   NP_SHOP_ORDER_CONTRACT,
+  NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT,
   NP_SHOP_ORDER_PRIVATE_CONTRACT,
   NP_SHOP_ORDER_STORAGE_CONTRACT,
   NpShopOrderConflictError,
@@ -37,8 +38,19 @@ import {
   type NpShopOrderCancelInput,
   type NpShopOrderCreateInput,
   type NpShopStoredOrder,
-  type NpShopStoredOrderPrivate,
+  type NpShopStoredOrderPrivateData,
 } from "./order-contract.js";
+import {
+  NP_SHOP_FULFILLMENT_STORAGE_CONTRACT,
+  NpShopFulfillmentConflictError,
+  npProjectShopFulfillment,
+  npRequireStoredShopFulfillment,
+  npShopFulfillmentLimits,
+  type NpShopFulfillmentPrivateReadInput,
+  type NpShopFulfillmentProcessInput,
+  type NpShopFulfillmentShipInput,
+  type NpShopStoredFulfillment,
+} from "./fulfillment-contract.js";
 import {
   NP_SHOP_PLUGIN_ID,
   npLockShopOrderDraft,
@@ -54,7 +66,7 @@ import {
   type NpShopCartOwner,
 } from "./cart-service.js";
 import type { NpShopRuntime } from "./runtime.js";
-import type { NpShopOrder, NpShopOrderList } from "./types.js";
+import type { NpShopFulfillment, NpShopOrder, NpShopOrderList } from "./types.js";
 
 interface NpShopOrderMaintenanceMarker {
   contract: "np.shop-order-maintenance.v1";
@@ -102,7 +114,21 @@ export interface NpShopAdminOrderRow {
   units: number;
   privateData: string;
   inventory: string;
+  fulfillment: string;
+  fulfillmentRevision: number | null;
   createdAt: string;
+}
+
+export interface NpShopAdminFulfillmentRow {
+  [key: string]: unknown;
+  id: string;
+  status: string;
+  fulfillmentRevision: number;
+  privateData: string;
+  carrier: string;
+  trackingNumber: string;
+  operatorNote: string;
+  updatedAt: string;
 }
 
 export interface NpShopAdminPaymentEventRow {
@@ -122,6 +148,10 @@ function orderStorageKey(ownerSegment: string, orderId: string): string {
 
 function privateStorageKey(ownerSegment: string, orderId: string): string {
   return `order-private:${ownerSegment}:${orderId}`;
+}
+
+function fulfillmentStorageKey(orderId: string): string {
+  return `fulfillment:${orderId}`;
 }
 
 function maintenanceStorageKey(ownerSegment: string, orderId: string): string {
@@ -156,7 +186,10 @@ function requireStoredOrderAtKey(
   return order;
 }
 
-function requireStoredPrivate(value: unknown, expiresAt: Date | null): NpShopStoredOrderPrivate {
+function requireStoredPrivate(
+  value: unknown,
+  expiresAt: Date | null,
+): NpShopStoredOrderPrivateData {
   const privateData = npRequireStoredShopOrderPrivate(value);
   if (expiresAt === null || expiresAt.toISOString() !== privateData.expiresAt) {
     throw new NpShopOrderContractError("Invalid Shop order private storage metadata", [
@@ -164,6 +197,38 @@ function requireStoredPrivate(value: unknown, expiresAt: Date | null): NpShopSto
     ]);
   }
   return privateData;
+}
+
+function requireStoredFulfillment(
+  value: unknown,
+  expiresAt: Date | null,
+  key: string,
+): NpShopStoredFulfillment {
+  const fulfillment = npRequireStoredShopFulfillment(value);
+  if (
+    key !== fulfillmentStorageKey(fulfillment.orderId) ||
+    expiresAt === null ||
+    expiresAt.toISOString() !== fulfillment.purgeAt
+  ) {
+    throw new NpShopOrderContractError("Invalid Shop fulfillment storage metadata", [
+      "Fulfillment storage key and expiry must match its canonical value.",
+    ]);
+  }
+  return fulfillment;
+}
+
+function fulfillmentMatchesOrder(
+  fulfillment: NpShopStoredFulfillment,
+  order: NpShopStoredOrder,
+): boolean {
+  return (
+    fulfillment.orderId === order.id &&
+    fulfillment.ownerSegment === order.ownerSegment &&
+    order.status === "paid" &&
+    fulfillment.privateDataStatus === order.privateDataStatus &&
+    fulfillment.createdAt === order.paymentResolvedAt &&
+    fulfillment.purgeAt === order.purgeAt
+  );
 }
 
 function requireMaintenanceMarker(
@@ -344,7 +409,7 @@ async function readStoredPrivate(
   siteId: string,
   ownerSegment: string,
   orderId: string,
-): Promise<NpShopStoredOrderPrivate | null> {
+): Promise<NpShopStoredOrderPrivateData | null> {
   const [row] = await db
     .select({ value: npPluginStorage.value, expiresAt: npPluginStorage.expiresAt })
     .from(npPluginStorage)
@@ -364,6 +429,32 @@ async function readStoredPrivate(
     ]);
   }
   return privateData;
+}
+
+async function readStoredFulfillment(
+  db: ReturnType<typeof getDb> | NpShopTransaction,
+  siteId: string,
+  orderId: string,
+  forUpdate = false,
+): Promise<NpShopStoredFulfillment | null> {
+  let query = db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        eq(npPluginStorage.key, fulfillmentStorageKey(orderId)),
+      ),
+    )
+    .limit(1);
+  if (forUpdate) query = query.for("update") as typeof query;
+  const [row] = await query;
+  return row ? requireStoredFulfillment(row.value, row.expiresAt, row.key) : null;
 }
 
 async function persistOrder(
@@ -428,17 +519,61 @@ async function persistPrivate(
   tx: NpShopTransaction,
   siteId: string,
   ownerSegment: string,
-  privateData: NpShopStoredOrderPrivate,
+  privateData: NpShopStoredOrderPrivateData,
 ): Promise<void> {
   npRequireStoredShopOrderPrivate(privateData);
-  await tx.insert(npPluginStorage).values({
-    pluginId: NP_SHOP_PLUGIN_ID,
-    siteId,
-    key: privateStorageKey(ownerSegment, privateData.orderId),
-    value: privateData,
-    expiresAt: new Date(privateData.expiresAt),
-    updatedAt: new Date(privateData.createdAt),
-  });
+  await tx
+    .insert(npPluginStorage)
+    .values({
+      pluginId: NP_SHOP_PLUGIN_ID,
+      siteId,
+      key: privateStorageKey(ownerSegment, privateData.orderId),
+      value: privateData,
+      expiresAt: new Date(privateData.expiresAt),
+      updatedAt: new Date(
+        privateData.contract === NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT
+          ? privateData.retainedAt
+          : privateData.createdAt,
+      ),
+    })
+    .onConflictDoUpdate({
+      target: [npPluginStorage.pluginId, npPluginStorage.siteId, npPluginStorage.key],
+      set: {
+        value: privateData,
+        expiresAt: new Date(privateData.expiresAt),
+        updatedAt: new Date(
+          privateData.contract === NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT
+            ? privateData.retainedAt
+            : privateData.createdAt,
+        ),
+      },
+    });
+}
+
+async function persistFulfillment(
+  tx: NpShopTransaction,
+  siteId: string,
+  fulfillment: NpShopStoredFulfillment,
+): Promise<void> {
+  npRequireStoredShopFulfillment(fulfillment);
+  await tx
+    .insert(npPluginStorage)
+    .values({
+      pluginId: NP_SHOP_PLUGIN_ID,
+      siteId,
+      key: fulfillmentStorageKey(fulfillment.orderId),
+      value: fulfillment,
+      expiresAt: new Date(fulfillment.purgeAt),
+      updatedAt: new Date(fulfillment.updatedAt),
+    })
+    .onConflictDoUpdate({
+      target: [npPluginStorage.pluginId, npPluginStorage.siteId, npPluginStorage.key],
+      set: {
+        value: fulfillment,
+        expiresAt: new Date(fulfillment.purgeAt),
+        updatedAt: new Date(fulfillment.updatedAt),
+      },
+    });
 }
 
 async function persistMaintenanceMarker(
@@ -447,14 +582,24 @@ async function persistMaintenanceMarker(
   marker: NpShopOrderMaintenanceMarker,
 ): Promise<void> {
   requireMaintenanceMarker(marker, new Date(marker.dueAt));
-  await tx.insert(npPluginStorage).values({
-    pluginId: NP_SHOP_PLUGIN_ID,
-    siteId,
-    key: maintenanceStorageKey(marker.ownerSegment, marker.orderId),
-    value: marker,
-    expiresAt: new Date(marker.dueAt),
-    updatedAt: new Date(),
-  });
+  await tx
+    .insert(npPluginStorage)
+    .values({
+      pluginId: NP_SHOP_PLUGIN_ID,
+      siteId,
+      key: maintenanceStorageKey(marker.ownerSegment, marker.orderId),
+      value: marker,
+      expiresAt: new Date(marker.dueAt),
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [npPluginStorage.pluginId, npPluginStorage.siteId, npPluginStorage.key],
+      set: {
+        value: marker,
+        expiresAt: new Date(marker.dueAt),
+        updatedAt: new Date(),
+      },
+    });
 }
 
 async function removePrivateAndMaintenance(
@@ -492,10 +637,27 @@ async function projectOrder(
     privateData &&
     (privateData.orderId !== order.id ||
       privateData.createdAt !== order.createdAt ||
-      privateData.expiresAt !== order.pendingExpiresAt)
+      (privateData.contract === NP_SHOP_ORDER_PRIVATE_CONTRACT &&
+        privateData.expiresAt !== order.pendingExpiresAt))
   ) {
     throw new NpShopOrderContractError("Shop order private data does not match its order", [
       "Private order id and retention timestamps must match the commercial order.",
+    ]);
+  }
+  const fulfillment = await readStoredFulfillment(db, siteId, order.id);
+  if (fulfillment && !fulfillmentMatchesOrder(fulfillment, order)) {
+    throw new NpShopOrderContractError("Shop fulfillment does not match its order", [
+      "Fulfillment owner, paid status, retention, and private-data state must match the commercial order.",
+    ]);
+  }
+  if (
+    privateData?.contract === NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT &&
+    (!fulfillment ||
+      privateData.retainedAt !== fulfillment.createdAt ||
+      privateData.expiresAt !== fulfillment.privateExpiresAt)
+  ) {
+    throw new NpShopOrderContractError("Shop fulfillment private data does not match", [
+      "The promoted private sidecar must match one fulfillment retention deadline.",
     ]);
   }
   const { ownerSegment: _ownerSegment, ...publicFields } = order;
@@ -504,6 +666,7 @@ async function projectOrder(
     contract: NP_SHOP_ORDER_CONTRACT,
     customer: privateData?.customer ?? null,
     shipping: privateData?.shipping ?? null,
+    ...(fulfillment ? { fulfillment: npProjectShopFulfillment(fulfillment) } : {}),
   });
 }
 
@@ -597,6 +760,20 @@ async function redactStoredOrderPrivate(
   order: NpShopStoredOrder,
   now: Date,
 ): Promise<NpShopStoredOrder> {
+  const fulfillment = await readStoredFulfillment(tx, siteId, order.id, true);
+  if (fulfillment && !fulfillmentMatchesOrder(fulfillment, order)) {
+    throw new NpShopOrderContractError("Shop fulfillment does not match its order", [
+      "Fulfillment must match the paid order before private data can be redacted.",
+    ]);
+  }
+  if (fulfillment?.privateDataStatus === "retained") {
+    await persistFulfillment(tx, siteId, {
+      ...fulfillment,
+      revision: fulfillment.revision + 1,
+      privateDataStatus: "redacted",
+      updatedAt: now.toISOString(),
+    });
+  }
   if (order.privateDataStatus === "redacted") {
     await removePrivateAndMaintenance(tx, siteId, order.ownerSegment, order.id);
     return order;
@@ -676,7 +853,10 @@ export async function npApplyShopPaymentEvent(
     if (
       order.status === "paid" &&
       order.privateDataStatus === "retained" &&
-      new Date(order.pendingExpiresAt) <= receivedAt
+      new Date(
+        (await readStoredPrivate(tx, siteId, order.ownerSegment, order.id))?.expiresAt ??
+          order.pendingExpiresAt,
+      ) <= receivedAt
     ) {
       order = await redactStoredOrderPrivate(tx, siteId, order, receivedAt);
     }
@@ -686,6 +866,17 @@ export async function npApplyShopPaymentEvent(
       order = await cancelStoredOrder(tx, siteId, order, "payment-timeout", receivedAt);
       outcome = "ignored-terminal";
     } else if (event.type === "payment.succeeded") {
+      if (await readStoredFulfillment(tx, siteId, order.id, true)) {
+        throw new NpShopOrderContractError("Shop fulfillment already exists", [
+          "A pending order cannot already own a fulfillment row.",
+        ]);
+      }
+      const privateData = await readStoredPrivate(tx, siteId, order.ownerSegment, order.id);
+      if (!privateData) {
+        throw new NpShopOrderContractError("Shop order private data is missing", [
+          "A payable order must retain its exact customer and shipping sidecar.",
+        ]);
+      }
       await npLockShopInventoryProducts(
         tx,
         siteId,
@@ -713,7 +904,42 @@ export async function npApplyShopPaymentEvent(
         paymentResolvedAt: receivedAt.toISOString(),
         updatedAt: receivedAt.toISOString(),
       };
+      const privateExpiresAt = new Date(
+        receivedAt.getTime() + npShopFulfillmentLimits.privateRetentionSeconds * 1_000,
+      ).toISOString();
+      const fulfillment: NpShopStoredFulfillment = {
+        contract: NP_SHOP_FULFILLMENT_STORAGE_CONTRACT,
+        orderId: order.id,
+        ownerSegment: order.ownerSegment,
+        status: "awaiting",
+        revision: 1,
+        privateDataStatus: "retained",
+        carrier: null,
+        trackingNumber: null,
+        operatorNote: null,
+        createdAt: receivedAt.toISOString(),
+        updatedAt: receivedAt.toISOString(),
+        privateExpiresAt,
+        shippedAt: null,
+        purgeAt: order.purgeAt,
+      };
       await persistOrder(tx, siteId, order);
+      await persistFulfillment(tx, siteId, fulfillment);
+      await persistPrivate(tx, siteId, order.ownerSegment, {
+        contract: NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT,
+        orderId: order.id,
+        customer: privateData.customer,
+        shipping: privateData.shipping,
+        createdAt: order.createdAt,
+        retainedAt: receivedAt.toISOString(),
+        expiresAt: privateExpiresAt,
+      });
+      await persistMaintenanceMarker(tx, siteId, {
+        contract: "np.shop-order-maintenance.v1",
+        orderId: order.id,
+        ownerSegment: order.ownerSegment,
+        dueAt: privateExpiresAt,
+      });
       outcome = "paid";
     } else {
       await npLockShopInventoryProducts(
@@ -797,7 +1023,7 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)})`,
+        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)})`,
       ),
     );
   await tx
@@ -944,7 +1170,7 @@ export async function npCreateShopOrder(
       cancellationReason: null,
       purgeAt,
     };
-    const privateData: NpShopStoredOrderPrivate = {
+    const privateData: NpShopStoredOrderPrivateData = {
       contract: NP_SHOP_ORDER_PRIVATE_CONTRACT,
       orderId: order.id,
       customer: draft.customer,
@@ -1011,7 +1237,10 @@ export async function npReadShopOrder(
     } else if (
       order.status === "paid" &&
       order.privateDataStatus === "retained" &&
-      new Date(order.pendingExpiresAt) <= now
+      new Date(
+        (await readStoredPrivate(tx, siteId, order.ownerSegment, order.id))?.expiresAt ??
+          order.pendingExpiresAt,
+      ) <= now
     ) {
       order = await redactStoredOrderPrivate(tx, siteId, order, now);
     }
@@ -1097,6 +1326,7 @@ export async function npCancelShopOrder(
 
 export async function npMaintainShopOrders(): Promise<{
   cancelled: number;
+  privateRedacted: number;
   purged: number;
   reservationsCleaned: number;
 }> {
@@ -1121,6 +1351,7 @@ export async function npMaintainShopOrders(): Promise<{
     .orderBy(asc(npPluginStorage.expiresAt), asc(npPluginStorage.key))
     .limit(npShopOrderLimits.cleanupBatchSize);
   let cancelled = 0;
+  let privateRedacted = 0;
   for (const row of pendingRows) {
     const marker = requireMaintenanceMarker(row.value, row.expiresAt);
     if (row.key !== maintenanceStorageKey(marker.ownerSegment, marker.orderId)) {
@@ -1128,26 +1359,34 @@ export async function npMaintainShopOrders(): Promise<{
         "Order maintenance key must match its owner segment and order id.",
       ]);
     }
-    cancelled += await db.transaction(async (tx) => {
+    const outcome = await db.transaction(async (tx) => {
       await lockOrder(tx, siteId, marker.ownerSegment, marker.orderId);
       const order = await readStoredOrderForUpdate(tx, siteId, marker.ownerSegment, marker.orderId);
       if (!order) {
         await removePrivateAndMaintenance(tx, siteId, marker.ownerSegment, marker.orderId);
-        return 0;
+        return "none" as const;
       }
       if (order.status === "paid" && order.privateDataStatus === "retained") {
-        if (new Date(order.pendingExpiresAt) > now) return 0;
+        const privateData = await readStoredPrivate(
+          tx,
+          siteId,
+          marker.ownerSegment,
+          marker.orderId,
+        );
+        if (privateData && new Date(privateData.expiresAt) > now) return "none" as const;
         await redactStoredOrderPrivate(tx, siteId, order, now);
-        return 0;
+        return "redacted" as const;
       }
       if (order.status !== "pending-payment") {
         await removePrivateAndMaintenance(tx, siteId, marker.ownerSegment, marker.orderId);
-        return 0;
+        return "none" as const;
       }
-      if (new Date(order.pendingExpiresAt) > now) return 0;
+      if (new Date(order.pendingExpiresAt) > now) return "none" as const;
       await cancelStoredOrder(tx, siteId, order, "payment-timeout", now);
-      return 1;
+      return "cancelled" as const;
     });
+    if (outcome === "cancelled") cancelled += 1;
+    if (outcome === "redacted") privateRedacted += 1;
   }
 
   const purgeRows = await db
@@ -1179,7 +1418,7 @@ export async function npMaintainShopOrders(): Promise<{
     });
   }
   const reservationsCleaned = await npCleanupExpiredShopInventoryReservations();
-  return { cancelled, purged, reservationsCleaned };
+  return { cancelled, privateRedacted, purged, reservationsCleaned };
 }
 
 export async function npCountShopOrders(): Promise<{
@@ -1224,7 +1463,7 @@ export async function npCountShopOrders(): Promise<{
   const [privateCounts] = await db
     .select({
       total: sql<number>`count(*)::int`,
-      invalid: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' is distinct from ${NP_SHOP_ORDER_PRIVATE_CONTRACT})::int`,
+      invalid: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' is distinct from ${NP_SHOP_ORDER_PRIVATE_CONTRACT} and ${npPluginStorage.value}->>'contract' is distinct from ${NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT})::int`,
     })
     .from(npPluginStorage)
     .where(
@@ -1391,20 +1630,397 @@ export async function npListRecentShopOrders(): Promise<{
       ),
     );
   return {
+    rows: await Promise.all(
+      rows.map(async (row) => {
+        const order = requireStoredOrderAtKey(row.value, row.expiresAt, row.key);
+        const fulfillment = await readStoredFulfillment(db, siteId, order.id);
+        return {
+          id: order.id,
+          status: order.status,
+          total: `${order.currency} ${order.subtotalMinor.toString()}`,
+          units: order.totalUnits,
+          privateData: order.privateDataStatus,
+          inventory: order.inventoryReservationStatus,
+          fulfillment: fulfillment?.status ?? "not-created",
+          fulfillmentRevision: fulfillment?.revision ?? null,
+          createdAt: order.createdAt,
+        };
+      }),
+    ),
+    total,
+  };
+}
+
+async function recordRequiredShopFulfillmentAudit(
+  tx: NpShopTransaction,
+  siteId: string,
+  userId: string,
+  action: string,
+  orderId: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  await tx.insert(npAuditEvents).values({
+    actorKind: "staff",
+    actorUserId: userId,
+    actorMemberId: null,
+    action,
+    targetType: "shop-order",
+    targetId: orderId,
+    payload,
+    siteId,
+  });
+}
+
+async function readFulfillmentForAction(
+  tx: NpShopTransaction,
+  siteId: string,
+  orderId: string,
+): Promise<{ fulfillment: NpShopStoredFulfillment; order: NpShopStoredOrder }> {
+  const candidate = await readStoredFulfillment(tx, siteId, orderId);
+  if (!candidate) {
+    throw new NpShopFulfillmentConflictError(
+      "fulfillment_not_found",
+      "No fulfillment exists for this paid order.",
+    );
+  }
+  await lockOrder(tx, siteId, candidate.ownerSegment, orderId);
+  const locked = await readStoredFulfillment(tx, siteId, orderId, true);
+  if (!locked) {
+    throw new NpShopFulfillmentConflictError(
+      "fulfillment_not_found",
+      "The fulfillment disappeared before it could be updated.",
+    );
+  }
+  const order = await readStoredOrderForUpdate(tx, siteId, locked.ownerSegment, locked.orderId);
+  if (!order || !fulfillmentMatchesOrder(locked, order)) {
+    throw new NpShopOrderContractError("Fulfillment order is invalid", [
+      "A fulfillment must match one paid order and its payment, retention, and private-data state.",
+    ]);
+  }
+  return { fulfillment: locked, order };
+}
+
+function requireFulfillmentRevision(
+  fulfillment: NpShopStoredFulfillment,
+  expectedRevision: number,
+): void {
+  if (fulfillment.revision !== expectedRevision) {
+    throw new NpShopFulfillmentConflictError(
+      "fulfillment_revision_conflict",
+      "The fulfillment changed before this action was applied.",
+    );
+  }
+}
+
+export async function npProcessShopFulfillment(
+  input: NpShopFulfillmentProcessInput,
+  staffUserId: string,
+): Promise<NpShopFulfillment> {
+  const siteId = await requireSiteId();
+  return getDb().transaction(async (tx) => {
+    const { fulfillment: current } = await readFulfillmentForAction(tx, siteId, input.orderId);
+    requireFulfillmentRevision(current, input.expectedRevision);
+    if (current.status === "shipped") {
+      throw new NpShopFulfillmentConflictError(
+        "fulfillment_terminal",
+        "A shipped fulfillment cannot return to processing.",
+      );
+    }
+    const now = new Date().toISOString();
+    const next = {
+      ...current,
+      status: "processing",
+      revision: current.revision + 1,
+      operatorNote: input.operatorNote ?? current.operatorNote,
+      updatedAt: now,
+    } satisfies NpShopStoredFulfillment;
+    await persistFulfillment(tx, siteId, next);
+    await recordRequiredShopFulfillmentAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.fulfillment.process",
+      input.orderId,
+      { previousRevision: current.revision, revision: next.revision, status: next.status },
+    );
+    return npProjectShopFulfillment(next);
+  });
+}
+
+export async function npShipShopFulfillment(
+  input: NpShopFulfillmentShipInput,
+  staffUserId: string,
+): Promise<NpShopFulfillment> {
+  const siteId = await requireSiteId();
+  return getDb().transaction(async (tx) => {
+    const { fulfillment: current, order } = await readFulfillmentForAction(
+      tx,
+      siteId,
+      input.orderId,
+    );
+    requireFulfillmentRevision(current, input.expectedRevision);
+    if (current.status === "shipped") {
+      throw new NpShopFulfillmentConflictError(
+        "fulfillment_terminal",
+        "The fulfillment is already shipped.",
+      );
+    }
+    const now = new Date().toISOString();
+    const next = {
+      ...current,
+      status: "shipped",
+      revision: current.revision + 1,
+      privateDataStatus: "redacted",
+      carrier: input.carrier,
+      trackingNumber: input.trackingNumber,
+      operatorNote: input.operatorNote ?? current.operatorNote,
+      updatedAt: now,
+      shippedAt: now,
+    } satisfies NpShopStoredFulfillment;
+    await persistFulfillment(tx, siteId, next);
+    if (order.privateDataStatus === "retained") {
+      await persistOrder(tx, siteId, {
+        ...order,
+        revision: order.revision + 1,
+        privateDataStatus: "redacted",
+        updatedAt: now,
+      });
+    }
+    await removePrivateAndMaintenance(tx, siteId, current.ownerSegment, current.orderId);
+    await recordRequiredShopFulfillmentAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.fulfillment.ship",
+      input.orderId,
+      { previousRevision: current.revision, revision: next.revision, status: next.status },
+    );
+    return npProjectShopFulfillment(next);
+  });
+}
+
+export async function npReadShopFulfillmentPrivate(
+  input: NpShopFulfillmentPrivateReadInput,
+  staffUserId: string,
+): Promise<{
+  customer: NpShopStoredOrderPrivateData["customer"];
+  shipping: NpShopStoredOrderPrivateData["shipping"];
+}> {
+  const siteId = await requireSiteId();
+  const result = await getDb().transaction(async (tx) => {
+    const { fulfillment: current, order } = await readFulfillmentForAction(
+      tx,
+      siteId,
+      input.orderId,
+    );
+    requireFulfillmentRevision(current, input.expectedRevision);
+    const privateData = await readStoredPrivate(tx, siteId, current.ownerSegment, current.orderId);
+    if (
+      current.privateDataStatus !== "retained" ||
+      !privateData ||
+      privateData.contract !== NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT ||
+      privateData.expiresAt !== current.privateExpiresAt ||
+      new Date(privateData.expiresAt) <= new Date()
+    ) {
+      if (order.privateDataStatus === "retained") {
+        await redactStoredOrderPrivate(tx, siteId, order, new Date());
+      }
+      return null;
+    }
+    await recordRequiredShopFulfillmentAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.fulfillment.private.read",
+      input.orderId,
+      { fulfillmentRevision: current.revision },
+    );
+    return { customer: privateData.customer, shipping: privateData.shipping };
+  });
+  if (!result) {
+    throw new NpShopFulfillmentConflictError(
+      "fulfillment_private_expired",
+      "Customer and shipping data has expired or was deleted after shipment.",
+    );
+  }
+  return result;
+}
+
+export async function npListRecentShopFulfillments(): Promise<{
+  rows: NpShopAdminFulfillmentRow[];
+  total: number;
+}> {
+  const siteId = await requireSiteId();
+  const db = getDb();
+  const rows = await db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "fulfillment:%"),
+      ),
+    )
+    .orderBy(desc(npPluginStorage.updatedAt), desc(npPluginStorage.key))
+    .limit(npShopFulfillmentLimits.adminListSize);
+  const [{ total }] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "fulfillment:%"),
+      ),
+    );
+  return {
     rows: rows.map((row) => {
-      const order = requireStoredOrderAtKey(row.value, row.expiresAt, row.key);
+      const fulfillment = requireStoredFulfillment(row.value, row.expiresAt, row.key);
       return {
-        id: order.id,
-        status: order.status,
-        total: `${order.currency} ${order.subtotalMinor.toString()}`,
-        units: order.totalUnits,
-        privateData: order.privateDataStatus,
-        inventory: order.inventoryReservationStatus,
-        createdAt: order.createdAt,
+        id: fulfillment.orderId,
+        status: fulfillment.status,
+        fulfillmentRevision: fulfillment.revision,
+        privateData: fulfillment.privateDataStatus,
+        carrier: fulfillment.carrier ?? "—",
+        trackingNumber: fulfillment.trackingNumber ?? "—",
+        operatorNote: fulfillment.operatorNote ?? "—",
+        updatedAt: fulfillment.updatedAt,
       };
     }),
     total,
   };
+}
+
+export async function npCountShopFulfillments(): Promise<{
+  total: number;
+  awaiting: number;
+  processing: number;
+  shipped: number;
+  privateDue: number;
+  invalidSample: number;
+  orphanSample: number;
+  missingPaidSample: number;
+}> {
+  const siteId = await requireSiteId();
+  const db = getDb();
+  const [counts] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      awaiting: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_FULFILLMENT_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'awaiting')::int`,
+      processing: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_FULFILLMENT_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'processing')::int`,
+      shipped: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_FULFILLMENT_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'shipped')::int`,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "fulfillment:%"),
+      ),
+    );
+  const [{ privateDue }] = await db
+    .select({ privateDue: sql<number>`count(*)::int` })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "order-private:%"),
+        sql`${npPluginStorage.value}->>'contract' = ${NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT}`,
+        lte(npPluginStorage.expiresAt, new Date()),
+      ),
+    );
+  const rows = await db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "fulfillment:%"),
+      ),
+    )
+    .orderBy(desc(npPluginStorage.updatedAt))
+    .limit(npShopFulfillmentLimits.diagnosticSampleSize);
+  let invalidSample = 0;
+  let orphanSample = 0;
+  for (const row of rows) {
+    try {
+      const fulfillment = requireStoredFulfillment(row.value, row.expiresAt, row.key);
+      const [order] = await db
+        .select({
+          key: npPluginStorage.key,
+          value: npPluginStorage.value,
+          expiresAt: npPluginStorage.expiresAt,
+        })
+        .from(npPluginStorage)
+        .where(
+          and(
+            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+            eq(npPluginStorage.siteId, siteId),
+            eq(npPluginStorage.key, orderStorageKey(fulfillment.ownerSegment, fulfillment.orderId)),
+          ),
+        )
+        .limit(1);
+      const storedOrder = order
+        ? requireStoredOrderAtKey(order.value, order.expiresAt, order.key)
+        : null;
+      if (!storedOrder || !fulfillmentMatchesOrder(fulfillment, storedOrder)) {
+        orphanSample += 1;
+        continue;
+      }
+      const privateData = await readStoredPrivate(
+        db,
+        siteId,
+        fulfillment.ownerSegment,
+        fulfillment.orderId,
+      );
+      if (
+        (fulfillment.privateDataStatus === "retained" &&
+          (!privateData ||
+            privateData.contract !== NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT ||
+            privateData.retainedAt !== fulfillment.createdAt ||
+            privateData.expiresAt !== fulfillment.privateExpiresAt)) ||
+        (fulfillment.privateDataStatus === "redacted" && privateData)
+      ) {
+        invalidSample += 1;
+      }
+    } catch {
+      invalidSample += 1;
+    }
+  }
+  const paidRows = await db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "order:%"),
+        sql`${npPluginStorage.value}->>'status' = 'paid'`,
+      ),
+    )
+    .orderBy(desc(npPluginStorage.updatedAt))
+    .limit(npShopFulfillmentLimits.diagnosticSampleSize);
+  let missingPaidSample = 0;
+  for (const row of paidRows) {
+    const order = requireStoredOrderAtKey(row.value, row.expiresAt, row.key);
+    if (!(await readStoredFulfillment(db, siteId, order.id))) missingPaidSample += 1;
+  }
+  return { ...counts, privateDue, invalidSample, orphanSample, missingPaidSample };
 }
 
 export async function npCountShopPaymentEvents(): Promise<{

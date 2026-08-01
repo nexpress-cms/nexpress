@@ -2,6 +2,9 @@ export type NpPluginActionKind = "action" | "metric" | "status" | "table";
 
 export type NpPluginActionRegistrationSource = "definition" | "setup";
 
+export type NpPluginActionInvocation =
+  { kind: "staff"; userId: string } | { kind: "plugin"; pluginId: string };
+
 export interface NpRegisteredPluginAction {
   id: string;
   kind: NpPluginActionKind;
@@ -11,7 +14,7 @@ export interface NpRegisteredPluginAction {
 
 export interface NpPluginAdminActionReference {
   actionId: string;
-  expectedKind: Exclude<NpPluginActionKind, "action"> | null;
+  expectedKind: NpPluginActionKind | null;
   location: string;
 }
 
@@ -30,7 +33,7 @@ export interface NpPluginAdminActionIssue {
   actionId: string;
   message: string;
   locations: string[];
-  expectedKind?: Exclude<NpPluginActionKind, "action">;
+  expectedKind?: NpPluginActionKind;
   actualKind?: NpPluginActionKind;
 }
 
@@ -121,6 +124,15 @@ export function npCollectPluginAdminActionReferences(
       expectedKind: "table",
       location: `admin.tables.${readId(entry.id, index.toString())}`,
     });
+    for (const [actionIndex, action] of readEntries(entry.rowActions).entries()) {
+      if (!isRecord(action) || typeof action.actionId !== "string" || action.actionId.length === 0)
+        continue;
+      references.push({
+        actionId: action.actionId,
+        expectedKind: "action",
+        location: `admin.tables.${readId(entry.id, index.toString())}.rowActions.${readId(action.id, actionIndex.toString())}`,
+      });
+    }
   }
 
   for (const [index, entry] of readEntries(admin.collectionTabs).entries()) {
@@ -180,7 +192,7 @@ export function npAnalyzePluginAdminActionContract(
     });
   }
 
-  const typedKindsByAction = new Map<string, Set<Exclude<NpPluginActionKind, "action">>>();
+  const typedKindsByAction = new Map<string, Set<NpPluginActionKind>>();
   for (const reference of references) {
     if (reference.expectedKind === null) continue;
     const kinds = typedKindsByAction.get(reference.actionId) ?? new Set();

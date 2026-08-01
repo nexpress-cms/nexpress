@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   NP_SHOP_ORDER_CONTRACT,
   NP_SHOP_ORDER_PRIVATE_CONTRACT,
+  NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT,
   NP_SHOP_ORDER_STORAGE_CONTRACT,
   npAnalyzeShopOrder,
   npAnalyzeStoredShopOrder,
@@ -144,6 +145,34 @@ describe("Shop order contract", () => {
         inventoryReservationStatus: "consumed",
       }),
     ).toEqual([]);
+    const paidPublicOrder = {
+      ...publicOrder,
+      ...payment,
+      status: "paid",
+      revision: 2,
+      inventoryReservationStatus: "consumed",
+      fulfillment: {
+        contract: "np.shop-fulfillment.v1",
+        orderId,
+        status: "awaiting",
+        revision: 1,
+        privateDataStatus: "retained",
+        carrier: null,
+        trackingNumber: null,
+        createdAt: payment.paymentResolvedAt,
+        updatedAt: payment.paymentResolvedAt,
+        shippedAt: null,
+      },
+    } as const;
+    expect(npAnalyzeShopOrder(paidPublicOrder)).toEqual([]);
+    expect(
+      npAnalyzeShopOrder({
+        ...paidPublicOrder,
+        fulfillment: { ...paidPublicOrder.fulfillment, orderId: draftId },
+      }),
+    ).toContain(
+      "order.fulfillment must match the paid order id, payment timestamp, and private-data state.",
+    );
     expect(
       npAnalyzeStoredShopOrder({
         ...storedOrder,
@@ -200,5 +229,16 @@ describe("Shop order contract", () => {
         expiresAt: createdAt,
       }),
     ).toContain("private.expiresAt must equal the fixed pending lifetime.");
+  });
+
+  it("accepts the paid fulfillment private sidecar for exactly 30 days", () => {
+    expect(
+      npAnalyzeStoredShopOrderPrivate({
+        ...privateData,
+        contract: NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT,
+        retainedAt: "2026-07-30T00:05:00.000Z",
+        expiresAt: "2026-08-29T00:05:00.000Z",
+      }),
+    ).toEqual([]);
   });
 });
