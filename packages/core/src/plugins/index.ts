@@ -49,6 +49,7 @@ export type {
 
 export {
   npAnalyzePluginAdminActionContract,
+  npAnalyzePluginAdminDownloadContract,
   npCollectPluginAdminActionReferences,
   npValidatePluginActionResult,
 } from "./admin-action-contract.js";
@@ -61,16 +62,20 @@ export type {
   NpPluginAdminActionIssue,
   NpPluginAdminActionIssueCode,
   NpPluginAdminActionReference,
+  NpPluginAdminDownloadIssue,
+  NpPluginAdminDownloadIssueCode,
   NpRegisteredPluginAction,
 } from "./admin-action-contract.js";
 
 export {
   npIsPluginApiRouteBodyMode,
   npIsPluginApiRouteMethod,
+  npIsPluginApiRouteResponseMode,
   npPluginApiRouteBodyModes,
   npPluginApiRouteKey,
   npPluginApiRouteLimits,
   npPluginApiRouteMethods,
+  npPluginApiRouteResponseModes,
   npValidatePluginApiRouteDefinition,
   npValidatePluginApiRoutePath,
   npValidatePluginApiRouteResponse,
@@ -84,6 +89,7 @@ export type {
   NpPluginApiRouteRequestMethod,
   NpPluginApiRouteResolvedBodyMode,
   NpPluginApiRouteResponse,
+  NpPluginApiRouteResponseMode,
   NpPluginApiRouteUser,
   NpPluginApiRouteValidationResult,
 } from "./api-route-contract.js";

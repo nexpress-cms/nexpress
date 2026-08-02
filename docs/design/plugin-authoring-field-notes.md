@@ -39,6 +39,10 @@ These notes come from building two bundled example plugins in May 2026:
   the Admin scaffold inspect the same reference. Direct staff and inter-plugin
   calls are distinguishable through `ctx.actionInvocation`, so sensitive
   actions do not trust actor data supplied by their payload.
+- File-producing Admin rows use a separate declarative download action rather
+  than overloading JSON action results. It may reference only an authenticated
+  binary `GET` route from the same plugin definition and maps explicit primitive
+  row fields into query parameters; arbitrary URL templates are excluded.
 - Render contributions now use one typed `render:beforePage` hook. Its
   result separates `head` and `bodyEnd`; `definePlugin()` rejects unknown
   hook names and malformed descriptors, and the host validates returned
@@ -58,6 +62,10 @@ These notes come from building two bundled example plugins in May 2026:
   projection for signed callbacks; definition validation, bounded dispatch,
   public discovery, OpenAPI, and the route scaffold share that mode without
   assuming a provider signature or payment transition.
+  Routes may also opt into an 8 MiB bounded binary response with mandatory
+  `Uint8Array` content and `Content-Type`; the host validates it before Next.js
+  delivery, OpenAPI/discovery expose it, and the scaffold demonstrates a
+  private/no-store attachment without base64 or public media storage.
 - Plugin page routes now share one pattern and definition contract across the
   SDK, core host, Next dispatcher, and plugin doctor. Invalid or duplicate
   patterns fail during module evaluation or boot instead of being dropped;
@@ -106,8 +114,8 @@ These notes come from building two bundled example plugins in May 2026:
   removed. Collection field types remain codegen-owned; plugin admin settings
   use `configSchema` rather than string component indirection.
 - CLI plugin scaffold tests cover package-shape consistency, the canonical
-  hook inventory, typed Admin helpers, and revision-safe table row actions
-  instead of hand-built payloads.
+  hook inventory, typed Admin helpers, revision-safe table row actions, and
+  bounded binary request/response examples instead of hand-built payloads.
 
 That keeps sample plugin manifests focused on the capabilities that cannot be
 inferred from syntax, such as `storage:kv` and `network:fetch`.

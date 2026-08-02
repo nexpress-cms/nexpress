@@ -32,6 +32,7 @@ import type {
   NpPluginUser as NpCorePluginUser,
   NpPluginApiRouteBodyMode,
   NpPluginApiRouteMethod,
+  NpPluginApiRouteResponseMode,
   NpPluginApiRouteRequest as NpCorePluginApiRouteRequest,
   NpPluginApiRouteResponse as NpCorePluginApiRouteResponse,
   NpPluginPageRouteLocale,
@@ -180,6 +181,7 @@ export const npRouteMethods = [
 
 export type NpRouteMethod = NpPluginApiRouteMethod;
 export type NpRouteBodyMode = NpPluginApiRouteBodyMode;
+export type NpRouteResponseMode = NpPluginApiRouteResponseMode;
 
 export type NpPluginUser = NpCorePluginUser;
 export type NpHookPrincipal = NpCoreHookPrincipal;
@@ -318,18 +320,35 @@ export type NpAdminTableRowActionField = NpAdminTableRowActionFieldBase &
  * `rowFields` are copied from the table result, so hidden row values never
  * become an implicit client-to-handler contract.
  */
-export interface NpAdminTableRowActionExtension {
+interface NpAdminTableRowActionBase {
   id: string;
   label: string;
+  visibleWhen?: { field: string; oneOf: Array<string | number | boolean> };
+  description?: string;
+}
+
+export interface NpAdminTableRowDispatchActionExtension extends NpAdminTableRowActionBase {
+  type?: "action";
   actionId: string;
   rowFields: string[];
   fields?: NpAdminTableRowActionField[];
-  visibleWhen?: { field: string; oneOf: Array<string | number | boolean> };
   confirm?: string;
-  description?: string;
   /** `details` keeps successful structured data visible until dismissed. */
   result?: "toast" | "details";
 }
+
+/**
+ * Same-origin download backed by one declared authenticated binary GET route.
+ * Query values are copied only from the explicitly named table row fields.
+ */
+export interface NpAdminTableRowDownloadActionExtension extends NpAdminTableRowActionBase {
+  type: "download";
+  routePath: string;
+  query: Array<{ name: string; rowField: string }>;
+}
+
+export type NpAdminTableRowActionExtension =
+  NpAdminTableRowDispatchActionExtension | NpAdminTableRowDownloadActionExtension;
 
 export interface NpAdminMetricResult {
   value: string | number;
@@ -790,6 +809,8 @@ export interface NpRouteRegistration<TConfig = Record<string, unknown>> {
    * must verify the exact bounded request bytes before parsing or mutating.
    */
   bodyMode?: NpPluginApiRouteBodyMode;
+  /** Select bounded byte delivery instead of the default JSON serialization. */
+  responseMode?: NpPluginApiRouteResponseMode;
 }
 
 export interface NpScheduledTask<TConfig = Record<string, unknown>> {

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { NpFieldConfig, NpThemeSettingsField } from "@nexpress/core";
-import { AlertTriangle, CheckCircle2, Clock, Loader2, Play } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, Download, Loader2, Play } from "lucide-react";
 
 import { FieldRenderer } from "../collections/field-renderer.js";
 import { npFetch } from "../lib/api-client.js";
@@ -77,17 +77,29 @@ interface TableRowActionFieldDef {
   options?: Array<{ label: string; value: string }>;
 }
 
-interface TableRowActionDef {
+interface TableRowActionBaseDef {
   id: string;
   label: string;
+  visibleWhen?: { field: string; oneOf: Array<string | number | boolean> };
+  description?: string;
+}
+
+interface TableRowDispatchActionDef extends TableRowActionBaseDef {
+  type?: "action";
   actionId: string;
   rowFields: string[];
   fields?: TableRowActionFieldDef[];
-  visibleWhen?: { field: string; oneOf: Array<string | number | boolean> };
   confirm?: string;
-  description?: string;
   result?: "toast" | "details";
 }
+
+interface TableRowDownloadActionDef extends TableRowActionBaseDef {
+  type: "download";
+  routePath: string;
+  query: Array<{ name: string; rowField: string }>;
+}
+
+type TableRowActionDef = TableRowDispatchActionDef | TableRowDownloadActionDef;
 
 export function npIsTableRowActionVisible(
   action: TableRowActionDef,
@@ -99,7 +111,7 @@ export function npIsTableRowActionVisible(
 }
 
 export function npBuildTableRowActionPayload(
-  action: TableRowActionDef,
+  action: TableRowDispatchActionDef,
   row: Record<string, unknown>,
   values: Record<string, string>,
 ): { row: Record<string, unknown>; values: Record<string, string> } {
@@ -107,6 +119,62 @@ export function npBuildTableRowActionPayload(
     row: Object.fromEntries(action.rowFields.map((field) => [field, row[field]])),
     values,
   };
+}
+
+export function npBuildTableRowDownloadHref(
+  pluginId: string,
+  action: TableRowDownloadActionDef,
+  row: Record<string, unknown>,
+): string | null {
+  const query = new URLSearchParams();
+  for (const mapping of action.query) {
+    const value = row[mapping.rowField];
+    if (
+      typeof value !== "string" &&
+      typeof value !== "boolean" &&
+      !(typeof value === "number" && Number.isFinite(value))
+    ) {
+      return null;
+    }
+    query.set(mapping.name, String(value));
+  }
+  return `/api/plugins/${encodeURIComponent(pluginId)}${action.routePath}?${query.toString()}`;
+}
+
+function TableRowActionButton({
+  pluginId,
+  action,
+  row,
+  onSelect,
+}: {
+  pluginId: string;
+  action: TableRowActionDef;
+  row: Record<string, unknown>;
+  onSelect: (action: TableRowDispatchActionDef, row: Record<string, unknown>) => void;
+}) {
+  if (action.type === "download") {
+    const href = npBuildTableRowDownloadHref(pluginId, action, row);
+    if (!href) return null;
+    return (
+      <Button asChild variant="outline" size="sm">
+        <a href={href} title={action.description}>
+          <Download />
+          {action.label}
+        </a>
+      </Button>
+    );
+  }
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      title={action.description}
+      onClick={() => onSelect(action, row)}
+    >
+      {action.label}
+    </Button>
+  );
 }
 
 interface AdminExtension {
@@ -565,7 +633,7 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
     | { kind: "error"; message: string }
   >({ kind: "loading" });
   const [selected, setSelected] = useState<{
-    action: TableRowActionDef;
+    action: TableRowDispatchActionDef;
     row: Record<string, unknown>;
   } | null>(null);
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
@@ -647,15 +715,15 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
                       {table.rowActions
                         .filter((action) => npIsTableRowActionVisible(action, row))
                         .map((action) => (
-                          <Button
+                          <TableRowActionButton
                             key={action.id}
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSelected({ action, row })}
-                          >
-                            {action.label}
-                          </Button>
+                            pluginId={pluginId}
+                            action={action}
+                            row={row}
+                            onSelect={(selectedAction, selectedRow) =>
+                              setSelected({ action: selectedAction, row: selectedRow })
+                            }
+                          />
                         ))}
                     </div>
                   ) : null}
@@ -695,15 +763,15 @@ function TableCard({ pluginId, table }: { pluginId: string; table: TableDef }) {
                             {table.rowActions
                               .filter((action) => npIsTableRowActionVisible(action, row))
                               .map((action) => (
-                                <Button
+                                <TableRowActionButton
                                   key={action.id}
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => setSelected({ action, row })}
-                                >
-                                  {action.label}
-                                </Button>
+                                  pluginId={pluginId}
+                                  action={action}
+                                  row={row}
+                                  onSelect={(selectedAction, selectedRow) =>
+                                    setSelected({ action: selectedAction, row: selectedRow })
+                                  }
+                                />
                               ))}
                           </div>
                         </td>
@@ -740,7 +808,7 @@ function TableRowActionDialog({
   onSettled,
 }: {
   pluginId: string;
-  selected: { action: TableRowActionDef; row: Record<string, unknown> } | null;
+  selected: { action: TableRowDispatchActionDef; row: Record<string, unknown> } | null;
   onOpenChange: (open: boolean) => void;
   onComplete: (message: string) => void;
   onSettled: () => void;

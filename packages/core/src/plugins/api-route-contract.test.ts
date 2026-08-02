@@ -7,6 +7,7 @@ import {
   npPluginApiRouteKey,
   npPluginApiRouteLimits,
   npPluginApiRouteMethods,
+  npPluginApiRouteResponseModes,
   npValidatePluginApiRouteDefinition,
   npValidatePluginApiRoutePath,
   npValidatePluginApiRouteResponse,
@@ -30,6 +31,8 @@ describe("plugin API route contract", () => {
     expect(npIsPluginApiRouteBodyMode("raw")).toBe(true);
     expect(npIsPluginApiRouteBodyMode("text")).toBe(false);
     expect(npPluginApiRouteLimits.rawBodyBytes).toBe(1024 * 1024);
+    expect(npPluginApiRouteResponseModes).toEqual(["json", "binary"]);
+    expect(npPluginApiRouteLimits.binaryResponseBytes).toBe(8 * 1024 * 1024);
   });
 
   it("exposes staff and active-member identities as independent additive summaries", () => {
@@ -96,6 +99,17 @@ describe("plugin API route contract", () => {
     ).toEqual({ ok: true });
   });
 
+  it("accepts an explicit bounded binary response mode", () => {
+    expect(
+      npValidatePluginApiRouteDefinition({
+        method: "GET",
+        path: "/report",
+        responseMode: "binary",
+        handler: () => ({ status: 200 }),
+      }),
+    ).toEqual({ ok: true });
+  });
+
   it.each([
     [{ method: "get", path: "/health", handler: () => ({ status: 200 }) }, /method/],
     [{ method: "GET", path: "/health", handler: "./handler.js" }, /handler/],
@@ -150,10 +164,60 @@ describe("plugin API route contract", () => {
     [{ status: 204, body: null }, /must not include a body/],
     [{ status: 304, body: "cached" }, /must not include a body/],
     [{ status: 200, headers: { retry: 2 } }, /string values/],
+    [{ status: 200, headers: { "bad name": "value" } }, /valid names/],
+    [{ status: 200, headers: { location: "safe\r\nset-cookie: bad=1" } }, /line breaks/],
+    [
+      { status: 200, headers: { "Content-Type": "text/plain", "content-type": "text/html" } },
+      /different casing/,
+    ],
     [{ status: 200, cookies: [] }, /contain only/],
   ])("rejects malformed response %#", (response, message) => {
     const result = npValidatePluginApiRouteResponse(response);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.message).toMatch(message);
+  });
+
+  it("requires non-empty bounded bytes and a content type for binary responses", () => {
+    expect(
+      npValidatePluginApiRouteResponse(
+        {
+          status: 200,
+          body: new Uint8Array([1, 2, 3]),
+          headers: { "Content-Type": "application/octet-stream" },
+        },
+        "binary",
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      npValidatePluginApiRouteResponse(
+        { status: 200, body: new Uint8Array(), headers: { "Content-Type": "image/png" } },
+        "binary",
+      ),
+    ).toMatchObject({ ok: false, message: expect.stringContaining("must not be empty") });
+    expect(
+      npValidatePluginApiRouteResponse({ status: 200, body: new Uint8Array([1]) }, "binary"),
+    ).toMatchObject({ ok: false, message: expect.stringContaining("Content-Type") });
+    expect(
+      npValidatePluginApiRouteResponse(
+        {
+          status: 200,
+          body: new Uint8Array([1]),
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "Content-Length": "1",
+          },
+        },
+        "binary",
+      ),
+    ).toMatchObject({ ok: false, message: expect.stringContaining("Content-Length") });
+  });
+
+  it("rejects accidental byte bodies on JSON routes", () => {
+    expect(
+      npValidatePluginApiRouteResponse({ status: 200, body: new Uint8Array([1]) }),
+    ).toMatchObject({
+      ok: false,
+      message: expect.stringContaining('responseMode: "binary"'),
+    });
   });
 });

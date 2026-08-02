@@ -9,6 +9,7 @@ import {
 import { createShopCartApiHandler } from "./cart-api.js";
 import { npCleanupExpiredShopCarts, npCountShopCarts } from "./cart-service.js";
 import { createShopCheckoutApiHandler } from "./checkout-api.js";
+import { createShopCarrierLabelApiHandler } from "./carrier-label-api.js";
 import {
   npCleanupExpiredShopCheckoutIntents,
   npCountShopCheckoutIntents,
@@ -31,6 +32,7 @@ import {
   npRequireShopCarrierBookingActionInput,
   npRequireShopCarrierProviderId,
   type NpShopCarrierAdapter,
+  type NpShopCarrierLabelAdapter,
   type NpShopCarrierParcelAdapter,
   type NpShopCarrierTrackingAdapter,
   type NpShopCarrierTrackingPollAdapter,
@@ -268,6 +270,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   }
   const configuredCarrierAdapter = options.carrier?.adapter ?? null;
   let carrierAdapter: NpShopCarrierAdapter | null = null;
+  let carrierLabelAdapter: NpShopCarrierLabelAdapter | null = null;
   let carrierParcelAdapter: NpShopCarrierParcelAdapter | null = null;
   let carrierTrackingAdapter: NpShopCarrierTrackingAdapter | null = null;
   let carrierTrackingPollAdapter: NpShopCarrierTrackingPollAdapter | null = null;
@@ -279,6 +282,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     const hasTrackingWebhook = configuredCarrierAdapter.verifyTrackingWebhook !== undefined;
     const hasTrackingPoll = configuredCarrierAdapter.readTracking !== undefined;
     const hasParcelBooking = configuredCarrierAdapter.bookShipmentWithParcels !== undefined;
+    const hasShippingLabel = configuredCarrierAdapter.readShippingLabel !== undefined;
     if (
       hasTrackingWebhook &&
       typeof configuredCarrierAdapter.verifyTrackingWebhook !== "function"
@@ -298,6 +302,9 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
         "Shop carrier adapter bookShipmentWithParcels must be a function when provided.",
       );
     }
+    if (hasShippingLabel && typeof configuredCarrierAdapter.readShippingLabel !== "function") {
+      throw new Error("Shop carrier adapter readShippingLabel must be a function when provided.");
+    }
     carrierAdapter = Object.freeze({
       id,
       bookShipment: configuredCarrierAdapter.bookShipment.bind(configuredCarrierAdapter),
@@ -316,6 +323,12 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
               configuredCarrierAdapter.bookShipmentWithParcels.bind(configuredCarrierAdapter),
           }
         : {}),
+      ...(configuredCarrierAdapter.readShippingLabel
+        ? {
+            readShippingLabel:
+              configuredCarrierAdapter.readShippingLabel.bind(configuredCarrierAdapter),
+          }
+        : {}),
     });
     if (carrierAdapter.verifyTrackingWebhook) {
       carrierTrackingAdapter = carrierAdapter as NpShopCarrierTrackingAdapter;
@@ -325,6 +338,9 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     }
     if (carrierAdapter.bookShipmentWithParcels) {
       carrierParcelAdapter = carrierAdapter as NpShopCarrierParcelAdapter;
+    }
+    if (carrierAdapter.readShippingLabel) {
+      carrierLabelAdapter = carrierAdapter as NpShopCarrierLabelAdapter;
     }
   }
   return {
@@ -338,6 +354,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     shippingAdapter,
     taxAdapter,
     carrierAdapter,
+    carrierLabelAdapter,
     carrierParcelAdapter,
     carrierTrackingAdapter,
     carrierTrackingPollAdapter,
@@ -723,6 +740,9 @@ export function createShop(options: NpShopOptions = {}) {
   const trackingApiHandler = runtime.carrierTrackingAdapter
     ? createShopTrackingApiHandler(runtime.carrierTrackingAdapter)
     : null;
+  const carrierLabelApiHandler = runtime.carrierLabelAdapter
+    ? createShopCarrierLabelApiHandler(runtime)
+    : null;
   const paymentAttemptApiHandler = runtime.paymentInitiationAdapter
     ? createShopPaymentAttemptApiHandler(runtime)
     : null;
@@ -811,6 +831,7 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-carrier-bookings",
           "widget:shop-carrier-booking-health",
           "table:shop-carrier-bookings",
+          ...(carrierLabelApiHandler ? ["action:shop-carrier-label-download"] : []),
           "dashboard:shop-tracking-events",
           "widget:shop-tracking-event-health",
           "table:shop-tracking-events",
@@ -846,13 +867,14 @@ export function createShop(options: NpShopOptions = {}) {
           "/returns",
           ...(paymentApiHandler ? ["/payments/webhook"] : []),
           ...(trackingApiHandler ? ["/carrier/tracking/webhook"] : []),
+          ...(carrierLabelApiHandler ? ["/carrier/shipping-label"] : []),
           ...(paymentAttemptApiHandler ? ["/payments/attempts"] : []),
         ],
         hooks: [],
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment and parcel snapshots, carrier booking, verified or reconciled tracking, and physical return intake. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, labels, pickup, and provider-specific carrier protocols remain external.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, verified or reconciled tracking, and physical return intake. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, label purchase, pickup, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -1372,6 +1394,23 @@ export function createShop(options: NpShopOptions = {}) {
                     visibleWhen: { field: "status", oneOf: ["completed"] },
                     confirm:
                       "Read this shipment from the configured carrier now? The provider call and staff action are audited without shipping PII.",
+                  },
+                ]
+              : []),
+            ...(runtime.carrierLabelAdapter
+              ? [
+                  {
+                    type: "download" as const,
+                    id: "download-shipping-label",
+                    label: "Download label",
+                    routePath: "/carrier/shipping-label",
+                    query: [
+                      { name: "orderId", rowField: "id" },
+                      { name: "shipmentId", rowField: "shipmentId" },
+                    ],
+                    visibleWhen: { field: "status", oneOf: ["completed"] },
+                    description:
+                      "Retrieve the current label from the carrier without storing its bytes in NexPress.",
                   },
                 ]
               : []),
@@ -2317,7 +2356,7 @@ export function createShop(options: NpShopOptions = {}) {
             }
             return npAdminStatus(
               "ok",
-              `${counts.completed.toString()} completed carrier booking(s); ${runtime.carrierAdapter ? `provider "${runtime.carrierAdapter.id}" is enabled` : "no carrier adapter is configured"}.`,
+              `${counts.completed.toString()} completed carrier booking(s); ${runtime.carrierAdapter ? `provider "${runtime.carrierAdapter.id}" is enabled${runtime.carrierLabelAdapter ? " with transient label retrieval" : " without label retrieval"}` : "no carrier adapter is configured"}.`,
             );
           } catch (error) {
             return npAdminStatus(
@@ -2900,6 +2939,19 @@ export function createShop(options: NpShopOptions = {}) {
             },
           ]
         : []),
+      ...(carrierLabelApiHandler
+        ? [
+            {
+              method: "GET" as const,
+              path: "/carrier/shipping-label",
+              description:
+                "Retrieve one completed carrier booking label as bounded transient bytes.",
+              auth: true,
+              responseMode: "binary" as const,
+              handler: carrierLabelApiHandler,
+            },
+          ]
+        : []),
     ],
     scheduled: [
       {
@@ -3276,6 +3328,8 @@ export {
   NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT,
   NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
   NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT,
+  NP_SHOP_CARRIER_LABEL_REQUEST_CONTRACT,
+  NP_SHOP_CARRIER_LABEL_RESULT_CONTRACT,
   NP_SHOP_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT,
   NpShopCarrierConflictError,
   NpShopCarrierContractError,
@@ -3283,19 +3337,30 @@ export {
   NpShopCarrierUnavailableError,
   npAnalyzeShopCarrierBookingRequest,
   npAnalyzeShopCarrierBookingResult,
+  npAnalyzeShopCarrierLabelRequest,
+  npAnalyzeShopCarrierLabelResult,
   npAnalyzeShopCarrierParcelBookingRequest,
   npAnalyzeStoredShopCarrierBooking,
   npRequireShopCarrierBookingActionInput,
   npRequireShopCarrierBookingRequest,
   npRequireShopCarrierBookingResult,
+  npRequireShopCarrierLabelReadInput,
+  npRequireShopCarrierLabelRequest,
+  npRequireShopCarrierLabelResult,
   npRequireShopCarrierParcelBookingRequest,
   npRequireShopCarrierProviderId,
   npRequireStoredShopCarrierBooking,
   npShopCarrierBookingStatuses,
+  npShopCarrierLabelFormats,
   npShopCarrierLimits,
 } from "./carrier-contract.js";
 export type {
   NpShopCarrierAdapter,
+  NpShopCarrierLabelAdapter,
+  NpShopCarrierLabelFormat,
+  NpShopCarrierLabelReadInput,
+  NpShopCarrierLabelRequest,
+  NpShopCarrierLabelResult,
   NpShopCarrierParcelAdapter,
   NpShopCarrierTrackingAdapter,
   NpShopCarrierTrackingPollAdapter,

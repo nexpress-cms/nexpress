@@ -29,6 +29,7 @@ import {
 } from "./templates.js";
 import {
   npAnalyzePluginAdminActionContract,
+  npAnalyzePluginAdminDownloadContract,
   npValidatePluginActionResult,
   type NpPluginActionKind,
   type NpPluginActionInvocation,
@@ -45,6 +46,7 @@ import {
   type NpPluginApiRouteRequest,
   type NpPluginApiRouteResolvedBodyMode,
   type NpPluginApiRouteResponse,
+  type NpPluginApiRouteResponseMode,
 } from "./api-route-contract.js";
 import {
   npCompilePluginPageRoutePattern,
@@ -114,6 +116,8 @@ export interface PluginRouteHandler {
   method: NpPluginApiRouteMethod;
   /** Resolved request-body projection used by the HTTP dispatcher. */
   bodyMode: NpPluginApiRouteResolvedBodyMode;
+  /** Resolved response transport used by the HTTP dispatcher. */
+  responseMode: NpPluginApiRouteResponseMode;
   description?: string;
   /** When true, the dispatcher must verify a staff session before
    *  invoking `handler` and pass the resolved user as `req.user`.
@@ -161,6 +165,22 @@ export interface PluginAdminExtension {
     label: string;
     columns: Array<{ name: string; label: string }>;
     rowsActionId: string;
+    rowActions?: Array<
+      | {
+          type?: "action";
+          id: string;
+          label: string;
+          actionId: string;
+          rowFields: string[];
+        }
+      | {
+          type: "download";
+          id: string;
+          label: string;
+          routePath: string;
+          query: Array<{ name: string; rowField: string }>;
+        }
+    >;
     emptyMessage?: string;
   }>;
   collectionTabs?: Array<{
@@ -426,6 +446,7 @@ export interface ResolvedPluginLike {
     description?: string;
     auth?: boolean;
     bodyMode?: string;
+    responseMode?: string;
   }>;
   pageRoutes?: ReadonlyArray<{
     pattern: string;
@@ -481,6 +502,7 @@ interface ValidatedApiRoute {
   description?: string;
   auth?: boolean;
   bodyMode?: NpPluginApiRouteBodyMode;
+  responseMode?: NpPluginApiRouteResponseMode;
 }
 
 interface ValidatedScheduledTask {
@@ -827,6 +849,7 @@ function materializePluginDiscoveryItem(registration: PluginRegistration): NpPlu
         ...(route.description ? { description: route.description } : {}),
         auth: route.auth,
         bodyMode: route.bodyMode,
+        responseMode: route.responseMode,
       }))
       .sort((a, b) => `${a.method} ${a.path}`.localeCompare(`${b.method} ${b.path}`)),
     pageRoutes: registration.pageRoutes
@@ -884,6 +907,15 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
   );
   if (validatedApiRoutes.length > 0) {
     assertCapability(manifest.id, "api:route", manifest.capabilities);
+  }
+  const adminDownloadIssue = npAnalyzePluginAdminDownloadContract(
+    plugin.admin,
+    validatedApiRoutes,
+  )[0];
+  if (adminDownloadIssue) {
+    throw new Error(
+      `[plugin:${manifest.id}] ${adminDownloadIssue.location}: ${adminDownloadIssue.message}`,
+    );
   }
   const validatedPageRoutes = validatePageRouteRegistry(
     manifest.id,
@@ -1037,7 +1069,10 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     const wrapped: (req: PluginRouteRequest) => Promise<PluginRouteResponse> = async (req) => {
       const ctx = await buildCtxFor(manifest.id);
       const result = await userHandler(req, ctx);
-      const responseValidation = npValidatePluginApiRouteResponse(result);
+      const responseValidation = npValidatePluginApiRouteResponse(
+        result,
+        route.responseMode ?? "json",
+      );
       if (!responseValidation.ok) {
         throw new Error(
           `[plugin:${manifest.id}] API route "${routeKey}" returned an invalid response: ${responseValidation.message}`,
@@ -1050,6 +1085,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
     const method = route.method;
     const bodyMode: NpPluginApiRouteResolvedBodyMode =
       method === "GET" ? "none" : (route.bodyMode ?? "json");
+    const responseMode: NpPluginApiRouteResponseMode = route.responseMode ?? "json";
 
     // #316 — public plugin routes carry the framework's least-
     // protected default rate limit (proxy.ts caps the catch-all at
@@ -1078,6 +1114,7 @@ async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
       path: route.path,
       method,
       bodyMode,
+      responseMode,
       description: route.description,
       auth,
       handler: wrapped,

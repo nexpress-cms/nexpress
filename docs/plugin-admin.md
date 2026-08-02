@@ -209,6 +209,28 @@ result is a toast followed by a table refresh. `visibleWhen` can hide an action
 unless one returned row field strictly matches a declared primitive value; it
 is presentation only and never replaces handler authorization or validation.
 
+A file-producing row may instead declare `type: "download"`, one static
+`routePath`, and explicit query mappings:
+
+```ts
+{
+  type: "download",
+  id: "report",
+  label: "Download report",
+  routePath: "/reports/download",
+  query: [{ name: "reportId", rowField: "id" }],
+  visibleWhen: { field: "status", oneOf: ["ready"] },
+}
+```
+
+`definePlugin()` accepts this only when the same definition declares
+`GET /reports/download` with both `auth: true` and
+`responseMode: "binary"`. Admin builds a same-origin plugin URL from only the
+mapped primitive fields; arbitrary URL templates and external origins are not
+part of the contract. The route must revalidate tenant ownership and access,
+and should use private/no-store response headers. See
+[`plugin-api-routes.md`](plugin-api-routes.md#response-contract).
+
 ### `collectionTabs` — per-document widgets + actions
 
 Injects widgets and actions into the **collection edit view** sidebar

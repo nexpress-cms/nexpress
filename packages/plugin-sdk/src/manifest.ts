@@ -159,7 +159,8 @@ const npAdminTableRowActionFieldSchema = z
     }
   });
 
-const npAdminTableRowActionSchema = z.object({
+const npAdminTableRowDispatchActionSchema = z.object({
+  type: z.literal("action").optional(),
   id: z.string().min(1),
   label: z.string().min(1),
   actionId: z.string().min(1),
@@ -176,6 +177,26 @@ const npAdminTableRowActionSchema = z.object({
   result: z.enum(["toast", "details"]).optional(),
 });
 
+const npAdminTableRowDownloadActionSchema = z.object({
+  type: z.literal("download"),
+  id: z.string().min(1),
+  label: z.string().min(1),
+  routePath: z.string().min(1),
+  query: z.array(z.object({ name: z.string().min(1), rowField: z.string().min(1) })).min(1),
+  visibleWhen: z
+    .object({
+      field: z.string().min(1),
+      oneOf: z.array(z.union([z.string(), z.number().finite(), z.boolean()])).min(1),
+    })
+    .optional(),
+  description: z.string().optional(),
+});
+
+const npAdminTableRowActionSchema = z.union([
+  npAdminTableRowDispatchActionSchema,
+  npAdminTableRowDownloadActionSchema,
+]);
+
 export const npAdminTableSchema = z
   .object({
     id: z.string().min(1),
@@ -191,6 +212,17 @@ export const npAdminTableSchema = z
       ctx.addIssue({ code: "custom", message: "table row action ids must be unique" });
     }
     for (const [index, action] of (table.rowActions ?? []).entries()) {
+      if (action.type === "download") {
+        const queryNames = action.query.map((entry) => entry.name);
+        if (new Set(queryNames).size !== queryNames.length) {
+          ctx.addIssue({
+            code: "custom",
+            message: "download query names must be unique",
+            path: ["rowActions", index, "query"],
+          });
+        }
+        continue;
+      }
       if (new Set(action.rowFields).size !== action.rowFields.length) {
         ctx.addIssue({
           code: "custom",

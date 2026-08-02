@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { createShop, shopCollections, shopPlugin, storefrontFullShopSkin } from "./index.js";
 
@@ -341,7 +341,7 @@ describe("shop factory", () => {
     expect(
       shop.plugin.admin?.tables
         ?.find((table) => table.id === "shop-carrier-bookings")
-        ?.rowActions?.map((action) => action.actionId),
+        ?.rowActions?.flatMap((action) => (action.type === "download" ? [] : [action.actionId])),
     ).toContain("reconcileCarrierTracking");
     const withoutPolling = createShop({
       carrier: {
@@ -356,6 +356,61 @@ describe("shop factory", () => {
     expect(withoutPolling.plugin.scheduled?.map((task) => task.id)).not.toContain(
       "reconcile-carrier-tracking",
     );
+  });
+
+  it("exposes authenticated binary label download only for the optional carrier capability", async () => {
+    const readShippingLabel = vi.fn(() => Promise.reject(new Error("not called")));
+    const withLabels = createShop({
+      carrier: {
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          readShippingLabel,
+        },
+      },
+    });
+    expect(withLabels.runtime.carrierLabelAdapter?.id).toBe("test-carrier");
+    expect(
+      withLabels.plugin.routes?.find((route) => route.path === "/carrier/shipping-label"),
+    ).toMatchObject({ method: "GET", auth: true, responseMode: "binary" });
+    expect(
+      withLabels.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-carrier-bookings")
+        ?.rowActions?.find((action) => action.type === "download"),
+    ).toMatchObject({ routePath: "/carrier/shipping-label" });
+    const labelRoute = withLabels.plugin.routes?.find(
+      (route) => route.path === "/carrier/shipping-label",
+    );
+    await expect(
+      labelRoute?.handler(
+        {
+          method: "HEAD",
+          path: "/carrier/shipping-label",
+          params: {},
+          query: {},
+          bodyMode: "none",
+          body: undefined,
+          rawBody: undefined,
+          headers: {},
+          user: { id: "staff-1", email: "staff@example.com", role: "admin" },
+        },
+        {} as never,
+      ),
+    ).resolves.toEqual({ status: 204 });
+    expect(readShippingLabel).not.toHaveBeenCalled();
+
+    const withoutLabels = createShop({
+      carrier: {
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+        },
+      },
+    });
+    expect(withoutLabels.runtime.carrierLabelAdapter).toBeNull();
+    expect(
+      withoutLabels.plugin.routes?.some((route) => route.path === "/carrier/shipping-label"),
+    ).toBe(false);
   });
 
   it("adds owner-scoped attempt routes and diagnostics only for a complete initiation adapter", () => {
@@ -415,7 +470,7 @@ describe("shop factory", () => {
     expect(
       withoutRefund.plugin.admin?.tables
         ?.find((table) => table.id === "shop-refunds")
-        ?.rowActions?.map((action) => action.actionId),
+        ?.rowActions?.flatMap((action) => (action.type === "download" ? [] : [action.actionId])),
     ).toEqual(["refundOrder"]);
 
     const withRefund = createShop({
@@ -434,7 +489,7 @@ describe("shop factory", () => {
     expect(
       withRefund.plugin.admin?.tables
         ?.find((table) => table.id === "shop-recent-orders")
-        ?.rowActions?.map((action) => action.actionId),
+        ?.rowActions?.flatMap((action) => (action.type === "download" ? [] : [action.actionId])),
     ).toEqual(["refundOrder"]);
   });
 

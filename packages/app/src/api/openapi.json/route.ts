@@ -1701,13 +1701,14 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
           items: {
             type: "object",
             additionalProperties: false,
-            required: ["method", "path", "auth", "bodyMode"],
+            required: ["method", "path", "auth", "bodyMode", "responseMode"],
             properties: {
               method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE"] },
               path: { type: "string" },
               description: { type: "string" },
               auth: { type: "boolean" },
               bodyMode: { type: "string", enum: ["none", "json", "raw"] },
+              responseMode: { type: "string", enum: ["json", "binary"] },
             },
           },
         },
@@ -6046,7 +6047,15 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
             }
           : {}),
       responses: {
-        "200": { description: "Plugin response (shape depends on the plugin)" },
+        "200":
+          route.responseMode === "binary"
+            ? {
+                description: `Bounded plugin binary response, limited to ${npPluginApiRouteLimits.binaryResponseBytes.toString()} bytes`,
+                content: {
+                  "application/octet-stream": { schema: { type: "string", format: "binary" } },
+                },
+              }
+            : { description: "Plugin JSON response (shape depends on the plugin)" },
         "404": { description: "Plugin or route not found" },
       },
     };

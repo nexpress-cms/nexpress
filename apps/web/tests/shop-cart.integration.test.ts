@@ -9,6 +9,7 @@ import {
   shopCollections,
   shopPlugin,
   type NpShopCarrierBookingRequest,
+  type NpShopCarrierLabelRequest,
   type NpShopCarrierParcelBookingRequest,
   type NpShopTrackingPollRequest,
 } from "@nexpress/plugin-shop";
@@ -89,6 +90,8 @@ async function configuredShopCall(
     csrf?: string;
     body?: unknown;
     id?: string;
+    query?: Record<string, string>;
+    user?: { id: string; email: string; role: string };
     member?: { id: string };
     rawBody?: Uint8Array;
     headers?: Record<string, string>;
@@ -104,7 +107,7 @@ async function configuredShopCall(
         method,
         path,
         params: { pluginId: "shop" },
-        query: input.id ? { id: input.id } : {},
+        query: input.query ?? (input.id ? { id: input.id } : {}),
         body: input.body,
         bodyMode: input.rawBody ? "raw" : "json",
         rawBody: input.rawBody,
@@ -114,6 +117,7 @@ async function configuredShopCall(
           ...(input.csrf ? { "x-csrf-token": input.csrf } : {}),
         },
         member: input.member,
+        user: input.user,
       },
       {} as never,
     ),
@@ -2235,6 +2239,14 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         },
       };
     });
+    const readShippingLabel = vi.fn((request: NpShopCarrierLabelRequest) => ({
+      contract: "np.shop-carrier-label-result.v1" as const,
+      shipmentId: request.shipmentId,
+      orderId: request.orderId,
+      format: "pdf" as const,
+      content: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      retrievedAt: request.requestedAt,
+    }));
     const carrierShop = createShop({
       payment: {
         adapter: {
@@ -2247,6 +2259,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           id: "test-carrier",
           bookShipment: () => Promise.reject(new Error("legacy booking must not be called")),
           bookShipmentWithParcels,
+          readShippingLabel,
           readTracking,
           verifyTrackingWebhook: ({ rawBody }) =>
             JSON.parse(new TextDecoder().decode(rawBody)) as never,
@@ -2436,6 +2449,34 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     trackingBase.setMilliseconds(0);
     const shipmentId = bookShipmentWithParcels.mock.calls[1]?.[0].shipmentId;
     if (!shipmentId) throw new Error("Missing durable carrier shipment id.");
+    const labelResponse = await configuredShopCall(carrierShop, "GET", "/carrier/shipping-label", {
+      query: { orderId: ids.orderId, shipmentId },
+      user: {
+        id: staff.userId,
+        email: "carrier-operator@example.com",
+        role: "admin",
+      },
+    });
+    expect(labelResponse).toMatchObject({
+      status: 200,
+      body: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      headers: {
+        "Content-Type": "application/pdf",
+        "Cache-Control": "private, no-store",
+      },
+    });
+    expect(readShippingLabel).toHaveBeenCalledWith({
+      contract: "np.shop-carrier-label-request.v1",
+      shipmentId,
+      orderId: ids.orderId,
+      bookingReference: "booking_transaction_1",
+      carrier: "Parcel Co",
+      trackingNumber: "CARRIER-TRACK-1",
+      requestedAt: expect.any(String),
+    });
+    expect(JSON.stringify(readShippingLabel.mock.calls[0]?.[0])).not.toContain(
+      "carrier-private@example.com",
+    );
     const trackingAction = {
       row: { id: ids.orderId, shipmentId },
       values: {},
@@ -2670,6 +2711,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       expect.arrayContaining([
         { action: "shop.carrier.booking.request" },
         { action: "shop.carrier.booking.confirm" },
+        { action: "shop.carrier.label.read" },
+        { action: "shop.carrier.label.deliver" },
         { action: "shop.carrier.tracking.poll" },
         { action: "shop.fulfillment.parcels.save" },
         { action: "shop.fulfillment.ship" },

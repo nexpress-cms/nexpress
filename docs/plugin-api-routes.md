@@ -50,14 +50,15 @@ Capabilities used inside the handler, such as `storage:kv`, `content:read`, or
 
 Each route has these fields:
 
-| Field         | Contract                                                               |
-| ------------- | ---------------------------------------------------------------------- |
-| `method`      | One of `GET`, `POST`, `PUT`, `PATCH`, or `DELETE` in uppercase.        |
-| `path`        | A static canonical path such as `/health` or `/reports/daily`.         |
-| `handler`     | A function returning a route result directly or through a promise.     |
-| `description` | Optional non-empty text used by the generated OpenAPI document.        |
-| `auth`        | Optional boolean. `true` requires a staff session; default is `false`. |
-| `bodyMode`    | Mutating routes only: `json` (default) or exact bounded `raw` bytes.   |
+| Field          | Contract                                                                     |
+| -------------- | ---------------------------------------------------------------------------- |
+| `method`       | One of `GET`, `POST`, `PUT`, `PATCH`, or `DELETE` in uppercase.              |
+| `path`         | A static canonical path such as `/health` or `/reports/daily`.               |
+| `handler`      | A function returning a route result directly or through a promise.           |
+| `description`  | Optional non-empty text used by the generated OpenAPI document.              |
+| `auth`         | Optional boolean. `true` requires a staff session; default is `false`.       |
+| `bodyMode`     | Mutating routes only: `json` (default) or exact bounded `raw` request bytes. |
+| `responseMode` | `json` (default) or bounded `binary` response bytes.                         |
 
 Paths must start with `/`, contain at least one segment, have no trailing or
 empty segments, and be at most 256 characters. Segments may contain ASCII
@@ -156,6 +157,34 @@ non-empty and values must be strings. Ordinary bodies are JSON-serialized;
 an omitted body becomes JSON `null`. Statuses 204, 205, and 304 must not carry
 a body. NexPress also emits no body for every `HEAD` request.
 
+For files that should not be base64-encoded or placed at a public storage URL,
+declare `responseMode: "binary"`. A successful body must be a non-empty
+`Uint8Array` of at most 8 MiB and include a `Content-Type` header:
+
+```ts
+{
+  method: "GET",
+  path: "/report",
+  auth: true,
+  responseMode: "binary",
+  handler: async () => ({
+    status: 200,
+    body: await buildReportBytes(),
+    headers: {
+      "Cache-Control": "private, no-store",
+      "Content-Disposition": 'attachment; filename="report.pdf"',
+      "Content-Type": "application/pdf",
+      "X-Content-Type-Options": "nosniff",
+    },
+  }),
+}
+```
+
+The bound is applied before Next.js writes the response. `HEAD` retains the
+declared headers and strips the bytes. For an intentional error on a binary
+route, throw an appropriate `NpError` so the framework emits its normal JSON
+error envelope; do not return a JSON body from the binary handler.
+
 The host validates the result before it reaches Next.js. Invalid results and
 thrown handler errors use the standard NexPress error adapter. Invalid-result
 errors include the plugin id and method/path; unexpected handler failures stay
@@ -193,8 +222,8 @@ pnpm --silent run ops:plugins -- doctor --json
 
 The generated `/api/openapi.json` document includes every loaded route, its
 description, an automatic `HEAD` operation for each `GET` route, and the
-canonical host-error envelope as its fallback response. Mutating operations
-also advertise whether they accept parsed JSON or an exact binary body.
+canonical host-error envelope as its fallback response. Operations advertise
+both request body mode and JSON versus bounded binary response mode.
 
 See also [`plugin-capabilities.md`](plugin-capabilities.md) for context gates
 and [`plugin-manifest.md`](plugin-manifest.md) for definition-level fields.

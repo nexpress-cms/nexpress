@@ -90,7 +90,15 @@ function pluginResponse() {
         usesTokens: [],
         styleSlots: {},
         hooks: [],
-        routes: [{ method: "GET", path: "/ping", auth: false, bodyMode: "none" }],
+        routes: [
+          {
+            method: "GET",
+            path: "/ping",
+            auth: false,
+            bodyMode: "none",
+            responseMode: "json",
+          },
+        ],
         pageRoutes: [],
         scheduledTasks: [],
         actions: [],

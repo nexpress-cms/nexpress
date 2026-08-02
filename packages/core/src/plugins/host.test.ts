@@ -25,6 +25,7 @@ import { resetLogger, setLogger, type NpLogger } from "../observability/logger.j
 import { resetEnabledGate, setPluginEnabledForTest } from "./enabled-gate.js";
 import { resetFrameworkVersion, setFrameworkVersionForTest } from "./compat.js";
 import { type NpContentAfterCreateHookData, type NpRenderHookData } from "./hook-contract.js";
+import type { PluginAdminExtension } from "./host.js";
 
 function legacyPlugin(id: string, init?: NpPluginConfig["init"]): NpPluginConfig {
   return { id, name: `${id} plugin`, init };
@@ -40,9 +41,11 @@ function resolvedPlugin(
       path: string;
       handler: unknown;
       bodyMode?: string;
+      responseMode?: string;
       auth?: boolean;
       description?: string;
     }>;
+    admin?: PluginAdminExtension;
     scheduled?: Array<{
       id: string;
       cron: string;
@@ -63,9 +66,11 @@ function resolvedPlugin(
     path: string;
     handler: unknown;
     bodyMode?: string;
+    responseMode?: string;
     auth?: boolean;
     description?: string;
   }>;
+  admin?: PluginAdminExtension;
   scheduled?: ReadonlyArray<{
     id: string;
     cron: string;
@@ -82,6 +87,7 @@ function resolvedPlugin(
     },
     hooks: options.hooks,
     routes: options.routes,
+    admin: options.admin,
     scheduled: options.scheduled,
   };
 }
@@ -301,7 +307,15 @@ describe("plugin host", () => {
           id: "discoverable",
           author: { name: "NexPress", url: "https://example.com" },
           hooks: ["content:afterCreate"],
-          routes: [{ method: "GET", path: "/ping", auth: false, bodyMode: "none" }],
+          routes: [
+            {
+              method: "GET",
+              path: "/ping",
+              auth: false,
+              bodyMode: "none",
+              responseMode: "json",
+            },
+          ],
           actions: [
             {
               id: "inspect",
@@ -688,6 +702,44 @@ describe("plugin host", () => {
 
       expect(getAllPluginIds()).not.toContain("bad-path");
       expect(getAllPluginIds()).not.toContain("duplicate-route");
+      expect(getPluginRoutes()).toHaveLength(0);
+    });
+
+    it("rejects Admin downloads that bypass an authenticated binary GET route", async () => {
+      await loadPlugins([
+        resolvedPlugin("unsafe-download", {
+          capabilities: ["api:route", "admin:panel"],
+          routes: [
+            {
+              method: "GET",
+              path: "/report",
+              auth: false,
+              handler: () => ({ status: 200, body: { report: true } }),
+            },
+          ],
+          admin: {
+            tables: [
+              {
+                id: "reports",
+                label: "Reports",
+                columns: [{ name: "id", label: "ID" }],
+                rowsActionId: "rows",
+                rowActions: [
+                  {
+                    type: "download",
+                    id: "report",
+                    label: "Report",
+                    routePath: "/report",
+                    query: [{ name: "id", rowField: "id" }],
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      ]);
+
+      expect(getAllPluginIds()).not.toContain("unsafe-download");
       expect(getPluginRoutes()).toHaveLength(0);
     });
 

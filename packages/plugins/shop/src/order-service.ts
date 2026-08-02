@@ -8,6 +8,7 @@ import {
   NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT,
   NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
   NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT,
+  NP_SHOP_CARRIER_LABEL_REQUEST_CONTRACT,
   NP_SHOP_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT,
   NpShopCarrierConflictError,
   NpShopCarrierContractError,
@@ -15,11 +16,15 @@ import {
   NpShopCarrierUnavailableError,
   npRequireShopCarrierBookingRequest,
   npRequireShopCarrierBookingResult,
+  npRequireShopCarrierLabelRequest,
+  npRequireShopCarrierLabelResult,
   npRequireShopCarrierParcelBookingRequest,
   npRequireStoredShopCarrierBooking,
   npShopCarrierLimits,
   type NpShopCarrierBookingActionInput,
   type NpShopCarrierBookingResult,
+  type NpShopCarrierLabelReadInput,
+  type NpShopCarrierLabelResult,
   type NpShopStoredCarrierBooking,
 } from "./carrier-contract.js";
 import {
@@ -2374,6 +2379,109 @@ async function recordRequiredShopFulfillmentAudit(
     payload,
     siteId,
   });
+}
+
+export async function npReadShopCarrierShippingLabel(
+  runtime: NpShopRuntime,
+  input: NpShopCarrierLabelReadInput,
+  staffUserId: string,
+): Promise<NpShopCarrierLabelResult> {
+  const adapter = runtime.carrierLabelAdapter;
+  if (!adapter) {
+    throw new NpShopCarrierConflictError(
+      "carrier_label_not_available",
+      "The configured carrier does not expose shipping-label retrieval.",
+    );
+  }
+  const siteId = await requireSiteId();
+  const requestedAt = new Date();
+  requestedAt.setMilliseconds(0);
+  const request = await getDb().transaction(async (tx) => {
+    const booking = await readStoredCarrierBooking(tx, siteId, input.orderId, true);
+    if (
+      !booking ||
+      booking.id !== input.shipmentId ||
+      booking.status !== "completed" ||
+      booking.providerId !== adapter.id ||
+      !booking.bookingReference ||
+      !booking.carrier ||
+      !booking.trackingNumber
+    ) {
+      throw new NpShopCarrierConflictError(
+        "carrier_label_not_available",
+        "A completed booking owned by the configured carrier is required for label retrieval.",
+      );
+    }
+    const prepared = npRequireShopCarrierLabelRequest({
+      contract: NP_SHOP_CARRIER_LABEL_REQUEST_CONTRACT,
+      shipmentId: booking.id,
+      orderId: booking.orderId,
+      bookingReference: booking.bookingReference,
+      carrier: booking.carrier,
+      trackingNumber: booking.trackingNumber,
+      requestedAt: requestedAt.toISOString(),
+    });
+    await recordRequiredShopFulfillmentAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.carrier.label.read",
+      booking.orderId,
+      {
+        shipmentId: booking.id,
+        providerId: booking.providerId,
+      },
+    );
+    return prepared;
+  });
+
+  const result = npRequireShopCarrierLabelResult(await adapter.readShippingLabel(request));
+  if (result.shipmentId !== request.shipmentId || result.orderId !== request.orderId) {
+    throw new NpShopCarrierConflictError(
+      "carrier_result_mismatch",
+      "The carrier label result does not match the requested shipment.",
+    );
+  }
+  const retrievedAt = new Date(result.retrievedAt).getTime();
+  if (
+    retrievedAt < requestedAt.getTime() - npShopCarrierLimits.futureToleranceSeconds * 1000 ||
+    retrievedAt > Date.now() + npShopCarrierLimits.futureToleranceSeconds * 1000
+  ) {
+    throw new NpShopCarrierContractError("Invalid Shop carrier label result", [
+      "carrier label result.retrievedAt must describe this retrieval attempt.",
+    ]);
+  }
+  await getDb().transaction(async (tx) => {
+    const current = await readStoredCarrierBooking(tx, siteId, input.orderId, true);
+    if (
+      !current ||
+      current.id !== request.shipmentId ||
+      current.status !== "completed" ||
+      current.providerId !== adapter.id ||
+      current.bookingReference !== request.bookingReference ||
+      current.carrier !== request.carrier ||
+      current.trackingNumber !== request.trackingNumber
+    ) {
+      throw new NpShopCarrierConflictError(
+        "carrier_label_not_available",
+        "The carrier booking changed before its label could be delivered.",
+      );
+    }
+    await recordRequiredShopFulfillmentAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.carrier.label.deliver",
+      current.orderId,
+      {
+        shipmentId: current.id,
+        providerId: current.providerId,
+        format: result.format,
+        bytes: result.content.byteLength,
+      },
+    );
+  });
+  return result;
 }
 
 export async function npRefundShopOrder(

@@ -4,8 +4,12 @@ import {
   NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT,
   NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
   NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT,
+  NP_SHOP_CARRIER_LABEL_REQUEST_CONTRACT,
+  NP_SHOP_CARRIER_LABEL_RESULT_CONTRACT,
   NP_SHOP_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT,
   npAnalyzeShopCarrierBookingRequest,
+  npAnalyzeShopCarrierLabelRequest,
+  npAnalyzeShopCarrierLabelResult,
   npAnalyzeShopCarrierParcelBookingRequest,
   npAnalyzeStoredShopCarrierBooking,
   npRequireShopCarrierBookingActionInput,
@@ -107,6 +111,45 @@ describe("Shop carrier booking contract", () => {
         bookedAt: "2026-08-02T00:01:00.000Z",
       }),
     ).toMatchObject({ bookingReference: "booking_123", trackingNumber: "TRACK-123" });
+  });
+
+  it("accepts exact PII-free label requests and bounded transient label bytes", () => {
+    expect(
+      npAnalyzeShopCarrierLabelRequest({
+        contract: NP_SHOP_CARRIER_LABEL_REQUEST_CONTRACT,
+        shipmentId,
+        orderId,
+        bookingReference: "booking_123",
+        carrier: "Parcel Co",
+        trackingNumber: "TRACK-123",
+        requestedAt,
+      }),
+    ).toEqual([]);
+    expect(
+      npAnalyzeShopCarrierLabelResult({
+        contract: NP_SHOP_CARRIER_LABEL_RESULT_CONTRACT,
+        shipmentId,
+        orderId,
+        format: "pdf",
+        content: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+        retrievedAt: requestedAt,
+      }),
+    ).toEqual([]);
+    expect(
+      npAnalyzeShopCarrierLabelResult({
+        contract: NP_SHOP_CARRIER_LABEL_RESULT_CONTRACT,
+        shipmentId,
+        orderId,
+        format: "html",
+        content: new Uint8Array(),
+        retrievedAt: requestedAt,
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        "carrier label result.format is invalid.",
+        expect.stringContaining("content must contain between"),
+      ]),
+    );
   });
 
   it("closes pending, provider-confirmed, completed, and manual-review states", () => {

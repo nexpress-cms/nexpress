@@ -143,6 +143,26 @@ describe("npAdminTableSchema", () => {
     ).not.toThrow();
   });
 
+  it("accepts a declarative table download mapping", () => {
+    expect(() =>
+      npAdminTableSchema.parse({
+        id: "orders",
+        label: "Orders",
+        columns: [{ name: "id", label: "ID" }],
+        rowsActionId: "listOrders",
+        rowActions: [
+          {
+            type: "download",
+            id: "label",
+            label: "Label",
+            routePath: "/carrier/label",
+            query: [{ name: "orderId", rowField: "id" }],
+          },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
   it("rejects ambiguous row action fields and select values", () => {
     expect(() =>
       npAdminTableSchema.parse({
