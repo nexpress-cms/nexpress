@@ -86,6 +86,8 @@ describe("shop factory", () => {
       { id: "countTrackingEvents", kind: "metric" },
       { id: "trackingEventHealth", kind: "status" },
       { id: "recentTrackingEvents", kind: "table" },
+      { id: "trackingPollHealth", kind: "status" },
+      { id: "recentTrackingPolls", kind: "table" },
       { id: "bookCarrierShipment", kind: "action" },
       { id: "shipFulfillment", kind: "action" },
       { id: "readFulfillmentPrivate", kind: "action" },
@@ -286,6 +288,39 @@ describe("shop factory", () => {
         },
       }).runtime.carrierTrackingAdapter,
     ).toBeNull();
+  });
+
+  it("adds bounded tracking reconciliation only for the optional polling capability", () => {
+    const shop = createShop({
+      carrier: {
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          readTracking: () => Promise.reject(new Error("not called")),
+        },
+      },
+    });
+    expect(shop.runtime.carrierTrackingPollAdapter?.id).toBe("test-carrier");
+    expect(shop.plugin.actions?.reconcileCarrierTracking?.kind).toBe("action");
+    expect(shop.plugin.scheduled?.map((task) => task.id)).toContain("reconcile-carrier-tracking");
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-carrier-bookings")
+        ?.rowActions?.map((action) => action.actionId),
+    ).toContain("reconcileCarrierTracking");
+    const withoutPolling = createShop({
+      carrier: {
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+        },
+      },
+    });
+    expect(withoutPolling.runtime.carrierTrackingPollAdapter).toBeNull();
+    expect(withoutPolling.plugin.actions?.reconcileCarrierTracking).toBeUndefined();
+    expect(withoutPolling.plugin.scheduled?.map((task) => task.id)).not.toContain(
+      "reconcile-carrier-tracking",
+    );
   });
 
   it("adds owner-scoped attempt routes and diagnostics only for a complete initiation adapter", () => {

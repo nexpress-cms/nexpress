@@ -32,6 +32,7 @@ import {
   npRequireShopCarrierProviderId,
   type NpShopCarrierAdapter,
   type NpShopCarrierTrackingAdapter,
+  type NpShopCarrierTrackingPollAdapter,
 } from "./carrier-contract.js";
 import {
   npBookShopCarrierShipment,
@@ -70,7 +71,14 @@ import {
 } from "./return-contract.js";
 import { createShopPaymentApiHandler } from "./payment-api.js";
 import { createShopTrackingApiHandler } from "./tracking-api.js";
-import { npCountShopTrackingEvents, npListRecentShopTrackingEvents } from "./tracking-service.js";
+import {
+  npCountShopTrackingEvents,
+  npCountShopTrackingPolls,
+  npListRecentShopTrackingEvents,
+  npListShopTrackingPolls,
+  npReconcileShopTracking,
+} from "./tracking-service.js";
+import { npRequireShopTrackingReconcileActionInput } from "./tracking-contract.js";
 import { createShopPaymentAttemptApiHandler } from "./payment-attempt-api.js";
 import {
   npCountShopPaymentAttempts,
@@ -256,12 +264,14 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   const configuredCarrierAdapter = options.carrier?.adapter ?? null;
   let carrierAdapter: NpShopCarrierAdapter | null = null;
   let carrierTrackingAdapter: NpShopCarrierTrackingAdapter | null = null;
+  let carrierTrackingPollAdapter: NpShopCarrierTrackingPollAdapter | null = null;
   if (configuredCarrierAdapter) {
     const id = npRequireShopCarrierProviderId(configuredCarrierAdapter.id);
     if (typeof configuredCarrierAdapter.bookShipment !== "function") {
       throw new Error("Shop carrier adapter bookShipment must be a function.");
     }
     const hasTrackingWebhook = configuredCarrierAdapter.verifyTrackingWebhook !== undefined;
+    const hasTrackingPoll = configuredCarrierAdapter.readTracking !== undefined;
     if (
       hasTrackingWebhook &&
       typeof configuredCarrierAdapter.verifyTrackingWebhook !== "function"
@@ -269,6 +279,9 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
       throw new Error(
         "Shop carrier adapter verifyTrackingWebhook must be a function when provided.",
       );
+    }
+    if (hasTrackingPoll && typeof configuredCarrierAdapter.readTracking !== "function") {
+      throw new Error("Shop carrier adapter readTracking must be a function when provided.");
     }
     carrierAdapter = Object.freeze({
       id,
@@ -279,9 +292,15 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
               configuredCarrierAdapter.verifyTrackingWebhook.bind(configuredCarrierAdapter),
           }
         : {}),
+      ...(configuredCarrierAdapter.readTracking
+        ? { readTracking: configuredCarrierAdapter.readTracking.bind(configuredCarrierAdapter) }
+        : {}),
     });
     if (carrierAdapter.verifyTrackingWebhook) {
       carrierTrackingAdapter = carrierAdapter as NpShopCarrierTrackingAdapter;
+    }
+    if (carrierAdapter.readTracking) {
+      carrierTrackingPollAdapter = carrierAdapter as NpShopCarrierTrackingPollAdapter;
     }
   }
   return {
@@ -296,6 +315,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     taxAdapter,
     carrierAdapter,
     carrierTrackingAdapter,
+    carrierTrackingPollAdapter,
   };
 }
 
@@ -765,6 +785,9 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-tracking-events",
           "widget:shop-tracking-event-health",
           "table:shop-tracking-events",
+          "widget:shop-tracking-poll-health",
+          "table:shop-tracking-polls",
+          ...(runtime.carrierTrackingPollAdapter ? ["action:shop-tracking-poll"] : []),
           "dashboard:shop-inventory-reservations",
           "widget:shop-inventory-reservation-health",
           "table:shop-inventory-reservations",
@@ -800,7 +823,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment, carrier booking, verified tracking callbacks, and physical return intake. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, labels, pickup, and provider-specific carrier protocols remain external.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment, carrier booking, verified or reconciled tracking, and physical return intake. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, labels, pickup, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -1027,6 +1050,12 @@ export function createShop(options: NpShopOptions = {}) {
           actionId: "trackingEventHealth",
         },
         {
+          id: "shop-tracking-poll-health",
+          label: "Carrier tracking polling",
+          kind: "status",
+          actionId: "trackingPollHealth",
+        },
+        {
           id: "shop-payment-event-health",
           label: "Payment event contract",
           kind: "status",
@@ -1250,6 +1279,19 @@ export function createShop(options: NpShopOptions = {}) {
               confirm:
                 "Resume this durable shipment? Provider-confirmed rows perform only local completion.",
             },
+            ...(runtime.carrierTrackingPollAdapter
+              ? [
+                  {
+                    id: "poll-carrier-tracking",
+                    label: "Poll tracking now",
+                    actionId: "reconcileCarrierTracking",
+                    rowFields: ["id", "shipmentId"],
+                    visibleWhen: { field: "status", oneOf: ["completed"] },
+                    confirm:
+                      "Read this shipment from the configured carrier now? The provider call and staff action are audited without shipping PII.",
+                  },
+                ]
+              : []),
           ],
           emptyMessage: "No carrier shipment booking exists for this site.",
         },
@@ -1268,6 +1310,35 @@ export function createShop(options: NpShopOptions = {}) {
           ],
           rowsActionId: "recentTrackingEvents",
           emptyMessage: "No verified carrier tracking event exists for this site.",
+        },
+        {
+          id: "shop-tracking-polls",
+          label: "Carrier tracking poll state (PII withheld)",
+          columns: [
+            { name: "id", label: "Order" },
+            { name: "shipmentId", label: "Shipment" },
+            { name: "provider", label: "Provider" },
+            { name: "failures", label: "Failures" },
+            { name: "lastAttemptAt", label: "Last attempt" },
+            { name: "lastSuccessAt", label: "Last success" },
+            { name: "nextAttemptAt", label: "Next attempt" },
+            { name: "lastError", label: "Closed error" },
+            { name: "lease", label: "Lease" },
+          ],
+          rowsActionId: "recentTrackingPolls",
+          rowActions: runtime.carrierTrackingPollAdapter
+            ? [
+                {
+                  id: "retry-tracking-poll",
+                  label: "Poll now",
+                  actionId: "reconcileCarrierTracking",
+                  rowFields: ["id", "shipmentId"],
+                  confirm:
+                    "Bypass this shipment's backoff and read it from the configured carrier now?",
+                },
+              ]
+            : [],
+          emptyMessage: "No carrier tracking poll attempt exists for this site.",
         },
         {
           id: "shop-inventory-reservations",
@@ -2146,10 +2217,14 @@ export function createShop(options: NpShopOptions = {}) {
                 `${counts.invalidSample.toString()} malformed, ${counts.orphanSample.toString()} orphan, ${counts.providerMismatchSample.toString()} provider-mismatched, and ${counts.stateMismatchSample.toString()} state-mismatched tracking row(s) in bounded samples.`,
               );
             }
-            if (!runtime.carrierTrackingAdapter && counts.active > 0) {
+            if (
+              !runtime.carrierTrackingAdapter &&
+              !runtime.carrierTrackingPollAdapter &&
+              counts.active > 0
+            ) {
               return npAdminStatus(
                 "warn",
-                `${counts.active.toString()} active shipment tracking state(s) cannot receive callbacks while the webhook capability is disabled.`,
+                `${counts.active.toString()} active shipment tracking state(s) cannot advance while webhook and polling capabilities are disabled.`,
               );
             }
             if (counts.exceptions > 0) {
@@ -2160,7 +2235,7 @@ export function createShop(options: NpShopOptions = {}) {
             }
             return npAdminStatus(
               "ok",
-              `${counts.total.toString()} verified event receipt(s), ${counts.delivered.toString()} delivered shipment(s); ${runtime.carrierTrackingAdapter ? `provider "${runtime.carrierTrackingAdapter.id}" webhook is enabled` : "tracking webhook is disabled"}.`,
+              `${counts.total.toString()} verified event receipt(s), ${counts.delivered.toString()} delivered shipment(s); webhook ${runtime.carrierTrackingAdapter ? "enabled" : "disabled"}, polling ${runtime.carrierTrackingPollAdapter ? "enabled" : "disabled"}.`,
             );
           } catch (error) {
             return npAdminStatus(
@@ -2184,6 +2259,115 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      trackingPollHealth: {
+        kind: "status" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopTrackingPolls(runtime.carrierTrackingPollAdapter?.id);
+            if (
+              counts.invalidSample > 0 ||
+              counts.orphanSample > 0 ||
+              counts.providerMismatchSample > 0 ||
+              counts.stateMismatchSample > 0
+            ) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed, ${counts.orphanSample.toString()} orphan, ${counts.providerMismatchSample.toString()} provider-mismatched, and ${counts.stateMismatchSample.toString()} booking-mismatched poll row(s) in bounded samples.`,
+              );
+            }
+            if (counts.expiredLeases > 0 || counts.failed > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.failed.toString()} poll row(s) are backing off and ${counts.expiredLeases.toString()} expired lease(s) await reclaim.`,
+              );
+            }
+            if (!runtime.carrierTrackingPollAdapter && counts.due > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.due.toString()} due poll row(s) cannot run while polling is disabled.`,
+              );
+            }
+            if (runtime.carrierTrackingPollAdapter && counts.unpolledBookingSample > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.unpolledBookingSample.toString()} active completed booking(s) in the bounded sample have not been polled yet.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.total.toString()} poll state row(s), ${counts.due.toString()} due, ${counts.leased.toString()} leased; ${runtime.carrierTrackingPollAdapter ? `provider "${runtime.carrierTrackingPollAdapter.id}" polling is enabled` : "tracking polling is disabled"}.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Tracking polling health check failed.",
+            );
+          }
+        },
+      },
+      recentTrackingPolls: {
+        kind: "table" as const,
+        handler: async () => {
+          try {
+            const result = await npListShopTrackingPolls();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      ...(runtime.carrierTrackingPollAdapter
+        ? {
+            reconcileCarrierTracking: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Carrier tracking reconciliation requires a direct staff action.",
+                    };
+                  }
+                  const input = npRequireShopTrackingReconcileActionInput(data);
+                  const result = await npReconcileShopTracking(
+                    runtime.carrierTrackingPollAdapter!,
+                    {
+                      orderId: input.orderId,
+                      expectedShipmentId: input.shipmentId,
+                      force: true,
+                      staffUserId: ctx.actionInvocation.userId,
+                    },
+                  );
+                  if (result.failed > 0) {
+                    return {
+                      ok: false as const,
+                      error: `Carrier tracking poll failed for ${result.failed.toString()} shipment(s); the closed failure and retry backoff were persisted.`,
+                    };
+                  }
+                  if (result.claimed === 0) {
+                    return {
+                      ok: false as const,
+                      error:
+                        "The shipment is no longer eligible for tracking reconciliation or already has an active lease.",
+                    };
+                  }
+                  return {
+                    ok: true as const,
+                    data: `Polled ${result.claimed.toString()} shipment(s): ${result.advanced.toString()} advanced, ${result.unchanged.toString()} unchanged, ${result.failed.toString()} failed, and ${result.skipped.toString()} skipped.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+          }
+        : {}),
       bookCarrierShipment: {
         kind: "action" as const,
         handler: async (data: unknown, ctx: NpPluginContext) => {
@@ -2583,6 +2767,19 @@ export function createShop(options: NpShopOptions = {}) {
           await npCleanupExpiredShopOrderDrafts();
         },
       },
+      ...(runtime.carrierTrackingPollAdapter
+        ? [
+            {
+              id: "reconcile-carrier-tracking",
+              cron: "*/10 * * * *",
+              description:
+                "Lease and reconcile one bounded cursor-fair batch of due PII-free carrier tracking reads for each active site.",
+              handler: async () => {
+                await npReconcileShopTracking(runtime.carrierTrackingPollAdapter!);
+              },
+            },
+          ]
+        : []),
       {
         id: "maintain-orders",
         cron: "31 * * * *",
@@ -2920,6 +3117,7 @@ export {
 export type {
   NpShopCarrierAdapter,
   NpShopCarrierTrackingAdapter,
+  NpShopCarrierTrackingPollAdapter,
   NpShopCarrierBookingActionInput,
   NpShopCarrierBookingItem,
   NpShopCarrierBookingRequest,
@@ -2931,6 +3129,11 @@ export {
   NP_SHOP_TRACKING_CONTRACT,
   NP_SHOP_TRACKING_EVENT_CONTRACT,
   NP_SHOP_TRACKING_RECEIPT_CONTRACT,
+  NP_SHOP_TRACKING_POLL_CURSOR_CONTRACT,
+  NP_SHOP_TRACKING_POLL_CURSOR_KEY,
+  NP_SHOP_TRACKING_POLL_REQUEST_CONTRACT,
+  NP_SHOP_TRACKING_POLL_RESULT_CONTRACT,
+  NP_SHOP_TRACKING_POLL_STORAGE_CONTRACT,
   NP_SHOP_TRACKING_STORAGE_CONTRACT,
   NP_SHOP_TRACKING_WEBHOOK_IGNORED_CONTRACT,
   NpShopTrackingConflictError,
@@ -2938,16 +3141,26 @@ export {
   NpShopTrackingVerificationError,
   npAnalyzeShopTracking,
   npAnalyzeShopTrackingEvent,
+  npAnalyzeShopTrackingPollRequest,
   npAnalyzeStoredShopTracking,
+  npAnalyzeStoredShopTrackingPoll,
   npAnalyzeStoredShopTrackingReceipt,
   npIsIgnoredTrackingWebhook,
   npProjectShopTracking,
   npRequireFreshShopTrackingEvent,
   npRequireShopTrackingProviderId,
+  npRequireShopTrackingPollCursor,
+  npRequireShopTrackingPollRequest,
+  npRequireShopTrackingPollResult,
+  npRequireShopTrackingReconcileActionInput,
   npRequireStoredShopTracking,
+  npRequireStoredShopTrackingPoll,
   npRequireStoredShopTrackingReceipt,
   npShopTrackingEventDigest,
   npShopTrackingLimits,
+  npShopTrackingPollBackoffSeconds,
+  npShopTrackingPollErrorCodes,
+  npShopTrackingPollStorageKey,
   npShopTrackingReceiptOutcomes,
   npShopTrackingReceiptStorageKey,
   npShopTrackingStatuses,
@@ -2956,8 +3169,15 @@ export {
 export type {
   NpShopIgnoredTrackingWebhook,
   NpShopStoredTracking,
+  NpShopStoredTrackingPoll,
   NpShopStoredTrackingReceipt,
   NpShopTracking,
+  NpShopTrackingPollCurrent,
+  NpShopTrackingPollCursor,
+  NpShopTrackingPollErrorCode,
+  NpShopTrackingPollRequest,
+  NpShopTrackingPollResult,
+  NpShopTrackingReconcileActionInput,
   NpShopTrackingReceiptOutcome,
   NpShopTrackingStatus,
   NpShopTrackingWebhookInput,

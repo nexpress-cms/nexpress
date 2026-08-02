@@ -8,7 +8,7 @@ provider-neutral shipping quote and selected delivery snapshot, an optional
 provider-neutral additional-tax quote and frozen tax snapshot, an optional
 provider-neutral payment initiation and verified-event boundary, revision-safe
 fulfillment operations, optional provider-neutral carrier booking,
-verified carrier tracking events and owner-visible delivery state,
+verified or reconciled carrier tracking events and owner-visible delivery state,
 provider-neutral full refunds with safe inventory
 compensation, owner-scoped item return intake with audited receipt inventory,
 Admin collection forms and health actions, blocks, and skins.
@@ -28,7 +28,7 @@ the exact provider-neutral event that moves that order to `paid` or
 payment. Shop owns attempts, order/refund transitions, fulfillment and return
 state, carrier booking/tracking receipts, and local compensation, but does not choose a provider protocol, remit
 or file tax, issue tax invoices, decide exemptions, physically fulfill goods,
-buy labels/schedule pickup, poll a carrier, or decide jurisdiction-specific return eligibility.
+buy labels/schedule pickup, implement a provider protocol, or decide jurisdiction-specific return eligibility.
 
 ## Default setup
 
@@ -612,6 +612,7 @@ instead pass one server-only adapter to the same `createShop()` factory:
 ```ts
 import {
   NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
+  NP_SHOP_TRACKING_POLL_RESULT_CONTRACT,
   createShop,
   type NpShopCarrierAdapter,
 } from "@nexpress/plugin-shop";
@@ -649,6 +650,31 @@ const carrier: NpShopCarrierAdapter = {
       signedAt: providerEvent.signedAt,
     };
   },
+  async readTracking(request) {
+    // Apply a provider timeout. This request is PII-free and already contains
+    // the exact durable provider references; do not load private order data.
+    const providerEvent = await readProviderTracking(request);
+    const checkedAt = new Date().toISOString();
+    return {
+      contract: NP_SHOP_TRACKING_POLL_RESULT_CONTRACT,
+      shipmentId: request.shipmentId,
+      orderId: request.orderId,
+      checkedAt,
+      event: providerEvent
+        ? {
+            contract: "np.shop-tracking-event.v1",
+            eventId: providerEvent.id,
+            shipmentId: request.shipmentId,
+            orderId: request.orderId,
+            bookingReference: request.bookingReference,
+            trackingNumber: request.trackingNumber,
+            status: providerEvent.status,
+            occurredAt: providerEvent.occurredAt,
+            signedAt: checkedAt,
+          }
+        : null,
+    };
+  },
 };
 
 const shop = createShop({ carrier: { adapter: carrier } });
@@ -680,6 +706,34 @@ the manual shipped action in the fulfillment table. A `provider-confirmed` row
 can finish local completion after adapter removal; a `pending` row requires its
 original provider.
 
+`readTracking` is a separate additive capability from callback verification.
+When present, Shop registers a ten-minute UTC scheduled task and an audited
+direct-staff **Poll tracking now** row action. Each request is the exact
+`np.shop-tracking-poll-request.v1` shipment/order/reference/tracking tuple,
+optional current event cursor, and request timestamp; it contains no customer,
+destination, or line data. The result is an exact
+`np.shop-tracking-poll-result.v1`. Its `checkedAt` must be within the live
+request window, and a returned canonical event must match the request exactly
+and use the same timestamp as `signedAt`. Returning `event: null` is a
+successful unchanged observation.
+
+Scheduled reconciliation claims at most 25 due shipments per run while a
+persisted site/provider cursor walks at most 500 completed booking rows, so a
+large early key range cannot starve later shipments. A five-minute persisted
+lease is committed before the adapter call, and provider I/O occurs outside a
+database transaction. Successful active shipments become due again after ten
+minutes; failures retain only `provider-error`, `invalid-result`, or
+`state-conflict` and back off exponentially from five minutes to six hours.
+Expired leases are reclaimable. Delivery stops further polling, and the poll
+state expires with its shipment. Adapter implementations remain responsible
+for a finite provider timeout shorter than the lease.
+
+Polling feeds the same digest, idempotent receipt, monotonic state, and owner
+projection engine as webhooks. It can create the initial state when callbacks
+are unavailable, while a later callback may advance it; neither capability
+requires the other. The persisted poll row, scan cursor, request, result,
+audit payload, Admin table, and health diagnostics are PII-free.
+
 `verifyTrackingWebhook` is an additive capability. When present, Shop declares
 the unauthenticated transport route `POST /carrier/tracking/webhook` in exact
 raw-body mode; the adapter must authenticate those bytes before returning a
@@ -703,8 +757,11 @@ exposes the latest state through `data-np-shop-tracking-status`.
 Tracking metrics, health, and a newest-50 receipt table remain declared after
 adapter removal. Doctor verifies their action kinds and route declaration;
 health samples malformed, orphaned, provider-mismatched, and booking-state-
-mismatched rows without reading private data. The contract does not buy or
-render labels, schedule pickup, poll a carrier, choose packaging, calculate
+mismatched rows without reading private data. Polling has an independent health
+widget and newest-50 state table, including due/backoff/lease state, malformed
+or orphan samples, provider/booking mismatches, and completed bookings not yet
+polled. Doctor verifies both conditional action/schedule declarations. The
+contract does not buy or render labels, schedule pickup, choose packaging, calculate
 delivery price, or implement provider-specific, customs, jurisdiction, or
 customer-service policy.
 
@@ -881,6 +938,7 @@ The plugin declares thirteen baseline typed dashboard metric actions:
 - durable carrier shipment attempts and completed bookings, including when
   the adapter is currently disabled.
 - verified PII-free tracking-event receipts and current shipment states.
+- PII-free carrier polling state, bounded retry/lease health, and scan cursor.
 - verified PII-free payment-event receipts.
 - durable full-refund attempts and compensation outcomes.
 - item-level physical returns split across requested, approved, rejected,
@@ -899,7 +957,9 @@ direct-staff action; a confirmed row performs local completion only.
 Carrier tracking has its own metric, health status, and newest-50 receipt table
 even when the callback capability is disabled. It reports current delivered
 and exception counts plus bounded malformed, orphaned, provider, and shipment
-state mismatches.
+state mismatches. Polling adds a separate health widget, newest-50 poll table,
+audited manual row action, and scheduled reconciliation inventory only when
+`readTracking` is configured; durable rows remain visible after removal.
 
 Admin also exposes separate cart, checkout-intent, and private-order-draft
 storage health plus configured shipping-provider success/failure state and
@@ -1035,7 +1095,7 @@ Future transaction work should remain separable from this foundation:
 1. additional provider packages for Stripe or KG Inicis;
 2. authorization/capture, settlement, provider-initiated reversal, and partial
    refund contracts;
-3. carrier labels, pickup, polling, provider-specific tracking packages,
+3. carrier labels, pickup, provider-specific tracking packages,
    exchanges, and customer-service policy;
 4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and
    shipping-policy integrations.

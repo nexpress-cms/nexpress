@@ -3,6 +3,15 @@
 This file provides guidance to Agents when working with code in this repository.
 
 **Last refreshed:** 2026-08-02 (Shop carrier adapters may now add one optional
+provider-neutral PII-free tracking read independently of webhooks; persisted
+five-minute leases precede provider calls outside DB transactions, ten-minute
+intervals and bounded exponential backoff control retries, a site/provider
+cursor prevents key-range starvation, canonical results reuse the tracking
+event engine, and scheduled/manual reconciliation, audit, Admin, Doctor,
+scaffolds, cleanup, and PostgreSQL coverage share the contract. Labels, pickup,
+provider APIs, and service policy remain separate.)
+
+**Earlier:** 2026-08-02 (Shop carrier adapters may now add one optional
 exact raw-body tracking webhook capability; authenticated PII-free events
 match the durable shipment/site/booking/tracking tuple, replay and event delay
 are bounded, event ids are conflict-safe, monotonic tracking state stays

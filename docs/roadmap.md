@@ -364,8 +364,18 @@ real product domain, not just blog/community. Ship as a plugin package
   provider delay, conflict-safe event ids, idempotent receipts, monotonic state,
   terminal delivery, owner projection, both skins, Admin, Doctor, scaffold,
   cleanup, and PostgreSQL integration coverage share the contract. Fulfillment
-  remains `shipped`; labels, pickup, polling, provider protocols, and service
-  policy remain separate.
+  remains `shipped`; labels, pickup, provider protocols, and service policy
+  remain separate. Polling is the independent capability below.
+- **Provider-neutral carrier tracking polling (shipped)** — carrier adapters may
+  independently add one exact PII-free tracking read. A persisted five-minute
+  lease precedes provider I/O outside database transactions; ten-minute due
+  intervals, exponential five-minute-to-six-hour failure backoff, 25-item
+  batches, and a site/provider cursor scanning at most 500 bookings keep work
+  bounded and fair. Poll results reuse the webhook event digest, idempotency,
+  monotonic state, and owner projection contracts. Direct-staff reconciliation,
+  audit, Admin/Doctor diagnostics, scaffold guidance, cleanup, and PostgreSQL
+  integration coverage share the contract. Labels, pickup, and provider APIs
+  remain separate.
 - **Full refunds and inventory compensation (shipped)** — a refund-capable
   adapter receives one stable PII-free full-refund intent. Direct staff action,
   provider idempotency, exact result matching, `refunded` orders,

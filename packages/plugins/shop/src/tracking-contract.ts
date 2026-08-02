@@ -6,6 +6,10 @@ export const NP_SHOP_TRACKING_STORAGE_CONTRACT = "np.shop-tracking-storage.v1" a
 export const NP_SHOP_TRACKING_CONTRACT = "np.shop-tracking.v1" as const;
 export const NP_SHOP_TRACKING_WEBHOOK_IGNORED_CONTRACT =
   "np.shop-tracking-webhook-ignored.v1" as const;
+export const NP_SHOP_TRACKING_POLL_REQUEST_CONTRACT = "np.shop-tracking-poll-request.v1" as const;
+export const NP_SHOP_TRACKING_POLL_RESULT_CONTRACT = "np.shop-tracking-poll-result.v1" as const;
+export const NP_SHOP_TRACKING_POLL_STORAGE_CONTRACT = "np.shop-tracking-poll-storage.v1" as const;
+export const NP_SHOP_TRACKING_POLL_CURSOR_CONTRACT = "np.shop-tracking-poll-cursor.v1" as const;
 
 export const npShopTrackingStatuses = [
   "in-transit",
@@ -33,6 +37,14 @@ export const npShopTrackingLimits = Object.freeze({
   trackingNumberLength: 120,
   adminListSize: 50,
   diagnosticSampleSize: 500,
+  reconcileBatchSize: 25,
+  reconcileScanSize: 100,
+  reconcileMaximumScanSize: 500,
+  pollIntervalSeconds: 10 * 60,
+  pollLeaseSeconds: 5 * 60,
+  pollInitialBackoffSeconds: 5 * 60,
+  pollMaximumBackoffSeconds: 6 * 60 * 60,
+  maximumConsecutiveFailures: 16,
 });
 
 export interface NpShopVerifiedTrackingEvent {
@@ -61,6 +73,65 @@ export interface NpShopIgnoredTrackingWebhook {
 
 export type NpShopTrackingWebhookResult =
   NpShopVerifiedTrackingEvent | NpShopIgnoredTrackingWebhook | null;
+
+export interface NpShopTrackingPollCurrent {
+  eventId: string;
+  status: NpShopTrackingStatus;
+  occurredAt: string;
+}
+
+export interface NpShopTrackingPollRequest {
+  contract: typeof NP_SHOP_TRACKING_POLL_REQUEST_CONTRACT;
+  shipmentId: string;
+  orderId: string;
+  bookingReference: string;
+  trackingNumber: string;
+  current: NpShopTrackingPollCurrent | null;
+  requestedAt: string;
+}
+
+export interface NpShopTrackingPollResult {
+  contract: typeof NP_SHOP_TRACKING_POLL_RESULT_CONTRACT;
+  shipmentId: string;
+  orderId: string;
+  checkedAt: string;
+  event: NpShopVerifiedTrackingEvent | null;
+}
+
+export const npShopTrackingPollErrorCodes = [
+  "provider-error",
+  "invalid-result",
+  "state-conflict",
+] as const;
+export type NpShopTrackingPollErrorCode = (typeof npShopTrackingPollErrorCodes)[number];
+
+export interface NpShopStoredTrackingPoll {
+  contract: typeof NP_SHOP_TRACKING_POLL_STORAGE_CONTRACT;
+  orderId: string;
+  shipmentId: string;
+  providerId: string;
+  consecutiveFailures: number;
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+  nextAttemptAt: string;
+  lastErrorCode: NpShopTrackingPollErrorCode | null;
+  leaseId: string | null;
+  leaseExpiresAt: string | null;
+  updatedAt: string;
+  purgeAt: string;
+}
+
+export interface NpShopTrackingPollCursor {
+  contract: typeof NP_SHOP_TRACKING_POLL_CURSOR_CONTRACT;
+  providerId: string;
+  lastBookingKey: string | null;
+  updatedAt: string;
+}
+
+export interface NpShopTrackingReconcileActionInput {
+  orderId: string;
+  shipmentId: string;
+}
 
 export interface NpShopTracking {
   contract: typeof NP_SHOP_TRACKING_CONTRACT;
@@ -181,6 +252,10 @@ function isBoundedText(value: unknown, maximum: number): value is string {
   );
 }
 
+function isNonNegativeSafeInteger(value: unknown, maximum: number): value is number {
+  return Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= maximum;
+}
+
 export function npRequireShopTrackingProviderId(value: unknown): string {
   if (typeof value !== "string" || !providerIdPattern.test(value)) {
     throw new NpShopTrackingContractError("Invalid Shop tracking provider id", [
@@ -270,6 +345,128 @@ export function npIsIgnoredTrackingWebhook(value: unknown): value is NpShopIgnor
   );
 }
 
+const pollCurrentKeys = ["eventId", "status", "occurredAt"] as const;
+const pollRequestKeys = [
+  "contract",
+  "shipmentId",
+  "orderId",
+  "bookingReference",
+  "trackingNumber",
+  "current",
+  "requestedAt",
+] as const;
+
+export function npAnalyzeShopTrackingPollRequest(value: unknown): string[] {
+  const issues: string[] = [];
+  if (!isRecord(value)) return ["tracking poll request must be a plain object."];
+  exactKeys(value, pollRequestKeys, "tracking poll request", issues);
+  if (value.contract !== NP_SHOP_TRACKING_POLL_REQUEST_CONTRACT) {
+    issues.push(
+      `tracking poll request.contract must equal "${NP_SHOP_TRACKING_POLL_REQUEST_CONTRACT}".`,
+    );
+  }
+  if (typeof value.shipmentId !== "string" || !canonicalUuidPattern.test(value.shipmentId)) {
+    issues.push("tracking poll request.shipmentId is invalid.");
+  }
+  if (typeof value.orderId !== "string" || !canonicalUuidPattern.test(value.orderId)) {
+    issues.push("tracking poll request.orderId is invalid.");
+  }
+  if (!isOpaqueReference(value.bookingReference, npShopTrackingLimits.referenceLength)) {
+    issues.push("tracking poll request.bookingReference is invalid.");
+  }
+  if (!isBoundedText(value.trackingNumber, npShopTrackingLimits.trackingNumberLength)) {
+    issues.push("tracking poll request.trackingNumber is invalid.");
+  }
+  if (value.current !== null) {
+    if (!isRecord(value.current)) {
+      issues.push("tracking poll request.current must be null or a plain object.");
+    } else {
+      exactKeys(value.current, pollCurrentKeys, "tracking poll request.current", issues);
+      if (!isOpaqueReference(value.current.eventId, npShopTrackingLimits.eventIdLength)) {
+        issues.push("tracking poll request.current.eventId is invalid.");
+      }
+      if (!(npShopTrackingStatuses as readonly unknown[]).includes(value.current.status)) {
+        issues.push("tracking poll request.current.status is invalid.");
+      }
+      if (!isCanonicalIso(value.current.occurredAt)) {
+        issues.push("tracking poll request.current.occurredAt is invalid.");
+      }
+    }
+  }
+  if (!isCanonicalIso(value.requestedAt)) {
+    issues.push("tracking poll request.requestedAt is invalid.");
+  }
+  return issues;
+}
+
+export function npRequireShopTrackingPollRequest(value: unknown): NpShopTrackingPollRequest {
+  const issues = npAnalyzeShopTrackingPollRequest(value);
+  if (issues.length > 0) {
+    throw new NpShopTrackingContractError("Invalid Shop tracking poll request", issues);
+  }
+  return Object.freeze({ ...(value as NpShopTrackingPollRequest) });
+}
+
+const pollResultKeys = ["contract", "shipmentId", "orderId", "checkedAt", "event"] as const;
+
+export function npRequireShopTrackingPollResult(
+  value: unknown,
+  context: { request: NpShopTrackingPollRequest; receivedAt: Date },
+): NpShopTrackingPollResult {
+  const issues: string[] = [];
+  if (!isRecord(value)) {
+    throw new NpShopTrackingContractError("Invalid Shop tracking poll result", [
+      "tracking poll result must be a plain object.",
+    ]);
+  }
+  exactKeys(value, pollResultKeys, "tracking poll result", issues);
+  if (value.contract !== NP_SHOP_TRACKING_POLL_RESULT_CONTRACT) {
+    issues.push(
+      `tracking poll result.contract must equal "${NP_SHOP_TRACKING_POLL_RESULT_CONTRACT}".`,
+    );
+  }
+  if (value.shipmentId !== context.request.shipmentId) {
+    issues.push("tracking poll result.shipmentId must match the request.");
+  }
+  if (value.orderId !== context.request.orderId) {
+    issues.push("tracking poll result.orderId must match the request.");
+  }
+  if (!isCanonicalIso(value.checkedAt)) {
+    issues.push("tracking poll result.checkedAt is invalid.");
+  } else {
+    const checkedAt = new Date(value.checkedAt).getTime();
+    if (
+      checkedAt < new Date(context.request.requestedAt).getTime() ||
+      checkedAt > context.receivedAt.getTime() + npShopTrackingLimits.futureToleranceSeconds * 1_000
+    ) {
+      issues.push("tracking poll result.checkedAt is outside the request window.");
+    }
+  }
+  if (value.event !== null) {
+    try {
+      const event = npRequireFreshShopTrackingEvent(value.event, context.receivedAt);
+      if (
+        event.shipmentId !== context.request.shipmentId ||
+        event.orderId !== context.request.orderId ||
+        event.bookingReference !== context.request.bookingReference ||
+        event.trackingNumber !== context.request.trackingNumber
+      ) {
+        issues.push("tracking poll result.event must match the exact shipment request.");
+      }
+      if (event.signedAt !== value.checkedAt) {
+        issues.push("tracking poll result.event.signedAt must equal checkedAt.");
+      }
+    } catch (error) {
+      if (error instanceof NpShopTrackingContractError) issues.push(...error.issues);
+      else issues.push("tracking poll result.event is invalid.");
+    }
+  }
+  if (issues.length > 0) {
+    throw new NpShopTrackingContractError("Invalid Shop tracking poll result", issues);
+  }
+  return Object.freeze({ ...(value as unknown as NpShopTrackingPollResult) });
+}
+
 export function npShopTrackingEventDigest(event: NpShopVerifiedTrackingEvent): string {
   return createHash("sha256")
     .update(
@@ -304,6 +501,230 @@ export function npShopTrackingStorageKey(orderId: string): string {
     ]);
   }
   return `tracking:${orderId}`;
+}
+
+export function npShopTrackingPollStorageKey(orderId: string): string {
+  if (!canonicalUuidPattern.test(orderId)) {
+    throw new NpShopTrackingContractError("Invalid Shop tracking poll order id", [
+      "tracking poll order id is invalid.",
+    ]);
+  }
+  return `tracking-poll:${orderId}`;
+}
+
+export const NP_SHOP_TRACKING_POLL_CURSOR_KEY = "tracking-poll-cursor" as const;
+
+const storedPollKeys = [
+  "contract",
+  "orderId",
+  "shipmentId",
+  "providerId",
+  "consecutiveFailures",
+  "lastAttemptAt",
+  "lastSuccessAt",
+  "nextAttemptAt",
+  "lastErrorCode",
+  "leaseId",
+  "leaseExpiresAt",
+  "updatedAt",
+  "purgeAt",
+] as const;
+
+export function npAnalyzeStoredShopTrackingPoll(value: unknown): string[] {
+  const issues: string[] = [];
+  if (!isRecord(value)) return ["tracking poll state must be a plain object."];
+  exactKeys(value, storedPollKeys, "tracking poll state", issues);
+  if (value.contract !== NP_SHOP_TRACKING_POLL_STORAGE_CONTRACT) {
+    issues.push(
+      `tracking poll state.contract must equal "${NP_SHOP_TRACKING_POLL_STORAGE_CONTRACT}".`,
+    );
+  }
+  if (typeof value.orderId !== "string" || !canonicalUuidPattern.test(value.orderId)) {
+    issues.push("tracking poll state.orderId is invalid.");
+  }
+  if (typeof value.shipmentId !== "string" || !canonicalUuidPattern.test(value.shipmentId)) {
+    issues.push("tracking poll state.shipmentId is invalid.");
+  }
+  if (typeof value.providerId !== "string" || !providerIdPattern.test(value.providerId)) {
+    issues.push("tracking poll state.providerId is invalid.");
+  }
+  if (
+    !isNonNegativeSafeInteger(
+      value.consecutiveFailures,
+      npShopTrackingLimits.maximumConsecutiveFailures,
+    )
+  ) {
+    issues.push("tracking poll state.consecutiveFailures is invalid.");
+  }
+  for (const key of ["lastAttemptAt", "lastSuccessAt"] as const) {
+    if (value[key] !== null && !isCanonicalIso(value[key])) {
+      issues.push(`tracking poll state.${key} is invalid.`);
+    }
+  }
+  for (const key of ["nextAttemptAt", "updatedAt", "purgeAt"] as const) {
+    if (!isCanonicalIso(value[key])) issues.push(`tracking poll state.${key} is invalid.`);
+  }
+  if (
+    value.lastErrorCode !== null &&
+    !(npShopTrackingPollErrorCodes as readonly unknown[]).includes(value.lastErrorCode)
+  ) {
+    issues.push("tracking poll state.lastErrorCode is invalid.");
+  }
+  if (
+    (value.consecutiveFailures === 0) !== (value.lastErrorCode === null) ||
+    (value.consecutiveFailures === 0 &&
+      value.lastAttemptAt !== null &&
+      value.lastSuccessAt === null &&
+      value.leaseId === null)
+  ) {
+    issues.push("tracking poll state failure and success metadata is inconsistent.");
+  }
+  if ((value.leaseId === null) !== (value.leaseExpiresAt === null)) {
+    issues.push("tracking poll state lease fields must be both null or both present.");
+  }
+  if (
+    value.leaseId !== null &&
+    (typeof value.leaseId !== "string" || !canonicalUuidPattern.test(value.leaseId))
+  ) {
+    issues.push("tracking poll state.leaseId is invalid.");
+  }
+  if (value.leaseExpiresAt !== null && !isCanonicalIso(value.leaseExpiresAt)) {
+    issues.push("tracking poll state.leaseExpiresAt is invalid.");
+  }
+  if (value.lastAttemptAt === null) {
+    issues.push("tracking poll state.lastAttemptAt is required.");
+  }
+  if (
+    isCanonicalIso(value.lastAttemptAt) &&
+    isCanonicalIso(value.updatedAt) &&
+    new Date(value.lastAttemptAt) > new Date(value.updatedAt)
+  ) {
+    issues.push("tracking poll state.lastAttemptAt cannot follow updatedAt.");
+  }
+  if (
+    isCanonicalIso(value.lastSuccessAt) &&
+    isCanonicalIso(value.updatedAt) &&
+    new Date(value.lastSuccessAt) > new Date(value.updatedAt)
+  ) {
+    issues.push("tracking poll state.lastSuccessAt cannot follow updatedAt.");
+  }
+  if (
+    isCanonicalIso(value.nextAttemptAt) &&
+    isCanonicalIso(value.updatedAt) &&
+    new Date(value.nextAttemptAt) < new Date(value.updatedAt)
+  ) {
+    issues.push("tracking poll state.nextAttemptAt cannot precede updatedAt.");
+  }
+  if (
+    isCanonicalIso(value.updatedAt) &&
+    isCanonicalIso(value.purgeAt) &&
+    new Date(value.updatedAt) > new Date(value.purgeAt)
+  ) {
+    issues.push("tracking poll state.updatedAt cannot follow purgeAt.");
+  }
+  if (
+    value.leaseId !== null &&
+    (value.lastAttemptAt !== value.updatedAt || value.nextAttemptAt !== value.leaseExpiresAt)
+  ) {
+    issues.push(
+      "leased tracking poll state requires lastAttemptAt equal to updatedAt and nextAttemptAt equal to leaseExpiresAt.",
+    );
+  }
+  if (
+    isCanonicalIso(value.leaseExpiresAt) &&
+    isCanonicalIso(value.updatedAt) &&
+    new Date(value.leaseExpiresAt) <= new Date(value.updatedAt)
+  ) {
+    issues.push("tracking poll state.leaseExpiresAt must follow updatedAt.");
+  }
+  return issues;
+}
+
+export function npRequireStoredShopTrackingPoll(value: unknown): NpShopStoredTrackingPoll {
+  const issues = npAnalyzeStoredShopTrackingPoll(value);
+  if (issues.length > 0) {
+    throw new NpShopTrackingContractError("Invalid stored Shop tracking poll", issues);
+  }
+  return value as NpShopStoredTrackingPoll;
+}
+
+const pollCursorKeys = ["contract", "providerId", "lastBookingKey", "updatedAt"] as const;
+
+export function npRequireShopTrackingPollCursor(value: unknown): NpShopTrackingPollCursor {
+  const issues: string[] = [];
+  if (!isRecord(value)) {
+    throw new NpShopTrackingContractError("Invalid Shop tracking poll cursor", [
+      "tracking poll cursor must be a plain object.",
+    ]);
+  }
+  exactKeys(value, pollCursorKeys, "tracking poll cursor", issues);
+  if (value.contract !== NP_SHOP_TRACKING_POLL_CURSOR_CONTRACT) {
+    issues.push(
+      `tracking poll cursor.contract must equal "${NP_SHOP_TRACKING_POLL_CURSOR_CONTRACT}".`,
+    );
+  }
+  if (typeof value.providerId !== "string" || !providerIdPattern.test(value.providerId)) {
+    issues.push("tracking poll cursor.providerId is invalid.");
+  }
+  if (
+    value.lastBookingKey !== null &&
+    (typeof value.lastBookingKey !== "string" ||
+      !value.lastBookingKey.startsWith("carrier-booking:") ||
+      !canonicalUuidPattern.test(value.lastBookingKey.slice("carrier-booking:".length)))
+  ) {
+    issues.push("tracking poll cursor.lastBookingKey is invalid.");
+  }
+  if (!isCanonicalIso(value.updatedAt)) issues.push("tracking poll cursor.updatedAt is invalid.");
+  if (issues.length > 0) {
+    throw new NpShopTrackingContractError("Invalid Shop tracking poll cursor", issues);
+  }
+  return value as unknown as NpShopTrackingPollCursor;
+}
+
+export function npShopTrackingPollBackoffSeconds(consecutiveFailures: number): number {
+  if (
+    !Number.isSafeInteger(consecutiveFailures) ||
+    consecutiveFailures < 1 ||
+    consecutiveFailures > npShopTrackingLimits.maximumConsecutiveFailures
+  ) {
+    throw new NpShopTrackingContractError("Invalid Shop tracking poll failure count", [
+      "tracking poll failure count is outside bounds.",
+    ]);
+  }
+  return Math.min(
+    npShopTrackingLimits.pollInitialBackoffSeconds * 2 ** (consecutiveFailures - 1),
+    npShopTrackingLimits.pollMaximumBackoffSeconds,
+  );
+}
+
+export function npRequireShopTrackingReconcileActionInput(
+  value: unknown,
+): NpShopTrackingReconcileActionInput {
+  const issues: string[] = [];
+  if (!isRecord(value)) {
+    throw new NpShopTrackingContractError("Invalid Shop tracking reconcile action", [
+      "payload must be a plain object.",
+    ]);
+  }
+  exactKeys(value, ["row", "values"], "payload", issues);
+  const row = isRecord(value.row) ? value.row : null;
+  const values = isRecord(value.values) ? value.values : null;
+  if (!row) issues.push("payload.row must be a plain object.");
+  if (!values) issues.push("payload.values must be a plain object.");
+  if (row) {
+    exactKeys(row, ["id", "shipmentId"], "payload.row", issues);
+    if (typeof row.id !== "string" || !canonicalUuidPattern.test(row.id)) {
+      issues.push("payload.row.id is invalid.");
+    }
+    if (typeof row.shipmentId !== "string" || !canonicalUuidPattern.test(row.shipmentId)) {
+      issues.push("payload.row.shipmentId is invalid.");
+    }
+  }
+  if (values) exactKeys(values, [], "payload.values", issues);
+  if (issues.length > 0) {
+    throw new NpShopTrackingContractError("Invalid Shop tracking reconcile action", issues);
+  }
+  return { orderId: row?.id as string, shipmentId: row?.shipmentId as string };
 }
 
 const storedKeys = [

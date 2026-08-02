@@ -9,6 +9,7 @@ import {
   shopCollections,
   shopPlugin,
   type NpShopCarrierBookingRequest,
+  type NpShopTrackingPollRequest,
 } from "@nexpress/plugin-shop";
 import { and, eq, like } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -2195,6 +2196,44 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         bookedAt: request.requestedAt,
       };
     });
+    let trackingProviderAttempts = 0;
+    const readTracking = vi.fn(async (request: NpShopTrackingPollRequest) => {
+      trackingProviderAttempts += 1;
+      const providerDb = await getTestDb();
+      const [leasedPoll] = await providerDb
+        .select({ value: npPluginStorage.value })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `tracking-poll:${request.orderId}`));
+      expect(leasedPoll?.value).toMatchObject({
+        contract: "np.shop-tracking-poll-storage.v1",
+        orderId: request.orderId,
+        shipmentId: request.shipmentId,
+        providerId: "test-carrier",
+        leaseId: expect.any(String),
+        leaseExpiresAt: expect.any(String),
+      });
+      if (trackingProviderAttempts === 1) {
+        throw new Error("carrier-private@example.com must never reach durable poll state");
+      }
+      const checkedAt = new Date().toISOString();
+      return {
+        contract: "np.shop-tracking-poll-result.v1" as const,
+        shipmentId: request.shipmentId,
+        orderId: request.orderId,
+        checkedAt,
+        event: {
+          contract: "np.shop-tracking-event.v1" as const,
+          eventId: "tracking_carrier_poll_1",
+          shipmentId: request.shipmentId,
+          orderId: request.orderId,
+          bookingReference: request.bookingReference,
+          trackingNumber: request.trackingNumber,
+          status: "in-transit" as const,
+          occurredAt: new Date(new Date(checkedAt).getTime() - 90_000).toISOString(),
+          signedAt: checkedAt,
+        },
+      };
+    });
     const carrierShop = createShop({
       payment: {
         adapter: {
@@ -2206,6 +2245,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         adapter: {
           id: "test-carrier",
           bookShipment,
+          readTracking,
           verifyTrackingWebhook: ({ rawBody }) =>
             JSON.parse(new TextDecoder().decode(rawBody)) as never,
         },
@@ -2315,6 +2355,83 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     trackingBase.setMilliseconds(0);
     const shipmentId = bookShipment.mock.calls[1]?.[0].shipmentId;
     if (!shipmentId) throw new Error("Missing durable carrier shipment id.");
+    const trackingAction = {
+      row: { id: ids.orderId, shipmentId },
+      values: {},
+    };
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.reconcileCarrierTracking?.handler(
+          trackingAction,
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("failure and retry backoff were persisted"),
+    });
+    expect(readTracking).toHaveBeenCalledTimes(1);
+    expect(readTracking.mock.calls[0]?.[0]).toMatchObject({
+      contract: "np.shop-tracking-poll-request.v1",
+      shipmentId,
+      orderId: ids.orderId,
+      bookingReference: "booking_transaction_1",
+      trackingNumber: "CARRIER-TRACK-1",
+      current: null,
+      requestedAt: expect.any(String),
+    });
+    expect(JSON.stringify(readTracking.mock.calls[0]?.[0])).not.toContain(
+      "carrier-private@example.com",
+    );
+    expect(JSON.stringify(readTracking.mock.calls[0]?.[0])).not.toContain("세종대로");
+    const [failedPollRow] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `tracking-poll:${ids.orderId}`));
+    expect(failedPollRow?.value).toMatchObject({
+      consecutiveFailures: 1,
+      lastSuccessAt: null,
+      lastErrorCode: "provider-error",
+      leaseId: null,
+      leaseExpiresAt: null,
+    });
+    expect(JSON.stringify(failedPollRow)).not.toContain("carrier-private@example.com");
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.reconcileCarrierTracking?.handler(
+          trackingAction,
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("1 advanced") });
+    expect(readTracking).toHaveBeenCalledTimes(2);
+    const [pollRow] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `tracking-poll:${ids.orderId}`));
+    expect(pollRow?.value).toMatchObject({
+      consecutiveFailures: 0,
+      lastSuccessAt: expect.any(String),
+      lastErrorCode: null,
+      leaseId: null,
+      leaseExpiresAt: null,
+    });
+    await withCurrentSite("default", async () => {
+      await carrierShop.plugin.scheduled
+        ?.find((task) => task.id === "reconcile-carrier-tracking")
+        ?.handler();
+    });
+    expect(readTracking).toHaveBeenCalledTimes(2);
+    const [pollCursor] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, "tracking-poll-cursor"));
+    expect(pollCursor?.value).toMatchObject({
+      contract: "np.shop-tracking-poll-cursor.v1",
+      providerId: "test-carrier",
+      lastBookingKey: null,
+      updatedAt: expect.any(String),
+    });
     const trackingEvent = {
       contract: "np.shop-tracking-event.v1",
       eventId: "tracking_carrier_1",
@@ -2420,7 +2537,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       .select({ key: npPluginStorage.key, value: npPluginStorage.value })
       .from(npPluginStorage)
       .where(like(npPluginStorage.key, "tracking%"));
-    expect(trackingRows).toHaveLength(7);
+    expect(trackingRows).toHaveLength(10);
     expect(JSON.stringify(trackingRows)).not.toContain("carrier-private@example.com");
     expect(JSON.stringify(trackingRows)).not.toContain("세종대로");
     expect(
@@ -2448,6 +2565,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       expect.arrayContaining([
         { action: "shop.carrier.booking.request" },
         { action: "shop.carrier.booking.confirm" },
+        { action: "shop.carrier.tracking.poll" },
         { action: "shop.fulfillment.ship" },
       ]),
     );
