@@ -31,6 +31,7 @@ import {
   npRequireShopCarrierBookingActionInput,
   npRequireShopCarrierProviderId,
   type NpShopCarrierAdapter,
+  type NpShopCarrierTrackingAdapter,
 } from "./carrier-contract.js";
 import {
   npBookShopCarrierShipment,
@@ -68,6 +69,8 @@ import {
   npRequireShopReturnRejectInput,
 } from "./return-contract.js";
 import { createShopPaymentApiHandler } from "./payment-api.js";
+import { createShopTrackingApiHandler } from "./tracking-api.js";
+import { npCountShopTrackingEvents, npListRecentShopTrackingEvents } from "./tracking-service.js";
 import { createShopPaymentAttemptApiHandler } from "./payment-attempt-api.js";
 import {
   npCountShopPaymentAttempts,
@@ -120,7 +123,7 @@ export interface NpShopOptions {
   tax?: {
     adapter: NpShopTaxAdapter;
   };
-  /** Optional server-only carrier shipment booking provider. */
+  /** Optional server-only carrier booking and tracking provider. */
   carrier?: {
     adapter: NpShopCarrierAdapter;
   };
@@ -252,15 +255,34 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   }
   const configuredCarrierAdapter = options.carrier?.adapter ?? null;
   let carrierAdapter: NpShopCarrierAdapter | null = null;
+  let carrierTrackingAdapter: NpShopCarrierTrackingAdapter | null = null;
   if (configuredCarrierAdapter) {
     const id = npRequireShopCarrierProviderId(configuredCarrierAdapter.id);
     if (typeof configuredCarrierAdapter.bookShipment !== "function") {
       throw new Error("Shop carrier adapter bookShipment must be a function.");
     }
+    const hasTrackingWebhook = configuredCarrierAdapter.verifyTrackingWebhook !== undefined;
+    if (
+      hasTrackingWebhook &&
+      typeof configuredCarrierAdapter.verifyTrackingWebhook !== "function"
+    ) {
+      throw new Error(
+        "Shop carrier adapter verifyTrackingWebhook must be a function when provided.",
+      );
+    }
     carrierAdapter = Object.freeze({
       id,
       bookShipment: configuredCarrierAdapter.bookShipment.bind(configuredCarrierAdapter),
+      ...(configuredCarrierAdapter.verifyTrackingWebhook
+        ? {
+            verifyTrackingWebhook:
+              configuredCarrierAdapter.verifyTrackingWebhook.bind(configuredCarrierAdapter),
+          }
+        : {}),
     });
+    if (carrierAdapter.verifyTrackingWebhook) {
+      carrierTrackingAdapter = carrierAdapter as NpShopCarrierTrackingAdapter;
+    }
   }
   return {
     basePath: requireBasePath(options.basePath ?? "/shop"),
@@ -273,6 +295,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     shippingAdapter,
     taxAdapter,
     carrierAdapter,
+    carrierTrackingAdapter,
   };
 }
 
@@ -408,6 +431,10 @@ const messages = {
     "shop.orderFulfillmentShipped": "This order was shipped.",
     "shop.orderFulfillmentCancelled": "Fulfillment was cancelled after the full refund.",
     "shop.orderFulfillmentTracking": "Tracking",
+    "shop.orderTrackingInTransit": "The shipment is in transit.",
+    "shop.orderTrackingOutForDelivery": "The shipment is out for delivery.",
+    "shop.orderTrackingDelivered": "The shipment was delivered.",
+    "shop.orderTrackingException": "The carrier reported a delivery exception.",
     "shop.orderReturn": "Return items",
     "shop.orderReturnRequested": "Return requested — awaiting staff review.",
     "shop.orderReturnApproved": "Return approved — send items according to the site's policy.",
@@ -581,6 +608,10 @@ const messages = {
     "shop.orderFulfillmentShipped": "상품이 출고되었습니다.",
     "shop.orderFulfillmentCancelled": "전액 환불 후 배송 작업이 취소되었습니다.",
     "shop.orderFulfillmentTracking": "배송 조회",
+    "shop.orderTrackingInTransit": "배송 중입니다.",
+    "shop.orderTrackingOutForDelivery": "배송 출발했습니다.",
+    "shop.orderTrackingDelivered": "배송이 완료되었습니다.",
+    "shop.orderTrackingException": "택배사에서 배송 예외를 보고했습니다.",
     "shop.orderReturn": "상품 반품",
     "shop.orderReturnRequested": "반품을 요청했습니다. 관리자 검토를 기다리고 있습니다.",
     "shop.orderReturnApproved": "반품이 승인되었습니다. 사이트 정책에 따라 상품을 보내 주세요.",
@@ -644,6 +675,9 @@ export function createShop(options: NpShopOptions = {}) {
   const orderApiHandler = createShopOrderApiHandler(runtime);
   const returnApiHandler = createShopReturnApiHandler();
   const paymentApiHandler = runtime.paymentAdapter ? createShopPaymentApiHandler(runtime) : null;
+  const trackingApiHandler = runtime.carrierTrackingAdapter
+    ? createShopTrackingApiHandler(runtime.carrierTrackingAdapter)
+    : null;
   const paymentAttemptApiHandler = runtime.paymentInitiationAdapter
     ? createShopPaymentAttemptApiHandler(runtime)
     : null;
@@ -691,7 +725,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment and return operations, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment, tracking, and return operations, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -728,6 +762,9 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-carrier-bookings",
           "widget:shop-carrier-booking-health",
           "table:shop-carrier-bookings",
+          "dashboard:shop-tracking-events",
+          "widget:shop-tracking-event-health",
+          "table:shop-tracking-events",
           "dashboard:shop-inventory-reservations",
           "widget:shop-inventory-reservation-health",
           "table:shop-inventory-reservations",
@@ -756,13 +793,14 @@ export function createShop(options: NpShopOptions = {}) {
           "/orders",
           "/returns",
           ...(paymentApiHandler ? ["/payments/webhook"] : []),
+          ...(trackingApiHandler ? ["/carrier/tracking/webhook"] : []),
           ...(paymentAttemptApiHandler ? ["/payments/attempts"] : []),
         ],
         hooks: [],
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment, carrier booking, and physical return intake. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, labels, pickup, and tracking webhooks remain external.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment, carrier booking, verified tracking callbacks, and physical return intake. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, labels, pickup, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -801,6 +839,7 @@ export function createShop(options: NpShopOptions = {}) {
         "order-line": "[data-np-shop-order-line]",
         "order-status": "[data-np-shop-order-status]",
         "fulfillment-status": "[data-np-shop-fulfillment-status]",
+        "tracking-status": "[data-np-shop-tracking-status]",
         "return-status": "[data-np-shop-return-status]",
         "product-card": ".np-shop-product-card",
         "product-grid": ".np-shop-product-grid",
@@ -889,7 +928,15 @@ export function createShop(options: NpShopOptions = {}) {
           kind: "metric",
           actionId: "countCarrierBookings",
           description: "PII-free durable carrier attempts and locally completed shipments.",
-          priority: 29,
+          priority: 30,
+        },
+        {
+          id: "shop-tracking-events-total",
+          label: "Tracking events",
+          kind: "metric",
+          actionId: "countTrackingEvents",
+          description: "Verified PII-free carrier events retained with their shipments.",
+          priority: 31,
         },
         {
           id: "shop-payment-events-total",
@@ -898,7 +945,7 @@ export function createShop(options: NpShopOptions = {}) {
           actionId: "countPaymentEvents",
           description:
             "Verified, PII-free provider event receipts retained with their commercial orders.",
-          priority: 30,
+          priority: 32,
         },
         {
           id: "shop-refunds-total",
@@ -906,7 +953,7 @@ export function createShop(options: NpShopOptions = {}) {
           kind: "metric",
           actionId: "countRefunds",
           description: "Durable full-refund attempts and completed inventory compensation.",
-          priority: 32,
+          priority: 34,
         },
         {
           id: "shop-returns-total",
@@ -914,7 +961,7 @@ export function createShop(options: NpShopOptions = {}) {
           kind: "metric",
           actionId: "countReturns",
           description: "Durable item-level physical return requests for shipped orders.",
-          priority: 33,
+          priority: 35,
         },
         ...(paymentAttemptApiHandler
           ? [
@@ -925,7 +972,7 @@ export function createShop(options: NpShopOptions = {}) {
                 actionId: "countPaymentAttempts",
                 description:
                   "PII-free owner-scoped handoffs retained with their commercial orders.",
-                priority: 31,
+                priority: 33,
               },
             ]
           : []),
@@ -972,6 +1019,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Carrier booking contract",
           kind: "status",
           actionId: "carrierBookingHealth",
+        },
+        {
+          id: "shop-tracking-event-health",
+          label: "Carrier tracking contract",
+          kind: "status",
+          actionId: "trackingEventHealth",
         },
         {
           id: "shop-payment-event-health",
@@ -1199,6 +1252,22 @@ export function createShop(options: NpShopOptions = {}) {
             },
           ],
           emptyMessage: "No carrier shipment booking exists for this site.",
+        },
+        {
+          id: "shop-tracking-events",
+          label: "Recent verified carrier tracking events (PII withheld)",
+          columns: [
+            { name: "provider", label: "Provider" },
+            { name: "eventId", label: "Event" },
+            { name: "shipmentId", label: "Shipment" },
+            { name: "orderId", label: "Order" },
+            { name: "status", label: "Status" },
+            { name: "outcome", label: "Outcome" },
+            { name: "occurredAt", label: "Occurred" },
+            { name: "processedAt", label: "Processed" },
+          ],
+          rowsActionId: "recentTrackingEvents",
+          emptyMessage: "No verified carrier tracking event exists for this site.",
         },
         {
           id: "shop-inventory-reservations",
@@ -2041,6 +2110,80 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      countTrackingEvents: {
+        kind: "metric" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopTrackingEvents(runtime.carrierTrackingAdapter?.id);
+            return {
+              ok: true as const,
+              data: {
+                value: counts.total,
+                delta: `${counts.states.toString()} shipments, ${counts.delivered.toString()} delivered, ${counts.exceptions.toString()} exceptions`,
+              },
+            };
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      trackingEventHealth: {
+        kind: "status" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopTrackingEvents(runtime.carrierTrackingAdapter?.id);
+            if (
+              counts.invalidSample > 0 ||
+              counts.orphanSample > 0 ||
+              counts.providerMismatchSample > 0 ||
+              counts.stateMismatchSample > 0
+            ) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed, ${counts.orphanSample.toString()} orphan, ${counts.providerMismatchSample.toString()} provider-mismatched, and ${counts.stateMismatchSample.toString()} state-mismatched tracking row(s) in bounded samples.`,
+              );
+            }
+            if (!runtime.carrierTrackingAdapter && counts.active > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.active.toString()} active shipment tracking state(s) cannot receive callbacks while the webhook capability is disabled.`,
+              );
+            }
+            if (counts.exceptions > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.exceptions.toString()} shipment(s) currently report a delivery exception.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.total.toString()} verified event receipt(s), ${counts.delivered.toString()} delivered shipment(s); ${runtime.carrierTrackingAdapter ? `provider "${runtime.carrierTrackingAdapter.id}" webhook is enabled` : "tracking webhook is disabled"}.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Tracking event health check failed.",
+            );
+          }
+        },
+      },
+      recentTrackingEvents: {
+        kind: "table" as const,
+        handler: async () => {
+          try {
+            const result = await npListRecentShopTrackingEvents();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
       bookCarrierShipment: {
         kind: "action" as const,
         handler: async (data: unknown, ctx: NpPluginContext) => {
@@ -2397,6 +2540,19 @@ export function createShop(options: NpShopOptions = {}) {
               auth: false,
               bodyMode: "raw" as const,
               handler: paymentApiHandler,
+            },
+          ]
+        : []),
+      ...(trackingApiHandler
+        ? [
+            {
+              method: "POST" as const,
+              path: "/carrier/tracking/webhook",
+              description:
+                "Verify one exact carrier callback and idempotently advance its PII-free shipment tracking state.",
+              auth: false,
+              bodyMode: "raw" as const,
+              handler: trackingApiHandler,
             },
           ]
         : []),
@@ -2763,6 +2919,7 @@ export {
 } from "./carrier-contract.js";
 export type {
   NpShopCarrierAdapter,
+  NpShopCarrierTrackingAdapter,
   NpShopCarrierBookingActionInput,
   NpShopCarrierBookingItem,
   NpShopCarrierBookingRequest,
@@ -2770,6 +2927,43 @@ export type {
   NpShopCarrierBookingStatus,
   NpShopStoredCarrierBooking,
 } from "./carrier-contract.js";
+export {
+  NP_SHOP_TRACKING_CONTRACT,
+  NP_SHOP_TRACKING_EVENT_CONTRACT,
+  NP_SHOP_TRACKING_RECEIPT_CONTRACT,
+  NP_SHOP_TRACKING_STORAGE_CONTRACT,
+  NP_SHOP_TRACKING_WEBHOOK_IGNORED_CONTRACT,
+  NpShopTrackingConflictError,
+  NpShopTrackingContractError,
+  NpShopTrackingVerificationError,
+  npAnalyzeShopTracking,
+  npAnalyzeShopTrackingEvent,
+  npAnalyzeStoredShopTracking,
+  npAnalyzeStoredShopTrackingReceipt,
+  npIsIgnoredTrackingWebhook,
+  npProjectShopTracking,
+  npRequireFreshShopTrackingEvent,
+  npRequireShopTrackingProviderId,
+  npRequireStoredShopTracking,
+  npRequireStoredShopTrackingReceipt,
+  npShopTrackingEventDigest,
+  npShopTrackingLimits,
+  npShopTrackingReceiptOutcomes,
+  npShopTrackingReceiptStorageKey,
+  npShopTrackingStatuses,
+  npShopTrackingStorageKey,
+} from "./tracking-contract.js";
+export type {
+  NpShopIgnoredTrackingWebhook,
+  NpShopStoredTracking,
+  NpShopStoredTrackingReceipt,
+  NpShopTracking,
+  NpShopTrackingReceiptOutcome,
+  NpShopTrackingStatus,
+  NpShopTrackingWebhookInput,
+  NpShopTrackingWebhookResult,
+  NpShopVerifiedTrackingEvent,
+} from "./tracking-contract.js";
 export type {
   NpShopOrderDraftCreateInput,
   NpShopOrderDraftDeleteInput,

@@ -8,6 +8,7 @@ provider-neutral shipping quote and selected delivery snapshot, an optional
 provider-neutral additional-tax quote and frozen tax snapshot, an optional
 provider-neutral payment initiation and verified-event boundary, revision-safe
 fulfillment operations, optional provider-neutral carrier booking,
+verified carrier tracking events and owner-visible delivery state,
 provider-neutral full refunds with safe inventory
 compensation, owner-scoped item return intake with audited receipt inventory,
 Admin collection forms and health actions, blocks, and skins.
@@ -25,9 +26,9 @@ browser return on the server, authenticate an external callback, and project
 the exact provider-neutral event that moves that order to `paid` or
 `payment-failed`. A refund-capable adapter may also cancel one entire provider
 payment. Shop owns attempts, order/refund transitions, fulfillment and return
-state, carrier booking, and local compensation, but does not choose a provider protocol, remit
+state, carrier booking/tracking receipts, and local compensation, but does not choose a provider protocol, remit
 or file tax, issue tax invoices, decide exemptions, physically fulfill goods,
-buy labels/schedule pickup, or decide jurisdiction-specific return eligibility.
+buy labels/schedule pickup, poll a carrier, or decide jurisdiction-specific return eligibility.
 
 ## Default setup
 
@@ -631,6 +632,23 @@ const carrier: NpShopCarrierAdapter = {
       bookedAt: booking.bookedAt,
     };
   },
+  async verifyTrackingWebhook(input) {
+    // Authenticate input.rawBody with the provider signature or a
+    // server-authenticated provider query. Never trust parsed fields first.
+    const providerEvent = await verifyProviderTracking(input);
+    if (!providerEvent) return null;
+    return {
+      contract: "np.shop-tracking-event.v1",
+      eventId: providerEvent.id,
+      shipmentId: providerEvent.shipmentId,
+      orderId: providerEvent.orderId,
+      bookingReference: providerEvent.bookingReference,
+      trackingNumber: providerEvent.trackingNumber,
+      status: providerEvent.status,
+      occurredAt: providerEvent.occurredAt,
+      signedAt: providerEvent.signedAt,
+    };
+  },
 };
 
 const shop = createShop({ carrier: { adapter: carrier } });
@@ -660,9 +678,35 @@ declared even when no adapter is configured, so removing a provider cannot hide
 an unresolved durable row. When configured, the adapter-backed action replaces
 the manual shipped action in the fulfillment table. A `provider-confirmed` row
 can finish local completion after adapter removal; a `pending` row requires its
-original provider. The contract does not buy or render labels, schedule
-pickup, consume tracking webhooks, choose packaging, calculate delivery price,
-or implement customs and jurisdiction policy.
+original provider.
+
+`verifyTrackingWebhook` is an additive capability. When present, Shop declares
+the unauthenticated transport route `POST /carrier/tracking/webhook` in exact
+raw-body mode; the adapter must authenticate those bytes before returning a
+canonical event. `signedAt` is bounded to a five-minute callback replay window,
+while `occurredAt` may precede it by at most 30 days for delayed carrier
+delivery. That transport timestamp is replay-checked but omitted from the
+semantic digest, allowing an authenticated provider retry to refresh only its
+signature time. The event must exactly match the current site, completed shipment
+UUID, order, booking reference, and tracking number.
+
+Shop hashes external event ids into storage keys. Replaying the same id and
+content is idempotent; reusing an id for different content returns HTTP 409.
+PII-free receipts record `advanced`, `ignored-stale`, `ignored-regression`, or
+`ignored-terminal`. The current `in-transit | out-for-delivery | delivered |
+exception` state advances independently of fulfillment, so `shipped` keeps its
+existing carrier-handoff and private-data-deletion meaning. `delivered` is
+terminal; stale and regressive events remain diagnosable without rolling the
+owner-visible state backward. The order detail shared by both bundled skins
+exposes the latest state through `data-np-shop-tracking-status`.
+
+Tracking metrics, health, and a newest-50 receipt table remain declared after
+adapter removal. Doctor verifies their action kinds and route declaration;
+health samples malformed, orphaned, provider-mismatched, and booking-state-
+mismatched rows without reading private data. The contract does not buy or
+render labels, schedule pickup, poll a carrier, choose packaging, calculate
+delivery price, or implement provider-specific, customs, jurisdiction, or
+customer-service policy.
 
 ## Full refunds and inventory compensation
 
@@ -821,7 +865,7 @@ The two collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
-The plugin declares twelve baseline typed dashboard metric actions:
+The plugin declares thirteen baseline typed dashboard metric actions:
 
 - total product rows;
 - published low-stock products;
@@ -836,12 +880,13 @@ The plugin declares twelve baseline typed dashboard metric actions:
 - fulfillment rows split across awaiting, processing, and shipped states.
 - durable carrier shipment attempts and completed bookings, including when
   the adapter is currently disabled.
+- verified PII-free tracking-event receipts and current shipment states.
 - verified PII-free payment-event receipts.
 - durable full-refund attempts and compensation outcomes.
 - item-level physical returns split across requested, approved, rejected,
   received, and owner-cancelled states.
 
-A complete initiation adapter adds a thirteenth metric for PII-free payment
+A complete initiation adapter adds a fourteenth metric for PII-free payment
 attempts, a bounded recent-attempt table, and payment-attempt health. Attempt
 diagnostics expose provider, status, order id, exact amount, and timestamps;
 they withhold owner segments, private order data, and provider handoff values.
@@ -851,6 +896,10 @@ provider-mismatched, fulfillment-state-mismatched, pending,
 provider-confirmed, completed, and manual-review rows without reading a
 destination. Pending and provider-confirmed table rows reuse the same audited
 direct-staff action; a confirmed row performs local completion only.
+Carrier tracking has its own metric, health status, and newest-50 receipt table
+even when the callback capability is disabled. It reports current delivered
+and exception counts plus bounded malformed, orphaned, provider, and shipment
+state mismatches.
 
 Admin also exposes separate cart, checkout-intent, and private-order-draft
 storage health plus configured shipping-provider success/failure state and
@@ -986,7 +1035,8 @@ Future transaction work should remain separable from this foundation:
 1. additional provider packages for Stripe or KG Inicis;
 2. authorization/capture, settlement, provider-initiated reversal, and partial
    refund contracts;
-3. carrier labels, pickup, tracking webhooks, exchanges, and customer-service policy;
+3. carrier labels, pickup, polling, provider-specific tracking packages,
+   exchanges, and customer-service policy;
 4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and
    shipping-policy integrations.
 

@@ -20,6 +20,7 @@ import { NP_SHOP_REFUND_CONTRACT, npAnalyzeStoredShopRefund } from "./refund-con
 import { NP_SHOP_RETURN_CONTRACT, npAnalyzeShopReturn } from "./return-contract.js";
 import { npAnalyzeShopDeliveryMethod, type NpShopDeliveryMethod } from "./shipping-contract.js";
 import { npAnalyzeShopTaxQuote, type NpShopTaxQuote } from "./tax-contract.js";
+import { npAnalyzeShopTracking } from "./tracking-contract.js";
 
 export const NP_SHOP_ORDER_CONTRACT = "np.shop-order.v1" as const;
 export const NP_SHOP_ORDER_LIST_CONTRACT = "np.shop-order-list.v1" as const;
@@ -745,7 +746,7 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
   const issues: string[] = [];
   if (!isRecord(value)) return ["order must be a plain object."];
   for (const key of Object.keys(value)) {
-    if (![...publicOrderKeys, "fulfillment", "refund", "returnRequest"].includes(key)) {
+    if (![...publicOrderKeys, "fulfillment", "tracking", "refund", "returnRequest"].includes(key)) {
       issues.push(`order.${key} is not supported.`);
     }
   }
@@ -760,6 +761,7 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
   delete storedCandidate.customer;
   delete storedCandidate.shipping;
   delete storedCandidate.fulfillment;
+  delete storedCandidate.tracking;
   delete storedCandidate.refund;
   delete storedCandidate.returnRequest;
   issues.push(...npAnalyzeStoredShopOrder(storedCandidate));
@@ -784,6 +786,17 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
       issues.push(
         "order.fulfillment must match the paid order id, payment timestamp, and private-data state.",
       );
+    }
+  }
+  if (Object.hasOwn(value, "tracking")) {
+    issues.push(...npAnalyzeShopTracking(value.tracking).map((issue) => `order.${issue}`));
+    if (
+      !isRecord(value.tracking) ||
+      !isRecord(value.fulfillment) ||
+      value.fulfillment.status !== "shipped" ||
+      value.fulfillment.privateDataStatus !== "redacted"
+    ) {
+      issues.push("order.tracking requires one redacted shipped fulfillment.");
     }
   }
   if (Object.hasOwn(value, "refund")) {

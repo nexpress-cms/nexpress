@@ -2,7 +2,16 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-02 (Shop processing fulfillments may now use one
+**Last refreshed:** 2026-08-02 (Shop carrier adapters may now add one optional
+exact raw-body tracking webhook capability; authenticated PII-free events
+match the durable shipment/site/booking/tracking tuple, replay and event delay
+are bounded, event ids are conflict-safe, monotonic tracking state stays
+separate from shipped fulfillment, delivered is terminal, and owner skins,
+Admin, Doctor, scaffolds, cleanup, and PostgreSQL integration tests share the
+same contract. Provider-specific carrier protocols, labels, pickup, polling,
+and customer-service policy remain separate.)
+
+**Earlier:** 2026-08-02 (Shop processing fulfillments may now use one
 optional server-only provider-neutral carrier booking adapter; durable shipment
 UUID idempotency, calls outside DB transactions, separately persisted provider
 confirmation, atomic shipped/tracking and private-data deletion, direct-staff
