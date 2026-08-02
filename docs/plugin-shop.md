@@ -5,6 +5,7 @@ It owns product and category data, inventory projection, public catalog
 routes, bounded guest/member carts, checkout intents, private order drafts,
 durable orders, transaction-safe inventory reservations, an optional
 provider-neutral shipping quote and selected delivery snapshot, an optional
+provider-neutral additional-tax quote and frozen tax snapshot, an optional
 provider-neutral payment initiation and verified-event boundary, revision-safe
 fulfillment operations, provider-neutral full refunds with safe inventory
 compensation, owner-scoped item return intake with audited receipt inventory,
@@ -23,9 +24,9 @@ browser return on the server, authenticate an external callback, and project
 the exact provider-neutral event that moves that order to `paid` or
 `payment-failed`. A refund-capable adapter may also cancel one entire provider
 payment. Shop owns attempts, order/refund transitions, fulfillment and return
-state, and local compensation, but does not choose a provider protocol,
-calculate tax, physically fulfill goods, book a carrier, or
-decide jurisdiction-specific return eligibility.
+state, and local compensation, but does not choose a provider protocol, remit
+or file tax, issue tax invoices, decide exemptions, physically fulfill goods,
+book a carrier, or decide jurisdiction-specific return eligibility.
 
 ## Default setup
 
@@ -162,10 +163,10 @@ subtotals, total units, a deterministic fingerprint, and exact issue codes:
 `insufficient-stock`, `price-changed`, and `mixed-currency`. Price changes are
 visible but do not alone block readiness. Unavailable products/options,
 insufficient stock, and mixed currencies do. Order creation quotes again;
-payment initiation, tax, and delivery-quote integrations retain their own contracts,
-while the optional verified event boundary owns terminal idempotency and
-reservation consumption. Quotes subtract every unexpired pending-order reservation
-for the same product or canonical variant SKU.
+payment initiation, delivery quotes, and additional-tax quotes retain their
+own contracts, while the optional verified event boundary owns terminal
+idempotency and reservation consumption. Quotes subtract every unexpired
+pending-order reservation for the same product or canonical variant SKU.
 
 ## Checkout intent contract
 
@@ -223,17 +224,20 @@ Shop exposes `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` at
 - A newly created draft is `collecting` and contains no PII.
 - `PATCH { draftId, expectedRevision, customer, shipping }` atomically
   replaces the complete bounded customer/shipping pair. With no shipping
-  adapter, the draft becomes `reviewable` with zero shipping amount. With an
-  adapter, Shop requests fresh methods outside the database transaction and
-  persists them only after rechecking the same draft revision. Stale provider
-  responses therefore cannot overwrite a newer address.
+  adapter, Shop requests any configured tax quote and then makes the draft
+  `reviewable` with zero shipping amount. With a shipping adapter, Shop
+  requests fresh methods outside the database transaction and persists them
+  only after rechecking the same draft revision. Stale provider responses
+  therefore cannot overwrite a newer address.
 - A quoted draft becomes `shipping-selection-required`. `PUT { draftId,
 expectedRevision, methodId }` accepts only one method from the current,
-  unexpired quote and freezes its PII-free snapshot, shipping amount, and
-  `subtotalMinor + shippingMinor = totalMinor`. It then becomes `reviewable`.
+  unexpired quote, requests any configured tax quote outside the transaction,
+  and freezes both PII-free snapshots. The exact invariant is
+  `subtotalMinor + shippingMinor + taxMinor = totalMinor`. It then becomes
+  `reviewable`.
 - A `reviewable` draft means only that its fields and any configured delivery
-  selection satisfy the draft contract; it does not mean that payment, tax,
-  inventory, carrier booking, or legal policy is ready.
+  selection and tax quote satisfy the draft contract; it does not mean that
+  payment, inventory, carrier booking, tax compliance, or legal policy is ready.
 - Any cart, price, inventory, product, or option change makes the owner-facing
   projection `stale` and blocks another private-data save.
 - `DELETE { draftId }` is idempotent and physically removes the owner-scoped
@@ -327,16 +331,81 @@ Shop never holds a database transaction open across the provider call. After a
 successful selection, `np.shop-delivery-method.v1` copies only provider/quote/
 method ids, label, amount, estimate, and quote timestamps into the durable
 commercial order. It contains no destination or owner identity. The immutable
-order stores `subtotalMinor`, `shippingMinor`, and `totalMinor`; payment
-preparation, verified event matching, and full refunds use `totalMinor`.
+order stores `subtotalMinor`, `shippingMinor`, `taxMinor`, and `totalMinor`;
+payment preparation, verified event matching, and full refunds use
+`totalMinor`.
 
 The PII-free `shipping-health` row records only provider id, `ok | error`, the
 closed `provider-error | invalid-result` code, and timestamps. Admin health can
 expose that state without reading a destination; plugin doctor verifies the
 declarative health action and route contracts without executing them. Carrier
-booking, labels, pickup, tracking API integration, tax, customs, free-shipping
+booking, labels, pickup, tracking API integration, customs, free-shipping
 policy, and jurisdiction rules remain separate from this quote/selection
 boundary.
+
+## Additional-tax quote and frozen total
+
+Tax quoting is disabled by default, preserving zero additional tax on top of
+the product prices displayed by Shop. A project may register one server-only
+adapter independently of shipping and payment:
+
+```ts
+import {
+  NP_SHOP_TAX_QUOTE_RESULT_CONTRACT,
+  createShop,
+  type NpShopTaxAdapter,
+} from "@nexpress/plugin-shop";
+
+const taxAdapter: NpShopTaxAdapter = {
+  id: "my-tax",
+  async quoteTax(request) {
+    // request.destination is private. Never log it or copy it into results.
+    const quote = await quoteTaxProvider(request);
+    return {
+      contract: NP_SHOP_TAX_QUOTE_RESULT_CONTRACT,
+      quoteId: quote.id,
+      components: quote.lines.map((line) => ({
+        id: line.id,
+        label: line.label,
+        amountMinor: line.amountMinor,
+      })),
+      amountMinor: quote.amountMinor,
+      expiresAt: quote.expiresAt,
+    };
+  },
+};
+
+const shop = createShop({ tax: { adapter: taxAdapter } });
+```
+
+The request contains the draft id/revision, currency, immutable checkout
+lines, item subtotal, selected shipping amount, pre-tax total, private
+destination, optional PII-free delivery method, request time, and maximum
+expiry. With no shipping adapter it runs after address `PATCH`; with shipping
+enabled it runs only after one delivery method is selected. Provider calls do
+not hold database transactions, and Shop rechecks the draft revision, cart,
+delivery quote, selection, and expiry before persisting the result.
+
+Results contain one bounded opaque quote id, 0–20 unique PII-free components,
+their exact non-negative integer sum, and an expiry. Empty components are
+valid only with zero added tax. A tax quote cannot outlive one hour, the
+private draft, or its selected delivery quote. Unknown fields, invalid money,
+component-total mismatch, and out-of-window expiry fail closed as HTTP 503.
+
+`NpShopTaxAdapter` reports **only additional tax charged on top of displayed
+product prices**. It does not reinterpret an already tax-inclusive catalog
+price. The durable `np.shop-tax-quote.v1` snapshot contains no destination or
+owner identity. Drafts and orders enforce
+`subtotalMinor + shippingMinor + taxMinor = totalMinor`; payment preparation,
+verified event matching, and full refunds continue to use that frozen
+`totalMinor`.
+
+The PII-free `tax-health` row stores only provider id, `ok | error`, the closed
+`provider-error | invalid-result` code, and timestamps. Admin health reports
+that state without reading private draft data, while plugin doctor validates
+the declarative diagnostic surface. Calculation does not implement remittance,
+filing, invoices or tax bills, exemption/nexus policy, customs or duties, or
+jurisdiction-specific compliance.
 
 ## Durable pending order and PII separation
 
@@ -366,10 +435,11 @@ Shop exposes `GET`, `POST`, and `DELETE` at
 - `DELETE { orderId, expectedRevision }` is revision-safe. Repeating a
   successful cancellation is idempotent.
 
-The only browser-creatable status is `pending-payment`. It means that the immutable
-product, option, item subtotal, selected delivery method and amount, exact
-total, currency, quantity, cart revision, and cart fingerprint snapshot has a
-durable order reference. Tracked lines have
+The only browser-creatable status is `pending-payment`. It means that the
+immutable product, option, item subtotal, selected delivery method and amount,
+additional-tax snapshot and amount, exact total, currency, quantity, cart
+revision, and cart fingerprint snapshot has a durable order reference. Tracked
+lines have
 `inventoryReservationStatus: "held"`; an untracked-only order uses
 `"not-required"`. `inventoryReservationLineKeys` records exactly which
 commercial lines require matching PII-free holds. This does **not** mean that
@@ -841,7 +911,8 @@ Future transaction work should remain separable from this foundation:
 2. authorization/capture, settlement, provider-initiated reversal, and partial
    refund contracts;
 3. fulfillment carrier booking/labels/tracking, exchanges, and customer-service policy;
-4. legal/tax/customs and shipping-policy integrations.
+4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and
+   shipping-policy integrations.
 
 Those features require their own payment, security, and operational contracts.
 The provider-neutral event boundary does not pre-authorize or emulate them.

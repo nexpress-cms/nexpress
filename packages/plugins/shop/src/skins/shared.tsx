@@ -88,6 +88,8 @@ function cartClientMessages(messages: NpShopMessages): NpShopCartClientMessages 
     orderDraftPaymentUnavailable: messages.orderDraftPaymentUnavailable,
     orderDraftFailed: messages.orderDraftFailed,
     shippingAmount: messages.shippingAmount,
+    taxAmount: messages.taxAmount,
+    taxBreakdown: messages.taxBreakdown,
     orderTotal: messages.orderTotal,
     order: messages.order,
     orders: messages.orders,

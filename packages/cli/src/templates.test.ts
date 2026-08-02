@@ -387,7 +387,8 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("pnpm add @nexpress/shop-payment-toss");
     expect(readme).toContain("defaultPlugins");
     expect(env).toContain("createShop({ shipping: { adapter } })");
-    expect(readme).toContain("Shipping remains zero until a server-only quote adapter");
+    expect(env).toContain("createShop({ tax: { adapter } })");
+    expect(readme).toContain("Shipping and additional tax remain zero");
   });
 
   it(".env.example documents the exact storage runtime contract", () => {

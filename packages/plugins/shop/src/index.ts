@@ -23,6 +23,7 @@ import {
   npCleanupExpiredShopOrderDrafts,
   npCountShopOrderDrafts,
   npReadShopShippingHealth,
+  npReadShopTaxHealth,
 } from "./order-draft-service.js";
 import { createShopOrderApiHandler } from "./order-api.js";
 import {
@@ -82,6 +83,7 @@ import {
   npRequireShopShippingProviderId,
   type NpShopShippingAdapter,
 } from "./shipping-contract.js";
+import { npRequireShopTaxProviderId, type NpShopTaxAdapter } from "./tax-contract.js";
 import { classicShopSkin } from "./skins/classic.js";
 import { storefrontFullShopSkin } from "./skins/storefront-full.js";
 import type { NpShopCollectionSlugs, NpShopSkin } from "./types.js";
@@ -104,6 +106,10 @@ export interface NpShopOptions {
   /** Optional server-only delivery quote provider. */
   shipping?: {
     adapter: NpShopShippingAdapter;
+  };
+  /** Optional server-only additional-tax quote provider. */
+  tax?: {
+    adapter: NpShopTaxAdapter;
   };
 }
 
@@ -219,6 +225,18 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
       quoteShipping: configuredShippingAdapter.quoteShipping.bind(configuredShippingAdapter),
     });
   }
+  const configuredTaxAdapter = options.tax?.adapter ?? null;
+  let taxAdapter: NpShopTaxAdapter | null = null;
+  if (configuredTaxAdapter) {
+    const id = npRequireShopTaxProviderId(configuredTaxAdapter.id);
+    if (typeof configuredTaxAdapter.quoteTax !== "function") {
+      throw new Error("Shop tax adapter quoteTax must be a function.");
+    }
+    taxAdapter = Object.freeze({
+      id,
+      quoteTax: configuredTaxAdapter.quoteTax.bind(configuredTaxAdapter),
+    });
+  }
   return {
     basePath: requireBasePath(options.basePath ?? "/shop"),
     collections,
@@ -228,6 +246,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     paymentInitiationAdapter,
     paymentRefundAdapter,
     shippingAdapter,
+    taxAdapter,
   };
 }
 
@@ -326,9 +345,11 @@ const messages = {
     "shop.orderDraftPrivacy":
       "These details stay outside search and content export. Cancellation deletes them immediately; they expire after 24 hours and hourly cleanup permanently removes untouched expired drafts.",
     "shop.orderDraftPaymentUnavailable":
-      "Saving these details does not place an order, reserve inventory, calculate tax, or take payment.",
+      "Saving these details does not place an order, reserve inventory, remit tax, or take payment.",
     "shop.orderDraftFailed": "The order draft could not be updated.",
     "shop.shippingAmount": "Shipping",
+    "shop.taxAmount": "Additional tax",
+    "shop.taxBreakdown": "Tax breakdown",
     "shop.orderTotal": "Total",
     "shop.order": "Order",
     "shop.orders": "Orders",
@@ -392,7 +413,7 @@ const messages = {
     "shop.orderEmpty": "No orders have been created for this browser identity.",
     "shop.orderReference": "Order reference",
     "shop.orderPaymentUnavailable":
-      "This order remains pending until an enabled provider supplies a verified callback. Tax, carrier booking, fulfillment, and refunds are separate.",
+      "This order remains pending until an enabled provider supplies a verified callback. Tax remittance, carrier booking, fulfillment, and refunds are separate.",
     "shop.orderPay": "Pay with configured provider",
     "shop.orderPaymentPreparing": "Preparing secure payment…",
     "shop.orderPaymentConfirming": "Confirming payment with the provider…",
@@ -499,9 +520,11 @@ const messages = {
     "shop.orderDraftPrivacy":
       "입력 정보는 검색·콘텐츠 내보내기에 포함되지 않습니다. 취소하면 즉시 삭제되며 24시간 후 만료된 초안은 시간별 정리 작업이 영구 삭제합니다.",
     "shop.orderDraftPaymentUnavailable":
-      "정보를 저장해도 주문 생성, 재고 예약, 세금 계산 또는 결제가 실행되지 않습니다.",
+      "정보를 저장해도 주문 생성, 재고 예약, 세금 신고·납부 또는 결제가 실행되지 않습니다.",
     "shop.orderDraftFailed": "주문 초안을 갱신하지 못했습니다.",
     "shop.shippingAmount": "배송비",
+    "shop.taxAmount": "추가 세액",
+    "shop.taxBreakdown": "세액 내역",
     "shop.orderTotal": "총 결제금액",
     "shop.order": "주문",
     "shop.orders": "주문 내역",
@@ -562,7 +585,7 @@ const messages = {
     "shop.orderEmpty": "이 브라우저 식별자로 만든 주문이 없습니다.",
     "shop.orderReference": "주문 번호",
     "shop.orderPaymentUnavailable":
-      "활성 결제사가 검증된 콜백을 보낼 때까지 결제 대기 상태입니다. 세금, 운송사 예약, 배송 처리 및 환불은 별도 계약입니다.",
+      "활성 결제사가 검증된 콜백을 보낼 때까지 결제 대기 상태입니다. 세금 신고·납부, 운송사 예약, 배송 처리 및 환불은 별도 계약입니다.",
     "shop.orderPay": "연결된 결제사로 결제하기",
     "shop.orderPaymentPreparing": "안전한 결제를 준비하는 중…",
     "shop.orderPaymentConfirming": "결제사에서 결제를 승인하는 중…",
@@ -642,7 +665,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping quotes, durable orders, optional payment initiation, verified events, full refunds, fulfillment and return operations, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment initiation, verified events, full refunds, fulfillment and return operations, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -710,7 +733,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment, and physical return intake. Provider settlement, reversals, partial refunds, exchanges, tax/customs, shipping policy, and carrier booking remain external.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment, and physical return intake. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, shipping policy, and carrier booking remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -1379,7 +1402,7 @@ export function createShop(options: NpShopOptions = {}) {
               ok: true,
               data: {
                 value: counts.collecting + counts.shippingSelectionRequired + counts.reviewable,
-                delta: `${counts.shippingSelectionRequired.toString()} awaiting delivery selection; ${counts.expired.toString()} expired; ${runtime.shippingAdapter?.id ?? "quotes disabled"}`,
+                delta: `${counts.shippingSelectionRequired.toString()} awaiting delivery selection; ${counts.expired.toString()} expired; shipping ${runtime.shippingAdapter?.id ?? "disabled"}; tax ${runtime.taxAdapter?.id ?? "disabled"}`,
               },
             };
           } catch (error) {
@@ -1395,6 +1418,7 @@ export function createShop(options: NpShopOptions = {}) {
             const shippingHealth = runtime.shippingAdapter
               ? await npReadShopShippingHealth()
               : null;
+            const taxHealth = runtime.taxAdapter ? await npReadShopTaxHealth() : null;
             if (
               shippingHealth &&
               (shippingHealth.providerId !== runtime.shippingAdapter?.id ||
@@ -1405,6 +1429,15 @@ export function createShop(options: NpShopOptions = {}) {
                 `Shipping quote provider ${runtime.shippingAdapter?.id ?? "disabled"} last reported ${shippingHealth.errorCode ?? "provider mismatch"} at ${shippingHealth.attemptedAt}; no PII is retained in this diagnostic.`,
               );
             }
+            if (
+              taxHealth &&
+              (taxHealth.providerId !== runtime.taxAdapter?.id || taxHealth.status === "error")
+            ) {
+              return npAdminStatus(
+                "error",
+                `Tax quote provider ${runtime.taxAdapter?.id ?? "disabled"} last reported ${taxHealth.errorCode ?? "provider mismatch"} at ${taxHealth.attemptedAt}; no PII is retained in this diagnostic.`,
+              );
+            }
             return counts.invalid > 0
               ? npAdminStatus(
                   "error",
@@ -1413,11 +1446,11 @@ export function createShop(options: NpShopOptions = {}) {
               : counts.expired > 0
                 ? npAdminStatus(
                     "warn",
-                    `${counts.collecting.toString()} collecting, ${counts.shippingSelectionRequired.toString()} awaiting delivery selection, ${counts.reviewable.toString()} reviewable, ${counts.expired.toString()} expired draft(s); provider ${runtime.shippingAdapter?.id ?? "disabled"}; values are withheld.`,
+                    `${counts.collecting.toString()} collecting, ${counts.shippingSelectionRequired.toString()} awaiting delivery selection, ${counts.reviewable.toString()} reviewable, ${counts.expired.toString()} expired draft(s); shipping ${runtime.shippingAdapter?.id ?? "disabled"}; tax ${runtime.taxAdapter?.id ?? "disabled"}; values are withheld.`,
                   )
                 : npAdminStatus(
                     "ok",
-                    `${counts.collecting.toString()} collecting, ${counts.shippingSelectionRequired.toString()} awaiting delivery selection, ${counts.reviewable.toString()} reviewable private draft(s); provider ${runtime.shippingAdapter?.id ?? "disabled"}; values are withheld.`,
+                    `${counts.collecting.toString()} collecting, ${counts.shippingSelectionRequired.toString()} awaiting delivery selection, ${counts.reviewable.toString()} reviewable private draft(s); shipping ${runtime.shippingAdapter?.id ?? "disabled"}; tax ${runtime.taxAdapter?.id ?? "disabled"}; values are withheld.`,
                   );
           } catch (error) {
             return npAdminStatus(
@@ -2343,6 +2376,32 @@ export type {
   NpShopShippingQuoteResult,
   NpShopShippingHealth,
 } from "./shipping-contract.js";
+export {
+  NP_SHOP_TAX_HEALTH_CONTRACT,
+  NP_SHOP_TAX_QUOTE_CONTRACT,
+  NP_SHOP_TAX_QUOTE_REQUEST_CONTRACT,
+  NP_SHOP_TAX_QUOTE_RESULT_CONTRACT,
+  NpShopTaxContractError,
+  NpShopTaxUnavailableError,
+  npAnalyzeShopTaxHealth,
+  npAnalyzeShopTaxQuote,
+  npAnalyzeShopTaxQuoteRequest,
+  npRequireShopTaxHealth,
+  npRequireShopTaxProviderId,
+  npRequireShopTaxQuote,
+  npRequireShopTaxQuoteRequest,
+  npRequireShopTaxQuoteResult,
+  npShopTaxLimits,
+  npShopTaxMaximumExpiry,
+} from "./tax-contract.js";
+export type {
+  NpShopTaxAdapter,
+  NpShopTaxComponent,
+  NpShopTaxHealth,
+  NpShopTaxQuote,
+  NpShopTaxQuoteRequest,
+  NpShopTaxQuoteResult,
+} from "./tax-contract.js";
 export type {
   NpShopPaymentAttempt,
   NpShopPaymentAttemptConfirmInput,

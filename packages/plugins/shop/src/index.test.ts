@@ -168,10 +168,41 @@ describe("shop factory", () => {
     expect(() =>
       createShop({
         shipping: {
-          adapter: { id: "Invalid Provider", quoteShipping: () => Promise.reject() },
+          adapter: {
+            id: "Invalid Provider",
+            quoteShipping: () => Promise.reject(new Error("not called")),
+          },
         },
       }),
     ).toThrow(/shipping provider id/u);
+  });
+
+  it("accepts only one complete server-side additional-tax quote adapter", () => {
+    const shop = createShop({
+      tax: {
+        adapter: {
+          id: "test-tax",
+          quoteTax: () => ({
+            contract: "np.shop-tax-quote-result.v1",
+            quoteId: "tax_quote_123",
+            components: [{ id: "vat", label: "VAT", amountMinor: 2_500 }],
+            amountMinor: 2_500,
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+          }),
+        },
+      },
+    });
+    expect(shop.runtime.taxAdapter?.id).toBe("test-tax");
+    expect(() =>
+      createShop({
+        tax: {
+          adapter: {
+            id: "Invalid Provider",
+            quoteTax: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/tax provider id/u);
   });
 
   it("adds owner-scoped attempt routes and diagnostics only for a complete initiation adapter", () => {

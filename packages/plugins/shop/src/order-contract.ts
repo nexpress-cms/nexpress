@@ -19,6 +19,7 @@ import { npAnalyzeShopFulfillment, npShopFulfillmentLimits } from "./fulfillment
 import { NP_SHOP_REFUND_CONTRACT, npAnalyzeStoredShopRefund } from "./refund-contract.js";
 import { NP_SHOP_RETURN_CONTRACT, npAnalyzeShopReturn } from "./return-contract.js";
 import { npAnalyzeShopDeliveryMethod, type NpShopDeliveryMethod } from "./shipping-contract.js";
+import { npAnalyzeShopTaxQuote, type NpShopTaxQuote } from "./tax-contract.js";
 
 export const NP_SHOP_ORDER_CONTRACT = "np.shop-order.v1" as const;
 export const NP_SHOP_ORDER_LIST_CONTRACT = "np.shop-order-list.v1" as const;
@@ -60,10 +61,12 @@ export interface NpShopStoredOrder {
   currency: NpShopCurrency;
   subtotalMinor: number;
   shippingMinor: number;
+  taxMinor: number;
   totalMinor: number;
   totalUnits: number;
   lines: NpShopCheckoutIntentLine[];
   deliveryMethod: NpShopDeliveryMethod | null;
+  taxQuote: NpShopTaxQuote | null;
   privateDataStatus: NpShopOrderPrivateDataStatus;
   inventoryReservationStatus: NpShopInventoryReservationStatus;
   inventoryReservationLineKeys: string[];
@@ -307,10 +310,12 @@ const storedOrderKeys = [
   "currency",
   "subtotalMinor",
   "shippingMinor",
+  "taxMinor",
   "totalMinor",
   "totalUnits",
   "lines",
   "deliveryMethod",
+  "taxQuote",
   "privateDataStatus",
   "inventoryReservationStatus",
   "inventoryReservationLineKeys",
@@ -356,16 +361,20 @@ export function npAnalyzeStoredShopOrder(value: unknown): string[] {
   if (!isNonNegativeSafeInteger(value.shippingMinor)) {
     issues.push("order.shippingMinor is invalid.");
   }
+  if (!isNonNegativeSafeInteger(value.taxMinor)) {
+    issues.push("order.taxMinor is invalid.");
+  }
   if (!isNonNegativeSafeInteger(value.totalMinor)) {
     issues.push("order.totalMinor is invalid.");
   }
   if (
     isNonNegativeSafeInteger(value.subtotalMinor) &&
     isNonNegativeSafeInteger(value.shippingMinor) &&
+    isNonNegativeSafeInteger(value.taxMinor) &&
     isNonNegativeSafeInteger(value.totalMinor) &&
-    value.subtotalMinor + value.shippingMinor !== value.totalMinor
+    value.subtotalMinor + value.shippingMinor + value.taxMinor !== value.totalMinor
   ) {
-    issues.push("order.totalMinor must equal subtotalMinor plus shippingMinor.");
+    issues.push("order.totalMinor must equal subtotalMinor plus shippingMinor plus taxMinor.");
   }
   if (!isPositiveSafeInteger(value.totalUnits)) issues.push("order.totalUnits is invalid.");
   if (!Array.isArray(value.lines) || value.lines.length < 1 || value.lines.length > 100) {
@@ -398,6 +407,23 @@ export function npAnalyzeStoredShopOrder(value: unknown): string[] {
   }
   if (value.deliveryMethod === null && value.shippingMinor !== 0) {
     issues.push("order without a delivery method must have zero shippingMinor.");
+  }
+  if (value.taxQuote !== null) {
+    issues.push(
+      ...npAnalyzeShopTaxQuote(value.taxQuote).map(
+        (issue) => `order.${issue.replace(/^tax quote/u, "taxQuote")}`,
+      ),
+    );
+  }
+  if (
+    isRecord(value.taxQuote) &&
+    isNonNegativeSafeInteger(value.taxMinor) &&
+    value.taxQuote.amountMinor !== value.taxMinor
+  ) {
+    issues.push("order.taxMinor must equal the tax quote amount.");
+  }
+  if (value.taxQuote === null && value.taxMinor !== 0) {
+    issues.push("order without a tax quote must have zero taxMinor.");
   }
   if (!(npShopOrderPrivateDataStatuses as readonly unknown[]).includes(value.privateDataStatus)) {
     issues.push("order.privateDataStatus is invalid.");
@@ -692,10 +718,12 @@ const publicOrderKeys = [
   "currency",
   "subtotalMinor",
   "shippingMinor",
+  "taxMinor",
   "totalMinor",
   "totalUnits",
   "lines",
   "deliveryMethod",
+  "taxQuote",
   "privateDataStatus",
   "inventoryReservationStatus",
   "inventoryReservationLineKeys",

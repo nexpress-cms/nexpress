@@ -37,10 +37,23 @@ import {
   type NpShopShippingQuote,
   type NpShopShippingHealth,
 } from "./shipping-contract.js";
-import type { NpShopOrderDraft } from "./types.js";
+import {
+  NP_SHOP_TAX_HEALTH_CONTRACT,
+  NP_SHOP_TAX_QUOTE_REQUEST_CONTRACT,
+  NpShopTaxContractError,
+  NpShopTaxUnavailableError,
+  npRequireShopTaxHealth,
+  npRequireShopTaxQuoteRequest,
+  npRequireShopTaxQuoteResult,
+  npShopTaxMaximumExpiry,
+  type NpShopTaxHealth,
+  type NpShopTaxQuote,
+} from "./tax-contract.js";
+import type { NpShopOrderDraft, NpShopOrderDraftShipping } from "./types.js";
 
 export const NP_SHOP_PLUGIN_ID = "shop";
 const NP_SHOP_SHIPPING_HEALTH_KEY = "shipping-health";
+const NP_SHOP_TAX_HEALTH_KEY = "tax-health";
 
 export function npShopOrderDraftStorageKey(owner: NpShopCartOwner, draftId: string): string {
   return `order-draft:${npShopCartOwnerStorageSegment(owner)}:${draftId}`;
@@ -191,6 +204,51 @@ export async function npReadShopShippingHealth(): Promise<NpShopShippingHealth |
   return npRequireShopShippingHealth(row.value);
 }
 
+async function persistTaxHealth(siteId: string, health: NpShopTaxHealth): Promise<void> {
+  npRequireShopTaxHealth(health);
+  await getDb()
+    .insert(npPluginStorage)
+    .values({
+      pluginId: NP_SHOP_PLUGIN_ID,
+      siteId,
+      key: NP_SHOP_TAX_HEALTH_KEY,
+      value: health,
+      expiresAt: null,
+      updatedAt: new Date(health.attemptedAt),
+    })
+    .onConflictDoUpdate({
+      target: [npPluginStorage.pluginId, npPluginStorage.siteId, npPluginStorage.key],
+      set: {
+        value: health,
+        expiresAt: null,
+        updatedAt: new Date(health.attemptedAt),
+      },
+      setWhere: sql`${npPluginStorage.value}->>'attemptedAt' <= ${health.attemptedAt}`,
+    });
+}
+
+export async function npReadShopTaxHealth(): Promise<NpShopTaxHealth | null> {
+  const siteId = await requireSiteId();
+  const [row] = await getDb()
+    .select({ value: npPluginStorage.value, expiresAt: npPluginStorage.expiresAt })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        eq(npPluginStorage.key, NP_SHOP_TAX_HEALTH_KEY),
+      ),
+    )
+    .limit(1);
+  if (!row) return null;
+  if (row.expiresAt !== null) {
+    throw new NpShopTaxContractError("Invalid Shop tax health storage metadata", [
+      "Tax health must not have storage expiry.",
+    ]);
+  }
+  return npRequireShopTaxHealth(row.value);
+}
+
 async function deleteExpiredDraft(
   siteId: string,
   owner: NpShopCartOwner,
@@ -245,6 +303,128 @@ async function withDerivedStatus(
     quote.fingerprint === draft.cartFingerprint
     ? draft
     : { ...draft, status: "stale" };
+}
+
+async function quoteTaxForDraft(
+  runtime: NpShopRuntime,
+  siteId: string,
+  draft: NpShopOrderDraft,
+  destination: NpShopOrderDraftShipping,
+  deliveryMethod: NonNullable<NpShopOrderDraft["deliveryMethod"]> | null,
+): Promise<NpShopTaxQuote | null> {
+  if (!runtime.taxAdapter) return null;
+  const requestedAt = new Date();
+  const maximumExpiresAt = npShopTaxMaximumExpiry(requestedAt, draft.expiresAt, deliveryMethod);
+  if (maximumExpiresAt <= requestedAt) {
+    throw new NpShopTaxUnavailableError("The tax quote source expired before calculation.");
+  }
+  const shippingMinor = deliveryMethod?.amountMinor ?? 0;
+  const totalBeforeTaxMinor = draft.subtotalMinor + shippingMinor;
+  if (!Number.isSafeInteger(totalBeforeTaxMinor)) {
+    throw new NpShopTaxUnavailableError("The pre-tax order total is outside bounds.");
+  }
+  const request = npRequireShopTaxQuoteRequest({
+    contract: NP_SHOP_TAX_QUOTE_REQUEST_CONTRACT,
+    draftId: draft.id,
+    draftRevision: draft.revision,
+    currency: draft.currency,
+    subtotalMinor: draft.subtotalMinor,
+    shippingMinor,
+    totalBeforeTaxMinor,
+    totalUnits: draft.totalUnits,
+    lines: draft.lines,
+    destination,
+    deliveryMethod,
+    requestedAt: requestedAt.toISOString(),
+    maximumExpiresAt: maximumExpiresAt.toISOString(),
+  });
+  let result: unknown;
+  try {
+    result = await runtime.taxAdapter.quoteTax(request);
+  } catch {
+    await persistTaxHealth(siteId, {
+      contract: NP_SHOP_TAX_HEALTH_CONTRACT,
+      providerId: runtime.taxAdapter.id,
+      status: "error",
+      errorCode: "provider-error",
+      attemptedAt: requestedAt.toISOString(),
+      succeededAt: null,
+    });
+    throw new NpShopTaxUnavailableError();
+  }
+  let taxQuote: NpShopTaxQuote;
+  try {
+    taxQuote = npRequireShopTaxQuoteResult(result, {
+      providerId: runtime.taxAdapter.id,
+      requestedAt: requestedAt.toISOString(),
+      maximumExpiresAt: maximumExpiresAt.toISOString(),
+    });
+  } catch {
+    await persistTaxHealth(siteId, {
+      contract: NP_SHOP_TAX_HEALTH_CONTRACT,
+      providerId: runtime.taxAdapter.id,
+      status: "error",
+      errorCode: "invalid-result",
+      attemptedAt: requestedAt.toISOString(),
+      succeededAt: null,
+    });
+    throw new NpShopTaxUnavailableError();
+  }
+  await persistTaxHealth(siteId, {
+    contract: NP_SHOP_TAX_HEALTH_CONTRACT,
+    providerId: runtime.taxAdapter.id,
+    status: "ok",
+    errorCode: null,
+    attemptedAt: requestedAt.toISOString(),
+    succeededAt: requestedAt.toISOString(),
+  });
+  return taxQuote;
+}
+
+function requireSelectedDeliveryMethod(
+  runtime: NpShopRuntime,
+  draft: NpShopOrderDraft,
+  methodId: string,
+  now: Date,
+): NonNullable<NpShopOrderDraft["deliveryMethod"]> {
+  if (
+    draft.status !== "shipping-selection-required" ||
+    !draft.shippingQuote ||
+    !draft.customer ||
+    !draft.shipping
+  ) {
+    throw new NpShopOrderDraftConflictError(
+      "order_draft_source_stale",
+      "The order draft has no shipping quote to select.",
+    );
+  }
+  if (
+    !runtime.shippingAdapter ||
+    draft.shippingQuote.providerId !== runtime.shippingAdapter.id ||
+    new Date(draft.shippingQuote.expiresAt) <= now
+  ) {
+    throw new NpShopShippingUnavailableError(
+      "The shipping quote expired or its provider is no longer configured.",
+    );
+  }
+  const method = draft.shippingQuote.methods.find((entry) => entry.id === methodId);
+  if (!method) {
+    throw new NpShopOrderDraftConflictError(
+      "order_draft_source_stale",
+      "The selected shipping method is not present in the current quote.",
+    );
+  }
+  return npRequireShopDeliveryMethod({
+    contract: NP_SHOP_DELIVERY_METHOD_CONTRACT,
+    providerId: draft.shippingQuote.providerId,
+    quoteId: draft.shippingQuote.quoteId,
+    methodId: method.id,
+    label: method.label,
+    amountMinor: method.amountMinor,
+    estimatedDelivery: method.estimatedDelivery,
+    quotedAt: draft.shippingQuote.quotedAt,
+    quoteExpiresAt: draft.shippingQuote.expiresAt,
+  });
 }
 
 function requireIdempotencyMatch(
@@ -333,6 +513,7 @@ export async function npCreateShopOrderDraft(
       currency: intent.currency,
       subtotalMinor: intent.subtotalMinor,
       shippingMinor: 0,
+      taxMinor: 0,
       totalMinor: intent.subtotalMinor,
       totalUnits: intent.totalUnits,
       lines: intent.lines,
@@ -340,6 +521,7 @@ export async function npCreateShopOrderDraft(
       shipping: null,
       shippingQuote: null,
       deliveryMethod: null,
+      taxQuote: null,
       sourceCreatedAt: intent.createdAt,
       sourceExpiresAt: intent.expiresAt,
       createdAt: now.toISOString(),
@@ -428,7 +610,7 @@ export async function npUpdateShopOrderDraft(
         requestedAt: requestedAt.toISOString(),
         maximumExpiresAt: maximumExpiresAt.toISOString(),
       });
-    } catch (error) {
+    } catch {
       await persistShippingHealth(siteId, {
         contract: NP_SHOP_SHIPPING_HEALTH_CONTRACT,
         providerId: runtime.shippingAdapter.id,
@@ -447,6 +629,13 @@ export async function npUpdateShopOrderDraft(
       attemptedAt: requestedAt.toISOString(),
       succeededAt: requestedAt.toISOString(),
     });
+  }
+  const taxQuote = shippingQuote
+    ? null
+    : await quoteTaxForDraft(runtime, siteId, snapshot, input.shipping, null);
+  const quotedTotalMinor = snapshot.subtotalMinor + (taxQuote?.amountMinor ?? 0);
+  if (!Number.isSafeInteger(quotedTotalMinor)) {
+    throw new NpShopTaxUnavailableError("The taxed order total is outside bounds.");
   }
   const result = await getDb().transaction(async (tx) => {
     await npLockShopOrderDraftOwner(tx, siteId, owner);
@@ -480,6 +669,9 @@ export async function npUpdateShopOrderDraft(
         "The cart changed after this order draft was created.",
       );
     }
+    if (taxQuote && new Date(taxQuote.expiresAt) <= now) {
+      throw new NpShopTaxUnavailableError("The tax quote expired before the draft was updated.");
+    }
     const updated = {
       ...current,
       status: shippingQuote ? "shipping-selection-required" : "reviewable",
@@ -488,8 +680,10 @@ export async function npUpdateShopOrderDraft(
       shipping: input.shipping,
       shippingQuote,
       deliveryMethod: null,
+      taxQuote,
       shippingMinor: 0,
-      totalMinor: current.subtotalMinor,
+      taxMinor: taxQuote?.amountMinor ?? 0,
+      totalMinor: quotedTotalMinor,
       updatedAt: now.toISOString(),
     } satisfies NpShopOrderDraft;
     npRequireShopOrderDraft(updated);
@@ -506,6 +700,43 @@ export async function npSelectShopShippingMethod(
   input: NpShopShippingMethodSelectInput,
 ): Promise<NpShopOrderDraft> {
   const siteId = await requireSiteId();
+  const snapshot = await npReadShopOrderDraft(runtime, owner, input.draftId);
+  if (snapshot.revision !== input.expectedRevision) {
+    throw new NpShopOrderDraftConflictError(
+      "order_draft_revision_conflict",
+      "The order draft changed before this selection.",
+    );
+  }
+  if (snapshot.status === "stale") {
+    throw new NpShopOrderDraftConflictError(
+      "order_draft_source_stale",
+      "The cart changed after this shipping quote was prepared.",
+    );
+  }
+  const deliverySnapshot = requireSelectedDeliveryMethod(
+    runtime,
+    snapshot,
+    input.methodId,
+    new Date(),
+  );
+  if (!snapshot.shipping) {
+    throw new NpShopOrderDraftConflictError(
+      "order_draft_source_stale",
+      "The order draft has no shipping destination.",
+    );
+  }
+  const taxQuote = await quoteTaxForDraft(
+    runtime,
+    siteId,
+    snapshot,
+    snapshot.shipping,
+    deliverySnapshot,
+  );
+  const quotedTotalMinor =
+    snapshot.subtotalMinor + deliverySnapshot.amountMinor + (taxQuote?.amountMinor ?? 0);
+  if (!Number.isSafeInteger(quotedTotalMinor)) {
+    throw new NpShopTaxUnavailableError("The taxed order total is outside bounds.");
+  }
   return getDb().transaction(async (tx) => {
     await npLockShopOrderDraftOwner(tx, siteId, owner);
     await npLockShopCart(tx, siteId, owner);
@@ -527,55 +758,19 @@ export async function npSelectShopShippingMethod(
         "The cart changed after this shipping quote was prepared.",
       );
     }
-    if (
-      current.status !== "shipping-selection-required" ||
-      !current.shippingQuote ||
-      !current.customer ||
-      !current.shipping
-    ) {
-      throw new NpShopOrderDraftConflictError(
-        "order_draft_source_stale",
-        "The order draft has no shipping quote to select.",
-      );
-    }
-    if (
-      !runtime.shippingAdapter ||
-      current.shippingQuote.providerId !== runtime.shippingAdapter.id ||
-      new Date(current.shippingQuote.expiresAt) <= now
-    ) {
-      throw new NpShopShippingUnavailableError(
-        "The shipping quote expired or its provider is no longer configured.",
-      );
-    }
-    const method = current.shippingQuote.methods.find((entry) => entry.id === input.methodId);
-    if (!method) {
-      throw new NpShopOrderDraftConflictError(
-        "order_draft_source_stale",
-        "The selected shipping method is not present in the current quote.",
-      );
-    }
-    const deliveryMethod = npRequireShopDeliveryMethod({
-      contract: NP_SHOP_DELIVERY_METHOD_CONTRACT,
-      providerId: current.shippingQuote.providerId,
-      quoteId: current.shippingQuote.quoteId,
-      methodId: method.id,
-      label: method.label,
-      amountMinor: method.amountMinor,
-      estimatedDelivery: method.estimatedDelivery,
-      quotedAt: current.shippingQuote.quotedAt,
-      quoteExpiresAt: current.shippingQuote.expiresAt,
-    });
-    const totalMinor = current.subtotalMinor + method.amountMinor;
-    if (!Number.isSafeInteger(totalMinor)) {
-      throw new NpShopShippingUnavailableError("The selected shipping total is outside bounds.");
+    const deliveryMethod = requireSelectedDeliveryMethod(runtime, current, input.methodId, now);
+    if (taxQuote && new Date(taxQuote.expiresAt) <= now) {
+      throw new NpShopTaxUnavailableError("The tax quote expired before selection completed.");
     }
     const updated = {
       ...current,
       status: "reviewable",
       revision: current.revision + 1,
       deliveryMethod,
-      shippingMinor: method.amountMinor,
-      totalMinor,
+      shippingMinor: deliveryMethod.amountMinor,
+      taxQuote,
+      taxMinor: taxQuote?.amountMinor ?? 0,
+      totalMinor: quotedTotalMinor,
       updatedAt: now.toISOString(),
     } satisfies NpShopOrderDraft;
     npRequireShopOrderDraft(updated);

@@ -1025,6 +1025,25 @@ export function ShopOrderDraft({
                 <span>{messages.shippingAmount}</span>
                 <strong>{formatMoney(messages.locale, draft.shippingMinor, draft.currency)}</strong>
               </div>
+              {draft.taxQuote && draft.taxQuote.components.length > 0 ? (
+                <section className="np-shop-tax-components">
+                  <h3>{messages.taxBreakdown}</h3>
+                  <ul>
+                    {draft.taxQuote.components.map((component) => (
+                      <li key={component.id}>
+                        <span>{component.label}</span>
+                        <strong>
+                          {formatMoney(messages.locale, component.amountMinor, draft.currency)}
+                        </strong>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+              <div>
+                <span>{messages.taxAmount}</span>
+                <strong>{formatMoney(messages.locale, draft.taxMinor, draft.currency)}</strong>
+              </div>
               <div>
                 <span>{messages.orderTotal}</span>
                 <strong>{formatMoney(messages.locale, draft.totalMinor, draft.currency)}</strong>
@@ -1315,6 +1334,25 @@ export function ShopOrder({
               <div>
                 <span>{messages.shippingAmount}</span>
                 <strong>{formatMoney(messages.locale, order.shippingMinor, order.currency)}</strong>
+              </div>
+              {order.taxQuote && order.taxQuote.components.length > 0 ? (
+                <section className="np-shop-tax-components">
+                  <h3>{messages.taxBreakdown}</h3>
+                  <ul>
+                    {order.taxQuote.components.map((component) => (
+                      <li key={component.id}>
+                        <span>{component.label}</span>
+                        <strong>
+                          {formatMoney(messages.locale, component.amountMinor, order.currency)}
+                        </strong>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
+              <div>
+                <span>{messages.taxAmount}</span>
+                <strong>{formatMoney(messages.locale, order.taxMinor, order.currency)}</strong>
               </div>
               <div>
                 <span>{messages.orderTotal}</span>

@@ -1405,6 +1405,18 @@ export async function npCreateShopOrder(
         "The selected shipping method expired or its provider configuration changed.",
       );
     }
+    if (
+      (runtime.taxAdapter &&
+        (!draft.taxQuote ||
+          draft.taxQuote.providerId !== runtime.taxAdapter.id ||
+          new Date(draft.taxQuote.expiresAt) <= now)) ||
+      (!runtime.taxAdapter && draft.taxQuote !== null)
+    ) {
+      throw new NpShopOrderConflictError(
+        "order_source_stale",
+        "The tax quote expired or its provider configuration changed.",
+      );
+    }
     const pendingExpiresAt = new Date(
       now.getTime() + npShopOrderLimits.pendingTtlSeconds * 1_000,
     ).toISOString();
@@ -1427,10 +1439,12 @@ export async function npCreateShopOrder(
       currency: draft.currency,
       subtotalMinor: draft.subtotalMinor,
       shippingMinor: draft.shippingMinor,
+      taxMinor: draft.taxMinor,
       totalMinor: draft.totalMinor,
       totalUnits: draft.totalUnits,
       lines: draft.lines,
       deliveryMethod: draft.deliveryMethod,
+      taxQuote: draft.taxQuote,
       privateDataStatus: "retained",
       inventoryReservationStatus: inventoryReservationLineKeys.length > 0 ? "held" : "not-required",
       inventoryReservationLineKeys,

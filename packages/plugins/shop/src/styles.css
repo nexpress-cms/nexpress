@@ -426,6 +426,29 @@
     border-block: 1px solid var(--np-shop-line, var(--np-color-border, #deddd8));
   }
 
+  .np-shop-tax-components {
+    display: grid;
+    gap: 0.5rem;
+    padding-block: 0.75rem;
+    border-block: 1px solid var(--np-shop-line, var(--np-color-border, #deddd8));
+  }
+
+  .np-shop-tax-components h3 {
+    margin: 0;
+    font-size: 0.9rem;
+  }
+
+  .np-shop-tax-components ul {
+    display: grid;
+    gap: 0.35rem;
+  }
+
+  .np-shop-tax-components li {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
   .np-shop-shipping-methods h3 {
     margin: 0;
     font-size: 0.9rem;

@@ -26,6 +26,7 @@ function draft() {
     currency: "KRW",
     subtotalMinor: 50_000,
     shippingMinor: 0,
+    taxMinor: 0,
     totalMinor: 50_000,
     totalUnits: 2,
     lines: [
@@ -58,6 +59,7 @@ function draft() {
     },
     shippingQuote: null,
     deliveryMethod: null,
+    taxQuote: null,
     sourceCreatedAt: "2026-07-30T00:00:00.000Z",
     sourceExpiresAt: "2026-07-30T00:15:00.000Z",
     createdAt: "2026-07-30T00:05:00.000Z",
@@ -69,6 +71,34 @@ function draft() {
 describe("shop order draft contract", () => {
   it("accepts one exact bounded private draft", () => {
     expect(npRequireShopOrderDraft(draft())).toEqual(draft());
+  });
+
+  it("requires one exact tax snapshot and additive total", () => {
+    const taxQuote = {
+      contract: "np.shop-tax-quote.v1" as const,
+      providerId: "test-tax",
+      quoteId: "tax_quote_1",
+      components: [{ id: "vat", label: "VAT", amountMinor: 5_000 }],
+      amountMinor: 5_000,
+      quotedAt: "2026-07-30T00:05:30.000Z",
+      expiresAt: "2026-07-30T00:15:00.000Z",
+    };
+    expect(
+      npAnalyzeShopOrderDraft({
+        ...draft(),
+        taxMinor: 5_000,
+        totalMinor: 55_000,
+        taxQuote,
+      }),
+    ).toEqual([]);
+    expect(
+      npAnalyzeShopOrderDraft({
+        ...draft(),
+        taxMinor: 5_001,
+        totalMinor: 55_001,
+        taxQuote,
+      }),
+    ).toContain("draft.taxMinor must equal the tax quote amount.");
   });
 
   it("rejects partial PII, unknown fields, and inconsistent commerce totals", () => {

@@ -46,10 +46,12 @@ const storedOrder = {
   currency: "KRW",
   subtotalMinor: 24_000,
   shippingMinor: 0,
+  taxMinor: 0,
   totalMinor: 24_000,
   totalUnits: 2,
   lines: [line],
   deliveryMethod: null,
+  taxQuote: null,
   privateDataStatus: "retained",
   inventoryReservationStatus: "held",
   inventoryReservationLineKeys: [line.key],
@@ -108,6 +110,34 @@ describe("Shop order contract", () => {
         total: 1,
       }),
     ).toMatchObject({ total: 1 });
+  });
+
+  it("requires one PII-free tax snapshot to match the durable total", () => {
+    const taxQuote = {
+      contract: "np.shop-tax-quote.v1" as const,
+      providerId: "test-tax",
+      quoteId: "tax_quote_1",
+      components: [{ id: "vat", label: "VAT", amountMinor: 2_400 }],
+      amountMinor: 2_400,
+      quotedAt: "2026-07-29T23:55:00.000Z",
+      expiresAt: "2026-07-30T00:15:00.000Z",
+    };
+    expect(
+      npAnalyzeStoredShopOrder({
+        ...storedOrder,
+        taxMinor: 2_400,
+        totalMinor: 26_400,
+        taxQuote,
+      }),
+    ).toEqual([]);
+    expect(
+      npAnalyzeStoredShopOrder({
+        ...storedOrder,
+        taxMinor: 2_401,
+        totalMinor: 26_401,
+        taxQuote,
+      }),
+    ).toContain("order.taxMinor must equal the tax quote amount.");
   });
 
   it("rejects impossible totals, cancellation state, and leaked private values", () => {

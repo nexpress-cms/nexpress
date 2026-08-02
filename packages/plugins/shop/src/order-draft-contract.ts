@@ -4,6 +4,7 @@ import {
   npAnalyzeShopShippingQuote,
   type NpShopShippingMethodSelectInput,
 } from "./shipping-contract.js";
+import { npAnalyzeShopTaxQuote } from "./tax-contract.js";
 import {
   npShopOrderDraftStatuses,
   type NpShopOrderDraft,
@@ -44,6 +45,7 @@ const draftKeys = [
   "currency",
   "subtotalMinor",
   "shippingMinor",
+  "taxMinor",
   "totalMinor",
   "totalUnits",
   "lines",
@@ -51,6 +53,7 @@ const draftKeys = [
   "shipping",
   "shippingQuote",
   "deliveryMethod",
+  "taxQuote",
   "sourceCreatedAt",
   "sourceExpiresAt",
   "createdAt",
@@ -326,16 +329,23 @@ export function npAnalyzeShopOrderDraft(value: unknown): string[] {
   if (!Number.isSafeInteger(value.shippingMinor) || (value.shippingMinor as number) < 0) {
     issues.push("draft.shippingMinor is invalid.");
   }
+  if (!Number.isSafeInteger(value.taxMinor) || (value.taxMinor as number) < 0) {
+    issues.push("draft.taxMinor is invalid.");
+  }
   if (!Number.isSafeInteger(value.totalMinor) || (value.totalMinor as number) < 0) {
     issues.push("draft.totalMinor is invalid.");
   }
   if (
     Number.isSafeInteger(value.subtotalMinor) &&
     Number.isSafeInteger(value.shippingMinor) &&
+    Number.isSafeInteger(value.taxMinor) &&
     Number.isSafeInteger(value.totalMinor) &&
-    (value.subtotalMinor as number) + (value.shippingMinor as number) !== value.totalMinor
+    (value.subtotalMinor as number) +
+      (value.shippingMinor as number) +
+      (value.taxMinor as number) !==
+      value.totalMinor
   ) {
-    issues.push("draft.totalMinor must equal subtotalMinor plus shippingMinor.");
+    issues.push("draft.totalMinor must equal subtotalMinor plus shippingMinor plus taxMinor.");
   }
 
   if (value.customer !== null) analyzeCustomer(value.customer, "draft.customer", issues);
@@ -354,6 +364,13 @@ export function npAnalyzeShopOrderDraft(value: unknown): string[] {
       ),
     );
   }
+  if (value.taxQuote !== null) {
+    issues.push(
+      ...npAnalyzeShopTaxQuote(value.taxQuote).map(
+        (issue) => `draft.${issue.replace(/^tax quote/u, "taxQuote")}`,
+      ),
+    );
+  }
   if ((value.customer === null) !== (value.shipping === null)) {
     issues.push("draft.customer and draft.shipping must both be null or both be present.");
   }
@@ -362,7 +379,8 @@ export function npAnalyzeShopOrderDraft(value: unknown): string[] {
     (value.customer !== null ||
       value.shipping !== null ||
       value.shippingQuote !== null ||
-      value.deliveryMethod !== null)
+      value.deliveryMethod !== null ||
+      value.taxQuote !== null)
   ) {
     issues.push("draft.collecting state must not contain customer, shipping, or quote data.");
   }
@@ -371,7 +389,8 @@ export function npAnalyzeShopOrderDraft(value: unknown): string[] {
     (value.customer === null ||
       value.shipping === null ||
       value.shippingQuote === null ||
-      value.deliveryMethod !== null)
+      value.deliveryMethod !== null ||
+      value.taxQuote !== null)
   ) {
     issues.push(
       "draft.shipping-selection-required state requires private data and one unselected quote.",
@@ -418,12 +437,39 @@ export function npAnalyzeShopOrderDraft(value: unknown): string[] {
     issues.push("draft without a delivery method must have zero shippingMinor.");
   }
   if (
+    isRecord(value.taxQuote) &&
+    Number.isSafeInteger(value.taxMinor) &&
+    value.taxQuote.amountMinor !== value.taxMinor
+  ) {
+    issues.push("draft.taxMinor must equal the tax quote amount.");
+  }
+  if (value.taxQuote === null && value.taxMinor !== 0) {
+    issues.push("draft without a tax quote must have zero taxMinor.");
+  }
+  if (
     isRecord(value.shippingQuote) &&
     isCanonicalIso(value.shippingQuote.expiresAt) &&
     isCanonicalIso(value.expiresAt) &&
     value.shippingQuote.expiresAt > value.expiresAt
   ) {
     issues.push("draft shipping quote must not outlive the private draft.");
+  }
+  if (
+    isRecord(value.taxQuote) &&
+    isCanonicalIso(value.taxQuote.expiresAt) &&
+    isCanonicalIso(value.expiresAt) &&
+    value.taxQuote.expiresAt > value.expiresAt
+  ) {
+    issues.push("draft tax quote must not outlive the private draft.");
+  }
+  if (
+    isRecord(value.taxQuote) &&
+    isRecord(value.deliveryMethod) &&
+    isCanonicalIso(value.taxQuote.expiresAt) &&
+    isCanonicalIso(value.deliveryMethod.quoteExpiresAt) &&
+    value.taxQuote.expiresAt > value.deliveryMethod.quoteExpiresAt
+  ) {
+    issues.push("draft tax quote must not outlive its delivery method quote.");
   }
   return issues;
 }
