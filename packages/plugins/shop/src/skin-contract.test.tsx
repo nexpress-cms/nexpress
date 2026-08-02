@@ -99,6 +99,8 @@ const messages = {
   orderDraftPaymentUnavailable: "결제 없음",
   orderDraftFailed: "초안 실패",
   shippingAmount: "배송비",
+  taxAmount: "추가 세액",
+  taxBreakdown: "세액 내역",
   orderTotal: "총액",
   order: "주문",
   orders: "주문 내역",

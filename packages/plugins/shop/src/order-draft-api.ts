@@ -29,6 +29,7 @@ import {
   NpShopShippingUnavailableError,
   npRequireShopShippingMethodSelectInput,
 } from "./shipping-contract.js";
+import { NpShopTaxContractError, NpShopTaxUnavailableError } from "./tax-contract.js";
 
 function errorResponse(
   error:
@@ -38,7 +39,9 @@ function errorResponse(
     | NpShopOrderDraftNotFoundError
     | NpShopOrderDraftExpiredError
     | NpShopShippingContractError
-    | NpShopShippingUnavailableError,
+    | NpShopShippingUnavailableError
+    | NpShopTaxContractError
+    | NpShopTaxUnavailableError,
 ): NpRouteResponse {
   const headers = { "Cache-Control": "private, no-store" };
   if (error instanceof NpShopOrderDraftConflictError) {
@@ -66,6 +69,13 @@ function errorResponse(
     return {
       status: 503,
       body: { error: "shipping_unavailable", message: error.message },
+      headers,
+    };
+  }
+  if (error instanceof NpShopTaxUnavailableError) {
+    return {
+      status: 503,
+      body: { error: "tax_unavailable", message: error.message },
       headers,
     };
   }
@@ -128,7 +138,9 @@ export function createShopOrderDraftApiHandler(runtime: NpShopRuntime) {
         error instanceof NpShopOrderDraftNotFoundError ||
         error instanceof NpShopOrderDraftExpiredError ||
         error instanceof NpShopShippingContractError ||
-        error instanceof NpShopShippingUnavailableError
+        error instanceof NpShopShippingUnavailableError ||
+        error instanceof NpShopTaxContractError ||
+        error instanceof NpShopTaxUnavailableError
       ) {
         return errorResponse(error);
       }

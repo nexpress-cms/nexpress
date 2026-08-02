@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { NpShopDeliveryMethod, NpShopShippingQuote } from "./shipping-contract.js";
+import type { NpShopTaxQuote } from "./tax-contract.js";
 
 import type { NpShopRefund } from "./refund-contract.js";
 import type { NpShopReturn } from "./return-contract.js";
@@ -158,6 +159,8 @@ export interface NpShopMessages {
   orderDraftPaymentUnavailable: string;
   orderDraftFailed: string;
   shippingAmount: string;
+  taxAmount: string;
+  taxBreakdown: string;
   orderTotal: string;
   order: string;
   orders: string;
@@ -366,6 +369,8 @@ export interface NpShopCartClientMessages {
   orderDraftPaymentUnavailable: string;
   orderDraftFailed: string;
   shippingAmount: string;
+  taxAmount: string;
+  taxBreakdown: string;
   orderTotal: string;
   order: string;
   orders: string;
@@ -509,6 +514,7 @@ export interface NpShopOrderDraft {
   currency: NpShopCurrency;
   subtotalMinor: number;
   shippingMinor: number;
+  taxMinor: number;
   totalMinor: number;
   totalUnits: number;
   lines: NpShopCheckoutIntentLine[];
@@ -516,6 +522,7 @@ export interface NpShopOrderDraft {
   shipping: NpShopOrderDraftShipping | null;
   shippingQuote: NpShopShippingQuote | null;
   deliveryMethod: NpShopDeliveryMethod | null;
+  taxQuote: NpShopTaxQuote | null;
   sourceCreatedAt: string;
   sourceExpiresAt: string;
   createdAt: string;
@@ -592,10 +599,12 @@ export interface NpShopOrder {
   currency: NpShopCurrency;
   subtotalMinor: number;
   shippingMinor: number;
+  taxMinor: number;
   totalMinor: number;
   totalUnits: number;
   lines: NpShopCheckoutIntentLine[];
   deliveryMethod: NpShopDeliveryMethod | null;
+  taxQuote: NpShopTaxQuote | null;
   privateDataStatus: NpShopOrderPrivateDataStatus;
   inventoryReservationStatus: NpShopInventoryReservationStatus;
   inventoryReservationLineKeys: string[];

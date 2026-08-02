@@ -897,7 +897,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(JSON.stringify(remaining)).not.toContain(privateEmail);
   });
 
-  it("quotes and selects one revision-safe delivery method before freezing the order total", async () => {
+  it("freezes revision-safe shipping and tax quotes into payment and refund totals", async () => {
     const quoteShipping = vi.fn(() => ({
       contract: "np.shop-shipping-quote-result.v1" as const,
       quoteId: "quote_integration_1",
@@ -910,6 +910,13 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         },
       ],
       expiresAt: new Date(Date.now() + 15 * 60 * 1_000).toISOString(),
+    }));
+    const quoteTax = vi.fn((input: { maximumExpiresAt: string }) => ({
+      contract: "np.shop-tax-quote-result.v1" as const,
+      quoteId: "tax_quote_integration_1",
+      components: [{ id: "vat", label: "VAT", amountMinor: 2_000 }],
+      amountMinor: 2_000,
+      expiresAt: input.maximumExpiresAt,
     }));
     const refundPayment = vi.fn(
       (input: {
@@ -938,6 +945,12 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         adapter: {
           id: "test-shipping",
           quoteShipping: (input) => quoteShipping(input),
+        },
+      },
+      tax: {
+        adapter: {
+          id: "test-tax",
+          quoteTax: (input) => quoteTax(input),
         },
       },
       payment: {
@@ -1024,12 +1037,15 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           status: "shipping-selection-required",
           revision: 2,
           shippingMinor: 0,
+          taxMinor: 0,
           totalMinor: 25_000,
           shippingQuote: { providerId: "test-shipping", quoteId: "quote_integration_1" },
           deliveryMethod: null,
+          taxQuote: null,
         },
       },
     });
+    expect(quoteTax).not.toHaveBeenCalled();
     expect(
       await configuredShopCall(shippingShop, "POST", "/orders", {
         cookie,
@@ -1042,6 +1058,18 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       csrf,
       body: { draftId, expectedRevision: 2, methodId: "parcel-standard" },
     });
+    expect(quoteTax).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contract: "np.shop-tax-quote-request.v1",
+        draftId,
+        draftRevision: 2,
+        subtotalMinor: 25_000,
+        shippingMinor: 3_000,
+        totalBeforeTaxMinor: 28_000,
+        destination: expect.objectContaining({ postalCode: "04524" }),
+        deliveryMethod: expect.objectContaining({ methodId: "parcel-standard" }),
+      }),
+    );
     expect(selected).toMatchObject({
       status: 200,
       body: {
@@ -1049,11 +1077,17 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           status: "reviewable",
           revision: 3,
           shippingMinor: 3_000,
-          totalMinor: 28_000,
+          taxMinor: 2_000,
+          totalMinor: 30_000,
           deliveryMethod: {
             providerId: "test-shipping",
             methodId: "parcel-standard",
             amountMinor: 3_000,
+          },
+          taxQuote: {
+            providerId: "test-tax",
+            quoteId: "tax_quote_integration_1",
+            amountMinor: 2_000,
           },
         },
       },
@@ -1070,8 +1104,10 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           id: orderId,
           subtotalMinor: 25_000,
           shippingMinor: 3_000,
-          totalMinor: 28_000,
+          taxMinor: 2_000,
+          totalMinor: 30_000,
           deliveryMethod: { methodId: "parcel-standard", amountMinor: 3_000 },
+          taxQuote: { providerId: "test-tax", amountMinor: 2_000 },
         },
       },
     });
@@ -1089,15 +1125,15 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       }),
     ).toMatchObject({
       status: 200,
-      body: { attempt: { currency: "KRW", amountMinor: 28_000 } },
+      body: { attempt: { currency: "KRW", amountMinor: 30_000 } },
     });
-    expect(preparePayment).toHaveBeenCalledWith(expect.objectContaining({ amountMinor: 28_000 }));
+    expect(preparePayment).toHaveBeenCalledWith(expect.objectContaining({ amountMinor: 30_000 }));
     expect(
       await payPendingOrder(shippingShop, {
         orderId,
         eventId: "evt_shipping_total",
         paymentReference: "pay_shipping_total",
-        amountMinor: 28_000,
+        amountMinor: 30_000,
       }),
     ).toMatchObject({ status: 200, body: { receipt: { outcome: "paid" } } });
     const staff = await seedUser({ email: "shipping-refund-operator@example.com" });
@@ -1113,7 +1149,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       ),
     ).toMatchObject({ ok: true });
     expect(refundPayment).toHaveBeenCalledWith(
-      expect.objectContaining({ orderId, currency: "KRW", amountMinor: 28_000 }),
+      expect.objectContaining({ orderId, currency: "KRW", amountMinor: 30_000 }),
     );
     expect(
       await withCurrentSite("default", () =>
@@ -1176,6 +1212,147 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       data: { level: "error", message: expect.stringContaining("provider-error") },
     });
     expect(JSON.stringify(failedHealth)).not.toContain(privateEmail);
+
+    const taxFailedIntentId = "123e4567-e89b-42d3-b456-426614174007";
+    const taxFailedDraftId = "123e4567-e89b-42d3-b456-426614174008";
+    await configuredShopCall(shippingShop, "POST", "/checkout", {
+      cookie,
+      csrf,
+      body: {
+        idempotencyKey: taxFailedIntentId,
+        expectedRevision: addedQuote.revision,
+        expectedFingerprint: addedQuote.fingerprint,
+      },
+    });
+    await configuredShopCall(shippingShop, "POST", "/order-drafts", {
+      cookie,
+      csrf,
+      body: { idempotencyKey: taxFailedDraftId, checkoutIntentId: taxFailedIntentId },
+    });
+    const taxQuoted = await configuredShopCall(shippingShop, "PATCH", "/order-drafts", {
+      cookie,
+      csrf,
+      body: {
+        draftId: taxFailedDraftId,
+        expectedRevision: 1,
+        customer: {
+          fullName: "홍길동",
+          email: privateEmail,
+          phone: "010-1234-5678",
+        },
+        shipping: {
+          recipientName: "홍길동",
+          phone: "010-1234-5678",
+          countryCode: "KR",
+          postalCode: "04524",
+          addressLine1: "서울특별시 중구 세종대로 110",
+          addressLine2: null,
+          locality: "중구",
+          administrativeArea: "서울특별시",
+        },
+      },
+    });
+    expect(taxQuoted).toMatchObject({
+      status: 200,
+      body: { draft: { status: "shipping-selection-required", revision: 2 } },
+    });
+    quoteTax.mockImplementationOnce(() => {
+      throw new Error(`tax provider rejected ${privateEmail}`);
+    });
+    const taxUnavailable = await configuredShopCall(shippingShop, "PUT", "/order-drafts", {
+      cookie,
+      csrf,
+      body: {
+        draftId: taxFailedDraftId,
+        expectedRevision: 2,
+        methodId: "parcel-standard",
+      },
+    });
+    expect(taxUnavailable).toMatchObject({
+      status: 503,
+      body: { error: "tax_unavailable" },
+    });
+    expect(JSON.stringify(taxUnavailable)).not.toContain(privateEmail);
+    const taxFailedHealth = await withCurrentSite("default", () =>
+      shippingShop.plugin.actions?.orderDraftHealth?.handler(undefined, {} as never),
+    );
+    expect(taxFailedHealth).toMatchObject({
+      ok: true,
+      data: { level: "error", message: expect.stringContaining("Tax quote provider test-tax") },
+    });
+    expect(JSON.stringify(taxFailedHealth)).not.toContain(privateEmail);
+
+    quoteTax.mockClear();
+    const taxOnlyShop = createShop({
+      tax: {
+        adapter: {
+          id: "test-tax",
+          quoteTax: (input) => quoteTax(input),
+        },
+      },
+    });
+    const taxOnlyIntentId = "123e4567-e89b-42d3-b456-426614174009";
+    const taxOnlyDraftId = "123e4567-e89b-42d3-b456-426614174010";
+    await configuredShopCall(taxOnlyShop, "POST", "/checkout", {
+      cookie,
+      csrf,
+      body: {
+        idempotencyKey: taxOnlyIntentId,
+        expectedRevision: addedQuote.revision,
+        expectedFingerprint: addedQuote.fingerprint,
+      },
+    });
+    await configuredShopCall(taxOnlyShop, "POST", "/order-drafts", {
+      cookie,
+      csrf,
+      body: { idempotencyKey: taxOnlyDraftId, checkoutIntentId: taxOnlyIntentId },
+    });
+    const taxOnlyQuoted = await configuredShopCall(taxOnlyShop, "PATCH", "/order-drafts", {
+      cookie,
+      csrf,
+      body: {
+        draftId: taxOnlyDraftId,
+        expectedRevision: 1,
+        customer: {
+          fullName: "홍길동",
+          email: privateEmail,
+          phone: "010-1234-5678",
+        },
+        shipping: {
+          recipientName: "홍길동",
+          phone: "010-1234-5678",
+          countryCode: "KR",
+          postalCode: "04524",
+          addressLine1: "서울특별시 중구 세종대로 110",
+          addressLine2: null,
+          locality: "중구",
+          administrativeArea: "서울특별시",
+        },
+      },
+    });
+    expect(quoteTax).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draftId: taxOnlyDraftId,
+        draftRevision: 1,
+        shippingMinor: 0,
+        totalBeforeTaxMinor: 25_000,
+        deliveryMethod: null,
+      }),
+    );
+    expect(taxOnlyQuoted).toMatchObject({
+      status: 200,
+      body: {
+        draft: {
+          status: "reviewable",
+          revision: 2,
+          shippingMinor: 0,
+          taxMinor: 2_000,
+          totalMinor: 27_000,
+          deliveryMethod: null,
+          taxQuote: { providerId: "test-tax", amountMinor: 2_000 },
+        },
+      },
+    });
   });
 
   it("cleans only expired private order-draft keys", async () => {
@@ -3012,6 +3189,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       currency: "KRW",
       subtotalMinor: 25_000,
       shippingMinor: 0,
+      taxMinor: 0,
       totalMinor: 25_000,
       totalUnits: 1,
       lines: [
@@ -3028,6 +3206,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         },
       ],
       deliveryMethod: null,
+      taxQuote: null,
       privateDataStatus: "retained",
       inventoryReservationStatus: "held",
       inventoryReservationLineKeys: [`${productId}:_`],

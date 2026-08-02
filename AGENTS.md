@@ -2,7 +2,16 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-01 (Shop private order drafts may now use one
+**Last refreshed:** 2026-08-02 (Shop private order drafts may now use one
+optional server-only provider-neutral additional-tax quote adapter after the
+address or delivery selection; exact calls run outside DB transactions,
+revision/expiry rechecks freeze one PII-free component snapshot, and
+orders/payment/full refunds share item subtotal, shipping, tax, and total.
+Closed provider health reaches Admin and Doctor while remittance/filing,
+invoices, exemptions/nexus, customs/duties, and jurisdiction compliance remain
+separate.)
+
+**Earlier:** 2026-08-01 (Shop private order drafts may now use one
 optional server-only provider-neutral shipping quote adapter; exact bounded
 methods are requested outside DB transactions, revision-safe selection freezes
 one PII-free delivery snapshot, orders/payment/full refunds share item subtotal,

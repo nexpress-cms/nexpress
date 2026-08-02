@@ -365,10 +365,19 @@ real product domain, not just blog/community. Ship as a plugin package
   bounded cart snapshot outside database transactions. Exact short-lived
   methods become a revision-safe owner selection and one PII-free durable
   delivery snapshot; orders, payment attempts/events, and full refunds share
-  `subtotalMinor + shippingMinor = totalMinor`. Closed PII-free provider health
+  `subtotalMinor + shippingMinor + taxMinor = totalMinor`. Closed PII-free provider health
   reaches Admin while Doctor verifies its declarative diagnostic contract.
-  Carrier booking/labels/pickup/tracking, tax, customs, and jurisdiction policy
+  Carrier booking/labels/pickup/tracking, customs, and jurisdiction policy
   remain separate.
+- **Provider-neutral additional-tax quote (shipped)** — one optional
+  server-only adapter receives exact item/shipping totals, immutable lines,
+  the private destination, and any selected delivery snapshot outside database
+  transactions. Revision and expiry rechecks freeze one bounded PII-free
+  component snapshot; orders, payment events, and full refunds share
+  `subtotalMinor + shippingMinor + taxMinor = totalMinor`. Closed provider
+  health reaches Admin and Doctor. The adapter reports only tax added on top of
+  displayed prices; remittance/filing, invoices, exemptions/nexus,
+  customs/duties, and jurisdiction compliance remain separate.
 - **Inventory (shipped foundation)** — catalog stock/low-stock projection,
   transaction-safe pending holds, and atomic paid-order on-hand decrement
   plus exact unshipped full-refund restoration exist; partial/external reversal
@@ -377,9 +386,11 @@ real product domain, not just blog/community. Ship as a plugin package
   checkout-intent, private order-draft, order-history, order-detail, and return
   intake pages
   use independent plugin skins and stable theme hooks.
-- **Tax, carrier, and shipping policy (future)** — the neutral quote/selection
-  boundary is shipped; tax/customs, free-shipping eligibility, carrier booking,
-  labels, pickup, tracking APIs, and regional policy require separate contracts.
+- **Tax compliance, carrier, and shipping policy (future)** — shipping and
+  additional-tax quote boundaries are shipped; tax remittance/filing,
+  invoices, exemptions/nexus, customs/duties, free-shipping eligibility,
+  carrier booking, labels, pickup, tracking APIs, and regional policy require
+  separate contracts.
 
 Resolved foundation decision:
 
