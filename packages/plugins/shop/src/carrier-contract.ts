@@ -6,9 +6,15 @@ import type {
   NpShopTrackingWebhookInput,
   NpShopTrackingWebhookResult,
 } from "./tracking-contract.js";
+import {
+  npAnalyzeShopFulfillmentParcels,
+  type NpShopFulfillmentParcel,
+} from "./parcel-contract.js";
 
 export const NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT =
   "np.shop-carrier-booking-request.v1" as const;
+export const NP_SHOP_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT =
+  "np.shop-carrier-booking-request.v2" as const;
 export const NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT = "np.shop-carrier-booking-result.v1" as const;
 export const NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT =
   "np.shop-carrier-booking-storage.v1" as const;
@@ -58,6 +64,15 @@ export interface NpShopCarrierBookingRequest {
   requestedAt: string;
 }
 
+export interface NpShopCarrierParcelBookingRequest extends Omit<
+  NpShopCarrierBookingRequest,
+  "contract"
+> {
+  contract: typeof NP_SHOP_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT;
+  parcelRevision: number;
+  parcels: NpShopFulfillmentParcel[];
+}
+
 export interface NpShopCarrierBookingResult {
   contract: typeof NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT;
   shipmentId: string;
@@ -78,6 +93,14 @@ export interface NpShopCarrierAdapter {
    */
   bookShipment(
     input: NpShopCarrierBookingRequest,
+  ): NpShopCarrierBookingResult | Promise<NpShopCarrierBookingResult>;
+  /**
+   * Book a shipment from one revision-safe, PII-free parcel snapshot. When
+   * present, Shop requires and locks that snapshot before provider I/O. The
+   * v1 method remains the fallback for bookings created without parcel data.
+   */
+  bookShipmentWithParcels?(
+    input: NpShopCarrierParcelBookingRequest,
   ): NpShopCarrierBookingResult | Promise<NpShopCarrierBookingResult>;
   /**
    * Authenticate exact carrier callback bytes before projecting one canonical,
@@ -102,6 +125,9 @@ export type NpShopCarrierTrackingAdapter = NpShopCarrierAdapter &
 
 export type NpShopCarrierTrackingPollAdapter = NpShopCarrierAdapter &
   Required<Pick<NpShopCarrierAdapter, "readTracking">>;
+
+export type NpShopCarrierParcelAdapter = NpShopCarrierAdapter &
+  Required<Pick<NpShopCarrierAdapter, "bookShipmentWithParcels">>;
 
 export interface NpShopStoredCarrierBooking {
   contract: typeof NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT;
@@ -375,6 +401,65 @@ export function npRequireShopCarrierBookingRequest(value: unknown): NpShopCarrie
     throw new NpShopCarrierContractError("Invalid Shop carrier booking request", issues);
   }
   return value as NpShopCarrierBookingRequest;
+}
+
+export function npAnalyzeShopCarrierParcelBookingRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["carrier parcel booking request must be a plain object."];
+  const issues: string[] = [];
+  exactKeys(
+    value,
+    [
+      "contract",
+      "shipmentId",
+      "orderId",
+      "fulfillmentRevision",
+      "parcelRevision",
+      "items",
+      "parcels",
+      "destination",
+      "deliveryMethod",
+      "requestedAt",
+    ],
+    "carrier parcel booking request",
+    issues,
+  );
+  if (value.contract !== NP_SHOP_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT) {
+    issues.push(
+      `carrier parcel booking request.contract must equal "${NP_SHOP_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT}".`,
+    );
+  }
+  const baseIssues = npAnalyzeShopCarrierBookingRequest({
+    contract: NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT,
+    shipmentId: value.shipmentId,
+    orderId: value.orderId,
+    fulfillmentRevision: value.fulfillmentRevision,
+    items: value.items,
+    destination: value.destination,
+    deliveryMethod: value.deliveryMethod,
+    requestedAt: value.requestedAt,
+  });
+  issues.push(
+    ...baseIssues.map((issue) =>
+      issue.replaceAll("carrier booking request", "carrier parcel booking request"),
+    ),
+  );
+  if (!isPositiveSafeInteger(value.parcelRevision, Number.MAX_SAFE_INTEGER)) {
+    issues.push("carrier parcel booking request.parcelRevision is invalid.");
+  }
+  issues.push(
+    ...npAnalyzeShopFulfillmentParcels(value.parcels, "carrier parcel booking request.parcels"),
+  );
+  return issues;
+}
+
+export function npRequireShopCarrierParcelBookingRequest(
+  value: unknown,
+): NpShopCarrierParcelBookingRequest {
+  const issues = npAnalyzeShopCarrierParcelBookingRequest(value);
+  if (issues.length > 0) {
+    throw new NpShopCarrierContractError("Invalid Shop carrier parcel booking request", issues);
+  }
+  return value as NpShopCarrierParcelBookingRequest;
 }
 
 export function npAnalyzeShopCarrierBookingResult(value: unknown): string[] {

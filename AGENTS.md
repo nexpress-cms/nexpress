@@ -2,7 +2,16 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-02 (Shop carrier adapters may now add one optional
+**Last refreshed:** 2026-08-02 (Shop processing fulfillments may now store one
+revision-safe PII-free parcel snapshot with bounded integer millimetre
+dimensions, gram weights, and exact immutable order-line allocations; direct
+staff audit, Admin/Doctor diagnostics, commercial cleanup, scaffold guidance,
+and PostgreSQL coverage share the contract. An additive carrier v2 capability
+atomically locks that snapshot to the durable shipment UUID before provider
+I/O while v1 adapters remain unchanged. Labels, pickup, automatic packaging,
+and provider protocols remain separate.)
+
+**Earlier:** 2026-08-02 (Shop carrier adapters may now add one optional
 provider-neutral PII-free tracking read independently of webhooks; persisted
 five-minute leases precede provider calls outside DB transactions, ten-minute
 intervals and bounded exponential backoff control retries, a site/provider

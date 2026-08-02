@@ -391,10 +391,13 @@ describe("getProjectFiles", () => {
     expect(env).toContain("createShop({ carrier: { adapter } })");
     expect(env).toContain("verifyTrackingWebhook");
     expect(env).toContain("readTracking");
+    expect(env).toContain("bookShipmentWithParcels");
+    expect(env).toContain("revision-safe PII-free");
     expect(env).toContain("bounded PII-free scheduled reconciliation");
     expect(env).toContain("Use shipmentId for provider idempotency");
     expect(readme).toContain("Shipping and additional tax remain zero");
     expect(readme).toContain("one idempotent booking and atomic private-data deletion");
+    expect(readme).toContain("exact PII-free mm/gram package allocation");
   });
 
   it(".env.example documents the exact storage runtime contract", () => {

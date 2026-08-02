@@ -348,6 +348,16 @@ real product domain, not just blog/community. Ship as a plugin package
   shipment/30-day deletion, owner status, and bounded Doctor/Admin diagnostics
   share one contract. Provider-neutral carrier booking is an independent
   optional capability.
+- **Fulfillment parcel snapshots (shipped)** — processing fulfillments may
+  store one revision-safe PII-free snapshot of 1–20 prepared parcels with
+  bounded integer millimetre dimensions, gram weights, and exact immutable
+  order-line allocations. Concurrent edits, unknown or mismatched quantities,
+  and post-booking changes fail closed. An additive carrier v2 capability
+  atomically locks the snapshot to the durable shipment UUID before provider
+  I/O, while existing v1 adapters and manual shipping stay independent. Audit,
+  Admin/Doctor diagnostics, commercial cleanup, scaffold guidance, and
+  PostgreSQL coverage share the contract. Labels, pickup, automatic packaging,
+  and provider protocols remain separate.
 - **Provider-neutral carrier shipment booking (shipped)** — one optional
   server-only adapter receives an exact fulfillment revision, immutable order
   lines, selected delivery snapshot, and private destination outside database
@@ -356,7 +366,7 @@ real product domain, not just blog/community. Ship as a plugin package
   private-data-deletion transition. Closed PII-free retry/manual-review state,
   direct-staff audit, Admin, Doctor, scaffold guidance, and integration tests
   share the contract. Labels, pickup, provider-specific tracking protocols,
-  packaging, customs, and jurisdiction policy remain separate.
+  automatic packaging, customs, and jurisdiction policy remain separate.
 - **Provider-neutral carrier tracking events (shipped)** — carrier adapters may
   add one exact raw-body callback verifier that projects bounded PII-free
   `in-transit`, `out-for-delivery`, `delivered`, or `exception` events. Exact
@@ -418,7 +428,7 @@ real product domain, not just blog/community. Ship as a plugin package
 - **Tax compliance, carrier logistics, and shipping policy (future)** — shipping,
   additional-tax quote, and carrier-booking boundaries are shipped; tax remittance/filing,
   invoices, exemptions/nexus, customs/duties, free-shipping eligibility,
-  labels, pickup, polling/provider APIs, packaging, and regional policy require
+  labels, pickup, polling/provider APIs, automatic packaging, and regional policy require
   separate contracts.
 
 Resolved foundation decision:
