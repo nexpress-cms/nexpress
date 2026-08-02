@@ -1,5 +1,9 @@
 import { npAnalyzeShopDeliveryMethod, type NpShopDeliveryMethod } from "./shipping-contract.js";
 import type { NpShopOrderDraftShipping } from "./types.js";
+import type {
+  NpShopTrackingWebhookInput,
+  NpShopTrackingWebhookResult,
+} from "./tracking-contract.js";
 
 export const NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT =
   "np.shop-carrier-booking-request.v1" as const;
@@ -73,7 +77,18 @@ export interface NpShopCarrierAdapter {
   bookShipment(
     input: NpShopCarrierBookingRequest,
   ): NpShopCarrierBookingResult | Promise<NpShopCarrierBookingResult>;
+  /**
+   * Authenticate exact carrier callback bytes before projecting one canonical,
+   * PII-free tracking event. Omit this capability when tracking callbacks are
+   * not configured; booking remains independently available.
+   */
+  verifyTrackingWebhook?(
+    input: NpShopTrackingWebhookInput,
+  ): NpShopTrackingWebhookResult | Promise<NpShopTrackingWebhookResult>;
 }
+
+export type NpShopCarrierTrackingAdapter = NpShopCarrierAdapter &
+  Required<Pick<NpShopCarrierAdapter, "verifyTrackingWebhook">>;
 
 export interface NpShopStoredCarrierBooking {
   contract: typeof NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT;

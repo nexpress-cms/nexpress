@@ -111,6 +111,7 @@ import {
   type NpShopReturnStaffInput,
   type NpShopStoredReturn,
 } from "./return-contract.js";
+import { npReadShopTrackingForOrder } from "./tracking-service.js";
 
 interface NpShopOrderMaintenanceMarker {
   contract: "np.shop-order-maintenance.v1";
@@ -1021,6 +1022,12 @@ async function projectOrder(
       "The promoted private sidecar must match one fulfillment retention deadline.",
     ]);
   }
+  const tracking = await npReadShopTrackingForOrder(db, siteId, order.id);
+  if (tracking && fulfillment?.status !== "shipped") {
+    throw new NpShopOrderContractError("Shop tracking requires shipped fulfillment", [
+      "A carrier tracking state can exist only for one shipped fulfillment.",
+    ]);
+  }
   const { ownerSegment: _ownerSegment, ...publicFields } = order;
   return npRequireShopOrder({
     ...publicFields,
@@ -1028,6 +1035,7 @@ async function projectOrder(
     customer: privateData?.customer ?? null,
     shipping: privateData?.shipping ?? null,
     ...(fulfillment ? { fulfillment: npProjectShopFulfillment(fulfillment) } : {}),
+    ...(tracking ? { tracking } : {}),
     ...(refund ? { refund: npProjectShopRefund(refund) } : {}),
     ...(returnRequest ? { returnRequest: npProjectShopReturn(returnRequest) } : {}),
   });
@@ -1386,7 +1394,7 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)})`,
+        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`tracking:${order.id}`}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)})`,
       ),
     );
   await tx
@@ -1405,6 +1413,16 @@ async function purgeOrder(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, "payment-event:%"),
+        sql`${npPluginStorage.value}->'event'->>'orderId' = ${order.id}`,
+      ),
+    );
+  await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "tracking-event:%"),
         sql`${npPluginStorage.value}->'event'->>'orderId' = ${order.id}`,
       ),
     );

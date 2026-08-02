@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import type { NpShopDeliveryMethod, NpShopShippingQuote } from "./shipping-contract.js";
 import type { NpShopTaxQuote } from "./tax-contract.js";
+import type { NpShopTracking } from "./tracking-contract.js";
 
 import type { NpShopRefund } from "./refund-contract.js";
 import type { NpShopReturn } from "./return-contract.js";
@@ -188,6 +189,10 @@ export interface NpShopMessages {
   orderFulfillmentShipped: string;
   orderFulfillmentCancelled: string;
   orderFulfillmentTracking: string;
+  orderTrackingInTransit: string;
+  orderTrackingOutForDelivery: string;
+  orderTrackingDelivered: string;
+  orderTrackingException: string;
   orderReturn: string;
   orderReturnRequested: string;
   orderReturnApproved: string;
@@ -398,6 +403,10 @@ export interface NpShopCartClientMessages {
   orderFulfillmentShipped: string;
   orderFulfillmentCancelled: string;
   orderFulfillmentTracking: string;
+  orderTrackingInTransit: string;
+  orderTrackingOutForDelivery: string;
+  orderTrackingDelivered: string;
+  orderTrackingException: string;
   orderReturn: string;
   orderReturnRequested: string;
   orderReturnApproved: string;
@@ -621,6 +630,8 @@ export interface NpShopOrder {
   cancellationReason: NpShopOrderCancellationReason | null;
   /** Present for orders paid after fulfillment support was enabled. */
   fulfillment?: NpShopFulfillment;
+  /** Present after the first verified carrier tracking callback. */
+  tracking?: NpShopTracking;
   /** Present after a refund request has been durably recorded. */
   refund?: NpShopRefund;
   /** Present after the owner requests a physical return. */

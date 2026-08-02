@@ -83,6 +83,9 @@ describe("shop factory", () => {
       { id: "countCarrierBookings", kind: "metric" },
       { id: "carrierBookingHealth", kind: "status" },
       { id: "recentCarrierBookings", kind: "table" },
+      { id: "countTrackingEvents", kind: "metric" },
+      { id: "trackingEventHealth", kind: "status" },
+      { id: "recentTrackingEvents", kind: "table" },
       { id: "bookCarrierShipment", kind: "action" },
       { id: "shipFulfillment", kind: "action" },
       { id: "readFulfillmentPrivate", kind: "action" },
@@ -256,6 +259,33 @@ describe("shop factory", () => {
         },
       }),
     ).toThrow(/carrier provider id/u);
+  });
+
+  it("adds a raw tracking webhook only for the optional carrier capability", () => {
+    const shop = createShop({
+      carrier: {
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          verifyTrackingWebhook: () => null,
+        },
+      },
+    });
+    expect(shop.runtime.carrierTrackingAdapter?.id).toBe("test-carrier");
+    expect(shop.plugin.manifest.provides.apiRoutes).toContain("/carrier/tracking/webhook");
+    expect(
+      shop.plugin.routes?.find((route) => route.path === "/carrier/tracking/webhook"),
+    ).toMatchObject({ method: "POST", auth: false, bodyMode: "raw" });
+    expect(
+      createShop({
+        carrier: {
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }).runtime.carrierTrackingAdapter,
+    ).toBeNull();
   });
 
   it("adds owner-scoped attempt routes and diagnostics only for a complete initiation adapter", () => {

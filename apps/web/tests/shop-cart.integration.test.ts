@@ -52,6 +52,8 @@ async function call(
     csrf?: string;
     body?: unknown;
     member?: { id: string };
+    rawBody?: Uint8Array;
+    headers?: Record<string, string>;
   } = {},
 ) {
   return withCurrentSite("default", () =>
@@ -62,7 +64,10 @@ async function call(
         params: { pluginId: "shop" },
         query: {},
         body: input.body,
+        bodyMode: input.rawBody ? "raw" : "json",
+        rawBody: input.rawBody,
         headers: {
+          ...input.headers,
           ...(input.cookie ? { cookie: input.cookie } : {}),
           ...(input.csrf ? { "x-csrf-token": input.csrf } : {}),
         },
@@ -83,6 +88,8 @@ async function configuredShopCall(
     body?: unknown;
     id?: string;
     member?: { id: string };
+    rawBody?: Uint8Array;
+    headers?: Record<string, string>;
   } = {},
 ) {
   const handler = shop.plugin.routes?.find(
@@ -97,7 +104,10 @@ async function configuredShopCall(
         params: { pluginId: "shop" },
         query: input.id ? { id: input.id } : {},
         body: input.body,
+        bodyMode: input.rawBody ? "raw" : "json",
+        rawBody: input.rawBody,
         headers: {
+          ...input.headers,
           ...(input.cookie ? { cookie: input.cookie } : {}),
           ...(input.csrf ? { "x-csrf-token": input.csrf } : {}),
         },
@@ -2192,7 +2202,14 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
         },
       },
-      carrier: { adapter: { id: "test-carrier", bookShipment } },
+      carrier: {
+        adapter: {
+          id: "test-carrier",
+          bookShipment,
+          verifyTrackingWebhook: ({ rawBody }) =>
+            JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
     });
     expect(
       await payPendingOrder(carrierShop, {
@@ -2294,6 +2311,123 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     });
     expect(JSON.stringify(carrierRows)).not.toContain("carrier-private@example.com");
     expect(JSON.stringify(carrierRows)).not.toContain("세종대로");
+    const trackingBase = new Date();
+    trackingBase.setMilliseconds(0);
+    const shipmentId = bookShipment.mock.calls[1]?.[0].shipmentId;
+    if (!shipmentId) throw new Error("Missing durable carrier shipment id.");
+    const trackingEvent = {
+      contract: "np.shop-tracking-event.v1",
+      eventId: "tracking_carrier_1",
+      shipmentId,
+      orderId: ids.orderId,
+      bookingReference: "booking_transaction_1",
+      trackingNumber: "CARRIER-TRACK-1",
+      status: "in-transit",
+      occurredAt: new Date(trackingBase.getTime() - 60_000).toISOString(),
+      signedAt: trackingBase.toISOString(),
+    };
+    const trackingCall = (payload: Record<string, unknown>) =>
+      configuredShopCall(carrierShop, "POST", "/carrier/tracking/webhook", {
+        rawBody: new TextEncoder().encode(JSON.stringify(payload)),
+        headers: { "x-carrier-signature": "valid" },
+      });
+    expect(await trackingCall(trackingEvent)).toMatchObject({
+      status: 200,
+      body: {
+        receipt: { outcome: "advanced", trackingStatus: "in-transit" },
+        duplicate: false,
+      },
+    });
+    expect(
+      await trackingCall({ ...trackingEvent, signedAt: new Date().toISOString() }),
+    ).toMatchObject({
+      status: 200,
+      body: { duplicate: true },
+    });
+    expect(
+      await trackingCall({
+        ...trackingEvent,
+        eventId: "tracking_carrier_stale",
+        status: "out-for-delivery",
+        occurredAt: new Date(trackingBase.getTime() - 120_000).toISOString(),
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: { receipt: { outcome: "ignored-stale", trackingStatus: "in-transit" } },
+    });
+    expect(
+      await trackingCall({
+        ...trackingEvent,
+        eventId: "tracking_carrier_out",
+        status: "out-for-delivery",
+        occurredAt: new Date(trackingBase.getTime() - 30_000).toISOString(),
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: { receipt: { outcome: "advanced", trackingStatus: "out-for-delivery" } },
+    });
+    expect(
+      await trackingCall({
+        ...trackingEvent,
+        eventId: "tracking_carrier_regression",
+        occurredAt: new Date(trackingBase.getTime() - 10_000).toISOString(),
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: { receipt: { outcome: "ignored-regression", trackingStatus: "out-for-delivery" } },
+    });
+    expect(
+      await trackingCall({
+        ...trackingEvent,
+        eventId: "tracking_carrier_delivered",
+        status: "delivered",
+        occurredAt: new Date(trackingBase.getTime() - 30_000).toISOString(),
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: { receipt: { outcome: "advanced", trackingStatus: "delivered" } },
+    });
+    expect(
+      await trackingCall({
+        ...trackingEvent,
+        eventId: "tracking_carrier_terminal",
+        status: "exception",
+        occurredAt: trackingBase.toISOString(),
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: { receipt: { outcome: "ignored-terminal", trackingStatus: "delivered" } },
+    });
+    expect(await trackingCall({ ...trackingEvent, status: "exception" })).toMatchObject({
+      status: 409,
+      body: { error: "tracking_event_conflict" },
+    });
+    expect(await orderCall("GET", { ...owner, orderId: ids.orderId })).toMatchObject({
+      status: 200,
+      body: {
+        order: {
+          fulfillment: { status: "shipped" },
+          tracking: {
+            contract: "np.shop-tracking.v1",
+            shipmentId,
+            status: "delivered",
+            deliveredAt: new Date(trackingBase.getTime() - 30_000).toISOString(),
+          },
+        },
+      },
+    });
+    const trackingRows = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(like(npPluginStorage.key, "tracking%"));
+    expect(trackingRows).toHaveLength(7);
+    expect(JSON.stringify(trackingRows)).not.toContain("carrier-private@example.com");
+    expect(JSON.stringify(trackingRows)).not.toContain("세종대로");
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.trackingEventHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
     expect(
       await db
         .select({ key: npPluginStorage.key })

@@ -1109,6 +1109,24 @@ function fulfillmentStatusMessage(
   }
 }
 
+function trackingStatusMessage(
+  order: NpShopOrder,
+  messages: NpShopCartClientMessages,
+): string | null {
+  switch (order.tracking?.status) {
+    case "in-transit":
+      return messages.orderTrackingInTransit;
+    case "out-for-delivery":
+      return messages.orderTrackingOutForDelivery;
+    case "delivered":
+      return messages.orderTrackingDelivered;
+    case "exception":
+      return messages.orderTrackingException;
+    default:
+      return null;
+  }
+}
+
 export function ShopOrders({
   apiPath,
   basePath,
@@ -1378,6 +1396,11 @@ export function ShopOrder({
                     <p>
                       {messages.orderFulfillmentTracking}: {order.fulfillment.carrier}{" "}
                       {order.fulfillment.trackingNumber}
+                    </p>
+                  ) : null}
+                  {order.tracking ? (
+                    <p data-np-shop-tracking-status={order.tracking.status}>
+                      {trackingStatusMessage(order, messages)}
                     </p>
                   ) : null}
                 </div>
