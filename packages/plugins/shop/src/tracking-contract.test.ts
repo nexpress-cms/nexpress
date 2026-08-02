@@ -29,6 +29,10 @@ const event = {
 describe("Shop carrier tracking contract", () => {
   it("accepts one exact fresh PII-free event", () => {
     expect(npRequireFreshShopTrackingEvent(event, now)).toEqual(event);
+    expect(
+      npRequireFreshShopTrackingEvent({ ...event, trackingNumber: "KR/운송장 123" }, now)
+        .trackingNumber,
+    ).toBe("KR/운송장 123");
   });
 
   it("rejects replayed, excessively delayed, and extended events", () => {

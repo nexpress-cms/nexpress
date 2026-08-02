@@ -928,7 +928,7 @@ export function createShop(options: NpShopOptions = {}) {
           kind: "metric",
           actionId: "countCarrierBookings",
           description: "PII-free durable carrier attempts and locally completed shipments.",
-          priority: 29,
+          priority: 30,
         },
         {
           id: "shop-tracking-events-total",
@@ -936,7 +936,7 @@ export function createShop(options: NpShopOptions = {}) {
           kind: "metric",
           actionId: "countTrackingEvents",
           description: "Verified PII-free carrier events retained with their shipments.",
-          priority: 30,
+          priority: 31,
         },
         {
           id: "shop-payment-events-total",
@@ -945,7 +945,7 @@ export function createShop(options: NpShopOptions = {}) {
           actionId: "countPaymentEvents",
           description:
             "Verified, PII-free provider event receipts retained with their commercial orders.",
-          priority: 31,
+          priority: 32,
         },
         {
           id: "shop-refunds-total",
@@ -953,7 +953,7 @@ export function createShop(options: NpShopOptions = {}) {
           kind: "metric",
           actionId: "countRefunds",
           description: "Durable full-refund attempts and completed inventory compensation.",
-          priority: 32,
+          priority: 34,
         },
         {
           id: "shop-returns-total",
@@ -961,7 +961,7 @@ export function createShop(options: NpShopOptions = {}) {
           kind: "metric",
           actionId: "countReturns",
           description: "Durable item-level physical return requests for shipped orders.",
-          priority: 33,
+          priority: 35,
         },
         ...(paymentAttemptApiHandler
           ? [
@@ -972,7 +972,7 @@ export function createShop(options: NpShopOptions = {}) {
                 actionId: "countPaymentAttempts",
                 description:
                   "PII-free owner-scoped handoffs retained with their commercial orders.",
-                priority: 31,
+                priority: 33,
               },
             ]
           : []),

@@ -314,6 +314,10 @@ describe("shop factory", () => {
         "recentPaymentAttempts",
       ]),
     );
+    const dashboardPriorities =
+      shop.plugin.admin?.dashboardWidgets?.map((widget) => widget.priority) ?? [];
+    expect(dashboardPriorities.every((priority) => typeof priority === "number")).toBe(true);
+    expect(new Set(dashboardPriorities).size).toBe(dashboardPriorities.length);
     expect(shop.runtime.paymentInitiationAdapter?.id).toBe("test-pay");
     expect(() =>
       createShop({

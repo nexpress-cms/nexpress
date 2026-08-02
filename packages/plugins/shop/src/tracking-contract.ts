@@ -135,7 +135,6 @@ const canonicalUuidPattern =
 const canonicalIsoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 const providerIdPattern = /^[a-z][a-z0-9-]{0,31}$/u;
 const opaqueReferencePattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/u;
-const trackingNumberPattern = /^[A-Za-z0-9][A-Za-z0-9._ -]{0,119}$/u;
 const digestPattern = /^[0-9a-f]{64}$/u;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -170,6 +169,15 @@ function isOpaqueReference(value: unknown, maximum: number): value is string {
     value.length <= maximum &&
     value.trim() === value &&
     opaqueReferencePattern.test(value)
+  );
+}
+
+function isBoundedText(value: unknown, maximum: number): value is string {
+  return (
+    typeof value === "string" &&
+    value.length >= 1 &&
+    value.length <= maximum &&
+    value.trim() === value
   );
 }
 
@@ -213,11 +221,7 @@ export function npAnalyzeShopTrackingEvent(value: unknown): string[] {
   if (!isOpaqueReference(value.bookingReference, npShopTrackingLimits.referenceLength)) {
     issues.push("tracking event.bookingReference is invalid.");
   }
-  if (
-    typeof value.trackingNumber !== "string" ||
-    !trackingNumberPattern.test(value.trackingNumber) ||
-    value.trackingNumber.trim() !== value.trackingNumber
-  ) {
+  if (!isBoundedText(value.trackingNumber, npShopTrackingLimits.trackingNumberLength)) {
     issues.push("tracking event.trackingNumber is invalid.");
   }
   if (!(npShopTrackingStatuses as readonly unknown[]).includes(value.status)) {
@@ -336,10 +340,7 @@ export function npAnalyzeStoredShopTracking(value: unknown): string[] {
   if (!isOpaqueReference(value.bookingReference, npShopTrackingLimits.referenceLength)) {
     issues.push("tracking state.bookingReference is invalid.");
   }
-  if (
-    typeof value.trackingNumber !== "string" ||
-    !trackingNumberPattern.test(value.trackingNumber)
-  ) {
+  if (!isBoundedText(value.trackingNumber, npShopTrackingLimits.trackingNumberLength)) {
     issues.push("tracking state.trackingNumber is invalid.");
   }
   if (!(npShopTrackingStatuses as readonly unknown[]).includes(value.status)) {
