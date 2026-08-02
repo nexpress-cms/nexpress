@@ -2,6 +2,7 @@ import {
   definePlugin,
   npAdminStatus,
   npAdminTable,
+  type NpPluginContext,
   type NpPluginPageRouteRegistration,
 } from "@nexpress/plugin-sdk";
 
@@ -27,12 +28,20 @@ import {
 } from "./order-draft-service.js";
 import { createShopOrderApiHandler } from "./order-api.js";
 import {
+  npRequireShopCarrierBookingActionInput,
+  npRequireShopCarrierProviderId,
+  type NpShopCarrierAdapter,
+} from "./carrier-contract.js";
+import {
+  npBookShopCarrierShipment,
+  npCountShopCarrierBookings,
   npCountShopOrders,
   npCountShopPaymentEvents,
   npCountShopFulfillments,
   npCountShopRefunds,
   npCountShopReturns,
   npListRecentShopFulfillments,
+  npListRecentShopCarrierBookings,
   npListRecentShopOrders,
   npListRecentShopPaymentEvents,
   npListRecentShopRefunds,
@@ -110,6 +119,10 @@ export interface NpShopOptions {
   /** Optional server-only additional-tax quote provider. */
   tax?: {
     adapter: NpShopTaxAdapter;
+  };
+  /** Optional server-only carrier shipment booking provider. */
+  carrier?: {
+    adapter: NpShopCarrierAdapter;
   };
 }
 
@@ -237,6 +250,18 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
       quoteTax: configuredTaxAdapter.quoteTax.bind(configuredTaxAdapter),
     });
   }
+  const configuredCarrierAdapter = options.carrier?.adapter ?? null;
+  let carrierAdapter: NpShopCarrierAdapter | null = null;
+  if (configuredCarrierAdapter) {
+    const id = npRequireShopCarrierProviderId(configuredCarrierAdapter.id);
+    if (typeof configuredCarrierAdapter.bookShipment !== "function") {
+      throw new Error("Shop carrier adapter bookShipment must be a function.");
+    }
+    carrierAdapter = Object.freeze({
+      id,
+      bookShipment: configuredCarrierAdapter.bookShipment.bind(configuredCarrierAdapter),
+    });
+  }
   return {
     basePath: requireBasePath(options.basePath ?? "/shop"),
     collections,
@@ -247,6 +272,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     paymentRefundAdapter,
     shippingAdapter,
     taxAdapter,
+    carrierAdapter,
   };
 }
 
@@ -665,7 +691,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment initiation, verified events, full refunds, fulfillment and return operations, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment and return operations, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -699,6 +725,9 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-fulfillments",
           "widget:shop-fulfillment-health",
           "table:shop-fulfillments",
+          "dashboard:shop-carrier-bookings",
+          "widget:shop-carrier-booking-health",
+          "table:shop-carrier-bookings",
           "dashboard:shop-inventory-reservations",
           "widget:shop-inventory-reservation-health",
           "table:shop-inventory-reservations",
@@ -733,7 +762,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment, and physical return intake. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, shipping policy, and carrier booking remain external.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment, carrier booking, and physical return intake. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, labels, pickup, and tracking webhooks remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -855,6 +884,14 @@ export function createShop(options: NpShopOptions = {}) {
           priority: 28,
         },
         {
+          id: "shop-carrier-bookings-total",
+          label: "Carrier bookings",
+          kind: "metric",
+          actionId: "countCarrierBookings",
+          description: "PII-free durable carrier attempts and locally completed shipments.",
+          priority: 29,
+        },
+        {
           id: "shop-payment-events-total",
           label: "Payment events",
           kind: "metric",
@@ -929,6 +966,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Fulfillment storage",
           kind: "status",
           actionId: "fulfillmentHealth",
+        },
+        {
+          id: "shop-carrier-booking-health",
+          label: "Carrier booking contract",
+          kind: "status",
+          actionId: "carrierBookingHealth",
         },
         {
           id: "shop-payment-event-health",
@@ -1061,7 +1104,7 @@ export function createShop(options: NpShopOptions = {}) {
               label: "Start processing",
               actionId: "processFulfillment",
               rowFields: ["id", "fulfillmentRevision"],
-              visibleWhen: { field: "status", oneOf: ["awaiting", "processing"] },
+              visibleWhen: { field: "status", oneOf: ["awaiting"] },
               fields: [
                 {
                   name: "operatorNote",
@@ -1072,20 +1115,78 @@ export function createShop(options: NpShopOptions = {}) {
               ],
               confirm: "Move this fulfillment to processing?",
             },
+            ...(runtime.carrierAdapter
+              ? [
+                  {
+                    id: "book-carrier",
+                    label: "Book carrier shipment",
+                    actionId: "bookCarrierShipment",
+                    rowFields: ["id", "fulfillmentRevision"],
+                    visibleWhen: { field: "status", oneOf: ["processing"] },
+                    fields: [
+                      {
+                        name: "operatorNote",
+                        label: "Operations note",
+                        type: "textarea" as const,
+                        placeholder: "Optional PII-free internal note",
+                      },
+                    ],
+                    confirm:
+                      "Send the retained shipping destination to the configured carrier, then mark the fulfillment shipped and permanently delete private data?",
+                  },
+                ]
+              : [
+                  {
+                    id: "ship",
+                    label: "Mark shipped",
+                    actionId: "shipFulfillment",
+                    rowFields: ["id", "fulfillmentRevision"],
+                    visibleWhen: { field: "status", oneOf: ["awaiting", "processing"] },
+                    fields: [
+                      { name: "carrier", label: "Carrier", type: "text" as const, required: true },
+                      {
+                        name: "trackingNumber",
+                        label: "Tracking number",
+                        type: "text" as const,
+                        required: true,
+                      },
+                      {
+                        name: "operatorNote",
+                        label: "Operations note",
+                        type: "textarea" as const,
+                        placeholder: "Optional PII-free internal note",
+                      },
+                    ],
+                    confirm:
+                      "Mark this fulfillment shipped and permanently delete retained customer and shipping data?",
+                  },
+                ]),
+          ],
+          emptyMessage: "No paid order fulfillment records exist for this site.",
+        },
+        {
+          id: "shop-carrier-bookings",
+          label: "Carrier shipment bookings (PII withheld)",
+          columns: [
+            { name: "id", label: "Order" },
+            { name: "shipmentId", label: "Shipment" },
+            { name: "provider", label: "Provider" },
+            { name: "status", label: "Status" },
+            { name: "fulfillmentRevision", label: "Fulfillment revision" },
+            { name: "carrier", label: "Carrier" },
+            { name: "trackingNumber", label: "Tracking" },
+            { name: "providerError", label: "Closed error" },
+            { name: "updatedAt", label: "Updated" },
+          ],
+          rowsActionId: "recentCarrierBookings",
+          rowActions: [
             {
-              id: "ship",
-              label: "Mark shipped",
-              actionId: "shipFulfillment",
+              id: "resume-carrier-booking",
+              label: "Resume booking",
+              actionId: "bookCarrierShipment",
               rowFields: ["id", "fulfillmentRevision"],
-              visibleWhen: { field: "status", oneOf: ["awaiting", "processing"] },
+              visibleWhen: { field: "status", oneOf: ["pending", "provider-confirmed"] },
               fields: [
-                { name: "carrier", label: "Carrier", type: "text", required: true },
-                {
-                  name: "trackingNumber",
-                  label: "Tracking number",
-                  type: "text",
-                  required: true,
-                },
                 {
                   name: "operatorNote",
                   label: "Operations note",
@@ -1094,10 +1195,10 @@ export function createShop(options: NpShopOptions = {}) {
                 },
               ],
               confirm:
-                "Mark this fulfillment shipped and permanently delete retained customer and shipping data?",
+                "Resume this durable shipment? Provider-confirmed rows perform only local completion.",
             },
           ],
-          emptyMessage: "No paid order fulfillment records exist for this site.",
+          emptyMessage: "No carrier shipment booking exists for this site.",
         },
         {
           id: "shop-inventory-reservations",
@@ -1866,26 +1967,137 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
-      shipFulfillment: {
-        kind: "action",
-        handler: async (data, ctx) => {
+      countCarrierBookings: {
+        kind: "metric" as const,
+        handler: async () => {
           try {
-            if (ctx.actionInvocation?.kind !== "staff") {
-              return { ok: false, error: "Fulfillment operations require a direct staff action." };
-            }
-            const result = await npShipShopFulfillment(
-              npRequireShopFulfillmentShipInput(data),
-              ctx.actionInvocation.userId,
-            );
+            const counts = await npCountShopCarrierBookings(runtime.carrierAdapter?.id);
             return {
-              ok: true,
-              data: `Fulfillment shipped at revision ${result.revision.toString()}; retained private data was deleted.`,
+              ok: true as const,
+              data: {
+                value: counts.total,
+                delta: `${counts.completed.toString()} completed, ${(counts.pending + counts.providerConfirmed).toString()} pending reconciliation`,
+              },
             };
           } catch (error) {
-            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
           }
         },
       },
+      carrierBookingHealth: {
+        kind: "status" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopCarrierBookings(runtime.carrierAdapter?.id);
+            if (!runtime.carrierAdapter && (counts.pending > 0 || counts.providerConfirmed > 0)) {
+              return npAdminStatus(
+                "error",
+                `${counts.pending.toString()} pending and ${counts.providerConfirmed.toString()} provider-confirmed carrier booking(s) require their original adapter or local reconciliation.`,
+              );
+            }
+            if (
+              counts.invalidSample > 0 ||
+              counts.orphanSample > 0 ||
+              counts.providerMismatchSample > 0 ||
+              counts.stateMismatchSample > 0
+            ) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed, ${counts.orphanSample.toString()} orphan, ${counts.providerMismatchSample.toString()} provider-mismatched, and ${counts.stateMismatchSample.toString()} state-mismatched carrier row(s) in bounded samples.`,
+              );
+            }
+            if (counts.pending > 0 || counts.providerConfirmed > 0 || counts.manualReview > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.pending.toString()} provider-pending, ${counts.providerConfirmed.toString()} provider-confirmed awaiting local completion, and ${counts.manualReview.toString()} requiring manual review.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.completed.toString()} completed carrier booking(s); ${runtime.carrierAdapter ? `provider "${runtime.carrierAdapter.id}" is enabled` : "no carrier adapter is configured"}.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Carrier booking health check failed.",
+            );
+          }
+        },
+      },
+      recentCarrierBookings: {
+        kind: "table" as const,
+        handler: async () => {
+          try {
+            const result = await npListRecentShopCarrierBookings();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      bookCarrierShipment: {
+        kind: "action" as const,
+        handler: async (data: unknown, ctx: NpPluginContext) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return {
+                ok: false as const,
+                error: "Carrier booking requires a direct staff action.",
+              };
+            }
+            const result = await npBookShopCarrierShipment(
+              runtime,
+              npRequireShopCarrierBookingActionInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return {
+              ok: true as const,
+              data: `Carrier shipment ${result.duplicate ? "already reconciled" : "completed"}; fulfillment revision ${result.fulfillment.revision.toString()} and retained private data deleted.`,
+            };
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      ...(runtime.carrierAdapter
+        ? {}
+        : {
+            shipFulfillment: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Fulfillment operations require a direct staff action.",
+                    };
+                  }
+                  const result = await npShipShopFulfillment(
+                    npRequireShopFulfillmentShipInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Fulfillment shipped at revision ${result.revision.toString()}; retained private data was deleted.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+          }),
       readFulfillmentPrivate: {
         kind: "action",
         handler: async (data, ctx) => {
@@ -2530,6 +2742,34 @@ export type {
   NpShopFulfillmentShipInput,
   NpShopStoredFulfillment,
 } from "./fulfillment-contract.js";
+export {
+  NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT,
+  NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
+  NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT,
+  NpShopCarrierConflictError,
+  NpShopCarrierContractError,
+  NpShopCarrierProviderError,
+  NpShopCarrierUnavailableError,
+  npAnalyzeShopCarrierBookingRequest,
+  npAnalyzeShopCarrierBookingResult,
+  npAnalyzeStoredShopCarrierBooking,
+  npRequireShopCarrierBookingActionInput,
+  npRequireShopCarrierBookingRequest,
+  npRequireShopCarrierBookingResult,
+  npRequireShopCarrierProviderId,
+  npRequireStoredShopCarrierBooking,
+  npShopCarrierBookingStatuses,
+  npShopCarrierLimits,
+} from "./carrier-contract.js";
+export type {
+  NpShopCarrierAdapter,
+  NpShopCarrierBookingActionInput,
+  NpShopCarrierBookingItem,
+  NpShopCarrierBookingRequest,
+  NpShopCarrierBookingResult,
+  NpShopCarrierBookingStatus,
+  NpShopStoredCarrierBooking,
+} from "./carrier-contract.js";
 export type {
   NpShopOrderDraftCreateInput,
   NpShopOrderDraftDeleteInput,

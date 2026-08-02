@@ -2,7 +2,15 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-02 (Shop private order drafts may now use one
+**Last refreshed:** 2026-08-02 (Shop processing fulfillments may now use one
+optional server-only provider-neutral carrier booking adapter; durable shipment
+UUID idempotency, calls outside DB transactions, separately persisted provider
+confirmation, atomic shipped/tracking and private-data deletion, direct-staff
+audit, closed PII-free Admin/Doctor diagnostics, scaffolds, and integration
+coverage share the contract. Labels, pickup, tracking webhooks, packaging,
+customs, and jurisdiction policy remain separate.)
+
+**Earlier:** 2026-08-02 (Shop private order drafts may now use one
 optional server-only provider-neutral additional-tax quote adapter after the
 address or delivery selection; exact calls run outside DB transactions,
 revision/expiry rechecks freeze one PII-free component snapshot, and

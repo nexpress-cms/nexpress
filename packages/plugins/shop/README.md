@@ -46,6 +46,10 @@ It provides:
 - independent revision-safe `awaiting` / `processing` / `shipped` fulfillment,
   audited direct-staff shipping-data access, owner-visible tracking, and
   shipment-or-30-day private-data deletion;
+- an optional provider-neutral carrier adapter with one durable shipment UUID,
+  calls outside database transactions, resumable provider confirmation,
+  atomic tracking/shipped completion and private-data deletion, and closed
+  PII-free reconciliation diagnostics;
 - provider-neutral, staff-audited full refunds with one durable idempotency id,
   cancelled unshipped fulfillment, all-or-none tracked-inventory restoration,
   and explicit manual-compensation diagnostics;
@@ -56,11 +60,13 @@ It provides:
 - featured-product and category-grid blocks.
 
 Provider-specific browser/server protocols, signature algorithms, credentials
-and rotation, partial refunds, reversals, exchanges, carrier booking/labels,
+and rotation, partial refunds, reversals, exchanges, carrier labels/pickup,
+tracking webhooks,
 tax remittance/filing, invoices, exemptions, customs, and shipping policy
 remain outside this package. A server-only `NpShopShippingAdapter` may supply
 exact bounded delivery methods, and `NpShopTaxAdapter` may return only tax
-added on top of displayed product prices. Shop owns revision-safe selection
+added on top of displayed product prices. `NpShopCarrierAdapter` may book one
+shipment with its stable shipment UUID as the provider idempotency key. Shop owns revision-safe selection
 and both PII-free commercial snapshots.
 `@nexpress/shop-payment-toss` is the bundled Toss
 Payments v2 initiation and full-refund adapter. Customer/shipping PII exists only in the short-lived
@@ -70,5 +76,5 @@ still does not imply that a visitor paid for a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
 for the exact price, SKU, inventory, cart, checkout-intent, private-draft,
-shipping-quote, tax-quote, pending-order, payment-attempt, fulfillment, refund, return,
+shipping-quote, tax-quote, pending-order, payment-attempt, fulfillment, carrier, refund, return,
 skin, block, and theme-integration contracts.

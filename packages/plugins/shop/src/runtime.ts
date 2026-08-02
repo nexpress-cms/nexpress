@@ -21,6 +21,7 @@ import type {
 } from "./payment-contract.js";
 import type { NpShopShippingAdapter } from "./shipping-contract.js";
 import type { NpShopTaxAdapter } from "./tax-contract.js";
+import type { NpShopCarrierAdapter } from "./carrier-contract.js";
 
 export const npShopSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 export const npShopSkuPattern = /^[A-Z0-9][A-Z0-9._-]{0,63}$/u;
@@ -46,6 +47,7 @@ export interface NpShopRuntime {
   paymentRefundAdapter: NpShopPaymentRefundAdapter | null;
   shippingAdapter: NpShopShippingAdapter | null;
   taxAdapter: NpShopTaxAdapter | null;
+  carrierAdapter: NpShopCarrierAdapter | null;
 }
 
 export interface ShopCategoryDocument extends Record<string, unknown> {

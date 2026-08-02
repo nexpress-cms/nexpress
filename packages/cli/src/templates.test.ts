@@ -388,7 +388,10 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("defaultPlugins");
     expect(env).toContain("createShop({ shipping: { adapter } })");
     expect(env).toContain("createShop({ tax: { adapter } })");
+    expect(env).toContain("createShop({ carrier: { adapter } })");
+    expect(env).toContain("Use shipmentId for provider idempotency");
     expect(readme).toContain("Shipping and additional tax remain zero");
+    expect(readme).toContain("one idempotent booking and atomic private-data deletion");
   });
 
   it(".env.example documents the exact storage runtime contract", () => {

@@ -2,11 +2,13 @@ import { npAuditEvents, npPluginStorage, withCurrentSite } from "@nexpress/core"
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import {
   createShop,
+  NpShopCarrierProviderError,
   NpShopPaymentProviderError,
   npAnalyzeStoredShopOrder,
   npRequireShopOrderDraft,
   shopCollections,
   shopPlugin,
+  type NpShopCarrierBookingRequest,
 } from "@nexpress/plugin-shop";
 import { and, eq, like } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -2154,6 +2156,279 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         .from(shopProductsTable)
         .where(eq(shopProductsTable.id, productId)),
     ).toEqual([{ available: true, inventoryState: "low-stock" }]);
+  });
+
+  it("books one idempotent carrier shipment and atomically redacts its private destination", async () => {
+    const ids = {
+      intentId: "a13e4567-e89b-42d3-a456-426614174000",
+      draftId: "b13e4567-e89b-42d3-a456-426614174000",
+      orderId: "c13e4567-e89b-42d3-a456-426614174000",
+    };
+    const owner = await createPendingOrder(ids, "carrier-private@example.com");
+    let providerAttempts = 0;
+    const bookShipment = vi.fn((request: NpShopCarrierBookingRequest) => {
+      providerAttempts += 1;
+      if (providerAttempts === 1) {
+        throw new NpShopCarrierProviderError(
+          "provider-timeout",
+          "private destination must never escape",
+          { retryable: true },
+        );
+      }
+      return {
+        contract: "np.shop-carrier-booking-result.v1" as const,
+        shipmentId: request.shipmentId,
+        orderId: request.orderId,
+        bookingReference: "booking_transaction_1",
+        carrier: "Parcel Co",
+        trackingNumber: "CARRIER-TRACK-1",
+        bookedAt: request.requestedAt,
+      };
+    });
+    const carrierShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
+      carrier: { adapter: { id: "test-carrier", bookShipment } },
+    });
+    expect(
+      await payPendingOrder(carrierShop, {
+        orderId: ids.orderId,
+        eventId: "evt_carrier_success_1",
+        paymentReference: "pay_carrier_success_1",
+      }),
+    ).toMatchObject({ status: 200, body: { receipt: { outcome: "paid" } } });
+    const staff = await seedUser({ email: "carrier-operator@example.com" });
+    const actionContext = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.processFulfillment?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 1 },
+            values: { operatorNote: "Packed for carrier" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("revision 2") });
+    const carrierAction = {
+      row: { id: ids.orderId, fulfillmentRevision: 2 },
+      values: { operatorNote: "Handoff ready" },
+    };
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.bookCarrierShipment?.handler(carrierAction, actionContext),
+      ),
+    ).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("temporarily unavailable"),
+    });
+    const db = await getTestDb();
+    const [pendingCarrier] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `carrier-booking:${ids.orderId}`));
+    expect(pendingCarrier?.value).toMatchObject({
+      status: "pending",
+      providerErrorCode: "provider-timeout",
+    });
+    expect(JSON.stringify(pendingCarrier)).not.toContain("private destination must never escape");
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.bookCarrierShipment?.handler(carrierAction, actionContext),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("completed") });
+    expect(bookShipment).toHaveBeenCalledTimes(2);
+    expect(bookShipment.mock.calls[1]?.[0]).toMatchObject({
+      contract: "np.shop-carrier-booking-request.v1",
+      shipmentId: expect.any(String),
+      orderId: ids.orderId,
+      fulfillmentRevision: 2,
+      destination: { postalCode: "04524", addressLine1: "서울특별시 중구 세종대로 110" },
+      items: [{ productId, productName: "Everyday cup", quantity: 1 }],
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.bookCarrierShipment?.handler(carrierAction, actionContext),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("already reconciled") });
+    expect(bookShipment).toHaveBeenCalledTimes(2);
+    expect(bookShipment.mock.calls[0]?.[0].shipmentId).toBe(
+      bookShipment.mock.calls[1]?.[0].shipmentId,
+    );
+    expect(await orderCall("GET", { ...owner, orderId: ids.orderId })).toMatchObject({
+      body: {
+        order: {
+          status: "paid",
+          revision: 3,
+          privateDataStatus: "redacted",
+          customer: null,
+          shipping: null,
+          fulfillment: {
+            status: "shipped",
+            revision: 3,
+            carrier: "Parcel Co",
+            trackingNumber: "CARRIER-TRACK-1",
+          },
+        },
+      },
+    });
+    const carrierRows = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(like(npPluginStorage.key, "carrier-booking:%"));
+    expect(carrierRows).toHaveLength(1);
+    expect(carrierRows[0]?.value).toMatchObject({
+      contract: "np.shop-carrier-booking-storage.v1",
+      orderId: ids.orderId,
+      providerId: "test-carrier",
+      status: "completed",
+      carrier: "Parcel Co",
+      trackingNumber: "CARRIER-TRACK-1",
+      operatorNote: "Handoff ready",
+    });
+    expect(JSON.stringify(carrierRows)).not.toContain("carrier-private@example.com");
+    expect(JSON.stringify(carrierRows)).not.toContain("세종대로");
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(like(npPluginStorage.key, `order-private:%:${ids.orderId}`)),
+    ).toHaveLength(0);
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.carrierBookingHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(
+      await db
+        .select({ action: npAuditEvents.action })
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.targetId, ids.orderId)),
+    ).toEqual(
+      expect.arrayContaining([
+        { action: "shop.carrier.booking.request" },
+        { action: "shop.carrier.booking.confirm" },
+        { action: "shop.fulfillment.ship" },
+      ]),
+    );
+  });
+
+  it("finishes a durable provider-confirmed shipment after its carrier adapter is removed", async () => {
+    const ids = {
+      intentId: "a23e4567-e89b-42d3-a456-426614174000",
+      draftId: "b23e4567-e89b-42d3-a456-426614174000",
+      orderId: "c23e4567-e89b-42d3-a456-426614174000",
+    };
+    const owner = await createPendingOrder(ids, "carrier-resume-private@example.com");
+    const paymentOnlyShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
+    });
+    expect(
+      await payPendingOrder(paymentOnlyShop, {
+        orderId: ids.orderId,
+        eventId: "evt_carrier_resume_1",
+        paymentReference: "pay_carrier_resume_1",
+      }),
+    ).toMatchObject({ status: 200, body: { receipt: { outcome: "paid" } } });
+    const staff = await seedUser({ email: "carrier-resume-operator@example.com" });
+    const actionContext = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    expect(
+      await withCurrentSite("default", () =>
+        paymentOnlyShop.plugin.actions?.processFulfillment?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 1 },
+            values: { operatorNote: "Provider confirmation recovery" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true });
+    const db = await getTestDb();
+    const [fulfillmentRow] = await db
+      .select({ value: npPluginStorage.value, expiresAt: npPluginStorage.expiresAt })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `fulfillment:${ids.orderId}`));
+    expect(fulfillmentRow?.expiresAt).not.toBeNull();
+    if (!fulfillmentRow?.expiresAt) throw new Error("Missing carrier recovery fulfillment.");
+    const purgeAt = fulfillmentRow.expiresAt;
+    const bookedAt = new Date();
+    bookedAt.setMilliseconds(0);
+    const bookedAtIso = bookedAt.toISOString();
+    const shipmentId = "d23e4567-e89b-42d3-a456-426614174000";
+    await db.insert(npPluginStorage).values({
+      pluginId: "shop",
+      siteId: "default",
+      key: `carrier-booking:${ids.orderId}`,
+      value: {
+        contract: "np.shop-carrier-booking-storage.v1",
+        id: shipmentId,
+        orderId: ids.orderId,
+        providerId: "removed-carrier",
+        status: "provider-confirmed",
+        fulfillmentRevision: 2,
+        operatorNote: "Provider confirmation recovery",
+        bookingReference: "booking_recovery_1",
+        carrier: "Parcel Co",
+        trackingNumber: "RECOVERY-TRACK-1",
+        providerErrorCode: null,
+        requestedAt: bookedAtIso,
+        updatedAt: bookedAtIso,
+        bookedAt: bookedAtIso,
+        purgeAt: purgeAt.toISOString(),
+      },
+      expiresAt: purgeAt,
+      updatedAt: bookedAt,
+    });
+    expect(paymentOnlyShop.runtime.carrierAdapter).toBeNull();
+    expect(
+      await withCurrentSite("default", () =>
+        paymentOnlyShop.plugin.actions?.bookCarrierShipment?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 2 },
+            values: { operatorNote: "Recovered without provider call" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("completed") });
+    expect(await orderCall("GET", { ...owner, orderId: ids.orderId })).toMatchObject({
+      body: {
+        order: {
+          privateDataStatus: "redacted",
+          fulfillment: {
+            status: "shipped",
+            carrier: "Parcel Co",
+            trackingNumber: "RECOVERY-TRACK-1",
+          },
+        },
+      },
+    });
+    const [completedBooking] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `carrier-booking:${ids.orderId}`));
+    expect(completedBooking?.value).toMatchObject({
+      status: "completed",
+      operatorNote: "Recovered without provider call",
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentOnlyShop.plugin.actions?.carrierBookingHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
   });
 
   it("fully refunds an unshipped paid order and atomically restores exact inventory", async () => {

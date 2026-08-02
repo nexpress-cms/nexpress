@@ -346,7 +346,17 @@ real product domain, not just blog/community. Ship as a plugin package
   independent awaiting/processing/shipped record. Revision-safe row actions,
   bounded PII-free notes and tracking, audited direct-staff private reads,
   shipment/30-day deletion, owner status, and bounded Doctor/Admin diagnostics
-  share one contract. Returns and carrier integrations remain future.
+  share one contract. Provider-neutral carrier booking is an independent
+  optional capability.
+- **Provider-neutral carrier shipment booking (shipped)** — one optional
+  server-only adapter receives an exact fulfillment revision, immutable order
+  lines, selected delivery snapshot, and private destination outside database
+  transactions. A durable shipment UUID is the provider idempotency key;
+  provider confirmation is persisted before one atomic shipped/tracking and
+  private-data-deletion transition. Closed PII-free retry/manual-review state,
+  direct-staff audit, Admin, Doctor, scaffold guidance, and integration tests
+  share the contract. Labels, pickup, tracking webhooks, packaging, customs,
+  and jurisdiction policy remain separate.
 - **Full refunds and inventory compensation (shipped)** — a refund-capable
   adapter receives one stable PII-free full-refund intent. Direct staff action,
   provider idempotency, exact result matching, `refunded` orders,
@@ -367,7 +377,7 @@ real product domain, not just blog/community. Ship as a plugin package
   delivery snapshot; orders, payment attempts/events, and full refunds share
   `subtotalMinor + shippingMinor + taxMinor = totalMinor`. Closed PII-free provider health
   reaches Admin while Doctor verifies its declarative diagnostic contract.
-  Carrier booking/labels/pickup/tracking, customs, and jurisdiction policy
+  Carrier labels/pickup/tracking, customs, and jurisdiction policy
   remain separate.
 - **Provider-neutral additional-tax quote (shipped)** — one optional
   server-only adapter receives exact item/shipping totals, immutable lines,
@@ -386,10 +396,10 @@ real product domain, not just blog/community. Ship as a plugin package
   checkout-intent, private order-draft, order-history, order-detail, and return
   intake pages
   use independent plugin skins and stable theme hooks.
-- **Tax compliance, carrier, and shipping policy (future)** — shipping and
-  additional-tax quote boundaries are shipped; tax remittance/filing,
+- **Tax compliance, carrier logistics, and shipping policy (future)** — shipping,
+  additional-tax quote, and carrier-booking boundaries are shipped; tax remittance/filing,
   invoices, exemptions/nexus, customs/duties, free-shipping eligibility,
-  carrier booking, labels, pickup, tracking APIs, and regional policy require
+  labels, pickup, tracking APIs, packaging, and regional policy require
   separate contracts.
 
 Resolved foundation decision:
