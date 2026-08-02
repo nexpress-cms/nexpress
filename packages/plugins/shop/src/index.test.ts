@@ -80,6 +80,10 @@ describe("shop factory", () => {
       { id: "fulfillmentHealth", kind: "status" },
       { id: "recentFulfillments", kind: "table" },
       { id: "processFulfillment", kind: "action" },
+      { id: "countCarrierBookings", kind: "metric" },
+      { id: "carrierBookingHealth", kind: "status" },
+      { id: "recentCarrierBookings", kind: "table" },
+      { id: "bookCarrierShipment", kind: "action" },
       { id: "shipFulfillment", kind: "action" },
       { id: "readFulfillmentPrivate", kind: "action" },
       { id: "countPaymentEvents", kind: "metric" },
@@ -203,6 +207,55 @@ describe("shop factory", () => {
         },
       }),
     ).toThrow(/tax provider id/u);
+  });
+
+  it("uses one complete server-side carrier adapter and exposes only its closed operations", () => {
+    const shop = createShop({
+      carrier: {
+        adapter: {
+          id: "test-carrier",
+          bookShipment: (request) => ({
+            contract: "np.shop-carrier-booking-result.v1",
+            shipmentId: request.shipmentId,
+            orderId: request.orderId,
+            bookingReference: "booking_123",
+            carrier: "Parcel Co",
+            trackingNumber: "TRACK-123",
+            bookedAt: request.requestedAt,
+          }),
+        },
+      },
+    });
+    expect(shop.runtime.carrierAdapter?.id).toBe("test-carrier");
+    expect(Object.keys(shop.plugin.actions ?? {})).toEqual(
+      expect.arrayContaining([
+        "countCarrierBookings",
+        "carrierBookingHealth",
+        "recentCarrierBookings",
+        "bookCarrierShipment",
+      ]),
+    );
+    expect(shop.plugin.actions?.shipFulfillment).toBeUndefined();
+    expect(shop.plugin.manifest.provides.adminExtensions).toEqual(
+      expect.arrayContaining([
+        "dashboard:shop-carrier-bookings",
+        "widget:shop-carrier-booking-health",
+        "table:shop-carrier-bookings",
+      ]),
+    );
+    expect(
+      shop.plugin.admin?.tables?.find((table) => table.id === "shop-fulfillments")?.rowActions,
+    ).toEqual(expect.arrayContaining([expect.objectContaining({ id: "book-carrier" })]));
+    expect(() =>
+      createShop({
+        carrier: {
+          adapter: {
+            id: "Invalid Provider",
+            bookShipment: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/carrier provider id/u);
   });
 
   it("adds owner-scoped attempt routes and diagnostics only for a complete initiation adapter", () => {

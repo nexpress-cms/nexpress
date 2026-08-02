@@ -7,7 +7,8 @@ durable orders, transaction-safe inventory reservations, an optional
 provider-neutral shipping quote and selected delivery snapshot, an optional
 provider-neutral additional-tax quote and frozen tax snapshot, an optional
 provider-neutral payment initiation and verified-event boundary, revision-safe
-fulfillment operations, provider-neutral full refunds with safe inventory
+fulfillment operations, optional provider-neutral carrier booking,
+provider-neutral full refunds with safe inventory
 compensation, owner-scoped item return intake with audited receipt inventory,
 Admin collection forms and health actions, blocks, and skins.
 
@@ -24,9 +25,9 @@ browser return on the server, authenticate an external callback, and project
 the exact provider-neutral event that moves that order to `paid` or
 `payment-failed`. A refund-capable adapter may also cancel one entire provider
 payment. Shop owns attempts, order/refund transitions, fulfillment and return
-state, and local compensation, but does not choose a provider protocol, remit
+state, carrier booking, and local compensation, but does not choose a provider protocol, remit
 or file tax, issue tax invoices, decide exemptions, physically fulfill goods,
-book a carrier, or decide jurisdiction-specific return eligibility.
+buy labels/schedule pickup, or decide jurisdiction-specific return eligibility.
 
 ## Default setup
 
@@ -477,6 +478,11 @@ Storage separates commercial and private values:
   references, integer amount/currency, digest, outcome, order revision, and
   timestamps. Raw bytes, headers, signatures, names, email, phone, address,
   and owner segment are never retained.
+- `np.shop-carrier-booking-storage.v1` stores one stable shipment UUID, order
+  and fulfillment revision, provider id, closed status/error code, provider
+  booking reference, carrier, tracking number, and timestamps. It never stores
+  the destination, customer values, provider response bodies, credentials, or
+  owner segment.
 - `np.shop-refund-storage.v1` stores one stable refund UUID, exact payment and
   amount identity, PII-free reason, provider result reference, local
   fulfillment/inventory outcomes, and timestamps. It never stores raw provider
@@ -595,6 +601,68 @@ retry requires a new order.
 This boundary proves callback authentication and one local transition; it does
 not prove settlement, initiate payment, model authorization/capture,
 compensate provider-initiated reversals, or book a carrier shipment.
+
+## Carrier shipment booking and local completion
+
+Carrier booking is disabled in the default `shopPlugin`; staff can continue to
+enter a bounded carrier and tracking number manually. A custom project may
+instead pass one server-only adapter to the same `createShop()` factory:
+
+```ts
+import {
+  NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
+  createShop,
+  type NpShopCarrierAdapter,
+} from "@nexpress/plugin-shop";
+
+const carrier: NpShopCarrierAdapter = {
+  id: "my-carrier",
+  async bookShipment(request) {
+    // Use request.shipmentId as the provider idempotency key. Never log the
+    // request destination or copy it into errors or the returned result.
+    const booking = await bookProviderShipment(request);
+    return {
+      contract: NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
+      shipmentId: request.shipmentId,
+      orderId: request.orderId,
+      bookingReference: booking.reference,
+      carrier: booking.carrier,
+      trackingNumber: booking.trackingNumber,
+      bookedAt: booking.bookedAt,
+    };
+  },
+};
+
+const shop = createShop({ carrier: { adapter: carrier } });
+```
+
+The direct-staff action accepts only an unchanged `processing` fulfillment.
+Shop first writes one PII-free `pending` booking and audit event, then calls
+the adapter outside the database transaction with exact immutable order lines,
+the selected delivery snapshot, and the retained private destination. Every
+retry reuses the same shipment UUID. Adapters must use that UUID as the
+provider idempotency key and must keep destination PII out of logs, thrown
+errors, and results.
+
+An exact matching provider result becomes `provider-confirmed` before local
+completion. The final transaction rechecks the fulfillment revision, marks it
+`shipped`, stores carrier/tracking, redacts the order and fulfillment, deletes
+the private sidecar, completes the PII-free booking, and appends the normal
+shipment audit. If the final database transaction fails unexpectedly, the
+provider-confirmed row remains resumable without a second provider call. A
+malformed/conflicting result, definitive closed provider rejection, or known
+local state conflict moves the row to `manual-review`; retryable ambiguity
+remains `pending`. Only lowercase closed error codes are persisted, never
+provider messages.
+
+The PII-free booking metric, health, bounded table, and resume action remain
+declared even when no adapter is configured, so removing a provider cannot hide
+an unresolved durable row. When configured, the adapter-backed action replaces
+the manual shipped action in the fulfillment table. A `provider-confirmed` row
+can finish local completion after adapter removal; a `pending` row requires its
+original provider. The contract does not buy or render labels, schedule
+pickup, consume tracking webhooks, choose packaging, calculate delivery price,
+or implement customs and jurisdiction policy.
 
 ## Full refunds and inventory compensation
 
@@ -753,7 +821,7 @@ The two collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
-The plugin declares eleven baseline typed dashboard metric actions:
+The plugin declares twelve baseline typed dashboard metric actions:
 
 - total product rows;
 - published low-stock products;
@@ -766,15 +834,23 @@ The plugin declares eleven baseline typed dashboard metric actions:
   values.
 - active PII-free inventory reservation rows.
 - fulfillment rows split across awaiting, processing, and shipped states.
+- durable carrier shipment attempts and completed bookings, including when
+  the adapter is currently disabled.
 - verified PII-free payment-event receipts.
 - durable full-refund attempts and compensation outcomes.
 - item-level physical returns split across requested, approved, rejected,
   received, and owner-cancelled states.
 
-A complete initiation adapter adds a twelfth metric for PII-free payment
+A complete initiation adapter adds a thirteenth metric for PII-free payment
 attempts, a bounded recent-attempt table, and payment-attempt health. Attempt
 diagnostics expose provider, status, order id, exact amount, and timestamps;
 they withhold owner segments, private order data, and provider handoff values.
+Carrier booking independently has a metric, health status, newest-50 table,
+and resume action even while its adapter is disabled. Health reports malformed, orphaned,
+provider-mismatched, fulfillment-state-mismatched, pending,
+provider-confirmed, completed, and manual-review rows without reading a
+destination. Pending and provider-confirmed table rows reuse the same audited
+direct-staff action; a confirmed row performs local completion only.
 
 Admin also exposes separate cart, checkout-intent, and private-order-draft
 storage health plus configured shipping-provider success/failure state and
@@ -910,7 +986,7 @@ Future transaction work should remain separable from this foundation:
 1. additional provider packages for Stripe or KG Inicis;
 2. authorization/capture, settlement, provider-initiated reversal, and partial
    refund contracts;
-3. fulfillment carrier booking/labels/tracking, exchanges, and customer-service policy;
+3. carrier labels, pickup, tracking webhooks, exchanges, and customer-service policy;
 4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and
    shipping-policy integrations.
 

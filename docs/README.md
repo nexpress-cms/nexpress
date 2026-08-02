@@ -39,7 +39,7 @@ behavior they describe changes.
 | [plugin-capabilities.md](plugin-capabilities.md)       | Capability ↔ `ctx.*` mapping reference                                  |
 | [plugin-hooks.md](plugin-hooks.md)                     | Typed content, auth, media lifecycle hook payloads                      |
 | [plugin-forum.md](plugin-forum.md)                     | Multi-board forum factory, Admin policy, skins, and public routes       |
-| [plugin-shop.md](plugin-shop.md)                       | Catalog, orders, payment attempts/adapters, skins, and Storefront theme |
+| [plugin-shop.md](plugin-shop.md)                       | Catalog, orders, payment/carrier adapters, skins, and Storefront theme. |
 | [plugin-i18n.md](plugin-i18n.md)                       | Definition-level plugin ICU catalogs and locale validation              |
 | [plugin-manifest.md](plugin-manifest.md)               | Manifest field reference (required vs auto-defaulted)                   |
 | [plugin-pages.md](plugin-pages.md)                     | Public page routes, matching, shells, and server/client boundaries      |
