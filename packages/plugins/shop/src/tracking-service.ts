@@ -503,8 +503,10 @@ export async function npApplyShopTrackingEvent(
     );
     if (
       fulfillment.status !== "shipped" ||
+      fulfillment.carrier !== booking.carrier ||
       fulfillment.trackingNumber !== event.trackingNumber ||
-      fulfillment.privateDataStatus !== "redacted"
+      fulfillment.privateDataStatus !== "redacted" ||
+      fulfillment.purgeAt !== booking.purgeAt
     ) {
       throw new NpShopTrackingConflictError(
         "tracking_fulfillment_mismatch",
@@ -840,8 +842,10 @@ async function claimTrackingPoll(
     );
     if (
       fulfillment.status !== "shipped" ||
+      fulfillment.carrier !== booking.carrier ||
       fulfillment.privateDataStatus !== "redacted" ||
-      fulfillment.trackingNumber !== booking.trackingNumber
+      fulfillment.trackingNumber !== booking.trackingNumber ||
+      fulfillment.purgeAt !== booking.purgeAt
     ) {
       return null;
     }
@@ -860,7 +864,8 @@ async function claimTrackingPoll(
       (tracking.shipmentId !== booking.id ||
         tracking.providerId !== booking.providerId ||
         tracking.bookingReference !== booking.bookingReference ||
-        tracking.trackingNumber !== booking.trackingNumber)
+        tracking.trackingNumber !== booking.trackingNumber ||
+        tracking.purgeAt !== booking.purgeAt)
     ) {
       return null;
     }
@@ -1145,7 +1150,7 @@ export async function npListShopTrackingPolls(): Promise<{
         shipmentId: poll.shipmentId,
         provider: poll.providerId,
         failures: poll.consecutiveFailures,
-        lastAttemptAt: poll.lastAttemptAt ?? "—",
+        lastAttemptAt: poll.lastAttemptAt,
         lastSuccessAt: poll.lastSuccessAt ?? "—",
         nextAttemptAt: poll.nextAttemptAt,
         lastError: poll.lastErrorCode ?? "—",

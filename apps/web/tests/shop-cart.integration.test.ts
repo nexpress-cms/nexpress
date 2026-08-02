@@ -3870,12 +3870,40 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         expiresAt: expiredPurgeAt,
       })
       .where(eq(npPluginStorage.key, `order:${ownerSegment}:${orderId}`));
+    await db.insert(npPluginStorage).values({
+      pluginId: "shop",
+      siteId: "default",
+      key: `tracking-poll:${orderId}`,
+      value: {
+        contract: "np.shop-tracking-poll-storage.v1",
+        orderId,
+        shipmentId: "a43e4567-e89b-42d3-a456-426614174000",
+        providerId: "retired-carrier",
+        consecutiveFailures: 0,
+        lastAttemptAt: expiredCreatedAt.toISOString(),
+        lastSuccessAt: expiredCreatedAt.toISOString(),
+        nextAttemptAt: expiredPurgeAt.toISOString(),
+        lastErrorCode: null,
+        leaseId: null,
+        leaseExpiresAt: null,
+        updatedAt: expiredCreatedAt.toISOString(),
+        purgeAt: expiredPurgeAt.toISOString(),
+      },
+      expiresAt: expiredPurgeAt,
+      updatedAt: expiredCreatedAt,
+    });
     await withCurrentSite("default", () => maintenance?.handler({} as never));
     expect(
       await db
         .select({ key: npPluginStorage.key })
         .from(npPluginStorage)
         .where(eq(npPluginStorage.key, `order:${ownerSegment}:${orderId}`)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `tracking-poll:${orderId}`)),
     ).toHaveLength(0);
   });
 });

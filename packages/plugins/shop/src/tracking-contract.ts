@@ -111,7 +111,7 @@ export interface NpShopStoredTrackingPoll {
   shipmentId: string;
   providerId: string;
   consecutiveFailures: number;
-  lastAttemptAt: string | null;
+  lastAttemptAt: string;
   lastSuccessAt: string | null;
   nextAttemptAt: string;
   lastErrorCode: NpShopTrackingPollErrorCode | null;
@@ -556,10 +556,11 @@ export function npAnalyzeStoredShopTrackingPoll(value: unknown): string[] {
   ) {
     issues.push("tracking poll state.consecutiveFailures is invalid.");
   }
-  for (const key of ["lastAttemptAt", "lastSuccessAt"] as const) {
-    if (value[key] !== null && !isCanonicalIso(value[key])) {
-      issues.push(`tracking poll state.${key} is invalid.`);
-    }
+  if (!isCanonicalIso(value.lastAttemptAt)) {
+    issues.push("tracking poll state.lastAttemptAt is invalid.");
+  }
+  if (value.lastSuccessAt !== null && !isCanonicalIso(value.lastSuccessAt)) {
+    issues.push("tracking poll state.lastSuccessAt is invalid.");
   }
   for (const key of ["nextAttemptAt", "updatedAt", "purgeAt"] as const) {
     if (!isCanonicalIso(value[key])) issues.push(`tracking poll state.${key} is invalid.`);
@@ -590,9 +591,6 @@ export function npAnalyzeStoredShopTrackingPoll(value: unknown): string[] {
   }
   if (value.leaseExpiresAt !== null && !isCanonicalIso(value.leaseExpiresAt)) {
     issues.push("tracking poll state.leaseExpiresAt is invalid.");
-  }
-  if (value.lastAttemptAt === null) {
-    issues.push("tracking poll state.lastAttemptAt is required.");
   }
   if (
     isCanonicalIso(value.lastAttemptAt) &&
