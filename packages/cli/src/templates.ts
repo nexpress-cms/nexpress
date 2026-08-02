@@ -817,7 +817,8 @@ function envExampleTemplate(config: TemplateConfig): string {
     "# Replace the default Shop instance with one createShop({ carrier: { adapter } })",
     "# factory. Use shipmentId for provider idempotency; never log destination PII.",
     "# An optional verifyTrackingWebhook authenticates exact raw callbacks.",
-    "# Labels, pickup, polling, and provider protocols remain separate integrations.",
+    "# An optional readTracking enables bounded PII-free scheduled reconciliation.",
+    "# Keep provider calls time-bounded; labels, pickup, and protocols stay separate.",
     "",
     "# First-boot setup wizard — pre-fills the form on /admin/setup",
     "# so headless / CI installs don't have to click through it.",
@@ -953,7 +954,7 @@ pnpm dev
 2. Start \`pnpm dev\` and open \`http://localhost:3000/admin\`.
 3. Create the first admin, name the site, pick a theme, and seed sample
    content if useful.
-4. Publish a page, post, or Shop product; the bounded cart, checkout-intent, 24-hour private draft, durable pending order, tracked-inventory reservation, fulfillment, and item-return preview start at \`/shop/cart\`. Payment stays disabled until a build-time payment adapter is registered. Shipping and additional tax remain zero until their independent server-only quote adapters are registered; Shop then freezes item subtotal, shipping amount, added tax, and payment total after any required delivery selection. A server-only carrier adapter may replace manual tracking entry with one idempotent booking and atomic private-data deletion; its optional exact raw-body callback capability advances a separate owner-visible tracking state. Labels, pickup, polling, provider-specific protocols, returns, and payment refunds remain separate. For Toss, run \`pnpm add @nexpress/shop-payment-toss\`; payment, shipping, tax, and carrier adapters replace the \`defaultPlugins\` Shop with one configured factory. See the [Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md#carrier-shipment-booking-and-local-completion).
+4. Publish a page, post, or Shop product; the bounded cart, checkout-intent, 24-hour private draft, durable pending order, tracked-inventory reservation, fulfillment, and item-return preview start at \`/shop/cart\`. Payment stays disabled until a build-time payment adapter is registered. Shipping and additional tax remain zero until their independent server-only quote adapters are registered; Shop then freezes item subtotal, shipping amount, added tax, and payment total after any required delivery selection. A server-only carrier adapter may replace manual tracking entry with one idempotent booking and atomic private-data deletion; optional exact raw-body callback and bounded polling capabilities advance a separate owner-visible tracking state independently. Labels, pickup, provider-specific protocols, exchanges, and partial refunds remain separate. For Toss, run \`pnpm add @nexpress/shop-payment-toss\`; payment, shipping, tax, and carrier adapters replace the \`defaultPlugins\` Shop with one configured factory. See the [Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md#carrier-shipment-booking-and-local-completion).
 
 ## Useful Checks
 

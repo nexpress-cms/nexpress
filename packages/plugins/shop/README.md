@@ -51,7 +51,9 @@ It provides:
   atomic tracking/shipped completion and private-data deletion, and closed
   PII-free reconciliation diagnostics; an additive exact raw-body callback
   capability may authenticate PII-free tracking events into conflict-safe
-  receipts and a monotonic owner-visible delivery state;
+  receipts and a monotonic owner-visible delivery state, while an independent
+  PII-free polling capability uses persisted leases, cursor-fair batches,
+  bounded backoff, Admin/Doctor health, and the same event engine;
 - provider-neutral, staff-audited full refunds with one durable idempotency id,
   cancelled unshipped fulfillment, all-or-none tracked-inventory restoration,
   and explicit manual-compensation diagnostics;
@@ -63,14 +65,15 @@ It provides:
 
 Provider-specific browser/server protocols, signature algorithms, credentials
 and rotation, partial refunds, reversals, exchanges, carrier labels/pickup,
-provider-specific tracking protocols and polling,
+provider-specific tracking protocols,
 tax remittance/filing, invoices, exemptions, customs, and shipping policy
 remain outside this package. A server-only `NpShopShippingAdapter` may supply
 exact bounded delivery methods, and `NpShopTaxAdapter` may return only tax
 added on top of displayed product prices. `NpShopCarrierAdapter` may book one
 shipment with its stable shipment UUID as the provider idempotency key and may
-authenticate tracking callbacks. Shop owns revision-safe selection
-and both PII-free commercial snapshots.
+authenticate tracking callbacks or reconcile tracking through bounded
+server-only reads. Shop owns revision-safe selection and both PII-free
+commercial snapshots.
 `@nexpress/shop-payment-toss` is the bundled Toss
 Payments v2 initiation and full-refund adapter. Customer/shipping PII exists only in the short-lived
 private draft or order sidecar and stays outside content search, revisions,
@@ -79,5 +82,5 @@ still does not imply that a visitor paid for a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
 for the exact price, SKU, inventory, cart, checkout-intent, private-draft,
-shipping-quote, tax-quote, pending-order, payment-attempt, fulfillment, carrier, tracking, refund, return,
+shipping-quote, tax-quote, pending-order, payment-attempt, fulfillment, carrier, tracking/polling, refund, return,
 skin, block, and theme-integration contracts.

@@ -1,6 +1,8 @@
 import { npAnalyzeShopDeliveryMethod, type NpShopDeliveryMethod } from "./shipping-contract.js";
 import type { NpShopOrderDraftShipping } from "./types.js";
 import type {
+  NpShopTrackingPollRequest,
+  NpShopTrackingPollResult,
   NpShopTrackingWebhookInput,
   NpShopTrackingWebhookResult,
 } from "./tracking-contract.js";
@@ -85,10 +87,21 @@ export interface NpShopCarrierAdapter {
   verifyTrackingWebhook?(
     input: NpShopTrackingWebhookInput,
   ): NpShopTrackingWebhookResult | Promise<NpShopTrackingWebhookResult>;
+  /**
+   * Read one PII-free shipment through an authenticated provider API. The
+   * framework leases and schedules calls; implementations return one latest
+   * canonical event or an exact no-change result.
+   */
+  readTracking?(
+    input: NpShopTrackingPollRequest,
+  ): NpShopTrackingPollResult | Promise<NpShopTrackingPollResult>;
 }
 
 export type NpShopCarrierTrackingAdapter = NpShopCarrierAdapter &
   Required<Pick<NpShopCarrierAdapter, "verifyTrackingWebhook">>;
+
+export type NpShopCarrierTrackingPollAdapter = NpShopCarrierAdapter &
+  Required<Pick<NpShopCarrierAdapter, "readTracking">>;
 
 export interface NpShopStoredCarrierBooking {
   contract: typeof NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT;
