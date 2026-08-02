@@ -46,6 +46,9 @@ It provides:
 - independent revision-safe `awaiting` / `processing` / `shipped` fulfillment,
   audited direct-staff shipping-data access, owner-visible tracking, and
   shipment-or-30-day private-data deletion;
+- revision-safe PII-free fulfillment parcel snapshots with bounded integer
+  millimetre dimensions, gram weights, exact order-line allocations, Admin
+  health, and optional atomic locking to one durable carrier shipment;
 - an optional provider-neutral carrier adapter with one durable shipment UUID,
   calls outside database transactions, resumable provider confirmation,
   atomic tracking/shipped completion and private-data deletion, and closed
@@ -71,6 +74,7 @@ remain outside this package. A server-only `NpShopShippingAdapter` may supply
 exact bounded delivery methods, and `NpShopTaxAdapter` may return only tax
 added on top of displayed product prices. `NpShopCarrierAdapter` may book one
 shipment with its stable shipment UUID as the provider idempotency key and may
+consume a locked parcel snapshot through additive `bookShipmentWithParcels`,
 authenticate tracking callbacks or reconcile tracking through bounded
 server-only reads. Shop owns revision-safe selection and both PII-free
 commercial snapshots.
@@ -82,5 +86,5 @@ still does not imply that a visitor paid for a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
 for the exact price, SKU, inventory, cart, checkout-intent, private-draft,
-shipping-quote, tax-quote, pending-order, payment-attempt, fulfillment, carrier, tracking/polling, refund, return,
+shipping-quote, tax-quote, pending-order, payment-attempt, fulfillment, parcel, carrier, tracking/polling, refund, return,
 skin, block, and theme-integration contracts.

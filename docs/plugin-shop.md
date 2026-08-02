@@ -8,6 +8,7 @@ provider-neutral shipping quote and selected delivery snapshot, an optional
 provider-neutral additional-tax quote and frozen tax snapshot, an optional
 provider-neutral payment initiation and verified-event boundary, revision-safe
 fulfillment operations, optional provider-neutral carrier booking,
+revision-safe PII-free fulfillment parcel snapshots,
 verified or reconciled carrier tracking events and owner-visible delivery state,
 provider-neutral full refunds with safe inventory
 compensation, owner-scoped item return intake with audited receipt inventory,
@@ -484,6 +485,11 @@ Storage separates commercial and private values:
   booking reference, carrier, tracking number, and timestamps. It never stores
   the destination, customer values, provider response bodies, credentials, or
   owner segment.
+- `np.shop-fulfillment-parcels-storage.v1` stores one revision-safe package
+  snapshot per order: bounded lowercase parcel ids, integer millimetre
+  dimensions, integer gram weights, exact order-line quantity allocations,
+  and an optional locking shipment UUID. It contains no customer, destination,
+  product name, provider response, credential, or owner segment.
 - `np.shop-refund-storage.v1` stores one stable refund UUID, exact payment and
   amount identity, PII-free reason, provider result reference, local
   fulfillment/inventory outcomes, and timestamps. It never stores raw provider
@@ -633,6 +639,21 @@ const carrier: NpShopCarrierAdapter = {
       bookedAt: booking.bookedAt,
     };
   },
+  async bookShipmentWithParcels(request) {
+    // This additive v2 path receives the same private destination plus one
+    // locked, PII-free parcelRevision/parcels snapshot. Use shipmentId as the
+    // provider idempotency key exactly as in bookShipment.
+    const booking = await bookProviderParcelShipment(request);
+    return {
+      contract: NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
+      shipmentId: request.shipmentId,
+      orderId: request.orderId,
+      bookingReference: booking.reference,
+      carrier: booking.carrier,
+      trackingNumber: booking.trackingNumber,
+      bookedAt: booking.bookedAt,
+    };
+  },
   async verifyTrackingWebhook(input) {
     // Authenticate input.rawBody with the provider signature or a
     // server-authenticated provider query. Never trust parsed fields first.
@@ -706,6 +727,49 @@ the manual shipped action in the fulfillment table. A `provider-confirmed` row
 can finish local completion after adapter removal; a `pending` row requires its
 original provider.
 
+### Fulfillment parcel snapshot
+
+Processing fulfillments expose an audited direct-staff **Save parcel
+snapshot** action. Its bounded JSON array uses this exact shape:
+
+```json
+[
+  {
+    "id": "parcel-1",
+    "lengthMm": 300,
+    "widthMm": 200,
+    "heightMm": 100,
+    "weightGrams": 1500,
+    "items": [{ "lineKey": "<immutable-order-line-key>", "quantity": 1 }]
+  }
+]
+```
+
+One snapshot contains 1–20 parcels and at most 100 allocations. Dimensions
+are positive integer millimetres up to 3,000; weight is positive integer grams
+up to 500,000. Parcel ids are unique lowercase segments. Every immutable order
+line must be present, unknown lines fail, and quantities summed across parcels
+must equal the order exactly. The action checks both the fulfillment and parcel
+revision, so concurrent edits fail instead of overwriting one another.
+
+The standalone snapshot is useful for packing operations even with manual or
+v1 carrier completion. When `bookShipmentWithParcels` is configured, a new
+carrier booking additionally requires a current snapshot. The transaction that
+creates the durable shipment UUID locks the snapshot to that UUID before any
+provider call. Retries reuse the same UUID, parcel revision, dimensions,
+weights, allocations, immutable order lines, and retained destination. Once
+locked it cannot be edited; old v1 bookings remain on `bookShipment` and are
+not reinterpreted as v2.
+
+Admin exposes PII-free parcel counts, bounded rows, and health for malformed,
+orphaned, allocation-mismatched, and shipment-lock-mismatched snapshots.
+Rows distinguish an editable `prepared` snapshot from a v1-booking `frozen`,
+terminal manual `archived`, or v2 shipment-`locked` snapshot.
+Doctor verifies the matching declarative metric/status/table/action kinds.
+Commercial expiry removes the parcel row with the fulfillment and carrier
+state. This contract records prepared packages only: it does not calculate
+packaging, buy/render labels, schedule pickup, or choose a carrier protocol.
+
 `readTracking` is a separate additive capability from callback verification.
 When present, Shop registers a ten-minute UTC scheduled task and an audited
 direct-staff **Poll tracking now** row action. Each request is the exact
@@ -761,8 +825,8 @@ mismatched rows without reading private data. Polling has an independent health
 widget and newest-50 state table, including due/backoff/lease state, malformed
 or orphan samples, provider/booking mismatches, and completed bookings not yet
 polled. Doctor verifies both conditional action/schedule declarations. The
-contract does not buy or render labels, schedule pickup, choose packaging, calculate
-delivery price, or implement provider-specific, customs, jurisdiction, or
+contract does not buy or render labels, schedule pickup, derive package dimensions or weight,
+calculate delivery price, or implement provider-specific, customs, jurisdiction, or
 customer-service policy.
 
 ## Full refunds and inventory compensation

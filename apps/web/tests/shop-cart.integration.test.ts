@@ -9,6 +9,7 @@ import {
   shopCollections,
   shopPlugin,
   type NpShopCarrierBookingRequest,
+  type NpShopCarrierParcelBookingRequest,
   type NpShopTrackingPollRequest,
 } from "@nexpress/plugin-shop";
 import { and, eq, like } from "drizzle-orm";
@@ -2177,7 +2178,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     };
     const owner = await createPendingOrder(ids, "carrier-private@example.com");
     let providerAttempts = 0;
-    const bookShipment = vi.fn((request: NpShopCarrierBookingRequest) => {
+    const bookShipmentWithParcels = vi.fn((request: NpShopCarrierParcelBookingRequest) => {
       providerAttempts += 1;
       if (providerAttempts === 1) {
         throw new NpShopCarrierProviderError(
@@ -2244,7 +2245,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       carrier: {
         adapter: {
           id: "test-carrier",
-          bookShipment,
+          bookShipment: () => Promise.reject(new Error("legacy booking must not be called")),
+          bookShipmentWithParcels,
           readTracking,
           verifyTrackingWebhook: ({ rawBody }) =>
             JSON.parse(new TextDecoder().decode(rawBody)) as never,
@@ -2273,6 +2275,49 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         ),
       ),
     ).toMatchObject({ ok: true, data: expect.stringContaining("revision 2") });
+    const parcelJson = JSON.stringify([
+      {
+        id: "parcel-1",
+        lengthMm: 300,
+        widthMm: 200,
+        heightMm: 100,
+        weightGrams: 1_500,
+        items: [{ lineKey: `${productId}:_`, quantity: 1 }],
+      },
+    ]);
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.saveFulfillmentParcels?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 2, parcelRevision: null },
+            values: {
+              parcels: JSON.stringify([
+                {
+                  id: "parcel-1",
+                  lengthMm: 300,
+                  widthMm: 200,
+                  heightMm: 100,
+                  weightGrams: 1_500,
+                  items: [{ lineKey: `${productId}:_`, quantity: 2 }],
+                },
+              ]),
+            },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("exact quantity") });
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.saveFulfillmentParcels?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 2, parcelRevision: null },
+            values: { parcels: parcelJson },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("parcel revision 1") });
     const carrierAction = {
       row: { id: ids.orderId, fulfillmentRevision: 2 },
       values: { operatorNote: "Handoff ready" },
@@ -2295,17 +2340,53 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       providerErrorCode: "provider-timeout",
     });
     expect(JSON.stringify(pendingCarrier)).not.toContain("private destination must never escape");
+    const [lockedParcels] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `fulfillment-parcels:${ids.orderId}`));
+    expect(lockedParcels?.value).toMatchObject({
+      contract: "np.shop-fulfillment-parcels-storage.v1",
+      orderId: ids.orderId,
+      fulfillmentRevision: 2,
+      revision: 1,
+      lockedShipmentId: expect.any(String),
+      parcels: [{ id: "parcel-1", weightGrams: 1_500 }],
+    });
+    expect(JSON.stringify(lockedParcels)).not.toContain("carrier-private@example.com");
+    expect(JSON.stringify(lockedParcels)).not.toContain("세종대로");
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.saveFulfillmentParcels?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 2, parcelRevision: 1 },
+            values: { parcels: parcelJson },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("locked") });
     expect(
       await withCurrentSite("default", () =>
         carrierShop.plugin.actions?.bookCarrierShipment?.handler(carrierAction, actionContext),
       ),
     ).toMatchObject({ ok: true, data: expect.stringContaining("completed") });
-    expect(bookShipment).toHaveBeenCalledTimes(2);
-    expect(bookShipment.mock.calls[1]?.[0]).toMatchObject({
-      contract: "np.shop-carrier-booking-request.v1",
+    expect(bookShipmentWithParcels).toHaveBeenCalledTimes(2);
+    expect(bookShipmentWithParcels.mock.calls[1]?.[0]).toMatchObject({
+      contract: "np.shop-carrier-booking-request.v2",
       shipmentId: expect.any(String),
       orderId: ids.orderId,
       fulfillmentRevision: 2,
+      parcelRevision: 1,
+      parcels: [
+        {
+          id: "parcel-1",
+          lengthMm: 300,
+          widthMm: 200,
+          heightMm: 100,
+          weightGrams: 1_500,
+          items: [{ lineKey: `${productId}:_`, quantity: 1 }],
+        },
+      ],
       destination: { postalCode: "04524", addressLine1: "서울특별시 중구 세종대로 110" },
       items: [{ productId, productName: "Everyday cup", quantity: 1 }],
     });
@@ -2314,9 +2395,9 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         carrierShop.plugin.actions?.bookCarrierShipment?.handler(carrierAction, actionContext),
       ),
     ).toMatchObject({ ok: true, data: expect.stringContaining("already reconciled") });
-    expect(bookShipment).toHaveBeenCalledTimes(2);
-    expect(bookShipment.mock.calls[0]?.[0].shipmentId).toBe(
-      bookShipment.mock.calls[1]?.[0].shipmentId,
+    expect(bookShipmentWithParcels).toHaveBeenCalledTimes(2);
+    expect(bookShipmentWithParcels.mock.calls[0]?.[0].shipmentId).toBe(
+      bookShipmentWithParcels.mock.calls[1]?.[0].shipmentId,
     );
     expect(await orderCall("GET", { ...owner, orderId: ids.orderId })).toMatchObject({
       body: {
@@ -2353,7 +2434,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(JSON.stringify(carrierRows)).not.toContain("세종대로");
     const trackingBase = new Date();
     trackingBase.setMilliseconds(0);
-    const shipmentId = bookShipment.mock.calls[1]?.[0].shipmentId;
+    const shipmentId = bookShipmentWithParcels.mock.calls[1]?.[0].shipmentId;
     if (!shipmentId) throw new Error("Missing durable carrier shipment id.");
     const trackingAction = {
       row: { id: ids.orderId, shipmentId },
@@ -2557,6 +2638,30 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       ),
     ).toMatchObject({ ok: true, data: { level: "ok" } });
     expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.fulfillmentParcelHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.recentFulfillmentParcels?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: {
+        total: 1,
+        rows: [
+          expect.objectContaining({
+            id: ids.orderId,
+            status: "locked",
+            parcelCount: 1,
+            units: 1,
+            weightGrams: 1_500,
+          }),
+        ],
+      },
+    });
+    expect(
       await db
         .select({ action: npAuditEvents.action })
         .from(npAuditEvents)
@@ -2566,9 +2671,118 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         { action: "shop.carrier.booking.request" },
         { action: "shop.carrier.booking.confirm" },
         { action: "shop.carrier.tracking.poll" },
+        { action: "shop.fulfillment.parcels.save" },
         { action: "shop.fulfillment.ship" },
       ]),
     );
+  });
+
+  it("keeps v1 carrier booking independent from an unlocked parcel snapshot", async () => {
+    const ids = {
+      intentId: "d23e4567-e89b-42d3-a456-426614174000",
+      draftId: "e23e4567-e89b-42d3-a456-426614174000",
+      orderId: "f23e4567-e89b-42d3-a456-426614174000",
+    };
+    await createPendingOrder(ids, "carrier-v1-private@example.com");
+    const bookShipment = vi.fn((request: NpShopCarrierBookingRequest) => ({
+      contract: "np.shop-carrier-booking-result.v1" as const,
+      shipmentId: request.shipmentId,
+      orderId: request.orderId,
+      bookingReference: "booking_v1_1",
+      carrier: "Legacy Parcel Co",
+      trackingNumber: "LEGACY-TRACK-1",
+      bookedAt: request.requestedAt,
+    }));
+    const legacyCarrierShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
+      carrier: { adapter: { id: "legacy-carrier", bookShipment } },
+    });
+    expect(legacyCarrierShop.runtime.carrierParcelAdapter).toBeNull();
+    expect(
+      await payPendingOrder(legacyCarrierShop, {
+        orderId: ids.orderId,
+        eventId: "evt_carrier_v1_success_1",
+        paymentReference: "pay_carrier_v1_success_1",
+      }),
+    ).toMatchObject({ status: 200, body: { receipt: { outcome: "paid" } } });
+    const staff = await seedUser({ email: "carrier-v1-operator@example.com" });
+    const actionContext = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    expect(
+      await withCurrentSite("default", () =>
+        legacyCarrierShop.plugin.actions?.processFulfillment?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 1 },
+            values: { operatorNote: "Packed for legacy carrier" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      await withCurrentSite("default", () =>
+        legacyCarrierShop.plugin.actions?.saveFulfillmentParcels?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 2, parcelRevision: null },
+            values: {
+              parcels: JSON.stringify([
+                {
+                  id: "parcel-1",
+                  lengthMm: 300,
+                  widthMm: 200,
+                  heightMm: 100,
+                  weightGrams: 1_500,
+                  items: [{ lineKey: `${productId}:_`, quantity: 1 }],
+                },
+              ]),
+            },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true });
+    expect(
+      await withCurrentSite("default", () =>
+        legacyCarrierShop.plugin.actions?.bookCarrierShipment?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 2 },
+            values: { operatorNote: "Legacy handoff" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("completed") });
+    expect(bookShipment).toHaveBeenCalledOnce();
+    expect(bookShipment.mock.calls[0]?.[0]).toMatchObject({
+      contract: "np.shop-carrier-booking-request.v1",
+      orderId: ids.orderId,
+    });
+    expect(bookShipment.mock.calls[0]?.[0]).not.toHaveProperty("parcels");
+    const v1Db = await getTestDb();
+    const [v1Snapshot] = await v1Db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `fulfillment-parcels:${ids.orderId}`));
+    expect(v1Snapshot?.value).toMatchObject({ lockedShipmentId: null });
+    expect(
+      await withCurrentSite("default", () =>
+        legacyCarrierShop.plugin.actions?.fulfillmentParcelHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(
+      await withCurrentSite("default", () =>
+        legacyCarrierShop.plugin.actions?.recentFulfillmentParcels?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: { rows: [expect.objectContaining({ id: ids.orderId, status: "frozen" })] },
+    });
   });
 
   it("finishes a durable provider-confirmed shipment after its carrier adapter is removed", async () => {
@@ -2644,7 +2858,35 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       expiresAt: purgeAt,
       updatedAt: bookedAt,
     });
+    await db.insert(npPluginStorage).values({
+      pluginId: "shop",
+      siteId: "default",
+      key: `fulfillment-parcels:${ids.orderId}`,
+      value: {
+        contract: "np.shop-fulfillment-parcels-storage.v1",
+        orderId: ids.orderId,
+        fulfillmentRevision: 2,
+        revision: 1,
+        parcels: [
+          {
+            id: "parcel-1",
+            lengthMm: 300,
+            widthMm: 200,
+            heightMm: 100,
+            weightGrams: 1_500,
+            items: [{ lineKey: `${productId}:_`, quantity: 1 }],
+          },
+        ],
+        lockedShipmentId: shipmentId,
+        createdAt: bookedAtIso,
+        updatedAt: bookedAtIso,
+        purgeAt: purgeAt.toISOString(),
+      },
+      expiresAt: purgeAt,
+      updatedAt: bookedAt,
+    });
     expect(paymentOnlyShop.runtime.carrierAdapter).toBeNull();
+    expect(paymentOnlyShop.runtime.carrierParcelAdapter).toBeNull();
     expect(
       await withCurrentSite("default", () =>
         paymentOnlyShop.plugin.actions?.bookCarrierShipment?.handler(
@@ -2679,6 +2921,11 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(
       await withCurrentSite("default", () =>
         paymentOnlyShop.plugin.actions?.carrierBookingHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentOnlyShop.plugin.actions?.fulfillmentParcelHealth?.handler(undefined, {} as never),
       ),
     ).toMatchObject({ ok: true, data: { level: "ok" } });
   });
@@ -3892,6 +4139,33 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       expiresAt: expiredPurgeAt,
       updatedAt: expiredCreatedAt,
     });
+    await db.insert(npPluginStorage).values({
+      pluginId: "shop",
+      siteId: "default",
+      key: `fulfillment-parcels:${orderId}`,
+      value: {
+        contract: "np.shop-fulfillment-parcels-storage.v1",
+        orderId,
+        fulfillmentRevision: 1,
+        revision: 1,
+        parcels: [
+          {
+            id: "parcel-1",
+            lengthMm: 300,
+            widthMm: 200,
+            heightMm: 100,
+            weightGrams: 1_500,
+            items: [{ lineKey: `${productId}:_`, quantity: 1 }],
+          },
+        ],
+        lockedShipmentId: null,
+        createdAt: expiredCreatedAt.toISOString(),
+        updatedAt: expiredCreatedAt.toISOString(),
+        purgeAt: expiredPurgeAt.toISOString(),
+      },
+      expiresAt: expiredPurgeAt,
+      updatedAt: expiredCreatedAt,
+    });
     await withCurrentSite("default", () => maintenance?.handler({} as never));
     expect(
       await db
@@ -3904,6 +4178,12 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         .select({ key: npPluginStorage.key })
         .from(npPluginStorage)
         .where(eq(npPluginStorage.key, `tracking-poll:${orderId}`)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `fulfillment-parcels:${orderId}`)),
     ).toHaveLength(0);
   });
 });

@@ -31,6 +31,7 @@ import {
   npRequireShopCarrierBookingActionInput,
   npRequireShopCarrierProviderId,
   type NpShopCarrierAdapter,
+  type NpShopCarrierParcelAdapter,
   type NpShopCarrierTrackingAdapter,
   type NpShopCarrierTrackingPollAdapter,
 } from "./carrier-contract.js";
@@ -40,9 +41,11 @@ import {
   npCountShopOrders,
   npCountShopPaymentEvents,
   npCountShopFulfillments,
+  npCountShopFulfillmentParcels,
   npCountShopRefunds,
   npCountShopReturns,
   npListRecentShopFulfillments,
+  npListRecentShopFulfillmentParcels,
   npListRecentShopCarrierBookings,
   npListRecentShopOrders,
   npListRecentShopPaymentEvents,
@@ -56,12 +59,14 @@ import {
   npReceiveShopReturn,
   npRejectShopReturn,
   npShipShopFulfillment,
+  npSaveShopFulfillmentParcels,
 } from "./order-service.js";
 import {
   npRequireShopFulfillmentPrivateReadInput,
   npRequireShopFulfillmentProcessInput,
   npRequireShopFulfillmentShipInput,
 } from "./fulfillment-contract.js";
+import { npRequireShopFulfillmentParcelsSaveInput } from "./parcel-contract.js";
 import { npRequireShopRefundActionInput } from "./refund-contract.js";
 import { createShopReturnApiHandler } from "./return-api.js";
 import {
@@ -263,6 +268,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   }
   const configuredCarrierAdapter = options.carrier?.adapter ?? null;
   let carrierAdapter: NpShopCarrierAdapter | null = null;
+  let carrierParcelAdapter: NpShopCarrierParcelAdapter | null = null;
   let carrierTrackingAdapter: NpShopCarrierTrackingAdapter | null = null;
   let carrierTrackingPollAdapter: NpShopCarrierTrackingPollAdapter | null = null;
   if (configuredCarrierAdapter) {
@@ -272,6 +278,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     }
     const hasTrackingWebhook = configuredCarrierAdapter.verifyTrackingWebhook !== undefined;
     const hasTrackingPoll = configuredCarrierAdapter.readTracking !== undefined;
+    const hasParcelBooking = configuredCarrierAdapter.bookShipmentWithParcels !== undefined;
     if (
       hasTrackingWebhook &&
       typeof configuredCarrierAdapter.verifyTrackingWebhook !== "function"
@@ -282,6 +289,14 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     }
     if (hasTrackingPoll && typeof configuredCarrierAdapter.readTracking !== "function") {
       throw new Error("Shop carrier adapter readTracking must be a function when provided.");
+    }
+    if (
+      hasParcelBooking &&
+      typeof configuredCarrierAdapter.bookShipmentWithParcels !== "function"
+    ) {
+      throw new Error(
+        "Shop carrier adapter bookShipmentWithParcels must be a function when provided.",
+      );
     }
     carrierAdapter = Object.freeze({
       id,
@@ -295,12 +310,21 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
       ...(configuredCarrierAdapter.readTracking
         ? { readTracking: configuredCarrierAdapter.readTracking.bind(configuredCarrierAdapter) }
         : {}),
+      ...(configuredCarrierAdapter.bookShipmentWithParcels
+        ? {
+            bookShipmentWithParcels:
+              configuredCarrierAdapter.bookShipmentWithParcels.bind(configuredCarrierAdapter),
+          }
+        : {}),
     });
     if (carrierAdapter.verifyTrackingWebhook) {
       carrierTrackingAdapter = carrierAdapter as NpShopCarrierTrackingAdapter;
     }
     if (carrierAdapter.readTracking) {
       carrierTrackingPollAdapter = carrierAdapter as NpShopCarrierTrackingPollAdapter;
+    }
+    if (carrierAdapter.bookShipmentWithParcels) {
+      carrierParcelAdapter = carrierAdapter as NpShopCarrierParcelAdapter;
     }
   }
   return {
@@ -314,6 +338,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     shippingAdapter,
     taxAdapter,
     carrierAdapter,
+    carrierParcelAdapter,
     carrierTrackingAdapter,
     carrierTrackingPollAdapter,
   };
@@ -745,7 +770,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment, tracking, and return operations, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, tracking, and return operations, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -779,6 +804,10 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-fulfillments",
           "widget:shop-fulfillment-health",
           "table:shop-fulfillments",
+          "dashboard:shop-fulfillment-parcels",
+          "widget:shop-fulfillment-parcel-health",
+          "table:shop-fulfillment-parcels",
+          "action:shop-fulfillment-parcels",
           "dashboard:shop-carrier-bookings",
           "widget:shop-carrier-booking-health",
           "table:shop-carrier-bookings",
@@ -823,7 +852,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment, carrier booking, verified or reconciled tracking, and physical return intake. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, labels, pickup, and provider-specific carrier protocols remain external.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment and parcel snapshots, carrier booking, verified or reconciled tracking, and physical return intake. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, labels, pickup, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -946,6 +975,14 @@ export function createShop(options: NpShopOptions = {}) {
           priority: 28,
         },
         {
+          id: "shop-fulfillment-parcels-total",
+          label: "Prepared parcels",
+          kind: "metric",
+          actionId: "countFulfillmentParcels",
+          description: "PII-free package snapshots prepared for paid-order fulfillment.",
+          priority: 36,
+        },
+        {
           id: "shop-carrier-bookings-total",
           label: "Carrier bookings",
           kind: "metric",
@@ -1036,6 +1073,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Fulfillment storage",
           kind: "status",
           actionId: "fulfillmentHealth",
+        },
+        {
+          id: "shop-fulfillment-parcel-health",
+          label: "Fulfillment parcel storage",
+          kind: "status",
+          actionId: "fulfillmentParcelHealth",
         },
         {
           id: "shop-carrier-booking-health",
@@ -1162,6 +1205,8 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "id", label: "Order" },
             { name: "status", label: "Status" },
             { name: "fulfillmentRevision", label: "Revision" },
+            { name: "parcels", label: "Parcels" },
+            { name: "parcelRevision", label: "Parcel revision" },
             { name: "privateData", label: "Private data" },
             { name: "carrier", label: "Carrier" },
             { name: "trackingNumber", label: "Tracking" },
@@ -1196,6 +1241,27 @@ export function createShop(options: NpShopOptions = {}) {
                 },
               ],
               confirm: "Move this fulfillment to processing?",
+            },
+            {
+              id: "save-parcels",
+              label: "Save parcel snapshot",
+              actionId: "saveFulfillmentParcels",
+              rowFields: ["id", "fulfillmentRevision", "parcelRevision"],
+              visibleWhen: { field: "status", oneOf: ["processing"] },
+              fields: [
+                {
+                  name: "parcels",
+                  label: "Parcels JSON",
+                  type: "textarea",
+                  required: true,
+                  placeholder:
+                    '[{"id":"parcel-1","lengthMm":300,"widthMm":200,"heightMm":100,"weightGrams":1500,"items":[{"lineKey":"…","quantity":1}]}]',
+                },
+              ],
+              confirm:
+                "Save this exact PII-free parcel allocation? Every immutable order line and quantity must be covered.",
+              description:
+                "Editable until carrier booking starts; parcel-aware carriers lock this snapshot to the durable shipment UUID.",
             },
             ...(runtime.carrierAdapter
               ? [
@@ -1245,6 +1311,23 @@ export function createShop(options: NpShopOptions = {}) {
                 ]),
           ],
           emptyMessage: "No paid order fulfillment records exist for this site.",
+        },
+        {
+          id: "shop-fulfillment-parcels",
+          label: "Fulfillment parcels (PII-free)",
+          columns: [
+            { name: "id", label: "Order" },
+            { name: "fulfillmentRevision", label: "Fulfillment revision" },
+            { name: "parcelRevision", label: "Parcel revision" },
+            { name: "status", label: "Status" },
+            { name: "parcelCount", label: "Parcels" },
+            { name: "units", label: "Units" },
+            { name: "weightGrams", label: "Weight (g)" },
+            { name: "shipmentId", label: "Locked shipment" },
+            { name: "updatedAt", label: "Updated" },
+          ],
+          rowsActionId: "recentFulfillmentParcels",
+          emptyMessage: "No fulfillment parcel snapshots exist for this site.",
         },
         {
           id: "shop-carrier-bookings",
@@ -2082,6 +2165,83 @@ export function createShop(options: NpShopOptions = {}) {
           try {
             const result = await npListRecentShopFulfillments();
             return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      countFulfillmentParcels: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npCountShopFulfillmentParcels();
+            return {
+              ok: true,
+              data: {
+                value: counts.total,
+                delta: `${counts.unlocked.toString()} unlocked, ${counts.locked.toString()} shipment-locked`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      fulfillmentParcelHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopFulfillmentParcels();
+            if (
+              counts.invalidSample > 0 ||
+              counts.orphanSample > 0 ||
+              counts.allocationMismatchSample > 0 ||
+              counts.lockMismatchSample > 0
+            ) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed, ${counts.orphanSample.toString()} orphan, ${counts.allocationMismatchSample.toString()} allocation-mismatched, and ${counts.lockMismatchSample.toString()} shipment-lock-mismatched row(s) in bounded samples.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.unlocked.toString()} unlocked and ${counts.locked.toString()} shipment-locked PII-free parcel snapshot(s).`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Fulfillment parcel health check failed.",
+            );
+          }
+        },
+      },
+      recentFulfillmentParcels: {
+        kind: "table",
+        handler: async () => {
+          try {
+            const result = await npListRecentShopFulfillmentParcels();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      saveFulfillmentParcels: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return { ok: false, error: "Parcel preparation requires a direct staff action." };
+            }
+            const result = await npSaveShopFulfillmentParcels(
+              npRequireShopFulfillmentParcelsSaveInput(data),
+              ctx.actionInvocation.userId,
+            );
+            const parcelCount = result.parcels.length;
+            return {
+              ok: true,
+              data: `Saved parcel revision ${result.revision.toString()} with ${parcelCount.toString()} package(s).`,
+            };
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
           }
@@ -3059,6 +3219,23 @@ export {
   npShopFulfillmentLimits,
 } from "./fulfillment-contract.js";
 export {
+  NP_SHOP_FULFILLMENT_PARCELS_STORAGE_CONTRACT,
+  NpShopFulfillmentParcelConflictError,
+  NpShopFulfillmentParcelContractError,
+  npAnalyzeShopFulfillmentParcels,
+  npAnalyzeStoredShopFulfillmentParcels,
+  npRequireShopFulfillmentParcelsSaveInput,
+  npRequireStoredShopFulfillmentParcels,
+  npShopFulfillmentParcelLimits,
+  npShopFulfillmentParcelTotals,
+} from "./parcel-contract.js";
+export type {
+  NpShopFulfillmentParcel,
+  NpShopFulfillmentParcelItem,
+  NpShopFulfillmentParcelsSaveInput,
+  NpShopStoredFulfillmentParcels,
+} from "./parcel-contract.js";
+export {
   NP_SHOP_RETURN_CONTRACT,
   NP_SHOP_RETURN_STORAGE_CONTRACT,
   NpShopReturnConflictError,
@@ -3099,16 +3276,19 @@ export {
   NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT,
   NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
   NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT,
+  NP_SHOP_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT,
   NpShopCarrierConflictError,
   NpShopCarrierContractError,
   NpShopCarrierProviderError,
   NpShopCarrierUnavailableError,
   npAnalyzeShopCarrierBookingRequest,
   npAnalyzeShopCarrierBookingResult,
+  npAnalyzeShopCarrierParcelBookingRequest,
   npAnalyzeStoredShopCarrierBooking,
   npRequireShopCarrierBookingActionInput,
   npRequireShopCarrierBookingRequest,
   npRequireShopCarrierBookingResult,
+  npRequireShopCarrierParcelBookingRequest,
   npRequireShopCarrierProviderId,
   npRequireStoredShopCarrierBooking,
   npShopCarrierBookingStatuses,
@@ -3116,12 +3296,14 @@ export {
 } from "./carrier-contract.js";
 export type {
   NpShopCarrierAdapter,
+  NpShopCarrierParcelAdapter,
   NpShopCarrierTrackingAdapter,
   NpShopCarrierTrackingPollAdapter,
   NpShopCarrierBookingActionInput,
   NpShopCarrierBookingItem,
   NpShopCarrierBookingRequest,
   NpShopCarrierBookingResult,
+  NpShopCarrierParcelBookingRequest,
   NpShopCarrierBookingStatus,
   NpShopStoredCarrierBooking,
 } from "./carrier-contract.js";

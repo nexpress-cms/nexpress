@@ -4,7 +4,9 @@ import {
   NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT,
   NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
   NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT,
+  NP_SHOP_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT,
   npAnalyzeShopCarrierBookingRequest,
+  npAnalyzeShopCarrierParcelBookingRequest,
   npAnalyzeStoredShopCarrierBooking,
   npRequireShopCarrierBookingActionInput,
   npRequireShopCarrierBookingResult,
@@ -70,6 +72,27 @@ describe("Shop carrier booking contract", () => {
         destination: { ...request.destination, privateNote: "must fail" },
       }),
     ).toContain("carrier booking request.destination.privateNote is not supported.");
+  });
+
+  it("adds one exact parcel-aware v2 request without changing v1", () => {
+    expect(
+      npAnalyzeShopCarrierParcelBookingRequest({
+        ...request,
+        contract: NP_SHOP_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT,
+        parcelRevision: 3,
+        parcels: [
+          {
+            id: "parcel-1",
+            lengthMm: 300,
+            widthMm: 200,
+            heightMm: 100,
+            weightGrams: 1_500,
+            items: [{ lineKey: request.items[0].key, quantity: 1 }],
+          },
+        ],
+      }),
+    ).toEqual([]);
+    expect(npAnalyzeShopCarrierBookingRequest(request)).toEqual([]);
   });
 
   it("accepts one exact PII-free provider result", () => {

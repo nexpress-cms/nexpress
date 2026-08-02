@@ -23,6 +23,7 @@ import type { NpShopShippingAdapter } from "./shipping-contract.js";
 import type { NpShopTaxAdapter } from "./tax-contract.js";
 import type {
   NpShopCarrierAdapter,
+  NpShopCarrierParcelAdapter,
   NpShopCarrierTrackingAdapter,
   NpShopCarrierTrackingPollAdapter,
 } from "./carrier-contract.js";
@@ -52,6 +53,7 @@ export interface NpShopRuntime {
   shippingAdapter: NpShopShippingAdapter | null;
   taxAdapter: NpShopTaxAdapter | null;
   carrierAdapter: NpShopCarrierAdapter | null;
+  carrierParcelAdapter: NpShopCarrierParcelAdapter | null;
   carrierTrackingAdapter: NpShopCarrierTrackingAdapter | null;
   carrierTrackingPollAdapter: NpShopCarrierTrackingPollAdapter | null;
 }

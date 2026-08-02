@@ -79,6 +79,10 @@ describe("shop factory", () => {
       { id: "countFulfillments", kind: "metric" },
       { id: "fulfillmentHealth", kind: "status" },
       { id: "recentFulfillments", kind: "table" },
+      { id: "countFulfillmentParcels", kind: "metric" },
+      { id: "fulfillmentParcelHealth", kind: "status" },
+      { id: "recentFulfillmentParcels", kind: "table" },
+      { id: "saveFulfillmentParcels", kind: "action" },
       { id: "processFulfillment", kind: "action" },
       { id: "countCarrierBookings", kind: "metric" },
       { id: "carrierBookingHealth", kind: "status" },
@@ -287,6 +291,37 @@ describe("shop factory", () => {
           },
         },
       }).runtime.carrierTrackingAdapter,
+    ).toBeNull();
+  });
+
+  it("adds parcel-aware booking as an independent carrier capability", () => {
+    const shop = createShop({
+      carrier: {
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          bookShipmentWithParcels: () => Promise.reject(new Error("not called")),
+        },
+      },
+    });
+    expect(shop.runtime.carrierParcelAdapter?.id).toBe("test-carrier");
+    expect(shop.plugin.actions?.saveFulfillmentParcels?.kind).toBe("action");
+    expect(shop.plugin.manifest.provides.adminExtensions).toEqual(
+      expect.arrayContaining([
+        "widget:shop-fulfillment-parcel-health",
+        "table:shop-fulfillment-parcels",
+        "action:shop-fulfillment-parcels",
+      ]),
+    );
+    expect(
+      createShop({
+        carrier: {
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }).runtime.carrierParcelAdapter,
     ).toBeNull();
   });
 
