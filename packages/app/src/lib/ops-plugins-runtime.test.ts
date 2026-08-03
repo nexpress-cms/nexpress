@@ -294,6 +294,7 @@ function route(
     method,
     path,
     bodyMode: method === "GET" ? "none" : "json",
+    responseMode: "json",
     auth: false,
     handler: () => Promise.resolve({ status: 200 }),
   };

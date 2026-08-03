@@ -700,6 +700,57 @@ describe("definePlugin — admin action contract", () => {
     ).toThrow();
   });
 
+  it("accepts downloads only through declared authenticated binary GET routes", () => {
+    const definition = {
+      manifest: { ...baseManifest },
+      actions: {
+        rows: {
+          kind: "table" as const,
+          handler: () => Promise.resolve({ ok: true, data: { rows: [], total: 0 } }),
+        },
+      },
+      routes: [
+        {
+          method: "GET" as const,
+          path: "/report",
+          auth: true,
+          responseMode: "binary" as const,
+          handler: () => ({
+            status: 200,
+            body: new Uint8Array([1]),
+            headers: { "Content-Type": "application/octet-stream" },
+          }),
+        },
+      ],
+      admin: {
+        tables: [
+          {
+            id: "rows",
+            label: "Rows",
+            columns: [{ name: "id", label: "ID" }],
+            rowsActionId: "rows",
+            rowActions: [
+              {
+                type: "download" as const,
+                id: "report",
+                label: "Report",
+                routePath: "/report",
+                query: [{ name: "id", rowField: "id" }],
+              },
+            ],
+          },
+        ],
+      },
+    };
+    expect(() => definePlugin(definition)).not.toThrow();
+    expect(() =>
+      definePlugin({
+        ...definition,
+        routes: definition.routes.map((route) => ({ ...route, auth: false })),
+      }),
+    ).toThrow(/auth: true.*responseMode/u);
+  });
+
   it("keeps setup-only action registration compatible", () => {
     expect(() =>
       definePlugin({

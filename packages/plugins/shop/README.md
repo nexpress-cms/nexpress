@@ -57,6 +57,9 @@ It provides:
   receipts and a monotonic owner-visible delivery state, while an independent
   PII-free polling capability uses persisted leases, cursor-fair batches,
   bounded backoff, Admin/Doctor health, and the same event engine;
+- optional transient shipping-label retrieval for completed carrier bookings,
+  with a PII-free provider request, direct-staff audit, bounded PDF/PNG/ZPL
+  bytes, authenticated Admin download, and no durable label storage;
 - provider-neutral, staff-audited full refunds with one durable idempotency id,
   cancelled unshipped fulfillment, all-or-none tracked-inventory restoration,
   and explicit manual-compensation diagnostics;
@@ -67,7 +70,7 @@ It provides:
 - featured-product and category-grid blocks.
 
 Provider-specific browser/server protocols, signature algorithms, credentials
-and rotation, partial refunds, reversals, exchanges, carrier labels/pickup,
+and rotation, partial refunds, reversals, exchanges, carrier label purchase/pickup,
 provider-specific tracking protocols,
 tax remittance/filing, invoices, exemptions, customs, and shipping policy
 remain outside this package. A server-only `NpShopShippingAdapter` may supply
@@ -76,7 +79,8 @@ added on top of displayed product prices. `NpShopCarrierAdapter` may book one
 shipment with its stable shipment UUID as the provider idempotency key and may
 consume a locked parcel snapshot through additive `bookShipmentWithParcels`,
 authenticate tracking callbacks or reconcile tracking through bounded
-server-only reads. Shop owns revision-safe selection and both PII-free
+server-only reads, and may retrieve an already-booked label through
+`readShippingLabel`. Shop owns revision-safe selection and both PII-free
 commercial snapshots.
 `@nexpress/shop-payment-toss` is the bundled Toss
 Payments v2 initiation and full-refund adapter. Customer/shipping PII exists only in the short-lived

@@ -78,9 +78,10 @@ describe("OpenAPI public discovery contracts", () => {
       };
     };
     expect(pluginDiscoverySchema.properties.routes.items).toMatchObject({
-      required: ["method", "path", "auth", "bodyMode"],
+      required: ["method", "path", "auth", "bodyMode", "responseMode"],
       properties: {
         bodyMode: { type: "string", enum: ["none", "json", "raw"] },
+        responseMode: { type: "string", enum: ["json", "binary"] },
       },
     });
   });

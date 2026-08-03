@@ -103,6 +103,10 @@ describe("non-block scaffold generators", () => {
       expect(source).toContain('createHash("sha256")');
       expect(source).toContain("timing-safe provider-signature check");
       expect(source).toContain("statuses 204, 205, and 304 must not include a body");
+      expect(source).toMatch(/path: "\/download"/);
+      expect(source).toMatch(/responseMode: "binary"/);
+      expect(source).toContain('"Content-Type": "text/plain; charset=utf-8"');
+      expect(source).toContain('"Cache-Control": "private, no-store"');
       expect(source).not.toContain("Promise.resolve");
       expect(source).not.toMatch(/from "zod"/);
     });

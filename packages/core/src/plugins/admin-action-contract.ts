@@ -43,6 +43,15 @@ export interface NpPluginActionRegistrationConflict {
   replacement: NpRegisteredPluginAction;
 }
 
+export type NpPluginAdminDownloadIssueCode = "missing-route" | "public-route" | "non-binary-route";
+
+export interface NpPluginAdminDownloadIssue {
+  code: NpPluginAdminDownloadIssueCode;
+  routePath: string;
+  location: string;
+  message: string;
+}
+
 type AdminWidgetLike = {
   id?: unknown;
   kind?: unknown;
@@ -144,6 +153,60 @@ export function npCollectPluginAdminActionReferences(
 
   addWidgetReferences(references, admin.dashboardWidgets, "admin.dashboardWidgets");
   return references;
+}
+
+/** Verifies declarative Admin downloads against the plugin's route inventory. */
+export function npAnalyzePluginAdminDownloadContract(
+  admin: unknown,
+  routes: Iterable<{
+    method: string;
+    path: string;
+    auth?: boolean;
+    responseMode?: string;
+  }>,
+): NpPluginAdminDownloadIssue[] {
+  if (!isRecord(admin)) return [];
+  const routeList = [...routes];
+  const issues: NpPluginAdminDownloadIssue[] = [];
+  for (const [tableIndex, table] of readEntries(admin.tables).entries()) {
+    if (!isRecord(table)) continue;
+    const tableId = readId(table.id, tableIndex.toString());
+    for (const [actionIndex, action] of readEntries(table.rowActions).entries()) {
+      if (!isRecord(action) || action.type !== "download" || typeof action.routePath !== "string") {
+        continue;
+      }
+      const location = `admin.tables.${tableId}.rowActions.${readId(action.id, actionIndex.toString())}`;
+      const route = routeList.find(
+        (candidate) => candidate.method === "GET" && candidate.path === action.routePath,
+      );
+      if (!route) {
+        issues.push({
+          code: "missing-route",
+          routePath: action.routePath,
+          location,
+          message: `Admin download references missing GET route "${action.routePath}".`,
+        });
+        continue;
+      }
+      if (route.auth !== true) {
+        issues.push({
+          code: "public-route",
+          routePath: action.routePath,
+          location,
+          message: `Admin download route "${action.routePath}" must require staff authentication.`,
+        });
+      }
+      if (route.responseMode !== "binary") {
+        issues.push({
+          code: "non-binary-route",
+          routePath: action.routePath,
+          location,
+          message: `Admin download route "${action.routePath}" must declare responseMode: "binary".`,
+        });
+      }
+    }
+  }
+  return issues;
 }
 
 /**

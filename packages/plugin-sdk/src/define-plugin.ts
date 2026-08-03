@@ -30,6 +30,7 @@ const routeDefinitionKeys = new Set([
   "description",
   "auth",
   "bodyMode",
+  "responseMode",
 ]);
 const routeSegmentPattern = /^[A-Za-z0-9._~-]+$/;
 
@@ -192,6 +193,15 @@ function validateRouteRegistry(pluginId: string, routes: unknown): void {
     if (route.method === "GET" && route.bodyMode !== undefined) {
       throw new Error(
         `[plugin:${pluginId}] API route "${route.method} ${route.path}" bodyMode is only valid for mutating routes.`,
+      );
+    }
+    if (
+      route.responseMode !== undefined &&
+      route.responseMode !== "json" &&
+      route.responseMode !== "binary"
+    ) {
+      throw new Error(
+        `[plugin:${pluginId}] API route "${route.method} ${route.path}" responseMode must be json or binary.`,
       );
     }
 
@@ -417,6 +427,7 @@ function collectAdminActionReferences(admin: NpAdminExtension | undefined): Admi
       location: `admin.tables.${table.id}`,
     });
     for (const action of table.rowActions ?? []) {
+      if (action.type === "download") continue;
       references.push({
         actionId: action.actionId,
         expectedKind: "action",
@@ -430,6 +441,33 @@ function collectAdminActionReferences(admin: NpAdminExtension | undefined): Admi
   }
   addWidgets(admin.dashboardWidgets, "admin.dashboardWidgets");
   return references;
+}
+
+function validateAdminDownloadRoutes(
+  pluginId: string,
+  admin: NpAdminExtension | undefined,
+  routes: NpPluginDefinition<unknown>["routes"],
+): void {
+  for (const table of admin?.tables ?? []) {
+    for (const action of table.rowActions ?? []) {
+      if (action.type !== "download") continue;
+      validateRoutePath(pluginId, action.routePath);
+      const route = routes?.find(
+        (candidate) => candidate.method === "GET" && candidate.path === action.routePath,
+      );
+      const location = `admin.tables.${table.id}.rowActions.${action.id}`;
+      if (!route) {
+        throw new Error(
+          `[plugin:${pluginId}] ${location} references missing GET route "${action.routePath}".`,
+        );
+      }
+      if (route.auth !== true || route.responseMode !== "binary") {
+        throw new Error(
+          `[plugin:${pluginId}] ${location} must reference a route with auth: true and responseMode: "binary".`,
+        );
+      }
+    }
+  }
 }
 
 function validateActionRegistry(
@@ -531,6 +569,11 @@ export function definePlugin<TConfig = Record<string, unknown>>(
     definition.actions as NpPluginActionRegistry<unknown> | undefined,
     definition.admin,
     typeof definition.setup === "function",
+  );
+  validateAdminDownloadRoutes(
+    manifest.id,
+    definition.admin,
+    definition.routes as NpPluginDefinition<unknown>["routes"],
   );
   return { ...definition, manifest };
 }

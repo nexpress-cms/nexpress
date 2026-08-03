@@ -896,6 +896,7 @@ const pluginItemSchema: z.ZodType<NpPluginDiscoveryItem> = z
           description: text().optional(),
           auth: z.boolean(),
           bodyMode: z.enum(["none", "json", "raw"]),
+          responseMode: z.enum(["json", "binary"]),
         }),
       )
       .max(npDiscoveryContractLimits.fields),

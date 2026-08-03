@@ -299,6 +299,74 @@ describe("ops plugins core", () => {
     );
   });
 
+  it("diagnoses unsupported plugin response modes", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "reports", name: "Reports" },
+        routes: [
+          {
+            method: "GET",
+            path: "/download",
+            responseMode: "stream",
+            handler: () => ({ status: 200 }),
+          },
+        ],
+      },
+    ]);
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.route_invalid",
+          state: "error",
+          detail: expect.stringContaining('responseMode must be either "json" or "binary"'),
+          pluginIds: ["reports"],
+        }),
+      ]),
+    );
+  });
+
+  it("diagnoses Admin downloads that are not backed by authenticated binary routes", () => {
+    const report = analyzePlugins([
+      {
+        manifest: { id: "reports", name: "Reports" },
+        routes: [
+          {
+            method: "GET",
+            path: "/download",
+            auth: false,
+            handler: () => ({ status: 200 }),
+          },
+        ],
+        admin: {
+          tables: [
+            {
+              id: "reports",
+              rowsActionId: "rows",
+              rowActions: [
+                {
+                  type: "download",
+                  id: "download",
+                  routePath: "/download",
+                  query: [{ name: "id", rowField: "id" }],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ]);
+    expect(report.checks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "plugins.admin_download_invalid",
+          state: "error",
+          detail: expect.stringContaining("must require staff authentication"),
+          pluginIds: ["reports"],
+        }),
+      ]),
+    );
+  });
+
   it("rejects malformed and same-plugin duplicate block definitions", () => {
     const report = analyzePlugins([
       {

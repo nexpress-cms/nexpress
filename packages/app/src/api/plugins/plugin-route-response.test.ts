@@ -30,4 +30,19 @@ describe("npCreatePluginApiRouteResponse", () => {
     expect(response.headers.get("x-plugin")).toBe("example");
     await expect(response.text()).resolves.toBe("");
   });
+
+  it("delivers binary route bytes without JSON serialization", async () => {
+    const response = npCreatePluginApiRouteResponse(
+      {
+        status: 200,
+        body: new Uint8Array([0, 1, 2, 255]),
+        headers: { "Content-Type": "application/octet-stream" },
+      },
+      "GET",
+      "binary",
+    );
+
+    expect(response.headers.get("content-type")).toBe("application/octet-stream");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([0, 1, 2, 255]));
+  });
 });

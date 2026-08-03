@@ -11,6 +11,7 @@ vi.mock("@nexpress/core", async (importOriginal) => {
         method: "POST",
         path: "/json",
         bodyMode: "json",
+        responseMode: "json",
         auth: false,
         handler: vi.fn(),
       },
@@ -19,6 +20,16 @@ vi.mock("@nexpress/core", async (importOriginal) => {
         method: "POST",
         path: "/webhook",
         bodyMode: "raw",
+        responseMode: "json",
+        auth: true,
+        handler: vi.fn(),
+      },
+      {
+        pluginId: "payments",
+        method: "GET",
+        path: "/receipt",
+        bodyMode: "none",
+        responseMode: "binary",
         auth: true,
         handler: vi.fn(),
       },
@@ -42,6 +53,9 @@ describe("OpenAPI plugin request bodies", () => {
               description?: string;
               content: Record<string, { schema: Record<string, unknown> }>;
             };
+          };
+          get: {
+            responses: Record<string, unknown>;
           };
         }
       >;
@@ -68,5 +82,11 @@ describe("OpenAPI plugin request bodies", () => {
     expect(spec.paths["/api/plugins/payments/webhook"]?.post.security).toEqual([
       { sessionCookie: [] },
     ]);
+    expect(spec.paths["/api/plugins/payments/receipt"]?.get.responses["200"]).toMatchObject({
+      description: expect.stringContaining("8388608 bytes"),
+      content: {
+        "application/octet-stream": { schema: { type: "string", format: "binary" } },
+      },
+    });
   });
 });

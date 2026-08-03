@@ -9,6 +9,7 @@ provider-neutral additional-tax quote and frozen tax snapshot, an optional
 provider-neutral payment initiation and verified-event boundary, revision-safe
 fulfillment operations, optional provider-neutral carrier booking,
 revision-safe PII-free fulfillment parcel snapshots,
+transient provider-neutral shipping-label retrieval,
 verified or reconciled carrier tracking events and owner-visible delivery state,
 provider-neutral full refunds with safe inventory
 compensation, owner-scoped item return intake with audited receipt inventory,
@@ -618,6 +619,7 @@ instead pass one server-only adapter to the same `createShop()` factory:
 ```ts
 import {
   NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
+  NP_SHOP_CARRIER_LABEL_RESULT_CONTRACT,
   NP_SHOP_TRACKING_POLL_RESULT_CONTRACT,
   createShop,
   type NpShopCarrierAdapter,
@@ -696,6 +698,19 @@ const carrier: NpShopCarrierAdapter = {
         : null,
     };
   },
+  async readShippingLabel(request) {
+    // request contains only durable provider references. Apply a provider
+    // timeout and return transient bytes; never persist or log label content.
+    const label = await readProviderShippingLabel(request.bookingReference);
+    return {
+      contract: NP_SHOP_CARRIER_LABEL_RESULT_CONTRACT,
+      shipmentId: request.shipmentId,
+      orderId: request.orderId,
+      format: "pdf",
+      content: label.bytes,
+      retrievedAt: new Date().toISOString(),
+    };
+  },
 };
 
 const shop = createShop({ carrier: { adapter: carrier } });
@@ -768,7 +783,27 @@ terminal manual `archived`, or v2 shipment-`locked` snapshot.
 Doctor verifies the matching declarative metric/status/table/action kinds.
 Commercial expiry removes the parcel row with the fulfillment and carrier
 state. This contract records prepared packages only: it does not calculate
-packaging, buy/render labels, schedule pickup, or choose a carrier protocol.
+packaging, buy labels, schedule pickup, or choose a carrier protocol.
+
+`readShippingLabel` is another independent additive capability. When present,
+completed rows in the carrier-booking Admin table expose **Download label**.
+The linked `GET /api/plugins/shop/carrier/shipping-label` route requires a
+staff session and accepts only the exact order/shipment query projected from
+that row. Shop rechecks the current site, completed booking, shipment id, and
+configured provider, appends a direct-staff audit event, then calls the provider
+outside the database transaction with the PII-free
+`np.shop-carrier-label-request.v1` tuple. It contains only shipment/order ids,
+booking reference, carrier, tracking number, and request time.
+
+The provider returns `np.shop-carrier-label-result.v1` with matching ids, a
+fresh retrieval timestamp, one closed `pdf | png | zpl` format, and 1 byte–5
+MiB of `Uint8Array` content. Shop delivers those bytes through the framework's
+bounded binary route response with attachment, private/no-store, and nosniff
+headers only after the completed booking tuple is rechecked and successful
+delivery is audited with format and byte count. Label bytes and URLs are never stored, projected through Admin JSON,
+logged, or placed in public media. This capability reads a label that the
+existing provider booking already owns; it does not purchase/regenerate a
+label, book pickup, choose paper size, or implement a carrier protocol.
 
 `readTracking` is a separate additive capability from callback verification.
 When present, Shop registers a ten-minute UTC scheduled task and an audited
@@ -825,7 +860,7 @@ mismatched rows without reading private data. Polling has an independent health
 widget and newest-50 state table, including due/backoff/lease state, malformed
 or orphan samples, provider/booking mismatches, and completed bookings not yet
 polled. Doctor verifies both conditional action/schedule declarations. The
-contract does not buy or render labels, schedule pickup, derive package dimensions or weight,
+contract does not buy labels, schedule pickup, derive package dimensions or weight,
 calculate delivery price, or implement provider-specific, customs, jurisdiction, or
 customer-service policy.
 
@@ -1132,6 +1167,7 @@ const shop = createShop({
   defaultSkinId: "storefront-full",
   payment: { adapter }, // optional; omitted means the webhook route does not exist
   shipping: { adapter: shippingAdapter }, // optional; omitted means zero shipping
+  carrier: { adapter: carrierAdapter }, // optional capabilities include label retrieval
 });
 
 export default defineConfig({
@@ -1159,7 +1195,7 @@ Future transaction work should remain separable from this foundation:
 1. additional provider packages for Stripe or KG Inicis;
 2. authorization/capture, settlement, provider-initiated reversal, and partial
    refund contracts;
-3. carrier labels, pickup, provider-specific tracking packages,
+3. carrier label purchase/regeneration, pickup, provider-specific tracking packages,
    exchanges, and customer-service policy;
 4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and
    shipping-policy integrations.

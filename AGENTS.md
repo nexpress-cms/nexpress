@@ -2,7 +2,16 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-02 (Shop processing fulfillments may now store one
+**Last refreshed:** 2026-08-03 (Plugin API routes may now opt into one exact
+bounded binary response contract across SDK/core validation, dispatch,
+discovery, OpenAPI, Admin downloads, Doctor-compatible scaffolds, tests, and
+live guides. Shop carrier adapters may independently retrieve an already-booked
+PDF/PNG/ZPL shipping label through one PII-free request, revision-safe staff
+audit, transient bounded delivery, and Admin action without persisting bytes or URLs. Label
+purchase/regeneration, pickup, return labels, and provider protocols remain
+separate.)
+
+**Earlier:** 2026-08-02 (Shop processing fulfillments may now store one
 revision-safe PII-free parcel snapshot with bounded integer millimetre
 dimensions, gram weights, and exact immutable order-line allocations; direct
 staff audit, Admin/Doctor diagnostics, commercial cleanup, scaffold guidance,

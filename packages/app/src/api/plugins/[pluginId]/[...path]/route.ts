@@ -109,7 +109,7 @@ async function handlePluginRoute(
       member: member ? { id: member.id } : undefined,
     });
 
-    return npCreatePluginApiRouteResponse(result, method);
+    return npCreatePluginApiRouteResponse(result, method, matched.responseMode);
   } catch (error) {
     return npErrorResponse(
       error instanceof Error ? error : new Error("Unknown plugin route error"),

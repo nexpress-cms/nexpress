@@ -22,6 +22,7 @@ vi.mock("@nexpress/core", () => ({
       path: "/cart",
       auth: false,
       bodyMode: "none",
+      responseMode: "json",
       handler: runtime.handler,
     },
     {
@@ -30,6 +31,7 @@ vi.mock("@nexpress/core", () => ({
       path: "/cart",
       auth: false,
       bodyMode: "json",
+      responseMode: "json",
       handler: runtime.handler,
     },
     {
@@ -38,6 +40,16 @@ vi.mock("@nexpress/core", () => ({
       path: "/webhook",
       auth: false,
       bodyMode: "raw",
+      responseMode: "json",
+      handler: runtime.handler,
+    },
+    {
+      pluginId: "shop",
+      method: "GET",
+      path: "/label",
+      auth: false,
+      bodyMode: "none",
+      responseMode: "binary",
       handler: runtime.handler,
     },
   ],
@@ -66,6 +78,7 @@ const params = { params: Promise.resolve({ pluginId: "shop", path: ["cart"] }) }
 const webhookParams = {
   params: Promise.resolve({ pluginId: "shop", path: ["webhook"] }),
 };
+const labelParams = { params: Promise.resolve({ pluginId: "shop", path: ["label"] }) };
 
 beforeEach(() => {
   runtime.ensureFor.mockReset().mockResolvedValue(undefined);
@@ -140,5 +153,20 @@ describe("plugin API route member projection", () => {
         rawBody: new TextEncoder().encode(source),
       }),
     );
+  });
+
+  it("uses the matched route response mode for bounded binary delivery", async () => {
+    runtime.handler.mockResolvedValueOnce({
+      status: 200,
+      body: new Uint8Array([1, 2, 3]),
+      headers: { "Content-Type": "application/octet-stream" },
+    });
+    const response = await GET(
+      new NextRequest("http://localhost/api/plugins/shop/label"),
+      labelParams,
+    );
+
+    expect(response.headers.get("content-type")).toBe("application/octet-stream");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
   });
 });

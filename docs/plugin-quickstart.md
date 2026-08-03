@@ -77,7 +77,7 @@ the right starter for what you're building:
 | `nexpress create block-plugin <slug> --workspace`               | One static page-builder block under `packages/plugins/<slug>`.                                                           |
 | `nexpress create block-plugin <slug> --interactive --workspace` | Static block + a `"use client"` form, with the directive / `splitting: false` / self-import wiring pre-configured.       |
 | `nexpress create hook-plugin <slug> --workspace`                | One `content:afterCreate` hook handler.                                                                                  |
-| `nexpress create route-plugin <slug> --workspace`               | Public `GET /health` plus a staff-only exact-byte `POST /body-digest` contract example.                                  |
+| `nexpress create route-plugin <slug> --workspace`               | Public JSON health, staff-only exact-byte request digest, and bounded binary download examples.                          |
 | `nexpress create page-plugin <slug> --workspace`                | Typed public page route plus page-template and ICU translation examples.                                                 |
 | `nexpress create admin-plugin <slug> --workspace`               | `configSchema` settings form + status widget + manual action, wired through a typed definition-level `actions` registry. |
 | `nexpress create scheduled-plugin <slug> --workspace`           | One typed nightly cron task at 02:00 UTC.                                                                                |

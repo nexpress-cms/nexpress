@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { npBuildTableRowActionPayload, npIsTableRowActionVisible } from "./plugin-admin-page.js";
+import {
+  npBuildTableRowActionPayload,
+  npBuildTableRowDownloadHref,
+  npIsTableRowActionVisible,
+} from "./plugin-admin-page.js";
 
 const action = {
   id: "ship",
@@ -31,5 +35,28 @@ describe("plugin Admin table row actions", () => {
         values,
       ),
     ).toEqual({ row: { id: "order-1", revision: 3 }, values });
+  });
+
+  it("builds same-origin download URLs only from declared primitive row fields", () => {
+    const download = {
+      type: "download" as const,
+      id: "label",
+      label: "Label",
+      routePath: "/carrier/shipping-label",
+      query: [
+        { name: "orderId", rowField: "id" },
+        { name: "revision", rowField: "revision" },
+      ],
+    };
+    expect(
+      npBuildTableRowDownloadHref("shop", download, {
+        id: "order/1",
+        revision: 3,
+        privateEmail: "must-not-leak@example.com",
+      }),
+    ).toBe("/api/plugins/shop/carrier/shipping-label?orderId=order%2F1&revision=3");
+    expect(npBuildTableRowDownloadHref("shop", download, { id: "order-1", revision: null })).toBe(
+      null,
+    );
   });
 });

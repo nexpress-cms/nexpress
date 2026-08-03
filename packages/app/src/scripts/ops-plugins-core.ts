@@ -8,6 +8,7 @@ import {
   npAnalyzePageTemplateRegistry,
   npAnalyzePluginDefinitionContract,
   npAnalyzePluginAdminActionContract,
+  npAnalyzePluginAdminDownloadContract,
   npAnalyzePluginScheduledTasks,
   npValidatePluginApiRouteDefinition,
   npValidatePluginPageRouteDefinition,
@@ -775,9 +776,29 @@ function buildApiRouteChecks(
   const invalidPluginIds: string[] = [];
   const duplicateRoutes: string[] = [];
   const duplicatePluginIds: string[] = [];
+  const invalidDownloads: string[] = [];
+  const invalidDownloadPluginIds: string[] = [];
 
   for (const [index, plugin] of pluginObjects.entries()) {
     const pluginId = plugins[index]?.id ?? `plugin-${index.toString()}`;
+    const routeCandidates = Array.isArray(plugin.routes)
+      ? plugin.routes.filter(
+          (
+            route,
+          ): route is {
+            method: string;
+            path: string;
+            auth?: boolean;
+            responseMode?: string;
+          } =>
+            isObject(route) && typeof route.method === "string" && typeof route.path === "string",
+        )
+      : [];
+    const downloadIssues = npAnalyzePluginAdminDownloadContract(plugin.admin, routeCandidates);
+    for (const issue of downloadIssues) {
+      invalidDownloads.push(`[plugin:${pluginId}] ${issue.location}: ${issue.message}`);
+      invalidDownloadPluginIds.push(pluginId);
+    }
     if (plugin.routes === undefined) continue;
     if (!Array.isArray(plugin.routes)) {
       invalidRoutes.push(`[plugin:${pluginId}] routes must be an array`);
@@ -814,7 +835,7 @@ function buildApiRouteChecks(
       label: "Plugin API route contracts",
       detail: invalidRoutes.join("; "),
       hint: withDoctorRerun(
-        "Use an uppercase supported method, a canonical static path, a function handler, and valid description/auth fields.",
+        "Use an uppercase supported method, a canonical static path, a function handler, and valid description/auth/body/response modes.",
       ),
       pluginIds: uniqueStrings(invalidPluginIds),
     });
@@ -829,6 +850,18 @@ function buildApiRouteChecks(
         "A plugin can declare each method/path pair only once. Remove or rename the duplicate route.",
       ),
       pluginIds: uniqueStrings(duplicatePluginIds),
+    });
+  }
+  if (invalidDownloads.length > 0) {
+    checks.push({
+      id: "plugins.admin_download_invalid",
+      state: "error",
+      label: "Plugin Admin download contracts",
+      detail: invalidDownloads.join("; "),
+      hint: withDoctorRerun(
+        'Reference one declared GET route with auth: true and responseMode: "binary".',
+      ),
+      pluginIds: uniqueStrings(invalidDownloadPluginIds),
     });
   }
   return checks;

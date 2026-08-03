@@ -18,6 +18,11 @@ export const NP_SHOP_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT =
 export const NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT = "np.shop-carrier-booking-result.v1" as const;
 export const NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT =
   "np.shop-carrier-booking-storage.v1" as const;
+export const NP_SHOP_CARRIER_LABEL_REQUEST_CONTRACT = "np.shop-carrier-label-request.v1" as const;
+export const NP_SHOP_CARRIER_LABEL_RESULT_CONTRACT = "np.shop-carrier-label-result.v1" as const;
+
+export const npShopCarrierLabelFormats = ["pdf", "png", "zpl"] as const;
+export type NpShopCarrierLabelFormat = (typeof npShopCarrierLabelFormats)[number];
 
 export const npShopCarrierBookingStatuses = [
   "pending",
@@ -42,6 +47,7 @@ export const npShopCarrierLimits = Object.freeze({
   futureToleranceSeconds: 30,
   adminListSize: 50,
   diagnosticSampleSize: 500,
+  labelBytes: 5 * 1024 * 1024,
 });
 
 export interface NpShopCarrierBookingItem {
@@ -83,6 +89,25 @@ export interface NpShopCarrierBookingResult {
   bookedAt: string;
 }
 
+export interface NpShopCarrierLabelRequest {
+  contract: typeof NP_SHOP_CARRIER_LABEL_REQUEST_CONTRACT;
+  shipmentId: string;
+  orderId: string;
+  bookingReference: string;
+  carrier: string;
+  trackingNumber: string;
+  requestedAt: string;
+}
+
+export interface NpShopCarrierLabelResult {
+  contract: typeof NP_SHOP_CARRIER_LABEL_RESULT_CONTRACT;
+  shipmentId: string;
+  orderId: string;
+  format: NpShopCarrierLabelFormat;
+  content: Uint8Array;
+  retrievedAt: string;
+}
+
 export interface NpShopCarrierAdapter {
   /** Stable lowercase identifier persisted with the PII-free booking record. */
   id: string;
@@ -118,6 +143,13 @@ export interface NpShopCarrierAdapter {
   readTracking?(
     input: NpShopTrackingPollRequest,
   ): NpShopTrackingPollResult | Promise<NpShopTrackingPollResult>;
+  /**
+   * Retrieve one already-booked shipping label. Shop never persists these
+   * potentially PII-bearing bytes and calls this method outside transactions.
+   */
+  readShippingLabel?(
+    input: NpShopCarrierLabelRequest,
+  ): NpShopCarrierLabelResult | Promise<NpShopCarrierLabelResult>;
 }
 
 export type NpShopCarrierTrackingAdapter = NpShopCarrierAdapter &
@@ -128,6 +160,9 @@ export type NpShopCarrierTrackingPollAdapter = NpShopCarrierAdapter &
 
 export type NpShopCarrierParcelAdapter = NpShopCarrierAdapter &
   Required<Pick<NpShopCarrierAdapter, "bookShipmentWithParcels">>;
+
+export type NpShopCarrierLabelAdapter = NpShopCarrierAdapter &
+  Required<Pick<NpShopCarrierAdapter, "readShippingLabel">>;
 
 export interface NpShopStoredCarrierBooking {
   contract: typeof NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT;
@@ -151,6 +186,11 @@ export interface NpShopCarrierBookingActionInput {
   orderId: string;
   expectedRevision: number;
   operatorNote: string | null;
+}
+
+export interface NpShopCarrierLabelReadInput {
+  orderId: string;
+  shipmentId: string;
 }
 
 export class NpShopCarrierContractError extends Error {
@@ -184,7 +224,8 @@ export class NpShopCarrierConflictError extends Error {
     | "carrier_private_expired"
     | "carrier_provider_mismatch"
     | "carrier_result_mismatch"
-    | "carrier_manual_review";
+    | "carrier_manual_review"
+    | "carrier_label_not_available";
 
   constructor(code: NpShopCarrierConflictError["code"], message: string) {
     super(message);
@@ -513,6 +554,124 @@ export function npRequireShopCarrierBookingResult(value: unknown): NpShopCarrier
     throw new NpShopCarrierContractError("Invalid Shop carrier booking result", issues);
   }
   return value as NpShopCarrierBookingResult;
+}
+
+export function npAnalyzeShopCarrierLabelRequest(value: unknown): string[] {
+  const issues: string[] = [];
+  if (!isRecord(value)) return ["carrier label request must be a plain object."];
+  exactKeys(
+    value,
+    [
+      "contract",
+      "shipmentId",
+      "orderId",
+      "bookingReference",
+      "carrier",
+      "trackingNumber",
+      "requestedAt",
+    ],
+    "carrier label request",
+    issues,
+  );
+  if (value.contract !== NP_SHOP_CARRIER_LABEL_REQUEST_CONTRACT) {
+    issues.push(
+      `carrier label request.contract must equal "${NP_SHOP_CARRIER_LABEL_REQUEST_CONTRACT}".`,
+    );
+  }
+  for (const key of ["shipmentId", "orderId"] as const) {
+    if (typeof value[key] !== "string" || !canonicalUuidPattern.test(value[key])) {
+      issues.push(`carrier label request.${key} is invalid.`);
+    }
+  }
+  if (
+    !isBoundedText(value.bookingReference, npShopCarrierLimits.referenceLength) ||
+    !opaqueReferencePattern.test(value.bookingReference)
+  ) {
+    issues.push("carrier label request.bookingReference is invalid.");
+  }
+  if (!isBoundedText(value.carrier, npShopCarrierLimits.carrierLength)) {
+    issues.push("carrier label request.carrier is invalid.");
+  }
+  if (!isBoundedText(value.trackingNumber, npShopCarrierLimits.trackingNumberLength)) {
+    issues.push("carrier label request.trackingNumber is invalid.");
+  }
+  if (!isCanonicalIso(value.requestedAt)) {
+    issues.push("carrier label request.requestedAt is invalid.");
+  }
+  return issues;
+}
+
+export function npRequireShopCarrierLabelRequest(value: unknown): NpShopCarrierLabelRequest {
+  const issues = npAnalyzeShopCarrierLabelRequest(value);
+  if (issues.length > 0) {
+    throw new NpShopCarrierContractError("Invalid Shop carrier label request", issues);
+  }
+  return value as NpShopCarrierLabelRequest;
+}
+
+export function npAnalyzeShopCarrierLabelResult(value: unknown): string[] {
+  const issues: string[] = [];
+  if (!isRecord(value)) return ["carrier label result must be a plain object."];
+  exactKeys(
+    value,
+    ["contract", "shipmentId", "orderId", "format", "content", "retrievedAt"],
+    "carrier label result",
+    issues,
+  );
+  if (value.contract !== NP_SHOP_CARRIER_LABEL_RESULT_CONTRACT) {
+    issues.push(
+      `carrier label result.contract must equal "${NP_SHOP_CARRIER_LABEL_RESULT_CONTRACT}".`,
+    );
+  }
+  for (const key of ["shipmentId", "orderId"] as const) {
+    if (typeof value[key] !== "string" || !canonicalUuidPattern.test(value[key])) {
+      issues.push(`carrier label result.${key} is invalid.`);
+    }
+  }
+  if (!(npShopCarrierLabelFormats as readonly unknown[]).includes(value.format)) {
+    issues.push("carrier label result.format is invalid.");
+  }
+  if (!(value.content instanceof Uint8Array)) {
+    issues.push("carrier label result.content must be a Uint8Array.");
+  } else if (
+    value.content.byteLength < 1 ||
+    value.content.byteLength > npShopCarrierLimits.labelBytes
+  ) {
+    issues.push(
+      `carrier label result.content must contain between 1 and ${npShopCarrierLimits.labelBytes.toString()} bytes.`,
+    );
+  }
+  if (!isCanonicalIso(value.retrievedAt)) {
+    issues.push("carrier label result.retrievedAt is invalid.");
+  }
+  return issues;
+}
+
+export function npRequireShopCarrierLabelResult(value: unknown): NpShopCarrierLabelResult {
+  const issues = npAnalyzeShopCarrierLabelResult(value);
+  if (issues.length > 0) {
+    throw new NpShopCarrierContractError("Invalid Shop carrier label result", issues);
+  }
+  return value as NpShopCarrierLabelResult;
+}
+
+export function npRequireShopCarrierLabelReadInput(value: unknown): NpShopCarrierLabelReadInput {
+  if (!isRecord(value)) {
+    throw new NpShopCarrierContractError("Invalid Shop carrier label read", [
+      "carrier label query must be a plain object.",
+    ]);
+  }
+  const issues: string[] = [];
+  exactKeys(value, ["orderId", "shipmentId"], "carrier label query", issues);
+  for (const key of ["orderId", "shipmentId"] as const) {
+    if (typeof value[key] !== "string" || !canonicalUuidPattern.test(value[key])) {
+      issues.push(`carrier label query.${key} is invalid.`);
+    }
+  }
+  if (issues.length > 0) {
+    throw new NpShopCarrierContractError("Invalid Shop carrier label read", issues);
+  }
+  return value as unknown as NpShopCarrierLabelReadInput;
 }
 
 const storedKeys = [
