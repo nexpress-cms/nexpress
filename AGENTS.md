@@ -2,7 +2,15 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-03 (Plugin API routes may now opt into one exact
+**Last refreshed:** 2026-08-03 (Shop parcel-aware carrier adapters may now add
+one paired pickup schedule/cancel capability with a server-only provider-owned
+opaque origin reference, exact PII-free package summaries, stable provider
+idempotency, durable two-stage confirmations, revision-safe Admin operations,
+tracking-start closure, Doctor/scaffold guidance, cleanup, and PostgreSQL
+coverage. Label purchase, recurring/return pickup, provider calendars,
+addresses, and provider-specific protocols remain separate.)
+
+**Earlier:** 2026-08-03 (Plugin API routes may now opt into one exact
 bounded binary response contract across SDK/core validation, dispatch,
 discovery, OpenAPI, Admin downloads, Doctor-compatible scaffolds, tests, and
 live guides. Shop carrier adapters may independently retrieve an already-booked

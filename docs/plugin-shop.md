@@ -10,6 +10,7 @@ provider-neutral payment initiation and verified-event boundary, revision-safe
 fulfillment operations, optional provider-neutral carrier booking,
 revision-safe PII-free fulfillment parcel snapshots,
 transient provider-neutral shipping-label retrieval,
+provider-neutral carrier pickup scheduling and cancellation,
 verified or reconciled carrier tracking events and owner-visible delivery state,
 provider-neutral full refunds with safe inventory
 compensation, owner-scoped item return intake with audited receipt inventory,
@@ -28,9 +29,9 @@ browser return on the server, authenticate an external callback, and project
 the exact provider-neutral event that moves that order to `paid` or
 `payment-failed`. A refund-capable adapter may also cancel one entire provider
 payment. Shop owns attempts, order/refund transitions, fulfillment and return
-state, carrier booking/tracking receipts, and local compensation, but does not choose a provider protocol, remit
+state, carrier booking/pickup/tracking receipts, and local compensation, but does not choose a provider protocol, remit
 or file tax, issue tax invoices, decide exemptions, physically fulfill goods,
-buy labels/schedule pickup, implement a provider protocol, or decide jurisdiction-specific return eligibility.
+buy labels, schedule recurring or return pickup, implement a provider protocol, or decide jurisdiction-specific return eligibility.
 
 ## Default setup
 
@@ -620,6 +621,8 @@ instead pass one server-only adapter to the same `createShop()` factory:
 import {
   NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
   NP_SHOP_CARRIER_LABEL_RESULT_CONTRACT,
+  NP_SHOP_CARRIER_PICKUP_CANCEL_RESULT_CONTRACT,
+  NP_SHOP_CARRIER_PICKUP_RESULT_CONTRACT,
   NP_SHOP_TRACKING_POLL_RESULT_CONTRACT,
   createShop,
   type NpShopCarrierAdapter,
@@ -711,9 +714,43 @@ const carrier: NpShopCarrierAdapter = {
       retrievedAt: new Date().toISOString(),
     };
   },
+  async schedulePickup(request) {
+    // pickupId is the provider idempotency key. The request contains only
+    // durable references, an opaque origin token, a UTC window, and PII-free
+    // package dimensions/weights.
+    const pickup = await scheduleProviderPickup(request);
+    return {
+      contract: NP_SHOP_CARRIER_PICKUP_RESULT_CONTRACT,
+      pickupId: request.pickupId,
+      shipmentId: request.shipmentId,
+      orderId: request.orderId,
+      pickupReference: pickup.reference,
+      readyAt: request.readyAt,
+      closeAt: request.closeAt,
+      scheduledAt: pickup.scheduledAt,
+    };
+  },
+  async cancelPickup(request) {
+    // cancellationId is a separate stable provider idempotency key.
+    const cancellation = await cancelProviderPickup(request);
+    return {
+      contract: NP_SHOP_CARRIER_PICKUP_CANCEL_RESULT_CONTRACT,
+      cancellationId: request.cancellationId,
+      pickupId: request.pickupId,
+      shipmentId: request.shipmentId,
+      orderId: request.orderId,
+      cancelledAt: cancellation.cancelledAt,
+    };
+  },
 };
 
-const shop = createShop({ carrier: { adapter: carrier } });
+const shop = createShop({
+  carrier: {
+    adapter: carrier,
+    // Provider-owned server-side token. Never put an address or PII here.
+    pickupLocationReference: "warehouse-seoul-1",
+  },
+});
 ```
 
 The direct-staff action accepts only an unchanged `processing` fulfillment.
@@ -783,7 +820,7 @@ terminal manual `archived`, or v2 shipment-`locked` snapshot.
 Doctor verifies the matching declarative metric/status/table/action kinds.
 Commercial expiry removes the parcel row with the fulfillment and carrier
 state. This contract records prepared packages only: it does not calculate
-packaging, buy labels, schedule pickup, or choose a carrier protocol.
+packaging, buy labels, or choose a carrier protocol.
 
 `readShippingLabel` is another independent additive capability. When present,
 completed rows in the carrier-booking Admin table expose **Download label**.
@@ -803,7 +840,54 @@ headers only after the completed booking tuple is rechecked and successful
 delivery is audited with format and byte count. Label bytes and URLs are never stored, projected through Admin JSON,
 logged, or placed in public media. This capability reads a label that the
 existing provider booking already owns; it does not purchase/regenerate a
-label, book pickup, choose paper size, or implement a carrier protocol.
+label, choose paper size, or implement a carrier protocol.
+
+### Carrier pickup scheduling
+
+`schedulePickup` and `cancelPickup` form one paired additive capability. Shop
+rejects a partial pair and also requires `bookShipmentWithParcels` plus one
+build-time `pickupLocationReference`. That reference is a provider-owned opaque
+warehouse/account token, not an address: it is retained server-side and must
+contain no customer, staff, or location PII that NexPress would need to
+interpret. Existing carrier adapters remain valid without these methods.
+
+A completed parcel-aware booking with no verified tracking state exposes
+**Schedule pickup**. The direct-staff action accepts one canonical UTC
+`readyAt`/`closeAt` window: 15 minutes–12 hours long, live, and starting within
+14 days. Shop locks the completed booking and its already shipment-locked
+parcel snapshot, writes `np.shop-carrier-pickup-storage.v1` with a stable
+pickup UUID, then calls the provider outside the transaction. The exact
+`np.shop-carrier-pickup-request.v1` includes booking/carrier/tracking
+references, the opaque origin token, parcel revision, and at most 20 package
+summaries with id, integer millimetre dimensions, and gram weight. It excludes
+allocations, products, owners, customer data, and shipping addresses.
+
+The provider must treat `pickupId` as its idempotency key and return an exact
+matching window and fresh confirmation in `np.shop-carrier-pickup-result.v1`.
+Shop persists `provider-confirmed` before the final local `scheduled` state.
+Retries preserve the same UUID and package snapshot; a confirmed retry performs
+only local completion. Retryable provider ambiguity stays `pending`, while
+malformed/contradictory results, definitive closed rejection, or a post-provider
+local conflict become `manual-review` with a closed PII-free error code.
+
+Cancellation uses a separately persisted stable `cancellationId` and exact
+`np.shop-carrier-pickup-cancel-request.v1` / result pair. It moves through
+`cancel-pending` and `cancel-confirmed` before `cancelled`, so provider success
+survives a failed local completion without a second external cancellation.
+Scheduling and cancellation both fail closed once any verified tracking state
+exists; Shop does not claim that an in-transit parcel remains at the pickup
+origin. Cancellation after carrier movement is provider/customer-service
+policy outside this contract.
+
+The baseline PII-free pickup metric, health widget, newest-50 table, and Doctor
+inventory stay declared after adapter removal so pending durable effects remain
+visible. With the adapter enabled, the table adds revision-safe resume and
+cancel actions. Health samples malformed rows, missing bookings/parcels,
+provider mismatch, exact parcel mismatch, reconciliation state, and manual
+review. Commercial order purge removes pickup state with its booking. This
+contract does not buy labels, create recurring pickups, schedule return
+pickups, expose provider availability calendars, store addresses, or implement
+provider-specific pickup protocols.
 
 `readTracking` is a separate additive capability from callback verification.
 When present, Shop registers a ten-minute UTC scheduled task and an audited
@@ -860,7 +944,7 @@ mismatched rows without reading private data. Polling has an independent health
 widget and newest-50 state table, including due/backoff/lease state, malformed
 or orphan samples, provider/booking mismatches, and completed bookings not yet
 polled. Doctor verifies both conditional action/schedule declarations. The
-contract does not buy labels, schedule pickup, derive package dimensions or weight,
+tracking contract does not buy labels, derive package dimensions or weight,
 calculate delivery price, or implement provider-specific, customs, jurisdiction, or
 customer-service policy.
 
@@ -1021,7 +1105,7 @@ The two collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
-The plugin declares thirteen baseline typed dashboard metric actions:
+The plugin declares fifteen baseline typed dashboard metric actions:
 
 - total product rows;
 - published low-stock products;
@@ -1034,16 +1118,18 @@ The plugin declares thirteen baseline typed dashboard metric actions:
   values.
 - active PII-free inventory reservation rows.
 - fulfillment rows split across awaiting, processing, and shipped states.
+- PII-free fulfillment parcel snapshots and their shipment-lock state.
 - durable carrier shipment attempts and completed bookings, including when
   the adapter is currently disabled.
+- durable PII-free carrier pickup scheduling/cancellation attempts, including
+  when the adapter is currently disabled.
 - verified PII-free tracking-event receipts and current shipment states.
-- PII-free carrier polling state, bounded retry/lease health, and scan cursor.
 - verified PII-free payment-event receipts.
 - durable full-refund attempts and compensation outcomes.
 - item-level physical returns split across requested, approved, rejected,
   received, and owner-cancelled states.
 
-A complete initiation adapter adds a fourteenth metric for PII-free payment
+A complete initiation adapter adds a sixteenth metric for PII-free payment
 attempts, a bounded recent-attempt table, and payment-attempt health. Attempt
 diagnostics expose provider, status, order id, exact amount, and timestamps;
 they withhold owner segments, private order data, and provider handoff values.
@@ -1053,6 +1139,10 @@ provider-mismatched, fulfillment-state-mismatched, pending,
 provider-confirmed, completed, and manual-review rows without reading a
 destination. Pending and provider-confirmed table rows reuse the same audited
 direct-staff action; a confirmed row performs local completion only.
+Carrier pickup independently has a metric, health status, newest-50 table, and
+Doctor inventory even when scheduling is disabled. Pending and confirmed rows
+remain visible for reconciliation; configured adapters add schedule, resume,
+and cancel actions without exposing the origin token or parcel allocations.
 Carrier tracking has its own metric, health status, and newest-50 receipt table
 even when the callback capability is disabled. It reports current delivered
 and exception counts plus bounded malformed, orphaned, provider, and shipment
@@ -1167,7 +1257,11 @@ const shop = createShop({
   defaultSkinId: "storefront-full",
   payment: { adapter }, // optional; omitted means the webhook route does not exist
   shipping: { adapter: shippingAdapter }, // optional; omitted means zero shipping
-  carrier: { adapter: carrierAdapter }, // optional capabilities include label retrieval
+  carrier: {
+    adapter: carrierAdapter,
+    // Required only with paired schedulePickup/cancelPickup methods.
+    pickupLocationReference: "warehouse-seoul-1",
+  },
 });
 
 export default defineConfig({
@@ -1195,7 +1289,7 @@ Future transaction work should remain separable from this foundation:
 1. additional provider packages for Stripe or KG Inicis;
 2. authorization/capture, settlement, provider-initiated reversal, and partial
    refund contracts;
-3. carrier label purchase/regeneration, pickup, provider-specific tracking packages,
+3. carrier label purchase/regeneration, recurring/return pickup, provider-specific tracking packages,
    exchanges, and customer-service policy;
 4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and
    shipping-policy integrations.

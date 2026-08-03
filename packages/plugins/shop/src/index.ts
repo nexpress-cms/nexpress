@@ -34,6 +34,7 @@ import {
   type NpShopCarrierAdapter,
   type NpShopCarrierLabelAdapter,
   type NpShopCarrierParcelAdapter,
+  type NpShopCarrierPickupAdapter,
   type NpShopCarrierTrackingAdapter,
   type NpShopCarrierTrackingPollAdapter,
 } from "./carrier-contract.js";
@@ -63,6 +64,19 @@ import {
   npShipShopFulfillment,
   npSaveShopFulfillmentParcels,
 } from "./order-service.js";
+import {
+  npCancelShopCarrierPickup,
+  npCountShopCarrierPickups,
+  npListRecentShopCarrierPickups,
+  npResumeShopCarrierPickup,
+  npScheduleShopCarrierPickup,
+} from "./pickup-service.js";
+import {
+  npRequireShopCarrierPickupCancelInput,
+  npRequireShopCarrierPickupLocationReference,
+  npRequireShopCarrierPickupResumeInput,
+  npRequireShopCarrierPickupScheduleInput,
+} from "./pickup-contract.js";
 import {
   npRequireShopFulfillmentPrivateReadInput,
   npRequireShopFulfillmentProcessInput,
@@ -138,9 +152,11 @@ export interface NpShopOptions {
   tax?: {
     adapter: NpShopTaxAdapter;
   };
-  /** Optional server-only carrier booking and tracking provider. */
+  /** Optional server-only carrier booking, pickup, label, and tracking provider. */
   carrier?: {
     adapter: NpShopCarrierAdapter;
+    /** Provider-owned server-side origin token; required with pickup methods. */
+    pickupLocationReference?: string;
   };
 }
 
@@ -272,6 +288,8 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   let carrierAdapter: NpShopCarrierAdapter | null = null;
   let carrierLabelAdapter: NpShopCarrierLabelAdapter | null = null;
   let carrierParcelAdapter: NpShopCarrierParcelAdapter | null = null;
+  let carrierPickupAdapter: NpShopCarrierPickupAdapter | null = null;
+  let carrierPickupLocationReference: string | null = null;
   let carrierTrackingAdapter: NpShopCarrierTrackingAdapter | null = null;
   let carrierTrackingPollAdapter: NpShopCarrierTrackingPollAdapter | null = null;
   if (configuredCarrierAdapter) {
@@ -283,6 +301,8 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     const hasTrackingPoll = configuredCarrierAdapter.readTracking !== undefined;
     const hasParcelBooking = configuredCarrierAdapter.bookShipmentWithParcels !== undefined;
     const hasShippingLabel = configuredCarrierAdapter.readShippingLabel !== undefined;
+    const hasPickupSchedule = configuredCarrierAdapter.schedulePickup !== undefined;
+    const hasPickupCancel = configuredCarrierAdapter.cancelPickup !== undefined;
     if (
       hasTrackingWebhook &&
       typeof configuredCarrierAdapter.verifyTrackingWebhook !== "function"
@@ -304,6 +324,28 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     }
     if (hasShippingLabel && typeof configuredCarrierAdapter.readShippingLabel !== "function") {
       throw new Error("Shop carrier adapter readShippingLabel must be a function when provided.");
+    }
+    if (hasPickupSchedule !== hasPickupCancel) {
+      throw new Error("Shop carrier pickup requires schedulePickup and cancelPickup together.");
+    }
+    if (
+      hasPickupSchedule &&
+      (!hasParcelBooking ||
+        typeof configuredCarrierAdapter.schedulePickup !== "function" ||
+        typeof configuredCarrierAdapter.cancelPickup !== "function")
+    ) {
+      throw new Error(
+        "Shop carrier pickup requires parcel-aware booking plus schedulePickup and cancelPickup functions.",
+      );
+    }
+    if (hasPickupSchedule) {
+      carrierPickupLocationReference = npRequireShopCarrierPickupLocationReference(
+        options.carrier?.pickupLocationReference,
+      );
+    } else if (options.carrier?.pickupLocationReference !== undefined) {
+      throw new Error(
+        "Shop carrier pickupLocationReference requires schedulePickup and cancelPickup methods.",
+      );
     }
     carrierAdapter = Object.freeze({
       id,
@@ -329,6 +371,12 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
               configuredCarrierAdapter.readShippingLabel.bind(configuredCarrierAdapter),
           }
         : {}),
+      ...(configuredCarrierAdapter.schedulePickup && configuredCarrierAdapter.cancelPickup
+        ? {
+            schedulePickup: configuredCarrierAdapter.schedulePickup.bind(configuredCarrierAdapter),
+            cancelPickup: configuredCarrierAdapter.cancelPickup.bind(configuredCarrierAdapter),
+          }
+        : {}),
     });
     if (carrierAdapter.verifyTrackingWebhook) {
       carrierTrackingAdapter = carrierAdapter as NpShopCarrierTrackingAdapter;
@@ -341,6 +389,9 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     }
     if (carrierAdapter.readShippingLabel) {
       carrierLabelAdapter = carrierAdapter as NpShopCarrierLabelAdapter;
+    }
+    if (carrierAdapter.schedulePickup && carrierAdapter.cancelPickup) {
+      carrierPickupAdapter = carrierAdapter as NpShopCarrierPickupAdapter;
     }
   }
   return {
@@ -356,6 +407,8 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     carrierAdapter,
     carrierLabelAdapter,
     carrierParcelAdapter,
+    carrierPickupAdapter,
+    carrierPickupLocationReference,
     carrierTrackingAdapter,
     carrierTrackingPollAdapter,
   };
@@ -790,7 +843,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, tracking, and return operations, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, tracking, and return operations, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -832,6 +885,10 @@ export function createShop(options: NpShopOptions = {}) {
           "widget:shop-carrier-booking-health",
           "table:shop-carrier-bookings",
           ...(carrierLabelApiHandler ? ["action:shop-carrier-label-download"] : []),
+          "dashboard:shop-carrier-pickups",
+          "widget:shop-carrier-pickup-health",
+          "table:shop-carrier-pickups",
+          ...(runtime.carrierPickupAdapter ? ["action:shop-carrier-pickup"] : []),
           "dashboard:shop-tracking-events",
           "widget:shop-tracking-event-health",
           "table:shop-tracking-events",
@@ -874,7 +931,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, verified or reconciled tracking, and physical return intake. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, label purchase, pickup, and provider-specific carrier protocols remain external.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled tracking, and physical return intake. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, label purchase, recurring or return pickup, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -1013,6 +1070,14 @@ export function createShop(options: NpShopOptions = {}) {
           priority: 30,
         },
         {
+          id: "shop-carrier-pickups-total",
+          label: "Carrier pickups",
+          kind: "metric",
+          actionId: "countCarrierPickups",
+          description: "PII-free durable pickup scheduling and cancellation attempts.",
+          priority: 37,
+        },
+        {
           id: "shop-tracking-events-total",
           label: "Tracking events",
           kind: "metric",
@@ -1107,6 +1172,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Carrier booking contract",
           kind: "status",
           actionId: "carrierBookingHealth",
+        },
+        {
+          id: "shop-carrier-pickup-health",
+          label: "Carrier pickup contract",
+          kind: "status",
+          actionId: "carrierPickupHealth",
         },
         {
           id: "shop-tracking-event-health",
@@ -1414,8 +1485,83 @@ export function createShop(options: NpShopOptions = {}) {
                   },
                 ]
               : []),
+            ...(runtime.carrierPickupAdapter
+              ? [
+                  {
+                    id: "schedule-carrier-pickup",
+                    label: "Schedule pickup",
+                    actionId: "scheduleCarrierPickup",
+                    rowFields: ["id", "shipmentId", "pickupRevision"],
+                    visibleWhen: { field: "pickupAction", oneOf: ["schedule"] },
+                    fields: [
+                      {
+                        name: "readyAt",
+                        label: "Ready at (UTC ISO)",
+                        type: "text" as const,
+                        required: true,
+                        placeholder: "YYYY-MM-DDTHH:mm:ss.sssZ",
+                      },
+                      {
+                        name: "closeAt",
+                        label: "Close at (UTC ISO)",
+                        type: "text" as const,
+                        required: true,
+                        placeholder: "YYYY-MM-DDTHH:mm:ss.sssZ",
+                      },
+                    ],
+                    confirm:
+                      "Schedule carrier pickup for the exact shipment parcel snapshot in this UTC window?",
+                  },
+                ]
+              : []),
           ],
           emptyMessage: "No carrier shipment booking exists for this site.",
+        },
+        {
+          id: "shop-carrier-pickups",
+          label: "Carrier pickup attempts (PII withheld)",
+          columns: [
+            { name: "id", label: "Order" },
+            { name: "pickupId", label: "Pickup" },
+            { name: "shipmentId", label: "Shipment" },
+            { name: "provider", label: "Provider" },
+            { name: "status", label: "Status" },
+            { name: "window", label: "UTC window" },
+            { name: "packages", label: "Packages" },
+            { name: "weightGrams", label: "Weight (g)" },
+            { name: "providerError", label: "Closed error" },
+            { name: "updatedAt", label: "Updated" },
+          ],
+          rowsActionId: "recentCarrierPickups",
+          rowActions: runtime.carrierPickupAdapter
+            ? [
+                {
+                  id: "resume-carrier-pickup",
+                  label: "Resume pickup",
+                  actionId: "resumeCarrierPickup",
+                  rowFields: ["id", "pickupId", "pickupRevision"],
+                  visibleWhen: {
+                    field: "status",
+                    oneOf: ["pending", "provider-confirmed"],
+                  },
+                  confirm:
+                    "Resume this pickup? Provider-confirmed rows perform only local completion.",
+                },
+                {
+                  id: "cancel-carrier-pickup",
+                  label: "Cancel pickup",
+                  actionId: "cancelCarrierPickup",
+                  rowFields: ["id", "pickupId", "pickupRevision"],
+                  visibleWhen: {
+                    field: "status",
+                    oneOf: ["scheduled", "cancel-pending", "cancel-confirmed"],
+                  },
+                  confirm:
+                    "Cancel this pickup? Cancellation is blocked after verified tracking begins.",
+                },
+              ]
+            : [],
+          emptyMessage: "No carrier pickup attempt exists for this site.",
         },
         {
           id: "shop-tracking-events",
@@ -2380,6 +2526,167 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      countCarrierPickups: {
+        kind: "metric" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopCarrierPickups(runtime.carrierPickupAdapter?.id);
+            return {
+              ok: true as const,
+              data: {
+                value: counts.total,
+                delta: `${counts.scheduled.toString()} scheduled, ${counts.cancelled.toString()} cancelled, ${(counts.pending + counts.providerConfirmed + counts.cancelling).toString()} pending reconciliation`,
+              },
+            };
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      carrierPickupHealth: {
+        kind: "status" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopCarrierPickups(runtime.carrierPickupAdapter?.id);
+            if (
+              counts.invalidSample > 0 ||
+              counts.orphanSample > 0 ||
+              counts.bookingMismatchSample > 0 ||
+              counts.parcelMismatchSample > 0 ||
+              counts.providerMismatchSample > 0
+            ) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed, ${counts.orphanSample.toString()} orphan, ${counts.bookingMismatchSample.toString()} booking-mismatched, ${counts.parcelMismatchSample.toString()} parcel-mismatched, and ${counts.providerMismatchSample.toString()} provider-mismatched pickup row(s) in bounded samples.`,
+              );
+            }
+            const reconciling = counts.pending + counts.providerConfirmed + counts.cancelling;
+            if (!runtime.carrierPickupAdapter && reconciling > 0) {
+              return npAdminStatus(
+                "error",
+                `${reconciling.toString()} pickup row(s) require their original carrier pickup adapter.`,
+              );
+            }
+            if (counts.manualReview > 0 || reconciling > 0) {
+              return npAdminStatus(
+                "warn",
+                `${reconciling.toString()} pickup row(s) await reconciliation and ${counts.manualReview.toString()} require manual review.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.scheduled.toString()} scheduled and ${counts.cancelled.toString()} cancelled pickup(s); ${runtime.carrierPickupAdapter ? `provider "${runtime.carrierPickupAdapter.id}" is enabled with a server-only location reference` : "pickup scheduling is disabled"}.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Carrier pickup health check failed.",
+            );
+          }
+        },
+      },
+      recentCarrierPickups: {
+        kind: "table" as const,
+        handler: async () => {
+          try {
+            const result = await npListRecentShopCarrierPickups();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      ...(runtime.carrierPickupAdapter
+        ? {
+            scheduleCarrierPickup: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Carrier pickup scheduling requires a direct staff action.",
+                    };
+                  }
+                  const result = await npScheduleShopCarrierPickup(
+                    runtime,
+                    npRequireShopCarrierPickupScheduleInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Carrier pickup ${result.duplicate ? "already reconciled" : "scheduled"} at revision ${result.pickup.revision.toString()}.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+            resumeCarrierPickup: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Carrier pickup reconciliation requires a direct staff action.",
+                    };
+                  }
+                  const result = await npResumeShopCarrierPickup(
+                    runtime,
+                    npRequireShopCarrierPickupResumeInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Carrier pickup ${result.duplicate ? "already reconciled" : "scheduled"} at revision ${result.pickup.revision.toString()}.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+            cancelCarrierPickup: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Carrier pickup cancellation requires a direct staff action.",
+                    };
+                  }
+                  const result = await npCancelShopCarrierPickup(
+                    runtime,
+                    npRequireShopCarrierPickupCancelInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Carrier pickup ${result.duplicate ? "was already cancelled" : "cancelled"} at revision ${result.pickup.revision.toString()}.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+          }
+        : {}),
       countTrackingEvents: {
         kind: "metric" as const,
         handler: async () => {
@@ -3362,6 +3669,7 @@ export type {
   NpShopCarrierLabelRequest,
   NpShopCarrierLabelResult,
   NpShopCarrierParcelAdapter,
+  NpShopCarrierPickupAdapter,
   NpShopCarrierTrackingAdapter,
   NpShopCarrierTrackingPollAdapter,
   NpShopCarrierBookingActionInput,
@@ -3372,6 +3680,42 @@ export type {
   NpShopCarrierBookingStatus,
   NpShopStoredCarrierBooking,
 } from "./carrier-contract.js";
+export {
+  NP_SHOP_CARRIER_PICKUP_CANCEL_REQUEST_CONTRACT,
+  NP_SHOP_CARRIER_PICKUP_CANCEL_RESULT_CONTRACT,
+  NP_SHOP_CARRIER_PICKUP_REQUEST_CONTRACT,
+  NP_SHOP_CARRIER_PICKUP_RESULT_CONTRACT,
+  NP_SHOP_CARRIER_PICKUP_STORAGE_CONTRACT,
+  NpShopCarrierPickupConflictError,
+  NpShopCarrierPickupContractError,
+  npAnalyzeShopCarrierPickupCancelRequest,
+  npAnalyzeShopCarrierPickupCancelResult,
+  npAnalyzeShopCarrierPickupRequest,
+  npAnalyzeShopCarrierPickupResult,
+  npAnalyzeStoredShopCarrierPickup,
+  npRequireShopCarrierPickupCancelInput,
+  npRequireShopCarrierPickupCancelRequest,
+  npRequireShopCarrierPickupCancelResult,
+  npRequireShopCarrierPickupLocationReference,
+  npRequireShopCarrierPickupRequest,
+  npRequireShopCarrierPickupResult,
+  npRequireShopCarrierPickupResumeInput,
+  npRequireShopCarrierPickupScheduleInput,
+  npRequireStoredShopCarrierPickup,
+  npShopCarrierPickupLimits,
+  npShopCarrierPickupStatuses,
+} from "./pickup-contract.js";
+export type {
+  NpShopCarrierPickupCancelRequest,
+  NpShopCarrierPickupCancelResult,
+  NpShopCarrierPickupExistingActionInput,
+  NpShopCarrierPickupPackage,
+  NpShopCarrierPickupRequest,
+  NpShopCarrierPickupResult,
+  NpShopCarrierPickupScheduleInput,
+  NpShopCarrierPickupStatus,
+  NpShopStoredCarrierPickup,
+} from "./pickup-contract.js";
 export {
   NP_SHOP_TRACKING_CONTRACT,
   NP_SHOP_TRACKING_EVENT_CONTRACT,

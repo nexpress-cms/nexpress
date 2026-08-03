@@ -60,6 +60,11 @@ It provides:
 - optional transient shipping-label retrieval for completed carrier bookings,
   with a PII-free provider request, direct-staff audit, bounded PDF/PNG/ZPL
   bytes, authenticated Admin download, and no durable label storage;
+- optional provider-neutral pickup scheduling for parcel-aware completed
+  bookings, with a server-only opaque origin reference, exact PII-free package
+  summaries, stable schedule/cancellation idempotency, provider calls outside
+  transactions, revision-safe reconciliation, Admin/Doctor diagnostics, and a
+  tracking-start cancellation boundary;
 - provider-neutral, staff-audited full refunds with one durable idempotency id,
   cancelled unshipped fulfillment, all-or-none tracked-inventory restoration,
   and explicit manual-compensation diagnostics;
@@ -70,7 +75,8 @@ It provides:
 - featured-product and category-grid blocks.
 
 Provider-specific browser/server protocols, signature algorithms, credentials
-and rotation, partial refunds, reversals, exchanges, carrier label purchase/pickup,
+and rotation, partial refunds, reversals, exchanges, carrier label purchase,
+recurring or return pickup,
 provider-specific tracking protocols,
 tax remittance/filing, invoices, exemptions, customs, and shipping policy
 remain outside this package. A server-only `NpShopShippingAdapter` may supply
@@ -80,7 +86,10 @@ shipment with its stable shipment UUID as the provider idempotency key and may
 consume a locked parcel snapshot through additive `bookShipmentWithParcels`,
 authenticate tracking callbacks or reconcile tracking through bounded
 server-only reads, and may retrieve an already-booked label through
-`readShippingLabel`. Shop owns revision-safe selection and both PII-free
+`readShippingLabel`. A parcel-aware adapter may additionally implement both
+`schedulePickup` and `cancelPickup`; `createShop()` then requires one opaque
+`pickupLocationReference` that only the provider can resolve. Shop owns
+revision-safe selection and both PII-free
 commercial snapshots.
 `@nexpress/shop-payment-toss` is the bundled Toss
 Payments v2 initiation and full-refund adapter. Customer/shipping PII exists only in the short-lived
@@ -90,5 +99,5 @@ still does not imply that a visitor paid for a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
 for the exact price, SKU, inventory, cart, checkout-intent, private-draft,
-shipping-quote, tax-quote, pending-order, payment-attempt, fulfillment, parcel, carrier, tracking/polling, refund, return,
+shipping-quote, tax-quote, pending-order, payment-attempt, fulfillment, parcel, carrier, pickup, tracking/polling, refund, return,
 skin, block, and theme-integration contracts.

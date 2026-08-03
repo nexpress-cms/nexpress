@@ -129,6 +129,7 @@ import {
 } from "./return-contract.js";
 import { npShopTrackingPollStorageKey } from "./tracking-contract.js";
 import { npReadShopTrackingForOrder } from "./tracking-service.js";
+import { npRequireStoredShopCarrierPickup } from "./pickup-contract.js";
 
 interface NpShopOrderMaintenanceMarker {
   contract: "np.shop-order-maintenance.v1";
@@ -251,6 +252,8 @@ export interface NpShopAdminCarrierBookingRow {
   carrier: string;
   trackingNumber: string;
   providerError: string;
+  pickupAction: string;
+  pickupRevision: number;
   updatedAt: string;
 }
 
@@ -1500,7 +1503,7 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)})`,
+        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)})`,
       ),
     );
   await tx
@@ -4017,9 +4020,47 @@ export async function npListRecentShopCarrierBookings(): Promise<{
     .select({ total: sql<number>`count(*)::int` })
     .from(npPluginStorage)
     .where(where);
+  const pickupRows = rows.length
+    ? await db
+        .select({
+          key: npPluginStorage.key,
+          value: npPluginStorage.value,
+          expiresAt: npPluginStorage.expiresAt,
+        })
+        .from(npPluginStorage)
+        .where(
+          and(
+            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+            eq(npPluginStorage.siteId, siteId),
+            inArray(
+              npPluginStorage.key,
+              rows.map((row) => {
+                const booking = requireStoredCarrierBookingAtKey(row.value, row.expiresAt, row.key);
+                return `carrier-pickup:${booking.orderId}`;
+              }),
+            ),
+          ),
+        )
+    : [];
+  const pickups = new Map(
+    pickupRows.map((row) => {
+      const pickup = npRequireStoredShopCarrierPickup(row.value);
+      if (
+        row.key !== `carrier-pickup:${pickup.orderId}` ||
+        row.expiresAt === null ||
+        row.expiresAt.toISOString() !== pickup.purgeAt
+      ) {
+        throw new NpShopCarrierContractError("Invalid carrier pickup storage metadata", [
+          "pickup key and expiry must match their canonical values.",
+        ]);
+      }
+      return [pickup.orderId, pickup] as const;
+    }),
+  );
   return {
     rows: rows.map((row) => {
       const booking = requireStoredCarrierBookingAtKey(row.value, row.expiresAt, row.key);
+      const pickup = pickups.get(booking.orderId);
       return {
         id: booking.orderId,
         shipmentId: booking.id,
@@ -4029,6 +4070,8 @@ export async function npListRecentShopCarrierBookings(): Promise<{
         carrier: booking.carrier ?? "—",
         trackingNumber: booking.trackingNumber ?? "—",
         providerError: booking.providerErrorCode ?? "—",
+        pickupAction: booking.status === "completed" && !pickup ? "schedule" : "—",
+        pickupRevision: pickup?.revision ?? 0,
         updatedAt: booking.updatedAt,
       };
     }),
