@@ -93,7 +93,7 @@
     "@types/pg": "^8.15.5",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.0.0",
-    "concurrently": "^10.0.3",
+    "concurrently": "^10.0.4",
     "dotenv": "^17.2.4",
     "drizzle-kit": "^0.31.10",
     "postcss": "^8.5.22",
