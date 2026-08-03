@@ -10,6 +10,12 @@ import {
   npAnalyzeShopFulfillmentParcels,
   type NpShopFulfillmentParcel,
 } from "./parcel-contract.js";
+import type {
+  NpShopCarrierPickupCancelRequest,
+  NpShopCarrierPickupCancelResult,
+  NpShopCarrierPickupRequest,
+  NpShopCarrierPickupResult,
+} from "./pickup-contract.js";
 
 export const NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT =
   "np.shop-carrier-booking-request.v1" as const;
@@ -150,6 +156,18 @@ export interface NpShopCarrierAdapter {
   readShippingLabel?(
     input: NpShopCarrierLabelRequest,
   ): NpShopCarrierLabelResult | Promise<NpShopCarrierLabelResult>;
+  /**
+   * Schedule one pickup from a locked PII-free parcel snapshot and a
+   * provider-owned location reference. Implementations must use pickupId as
+   * the provider idempotency key.
+   */
+  schedulePickup?(
+    input: NpShopCarrierPickupRequest,
+  ): NpShopCarrierPickupResult | Promise<NpShopCarrierPickupResult>;
+  /** Cancel one scheduled pickup with the stable cancellation idempotency key. */
+  cancelPickup?(
+    input: NpShopCarrierPickupCancelRequest,
+  ): NpShopCarrierPickupCancelResult | Promise<NpShopCarrierPickupCancelResult>;
 }
 
 export type NpShopCarrierTrackingAdapter = NpShopCarrierAdapter &
@@ -163,6 +181,9 @@ export type NpShopCarrierParcelAdapter = NpShopCarrierAdapter &
 
 export type NpShopCarrierLabelAdapter = NpShopCarrierAdapter &
   Required<Pick<NpShopCarrierAdapter, "readShippingLabel">>;
+
+export type NpShopCarrierPickupAdapter = NpShopCarrierAdapter &
+  Required<Pick<NpShopCarrierAdapter, "schedulePickup" | "cancelPickup">>;
 
 export interface NpShopStoredCarrierBooking {
   contract: typeof NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT;

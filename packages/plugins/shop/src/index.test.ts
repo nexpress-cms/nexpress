@@ -87,6 +87,9 @@ describe("shop factory", () => {
       { id: "countCarrierBookings", kind: "metric" },
       { id: "carrierBookingHealth", kind: "status" },
       { id: "recentCarrierBookings", kind: "table" },
+      { id: "countCarrierPickups", kind: "metric" },
+      { id: "carrierPickupHealth", kind: "status" },
+      { id: "recentCarrierPickups", kind: "table" },
       { id: "countTrackingEvents", kind: "metric" },
       { id: "trackingEventHealth", kind: "status" },
       { id: "recentTrackingEvents", kind: "table" },
@@ -323,6 +326,84 @@ describe("shop factory", () => {
         },
       }).runtime.carrierParcelAdapter,
     ).toBeNull();
+  });
+
+  it("adds pickup scheduling only as one complete parcel-aware carrier capability", () => {
+    const shop = createShop({
+      carrier: {
+        pickupLocationReference: "warehouse-seoul-1",
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          bookShipmentWithParcels: () => Promise.reject(new Error("not called")),
+          schedulePickup: () => Promise.reject(new Error("not called")),
+          cancelPickup: () => Promise.reject(new Error("not called")),
+        },
+      },
+    });
+    expect(shop.runtime.carrierPickupAdapter?.id).toBe("test-carrier");
+    expect(shop.runtime.carrierPickupLocationReference).toBe("warehouse-seoul-1");
+    expect(shop.plugin.actions?.scheduleCarrierPickup?.kind).toBe("action");
+    expect(shop.plugin.actions?.resumeCarrierPickup?.kind).toBe("action");
+    expect(shop.plugin.actions?.cancelCarrierPickup?.kind).toBe("action");
+    expect(shop.plugin.manifest.provides.adminExtensions).toEqual(
+      expect.arrayContaining([
+        "dashboard:shop-carrier-pickups",
+        "widget:shop-carrier-pickup-health",
+        "table:shop-carrier-pickups",
+        "action:shop-carrier-pickup",
+      ]),
+    );
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-carrier-bookings")
+        ?.rowActions?.flatMap((action) => (action.type === "download" ? [] : [action.actionId])),
+    ).toContain("scheduleCarrierPickup");
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-carrier-pickups")
+        ?.rowActions?.map((action) => (action.type === "download" ? action.id : action.actionId)),
+    ).toEqual(["resumeCarrierPickup", "cancelCarrierPickup"]);
+
+    expect(() =>
+      createShop({
+        carrier: {
+          pickupLocationReference: "warehouse-seoul-1",
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+            bookShipmentWithParcels: () => Promise.reject(new Error("not called")),
+            schedulePickup: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/schedulePickup and cancelPickup together/u);
+    expect(() =>
+      createShop({
+        carrier: {
+          pickupLocationReference: "warehouse-seoul-1",
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+            schedulePickup: () => Promise.reject(new Error("not called")),
+            cancelPickup: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/parcel-aware booking/u);
+    expect(() =>
+      createShop({
+        carrier: {
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+            bookShipmentWithParcels: () => Promise.reject(new Error("not called")),
+            schedulePickup: () => Promise.reject(new Error("not called")),
+            cancelPickup: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/pickup location/u);
   });
 
   it("adds bounded tracking reconciliation only for the optional polling capability", () => {
