@@ -4223,6 +4223,9 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     const expiredOrderId = "dd3e4567-e89b-42d3-a456-426614174000";
     const expiredLogisticsId = "ed3e4567-e89b-42d3-a456-426614174000";
     const expiredReturnId = "fd3e4567-e89b-42d3-a456-426614174000";
+    const malformedOrderId = "1e3e4567-e89b-42d3-a456-426614174000";
+    const malformedLogisticsId = "2e3e4567-e89b-42d3-a456-426614174000";
+    const malformedReturnId = "3e3e4567-e89b-42d3-a456-426614174000";
     const expiredAt = new Date(Date.now() - 60_000);
     const requestedAt = new Date(expiredAt.getTime() - 60_000).toISOString();
     const purgeAt = new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString();
@@ -4277,6 +4280,31 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         expiresAt: expiredAt,
         updatedAt: new Date(requestedAt),
       },
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `return-logistics:${malformedOrderId}`,
+        value: { contract: "malformed-commercial-row" },
+        expiresAt: new Date(purgeAt),
+        updatedAt: new Date(requestedAt),
+      },
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `return-logistics-private:${malformedOrderId}`,
+        value: {
+          contract: "np.shop-return-logistics-private.v1",
+          logisticsId: malformedLogisticsId,
+          returnId: malformedReturnId,
+          orderId: malformedOrderId,
+          ownerSegment: `guest:${"1".repeat(64)}`,
+          origin,
+          createdAt: requestedAt,
+          expiresAt: expiredAt.toISOString(),
+        },
+        expiresAt: expiredAt,
+        updatedAt: new Date(requestedAt),
+      },
     ]);
     await withCurrentSite("default", async () => {
       await returnShop.plugin.scheduled
@@ -4288,6 +4316,12 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         .select({ key: npPluginStorage.key })
         .from(npPluginStorage)
         .where(eq(npPluginStorage.key, `return-logistics-private:${expiredOrderId}`)),
+    ).toEqual([]);
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `return-logistics-private:${malformedOrderId}`)),
     ).toEqual([]);
     expect(
       await db
@@ -4305,6 +4339,9 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     await db
       .delete(npPluginStorage)
       .where(eq(npPluginStorage.key, `return-logistics:${expiredOrderId}`));
+    await db
+      .delete(npPluginStorage)
+      .where(eq(npPluginStorage.key, `return-logistics:${malformedOrderId}`));
     expect(
       await withCurrentSite("default", () =>
         returnShop.plugin.actions?.returnLogisticsHealth?.handler(undefined, {} as never),

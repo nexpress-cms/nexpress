@@ -1123,7 +1123,7 @@ async function projectOrder(
     ]);
   }
   const returnLogistics = returnRequest
-    ? await npReadShopReturnLogisticsForOrder(db, siteId, order.id)
+    ? await npReadShopReturnLogisticsForOrder(db, siteId, returnRequest)
     : null;
   if (
     privateData?.contract === NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT &&

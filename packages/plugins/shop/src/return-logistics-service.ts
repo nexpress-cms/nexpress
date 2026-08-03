@@ -416,7 +416,7 @@ function requireEligibility(
   }
 }
 
-function matchesApprovedReturn(
+function matchesReturnIdentity(
   order: NpShopStoredOrder | null,
   returnRequest: NpShopStoredReturn | null,
   logistics: NpShopStoredReturnLogistics,
@@ -430,8 +430,17 @@ function matchesApprovedReturn(
     returnRequest.id === logistics.returnId &&
     returnRequest.orderId === order.id &&
     returnRequest.ownerSegment === logistics.ownerSegment &&
-    returnRequest.purgeAt === logistics.purgeAt &&
-    returnRequest.status === "approved",
+    returnRequest.purgeAt === logistics.purgeAt,
+  );
+}
+
+function matchesApprovedReturn(
+  order: NpShopStoredOrder | null,
+  returnRequest: NpShopStoredReturn | null,
+  logistics: NpShopStoredReturnLogistics,
+): boolean {
+  return (
+    matchesReturnIdentity(order, returnRequest, logistics) && returnRequest?.status === "approved"
   );
 }
 
@@ -934,7 +943,7 @@ export async function npCancelShopReturnLogistics(
       );
     }
     if (current.status === "cancelled") return { duplicate: true as const, logistics: current };
-    if (returnRequest.status !== "approved") {
+    if (!matchesApprovedReturn(order, returnRequest, current)) {
       throw new NpShopReturnLogisticsConflictError(
         "return_logistics_return_conflict",
         "Return logistics can be cancelled only while the physical return remains approved.",
@@ -1128,7 +1137,8 @@ export async function npReadShopReturnLogisticsLabel(
     logistics.returnId !== input.returnId ||
     logistics.ownerSegment !== ownerSegment ||
     logistics.status !== "active" ||
-    logistics.providerId !== adapter.id
+    logistics.providerId !== adapter.id ||
+    !matchesReturnIdentity(order, returnRequest, logistics)
   ) {
     throw new NpShopReturnLogisticsConflictError(
       "return_logistics_not_found",
@@ -1172,9 +1182,19 @@ export async function npReadShopReturnLogisticsLabel(
 export async function npReadShopReturnLogisticsForOrder(
   db: ReturnType<typeof getDb> | NpShopTransaction,
   siteId: string,
-  orderId: string,
+  returnRequest: NpShopStoredReturn,
 ): Promise<NpShopReturnLogistics | null> {
-  const logistics = await readLogistics(db, siteId, orderId);
+  const logistics = await readLogistics(db, siteId, returnRequest.orderId);
+  if (
+    logistics &&
+    (logistics.returnId !== returnRequest.id ||
+      logistics.ownerSegment !== returnRequest.ownerSegment ||
+      logistics.purgeAt !== returnRequest.purgeAt)
+  ) {
+    throw new NpShopReturnLogisticsContractError("Invalid return logistics relationship", [
+      "return logistics must match its exact physical return identity and retention.",
+    ]);
+  }
   return logistics ? npProjectShopReturnLogistics(logistics) : null;
 }
 
@@ -1418,15 +1438,20 @@ export async function npCleanupExpiredShopReturnLogisticsPrivate(
         // must not extend their retention.
       }
       if (orderId && logisticsId) {
-        const logistics = await readLogistics(tx, siteId, orderId, true);
-        if (logistics?.id === logisticsId && logistics.status === "pending") {
-          await persistLogistics(tx, siteId, {
-            ...logistics,
-            status: "manual-review",
-            revision: logistics.revision + 1,
-            providerErrorCode: "private-expired",
-            updatedAt: nextTimestamp(logistics.updatedAt, row.expiresAt?.toISOString() ?? null),
-          });
+        try {
+          const logistics = await readLogistics(tx, siteId, orderId, true);
+          if (logistics?.id === logisticsId && logistics.status === "pending") {
+            await persistLogistics(tx, siteId, {
+              ...logistics,
+              status: "manual-review",
+              revision: logistics.revision + 1,
+              providerErrorCode: "private-expired",
+              updatedAt: nextTimestamp(logistics.updatedAt, row.expiresAt?.toISOString() ?? null),
+            });
+          }
+        } catch (error) {
+          if (!(error instanceof NpShopReturnLogisticsContractError)) throw error;
+          // A malformed commercial row must not extend expired PII retention.
         }
       }
       const result = await tx
