@@ -16,6 +16,14 @@ import type {
   NpShopCarrierPickupRequest,
   NpShopCarrierPickupResult,
 } from "./pickup-contract.js";
+import type {
+  NpShopReturnLogisticsCancelRequest,
+  NpShopReturnLogisticsCancelResult,
+  NpShopReturnLogisticsLabelRequest,
+  NpShopReturnLogisticsLabelResult,
+  NpShopReturnLogisticsRequest,
+  NpShopReturnLogisticsResult,
+} from "./return-logistics-contract.js";
 
 export const NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT =
   "np.shop-carrier-booking-request.v1" as const;
@@ -168,6 +176,22 @@ export interface NpShopCarrierAdapter {
   cancelPickup?(
     input: NpShopCarrierPickupCancelRequest,
   ): NpShopCarrierPickupCancelResult | Promise<NpShopCarrierPickupCancelResult>;
+  /**
+   * Create one approved return shipment. The origin is short-lived private
+   * data and implementations must use logisticsId as the provider idempotency
+   * key without logging or returning that address.
+   */
+  createReturnShipment?(
+    input: NpShopReturnLogisticsRequest,
+  ): NpShopReturnLogisticsResult | Promise<NpShopReturnLogisticsResult>;
+  /** Cancel one return shipment with the stable cancellation idempotency key. */
+  cancelReturnShipment?(
+    input: NpShopReturnLogisticsCancelRequest,
+  ): NpShopReturnLogisticsCancelResult | Promise<NpShopReturnLogisticsCancelResult>;
+  /** Retrieve one already-created return label without persisting its bytes. */
+  readReturnLabel?(
+    input: NpShopReturnLogisticsLabelRequest,
+  ): NpShopReturnLogisticsLabelResult | Promise<NpShopReturnLogisticsLabelResult>;
 }
 
 export type NpShopCarrierTrackingAdapter = NpShopCarrierAdapter &
@@ -184,6 +208,12 @@ export type NpShopCarrierLabelAdapter = NpShopCarrierAdapter &
 
 export type NpShopCarrierPickupAdapter = NpShopCarrierAdapter &
   Required<Pick<NpShopCarrierAdapter, "schedulePickup" | "cancelPickup">>;
+
+export type NpShopCarrierReturnLogisticsAdapter = NpShopCarrierAdapter &
+  Required<Pick<NpShopCarrierAdapter, "createReturnShipment" | "cancelReturnShipment">>;
+
+export type NpShopCarrierReturnLabelAdapter = NpShopCarrierReturnLogisticsAdapter &
+  Required<Pick<NpShopCarrierAdapter, "readReturnLabel">>;
 
 export interface NpShopStoredCarrierBooking {
   contract: typeof NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT;

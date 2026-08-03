@@ -130,6 +130,7 @@ import {
 import { npShopTrackingPollStorageKey } from "./tracking-contract.js";
 import { npReadShopTrackingForOrder } from "./tracking-service.js";
 import { npRequireStoredShopCarrierPickup } from "./pickup-contract.js";
+import { npReadShopReturnLogisticsForOrder } from "./return-logistics-service.js";
 
 interface NpShopOrderMaintenanceMarker {
   contract: "np.shop-order-maintenance.v1";
@@ -1121,6 +1122,9 @@ async function projectOrder(
       "A physical return can exist only for one shipped fulfillment.",
     ]);
   }
+  const returnLogistics = returnRequest
+    ? await npReadShopReturnLogisticsForOrder(db, siteId, order.id)
+    : null;
   if (
     privateData?.contract === NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT &&
     (!fulfillment ||
@@ -1146,7 +1150,9 @@ async function projectOrder(
     ...(fulfillment ? { fulfillment: npProjectShopFulfillment(fulfillment) } : {}),
     ...(tracking ? { tracking } : {}),
     ...(refund ? { refund: npProjectShopRefund(refund) } : {}),
-    ...(returnRequest ? { returnRequest: npProjectShopReturn(returnRequest) } : {}),
+    ...(returnRequest
+      ? { returnRequest: npProjectShopReturn(returnRequest, returnLogistics) }
+      : {}),
   });
 }
 
@@ -1503,7 +1509,7 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)})`,
+        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`})`,
       ),
     );
   await tx

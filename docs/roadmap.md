@@ -374,7 +374,7 @@ real product domain, not just blog/community. Ship as a plugin package
   provider confirmation before local completion, revision-safe resume,
   tracking-start closure, direct-staff audit, commercial cleanup, Admin/Doctor,
   scaffold guidance, and PostgreSQL coverage share one durable contract.
-  Label purchase, recurring/return pickup, provider availability calendars,
+  Label purchase, recurring pickup, provider availability calendars,
   addresses, and provider-specific protocols remain separate.
 - **Provider-neutral carrier tracking events (shipped)** — carrier adapters may
   add one exact raw-body callback verifier that projects bounded PII-free
@@ -406,8 +406,17 @@ real product domain, not just blog/community. Ship as a plugin package
   own one exact item-level return with owner request/cancellation, audited
   revision-safe staff approval/rejection/receipt, closed PII-free reasons,
   owner-safe projection, and all-or-none tracked inventory restoration.
-  Exchanges, carrier labels/return pickup, jurisdiction policy, and payment refunds
-  remain separate.
+  Exchanges, jurisdiction policy, and payment refunds remain separate.
+- **Provider-neutral approved-return logistics (shipped)** — carrier adapters
+  may add one paired return-shipment create/cancel capability over an approved
+  owner-scoped item return and completed outbound booking. Drop-off or bounded
+  pickup mode, one stable provider idempotency tuple, a server-only opaque
+  return destination, a maximum-24-hour private origin deleted after
+  confirmation, durable two-stage reconciliation, transient owner label bytes,
+  PII-free Admin/Doctor diagnostics, scaffold guidance, cleanup, both skins,
+  and PostgreSQL coverage share the contract. Return postage quotes, reverse
+  tracking, recurring pickup, exchanges/refunds, eligibility policy, and
+  provider protocols remain separate.
 - **Provider-neutral shipping quote and selection (shipped)** — one optional
   build-time server adapter receives the exact private draft destination and
   bounded cart snapshot outside database transactions. Exact short-lived
@@ -415,7 +424,7 @@ real product domain, not just blog/community. Ship as a plugin package
   delivery snapshot; orders, payment attempts/events, and full refunds share
   `subtotalMinor + shippingMinor + taxMinor = totalMinor`. Closed PII-free provider health
   reaches Admin while Doctor verifies its declarative diagnostic contract.
-  Carrier labels/return pickup and provider-specific tracking, customs, and jurisdiction policy
+  Return postage, reverse tracking and provider-specific tracking, customs, and jurisdiction policy
   remain separate.
 - **Provider-neutral additional-tax quote (shipped)** — one optional
   server-only adapter receives exact item/shipping totals, immutable lines,
@@ -437,7 +446,8 @@ real product domain, not just blog/community. Ship as a plugin package
 - **Tax compliance, carrier logistics, and shipping policy (future)** — shipping,
   additional-tax quote, and carrier-booking boundaries are shipped; tax remittance/filing,
   invoices, exemptions/nexus, customs/duties, free-shipping eligibility,
-  labels, recurring/return pickup, provider APIs, automatic packaging, and regional policy require
+  outbound label purchase/regeneration, recurring pickup, reverse tracking,
+  provider APIs, automatic packaging, and regional policy require
   separate contracts.
 
 Resolved foundation decision:

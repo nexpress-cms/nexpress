@@ -597,14 +597,17 @@
   }
 
   .np-shop-return-form,
-  .np-shop-return-summary {
+  .np-shop-return-summary,
+  .np-shop-return-logistics-form,
+  .np-shop-return-logistics-summary {
     display: grid;
     gap: 0.75rem;
     padding-top: 1rem;
     border-top: 1px solid var(--np-shop-line, var(--np-color-border, #deddd8));
   }
 
-  .np-shop-return-form label {
+  .np-shop-return-form label,
+  .np-shop-return-logistics-form label {
     display: grid;
     gap: 0.35rem;
     color: var(--np-shop-subtle, var(--np-color-muted-foreground, #6b6b68));
@@ -614,7 +617,9 @@
 
   .np-shop-return-form input,
   .np-shop-return-form select,
-  .np-shop-return-form textarea {
+  .np-shop-return-form textarea,
+  .np-shop-return-logistics-form input,
+  .np-shop-return-logistics-form select {
     width: 100%;
     min-width: 0;
     padding: 0.65rem 0.75rem;
@@ -631,6 +636,16 @@
   }
 
   .np-shop-return-summary[data-np-shop-return-status="received"] {
+    color: var(--np-shop-accent, var(--np-color-primary, #205c46));
+  }
+
+  .np-shop-return-logistics-form,
+  .np-shop-return-logistics-summary {
+    display: grid;
+    gap: 0.75rem;
+  }
+
+  .np-shop-return-logistics-summary[data-np-shop-return-logistics-status="active"] {
     color: var(--np-shop-accent, var(--np-color-primary, #205c46));
   }
 

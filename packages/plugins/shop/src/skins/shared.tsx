@@ -143,6 +143,21 @@ function cartClientMessages(messages: NpShopMessages): NpShopCartClientMessages 
     orderReturnInventoryManual: messages.orderReturnInventoryManual,
     orderReturnInventoryNotRequired: messages.orderReturnInventoryNotRequired,
     orderReturnFailed: messages.orderReturnFailed,
+    orderReturnLogistics: messages.orderReturnLogistics,
+    orderReturnLogisticsDropoff: messages.orderReturnLogisticsDropoff,
+    orderReturnLogisticsPickup: messages.orderReturnLogisticsPickup,
+    orderReturnLogisticsCreate: messages.orderReturnLogisticsCreate,
+    orderReturnLogisticsCreating: messages.orderReturnLogisticsCreating,
+    orderReturnLogisticsPending: messages.orderReturnLogisticsPending,
+    orderReturnLogisticsActive: messages.orderReturnLogisticsActive,
+    orderReturnLogisticsCancelled: messages.orderReturnLogisticsCancelled,
+    orderReturnLogisticsResume: messages.orderReturnLogisticsResume,
+    orderReturnLogisticsCancel: messages.orderReturnLogisticsCancel,
+    orderReturnLogisticsLabel: messages.orderReturnLogisticsLabel,
+    orderReturnLogisticsReadyAt: messages.orderReturnLogisticsReadyAt,
+    orderReturnLogisticsCloseAt: messages.orderReturnLogisticsCloseAt,
+    orderReturnLogisticsPrivacy: messages.orderReturnLogisticsPrivacy,
+    orderReturnLogisticsFailed: messages.orderReturnLogisticsFailed,
     orderExpires: messages.orderExpires,
     orderCreated: messages.orderCreated,
     orderCancel: messages.orderCancel,
@@ -580,6 +595,8 @@ export function ShopOrderSurface({ skin, ...props }: NpShopOrderSkinProps & { sk
       <ShopOrder
         apiPath={props.apiPath}
         returnApiPath={props.returnApiPath}
+        returnLogisticsApiPath={props.returnLogisticsApiPath}
+        returnLogisticsLabelPath={props.returnLogisticsLabelPath}
         basePath={props.basePath}
         orderId={props.orderId}
         paymentAction={props.paymentAction}
