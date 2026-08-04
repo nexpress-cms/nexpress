@@ -394,6 +394,9 @@ describe("getProjectFiles", () => {
     expect(env).toContain("bookShipmentWithParcels");
     expect(env).toContain("schedulePickup and cancelPickup together");
     expect(env).toContain("pickupLocationReference");
+    expect(env).toContain("createReturnShipment and cancelReturnShipment");
+    expect(env).toContain("returnLocationReference");
+    expect(env).toContain("readReturnLabel");
     expect(env).toContain("never put an address in that token");
     expect(env).toContain("revision-safe PII-free");
     expect(env).toContain("bounded PII-free scheduled reconciliation");
@@ -402,6 +405,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("one idempotent booking and atomic private-data deletion");
     expect(readme).toContain("exact PII-free mm/gram package allocation");
     expect(readme).toContain("paired pickup scheduling/cancellation");
+    expect(readme).toContain("maximum-24-hour private origin sidecar");
   });
 
   it(".env.example documents the exact storage runtime contract", () => {

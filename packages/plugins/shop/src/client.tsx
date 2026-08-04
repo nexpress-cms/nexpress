@@ -7,6 +7,10 @@ import { npRequireShopCheckoutIntent } from "./checkout-contract.js";
 import { npRequireShopOrderDraft } from "./order-draft-contract.js";
 import { npRequireShopOrder, npRequireShopOrderList } from "./order-contract.js";
 import { npRequireShopReturn, type NpShopReturn } from "./return-contract.js";
+import {
+  npRequireShopReturnLogistics,
+  type NpShopReturnLogistics,
+} from "./return-logistics-contract.js";
 import type {
   NpShopCartClientMessages,
   NpShopCartQuote,
@@ -50,6 +54,12 @@ interface OrderListResponse {
 
 interface ReturnResponse {
   returnRequest: NpShopReturn;
+  csrfToken: string | null;
+}
+
+interface ReturnLogisticsResponse {
+  logistics: NpShopReturnLogistics;
+  duplicate: boolean;
   csrfToken: string | null;
 }
 
@@ -227,6 +237,35 @@ async function requestReturn(
     );
   }
   return { ...payload, returnRequest: npRequireShopReturn(payload.returnRequest) };
+}
+
+async function requestReturnLogistics(
+  apiPath: string,
+  method: "POST" | "PATCH" | "DELETE",
+  csrfToken: string | null,
+  body: unknown,
+): Promise<ReturnLogisticsResponse> {
+  const response = await fetch(apiPath, {
+    method,
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = (await response.json()) as
+    ReturnLogisticsResponse | { message?: string; error?: string };
+  if (!response.ok || !("logistics" in payload)) {
+    const failure = payload as { message?: string; error?: string };
+    throw new ShopRequestError(
+      failure.error ?? "return_logistics_failed",
+      failure.message ?? failure.error ?? "Return shipping request failed.",
+    );
+  }
+  return { ...payload, logistics: npRequireShopReturnLogistics(payload.logistics) };
 }
 
 export function ShopAddToCart({
@@ -1190,6 +1229,8 @@ export function ShopOrders({
 export function ShopOrder({
   apiPath,
   returnApiPath,
+  returnLogisticsApiPath,
+  returnLogisticsLabelPath,
   basePath,
   orderId,
   paymentAction,
@@ -1197,6 +1238,8 @@ export function ShopOrder({
 }: {
   apiPath: string;
   returnApiPath: string;
+  returnLogisticsApiPath?: string;
+  returnLogisticsLabelPath?: string;
   basePath: string;
   orderId: string;
   paymentAction?: ReactNode;
@@ -1206,6 +1249,8 @@ export function ShopOrder({
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
+  const [returnLogisticsMode, setReturnLogisticsMode] =
+    useState<NpShopReturnLogistics["mode"]>("dropoff");
 
   useEffect(() => {
     void requestOrder(apiPath, "GET", { orderId })
@@ -1219,6 +1264,17 @@ export function ShopOrder({
       })
       .finally(() => setBusy(false));
   }, [apiPath, orderId]);
+
+  async function refreshOrderState(): Promise<void> {
+    try {
+      const response = await requestOrder(apiPath, "GET", { orderId });
+      if (!("order" in response)) return;
+      setOrder(response.order);
+      setCsrfToken(response.csrfToken);
+    } catch {
+      // Preserve the mutation error; a normal reload can recover read state.
+    }
+  }
 
   async function cancel(): Promise<void> {
     if (!order || order.status !== "pending-payment") return;
@@ -1292,6 +1348,109 @@ export function ShopOrder({
     }
   }
 
+  async function createReturnShipping(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (
+      !order?.returnRequest ||
+      order.returnRequest.status !== "approved" ||
+      order.returnRequest.logistics ||
+      !returnLogisticsApiPath
+    ) {
+      return;
+    }
+    const form = new FormData(event.currentTarget);
+    const text = (name: string): string => {
+      const value = form.get(name);
+      return typeof value === "string" ? value.trim() : "";
+    };
+    const nullable = (name: string): string | null => text(name) || null;
+    const mode = text("mode");
+    const readyValue = text("readyAt");
+    const closeValue = text("closeAt");
+    setBusy(true);
+    setError("");
+    try {
+      const response = await requestReturnLogistics(returnLogisticsApiPath, "POST", csrfToken, {
+        orderId: order.id,
+        returnId: order.returnRequest.id,
+        expectedReturnRevision: order.returnRequest.revision,
+        mode,
+        origin: {
+          recipientName: text("recipientName"),
+          phone: text("phone"),
+          countryCode: text("countryCode").toUpperCase(),
+          postalCode: text("postalCode"),
+          addressLine1: text("addressLine1"),
+          addressLine2: nullable("addressLine2"),
+          locality: text("locality"),
+          administrativeArea: nullable("administrativeArea"),
+        },
+        readyAt: mode === "pickup" && readyValue ? new Date(readyValue).toISOString() : null,
+        closeAt: mode === "pickup" && closeValue ? new Date(closeValue).toISOString() : null,
+      });
+      setOrder({
+        ...order,
+        returnRequest: { ...order.returnRequest, logistics: response.logistics },
+      });
+      setCsrfToken(response.csrfToken);
+    } catch (caught) {
+      await refreshOrderState();
+      setError(caught instanceof Error ? caught.message : messages.orderReturnLogisticsFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelReturnShipping(): Promise<void> {
+    const logistics = order?.returnRequest?.logistics;
+    if (!order?.returnRequest || !logistics || !returnLogisticsApiPath) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await requestReturnLogistics(returnLogisticsApiPath, "DELETE", csrfToken, {
+        orderId: order.id,
+        returnId: order.returnRequest.id,
+        logisticsId: logistics.id,
+        expectedRevision: logistics.revision,
+      });
+      setOrder({
+        ...order,
+        returnRequest: { ...order.returnRequest, logistics: response.logistics },
+      });
+      setCsrfToken(response.csrfToken);
+    } catch (caught) {
+      await refreshOrderState();
+      setError(caught instanceof Error ? caught.message : messages.orderReturnLogisticsFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resumeReturnShipping(): Promise<void> {
+    const logistics = order?.returnRequest?.logistics;
+    if (!order?.returnRequest || !logistics || !returnLogisticsApiPath) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await requestReturnLogistics(returnLogisticsApiPath, "PATCH", csrfToken, {
+        orderId: order.id,
+        returnId: order.returnRequest.id,
+        logisticsId: logistics.id,
+        expectedRevision: logistics.revision,
+      });
+      setOrder({
+        ...order,
+        returnRequest: { ...order.returnRequest, logistics: response.logistics },
+      });
+      setCsrfToken(response.csrfToken);
+    } catch (caught) {
+      await refreshOrderState();
+      setError(caught instanceof Error ? caught.message : messages.orderReturnLogisticsFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function returnStatusMessage(returnRequest: NpShopReturn): string {
     return {
       requested: messages.orderReturnRequested,
@@ -1310,6 +1469,12 @@ export function ShopOrder({
       "changed-mind": messages.orderReturnReasonChangedMind,
       other: messages.orderReturnReasonOther,
     }[reason];
+  }
+
+  function returnLogisticsStatusMessage(logistics: NpShopReturnLogistics): string {
+    if (logistics.status === "active") return messages.orderReturnLogisticsActive;
+    if (logistics.status === "cancelled") return messages.orderReturnLogisticsCancelled;
+    return messages.orderReturnLogisticsPending;
   }
 
   return (
@@ -1481,6 +1646,131 @@ export function ShopOrder({
                           ? messages.orderReturnInventoryManual
                           : messages.orderReturnInventoryNotRequired}
                     </p>
+                  ) : null}
+                  {order.returnRequest.logistics ? (
+                    <section
+                      className="np-shop-return-logistics-summary"
+                      data-np-shop-return-logistics-status={order.returnRequest.logistics.status}
+                    >
+                      <h3>{messages.orderReturnLogistics}</h3>
+                      <p>{returnLogisticsStatusMessage(order.returnRequest.logistics)}</p>
+                      {order.returnRequest.logistics.carrier &&
+                      order.returnRequest.logistics.trackingNumber ? (
+                        <p>
+                          {order.returnRequest.logistics.carrier}{" "}
+                          {order.returnRequest.logistics.trackingNumber}
+                        </p>
+                      ) : null}
+                      {order.returnRequest.logistics.status === "active" &&
+                      returnLogisticsLabelPath ? (
+                        <a
+                          href={`${returnLogisticsLabelPath}?orderId=${encodeURIComponent(order.id)}&returnId=${encodeURIComponent(order.returnRequest.id)}&logisticsId=${encodeURIComponent(order.returnRequest.logistics.id)}`}
+                        >
+                          {messages.orderReturnLogisticsLabel}
+                        </a>
+                      ) : null}
+                      {["pending", "provider-confirmed"].includes(
+                        order.returnRequest.logistics.status,
+                      ) && order.returnRequest.status === "approved" ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void resumeReturnShipping()}
+                        >
+                          {messages.orderReturnLogisticsResume}
+                        </button>
+                      ) : null}
+                      {["active", "cancel-pending", "cancel-confirmed"].includes(
+                        order.returnRequest.logistics.status,
+                      ) && order.returnRequest.status === "approved" ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void cancelReturnShipping()}
+                        >
+                          {messages.orderReturnLogisticsCancel}
+                        </button>
+                      ) : null}
+                    </section>
+                  ) : order.returnRequest.status === "approved" && returnLogisticsApiPath ? (
+                    <form
+                      className="np-shop-return-logistics-form"
+                      onSubmit={(event) => void createReturnShipping(event)}
+                    >
+                      <h3>{messages.orderReturnLogistics}</h3>
+                      <p>{messages.orderReturnLogisticsPrivacy}</p>
+                      <label>
+                        <span>{messages.orderReturnLogistics}</span>
+                        <select
+                          name="mode"
+                          value={returnLogisticsMode}
+                          disabled={busy}
+                          onChange={(event) =>
+                            setReturnLogisticsMode(
+                              event.currentTarget.value === "pickup" ? "pickup" : "dropoff",
+                            )
+                          }
+                        >
+                          <option value="dropoff">{messages.orderReturnLogisticsDropoff}</option>
+                          <option value="pickup">{messages.orderReturnLogisticsPickup}</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>{messages.orderDraftRecipientName}</span>
+                        <input name="recipientName" required maxLength={120} disabled={busy} />
+                      </label>
+                      <label>
+                        <span>{messages.orderDraftPhone}</span>
+                        <input name="phone" required maxLength={40} disabled={busy} />
+                      </label>
+                      <label>
+                        <span>{messages.orderDraftCountryCode}</span>
+                        <input
+                          name="countryCode"
+                          required
+                          maxLength={2}
+                          defaultValue="KR"
+                          disabled={busy}
+                        />
+                      </label>
+                      <label>
+                        <span>{messages.orderDraftPostalCode}</span>
+                        <input name="postalCode" required maxLength={32} disabled={busy} />
+                      </label>
+                      <label>
+                        <span>{messages.orderDraftAddressLine1}</span>
+                        <input name="addressLine1" required maxLength={200} disabled={busy} />
+                      </label>
+                      <label>
+                        <span>{messages.orderDraftAddressLine2}</span>
+                        <input name="addressLine2" maxLength={200} disabled={busy} />
+                      </label>
+                      <label>
+                        <span>{messages.orderDraftLocality}</span>
+                        <input name="locality" required maxLength={120} disabled={busy} />
+                      </label>
+                      <label>
+                        <span>{messages.orderDraftAdministrativeArea}</span>
+                        <input name="administrativeArea" maxLength={120} disabled={busy} />
+                      </label>
+                      {returnLogisticsMode === "pickup" ? (
+                        <>
+                          <label>
+                            <span>{messages.orderReturnLogisticsReadyAt}</span>
+                            <input name="readyAt" type="datetime-local" required disabled={busy} />
+                          </label>
+                          <label>
+                            <span>{messages.orderReturnLogisticsCloseAt}</span>
+                            <input name="closeAt" type="datetime-local" required disabled={busy} />
+                          </label>
+                        </>
+                      ) : null}
+                      <button type="submit" disabled={busy}>
+                        {busy
+                          ? messages.orderReturnLogisticsCreating
+                          : messages.orderReturnLogisticsCreate}
+                      </button>
+                    </form>
                   ) : null}
                   {order.returnRequest.status === "requested" ? (
                     <button

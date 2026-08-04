@@ -73,6 +73,9 @@ describe("shop factory", () => {
       { id: "countReturns", kind: "metric" },
       { id: "returnHealth", kind: "status" },
       { id: "recentReturns", kind: "table" },
+      { id: "countReturnLogistics", kind: "metric" },
+      { id: "returnLogisticsHealth", kind: "status" },
+      { id: "recentReturnLogistics", kind: "table" },
       { id: "approveReturn", kind: "action" },
       { id: "rejectReturn", kind: "action" },
       { id: "receiveReturn", kind: "action" },
@@ -126,6 +129,7 @@ describe("shop factory", () => {
       "cleanup-expired-carts",
       "cleanup-expired-checkout-intents",
       "cleanup-expired-order-drafts",
+      "cleanup-expired-return-logistics-private",
       "maintain-orders",
     ]);
     expect([...createShop().runtime.skins.keys()]).toEqual(["classic", "storefront-full"]);
@@ -404,6 +408,94 @@ describe("shop factory", () => {
         },
       }),
     ).toThrow(/pickup location/u);
+  });
+
+  it("adds return logistics only as one paired carrier capability with an opaque destination", () => {
+    const shop = createShop({
+      carrier: {
+        returnLocationReference: "returns-seoul-1",
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          createReturnShipment: () => Promise.reject(new Error("not called")),
+          cancelReturnShipment: () => Promise.reject(new Error("not called")),
+          readReturnLabel: () => Promise.reject(new Error("not called")),
+        },
+      },
+    });
+    expect(shop.runtime.carrierReturnLogisticsAdapter?.id).toBe("test-carrier");
+    expect(shop.runtime.carrierReturnLabelAdapter?.id).toBe("test-carrier");
+    expect(shop.runtime.carrierReturnLocationReference).toBe("returns-seoul-1");
+    expect(shop.plugin.manifest.provides.apiRoutes).toEqual(
+      expect.arrayContaining(["/returns/logistics", "/returns/logistics/label"]),
+    );
+    expect(
+      shop.plugin.routes?.find((route) => route.path === "/returns/logistics/label"),
+    ).toMatchObject({ method: "GET", auth: false, responseMode: "binary" });
+    expect(
+      shop.plugin.routes
+        ?.filter((route) => route.path === "/returns/logistics")
+        .map((route) => route.method),
+    ).toEqual(["POST", "PATCH", "DELETE"]);
+    expect(shop.plugin.manifest.provides.adminExtensions).toEqual(
+      expect.arrayContaining([
+        "dashboard:shop-return-logistics",
+        "widget:shop-return-logistics-health",
+        "table:shop-return-logistics",
+        "action:shop-return-logistics",
+        "action:shop-return-label-download",
+      ]),
+    );
+    expect(shop.plugin.actions?.countReturnLogistics?.kind).toBe("metric");
+    expect(shop.plugin.actions?.returnLogisticsHealth?.kind).toBe("status");
+    expect(shop.plugin.actions?.recentReturnLogistics?.kind).toBe("table");
+
+    expect(() =>
+      createShop({
+        carrier: {
+          returnLocationReference: "returns-seoul-1",
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+            createReturnShipment: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/createReturnShipment and cancelReturnShipment together/u);
+    expect(() =>
+      createShop({
+        carrier: {
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+            createReturnShipment: () => Promise.reject(new Error("not called")),
+            cancelReturnShipment: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/return location reference/u);
+    expect(() =>
+      createShop({
+        carrier: {
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+            readReturnLabel: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/return label retrieval requires the paired return logistics methods/u);
+    expect(() =>
+      createShop({
+        carrier: {
+          returnLocationReference: "returns-seoul-1",
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/returnLocationReference requires return logistics methods/u);
   });
 
   it("adds bounded tracking reconciliation only for the optional polling capability", () => {

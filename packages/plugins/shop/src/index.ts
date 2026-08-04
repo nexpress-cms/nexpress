@@ -35,6 +35,8 @@ import {
   type NpShopCarrierLabelAdapter,
   type NpShopCarrierParcelAdapter,
   type NpShopCarrierPickupAdapter,
+  type NpShopCarrierReturnLabelAdapter,
+  type NpShopCarrierReturnLogisticsAdapter,
   type NpShopCarrierTrackingAdapter,
   type NpShopCarrierTrackingPollAdapter,
 } from "./carrier-contract.js";
@@ -85,11 +87,19 @@ import {
 import { npRequireShopFulfillmentParcelsSaveInput } from "./parcel-contract.js";
 import { npRequireShopRefundActionInput } from "./refund-contract.js";
 import { createShopReturnApiHandler } from "./return-api.js";
+import { createShopReturnLogisticsApiHandler } from "./return-logistics-api.js";
+import { createShopReturnLogisticsLabelApiHandler } from "./return-logistics-label-api.js";
 import {
   npRequireShopReturnApproveInput,
   npRequireShopReturnReceiveInput,
   npRequireShopReturnRejectInput,
 } from "./return-contract.js";
+import { npRequireShopReturnLocationReference } from "./return-logistics-contract.js";
+import {
+  npCleanupExpiredShopReturnLogisticsPrivate,
+  npCountShopReturnLogistics,
+  npListRecentShopReturnLogistics,
+} from "./return-logistics-service.js";
 import { createShopPaymentApiHandler } from "./payment-api.js";
 import { createShopTrackingApiHandler } from "./tracking-api.js";
 import {
@@ -157,6 +167,8 @@ export interface NpShopOptions {
     adapter: NpShopCarrierAdapter;
     /** Provider-owned server-side origin token; required with pickup methods. */
     pickupLocationReference?: string;
+    /** Provider-owned server-side return destination token. */
+    returnLocationReference?: string;
   };
 }
 
@@ -290,6 +302,9 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   let carrierParcelAdapter: NpShopCarrierParcelAdapter | null = null;
   let carrierPickupAdapter: NpShopCarrierPickupAdapter | null = null;
   let carrierPickupLocationReference: string | null = null;
+  let carrierReturnLogisticsAdapter: NpShopCarrierReturnLogisticsAdapter | null = null;
+  let carrierReturnLabelAdapter: NpShopCarrierReturnLabelAdapter | null = null;
+  let carrierReturnLocationReference: string | null = null;
   let carrierTrackingAdapter: NpShopCarrierTrackingAdapter | null = null;
   let carrierTrackingPollAdapter: NpShopCarrierTrackingPollAdapter | null = null;
   if (configuredCarrierAdapter) {
@@ -303,6 +318,9 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     const hasShippingLabel = configuredCarrierAdapter.readShippingLabel !== undefined;
     const hasPickupSchedule = configuredCarrierAdapter.schedulePickup !== undefined;
     const hasPickupCancel = configuredCarrierAdapter.cancelPickup !== undefined;
+    const hasReturnCreate = configuredCarrierAdapter.createReturnShipment !== undefined;
+    const hasReturnCancel = configuredCarrierAdapter.cancelReturnShipment !== undefined;
+    const hasReturnLabel = configuredCarrierAdapter.readReturnLabel !== undefined;
     if (
       hasTrackingWebhook &&
       typeof configuredCarrierAdapter.verifyTrackingWebhook !== "function"
@@ -328,6 +346,24 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     if (hasPickupSchedule !== hasPickupCancel) {
       throw new Error("Shop carrier pickup requires schedulePickup and cancelPickup together.");
     }
+    if (hasReturnCreate !== hasReturnCancel) {
+      throw new Error(
+        "Shop return logistics requires createReturnShipment and cancelReturnShipment together.",
+      );
+    }
+    if (
+      hasReturnCreate &&
+      (typeof configuredCarrierAdapter.createReturnShipment !== "function" ||
+        typeof configuredCarrierAdapter.cancelReturnShipment !== "function")
+    ) {
+      throw new Error("Shop return logistics methods must be functions when provided.");
+    }
+    if (
+      hasReturnLabel &&
+      (!hasReturnCreate || typeof configuredCarrierAdapter.readReturnLabel !== "function")
+    ) {
+      throw new Error("Shop return label retrieval requires the paired return logistics methods.");
+    }
     if (
       hasPickupSchedule &&
       (!hasParcelBooking ||
@@ -346,6 +382,13 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
       throw new Error(
         "Shop carrier pickupLocationReference requires schedulePickup and cancelPickup methods.",
       );
+    }
+    if (hasReturnCreate) {
+      carrierReturnLocationReference = npRequireShopReturnLocationReference(
+        options.carrier?.returnLocationReference,
+      );
+    } else if (options.carrier?.returnLocationReference !== undefined) {
+      throw new Error("Shop carrier returnLocationReference requires return logistics methods.");
     }
     carrierAdapter = Object.freeze({
       id,
@@ -377,6 +420,21 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
             cancelPickup: configuredCarrierAdapter.cancelPickup.bind(configuredCarrierAdapter),
           }
         : {}),
+      ...(configuredCarrierAdapter.createReturnShipment &&
+      configuredCarrierAdapter.cancelReturnShipment
+        ? {
+            createReturnShipment:
+              configuredCarrierAdapter.createReturnShipment.bind(configuredCarrierAdapter),
+            cancelReturnShipment:
+              configuredCarrierAdapter.cancelReturnShipment.bind(configuredCarrierAdapter),
+          }
+        : {}),
+      ...(configuredCarrierAdapter.readReturnLabel
+        ? {
+            readReturnLabel:
+              configuredCarrierAdapter.readReturnLabel.bind(configuredCarrierAdapter),
+          }
+        : {}),
     });
     if (carrierAdapter.verifyTrackingWebhook) {
       carrierTrackingAdapter = carrierAdapter as NpShopCarrierTrackingAdapter;
@@ -392,6 +450,12 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     }
     if (carrierAdapter.schedulePickup && carrierAdapter.cancelPickup) {
       carrierPickupAdapter = carrierAdapter as NpShopCarrierPickupAdapter;
+    }
+    if (carrierAdapter.createReturnShipment && carrierAdapter.cancelReturnShipment) {
+      carrierReturnLogisticsAdapter = carrierAdapter as NpShopCarrierReturnLogisticsAdapter;
+    }
+    if (carrierReturnLogisticsAdapter?.readReturnLabel) {
+      carrierReturnLabelAdapter = carrierReturnLogisticsAdapter as NpShopCarrierReturnLabelAdapter;
     }
   }
   return {
@@ -409,6 +473,9 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     carrierParcelAdapter,
     carrierPickupAdapter,
     carrierPickupLocationReference,
+    carrierReturnLogisticsAdapter,
+    carrierReturnLabelAdapter,
+    carrierReturnLocationReference,
     carrierTrackingAdapter,
     carrierTrackingPollAdapter,
   };
@@ -574,6 +641,22 @@ const messages = {
       "The return was received, but inventory requires operator reconciliation.",
     "shop.orderReturnInventoryNotRequired": "No tracked inventory restoration was required.",
     "shop.orderReturnFailed": "The return request could not be updated.",
+    "shop.orderReturnLogistics": "Return shipping",
+    "shop.orderReturnLogisticsDropoff": "Drop off with a return label",
+    "shop.orderReturnLogisticsPickup": "Schedule carrier pickup",
+    "shop.orderReturnLogisticsCreate": "Create return shipment",
+    "shop.orderReturnLogisticsCreating": "Creating return shipment…",
+    "shop.orderReturnLogisticsPending": "Return shipping is awaiting provider reconciliation.",
+    "shop.orderReturnLogisticsActive": "Return shipping is active.",
+    "shop.orderReturnLogisticsCancelled": "Return shipping was cancelled.",
+    "shop.orderReturnLogisticsResume": "Retry return shipping",
+    "shop.orderReturnLogisticsCancel": "Cancel return shipping",
+    "shop.orderReturnLogisticsLabel": "Download return label",
+    "shop.orderReturnLogisticsReadyAt": "Pickup ready time",
+    "shop.orderReturnLogisticsCloseAt": "Pickup closing time",
+    "shop.orderReturnLogisticsPrivacy":
+      "The pickup address is sent only to the configured carrier, deleted after confirmation, and otherwise expires within 24 hours.",
+    "shop.orderReturnLogisticsFailed": "Return shipping could not be updated.",
     "shop.orderExpires": "Pending order expires",
     "shop.orderCreated": "Created",
     "shop.orderCancel": "Cancel order and delete private details",
@@ -750,6 +833,22 @@ const messages = {
     "shop.orderReturnInventoryManual": "입고는 확인했지만 재고는 관리자가 직접 조정해야 합니다.",
     "shop.orderReturnInventoryNotRequired": "복원할 추적 재고가 없습니다.",
     "shop.orderReturnFailed": "반품 요청을 갱신하지 못했습니다.",
+    "shop.orderReturnLogistics": "반품 배송",
+    "shop.orderReturnLogisticsDropoff": "반품 운송장을 출력해 직접 접수",
+    "shop.orderReturnLogisticsPickup": "택배사 회수 예약",
+    "shop.orderReturnLogisticsCreate": "반품 배송 만들기",
+    "shop.orderReturnLogisticsCreating": "반품 배송 생성 중…",
+    "shop.orderReturnLogisticsPending": "택배사 확인 또는 로컬 조정을 기다리고 있습니다.",
+    "shop.orderReturnLogisticsActive": "반품 배송이 접수되었습니다.",
+    "shop.orderReturnLogisticsCancelled": "반품 배송을 취소했습니다.",
+    "shop.orderReturnLogisticsResume": "반품 배송 다시 시도",
+    "shop.orderReturnLogisticsCancel": "반품 배송 취소",
+    "shop.orderReturnLogisticsLabel": "반품 운송장 다운로드",
+    "shop.orderReturnLogisticsReadyAt": "회수 시작 시각",
+    "shop.orderReturnLogisticsCloseAt": "회수 종료 시각",
+    "shop.orderReturnLogisticsPrivacy":
+      "회수 주소는 설정된 택배사에만 전달하고 확인 즉시 삭제하며, 확인되지 않아도 24시간 안에 만료됩니다.",
+    "shop.orderReturnLogisticsFailed": "반품 배송을 갱신하지 못했습니다.",
     "shop.orderExpires": "결제 대기 만료",
     "shop.orderCreated": "생성",
     "shop.orderCancel": "주문 취소 및 개인정보 삭제",
@@ -789,6 +888,12 @@ export function createShop(options: NpShopOptions = {}) {
   const orderDraftApiHandler = createShopOrderDraftApiHandler(runtime);
   const orderApiHandler = createShopOrderApiHandler(runtime);
   const returnApiHandler = createShopReturnApiHandler();
+  const returnLogisticsApiHandler = runtime.carrierReturnLogisticsAdapter
+    ? createShopReturnLogisticsApiHandler(runtime)
+    : null;
+  const returnLogisticsLabelApiHandler = runtime.carrierReturnLabelAdapter
+    ? createShopReturnLogisticsLabelApiHandler(runtime)
+    : null;
   const paymentApiHandler = runtime.paymentAdapter ? createShopPaymentApiHandler(runtime) : null;
   const trackingApiHandler = runtime.carrierTrackingAdapter
     ? createShopTrackingApiHandler(runtime.carrierTrackingAdapter)
@@ -843,7 +948,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, tracking, and return operations, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, tracking, returns, and return logistics, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -885,6 +990,11 @@ export function createShop(options: NpShopOptions = {}) {
           "widget:shop-carrier-booking-health",
           "table:shop-carrier-bookings",
           ...(carrierLabelApiHandler ? ["action:shop-carrier-label-download"] : []),
+          "dashboard:shop-return-logistics",
+          "widget:shop-return-logistics-health",
+          "table:shop-return-logistics",
+          ...(returnLogisticsApiHandler ? ["action:shop-return-logistics"] : []),
+          ...(returnLogisticsLabelApiHandler ? ["action:shop-return-label-download"] : []),
           "dashboard:shop-carrier-pickups",
           "widget:shop-carrier-pickup-health",
           "table:shop-carrier-pickups",
@@ -925,13 +1035,15 @@ export function createShop(options: NpShopOptions = {}) {
           ...(paymentApiHandler ? ["/payments/webhook"] : []),
           ...(trackingApiHandler ? ["/carrier/tracking/webhook"] : []),
           ...(carrierLabelApiHandler ? ["/carrier/shipping-label"] : []),
+          ...(returnLogisticsApiHandler ? ["/returns/logistics"] : []),
+          ...(returnLogisticsLabelApiHandler ? ["/returns/logistics/label"] : []),
           ...(paymentAttemptApiHandler ? ["/payments/attempts"] : []),
         ],
         hooks: [],
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled tracking, and physical return intake. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, label purchase, recurring or return pickup, and provider-specific carrier protocols remain external.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled tracking, physical return intake, and approved-return logistics with transient labels. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, outbound label purchase, recurring pickup, reverse tracking, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -1110,6 +1222,15 @@ export function createShop(options: NpShopOptions = {}) {
           description: "Durable item-level physical return requests for shipped orders.",
           priority: 35,
         },
+        {
+          id: "shop-return-logistics-total",
+          label: "Return shipments",
+          kind: "metric" as const,
+          actionId: "countReturnLogistics",
+          description:
+            "PII-free provider return shipment and pickup state; origin addresses are excluded.",
+          priority: 38,
+        },
         ...(paymentAttemptApiHandler
           ? [
               {
@@ -1208,6 +1329,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Return contract",
           kind: "status",
           actionId: "returnHealth",
+        },
+        {
+          id: "shop-return-logistics-health",
+          label: "Return logistics contract",
+          kind: "status" as const,
+          actionId: "returnLogisticsHealth",
         },
         ...(paymentAttemptApiHandler
           ? [
@@ -1745,6 +1872,25 @@ export function createShop(options: NpShopOptions = {}) {
           ],
           emptyMessage: "No Shop physical return exists for this site.",
         },
+        {
+          id: "shop-return-logistics",
+          label: "Return shipments and pickup (PII withheld)",
+          columns: [
+            { name: "id", label: "Order" },
+            { name: "logisticsId", label: "Logistics" },
+            { name: "returnId", label: "Return" },
+            { name: "provider", label: "Provider" },
+            { name: "mode", label: "Mode" },
+            { name: "status", label: "Status" },
+            { name: "carrier", label: "Carrier" },
+            { name: "trackingNumber", label: "Tracking" },
+            { name: "providerError", label: "Closed error" },
+            { name: "privateOrigin", label: "Private origin" },
+            { name: "updatedAt", label: "Updated" },
+          ],
+          rowsActionId: "recentReturnLogistics",
+          emptyMessage: "No provider-backed return shipment exists for this site.",
+        },
         ...(paymentAttemptApiHandler
           ? [
               {
@@ -2230,6 +2376,91 @@ export function createShop(options: NpShopOptions = {}) {
             return npAdminTable(result.rows, result.total);
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      countReturnLogistics: {
+        kind: "metric" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopReturnLogistics(
+              runtime.carrierReturnLogisticsAdapter?.id,
+            );
+            return {
+              ok: true as const,
+              data: {
+                value: counts.total,
+                delta: `${counts.active.toString()} active, ${counts.cancelled.toString()} cancelled, ${(counts.pending + counts.cancelling).toString()} reconciling`,
+              },
+            };
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      returnLogisticsHealth: {
+        kind: "status" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopReturnLogistics(
+              runtime.carrierReturnLogisticsAdapter?.id,
+            );
+            if (
+              counts.invalidSample > 0 ||
+              counts.orphanSample > 0 ||
+              counts.providerMismatchSample > 0 ||
+              counts.privateMismatchSample > 0
+            ) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed, ${counts.orphanSample.toString()} orphan, ${counts.providerMismatchSample.toString()} provider-mismatched, and ${counts.privateMismatchSample.toString()} private-sidecar-mismatched return logistics row(s) in bounded samples.`,
+              );
+            }
+            const reconciling = counts.pending + counts.cancelling;
+            if (!runtime.carrierReturnLogisticsAdapter && reconciling > 0) {
+              return npAdminStatus(
+                "error",
+                `${reconciling.toString()} return logistics row(s) require their original carrier adapter.`,
+              );
+            }
+            if (!runtime.carrierReturnLogisticsAdapter && counts.active > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.active.toString()} active return shipment(s) cannot be cancelled or read through their original adapter.`,
+              );
+            }
+            if (counts.manualReview > 0 || reconciling > 0) {
+              return npAdminStatus(
+                "warn",
+                `${reconciling.toString()} return logistics row(s) await reconciliation and ${counts.manualReview.toString()} require manual review.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.active.toString()} active and ${counts.cancelled.toString()} cancelled return shipment(s); provider "${runtime.carrierReturnLogisticsAdapter?.id ?? "disabled"}" is configured${runtime.carrierReturnLabelAdapter ? " with transient owner label retrieval" : " without label retrieval"}.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Return logistics health check failed.",
+            );
+          }
+        },
+      },
+      recentReturnLogistics: {
+        kind: "table" as const,
+        handler: async () => {
+          try {
+            const result = await npListRecentShopReturnLogistics();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
           }
         },
       },
@@ -3259,6 +3490,46 @@ export function createShop(options: NpShopOptions = {}) {
             },
           ]
         : []),
+      ...(returnLogisticsApiHandler
+        ? [
+            {
+              method: "POST" as const,
+              path: "/returns/logistics",
+              description:
+                "Create one owner-scoped provider return shipment from an approved physical return.",
+              auth: false,
+              handler: returnLogisticsApiHandler,
+            },
+            {
+              method: "PATCH" as const,
+              path: "/returns/logistics",
+              description:
+                "Resume one owner-scoped pending or provider-confirmed return shipment with its stable idempotency key.",
+              auth: false,
+              handler: returnLogisticsApiHandler,
+            },
+            {
+              method: "DELETE" as const,
+              path: "/returns/logistics",
+              description: "Cancel one owner-scoped active provider return shipment.",
+              auth: false,
+              handler: returnLogisticsApiHandler,
+            },
+          ]
+        : []),
+      ...(returnLogisticsLabelApiHandler
+        ? [
+            {
+              method: "GET" as const,
+              path: "/returns/logistics/label",
+              description:
+                "Retrieve one owner-scoped active return label as bounded transient bytes.",
+              auth: false,
+              responseMode: "binary" as const,
+              handler: returnLogisticsLabelApiHandler,
+            },
+          ]
+        : []),
     ],
     scheduled: [
       {
@@ -3284,6 +3555,15 @@ export function createShop(options: NpShopOptions = {}) {
           "Permanently delete one bounded oldest-first batch of expired private order drafts for each active site.",
         handler: async () => {
           await npCleanupExpiredShopOrderDrafts();
+        },
+      },
+      {
+        id: "cleanup-expired-return-logistics-private",
+        cron: "41 * * * *",
+        description:
+          "Permanently delete one bounded oldest-first batch of expired return-origin sidecars for each active site.",
+        handler: async () => {
+          await npCleanupExpiredShopReturnLogisticsPrivate();
         },
       },
       ...(runtime.carrierTrackingPollAdapter
@@ -3614,6 +3894,61 @@ export {
   npShopReturnReasons,
   npShopReturnStatuses,
 } from "./return-contract.js";
+export {
+  NP_SHOP_RETURN_LOGISTICS_CANCEL_REQUEST_CONTRACT,
+  NP_SHOP_RETURN_LOGISTICS_CANCEL_RESULT_CONTRACT,
+  NP_SHOP_RETURN_LOGISTICS_CONTRACT,
+  NP_SHOP_RETURN_LOGISTICS_LABEL_REQUEST_CONTRACT,
+  NP_SHOP_RETURN_LOGISTICS_LABEL_RESULT_CONTRACT,
+  NP_SHOP_RETURN_LOGISTICS_PRIVATE_CONTRACT,
+  NP_SHOP_RETURN_LOGISTICS_REQUEST_CONTRACT,
+  NP_SHOP_RETURN_LOGISTICS_RESULT_CONTRACT,
+  NP_SHOP_RETURN_LOGISTICS_STORAGE_CONTRACT,
+  NpShopReturnLogisticsConflictError,
+  NpShopReturnLogisticsContractError,
+  NpShopReturnLogisticsProviderError,
+  npAnalyzeShopReturnLogistics,
+  npAnalyzeShopReturnLogisticsRequest,
+  npAnalyzeShopReturnLogisticsResult,
+  npAnalyzeStoredShopReturnLogistics,
+  npAnalyzeStoredShopReturnLogisticsPrivate,
+  npProjectShopReturnLogistics,
+  npRequireShopReturnLocationReference,
+  npRequireShopReturnLogistics,
+  npRequireShopReturnLogisticsCancelRequest,
+  npRequireShopReturnLogisticsCancelResult,
+  npRequireShopReturnLogisticsCreateInput,
+  npRequireShopReturnLogisticsExistingInput,
+  npRequireShopReturnLogisticsLabelReadInput,
+  npRequireShopReturnLogisticsLabelRequest,
+  npRequireShopReturnLogisticsLabelResult,
+  npRequireShopReturnLogisticsRequest,
+  npRequireShopReturnLogisticsResult,
+  npRequireStoredShopReturnLogistics,
+  npRequireStoredShopReturnLogisticsPrivate,
+  npShopReturnLogisticsLabelFormats,
+  npShopReturnLogisticsLimits,
+  npShopReturnLogisticsModes,
+  npShopReturnLogisticsStatuses,
+} from "./return-logistics-contract.js";
+export type {
+  NpShopReturnLogistics,
+  NpShopReturnLogisticsCancelRequest,
+  NpShopReturnLogisticsCancelResult,
+  NpShopReturnLogisticsCreateInput,
+  NpShopReturnLogisticsExistingInput,
+  NpShopReturnLogisticsItem,
+  NpShopReturnLogisticsLabelFormat,
+  NpShopReturnLogisticsLabelReadInput,
+  NpShopReturnLogisticsLabelRequest,
+  NpShopReturnLogisticsLabelResult,
+  NpShopReturnLogisticsMode,
+  NpShopReturnLogisticsRequest,
+  NpShopReturnLogisticsResult,
+  NpShopReturnLogisticsStatus,
+  NpShopStoredReturnLogistics,
+  NpShopStoredReturnLogisticsPrivate,
+} from "./return-logistics-contract.js";
 export type {
   NpShopReturn,
   NpShopReturnCancelInput,
@@ -3670,6 +4005,8 @@ export type {
   NpShopCarrierLabelResult,
   NpShopCarrierParcelAdapter,
   NpShopCarrierPickupAdapter,
+  NpShopCarrierReturnLabelAdapter,
+  NpShopCarrierReturnLogisticsAdapter,
   NpShopCarrierTrackingAdapter,
   NpShopCarrierTrackingPollAdapter,
   NpShopCarrierBookingActionInput,

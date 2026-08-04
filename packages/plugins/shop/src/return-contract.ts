@@ -1,3 +1,8 @@
+import {
+  npAnalyzeShopReturnLogistics,
+  type NpShopReturnLogistics,
+} from "./return-logistics-contract.js";
+
 export const NP_SHOP_RETURN_CONTRACT = "np.shop-return.v1" as const;
 export const NP_SHOP_RETURN_STORAGE_CONTRACT = "np.shop-return-storage.v1" as const;
 
@@ -74,6 +79,8 @@ export interface NpShopReturn {
   updatedAt: string;
   decidedAt: string | null;
   receivedAt: string | null;
+  /** Present after the owner starts provider-backed return logistics. */
+  logistics?: NpShopReturnLogistics;
 }
 
 export interface NpShopReturnRequestInput {
@@ -371,7 +378,10 @@ export function npRequireStoredShopReturn(value: unknown): NpShopStoredReturn {
   return value as NpShopStoredReturn;
 }
 
-export function npProjectShopReturn(value: NpShopStoredReturn): NpShopReturn {
+export function npProjectShopReturn(
+  value: NpShopStoredReturn,
+  logistics?: NpShopReturnLogistics | null,
+): NpShopReturn {
   return {
     contract: NP_SHOP_RETURN_CONTRACT,
     id: value.id,
@@ -386,6 +396,7 @@ export function npProjectShopReturn(value: NpShopStoredReturn): NpShopReturn {
     updatedAt: value.updatedAt,
     decidedAt: value.decidedAt,
     receivedAt: value.receivedAt,
+    ...(logistics ? { logistics } : {}),
   };
 }
 
@@ -408,7 +419,14 @@ const publicKeys = [
 export function npAnalyzeShopReturn(value: unknown): string[] {
   if (!isRecord(value)) return ["return must be a plain object."];
   const issues: string[] = [];
-  exactKeys(value, publicKeys, "return", issues);
+  for (const key of Object.keys(value)) {
+    if (![...publicKeys, "logistics"].includes(key)) {
+      issues.push(`return.${key} is not supported.`);
+    }
+  }
+  for (const key of publicKeys) {
+    if (!Object.hasOwn(value, key)) issues.push(`return.${key} is required.`);
+  }
   if (value.contract !== NP_SHOP_RETURN_CONTRACT) {
     issues.push(`return.contract must equal "${NP_SHOP_RETURN_CONTRACT}".`);
   }
@@ -429,6 +447,9 @@ export function npAnalyzeShopReturn(value: unknown): string[] {
   }
   if (!(npShopReturnInventoryOutcomes as readonly unknown[]).includes(value.inventoryOutcome)) {
     issues.push("return.inventoryOutcome is invalid.");
+  }
+  if (Object.hasOwn(value, "logistics")) {
+    issues.push(...npAnalyzeShopReturnLogistics(value.logistics).map((issue) => `return.${issue}`));
   }
   for (const key of ["requestedAt", "updatedAt"] as const) {
     if (!isCanonicalIso(value[key])) issues.push(`return.${key} is invalid.`);

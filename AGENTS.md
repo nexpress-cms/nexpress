@@ -2,7 +2,16 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-03 (Shop parcel-aware carrier adapters may now add
+**Last refreshed:** 2026-08-03 (Shop carrier adapters may now add one paired
+approved-return shipment create/cancel capability with drop-off or bounded
+pickup mode, a server-only opaque return destination, a maximum-24-hour
+owner-scoped private origin deleted after provider confirmation, durable
+idempotent reconciliation, transient owner labels, Admin/Doctor/scaffold
+guidance, cleanup, skins, and PostgreSQL coverage. Refunds, exchanges, reverse
+tracking, recurring pickup, eligibility policy, and provider protocols remain
+separate.)
+
+**Earlier:** 2026-08-03 (Shop parcel-aware carrier adapters may now add
 one paired pickup schedule/cancel capability with a server-only provider-owned
 opaque origin reference, exact PII-free package summaries, stable provider
 idempotency, durable two-stage confirmations, revision-safe Admin operations,

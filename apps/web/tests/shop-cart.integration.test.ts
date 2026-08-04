@@ -13,6 +13,9 @@ import {
   type NpShopCarrierParcelBookingRequest,
   type NpShopCarrierPickupCancelRequest,
   type NpShopCarrierPickupRequest,
+  type NpShopReturnLogisticsCancelRequest,
+  type NpShopReturnLogisticsLabelRequest,
+  type NpShopReturnLogisticsRequest,
   type NpShopTrackingPollRequest,
 } from "@nexpress/plugin-shop";
 import { and, eq, like } from "drizzle-orm";
@@ -3966,6 +3969,384 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         { action: "shop.return.receive" },
       ]),
     );
+  });
+
+  it("creates, labels, projects, and cancels owner-scoped return logistics while deleting origin PII", async () => {
+    const ids = {
+      intentId: "ad3e4567-e89b-42d3-a456-426614174000",
+      draftId: "bd3e4567-e89b-42d3-a456-426614174000",
+      orderId: "cd3e4567-e89b-42d3-a456-426614174000",
+    };
+    const owner = await createPendingOrder(ids, "return-logistics@example.com");
+    let providerAttempts = 0;
+    const createReturnShipment = vi.fn(async (request: NpShopReturnLogisticsRequest) => {
+      providerAttempts += 1;
+      const providerDb = await getTestDb();
+      const commercial = await providerDb
+        .select({ value: npPluginStorage.value })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `return-logistics:${request.orderId}`));
+      const privateData = await providerDb
+        .select({ value: npPluginStorage.value })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `return-logistics-private:${request.orderId}`));
+      expect(JSON.stringify(commercial)).not.toContain(request.origin.addressLine1);
+      expect(privateData).toHaveLength(1);
+      if (providerAttempts === 1) {
+        throw new NpShopCarrierProviderError("return-timeout", "private provider detail", {
+          retryable: true,
+        });
+      }
+      return {
+        contract: "np.shop-return-logistics-result.v1" as const,
+        logisticsId: request.logisticsId,
+        returnId: request.returnId,
+        orderId: request.orderId,
+        returnReference: "return_transaction_1",
+        carrier: "Parcel Co",
+        trackingNumber: "RETURN-TRACK-1",
+        readyAt: null,
+        closeAt: null,
+        confirmedAt: new Date().toISOString(),
+      };
+    });
+    const cancelReturnShipment = vi.fn((request: NpShopReturnLogisticsCancelRequest) => ({
+      contract: "np.shop-return-logistics-cancel-result.v1" as const,
+      cancellationId: request.cancellationId,
+      logisticsId: request.logisticsId,
+      returnId: request.returnId,
+      orderId: request.orderId,
+      cancelledAt: new Date().toISOString(),
+    }));
+    const readReturnLabel = vi.fn((request: NpShopReturnLogisticsLabelRequest) => ({
+      contract: "np.shop-return-logistics-label-result.v1" as const,
+      logisticsId: request.logisticsId,
+      returnId: request.returnId,
+      orderId: request.orderId,
+      format: "pdf" as const,
+      content: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      retrievedAt: request.requestedAt,
+    }));
+    const returnShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
+      carrier: {
+        returnLocationReference: "returns-seoul-1",
+        adapter: {
+          id: "test-carrier",
+          bookShipment: (request) => ({
+            contract: "np.shop-carrier-booking-result.v1" as const,
+            shipmentId: request.shipmentId,
+            orderId: request.orderId,
+            bookingReference: "booking_return_1",
+            carrier: "Parcel Co",
+            trackingNumber: "OUTBOUND-TRACK-1",
+            bookedAt: request.requestedAt,
+          }),
+          createReturnShipment,
+          cancelReturnShipment,
+          readReturnLabel,
+        },
+      },
+    });
+    await payPendingOrder(returnShop, {
+      orderId: ids.orderId,
+      eventId: "evt_return_logistics",
+      paymentReference: "pay_return_logistics",
+    });
+    const staff = await seedUser({ email: "return-logistics-operator@example.com" });
+    const actionContext = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    await withCurrentSite("default", () =>
+      returnShop.plugin.actions?.processFulfillment?.handler(
+        {
+          row: { id: ids.orderId, fulfillmentRevision: 1 },
+          values: { operatorNote: "Packed" },
+        },
+        actionContext,
+      ),
+    );
+    expect(
+      await withCurrentSite("default", () =>
+        returnShop.plugin.actions?.bookCarrierShipment?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 2 },
+            values: { operatorNote: "Booked" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true });
+    const shipped = await configuredShopCall(returnShop, "GET", "/orders", {
+      ...owner,
+      id: ids.orderId,
+    });
+    const shippedOrder = (
+      shipped.body as { order: { revision: number; lines: Array<{ key: string }> } }
+    ).order;
+    const requested = await configuredShopCall(returnShop, "POST", "/returns", {
+      ...owner,
+      body: {
+        orderId: ids.orderId,
+        expectedOrderRevision: shippedOrder.revision,
+        lines: [{ lineKey: shippedOrder.lines[0]!.key, quantity: 1 }],
+        reason: "defective",
+        detail: null,
+      },
+    });
+    const returnId = (requested.body as { returnRequest: { id: string } }).returnRequest.id;
+    await withCurrentSite("default", () =>
+      returnShop.plugin.actions?.approveReturn?.handler(
+        {
+          row: { id: ids.orderId, returnRevision: 1 },
+          values: { operatorNote: "Approved" },
+        },
+        actionContext,
+      ),
+    );
+    const origin = {
+      recipientName: "Return Sender",
+      phone: "+82-10-0000-0000",
+      countryCode: "KR",
+      postalCode: "04524",
+      addressLine1: "1 Return Street",
+      addressLine2: null,
+      locality: "Seoul",
+      administrativeArea: null,
+    };
+    const createBody = {
+      orderId: ids.orderId,
+      returnId,
+      expectedReturnRevision: 2,
+      mode: "dropoff",
+      origin,
+      readyAt: null,
+      closeAt: null,
+    };
+    expect(
+      await configuredShopCall(returnShop, "POST", "/returns/logistics", {
+        ...owner,
+        body: createBody,
+      }),
+    ).toMatchObject({ status: 503, body: { error: "return_logistics_provider_unavailable" } });
+    const pendingOrderResponse = await configuredShopCall(returnShop, "GET", "/orders", {
+      ...owner,
+      id: ids.orderId,
+    });
+    expect(pendingOrderResponse).toMatchObject({
+      body: {
+        order: {
+          returnRequest: {
+            logistics: { status: "pending", revision: 2 },
+          },
+        },
+      },
+    });
+    const pendingLogistics = (
+      pendingOrderResponse.body as {
+        order: { returnRequest: { logistics: { id: string; revision: number } } };
+      }
+    ).order.returnRequest.logistics;
+    expect(
+      await configuredShopCall(returnShop, "POST", "/returns/logistics", {
+        ...owner,
+        body: createBody,
+      }),
+    ).toMatchObject({ status: 409, body: { error: "return_logistics_state_conflict" } });
+    const created = await configuredShopCall(returnShop, "PATCH", "/returns/logistics", {
+      ...owner,
+      body: {
+        orderId: ids.orderId,
+        returnId,
+        logisticsId: pendingLogistics.id,
+        expectedRevision: pendingLogistics.revision,
+      },
+    });
+    expect(created).toMatchObject({
+      status: 200,
+      body: { logistics: { status: "active", mode: "dropoff", revision: 4 } },
+    });
+    const logistics = (created.body as { logistics: { id: string; revision: number } }).logistics;
+    const db = await getTestDb();
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `return-logistics-private:${ids.orderId}`)),
+    ).toEqual([]);
+    expect(
+      await configuredShopCall(returnShop, "GET", "/orders", { ...owner, id: ids.orderId }),
+    ).toMatchObject({
+      body: {
+        order: {
+          returnRequest: {
+            status: "approved",
+            logistics: {
+              id: logistics.id,
+              status: "active",
+              carrier: "Parcel Co",
+              trackingNumber: "RETURN-TRACK-1",
+            },
+          },
+        },
+      },
+    });
+    expect(
+      await configuredShopCall(returnShop, "GET", "/returns/logistics/label", {
+        ...owner,
+        query: { orderId: ids.orderId, returnId, logisticsId: logistics.id },
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      headers: { "Content-Type": "application/pdf" },
+    });
+    expect(
+      await configuredShopCall(returnShop, "DELETE", "/returns/logistics", {
+        ...owner,
+        body: {
+          orderId: ids.orderId,
+          returnId,
+          logisticsId: logistics.id,
+          expectedRevision: logistics.revision,
+        },
+      }),
+    ).toMatchObject({ status: 200, body: { logistics: { status: "cancelled", revision: 7 } } });
+    expect(createReturnShipment).toHaveBeenCalledTimes(2);
+    expect(cancelReturnShipment).toHaveBeenCalledTimes(1);
+    expect(readReturnLabel).toHaveBeenCalledTimes(1);
+    const expiredOrderId = "dd3e4567-e89b-42d3-a456-426614174000";
+    const expiredLogisticsId = "ed3e4567-e89b-42d3-a456-426614174000";
+    const expiredReturnId = "fd3e4567-e89b-42d3-a456-426614174000";
+    const malformedOrderId = "1e3e4567-e89b-42d3-a456-426614174000";
+    const malformedLogisticsId = "2e3e4567-e89b-42d3-a456-426614174000";
+    const malformedReturnId = "3e3e4567-e89b-42d3-a456-426614174000";
+    const expiredAt = new Date(Date.now() - 60_000);
+    const requestedAt = new Date(expiredAt.getTime() - 60_000).toISOString();
+    const purgeAt = new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString();
+    await db.insert(npPluginStorage).values([
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `return-logistics:${expiredOrderId}`,
+        value: {
+          contract: "np.shop-return-logistics-storage.v1",
+          id: expiredLogisticsId,
+          returnId: expiredReturnId,
+          orderId: expiredOrderId,
+          ownerSegment: `guest:${"0".repeat(64)}`,
+          providerId: "test-carrier",
+          status: "pending",
+          revision: 1,
+          mode: "dropoff",
+          originalShipmentId: "0d3e4567-e89b-42d3-a456-426614174000",
+          originalBookingReference: "expired_booking",
+          returnReference: null,
+          carrier: null,
+          trackingNumber: null,
+          readyAt: null,
+          closeAt: null,
+          providerErrorCode: null,
+          cancellationId: null,
+          requestedAt,
+          confirmedAt: null,
+          cancelRequestedAt: null,
+          cancelledAt: null,
+          updatedAt: requestedAt,
+          purgeAt,
+        },
+        expiresAt: new Date(purgeAt),
+        updatedAt: new Date(requestedAt),
+      },
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `return-logistics-private:${expiredOrderId}`,
+        value: {
+          contract: "np.shop-return-logistics-private.v1",
+          logisticsId: expiredLogisticsId,
+          returnId: expiredReturnId,
+          orderId: expiredOrderId,
+          ownerSegment: `guest:${"0".repeat(64)}`,
+          origin,
+          createdAt: requestedAt,
+          expiresAt: expiredAt.toISOString(),
+        },
+        expiresAt: expiredAt,
+        updatedAt: new Date(requestedAt),
+      },
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `return-logistics:${malformedOrderId}`,
+        value: { contract: "malformed-commercial-row" },
+        expiresAt: new Date(purgeAt),
+        updatedAt: new Date(requestedAt),
+      },
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `return-logistics-private:${malformedOrderId}`,
+        value: {
+          contract: "np.shop-return-logistics-private.v1",
+          logisticsId: malformedLogisticsId,
+          returnId: malformedReturnId,
+          orderId: malformedOrderId,
+          ownerSegment: `guest:${"1".repeat(64)}`,
+          origin,
+          createdAt: requestedAt,
+          expiresAt: expiredAt.toISOString(),
+        },
+        expiresAt: expiredAt,
+        updatedAt: new Date(requestedAt),
+      },
+    ]);
+    await withCurrentSite("default", async () => {
+      await returnShop.plugin.scheduled
+        ?.find((task) => task.id === "cleanup-expired-return-logistics-private")
+        ?.handler();
+    });
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `return-logistics-private:${expiredOrderId}`)),
+    ).toEqual([]);
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `return-logistics-private:${malformedOrderId}`)),
+    ).toEqual([]);
+    expect(
+      await db
+        .select({ value: npPluginStorage.value })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `return-logistics:${expiredOrderId}`)),
+    ).toEqual([
+      {
+        value: expect.objectContaining({
+          status: "manual-review",
+          providerErrorCode: "private-expired",
+        }),
+      },
+    ]);
+    await db
+      .delete(npPluginStorage)
+      .where(eq(npPluginStorage.key, `return-logistics:${expiredOrderId}`));
+    await db
+      .delete(npPluginStorage)
+      .where(eq(npPluginStorage.key, `return-logistics:${malformedOrderId}`));
+    expect(
+      await withCurrentSite("default", () =>
+        returnShop.plugin.actions?.returnLogisticsHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
   });
 
   it("lets only the owner cancel a return that still awaits review", async () => {

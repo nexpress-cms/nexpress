@@ -71,12 +71,16 @@ It provides:
 - owner-scoped item-level physical return requests for shipped orders, with
   revision-safe cancellation, audited staff approval/rejection/receipt,
   all-or-none tracked-inventory restoration, and manual-reconciliation health;
+- optional owner-scoped return logistics for approved returns, with paired
+  provider create/cancel idempotency, drop-off or bounded pickup mode, a
+  maximum-24-hour private origin sidecar deleted on confirmation, transient
+  owner label downloads, and PII-free Admin/Doctor diagnostics;
 - classic and storefront-full skins;
 - featured-product and category-grid blocks.
 
 Provider-specific browser/server protocols, signature algorithms, credentials
 and rotation, partial refunds, reversals, exchanges, carrier label purchase,
-recurring or return pickup,
+recurring pickup and reverse tracking,
 provider-specific tracking protocols,
 tax remittance/filing, invoices, exemptions, customs, and shipping policy
 remain outside this package. A server-only `NpShopShippingAdapter` may supply
@@ -89,8 +93,11 @@ server-only reads, and may retrieve an already-booked label through
 `readShippingLabel`. A parcel-aware adapter may additionally implement both
 `schedulePickup` and `cancelPickup`; `createShop()` then requires one opaque
 `pickupLocationReference` that only the provider can resolve. Shop owns
-revision-safe selection and both PII-free
-commercial snapshots.
+revision-safe selection and both PII-free commercial snapshots. Approved
+returns may independently add paired `createReturnShipment` /
+`cancelReturnShipment` methods with one opaque `returnLocationReference`;
+optional `readReturnLabel` bytes are delivered only to the owner and never
+persisted.
 `@nexpress/shop-payment-toss` is the bundled Toss
 Payments v2 initiation and full-refund adapter. Customer/shipping PII exists only in the short-lived
 private draft or order sidecar and stays outside content search, revisions,
@@ -99,5 +106,5 @@ still does not imply that a visitor paid for a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
 for the exact price, SKU, inventory, cart, checkout-intent, private-draft,
-shipping-quote, tax-quote, pending-order, payment-attempt, fulfillment, parcel, carrier, pickup, tracking/polling, refund, return,
+shipping-quote, tax-quote, pending-order, payment-attempt, fulfillment, parcel, carrier, pickup, tracking/polling, refund, return, return-logistics,
 skin, block, and theme-integration contracts.

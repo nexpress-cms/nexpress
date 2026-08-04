@@ -14,6 +14,7 @@ provider-neutral carrier pickup scheduling and cancellation,
 verified or reconciled carrier tracking events and owner-visible delivery state,
 provider-neutral full refunds with safe inventory
 compensation, owner-scoped item return intake with audited receipt inventory,
+optional owner-scoped return shipment/drop-off or pickup creation with transient labels,
 Admin collection forms and health actions, blocks, and skins.
 
 `@nexpress/theme-storefront` is a separate brand/content theme. It works with
@@ -29,9 +30,9 @@ browser return on the server, authenticate an external callback, and project
 the exact provider-neutral event that moves that order to `paid` or
 `payment-failed`. A refund-capable adapter may also cancel one entire provider
 payment. Shop owns attempts, order/refund transitions, fulfillment and return
-state, carrier booking/pickup/tracking receipts, and local compensation, but does not choose a provider protocol, remit
+state, carrier booking/pickup/tracking/return-logistics receipts, and local compensation, but does not choose a provider protocol, remit
 or file tax, issue tax invoices, decide exemptions, physically fulfill goods,
-buy labels, schedule recurring or return pickup, implement a provider protocol, or decide jurisdiction-specific return eligibility.
+purchase/regenerate outbound labels, schedule recurring pickups, implement a provider protocol, or decide jurisdiction-specific return eligibility.
 
 ## Default setup
 
@@ -889,6 +890,63 @@ contract does not buy labels, create recurring pickups, schedule return
 pickups, expose provider availability calendars, store addresses, or implement
 provider-specific pickup protocols.
 
+### Approved-return logistics and transient labels
+
+`createReturnShipment` and `cancelReturnShipment` form a separate paired
+carrier capability. `createShop()` rejects a partial pair and requires one
+server-only `returnLocationReference`: an opaque provider-owned warehouse or
+returns-account token, never a postal address. `readReturnLabel` is an optional
+third method and cannot be enabled without the pair. Existing carrier adapters
+remain valid when all three are omitted.
+
+After staff approves an item return, its owner may choose `dropoff` or
+`pickup`, enter one exact return-origin address, and optionally provide a live
+15-minute–12-hour UTC pickup window starting within 14 days. Shop locks the
+owner/order/return and completed outbound carrier booking, writes a stable
+PII-free `np.shop-return-logistics-storage.v1` intent, and places the origin in
+a separate `np.shop-return-logistics-private.v1` sidecar. The sidecar expires
+within 24 hours; an hourly bounded cleanup permanently deletes expired origins
+and closes their pending intents for manual review. Shop never writes the
+origin to Admin rows, public order JSON, provider results, audit payloads,
+framework logs, or commercial cleanup diagnostics; carrier implementations
+must likewise avoid logging the private request.
+
+The provider call runs outside the database transaction. Its exact
+`np.shop-return-logistics-request.v1` uses the logistics UUID as the
+idempotency key and contains the approved immutable item subset, original
+shipment/booking ids, opaque return destination, short-lived origin, mode, and
+optional pickup window. A matching result supplies one return reference,
+carrier, tracking number, confirmed window, and fresh timestamp. Shop persists
+`provider-confirmed`, deletes the private sidecar, and only then advances the
+owner-visible state to `active`. Retryable ambiguity keeps the same `pending`
+intent and private sidecar for retry; definitive closed failure or malformed
+state becomes operator-visible instead of claiming success.
+
+Owners resume a retryable `pending` intent through its stable creation UUID;
+an ambiguous provider result is never discarded through local-only cancellation.
+They may cancel an active provider shipment through a separate stable
+cancellation UUID and the `cancel-pending` → `cancel-confirmed` → `cancelled`
+sequence. Provider success
+therefore survives local completion failure without a second external effect.
+Cancellation does not cancel the physical return, issue a refund, restore
+inventory, or make a jurisdiction decision. Staff receipt remains the sole
+operation that completes the existing return and performs all-or-none tracked
+inventory restoration.
+
+When `readReturnLabel` exists, an active owner-scoped return exposes a private
+download link. Shop rechecks browser/member ownership and the exact active
+shipment tuple before requesting 1 byte–5 MiB of `pdf | png | zpl` bytes. The
+binary response is attachment/no-store/nosniff; label bytes and URLs are never
+persisted or exposed through Admin JSON. Admin instead receives PII-free
+metric, health, and bounded rows covering reconciliation, provider mismatch,
+orphans, malformed values, and private-sidecar lifetime. Doctor validates the
+same declarative metric/status/table and API inventory.
+
+This boundary assumes one completed outbound booking from the same configured
+carrier. It does not buy or regenerate the outbound label, quote return postage,
+track reverse events, schedule recurring pickups, implement exchanges/refunds,
+or decide return eligibility and customer-service policy.
+
 `readTracking` is a separate additive capability from callback verification.
 When present, Shop registers a ten-minute UTC scheduled task and an audited
 direct-staff **Poll tracking now** row action. Each request is the exact
@@ -1261,6 +1319,8 @@ const shop = createShop({
     adapter: carrierAdapter,
     // Required only with paired schedulePickup/cancelPickup methods.
     pickupLocationReference: "warehouse-seoul-1",
+    // Required only with paired createReturnShipment/cancelReturnShipment.
+    returnLocationReference: "returns-seoul-1",
   },
 });
 
@@ -1289,8 +1349,8 @@ Future transaction work should remain separable from this foundation:
 1. additional provider packages for Stripe or KG Inicis;
 2. authorization/capture, settlement, provider-initiated reversal, and partial
    refund contracts;
-3. carrier label purchase/regeneration, recurring/return pickup, provider-specific tracking packages,
-   exchanges, and customer-service policy;
+3. carrier label purchase/regeneration, recurring pickup, reverse tracking,
+   provider-specific tracking packages, exchanges, and customer-service policy;
 4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and
    shipping-policy integrations.
 
