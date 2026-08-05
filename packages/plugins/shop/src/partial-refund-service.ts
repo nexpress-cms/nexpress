@@ -16,6 +16,7 @@ import {
 } from "./order-contract.js";
 import { NpShopPaymentProviderError } from "./payment-attempt-contract.js";
 import { npShopPaymentLimits } from "./payment-contract.js";
+import { npReadStoredShopPaymentAdjustment } from "./payment-adjustment-service.js";
 import {
   NP_SHOP_PARTIAL_REFUND_RESULT_CONTRACT,
   NP_SHOP_PARTIAL_REFUND_STORAGE_CONTRACT,
@@ -291,6 +292,16 @@ async function readPartialRefund(
   return row ? requirePartialRefund(row.value, row.expiresAt, row.key) : null;
 }
 
+/** Internal reconciliation read for authenticated provider adjustment events. */
+export async function npReadStoredShopPartialRefundForAdjustment(
+  db: ReturnType<typeof getDb> | NpShopTransaction,
+  siteId: string,
+  orderId: string,
+  forUpdate = false,
+): Promise<NpShopStoredPartialRefund | null> {
+  return readPartialRefund(db, siteId, orderId, forUpdate);
+}
+
 async function readFullRefund(
   tx: NpShopTransaction,
   siteId: string,
@@ -538,6 +549,18 @@ export async function npPartiallyRefundShopReturn(
     const existing = await readPartialRefund(tx, siteId, input.orderId, true);
     if (existing?.status === "refunded") {
       return { order, returnRequest, refund: existing, complete: true as const };
+    }
+    const paymentAdjustment = await npReadStoredShopPaymentAdjustment(
+      tx,
+      siteId,
+      input.orderId,
+      true,
+    );
+    if (paymentAdjustment?.status === "manual-review") {
+      throw new NpShopPartialRefundConflictError(
+        "partial_refund_manual_review",
+        "A provider-initiated payment adjustment requires reconciliation before a partial refund can start or resume.",
+      );
     }
     if (existing?.status === "manual-review") {
       throw new NpShopPartialRefundConflictError(

@@ -58,6 +58,22 @@ import {
   type NpShopVerifiedPaymentEvent,
 } from "./payment-contract.js";
 import {
+  NP_SHOP_PAYMENT_ADJUSTMENT_RECEIPT_CONTRACT,
+  NP_SHOP_PAYMENT_ADJUSTMENT_STORAGE_CONTRACT,
+  NpShopPaymentAdjustmentConflictError,
+  npShopPaymentAdjustmentEventDigest,
+  npProjectShopPaymentAdjustment,
+  type NpShopStoredPaymentAdjustment,
+  type NpShopStoredPaymentAdjustmentReceipt,
+  type NpShopVerifiedPaymentAdjustmentEvent,
+} from "./payment-adjustment-contract.js";
+import {
+  npPersistShopPaymentAdjustment,
+  npPersistShopPaymentAdjustmentReceipt,
+  npReadStoredShopPaymentAdjustment,
+  npReadStoredShopPaymentAdjustmentReceipt,
+} from "./payment-adjustment-service.js";
+import {
   NP_SHOP_ORDER_CONTRACT,
   NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT,
   NP_SHOP_ORDER_PRIVATE_CONTRACT,
@@ -139,6 +155,7 @@ import { npReadShopReturnLogisticsForOrder } from "./return-logistics-service.js
 import {
   npHasShopPartialRefund,
   npReadShopPartialRefundForOrder,
+  npReadStoredShopPartialRefundForAdjustment,
   npShopPartialRefundStorageKey,
 } from "./partial-refund-service.js";
 
@@ -178,6 +195,11 @@ export interface NpShopPaymentApplyResult {
   receipt: NpShopStoredPaymentReceipt;
   duplicate: boolean;
   orderStatus: "paid" | "payment-failed" | "cancelled";
+}
+
+export interface NpShopPaymentAdjustmentApplyResult {
+  receipt: NpShopStoredPaymentAdjustmentReceipt;
+  duplicate: boolean;
 }
 
 export interface NpShopAdminOrderRow {
@@ -571,6 +593,17 @@ async function lockPaymentEvent(
 ): Promise<void> {
   await tx.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-payment-event:${siteId}:${providerId}:${createHash("sha256").update(eventId).digest("hex")}`}, 0))`,
+  );
+}
+
+async function lockPaymentAdjustmentEvent(
+  tx: NpShopTransaction,
+  siteId: string,
+  providerId: string,
+  eventId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-payment-adjustment:${siteId}:${providerId}:${createHash("sha256").update(eventId).digest("hex")}`}, 0))`,
   );
 }
 
@@ -1121,6 +1154,26 @@ async function projectOrder(
       "Refund identity, payment, amount, retention, time, status, and revision must match the commercial order.",
     ]);
   }
+  const paymentAdjustment = await npReadStoredShopPaymentAdjustment(db, siteId, order.id);
+  const isClosedCancelledOrderAdjustment =
+    paymentAdjustment?.status === "closed-unpaid-order" &&
+    order.status === "cancelled" &&
+    order.paymentProvider === null &&
+    order.paymentReference === null;
+  if (
+    paymentAdjustment &&
+    ((!isClosedCancelledOrderAdjustment &&
+      (paymentAdjustment.providerId !== order.paymentProvider ||
+        paymentAdjustment.paymentReference !== order.paymentReference)) ||
+      paymentAdjustment.currency !== order.currency ||
+      paymentAdjustment.originalAmountMinor !== order.totalMinor ||
+      paymentAdjustment.purgeAt !== order.purgeAt ||
+      paymentAdjustment.orderRevision > order.revision)
+  ) {
+    throw new NpShopOrderContractError("Shop payment adjustment does not match its order", [
+      "Payment identity, amount, retention, and revision must match the commercial order.",
+    ]);
+  }
   const returnRequest = await readStoredReturn(db, siteId, order.id);
   if (returnRequest && !returnMatchesOrder(returnRequest, order)) {
     throw new NpShopOrderContractError("Shop return does not match its order", [
@@ -1165,6 +1218,9 @@ async function projectOrder(
     ...(tracking ? { tracking } : {}),
     ...(refund ? { refund: npProjectShopRefund(refund) } : {}),
     ...(partialRefund ? { partialRefund } : {}),
+    ...(paymentAdjustment
+      ? { paymentAdjustment: npProjectShopPaymentAdjustment(paymentAdjustment) }
+      : {}),
     ...(returnRequest
       ? { returnRequest: npProjectShopReturn(returnRequest, returnLogistics) }
       : {}),
@@ -1501,6 +1557,335 @@ export async function npApplyShopPaymentEvent(
   });
 }
 
+function paymentAdjustmentExtends(
+  current: NpShopStoredPaymentAdjustment,
+  event: NpShopVerifiedPaymentAdjustmentEvent,
+): boolean {
+  if (
+    current.providerId.length === 0 ||
+    current.orderId !== event.orderId ||
+    current.paymentReference !== event.paymentReference ||
+    current.currency !== event.currency ||
+    current.originalAmountMinor !== event.originalAmountMinor ||
+    event.remainingAmountMinor > current.remainingAmountMinor
+  ) {
+    return false;
+  }
+  const next = new Map(event.cancellations.map((item) => [item.reference, item]));
+  return current.cancellations.every((item) => {
+    const candidate = next.get(item.reference);
+    return (
+      candidate?.amountMinor === item.amountMinor && candidate.cancelledAt === item.cancelledAt
+    );
+  });
+}
+
+function paymentAdjustmentMatchesRefundReference(
+  event: NpShopVerifiedPaymentAdjustmentEvent,
+  reference: string | null,
+): boolean {
+  return reference === null || event.cancellations.some((item) => item.reference === reference);
+}
+
+export async function npApplyShopPaymentAdjustmentEvent(
+  runtime: NpShopRuntime,
+  providerId: string,
+  event: NpShopVerifiedPaymentAdjustmentEvent,
+  receivedAt: Date,
+): Promise<NpShopPaymentAdjustmentApplyResult> {
+  npRequireShopPaymentProviderId(providerId);
+  const siteId = await requireSiteId();
+  const eventDigest = npShopPaymentAdjustmentEventDigest(event);
+  return getDb().transaction(async (tx) => {
+    await lockPaymentAdjustmentEvent(tx, siteId, providerId, event.eventId);
+    const existingReceipt = await npReadStoredShopPaymentAdjustmentReceipt(
+      tx,
+      siteId,
+      providerId,
+      event.eventId,
+    );
+    if (existingReceipt) {
+      if (existingReceipt.eventDigest !== eventDigest) {
+        throw new NpShopPaymentAdjustmentConflictError(
+          "payment_adjustment_conflict",
+          "The provider adjustment id was already used for a different cancellation snapshot.",
+        );
+      }
+      return { receipt: existingReceipt, duplicate: true };
+    }
+
+    await lockOrderLookup(tx, siteId, event.orderId);
+    const lookup = await readOrderLookupForUpdate(tx, siteId, event.orderId);
+    if (!lookup) {
+      throw new NpShopPaymentAdjustmentConflictError(
+        "payment_adjustment_order_not_found",
+        "The verified payment adjustment references no Shop order in this site.",
+      );
+    }
+    await lockOrder(tx, siteId, lookup.ownerSegment, event.orderId);
+    let order = await readStoredOrderForUpdate(tx, siteId, lookup.ownerSegment, event.orderId);
+    if (!order) {
+      throw new NpShopPaymentAdjustmentConflictError(
+        "payment_adjustment_order_not_found",
+        "The verified payment adjustment references a missing Shop order.",
+      );
+    }
+    if (new Date(order.purgeAt) <= receivedAt) {
+      throw new NpShopPaymentAdjustmentConflictError(
+        "payment_adjustment_order_expired",
+        "The verified payment adjustment references an expired Shop order.",
+      );
+    }
+    if (order.currency !== event.currency || order.totalMinor !== event.originalAmountMinor) {
+      throw new NpShopPaymentAdjustmentConflictError(
+        "payment_adjustment_payment_mismatch",
+        "The provider adjustment currency or original amount does not match the immutable order.",
+      );
+    }
+    if (
+      order.paymentProvider !== null &&
+      (order.paymentProvider !== providerId || order.paymentReference !== event.paymentReference)
+    ) {
+      throw new NpShopPaymentAdjustmentConflictError(
+        "payment_adjustment_payment_mismatch",
+        "The provider adjustment does not match the order payment identity.",
+      );
+    }
+
+    const currentAdjustment = await npReadStoredShopPaymentAdjustment(
+      tx,
+      siteId,
+      event.orderId,
+      true,
+    );
+    if (
+      currentAdjustment &&
+      (currentAdjustment.providerId !== providerId ||
+        !paymentAdjustmentExtends(currentAdjustment, event))
+    ) {
+      throw new NpShopPaymentAdjustmentConflictError(
+        "payment_adjustment_conflict",
+        "The provider cancellation snapshot regressed or changed an already retained cancellation.",
+      );
+    }
+
+    const reversedAmountMinor = event.originalAmountMinor - event.remainingAmountMinor;
+    const fullRefund = await readStoredRefund(tx, siteId, order.id, true);
+    const partialRefund = await npReadStoredShopPartialRefundForAdjustment(
+      tx,
+      siteId,
+      order.id,
+      true,
+    );
+    const carrierBooking =
+      order.status === "paid" ? await readStoredCarrierBooking(tx, siteId, order.id, true) : null;
+    const matchesFullRefund =
+      fullRefund !== null &&
+      fullRefund.status !== "manual-review" &&
+      fullRefund.providerId === providerId &&
+      fullRefund.paymentReference === event.paymentReference &&
+      fullRefund.currency === event.currency &&
+      fullRefund.amountMinor === reversedAmountMinor &&
+      event.cancellations.length === 1 &&
+      event.cancellations[0]?.amountMinor === fullRefund.amountMinor &&
+      paymentAdjustmentMatchesRefundReference(event, fullRefund.refundReference);
+    const matchesPartialRefund =
+      partialRefund !== null &&
+      partialRefund.status !== "manual-review" &&
+      partialRefund.providerId === providerId &&
+      partialRefund.paymentReference === event.paymentReference &&
+      partialRefund.currency === event.currency &&
+      partialRefund.amountMinor === reversedAmountMinor &&
+      event.cancellations.length === 1 &&
+      event.cancellations[0]?.amountMinor === partialRefund.amountMinor &&
+      paymentAdjustmentMatchesRefundReference(event, partialRefund.refundReference);
+
+    let outcome: NpShopStoredPaymentAdjustmentReceipt["outcome"];
+    let inventoryOutcome: NpShopStoredPaymentAdjustment["inventoryOutcome"] = "not-required";
+    let fulfillmentOutcome: NpShopStoredPaymentAdjustment["fulfillmentOutcome"] = "unchanged";
+    if (matchesFullRefund || matchesPartialRefund) {
+      outcome = "matched-refund";
+    } else if (
+      currentAdjustment?.status === "manual-review" ||
+      fullRefund !== null ||
+      partialRefund !== null ||
+      (carrierBooking !== null && carrierBooking.status !== "completed") ||
+      (event.remainingAmountMinor === 0 && event.cancellations.length !== 1)
+    ) {
+      outcome = "manual-review";
+      inventoryOutcome = "pending";
+      fulfillmentOutcome = "pending";
+    } else if (order.status === "pending-payment") {
+      await npLockShopInventoryProducts(
+        tx,
+        siteId,
+        order.lines.map((line) => line.productId),
+      );
+      if (order.inventoryReservationStatus === "held") {
+        const reservedLineKeys = new Set(order.inventoryReservationLineKeys);
+        const released = await npReleaseShopInventoryReservations(
+          tx,
+          siteId,
+          order.id,
+          order.lines.filter((line) => reservedLineKeys.has(line.key)),
+        );
+        if (released !== reservedLineKeys.size) {
+          throw new NpShopPaymentAdjustmentConflictError(
+            "payment_adjustment_conflict",
+            "The reversed unpaid order is missing one or more exact inventory reservations.",
+          );
+        }
+      }
+      order = {
+        ...order,
+        status: "payment-failed",
+        revision: order.revision + 1,
+        privateDataStatus: "redacted",
+        inventoryReservationStatus:
+          order.inventoryReservationStatus === "held" ? "released" : "not-required",
+        paymentProvider: providerId,
+        paymentReference: event.paymentReference,
+        paymentEventId: event.eventId,
+        paymentResolvedAt: receivedAt.toISOString(),
+        updatedAt: receivedAt.toISOString(),
+      };
+      await persistOrder(tx, siteId, order);
+      await removePrivateAndMaintenance(tx, siteId, order.ownerSegment, order.id);
+      outcome = "closed-unpaid-order";
+    } else if (
+      order.status === "paid" &&
+      event.remainingAmountMinor === 0 &&
+      event.cancellations.length === 1 &&
+      order.paymentResolvedAt !== null &&
+      new Date(event.cancellations[0].cancelledAt) >= new Date(order.paymentResolvedAt)
+    ) {
+      const cancellation = event.cancellations[0];
+      const fulfillment = await readStoredFulfillment(tx, siteId, order.id, true);
+      if (!fulfillment || !fulfillmentMatchesOrder(fulfillment, order)) {
+        throw new NpShopOrderContractError("Reversed payment fulfillment is invalid", [
+          "A fully reversed paid order must retain one exact fulfillment before compensation.",
+        ]);
+      }
+      const shipped = fulfillment.status === "shipped";
+      inventoryOutcome = shipped ? "not-applicable-shipped" : "not-required";
+      if (!shipped && order.inventoryReservationStatus === "consumed") {
+        await npLockShopInventoryProducts(
+          tx,
+          siteId,
+          order.lines.map((line) => line.productId),
+        );
+        const trackedLineKeys = new Set(order.inventoryReservationLineKeys);
+        inventoryOutcome = (await npRestoreShopOrderInventory(
+          tx,
+          siteId,
+          runtime,
+          order.lines.filter((line) => trackedLineKeys.has(line.key)),
+        ))
+          ? "restocked"
+          : "manual-required";
+      }
+      const now = new Date(
+        Math.max(receivedAt.getTime(), new Date(cancellation.cancelledAt).getTime()),
+      ).toISOString();
+      if (!shipped) {
+        await persistFulfillment(tx, siteId, {
+          ...fulfillment,
+          status: "cancelled",
+          revision: fulfillment.revision + 1,
+          privateDataStatus: "redacted",
+          updatedAt: now,
+        });
+      }
+      order = {
+        ...order,
+        status: "refunded",
+        revision: order.revision + 1,
+        privateDataStatus: "redacted",
+        updatedAt: now,
+      };
+      await persistOrder(tx, siteId, order);
+      await removePrivateAndMaintenance(tx, siteId, order.ownerSegment, order.id);
+      const refund: NpShopStoredRefund = {
+        contract: NP_SHOP_REFUND_STORAGE_CONTRACT,
+        id: randomUUID(),
+        orderId: order.id,
+        providerId,
+        status: "refunded",
+        orderRevision: order.revision,
+        paymentReference: event.paymentReference,
+        refundReference: cancellation.reference,
+        currency: event.currency,
+        amountMinor: event.originalAmountMinor,
+        reason: "Provider-initiated full reversal",
+        inventoryOutcome,
+        fulfillmentOutcome: shipped ? "shipped-retained" : "cancelled",
+        providerErrorCode: null,
+        requestedAt: cancellation.cancelledAt,
+        updatedAt: now,
+        refundedAt: cancellation.cancelledAt,
+        purgeAt: order.purgeAt,
+      };
+      await persistRefund(tx, siteId, refund);
+      await tx.insert(npAuditEvents).values({
+        actorKind: "system",
+        actorUserId: null,
+        actorMemberId: null,
+        action: "shop.payment-adjustment.full-reversal",
+        targetType: "shop-order",
+        targetId: order.id,
+        payload: {
+          providerId,
+          eventId: event.eventId,
+          refundId: refund.id,
+          inventoryOutcome,
+          fulfillmentOutcome: refund.fulfillmentOutcome,
+        },
+        siteId,
+      });
+      outcome = "applied-full-reversal";
+      fulfillmentOutcome = shipped ? "shipped-retained" : "cancelled";
+    } else if (order.status === "paid") {
+      outcome = "manual-review";
+      inventoryOutcome = "pending";
+      fulfillmentOutcome = "pending";
+    } else {
+      outcome = "closed-unpaid-order";
+    }
+
+    const state: NpShopStoredPaymentAdjustment = {
+      contract: NP_SHOP_PAYMENT_ADJUSTMENT_STORAGE_CONTRACT,
+      providerId,
+      orderId: event.orderId,
+      paymentReference: event.paymentReference,
+      currency: event.currency,
+      originalAmountMinor: event.originalAmountMinor,
+      remainingAmountMinor: event.remainingAmountMinor,
+      cancellations: event.cancellations,
+      status: outcome,
+      latestEventId: event.eventId,
+      orderRevision: order.revision,
+      inventoryOutcome,
+      fulfillmentOutcome,
+      updatedAt: receivedAt.toISOString(),
+      purgeAt: order.purgeAt,
+    };
+    await npPersistShopPaymentAdjustment(tx, siteId, state);
+    const receipt: NpShopStoredPaymentAdjustmentReceipt = {
+      contract: NP_SHOP_PAYMENT_ADJUSTMENT_RECEIPT_CONTRACT,
+      providerId,
+      event,
+      eventDigest,
+      outcome,
+      orderStatus: order.status as NpShopStoredPaymentAdjustmentReceipt["orderStatus"],
+      orderRevision: order.revision,
+      processedAt: receivedAt.toISOString(),
+      purgeAt: order.purgeAt,
+    };
+    await npPersistShopPaymentAdjustmentReceipt(tx, siteId, receipt);
+    return { receipt, duplicate: false };
+  });
+}
+
 async function purgeOrder(
   tx: NpShopTransaction,
   siteId: string,
@@ -1524,7 +1909,7 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)})`,
+        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)}, ${`payment-adjustment:${order.id}`})`,
       ),
     );
   await tx
@@ -1552,6 +1937,16 @@ async function purgeOrder(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, "payment-event:%"),
+        sql`${npPluginStorage.value}->'event'->>'orderId' = ${order.id}`,
+      ),
+    );
+  await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "payment-adjustment-event:%"),
         sql`${npPluginStorage.value}->'event'->>'orderId' = ${order.id}`,
       ),
     );
@@ -2553,6 +2948,18 @@ export async function npRefundShopOrder(
     const existing = await readStoredRefund(tx, siteId, input.orderId, true);
     if (existing?.status === "refunded")
       return { order, refund: existing, complete: true as const };
+    const paymentAdjustment = await npReadStoredShopPaymentAdjustment(
+      tx,
+      siteId,
+      input.orderId,
+      true,
+    );
+    if (paymentAdjustment?.status === "manual-review") {
+      throw new NpShopRefundConflictError(
+        "refund_manual_review",
+        "A provider-initiated payment adjustment requires reconciliation before a refund can start or resume.",
+      );
+    }
     if (existing?.status === "manual-review") {
       throw new NpShopRefundConflictError(
         "refund_manual_review",
@@ -2901,6 +3308,13 @@ async function readFulfillmentForAction(
     throw new NpShopFulfillmentConflictError(
       "fulfillment_terminal",
       "Fulfillment cannot change while a full refund requires provider or operator reconciliation.",
+    );
+  }
+  const paymentAdjustment = await npReadStoredShopPaymentAdjustment(tx, siteId, orderId, true);
+  if (paymentAdjustment?.status === "manual-review") {
+    throw new NpShopFulfillmentConflictError(
+      "fulfillment_terminal",
+      "Fulfillment cannot change while a provider-initiated payment adjustment requires reconciliation.",
     );
   }
   const locked = await readStoredFulfillment(tx, siteId, orderId, true);

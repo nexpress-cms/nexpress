@@ -7,7 +7,14 @@ import {
   npIsIgnoredPaymentWebhook,
   npRequireFreshShopPaymentEvent,
 } from "./payment-contract.js";
-import { npApplyShopPaymentEvent } from "./order-service.js";
+import {
+  NpShopPaymentAdjustmentConflictError,
+  NpShopPaymentAdjustmentContractError,
+  NpShopPaymentAdjustmentVerificationError,
+  npIsShopPaymentAdjustmentEvent,
+  npRequireFreshShopPaymentAdjustmentEvent,
+} from "./payment-adjustment-contract.js";
+import { npApplyShopPaymentAdjustmentEvent, npApplyShopPaymentEvent } from "./order-service.js";
 import type { NpShopRuntime } from "./runtime.js";
 
 const noStoreHeaders = { "Cache-Control": "private, no-store" } as const;
@@ -37,6 +44,30 @@ export function createShopPaymentApiHandler(runtime: NpShopRuntime) {
           headers: noStoreHeaders,
         };
       }
+      if (npIsShopPaymentAdjustmentEvent(verified)) {
+        const event = npRequireFreshShopPaymentAdjustmentEvent(verified, receivedAt);
+        const result = await npApplyShopPaymentAdjustmentEvent(
+          runtime,
+          adapter.id,
+          event,
+          receivedAt,
+        );
+        return {
+          status: 200,
+          body: {
+            adjustment: {
+              providerId: result.receipt.providerId,
+              eventId: result.receipt.event.eventId,
+              outcome: result.receipt.outcome,
+              orderStatus: result.receipt.orderStatus,
+              orderRevision: result.receipt.orderRevision,
+              processedAt: result.receipt.processedAt,
+            },
+            duplicate: result.duplicate,
+          },
+          headers: noStoreHeaders,
+        };
+      }
       const event = npRequireFreshShopPaymentEvent(verified, receivedAt);
       const result = await npApplyShopPaymentEvent(runtime, adapter.id, event, receivedAt);
       return {
@@ -62,10 +93,31 @@ export function createShopPaymentApiHandler(runtime: NpShopRuntime) {
           headers: noStoreHeaders,
         };
       }
+      if (error instanceof NpShopPaymentAdjustmentVerificationError) {
+        return {
+          status: 401,
+          body: { error: "payment_adjustment_verification_failed", message: error.message },
+          headers: noStoreHeaders,
+        };
+      }
       if (error instanceof NpShopPaymentConflictError) {
         return {
           status: 409,
           body: { error: error.code, message: error.message },
+          headers: noStoreHeaders,
+        };
+      }
+      if (error instanceof NpShopPaymentAdjustmentConflictError) {
+        return {
+          status: 409,
+          body: { error: error.code, message: error.message },
+          headers: noStoreHeaders,
+        };
+      }
+      if (error instanceof NpShopPaymentAdjustmentContractError) {
+        return {
+          status: 400,
+          body: { error: "invalid_payment_adjustment", message: error.issues.join(" ") },
           headers: noStoreHeaders,
         };
       }

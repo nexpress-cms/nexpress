@@ -6,6 +6,7 @@ import type { NpShopTracking } from "./tracking-contract.js";
 
 import type { NpShopRefund } from "./refund-contract.js";
 import type { NpShopPartialRefund } from "./partial-refund-contract.js";
+import type { NpShopPaymentAdjustment } from "./payment-adjustment-contract.js";
 import type { NpShopReturn } from "./return-contract.js";
 
 export const npShopCurrencies = ["KRW", "USD", "EUR", "JPY"] as const;
@@ -677,6 +678,8 @@ export interface NpShopOrder {
   refund?: NpShopRefund;
   /** Present after a received physical return receives one partial payment refund. */
   partialRefund?: NpShopPartialRefund;
+  /** Present after a provider confirms one captured-payment cancellation snapshot. */
+  paymentAdjustment?: NpShopPaymentAdjustment;
   /** Present after the owner requests a physical return. */
   returnRequest?: NpShopReturn;
   purgeAt: string;

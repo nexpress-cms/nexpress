@@ -339,9 +339,10 @@ real product domain, not just blog/community. Ship as a plugin package
 - **Toss Payments v2 adapter (shipped)** —
   `@nexpress/shop-payment-toss` owns the KRW browser SDK handoff, secret-key
   confirmation with attempt UUID idempotency, and query-verified terminal
-  general-payment webhooks. It also owns exact full cancellation with the
-  durable refund UUID as idempotency key and rejects partial results. Stripe
-  and KG Inicis packages remain future work.
+  general-payment webhooks, including cumulative `CANCELED` and
+  `PARTIAL_CANCELED` adjustment snapshots. It also owns exact full cancellation
+  with the durable refund UUID as idempotency key. Stripe and KG Inicis
+  packages remain future work.
 - **Order fulfillment Admin (shipped)** — paid orders atomically create an
   independent awaiting/processing/shipped record. Revision-safe row actions,
   bounded PII-free notes and tracking, audited direct-staff private reads,
@@ -400,7 +401,7 @@ real product domain, not just blog/community. Ship as a plugin package
   provider idempotency, exact result matching, `refunded` orders,
   refund-cancelled unshipped fulfillment, retained shipped fulfillment,
   all-or-none exact restock, manual-compensation state, audit, owner projection,
-  Admin, and Doctor share the same contract. External reversals remain future.
+  Admin, and Doctor share the same contract.
 - **Physical returns and receipt inventory (shipped)** — one shipped order may
   own one exact item-level return with owner request/cancellation, audited
   revision-safe staff approval/rejection/receipt, closed PII-free reasons,
@@ -414,7 +415,21 @@ real product domain, not just blog/community. Ship as a plugin package
   scaffold guidance, and PostgreSQL coverage share the contract. Receipt has
   already restored inventory, so partial-refund completion never repeats that
   transition or changes shipped fulfillment. Repeated or non-return partial
-  refunds and external reversals remain separate.
+  refunds remain separate.
+- **Provider-initiated payment adjustment convergence (shipped)** — payment
+  adapters may project one exact cumulative cancellation snapshot after
+  authenticating or authoritatively querying the provider. Shop serializes
+  provider/event ids, requires monotonic unique cancellation entries and exact
+  original/reversed/remaining totals, and stores PII-free receipts plus one
+  order state. Exact existing full or return-linked refunds are matched without
+  repeating inventory or fulfillment work. One previously unknown single full
+  reversal atomically creates the durable full-refund projection, cancels an
+  unshipped fulfillment, deletes private data, and attempts all-or-none tracked
+  inventory restoration; unknown partial or multi-cancellation histories enter
+  manual review and block fulfillment and further refunds. Admin/Doctor,
+  scaffold guidance, Toss, cleanup, and PostgreSQL coverage share the contract.
+  Disputes, chargebacks, settlement corrections, and automatic allocation of
+  arbitrary partial reversals remain separate.
 - **Provider-neutral approved-return logistics (shipped)** — carrier adapters
   may add one paired return-shipment create/cancel capability over an approved
   owner-scoped item return and completed outbound booking. Drop-off or bounded
@@ -446,8 +461,9 @@ real product domain, not just blog/community. Ship as a plugin package
 - **Inventory (shipped foundation)** — catalog stock/low-stock projection,
   transaction-safe pending holds, and atomic paid-order on-hand decrement
   plus exact unshipped full-refund restoration exist. Received-return partial
-  refunds deliberately do not compensate inventory a second time; other
-  payment-driven or external-reversal compensation remains future work.
+  refunds deliberately do not compensate inventory a second time. A verified
+  single full provider reversal reuses the exact unshipped compensation rule;
+  partial or cumulative ambiguity remains blocked manual review.
 - **Public surfaces (shipped)** — product detail, listing, cart,
   checkout-intent, private order-draft, order-history, order-detail, and return
   intake pages

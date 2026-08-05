@@ -2,6 +2,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 
 import {
   NP_SHOP_PAYMENT_EVENT_CONTRACT,
+  NP_SHOP_PAYMENT_ADJUSTMENT_EVENT_CONTRACT,
   NP_SHOP_PAYMENT_WEBHOOK_IGNORED_CONTRACT,
   NP_SHOP_PARTIAL_REFUND_RESULT_CONTRACT,
   NP_SHOP_REFUND_RESULT_CONTRACT,
@@ -21,6 +22,7 @@ import {
   type NpShopPaymentWebhookInput,
   type NpShopPaymentWebhookResult,
   type NpShopVerifiedPaymentEvent,
+  type NpShopVerifiedPaymentAdjustmentEvent,
 } from "@nexpress/plugin-shop";
 import { TossPaymentLauncher } from "@nexpress/shop-payment-toss/client";
 
@@ -57,6 +59,12 @@ interface TossPartialCancellationProjection extends TossPaymentProjection {
   balanceAmount: number;
   transactionKey: string;
   canceledAt: string;
+}
+
+interface TossCancellationSnapshot extends TossPaymentProjection {
+  status: "CANCELED" | "PARTIAL_CANCELED";
+  balanceAmount: number;
+  cancellations: NpShopVerifiedPaymentAdjustmentEvent["cancellations"];
 }
 
 function requireKey(
@@ -222,6 +230,82 @@ function requirePartialCancellationProjection(
   };
 }
 
+function requireCancellationSnapshot(value: unknown): TossCancellationSnapshot {
+  const payment = requirePaymentProjection(value);
+  if (
+    (payment.status !== "CANCELED" && payment.status !== "PARTIAL_CANCELED") ||
+    !isRecord(value) ||
+    !Number.isSafeInteger(value.balanceAmount) ||
+    (value.balanceAmount as number) < 0 ||
+    (value.balanceAmount as number) >= payment.totalAmount ||
+    !Array.isArray(value.cancels) ||
+    value.cancels.length < 1 ||
+    value.cancels.length > 100
+  ) {
+    throw new NpShopPaymentProviderError(
+      "toss_adjustment_mismatch",
+      "Toss returned a malformed captured-payment cancellation snapshot.",
+      false,
+    );
+  }
+  const cancellations = value.cancels
+    .filter((candidate): candidate is Record<string, unknown> => {
+      return isRecord(candidate) && candidate.cancelStatus === "DONE";
+    })
+    .map((candidate) => {
+      const reference = boundedText(candidate.transactionKey, 200);
+      const cancelledAtValue = boundedText(candidate.canceledAt, 40);
+      const cancelledAt = cancelledAtValue ? new Date(cancelledAtValue) : null;
+      if (
+        !reference ||
+        !opaquePattern.test(reference) ||
+        !Number.isSafeInteger(candidate.cancelAmount) ||
+        (candidate.cancelAmount as number) < 1 ||
+        !cancelledAt ||
+        Number.isNaN(cancelledAt.getTime())
+      ) {
+        throw new NpShopPaymentProviderError(
+          "toss_adjustment_mismatch",
+          "Toss returned malformed completed-cancellation metadata.",
+          false,
+        );
+      }
+      return {
+        reference,
+        amountMinor: candidate.cancelAmount as number,
+        cancelledAt: cancelledAt.toISOString(),
+      };
+    })
+    .sort((left, right) => {
+      return (
+        left.cancelledAt.localeCompare(right.cancelledAt) ||
+        left.reference.localeCompare(right.reference)
+      );
+    });
+  const references = new Set(cancellations.map((item) => item.reference));
+  const reversed = cancellations.reduce((total, item) => total + item.amountMinor, 0);
+  if (
+    cancellations.length < 1 ||
+    references.size !== cancellations.length ||
+    !Number.isSafeInteger(reversed) ||
+    reversed !== payment.totalAmount - (value.balanceAmount as number) ||
+    (payment.status === "CANCELED" && value.balanceAmount !== 0) ||
+    (payment.status === "PARTIAL_CANCELED" && (value.balanceAmount as number) < 1)
+  ) {
+    throw new NpShopPaymentProviderError(
+      "toss_adjustment_mismatch",
+      "Toss cancellation totals do not match the authoritative payment balance.",
+      false,
+    );
+  }
+  return {
+    ...payment,
+    status: payment.status,
+    balanceAmount: value.balanceAmount as number,
+    cancellations,
+  };
+}
+
 async function readBoundedJson(response: Response): Promise<unknown> {
   const maximum = 64 * 1_024;
   const chunks: Uint8Array[] = [];
@@ -286,6 +370,18 @@ function paymentEventId(paymentKey: string, status: string): string {
   return `payment:${createHash("sha256").update(`${paymentKey}:${status}`).digest("hex")}`;
 }
 
+function paymentAdjustmentEventId(payment: TossCancellationSnapshot): string {
+  return `adjustment:${createHash("sha256")
+    .update(
+      JSON.stringify({
+        paymentKey: payment.paymentKey,
+        balanceAmount: payment.balanceAmount,
+        cancellations: payment.cancellations,
+      }),
+    )
+    .digest("hex")}`;
+}
+
 export function createTossPaymentsAdapter(
   options: NpTossPaymentsOptions,
 ): NpShopPaymentInitiationAdapter & NpShopPaymentRefundAdapter & NpShopPaymentPartialRefundAdapter {
@@ -324,13 +420,16 @@ export function createTossPaymentsAdapter(
     }
   }
 
-  async function queryPayment(paymentKey: string): Promise<TossPaymentProjection> {
+  async function queryPayment(paymentKey: string): Promise<{
+    payment: TossPaymentProjection;
+    payload: unknown;
+  }> {
     const response = await tossRequest(`/v1/payments/${encodeURIComponent(paymentKey)}`, {
       method: "GET",
     });
     const payload = await readBoundedJson(response);
     if (!response.ok) throw safeProviderError(payload, "Toss could not verify the payment.");
-    return requirePaymentProjection(payload);
+    return { payment: requirePaymentProjection(payload), payload };
   }
 
   function preparePayment(input: NpShopPaymentPrepareInput): NpShopPaymentPrepareResult {
@@ -562,7 +661,8 @@ export function createTossPaymentsAdapter(
     if (!isRecord(data)) return null;
     const paymentKey = boundedText(data.paymentKey);
     if (!paymentKey || !opaquePattern.test(paymentKey)) return null;
-    const payment = await queryPayment(paymentKey);
+    const queried = await queryPayment(paymentKey);
+    const payment = queried.payment;
     if (
       !constantTimeEqual(payment.paymentKey, paymentKey) ||
       data.orderId !== payment.orderId ||
@@ -571,6 +671,20 @@ export function createTossPaymentsAdapter(
       data.currency !== payment.currency
     ) {
       return null;
+    }
+    if (payment.status === "CANCELED" || payment.status === "PARTIAL_CANCELED") {
+      const cancellation = requireCancellationSnapshot(queried.payload);
+      return {
+        contract: NP_SHOP_PAYMENT_ADJUSTMENT_EVENT_CONTRACT,
+        eventId: paymentAdjustmentEventId(cancellation),
+        orderId: cancellation.orderId,
+        paymentReference: cancellation.paymentKey,
+        currency: cancellation.currency,
+        originalAmountMinor: cancellation.totalAmount,
+        remainingAmountMinor: cancellation.balanceAmount,
+        cancellations: cancellation.cancellations,
+        signedAt: input.receivedAt,
+      } satisfies NpShopVerifiedPaymentAdjustmentEvent;
     }
     const type =
       payment.status === "DONE"

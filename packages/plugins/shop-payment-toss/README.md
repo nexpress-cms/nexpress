@@ -5,7 +5,9 @@ an adapter rather than a standalone NexPress plugin: Shop owns orders,
 inventory, attempts, and Admin diagnostics, while this package owns the Toss
 browser SDK handoff, secret-key confirmation, query-verified webhook
 projection, idempotent full-payment cancellation, and one exact partial
-cancellation linked to a received physical return.
+cancellation linked to a received physical return. Query-verified
+`CANCELED` and `PARTIAL_CANCELED` webhooks become cumulative provider-neutral
+Shop adjustment snapshots rather than being silently ignored.
 
 ```ts
 import { createShop } from "@nexpress/plugin-shop";
@@ -35,7 +37,9 @@ Register the Shop raw webhook URL
 `PAYMENT_STATUS_CHANGED` endpoint. Toss general-payment webhooks are verified
 by querying the payment with the secret key; unsupported or mismatched payloads
 fail closed, while authenticated non-terminal status updates are acknowledged
-without changing the order.
+without changing the order. Completed cancellation entries must have unique
+transaction keys, canonical timestamps, and a total equal to Toss's original
+amount minus `balanceAmount`.
 
 Return query parameters never mark an order paid. Only a successful,
 server-authenticated confirmation response or a query-verified terminal
@@ -60,5 +64,10 @@ payment reference, and amount all match. Shop persists provider confirmation
 before local completion and does not repeat the return's inventory restoration
 or change its shipped fulfillment.
 
-Repeated or non-return partial refunds, reversals, virtual accounts, billing,
-settlement, exchanges, tax, shipping, and carrier integrations remain separate contracts.
+Shop matches those snapshots to its durable full/return-refund records without
+repeating compensation. A previously unknown single full cancellation safely
+closes an unshipped fulfillment and restores tracked inventory; an unknown
+partial or multi-cancellation snapshot remains PII-free manual review and
+blocks shipment/refund mutation. Disputes, chargebacks, initiating repeated or
+non-return partial refunds, virtual accounts, billing, settlement, exchanges,
+tax, shipping, and carrier integrations remain separate contracts.
