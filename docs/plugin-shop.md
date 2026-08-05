@@ -1,7 +1,7 @@
 # Shop plugin and Storefront theme
 
 `@nexpress/plugin-shop` is the first-party catalog foundation for NexPress.
-It owns product and category data, inventory projection, public catalog
+It owns product, category, and promotion data, inventory projection, public catalog
 routes, bounded guest/member carts, checkout intents, private order drafts,
 durable orders, transaction-safe inventory reservations, an optional
 provider-neutral shipping quote and selected delivery snapshot, an optional
@@ -43,12 +43,13 @@ migration:
 
 1. Open Admin → Commerce → Shop categories and publish categories.
 2. Open Admin → Commerce → Products and publish products.
-3. Visit `/shop`.
-4. Add a product to the cart, visit `/shop/cart`, create a short-lived
+3. Optionally publish automatic promotions or coupon codes under Commerce → Promotions.
+4. Visit `/shop`.
+5. Add a product to the cart, visit `/shop/cart`, create a short-lived
    checkout intent, continue to the 24-hour private order draft, and optionally
    create a durable pending order reference.
-5. Optionally activate Storefront from Admin → Appearance.
-6. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
+6. Optionally activate Storefront from Admin → Appearance.
+7. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
    or insert the `shop.storefront-home` pattern.
 
 Sites upgrading from a version without Shop must generate, review, and apply
@@ -131,7 +132,7 @@ summary and primary image.
 
 ## Cart and quote contract
 
-Shop exposes `GET`, `POST`, `PATCH`, and `DELETE` at
+Shop exposes `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` at
 `/api/plugins/shop/cart`. The public route is browser-oriented and owns its
 CSRF checks because plugin API routes are framework-CSRF-exempt:
 
@@ -175,6 +176,41 @@ own contracts, while the optional verified event boundary owns terminal
 idempotency and reservation consumption. Quotes subtract every unexpired
 pending-order reservation for the same product or canonical variant SKU.
 
+### Promotions and coupons
+
+The third Commerce collection, `shop-promotions`, defines automatic campaigns
+and explicit coupon codes. Codes normalize to uppercase letters, digits,
+dashes, or underscores and each cart stores at most five. `PUT /cart` replaces
+the complete canonical code set under the same CSRF and `expectedRevision`
+contract as line mutations.
+
+A published promotion chooses a fixed minor-unit amount or percentage in basis
+points (`100 = 1%`), one currency, an optional minimum subtotal, optional
+percentage cap, an active time window, priority, and one target: whole order,
+selected products, or selected categories. `0` means unlimited for global and
+per-owner usage. Automatic promotions need no code; a code is required
+otherwise. Invalid documents fail closed during author writes and runtime
+normalization. The write hook forces promotion documents to private visibility,
+so generic public collection reads and search never enumerate coupon codes.
+
+Stackable promotions are evaluated in priority/id order against remaining
+eligible line amounts. Every non-stackable promotion is evaluated alone; Shop
+chooses the largest deterministic discount between that exclusive offer and
+the full stack. Fixed discounts use proportional largest-remainder line
+allocation. Percentage discounts floor each line result before applying an
+optional cap. The immutable `np.shop-promotion-snapshot.v1` records
+requested/rejected codes, applied campaign identity, total discount, and exact
+per-line allocations. It participates in the cart fingerprint and is copied
+through checkout intent, private draft, and durable order.
+
+Order creation locks campaigns in canonical order and reserves global and
+hashed-owner counters atomically. Payment success converts reservations to
+redeemed uses. Payment failure, owner cancellation, payment timeout, and an
+unpaid provider reversal release them. Counters contain no owner id or private
+order data. Admin/Doctor health reports malformed counters and aggregate
+reserved/redeemed usage. Partial return refunds subtract the proportional
+frozen line discount; returning a full line receives its exact allocation.
+
 ## Checkout intent contract
 
 Shop exposes `GET`, `POST`, and `DELETE` at
@@ -187,7 +223,8 @@ owner-scoped snapshot of one current cart quote:
   intent id;
 - the current cart must be non-empty, ready, and use exactly one currency;
 - the snapshot stores product identity/display fields, canonical variant SKU,
-  integer prices, subtotal, quantity, cart revision, and cart fingerprint;
+  integer prices, gross subtotal, promotion snapshot, discount, net total,
+  quantity, cart revision, and cart fingerprint;
 - each owner may hold at most five unexpired, non-cancelled intents and 20
   total unexpired records including cancellations;
 - every intent expires exactly 15 minutes after creation;
@@ -240,7 +277,7 @@ Shop exposes `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` at
 expectedRevision, methodId }` accepts only one method from the current,
   unexpired quote, requests any configured tax quote outside the transaction,
   and freezes both PII-free snapshots. The exact invariant is
-  `subtotalMinor + shippingMinor + taxMinor = totalMinor`. It then becomes
+  `subtotalMinor - discountMinor + shippingMinor + taxMinor = totalMinor`. It then becomes
   `reviewable`.
 - A `reviewable` draft means only that its fields and any configured delivery
   selection and tax quote satisfy the draft contract; it does not mean that
@@ -338,7 +375,8 @@ Shop never holds a database transaction open across the provider call. After a
 successful selection, `np.shop-delivery-method.v1` copies only provider/quote/
 method ids, label, amount, estimate, and quote timestamps into the durable
 commercial order. It contains no destination or owner identity. The immutable
-order stores `subtotalMinor`, `shippingMinor`, `taxMinor`, and `totalMinor`;
+order stores `subtotalMinor`, `discountMinor`, `shippingMinor`, `taxMinor`, and
+`totalMinor`;
 payment preparation, verified event matching, and full refunds use
 `totalMinor`.
 
@@ -403,7 +441,7 @@ component-total mismatch, and out-of-window expiry fail closed as HTTP 503.
 product prices**. It does not reinterpret an already tax-inclusive catalog
 price. The durable `np.shop-tax-quote.v1` snapshot contains no destination or
 owner identity. Drafts and orders enforce
-`subtotalMinor + shippingMinor + taxMinor = totalMinor`; payment preparation,
+`subtotalMinor - discountMinor + shippingMinor + taxMinor = totalMinor`; payment preparation,
 verified event matching, and full refunds continue to use that frozen
 `totalMinor`.
 
@@ -1322,7 +1360,7 @@ Shop instances.
 
 ## Admin surfaces
 
-The two collections appear in the Commerce group. Product editing includes
+The three collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
@@ -1330,6 +1368,7 @@ The plugin declares these baseline typed dashboard metric actions:
 
 - total product rows;
 - published low-stock products;
+- published promotions plus PII-free promotion reservation/redemption health;
 - active unexpired carts;
 - unexpired non-cancelled checkout-intent records (public reads still
   revalidate the current cart).
@@ -1499,6 +1538,7 @@ const shop = createShop({
   collections: {
     categories: "catalog-categories",
     products: "catalog-products",
+    promotions: "catalog-promotions",
   },
   defaultSkinId: "storefront-full",
   payment: { adapter }, // optional; omitted means the webhook route does not exist

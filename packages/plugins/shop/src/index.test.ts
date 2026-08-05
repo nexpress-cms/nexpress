@@ -26,8 +26,13 @@ describe("shop factory", () => {
     expect(shopCollections.map((collection) => collection.slug)).toEqual([
       "shop-categories",
       "shop-products",
+      "shop-promotions",
     ]);
-    expect(shopPlugin.manifest.provides.collections).toEqual(["shop-categories", "shop-products"]);
+    expect(shopPlugin.manifest.provides.collections).toEqual([
+      "shop-categories",
+      "shop-products",
+      "shop-promotions",
+    ]);
     expect(shopPlugin.pageRoutes?.map((route) => route.pattern)).toEqual([
       "/shop",
       "/shop/categories/:categorySlug",
@@ -49,6 +54,8 @@ describe("shop factory", () => {
         kind: action.kind,
       })),
     ).toEqual([
+      { id: "countPromotions", kind: "metric" },
+      { id: "promotionHealth", kind: "status" },
       { id: "countProducts", kind: "metric" },
       { id: "countLowStockProducts", kind: "metric" },
       { id: "countActiveCarts", kind: "metric" },
@@ -122,6 +129,7 @@ describe("shop factory", () => {
       "GET /cart",
       "POST /cart",
       "PATCH /cart",
+      "PUT /cart",
       "DELETE /cart",
       "GET /checkout",
       "POST /checkout",
@@ -787,7 +795,11 @@ describe("shop factory", () => {
     };
     const shop = createShop({
       basePath: "/commerce/catalog",
-      collections: { categories: "catalog-categories", products: "catalog-products" },
+      collections: {
+        categories: "catalog-categories",
+        products: "catalog-products",
+        promotions: "catalog-promotions",
+      },
       skins: [editorial],
       defaultSkinId: "editorial",
     });
@@ -796,6 +808,7 @@ describe("shop factory", () => {
     expect(shop.collections.map((collection) => collection.slug)).toEqual([
       "catalog-categories",
       "catalog-products",
+      "catalog-promotions",
     ]);
     const categoryRelation = shop.collections[1].fields.find(
       (field) => "name" in field && field.name === "categories",
@@ -887,6 +900,39 @@ describe("shop factory", () => {
     ).toMatchObject({
       sku: null,
     });
+  });
+
+  it("normalizes coupon codes and forces promotion definitions private", () => {
+    const beforeCreate = shopCollections[2].hooks?.beforeCreate?.[0];
+    expect(beforeCreate).toBeTypeOf("function");
+    expect(
+      beforeCreate?.({
+        data: {
+          name: "Welcome",
+          code: " welcome ",
+          automatic: false,
+          kind: "fixed",
+          currency: "KRW",
+          value: 5_000,
+          maximumDiscountMinor: null,
+          minimumSubtotalMinor: 0,
+          target: "order",
+          products: [],
+          categories: [],
+          startsAt: null,
+          endsAt: null,
+          priority: 0,
+          stackable: false,
+          totalUsageLimit: 0,
+          perOwnerUsageLimit: 0,
+          visibility: "public",
+        },
+        originalDoc: null,
+        user: null,
+        principal: null,
+        collection: "shop-promotions",
+      }),
+    ).toMatchObject({ code: "WELCOME", visibility: "private" });
   });
 
   it("rejects malformed catalog definitions and unsafe product values early", async () => {

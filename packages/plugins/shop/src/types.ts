@@ -17,6 +17,33 @@ export type NpShopInventoryState = "in-stock" | "low-stock" | "out-of-stock" | "
 export interface NpShopCollectionSlugs {
   categories: string;
   products: string;
+  promotions: string;
+}
+
+export type NpShopPromotionKind = "fixed" | "percentage";
+export type NpShopPromotionTarget = "order" | "products" | "categories";
+
+export interface NpShopPromotionLineDiscount {
+  lineKey: string;
+  discountMinor: number;
+}
+
+export interface NpShopAppliedPromotion {
+  id: string;
+  name: string;
+  code: string | null;
+  kind: NpShopPromotionKind;
+  target: NpShopPromotionTarget;
+  discountMinor: number;
+  lineDiscounts: NpShopPromotionLineDiscount[];
+}
+
+export interface NpShopPromotionSnapshot {
+  contract: "np.shop-promotion-snapshot.v1";
+  couponCodes: string[];
+  rejectedCouponCodes: string[];
+  applied: NpShopAppliedPromotion[];
+  discountMinor: number;
 }
 
 export interface NpShopCategory {
@@ -109,6 +136,12 @@ export interface NpShopMessages {
   cartRemove: string;
   cartClear: string;
   cartSubtotal: string;
+  promotionDiscount: string;
+  couponCode: string;
+  couponPlaceholder: string;
+  couponApply: string;
+  couponRemove: string;
+  couponRejected: string;
   cartUnavailable: string;
   cartPriceChanged: string;
   cartInsufficientStock: string;
@@ -318,12 +351,15 @@ export interface NpShopCartLine {
 export interface NpShopCartTotal {
   currency: NpShopCurrency;
   subtotalMinor: number;
+  discountMinor: number;
+  totalMinor: number;
 }
 
 export interface NpShopCartQuote {
   contract: "np.shop-cart-quote.v1";
   revision: number;
   lines: NpShopCartLine[];
+  promotions: NpShopPromotionSnapshot;
   totals: NpShopCartTotal[];
   totalUnits: number;
   ready: boolean;
@@ -343,6 +379,12 @@ export interface NpShopCartClientMessages {
   cartRemove: string;
   cartClear: string;
   cartSubtotal: string;
+  promotionDiscount: string;
+  couponCode: string;
+  couponPlaceholder: string;
+  couponApply: string;
+  couponRemove: string;
+  couponRejected: string;
   cartUnavailable: string;
   cartPriceChanged: string;
   cartInsufficientStock: string;
@@ -513,6 +555,9 @@ export interface NpShopCheckoutIntent {
   cartFingerprint: string;
   currency: NpShopCurrency;
   subtotalMinor: number;
+  discountMinor: number;
+  totalMinor: number;
+  promotions: NpShopPromotionSnapshot;
   totalUnits: number;
   lines: NpShopCheckoutIntentLine[];
   createdAt: string;
@@ -564,11 +609,13 @@ export interface NpShopOrderDraft {
   cartFingerprint: string;
   currency: NpShopCurrency;
   subtotalMinor: number;
+  discountMinor: number;
   shippingMinor: number;
   taxMinor: number;
   totalMinor: number;
   totalUnits: number;
   lines: NpShopCheckoutIntentLine[];
+  promotions: NpShopPromotionSnapshot;
   customer: NpShopOrderDraftCustomer | null;
   shipping: NpShopOrderDraftShipping | null;
   shippingQuote: NpShopShippingQuote | null;
@@ -649,11 +696,13 @@ export interface NpShopOrder {
   cartFingerprint: string;
   currency: NpShopCurrency;
   subtotalMinor: number;
+  discountMinor: number;
   shippingMinor: number;
   taxMinor: number;
   totalMinor: number;
   totalUnits: number;
   lines: NpShopCheckoutIntentLine[];
+  promotions: NpShopPromotionSnapshot;
   deliveryMethod: NpShopDeliveryMethod | null;
   taxQuote: NpShopTaxQuote | null;
   privateDataStatus: NpShopOrderPrivateDataStatus;

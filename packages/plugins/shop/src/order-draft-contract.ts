@@ -44,11 +44,13 @@ const draftKeys = [
   "cartFingerprint",
   "currency",
   "subtotalMinor",
+  "discountMinor",
   "shippingMinor",
   "taxMinor",
   "totalMinor",
   "totalUnits",
   "lines",
+  "promotions",
   "customer",
   "shipping",
   "shippingQuote",
@@ -314,6 +316,12 @@ export function npAnalyzeShopOrderDraft(value: unknown): string[] {
     cartFingerprint: value.cartFingerprint,
     currency: value.currency,
     subtotalMinor: value.subtotalMinor,
+    discountMinor: value.discountMinor,
+    totalMinor:
+      Number.isSafeInteger(value.subtotalMinor) && Number.isSafeInteger(value.discountMinor)
+        ? (value.subtotalMinor as number) - (value.discountMinor as number)
+        : value.totalMinor,
+    promotions: value.promotions,
     totalUnits: value.totalUnits,
     lines: value.lines,
     createdAt: value.sourceCreatedAt,
@@ -329,6 +337,9 @@ export function npAnalyzeShopOrderDraft(value: unknown): string[] {
   if (!Number.isSafeInteger(value.shippingMinor) || (value.shippingMinor as number) < 0) {
     issues.push("draft.shippingMinor is invalid.");
   }
+  if (!Number.isSafeInteger(value.discountMinor) || (value.discountMinor as number) < 0) {
+    issues.push("draft.discountMinor is invalid.");
+  }
   if (!Number.isSafeInteger(value.taxMinor) || (value.taxMinor as number) < 0) {
     issues.push("draft.taxMinor is invalid.");
   }
@@ -337,15 +348,19 @@ export function npAnalyzeShopOrderDraft(value: unknown): string[] {
   }
   if (
     Number.isSafeInteger(value.subtotalMinor) &&
+    Number.isSafeInteger(value.discountMinor) &&
     Number.isSafeInteger(value.shippingMinor) &&
     Number.isSafeInteger(value.taxMinor) &&
     Number.isSafeInteger(value.totalMinor) &&
-    (value.subtotalMinor as number) +
+    (value.subtotalMinor as number) -
+      (value.discountMinor as number) +
       (value.shippingMinor as number) +
       (value.taxMinor as number) !==
       value.totalMinor
   ) {
-    issues.push("draft.totalMinor must equal subtotalMinor plus shippingMinor plus taxMinor.");
+    issues.push(
+      "draft.totalMinor must equal subtotalMinor minus discountMinor plus shippingMinor plus taxMinor.",
+    );
   }
 
   if (value.customer !== null) analyzeCustomer(value.customer, "draft.customer", issues);

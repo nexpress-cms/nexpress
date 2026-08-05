@@ -11,6 +11,13 @@ import {
 
 const productId = "123e4567-e89b-42d3-a456-426614174000";
 const intentId = "223e4567-e89b-42d3-a456-426614174000";
+const promotions = {
+  contract: "np.shop-promotion-snapshot.v1",
+  couponCodes: [],
+  rejectedCouponCodes: [],
+  applied: [],
+  discountMinor: 0,
+} as const;
 
 function intent() {
   return {
@@ -21,6 +28,9 @@ function intent() {
     cartFingerprint: "a".repeat(64),
     currency: "KRW",
     subtotalMinor: 50_000,
+    discountMinor: 0,
+    totalMinor: 50_000,
+    promotions,
     totalUnits: 2,
     lines: [
       {

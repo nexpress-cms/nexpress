@@ -5,6 +5,7 @@ import {
   type NpShopCheckoutIntentStatus,
 } from "./types.js";
 import { npShopCartLineKey } from "./cart-contract.js";
+import { npAnalyzeShopPromotionSnapshot } from "./promotion-contract.js";
 
 export const NP_SHOP_CHECKOUT_INTENT_CONTRACT = "np.shop-checkout-intent.v1" as const;
 
@@ -29,6 +30,9 @@ const intentKeys = [
   "cartFingerprint",
   "currency",
   "subtotalMinor",
+  "discountMinor",
+  "totalMinor",
+  "promotions",
   "totalUnits",
   "lines",
   "createdAt",
@@ -150,6 +154,17 @@ export function npAnalyzeShopCheckoutIntent(value: unknown): string[] {
     issues.push("intent.currency is invalid.");
   }
   if (!isSafeNonNegative(value.subtotalMinor)) issues.push("intent.subtotalMinor is invalid.");
+  if (!isSafeNonNegative(value.discountMinor)) issues.push("intent.discountMinor is invalid.");
+  if (!isSafeNonNegative(value.totalMinor)) issues.push("intent.totalMinor is invalid.");
+  if (
+    isSafeNonNegative(value.subtotalMinor) &&
+    isSafeNonNegative(value.discountMinor) &&
+    isSafeNonNegative(value.totalMinor) &&
+    value.subtotalMinor - value.discountMinor !== value.totalMinor
+  ) {
+    issues.push("intent.totalMinor must equal subtotalMinor minus discountMinor.");
+  }
+  issues.push(...npAnalyzeShopPromotionSnapshot(value.promotions, "intent.promotions"));
   if (!isSafeNonNegative(value.totalUnits) || value.totalUnits < 1) {
     issues.push("intent.totalUnits must be a positive safe integer.");
   }
@@ -261,6 +276,44 @@ export function npAnalyzeShopCheckoutIntent(value: unknown): string[] {
   }
   if (isSafeNonNegative(value.totalUnits) && value.totalUnits !== computedUnits) {
     issues.push("intent.totalUnits does not match its lines.");
+  }
+  if (
+    isRecord(value.promotions) &&
+    isSafeNonNegative(value.discountMinor) &&
+    value.promotions.discountMinor !== value.discountMinor
+  ) {
+    issues.push("intent.discountMinor must equal promotions.discountMinor.");
+  }
+  if (isRecord(value.promotions) && Array.isArray(value.promotions.applied)) {
+    const lineAmounts = new Map(
+      Array.isArray(value.lines)
+        ? value.lines
+            .filter(isRecord)
+            .filter(
+              (line) => typeof line.key === "string" && Number.isSafeInteger(line.lineTotalMinor),
+            )
+            .map((line) => [line.key as string, line.lineTotalMinor as number])
+        : [],
+    );
+    const discounts = new Map<string, number>();
+    for (const promotion of value.promotions.applied) {
+      if (!isRecord(promotion) || !Array.isArray(promotion.lineDiscounts)) continue;
+      for (const line of promotion.lineDiscounts) {
+        if (!isRecord(line) || typeof line.lineKey !== "string") continue;
+        discounts.set(
+          line.lineKey,
+          (discounts.get(line.lineKey) ?? 0) +
+            (Number.isSafeInteger(line.discountMinor) ? (line.discountMinor as number) : 0),
+        );
+      }
+    }
+    for (const [lineKey, discount] of discounts) {
+      const amount = lineAmounts.get(lineKey);
+      if (amount === undefined) issues.push("intent.promotions references an unknown line key.");
+      else if (discount > amount) {
+        issues.push("intent.promotions line discounts exceed the line total.");
+      }
+    }
   }
   return issues;
 }

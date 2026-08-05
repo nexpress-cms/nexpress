@@ -9,6 +9,7 @@ import {
   npRequireStoredShopPartialRefund,
   type NpShopStoredPartialRefund,
 } from "./partial-refund-contract.js";
+import { npDeriveShopPartialRefundAllocation } from "./partial-refund-service.js";
 
 const refundId = "123e4567-e89b-42d3-a456-426614174000";
 const orderId = "223e4567-e89b-42d3-a456-426614174000";
@@ -45,6 +46,54 @@ function stored(overrides: Partial<NpShopStoredPartialRefund> = {}): NpShopStore
 }
 
 describe("Shop partial refund contract", () => {
+  it("allocates returned items after their frozen promotion discount", () => {
+    const allocation = npDeriveShopPartialRefundAllocation(
+      {
+        shippingMinor: 0,
+        taxMinor: 0,
+        totalMinor: 17_000,
+        lines: [
+          {
+            key: "product:_",
+            productId: "423e4567-e89b-42d3-a456-426614174000",
+            productSlug: "product",
+            productName: "Product",
+            variantSku: null,
+            variantName: null,
+            quantity: 2,
+            unitPriceMinor: 10_000,
+            lineTotalMinor: 20_000,
+          },
+        ],
+        promotions: {
+          contract: "np.shop-promotion-snapshot.v1",
+          couponCodes: ["WELCOME"],
+          rejectedCouponCodes: [],
+          applied: [
+            {
+              id: "523e4567-e89b-42d3-a456-426614174000",
+              name: "Welcome",
+              code: "WELCOME",
+              kind: "fixed",
+              target: "order",
+              discountMinor: 3_000,
+              lineDiscounts: [{ lineKey: "product:_", discountMinor: 3_000 }],
+            },
+          ],
+          discountMinor: 3_000,
+        },
+      },
+      { lines: [{ lineKey: "product:_", quantity: 1 }] },
+      { shippingMinor: 0, taxMinor: 0 },
+    );
+    expect(allocation).toEqual({
+      lines: [{ lineKey: "product:_", quantity: 1, amountMinor: 8_500 }],
+      itemAmountMinor: 8_500,
+      shippingMinor: 0,
+      taxMinor: 0,
+    });
+  });
+
   it("accepts one exact received-return allocation", () => {
     expect(npRequireStoredShopPartialRefund(stored())).toMatchObject({
       amountMinor: 11_000,

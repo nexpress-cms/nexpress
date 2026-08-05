@@ -116,6 +116,8 @@ import {
   type NpShopCartOwner,
 } from "./cart-service.js";
 import type { NpShopRuntime } from "./runtime.js";
+import { listShopPromotions } from "./runtime.js";
+import { npReserveShopPromotions, npResolveShopPromotionReservation } from "./promotion-service.js";
 import type { NpShopFulfillment, NpShopOrder, NpShopOrderList } from "./types.js";
 import {
   NP_SHOP_REFUND_RESULT_CONTRACT,
@@ -1295,6 +1297,7 @@ async function cancelStoredOrder(
       order.lines.filter((line) => reservedLineKeys.has(line.key)),
     );
   }
+  await npResolveShopPromotionReservation(tx, siteId, order.id, "released", now);
   const cancelled = {
     ...order,
     status: "cancelled",
@@ -1449,6 +1452,7 @@ export async function npApplyShopPaymentEvent(
           order.lines.filter((line) => reservedLineKeys.has(line.key)),
         );
       }
+      await npResolveShopPromotionReservation(tx, siteId, order.id, "redeemed", receivedAt);
       order = {
         ...order,
         status: "paid",
@@ -1519,6 +1523,7 @@ export async function npApplyShopPaymentEvent(
           );
         }
       }
+      await npResolveShopPromotionReservation(tx, siteId, order.id, "released", receivedAt);
       order = {
         ...order,
         status: "payment-failed",
@@ -1736,6 +1741,7 @@ export async function npApplyShopPaymentAdjustmentEvent(
           );
         }
       }
+      await npResolveShopPromotionReservation(tx, siteId, order.id, "released", receivedAt);
       order = {
         ...order,
         status: "payment-failed",
@@ -1909,7 +1915,7 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)}, ${`payment-adjustment:${order.id}`})`,
+        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)}, ${`payment-adjustment:${order.id}`}, ${`promotion-reservation:${order.id}`})`,
       ),
     );
   await tx
@@ -2103,11 +2109,13 @@ export async function npCreateShopOrder(
       cartFingerprint: draft.cartFingerprint,
       currency: draft.currency,
       subtotalMinor: draft.subtotalMinor,
+      discountMinor: draft.discountMinor,
       shippingMinor: draft.shippingMinor,
       taxMinor: draft.taxMinor,
       totalMinor: draft.totalMinor,
       totalUnits: draft.totalUnits,
       lines: draft.lines,
+      promotions: draft.promotions,
       deliveryMethod: draft.deliveryMethod,
       taxQuote: draft.taxQuote,
       privateDataStatus: "retained",
@@ -2132,6 +2140,23 @@ export async function npCreateShopOrder(
       createdAt: now.toISOString(),
       expiresAt: pendingExpiresAt,
     };
+    try {
+      await npReserveShopPromotions(
+        tx,
+        siteId,
+        ownerSegment,
+        order.id,
+        order.promotions,
+        await listShopPromotions(runtime),
+        now,
+        purgeAt,
+      );
+    } catch (error) {
+      throw new NpShopOrderConflictError(
+        "order_source_stale",
+        error instanceof Error ? error.message : "The selected promotion is no longer available.",
+      );
+    }
     await persistOrder(tx, siteId, order);
     await persistOrderLookup(tx, siteId, {
       contract: "np.shop-order-lookup.v1",

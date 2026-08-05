@@ -4,6 +4,7 @@ import {
   NpShopCartContractError,
   npRequireShopCartAddInput,
   npRequireShopCartDeleteInput,
+  npRequireShopCartSetCouponsInput,
   npRequireShopCartSetQuantityInput,
 } from "./cart-contract.js";
 import {
@@ -13,6 +14,7 @@ import {
   npMergeShopGuestCart,
   npQuoteShopCart,
   npSetShopCartQuantity,
+  npSetShopCartCoupons,
 } from "./cart-service.js";
 import {
   npClearShopGuestCookie,
@@ -78,6 +80,14 @@ export function createShopCartApiHandler(runtime: NpShopRuntime) {
             resolved.owner,
             input.lineKey,
             input.quantity,
+            input.expectedRevision,
+          );
+        } else if (request.method === "PUT") {
+          const input = npRequireShopCartSetCouponsInput(request.body);
+          quote = await npSetShopCartCoupons(
+            runtime,
+            resolved.owner,
+            input.couponCodes,
             input.expectedRevision,
           );
         } else if (request.method === "DELETE") {

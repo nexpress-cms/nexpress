@@ -17,7 +17,17 @@ import {
 } from "./cart-contract.js";
 import { npGetShopReservedQuantities } from "./inventory-reservation-service.js";
 import { npShopInventoryStockKey } from "./inventory-reservation-contract.js";
-import { normalizeShopProduct, type NpShopRuntime, type ShopProductDocument } from "./runtime.js";
+import {
+  listShopPromotions,
+  normalizeShopProduct,
+  type NpShopRuntime,
+  type ShopProductDocument,
+} from "./runtime.js";
+import {
+  NP_SHOP_PROMOTION_SNAPSHOT_CONTRACT,
+  npEvaluateShopPromotions,
+} from "./promotion-contract.js";
+import { npFindUnavailableShopPromotions } from "./promotion-service.js";
 import type {
   NpShopCartIssueCode,
   NpShopCartLine,
@@ -70,6 +80,13 @@ export function npEmptyShopCartQuote(): NpShopCartQuote {
     contract: NP_SHOP_CART_QUOTE_CONTRACT,
     revision: 0,
     lines: [],
+    promotions: {
+      contract: NP_SHOP_PROMOTION_SNAPSHOT_CONTRACT,
+      couponCodes: [],
+      rejectedCouponCodes: [],
+      applied: [],
+      discountMinor: 0,
+    },
     totals: [],
     totalUnits: 0,
     ready: false,
@@ -275,24 +292,64 @@ export async function npQuoteShopCart(
     subtotalMinor: lines
       .filter((line) => line.currency === currency)
       .reduce((total, line) => total + line.lineTotalMinor, 0),
+    discountMinor: 0,
+    totalMinor: lines
+      .filter((line) => line.currency === currency)
+      .reduce((total, line) => total + line.lineTotalMinor, 0),
   }));
+  const definitions = totals.length === 1 ? await listShopPromotions(runtime) : [];
+  const unavailablePromotionIds = await npFindUnavailableShopPromotions(
+    getDb(),
+    siteId,
+    npShopCartOwnerStorageSegment(owner),
+    definitions,
+  );
+  const promotions =
+    totals.length === 1
+      ? npEvaluateShopPromotions({
+          definitions,
+          couponCodes: cart.couponCodes,
+          currency: totals[0].currency,
+          subtotalMinor: totals[0].subtotalMinor,
+          lines: lines.map((line) => ({
+            key: line.key,
+            productId: line.productId,
+            categoryIds: products.get(line.productId)?.categoryIds ?? [],
+            lineTotalMinor: line.lineTotalMinor,
+          })),
+          now: new Date(),
+          unavailablePromotionIds,
+        })
+      : {
+          contract: NP_SHOP_PROMOTION_SNAPSHOT_CONTRACT,
+          couponCodes: cart.couponCodes,
+          rejectedCouponCodes: cart.couponCodes,
+          applied: [],
+          discountMinor: 0,
+        };
+  if (totals.length === 1) {
+    totals[0].discountMinor = promotions.discountMinor;
+    totals[0].totalMinor = totals[0].subtotalMinor - promotions.discountMinor;
+  }
   const fingerprint = createHash("sha256")
     .update(
-      JSON.stringify(
-        lines.map((line) => [
+      JSON.stringify({
+        lines: lines.map((line) => [
           line.key,
           line.quantity,
           line.currency,
           line.unitPriceMinor,
           line.issues,
         ]),
-      ),
+        promotions,
+      }),
     )
     .digest("hex");
   return {
     contract: NP_SHOP_CART_QUOTE_CONTRACT,
     revision: cart.revision,
     lines,
+    promotions,
     totals,
     totalUnits: lines.reduce((total, line) => total + line.quantity, 0),
     ready: lines.length > 0 && !issues.some((issue) => BLOCKING_ISSUES.has(issue)),
@@ -363,7 +420,35 @@ export async function npAddShopCartLine(
       contract: NP_SHOP_CART_STORAGE_CONTRACT,
       revision: (current?.revision ?? 0) + 1,
       lines,
+      couponCodes: current?.couponCodes ?? [],
       createdAt: current?.createdAt ?? now,
+      updatedAt: now,
+    });
+  });
+  return npQuoteShopCart(runtime, owner);
+}
+
+export async function npSetShopCartCoupons(
+  runtime: NpShopRuntime,
+  owner: NpShopCartOwner,
+  couponCodes: string[],
+  expectedRevision: number,
+): Promise<NpShopCartQuote> {
+  const siteId = await requireSiteId();
+  await getDb().transaction(async (tx) => {
+    await npLockShopCart(tx, siteId, owner);
+    const current = await npReadStoredShopCartForUpdate(tx, siteId, owner);
+    requireRevision(current, expectedRevision);
+    if (!current || current.lines.length === 0) {
+      throw new NpShopCartContractError("Invalid cart coupon request", [
+        "A coupon code cannot be attached to an empty cart.",
+      ]);
+    }
+    const now = new Date().toISOString();
+    await persistCart(tx, siteId, owner, {
+      ...current,
+      revision: current.revision + 1,
+      couponCodes,
       updatedAt: now,
     });
   });
@@ -476,6 +561,9 @@ export async function npMergeShopGuestCart(
       contract: NP_SHOP_CART_STORAGE_CONTRACT,
       revision: (memberCart?.revision ?? 0) + 1,
       lines: [...merged.values()].sort((left, right) => left.key.localeCompare(right.key)),
+      couponCodes: [...new Set([...(memberCart?.couponCodes ?? []), ...guestCart.couponCodes])]
+        .slice(0, 5)
+        .sort(),
       createdAt: memberCart?.createdAt ?? guestCart.createdAt,
       updatedAt: now,
     });

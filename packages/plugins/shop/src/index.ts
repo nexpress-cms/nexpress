@@ -14,7 +14,11 @@ import {
   npCleanupExpiredShopCheckoutIntents,
   npCountShopCheckoutIntents,
 } from "./checkout-service.js";
-import { defineShopCategoriesCollection, defineShopProductsCollection } from "./collections.js";
+import {
+  defineShopCategoriesCollection,
+  defineShopProductsCollection,
+  defineShopPromotionsCollection,
+} from "./collections.js";
 import { createShopHomeBlocks, shopHomePatterns } from "./home-blocks.js";
 import {
   npCountShopInventoryReservations,
@@ -151,6 +155,8 @@ import { createShopOrderDraftRoute } from "./routes/order-draft.js";
 import { createShopOrderRoute } from "./routes/order.js";
 import { createShopOrdersRoute } from "./routes/orders.js";
 import { createShopProductMetadata, createShopProductRoute } from "./routes/product.js";
+import { npCountShopPromotionUsage } from "./promotion-service.js";
+import { npShopPromotionLimits } from "./promotion-contract.js";
 import type { NpShopRuntime } from "./runtime.js";
 import {
   npRequireShopShippingProviderId,
@@ -242,12 +248,17 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   const collections = {
     categories: options.collections?.categories ?? "shop-categories",
     products: options.collections?.products ?? "shop-products",
+    promotions: options.collections?.promotions ?? "shop-promotions",
   };
-  if (!SAFE_SEGMENT.test(collections.categories) || !SAFE_SEGMENT.test(collections.products)) {
+  if (
+    !SAFE_SEGMENT.test(collections.categories) ||
+    !SAFE_SEGMENT.test(collections.products) ||
+    !SAFE_SEGMENT.test(collections.promotions)
+  ) {
     throw new Error("Shop collection slugs must be lowercase literal segments.");
   }
-  if (collections.categories === collections.products) {
-    throw new Error("Shop category and product collection slugs must be different.");
+  if (new Set(Object.values(collections)).size !== 3) {
+    throw new Error("Shop category, product, and promotion collection slugs must be different.");
   }
   const configuredPaymentAdapter = options.payment?.adapter ?? null;
   let paymentAdapter: NpShopPaymentAdapter | null = null;
@@ -603,6 +614,12 @@ const messages = {
     "shop.cartRemove": "Remove",
     "shop.cartClear": "Clear cart",
     "shop.cartSubtotal": "Subtotal",
+    "shop.promotionDiscount": "Promotion discount",
+    "shop.couponCode": "Coupon code",
+    "shop.couponPlaceholder": "WELCOME",
+    "shop.couponApply": "Apply coupon",
+    "shop.couponRemove": "Remove",
+    "shop.couponRejected": "This coupon is unavailable or its conditions are not met.",
     "shop.cartUnavailable": "This item is no longer available.",
     "shop.cartPriceChanged": "The current price has changed.",
     "shop.cartInsufficientStock": "The requested quantity is unavailable.",
@@ -807,6 +824,12 @@ const messages = {
     "shop.cartRemove": "삭제",
     "shop.cartClear": "장바구니 비우기",
     "shop.cartSubtotal": "상품 금액",
+    "shop.promotionDiscount": "프로모션 할인",
+    "shop.couponCode": "쿠폰 코드",
+    "shop.couponPlaceholder": "WELCOME",
+    "shop.couponApply": "쿠폰 적용",
+    "shop.couponRemove": "삭제",
+    "shop.couponRejected": "사용할 수 없거나 조건을 충족하지 않은 쿠폰입니다.",
     "shop.cartUnavailable": "더 이상 구매할 수 없는 상품입니다.",
     "shop.cartPriceChanged": "현재 판매 가격이 변경되었습니다.",
     "shop.cartInsufficientStock": "요청한 수량만큼 재고가 없습니다.",
@@ -978,6 +1001,7 @@ export function createShop(options: NpShopOptions = {}) {
   const collections = [
     defineShopCategoriesCollection(runtime),
     defineShopProductsCollection(runtime),
+    defineShopPromotionsCollection(runtime),
   ] as const;
   const blocks = createShopHomeBlocks(runtime);
   const cartApiHandler = createShopCartApiHandler(runtime);
@@ -1063,10 +1087,16 @@ export function createShop(options: NpShopOptions = {}) {
       allowedHosts: [],
       provides: {
         blocks: [],
-        collections: [runtime.collections.categories, runtime.collections.products],
+        collections: [
+          runtime.collections.categories,
+          runtime.collections.products,
+          runtime.collections.promotions,
+        ],
         adminExtensions: [
           "dashboard:shop-products",
           "dashboard:shop-low-stock",
+          "dashboard:shop-promotions",
+          "widget:shop-promotion-health",
           "dashboard:shop-carts",
           "widget:shop-cart-health",
           "action:shop-cart-cleanup",
@@ -1227,6 +1257,14 @@ export function createShop(options: NpShopOptions = {}) {
           priority: 23,
         },
         {
+          id: "shop-promotions-total",
+          label: "Published promotions",
+          kind: "metric",
+          actionId: "countPromotions",
+          description: "Automatic and coupon campaigns currently published for evaluation.",
+          priority: 21,
+        },
+        {
           id: "shop-carts-total",
           label: "Active carts",
           kind: "metric",
@@ -1383,6 +1421,12 @@ export function createShop(options: NpShopOptions = {}) {
           : []),
       ],
       widgets: [
+        {
+          id: "shop-promotion-health",
+          label: "Promotion usage contract",
+          kind: "status",
+          actionId: "promotionHealth",
+        },
         {
           id: "shop-cart-health",
           label: "Cart storage",
@@ -2233,6 +2277,48 @@ export function createShop(options: NpShopOptions = {}) {
       ],
     },
     actions: {
+      countPromotions: {
+        kind: "metric",
+        handler: async (_data, ctx) => {
+          try {
+            const result = await ctx.content.find(runtime.collections.promotions, {
+              where: { status: "published", visibility: "*" },
+              page: 1,
+              limit: 1,
+            });
+            return { ok: true, data: { value: result.totalDocs, delta: "published" } };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      promotionHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopPromotionUsage();
+            return counts.invalid > 0
+              ? npAdminStatus(
+                  "error",
+                  `${counts.invalid.toString()} invalid promotion usage row(s).`,
+                )
+              : counts.truncated
+                ? npAdminStatus(
+                    "warn",
+                    `Promotion usage diagnostics reached the ${npShopPromotionLimits.diagnosticSampleSize.toString()}-row sample bound.`,
+                  )
+                : npAdminStatus(
+                    "ok",
+                    `${counts.reserved.toString()} reserved, ${counts.redeemed.toString()} redeemed use(s) across ${counts.campaigns.toString()} campaign(s).`,
+                  );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Promotion health check failed.",
+            );
+          }
+        },
+      },
       countProducts: {
         kind: "metric",
         handler: async (_data, ctx) => {
@@ -3987,6 +4073,12 @@ export function createShop(options: NpShopOptions = {}) {
         handler: cartApiHandler,
       },
       {
+        method: "PUT",
+        path: "/cart",
+        description: "Replace canonical coupon codes with revision protection.",
+        handler: cartApiHandler,
+      },
+      {
         method: "DELETE",
         path: "/cart",
         description: "Remove one cart line or clear the current cart.",
@@ -4522,6 +4614,7 @@ export {
   npRequireShopCartAddInput,
   npRequireShopCartDeleteInput,
   npRequireShopCartSetQuantityInput,
+  npRequireShopCartSetCouponsInput,
   npRequireShopCartQuote,
   npRequireShopCartStorageValue,
   npShopCartLimits,
@@ -4531,6 +4624,7 @@ export type {
   NpShopCartAddInput,
   NpShopCartDeleteInput,
   NpShopCartSetQuantityInput,
+  NpShopCartSetCouponsInput,
   NpShopCartStorageValue,
   NpShopCartStoredLine,
 } from "./cart-contract.js";
@@ -4899,7 +4993,21 @@ export type {
   NpShopOrderDraftDeleteInput,
   NpShopOrderDraftUpdateInput,
 } from "./order-draft-contract.js";
+export {
+  NP_SHOP_PROMOTION_SNAPSHOT_CONTRACT,
+  npAnalyzeShopPromotionSnapshot,
+  npEvaluateShopPromotions,
+  npNormalizeShopCouponCode,
+  npNormalizeShopCouponCodes,
+  npRequireShopPromotionSnapshot,
+  npShopPromotionLimits,
+} from "./promotion-contract.js";
 export type {
+  NpShopPromotionDefinition,
+  NpShopPromotionEvaluationLine,
+} from "./promotion-contract.js";
+export type {
+  NpShopAppliedPromotion,
   NpShopCartClientMessages,
   NpShopCartIssueCode,
   NpShopCartLine,
@@ -4936,6 +5044,10 @@ export type {
   NpShopProduct,
   NpShopProductSkinProps,
   NpShopProductSummary,
+  NpShopPromotionKind,
+  NpShopPromotionLineDiscount,
+  NpShopPromotionSnapshot,
+  NpShopPromotionTarget,
   NpShopSkin,
   NpShopVariant,
 } from "./types.js";

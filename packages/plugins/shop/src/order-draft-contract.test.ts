@@ -13,6 +13,13 @@ import {
 const productId = "123e4567-e89b-42d3-a456-426614174000";
 const intentId = "223e4567-e89b-42d3-a456-426614174000";
 const draftId = "323e4567-e89b-42d3-a456-426614174000";
+const promotions = {
+  contract: "np.shop-promotion-snapshot.v1",
+  couponCodes: [],
+  rejectedCouponCodes: [],
+  applied: [],
+  discountMinor: 0,
+} as const;
 
 function draft() {
   return {
@@ -25,6 +32,7 @@ function draft() {
     cartFingerprint: "a".repeat(64),
     currency: "KRW",
     subtotalMinor: 50_000,
+    discountMinor: 0,
     shippingMinor: 0,
     taxMinor: 0,
     totalMinor: 50_000,
@@ -42,6 +50,7 @@ function draft() {
         lineTotalMinor: 50_000,
       },
     ],
+    promotions,
     customer: {
       fullName: "홍길동",
       email: "buyer@example.com",

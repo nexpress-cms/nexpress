@@ -238,6 +238,9 @@ export async function npCreateShopCheckoutIntent(
       cartFingerprint: quote.fingerprint,
       currency: quote.totals[0].currency,
       subtotalMinor: quote.totals[0].subtotalMinor,
+      discountMinor: quote.totals[0].discountMinor,
+      totalMinor: quote.totals[0].totalMinor,
+      promotions: quote.promotions,
       totalUnits: quote.totalUnits,
       lines: quote.lines.map((line) => ({
         key: line.key,

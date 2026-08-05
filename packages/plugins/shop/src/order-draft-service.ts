@@ -319,7 +319,8 @@ async function quoteTaxForDraft(
     throw new NpShopTaxUnavailableError("The tax quote source expired before calculation.");
   }
   const shippingMinor = deliveryMethod?.amountMinor ?? 0;
-  const totalBeforeTaxMinor = draft.subtotalMinor + shippingMinor;
+  const discountedSubtotalMinor = draft.subtotalMinor - draft.discountMinor;
+  const totalBeforeTaxMinor = discountedSubtotalMinor + shippingMinor;
   if (!Number.isSafeInteger(totalBeforeTaxMinor)) {
     throw new NpShopTaxUnavailableError("The pre-tax order total is outside bounds.");
   }
@@ -328,7 +329,7 @@ async function quoteTaxForDraft(
     draftId: draft.id,
     draftRevision: draft.revision,
     currency: draft.currency,
-    subtotalMinor: draft.subtotalMinor,
+    subtotalMinor: discountedSubtotalMinor,
     shippingMinor,
     totalBeforeTaxMinor,
     totalUnits: draft.totalUnits,
@@ -512,11 +513,13 @@ export async function npCreateShopOrderDraft(
       cartFingerprint: intent.cartFingerprint,
       currency: intent.currency,
       subtotalMinor: intent.subtotalMinor,
+      discountMinor: intent.discountMinor,
       shippingMinor: 0,
       taxMinor: 0,
-      totalMinor: intent.subtotalMinor,
+      totalMinor: intent.totalMinor,
       totalUnits: intent.totalUnits,
       lines: intent.lines,
+      promotions: intent.promotions,
       customer: null,
       shipping: null,
       shippingQuote: null,
@@ -633,7 +636,8 @@ export async function npUpdateShopOrderDraft(
   const taxQuote = shippingQuote
     ? null
     : await quoteTaxForDraft(runtime, siteId, snapshot, input.shipping, null);
-  const quotedTotalMinor = snapshot.subtotalMinor + (taxQuote?.amountMinor ?? 0);
+  const quotedTotalMinor =
+    snapshot.subtotalMinor - snapshot.discountMinor + (taxQuote?.amountMinor ?? 0);
   if (!Number.isSafeInteger(quotedTotalMinor)) {
     throw new NpShopTaxUnavailableError("The taxed order total is outside bounds.");
   }
@@ -733,7 +737,10 @@ export async function npSelectShopShippingMethod(
     deliverySnapshot,
   );
   const quotedTotalMinor =
-    snapshot.subtotalMinor + deliverySnapshot.amountMinor + (taxQuote?.amountMinor ?? 0);
+    snapshot.subtotalMinor -
+    snapshot.discountMinor +
+    deliverySnapshot.amountMinor +
+    (taxQuote?.amountMinor ?? 0);
   if (!Number.isSafeInteger(quotedTotalMinor)) {
     throw new NpShopTaxUnavailableError("The taxed order total is outside bounds.");
   }

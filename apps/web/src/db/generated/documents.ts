@@ -223,6 +223,36 @@ export interface ShopProductsDocument {
 }
 export type ShopProductsDocumentWire = NpCollectionDocumentWire<ShopProductsDocument>;
 
+export interface ShopPromotionsDocument {
+  id: string;
+  status: "draft" | "scheduled" | "published" | "archived" | "pending";
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+  updatedBy: string | null;
+  publishedAt: Date | null;
+  visibility: "public" | "private";
+  siteId: string;
+  name: string;
+  code: string | null;
+  automatic: boolean;
+  kind: string;
+  currency: string;
+  value: number;
+  maximumDiscountMinor: number | null;
+  minimumSubtotalMinor: number;
+  target: string;
+  products: string[];
+  categories: string[];
+  startsAt: Date | null;
+  endsAt: Date | null;
+  priority: number;
+  stackable: boolean;
+  totalUsageLimit: number;
+  perOwnerUsageLimit: number;
+}
+export type ShopPromotionsDocumentWire = NpCollectionDocumentWire<ShopPromotionsDocument>;
+
 export interface DiscussionsDocument {
   id: string;
   status: "draft" | "scheduled" | "published" | "archived" | "pending";
@@ -360,6 +390,22 @@ export function getShopProductsDocument(
   user?: NpAuthUser,
 ): Promise<ShopProductsDocument | null> {
   return getDocumentById<ShopProductsDocument>("shop-products", id, user);
+}
+
+/** Typed listing query for the `shop-promotions` collection. */
+export function findShopPromotions(
+  options: NpFindOptions<ShopPromotionsDocument> = {},
+  user?: NpAuthUser,
+): Promise<NpFindResult<ShopPromotionsDocument>> {
+  return findDocuments<ShopPromotionsDocument>("shop-promotions", options, user);
+}
+
+/** Typed by-id fetch for the `shop-promotions` collection. */
+export function getShopPromotionsDocument(
+  id: string,
+  user?: NpAuthUser,
+): Promise<ShopPromotionsDocument | null> {
+  return getDocumentById<ShopPromotionsDocument>("shop-promotions", id, user);
 }
 
 /** Typed listing query for the `discussions` collection. */

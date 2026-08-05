@@ -14,9 +14,12 @@ import {
   npRequireShopCurrency,
   npShopCatalogLimits,
   npShopSkuPattern,
+  normalizeShopPromotion,
   type NpShopRuntime,
+  type ShopPromotionDocument,
   type ShopProductDocument,
 } from "./runtime.js";
+import { npShopPromotionLimits } from "./promotion-contract.js";
 
 function validationError(field: string, message: string): NpValidationError {
   return new NpValidationError("Invalid shop catalog data", [{ field, message }]);
@@ -140,6 +143,22 @@ function validateShopProduct(data: Record<string, unknown>): Record<string, unkn
     sku: rootSku,
     variants,
   };
+}
+
+function validateShopPromotion(data: Record<string, unknown>): Record<string, unknown> {
+  try {
+    const normalized = normalizeShopPromotion({
+      ...data,
+      id: typeof data.id === "string" ? data.id : "00000000-0000-4000-8000-000000000000",
+      status: typeof data.status === "string" ? data.status : "draft",
+    } as ShopPromotionDocument);
+    return { ...data, code: normalized.code, visibility: "private" };
+  } catch (error) {
+    throw validationError(
+      "promotion",
+      error instanceof Error ? error.message : "Invalid promotion configuration.",
+    );
+  }
 }
 
 export function defineShopCategoriesCollection(runtime: NpShopRuntime): NpCollectionConfig {
@@ -459,6 +478,158 @@ export function defineShopProductsCollection(runtime: NpShopRuntime): NpCollecti
           },
           { type: "checkbox", name: "enabled", required: true, defaultValue: true },
         ],
+      },
+    ],
+  });
+}
+
+export function defineShopPromotionsCollection(runtime: NpShopRuntime): NpCollectionConfig {
+  return defineCollection({
+    slug: runtime.collections.promotions,
+    labels: { singular: "Promotion", plural: "Promotions" },
+    admin: {
+      group: "Commerce",
+      listColumns: ["name", "code", "kind", "value", "automatic", "startsAt", "endsAt", "status"],
+      defaultSort: "-priority",
+      description: "Automatic discounts and coupon codes evaluated into immutable order snapshots.",
+    },
+    versions: { drafts: true, max: 30 },
+    access: {
+      read: () => true,
+      create: isEditorOrAbove,
+      update: isEditorOrAbove,
+      delete: isEditorOrAbove,
+    },
+    hooks: {
+      beforeCreate: [({ data }) => validateShopPromotion(data)],
+      beforeUpdate: [({ data }) => validateShopPromotion(data)],
+    },
+    fields: [
+      {
+        type: "text",
+        name: "name",
+        required: true,
+        minLength: 1,
+        maxLength: 120,
+        admin: { kind: "title" },
+      },
+      {
+        type: "text",
+        name: "code",
+        maxLength: npShopPromotionLimits.maximumCodeLength,
+        unique: true,
+        admin: {
+          description: "Optional for automatic promotions; stored as uppercase canonical text.",
+        },
+      },
+      { type: "checkbox", name: "automatic", required: true, defaultValue: false },
+      {
+        type: "select",
+        name: "kind",
+        required: true,
+        defaultValue: "fixed",
+        options: [
+          { label: "Fixed amount", value: "fixed" },
+          { label: "Percentage", value: "percentage" },
+        ],
+      },
+      {
+        type: "select",
+        name: "currency",
+        required: true,
+        defaultValue: "KRW",
+        options: ["KRW", "USD", "EUR", "JPY"].map((value) => ({ label: value, value })),
+      },
+      {
+        type: "number",
+        name: "value",
+        required: true,
+        defaultValue: 1,
+        min: 1,
+        max: npShopPromotionLimits.maximumPriceMinor,
+        integerOnly: true,
+        admin: {
+          description: "Minor units for fixed discounts; basis points (100 = 1%) for percentages.",
+        },
+      },
+      {
+        type: "number",
+        name: "maximumDiscountMinor",
+        min: 1,
+        max: npShopPromotionLimits.maximumPriceMinor,
+        integerOnly: true,
+        admin: { description: "Optional cap for percentage discounts only." },
+      },
+      {
+        type: "number",
+        name: "minimumSubtotalMinor",
+        required: true,
+        defaultValue: 0,
+        min: 0,
+        max: npShopPromotionLimits.maximumPriceMinor,
+        integerOnly: true,
+      },
+      {
+        type: "select",
+        name: "target",
+        required: true,
+        defaultValue: "order",
+        options: [
+          { label: "Whole order", value: "order" },
+          { label: "Selected products", value: "products" },
+          { label: "Selected categories", value: "categories" },
+        ],
+      },
+      {
+        type: "relationship",
+        name: "products",
+        relationTo: runtime.collections.products,
+        hasMany: true,
+      },
+      {
+        type: "relationship",
+        name: "categories",
+        relationTo: runtime.collections.categories,
+        hasMany: true,
+      },
+      { type: "date", name: "startsAt", admin: { position: "sidebar", group: "Availability" } },
+      { type: "date", name: "endsAt", admin: { position: "sidebar", group: "Availability" } },
+      {
+        type: "number",
+        name: "priority",
+        required: true,
+        defaultValue: 0,
+        min: 0,
+        max: npShopPromotionLimits.maximumPriority,
+        integerOnly: true,
+        admin: { position: "sidebar", group: "Evaluation" },
+      },
+      {
+        type: "checkbox",
+        name: "stackable",
+        required: true,
+        defaultValue: false,
+        admin: { position: "sidebar", group: "Evaluation" },
+      },
+      {
+        type: "number",
+        name: "totalUsageLimit",
+        required: true,
+        defaultValue: 0,
+        min: 0,
+        max: npShopPromotionLimits.maximumUsageLimit,
+        integerOnly: true,
+        admin: { position: "sidebar", group: "Usage", description: "0 means unlimited." },
+      },
+      {
+        type: "number",
+        name: "perOwnerUsageLimit",
+        required: true,
+        defaultValue: 0,
+        min: 0,
+        max: npShopPromotionLimits.maximumUsageLimit,
+        integerOnly: true,
+        admin: { position: "sidebar", group: "Usage", description: "0 means unlimited." },
       },
     ],
   });
