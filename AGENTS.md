@@ -2,7 +2,15 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-03 (Shop carrier adapters may now add one paired
+**Last refreshed:** 2026-08-05 (Shop carrier adapters may now add independent
+exact raw-callback and bounded polling reverse-tracking capabilities over
+active approved-return logistics; idempotent receipts, cursor-fair leases and
+backoff, owner-visible status, tracking-start cancellation closure,
+Admin/Doctor/scaffold guidance, commercial cleanup, and PostgreSQL coverage
+share the contract. Warehouse receipt, inventory restore, refunds, and
+exchanges remain separate.)
+
+**Earlier:** 2026-08-03 (Shop carrier adapters may now add one paired
 approved-return shipment create/cancel capability with drop-off or bounded
 pickup mode, a server-only opaque return destination, a maximum-24-hour
 owner-scoped private origin deleted after provider confirmation, durable

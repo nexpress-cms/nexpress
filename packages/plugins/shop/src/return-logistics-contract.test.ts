@@ -17,6 +17,7 @@ import {
   npRequireShopReturnLogisticsCancelResult,
   npRequireShopReturnLogisticsCreateInput,
 } from "./return-logistics-contract.js";
+import { NP_SHOP_RETURN_TRACKING_CONTRACT } from "./return-tracking-contract.js";
 
 const logisticsId = "123e4567-e89b-42d3-a456-426614174000";
 const returnId = "223e4567-e89b-42d3-a456-426614174000";
@@ -207,6 +208,39 @@ describe("Shop return logistics contract", () => {
         cancelRequestedAt: confirmedAt,
       }),
     ).toEqual([]);
+    const projected = {
+      contract: NP_SHOP_RETURN_LOGISTICS_CONTRACT,
+      id: logisticsId,
+      status: "active",
+      revision: 5,
+      mode: "pickup",
+      carrier: "Parcel Co",
+      trackingNumber: "RETURN-123",
+      readyAt,
+      closeAt,
+      requestedAt,
+      confirmedAt,
+      cancelledAt: null,
+      updatedAt: "2026-08-03T00:03:00.000Z",
+      tracking: {
+        contract: NP_SHOP_RETURN_TRACKING_CONTRACT,
+        logisticsId,
+        status: "in-transit",
+        occurredAt: "2026-08-03T00:02:00.000Z",
+        deliveredAt: null,
+        updatedAt: "2026-08-03T00:02:00.000Z",
+      },
+    } as const;
+    expect(npAnalyzeShopReturnLogistics(projected)).toEqual([]);
+    expect(
+      npAnalyzeShopReturnLogistics({
+        ...projected,
+        tracking: { ...projected.tracking, logisticsId: orderId },
+      }),
+    ).toContain("return logistics.tracking must match the logistics id.");
+    expect(npAnalyzeShopReturnLogistics({ ...projected, status: "cancelled" })).toContain(
+      "return logistics.tracking requires active logistics.",
+    );
     expect(
       npAnalyzeShopReturnLogistics({
         contract: NP_SHOP_RETURN_LOGISTICS_CONTRACT,

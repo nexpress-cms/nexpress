@@ -1,4 +1,8 @@
 import type { NpShopOrderDraftShipping } from "./types.js";
+import {
+  npAnalyzeShopReturnTracking,
+  type NpShopReturnTracking,
+} from "./return-tracking-contract.js";
 
 export const NP_SHOP_RETURN_LOGISTICS_REQUEST_CONTRACT =
   "np.shop-return-logistics-request.v1" as const;
@@ -187,6 +191,8 @@ export interface NpShopReturnLogistics {
   confirmedAt: string | null;
   cancelledAt: string | null;
   updatedAt: string;
+  /** Present after the first verified reverse-shipment carrier event. */
+  tracking?: NpShopReturnTracking;
 }
 
 export interface NpShopReturnLogisticsCreateInput {
@@ -232,7 +238,8 @@ export class NpShopReturnLogisticsConflictError extends Error {
     | "return_logistics_state_conflict"
     | "return_logistics_private_expired"
     | "return_logistics_result_mismatch"
-    | "return_logistics_manual_review";
+    | "return_logistics_manual_review"
+    | "return_logistics_tracking_started";
 
   constructor(code: NpShopReturnLogisticsConflictError["code"], message: string) {
     super(message);
@@ -830,6 +837,7 @@ export function npRequireStoredShopReturnLogisticsPrivate(
 
 export function npProjectShopReturnLogistics(
   value: NpShopStoredReturnLogistics,
+  tracking?: NpShopReturnTracking | null,
 ): NpShopReturnLogistics {
   return {
     contract: NP_SHOP_RETURN_LOGISTICS_CONTRACT,
@@ -845,32 +853,46 @@ export function npProjectShopReturnLogistics(
     confirmedAt: value.confirmedAt,
     cancelledAt: value.cancelledAt,
     updatedAt: value.updatedAt,
+    ...(tracking ? { tracking } : {}),
   };
 }
 
 export function npAnalyzeShopReturnLogistics(value: unknown): string[] {
   if (!isRecord(value)) return ["return logistics must be a plain object."];
   const issues: string[] = [];
-  exactKeys(
-    value,
-    [
-      "contract",
-      "id",
-      "status",
-      "revision",
-      "mode",
-      "carrier",
-      "trackingNumber",
-      "readyAt",
-      "closeAt",
-      "requestedAt",
-      "confirmedAt",
-      "cancelledAt",
-      "updatedAt",
-    ],
-    "return logistics",
-    issues,
-  );
+  const publicKeys = [
+    "contract",
+    "id",
+    "status",
+    "revision",
+    "mode",
+    "carrier",
+    "trackingNumber",
+    "readyAt",
+    "closeAt",
+    "requestedAt",
+    "confirmedAt",
+    "cancelledAt",
+    "updatedAt",
+  ] as const;
+  for (const key of Object.keys(value)) {
+    if (![...publicKeys, "tracking"].includes(key))
+      issues.push(`return logistics.${key} is not supported.`);
+  }
+  for (const key of publicKeys) {
+    if (!Object.hasOwn(value, key)) issues.push(`return logistics.${key} is required.`);
+  }
+  if (Object.hasOwn(value, "tracking")) {
+    issues.push(
+      ...npAnalyzeShopReturnTracking(value.tracking).map((issue) => `return logistics.${issue}`),
+    );
+    if (isRecord(value.tracking) && value.tracking.logisticsId !== value.id) {
+      issues.push("return logistics.tracking must match the logistics id.");
+    }
+    if (value.status !== "active") {
+      issues.push("return logistics.tracking requires active logistics.");
+    }
+  }
   if (value.contract !== NP_SHOP_RETURN_LOGISTICS_CONTRACT)
     issues.push("return logistics.contract is invalid.");
   if (!isUuid(value.id)) issues.push("return logistics.id is invalid.");

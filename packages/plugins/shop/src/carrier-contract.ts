@@ -24,6 +24,11 @@ import type {
   NpShopReturnLogisticsRequest,
   NpShopReturnLogisticsResult,
 } from "./return-logistics-contract.js";
+import type {
+  NpShopReturnTrackingPollRequest,
+  NpShopReturnTrackingPollResult,
+  NpShopReturnTrackingWebhookResult,
+} from "./return-tracking-contract.js";
 
 export const NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT =
   "np.shop-carrier-booking-request.v1" as const;
@@ -192,6 +197,14 @@ export interface NpShopCarrierAdapter {
   readReturnLabel?(
     input: NpShopReturnLogisticsLabelRequest,
   ): NpShopReturnLogisticsLabelResult | Promise<NpShopReturnLogisticsLabelResult>;
+  /** Authenticate exact callback bytes before projecting one reverse-shipment event. */
+  verifyReturnTrackingWebhook?(
+    input: NpShopTrackingWebhookInput,
+  ): NpShopReturnTrackingWebhookResult | Promise<NpShopReturnTrackingWebhookResult>;
+  /** Read one active, PII-free return shipment through an authenticated provider API. */
+  readReturnTracking?(
+    input: NpShopReturnTrackingPollRequest,
+  ): NpShopReturnTrackingPollResult | Promise<NpShopReturnTrackingPollResult>;
 }
 
 export type NpShopCarrierTrackingAdapter = NpShopCarrierAdapter &
@@ -214,6 +227,12 @@ export type NpShopCarrierReturnLogisticsAdapter = NpShopCarrierAdapter &
 
 export type NpShopCarrierReturnLabelAdapter = NpShopCarrierReturnLogisticsAdapter &
   Required<Pick<NpShopCarrierAdapter, "readReturnLabel">>;
+
+export type NpShopCarrierReturnTrackingAdapter = NpShopCarrierReturnLogisticsAdapter &
+  Required<Pick<NpShopCarrierAdapter, "verifyReturnTrackingWebhook">>;
+
+export type NpShopCarrierReturnTrackingPollAdapter = NpShopCarrierReturnLogisticsAdapter &
+  Required<Pick<NpShopCarrierAdapter, "readReturnTracking">>;
 
 export interface NpShopStoredCarrierBooking {
   contract: typeof NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT;

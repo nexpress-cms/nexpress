@@ -129,6 +129,11 @@ import {
 } from "./return-contract.js";
 import { npShopTrackingPollStorageKey } from "./tracking-contract.js";
 import { npReadShopTrackingForOrder } from "./tracking-service.js";
+import { npReadShopReturnTrackingForOrder } from "./return-tracking-service.js";
+import {
+  npShopReturnTrackingPollStorageKey,
+  npShopReturnTrackingStorageKey,
+} from "./return-tracking-contract.js";
 import { npRequireStoredShopCarrierPickup } from "./pickup-contract.js";
 import { npReadShopReturnLogisticsForOrder } from "./return-logistics-service.js";
 
@@ -1122,8 +1127,11 @@ async function projectOrder(
       "A physical return can exist only for one shipped fulfillment.",
     ]);
   }
+  const returnTracking = returnRequest
+    ? await npReadShopReturnTrackingForOrder(db, siteId, order.id)
+    : null;
   const returnLogistics = returnRequest
-    ? await npReadShopReturnLogisticsForOrder(db, siteId, returnRequest)
+    ? await npReadShopReturnLogisticsForOrder(db, siteId, returnRequest, returnTracking)
     : null;
   if (
     privateData?.contract === NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT &&
@@ -1509,7 +1517,7 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`})`,
+        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)})`,
       ),
     );
   await tx
@@ -1538,6 +1546,16 @@ async function purgeOrder(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, "tracking-event:%"),
+        sql`${npPluginStorage.value}->'event'->>'orderId' = ${order.id}`,
+      ),
+    );
+  await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "return-tracking-event:%"),
         sql`${npPluginStorage.value}->'event'->>'orderId' = ${order.id}`,
       ),
     );

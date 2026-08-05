@@ -16,9 +16,10 @@ import {
   type NpShopReturnLogisticsCancelRequest,
   type NpShopReturnLogisticsLabelRequest,
   type NpShopReturnLogisticsRequest,
+  type NpShopReturnTrackingPollRequest,
   type NpShopTrackingPollRequest,
 } from "@nexpress/plugin-shop";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, like, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -4349,6 +4350,290 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     ).toMatchObject({ ok: true, data: { level: "ok" } });
   });
 
+  it("tracks an active reverse shipment without receiving, restocking, or refunding the return", async () => {
+    const ids = {
+      intentId: "4e3e4567-e89b-42d3-a456-426614174000",
+      draftId: "5e3e4567-e89b-42d3-a456-426614174000",
+      orderId: "6e3e4567-e89b-42d3-a456-426614174000",
+    };
+    const owner = await createPendingOrder(ids, "return-tracking@example.com");
+    const readReturnTracking = vi.fn((request: NpShopReturnTrackingPollRequest) => ({
+      contract: "np.shop-return-tracking-poll-result.v1" as const,
+      logisticsId: request.logisticsId,
+      returnId: request.returnId,
+      orderId: request.orderId,
+      checkedAt: request.requestedAt,
+      event: {
+        contract: "np.shop-return-tracking-event.v1" as const,
+        eventId: "return_tracking_poll_delivered",
+        logisticsId: request.logisticsId,
+        returnId: request.returnId,
+        orderId: request.orderId,
+        returnReference: request.returnReference,
+        trackingNumber: request.trackingNumber,
+        status: "delivered" as const,
+        occurredAt: request.requestedAt,
+        signedAt: request.requestedAt,
+      },
+    }));
+    const returnShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
+      carrier: {
+        returnLocationReference: "returns-seoul-1",
+        adapter: {
+          id: "test-carrier",
+          bookShipment: (request) => ({
+            contract: "np.shop-carrier-booking-result.v1" as const,
+            shipmentId: request.shipmentId,
+            orderId: request.orderId,
+            bookingReference: "booking_return_tracking_1",
+            carrier: "Parcel Co",
+            trackingNumber: "OUTBOUND-RETURN-TRACK-1",
+            bookedAt: request.requestedAt,
+          }),
+          createReturnShipment: (request) => ({
+            contract: "np.shop-return-logistics-result.v1" as const,
+            logisticsId: request.logisticsId,
+            returnId: request.returnId,
+            orderId: request.orderId,
+            returnReference: "return_tracking_ref_1",
+            carrier: "Parcel Co",
+            trackingNumber: "REVERSE-TRACK-1",
+            readyAt: request.readyAt,
+            closeAt: request.closeAt,
+            confirmedAt: request.requestedAt,
+          }),
+          cancelReturnShipment: (request) => ({
+            contract: "np.shop-return-logistics-cancel-result.v1" as const,
+            cancellationId: request.cancellationId,
+            logisticsId: request.logisticsId,
+            returnId: request.returnId,
+            orderId: request.orderId,
+            cancelledAt: request.requestedAt,
+          }),
+          verifyReturnTrackingWebhook: ({ rawBody }) =>
+            JSON.parse(new TextDecoder().decode(rawBody)) as never,
+          readReturnTracking,
+        },
+      },
+    });
+    await payPendingOrder(returnShop, {
+      orderId: ids.orderId,
+      eventId: "evt_return_tracking",
+      paymentReference: "pay_return_tracking",
+    });
+    const staff = await seedUser({ email: "return-tracking-operator@example.com" });
+    const actionContext = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    await withCurrentSite("default", () =>
+      returnShop.plugin.actions?.processFulfillment?.handler(
+        {
+          row: { id: ids.orderId, fulfillmentRevision: 1 },
+          values: { operatorNote: "Packed" },
+        },
+        actionContext,
+      ),
+    );
+    await withCurrentSite("default", () =>
+      returnShop.plugin.actions?.bookCarrierShipment?.handler(
+        {
+          row: { id: ids.orderId, fulfillmentRevision: 2 },
+          values: { operatorNote: "Booked" },
+        },
+        actionContext,
+      ),
+    );
+    const shipped = await configuredShopCall(returnShop, "GET", "/orders", {
+      ...owner,
+      id: ids.orderId,
+    });
+    const shippedOrder = (
+      shipped.body as { order: { revision: number; lines: Array<{ key: string }> } }
+    ).order;
+    const requested = await configuredShopCall(returnShop, "POST", "/returns", {
+      ...owner,
+      body: {
+        orderId: ids.orderId,
+        expectedOrderRevision: shippedOrder.revision,
+        lines: [{ lineKey: shippedOrder.lines[0]!.key, quantity: 1 }],
+        reason: "defective",
+        detail: null,
+      },
+    });
+    const returnId = (requested.body as { returnRequest: { id: string } }).returnRequest.id;
+    await withCurrentSite("default", () =>
+      returnShop.plugin.actions?.approveReturn?.handler(
+        {
+          row: { id: ids.orderId, returnRevision: 1 },
+          values: { operatorNote: "Approved" },
+        },
+        actionContext,
+      ),
+    );
+    const created = await configuredShopCall(returnShop, "POST", "/returns/logistics", {
+      ...owner,
+      body: {
+        orderId: ids.orderId,
+        returnId,
+        expectedReturnRevision: 2,
+        mode: "dropoff",
+        origin: {
+          recipientName: "Return Sender",
+          phone: "+82-10-0000-0000",
+          countryCode: "KR",
+          postalCode: "04524",
+          addressLine1: "1 Private Return Street",
+          addressLine2: null,
+          locality: "Seoul",
+          administrativeArea: null,
+        },
+        readyAt: null,
+        closeAt: null,
+      },
+    });
+    const logistics = (created.body as { logistics: { id: string; revision: number } }).logistics;
+    const signedAt = new Date();
+    signedAt.setMilliseconds(0);
+    const reverseEvent = {
+      contract: "np.shop-return-tracking-event.v1",
+      eventId: "return_tracking_webhook_1",
+      logisticsId: logistics.id,
+      returnId,
+      orderId: ids.orderId,
+      returnReference: "return_tracking_ref_1",
+      trackingNumber: "REVERSE-TRACK-1",
+      status: "in-transit",
+      occurredAt: new Date(signedAt.getTime() - 1_000).toISOString(),
+      signedAt: signedAt.toISOString(),
+    };
+    const webhook = () =>
+      configuredShopCall(returnShop, "POST", "/carrier/return-tracking/webhook", {
+        rawBody: new TextEncoder().encode(JSON.stringify(reverseEvent)),
+      });
+    expect(await webhook()).toMatchObject({
+      status: 200,
+      body: { receipt: { outcome: "advanced", trackingStatus: "in-transit" }, duplicate: false },
+    });
+    reverseEvent.signedAt = new Date(signedAt.getTime() + 1_000).toISOString();
+    expect(await webhook()).toMatchObject({ status: 200, body: { duplicate: true } });
+
+    const beforePoll = await configuredShopCall(returnShop, "GET", "/orders", {
+      ...owner,
+      id: ids.orderId,
+    });
+    expect(beforePoll).toMatchObject({
+      body: {
+        order: {
+          status: "paid",
+          returnRequest: {
+            status: "approved",
+            inventoryOutcome: "pending",
+            logistics: { tracking: { status: "in-transit" } },
+          },
+        },
+      },
+    });
+    const db = await getTestDb();
+    expect(
+      await db
+        .select({ stockQuantity: shopProductsTable.stockQuantity })
+        .from(shopProductsTable)
+        .where(eq(shopProductsTable.id, productId)),
+    ).toEqual([{ stockQuantity: 7 }]);
+
+    expect(
+      await withCurrentSite("default", () =>
+        returnShop.plugin.actions?.reconcileCarrierReturnTracking?.handler(
+          { row: { id: ids.orderId, returnId, logisticsId: logistics.id }, values: {} },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("1 advanced") });
+    expect(readReturnTracking).toHaveBeenCalledTimes(1);
+    expect(
+      await configuredShopCall(returnShop, "GET", "/orders", { ...owner, id: ids.orderId }),
+    ).toMatchObject({
+      body: {
+        order: {
+          status: "paid",
+          returnRequest: {
+            status: "approved",
+            inventoryOutcome: "pending",
+            logistics: { status: "active", tracking: { status: "delivered" } },
+          },
+        },
+      },
+    });
+    expect(
+      await configuredShopCall(returnShop, "DELETE", "/returns/logistics", {
+        ...owner,
+        body: {
+          orderId: ids.orderId,
+          returnId,
+          logisticsId: logistics.id,
+          expectedRevision: logistics.revision,
+        },
+      }),
+    ).toMatchObject({ status: 409, body: { error: "return_logistics_tracking_started" } });
+    expect(
+      await withCurrentSite("default", () =>
+        returnShop.plugin.actions?.returnTrackingEventHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(
+      await withCurrentSite("default", () =>
+        returnShop.plugin.actions?.recentReturnTrackingEvents?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: {
+        total: 2,
+        rows: expect.arrayContaining([expect.objectContaining({ orderId: ids.orderId })]),
+      },
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        returnShop.plugin.actions?.receiveReturn?.handler(
+          {
+            row: { id: ids.orderId, returnRevision: 2 },
+            values: { operatorNote: "Warehouse inspected the item" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("inventory restocked") });
+    expect(
+      await configuredShopCall(returnShop, "GET", "/orders", { ...owner, id: ids.orderId }),
+    ).toMatchObject({
+      body: {
+        order: {
+          returnRequest: {
+            status: "received",
+            inventoryOutcome: "restocked",
+            logistics: { tracking: { status: "delivered" } },
+          },
+        },
+      },
+    });
+    const stored = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(like(npPluginStorage.key, "return-tracking%"));
+    expect(JSON.stringify(stored)).not.toContain("Private Return Street");
+    expect(
+      await db
+        .select({ action: npAuditEvents.action })
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.targetId, returnId)),
+    ).toEqual(expect.arrayContaining([{ action: "shop.carrier.return-tracking.poll" }]));
+  });
+
   it("lets only the owner cancel a return that still awaits review", async () => {
     const ids = {
       intentId: "aa3e4567-e89b-42d3-a456-426614174000",
@@ -4725,6 +5010,84 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       expiresAt: expiredPurgeAt,
       updatedAt: expiredCreatedAt,
     });
+    const expiredReturnId = "b43e4567-e89b-42d3-a456-426614174000";
+    const expiredLogisticsId = "c43e4567-e89b-42d3-a456-426614174000";
+    const expiredReturnEvent = {
+      contract: "np.shop-return-tracking-event.v1",
+      eventId: "expired-return-event",
+      logisticsId: expiredLogisticsId,
+      returnId: expiredReturnId,
+      orderId,
+      returnReference: "expired-return-reference",
+      trackingNumber: "EXPIRED-RETURN-TRACK",
+      status: "in-transit",
+      occurredAt: expiredCreatedAt.toISOString(),
+      signedAt: expiredCreatedAt.toISOString(),
+    };
+    await db.insert(npPluginStorage).values([
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `return-tracking:${orderId}`,
+        value: {
+          contract: "np.shop-return-tracking-storage.v1",
+          orderId,
+          returnId: expiredReturnId,
+          logisticsId: expiredLogisticsId,
+          providerId: "retired-carrier",
+          returnReference: expiredReturnEvent.returnReference,
+          trackingNumber: expiredReturnEvent.trackingNumber,
+          status: "in-transit",
+          latestEventId: expiredReturnEvent.eventId,
+          occurredAt: expiredCreatedAt.toISOString(),
+          deliveredAt: null,
+          updatedAt: expiredCreatedAt.toISOString(),
+          purgeAt: expiredPurgeAt.toISOString(),
+        },
+        expiresAt: expiredPurgeAt,
+        updatedAt: expiredCreatedAt,
+      },
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `return-tracking-poll:${orderId}`,
+        value: {
+          contract: "np.shop-return-tracking-poll-storage.v1",
+          orderId,
+          returnId: expiredReturnId,
+          logisticsId: expiredLogisticsId,
+          providerId: "retired-carrier",
+          consecutiveFailures: 0,
+          lastAttemptAt: expiredCreatedAt.toISOString(),
+          lastSuccessAt: expiredCreatedAt.toISOString(),
+          nextAttemptAt: expiredPurgeAt.toISOString(),
+          lastErrorCode: null,
+          leaseId: null,
+          leaseExpiresAt: null,
+          updatedAt: expiredCreatedAt.toISOString(),
+          purgeAt: expiredPurgeAt.toISOString(),
+        },
+        expiresAt: expiredPurgeAt,
+        updatedAt: expiredCreatedAt,
+      },
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `return-tracking-event:retired-carrier:${"d".repeat(64)}`,
+        value: {
+          contract: "np.shop-return-tracking-receipt.v1",
+          providerId: "retired-carrier",
+          event: expiredReturnEvent,
+          eventDigest: "e".repeat(64),
+          outcome: "advanced",
+          trackingStatus: "in-transit",
+          processedAt: expiredCreatedAt.toISOString(),
+          purgeAt: expiredPurgeAt.toISOString(),
+        },
+        expiresAt: expiredPurgeAt,
+        updatedAt: expiredCreatedAt,
+      },
+    ]);
     await db.insert(npPluginStorage).values({
       pluginId: "shop",
       siteId: "default",
@@ -4758,6 +5121,23 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         .select({ key: npPluginStorage.key })
         .from(npPluginStorage)
         .where(eq(npPluginStorage.key, `order:${ownerSegment}:${orderId}`)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(like(npPluginStorage.key, `return-tracking%${orderId}%`)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(
+          and(
+            like(npPluginStorage.key, "return-tracking-event:%"),
+            sql`${npPluginStorage.value}->'event'->>'orderId' = ${orderId}`,
+          ),
+        ),
     ).toHaveLength(0);
     expect(
       await db

@@ -98,6 +98,11 @@ describe("shop factory", () => {
       { id: "recentTrackingEvents", kind: "table" },
       { id: "trackingPollHealth", kind: "status" },
       { id: "recentTrackingPolls", kind: "table" },
+      { id: "countReturnTrackingEvents", kind: "metric" },
+      { id: "returnTrackingEventHealth", kind: "status" },
+      { id: "recentReturnTrackingEvents", kind: "table" },
+      { id: "returnTrackingPollHealth", kind: "status" },
+      { id: "recentReturnTrackingPolls", kind: "table" },
       { id: "bookCarrierShipment", kind: "action" },
       { id: "shipFulfillment", kind: "action" },
       { id: "readFulfillmentPrivate", kind: "action" },
@@ -496,6 +501,64 @@ describe("shop factory", () => {
         },
       }),
     ).toThrow(/returnLocationReference requires return logistics methods/u);
+  });
+
+  it("adds reverse tracking as independent webhook and polling capabilities over return logistics", () => {
+    const shop = createShop({
+      carrier: {
+        returnLocationReference: "returns-seoul-1",
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          createReturnShipment: () => Promise.reject(new Error("not called")),
+          cancelReturnShipment: () => Promise.reject(new Error("not called")),
+          verifyReturnTrackingWebhook: () => null,
+          readReturnTracking: () => Promise.reject(new Error("not called")),
+        },
+      },
+    });
+    expect(shop.runtime.carrierReturnTrackingAdapter?.id).toBe("test-carrier");
+    expect(shop.runtime.carrierReturnTrackingPollAdapter?.id).toBe("test-carrier");
+    expect(
+      shop.plugin.routes?.find((route) => route.path === "/carrier/return-tracking/webhook"),
+    ).toMatchObject({ method: "POST", auth: false, bodyMode: "raw" });
+    expect(shop.plugin.scheduled?.map((task) => task.id)).toContain(
+      "reconcile-carrier-return-tracking",
+    );
+    expect(shop.plugin.actions?.countReturnTrackingEvents?.kind).toBe("metric");
+    expect(shop.plugin.actions?.returnTrackingEventHealth?.kind).toBe("status");
+    expect(shop.plugin.actions?.returnTrackingPollHealth?.kind).toBe("status");
+    expect(shop.plugin.actions?.recentReturnTrackingEvents?.kind).toBe("table");
+    expect(shop.plugin.actions?.recentReturnTrackingPolls?.kind).toBe("table");
+    expect(shop.plugin.actions?.reconcileCarrierReturnTracking?.kind).toBe("action");
+
+    expect(() =>
+      createShop({
+        carrier: {
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+            verifyReturnTrackingWebhook: () => null,
+          },
+        },
+      }),
+    ).toThrow(/return tracking requires the paired return logistics methods/u);
+
+    const webhookOnly = createShop({
+      carrier: {
+        returnLocationReference: "returns-seoul-1",
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          createReturnShipment: () => Promise.reject(new Error("not called")),
+          cancelReturnShipment: () => Promise.reject(new Error("not called")),
+          verifyReturnTrackingWebhook: () => null,
+        },
+      },
+    });
+    expect(webhookOnly.runtime.carrierReturnTrackingAdapter?.id).toBe("test-carrier");
+    expect(webhookOnly.runtime.carrierReturnTrackingPollAdapter).toBeNull();
+    expect(webhookOnly.plugin.actions?.reconcileCarrierReturnTracking).toBeUndefined();
   });
 
   it("adds bounded tracking reconciliation only for the optional polling capability", () => {

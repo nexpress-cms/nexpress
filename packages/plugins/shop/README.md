@@ -75,12 +75,15 @@ It provides:
   provider create/cancel idempotency, drop-off or bounded pickup mode, a
   maximum-24-hour private origin sidecar deleted on confirmation, transient
   owner label downloads, and PII-free Admin/Doctor diagnostics;
+- optional exact raw-body and bounded polling reverse tracking over active
+  return logistics, with idempotent receipts, persisted leases/backoff,
+  owner-visible status, and no automatic receipt, restock, refund, or exchange;
 - classic and storefront-full skins;
 - featured-product and category-grid blocks.
 
 Provider-specific browser/server protocols, signature algorithms, credentials
 and rotation, partial refunds, reversals, exchanges, carrier label purchase,
-recurring pickup and reverse tracking,
+recurring pickup,
 provider-specific tracking protocols,
 tax remittance/filing, invoices, exemptions, customs, and shipping policy
 remain outside this package. A server-only `NpShopShippingAdapter` may supply
@@ -97,7 +100,10 @@ revision-safe selection and both PII-free commercial snapshots. Approved
 returns may independently add paired `createReturnShipment` /
 `cancelReturnShipment` methods with one opaque `returnLocationReference`;
 optional `readReturnLabel` bytes are delivered only to the owner and never
-persisted.
+persisted. The same paired capability may independently add
+`verifyReturnTrackingWebhook` and `readReturnTracking`; those methods receive
+only the PII-free active return-shipment tuple and cannot complete warehouse
+receipt, inventory restoration, or payment compensation.
 `@nexpress/shop-payment-toss` is the bundled Toss
 Payments v2 initiation and full-refund adapter. Customer/shipping PII exists only in the short-lived
 private draft or order sidecar and stays outside content search, revisions,

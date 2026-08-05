@@ -43,6 +43,11 @@ import {
   type NpShopStoredReturnLogisticsPrivate,
 } from "./return-logistics-contract.js";
 import { npRequireStoredShopReturn, type NpShopStoredReturn } from "./return-contract.js";
+import {
+  npRequireStoredShopReturnTracking,
+  npShopReturnTrackingStorageKey,
+  type NpShopReturnTracking,
+} from "./return-tracking-contract.js";
 import type { NpShopRuntime } from "./runtime.js";
 
 export interface NpShopAdminReturnLogisticsRow {
@@ -943,6 +948,34 @@ export async function npCancelShopReturnLogistics(
       );
     }
     if (current.status === "cancelled") return { duplicate: true as const, logistics: current };
+    const trackingRow = await readRow(
+      tx,
+      siteId,
+      npShopReturnTrackingStorageKey(input.orderId),
+      true,
+    );
+    if (trackingRow) {
+      const tracking = npRequireStoredShopReturnTracking(trackingRow.value);
+      if (
+        trackingRow.expiresAt === null ||
+        trackingRow.expiresAt.toISOString() !== tracking.purgeAt ||
+        tracking.logisticsId !== current.id ||
+        tracking.returnId !== current.returnId ||
+        tracking.orderId !== current.orderId ||
+        tracking.providerId !== current.providerId ||
+        tracking.returnReference !== current.returnReference ||
+        tracking.trackingNumber !== current.trackingNumber ||
+        tracking.purgeAt !== current.purgeAt
+      ) {
+        throw new NpShopReturnLogisticsContractError("Invalid return tracking relationship", [
+          "return tracking must exactly match active logistics before cancellation policy is evaluated.",
+        ]);
+      }
+      throw new NpShopReturnLogisticsConflictError(
+        "return_logistics_tracking_started",
+        "Return logistics cannot be cancelled after verified carrier movement begins.",
+      );
+    }
     if (!matchesApprovedReturn(order, returnRequest, current)) {
       throw new NpShopReturnLogisticsConflictError(
         "return_logistics_return_conflict",
@@ -1183,6 +1216,7 @@ export async function npReadShopReturnLogisticsForOrder(
   db: ReturnType<typeof getDb> | NpShopTransaction,
   siteId: string,
   returnRequest: NpShopStoredReturn,
+  tracking?: NpShopReturnTracking | null,
 ): Promise<NpShopReturnLogistics | null> {
   const logistics = await readLogistics(db, siteId, returnRequest.orderId);
   if (
@@ -1195,7 +1229,7 @@ export async function npReadShopReturnLogisticsForOrder(
       "return logistics must match its exact physical return identity and retention.",
     ]);
   }
-  return logistics ? npProjectShopReturnLogistics(logistics) : null;
+  return logistics ? npProjectShopReturnLogistics(logistics, tracking) : null;
 }
 
 export async function npListRecentShopReturnLogistics(): Promise<{
