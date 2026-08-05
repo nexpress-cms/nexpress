@@ -403,7 +403,10 @@ describe("getProjectFiles", () => {
     expect(env).toContain("revision-safe PII-free");
     expect(env).toContain("bounded PII-free scheduled reconciliation");
     expect(env).toContain("Use shipmentId for provider idempotency");
-    expect(readme).toContain("Shipping and additional tax remain zero");
+    expect(readme).toContain("without policies the zero-shipping fallback remains");
+    expect(readme).toContain("An external shipping adapter overrides local policies");
+    expect(env).toContain("Admin-managed");
+    expect(env).toContain("adapter overrides local policies");
     expect(readme).toContain("one idempotent booking and atomic private-data deletion");
     expect(readme).toContain("exact PII-free mm/gram package allocation");
     expect(readme).toContain("paired pickup scheduling/cancellation");

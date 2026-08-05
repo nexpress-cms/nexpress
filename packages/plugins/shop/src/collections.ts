@@ -20,6 +20,11 @@ import {
   type ShopProductDocument,
 } from "./runtime.js";
 import { npShopPromotionLimits } from "./promotion-contract.js";
+import {
+  npNormalizeShopShippingPolicy,
+  npShopShippingPolicyLimits,
+  type NpShopShippingPolicyDocument,
+} from "./shipping-policy-contract.js";
 
 function validationError(field: string, message: string): NpValidationError {
   return new NpValidationError("Invalid shop catalog data", [{ field, message }]);
@@ -157,6 +162,33 @@ function validateShopPromotion(data: Record<string, unknown>): Record<string, un
     throw validationError(
       "promotion",
       error instanceof Error ? error.message : "Invalid promotion configuration.",
+    );
+  }
+}
+
+function validateShopShippingPolicy(data: Record<string, unknown>): Record<string, unknown> {
+  try {
+    const normalized = npNormalizeShopShippingPolicy({
+      ...data,
+      id: typeof data.id === "string" ? data.id : "00000000-0000-4000-8000-000000000000",
+      status: typeof data.status === "string" ? data.status : "draft",
+    } as unknown as NpShopShippingPolicyDocument);
+    return {
+      ...data,
+      name: normalized.name,
+      methodCode: normalized.methodCode,
+      label: normalized.label,
+      countryCode: normalized.countryCode,
+      postalPrefixes: normalized.postalPrefixes.map((prefix) => ({ prefix })),
+      administrativeAreas: normalized.administrativeAreas.map((area) => ({ area })),
+      products: normalized.productIds,
+      categories: normalized.categoryIds,
+      visibility: "private",
+    };
+  } catch (error) {
+    throw validationError(
+      "shippingPolicy",
+      error instanceof Error ? error.message : "Invalid shipping policy configuration.",
     );
   }
 }
@@ -630,6 +662,198 @@ export function defineShopPromotionsCollection(runtime: NpShopRuntime): NpCollec
         max: npShopPromotionLimits.maximumUsageLimit,
         integerOnly: true,
         admin: { position: "sidebar", group: "Usage", description: "0 means unlimited." },
+      },
+    ],
+  });
+}
+
+export function defineShopShippingPoliciesCollection(runtime: NpShopRuntime): NpCollectionConfig {
+  return defineCollection({
+    slug: runtime.collections.shippingPolicies,
+    labels: { singular: "Shipping policy", plural: "Shipping policies" },
+    admin: {
+      group: "Commerce",
+      listColumns: [
+        "name",
+        "methodCode",
+        "kind",
+        "amountMinor",
+        "destinationScope",
+        "priority",
+        "status",
+      ],
+      defaultSort: "-priority",
+      description:
+        "Domestic base rates, free-shipping thresholds, and destination or cart surcharges.",
+    },
+    versions: { drafts: true, max: 30 },
+    access: {
+      read: () => true,
+      create: isEditorOrAbove,
+      update: isEditorOrAbove,
+      delete: isEditorOrAbove,
+    },
+    hooks: {
+      beforeCreate: [({ data }) => validateShopShippingPolicy(data)],
+      beforeUpdate: [({ data }) => validateShopShippingPolicy(data)],
+    },
+    fields: [
+      {
+        type: "text",
+        name: "name",
+        required: true,
+        minLength: 1,
+        maxLength: npShopShippingPolicyLimits.maximumNameLength,
+        admin: { kind: "title", placeholder: "Korea standard delivery" },
+      },
+      {
+        type: "text",
+        name: "methodCode",
+        required: true,
+        minLength: 1,
+        maxLength: npShopShippingPolicyLimits.maximumMethodCodeLength,
+        admin: {
+          description:
+            "Rules sharing a lowercase method code compose one customer-selectable method.",
+        },
+      },
+      {
+        type: "select",
+        name: "kind",
+        required: true,
+        defaultValue: "base",
+        options: [
+          { label: "Base rate", value: "base" },
+          { label: "Additive surcharge", value: "surcharge" },
+        ],
+      },
+      {
+        type: "text",
+        name: "label",
+        required: true,
+        minLength: 1,
+        maxLength: 120,
+        admin: {
+          description: "Required on every rule; only the selected base rule label is shown.",
+        },
+      },
+      {
+        type: "select",
+        name: "currency",
+        required: true,
+        defaultValue: "KRW",
+        options: ["KRW", "USD", "EUR", "JPY"].map((value) => ({ label: value, value })),
+      },
+      {
+        type: "number",
+        name: "amountMinor",
+        required: true,
+        defaultValue: 0,
+        min: 0,
+        max: npShopShippingPolicyLimits.maximumPriceMinor,
+        integerOnly: true,
+        admin: { description: "Complete base amount or additive surcharge in minor units." },
+      },
+      {
+        type: "number",
+        name: "freeThresholdMinor",
+        min: 1,
+        max: npShopShippingPolicyLimits.maximumPriceMinor,
+        integerOnly: true,
+        admin: { description: "Base rules only. Surcharges remain payable above this threshold." },
+      },
+      {
+        type: "select",
+        name: "thresholdBasis",
+        required: true,
+        defaultValue: "discounted-subtotal",
+        options: [
+          { label: "After promotions", value: "discounted-subtotal" },
+          { label: "Before promotions", value: "gross-subtotal" },
+        ],
+      },
+      {
+        type: "number",
+        name: "minimumDays",
+        min: 0,
+        max: 365,
+        integerOnly: true,
+        admin: { description: "Base-rule delivery estimate; provide both minimum and maximum." },
+      },
+      { type: "number", name: "maximumDays", min: 0, max: 365, integerOnly: true },
+      {
+        type: "select",
+        name: "destinationScope",
+        required: true,
+        defaultValue: "all",
+        options: [
+          { label: "All destinations", value: "all" },
+          { label: "One country", value: "country" },
+          { label: "Postal-code prefixes", value: "postal-prefixes" },
+          { label: "Administrative areas", value: "administrative-areas" },
+        ],
+      },
+      {
+        type: "text",
+        name: "countryCode",
+        minLength: 2,
+        maxLength: 2,
+        admin: {
+          description: "ISO alpha-2 code, required for scoped destinations (for example KR).",
+        },
+      },
+      {
+        type: "array",
+        name: "postalPrefixes",
+        maxRows: npShopShippingPolicyLimits.maximumPostalPrefixes,
+        admin: { description: "Normalized without spaces or hyphens; prefix matching is exact." },
+        fields: [{ type: "text", name: "prefix", required: true, maxLength: 10 }],
+      },
+      {
+        type: "array",
+        name: "administrativeAreas",
+        maxRows: npShopShippingPolicyLimits.maximumAdministrativeAreas,
+        fields: [{ type: "text", name: "area", required: true, maxLength: 100 }],
+      },
+      {
+        type: "select",
+        name: "cartScope",
+        required: true,
+        defaultValue: "all",
+        options: [
+          { label: "Every cart", value: "all" },
+          { label: "Contains selected products", value: "products" },
+          { label: "Contains selected categories", value: "categories" },
+        ],
+      },
+      {
+        type: "relationship",
+        name: "products",
+        relationTo: runtime.collections.products,
+        hasMany: true,
+      },
+      {
+        type: "relationship",
+        name: "categories",
+        relationTo: runtime.collections.categories,
+        hasMany: true,
+      },
+      { type: "date", name: "startsAt", admin: { position: "sidebar", group: "Availability" } },
+      { type: "date", name: "endsAt", admin: { position: "sidebar", group: "Availability" } },
+      {
+        type: "number",
+        name: "priority",
+        required: true,
+        defaultValue: 0,
+        min: 0,
+        max: npShopShippingPolicyLimits.maximumPriority,
+        integerOnly: true,
+        admin: {
+          position: "sidebar",
+          group: "Evaluation",
+          description:
+            "The highest-priority matching base rule wins; every matching surcharge adds.",
+        },
       },
     ],
   });

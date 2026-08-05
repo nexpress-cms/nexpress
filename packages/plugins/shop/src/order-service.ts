@@ -117,6 +117,7 @@ import {
 } from "./cart-service.js";
 import type { NpShopRuntime } from "./runtime.js";
 import { listShopPromotions } from "./runtime.js";
+import { npIsShopShippingProviderActive } from "./shipping-policy-service.js";
 import { npReserveShopPromotions, npResolveShopPromotionReservation } from "./promotion-service.js";
 import type { NpShopFulfillment, NpShopOrder, NpShopOrderList } from "./types.js";
 import {
@@ -2069,7 +2070,10 @@ export async function npCreateShopOrder(
         (!draft.deliveryMethod ||
           draft.deliveryMethod.providerId !== runtime.shippingAdapter.id ||
           new Date(draft.deliveryMethod.quoteExpiresAt) <= now)) ||
-      (!runtime.shippingAdapter && draft.deliveryMethod !== null)
+      (!runtime.shippingAdapter &&
+        draft.deliveryMethod !== null &&
+        (!npIsShopShippingProviderActive(runtime, draft.deliveryMethod.providerId) ||
+          new Date(draft.deliveryMethod.quoteExpiresAt) <= now))
     ) {
       throw new NpShopOrderConflictError(
         "order_source_stale",

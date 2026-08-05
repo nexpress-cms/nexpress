@@ -253,6 +253,44 @@ export interface ShopPromotionsDocument {
 }
 export type ShopPromotionsDocumentWire = NpCollectionDocumentWire<ShopPromotionsDocument>;
 
+export interface ShopShippingPoliciesDocument {
+  id: string;
+  status: "draft" | "scheduled" | "published" | "archived" | "pending";
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+  updatedBy: string | null;
+  publishedAt: Date | null;
+  visibility: "public" | "private";
+  siteId: string;
+  name: string;
+  methodCode: string;
+  kind: string;
+  label: string;
+  currency: string;
+  amountMinor: number;
+  freeThresholdMinor: number | null;
+  thresholdBasis: string;
+  minimumDays: number | null;
+  maximumDays: number | null;
+  destinationScope: string;
+  countryCode: string | null;
+  postalPrefixes: Array<{
+    prefix: string;
+  }>;
+  administrativeAreas: Array<{
+    area: string;
+  }>;
+  cartScope: string;
+  products: string[];
+  categories: string[];
+  startsAt: Date | null;
+  endsAt: Date | null;
+  priority: number;
+}
+export type ShopShippingPoliciesDocumentWire =
+  NpCollectionDocumentWire<ShopShippingPoliciesDocument>;
+
 export interface DiscussionsDocument {
   id: string;
   status: "draft" | "scheduled" | "published" | "archived" | "pending";
@@ -406,6 +444,22 @@ export function getShopPromotionsDocument(
   user?: NpAuthUser,
 ): Promise<ShopPromotionsDocument | null> {
   return getDocumentById<ShopPromotionsDocument>("shop-promotions", id, user);
+}
+
+/** Typed listing query for the `shop-shipping-policies` collection. */
+export function findShopShippingPolicies(
+  options: NpFindOptions<ShopShippingPoliciesDocument> = {},
+  user?: NpAuthUser,
+): Promise<NpFindResult<ShopShippingPoliciesDocument>> {
+  return findDocuments<ShopShippingPoliciesDocument>("shop-shipping-policies", options, user);
+}
+
+/** Typed by-id fetch for the `shop-shipping-policies` collection. */
+export function getShopShippingPoliciesDocument(
+  id: string,
+  user?: NpAuthUser,
+): Promise<ShopShippingPoliciesDocument | null> {
+  return getDocumentById<ShopShippingPoliciesDocument>("shop-shipping-policies", id, user);
 }
 
 /** Typed listing query for the `discussions` collection. */

@@ -37,6 +37,11 @@ import {
   type NpShopShippingQuote,
   type NpShopShippingHealth,
 } from "./shipping-contract.js";
+import { NP_SHOP_SHIPPING_POLICY_PROVIDER_ID } from "./shipping-policy-contract.js";
+import {
+  npIsShopShippingProviderActive,
+  npQuoteShopShippingPolicies,
+} from "./shipping-policy-service.js";
 import {
   NP_SHOP_TAX_HEALTH_CONTRACT,
   NP_SHOP_TAX_QUOTE_REQUEST_CONTRACT,
@@ -400,8 +405,7 @@ function requireSelectedDeliveryMethod(
     );
   }
   if (
-    !runtime.shippingAdapter ||
-    draft.shippingQuote.providerId !== runtime.shippingAdapter.id ||
+    !npIsShopShippingProviderActive(runtime, draft.shippingQuote.providerId) ||
     new Date(draft.shippingQuote.expiresAt) <= now
   ) {
     throw new NpShopShippingUnavailableError(
@@ -572,30 +576,30 @@ export async function npUpdateShopOrderDraft(
     );
   }
   let shippingQuote: NpShopShippingQuote | null = null;
+  const requestedAt = new Date();
+  const maximumExpiresAt = new Date(
+    Math.min(
+      requestedAt.getTime() + npShopShippingLimits.maximumQuoteLifetimeSeconds * 1_000,
+      new Date(snapshot.expiresAt).getTime(),
+    ),
+  );
+  if (maximumExpiresAt <= requestedAt) throw new NpShopOrderDraftExpiredError();
+  const shippingRequest = npRequireShopShippingQuoteRequest({
+    contract: NP_SHOP_SHIPPING_QUOTE_REQUEST_CONTRACT,
+    draftId: snapshot.id,
+    draftRevision: snapshot.revision,
+    currency: snapshot.currency,
+    subtotalMinor: snapshot.subtotalMinor,
+    totalUnits: snapshot.totalUnits,
+    lines: snapshot.lines,
+    destination: input.shipping,
+    requestedAt: requestedAt.toISOString(),
+    maximumExpiresAt: maximumExpiresAt.toISOString(),
+  });
   if (runtime.shippingAdapter) {
-    const requestedAt = new Date();
-    const maximumExpiresAt = new Date(
-      Math.min(
-        requestedAt.getTime() + npShopShippingLimits.maximumQuoteLifetimeSeconds * 1_000,
-        new Date(snapshot.expiresAt).getTime(),
-      ),
-    );
-    if (maximumExpiresAt <= requestedAt) throw new NpShopOrderDraftExpiredError();
-    const request = npRequireShopShippingQuoteRequest({
-      contract: NP_SHOP_SHIPPING_QUOTE_REQUEST_CONTRACT,
-      draftId: snapshot.id,
-      draftRevision: snapshot.revision,
-      currency: snapshot.currency,
-      subtotalMinor: snapshot.subtotalMinor,
-      totalUnits: snapshot.totalUnits,
-      lines: snapshot.lines,
-      destination: input.shipping,
-      requestedAt: requestedAt.toISOString(),
-      maximumExpiresAt: maximumExpiresAt.toISOString(),
-    });
     let result: unknown;
     try {
-      result = await runtime.shippingAdapter.quoteShipping(request);
+      result = await runtime.shippingAdapter.quoteShipping(shippingRequest);
     } catch {
       await persistShippingHealth(siteId, {
         contract: NP_SHOP_SHIPPING_HEALTH_CONTRACT,
@@ -632,6 +636,27 @@ export async function npUpdateShopOrderDraft(
       attemptedAt: requestedAt.toISOString(),
       succeededAt: requestedAt.toISOString(),
     });
+  } else {
+    let result: unknown;
+    try {
+      result = await npQuoteShopShippingPolicies(runtime, shippingRequest, snapshot.discountMinor);
+    } catch (error) {
+      if (error instanceof NpShopShippingUnavailableError) throw error;
+      throw new NpShopShippingUnavailableError(
+        error instanceof Error ? error.message : "The local shipping policies are unavailable.",
+      );
+    }
+    if (result !== null) {
+      try {
+        shippingQuote = npRequireShopShippingQuoteResult(result, {
+          providerId: NP_SHOP_SHIPPING_POLICY_PROVIDER_ID,
+          requestedAt: requestedAt.toISOString(),
+          maximumExpiresAt: maximumExpiresAt.toISOString(),
+        });
+      } catch {
+        throw new NpShopShippingUnavailableError("The local shipping policy quote is invalid.");
+      }
+    }
   }
   const taxQuote = shippingQuote
     ? null

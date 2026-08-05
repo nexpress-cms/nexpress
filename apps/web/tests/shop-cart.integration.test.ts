@@ -31,6 +31,11 @@ import {
   shopPromotionsCategoriesTable,
   shopPromotionsProductsTable,
   shopPromotionsTable,
+  shopShippingPoliciesAdministrativeAreasTable,
+  shopShippingPoliciesCategoriesTable,
+  shopShippingPoliciesPostalPrefixesTable,
+  shopShippingPoliciesProductsTable,
+  shopShippingPoliciesTable,
 } from "@/db/generated/collections";
 
 import {
@@ -379,6 +384,16 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       joinTables: {
         categories: shopPromotionsCategoriesTable,
         products: shopPromotionsProductsTable,
+      },
+    });
+    registerCollection("shop-shipping-policies", shopShippingPoliciesTable, shopCollections[3], {
+      childTables: {
+        administrativeAreas: shopShippingPoliciesAdministrativeAreasTable,
+        postalPrefixes: shopShippingPoliciesPostalPrefixesTable,
+      },
+      joinTables: {
+        categories: shopShippingPoliciesCategoriesTable,
+        products: shopShippingPoliciesProductsTable,
       },
     });
   });
@@ -1184,6 +1199,154 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       );
     expect(remaining).toHaveLength(0);
     expect(JSON.stringify(remaining)).not.toContain(privateEmail);
+  });
+
+  it("composes local Korean base and postal surcharge policies into a frozen order total", async () => {
+    const db = await getTestDb();
+    const basePolicyId = "323e4567-e89b-42d3-a456-426614174010";
+    const surchargePolicyId = "323e4567-e89b-42d3-a456-426614174011";
+    await db.insert(shopShippingPoliciesTable).values([
+      {
+        id: basePolicyId,
+        status: "published",
+        visibility: "private",
+        siteId: "default",
+        name: "Korea standard delivery",
+        methodCode: "standard",
+        kind: "base",
+        label: "Standard delivery",
+        currency: "KRW",
+        amountMinor: 3_000,
+        freeThresholdMinor: 50_000,
+        thresholdBasis: "discounted-subtotal",
+        minimumDays: 1,
+        maximumDays: 3,
+        destinationScope: "country",
+        countryCode: "KR",
+        cartScope: "all",
+        priority: 0,
+        publishedAt: new Date(),
+      },
+      {
+        id: surchargePolicyId,
+        status: "published",
+        visibility: "private",
+        siteId: "default",
+        name: "Jeju postal surcharge",
+        methodCode: "standard",
+        kind: "surcharge",
+        label: "Jeju surcharge",
+        currency: "KRW",
+        amountMinor: 3_000,
+        thresholdBasis: "discounted-subtotal",
+        destinationScope: "postal-prefixes",
+        countryCode: "KR",
+        cartScope: "all",
+        priority: 10,
+        publishedAt: new Date(),
+      },
+    ]);
+    await db.insert(shopShippingPoliciesPostalPrefixesTable).values({
+      parentId: surchargePolicyId,
+      order: 0,
+      prefix: "63",
+    });
+
+    const cart = await call("GET");
+    const cookie = cart.headers?.["Set-Cookie"];
+    const csrf = (cart.body as { csrfToken: string }).csrfToken;
+    const added = await call("POST", {
+      cookie,
+      csrf,
+      body: { productId, variantSku: null, quantity: 1, expectedRevision: 0 },
+    });
+    const quote = (added.body as { quote: { revision: number; fingerprint: string } }).quote;
+    const intentId = "323e4567-e89b-42d3-b456-426614174012";
+    const draftId = "323e4567-e89b-42d3-b456-426614174013";
+    const orderId = "323e4567-e89b-42d3-b456-426614174014";
+    await checkoutCall("POST", {
+      cookie,
+      csrf,
+      body: {
+        idempotencyKey: intentId,
+        expectedRevision: quote.revision,
+        expectedFingerprint: quote.fingerprint,
+      },
+    });
+    await orderDraftCall("POST", {
+      cookie,
+      csrf,
+      body: { idempotencyKey: draftId, checkoutIntentId: intentId },
+    });
+    const quoted = await orderDraftCall("PATCH", {
+      cookie,
+      csrf,
+      body: {
+        draftId,
+        expectedRevision: 1,
+        customer: {
+          fullName: "홍길동",
+          email: "shipping-policy@example.com",
+          phone: "010-1234-5678",
+        },
+        shipping: {
+          recipientName: "홍길동",
+          phone: "010-1234-5678",
+          countryCode: "KR",
+          postalCode: "63000",
+          addressLine1: "제주특별자치도 제주시",
+          addressLine2: null,
+          locality: "제주시",
+          administrativeArea: "제주특별자치도",
+        },
+      },
+    });
+    expect(quoted).toMatchObject({
+      status: 200,
+      body: {
+        draft: {
+          status: "shipping-selection-required",
+          shippingQuote: {
+            providerId: "shop-policy",
+            methods: [{ id: "standard", amountMinor: 6_000 }],
+          },
+        },
+      },
+    });
+    const selected = await orderDraftCall("PUT", {
+      cookie,
+      csrf,
+      body: { draftId, expectedRevision: 2, methodId: "standard" },
+    });
+    expect(selected).toMatchObject({
+      status: 200,
+      body: {
+        draft: {
+          status: "reviewable",
+          shippingMinor: 6_000,
+          totalMinor: 31_000,
+          deliveryMethod: { providerId: "shop-policy", methodId: "standard" },
+        },
+      },
+    });
+    expect(
+      await orderCall("POST", {
+        cookie,
+        csrf,
+        body: { idempotencyKey: orderId, draftId, expectedRevision: 3 },
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: {
+        order: {
+          id: orderId,
+          subtotalMinor: 25_000,
+          shippingMinor: 6_000,
+          totalMinor: 31_000,
+          deliveryMethod: { providerId: "shop-policy", methodId: "standard" },
+        },
+      },
+    });
   });
 
   it("freezes revision-safe shipping and tax quotes into payment and refund totals", async () => {

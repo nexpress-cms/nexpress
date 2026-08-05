@@ -21,7 +21,7 @@ collections.
 
 It provides:
 
-- product, category, and promotion collections;
+- product, category, promotion, and private shipping-policy collections;
 - exact integer-minor-unit prices and bounded variants;
 - on-hand inventory projection plus transaction-safe pending-order
   reservations;
@@ -31,6 +31,9 @@ It provides:
 - automatic and code-based fixed/percentage promotions with time, target,
   minimum-spend, cap, stacking, global/per-owner usage, deterministic line
   allocation, and atomic reservation/redemption/release counters;
+- local base-rate and additive-surcharge delivery methods with destination,
+  product/category, time, priority, delivery-estimate, and gross/discounted
+  free-shipping-threshold rules; external quote adapters override these rules;
 - owner-scoped, idempotent 15-minute checkout intents that become stale when
   the cart or live commercial state changes;
 - owner-scoped 24-hour order drafts with revision-safe, bounded customer and
@@ -97,8 +100,8 @@ and rotation, initiating repeated or non-return partial refunds, disputes and
 chargebacks, exchanges, carrier label purchase,
 recurring pickup,
 provider-specific tracking protocols,
-tax remittance/filing, invoices, exemptions, customs, and shipping policy
-remain outside this package. A server-only `NpShopShippingAdapter` may supply
+tax remittance/filing, invoices, exemptions, customs, and carrier-owned dynamic
+rate policy remain outside this package. A server-only `NpShopShippingAdapter` may supply
 exact bounded delivery methods, and `NpShopTaxAdapter` may return only tax
 added on top of displayed product prices. `NpShopCarrierAdapter` may book one
 shipment with its stable shipment UUID as the provider idempotency key and may

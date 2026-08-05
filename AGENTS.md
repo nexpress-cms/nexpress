@@ -2,13 +2,21 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-05 (Shop now owns one independent automatic and
+**Last refreshed:** 2026-08-05 (Shop now owns one private Admin-managed local
+shipping-policy contract with deterministic base selection, additive Korean
+postal/administrative/cart surcharges, gross or discounted free thresholds,
+bounded methods and time windows, external-adapter precedence, frozen delivery
+snapshots and totals, Admin/Doctor diagnostics, generated migration, scaffold
+guidance, and integration coverage. Carrier-owned dynamic rates, customs,
+jurisdiction rules, booking, labels, pickup, and tracking remain separate.)
+
+**Earlier:** 2026-08-05 (Shop now owns one independent automatic and
 coupon promotion contract across a third Admin collection, deterministic
 fixed/percentage targeting and stacking, cart revisions/fingerprints,
 checkout/draft/order snapshots, discount-aware tax/payment/partial refunds,
 atomic global and PII-free owner usage reservation/redemption/release,
 Admin/Doctor health, skins, generated migrations, scaffolds, and integration
-coverage. Tax policy, shipping policy, loyalty, gift cards, and provider-funded
+coverage. Tax policy, dynamic shipping rates, loyalty, gift cards, and provider-funded
 settlement remain separate.)
 
 **Earlier:** 2026-08-05 (Shop payment adapters may now project one
