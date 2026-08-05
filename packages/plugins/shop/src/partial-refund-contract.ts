@@ -492,14 +492,29 @@ export function npRequireShopPartialRefundActionInput(
   if (issues.length) {
     throw new NpShopPartialRefundContractError("Invalid Shop partial refund action", issues);
   }
+  if (
+    !row ||
+    !values ||
+    typeof row.id !== "string" ||
+    typeof row.orderRevision !== "number" ||
+    typeof row.returnId !== "string" ||
+    typeof row.returnRevision !== "number" ||
+    parsedAmounts.shippingMinor === undefined ||
+    parsedAmounts.taxMinor === undefined ||
+    typeof values.reason !== "string"
+  ) {
+    throw new NpShopPartialRefundContractError("Invalid Shop partial refund action", [
+      "validated partial refund action fields are missing.",
+    ]);
+  }
   return {
-    orderId: row!.id as string,
-    orderRevision: row!.orderRevision as number,
-    returnId: row!.returnId as string,
-    returnRevision: row!.returnRevision as number,
-    shippingMinor: parsedAmounts.shippingMinor!,
-    taxMinor: parsedAmounts.taxMinor!,
-    reason: values!.reason as string,
+    orderId: row.id,
+    orderRevision: row.orderRevision,
+    returnId: row.returnId,
+    returnRevision: row.returnRevision,
+    shippingMinor: parsedAmounts.shippingMinor,
+    taxMinor: parsedAmounts.taxMinor,
+    reason: values.reason,
   };
 }
 

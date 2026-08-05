@@ -1280,7 +1280,7 @@ The two collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
-The plugin declares sixteen baseline typed dashboard metric actions:
+The plugin declares these baseline typed dashboard metric actions:
 
 - total product rows;
 - published low-stock products;
