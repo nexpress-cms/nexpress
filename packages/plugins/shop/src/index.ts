@@ -118,6 +118,10 @@ import {
 } from "./return-tracking-service.js";
 import { npRequireShopReturnTrackingReconcileActionInput } from "./return-tracking-contract.js";
 import { createShopPaymentApiHandler } from "./payment-api.js";
+import {
+  npCountShopPaymentAdjustments,
+  npListRecentShopPaymentAdjustments,
+} from "./payment-adjustment-service.js";
 import { createShopTrackingApiHandler } from "./tracking-api.js";
 import {
   npCountShopTrackingEvents,
@@ -1323,6 +1327,15 @@ export function createShop(options: NpShopOptions = {}) {
           priority: 32,
         },
         {
+          id: "shop-payment-adjustments-total",
+          label: "Payment adjustments",
+          kind: "metric",
+          actionId: "countPaymentAdjustments",
+          description:
+            "Provider-confirmed full or partial cancellations reconciled with Shop refunds and orders.",
+          priority: 41,
+        },
+        {
           id: "shop-refunds-total",
           label: "Refunds",
           kind: "metric",
@@ -1453,6 +1466,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Payment event contract",
           kind: "status",
           actionId: "paymentEventHealth",
+        },
+        {
+          id: "shop-payment-adjustment-health",
+          label: "Payment adjustment contract",
+          kind: "status",
+          actionId: "paymentAdjustmentHealth",
         },
         {
           id: "shop-refund-health",
@@ -1952,6 +1971,23 @@ export function createShop(options: NpShopOptions = {}) {
           ],
           rowsActionId: "recentPaymentEvents",
           emptyMessage: "No verified Shop payment events exist for this site.",
+        },
+        {
+          id: "shop-payment-adjustments",
+          label: "Recent provider payment adjustments (PII withheld)",
+          columns: [
+            { name: "provider", label: "Provider" },
+            { name: "eventId", label: "Event" },
+            { name: "orderId", label: "Order" },
+            { name: "reversed", label: "Reversed" },
+            { name: "remaining", label: "Remaining" },
+            { name: "cancellations", label: "Cancellations" },
+            { name: "outcome", label: "Outcome" },
+            { name: "orderStatus", label: "Order status" },
+            { name: "processedAt", label: "Processed" },
+          ],
+          rowsActionId: "recentPaymentAdjustments",
+          emptyMessage: "No provider-initiated Shop payment adjustment exists for this site.",
         },
         {
           id: "shop-refunds",
@@ -3792,6 +3828,63 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      countPaymentAdjustments: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npCountShopPaymentAdjustments();
+            return {
+              ok: true,
+              data: {
+                value: counts.total,
+                delta: `${counts.manualReview.toString()} requiring manual reconciliation`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      paymentAdjustmentHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopPaymentAdjustments();
+            if (counts.invalidSample > 0 || counts.orphanSample > 0) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed and ${counts.orphanSample.toString()} orphan payment adjustment row(s) in the newest bounded sample.`,
+              );
+            }
+            if (counts.manualReview > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.manualReview.toString()} provider-initiated adjustment(s) block fulfillment and further refunds pending reconciliation.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.total.toString()} provider adjustment(s) are reconciled with Shop order and refund state.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Payment adjustment health check failed.",
+            );
+          }
+        },
+      },
+      recentPaymentAdjustments: {
+        kind: "table",
+        handler: async () => {
+          try {
+            const result = await npListRecentShopPaymentAdjustments();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
       ...(paymentAttemptApiHandler
         ? {
             countPaymentAttempts: {
@@ -4011,7 +4104,7 @@ export function createShop(options: NpShopOptions = {}) {
               method: "POST" as const,
               path: "/payments/webhook",
               description:
-                "Verify one exact provider callback and idempotently resolve its pending order.",
+                "Verify one exact provider callback and idempotently resolve its payment or cumulative cancellation snapshot.",
               auth: false,
               bodyMode: "raw" as const,
               handler: paymentApiHandler,
@@ -4246,6 +4339,38 @@ export type {
   NpShopStoredPaymentReceipt,
   NpShopVerifiedPaymentEvent,
 } from "./payment-contract.js";
+export {
+  NP_SHOP_PAYMENT_ADJUSTMENT_EVENT_CONTRACT,
+  NP_SHOP_PAYMENT_ADJUSTMENT_CONTRACT,
+  NP_SHOP_PAYMENT_ADJUSTMENT_RECEIPT_CONTRACT,
+  NP_SHOP_PAYMENT_ADJUSTMENT_STORAGE_CONTRACT,
+  NpShopPaymentAdjustmentConflictError,
+  NpShopPaymentAdjustmentContractError,
+  NpShopPaymentAdjustmentVerificationError,
+  npAnalyzeShopPaymentAdjustmentEvent,
+  npAnalyzeShopPaymentAdjustment,
+  npIsShopPaymentAdjustmentEvent,
+  npRequireFreshShopPaymentAdjustmentEvent,
+  npRequireShopPaymentAdjustmentEvent,
+  npRequireStoredShopPaymentAdjustment,
+  npRequireStoredShopPaymentAdjustmentReceipt,
+  npShopPaymentAdjustmentEventDigest,
+  npProjectShopPaymentAdjustment,
+  npShopPaymentAdjustmentLimits,
+  npShopPaymentAdjustmentOutcomes,
+  npShopPaymentAdjustmentReceiptStorageKey,
+  npShopPaymentAdjustmentStatuses,
+  npShopPaymentAdjustmentStorageKey,
+} from "./payment-adjustment-contract.js";
+export type {
+  NpShopPaymentAdjustmentOutcome,
+  NpShopPaymentAdjustment,
+  NpShopPaymentAdjustmentStatus,
+  NpShopPaymentCancellation,
+  NpShopStoredPaymentAdjustment,
+  NpShopStoredPaymentAdjustmentReceipt,
+  NpShopVerifiedPaymentAdjustmentEvent,
+} from "./payment-adjustment-contract.js";
 export {
   NP_SHOP_REFUND_CONTRACT,
   NP_SHOP_REFUND_RESULT_CONTRACT,

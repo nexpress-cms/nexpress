@@ -11,6 +11,7 @@ import type {
   NpShopPaymentPartialRefundInput,
   NpShopPaymentPartialRefundResult,
 } from "./partial-refund-contract.js";
+import type { NpShopVerifiedPaymentAdjustmentEvent } from "./payment-adjustment-contract.js";
 import { npShopCurrencies, type NpShopCurrency } from "./types.js";
 
 export const NP_SHOP_PAYMENT_EVENT_CONTRACT = "np.shop-payment-event.v1" as const;
@@ -58,7 +59,10 @@ export interface NpShopIgnoredPaymentWebhook {
 }
 
 export type NpShopPaymentWebhookResult =
-  NpShopVerifiedPaymentEvent | NpShopIgnoredPaymentWebhook | null;
+  | NpShopVerifiedPaymentEvent
+  | NpShopVerifiedPaymentAdjustmentEvent
+  | NpShopIgnoredPaymentWebhook
+  | null;
 
 export interface NpShopPaymentAdapter {
   /** Stable lowercase identifier persisted with PII-free payment receipts. */
@@ -67,9 +71,11 @@ export interface NpShopPaymentAdapter {
    * Authenticate the exact raw bytes or verify their payment projection
    * through a server-authenticated provider query before returning one
    * canonical event. Project `payment.failed` only for a definitive terminal
-   * failure. An authenticated non-terminal or unsupported event may return the
-   * exact ignored result. Return `null` for unverifiable input and never
-   * return unverified parsed fields.
+   * failure. A captured-payment cancellation may instead return one exact
+   * cumulative `np.shop-payment-adjustment-event.v1` snapshot. An authenticated
+   * non-terminal or unsupported event may return the exact ignored result.
+   * Return `null` for unverifiable input and never return unverified parsed
+   * fields.
    */
   verifyWebhook(
     input: NpShopPaymentWebhookInput,

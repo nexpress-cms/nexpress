@@ -304,6 +304,84 @@ describe("Toss Payments Shop adapter", () => {
     );
   });
 
+  it("projects authoritative full and cumulative partial cancellations as adjustments", async () => {
+    const cumulativePartial = partiallyCancelledPayment();
+    cumulativePartial.balanceAmount = 10_000;
+    cumulativePartial.cancels = [
+      {
+        cancelAmount: 5_000,
+        canceledAt: "2026-08-05T10:05:00+09:00",
+        transactionKey: "partial_refund_transaction_456",
+        cancelStatus: "DONE",
+        refundableAmount: 10_000,
+      },
+      cumulativePartial.cancels[0],
+    ];
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(cancelledPayment()), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(cumulativePartial), { status: 200 }));
+    const current = adapter(fetcher);
+    const full = await current.verifyWebhook({
+      rawBody: new TextEncoder().encode(
+        JSON.stringify({
+          eventType: "PAYMENT_STATUS_CHANGED",
+          data: cancelledPayment(),
+        }),
+      ),
+      headers: {},
+      receivedAt: "2026-08-05T00:05:00.000Z",
+    });
+    const partial = await current.verifyWebhook({
+      rawBody: new TextEncoder().encode(
+        JSON.stringify({
+          eventType: "PAYMENT_STATUS_CHANGED",
+          data: cumulativePartial,
+        }),
+      ),
+      headers: {},
+      receivedAt: "2026-08-05T00:05:01.000Z",
+    });
+    expect(full).toMatchObject({
+      contract: "np.shop-payment-adjustment-event.v1",
+      orderId,
+      originalAmountMinor: 25_000,
+      remainingAmountMinor: 0,
+      cancellations: [
+        {
+          reference: "refund_transaction_123",
+          amountMinor: 25_000,
+          cancelledAt: "2026-08-01T00:05:00.000Z",
+        },
+      ],
+    });
+    expect(partial).toMatchObject({
+      contract: "np.shop-payment-adjustment-event.v1",
+      remainingAmountMinor: 10_000,
+      cancellations: [
+        { reference: "partial_refund_transaction_123", amountMinor: 10_000 },
+        { reference: "partial_refund_transaction_456", amountMinor: 5_000 },
+      ],
+    });
+  });
+
+  it("fails closed when authoritative cancellation totals do not match the balance", async () => {
+    const malformed = partiallyCancelledPayment();
+    malformed.cancels[0].cancelAmount = 9_999;
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(malformed), { status: 200 }));
+    await expect(
+      adapter(fetcher).verifyWebhook({
+        rawBody: new TextEncoder().encode(
+          JSON.stringify({ eventType: "PAYMENT_STATUS_CHANGED", data: malformed }),
+        ),
+        headers: {},
+        receivedAt: "2026-08-05T00:05:00.000Z",
+      }),
+    ).rejects.toMatchObject({ code: "toss_adjustment_mismatch", retryable: false });
+  });
+
   it("does not acknowledge unsupported webhook events without provider verification", async () => {
     const fetcher = vi.fn();
     await expect(

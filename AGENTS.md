@@ -2,7 +2,16 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-05 (Shop payment adapters may now add one
+**Last refreshed:** 2026-08-05 (Shop payment adapters may now project one
+authenticated cumulative provider-cancellation snapshot. Exact existing
+refunds converge without repeated compensation; a previously unknown single
+full reversal safely closes order/fulfillment/private data and restores
+unshipped tracked inventory, while ambiguous partial or cumulative adjustments
+block fulfillment/refunds under PII-free Admin/Doctor diagnostics. Disputes,
+chargebacks, settlement corrections, and automatic arbitrary-partial allocation
+remain separate.)
+
+**Earlier:** 2026-08-05 (Shop payment adapters may now add one
 received-return partial-refund capability with immutable returned-item prices,
 explicit bounded shipping/tax allocation, one provider idempotency key,
 durable provider confirmation, full-refund exclusion, owner-safe projection,

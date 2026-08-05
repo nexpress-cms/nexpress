@@ -410,6 +410,8 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("maximum-24-hour private origin sidecar");
     expect(readme).toContain("separate reverse-tracking callback or bounded poll capability");
     expect(readme).toContain("never receives the physical return");
+    expect(readme).toContain("Verified provider cancellation snapshots reconcile known refunds");
+    expect(env).toContain("provider-cancellation reconciliation for Shop");
   });
 
   it(".env.example documents the exact storage runtime contract", () => {

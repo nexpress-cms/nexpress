@@ -42,7 +42,10 @@ It provides:
 - an optional build-time payment adapter with bounded owner-scoped initiation
   attempts, exact raw webhook intake, five-minute event replay bound,
   idempotent PII-free receipts, `paid` / `payment-failed` transitions, and
-  atomic reservation consumption or release;
+  atomic reservation consumption or release; authenticated provider
+  cancellation snapshots reconcile exact Shop refunds, safely compensate one
+  previously unknown full reversal, and block fulfillment/refunds for
+  ambiguous partial or cumulative adjustments;
 - independent revision-safe `awaiting` / `processing` / `shipped` fulfillment,
   audited direct-staff shipping-data access, owner-visible tracking, and
   shipment-or-30-day private-data deletion;
@@ -86,7 +89,8 @@ It provides:
 - featured-product and category-grid blocks.
 
 Provider-specific browser/server protocols, signature algorithms, credentials
-and rotation, repeated or non-return partial refunds, reversals, exchanges, carrier label purchase,
+and rotation, initiating repeated or non-return partial refunds, disputes and
+chargebacks, exchanges, carrier label purchase,
 recurring pickup,
 provider-specific tracking protocols,
 tax remittance/filing, invoices, exemptions, customs, and shipping policy
@@ -108,13 +112,14 @@ persisted. The same paired capability may independently add
 `verifyReturnTrackingWebhook` and `readReturnTracking`; those methods receive
 only the PII-free active return-shipment tuple and cannot complete warehouse
 receipt, inventory restoration, or payment compensation.
-`@nexpress/shop-payment-toss` is the bundled Toss
-Payments v2 initiation, full-refund, and received-return partial-refund adapter. Customer/shipping PII exists only in the short-lived
+`@nexpress/shop-payment-toss` is the bundled Toss Payments v2 initiation,
+full-refund, received-return partial-refund, and query-verified cancellation
+reconciliation adapter. Customer/shipping PII exists only in the short-lived
 private draft or order sidecar and stays outside content search, revisions,
 payment receipts, and transfer. A durable `pending-payment` order reference
 still does not imply that a visitor paid for a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
 for the exact price, SKU, inventory, cart, checkout-intent, private-draft,
-shipping-quote, tax-quote, pending-order, payment-attempt, fulfillment, parcel, carrier, pickup, tracking/polling, full-refund, return-linked partial-refund, return, return-logistics,
+shipping-quote, tax-quote, pending-order, payment-attempt/event/adjustment, fulfillment, parcel, carrier, pickup, tracking/polling, full-refund, return-linked partial-refund, return, return-logistics,
 skin, block, and theme-integration contracts.

@@ -21,6 +21,10 @@ import {
   NP_SHOP_PARTIAL_REFUND_CONTRACT,
   npAnalyzeShopPartialRefund,
 } from "./partial-refund-contract.js";
+import {
+  NP_SHOP_PAYMENT_ADJUSTMENT_CONTRACT,
+  npAnalyzeShopPaymentAdjustment,
+} from "./payment-adjustment-contract.js";
 import { NP_SHOP_RETURN_CONTRACT, npAnalyzeShopReturn } from "./return-contract.js";
 import { npAnalyzeShopDeliveryMethod, type NpShopDeliveryMethod } from "./shipping-contract.js";
 import { npAnalyzeShopTaxQuote, type NpShopTaxQuote } from "./tax-contract.js";
@@ -757,6 +761,7 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
         "tracking",
         "refund",
         "partialRefund",
+        "paymentAdjustment",
         "returnRequest",
       ].includes(key)
     ) {
@@ -777,6 +782,7 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
   delete storedCandidate.tracking;
   delete storedCandidate.refund;
   delete storedCandidate.partialRefund;
+  delete storedCandidate.paymentAdjustment;
   delete storedCandidate.returnRequest;
   issues.push(...npAnalyzeStoredShopOrder(storedCandidate));
   if (value.contract !== NP_SHOP_ORDER_CONTRACT) {
@@ -908,6 +914,29 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
     ) {
       issues.push(
         "order.partialRefund must match one paid shipped order, its received return, currency, and bounded non-full amount.",
+      );
+    }
+  }
+  if (Object.hasOwn(value, "paymentAdjustment")) {
+    issues.push(
+      ...npAnalyzeShopPaymentAdjustment(value.paymentAdjustment).map((issue) => `order.${issue}`),
+    );
+    if (
+      !isRecord(value.paymentAdjustment) ||
+      value.paymentAdjustment.contract !== NP_SHOP_PAYMENT_ADJUSTMENT_CONTRACT ||
+      value.paymentAdjustment.currency !== value.currency ||
+      value.paymentAdjustment.originalAmountMinor !== value.totalMinor ||
+      (value.paymentAdjustment.status === "applied-full-reversal" && value.status !== "refunded") ||
+      (value.paymentAdjustment.status === "manual-review" && value.status !== "paid") ||
+      (value.paymentAdjustment.status === "matched-refund" &&
+        value.status !== "paid" &&
+        value.status !== "refunded") ||
+      (value.paymentAdjustment.status === "closed-unpaid-order" &&
+        value.status !== "payment-failed" &&
+        value.status !== "cancelled")
+    ) {
+      issues.push(
+        "order.paymentAdjustment must match the order currency, total, and reconciled status.",
       );
     }
   }

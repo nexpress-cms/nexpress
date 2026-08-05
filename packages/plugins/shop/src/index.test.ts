@@ -113,6 +113,9 @@ describe("shop factory", () => {
       { id: "countPaymentEvents", kind: "metric" },
       { id: "paymentEventHealth", kind: "status" },
       { id: "recentPaymentEvents", kind: "table" },
+      { id: "countPaymentAdjustments", kind: "metric" },
+      { id: "paymentAdjustmentHealth", kind: "status" },
+      { id: "recentPaymentAdjustments", kind: "table" },
       { id: "maintainOrders", kind: "action" },
     ]);
     expect(shopPlugin.routes?.map((route) => `${route.method} ${route.path}`)).toEqual([

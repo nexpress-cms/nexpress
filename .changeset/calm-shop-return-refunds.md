@@ -1,7 +1,7 @@
 ---
 "@nexpress/plugin-shop": patch
 "@nexpress/shop-payment-toss": patch
-"@nexpress/create-nexpress": patch
+"create-nexpress": patch
 ---
 
 Add one provider-neutral partial refund contract linked to a received physical

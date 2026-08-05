@@ -2180,6 +2180,295 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     ).toEqual([{ available: true, inventoryState: "low-stock" }]);
   });
 
+  it("converges provider-initiated full reversals and blocks ambiguous partial adjustments", async () => {
+    const fullIds = {
+      intentId: "173e4567-e89b-42d3-a456-426614174000",
+      draftId: "273e4567-e89b-42d3-a456-426614174000",
+      orderId: "373e4567-e89b-42d3-a456-426614174000",
+    };
+    const partialIds = {
+      intentId: "473e4567-e89b-42d3-a456-426614174000",
+      draftId: "573e4567-e89b-42d3-a456-426614174000",
+      orderId: "673e4567-e89b-42d3-a456-426614174000",
+    };
+    const fullOwner = await createPendingOrder(fullIds, "full-adjustment@example.com");
+    const adjustmentShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+          refundPayment: (input) => ({
+            contract: "np.shop-refund-result.v1" as const,
+            refundId: input.refundId,
+            orderId: input.orderId,
+            paymentReference: input.paymentReference,
+            refundReference: "unused_after_adjustment",
+            currency: input.currency,
+            amountMinor: input.amountMinor,
+            refundedAt: new Date().toISOString(),
+          }),
+        },
+      },
+    });
+    await payPendingOrder(adjustmentShop, {
+      orderId: fullIds.orderId,
+      eventId: "evt_full_adjustment_paid",
+      paymentReference: "pay_full_adjustment",
+    });
+    const fullEvent = {
+      contract: "np.shop-payment-adjustment-event.v1",
+      eventId: "adjustment_full_1",
+      orderId: fullIds.orderId,
+      paymentReference: "pay_full_adjustment",
+      currency: "KRW",
+      originalAmountMinor: 25_000,
+      remainingAmountMinor: 0,
+      cancellations: [
+        {
+          reference: "provider_full_cancel_1",
+          amountMinor: 25_000,
+          cancelledAt: new Date().toISOString(),
+        },
+      ],
+      signedAt: new Date().toISOString(),
+    } as const;
+    const applied = await configuredShopCall(adjustmentShop, "POST", "/payments/webhook", {
+      rawBody: new TextEncoder().encode(JSON.stringify(fullEvent)),
+    });
+    expect(applied).toMatchObject({
+      status: 200,
+      body: {
+        duplicate: false,
+        adjustment: { outcome: "applied-full-reversal", orderStatus: "refunded" },
+      },
+    });
+    expect(
+      await configuredShopCall(adjustmentShop, "POST", "/payments/webhook", {
+        rawBody: new TextEncoder().encode(JSON.stringify(fullEvent)),
+      }),
+    ).toMatchObject({ status: 200, body: { duplicate: true } });
+    expect(await orderCall("GET", { ...fullOwner, orderId: fullIds.orderId })).toMatchObject({
+      body: {
+        order: {
+          status: "refunded",
+          privateDataStatus: "redacted",
+          fulfillment: { status: "cancelled" },
+          refund: {
+            status: "refunded",
+            inventoryOutcome: "restocked",
+            fulfillmentOutcome: "cancelled",
+          },
+          paymentAdjustment: {
+            status: "applied-full-reversal",
+            reversedAmountMinor: 25_000,
+            remainingAmountMinor: 0,
+            cancellationCount: 1,
+          },
+        },
+      },
+    });
+    const db = await getTestDb();
+    expect(
+      await db
+        .select({ stockQuantity: shopProductsTable.stockQuantity })
+        .from(shopProductsTable)
+        .where(eq(shopProductsTable.id, productId)),
+    ).toEqual([{ stockQuantity: 8 }]);
+
+    const partialOwner = await createPendingOrder(partialIds, "partial-adjustment@example.com");
+    await payPendingOrder(adjustmentShop, {
+      orderId: partialIds.orderId,
+      eventId: "evt_partial_adjustment_paid",
+      paymentReference: "pay_partial_adjustment",
+    });
+    expect(
+      await configuredShopCall(adjustmentShop, "POST", "/payments/webhook", {
+        rawBody: new TextEncoder().encode(
+          JSON.stringify({
+            ...fullEvent,
+            eventId: "adjustment_partial_1",
+            orderId: partialIds.orderId,
+            paymentReference: "pay_partial_adjustment",
+            remainingAmountMinor: 15_000,
+            cancellations: [
+              {
+                reference: "provider_partial_cancel_1",
+                amountMinor: 10_000,
+                cancelledAt: new Date().toISOString(),
+              },
+            ],
+            signedAt: new Date().toISOString(),
+          }),
+        ),
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: {
+        adjustment: { outcome: "manual-review", orderStatus: "paid", orderRevision: 2 },
+      },
+    });
+    expect(await orderCall("GET", { ...partialOwner, orderId: partialIds.orderId })).toMatchObject({
+      body: {
+        order: {
+          status: "paid",
+          paymentAdjustment: {
+            status: "manual-review",
+            originalAmountMinor: 25_000,
+            reversedAmountMinor: 10_000,
+            remainingAmountMinor: 15_000,
+            cancellationCount: 1,
+          },
+        },
+      },
+    });
+    const staff = await seedUser({ email: "adjustment-operator@example.com" });
+    const context = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    expect(
+      await withCurrentSite("default", () =>
+        adjustmentShop.plugin.actions?.processFulfillment?.handler(
+          {
+            row: { id: partialIds.orderId, fulfillmentRevision: 1 },
+            values: { operatorNote: "must remain blocked" },
+          },
+          context,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("payment adjustment") });
+    expect(
+      await withCurrentSite("default", () =>
+        adjustmentShop.plugin.actions?.refundOrder?.handler(
+          {
+            row: { id: partialIds.orderId, revision: 2 },
+            values: { reason: "must remain blocked" },
+          },
+          context,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("payment adjustment") });
+    expect(
+      await withCurrentSite("default", () =>
+        adjustmentShop.plugin.actions?.paymentAdjustmentHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "warn" } });
+    expect(
+      await withCurrentSite("default", () =>
+        adjustmentShop.plugin.actions?.recentPaymentAdjustments?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: {
+        rows: [
+          { orderId: partialIds.orderId, outcome: "manual-review" },
+          { orderId: fullIds.orderId, outcome: "applied-full-reversal" },
+        ],
+      },
+    });
+
+    const knownIds = {
+      intentId: "773e4567-e89b-42d3-a456-426614174000",
+      draftId: "873e4567-e89b-42d3-a456-426614174000",
+      orderId: "973e4567-e89b-42d3-a456-426614174000",
+    };
+    await createPendingOrder(knownIds, "known-adjustment@example.com");
+    await payPendingOrder(adjustmentShop, {
+      orderId: knownIds.orderId,
+      eventId: "evt_known_adjustment_paid",
+      paymentReference: "pay_known_adjustment",
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        adjustmentShop.plugin.actions?.refundOrder?.handler(
+          {
+            row: { id: knownIds.orderId, revision: 2 },
+            values: { reason: "Known provider refund" },
+          },
+          context,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("completed") });
+    expect(
+      await configuredShopCall(adjustmentShop, "POST", "/payments/webhook", {
+        rawBody: new TextEncoder().encode(
+          JSON.stringify({
+            ...fullEvent,
+            eventId: "adjustment_known_refund_1",
+            orderId: knownIds.orderId,
+            paymentReference: "pay_known_adjustment",
+            cancellations: [
+              {
+                reference: "unused_after_adjustment",
+                amountMinor: 25_000,
+                cancelledAt: new Date().toISOString(),
+              },
+            ],
+            signedAt: new Date().toISOString(),
+          }),
+        ),
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: {
+        adjustment: { outcome: "matched-refund", orderStatus: "refunded" },
+      },
+    });
+    expect(
+      await db
+        .select({ stockQuantity: shopProductsTable.stockQuantity })
+        .from(shopProductsTable)
+        .where(eq(shopProductsTable.id, productId)),
+    ).toEqual([{ stockQuantity: 7 }]);
+
+    const cancelledIds = {
+      intentId: "a73e4567-e89b-42d3-a456-426614174000",
+      draftId: "b73e4567-e89b-42d3-a456-426614174000",
+      orderId: "c73e4567-e89b-42d3-a456-426614174000",
+    };
+    const cancelledOwner = await createPendingOrder(
+      cancelledIds,
+      "cancelled-adjustment@example.com",
+    );
+    expect(
+      await orderCall("DELETE", {
+        ...cancelledOwner,
+        body: { orderId: cancelledIds.orderId, expectedRevision: 1 },
+      }),
+    ).toMatchObject({ body: { order: { status: "cancelled", revision: 2 } } });
+    expect(
+      await configuredShopCall(adjustmentShop, "POST", "/payments/webhook", {
+        rawBody: new TextEncoder().encode(
+          JSON.stringify({
+            ...fullEvent,
+            eventId: "adjustment_cancelled_order_1",
+            orderId: cancelledIds.orderId,
+            paymentReference: "pay_cancelled_adjustment",
+            signedAt: new Date().toISOString(),
+          }),
+        ),
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: {
+        adjustment: { outcome: "closed-unpaid-order", orderStatus: "cancelled" },
+      },
+    });
+    expect(
+      await orderCall("GET", { ...cancelledOwner, orderId: cancelledIds.orderId }),
+    ).toMatchObject({
+      body: {
+        order: {
+          status: "cancelled",
+          paymentProvider: null,
+          paymentAdjustment: {
+            status: "closed-unpaid-order",
+            reversedAmountMinor: 25_000,
+          },
+        },
+      },
+    });
+  });
+
   it("books one idempotent carrier shipment and atomically redacts its private destination", async () => {
     const ids = {
       intentId: "a13e4567-e89b-42d3-a456-426614174000",

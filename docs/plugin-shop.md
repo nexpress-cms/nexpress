@@ -544,7 +544,7 @@ defaults are application cleanup guarantees, not jurisdiction-specific
 accounting or privacy advice. Backup retention can outlive physical row
 deletion and must be governed separately.
 
-## Verified payment-event contract
+## Verified payment-event and adjustment contracts
 
 Payment processing is disabled in the default `shopPlugin`. A custom project
 enables `/api/plugins/shop/payments/webhook` by passing one server-only adapter
@@ -609,9 +609,46 @@ reconcile such external effects with the provider. `payment.failed` is
 terminal in v1, so adapters must project it only for a definitive failure; a
 retry requires a new order.
 
-This boundary proves callback authentication and one local transition; it does
-not prove settlement, initiate payment, model authorization/capture,
-compensate provider-initiated reversals, or book a carrier shipment.
+The same authenticated callback may instead return one exact cumulative
+`np.shop-payment-adjustment-event.v1` when the provider proves that captured
+money was cancelled after payment. The event carries the immutable order and
+payment identity, original and remaining minor-unit amounts, and 1–100 unique,
+canonically ordered completed cancellations. Every cancellation has only an
+opaque reference, positive amount, and UTC timestamp. Their exact sum must be
+`originalAmountMinor - remainingAmountMinor`; the snapshot must reverse a
+positive amount and may never regress or change a retained cancellation.
+
+Shop serializes each provider/event id and stores both an idempotent PII-free
+receipt and one latest order adjustment state. Redelivery of the same semantic
+snapshot is a no-op even when its transport timestamp changes. A snapshot that
+exactly equals the amount and cancellation reference of an existing durable
+full refund or received-return partial refund is recorded as `matched-refund`;
+Shop does not repeat order, fulfillment, return, or inventory transitions.
+
+If no local refund exists, only a single cancellation that reverses the entire
+captured payment can be compensated automatically. For a paid unshipped order,
+Shop atomically creates the normal owner-visible full-refund projection,
+changes the order to `refunded`, cancels fulfillment, deletes retained private
+data, and attempts the same all-or-none tracked-inventory restoration used by
+staff full refunds. A shipped order retains shipped fulfillment and inventory.
+The transition has a system audit row and closed compensation outcomes.
+An adjustment received while the local order is still `pending-payment` closes
+that unpaid order as `payment-failed` and releases exact holds because Shop
+never consumed on-hand inventory locally.
+
+Unknown partial reversals, multiple cancellations without matching local
+refund history, conflicting refund state, and later snapshots extending an
+already manual adjustment remain `manual-review`. They do not invent item,
+shipping, or tax allocation and do not restore inventory. While manual review
+exists, fulfillment changes and new full/partial refunds fail closed. Admin
+exposes aggregate count, bounded PII-free recent receipts, and error/warning
+health; Doctor verifies those declarative metric/status/table actions. Order
+cleanup removes adjustment state and receipts with the commercial snapshot.
+
+This boundary proves callback authentication and local cancellation
+convergence; it does not prove settlement, initiate payment, model
+authorization/capture, allocate arbitrary partial reversals, resolve disputes
+or chargebacks, or book a carrier shipment.
 
 ## Carrier shipment booking and local completion
 
@@ -1256,7 +1293,10 @@ requests. Its success redirect retrieves the stored attempt and confirms it
 server-side with the secret key and attempt UUID idempotency key. General
 payment webhooks are not accepted at face value: the adapter queries Toss with
 the secret key, compares the exact payment projection, and only then emits a
-terminal event. Unsupported or unverifiable callbacks fail closed.
+terminal event. Query-verified `CANCELED` and `PARTIAL_CANCELED` results instead
+emit cumulative adjustment snapshots whose completed cancellation keys,
+amounts, UTC timestamps, and sum match `balanceAmount`. Unsupported or
+unverifiable callbacks fail closed.
 The same adapter implements `refundPayment` with Toss's full-cancel endpoint,
 the Shop refund UUID as `Idempotency-Key`, no `cancelAmount`, and exact
 validation of `CANCELED`, zero remaining balance, completed cancellation
@@ -1267,6 +1307,12 @@ For a received return, `refundPaymentPartially` sends the exact Shop amount as
 only a matching `PARTIAL_CANCELED` payment, one completed cancellation for that
 amount, and a consistent remaining balance. Any mismatch fails closed before
 Shop records provider confirmation.
+
+The same cancellation may arrive after Shop's synchronous refund call or may
+have originated in the Toss console. Shop matches the former to its durable
+refund without repeating compensation. For the latter, only a safe single
+full reversal is applied automatically; partial or multi-cancellation history
+stays blocked manual review.
 
 In a generated project, `defaultCollections` and `defaultPlugins` already
 contain the disabled default Shop instance. Filter the two Shop collections
@@ -1302,6 +1348,7 @@ The plugin declares these baseline typed dashboard metric actions:
 - verified PII-free reverse-tracking receipts, current return-shipment states,
   and durable polling leases/backoff.
 - verified PII-free payment-event receipts.
+- provider payment-adjustment receipts and reconciled/manual order state.
 - durable full-refund attempts and compensation outcomes.
 - durable received-return partial-refund attempts and exact item/shipping/tax
   allocations.
@@ -1352,6 +1399,12 @@ audited explicit private read; every mutation uses the current fulfillment
 revision. The scheduled-task and
 action registries make these contracts visible to plugin doctor without
 executing them.
+Payment-adjustment health independently reports malformed or orphan state and
+any manual-review order that blocks fulfillment/refunds. Its newest-50 receipt
+table contains only provider/event/order ids, exact currency amounts,
+cancellation count, closed outcome/order status, and processing time. It never
+returns provider callback bodies, refund reasons, owner segments, or private
+order values.
 Refund health reports pending provider calls, definitive provider review,
 manual inventory compensation, malformed rows, and missing order lookups. Its
 bounded table contains only provider/order/refund ids, integer amount,
@@ -1482,8 +1535,8 @@ Existing `classic` and `storefront-full` ids cannot be replaced.
 Future transaction work should remain separable from this foundation:
 
 1. additional provider packages for Stripe or KG Inicis;
-2. authorization/capture, settlement, provider-initiated reversal, and
-   repeated or non-return partial-refund contracts;
+2. authorization/capture, settlement corrections, disputes/chargebacks, and
+   initiating repeated or non-return partial-refund contracts;
 3. carrier label purchase/regeneration, recurring pickup, provider-specific
    tracking packages, exchanges, and customer-service policy;
 4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and
