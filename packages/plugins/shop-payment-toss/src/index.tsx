@@ -3,11 +3,15 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import {
   NP_SHOP_PAYMENT_EVENT_CONTRACT,
   NP_SHOP_PAYMENT_WEBHOOK_IGNORED_CONTRACT,
+  NP_SHOP_PARTIAL_REFUND_RESULT_CONTRACT,
   NP_SHOP_REFUND_RESULT_CONTRACT,
   NpShopPaymentProviderError,
   type NpShopIgnoredPaymentWebhook,
   type NpShopPaymentConfirmAdapterInput,
   type NpShopPaymentInitiationAdapter,
+  type NpShopPaymentPartialRefundAdapter,
+  type NpShopPaymentPartialRefundInput,
+  type NpShopPaymentPartialRefundResult,
   type NpShopPaymentRefundAdapter,
   type NpShopPaymentRefundInput,
   type NpShopPaymentRefundResult,
@@ -44,6 +48,13 @@ interface TossPaymentProjection {
 interface TossFullCancellationProjection extends TossPaymentProjection {
   status: "CANCELED";
   balanceAmount: 0;
+  transactionKey: string;
+  canceledAt: string;
+}
+
+interface TossPartialCancellationProjection extends TossPaymentProjection {
+  status: "PARTIAL_CANCELED";
+  balanceAmount: number;
   transactionKey: string;
   canceledAt: string;
 }
@@ -159,6 +170,58 @@ function requireFullCancellationProjection(value: unknown): TossFullCancellation
   };
 }
 
+function requirePartialCancellationProjection(
+  value: unknown,
+  amountMinor: number,
+): TossPartialCancellationProjection {
+  const payment = requirePaymentProjection(value);
+  if (
+    payment.status !== "PARTIAL_CANCELED" ||
+    !isRecord(value) ||
+    !Number.isSafeInteger(value.balanceAmount) ||
+    (value.balanceAmount as number) < 1 ||
+    payment.totalAmount - (value.balanceAmount as number) !== amountMinor ||
+    !Array.isArray(value.cancels) ||
+    value.cancels.length < 1
+  ) {
+    throw new NpShopPaymentProviderError(
+      "toss_partial_refund_mismatch",
+      "Toss did not return the exact first partial cancellation.",
+      false,
+    );
+  }
+  const completed = value.cancels.filter(
+    (cancel): cancel is Record<string, unknown> =>
+      isRecord(cancel) &&
+      cancel.cancelStatus === "DONE" &&
+      cancel.cancelAmount === amountMinor &&
+      cancel.refundableAmount === value.balanceAmount,
+  );
+  const cancel = completed.length === 1 ? completed[0] : null;
+  const transactionKey = cancel ? boundedText(cancel.transactionKey, 64) : null;
+  const canceledAtValue = cancel ? boundedText(cancel.canceledAt, 40) : null;
+  const canceledAt = canceledAtValue ? new Date(canceledAtValue) : null;
+  if (
+    !transactionKey ||
+    !opaquePattern.test(transactionKey) ||
+    !canceledAt ||
+    Number.isNaN(canceledAt.getTime())
+  ) {
+    throw new NpShopPaymentProviderError(
+      "toss_partial_refund_mismatch",
+      "Toss returned malformed partial-cancellation metadata.",
+      false,
+    );
+  }
+  return {
+    ...payment,
+    status: "PARTIAL_CANCELED",
+    balanceAmount: value.balanceAmount as number,
+    transactionKey,
+    canceledAt: canceledAt.toISOString(),
+  };
+}
+
 async function readBoundedJson(response: Response): Promise<unknown> {
   const maximum = 64 * 1_024;
   const chunks: Uint8Array[] = [];
@@ -225,7 +288,7 @@ function paymentEventId(paymentKey: string, status: string): string {
 
 export function createTossPaymentsAdapter(
   options: NpTossPaymentsOptions,
-): NpShopPaymentInitiationAdapter & NpShopPaymentRefundAdapter {
+): NpShopPaymentInitiationAdapter & NpShopPaymentRefundAdapter & NpShopPaymentPartialRefundAdapter {
   const client = requireKey(options.clientKey, "ck");
   const secret = requireKey(options.secretKey, "sk");
   if (client.mode !== secret.mode || client.family !== secret.family) {
@@ -429,6 +492,58 @@ export function createTossPaymentsAdapter(
     };
   }
 
+  async function refundPaymentPartially(
+    input: NpShopPaymentPartialRefundInput,
+  ): Promise<NpShopPaymentPartialRefundResult> {
+    if (input.currency !== "KRW" || input.amountMinor < 1) {
+      throw new NpShopPaymentProviderError(
+        "toss_partial_refund_unsupported",
+        "Toss Payments supports only positive KRW partial refunds for this adapter.",
+        false,
+      );
+    }
+    const response = await tossRequest(
+      `/v1/payments/${encodeURIComponent(input.paymentReference)}/cancel`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": input.refundId,
+        },
+        body: JSON.stringify({ cancelReason: input.reason, cancelAmount: input.amountMinor }),
+      },
+    );
+    const payload = await readBoundedJson(response);
+    if (!response.ok) {
+      const retryable =
+        response.status === 408 || response.status === 429 || response.status >= 500;
+      throw safeProviderError(payload, "Toss did not partially cancel the payment.", retryable);
+    }
+    const payment = requirePartialCancellationProjection(payload, input.amountMinor);
+    if (
+      payment.orderId !== input.orderId ||
+      payment.currency !== input.currency ||
+      !constantTimeEqual(payment.paymentKey, input.paymentReference)
+    ) {
+      throw new NpShopPaymentProviderError(
+        "toss_partial_refund_mismatch",
+        "Toss partially cancelled a payment that does not match the Shop refund.",
+        false,
+      );
+    }
+    return {
+      contract: NP_SHOP_PARTIAL_REFUND_RESULT_CONTRACT,
+      refundId: input.refundId,
+      orderId: payment.orderId,
+      returnId: input.returnId,
+      paymentReference: payment.paymentKey,
+      refundReference: payment.transactionKey,
+      currency: payment.currency,
+      amountMinor: input.amountMinor,
+      refundedAt: payment.canceledAt,
+    };
+  }
+
   async function verifyWebhook(
     input: NpShopPaymentWebhookInput,
   ): Promise<NpShopPaymentWebhookResult> {
@@ -489,6 +604,7 @@ export function createTossPaymentsAdapter(
     confirmPayment,
     verifyWebhook,
     refundPayment,
+    refundPaymentPartially,
     renderPaymentLauncher: (props: NpShopPaymentLauncherProps) => (
       <TossPaymentLauncher {...props} />
     ),
@@ -498,7 +614,9 @@ export function createTossPaymentsAdapter(
 export function tossPaymentsFromEnv(input: {
   siteUrl: string;
   fetch?: typeof fetch;
-}): NpShopPaymentInitiationAdapter & NpShopPaymentRefundAdapter {
+}): NpShopPaymentInitiationAdapter &
+  NpShopPaymentRefundAdapter &
+  NpShopPaymentPartialRefundAdapter {
   const clientKey = process.env.NP_TOSS_PAYMENTS_CLIENT_KEY;
   const secretKey = process.env.NP_TOSS_PAYMENTS_SECRET_KEY;
   if (!clientKey || !secretKey) {

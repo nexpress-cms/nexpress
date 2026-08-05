@@ -88,6 +88,12 @@ import {
 } from "./fulfillment-contract.js";
 import { npRequireShopFulfillmentParcelsSaveInput } from "./parcel-contract.js";
 import { npRequireShopRefundActionInput } from "./refund-contract.js";
+import { npRequireShopPartialRefundActionInput } from "./partial-refund-contract.js";
+import {
+  npCountShopPartialRefunds,
+  npListRecentShopPartialRefunds,
+  npPartiallyRefundShopReturn,
+} from "./partial-refund-service.js";
 import { createShopReturnApiHandler } from "./return-api.js";
 import { createShopReturnLogisticsApiHandler } from "./return-logistics-api.js";
 import { createShopReturnLogisticsLabelApiHandler } from "./return-logistics-label-api.js";
@@ -130,6 +136,7 @@ import {
   npRequireShopPaymentProviderId,
   type NpShopPaymentAdapter,
   type NpShopPaymentInitiationAdapter,
+  type NpShopPaymentPartialRefundAdapter,
   type NpShopPaymentRefundAdapter,
 } from "./payment-contract.js";
 import { createShopCatalogMetadata, createShopCatalogRoute } from "./routes/catalog.js";
@@ -242,6 +249,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   let paymentAdapter: NpShopPaymentAdapter | null = null;
   let paymentInitiationAdapter: NpShopPaymentInitiationAdapter | null = null;
   let paymentRefundAdapter: NpShopPaymentRefundAdapter | null = null;
+  let paymentPartialRefundAdapter: NpShopPaymentPartialRefundAdapter | null = null;
   if (configuredPaymentAdapter) {
     const id = npRequireShopPaymentProviderId(configuredPaymentAdapter.id);
     if (typeof configuredPaymentAdapter.verifyWebhook !== "function") {
@@ -256,6 +264,19 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
         id,
         verifyWebhook,
         refundPayment: configuredPaymentAdapter.refundPayment.bind(configuredPaymentAdapter),
+      });
+    }
+    if (configuredPaymentAdapter.refundPaymentPartially !== undefined) {
+      if (typeof configuredPaymentAdapter.refundPaymentPartially !== "function") {
+        throw new Error(
+          "Shop payment adapter refundPaymentPartially must be a function when provided.",
+        );
+      }
+      paymentPartialRefundAdapter = Object.freeze({
+        id,
+        verifyWebhook,
+        refundPaymentPartially:
+          configuredPaymentAdapter.refundPaymentPartially.bind(configuredPaymentAdapter),
       });
     }
     const initiationMethods = [
@@ -519,6 +540,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     paymentAdapter,
     paymentInitiationAdapter,
     paymentRefundAdapter,
+    paymentPartialRefundAdapter,
     shippingAdapter,
     taxAdapter,
     carrierAdapter,
@@ -649,6 +671,8 @@ const messages = {
     "shop.orderPaymentVerified":
       "The provider callback was verified and this order was marked paid.",
     "shop.orderRefundedDetail": "The configured provider completed a full payment refund.",
+    "shop.orderPartialRefundedDetail":
+      "The configured provider refunded the received return items and explicit shipping/tax allocation.",
     "shop.orderPaymentFailedDetail":
       "The provider reported a failed payment. Inventory was released and private details were deleted.",
     "shop.orderPrivateRetained":
@@ -850,6 +874,8 @@ const messages = {
     "shop.orderCancelled": "취소됨",
     "shop.orderPaymentVerified": "결제사 콜백을 검증했고 주문을 결제 완료로 전환했습니다.",
     "shop.orderRefundedDetail": "설정된 결제사가 결제 전액을 환불했습니다.",
+    "shop.orderPartialRefundedDetail":
+      "설정된 결제사가 수령된 반품 상품과 지정된 배송비·세액을 부분 환불했습니다.",
     "shop.orderPaymentFailedDetail":
       "결제사가 실패를 알렸습니다. 재고 예약을 해제하고 배송 개인정보를 삭제했습니다.",
     "shop.orderPrivateRetained":
@@ -1018,7 +1044,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, outbound and return tracking, physical returns and return logistics, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, outbound and return tracking, physical returns, return-linked partial refunds, return logistics, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -1091,6 +1117,10 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-refunds",
           "widget:shop-refund-health",
           "table:shop-refunds",
+          "dashboard:shop-partial-refunds",
+          "widget:shop-partial-refund-health",
+          "table:shop-partial-refunds",
+          ...(runtime.paymentPartialRefundAdapter ? ["action:shop-return-partial-refund"] : []),
           "dashboard:shop-returns",
           "widget:shop-return-health",
           "table:shop-returns",
@@ -1120,7 +1150,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with transient labels, and independent verified or reconciled reverse tracking. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, and provider-specific carrier protocols remain external.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with transient labels, and independent verified or reconciled reverse tracking. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -1301,6 +1331,14 @@ export function createShop(options: NpShopOptions = {}) {
           priority: 34,
         },
         {
+          id: "shop-partial-refunds-total",
+          label: "Return refunds",
+          kind: "metric",
+          actionId: "countPartialRefunds",
+          description: "Durable provider partial refunds linked to received physical returns.",
+          priority: 40,
+        },
+        {
           id: "shop-returns-total",
           label: "Returns",
           kind: "metric",
@@ -1423,6 +1461,12 @@ export function createShop(options: NpShopOptions = {}) {
           actionId: "refundHealth",
         },
         {
+          id: "shop-partial-refund-health",
+          label: "Return partial refund contract",
+          kind: "status",
+          actionId: "partialRefundHealth",
+        },
+        {
           id: "shop-return-health",
           label: "Return contract",
           kind: "status",
@@ -1510,7 +1554,8 @@ export function createShop(options: NpShopOptions = {}) {
                   ],
                   confirm:
                     "Cancel the entire provider payment? Unshipped tracked inventory is restored only when the exact catalog rows still match.",
-                  description: "Partial refunds are not supported.",
+                  description:
+                    "This action refunds the complete payment. Use a received return for the bounded partial-refund flow.",
                 },
               ]
             : [],
@@ -1947,6 +1992,63 @@ export function createShop(options: NpShopOptions = {}) {
           emptyMessage: "No Shop full-refund attempt exists for this site.",
         },
         {
+          id: "shop-partial-refunds",
+          label: "Return-linked partial refunds (PII withheld)",
+          columns: [
+            { name: "id", label: "Order" },
+            { name: "refundId", label: "Refund" },
+            { name: "returnId", label: "Return" },
+            { name: "orderRevision", label: "Order revision" },
+            { name: "provider", label: "Provider" },
+            { name: "status", label: "Status" },
+            { name: "itemAmount", label: "Items" },
+            { name: "shippingAmount", label: "Shipping" },
+            { name: "taxAmount", label: "Tax" },
+            { name: "total", label: "Total" },
+            { name: "providerError", label: "Provider error" },
+            { name: "updatedAt", label: "Updated" },
+          ],
+          rowsActionId: "recentPartialRefunds",
+          rowActions: [
+            {
+              id: "resume-partial-refund",
+              label: "Resume reconciliation",
+              actionId: "partialRefundReturn",
+              rowFields: ["id", "orderRevision", "returnId", "returnRevision"],
+              visibleWhen: {
+                field: "status",
+                oneOf: ["pending", "provider-confirmed"],
+              },
+              fields: [
+                {
+                  name: "shippingMinor",
+                  label: "Original shipping refund",
+                  type: "text" as const,
+                  required: true,
+                  placeholder: "Re-enter the original minor-unit amount",
+                },
+                {
+                  name: "taxMinor",
+                  label: "Original tax refund",
+                  type: "text" as const,
+                  required: true,
+                  placeholder: "Re-enter the original minor-unit amount",
+                },
+                {
+                  name: "reason",
+                  label: "Original refund reason",
+                  type: "textarea" as const,
+                  required: true,
+                  placeholder: "The durable original is preserved",
+                },
+              ],
+              confirm:
+                "Resume this durable partial refund? A provider-confirmed row performs only local reconciliation; a pending row still requires its original adapter.",
+            },
+          ],
+          emptyMessage: "No return-linked partial refund exists for this site.",
+        },
+        {
           id: "shop-returns",
           label: "Physical returns and receipt inventory (shipping/payment PII withheld)",
           columns: [
@@ -2014,6 +2116,44 @@ export function createShop(options: NpShopOptions = {}) {
               confirm:
                 "Confirm every requested unit was received? Tracked inventory is restored atomically only when all exact catalog rows still match.",
             },
+            ...(runtime.paymentPartialRefundAdapter
+              ? [
+                  {
+                    id: "partial-refund-return",
+                    label: "Refund returned items",
+                    actionId: "partialRefundReturn",
+                    rowFields: ["id", "orderRevision", "returnId", "returnRevision"],
+                    visibleWhen: { field: "status", oneOf: ["received"] },
+                    fields: [
+                      {
+                        name: "shippingMinor",
+                        label: "Shipping refund (minor units)",
+                        type: "text" as const,
+                        required: true,
+                        placeholder: "0",
+                      },
+                      {
+                        name: "taxMinor",
+                        label: "Additional-tax refund (minor units)",
+                        type: "text" as const,
+                        required: true,
+                        placeholder: "0",
+                      },
+                      {
+                        name: "reason",
+                        label: "Provider refund reason",
+                        type: "textarea" as const,
+                        required: true,
+                        placeholder: "PII-free reason, at most 200 characters",
+                      },
+                    ],
+                    confirm:
+                      "Refund the original price of every received return line plus the explicit shipping and tax amounts? This does not change fulfillment or inventory.",
+                    description:
+                      "The computed total must remain smaller than the complete order payment.",
+                  },
+                ]
+              : []),
           ],
           emptyMessage: "No Shop physical return exists for this site.",
         },
@@ -2401,6 +2541,23 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      countPartialRefunds: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npCountShopPartialRefunds();
+            return {
+              ok: true,
+              data: {
+                value: counts.total,
+                delta: `${counts.refunded.toString()} completed, ${(counts.pending + counts.providerConfirmed).toString()} pending reconciliation`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
       refundHealth: {
         kind: "status",
         handler: async () => {
@@ -2435,11 +2592,51 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      partialRefundHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopPartialRefunds();
+            if (counts.invalidSample > 0 || counts.orphanSample > 0) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed and ${counts.orphanSample.toString()} orphan partial refund row(s) in bounded samples.`,
+              );
+            }
+            if (counts.manualReview > 0 || counts.pending > 0 || counts.providerConfirmed > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.pending.toString()} provider-pending, ${counts.providerConfirmed.toString()} provider-confirmed awaiting local reconciliation, and ${counts.manualReview.toString()} requiring manual review.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.refunded.toString()} completed return-linked partial refund(s); ${runtime.paymentPartialRefundAdapter ? `provider "${runtime.paymentPartialRefundAdapter.id}" is enabled` : "no partial-refund-capable provider is configured"}.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Partial refund health check failed.",
+            );
+          }
+        },
+      },
       recentRefunds: {
         kind: "table",
         handler: async () => {
           try {
             const result = await npListRecentShopRefunds();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      recentPartialRefunds: {
+        kind: "table",
+        handler: async () => {
+          try {
+            const result = await npListRecentShopPartialRefunds();
             return npAdminTable(result.rows, result.total);
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
@@ -2461,6 +2658,27 @@ export function createShop(options: NpShopOptions = {}) {
             return {
               ok: true,
               data: `Full refund ${result.duplicate ? "already reconciled" : "completed"}; inventory ${result.refund.inventoryOutcome}, fulfillment ${result.refund.fulfillmentOutcome}.`,
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      partialRefundReturn: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return { ok: false, error: "Partial refunds require a direct staff action." };
+            }
+            const result = await npPartiallyRefundShopReturn(
+              runtime,
+              npRequireShopPartialRefundActionInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return {
+              ok: true,
+              data: `Return-linked partial refund ${result.duplicate ? "already reconciled" : "completed"}; ${result.refund.currency} ${result.refund.amountMinor.toString()} allocated without another inventory or fulfillment transition.`,
             };
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
@@ -4018,6 +4236,7 @@ export {
 export type {
   NpShopPaymentAdapter,
   NpShopPaymentInitiationAdapter,
+  NpShopPaymentPartialRefundAdapter,
   NpShopPaymentRefundAdapter,
   NpShopPaymentEventType,
   NpShopIgnoredPaymentWebhook,
@@ -4043,6 +4262,32 @@ export {
   npShopRefundLimits,
   npShopRefundStatuses,
 } from "./refund-contract.js";
+export {
+  NP_SHOP_PARTIAL_REFUND_CONTRACT,
+  NP_SHOP_PARTIAL_REFUND_RESULT_CONTRACT,
+  NP_SHOP_PARTIAL_REFUND_STORAGE_CONTRACT,
+  NpShopPartialRefundConflictError,
+  NpShopPartialRefundContractError,
+  npAnalyzeShopPartialRefund,
+  npAnalyzeStoredShopPartialRefund,
+  npProjectShopPartialRefund,
+  npRequireShopPartialRefund,
+  npRequireShopPartialRefundActionInput,
+  npRequireShopPaymentPartialRefundResult,
+  npRequireStoredShopPartialRefund,
+  npShopPartialRefundLimits,
+  npShopPartialRefundStatuses,
+} from "./partial-refund-contract.js";
+export type {
+  NpShopPartialRefund,
+  NpShopPartialRefundActionInput,
+  NpShopPartialRefundAllocation,
+  NpShopPartialRefundLine,
+  NpShopPartialRefundStatus,
+  NpShopPaymentPartialRefundInput,
+  NpShopPaymentPartialRefundResult,
+  NpShopStoredPartialRefund,
+} from "./partial-refund-contract.js";
 export type {
   NpShopPaymentRefundInput,
   NpShopPaymentRefundResult,

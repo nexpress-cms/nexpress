@@ -136,6 +136,11 @@ import {
 } from "./return-tracking-contract.js";
 import { npRequireStoredShopCarrierPickup } from "./pickup-contract.js";
 import { npReadShopReturnLogisticsForOrder } from "./return-logistics-service.js";
+import {
+  npHasShopPartialRefund,
+  npReadShopPartialRefundForOrder,
+  npShopPartialRefundStorageKey,
+} from "./partial-refund-service.js";
 
 interface NpShopOrderMaintenanceMarker {
   contract: "np.shop-order-maintenance.v1";
@@ -1127,6 +1132,7 @@ async function projectOrder(
       "A physical return can exist only for one shipped fulfillment.",
     ]);
   }
+  const partialRefund = await npReadShopPartialRefundForOrder(db, siteId, order, returnRequest);
   const returnTracking = returnRequest
     ? await npReadShopReturnTrackingForOrder(db, siteId, order.id)
     : null;
@@ -1158,6 +1164,7 @@ async function projectOrder(
     ...(fulfillment ? { fulfillment: npProjectShopFulfillment(fulfillment) } : {}),
     ...(tracking ? { tracking } : {}),
     ...(refund ? { refund: npProjectShopRefund(refund) } : {}),
+    ...(partialRefund ? { partialRefund } : {}),
     ...(returnRequest
       ? { returnRequest: npProjectShopReturn(returnRequest, returnLogistics) }
       : {}),
@@ -1518,6 +1525,15 @@ async function purgeOrder(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
         sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)})`,
+      ),
+    );
+  await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        eq(npPluginStorage.key, npShopPartialRefundStorageKey(order.id)),
       ),
     );
   await tx
@@ -2554,6 +2570,12 @@ export async function npRefundShopOrder(
         );
       }
       return { order, refund: existing, complete: false as const };
+    }
+    if (await npHasShopPartialRefund(tx, siteId, input.orderId)) {
+      throw new NpShopRefundConflictError(
+        "refund_manual_review",
+        "A return-linked partial refund already owns part of this payment; a full provider cancellation is no longer safe.",
+      );
     }
     const carrierBooking = await readStoredCarrierBooking(tx, siteId, input.orderId, true);
     if (carrierBooking && carrierBooking.status !== "completed") {

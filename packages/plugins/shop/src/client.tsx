@@ -1560,13 +1560,47 @@ export function ShopOrder({
             <aside>
               <p>
                 {order.status === "paid"
-                  ? messages.orderPaymentVerified
+                  ? order.partialRefund
+                    ? messages.orderPartialRefundedDetail
+                    : messages.orderPaymentVerified
                   : order.status === "refunded"
                     ? messages.orderRefundedDetail
                     : order.status === "payment-failed"
                       ? messages.orderPaymentFailedDetail
                       : messages.orderPaymentUnavailable}
               </p>
+              {order.partialRefund ? (
+                <div data-np-shop-partial-refund={order.partialRefund.status}>
+                  <p>
+                    {messages.orderReturn}: {order.partialRefund.status}
+                  </p>
+                  <p>
+                    {messages.cartSubtotal}:{" "}
+                    {formatMoney(
+                      messages.locale,
+                      order.partialRefund.allocation.itemAmountMinor,
+                      order.currency,
+                    )}
+                    {" · "}
+                    {messages.shippingAmount}:{" "}
+                    {formatMoney(
+                      messages.locale,
+                      order.partialRefund.allocation.shippingMinor,
+                      order.currency,
+                    )}
+                    {" · "}
+                    {messages.taxAmount}:{" "}
+                    {formatMoney(
+                      messages.locale,
+                      order.partialRefund.allocation.taxMinor,
+                      order.currency,
+                    )}
+                  </p>
+                  <strong>
+                    {formatMoney(messages.locale, order.partialRefund.amountMinor, order.currency)}
+                  </strong>
+                </div>
+              ) : null}
               {order.fulfillment ? (
                 <div data-np-shop-fulfillment-status={order.fulfillment.status}>
                   <p>{fulfillmentStatusMessage(order, messages)}</p>

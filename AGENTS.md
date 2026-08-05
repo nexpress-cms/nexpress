@@ -2,7 +2,15 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-05 (Shop carrier adapters may now add independent
+**Last refreshed:** 2026-08-05 (Shop payment adapters may now add one
+received-return partial-refund capability with immutable returned-item prices,
+explicit bounded shipping/tax allocation, one provider idempotency key,
+durable provider confirmation, full-refund exclusion, owner-safe projection,
+Admin/Doctor/scaffold guidance, and PostgreSQL coverage. Receipt inventory and
+shipped fulfillment never transition twice; repeated or non-return partial
+refunds remain separate.)
+
+**Earlier:** 2026-08-05 (Shop carrier adapters may now add independent
 exact raw-callback and bounded polling reverse-tracking capabilities over
 active approved-return logistics; idempotent receipts, cursor-fair leases and
 backoff, owner-visible status, tracking-start cancellation closure,

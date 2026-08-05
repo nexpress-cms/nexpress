@@ -3822,11 +3822,36 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       variantSku: null,
       quantity: 2,
     });
+    const refundPaymentPartially = vi.fn(
+      (input: {
+        refundId: string;
+        orderId: string;
+        returnId: string;
+        paymentReference: string;
+        currency: "KRW";
+        amountMinor: number;
+      }) => ({
+        contract: "np.shop-partial-refund-result.v1" as const,
+        refundId: input.refundId,
+        orderId: input.orderId,
+        returnId: input.returnId,
+        paymentReference: input.paymentReference,
+        refundReference: "partial_refund_return_1",
+        currency: input.currency,
+        amountMinor: input.amountMinor,
+        refundedAt: new Date().toISOString(),
+      }),
+    );
+    const refundPayment = vi.fn(() => {
+      throw new Error("full refund must remain blocked after a partial refund");
+    });
     const paymentShop = createShop({
       payment: {
         adapter: {
           id: "test-pay",
           verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+          refundPayment,
+          refundPaymentPartially,
         },
       },
     });
@@ -3939,6 +3964,112 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         },
       },
     });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.partialRefundReturn?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              orderRevision: shippedOrder.revision,
+              returnId: "423e4567-e89b-42d3-a456-426614174000",
+              returnRevision: 3,
+            },
+            values: {
+              shippingMinor: "0",
+              taxMinor: "0",
+              reason: "Received defective return",
+            },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false });
+    const receivedOrderResponse = await orderCall("GET", {
+      ...owner,
+      orderId: ids.orderId,
+    });
+    const receivedOrder = (
+      receivedOrderResponse.body as {
+        order: { revision: number; returnRequest: { id: string; revision: number } };
+      }
+    ).order;
+    const partialRefundPayload = {
+      row: {
+        id: ids.orderId,
+        orderRevision: receivedOrder.revision,
+        returnId: receivedOrder.returnRequest.id,
+        returnRevision: receivedOrder.returnRequest.revision,
+      },
+      values: {
+        shippingMinor: "0",
+        taxMinor: "0",
+        reason: "Received defective return",
+      },
+    };
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.partialRefundReturn?.handler(
+          partialRefundPayload,
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: expect.stringContaining("KRW 25000"),
+    });
+    expect(refundPaymentPartially).toHaveBeenCalledOnce();
+    expect(refundPaymentPartially).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: ids.orderId,
+        returnId: receivedOrder.returnRequest.id,
+        paymentReference: "pay_return_success",
+        currency: "KRW",
+        amountMinor: 25_000,
+        allocation: {
+          lines: [{ lineKey: shippedOrder.lines[0]!.key, quantity: 1, amountMinor: 25_000 }],
+          itemAmountMinor: 25_000,
+          shippingMinor: 0,
+          taxMinor: 0,
+        },
+      }),
+    );
+    expect(await orderCall("GET", { ...owner, orderId: ids.orderId })).toMatchObject({
+      body: {
+        order: {
+          status: "paid",
+          revision: receivedOrder.revision + 1,
+          fulfillment: { status: "shipped" },
+          returnRequest: { status: "received", inventoryOutcome: "restocked" },
+          partialRefund: {
+            status: "refunded",
+            returnId: receivedOrder.returnRequest.id,
+            amountMinor: 25_000,
+            allocation: { itemAmountMinor: 25_000, shippingMinor: 0, taxMinor: 0 },
+          },
+        },
+      },
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.partialRefundReturn?.handler(
+          partialRefundPayload,
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("already reconciled") });
+    expect(refundPaymentPartially).toHaveBeenCalledOnce();
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.refundOrder?.handler(
+          {
+            row: { id: ids.orderId, revision: receivedOrder.revision + 1 },
+            values: { reason: "Attempt unsafe full refund" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false });
+    expect(refundPayment).not.toHaveBeenCalled();
     const db = await getTestDb();
     expect(
       await db
@@ -3946,6 +4077,11 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         .from(shopProductsTable)
         .where(eq(shopProductsTable.id, productId)),
     ).toEqual([{ stockQuantity: 7 }]);
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.partialRefundHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
     expect(
       await withCurrentSite("default", () =>
         paymentShop.plugin.actions?.returnHealth?.handler(undefined, {} as never),
@@ -3968,6 +4104,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       expect.arrayContaining([
         { action: "shop.return.approve" },
         { action: "shop.return.receive" },
+        { action: "shop.partial-refund.request" },
+        { action: "shop.partial-refund.complete" },
       ]),
     );
   });

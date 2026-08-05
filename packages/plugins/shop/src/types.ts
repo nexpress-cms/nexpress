@@ -5,6 +5,7 @@ import type { NpShopTaxQuote } from "./tax-contract.js";
 import type { NpShopTracking } from "./tracking-contract.js";
 
 import type { NpShopRefund } from "./refund-contract.js";
+import type { NpShopPartialRefund } from "./partial-refund-contract.js";
 import type { NpShopReturn } from "./return-contract.js";
 
 export const npShopCurrencies = ["KRW", "USD", "EUR", "JPY"] as const;
@@ -174,6 +175,7 @@ export interface NpShopMessages {
   orderCancelled: string;
   orderPaymentVerified: string;
   orderRefundedDetail: string;
+  orderPartialRefundedDetail: string;
   orderPaymentFailedDetail: string;
   orderPrivateRetained: string;
   orderPrivateRedacted: string;
@@ -407,6 +409,7 @@ export interface NpShopCartClientMessages {
   orderCancelled: string;
   orderPaymentVerified: string;
   orderRefundedDetail: string;
+  orderPartialRefundedDetail: string;
   orderPaymentFailedDetail: string;
   orderPrivateRetained: string;
   orderPrivateRedacted: string;
@@ -672,6 +675,8 @@ export interface NpShopOrder {
   tracking?: NpShopTracking;
   /** Present after a refund request has been durably recorded. */
   refund?: NpShopRefund;
+  /** Present after a received physical return receives one partial payment refund. */
+  partialRefund?: NpShopPartialRefund;
   /** Present after the owner requests a physical return. */
   returnRequest?: NpShopReturn;
   purgeAt: string;
