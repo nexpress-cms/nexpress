@@ -34,6 +34,11 @@ import type {
   NpShopCarrierTrackingAdapter,
   NpShopCarrierTrackingPollAdapter,
 } from "./carrier-contract.js";
+import {
+  npNormalizeShopCouponCode,
+  npShopPromotionLimits,
+  type NpShopPromotionDefinition,
+} from "./promotion-contract.js";
 
 export const npShopSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 export const npShopSkuPattern = /^[A-Z0-9][A-Z0-9._-]{0,63}$/u;
@@ -108,6 +113,28 @@ export interface ShopProductDocument extends Record<string, unknown> {
   skin?: unknown;
 }
 
+export interface ShopPromotionDocument extends Record<string, unknown> {
+  id: string;
+  status: string;
+  name: unknown;
+  code?: unknown;
+  automatic?: unknown;
+  kind: unknown;
+  currency: unknown;
+  value: unknown;
+  maximumDiscountMinor?: unknown;
+  minimumSubtotalMinor?: unknown;
+  target: unknown;
+  products?: unknown;
+  categories?: unknown;
+  startsAt?: unknown;
+  endsAt?: unknown;
+  priority?: unknown;
+  stackable?: unknown;
+  totalUsageLimit?: unknown;
+  perOwnerUsageLimit?: unknown;
+}
+
 function requireSafeInteger(
   value: unknown,
   field: string,
@@ -140,6 +167,135 @@ export function normalizeShopCategoryIds(value: unknown): string[] {
     throw new Error("Shop product categories must not contain duplicates.");
   }
   return ids;
+}
+
+function normalizePromotionRelationIds(value: unknown, field: string): string[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string" || !entry)) {
+    throw new Error(`Shop promotion ${field} must be an array of document ids.`);
+  }
+  const ids = value as string[];
+  if (new Set(ids).size !== ids.length) {
+    throw new Error(`Shop promotion ${field} must not contain duplicates.`);
+  }
+  return [...ids].sort();
+}
+
+function normalizePromotionDate(value: unknown, field: string): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = value instanceof Date ? value : typeof value === "string" ? new Date(value) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) {
+    throw new Error(`Shop promotion ${field} must be a valid date.`);
+  }
+  return parsed.toISOString();
+}
+
+export function normalizeShopPromotion(document: ShopPromotionDocument): NpShopPromotionDefinition {
+  if (typeof document.name !== "string" || !document.name.trim() || document.name.length > 120) {
+    throw new Error("Shop promotion name must contain 1–120 characters.");
+  }
+  const automatic = document.automatic === true;
+  const code =
+    document.code === undefined || document.code === null || document.code === ""
+      ? null
+      : npNormalizeShopCouponCode(document.code);
+  if (!automatic && code === null)
+    throw new Error("A non-automatic promotion requires a coupon code.");
+  if (document.kind !== "fixed" && document.kind !== "percentage") {
+    throw new Error("Shop promotion kind must be fixed or percentage.");
+  }
+  const valueMaximum =
+    document.kind === "percentage"
+      ? npShopPromotionLimits.maximumBasisPoints
+      : npShopPromotionLimits.maximumPriceMinor;
+  const value = requireSafeInteger(document.value, "promotion value", 1, valueMaximum);
+  const maximumDiscountMinor =
+    document.maximumDiscountMinor === undefined || document.maximumDiscountMinor === null
+      ? null
+      : requireSafeInteger(
+          document.maximumDiscountMinor,
+          "promotion maximum discount",
+          1,
+          npShopPromotionLimits.maximumPriceMinor,
+        );
+  if (document.kind === "fixed" && maximumDiscountMinor !== null) {
+    throw new Error("Fixed promotions cannot define a maximum discount.");
+  }
+  if (
+    document.target !== "order" &&
+    document.target !== "products" &&
+    document.target !== "categories"
+  ) {
+    throw new Error("Shop promotion target is invalid.");
+  }
+  const productIds = normalizePromotionRelationIds(document.products, "products");
+  const categoryIds = normalizePromotionRelationIds(document.categories, "categories");
+  if (document.target === "products" && productIds.length === 0) {
+    throw new Error("A product promotion requires at least one product.");
+  }
+  if (document.target === "categories" && categoryIds.length === 0) {
+    throw new Error("A category promotion requires at least one category.");
+  }
+  const startsAt = normalizePromotionDate(document.startsAt, "start");
+  const endsAt = normalizePromotionDate(document.endsAt, "end");
+  if (startsAt && endsAt && startsAt >= endsAt)
+    throw new Error("Promotion end must be after its start.");
+  return {
+    id: document.id,
+    name: document.name.trim(),
+    code,
+    automatic,
+    kind: document.kind,
+    currency: npRequireShopCurrency(document.currency),
+    value,
+    maximumDiscountMinor,
+    minimumSubtotalMinor: requireSafeInteger(
+      document.minimumSubtotalMinor ?? 0,
+      "promotion minimum subtotal",
+      0,
+      npShopPromotionLimits.maximumPriceMinor,
+    ),
+    target: document.target,
+    productIds,
+    categoryIds,
+    startsAt,
+    endsAt,
+    priority: requireSafeInteger(
+      document.priority ?? 0,
+      "promotion priority",
+      0,
+      npShopPromotionLimits.maximumPriority,
+    ),
+    stackable: document.stackable === true,
+    totalUsageLimit: requireSafeInteger(
+      document.totalUsageLimit ?? 0,
+      "promotion total usage limit",
+      0,
+      npShopPromotionLimits.maximumUsageLimit,
+    ),
+    perOwnerUsageLimit: requireSafeInteger(
+      document.perOwnerUsageLimit ?? 0,
+      "promotion per-owner usage limit",
+      0,
+      npShopPromotionLimits.maximumUsageLimit,
+    ),
+  };
+}
+
+export async function listShopPromotions(
+  runtime: NpShopRuntime,
+): Promise<NpShopPromotionDefinition[]> {
+  const result = await findDocuments<ShopPromotionDocument>(runtime.collections.promotions, {
+    where: { status: "published", visibility: "*" },
+    page: 1,
+    limit: npShopPromotionLimits.maximumDefinitions,
+  });
+  if (result.totalDocs > result.docs.length) {
+    throw new Error(
+      `Shop supports at most ${npShopPromotionLimits.maximumDefinitions.toString()} published promotions per site.`,
+    );
+  }
+  return result.docs.map(normalizeShopPromotion);
 }
 
 export function normalizeShopGalleryIds(value: unknown): string[] {
@@ -500,6 +656,12 @@ export async function getShopMessages(): Promise<NpShopMessages> {
     "cartRemove",
     "cartClear",
     "cartSubtotal",
+    "promotionDiscount",
+    "couponCode",
+    "couponPlaceholder",
+    "couponApply",
+    "couponRemove",
+    "couponRejected",
     "cartUnavailable",
     "cartPriceChanged",
     "cartInsufficientStock",

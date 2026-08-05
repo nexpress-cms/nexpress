@@ -28,6 +28,9 @@ import {
   shopProductsGalleryTable,
   shopProductsTable,
   shopProductsVariantsTable,
+  shopPromotionsCategoriesTable,
+  shopPromotionsProductsTable,
+  shopPromotionsTable,
 } from "@/db/generated/collections";
 
 import {
@@ -372,6 +375,12 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       },
       joinTables: { categories: shopProductsCategoriesTable },
     });
+    registerCollection("shop-promotions", shopPromotionsTable, shopCollections[2], {
+      joinTables: {
+        categories: shopPromotionsCategoriesTable,
+        products: shopPromotionsProductsTable,
+      },
+    });
   });
 
   beforeEach(async () => {
@@ -435,6 +444,262 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         ready: true,
         totals: [{ currency: "KRW", subtotalMinor: 25_000 }],
       },
+    });
+  });
+
+  it("freezes coupon discounts and atomically releases bounded usage on cancellation", async () => {
+    const promotionId = "923e4567-e89b-42d3-a456-426614174000";
+    const db = await getTestDb();
+    await db.insert(shopPromotionsTable).values({
+      id: promotionId,
+      status: "published",
+      visibility: "private",
+      siteId: "default",
+      name: "Welcome 5000",
+      code: "WELCOME",
+      automatic: false,
+      kind: "fixed",
+      currency: "KRW",
+      value: 5_000,
+      maximumDiscountMinor: null,
+      minimumSubtotalMinor: 20_000,
+      target: "order",
+      priority: 10,
+      stackable: false,
+      totalUsageLimit: 1,
+      perOwnerUsageLimit: 1,
+      publishedAt: new Date(),
+    });
+
+    async function createDiscountedOrder(ids: {
+      intentId: string;
+      draftId: string;
+      orderId: string;
+    }) {
+      const initial = await call("GET");
+      const cookie = initial.headers?.["Set-Cookie"];
+      const csrf = (initial.body as { csrfToken: string }).csrfToken;
+      const added = await call("POST", {
+        cookie,
+        csrf,
+        body: { productId, variantSku: null, quantity: 1, expectedRevision: 0 },
+      });
+      const addedQuote = (added.body as { quote: { revision: number } }).quote;
+      const coupon = await call("PUT", {
+        cookie,
+        csrf,
+        body: { couponCodes: ["welcome"], expectedRevision: addedQuote.revision },
+      });
+      const quote = (
+        coupon.body as {
+          quote: { revision: number; fingerprint: string; promotions: { discountMinor: number } };
+        }
+      ).quote;
+      await checkoutCall("POST", {
+        cookie,
+        csrf,
+        body: {
+          idempotencyKey: ids.intentId,
+          expectedRevision: quote.revision,
+          expectedFingerprint: quote.fingerprint,
+        },
+      });
+      await orderDraftCall("POST", {
+        cookie,
+        csrf,
+        body: { idempotencyKey: ids.draftId, checkoutIntentId: ids.intentId },
+      });
+      await orderDraftCall("PATCH", {
+        cookie,
+        csrf,
+        body: {
+          draftId: ids.draftId,
+          expectedRevision: 1,
+          customer: {
+            fullName: "Promotion Owner",
+            email: "promotion@example.com",
+            phone: "010-1234-5678",
+          },
+          shipping: {
+            recipientName: "Promotion Owner",
+            phone: "010-1234-5678",
+            countryCode: "KR",
+            postalCode: "04524",
+            addressLine1: "1 Promotion Road",
+            addressLine2: null,
+            locality: "Seoul",
+            administrativeArea: "Seoul",
+          },
+        },
+      });
+      const order = await orderCall("POST", {
+        cookie,
+        csrf,
+        body: {
+          idempotencyKey: ids.orderId,
+          draftId: ids.draftId,
+          expectedRevision: 2,
+        },
+      });
+      return { cookie, csrf, quote, order };
+    }
+
+    const first = await createDiscountedOrder({
+      intentId: "a33e4567-e89b-42d3-a456-426614174000",
+      draftId: "a43e4567-e89b-42d3-a456-426614174000",
+      orderId: "a53e4567-e89b-42d3-a456-426614174000",
+    });
+    expect(first.quote.promotions.discountMinor).toBe(5_000);
+    expect(first.order).toMatchObject({
+      status: 200,
+      body: {
+        order: {
+          subtotalMinor: 25_000,
+          discountMinor: 5_000,
+          totalMinor: 20_000,
+          promotions: { applied: [{ id: promotionId, code: "WELCOME" }] },
+        },
+      },
+    });
+
+    const secondInitial = await call("GET");
+    const secondCookie = secondInitial.headers?.["Set-Cookie"];
+    const secondCsrf = (secondInitial.body as { csrfToken: string }).csrfToken;
+    await call("POST", {
+      cookie: secondCookie,
+      csrf: secondCsrf,
+      body: { productId, variantSku: null, quantity: 1, expectedRevision: 0 },
+    });
+    const exhausted = await call("PUT", {
+      cookie: secondCookie,
+      csrf: secondCsrf,
+      body: { couponCodes: ["WELCOME"], expectedRevision: 1 },
+    });
+    expect(exhausted).toMatchObject({
+      status: 200,
+      body: {
+        quote: {
+          promotions: { discountMinor: 0, rejectedCouponCodes: ["WELCOME"] },
+        },
+      },
+    });
+
+    await orderCall("DELETE", {
+      cookie: first.cookie,
+      csrf: first.csrf,
+      body: {
+        orderId: "a53e4567-e89b-42d3-a456-426614174000",
+        expectedRevision: 1,
+      },
+    });
+    const availableAgain = await call("GET", { cookie: secondCookie });
+    expect(availableAgain).toMatchObject({
+      status: 200,
+      body: { quote: { promotions: { discountMinor: 5_000, rejectedCouponCodes: [] } } },
+    });
+    const availableQuote = (
+      availableAgain.body as { quote: { revision: number; fingerprint: string } }
+    ).quote;
+    const secondIds = {
+      intentId: "b33e4567-e89b-42d3-a456-426614174000",
+      draftId: "b43e4567-e89b-42d3-a456-426614174000",
+      orderId: "b53e4567-e89b-42d3-a456-426614174000",
+    };
+    await checkoutCall("POST", {
+      cookie: secondCookie,
+      csrf: secondCsrf,
+      body: {
+        idempotencyKey: secondIds.intentId,
+        expectedRevision: availableQuote.revision,
+        expectedFingerprint: availableQuote.fingerprint,
+      },
+    });
+    await orderDraftCall("POST", {
+      cookie: secondCookie,
+      csrf: secondCsrf,
+      body: { idempotencyKey: secondIds.draftId, checkoutIntentId: secondIds.intentId },
+    });
+    await orderDraftCall("PATCH", {
+      cookie: secondCookie,
+      csrf: secondCsrf,
+      body: {
+        draftId: secondIds.draftId,
+        expectedRevision: 1,
+        customer: {
+          fullName: "Redeemed Owner",
+          email: "redeemed@example.com",
+          phone: "010-1234-5678",
+        },
+        shipping: {
+          recipientName: "Redeemed Owner",
+          phone: "010-1234-5678",
+          countryCode: "KR",
+          postalCode: "04524",
+          addressLine1: "2 Promotion Road",
+          addressLine2: null,
+          locality: "Seoul",
+          administrativeArea: "Seoul",
+        },
+      },
+    });
+    await orderCall("POST", {
+      cookie: secondCookie,
+      csrf: secondCsrf,
+      body: {
+        idempotencyKey: secondIds.orderId,
+        draftId: secondIds.draftId,
+        expectedRevision: 2,
+      },
+    });
+    const paymentShop = createShop({
+      payment: {
+        adapter: {
+          id: "promotion-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
+    });
+    const paymentHandler = paymentShop.plugin.routes?.find(
+      (candidate) => candidate.path === "/payments/webhook",
+    )?.handler;
+    const paymentEvent = {
+      contract: "np.shop-payment-event.v1",
+      eventId: "promotion_payment_1",
+      type: "payment.succeeded",
+      orderId: secondIds.orderId,
+      paymentReference: "promotion_payment_reference_1",
+      currency: "KRW",
+      amountMinor: 20_000,
+      signedAt: new Date().toISOString(),
+    };
+    const rawBody = new TextEncoder().encode(JSON.stringify(paymentEvent));
+    await expect(
+      withCurrentSite("default", () =>
+        paymentHandler?.(
+          {
+            method: "POST",
+            path: "/payments/webhook",
+            params: { pluginId: "shop" },
+            query: {},
+            bodyMode: "raw",
+            body: undefined,
+            rawBody,
+            headers: {},
+          },
+          {} as never,
+        ),
+      ),
+    ).resolves.toMatchObject({
+      status: 200,
+      body: { receipt: { outcome: "paid", orderStatus: "paid" } },
+    });
+    await expect(
+      withCurrentSite("default", () =>
+        shopPlugin.actions?.promotionHealth?.handler(undefined, {} as never),
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { level: "ok", message: expect.stringContaining("1 redeemed") },
     });
   });
 
@@ -5260,6 +5525,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       cartFingerprint: "b".repeat(64),
       currency: "KRW",
       subtotalMinor: 25_000,
+      discountMinor: 0,
       shippingMinor: 0,
       taxMinor: 0,
       totalMinor: 25_000,
@@ -5277,6 +5543,13 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           lineTotalMinor: 25_000,
         },
       ],
+      promotions: {
+        contract: "np.shop-promotion-snapshot.v1",
+        couponCodes: [],
+        rejectedCouponCodes: [],
+        applied: [],
+        discountMinor: 0,
+      },
       deliveryMethod: null,
       taxQuote: null,
       privateDataStatus: "retained",

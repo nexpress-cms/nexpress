@@ -43,6 +43,7 @@
   .np-shop-add-cart button,
   .np-shop-cart-lines input,
   .np-shop-cart-lines button,
+  .np-shop-cart-summary input,
   .np-shop-cart-summary button,
   .np-shop-checkout-summary button,
   .np-shop-order-draft-client input,
@@ -59,6 +60,7 @@
   .np-shop-add-cart select,
   .np-shop-add-cart input,
   .np-shop-cart-lines input,
+  .np-shop-cart-summary input,
   .np-shop-order-draft-client input {
     width: 100%;
     padding: 0 0.65rem;
@@ -1419,6 +1421,54 @@
 
     .np-shop-product-gallery img:first-child {
       grid-column: auto;
+    }
+  }
+
+  .np-shop-coupon-form {
+    display: flex;
+    align-items: end;
+    gap: 0.5rem;
+  }
+
+  .np-shop-coupon-form label {
+    flex: 1;
+  }
+
+  .np-shop-coupons,
+  .np-shop-promotions {
+    display: grid;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .np-shop-coupons li,
+  .np-shop-promotions li,
+  .np-shop-cart-totals {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .np-shop-coupons li {
+    flex-wrap: wrap;
+  }
+
+  .np-shop-coupons small {
+    color: var(--np-color-danger, #b42318);
+  }
+
+  .np-shop-cart-totals {
+    align-items: flex-end;
+    flex-direction: column;
+  }
+
+  @media (max-width: 32rem) {
+    .np-shop-coupon-form {
+      align-items: stretch;
+      flex-direction: column;
     }
   }
 }

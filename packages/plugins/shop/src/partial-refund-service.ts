@@ -444,10 +444,13 @@ function matchesOrderAndReturn(
   );
 }
 
-function deriveAllocation(
-  order: NpShopStoredOrder,
-  returnRequest: NpShopStoredReturn,
-  input: NpShopPartialRefundActionInput,
+export function npDeriveShopPartialRefundAllocation(
+  order: Pick<
+    NpShopStoredOrder,
+    "shippingMinor" | "taxMinor" | "lines" | "promotions" | "totalMinor"
+  >,
+  returnRequest: Pick<NpShopStoredReturn, "lines">,
+  input: Pick<NpShopPartialRefundActionInput, "shippingMinor" | "taxMinor">,
 ): NpShopStoredPartialRefund["allocation"] {
   if (input.shippingMinor > order.shippingMinor || input.taxMinor > order.taxMinor) {
     throw new NpShopPartialRefundConflictError(
@@ -464,7 +467,19 @@ function deriveAllocation(
         "The received return lines no longer match the immutable order snapshot.",
       );
     }
-    const amountMinor = orderLine.unitPriceMinor * returnedLine.quantity;
+    const grossAmountMinor = orderLine.unitPriceMinor * returnedLine.quantity;
+    const lineDiscountMinor = order.promotions.applied.reduce(
+      (total, promotion) =>
+        total +
+        (promotion.lineDiscounts.find((line) => line.lineKey === returnedLine.lineKey)
+          ?.discountMinor ?? 0),
+      0,
+    );
+    const returnedDiscountMinor =
+      returnedLine.quantity === orderLine.quantity
+        ? lineDiscountMinor
+        : Math.floor((lineDiscountMinor * returnedLine.quantity) / orderLine.quantity);
+    const amountMinor = grossAmountMinor - returnedDiscountMinor;
     if (
       !Number.isSafeInteger(amountMinor) ||
       !Number.isSafeInteger(itemAmountMinor + amountMinor)
@@ -625,7 +640,7 @@ export async function npPartiallyRefundShopReturn(
       );
     }
     await requireShippedFulfillment(tx, siteId, order);
-    const allocation = deriveAllocation(order, returnRequest, input);
+    const allocation = npDeriveShopPartialRefundAllocation(order, returnRequest, input);
     const amountMinor = allocation.itemAmountMinor + allocation.shippingMinor + allocation.taxMinor;
     if (!Number.isSafeInteger(amountMinor) || amountMinor < 1 || amountMinor >= order.totalMinor) {
       throw new NpShopPartialRefundConflictError(

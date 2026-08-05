@@ -574,6 +574,127 @@ export const shopProductsVariantsTableRelations = relations(
   }),
 );
 
+export const shopPromotionsTable = pgTable(
+  "np_c_shop-promotions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] })
+      .default("draft")
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: uuid("created_by").references((): AnyPgColumn => npUsers.id),
+    updatedBy: uuid("updated_by").references((): AnyPgColumn => npUsers.id),
+    visibility: text("visibility", { enum: ["public", "private"] })
+      .default("public")
+      .notNull(),
+    name: text("name").notNull(),
+    code: text("code"),
+    automatic: boolean("automatic").default(false).notNull(),
+    kind: text("kind").default("fixed").notNull(),
+    currency: text("currency").default("KRW").notNull(),
+    value: integer("value").default(1).notNull(),
+    maximumDiscountMinor: integer("maximum_discount_minor"),
+    minimumSubtotalMinor: integer("minimum_subtotal_minor").default(0).notNull(),
+    target: text("target").default("order").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    priority: integer("priority").default(0).notNull(),
+    stackable: boolean("stackable").default(false).notNull(),
+    totalUsageLimit: integer("total_usage_limit").default(0).notNull(),
+    perOwnerUsageLimit: integer("per_owner_usage_limit").default(0).notNull(),
+    siteId: text("site_id").default("default").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    searchVector: tsvector("search_vector"),
+  },
+  (table) => [
+    index("np_c_shop-promotions_status_idx").on(table.status),
+    uniqueIndex("np_c_shop-promotions_site_code_uidx").on(table.siteId, table.code),
+    index("np_c_shop-promotions_site_idx").on(table.siteId),
+  ],
+);
+
+export const shopPromotionsTableRelations = relations(shopPromotionsTable, ({ many, one }) => ({
+  createdByUser: one(npUsers, {
+    fields: [shopPromotionsTable.createdBy],
+    references: [npUsers.id],
+  }),
+  updatedByUser: one(npUsers, {
+    fields: [shopPromotionsTable.updatedBy],
+    references: [npUsers.id],
+  }),
+}));
+
+export const shopPromotionsProductsTable = pgTable(
+  "np_c_shop-promotions__products",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    shopPromotionsId: uuid("shop_promotions_id")
+      .notNull()
+      .references((): AnyPgColumn => shopPromotionsTable.id, { onDelete: "cascade" }),
+    targetId: uuid("target_id")
+      .notNull()
+      .references((): AnyPgColumn => shopProductsTable.id, { onDelete: "cascade" }),
+    order: integer("order").default(0).notNull(),
+  },
+  (table) => [
+    index("np_c_shop-promotions__products_shop_promotions_id_idx").on(table.shopPromotionsId),
+    uniqueIndex("np_c_shop-promotions__products_parent_target_uidx").on(
+      table.shopPromotionsId,
+      table.targetId,
+    ),
+  ],
+);
+
+export const shopPromotionsProductsTableRelations = relations(
+  shopPromotionsProductsTable,
+  ({ many, one }) => ({
+    parent: one(shopPromotionsTable, {
+      fields: [shopPromotionsProductsTable.shopPromotionsId],
+      references: [shopPromotionsTable.id],
+    }),
+    target: one(shopProductsTable, {
+      fields: [shopPromotionsProductsTable.targetId],
+      references: [shopProductsTable.id],
+    }),
+  }),
+);
+
+export const shopPromotionsCategoriesTable = pgTable(
+  "np_c_shop-promotions__categories",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    shopPromotionsId: uuid("shop_promotions_id")
+      .notNull()
+      .references((): AnyPgColumn => shopPromotionsTable.id, { onDelete: "cascade" }),
+    targetId: uuid("target_id")
+      .notNull()
+      .references((): AnyPgColumn => shopCategoriesTable.id, { onDelete: "cascade" }),
+    order: integer("order").default(0).notNull(),
+  },
+  (table) => [
+    index("np_c_shop-promotions__categories_shop_promotions_id_idx").on(table.shopPromotionsId),
+    uniqueIndex("np_c_shop-promotions__categories_parent_target_uidx").on(
+      table.shopPromotionsId,
+      table.targetId,
+    ),
+  ],
+);
+
+export const shopPromotionsCategoriesTableRelations = relations(
+  shopPromotionsCategoriesTable,
+  ({ many, one }) => ({
+    parent: one(shopPromotionsTable, {
+      fields: [shopPromotionsCategoriesTable.shopPromotionsId],
+      references: [shopPromotionsTable.id],
+    }),
+    target: one(shopCategoriesTable, {
+      fields: [shopPromotionsCategoriesTable.targetId],
+      references: [shopCategoriesTable.id],
+    }),
+  }),
+);
+
 export const discussionsTable = pgTable(
   "np_c_discussions",
   {

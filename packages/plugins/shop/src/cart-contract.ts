@@ -5,6 +5,10 @@ import {
   type NpShopCurrency,
   type NpShopCartQuote,
 } from "./types.js";
+import {
+  npAnalyzeShopPromotionSnapshot,
+  npNormalizeShopCouponCodes,
+} from "./promotion-contract.js";
 
 export const npShopCartLimits = {
   maximumLines: 50,
@@ -23,7 +27,14 @@ export const NP_SHOP_CART_QUOTE_CONTRACT = "np.shop-cart-quote.v1" as const;
 const canonicalUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const canonicalIsoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
-const storageKeys = ["contract", "revision", "lines", "createdAt", "updatedAt"] as const;
+const storageKeys = [
+  "contract",
+  "revision",
+  "lines",
+  "couponCodes",
+  "createdAt",
+  "updatedAt",
+] as const;
 const storageLineKeys = [
   "key",
   "productId",
@@ -39,6 +50,7 @@ const quoteKeys = [
   "contract",
   "revision",
   "lines",
+  "promotions",
   "totals",
   "totalUnits",
   "ready",
@@ -54,7 +66,7 @@ const quoteLineKeys = [
   "stockQuantity",
   "issues",
 ] as const;
-const quoteTotalKeys = ["currency", "subtotalMinor"] as const;
+const quoteTotalKeys = ["currency", "subtotalMinor", "discountMinor", "totalMinor"] as const;
 
 export interface NpShopCartStoredLine {
   key: string;
@@ -72,6 +84,7 @@ export interface NpShopCartStorageValue {
   contract: typeof NP_SHOP_CART_STORAGE_CONTRACT;
   revision: number;
   lines: NpShopCartStoredLine[];
+  couponCodes: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -91,6 +104,11 @@ export interface NpShopCartSetQuantityInput {
 
 export interface NpShopCartDeleteInput {
   lineKey: string | null;
+  expectedRevision: number;
+}
+
+export interface NpShopCartSetCouponsInput {
+  couponCodes: string[];
   expectedRevision: number;
 }
 
@@ -246,6 +264,14 @@ export function npAnalyzeShopCartStorageValue(value: unknown): string[] {
       seen.add(entry.key);
     }
   });
+  try {
+    const couponCodes = npNormalizeShopCouponCodes(value.couponCodes);
+    if (JSON.stringify(couponCodes) !== JSON.stringify(value.couponCodes)) {
+      issues.push("cart.couponCodes must be unique, canonical, and sorted.");
+    }
+  } catch (error) {
+    issues.push(error instanceof Error ? error.message : "cart.couponCodes is invalid.");
+  }
   return issues;
 }
 
@@ -349,6 +375,24 @@ export function npRequireShopCartDeleteInput(value: unknown): NpShopCartDeleteIn
   };
 }
 
+export function npRequireShopCartSetCouponsInput(value: unknown): NpShopCartSetCouponsInput {
+  const input = requireInputRecord(
+    value,
+    ["couponCodes", "expectedRevision"],
+    "cart coupon request",
+  );
+  try {
+    return {
+      couponCodes: npNormalizeShopCouponCodes(input.couponCodes),
+      expectedRevision: requireExpectedRevision(input.expectedRevision, "cart coupon request"),
+    };
+  } catch (error) {
+    throw new NpShopCartContractError("Invalid cart coupon request", [
+      error instanceof Error ? error.message : "cart coupon request.couponCodes is invalid.",
+    ]);
+  }
+}
+
 export function npIsShopCartIssueCode(value: unknown): value is NpShopCartIssueCode {
   return (npShopCartIssueCodes as readonly unknown[]).includes(value);
 }
@@ -389,6 +433,7 @@ export function npAnalyzeShopCartQuote(value: unknown): string[] {
     issues.push("quote.updatedAt must be null or canonical UTC ISO.");
   }
   analyzeIssueCodes(value.issues, "quote.issues", issues);
+  issues.push(...npAnalyzeShopPromotionSnapshot(value.promotions, "quote.promotions"));
   const quoteLineKeysSeen = new Set<string>();
   let computedUnits = 0;
   const computedTotals = new Map<string, number>();
@@ -430,6 +475,7 @@ export function npAnalyzeShopCartQuote(value: unknown): string[] {
         ],
         createdAt: "2000-01-01T00:00:00.000Z",
         updatedAt: "2000-01-01T00:00:00.000Z",
+        couponCodes: [],
       });
       issues.push(
         ...storedIssues
@@ -512,12 +558,63 @@ export function npAnalyzeShopCartQuote(value: unknown): string[] {
       ) {
         issues.push(`${path}.subtotalMinor does not match its lines.`);
       }
+      if (!Number.isSafeInteger(entry.discountMinor) || (entry.discountMinor as number) < 0) {
+        issues.push(`${path}.discountMinor is invalid.`);
+      }
+      if (
+        !Number.isSafeInteger(entry.totalMinor) ||
+        (entry.totalMinor as number) < 0 ||
+        entry.totalMinor !== (entry.subtotalMinor as number) - (entry.discountMinor as number)
+      ) {
+        issues.push(`${path}.totalMinor must equal subtotalMinor minus discountMinor.`);
+      }
     });
     if (
       seenCurrencies.size !== computedTotals.size ||
       [...computedTotals.keys()].some((currency) => !seenCurrencies.has(currency))
     ) {
       issues.push("quote.totals must cover every line currency exactly once.");
+    }
+  }
+  if (
+    Array.isArray(value.totals) &&
+    value.totals.length === 1 &&
+    isRecord(value.totals[0]) &&
+    isRecord(value.promotions) &&
+    value.totals[0].discountMinor !== value.promotions.discountMinor
+  ) {
+    issues.push("quote.totals[0].discountMinor must equal quote.promotions.discountMinor.");
+  }
+  if (isRecord(value.promotions) && Array.isArray(value.promotions.applied)) {
+    const lineAmounts = new Map(
+      Array.isArray(value.lines)
+        ? value.lines
+            .filter(isRecord)
+            .filter(
+              (line) => typeof line.key === "string" && Number.isSafeInteger(line.lineTotalMinor),
+            )
+            .map((line) => [line.key as string, line.lineTotalMinor as number])
+        : [],
+    );
+    const discounts = new Map<string, number>();
+    for (const promotion of value.promotions.applied) {
+      if (!isRecord(promotion) || !Array.isArray(promotion.lineDiscounts)) continue;
+      for (const line of promotion.lineDiscounts) {
+        if (!isRecord(line) || typeof line.lineKey !== "string") continue;
+        discounts.set(
+          line.lineKey,
+          (discounts.get(line.lineKey) ?? 0) +
+            (Number.isSafeInteger(line.discountMinor) ? (line.discountMinor as number) : 0),
+        );
+      }
+    }
+    for (const [lineKey, discount] of discounts) {
+      const amount = lineAmounts.get(lineKey);
+      if (amount === undefined) {
+        issues.push("quote.promotions references an unknown line key.");
+      } else if (discount > amount) {
+        issues.push("quote.promotions line discounts exceed the line total.");
+      }
     }
   }
   if (Array.isArray(value.issues)) {

@@ -21,13 +21,16 @@ collections.
 
 It provides:
 
-- product and category collections;
+- product, category, and promotion collections;
 - exact integer-minor-unit prices and bounded variants;
 - on-hand inventory projection plus transaction-safe pending-order
   reservations;
 - catalog, category, product, cart, checkout-intent, private order-draft,
   order-history, and order-detail routes;
 - bounded guest/member carts with revision-safe mutations and live price/stock quotes;
+- automatic and code-based fixed/percentage promotions with time, target,
+  minimum-spend, cap, stacking, global/per-owner usage, deterministic line
+  allocation, and atomic reservation/redemption/release counters;
 - owner-scoped, idempotent 15-minute checkout intents that become stale when
   the cart or live commercial state changes;
 - owner-scoped 24-hour order drafts with revision-safe, bounded customer and
@@ -35,7 +38,8 @@ It provides:
   optional provider-neutral additional-tax quotes,
   immediate cancellation deletion, and hourly expiry cleanup;
 - owner-scoped durable pending orders with immutable commercial snapshots,
-  exact item subtotal, shipping amount, additional tax, and payment total,
+  exact gross item subtotal, promotion discount, shipping amount, additional
+  tax, and payment total,
   separate pending-payment private sidecars, revision-safe cancellation, bounded
   history/Admin views, transaction-safe product/variant holds, cancellation
   release, and 365-day commercial cleanup;
@@ -75,7 +79,7 @@ It provides:
   revision-safe cancellation, audited staff approval/rejection/receipt,
   all-or-none tracked-inventory restoration, and manual-reconciliation health;
 - optional provider-neutral partial refunds linked to one received physical
-  return, with exact original-price line allocation, explicit shipping/tax
+  return, with exact post-discount line allocation, explicit shipping/tax
   allocation, one durable idempotency id, and no second inventory or
   fulfillment transition;
 - optional owner-scoped return logistics for approved returns, with paired
@@ -120,6 +124,6 @@ payment receipts, and transfer. A durable `pending-payment` order reference
 still does not imply that a visitor paid for a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
-for the exact price, SKU, inventory, cart, checkout-intent, private-draft,
+for the exact price, SKU, inventory, cart, promotion, checkout-intent, private-draft,
 shipping-quote, tax-quote, pending-order, payment-attempt/event/adjustment, fulfillment, parcel, carrier, pickup, tracking/polling, full-refund, return-linked partial-refund, return, return-logistics,
 skin, block, and theme-integration contracts.

@@ -20,6 +20,13 @@ const orderId = "123e4567-e89b-42d3-a456-426614174000";
 const draftId = "223e4567-e89b-42d3-a456-426614174000";
 const intentId = "323e4567-e89b-42d3-a456-426614174000";
 const productId = "423e4567-e89b-42d3-a456-426614174000";
+const promotions = {
+  contract: "np.shop-promotion-snapshot.v1",
+  couponCodes: [],
+  rejectedCouponCodes: [],
+  applied: [],
+  discountMinor: 0,
+} as const;
 
 const line = {
   key: `${productId}:base`,
@@ -45,11 +52,13 @@ const storedOrder = {
   cartFingerprint: "b".repeat(64),
   currency: "KRW",
   subtotalMinor: 24_000,
+  discountMinor: 0,
   shippingMinor: 0,
   taxMinor: 0,
   totalMinor: 24_000,
   totalUnits: 2,
   lines: [line],
+  promotions,
   deliveryMethod: null,
   taxQuote: null,
   privateDataStatus: "retained",

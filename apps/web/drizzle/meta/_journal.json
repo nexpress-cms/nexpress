@@ -190,6 +190,13 @@
       "when": 1785325953178,
       "tag": "0026_loose_lester",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1785928305891,
+      "tag": "0027_nosy_kate_bishop",
+      "breakpoints": true
     }
   ]
 }

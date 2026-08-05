@@ -12,6 +12,13 @@ import {
 } from "./cart-contract.js";
 
 const productId = "123e4567-e89b-42d3-a456-426614174000";
+const promotions = {
+  contract: "np.shop-promotion-snapshot.v1",
+  couponCodes: [],
+  rejectedCouponCodes: [],
+  applied: [],
+  discountMinor: 0,
+} as const;
 
 function storedCart() {
   return {
@@ -30,6 +37,7 @@ function storedCart() {
         unitPriceMinor: 25_000,
       },
     ],
+    couponCodes: [],
     createdAt: "2026-07-29T00:00:00.000Z",
     updatedAt: "2026-07-29T00:00:01.000Z",
   };
@@ -110,7 +118,8 @@ describe("shop cart contract", () => {
       contract: "np.shop-cart-quote.v1",
       revision: 1,
       lines: [line],
-      totals: [{ currency: "KRW", subtotalMinor: 50_000 }],
+      promotions,
+      totals: [{ currency: "KRW", subtotalMinor: 50_000, discountMinor: 0, totalMinor: 50_000 }],
       totalUnits: 2,
       ready: true,
       issues: [],
@@ -125,7 +134,7 @@ describe("shop cart contract", () => {
       npRequireShopCartQuote({
         ...quote,
         totalUnits: 3,
-        totals: [{ currency: "KRW", subtotalMinor: 1 }],
+        totals: [{ currency: "KRW", subtotalMinor: 1, discountMinor: 0, totalMinor: 1 }],
       }),
     ).toThrow(/Invalid shop cart quote/u);
   });

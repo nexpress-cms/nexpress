@@ -29,6 +29,7 @@ import { NP_SHOP_RETURN_CONTRACT, npAnalyzeShopReturn } from "./return-contract.
 import { npAnalyzeShopDeliveryMethod, type NpShopDeliveryMethod } from "./shipping-contract.js";
 import { npAnalyzeShopTaxQuote, type NpShopTaxQuote } from "./tax-contract.js";
 import { npAnalyzeShopTracking } from "./tracking-contract.js";
+import { npAnalyzeShopPromotionSnapshot } from "./promotion-contract.js";
 
 export const NP_SHOP_ORDER_CONTRACT = "np.shop-order.v1" as const;
 export const NP_SHOP_ORDER_LIST_CONTRACT = "np.shop-order-list.v1" as const;
@@ -69,11 +70,13 @@ export interface NpShopStoredOrder {
   cartFingerprint: string;
   currency: NpShopCurrency;
   subtotalMinor: number;
+  discountMinor: number;
   shippingMinor: number;
   taxMinor: number;
   totalMinor: number;
   totalUnits: number;
   lines: NpShopCheckoutIntentLine[];
+  promotions: NpShopOrder["promotions"];
   deliveryMethod: NpShopDeliveryMethod | null;
   taxQuote: NpShopTaxQuote | null;
   privateDataStatus: NpShopOrderPrivateDataStatus;
@@ -318,11 +321,13 @@ const storedOrderKeys = [
   "cartFingerprint",
   "currency",
   "subtotalMinor",
+  "discountMinor",
   "shippingMinor",
   "taxMinor",
   "totalMinor",
   "totalUnits",
   "lines",
+  "promotions",
   "deliveryMethod",
   "taxQuote",
   "privateDataStatus",
@@ -367,6 +372,48 @@ export function npAnalyzeStoredShopOrder(value: unknown): string[] {
   if (!isNonNegativeSafeInteger(value.subtotalMinor)) {
     issues.push("order.subtotalMinor is invalid.");
   }
+  if (!isNonNegativeSafeInteger(value.discountMinor)) {
+    issues.push("order.discountMinor is invalid.");
+  }
+  issues.push(...npAnalyzeShopPromotionSnapshot(value.promotions, "order.promotions"));
+  if (
+    isRecord(value.promotions) &&
+    isNonNegativeSafeInteger(value.discountMinor) &&
+    value.promotions.discountMinor !== value.discountMinor
+  ) {
+    issues.push("order.discountMinor must equal promotions.discountMinor.");
+  }
+  if (isRecord(value.promotions) && Array.isArray(value.promotions.applied)) {
+    const lineAmounts = new Map(
+      Array.isArray(value.lines)
+        ? value.lines
+            .filter(isRecord)
+            .filter(
+              (line) => typeof line.key === "string" && Number.isSafeInteger(line.lineTotalMinor),
+            )
+            .map((line) => [line.key as string, line.lineTotalMinor as number])
+        : [],
+    );
+    const discounts = new Map<string, number>();
+    for (const promotion of value.promotions.applied) {
+      if (!isRecord(promotion) || !Array.isArray(promotion.lineDiscounts)) continue;
+      for (const line of promotion.lineDiscounts) {
+        if (!isRecord(line) || typeof line.lineKey !== "string") continue;
+        discounts.set(
+          line.lineKey,
+          (discounts.get(line.lineKey) ?? 0) +
+            (Number.isSafeInteger(line.discountMinor) ? (line.discountMinor as number) : 0),
+        );
+      }
+    }
+    for (const [lineKey, discount] of discounts) {
+      const amount = lineAmounts.get(lineKey);
+      if (amount === undefined) issues.push("order.promotions references an unknown line key.");
+      else if (discount > amount) {
+        issues.push("order.promotions line discounts exceed the line total.");
+      }
+    }
+  }
   if (!isNonNegativeSafeInteger(value.shippingMinor)) {
     issues.push("order.shippingMinor is invalid.");
   }
@@ -378,12 +425,16 @@ export function npAnalyzeStoredShopOrder(value: unknown): string[] {
   }
   if (
     isNonNegativeSafeInteger(value.subtotalMinor) &&
+    isNonNegativeSafeInteger(value.discountMinor) &&
     isNonNegativeSafeInteger(value.shippingMinor) &&
     isNonNegativeSafeInteger(value.taxMinor) &&
     isNonNegativeSafeInteger(value.totalMinor) &&
-    value.subtotalMinor + value.shippingMinor + value.taxMinor !== value.totalMinor
+    value.subtotalMinor - value.discountMinor + value.shippingMinor + value.taxMinor !==
+      value.totalMinor
   ) {
-    issues.push("order.totalMinor must equal subtotalMinor plus shippingMinor plus taxMinor.");
+    issues.push(
+      "order.totalMinor must equal subtotalMinor minus discountMinor plus shippingMinor plus taxMinor.",
+    );
   }
   if (!isPositiveSafeInteger(value.totalUnits)) issues.push("order.totalUnits is invalid.");
   if (!Array.isArray(value.lines) || value.lines.length < 1 || value.lines.length > 100) {
@@ -726,11 +777,13 @@ const publicOrderKeys = [
   "cartFingerprint",
   "currency",
   "subtotalMinor",
+  "discountMinor",
   "shippingMinor",
   "taxMinor",
   "totalMinor",
   "totalUnits",
   "lines",
+  "promotions",
   "deliveryMethod",
   "taxQuote",
   "privateDataStatus",

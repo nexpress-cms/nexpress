@@ -10,6 +10,7 @@ import {
 import {
   normalizeShopProduct,
   normalizeShopProductSummary,
+  normalizeShopPromotion,
   type ShopProductDocument,
 } from "./runtime.js";
 
@@ -141,5 +142,27 @@ describe("shop persisted product contract", () => {
     await expect(normalizeShopProductSummary(product({ currency: "BTC" }))).rejects.toThrow(
       /currency/u,
     );
+  });
+});
+
+describe("shop persisted promotion contract", () => {
+  it("preserves database Date windows as canonical immutable timestamps", () => {
+    expect(
+      normalizeShopPromotion({
+        id: "123e4567-e89b-42d3-a456-426614174000",
+        status: "published",
+        name: "Timed offer",
+        code: "TIMED",
+        kind: "percentage",
+        currency: "KRW",
+        value: 1_000,
+        target: "order",
+        startsAt: new Date("2026-08-05T00:00:00.000Z"),
+        endsAt: new Date("2026-08-06T00:00:00.000Z"),
+      }),
+    ).toMatchObject({
+      startsAt: "2026-08-05T00:00:00.000Z",
+      endsAt: "2026-08-06T00:00:00.000Z",
+    });
   });
 });

@@ -384,6 +384,7 @@ export function ShopCart({
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [creatingCheckout, setCreatingCheckout] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
   const [error, setError] = useState("");
   const checkoutAttempt = useRef<{ snapshot: string; idempotencyKey: string } | null>(null);
 
@@ -401,7 +402,10 @@ export function ShopCart({
       .finally(() => setLoading(false));
   }, [apiPath]);
 
-  async function mutate(method: "PATCH" | "DELETE", body: Record<string, unknown>): Promise<void> {
+  async function mutate(
+    method: "PUT" | "PATCH" | "DELETE",
+    body: Record<string, unknown>,
+  ): Promise<void> {
     setLoading(true);
     setError("");
     try {
@@ -503,11 +507,85 @@ export function ShopCart({
             ))}
           </ul>
           <aside className="np-shop-cart-summary">
+            <form
+              className="np-shop-coupon-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const next = couponCode.trim();
+                if (!next) return;
+                void mutate("PUT", {
+                  couponCodes: [...quote.promotions.couponCodes, next],
+                }).then(() => setCouponCode(""));
+              }}
+            >
+              <label>
+                <span>{messages.couponCode}</span>
+                <input
+                  value={couponCode}
+                  maxLength={32}
+                  placeholder={messages.couponPlaceholder}
+                  disabled={loading || quote.promotions.couponCodes.length >= 5}
+                  onChange={(event) => setCouponCode(event.target.value)}
+                />
+              </label>
+              <button type="submit" disabled={loading || !couponCode.trim()}>
+                {messages.couponApply}
+              </button>
+            </form>
+            {quote.promotions.couponCodes.length > 0 ? (
+              <ul className="np-shop-coupons">
+                {quote.promotions.couponCodes.map((code) => (
+                  <li key={code}>
+                    <span>{code}</span>
+                    {quote.promotions.rejectedCouponCodes.includes(code) ? (
+                      <small>{messages.couponRejected}</small>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={loading}
+                      onClick={() =>
+                        void mutate("PUT", {
+                          couponCodes: quote.promotions.couponCodes.filter(
+                            (candidate) => candidate !== code,
+                          ),
+                        })
+                      }
+                    >
+                      {messages.couponRemove}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            {quote.promotions.applied.length > 0 ? (
+              <ul className="np-shop-promotions">
+                {quote.promotions.applied.map((promotion) => (
+                  <li key={promotion.id}>
+                    <span>{promotion.name}</span>
+                    <strong>
+                      −
+                      {formatMoney(
+                        messages.locale,
+                        promotion.discountMinor,
+                        quote.totals[0].currency,
+                      )}
+                    </strong>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             <h2>{messages.cartSubtotal}</h2>
             {quote.totals.map((total) => (
-              <strong key={total.currency}>
-                {formatMoney(messages.locale, total.subtotalMinor, total.currency)}
-              </strong>
+              <div key={total.currency} className="np-shop-cart-totals">
+                <span>{formatMoney(messages.locale, total.subtotalMinor, total.currency)}</span>
+                {total.discountMinor > 0 ? (
+                  <span>
+                    {messages.promotionDiscount}: −
+                    {formatMoney(messages.locale, total.discountMinor, total.currency)}
+                  </span>
+                ) : null}
+                <strong>{formatMoney(messages.locale, total.totalMinor, total.currency)}</strong>
+              </div>
             ))}
             <p className={quote.ready ? "np-shop-cart-ready" : "np-shop-cart-not-ready"}>
               {quote.ready ? messages.cartReady : messages.cartNotReady}
@@ -657,6 +735,15 @@ export function ShopCheckout({
           <aside className="np-shop-checkout-summary">
             <span>{messages.cartSubtotal}</span>
             <strong>{formatMoney(messages.locale, intent.subtotalMinor, intent.currency)}</strong>
+            {intent.promotions.applied.map((promotion) => (
+              <span key={promotion.id}>
+                {promotion.name}: −
+                {formatMoney(messages.locale, promotion.discountMinor, intent.currency)}
+              </span>
+            ))}
+            {intent.discountMinor > 0 ? (
+              <strong>{formatMoney(messages.locale, intent.totalMinor, intent.currency)}</strong>
+            ) : null}
             <p>
               {messages.checkoutExpires}{" "}
               {new Intl.DateTimeFormat(messages.locale, {
@@ -1023,6 +1110,14 @@ export function ShopOrderDraft({
                 <span>{messages.cartSubtotal}</span>
                 <strong>{formatMoney(messages.locale, draft.subtotalMinor, draft.currency)}</strong>
               </div>
+              {draft.promotions.applied.map((promotion) => (
+                <div key={promotion.id}>
+                  <span>{promotion.name}</span>
+                  <strong>
+                    −{formatMoney(messages.locale, promotion.discountMinor, draft.currency)}
+                  </strong>
+                </div>
+              ))}
               {draft.shippingQuote ? (
                 <section className="np-shop-shipping-methods">
                   <h3>{messages.orderDraftShippingMethods}</h3>
@@ -1529,6 +1624,14 @@ export function ShopOrder({
                 <span>{messages.cartSubtotal}</span>
                 <strong>{formatMoney(messages.locale, order.subtotalMinor, order.currency)}</strong>
               </div>
+              {order.promotions.applied.map((promotion) => (
+                <div key={promotion.id}>
+                  <span>{promotion.name}</span>
+                  <strong>
+                    −{formatMoney(messages.locale, promotion.discountMinor, order.currency)}
+                  </strong>
+                </div>
+              ))}
               <div>
                 <span>{messages.shippingAmount}</span>
                 <strong>{formatMoney(messages.locale, order.shippingMinor, order.currency)}</strong>
