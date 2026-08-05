@@ -177,4 +177,29 @@ describe("Shop shipping policies", () => {
       }),
     ).toThrow(/cannot define free thresholds/u);
   });
+
+  it("rejects malformed public evaluator bounds before matching rules", () => {
+    expect(() =>
+      npEvaluateShopShippingPolicies({
+        definitions: [definition()],
+        currency: "KRW",
+        grossSubtotalMinor: -1,
+        discountMinor: -1,
+        lines,
+        destination,
+        now: new Date("2026-08-05T00:00:00.000Z"),
+      }),
+    ).toThrow(/subtotal and discount/u);
+    expect(() =>
+      npEvaluateShopShippingPolicies({
+        definitions: [definition()],
+        currency: "KRW",
+        grossSubtotalMinor: 50_000,
+        discountMinor: 0,
+        lines,
+        destination,
+        now: new Date(Number.NaN),
+      }),
+    ).toThrow(/time is invalid/u);
+  });
 });

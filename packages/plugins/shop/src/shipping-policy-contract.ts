@@ -378,6 +378,24 @@ export function npEvaluateShopShippingPolicies(input: {
   destination: NpShopOrderDraftShipping;
   now: Date;
 }): NpShopShippingPolicyEvaluation {
+  if (
+    !Array.isArray(input.definitions) ||
+    input.definitions.length > npShopShippingPolicyLimits.maximumDefinitions
+  ) {
+    throw new Error("Shop shipping policy definition list is invalid or exceeds its bound.");
+  }
+  if (!(input.now instanceof Date) || Number.isNaN(input.now.getTime())) {
+    throw new Error("Shop shipping policy evaluation time is invalid.");
+  }
+  if (
+    !Number.isSafeInteger(input.grossSubtotalMinor) ||
+    input.grossSubtotalMinor < 0 ||
+    !Number.isSafeInteger(input.discountMinor) ||
+    input.discountMinor < 0 ||
+    input.discountMinor > input.grossSubtotalMinor
+  ) {
+    throw new Error("Shop shipping policy subtotal and discount are invalid.");
+  }
   const discountedSubtotalMinor = input.grossSubtotalMinor - input.discountMinor;
   if (!Number.isSafeInteger(discountedSubtotalMinor) || discountedSubtotalMinor < 0) {
     throw new Error("Shop shipping policy discounted subtotal is invalid.");
