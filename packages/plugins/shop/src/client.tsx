@@ -1477,6 +1477,21 @@ export function ShopOrder({
     return messages.orderReturnLogisticsPending;
   }
 
+  function returnTrackingStatusMessage(logistics: NpShopReturnLogistics): string | null {
+    switch (logistics.tracking?.status) {
+      case "in-transit":
+        return messages.orderReturnTrackingInTransit;
+      case "out-for-delivery":
+        return messages.orderReturnTrackingOutForDelivery;
+      case "delivered":
+        return messages.orderReturnTrackingDelivered;
+      case "exception":
+        return messages.orderReturnTrackingException;
+      default:
+        return null;
+    }
+  }
+
   return (
     <div className="np-shop-order-client" aria-busy={busy}>
       {error ? (
@@ -1659,6 +1674,15 @@ export function ShopOrder({
                         <p>
                           {order.returnRequest.logistics.carrier}{" "}
                           {order.returnRequest.logistics.trackingNumber}
+                        </p>
+                      ) : null}
+                      {order.returnRequest.logistics.tracking ? (
+                        <p
+                          data-np-shop-return-tracking-status={
+                            order.returnRequest.logistics.tracking.status
+                          }
+                        >
+                          {returnTrackingStatusMessage(order.returnRequest.logistics)}
                         </p>
                       ) : null}
                       {order.returnRequest.logistics.status === "active" &&

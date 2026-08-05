@@ -478,7 +478,8 @@ async function main(): Promise<void> {
     } else {
       console.log(renderBriefReleasePlan(plan, { color: COLOR_MODE }));
     }
-    process.exit(plan.ok ? 0 : 1);
+    process.exitCode = plan.ok ? 0 : 1;
+    return;
   }
 
   if (MODE === "apply") {
@@ -488,7 +489,8 @@ async function main(): Promise<void> {
     } else {
       console.log(renderBriefReleaseApply(apply, { color: COLOR_MODE }));
     }
-    process.exit(apply.ok ? 0 : 1);
+    process.exitCode = apply.ok ? 0 : 1;
+    return;
   }
 
   const report = await runRelease();
@@ -497,10 +499,10 @@ async function main(): Promise<void> {
   } else {
     console.log(renderBriefReleaseReport(report, { color: COLOR_MODE }));
   }
-  process.exit(report.ok ? 0 : 1);
+  process.exitCode = report.ok ? 0 : 1;
 }
 
 main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
-  process.exit(2);
+  process.exitCode = 2;
 });

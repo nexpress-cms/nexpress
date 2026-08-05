@@ -45,6 +45,7 @@ const JOURNEY_ENV = {
   SITE_URL: "http://localhost:3000",
   NP_STORAGE_ADAPTER: "local",
 };
+const MAX_COMMAND_OUTPUT_BYTES = 4 * 1024 * 1024;
 
 function fail(message, detail = "") {
   console.error(`::error::${message}`);
@@ -113,6 +114,7 @@ function runTsx(script, args) {
     cwd: scaffoldDir,
     env: { ...process.env, ...JOURNEY_ENV },
     encoding: "utf8",
+    maxBuffer: MAX_COMMAND_OUTPUT_BYTES,
     timeout: 60_000,
     shell: false,
   });
@@ -127,9 +129,13 @@ function runPnpm(args) {
     cwd: scaffoldDir,
     env: { ...process.env, ...JOURNEY_ENV },
     encoding: "utf8",
+    maxBuffer: MAX_COMMAND_OUTPUT_BYTES,
     timeout: 60_000,
     shell: false,
   });
+  if (result.error) {
+    fail(`pnpm ${args.join(" ")} could not complete`, result.error.message);
+  }
   return {
     code: result.status ?? 1,
     stdout: result.stdout ?? "",

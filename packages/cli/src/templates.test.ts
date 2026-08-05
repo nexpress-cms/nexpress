@@ -397,6 +397,8 @@ describe("getProjectFiles", () => {
     expect(env).toContain("createReturnShipment and cancelReturnShipment");
     expect(env).toContain("returnLocationReference");
     expect(env).toContain("readReturnLabel");
+    expect(env).toContain("verifyReturnTrackingWebhook");
+    expect(env).toContain("readReturnTracking");
     expect(env).toContain("never put an address in that token");
     expect(env).toContain("revision-safe PII-free");
     expect(env).toContain("bounded PII-free scheduled reconciliation");
@@ -406,6 +408,8 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("exact PII-free mm/gram package allocation");
     expect(readme).toContain("paired pickup scheduling/cancellation");
     expect(readme).toContain("maximum-24-hour private origin sidecar");
+    expect(readme).toContain("separate reverse-tracking callback or bounded poll capability");
+    expect(readme).toContain("never receives the physical return");
   });
 
   it(".env.example documents the exact storage runtime contract", () => {

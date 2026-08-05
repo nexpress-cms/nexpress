@@ -230,6 +230,10 @@ export interface NpShopMessages {
   orderReturnLogisticsCloseAt: string;
   orderReturnLogisticsPrivacy: string;
   orderReturnLogisticsFailed: string;
+  orderReturnTrackingInTransit: string;
+  orderReturnTrackingOutForDelivery: string;
+  orderReturnTrackingDelivered: string;
+  orderReturnTrackingException: string;
   orderExpires: string;
   orderCreated: string;
   orderCancel: string;
@@ -459,6 +463,10 @@ export interface NpShopCartClientMessages {
   orderReturnLogisticsCloseAt: string;
   orderReturnLogisticsPrivacy: string;
   orderReturnLogisticsFailed: string;
+  orderReturnTrackingInTransit: string;
+  orderReturnTrackingOutForDelivery: string;
+  orderReturnTrackingDelivered: string;
+  orderReturnTrackingException: string;
   orderExpires: string;
   orderCreated: string;
   orderCancel: string;

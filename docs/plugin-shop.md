@@ -625,6 +625,7 @@ import {
   NP_SHOP_CARRIER_PICKUP_CANCEL_RESULT_CONTRACT,
   NP_SHOP_CARRIER_PICKUP_RESULT_CONTRACT,
   NP_SHOP_TRACKING_POLL_RESULT_CONTRACT,
+  NP_SHOP_RETURN_TRACKING_POLL_RESULT_CONTRACT,
   createShop,
   type NpShopCarrierAdapter,
 } from "@nexpress/plugin-shop";
@@ -942,10 +943,87 @@ metric, health, and bounded rows covering reconciliation, provider mismatch,
 orphans, malformed values, and private-sidecar lifetime. Doctor validates the
 same declarative metric/status/table and API inventory.
 
+Once the first verified reverse-tracking event exists, return-shipment
+cancellation closes: local cancellation can no longer safely claim that the
+physical parcel stopped moving.
+
+### Reverse-shipment tracking
+
+`verifyReturnTrackingWebhook` and `readReturnTracking` are independent,
+additive capabilities over the paired return-logistics methods. Both consume
+the active PII-free logistics tuple: logistics/return/order ids, provider-owned
+return reference, tracking number, and timestamps. Neither receives the
+short-lived origin address, customer identity, item details, or payment data.
+
+```ts
+const carrier: NpShopCarrierAdapter = {
+  // bookShipment, createReturnShipment, and cancelReturnShipment omitted here
+  async verifyReturnTrackingWebhook(input) {
+    const providerEvent = await verifyProviderReturnTracking(input.rawBody, input.headers);
+    if (!providerEvent) return null;
+    return {
+      contract: "np.shop-return-tracking-event.v1",
+      eventId: providerEvent.id,
+      logisticsId: providerEvent.logisticsId,
+      returnId: providerEvent.returnId,
+      orderId: providerEvent.orderId,
+      returnReference: providerEvent.returnReference,
+      trackingNumber: providerEvent.trackingNumber,
+      status: providerEvent.status,
+      occurredAt: providerEvent.occurredAt,
+      signedAt: providerEvent.signedAt,
+    };
+  },
+  async readReturnTracking(request) {
+    const providerEvent = await readProviderReturnTracking(request);
+    const checkedAt = new Date().toISOString();
+    return {
+      contract: NP_SHOP_RETURN_TRACKING_POLL_RESULT_CONTRACT,
+      logisticsId: request.logisticsId,
+      returnId: request.returnId,
+      orderId: request.orderId,
+      checkedAt,
+      event: providerEvent
+        ? {
+            contract: "np.shop-return-tracking-event.v1",
+            eventId: providerEvent.id,
+            logisticsId: request.logisticsId,
+            returnId: request.returnId,
+            orderId: request.orderId,
+            returnReference: request.returnReference,
+            trackingNumber: request.trackingNumber,
+            status: providerEvent.status,
+            occurredAt: providerEvent.occurredAt,
+            signedAt: checkedAt,
+          }
+        : null,
+    };
+  },
+};
+```
+
+The raw callback route is `/api/plugins/shop/carrier/return-tracking/webhook`.
+It authenticates exact bytes before accepting one
+`np.shop-return-tracking-event.v1`, hashes the external event id, rejects
+conflicting replay, and advances only the independent return-shipment state.
+Stale, regressive, and post-delivery events remain immutable receipts with a
+closed outcome. `delivered` means only that the carrier delivered the reverse
+shipment; the physical return remains `approved` until a direct staff receipt
+performs warehouse inspection and any all-or-none tracked inventory restore.
+It never changes the order payment status or creates a refund/exchange.
+
+Polling uses the same 25-item batch, 500-row cursor scan, five-minute lease,
+ten-minute interval, bounded exponential backoff, and provider-I/O-outside-
+transaction rules as outbound tracking, but stores independent
+`np.shop-return-tracking-poll-storage.v1` rows and a separate cursor. Admin
+adds PII-free event/poll metrics, health, newest-50 tables, and an audited
+manual poll action; Doctor validates the same optional route, scheduled task,
+and action-kind inventory after adapter removal.
+
 This boundary assumes one completed outbound booking from the same configured
 carrier. It does not buy or regenerate the outbound label, quote return postage,
-track reverse events, schedule recurring pickups, implement exchanges/refunds,
-or decide return eligibility and customer-service policy.
+schedule recurring pickups, inspect warehouse contents, implement
+exchanges/refunds, or decide return eligibility and customer-service policy.
 
 `readTracking` is a separate additive capability from callback verification.
 When present, Shop registers a ten-minute UTC scheduled task and an audited
@@ -1182,12 +1260,14 @@ The plugin declares fifteen baseline typed dashboard metric actions:
 - durable PII-free carrier pickup scheduling/cancellation attempts, including
   when the adapter is currently disabled.
 - verified PII-free tracking-event receipts and current shipment states.
+- verified PII-free reverse-tracking receipts, current return-shipment states,
+  and durable polling leases/backoff.
 - verified PII-free payment-event receipts.
 - durable full-refund attempts and compensation outcomes.
 - item-level physical returns split across requested, approved, rejected,
   received, and owner-cancelled states.
 
-A complete initiation adapter adds a sixteenth metric for PII-free payment
+A complete initiation adapter adds an additional metric for PII-free payment
 attempts, a bounded recent-attempt table, and payment-attempt health. Attempt
 diagnostics expose provider, status, order id, exact amount, and timestamps;
 they withhold owner segments, private order data, and provider handoff values.
@@ -1207,6 +1287,12 @@ and exception counts plus bounded malformed, orphaned, provider, and shipment
 state mismatches. Polling adds a separate health widget, newest-50 poll table,
 audited manual row action, and scheduled reconciliation inventory only when
 `readTracking` is configured; durable rows remain visible after removal.
+Return tracking mirrors that operational surface with separate event and poll
+contracts keyed to active return logistics. It reports malformed/orphaned,
+provider/logistics mismatches, delivery exceptions, due work, expired leases,
+and unpolled active return shipments without reading the private origin.
+Carrier-delivered state is explicitly not a warehouse receipt or inventory
+operation.
 
 Admin also exposes separate cart, checkout-intent, and private-order-draft
 storage health plus configured shipping-provider success/failure state and
@@ -1290,6 +1376,7 @@ The main public hooks are `.np-shop`, `.np-shop-product-card`,
 `[data-np-shop-fulfillment-status]`,
 `.np-shop-return-form`, `.np-shop-return-summary`,
 `[data-np-shop-return-status]`,
+`[data-np-shop-return-tracking-status]`,
 `[data-np-shop-surface]`, `[data-np-shop-skin]`,
 `[data-np-shop-inventory]`, and `[data-np-shop-block]`.
 
@@ -1349,8 +1436,8 @@ Future transaction work should remain separable from this foundation:
 1. additional provider packages for Stripe or KG Inicis;
 2. authorization/capture, settlement, provider-initiated reversal, and partial
    refund contracts;
-3. carrier label purchase/regeneration, recurring pickup, reverse tracking,
-   provider-specific tracking packages, exchanges, and customer-service policy;
+3. carrier label purchase/regeneration, recurring pickup, provider-specific
+   tracking packages, exchanges, and customer-service policy;
 4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and
    shipping-policy integrations.
 

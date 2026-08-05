@@ -28,6 +28,8 @@ import type {
   NpShopCarrierPickupAdapter,
   NpShopCarrierReturnLabelAdapter,
   NpShopCarrierReturnLogisticsAdapter,
+  NpShopCarrierReturnTrackingAdapter,
+  NpShopCarrierReturnTrackingPollAdapter,
   NpShopCarrierTrackingAdapter,
   NpShopCarrierTrackingPollAdapter,
 } from "./carrier-contract.js";
@@ -64,6 +66,8 @@ export interface NpShopRuntime {
   carrierReturnLogisticsAdapter: NpShopCarrierReturnLogisticsAdapter | null;
   carrierReturnLabelAdapter: NpShopCarrierReturnLabelAdapter | null;
   carrierReturnLocationReference: string | null;
+  carrierReturnTrackingAdapter: NpShopCarrierReturnTrackingAdapter | null;
+  carrierReturnTrackingPollAdapter: NpShopCarrierReturnTrackingPollAdapter | null;
   carrierTrackingAdapter: NpShopCarrierTrackingAdapter | null;
   carrierTrackingPollAdapter: NpShopCarrierTrackingPollAdapter | null;
 }

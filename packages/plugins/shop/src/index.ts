@@ -37,6 +37,8 @@ import {
   type NpShopCarrierPickupAdapter,
   type NpShopCarrierReturnLabelAdapter,
   type NpShopCarrierReturnLogisticsAdapter,
+  type NpShopCarrierReturnTrackingAdapter,
+  type NpShopCarrierReturnTrackingPollAdapter,
   type NpShopCarrierTrackingAdapter,
   type NpShopCarrierTrackingPollAdapter,
 } from "./carrier-contract.js";
@@ -89,6 +91,7 @@ import { npRequireShopRefundActionInput } from "./refund-contract.js";
 import { createShopReturnApiHandler } from "./return-api.js";
 import { createShopReturnLogisticsApiHandler } from "./return-logistics-api.js";
 import { createShopReturnLogisticsLabelApiHandler } from "./return-logistics-label-api.js";
+import { createShopReturnTrackingApiHandler } from "./return-tracking-api.js";
 import {
   npRequireShopReturnApproveInput,
   npRequireShopReturnReceiveInput,
@@ -100,6 +103,14 @@ import {
   npCountShopReturnLogistics,
   npListRecentShopReturnLogistics,
 } from "./return-logistics-service.js";
+import {
+  npCountShopReturnTrackingEvents,
+  npCountShopReturnTrackingPolls,
+  npListRecentShopReturnTrackingEvents,
+  npListShopReturnTrackingPolls,
+  npReconcileShopReturnTracking,
+} from "./return-tracking-service.js";
+import { npRequireShopReturnTrackingReconcileActionInput } from "./return-tracking-contract.js";
 import { createShopPaymentApiHandler } from "./payment-api.js";
 import { createShopTrackingApiHandler } from "./tracking-api.js";
 import {
@@ -305,6 +316,8 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   let carrierReturnLogisticsAdapter: NpShopCarrierReturnLogisticsAdapter | null = null;
   let carrierReturnLabelAdapter: NpShopCarrierReturnLabelAdapter | null = null;
   let carrierReturnLocationReference: string | null = null;
+  let carrierReturnTrackingAdapter: NpShopCarrierReturnTrackingAdapter | null = null;
+  let carrierReturnTrackingPollAdapter: NpShopCarrierReturnTrackingPollAdapter | null = null;
   let carrierTrackingAdapter: NpShopCarrierTrackingAdapter | null = null;
   let carrierTrackingPollAdapter: NpShopCarrierTrackingPollAdapter | null = null;
   if (configuredCarrierAdapter) {
@@ -321,6 +334,9 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     const hasReturnCreate = configuredCarrierAdapter.createReturnShipment !== undefined;
     const hasReturnCancel = configuredCarrierAdapter.cancelReturnShipment !== undefined;
     const hasReturnLabel = configuredCarrierAdapter.readReturnLabel !== undefined;
+    const hasReturnTrackingWebhook =
+      configuredCarrierAdapter.verifyReturnTrackingWebhook !== undefined;
+    const hasReturnTrackingPoll = configuredCarrierAdapter.readReturnTracking !== undefined;
     if (
       hasTrackingWebhook &&
       typeof configuredCarrierAdapter.verifyTrackingWebhook !== "function"
@@ -363,6 +379,23 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
       (!hasReturnCreate || typeof configuredCarrierAdapter.readReturnLabel !== "function")
     ) {
       throw new Error("Shop return label retrieval requires the paired return logistics methods.");
+    }
+    if ((hasReturnTrackingWebhook || hasReturnTrackingPoll) && !hasReturnCreate) {
+      throw new Error("Shop return tracking requires the paired return logistics methods.");
+    }
+    if (
+      hasReturnTrackingWebhook &&
+      typeof configuredCarrierAdapter.verifyReturnTrackingWebhook !== "function"
+    ) {
+      throw new Error(
+        "Shop carrier adapter verifyReturnTrackingWebhook must be a function when provided.",
+      );
+    }
+    if (
+      hasReturnTrackingPoll &&
+      typeof configuredCarrierAdapter.readReturnTracking !== "function"
+    ) {
+      throw new Error("Shop carrier adapter readReturnTracking must be a function when provided.");
     }
     if (
       hasPickupSchedule &&
@@ -435,6 +468,18 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
               configuredCarrierAdapter.readReturnLabel.bind(configuredCarrierAdapter),
           }
         : {}),
+      ...(configuredCarrierAdapter.verifyReturnTrackingWebhook
+        ? {
+            verifyReturnTrackingWebhook:
+              configuredCarrierAdapter.verifyReturnTrackingWebhook.bind(configuredCarrierAdapter),
+          }
+        : {}),
+      ...(configuredCarrierAdapter.readReturnTracking
+        ? {
+            readReturnTracking:
+              configuredCarrierAdapter.readReturnTracking.bind(configuredCarrierAdapter),
+          }
+        : {}),
     });
     if (carrierAdapter.verifyTrackingWebhook) {
       carrierTrackingAdapter = carrierAdapter as NpShopCarrierTrackingAdapter;
@@ -457,6 +502,14 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     if (carrierReturnLogisticsAdapter?.readReturnLabel) {
       carrierReturnLabelAdapter = carrierReturnLogisticsAdapter as NpShopCarrierReturnLabelAdapter;
     }
+    if (carrierReturnLogisticsAdapter?.verifyReturnTrackingWebhook) {
+      carrierReturnTrackingAdapter =
+        carrierReturnLogisticsAdapter as NpShopCarrierReturnTrackingAdapter;
+    }
+    if (carrierReturnLogisticsAdapter?.readReturnTracking) {
+      carrierReturnTrackingPollAdapter =
+        carrierReturnLogisticsAdapter as NpShopCarrierReturnTrackingPollAdapter;
+    }
   }
   return {
     basePath: requireBasePath(options.basePath ?? "/shop"),
@@ -476,6 +529,8 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     carrierReturnLogisticsAdapter,
     carrierReturnLabelAdapter,
     carrierReturnLocationReference,
+    carrierReturnTrackingAdapter,
+    carrierReturnTrackingPollAdapter,
     carrierTrackingAdapter,
     carrierTrackingPollAdapter,
   };
@@ -657,6 +712,13 @@ const messages = {
     "shop.orderReturnLogisticsPrivacy":
       "The pickup address is sent only to the configured carrier, deleted after confirmation, and otherwise expires within 24 hours.",
     "shop.orderReturnLogisticsFailed": "Return shipping could not be updated.",
+    "shop.orderReturnTrackingInTransit": "Your return is in transit to the return facility.",
+    "shop.orderReturnTrackingOutForDelivery":
+      "Your return is out for delivery to the return facility.",
+    "shop.orderReturnTrackingDelivered":
+      "The carrier delivered your return. Warehouse receipt is still pending.",
+    "shop.orderReturnTrackingException":
+      "The carrier reported an exception while transporting your return.",
     "shop.orderExpires": "Pending order expires",
     "shop.orderCreated": "Created",
     "shop.orderCancel": "Cancel order and delete private details",
@@ -849,6 +911,11 @@ const messages = {
     "shop.orderReturnLogisticsPrivacy":
       "회수 주소는 설정된 택배사에만 전달하고 확인 즉시 삭제하며, 확인되지 않아도 24시간 안에 만료됩니다.",
     "shop.orderReturnLogisticsFailed": "반품 배송을 갱신하지 못했습니다.",
+    "shop.orderReturnTrackingInTransit": "반품 상품이 반품 센터로 이동 중입니다.",
+    "shop.orderReturnTrackingOutForDelivery": "반품 상품이 반품 센터 배송 출발 상태입니다.",
+    "shop.orderReturnTrackingDelivered":
+      "택배사가 반품 상품을 배송했습니다. 창고 입고 확인은 아직 별도입니다.",
+    "shop.orderReturnTrackingException": "반품 운송 중 택배사 예외가 발생했습니다.",
     "shop.orderExpires": "결제 대기 만료",
     "shop.orderCreated": "생성",
     "shop.orderCancel": "주문 취소 및 개인정보 삭제",
@@ -893,6 +960,9 @@ export function createShop(options: NpShopOptions = {}) {
     : null;
   const returnLogisticsLabelApiHandler = runtime.carrierReturnLabelAdapter
     ? createShopReturnLogisticsLabelApiHandler(runtime)
+    : null;
+  const returnTrackingApiHandler = runtime.carrierReturnTrackingAdapter
+    ? createShopReturnTrackingApiHandler(runtime.carrierReturnTrackingAdapter)
     : null;
   const paymentApiHandler = runtime.paymentAdapter ? createShopPaymentApiHandler(runtime) : null;
   const trackingApiHandler = runtime.carrierTrackingAdapter
@@ -948,7 +1018,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, tracking, returns, and return logistics, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, outbound and return tracking, physical returns and return logistics, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -1005,6 +1075,12 @@ export function createShop(options: NpShopOptions = {}) {
           "widget:shop-tracking-poll-health",
           "table:shop-tracking-polls",
           ...(runtime.carrierTrackingPollAdapter ? ["action:shop-tracking-poll"] : []),
+          "dashboard:shop-return-tracking-events",
+          "widget:shop-return-tracking-event-health",
+          "table:shop-return-tracking-events",
+          "widget:shop-return-tracking-poll-health",
+          "table:shop-return-tracking-polls",
+          ...(runtime.carrierReturnTrackingPollAdapter ? ["action:shop-return-tracking-poll"] : []),
           "dashboard:shop-inventory-reservations",
           "widget:shop-inventory-reservation-health",
           "table:shop-inventory-reservations",
@@ -1034,6 +1110,7 @@ export function createShop(options: NpShopOptions = {}) {
           "/returns",
           ...(paymentApiHandler ? ["/payments/webhook"] : []),
           ...(trackingApiHandler ? ["/carrier/tracking/webhook"] : []),
+          ...(returnTrackingApiHandler ? ["/carrier/return-tracking/webhook"] : []),
           ...(carrierLabelApiHandler ? ["/carrier/shipping-label"] : []),
           ...(returnLogisticsApiHandler ? ["/returns/logistics"] : []),
           ...(returnLogisticsLabelApiHandler ? ["/returns/logistics/label"] : []),
@@ -1043,7 +1120,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled tracking, physical return intake, and approved-return logistics with transient labels. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, outbound label purchase, recurring pickup, reverse tracking, and provider-specific carrier protocols remain external.",
+          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with transient labels, and independent verified or reconciled reverse tracking. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -1083,6 +1160,7 @@ export function createShop(options: NpShopOptions = {}) {
         "order-status": "[data-np-shop-order-status]",
         "fulfillment-status": "[data-np-shop-fulfillment-status]",
         "tracking-status": "[data-np-shop-tracking-status]",
+        "return-tracking-status": "[data-np-shop-return-tracking-status]",
         "return-status": "[data-np-shop-return-status]",
         "product-card": ".np-shop-product-card",
         "product-grid": ".np-shop-product-grid",
@@ -1198,6 +1276,14 @@ export function createShop(options: NpShopOptions = {}) {
           priority: 31,
         },
         {
+          id: "shop-return-tracking-events-total",
+          label: "Return tracking events",
+          kind: "metric",
+          actionId: "countReturnTrackingEvents",
+          description: "Verified PII-free reverse-shipment events retained with their returns.",
+          priority: 39,
+        },
+        {
           id: "shop-payment-events-total",
           label: "Payment events",
           kind: "metric",
@@ -1311,6 +1397,18 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Carrier tracking polling",
           kind: "status",
           actionId: "trackingPollHealth",
+        },
+        {
+          id: "shop-return-tracking-event-health",
+          label: "Return tracking contract",
+          kind: "status",
+          actionId: "returnTrackingEventHealth",
+        },
+        {
+          id: "shop-return-tracking-poll-health",
+          label: "Return tracking polling",
+          kind: "status",
+          actionId: "returnTrackingPollHealth",
         },
         {
           id: "shop-payment-event-health",
@@ -1734,6 +1832,53 @@ export function createShop(options: NpShopOptions = {}) {
               ]
             : [],
           emptyMessage: "No carrier tracking poll attempt exists for this site.",
+        },
+        {
+          id: "shop-return-tracking-events",
+          label: "Recent verified return tracking events (PII withheld)",
+          columns: [
+            { name: "provider", label: "Provider" },
+            { name: "eventId", label: "Event" },
+            { name: "logisticsId", label: "Logistics" },
+            { name: "returnId", label: "Return" },
+            { name: "orderId", label: "Order" },
+            { name: "status", label: "Status" },
+            { name: "outcome", label: "Outcome" },
+            { name: "occurredAt", label: "Occurred" },
+            { name: "processedAt", label: "Processed" },
+          ],
+          rowsActionId: "recentReturnTrackingEvents",
+          emptyMessage: "No verified return tracking event exists for this site.",
+        },
+        {
+          id: "shop-return-tracking-polls",
+          label: "Return tracking poll state (PII withheld)",
+          columns: [
+            { name: "id", label: "Order" },
+            { name: "returnId", label: "Return" },
+            { name: "logisticsId", label: "Logistics" },
+            { name: "provider", label: "Provider" },
+            { name: "failures", label: "Failures" },
+            { name: "lastAttemptAt", label: "Last attempt" },
+            { name: "lastSuccessAt", label: "Last success" },
+            { name: "nextAttemptAt", label: "Next attempt" },
+            { name: "lastError", label: "Closed error" },
+            { name: "lease", label: "Lease" },
+          ],
+          rowsActionId: "recentReturnTrackingPolls",
+          rowActions: runtime.carrierReturnTrackingPollAdapter
+            ? [
+                {
+                  id: "retry-return-tracking-poll",
+                  label: "Poll now",
+                  actionId: "reconcileCarrierReturnTracking",
+                  rowFields: ["id", "returnId", "logisticsId"],
+                  confirm:
+                    "Bypass this return shipment's backoff and read it from the configured carrier now?",
+                },
+              ]
+            : [],
+          emptyMessage: "No return tracking poll attempt exists for this site.",
         },
         {
           id: "shop-inventory-reservations",
@@ -3105,6 +3250,197 @@ export function createShop(options: NpShopOptions = {}) {
             },
           }
         : {}),
+      countReturnTrackingEvents: {
+        kind: "metric" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopReturnTrackingEvents(
+              runtime.carrierReturnTrackingAdapter?.id ??
+                runtime.carrierReturnTrackingPollAdapter?.id,
+            );
+            return {
+              ok: true as const,
+              data: {
+                value: counts.total,
+                delta: `${counts.states.toString()} returns, ${counts.delivered.toString()} delivered, ${counts.exceptions.toString()} exceptions`,
+              },
+            };
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      returnTrackingEventHealth: {
+        kind: "status" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopReturnTrackingEvents(
+              runtime.carrierReturnTrackingAdapter?.id ??
+                runtime.carrierReturnTrackingPollAdapter?.id,
+            );
+            if (
+              counts.invalidSample > 0 ||
+              counts.orphanSample > 0 ||
+              counts.providerMismatchSample > 0 ||
+              counts.stateMismatchSample > 0
+            ) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed, ${counts.orphanSample.toString()} orphan, ${counts.providerMismatchSample.toString()} provider-mismatched, and ${counts.stateMismatchSample.toString()} logistics-mismatched return-tracking row(s) in bounded samples.`,
+              );
+            }
+            if (
+              !runtime.carrierReturnTrackingAdapter &&
+              !runtime.carrierReturnTrackingPollAdapter &&
+              counts.active > 0
+            ) {
+              return npAdminStatus(
+                "warn",
+                `${counts.active.toString()} active return-tracking state(s) cannot advance while webhook and polling capabilities are disabled.`,
+              );
+            }
+            if (counts.exceptions > 0)
+              return npAdminStatus(
+                "warn",
+                `${counts.exceptions.toString()} return shipment(s) currently report a carrier exception.`,
+              );
+            return npAdminStatus(
+              "ok",
+              `${counts.total.toString()} verified return event receipt(s), ${counts.delivered.toString()} carrier-delivered return shipment(s); webhook ${runtime.carrierReturnTrackingAdapter ? "enabled" : "disabled"}, polling ${runtime.carrierReturnTrackingPollAdapter ? "enabled" : "disabled"}. Carrier delivery never marks the physical return received.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Return tracking health check failed.",
+            );
+          }
+        },
+      },
+      recentReturnTrackingEvents: {
+        kind: "table" as const,
+        handler: async () => {
+          try {
+            const result = await npListRecentShopReturnTrackingEvents();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      returnTrackingPollHealth: {
+        kind: "status" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopReturnTrackingPolls(
+              runtime.carrierReturnTrackingPollAdapter?.id,
+            );
+            if (
+              counts.invalidSample > 0 ||
+              counts.orphanSample > 0 ||
+              counts.providerMismatchSample > 0 ||
+              counts.stateMismatchSample > 0
+            ) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed, ${counts.orphanSample.toString()} orphan, ${counts.providerMismatchSample.toString()} provider-mismatched, and ${counts.stateMismatchSample.toString()} logistics-mismatched return poll row(s) in bounded samples.`,
+              );
+            }
+            if (counts.expiredLeases > 0 || counts.failed > 0)
+              return npAdminStatus(
+                "warn",
+                `${counts.failed.toString()} return poll row(s) are backing off and ${counts.expiredLeases.toString()} expired lease(s) await reclaim.`,
+              );
+            if (!runtime.carrierReturnTrackingPollAdapter && counts.due > 0)
+              return npAdminStatus(
+                "warn",
+                `${counts.due.toString()} due return poll row(s) cannot run while polling is disabled.`,
+              );
+            if (runtime.carrierReturnTrackingPollAdapter && counts.unpolledLogisticsSample > 0)
+              return npAdminStatus(
+                "warn",
+                `${counts.unpolledLogisticsSample.toString()} active return shipment(s) in the bounded sample have not been polled yet.`,
+              );
+            return npAdminStatus(
+              "ok",
+              `${counts.total.toString()} return poll state row(s), ${counts.due.toString()} due, ${counts.leased.toString()} leased; ${runtime.carrierReturnTrackingPollAdapter ? `provider "${runtime.carrierReturnTrackingPollAdapter.id}" polling is enabled` : "return tracking polling is disabled"}.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error
+                ? error.message
+                : "Return tracking polling health check failed.",
+            );
+          }
+        },
+      },
+      recentReturnTrackingPolls: {
+        kind: "table" as const,
+        handler: async () => {
+          try {
+            const result = await npListShopReturnTrackingPolls();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      ...(runtime.carrierReturnTrackingPollAdapter
+        ? {
+            reconcileCarrierReturnTracking: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff")
+                    return {
+                      ok: false as const,
+                      error: "Return tracking reconciliation requires a direct staff action.",
+                    };
+                  const input = npRequireShopReturnTrackingReconcileActionInput(data);
+                  const result = await npReconcileShopReturnTracking(
+                    runtime.carrierReturnTrackingPollAdapter!,
+                    {
+                      orderId: input.orderId,
+                      expectedReturnId: input.returnId,
+                      expectedLogisticsId: input.logisticsId,
+                      force: true,
+                      staffUserId: ctx.actionInvocation.userId,
+                    },
+                  );
+                  if (result.failed > 0)
+                    return {
+                      ok: false as const,
+                      error: `Return tracking poll failed for ${result.failed.toString()} shipment(s); the closed failure and retry backoff were persisted.`,
+                    };
+                  if (result.claimed === 0)
+                    return {
+                      ok: false as const,
+                      error:
+                        "The return shipment is no longer eligible for tracking reconciliation or already has an active lease.",
+                    };
+                  return {
+                    ok: true as const,
+                    data: `Polled ${result.claimed.toString()} return shipment(s): ${result.advanced.toString()} advanced, ${result.unchanged.toString()} unchanged, and ${result.skipped.toString()} skipped.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+          }
+        : {}),
       bookCarrierShipment: {
         kind: "action" as const,
         handler: async (data: unknown, ctx: NpPluginContext) => {
@@ -3477,6 +3813,19 @@ export function createShop(options: NpShopOptions = {}) {
             },
           ]
         : []),
+      ...(returnTrackingApiHandler
+        ? [
+            {
+              method: "POST" as const,
+              path: "/carrier/return-tracking/webhook",
+              description:
+                "Verify one exact carrier callback and idempotently advance its PII-free return-shipment tracking state.",
+              auth: false,
+              bodyMode: "raw" as const,
+              handler: returnTrackingApiHandler,
+            },
+          ]
+        : []),
       ...(carrierLabelApiHandler
         ? [
             {
@@ -3575,6 +3924,19 @@ export function createShop(options: NpShopOptions = {}) {
                 "Lease and reconcile one bounded cursor-fair batch of due PII-free carrier tracking reads for each active site.",
               handler: async () => {
                 await npReconcileShopTracking(runtime.carrierTrackingPollAdapter!);
+              },
+            },
+          ]
+        : []),
+      ...(runtime.carrierReturnTrackingPollAdapter
+        ? [
+            {
+              id: "reconcile-carrier-return-tracking",
+              cron: "5-59/10 * * * *",
+              description:
+                "Lease and reconcile one bounded cursor-fair batch of due PII-free return tracking reads for each active site.",
+              handler: async () => {
+                await npReconcileShopReturnTracking(runtime.carrierReturnTrackingPollAdapter!);
               },
             },
           ]
@@ -4007,6 +4369,8 @@ export type {
   NpShopCarrierPickupAdapter,
   NpShopCarrierReturnLabelAdapter,
   NpShopCarrierReturnLogisticsAdapter,
+  NpShopCarrierReturnTrackingAdapter,
+  NpShopCarrierReturnTrackingPollAdapter,
   NpShopCarrierTrackingAdapter,
   NpShopCarrierTrackingPollAdapter,
   NpShopCarrierBookingActionInput,
@@ -4017,6 +4381,54 @@ export type {
   NpShopCarrierBookingStatus,
   NpShopStoredCarrierBooking,
 } from "./carrier-contract.js";
+export {
+  NP_SHOP_RETURN_TRACKING_CONTRACT,
+  NP_SHOP_RETURN_TRACKING_EVENT_CONTRACT,
+  NP_SHOP_RETURN_TRACKING_POLL_CURSOR_CONTRACT,
+  NP_SHOP_RETURN_TRACKING_POLL_CURSOR_KEY,
+  NP_SHOP_RETURN_TRACKING_POLL_REQUEST_CONTRACT,
+  NP_SHOP_RETURN_TRACKING_POLL_RESULT_CONTRACT,
+  NP_SHOP_RETURN_TRACKING_POLL_STORAGE_CONTRACT,
+  NP_SHOP_RETURN_TRACKING_RECEIPT_CONTRACT,
+  NP_SHOP_RETURN_TRACKING_STORAGE_CONTRACT,
+  NpShopReturnTrackingConflictError,
+  NpShopReturnTrackingContractError,
+  NpShopReturnTrackingVerificationError,
+  npAnalyzeShopReturnTracking,
+  npAnalyzeShopReturnTrackingEvent,
+  npIsIgnoredReturnTrackingWebhook,
+  npProjectShopReturnTracking,
+  npRequireFreshShopReturnTrackingEvent,
+  npRequireShopReturnTrackingPollCursor,
+  npRequireShopReturnTrackingPollRequest,
+  npRequireShopReturnTrackingPollResult,
+  npRequireShopReturnTrackingProviderId,
+  npRequireShopReturnTrackingReconcileActionInput,
+  npRequireStoredShopReturnTracking,
+  npRequireStoredShopReturnTrackingPoll,
+  npRequireStoredShopReturnTrackingReceipt,
+  npShopReturnTrackingEventDigest,
+  npShopReturnTrackingLimits,
+  npShopReturnTrackingPollBackoffSeconds,
+  npShopReturnTrackingPollErrorCodes,
+  npShopReturnTrackingPollStorageKey,
+  npShopReturnTrackingReceiptStorageKey,
+  npShopReturnTrackingStorageKey,
+} from "./return-tracking-contract.js";
+export type {
+  NpShopReturnTracking,
+  NpShopReturnTrackingPollCurrent,
+  NpShopReturnTrackingPollCursor,
+  NpShopReturnTrackingPollErrorCode,
+  NpShopReturnTrackingPollRequest,
+  NpShopReturnTrackingPollResult,
+  NpShopReturnTrackingReconcileActionInput,
+  NpShopReturnTrackingWebhookResult,
+  NpShopStoredReturnTracking,
+  NpShopStoredReturnTrackingPoll,
+  NpShopStoredReturnTrackingReceipt,
+  NpShopVerifiedReturnTrackingEvent,
+} from "./return-tracking-contract.js";
 export {
   NP_SHOP_CARRIER_PICKUP_CANCEL_REQUEST_CONTRACT,
   NP_SHOP_CARRIER_PICKUP_CANCEL_RESULT_CONTRACT,

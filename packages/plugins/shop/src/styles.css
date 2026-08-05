@@ -649,6 +649,17 @@
     color: var(--np-shop-accent, var(--np-color-primary, #205c46));
   }
 
+  [data-np-shop-return-tracking-status] {
+    padding: 0.6rem 0.7rem;
+    border: 1px solid currentColor;
+    border-radius: var(--np-radius-sm, 0.35rem);
+    font-weight: 700;
+  }
+
+  [data-np-shop-return-tracking-status="exception"] {
+    color: var(--np-color-danger, #a12b2b);
+  }
+
   .np-shop-payment-action,
   .np-shop-toss-payment {
     display: grid;
