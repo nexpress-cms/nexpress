@@ -33,6 +33,22 @@ function cancelledPayment(status = "CANCELED") {
   };
 }
 
+function partiallyCancelledPayment() {
+  return {
+    ...payment("PARTIAL_CANCELED"),
+    balanceAmount: 15_000,
+    cancels: [
+      {
+        cancelAmount: 10_000,
+        canceledAt: "2026-08-05T09:05:00+09:00",
+        transactionKey: "partial_refund_transaction_123",
+        cancelStatus: "DONE",
+        refundableAmount: 15_000,
+      },
+    ],
+  };
+}
+
 function adapter(fetcher = vi.fn()) {
   return createTossPaymentsAdapter({
     clientKey: "test_gck_abcdefghijk12345",
@@ -193,6 +209,49 @@ describe("Toss Payments Shop adapter", () => {
     expect(init.headers).toMatchObject({ "Idempotency-Key": refundId });
     expect(init.body).toBe(JSON.stringify({ cancelReason: "Customer requested cancellation" }));
     expect(init.body).not.toContain("cancelAmount");
+  });
+
+  it("partially cancels one received return allocation with the durable refund UUID", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(partiallyCancelledPayment()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const returnId = "423e4567-e89b-42d3-a456-426614174000";
+    const result = await adapter(fetcher).refundPaymentPartially({
+      refundId,
+      orderId,
+      returnId,
+      paymentReference: paymentKey,
+      currency: "KRW",
+      amountMinor: 10_000,
+      allocation: {
+        lines: [{ lineKey: "line-1", quantity: 1, amountMinor: 10_000 }],
+        itemAmountMinor: 10_000,
+        shippingMinor: 0,
+        taxMinor: 0,
+      },
+      reason: "Received defective return",
+      requestedAt: "2026-08-05T00:04:00.000Z",
+    });
+    expect(result).toEqual({
+      contract: "np.shop-partial-refund-result.v1",
+      refundId,
+      orderId,
+      returnId,
+      paymentReference: paymentKey,
+      refundReference: "partial_refund_transaction_123",
+      currency: "KRW",
+      amountMinor: 10_000,
+      refundedAt: "2026-08-05T00:05:00.000Z",
+    });
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain(`/v1/payments/${paymentKey}/cancel`);
+    expect(init.headers).toMatchObject({ "Idempotency-Key": refundId });
+    expect(init.body).toBe(
+      JSON.stringify({ cancelReason: "Received defective return", cancelAmount: 10_000 }),
+    );
   });
 
   it("fails closed when Toss returns a partial cancellation", async () => {

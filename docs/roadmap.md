@@ -400,13 +400,21 @@ real product domain, not just blog/community. Ship as a plugin package
   provider idempotency, exact result matching, `refunded` orders,
   refund-cancelled unshipped fulfillment, retained shipped fulfillment,
   all-or-none exact restock, manual-compensation state, audit, owner projection,
-  Admin, and Doctor share the same contract. Partial refunds and external
-  reversals remain future.
+  Admin, and Doctor share the same contract. External reversals remain future.
 - **Physical returns and receipt inventory (shipped)** — one shipped order may
   own one exact item-level return with owner request/cancellation, audited
   revision-safe staff approval/rejection/receipt, closed PII-free reasons,
   owner-safe projection, and all-or-none tracked inventory restoration.
-  Exchanges, jurisdiction policy, and payment refunds remain separate.
+  Exchanges, jurisdiction policy, and automatic payment refunds remain separate.
+- **Received-return partial refunds (shipped)** — a payment adapter may add one
+  exact partial refund for a received physical return. Immutable original item
+  prices, explicit bounded shipping/tax allocation, a stable provider
+  idempotency key, durable provider confirmation, full-refund exclusion,
+  direct-staff audit, owner-safe projection, Admin/Doctor diagnostics, Toss,
+  scaffold guidance, and PostgreSQL coverage share the contract. Receipt has
+  already restored inventory, so partial-refund completion never repeats that
+  transition or changes shipped fulfillment. Repeated or non-return partial
+  refunds and external reversals remain separate.
 - **Provider-neutral approved-return logistics (shipped)** — carrier adapters
   may add one paired return-shipment create/cancel capability over an approved
   owner-scoped item return and completed outbound booking. Drop-off or bounded
@@ -415,7 +423,7 @@ real product domain, not just blog/community. Ship as a plugin package
   confirmation, durable two-stage reconciliation, transient owner label bytes,
   PII-free Admin/Doctor diagnostics, scaffold guidance, cleanup, both skins,
   and PostgreSQL coverage share the contract. Return postage quotes, reverse
-  tracking, recurring pickup, exchanges/refunds, eligibility policy, and
+  tracking, recurring pickup, exchanges/automatic refunds, eligibility policy, and
   provider protocols remain separate.
 - **Provider-neutral shipping quote and selection (shipped)** — one optional
   build-time server adapter receives the exact private draft destination and
@@ -437,8 +445,9 @@ real product domain, not just blog/community. Ship as a plugin package
   customs/duties, and jurisdiction compliance remain separate.
 - **Inventory (shipped foundation)** — catalog stock/low-stock projection,
   transaction-safe pending holds, and atomic paid-order on-hand decrement
-  plus exact unshipped full-refund restoration exist; partial/external reversal
-  compensation remains future work.
+  plus exact unshipped full-refund restoration exist. Received-return partial
+  refunds deliberately do not compensate inventory a second time; other
+  payment-driven or external-reversal compensation remains future work.
 - **Public surfaces (shipped)** — product detail, listing, cart,
   checkout-intent, private order-draft, order-history, order-detail, and return
   intake pages

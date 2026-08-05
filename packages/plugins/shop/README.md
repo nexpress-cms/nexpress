@@ -71,6 +71,10 @@ It provides:
 - owner-scoped item-level physical return requests for shipped orders, with
   revision-safe cancellation, audited staff approval/rejection/receipt,
   all-or-none tracked-inventory restoration, and manual-reconciliation health;
+- optional provider-neutral partial refunds linked to one received physical
+  return, with exact original-price line allocation, explicit shipping/tax
+  allocation, one durable idempotency id, and no second inventory or
+  fulfillment transition;
 - optional owner-scoped return logistics for approved returns, with paired
   provider create/cancel idempotency, drop-off or bounded pickup mode, a
   maximum-24-hour private origin sidecar deleted on confirmation, transient
@@ -82,7 +86,7 @@ It provides:
 - featured-product and category-grid blocks.
 
 Provider-specific browser/server protocols, signature algorithms, credentials
-and rotation, partial refunds, reversals, exchanges, carrier label purchase,
+and rotation, repeated or non-return partial refunds, reversals, exchanges, carrier label purchase,
 recurring pickup,
 provider-specific tracking protocols,
 tax remittance/filing, invoices, exemptions, customs, and shipping policy
@@ -105,12 +109,12 @@ persisted. The same paired capability may independently add
 only the PII-free active return-shipment tuple and cannot complete warehouse
 receipt, inventory restoration, or payment compensation.
 `@nexpress/shop-payment-toss` is the bundled Toss
-Payments v2 initiation and full-refund adapter. Customer/shipping PII exists only in the short-lived
+Payments v2 initiation, full-refund, and received-return partial-refund adapter. Customer/shipping PII exists only in the short-lived
 private draft or order sidecar and stays outside content search, revisions,
 payment receipts, and transfer. A durable `pending-payment` order reference
 still does not imply that a visitor paid for a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
 for the exact price, SKU, inventory, cart, checkout-intent, private-draft,
-shipping-quote, tax-quote, pending-order, payment-attempt, fulfillment, parcel, carrier, pickup, tracking/polling, refund, return, return-logistics,
+shipping-quote, tax-quote, pending-order, payment-attempt, fulfillment, parcel, carrier, pickup, tracking/polling, full-refund, return-linked partial-refund, return, return-logistics,
 skin, block, and theme-integration contracts.

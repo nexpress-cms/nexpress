@@ -113,6 +113,7 @@ const messages = {
   orderCancelled: "취소됨",
   orderPaymentVerified: "결제 검증 완료",
   orderRefundedDetail: "전액 환불 완료",
+  orderPartialRefundedDetail: "반품 부분 환불 완료",
   orderPaymentFailedDetail: "결제 실패 상세",
   orderPrivateRetained: "개인정보 보관",
   orderPrivateRedacted: "개인정보 삭제",

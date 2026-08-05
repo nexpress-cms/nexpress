@@ -7,6 +7,10 @@ import type {
   NpShopPaymentPrepareResult,
 } from "./payment-attempt-contract.js";
 import type { NpShopPaymentRefundInput, NpShopPaymentRefundResult } from "./refund-contract.js";
+import type {
+  NpShopPaymentPartialRefundInput,
+  NpShopPaymentPartialRefundResult,
+} from "./partial-refund-contract.js";
 import { npShopCurrencies, type NpShopCurrency } from "./types.js";
 
 export const NP_SHOP_PAYMENT_EVENT_CONTRACT = "np.shop-payment-event.v1" as const;
@@ -94,10 +98,21 @@ export interface NpShopPaymentAdapter {
   refundPayment?(
     input: NpShopPaymentRefundInput,
   ): NpShopPaymentRefundResult | Promise<NpShopPaymentRefundResult>;
+  /**
+   * Cancel one exact amount linked to a received physical return. The refund
+   * UUID is the provider idempotency key; implementations must preserve the
+   * exact item, shipping, and tax allocation supplied by Shop.
+   */
+  refundPaymentPartially?(
+    input: NpShopPaymentPartialRefundInput,
+  ): NpShopPaymentPartialRefundResult | Promise<NpShopPaymentPartialRefundResult>;
 }
 
 export type NpShopPaymentRefundAdapter = NpShopPaymentAdapter &
   Required<Pick<NpShopPaymentAdapter, "refundPayment">>;
+
+export type NpShopPaymentPartialRefundAdapter = NpShopPaymentAdapter &
+  Required<Pick<NpShopPaymentAdapter, "refundPaymentPartially">>;
 
 export type NpShopPaymentInitiationAdapter = NpShopPaymentAdapter &
   Required<

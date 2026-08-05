@@ -67,9 +67,13 @@ describe("shop factory", () => {
       { id: "recentInventoryReservations", kind: "table" },
       { id: "recentOrders", kind: "table" },
       { id: "countRefunds", kind: "metric" },
+      { id: "countPartialRefunds", kind: "metric" },
       { id: "refundHealth", kind: "status" },
+      { id: "partialRefundHealth", kind: "status" },
       { id: "recentRefunds", kind: "table" },
+      { id: "recentPartialRefunds", kind: "table" },
       { id: "refundOrder", kind: "action" },
+      { id: "partialRefundReturn", kind: "action" },
       { id: "countReturns", kind: "metric" },
       { id: "returnHealth", kind: "status" },
       { id: "recentReturns", kind: "table" },
@@ -727,6 +731,47 @@ describe("shop factory", () => {
         ?.find((table) => table.id === "shop-recent-orders")
         ?.rowActions?.flatMap((action) => (action.type === "download" ? [] : [action.actionId])),
     ).toEqual(["refundOrder"]);
+  });
+
+  it("exposes return-linked partial refunds only for an explicit adapter capability", () => {
+    const withoutPartialRefund = createShop({
+      payment: { adapter: { id: "test-pay", verifyWebhook: () => null } },
+    });
+    expect(withoutPartialRefund.runtime.paymentPartialRefundAdapter).toBeNull();
+    expect(
+      withoutPartialRefund.plugin.manifest.provides.adminExtensions?.includes(
+        "action:shop-return-partial-refund",
+      ) ?? false,
+    ).toBe(false);
+    expect(
+      withoutPartialRefund.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-returns")
+        ?.rowActions?.map((action) => action.id),
+    ).not.toContain("partial-refund-return");
+    expect(
+      withoutPartialRefund.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-partial-refunds")
+        ?.rowActions?.map((action) => action.id),
+    ).toContain("resume-partial-refund");
+
+    const withPartialRefund = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: () => null,
+          refundPaymentPartially: () => {
+            throw new Error("not called");
+          },
+        },
+      },
+    });
+    expect(withPartialRefund.runtime.paymentPartialRefundAdapter?.id).toBe("test-pay");
+    expect(withPartialRefund.plugin.actions?.partialRefundReturn?.kind).toBe("action");
+    expect(
+      withPartialRefund.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-returns")
+        ?.rowActions?.map((action) => action.id),
+    ).toContain("partial-refund-return");
   });
 
   it("applies custom paths, collection slugs, and skins across the contract", () => {

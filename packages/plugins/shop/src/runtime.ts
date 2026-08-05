@@ -17,6 +17,7 @@ import {
 import type {
   NpShopPaymentAdapter,
   NpShopPaymentInitiationAdapter,
+  NpShopPaymentPartialRefundAdapter,
   NpShopPaymentRefundAdapter,
 } from "./payment-contract.js";
 import type { NpShopShippingAdapter } from "./shipping-contract.js";
@@ -56,6 +57,7 @@ export interface NpShopRuntime {
   paymentAdapter: NpShopPaymentAdapter | null;
   paymentInitiationAdapter: NpShopPaymentInitiationAdapter | null;
   paymentRefundAdapter: NpShopPaymentRefundAdapter | null;
+  paymentPartialRefundAdapter: NpShopPaymentPartialRefundAdapter | null;
   shippingAdapter: NpShopShippingAdapter | null;
   taxAdapter: NpShopTaxAdapter | null;
   carrierAdapter: NpShopCarrierAdapter | null;
@@ -565,6 +567,7 @@ export async function getShopMessages(): Promise<NpShopMessages> {
     "orderCancelled",
     "orderPaymentVerified",
     "orderRefundedDetail",
+    "orderPartialRefundedDetail",
     "orderPaymentFailedDetail",
     "orderPrivateRetained",
     "orderPrivateRedacted",

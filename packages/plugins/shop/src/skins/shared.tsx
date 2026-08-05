@@ -102,6 +102,7 @@ function cartClientMessages(messages: NpShopMessages): NpShopCartClientMessages 
     orderCancelled: messages.orderCancelled,
     orderPaymentVerified: messages.orderPaymentVerified,
     orderRefundedDetail: messages.orderRefundedDetail,
+    orderPartialRefundedDetail: messages.orderPartialRefundedDetail,
     orderPaymentFailedDetail: messages.orderPaymentFailedDetail,
     orderPrivateRetained: messages.orderPrivateRetained,
     orderPrivateRedacted: messages.orderPrivateRedacted,

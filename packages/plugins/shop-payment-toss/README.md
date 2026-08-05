@@ -4,7 +4,8 @@ Toss Payments v2 integration for `@nexpress/plugin-shop`. The package exports
 an adapter rather than a standalone NexPress plugin: Shop owns orders,
 inventory, attempts, and Admin diagnostics, while this package owns the Toss
 browser SDK handoff, secret-key confirmation, query-verified webhook
-projection, and idempotent full-payment cancellation.
+projection, idempotent full-payment cancellation, and one exact partial
+cancellation linked to a received physical return.
 
 ```ts
 import { createShop } from "@nexpress/plugin-shop";
@@ -49,5 +50,15 @@ Partial cancellation responses fail closed. Shop—not this adapter—then owns
 the local order, fulfillment, privacy, inventory-compensation, audit, and
 Admin/Doctor transitions.
 
-Reversals, virtual accounts, billing, settlement, partial refunds, returns,
-tax, shipping, and carrier integrations remain separate contracts.
+After Shop has received one physical return, **Refund returned items** uses
+the same cancel endpoint with an exact `cancelAmount` and the durable partial
+refund UUID as `Idempotency-Key`. Shop derives the returned-item amount from
+the immutable order prices; staff may add only explicit shipping and tax
+allocations within the frozen order components. The adapter requires a
+`PARTIAL_CANCELED` response whose completed cancellation, remaining balance,
+payment reference, and amount all match. Shop persists provider confirmation
+before local completion and does not repeat the return's inventory restoration
+or change its shipped fulfillment.
+
+Repeated or non-return partial refunds, reversals, virtual accounts, billing,
+settlement, exchanges, tax, shipping, and carrier integrations remain separate contracts.

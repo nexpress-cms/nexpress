@@ -14,6 +14,7 @@ provider-neutral carrier pickup scheduling and cancellation,
 verified or reconciled carrier tracking events and owner-visible delivery state,
 provider-neutral full refunds with safe inventory
 compensation, owner-scoped item return intake with audited receipt inventory,
+provider-neutral partial refunds linked to received returns,
 optional owner-scoped return shipment/drop-off or pickup creation with transient labels,
 Admin collection forms and health actions, blocks, and skins.
 
@@ -29,7 +30,7 @@ optional build-time adapter may prepare a provider handoff, confirm the
 browser return on the server, authenticate an external callback, and project
 the exact provider-neutral event that moves that order to `paid` or
 `payment-failed`. A refund-capable adapter may also cancel one entire provider
-payment. Shop owns attempts, order/refund transitions, fulfillment and return
+payment or one exact amount linked to a received physical return. Shop owns attempts, order/refund transitions, fulfillment and return
 state, carrier booking/pickup/tracking/return-logistics receipts, and local compensation, but does not choose a provider protocol, remit
 or file tax, issue tax invoices, decide exemptions, physically fulfill goods,
 purchase/regenerate outbound labels, schedule recurring pickups, implement a provider protocol, or decide jurisdiction-specific return eligibility.
@@ -1088,7 +1089,7 @@ customer-service policy.
 
 `refundPayment` is an additive adapter capability. When present, the recent
 orders table exposes a direct-staff-only **Full refund** action for `paid`
-orders. Partial refund amounts are deliberately absent from the action and
+orders. Arbitrary partial refund amounts are deliberately absent from the action and
 adapter input. Shop first writes one PII-free `pending` refund with a canonical
 UUID and append-only staff audit event, then calls the provider outside the
 database transaction. Every retry reuses that UUID as the provider idempotency
@@ -1152,8 +1153,41 @@ fulfillment.
 
 This contract deliberately does not implement exchanges, automatic approval
 windows, return shipping fees, labels, pickup booking, warehouse inspection
-policy, or payment refunds. Sites must publish and enforce their own legal and
+policy, or automatic payment refunds. Sites must publish and enforce their own legal and
 customer-service policy around this neutral intake state machine.
+
+## Received-return partial refunds
+
+`refundPaymentPartially` is an additive payment-adapter capability independent
+of `refundPayment`. When present, a received physical return gains one
+direct-staff **Refund returned items** action. Shop automatically allocates the
+original immutable unit price times every received return quantity. Staff
+cannot alter those item amounts; they provide canonical non-negative minor-unit
+shipping and additional-tax allocations, each bounded by the corresponding
+frozen order component, plus one bounded PII-free provider reason.
+
+The resulting amount must be positive and strictly smaller than the order
+total. An exact-total request must use the full-refund contract instead. A
+full-refund record and a partial-refund record are mutually exclusive, and this
+bounded v1 contract permits only one partial refund for one received return on
+an order. Repeated partial refunds, goodwill adjustments, and refunds without a
+received return remain external.
+
+Shop first stores one `np.shop-partial-refund-storage.v1` row and staff audit,
+then calls the provider outside the transaction using its stable refund UUID as
+the idempotency key. The provider result must exactly match refund, order,
+return, payment reference, currency, amount, and timestamp. Shop persists a
+valid success as `provider-confirmed` before the final local transaction;
+retryable ambiguity remains `pending`, while a definitive rejection or result
+mismatch becomes bounded `manual-review` work. Recovery rows reuse the same
+action and immutable allocation.
+
+Local completion increments the commercial order revision only. It does not
+change the paid order status, shipped fulfillment, return state, or inventory:
+the warehouse receipt already performed the one allowed all-or-none inventory
+restoration. Owner order detail receives only the bounded allocation, status,
+amount, and timestamps. Provider references, operator reason, owner identity,
+and provider errors stay out of that projection and out of Doctor diagnostics.
 
 ## Payment initiation and Toss Payments
 
@@ -1228,6 +1262,11 @@ the Shop refund UUID as `Idempotency-Key`, no `cancelAmount`, and exact
 validation of `CANCELED`, zero remaining balance, completed cancellation
 amount, transaction key, and timestamp. A partial cancellation response fails
 closed and cannot become a Shop refund.
+For a received return, `refundPaymentPartially` sends the exact Shop amount as
+`cancelAmount` with the partial-refund UUID as `Idempotency-Key`. It accepts
+only a matching `PARTIAL_CANCELED` payment, one completed cancellation for that
+amount, and a consistent remaining balance. Any mismatch fails closed before
+Shop records provider confirmation.
 
 In a generated project, `defaultCollections` and `defaultPlugins` already
 contain the disabled default Shop instance. Filter the two Shop collections
@@ -1241,7 +1280,7 @@ The two collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
-The plugin declares fifteen baseline typed dashboard metric actions:
+The plugin declares these baseline typed dashboard metric actions:
 
 - total product rows;
 - published low-stock products;
@@ -1264,6 +1303,8 @@ The plugin declares fifteen baseline typed dashboard metric actions:
   and durable polling leases/backoff.
 - verified PII-free payment-event receipts.
 - durable full-refund attempts and compensation outcomes.
+- durable received-return partial-refund attempts and exact item/shipping/tax
+  allocations.
 - item-level physical returns split across requested, approved, rejected,
   received, and owner-cancelled states.
 
@@ -1319,6 +1360,13 @@ from the order table remains conditional on `refundPayment`; the refund table
 always references the same direct-staff handler so a `provider-confirmed` row
 can finish local reconciliation even after the provider adapter is removed.
 Doctor therefore sees neither a dangling handler nor a missing recovery path.
+Partial-refund health independently reports pending provider calls,
+provider-confirmed local reconciliation, definitive manual review, malformed
+rows, and missing or mismatched lookup/order/return/fulfillment relationships. Its bounded table exposes only provider,
+order, return and refund ids, exact allocation amounts, status, bounded error
+code, and timestamps. The received-return action appears only when
+`refundPaymentPartially` is configured; its recovery table retains the typed
+handler inventory even when the adapter is later removed.
 Return health reports only counts for malformed/orphan rows, requests awaiting
 review, approved returns awaiting receipt, and manual inventory reconciliation.
 The direct-staff bounded table additionally exposes order/return ids,
@@ -1434,8 +1482,8 @@ Existing `classic` and `storefront-full` ids cannot be replaced.
 Future transaction work should remain separable from this foundation:
 
 1. additional provider packages for Stripe or KG Inicis;
-2. authorization/capture, settlement, provider-initiated reversal, and partial
-   refund contracts;
+2. authorization/capture, settlement, provider-initiated reversal, and
+   repeated or non-return partial-refund contracts;
 3. carrier label purchase/regeneration, recurring pickup, provider-specific
    tracking packages, exchanges, and customer-service policy;
 4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and

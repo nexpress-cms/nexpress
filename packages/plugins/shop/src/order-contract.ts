@@ -17,6 +17,10 @@ import {
 } from "./types.js";
 import { npAnalyzeShopFulfillment, npShopFulfillmentLimits } from "./fulfillment-contract.js";
 import { NP_SHOP_REFUND_CONTRACT, npAnalyzeStoredShopRefund } from "./refund-contract.js";
+import {
+  NP_SHOP_PARTIAL_REFUND_CONTRACT,
+  npAnalyzeShopPartialRefund,
+} from "./partial-refund-contract.js";
 import { NP_SHOP_RETURN_CONTRACT, npAnalyzeShopReturn } from "./return-contract.js";
 import { npAnalyzeShopDeliveryMethod, type NpShopDeliveryMethod } from "./shipping-contract.js";
 import { npAnalyzeShopTaxQuote, type NpShopTaxQuote } from "./tax-contract.js";
@@ -746,7 +750,16 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
   const issues: string[] = [];
   if (!isRecord(value)) return ["order must be a plain object."];
   for (const key of Object.keys(value)) {
-    if (![...publicOrderKeys, "fulfillment", "tracking", "refund", "returnRequest"].includes(key)) {
+    if (
+      ![
+        ...publicOrderKeys,
+        "fulfillment",
+        "tracking",
+        "refund",
+        "partialRefund",
+        "returnRequest",
+      ].includes(key)
+    ) {
       issues.push(`order.${key} is not supported.`);
     }
   }
@@ -763,6 +776,7 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
   delete storedCandidate.fulfillment;
   delete storedCandidate.tracking;
   delete storedCandidate.refund;
+  delete storedCandidate.partialRefund;
   delete storedCandidate.returnRequest;
   issues.push(...npAnalyzeStoredShopOrder(storedCandidate));
   if (value.contract !== NP_SHOP_ORDER_CONTRACT) {
@@ -872,6 +886,30 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
     }
   } else if (value.status === "refunded") {
     issues.push("refunded orders require a projected refund.");
+  }
+  if (Object.hasOwn(value, "partialRefund")) {
+    issues.push(
+      ...npAnalyzeShopPartialRefund(value.partialRefund).map((issue) => `order.${issue}`),
+    );
+    if (
+      !isRecord(value.partialRefund) ||
+      value.partialRefund.contract !== NP_SHOP_PARTIAL_REFUND_CONTRACT ||
+      value.partialRefund.currency !== value.currency ||
+      !Number.isSafeInteger(value.partialRefund.amountMinor) ||
+      !Number.isSafeInteger(value.totalMinor) ||
+      (value.partialRefund.amountMinor as number) >= (value.totalMinor as number) ||
+      value.status !== "paid" ||
+      !isRecord(value.fulfillment) ||
+      value.fulfillment.status !== "shipped" ||
+      !isRecord(value.returnRequest) ||
+      value.returnRequest.status !== "received" ||
+      value.partialRefund.returnId !== value.returnRequest.id ||
+      Object.hasOwn(value, "refund")
+    ) {
+      issues.push(
+        "order.partialRefund must match one paid shipped order, its received return, currency, and bounded non-full amount.",
+      );
+    }
   }
   if (Object.hasOwn(value, "returnRequest")) {
     issues.push(...npAnalyzeShopReturn(value.returnRequest).map((issue) => `order.${issue}`));
