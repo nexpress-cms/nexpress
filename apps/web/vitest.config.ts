@@ -36,6 +36,10 @@ export default defineConfig({
     // are deliberately process-wide; sharing them avoids re-importing
     // `@nexpress/core` (and its transitive graph) on every file.
     isolate: false,
+    // Collection growth makes the shared TRUNCATE occasionally wait longer
+    // than Vitest's 10s hook default under CI checkpoint pressure. Keep hooks
+    // aligned with the existing per-test budget without reducing parallelism.
+    hookTimeout: 30_000,
     testTimeout: 30_000,
   },
 });
