@@ -29,6 +29,12 @@ integers, and over-bound values throw `NpSearchContractError` before dispatch.
 | `siteId`      | Optional canonical site id; defaults to current site, then `default`.    |
 | `visibility`  | `public` (default) or trusted server-only `all`.                         |
 
+Collections participate by default when their generated table has a search
+vector. Set `search: false` on an internal collection to exclude it from the
+default catalog, explicit collection filters, reindex jobs, and external index
+writes. This is appropriate when a separate API owns a narrower public
+projection; it avoids sending private source rows to either search backend.
+
 The candidate-row budget is 50,000:
 `(offset + limit) × selected searchable collections`. This stops a deep page
 across many collections before it fans out into expensive queries.
@@ -128,11 +134,14 @@ can omit `indexing`. When present, indexing is the exact
 `{ contract: "document-v1", write, replaceCollection }` capability; both
 methods must resolve to void. `NpSearchAdapterContext` contains normalized `q`,
 `limit`, `offset`, resolved `siteId`, and `visibility`, plus optional
-`collections` and `locale`. Its required framework-derived `audience` object is
-exactly `{ mode: "public" | "all", collections: string[] }`. The list contains
+`collections` and `locale`. The framework resolver always supplies the complete
+search-enabled `collections` inventory, including when the caller omitted an
+explicit filter, so adapters must scope every query to that list. Its required
+framework-derived `audience` object is exactly
+`{ mode: "public" | "all", collections: string[] }`. The audience list contains
 only selected collections that opted into `community.audience`; it can be empty
 or represent one subset of a mixed catalog. Adapters must filter both hits and
-`total` / `perCollection` counts by that scope. They own only the candidate
+`total` / `perCollection` counts by those scopes. They own only the candidate
 envelope: `results`, `total`, and `perCollection`.
 
 Framework code that previously constructed an adapter context directly should
@@ -194,7 +203,7 @@ overlap reindex and does not satisfy `document-v1`.
 
 ## Built-in Postgres path and cache
 
-The built-in path queries each registered collection with a `search_vector`,
+The built-in path queries each search-enabled registered collection with a `search_vector`,
 applies the exact site/visibility/status scope through `findDocuments()`, and
 globally reranks the bounded candidates. Locale filtering applies to i18n
 collections and is ignored by non-i18n collections.

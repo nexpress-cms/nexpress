@@ -1,6 +1,7 @@
 ---
 "@nexpress/plugin-shop": patch
 "@nexpress/theme-storefront": patch
+"@nexpress/core": patch
 "create-nexpress": patch
 ---
 

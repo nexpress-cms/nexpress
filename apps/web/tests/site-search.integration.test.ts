@@ -106,8 +106,19 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
       { params: Promise.resolve({ slug: "posts" }) },
     );
 
-    const { searchCollections } = await import("@nexpress/core");
+    const { getSearchCollectionLabels, resolveSearchAdapterContext, searchCollections } =
+      await import("@nexpress/core");
     const result = await searchCollections({ q: "brown" });
+    expect(getSearchCollectionLabels()).not.toHaveProperty("shop-product-reviews");
+    const adapterCollections = resolveSearchAdapterContext({
+      q: "brown",
+      limit: 10,
+      offset: 0,
+      siteId: "default",
+      visibility: "public",
+    }).collections;
+    expect(adapterCollections).toContain("posts");
+    expect(adapterCollections).not.toContain("shop-product-reviews");
     expect(result.total).toBeGreaterThanOrEqual(1);
     const hit = result.results.find(
       (r) => r.collection === "posts" && (r.doc as { slug: string }).slug === "quick-brown-fox",
@@ -300,6 +311,7 @@ describe.skipIf(skipIfNoTestDb())("site search (Phase 10.2)", () => {
       "http://localhost:3000/api/search?q=x&debug=1",
       "http://localhost:3000/api/search?q=x&page=2&offset=10",
       "http://localhost:3000/api/search?q=x&collections=posts,%20pages",
+      "http://localhost:3000/api/search?q=x&collections=shop-product-reviews",
       "http://localhost:3000/api/search?q=&collections=missing",
     ];
 

@@ -2,11 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 const runtime = vi.hoisted(() => ({
   document: null as Record<string, unknown> | null,
+  search: true,
 }));
 const hydrate = vi.hoisted(() => vi.fn());
 
 vi.mock("./registry.js", () => ({
-  getCollectionConfig: () => ({ community: { audience: true } }),
+  getCollectionConfig: () => ({ search: runtime.search, community: { audience: true } }),
   getCollectionTable: () => ({ searchVector: {} }),
 }));
 vi.mock("./pipeline.js", () => ({
@@ -39,6 +40,7 @@ function persistedDocument(id: string): Record<string, unknown> {
 afterEach(() => {
   resetSearchAdapter();
   runtime.document = null;
+  runtime.search = true;
   hydrate.mockClear();
 });
 
@@ -52,6 +54,34 @@ describe("external search index synchronization", () => {
     });
     await npSyncSearchIndexDocument("forum-posts", "post-1", "default");
     expect(hydrate).not.toHaveBeenCalled();
+  });
+
+  it("does not expose search-disabled collections to external indexing", async () => {
+    const write = vi.fn();
+    const replaceCollection = vi.fn();
+    setSearchAdapter({
+      kind: "capture",
+      audience: "document-v1",
+      search: () => null,
+      indexing: {
+        contract: "document-v1",
+        write,
+        replaceCollection,
+      },
+    });
+    runtime.search = false;
+    runtime.document = persistedDocument("review-1");
+
+    await npSyncSearchIndexDocument("shop-product-reviews", "review-1", "default");
+    await npReplaceSearchCollectionIndex(
+      "shop-product-reviews",
+      [{ documentId: "review-1", siteId: "default" }],
+      "2026-08-06T00:00:00.000Z",
+    );
+
+    expect(hydrate).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+    expect(replaceCollection).not.toHaveBeenCalled();
   });
 
   it("dispatches exact latest-state upserts and deletes", async () => {

@@ -556,6 +556,7 @@ export function defineShopProductReviewsCollection(runtime: NpShopRuntime): NpCo
   return defineCollection({
     slug: runtime.collections.reviews,
     labels: { singular: "Product review", plural: "Product reviews" },
+    search: false,
     admin: {
       group: "Commerce",
       listColumns: ["title", "product", "rating", "verifiedPurchase", "status", "updatedAt"],
