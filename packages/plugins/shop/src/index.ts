@@ -18,6 +18,7 @@ import {
   defineShopCategoriesCollection,
   defineShopProductsCollection,
   defineShopPromotionsCollection,
+  defineShopShippingPoliciesCollection,
 } from "./collections.js";
 import { createShopHomeBlocks, shopHomePatterns } from "./home-blocks.js";
 import {
@@ -162,6 +163,11 @@ import {
   npRequireShopShippingProviderId,
   type NpShopShippingAdapter,
 } from "./shipping-contract.js";
+import { NP_SHOP_SHIPPING_POLICY_PROVIDER_ID } from "./shipping-policy-contract.js";
+import {
+  npInspectShopShippingPolicies,
+  npListShopShippingPolicies,
+} from "./shipping-policy-service.js";
 import { npRequireShopTaxProviderId, type NpShopTaxAdapter } from "./tax-contract.js";
 import { classicShopSkin } from "./skins/classic.js";
 import { storefrontFullShopSkin } from "./skins/storefront-full.js";
@@ -249,16 +255,18 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     categories: options.collections?.categories ?? "shop-categories",
     products: options.collections?.products ?? "shop-products",
     promotions: options.collections?.promotions ?? "shop-promotions",
+    shippingPolicies: options.collections?.shippingPolicies ?? "shop-shipping-policies",
   };
   if (
     !SAFE_SEGMENT.test(collections.categories) ||
     !SAFE_SEGMENT.test(collections.products) ||
-    !SAFE_SEGMENT.test(collections.promotions)
+    !SAFE_SEGMENT.test(collections.promotions) ||
+    !SAFE_SEGMENT.test(collections.shippingPolicies)
   ) {
     throw new Error("Shop collection slugs must be lowercase literal segments.");
   }
-  if (new Set(Object.values(collections)).size !== 3) {
-    throw new Error("Shop category, product, and promotion collection slugs must be different.");
+  if (new Set(Object.values(collections)).size !== 4) {
+    throw new Error("Shop collection slugs must be different.");
   }
   const configuredPaymentAdapter = options.payment?.adapter ?? null;
   let paymentAdapter: NpShopPaymentAdapter | null = null;
@@ -323,6 +331,11 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   let shippingAdapter: NpShopShippingAdapter | null = null;
   if (configuredShippingAdapter) {
     const id = npRequireShopShippingProviderId(configuredShippingAdapter.id);
+    if (id === NP_SHOP_SHIPPING_POLICY_PROVIDER_ID) {
+      throw new Error(
+        `Shop shipping adapter id "${NP_SHOP_SHIPPING_POLICY_PROVIDER_ID}" is reserved for local policies.`,
+      );
+    }
     if (typeof configuredShippingAdapter.quoteShipping !== "function") {
       throw new Error("Shop shipping adapter quoteShipping must be a function.");
     }
@@ -998,10 +1011,12 @@ const messages = {
  */
 export function createShop(options: NpShopOptions = {}) {
   const runtime = createRuntime(options);
+  const shippingMode = runtime.shippingAdapter?.id ?? `${NP_SHOP_SHIPPING_POLICY_PROVIDER_ID}/zero`;
   const collections = [
     defineShopCategoriesCollection(runtime),
     defineShopProductsCollection(runtime),
     defineShopPromotionsCollection(runtime),
+    defineShopShippingPoliciesCollection(runtime),
   ] as const;
   const blocks = createShopHomeBlocks(runtime);
   const cartApiHandler = createShopCartApiHandler(runtime);
@@ -1072,7 +1087,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, provider-neutral shipping and additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, outbound and return tracking, physical returns, return-linked partial refunds, return logistics, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, bounded carts, checkout intents, private order drafts, built-in shipping policies or provider-neutral quotes, additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, outbound and return tracking, physical returns, return-linked partial refunds, return logistics, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -1091,12 +1106,15 @@ export function createShop(options: NpShopOptions = {}) {
           runtime.collections.categories,
           runtime.collections.products,
           runtime.collections.promotions,
+          runtime.collections.shippingPolicies,
         ],
         adminExtensions: [
           "dashboard:shop-products",
           "dashboard:shop-low-stock",
           "dashboard:shop-promotions",
           "widget:shop-promotion-health",
+          "dashboard:shop-shipping-policies",
+          "widget:shop-shipping-policy-health",
           "dashboard:shop-carts",
           "widget:shop-cart-health",
           "action:shop-cart-cleanup",
@@ -1184,7 +1202,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, bounded cart, checkout-intent, private order-draft, optional provider-neutral shipping and additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with transient labels, and independent verified or reconciled reverse tracking. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, and provider-specific carrier protocols remain external.",
+          "Catalog, promotions, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with transient labels, and independent verified or reconciled reverse tracking. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: ["shop", "catalog", "product", "inventory", "storefront"],
       },
@@ -1263,6 +1281,14 @@ export function createShop(options: NpShopOptions = {}) {
           actionId: "countPromotions",
           description: "Automatic and coupon campaigns currently published for evaluation.",
           priority: 21,
+        },
+        {
+          id: "shop-shipping-policies-total",
+          label: "Published shipping policies",
+          kind: "metric",
+          actionId: "countShippingPolicies",
+          description: "Published local base-rate and surcharge rules for this site.",
+          priority: 20,
         },
         {
           id: "shop-carts-total",
@@ -1426,6 +1452,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Promotion usage contract",
           kind: "status",
           actionId: "promotionHealth",
+        },
+        {
+          id: "shop-shipping-policy-health",
+          label: "Shipping policy contract",
+          kind: "status",
+          actionId: "shippingPolicyHealth",
         },
         {
           id: "shop-cart-health",
@@ -2277,6 +2309,54 @@ export function createShop(options: NpShopOptions = {}) {
       ],
     },
     actions: {
+      countShippingPolicies: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const definitions = await npListShopShippingPolicies(runtime);
+            return { ok: true, data: { value: definitions.length, delta: "published" } };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      shippingPolicyHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const inspection = await npInspectShopShippingPolicies(runtime);
+            if (inspection.surchargeOnlyMethodCodes.length > 0) {
+              return npAdminStatus(
+                "error",
+                `Shipping surcharge method(s) have no base rule: ${inspection.surchargeOnlyMethodCodes.join(", ")}.`,
+              );
+            }
+            if (runtime.shippingAdapter && inspection.published > 0) {
+              return npAdminStatus(
+                "warn",
+                `${inspection.published.toString()} local rule(s) are inactive while external provider ${runtime.shippingAdapter.id} is configured.`,
+              );
+            }
+            if (inspection.published === 0) {
+              return npAdminStatus(
+                "ok",
+                runtime.shippingAdapter
+                  ? `External shipping provider ${runtime.shippingAdapter.id} is active.`
+                  : "No shipping policies are published; checkout keeps the zero-shipping fallback.",
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${inspection.baseRules.toString()} base and ${inspection.surchargeRules.toString()} surcharge rule(s) across ${inspection.methodCodes.toString()} method(s).`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Shipping policy health check failed.",
+            );
+          }
+        },
+      },
       countPromotions: {
         kind: "metric",
         handler: async (_data, ctx) => {
@@ -2464,7 +2544,7 @@ export function createShop(options: NpShopOptions = {}) {
               ok: true,
               data: {
                 value: counts.collecting + counts.shippingSelectionRequired + counts.reviewable,
-                delta: `${counts.shippingSelectionRequired.toString()} awaiting delivery selection; ${counts.expired.toString()} expired; shipping ${runtime.shippingAdapter?.id ?? "disabled"}; tax ${runtime.taxAdapter?.id ?? "disabled"}`,
+                delta: `${counts.shippingSelectionRequired.toString()} awaiting delivery selection; ${counts.expired.toString()} expired; shipping ${shippingMode}; tax ${runtime.taxAdapter?.id ?? "disabled"}`,
               },
             };
           } catch (error) {
@@ -2508,11 +2588,11 @@ export function createShop(options: NpShopOptions = {}) {
               : counts.expired > 0
                 ? npAdminStatus(
                     "warn",
-                    `${counts.collecting.toString()} collecting, ${counts.shippingSelectionRequired.toString()} awaiting delivery selection, ${counts.reviewable.toString()} reviewable, ${counts.expired.toString()} expired draft(s); shipping ${runtime.shippingAdapter?.id ?? "disabled"}; tax ${runtime.taxAdapter?.id ?? "disabled"}; values are withheld.`,
+                    `${counts.collecting.toString()} collecting, ${counts.shippingSelectionRequired.toString()} awaiting delivery selection, ${counts.reviewable.toString()} reviewable, ${counts.expired.toString()} expired draft(s); shipping ${shippingMode}; tax ${runtime.taxAdapter?.id ?? "disabled"}; values are withheld.`,
                   )
                 : npAdminStatus(
                     "ok",
-                    `${counts.collecting.toString()} collecting, ${counts.shippingSelectionRequired.toString()} awaiting delivery selection, ${counts.reviewable.toString()} reviewable private draft(s); shipping ${runtime.shippingAdapter?.id ?? "disabled"}; tax ${runtime.taxAdapter?.id ?? "disabled"}; values are withheld.`,
+                    `${counts.collecting.toString()} collecting, ${counts.shippingSelectionRequired.toString()} awaiting delivery selection, ${counts.reviewable.toString()} reviewable private draft(s); shipping ${shippingMode}; tax ${runtime.taxAdapter?.id ?? "disabled"}; values are withheld.`,
                   );
           } catch (error) {
             return npAdminStatus(
@@ -5006,6 +5086,22 @@ export type {
   NpShopPromotionDefinition,
   NpShopPromotionEvaluationLine,
 } from "./promotion-contract.js";
+export {
+  NP_SHOP_SHIPPING_POLICY_PROVIDER_ID,
+  npEvaluateShopShippingPolicies,
+  npNormalizeShopShippingPolicy,
+  npShopShippingPolicyLimits,
+} from "./shipping-policy-contract.js";
+export type {
+  NpShopShippingPolicyCartScope,
+  NpShopShippingPolicyDefinition,
+  NpShopShippingPolicyDestinationScope,
+  NpShopShippingPolicyDocument,
+  NpShopShippingPolicyEvaluation,
+  NpShopShippingPolicyKind,
+  NpShopShippingPolicyLine,
+  NpShopShippingPolicyThresholdBasis,
+} from "./shipping-policy-contract.js";
 export type {
   NpShopAppliedPromotion,
   NpShopCartClientMessages,

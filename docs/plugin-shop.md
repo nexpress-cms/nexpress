@@ -1,10 +1,10 @@
 # Shop plugin and Storefront theme
 
 `@nexpress/plugin-shop` is the first-party catalog foundation for NexPress.
-It owns product, category, and promotion data, inventory projection, public catalog
+It owns product, category, promotion, and local shipping-policy data, inventory projection, public catalog
 routes, bounded guest/member carts, checkout intents, private order drafts,
-durable orders, transaction-safe inventory reservations, an optional
-provider-neutral shipping quote and selected delivery snapshot, an optional
+durable orders, transaction-safe inventory reservations, local or optional
+external provider-neutral shipping quotes and selected delivery snapshots, an optional
 provider-neutral additional-tax quote and frozen tax snapshot, an optional
 provider-neutral payment initiation and verified-event boundary, revision-safe
 fulfillment operations, optional provider-neutral carrier booking,
@@ -44,12 +44,14 @@ migration:
 1. Open Admin → Commerce → Shop categories and publish categories.
 2. Open Admin → Commerce → Products and publish products.
 3. Optionally publish automatic promotions or coupon codes under Commerce → Promotions.
-4. Visit `/shop`.
-5. Add a product to the cart, visit `/shop/cart`, create a short-lived
+4. Optionally publish a base delivery rule and regional surcharges under
+   Commerce → Shipping policies.
+5. Visit `/shop`.
+6. Add a product to the cart, visit `/shop/cart`, create a short-lived
    checkout intent, continue to the 24-hour private order draft, and optionally
    create a durable pending order reference.
-6. Optionally activate Storefront from Admin → Appearance.
-7. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
+7. Optionally activate Storefront from Admin → Appearance.
+8. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
    or insert the `shop.storefront-home` pattern.
 
 Sites upgrading from a version without Shop must generate, review, and apply
@@ -267,12 +269,12 @@ Shop exposes `GET`, `POST`, `PUT`, `PATCH`, and `DELETE` at
   for another intent returns HTTP 409.
 - A newly created draft is `collecting` and contains no PII.
 - `PATCH { draftId, expectedRevision, customer, shipping }` atomically
-  replaces the complete bounded customer/shipping pair. With no shipping
-  adapter, Shop requests any configured tax quote and then makes the draft
-  `reviewable` with zero shipping amount. With a shipping adapter, Shop
-  requests fresh methods outside the database transaction and persists them
-  only after rechecking the same draft revision. Stale provider responses
-  therefore cannot overwrite a newer address.
+  replaces the complete bounded customer/shipping pair. Shop first uses a
+  configured external shipping adapter, otherwise evaluates published local
+  shipping policies. With neither, it requests any configured tax quote and
+  makes the draft `reviewable` with zero shipping amount. Fresh methods are
+  persisted only after rechecking the same draft revision, so stale results
+  cannot overwrite a newer address.
 - A quoted draft becomes `shipping-selection-required`. `PUT { draftId,
 expectedRevision, methodId }` accepts only one method from the current,
   unexpired quote, requests any configured tax quote outside the transaction,
@@ -324,11 +326,56 @@ database access, encryption and backup-retention policy. Restoring a database
 backup can restore data that existed when that backup was taken, so backup
 expiry and deletion procedures must match the site's policy.
 
-## Shipping quote and delivery selection
+## Local shipping policies
 
-Shipping is disabled in the default `shopPlugin`, preserving the existing
-zero-shipping checkout. A project can register one server-only adapter on the
-same `createShop()` factory used for collections and routes:
+The private `shop-shipping-policies` Commerce collection provides a built-in,
+provider-neutral rate engine for common Korean delivery rules. A site may
+publish up to 500 rules. Every rule belongs to one lowercase `methodCode` such
+as `standard` or `express` and is either:
+
+- a **base** rule: the highest-priority matching base becomes that method's
+  label, delivery estimate, base amount, and optional free-shipping threshold;
+- a **surcharge** rule: every matching surcharge with the same method code is
+  added after the base is selected.
+
+Rules can match all destinations, one ISO country, normalized postal-code
+prefixes, or normalized administrative-area names. They can independently
+match every cart, selected products, or selected categories, and may have an
+active time window and priority. A free-shipping threshold can use either the
+gross product subtotal or the subtotal after promotions. It waives only the
+base amount; island, mountain, oversize, refrigerated, or other applicable
+surcharges remain payable.
+
+For a typical Korean setup, publish a `standard` KR base rule for 3,000 KRW
+with a 50,000 KRW discounted-subtotal threshold, then add `standard` surcharge
+rules for the site's maintained 제주/도서산간 postal prefixes. Postal codes are
+normalized by removing spaces and hyphens before prefix matching. Do not treat
+example prefixes as a permanent carrier coverage list: operators must maintain
+their own current service areas and amounts.
+
+Only method codes with a matching base are offered. If at least one local rule
+is published but no base method serves the current cart and destination, Shop
+fails closed with `shipping_unavailable`; it does not silently make shipping
+free. With no published local rules and no external adapter, the prior
+zero-shipping fallback remains. An external `shipping.adapter` always wins;
+local rules remain stored but inactive, and Admin health warns about the
+override rather than combining two pricing authorities.
+
+Policy writes normalize and validate all scopes, amounts, estimates, dates,
+relationships, and destination rows before persistence and force private
+visibility. Generic public reads, discovery, and search therefore do not expose
+the operational rule set. The runtime revalidates published documents, bounds
+methods and components, produces a PII-free `shop-policy` quote id, and limits
+its expiry to both the draft quote window and every applied rule's end time.
+Admin exposes published count and closed policy health; surcharge-only method
+codes are errors. Plugin Doctor verifies the collection plus matching typed
+metric/status declarations without reading customer destinations.
+
+## External shipping quote and delivery selection
+
+A project that needs live carrier/rate-service quotes can register one
+server-only adapter on the same `createShop()` factory used for collections
+and routes. It replaces, rather than augments, the local policy engine:
 
 ```ts
 import {
@@ -371,6 +418,10 @@ unique. A quote must expire after the request and no later than either one hour
 or the private draft expiry. Unknown fields, duplicated methods, invalid money,
 and out-of-window expiry fail closed as HTTP 503.
 
+External adapter ids use the normal lowercase provider-id contract;
+`shop-policy` is reserved for the built-in engine so adapter removal cannot
+reinterpret an older external quote as a local one.
+
 Shop never holds a database transaction open across the provider call. After a
 successful selection, `np.shop-delivery-method.v1` copies only provider/quote/
 method ids, label, amount, estimate, and quote timestamps into the durable
@@ -384,9 +435,8 @@ The PII-free `shipping-health` row records only provider id, `ok | error`, the
 closed `provider-error | invalid-result` code, and timestamps. Admin health can
 expose that state without reading a destination; plugin doctor verifies the
 declarative health action and route contracts without executing them. Carrier
-booking, labels, pickup, tracking API integration, customs, free-shipping
-policy, and jurisdiction rules remain separate from this quote/selection
-boundary.
+booking, labels, pickup, tracking API integration, customs, and jurisdiction
+rules remain separate from this quote/selection boundary.
 
 ## Additional-tax quote and frozen total
 
@@ -426,8 +476,8 @@ const shop = createShop({ tax: { adapter: taxAdapter } });
 The request contains the draft id/revision, currency, immutable checkout
 lines, item subtotal, selected shipping amount, pre-tax total, private
 destination, optional PII-free delivery method, request time, and maximum
-expiry. With no shipping adapter it runs after address `PATCH`; with shipping
-enabled it runs only after one delivery method is selected. Provider calls do
+expiry. With no offered shipping method it runs after address `PATCH`; with
+local or external shipping methods it runs only after one is selected. Provider calls do
 not hold database transactions, and Shop rechecks the draft revision, cart,
 delivery quote, selection, and expiry before persisting the result.
 
@@ -1353,14 +1403,14 @@ full reversal is applied automatically; partial or multi-cancellation history
 stays blocked manual review.
 
 In a generated project, `defaultCollections` and `defaultPlugins` already
-contain the disabled default Shop instance. Filter the two Shop collections
+contain the default Shop instance. Filter the four Shop collections
 and the plugin whose manifest id is `shop`, then append `shop.collections` and
 `shop.plugin` from the single configured factory above. Do not register both
 Shop instances.
 
 ## Admin surfaces
 
-The three collections appear in the Commerce group. Product editing includes
+The four collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
@@ -1369,6 +1419,7 @@ The plugin declares these baseline typed dashboard metric actions:
 - total product rows;
 - published low-stock products;
 - published promotions plus PII-free promotion reservation/redemption health;
+- published local shipping policies plus base/surcharge/method health;
 - active unexpired carts;
 - unexpired non-cancelled checkout-intent records (public reads still
   revalidate the current cart).
@@ -1539,10 +1590,12 @@ const shop = createShop({
     categories: "catalog-categories",
     products: "catalog-products",
     promotions: "catalog-promotions",
+    shippingPolicies: "catalog-shipping-policies",
   },
   defaultSkinId: "storefront-full",
   payment: { adapter }, // optional; omitted means the webhook route does not exist
-  shipping: { adapter: shippingAdapter }, // optional; omitted means zero shipping
+  // Optional external override; omitted uses local policies or zero fallback.
+  shipping: { adapter: shippingAdapter },
   carrier: {
     adapter: carrierAdapter,
     // Required only with paired schedulePickup/cancelPickup methods.
@@ -1580,7 +1633,7 @@ Future transaction work should remain separable from this foundation:
 3. carrier label purchase/regeneration, recurring pickup, provider-specific
    tracking packages, exchanges, and customer-service policy;
 4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and
-   shipping-policy integrations.
+   carrier-owned dynamic rate integrations.
 
 Those features require their own payment, security, and operational contracts.
 The provider-neutral event boundary does not pre-authorize or emulate them.

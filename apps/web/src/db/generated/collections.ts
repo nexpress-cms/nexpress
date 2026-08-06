@@ -695,6 +695,182 @@ export const shopPromotionsCategoriesTableRelations = relations(
   }),
 );
 
+export const shopShippingPoliciesTable = pgTable(
+  "np_c_shop-shipping-policies",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] })
+      .default("draft")
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: uuid("created_by").references((): AnyPgColumn => npUsers.id),
+    updatedBy: uuid("updated_by").references((): AnyPgColumn => npUsers.id),
+    visibility: text("visibility", { enum: ["public", "private"] })
+      .default("public")
+      .notNull(),
+    name: text("name").notNull(),
+    methodCode: text("method_code").notNull(),
+    kind: text("kind").default("base").notNull(),
+    label: text("label").notNull(),
+    currency: text("currency").default("KRW").notNull(),
+    amountMinor: integer("amount_minor").default(0).notNull(),
+    freeThresholdMinor: integer("free_threshold_minor"),
+    thresholdBasis: text("threshold_basis").default("discounted-subtotal").notNull(),
+    minimumDays: integer("minimum_days"),
+    maximumDays: integer("maximum_days"),
+    destinationScope: text("destination_scope").default("all").notNull(),
+    countryCode: text("country_code"),
+    cartScope: text("cart_scope").default("all").notNull(),
+    startsAt: timestamp("starts_at", { withTimezone: true }),
+    endsAt: timestamp("ends_at", { withTimezone: true }),
+    priority: integer("priority").default(0).notNull(),
+    siteId: text("site_id").default("default").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    searchVector: tsvector("search_vector"),
+  },
+  (table) => [
+    index("np_c_shop-shipping-policies_status_idx").on(table.status),
+    index("np_c_shop-shipping-policies_site_idx").on(table.siteId),
+  ],
+);
+
+export const shopShippingPoliciesTableRelations = relations(
+  shopShippingPoliciesTable,
+  ({ many, one }) => ({
+    createdByUser: one(npUsers, {
+      fields: [shopShippingPoliciesTable.createdBy],
+      references: [npUsers.id],
+    }),
+    updatedByUser: one(npUsers, {
+      fields: [shopShippingPoliciesTable.updatedBy],
+      references: [npUsers.id],
+    }),
+  }),
+);
+
+export const shopShippingPoliciesPostalPrefixesTable = pgTable(
+  "np_c_shop-shipping-policies__postalPrefixes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    parentId: uuid("parent_id")
+      .notNull()
+      .references((): AnyPgColumn => shopShippingPoliciesTable.id, { onDelete: "cascade" }),
+    order: integer("order").default(0).notNull(),
+    prefix: text("prefix").notNull(),
+  },
+  (table) => [index("np_c_shop-shipping-policies__postalPrefixes_parent_idx").on(table.parentId)],
+);
+
+export const shopShippingPoliciesPostalPrefixesTableRelations = relations(
+  shopShippingPoliciesPostalPrefixesTable,
+  ({ many, one }) => ({
+    parent: one(shopShippingPoliciesTable, {
+      fields: [shopShippingPoliciesPostalPrefixesTable.parentId],
+      references: [shopShippingPoliciesTable.id],
+    }),
+  }),
+);
+
+export const shopShippingPoliciesAdministrativeAreasTable = pgTable(
+  "np_c_shop-shipping-policies__administrativeAreas",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    parentId: uuid("parent_id")
+      .notNull()
+      .references((): AnyPgColumn => shopShippingPoliciesTable.id, { onDelete: "cascade" }),
+    order: integer("order").default(0).notNull(),
+    area: text("area").notNull(),
+  },
+  (table) => [
+    index("np_c_shop-shipping-policies__administrativeAreas_parent_idx").on(table.parentId),
+  ],
+);
+
+export const shopShippingPoliciesAdministrativeAreasTableRelations = relations(
+  shopShippingPoliciesAdministrativeAreasTable,
+  ({ many, one }) => ({
+    parent: one(shopShippingPoliciesTable, {
+      fields: [shopShippingPoliciesAdministrativeAreasTable.parentId],
+      references: [shopShippingPoliciesTable.id],
+    }),
+  }),
+);
+
+export const shopShippingPoliciesProductsTable = pgTable(
+  "np_c_shop-shipping-policies__products",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    shopShippingPoliciesId: uuid("shop_shipping_policies_id")
+      .notNull()
+      .references((): AnyPgColumn => shopShippingPoliciesTable.id, { onDelete: "cascade" }),
+    targetId: uuid("target_id")
+      .notNull()
+      .references((): AnyPgColumn => shopProductsTable.id, { onDelete: "cascade" }),
+    order: integer("order").default(0).notNull(),
+  },
+  (table) => [
+    index("np_c_shop-shipping-policies__products_shop_shipping_policies_id_idx").on(
+      table.shopShippingPoliciesId,
+    ),
+    uniqueIndex("np_c_shop-shipping-policies__products_parent_target_uidx").on(
+      table.shopShippingPoliciesId,
+      table.targetId,
+    ),
+  ],
+);
+
+export const shopShippingPoliciesProductsTableRelations = relations(
+  shopShippingPoliciesProductsTable,
+  ({ many, one }) => ({
+    parent: one(shopShippingPoliciesTable, {
+      fields: [shopShippingPoliciesProductsTable.shopShippingPoliciesId],
+      references: [shopShippingPoliciesTable.id],
+    }),
+    target: one(shopProductsTable, {
+      fields: [shopShippingPoliciesProductsTable.targetId],
+      references: [shopProductsTable.id],
+    }),
+  }),
+);
+
+export const shopShippingPoliciesCategoriesTable = pgTable(
+  "np_c_shop-shipping-policies__categories",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    shopShippingPoliciesId: uuid("shop_shipping_policies_id")
+      .notNull()
+      .references((): AnyPgColumn => shopShippingPoliciesTable.id, { onDelete: "cascade" }),
+    targetId: uuid("target_id")
+      .notNull()
+      .references((): AnyPgColumn => shopCategoriesTable.id, { onDelete: "cascade" }),
+    order: integer("order").default(0).notNull(),
+  },
+  (table) => [
+    index("np_c_shop-shipping-policies__categories_shop_shipping_policies_id_idx").on(
+      table.shopShippingPoliciesId,
+    ),
+    uniqueIndex("np_c_shop-shipping-policies__categories_parent_target_uidx").on(
+      table.shopShippingPoliciesId,
+      table.targetId,
+    ),
+  ],
+);
+
+export const shopShippingPoliciesCategoriesTableRelations = relations(
+  shopShippingPoliciesCategoriesTable,
+  ({ many, one }) => ({
+    parent: one(shopShippingPoliciesTable, {
+      fields: [shopShippingPoliciesCategoriesTable.shopShippingPoliciesId],
+      references: [shopShippingPoliciesTable.id],
+    }),
+    target: one(shopCategoriesTable, {
+      fields: [shopShippingPoliciesCategoriesTable.targetId],
+      references: [shopCategoriesTable.id],
+    }),
+  }),
+);
+
 export const discussionsTable = pgTable(
   "np_c_discussions",
   {

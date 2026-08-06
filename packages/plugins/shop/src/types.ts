@@ -18,6 +18,7 @@ export interface NpShopCollectionSlugs {
   categories: string;
   products: string;
   promotions: string;
+  shippingPolicies: string;
 }
 
 export type NpShopPromotionKind = "fixed" | "percentage";

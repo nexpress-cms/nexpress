@@ -27,11 +27,13 @@ describe("shop factory", () => {
       "shop-categories",
       "shop-products",
       "shop-promotions",
+      "shop-shipping-policies",
     ]);
     expect(shopPlugin.manifest.provides.collections).toEqual([
       "shop-categories",
       "shop-products",
       "shop-promotions",
+      "shop-shipping-policies",
     ]);
     expect(shopPlugin.pageRoutes?.map((route) => route.pattern)).toEqual([
       "/shop",
@@ -54,6 +56,8 @@ describe("shop factory", () => {
         kind: action.kind,
       })),
     ).toEqual([
+      { id: "countShippingPolicies", kind: "metric" },
+      { id: "shippingPolicyHealth", kind: "status" },
       { id: "countPromotions", kind: "metric" },
       { id: "promotionHealth", kind: "status" },
       { id: "countProducts", kind: "metric" },
@@ -215,6 +219,16 @@ describe("shop factory", () => {
         },
       }),
     ).toThrow(/shipping provider id/u);
+    expect(() =>
+      createShop({
+        shipping: {
+          adapter: {
+            id: "shop-policy",
+            quoteShipping: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/reserved for local policies/u);
   });
 
   it("accepts only one complete server-side additional-tax quote adapter", () => {
@@ -799,6 +813,7 @@ describe("shop factory", () => {
         categories: "catalog-categories",
         products: "catalog-products",
         promotions: "catalog-promotions",
+        shippingPolicies: "catalog-shipping-policies",
       },
       skins: [editorial],
       defaultSkinId: "editorial",
@@ -809,6 +824,7 @@ describe("shop factory", () => {
       "catalog-categories",
       "catalog-products",
       "catalog-promotions",
+      "catalog-shipping-policies",
     ]);
     const categoryRelation = shop.collections[1].fields.find(
       (field) => "name" in field && field.name === "categories",
@@ -933,6 +949,46 @@ describe("shop factory", () => {
         collection: "shop-promotions",
       }),
     ).toMatchObject({ code: "WELCOME", visibility: "private" });
+  });
+
+  it("normalizes destination rules and forces shipping policies private", () => {
+    const beforeCreate = shopCollections[3].hooks?.beforeCreate?.[0];
+    expect(beforeCreate).toBeTypeOf("function");
+    expect(
+      beforeCreate?.({
+        data: {
+          name: "Jeju surcharge",
+          methodCode: "standard",
+          kind: "surcharge",
+          label: "Standard delivery",
+          currency: "KRW",
+          amountMinor: 3_000,
+          freeThresholdMinor: null,
+          thresholdBasis: "discounted-subtotal",
+          minimumDays: null,
+          maximumDays: null,
+          destinationScope: "postal-prefixes",
+          countryCode: "kr",
+          postalPrefixes: [{ prefix: "63-0" }],
+          administrativeAreas: [],
+          cartScope: "all",
+          products: [],
+          categories: [],
+          startsAt: null,
+          endsAt: null,
+          priority: 10,
+          visibility: "public",
+        },
+        originalDoc: null,
+        user: null,
+        principal: null,
+        collection: "shop-shipping-policies",
+      }),
+    ).toMatchObject({
+      countryCode: "KR",
+      postalPrefixes: [{ prefix: "630" }],
+      visibility: "private",
+    });
   });
 
   it("rejects malformed catalog definitions and unsafe product values early", async () => {
