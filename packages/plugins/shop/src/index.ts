@@ -19,6 +19,7 @@ import {
   defineShopProductsCollection,
   defineShopPromotionsCollection,
   defineShopShippingPoliciesCollection,
+  defineShopProductReviewsCollection,
 } from "./collections.js";
 import { createShopHomeBlocks, shopHomePatterns } from "./home-blocks.js";
 import {
@@ -164,6 +165,14 @@ import {
   type NpShopShippingAdapter,
 } from "./shipping-contract.js";
 import { NP_SHOP_SHIPPING_POLICY_PROVIDER_ID } from "./shipping-policy-contract.js";
+import { npRequireShopProductReviewModerationActionInput } from "./review-contract.js";
+import { createShopProductReviewApiHandler } from "./review-api.js";
+import {
+  npHideShopProductReview,
+  npInspectShopProductReviews,
+  npListRecentShopProductReviews,
+  npRestoreShopProductReview,
+} from "./review-service.js";
 import {
   npInspectShopShippingPolicies,
   npListShopShippingPolicies,
@@ -256,16 +265,18 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     products: options.collections?.products ?? "shop-products",
     promotions: options.collections?.promotions ?? "shop-promotions",
     shippingPolicies: options.collections?.shippingPolicies ?? "shop-shipping-policies",
+    reviews: options.collections?.reviews ?? "shop-product-reviews",
   };
   if (
     !SAFE_SEGMENT.test(collections.categories) ||
     !SAFE_SEGMENT.test(collections.products) ||
     !SAFE_SEGMENT.test(collections.promotions) ||
-    !SAFE_SEGMENT.test(collections.shippingPolicies)
+    !SAFE_SEGMENT.test(collections.shippingPolicies) ||
+    !SAFE_SEGMENT.test(collections.reviews)
   ) {
     throw new Error("Shop collection slugs must be lowercase literal segments.");
   }
-  if (new Set(Object.values(collections)).size !== 4) {
+  if (new Set(Object.values(collections)).size !== 5) {
     throw new Error("Shop collection slugs must be different.");
   }
   const configuredPaymentAdapter = options.payment?.adapter ?? null;
@@ -593,6 +604,24 @@ const messages = {
     "shop.categories": "Categories",
     "shop.featuredProducts": "Featured products",
     "shop.featured": "Featured",
+    "shop.reviewHeading": "Product reviews",
+    "shop.reviewVerified": "Verified purchase",
+    "shop.reviewEmpty": "No reviews have been published yet.",
+    "shop.reviewWrite": "Write a review",
+    "shop.reviewEdit": "Edit my review",
+    "shop.reviewLogin": "Sign in to review a shipped purchase.",
+    "shop.reviewUnavailable": "No shipped purchase is currently eligible for review.",
+    "shop.reviewPurchase": "Purchased item",
+    "shop.reviewRating": "Rating",
+    "shop.reviewTitle": "Title",
+    "shop.reviewBody": "Review",
+    "shop.reviewPhotos": "Photos (up to 5, 5 MB each)",
+    "shop.reviewUpload": "Add photos",
+    "shop.reviewRemove": "Remove",
+    "shop.reviewSave": "Save review",
+    "shop.reviewSaving": "Saving…",
+    "shop.reviewDelete": "Delete my review",
+    "shop.reviewFailed": "The review could not be updated.",
     "shop.search": "Search products",
     "shop.searchPlaceholder": "Name, summary, or description",
     "shop.sort": "Sort",
@@ -803,6 +832,24 @@ const messages = {
     "shop.categories": "카테고리",
     "shop.featuredProducts": "추천 상품",
     "shop.featured": "추천",
+    "shop.reviewHeading": "상품 리뷰",
+    "shop.reviewVerified": "구매 확인",
+    "shop.reviewEmpty": "아직 등록된 리뷰가 없습니다.",
+    "shop.reviewWrite": "리뷰 작성",
+    "shop.reviewEdit": "내 리뷰 수정",
+    "shop.reviewLogin": "로그인하면 배송 완료된 구매 상품의 리뷰를 작성할 수 있습니다.",
+    "shop.reviewUnavailable": "리뷰를 작성할 수 있는 배송 완료 구매 건이 없습니다.",
+    "shop.reviewPurchase": "리뷰를 남길 구매 상품",
+    "shop.reviewRating": "평점",
+    "shop.reviewTitle": "제목",
+    "shop.reviewBody": "내용",
+    "shop.reviewPhotos": "사진 (최대 5개, 각 5 MB)",
+    "shop.reviewUpload": "사진 추가",
+    "shop.reviewRemove": "삭제",
+    "shop.reviewSave": "저장",
+    "shop.reviewSaving": "저장 중…",
+    "shop.reviewDelete": "내 리뷰 삭제",
+    "shop.reviewFailed": "리뷰를 갱신하지 못했습니다.",
     "shop.search": "상품 검색",
     "shop.searchPlaceholder": "상품명, 요약 또는 설명",
     "shop.sort": "정렬",
@@ -1017,9 +1064,11 @@ export function createShop(options: NpShopOptions = {}) {
     defineShopProductsCollection(runtime),
     defineShopPromotionsCollection(runtime),
     defineShopShippingPoliciesCollection(runtime),
+    defineShopProductReviewsCollection(runtime),
   ] as const;
   const blocks = createShopHomeBlocks(runtime);
   const cartApiHandler = createShopCartApiHandler(runtime);
+  const reviewApiHandler = createShopProductReviewApiHandler(runtime);
   const checkoutApiHandler = createShopCheckoutApiHandler(runtime);
   const orderDraftApiHandler = createShopOrderDraftApiHandler(runtime);
   const orderApiHandler = createShopOrderApiHandler(runtime);
@@ -1087,7 +1136,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, bounded carts, checkout intents, private order drafts, built-in shipping policies or provider-neutral quotes, additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, outbound and return tracking, physical returns, return-linked partial refunds, return logistics, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, verified-purchase reviews, bounded carts, checkout intents, private order drafts, built-in shipping policies or provider-neutral quotes, additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, outbound and return tracking, physical returns, return-linked partial refunds, return logistics, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -1107,6 +1156,7 @@ export function createShop(options: NpShopOptions = {}) {
           runtime.collections.products,
           runtime.collections.promotions,
           runtime.collections.shippingPolicies,
+          runtime.collections.reviews,
         ],
         adminExtensions: [
           "dashboard:shop-products",
@@ -1115,6 +1165,11 @@ export function createShop(options: NpShopOptions = {}) {
           "widget:shop-promotion-health",
           "dashboard:shop-shipping-policies",
           "widget:shop-shipping-policy-health",
+          "dashboard:shop-product-reviews",
+          "widget:shop-product-review-health",
+          "table:shop-product-reviews",
+          "action:shop-product-review-hide",
+          "action:shop-product-review-restore",
           "dashboard:shop-carts",
           "widget:shop-cart-health",
           "action:shop-cart-cleanup",
@@ -1189,6 +1244,7 @@ export function createShop(options: NpShopOptions = {}) {
           "/checkout",
           "/order-drafts",
           "/orders",
+          "/reviews",
           "/returns",
           ...(paymentApiHandler ? ["/payments/webhook"] : []),
           ...(trackingApiHandler ? ["/carrier/tracking/webhook"] : []),
@@ -1202,9 +1258,9 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, promotions, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with transient labels, and independent verified or reconciled reverse tracking. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
+          "Catalog, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with transient labels, and independent verified or reconciled reverse tracking. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
-        tags: ["shop", "catalog", "product", "inventory", "storefront"],
+        tags: ["shop", "catalog", "product", "review", "inventory", "storefront"],
       },
       usesTokens: [
         "colors.primary",
@@ -1245,6 +1301,9 @@ export function createShop(options: NpShopOptions = {}) {
         "return-tracking-status": "[data-np-shop-return-tracking-status]",
         "return-status": "[data-np-shop-return-status]",
         "product-card": ".np-shop-product-card",
+        reviews: "[data-np-shop-reviews]",
+        "review-card": "[data-np-shop-review]",
+        "review-form": "[data-np-shop-review-form]",
         "product-grid": ".np-shop-product-grid",
         "category-grid": ".np-shop-category-grid",
         filters: ".np-shop-filters",
@@ -1289,6 +1348,15 @@ export function createShop(options: NpShopOptions = {}) {
           actionId: "countShippingPolicies",
           description: "Published local base-rate and surcharge rules for this site.",
           priority: 20,
+        },
+        {
+          id: "shop-product-reviews-total",
+          label: "Product reviews",
+          kind: "metric",
+          actionId: "countProductReviews",
+          description:
+            "Verified-purchase review rows across published, pending, and hidden states.",
+          priority: 19,
         },
         {
           id: "shop-carts-total",
@@ -1460,6 +1528,12 @@ export function createShop(options: NpShopOptions = {}) {
           actionId: "shippingPolicyHealth",
         },
         {
+          id: "shop-product-review-health",
+          label: "Product review contract",
+          kind: "status",
+          actionId: "productReviewHealth",
+        },
+        {
           id: "shop-cart-health",
           label: "Cart storage",
           kind: "status",
@@ -1613,6 +1687,46 @@ export function createShop(options: NpShopOptions = {}) {
         },
       ],
       tables: [
+        {
+          id: "shop-product-reviews",
+          label: "Recent verified-purchase reviews",
+          columns: [
+            { name: "title", label: "Review" },
+            { name: "productId", label: "Product" },
+            { name: "rating", label: "Rating" },
+            { name: "state", label: "State" },
+            { name: "updatedAt", label: "Updated" },
+          ],
+          rowsActionId: "recentProductReviews",
+          rowActions: [
+            {
+              id: "hide-review",
+              label: "Hide",
+              actionId: "hideProductReview",
+              rowFields: ["id", "title"],
+              visibleWhen: { field: "state", oneOf: ["published"] },
+              fields: [
+                {
+                  name: "reason",
+                  label: "Moderation reason",
+                  type: "textarea",
+                  required: true,
+                  placeholder: "PII-free reason, 1–1000 characters",
+                },
+              ],
+              confirm: "Hide this verified-purchase review from every public aggregate and list?",
+            },
+            {
+              id: "restore-review",
+              label: "Restore",
+              actionId: "restoreProductReview",
+              rowFields: ["id", "title"],
+              visibleWhen: { field: "state", oneOf: ["hidden"] },
+              confirm: "Restore this review to the public aggregate and list?",
+            },
+          ],
+          emptyMessage: "No verified-purchase product reviews exist for this site.",
+        },
         {
           id: "shop-recent-orders",
           label: "Recent orders (private values withheld)",
@@ -2396,6 +2510,98 @@ export function createShop(options: NpShopOptions = {}) {
               "error",
               error instanceof Error ? error.message : "Promotion health check failed.",
             );
+          }
+        },
+      },
+      countProductReviews: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npInspectShopProductReviews(runtime);
+            return {
+              ok: true,
+              data: {
+                value: counts.total,
+                delta: `${counts.published.toString()} published, ${counts.hidden.toString()} hidden`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      productReviewHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npInspectShopProductReviews(runtime);
+            return counts.invalid > 0
+              ? npAdminStatus(
+                  "error",
+                  `${counts.invalid.toString()} malformed review row(s) fail the verified-purchase contract.`,
+                )
+              : counts.pending > 0
+                ? npAdminStatus(
+                    "warn",
+                    `${counts.pending.toString()} review(s) await moderation; ${counts.hidden.toString()} are hidden.`,
+                  )
+                : npAdminStatus(
+                    "ok",
+                    `${counts.published.toString()} published verified-purchase review(s).`,
+                  );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Product review health check failed.",
+            );
+          }
+        },
+      },
+      recentProductReviews: {
+        kind: "table",
+        handler: async () => {
+          try {
+            const result = await npListRecentShopProductReviews(runtime);
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      hideProductReview: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return { ok: false, error: "Review moderation requires a direct staff action." };
+            }
+            const input = npRequireShopProductReviewModerationActionInput(data, { reason: true });
+            await npHideShopProductReview(
+              runtime,
+              input.reviewId,
+              input.reason as string,
+              ctx.actionInvocation.userId,
+            );
+            return { ok: true, data: "The review is hidden from public lists and aggregates." };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      restoreProductReview: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return { ok: false, error: "Review moderation requires a direct staff action." };
+            }
+            const input = npRequireShopProductReviewModerationActionInput(data, {
+              reason: false,
+            });
+            await npRestoreShopProductReview(runtime, input.reviewId, ctx.actionInvocation.userId);
+            return { ok: true, data: "The review is restored to public lists and aggregates." };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
           }
         },
       },
@@ -4141,6 +4347,30 @@ export function createShop(options: NpShopOptions = {}) {
         handler: cartApiHandler,
       },
       {
+        method: "GET",
+        path: "/reviews",
+        description: "Read one exact public product-review page and current member eligibility.",
+        handler: reviewApiHandler,
+      },
+      {
+        method: "POST",
+        path: "/reviews",
+        description: "Create one verified-purchase product review.",
+        handler: reviewApiHandler,
+      },
+      {
+        method: "PATCH",
+        path: "/reviews",
+        description: "Update one member-owned product review.",
+        handler: reviewApiHandler,
+      },
+      {
+        method: "DELETE",
+        path: "/reviews",
+        description: "Delete one member-owned product review.",
+        handler: reviewApiHandler,
+      },
+      {
         method: "POST",
         path: "/cart",
         description: "Add a published product or variant to the current cart.",
@@ -4750,6 +4980,35 @@ export {
 } from "./order-contract.js";
 export type { NpShopOrderCancelInput, NpShopOrderCreateInput } from "./order-contract.js";
 export {
+  NP_SHOP_PRODUCT_REVIEW_CONTRACT,
+  NP_SHOP_PRODUCT_REVIEW_PAGE_CONTRACT,
+  NpShopProductReviewContractError,
+  npEmptyShopProductReviewAggregate,
+  npRequireShopProductReviewCreateInput,
+  npRequireShopProductReviewModerationActionInput,
+  npRequireShopProductReviewUpdateInput,
+  npShopProductReviewLimits,
+} from "./review-contract.js";
+export type {
+  NpShopProductReview,
+  NpShopProductReviewAggregate,
+  NpShopProductReviewAuthor,
+  NpShopProductReviewCreateInput,
+  NpShopProductReviewModerationActionInput,
+  NpShopProductReviewEligibility,
+  NpShopProductReviewPage,
+  NpShopProductReviewPhoto,
+  NpShopProductReviewUpdateInput,
+} from "./review-contract.js";
+export {
+  npAttachShopProductReviewAggregates,
+  npCountShopProductReviewRows,
+  npGetShopProductReviewPage,
+  npListShopProductReviewEligibility,
+  npListShopProductReviews,
+  npReadShopProductReviewAggregate,
+} from "./review-service.js";
+export {
   NP_SHOP_FULFILLMENT_CONTRACT,
   NP_SHOP_FULFILLMENT_STORAGE_CONTRACT,
   NpShopFulfillmentConflictError,
@@ -5140,6 +5399,7 @@ export type {
   NpShopProduct,
   NpShopProductSkinProps,
   NpShopProductSummary,
+  NpShopReviewClientMessages,
   NpShopPromotionKind,
   NpShopPromotionLineDiscount,
   NpShopPromotionSnapshot,

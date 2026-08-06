@@ -6,5 +6,6 @@ declare module "@nexpress/plugin-shop/client" {
     ShopOrder,
     ShopOrderDraft,
     ShopOrders,
+    ShopProductReviews,
   } from "./client.js";
 }

@@ -1,12 +1,18 @@
 "use client";
 
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { npRequireMediaAttachmentWire } from "@nexpress/core/media-contract";
 
 import { npRequireShopCartQuote } from "./cart-contract.js";
 import { npRequireShopCheckoutIntent } from "./checkout-contract.js";
 import { npRequireShopOrderDraft } from "./order-draft-contract.js";
 import { npRequireShopOrder, npRequireShopOrderList } from "./order-contract.js";
 import { npRequireShopReturn, type NpShopReturn } from "./return-contract.js";
+import type {
+  NpShopProductReview,
+  NpShopProductReviewPage,
+  NpShopProductReviewPhoto,
+} from "./review-contract.js";
 import {
   npRequireShopReturnLogistics,
   type NpShopReturnLogistics,
@@ -20,6 +26,7 @@ import type {
   NpShopOrderDraft,
   NpShopOrderList,
   NpShopProduct,
+  NpShopReviewClientMessages,
 } from "./types.js";
 
 interface CartResponse {
@@ -1992,5 +1999,312 @@ export function ShopOrder({
         <a href={`${basePath}/orders`}>{messages.orderHistory}</a>
       )}
     </div>
+  );
+}
+
+function readMemberCsrf(): string | null {
+  if (typeof document === "undefined") return null;
+  const match = /(?:^|;\s*)np-mb-csrf=([^;]+)/u.exec(document.cookie);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+async function uploadReviewPhoto(file: File): Promise<NpShopProductReviewPhoto> {
+  if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) {
+    throw new Error("Review photos must be images no larger than 5 MB.");
+  }
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch("/api/members/media/attachments", {
+    method: "POST",
+    credentials: "include",
+    headers: readMemberCsrf() ? { "X-CSRF-Token": readMemberCsrf() as string } : {},
+    body: formData,
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new Error("The review photo could not be uploaded.");
+  const media = npRequireMediaAttachmentWire(payload);
+  if (!media.mimeType.startsWith("image/")) {
+    throw new Error("Only image attachments can be used in reviews.");
+  }
+  return { id: media.id, url: media.downloadUrl };
+}
+
+async function deleteReviewPhoto(id: string): Promise<void> {
+  const csrf = readMemberCsrf();
+  const response = await fetch(`/api/members/media/attachments/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "include",
+    headers: csrf ? { "X-CSRF-Token": csrf } : {},
+  });
+  if (!response.ok && response.status !== 404 && response.status !== 409) {
+    throw new Error("The review photo could not be removed.");
+  }
+}
+
+export function ShopProductReviews({
+  apiPath,
+  productId,
+  productPath,
+  initialPage,
+  messages,
+  signedIn,
+}: {
+  apiPath: string;
+  productId: string;
+  productPath: string;
+  initialPage: NpShopProductReviewPage;
+  messages: NpShopReviewClientMessages;
+  signedIn: boolean;
+}) {
+  const labels = messages;
+  const locale = messages.locale;
+  const ownReview = initialPage.reviews.find((review) => review.ownedByViewer) ?? null;
+  const [rating, setRating] = useState(ownReview?.rating ?? 5);
+  const [title, setTitle] = useState(ownReview?.title ?? "");
+  const [body, setBody] = useState(ownReview?.body ?? "");
+  const [photos, setPhotos] = useState<NpShopProductReviewPhoto[]>(ownReview?.photos ?? []);
+  const [purchaseToken, setPurchaseToken] = useState(
+    initialPage.eligibility[0]?.purchaseToken ?? "",
+  );
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function mutate(method: "POST" | "PATCH" | "DELETE", payload: unknown): Promise<void> {
+    const csrf = readMemberCsrf();
+    const response = await fetch(apiPath, {
+      method,
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+      },
+      body: JSON.stringify(payload),
+    });
+    const result = (await response.json().catch(() => null)) as { message?: unknown } | null;
+    if (!response.ok) {
+      throw new Error(typeof result?.message === "string" ? result.message : labels.failed);
+    }
+  }
+
+  async function saveReview(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      if (ownReview) {
+        await mutate("PATCH", {
+          reviewId: ownReview.id,
+          rating,
+          title,
+          body,
+          photos: photos.map((photo) => photo.id),
+        });
+      } else {
+        await mutate("POST", {
+          productId,
+          purchaseToken,
+          rating,
+          title,
+          body,
+          photos: photos.map((photo) => photo.id),
+        });
+      }
+      window.location.reload();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : labels.failed);
+      setBusy(false);
+    }
+  }
+
+  async function addPhotos(files: FileList | null): Promise<void> {
+    if (!files || files.length === 0) return;
+    setBusy(true);
+    setError("");
+    try {
+      const available = Math.max(0, 5 - photos.length);
+      const uploaded = await Promise.all([...files].slice(0, available).map(uploadReviewPhoto));
+      setPhotos((current) => [...current, ...uploaded]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : labels.failed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removePhoto(photo: NpShopProductReviewPhoto): Promise<void> {
+    setPhotos((current) => current.filter((candidate) => candidate.id !== photo.id));
+    if (!ownReview?.photos.some((candidate) => candidate.id === photo.id)) {
+      await deleteReviewPhoto(photo.id).catch(() => undefined);
+    }
+  }
+
+  async function removeReview(): Promise<void> {
+    if (!ownReview) return;
+    setBusy(true);
+    setError("");
+    try {
+      await mutate("DELETE", { reviewId: ownReview.id });
+      window.location.reload();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : labels.failed);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="np-shop-reviews" data-np-shop-reviews>
+      <header className="np-shop-review-summary">
+        <div>
+          <h2>{labels.heading}</h2>
+          <strong>
+            {initialPage.aggregate.count > 0
+              ? `${(initialPage.aggregate.averageRatingBasisPoints / 1_000).toFixed(1)} / 5`
+              : "—"}
+          </strong>
+          <span>{initialPage.aggregate.count.toLocaleString(locale)}</span>
+        </div>
+        <div className="np-shop-review-distribution">
+          {[5, 4, 3, 2, 1].map((star) => (
+            <div key={star}>
+              <span>{star}★</span>
+              <progress
+                max={Math.max(1, initialPage.aggregate.count)}
+                value={initialPage.aggregate.distribution[star as 1 | 2 | 3 | 4 | 5]}
+              />
+              <span>{initialPage.aggregate.distribution[star as 1 | 2 | 3 | 4 | 5]}</span>
+            </div>
+          ))}
+        </div>
+      </header>
+      <div className="np-shop-review-list">
+        {initialPage.reviews.length === 0 ? <p>{labels.empty}</p> : null}
+        {initialPage.reviews.map((review: NpShopProductReview) => (
+          <article key={review.id} data-np-shop-review>
+            <header>
+              <strong>{"★".repeat(review.rating)}</strong>
+              <span>{labels.verified}</span>
+              <span>{review.author?.displayName ?? "—"}</span>
+              <time dateTime={review.createdAt}>
+                {new Date(review.createdAt).toLocaleDateString(locale)}
+              </time>
+            </header>
+            <h3>{review.title}</h3>
+            <p>{review.body}</p>
+            {review.photos.length > 0 ? (
+              <div className="np-shop-review-photos">
+                {review.photos.map((photo) => (
+                  <img key={photo.id} src={photo.url} alt="" loading="lazy" />
+                ))}
+              </div>
+            ) : null}
+          </article>
+        ))}
+      </div>
+      {initialPage.totalPages > 1 ? (
+        <nav className="np-shop-review-pagination" aria-label={labels.heading}>
+          {initialPage.page > 1 ? (
+            <a href={`${productPath}?reviewPage=${(initialPage.page - 1).toString()}`}>
+              {labels.previous}
+            </a>
+          ) : (
+            <span />
+          )}
+          <span>
+            {initialPage.page.toLocaleString(locale)} /{" "}
+            {initialPage.totalPages.toLocaleString(locale)}
+          </span>
+          {initialPage.page < initialPage.totalPages ? (
+            <a href={`${productPath}?reviewPage=${(initialPage.page + 1).toString()}`}>
+              {labels.next}
+            </a>
+          ) : (
+            <span />
+          )}
+        </nav>
+      ) : null}
+      {!signedIn ? <p>{labels.login}</p> : null}
+      {signedIn && !ownReview && initialPage.eligibility.length === 0 ? (
+        <p>{labels.unavailable}</p>
+      ) : null}
+      {signedIn && (ownReview || initialPage.eligibility.length > 0) ? (
+        <form data-np-shop-review-form onSubmit={(event) => void saveReview(event)}>
+          <h3>{ownReview ? labels.edit : labels.write}</h3>
+          {!ownReview && initialPage.eligibility.length > 1 ? (
+            <label>
+              <span>{labels.purchase}</span>
+              <select
+                value={purchaseToken}
+                onChange={(event) => setPurchaseToken(event.target.value)}
+              >
+                {initialPage.eligibility.map((entry) => (
+                  <option key={entry.purchaseToken} value={entry.purchaseToken}>
+                    {entry.variantName ?? new Date(entry.purchasedAt).toLocaleDateString(locale)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <label>
+            <span>{labels.rating}</span>
+            <select value={rating} onChange={(event) => setRating(Number(event.target.value))}>
+              {[5, 4, 3, 2, 1].map((value) => (
+                <option key={value} value={value}>{`${value.toString()} ★`}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>{labels.title}</span>
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              maxLength={120}
+              required
+            />
+          </label>
+          <label>
+            <span>{labels.body}</span>
+            <textarea
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+              maxLength={2_000}
+              required
+            />
+          </label>
+          <fieldset>
+            <legend>{labels.photos}</legend>
+            <div className="np-shop-review-photos">
+              {photos.map((photo) => (
+                <div key={photo.id}>
+                  <img src={photo.url} alt="" />
+                  <button type="button" onClick={() => void removePhoto(photo)}>
+                    {labels.remove}
+                  </button>
+                </div>
+              ))}
+            </div>
+            <label>
+              <span>{labels.upload}</span>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                disabled={busy || photos.length >= 5}
+                onChange={(event) => void addPhotos(event.target.files)}
+              />
+            </label>
+          </fieldset>
+          {error ? <p role="alert">{error}</p> : null}
+          <button type="submit" disabled={busy}>
+            {busy ? labels.saving : labels.save}
+          </button>
+          {ownReview ? (
+            <button type="button" disabled={busy} onClick={() => void removeReview()}>
+              {labels.delete}
+            </button>
+          ) : null}
+        </form>
+      ) : null}
+    </section>
   );
 }

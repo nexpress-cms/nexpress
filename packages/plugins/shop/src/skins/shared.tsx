@@ -250,6 +250,15 @@ export function ProductCard({
           <Link href={`${basePath}/products/${product.slug}`}>{product.name}</Link>
         </h2>
         {product.summary ? <p>{product.summary}</p> : null}
+        {(product.reviewCount ?? 0) > 0 ? (
+          <p
+            className="np-shop-product-rating"
+            aria-label={`${((product.reviewAverageBasisPoints ?? 0) / 1_000).toFixed(1)} / 5 (${(product.reviewCount ?? 0).toString()})`}
+          >
+            <span aria-hidden="true">★</span>{" "}
+            {((product.reviewAverageBasisPoints ?? 0) / 1_000).toFixed(1)} ({product.reviewCount})
+          </p>
+        ) : null}
         <div className="np-shop-product-card-footer">
           <ProductPrice product={product} messages={messages} />
           <Link href={`${basePath}/products/${product.slug}`}>{messages.viewProduct}</Link>
@@ -513,6 +522,7 @@ export function ShopProductSurface({ skin, ...props }: NpShopProductSkinProps & 
         </section>
       ) : null}
       <article className="np-shop-product-description">{props.description}</article>
+      {props.reviewAction}
     </main>
   );
 }

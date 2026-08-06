@@ -2,10 +2,13 @@ import { npAuditEvents, npPluginStorage, withCurrentSite } from "@nexpress/core"
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import {
   createShop,
+  npAnalyzeStoredShopFulfillment,
   NpShopCarrierProviderError,
   NpShopPaymentProviderError,
   npAnalyzeStoredShopOrder,
   npRequireShopOrderDraft,
+  npListShopProductReviews,
+  npReadShopProductReviewAggregate,
   shopCollections,
   shopPlugin,
   type NpShopCarrierBookingRequest,
@@ -28,6 +31,8 @@ import {
   shopProductsGalleryTable,
   shopProductsTable,
   shopProductsVariantsTable,
+  shopProductReviewsPhotosTable,
+  shopProductReviewsTable,
   shopPromotionsCategoriesTable,
   shopPromotionsProductsTable,
   shopPromotionsTable,
@@ -43,6 +48,7 @@ import {
   ensureMigrated,
   getTestDb,
   registerTestCollections,
+  seedActiveMember,
   seedUser,
   skipIfNoTestDb,
   truncateAll,
@@ -396,6 +402,9 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         products: shopShippingPoliciesProductsTable,
       },
     });
+    registerCollection("shop-product-reviews", shopProductReviewsTable, shopCollections[4], {
+      childTables: { photos: shopProductReviewsPhotosTable },
+    });
   });
 
   beforeEach(async () => {
@@ -420,6 +429,289 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       skin: "classic",
       publishedAt: new Date(),
     });
+  });
+
+  it("projects exact PII-free review aggregates and rows", async () => {
+    const db = await getTestDb();
+    const runtime = createShop().runtime;
+    const member = await seedActiveMember({ handle: "reviewer", displayName: "Verified reviewer" });
+    await db.insert(shopProductReviewsTable).values([
+      {
+        product: productId,
+        purchaseKey: "a".repeat(64),
+        rating: 5,
+        title: "Excellent",
+        body: "The shipped item matched the catalog description.",
+        verifiedPurchase: true,
+        moderationHidden: false,
+        memberAuthorId: member.memberId,
+        status: "published",
+      },
+      {
+        product: productId,
+        purchaseKey: "b".repeat(64),
+        rating: 1,
+        title: "Hidden",
+        body: "This row must stay out of public review totals.",
+        verifiedPurchase: true,
+        moderationHidden: true,
+        memberAuthorId: member.memberId,
+        status: "pending",
+      },
+      {
+        product: productId,
+        purchaseKey: "c".repeat(64),
+        rating: 5,
+        title: " ".repeat(121),
+        body: "Malformed persisted text must fail closed before public projection.",
+        verifiedPurchase: true,
+        moderationHidden: false,
+        memberAuthorId: member.memberId,
+        status: "published",
+      },
+    ]);
+
+    const aggregate = await withCurrentSite("default", () =>
+      npReadShopProductReviewAggregate(runtime, productId),
+    );
+    expect(aggregate).toEqual({
+      count: 1,
+      ratingTotal: 5,
+      averageRatingBasisPoints: 5_000,
+      distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 1 },
+    });
+    const page = await withCurrentSite("default", () =>
+      npListShopProductReviews(runtime, productId, member.memberId, 1),
+    );
+    expect(page.reviews).toHaveLength(1);
+    expect(page.reviews[0]).toMatchObject({
+      title: "Excellent",
+      verifiedPurchase: true,
+      ownedByViewer: true,
+      author: { displayName: "Verified reviewer", handle: "reviewer" },
+    });
+    expect(page.reviews[0]).not.toHaveProperty("memberAuthorId");
+    expect(page.reviews[0]).not.toHaveProperty("purchaseKey");
+    expect(page.reviews[0]).not.toHaveProperty("orderId");
+  });
+
+  it("issues shipped-line eligibility, stores only a purchase hash, and rejects replay", async () => {
+    const db = await getTestDb();
+    const member = await seedActiveMember({ handle: "buyer-reviewer" });
+    const orderId = "333e4567-e89b-42d3-a456-426614174000";
+    const createdAt = new Date("2026-01-01T00:00:00.000Z");
+    const paidAt = new Date("2026-01-01T01:00:00.000Z");
+    const shippedAt = new Date("2026-01-01T02:00:00.000Z");
+    const pendingExpiresAt = new Date(createdAt.getTime() + 24 * 60 * 60 * 1_000);
+    const privateExpiresAt = new Date(paidAt.getTime() + 30 * 24 * 60 * 60 * 1_000);
+    const purgeAt = new Date(createdAt.getTime() + 365 * 24 * 60 * 60 * 1_000);
+    const lineKey = `${productId}:_`;
+    const order = {
+      contract: "np.shop-order-storage.v1",
+      id: orderId,
+      status: "paid",
+      revision: 2,
+      ownerSegment: `member:${member.memberId}`,
+      sourceDraftId: "433e4567-e89b-42d3-a456-426614174000",
+      checkoutIntentId: "533e4567-e89b-42d3-a456-426614174000",
+      cartRevision: 1,
+      cartFingerprint: "c".repeat(64),
+      currency: "KRW",
+      subtotalMinor: 25_000,
+      discountMinor: 0,
+      shippingMinor: 0,
+      taxMinor: 0,
+      totalMinor: 25_000,
+      totalUnits: 1,
+      lines: [
+        {
+          key: lineKey,
+          productId,
+          productSlug: "everyday-cup",
+          productName: "Everyday cup",
+          variantSku: null,
+          variantName: null,
+          quantity: 1,
+          unitPriceMinor: 25_000,
+          lineTotalMinor: 25_000,
+        },
+      ],
+      promotions: {
+        contract: "np.shop-promotion-snapshot.v1",
+        couponCodes: [],
+        rejectedCouponCodes: [],
+        applied: [],
+        discountMinor: 0,
+      },
+      deliveryMethod: null,
+      taxQuote: null,
+      privateDataStatus: "redacted",
+      inventoryReservationStatus: "consumed",
+      inventoryReservationLineKeys: [lineKey],
+      createdAt: createdAt.toISOString(),
+      updatedAt: shippedAt.toISOString(),
+      pendingExpiresAt: pendingExpiresAt.toISOString(),
+      paymentProvider: "test-pay",
+      paymentReference: "payment-1",
+      paymentEventId: "event-1",
+      paymentResolvedAt: paidAt.toISOString(),
+      cancelledAt: null,
+      cancellationReason: null,
+      purgeAt: purgeAt.toISOString(),
+    };
+    const fulfillment = {
+      contract: "np.shop-fulfillment-storage.v1",
+      orderId,
+      ownerSegment: `member:${member.memberId}`,
+      status: "shipped",
+      revision: 2,
+      privateDataStatus: "redacted",
+      carrier: "test-carrier",
+      trackingNumber: "TRACK-1",
+      operatorNote: null,
+      createdAt: paidAt.toISOString(),
+      updatedAt: shippedAt.toISOString(),
+      privateExpiresAt: privateExpiresAt.toISOString(),
+      shippedAt: shippedAt.toISOString(),
+      purgeAt: purgeAt.toISOString(),
+    };
+    expect(npAnalyzeStoredShopOrder(order)).toEqual([]);
+    expect(npAnalyzeStoredShopFulfillment(fulfillment)).toEqual([]);
+    await db.insert(npPluginStorage).values([
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `order:member:${member.memberId}:${orderId}`,
+        value: order,
+        expiresAt: purgeAt,
+      },
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `fulfillment:${orderId}`,
+        value: fulfillment,
+        expiresAt: purgeAt,
+      },
+    ]);
+
+    const shop = createShop();
+    const read = await configuredShopCall(shop, "GET", "/reviews", {
+      query: { productId, page: "1" },
+      member: { id: member.memberId },
+    });
+    const page = (read.body as { page: { eligibility: Array<{ purchaseToken: string }> } }).page;
+    expect(page.eligibility).toHaveLength(1);
+    const purchaseToken = page.eligibility[0]?.purchaseToken;
+    expect(purchaseToken).toBeTypeOf("string");
+    const mutation = {
+      cookie: "np-mb-csrf=review-csrf",
+      csrf: "review-csrf",
+      member: { id: member.memberId },
+      body: {
+        productId,
+        purchaseToken,
+        rating: 4,
+        title: "Verified delivery",
+        body: "Created only after the fulfillment reached shipped.",
+        photos: [],
+      },
+    };
+    expect(await configuredShopCall(shop, "POST", "/reviews", mutation)).toMatchObject({
+      status: 200,
+      body: { ok: true },
+    });
+    const [stored] = await db
+      .select({ id: shopProductReviewsTable.id, purchaseKey: shopProductReviewsTable.purchaseKey })
+      .from(shopProductReviewsTable);
+    if (!stored) throw new Error("Failed to read the created review.");
+    expect(stored.purchaseKey).toMatch(/^[0-9a-f]{64}$/u);
+    expect(stored.purchaseKey).not.toBe(purchaseToken);
+    expect(await configuredShopCall(shop, "POST", "/reviews", mutation)).toMatchObject({
+      status: 409,
+    });
+    expect(
+      await configuredShopCall(shop, "PATCH", "/reviews", {
+        cookie: mutation.cookie,
+        csrf: mutation.csrf,
+        member: mutation.member,
+        body: {
+          reviewId: stored.id,
+          rating: 5,
+          title: "Updated verified delivery",
+          body: "The member-owned review can be updated without changing its purchase proof.",
+          photos: [],
+        },
+      }),
+    ).toMatchObject({ status: 200, body: { ok: true } });
+    await expect(
+      withCurrentSite("default", () =>
+        npListShopProductReviews(shop.runtime, productId, member.memberId, 1),
+      ),
+    ).resolves.toMatchObject({
+      reviews: [{ id: stored.id, title: "Updated verified delivery", rating: 5 }],
+    });
+    expect(
+      await configuredShopCall(shop, "DELETE", "/reviews", {
+        cookie: mutation.cookie,
+        csrf: mutation.csrf,
+        member: mutation.member,
+        body: { reviewId: stored.id },
+      }),
+    ).toMatchObject({ status: 200, body: { ok: true } });
+    await expect(
+      withCurrentSite("default", () => npReadShopProductReviewAggregate(shop.runtime, productId)),
+    ).resolves.toMatchObject({ count: 0 });
+  });
+
+  it("hides and restores reviews only through exact direct-staff Admin actions", async () => {
+    const db = await getTestDb();
+    const member = await seedActiveMember({ handle: "moderated-reviewer" });
+    const staff = await seedUser({ email: "review-moderator@example.com" });
+    const [review] = await db
+      .insert(shopProductReviewsTable)
+      .values({
+        product: productId,
+        purchaseKey: "d".repeat(64),
+        rating: 5,
+        title: "Moderate this review",
+        body: "A valid published review used to verify the moderation projection.",
+        verifiedPurchase: true,
+        moderationHidden: false,
+        memberAuthorId: member.memberId,
+        status: "published",
+      })
+      .returning({ id: shopProductReviewsTable.id });
+    if (!review) throw new Error("Failed to seed review.");
+    const shop = createShop();
+    const context = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+
+    const hidden = await withCurrentSite("default", () =>
+      shop.plugin.actions?.hideProductReview?.handler(
+        {
+          row: { id: review.id, title: "Moderate this review" },
+          values: { reason: "Contains a policy violation without personal data." },
+        },
+        context,
+      ),
+    );
+    expect(hidden?.ok, JSON.stringify(hidden)).toBe(true);
+    await expect(
+      withCurrentSite("default", () => npReadShopProductReviewAggregate(shop.runtime, productId)),
+    ).resolves.toMatchObject({ count: 0 });
+
+    await expect(
+      withCurrentSite("default", () =>
+        shop.plugin.actions?.restoreProductReview?.handler(
+          { row: { id: review.id, title: "Moderate this review" }, values: {} },
+          context,
+        ),
+      ),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(
+      withCurrentSite("default", () => npReadShopProductReviewAggregate(shop.runtime, productId)),
+    ).resolves.toMatchObject({ count: 1 });
   });
 
   afterAll(async () => {

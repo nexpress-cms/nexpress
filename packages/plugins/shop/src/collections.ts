@@ -1,6 +1,7 @@
 import {
   NpValidationError,
   defineCollection,
+  deleteMedia,
   findDocuments,
   isEditorOrAbove,
   type NpCollectionConfig,
@@ -25,9 +26,31 @@ import {
   npShopShippingPolicyLimits,
   type NpShopShippingPolicyDocument,
 } from "./shipping-policy-contract.js";
+import { npShopProductReviewLimits } from "./review-contract.js";
+import {
+  npCountShopProductReviewRows,
+  npValidateShopProductReviewCreateDocument,
+  npValidateShopProductReviewUpdateDocument,
+} from "./review-service.js";
 
 function validationError(field: string, message: string): NpValidationError {
   return new NpValidationError("Invalid shop catalog data", [{ field, message }]);
+}
+
+function reviewPhotoIds(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) =>
+    typeof entry === "object" &&
+    entry !== null &&
+    !Array.isArray(entry) &&
+    typeof (entry as { file?: unknown }).file === "string"
+      ? [(entry as { file: string }).file]
+      : [],
+  );
+}
+
+async function deleteUnreferencedReviewPhotos(ids: string[]): Promise<void> {
+  await Promise.all(ids.map((id) => deleteMedia(id).catch(() => ({ deleted: false }))));
 }
 
 function validatePrice(data: Record<string, unknown>): void {
@@ -314,6 +337,20 @@ export function defineShopProductsCollection(runtime: NpShopRuntime): NpCollecti
     hooks: {
       beforeCreate: [({ data }) => validateShopProduct(data)],
       beforeUpdate: [({ data }) => validateShopProduct(data)],
+      beforeDelete: [
+        async ({ data }) => {
+          if (
+            typeof data.id === "string" &&
+            (await npCountShopProductReviewRows(runtime, data.id)) > 0
+          ) {
+            throw validationError(
+              "product",
+              "Delete or reassign every product review before deleting this product.",
+            );
+          }
+          return data;
+        },
+      ],
     },
     seo: {
       urlPath: (doc) =>
@@ -510,6 +547,146 @@ export function defineShopProductsCollection(runtime: NpShopRuntime): NpCollecti
           },
           { type: "checkbox", name: "enabled", required: true, defaultValue: true },
         ],
+      },
+    ],
+  });
+}
+
+export function defineShopProductReviewsCollection(runtime: NpShopRuntime): NpCollectionConfig {
+  return defineCollection({
+    slug: runtime.collections.reviews,
+    labels: { singular: "Product review", plural: "Product reviews" },
+    admin: {
+      group: "Commerce",
+      listColumns: ["title", "product", "rating", "verifiedPurchase", "status", "updatedAt"],
+      defaultSort: "-createdAt",
+      description:
+        "Verified-purchase reviews. Purchase keys are one-way hashes; order and member identities are excluded from public projections.",
+    },
+    versions: { drafts: true, max: 20 },
+    community: {
+      reports: true,
+      moderation: { categoryField: "product", hiddenField: "moderationHidden" },
+      memberWrite: {
+        create: true,
+        update: true,
+        delete: true,
+        writableFields: ["product", "purchaseKey", "rating", "title", "body", "photos"],
+        access: {
+          create: async ({ data, memberId }) => {
+            if (!data) return false;
+            await npValidateShopProductReviewCreateDocument(runtime, memberId, data);
+            return true;
+          },
+          update: ({ data, originalDoc }) =>
+            data !== null && originalDoc !== null && data.product === originalDoc.product,
+        },
+      },
+    },
+    access: {
+      read: isEditorOrAbove,
+      create: () => false,
+      update: isEditorOrAbove,
+      delete: isEditorOrAbove,
+    },
+    hooks: {
+      beforeCreate: [
+        async ({ data, principal }) => {
+          if (principal?.kind !== "member") {
+            throw validationError("review", "Product reviews must be created by a member.");
+          }
+          return npValidateShopProductReviewCreateDocument(runtime, principal.memberId, data);
+        },
+      ],
+      beforeUpdate: [
+        async ({ data, originalDoc, principal }) => {
+          if (!originalDoc) return data;
+          if (principal?.kind === "member") {
+            return npValidateShopProductReviewUpdateDocument(principal.memberId, data, originalDoc);
+          }
+          return {
+            ...data,
+            product: originalDoc.product,
+            purchaseKey: originalDoc.purchaseKey,
+            verifiedPurchase: true,
+          };
+        },
+      ],
+      afterUpdate: [
+        async ({ data, originalDoc }) => {
+          const retained = new Set(reviewPhotoIds(data.photos));
+          await deleteUnreferencedReviewPhotos(
+            reviewPhotoIds(originalDoc?.photos).filter((id) => !retained.has(id)),
+          );
+          return data;
+        },
+      ],
+      afterDelete: [
+        async ({ data }) => {
+          await deleteUnreferencedReviewPhotos(reviewPhotoIds(data.photos));
+          return data;
+        },
+      ],
+    },
+    fields: [
+      {
+        type: "relationship",
+        name: "product",
+        relationTo: runtime.collections.products,
+        required: true,
+      },
+      {
+        type: "text",
+        name: "purchaseKey",
+        label: "Purchase proof",
+        required: true,
+        maxLength: 2_000,
+        unique: true,
+        hidden: true,
+      },
+      {
+        type: "number",
+        name: "rating",
+        required: true,
+        min: npShopProductReviewLimits.minimumRating,
+        max: npShopProductReviewLimits.maximumRating,
+        integerOnly: true,
+      },
+      {
+        type: "text",
+        name: "title",
+        required: true,
+        minLength: 1,
+        maxLength: npShopProductReviewLimits.maximumTitleLength,
+        admin: { kind: "title" },
+      },
+      {
+        type: "textarea",
+        name: "body",
+        required: true,
+        minLength: 1,
+        maxLength: npShopProductReviewLimits.maximumBodyLength,
+        rows: 6,
+      },
+      {
+        type: "array",
+        name: "photos",
+        maxRows: npShopProductReviewLimits.maximumPhotos,
+        fields: [{ type: "upload", name: "file", relationTo: "media", required: true }],
+      },
+      {
+        type: "checkbox",
+        name: "verifiedPurchase",
+        required: true,
+        defaultValue: true,
+        hidden: true,
+      },
+      {
+        type: "checkbox",
+        name: "moderationHidden",
+        required: true,
+        defaultValue: false,
+        hidden: true,
       },
     ],
   });

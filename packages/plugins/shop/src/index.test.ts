@@ -28,12 +28,14 @@ describe("shop factory", () => {
       "shop-products",
       "shop-promotions",
       "shop-shipping-policies",
+      "shop-product-reviews",
     ]);
     expect(shopPlugin.manifest.provides.collections).toEqual([
       "shop-categories",
       "shop-products",
       "shop-promotions",
       "shop-shipping-policies",
+      "shop-product-reviews",
     ]);
     expect(shopPlugin.pageRoutes?.map((route) => route.pattern)).toEqual([
       "/shop",
@@ -60,6 +62,11 @@ describe("shop factory", () => {
       { id: "shippingPolicyHealth", kind: "status" },
       { id: "countPromotions", kind: "metric" },
       { id: "promotionHealth", kind: "status" },
+      { id: "countProductReviews", kind: "metric" },
+      { id: "productReviewHealth", kind: "status" },
+      { id: "recentProductReviews", kind: "table" },
+      { id: "hideProductReview", kind: "action" },
+      { id: "restoreProductReview", kind: "action" },
       { id: "countProducts", kind: "metric" },
       { id: "countLowStockProducts", kind: "metric" },
       { id: "countActiveCarts", kind: "metric" },
@@ -131,6 +138,10 @@ describe("shop factory", () => {
     ]);
     expect(shopPlugin.routes?.map((route) => `${route.method} ${route.path}`)).toEqual([
       "GET /cart",
+      "GET /reviews",
+      "POST /reviews",
+      "PATCH /reviews",
+      "DELETE /reviews",
       "POST /cart",
       "PATCH /cart",
       "PUT /cart",
@@ -814,6 +825,7 @@ describe("shop factory", () => {
         products: "catalog-products",
         promotions: "catalog-promotions",
         shippingPolicies: "catalog-shipping-policies",
+        reviews: "catalog-reviews",
       },
       skins: [editorial],
       defaultSkinId: "editorial",
@@ -825,6 +837,7 @@ describe("shop factory", () => {
       "catalog-products",
       "catalog-promotions",
       "catalog-shipping-policies",
+      "catalog-reviews",
     ]);
     const categoryRelation = shop.collections[1].fields.find(
       (field) => "name" in field && field.name === "categories",

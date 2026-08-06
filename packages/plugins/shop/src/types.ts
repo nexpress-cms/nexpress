@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { NpShopDeliveryMethod, NpShopShippingQuote } from "./shipping-contract.js";
 import type { NpShopTaxQuote } from "./tax-contract.js";
 import type { NpShopTracking } from "./tracking-contract.js";
+import type { NpShopProductReviewPage } from "./review-contract.js";
 
 import type { NpShopRefund } from "./refund-contract.js";
 import type { NpShopPartialRefund } from "./partial-refund-contract.js";
@@ -19,6 +20,7 @@ export interface NpShopCollectionSlugs {
   products: string;
   promotions: string;
   shippingPolicies: string;
+  reviews: string;
 }
 
 export type NpShopPromotionKind = "fixed" | "percentage";
@@ -79,6 +81,8 @@ export interface NpShopProductSummary {
   inventoryState: NpShopInventoryState;
   stockQuantity: number;
   categoryIds: string[];
+  reviewCount?: number;
+  reviewAverageBasisPoints?: number;
 }
 
 export interface NpShopProduct extends NpShopProductSummary {
@@ -104,6 +108,24 @@ export interface NpShopMessages {
   categories: string;
   featuredProducts: string;
   featured: string;
+  reviewHeading: string;
+  reviewVerified: string;
+  reviewEmpty: string;
+  reviewWrite: string;
+  reviewEdit: string;
+  reviewLogin: string;
+  reviewUnavailable: string;
+  reviewPurchase: string;
+  reviewRating: string;
+  reviewTitle: string;
+  reviewBody: string;
+  reviewPhotos: string;
+  reviewUpload: string;
+  reviewRemove: string;
+  reviewSave: string;
+  reviewSaving: string;
+  reviewDelete: string;
+  reviewFailed: string;
   search: string;
   searchPlaceholder: string;
   sort: string;
@@ -292,6 +314,30 @@ export interface NpShopMessages {
   formatMoney: (amountMinor: number, currency: NpShopCurrency) => string;
 }
 
+export interface NpShopReviewClientMessages {
+  locale: string;
+  heading: string;
+  verified: string;
+  empty: string;
+  write: string;
+  edit: string;
+  login: string;
+  unavailable: string;
+  purchase: string;
+  rating: string;
+  title: string;
+  body: string;
+  photos: string;
+  upload: string;
+  remove: string;
+  save: string;
+  saving: string;
+  delete: string;
+  failed: string;
+  previous: string;
+  next: string;
+}
+
 export interface NpShopCatalogSkinProps {
   basePath: string;
   products: NpShopProductSummary[];
@@ -318,6 +364,8 @@ export interface NpShopProductSkinProps {
   categories: NpShopCategory[];
   description: ReactNode;
   cartAction?: ReactNode;
+  reviewAction?: ReactNode;
+  reviews?: NpShopProductReviewPage;
   messages: NpShopMessages;
 }
 
