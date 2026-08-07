@@ -1,7 +1,8 @@
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
-import { forumCollections } from "@nexpress/plugin-forum";
-import { sql } from "drizzle-orm";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createForum } from "@nexpress/plugin-forum";
+import { eq, sql } from "drizzle-orm";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as collectionGET, POST as collectionPOST } from "@/app/api/collections/[slug]/route";
 import {
@@ -33,6 +34,54 @@ import {
   truncateAll,
 } from "./harness.js";
 
+const contextProductId = "123e4567-e89b-42d3-a456-426614174000";
+const forumDefinition = createForum({
+  contextualQuestions: {
+    boardKey: "product-questions",
+    sources: [
+      {
+        type: "shop-product",
+        resolve: (ids) =>
+          Promise.resolve(
+            ids.includes(contextProductId)
+              ? [
+                  {
+                    id: contextProductId,
+                    label: "문의 대상 상품",
+                    href: "/shop/products/question-product",
+                  },
+                ]
+              : [],
+          ),
+      },
+    ],
+  },
+});
+const forumCollections = forumDefinition.collections;
+
+const officialAnswer = {
+  version: 1,
+  document: {
+    root: {
+      type: "root",
+      version: 1,
+      direction: null,
+      format: "",
+      indent: 0,
+      children: [
+        {
+          type: "paragraph",
+          version: 1,
+          direction: null,
+          format: "",
+          indent: 0,
+          children: [{ type: "text", version: 1, text: "내일 출고됩니다." }],
+        },
+      ],
+    },
+  },
+} as const;
+
 function request(
   path: string,
   session: { cookie: string; csrfCookie: string; csrfHeader: string },
@@ -57,6 +106,7 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
   });
 
   beforeEach(async () => {
+    vi.stubEnv("NP_SECRET", "forum-context-integration-secret-32-bytes-minimum");
     await truncateAll();
   });
 
@@ -134,6 +184,85 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
     );
     return { response, member };
   }
+
+  it("persists a proof-bound product question and staff-owned official answer", async () => {
+    const { id: boardId, staff } = await createBoard({ key: "product-questions" });
+    const member = await seedActiveMember({ handle: "product-question-author" });
+    const adapter = forumDefinition.contextualQuestions;
+    expect(adapter).not.toBeNull();
+    const markup = renderToStaticMarkup(
+      await adapter!.renderContextQuestions({
+        contextType: "shop-product",
+        contextId: contextProductId,
+        memberId: member.memberId,
+      }),
+    );
+    const proof = /[?&]context=([^"&]+)/u.exec(markup)?.[1];
+    expect(proof).toBeDefined();
+
+    const create = await collectionPOST(
+      request(
+        "/api/collections/forum-posts",
+        {
+          cookie: `np-mb-session=${member.sessionCookie}`,
+          csrfCookie: `np-mb-csrf=${member.csrfCookie}`,
+          csrfHeader: member.csrfCookie,
+        },
+        {
+          method: "POST",
+          body: JSON.stringify({
+            board: boardId,
+            title: "언제 출고되나요?",
+            body: npCreateEmptyRichTextContent(),
+            category: "question",
+            contextType: "shop-product",
+            contextId: contextProductId,
+            contextLabel: "문의 대상 상품",
+            contextHref: "/shop/products/question-product",
+            contextProof: decodeURIComponent(proof!),
+          }),
+        },
+      ),
+      { params: Promise.resolve({ slug: "forum-posts" }) },
+    );
+    const created = await readJson<{ id: string }>(create);
+    expect(created.status).toBe(201);
+
+    const answer = await collectionPATCH(
+      request(
+        `/api/collections/forum-posts/${created.body.id}`,
+        {
+          cookie: `np-session=${staff.accessToken}`,
+          csrfCookie: `np-csrf=${staff.csrfToken}`,
+          csrfHeader: staff.csrfToken,
+        },
+        { method: "PATCH", body: JSON.stringify({ answerBody: officialAnswer }) },
+      ),
+      { params: Promise.resolve({ slug: "forum-posts", id: created.body.id }) },
+    );
+    expect(answer.status).toBe(200);
+
+    const db = await getTestDb();
+    const [row] = await db
+      .select({
+        contextType: forumPostsTable.contextType,
+        contextId: forumPostsTable.contextId,
+        contextProof: forumPostsTable.contextProof,
+        answerBody: forumPostsTable.answerBody,
+        answeredAt: forumPostsTable.answeredAt,
+        answeredByUserId: forumPostsTable.answeredByUserId,
+      })
+      .from(forumPostsTable)
+      .where(eq(forumPostsTable.id, created.body.id));
+    expect(row).toMatchObject({
+      contextType: "shop-product",
+      contextId: contextProductId,
+      contextProof: null,
+      answerBody: officialAnswer,
+      answeredAt: expect.any(Date),
+      answeredByUserId: staff.userId,
+    });
+  });
 
   it("rejects member writes to operator-only fields before persistence", async () => {
     const { id: boardId } = await createBoard({ key: "free" });

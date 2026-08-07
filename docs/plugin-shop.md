@@ -37,9 +37,10 @@ purchase/regenerate outbound labels, schedule recurring pickups, implement a pro
 
 ## Default setup
 
-Fresh NexPress projects receive `shopCollections`, `shopPlugin`, and
-`storefrontTheme` through the framework defaults. After applying the generated
-migration:
+Fresh NexPress projects receive one paired Shop factory result and
+`storefrontTheme` through the framework defaults. That default Shop result is
+structurally wired to Forum for optional product inquiries, while either
+package remains independently replaceable. After applying the generated migration:
 
 1. Open Admin → Commerce → Shop categories and publish categories.
 2. Open Admin → Commerce → Products and publish products.
@@ -163,6 +164,36 @@ code and enhances reviews only through `[data-np-shop-reviews]`,
 `[data-np-shop-review]`, `[data-np-shop-review-form]`, and the plugin's CSS
 variables. Both bundled Shop skins render the complete fallback surface when
 Storefront is absent.
+
+## Forum-backed product inquiries
+
+The default project reuses the Forum `forum-posts` collection for product
+inquiries instead of creating a Shop-only inquiry table. Publish one Forum
+board with key `product-questions`, audience `public` or `members`, and member
+posting enabled. The product detail route then renders the board's newest ten
+readable questions, a composer or sign-in link, private-author visibility,
+waiting/answered state, and official staff answers. If the board or Forum is
+absent, Shop simply omits this optional surface.
+
+The integration is structural and build-time: Shop exports
+`createShopProductInquiryContextSource()` but imports no Forum code, while
+Forum returns a renderer adapter but imports no Shop code. The complete wiring
+example and signed-context rules are in the
+[Forum contextual Q&A guide](plugin-forum.md#contextual-qa-and-shop-product-inquiries).
+Custom Shop paths or collection slugs must be passed to the source factory:
+
+```ts
+const productSource = createShopProductInquiryContextSource({
+  basePath: "/catalog",
+  productsCollection: "catalog-products",
+});
+```
+
+The source resolves only currently published products and returns a local
+product URL. Forum verifies that live result when issuing and consuming its
+one-hour site-bound proof. Product deletion or unpublishing leaves historical
+questions intact but marks their context unavailable. Forum Admin Health
+reports unavailable targets without exposing question authors or product data.
 
 ## Public routes and discovery
 
@@ -1630,7 +1661,8 @@ The main public hooks are `.np-shop`, `.np-shop-product-card`,
 `[data-np-shop-return-status]`,
 `[data-np-shop-return-tracking-status]`,
 `[data-np-shop-surface]`, `[data-np-shop-skin]`,
-`[data-np-shop-inventory]`, and `[data-np-shop-block]`.
+`[data-np-shop-inventory]`, `[data-np-shop-block]`, and
+`[data-np-forum-context-questions]`.
 
 Storefront sets those variables on its shell and adds optional selectors, but
 declares no Shop collection requirement. Shop uses core theme-token fallbacks

@@ -155,6 +155,14 @@ export interface ForumPostsDocument {
     file: string;
   }>;
   category: string | null;
+  contextType: string | null;
+  contextId: string | null;
+  contextLabel: string | null;
+  contextHref: string | null;
+  contextProof: string | null;
+  answerBody: NpRichTextContent | null;
+  answeredAt: Date | null;
+  answeredByUserId: string | null;
   audience: string;
   moderationHidden: boolean;
   pinned: boolean | null;

@@ -61,8 +61,47 @@ export interface NpForumPostSummary {
   author: NpForumAuthor | null;
   engagement: NpContentEngagementSummary;
   attachmentCount: number;
+  questionContext: NpForumQuestionContext | null;
+  questionStatus: NpForumQuestionStatus | null;
   /** Present only on moderator list projections. */
   unresolvedReportCount?: number;
+}
+
+export type NpForumQuestionStatus = "waiting" | "answered";
+
+export interface NpForumQuestionContext {
+  type: string;
+  id: string;
+  label: string;
+  href: string | null;
+  available: boolean;
+}
+
+export interface NpForumQuestionContextTarget {
+  id: string;
+  label: string;
+  href: string;
+}
+
+/**
+ * A structural, server-only context source. Integrating packages can provide
+ * one without importing Forum; Forum remains the owner of posts and answers.
+ */
+export interface NpForumQuestionContextSource {
+  type: string;
+  resolve(ids: readonly string[]): Promise<readonly NpForumQuestionContextTarget[]>;
+}
+
+export interface NpForumContextQuestionsRenderInput {
+  contextType: string;
+  contextId: string;
+  memberId: string | null;
+}
+
+/** Structurally consumable by Shop or another optional integration. */
+export interface NpForumContextualQuestionsAdapter {
+  id: string;
+  renderContextQuestions(input: NpForumContextQuestionsRenderInput): Promise<ReactNode>;
 }
 
 export interface NpForumPostListQuery {
@@ -214,6 +253,14 @@ export interface NpForumMessages {
   commentMuteFailed: string;
   emptyBody: string;
   attachments: string;
+  questionHeading: string;
+  questionWaiting: string;
+  questionAnswered: string;
+  questionAsk: string;
+  questionEmpty: string;
+  questionPrivate: string;
+  questionOfficialAnswer: string;
+  questionContextUnavailable: string;
 }
 
 export interface NpForumBoardIndexSkinProps {
@@ -250,6 +297,8 @@ export interface NpForumPostDetailSkinProps {
   engagement: ReactNode;
   comments: ReactNode;
   attachments: NpForumAttachment[];
+  questionContext: ReactNode;
+  officialAnswer: ReactNode;
   messages: NpForumMessages;
 }
 

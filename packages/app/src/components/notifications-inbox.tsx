@@ -25,6 +25,7 @@ const LABELS: Record<string, string> = {
   "reaction.received": "Reaction received",
   "follow.received": "New follower",
   "follow.activity": "Subscribed activity",
+  "forum.question-answered": "Question answered",
 };
 
 export function NotificationsInbox({
@@ -309,6 +310,10 @@ function summaryFor(item: NotificationInboxItem): string {
       return item.payload.activity === "document.published"
         ? "A followed board has a new post."
         : "A followed discussion has a new comment.";
+    case "forum.question-answered": {
+      const title = readString(item.payload, "title");
+      return title ? `An official answer was posted to “${title}”.` : "Your question was answered.";
+    }
     default:
       return "A new notification was added to your inbox.";
   }

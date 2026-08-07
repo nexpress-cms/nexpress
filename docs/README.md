@@ -38,8 +38,8 @@ behavior they describe changes.
 | [plugin-blocks.md](plugin-blocks.md)                   | Plugin block definitions, props schemas, and registry behavior          |
 | [plugin-capabilities.md](plugin-capabilities.md)       | Capability ↔ `ctx.*` mapping reference                                  |
 | [plugin-hooks.md](plugin-hooks.md)                     | Typed content, auth, media lifecycle hook payloads                      |
-| [plugin-forum.md](plugin-forum.md)                     | Multi-board forum factory, Admin policy, skins, and public routes       |
-| [plugin-shop.md](plugin-shop.md)                       | Catalog, orders, carrier tracking events, skins, plus Storefront theme. |
+| [plugin-forum.md](plugin-forum.md)                     | Multi-board forum, contextual Q&A, Admin policy, skins, and routes      |
+| [plugin-shop.md](plugin-shop.md)                       | Catalog, inquiries, orders, carrier events, skins, and Storefront theme |
 | [plugin-i18n.md](plugin-i18n.md)                       | Definition-level plugin ICU catalogs and locale validation              |
 | [plugin-manifest.md](plugin-manifest.md)               | Manifest field reference (required vs auto-defaulted)                   |
 | [plugin-pages.md](plugin-pages.md)                     | Public page routes, matching, shells, and server/client boundaries      |

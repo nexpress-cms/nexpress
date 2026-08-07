@@ -15,6 +15,9 @@ import type {
   NpForumCategory,
   NpForumCollectionSlugs,
   NpForumMessages,
+  NpForumQuestionContext,
+  NpForumQuestionContextSource,
+  NpForumQuestionContextTarget,
   NpForumPostSummary,
   NpForumSkin,
 } from "./types.js";
@@ -28,6 +31,10 @@ export interface NpForumRuntime {
   collections: NpForumCollectionSlugs;
   defaultSkinId: string;
   skins: ReadonlyMap<string, NpForumSkin>;
+  contextualQuestions: {
+    boardKey: string;
+    sources: ReadonlyMap<string, NpForumQuestionContextSource>;
+  } | null;
 }
 
 export interface ForumBoardDocument extends Record<string, unknown> {
@@ -63,6 +70,14 @@ export interface ForumPostDocument extends Record<string, unknown> {
   locked?: boolean | null;
   audience: unknown;
   attachments?: unknown;
+  contextType?: string | null;
+  contextId?: string | null;
+  contextLabel?: string | null;
+  contextHref?: string | null;
+  contextProof?: string | null;
+  answerBody?: unknown;
+  answeredAt?: Date | null;
+  answeredByUserId?: string | null;
   memberAuthorId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -70,6 +85,97 @@ export interface ForumPostDocument extends Record<string, unknown> {
 
 export function isForumPostId(value: unknown): value is string {
   return typeof value === "string" && FORUM_POST_ID_PATTERN.test(value);
+}
+
+function containsControlCharacter(value: string): boolean {
+  return [...value].some((character) => {
+    const code = character.charCodeAt(0);
+    return code <= 31 || code === 127;
+  });
+}
+
+export function npRequireForumQuestionContextHref(value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    value.length < 1 ||
+    value.length > 512 ||
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.includes("\\") ||
+    value.includes("?") ||
+    value.includes("#") ||
+    containsControlCharacter(value)
+  ) {
+    throw new Error("Forum question context href must be one bounded local path.");
+  }
+  try {
+    if (
+      value
+        .split("/")
+        .slice(1)
+        .some((segment) => {
+          const decoded = decodeURIComponent(segment);
+          return (
+            decoded === "" ||
+            decoded === "." ||
+            decoded === ".." ||
+            decoded.includes("/") ||
+            decoded.includes("\\")
+          );
+        })
+    ) {
+      throw new Error("dot segment");
+    }
+  } catch {
+    throw new Error("Forum question context href must be one bounded local path.");
+  }
+  return value;
+}
+
+export async function npResolveForumQuestionContextTargets(
+  source: NpForumQuestionContextSource,
+  ids: readonly string[],
+): Promise<Map<string, NpForumQuestionContextTarget>> {
+  const requested = new Set(ids);
+  if (requested.size > 100 || [...requested].some((id) => !FORUM_POST_ID_PATTERN.test(id))) {
+    throw new Error("Forum question context sources accept up to 100 UUIDs.");
+  }
+  const rawTargets: unknown = await source.resolve([...requested]);
+  if (!Array.isArray(rawTargets)) {
+    throw new Error(`Forum question context source "${source.type}" returned a non-array result.`);
+  }
+  const targets = rawTargets as unknown[];
+  if (targets.length > requested.size) {
+    throw new Error(`Forum question context source "${source.type}" returned too many targets.`);
+  }
+  const resolved = new Map<string, NpForumQuestionContextTarget>();
+  for (const target of targets) {
+    if (
+      !target ||
+      typeof target !== "object" ||
+      Array.isArray(target) ||
+      Object.keys(target).some((key) => key !== "id" && key !== "label" && key !== "href") ||
+      typeof (target as Record<string, unknown>).id !== "string" ||
+      typeof (target as Record<string, unknown>).label !== "string" ||
+      typeof (target as Record<string, unknown>).href !== "string"
+    ) {
+      throw new Error(`Forum question context source "${source.type}" returned an invalid target.`);
+    }
+    const checked = target as { id: string; label: string; href: string };
+    if (!requested.has(checked.id) || resolved.has(checked.id)) {
+      throw new Error(`Forum question context source "${source.type}" returned an invalid target.`);
+    }
+    const label = checked.label.trim();
+    if (label.length < 1 || label.length > 160) {
+      throw new Error(`Forum question context source "${source.type}" returned an invalid label.`);
+    }
+    resolved.set(checked.id, {
+      id: checked.id,
+      label,
+      href: npRequireForumQuestionContextHref(checked.href),
+    });
+  }
+  return resolved;
 }
 
 export function normalizeForumCategories(value: unknown): NpForumCategory[] {
@@ -242,19 +348,64 @@ export function resolveForumSkin(runtime: NpForumRuntime, skinId?: string): NpFo
   return skin;
 }
 
+export async function resolveForumQuestionContexts(
+  runtime: NpForumRuntime,
+  documents: readonly ForumPostDocument[],
+): Promise<Map<string, NpForumQuestionContext>> {
+  const resolved = new Map<string, NpForumQuestionContext>();
+  if (!runtime.contextualQuestions) return resolved;
+  const byType = new Map<string, Set<string>>();
+  for (const document of documents) {
+    if (typeof document.contextType !== "string" || typeof document.contextId !== "string") {
+      continue;
+    }
+    const ids = byType.get(document.contextType) ?? new Set<string>();
+    ids.add(document.contextId);
+    byType.set(document.contextType, ids);
+  }
+  for (const [type, ids] of byType) {
+    const source = runtime.contextualQuestions.sources.get(type);
+    let live = new Map<string, NpForumQuestionContextTarget>();
+    if (source) {
+      try {
+        live = await npResolveForumQuestionContextTargets(source, [...ids].slice(0, 100));
+      } catch {
+        // Keep ordinary Forum surfaces available when an optional context
+        // source fails. The definition-level health action reports the same
+        // source failure to operators instead of leaking it into public pages.
+      }
+    }
+    for (const document of documents) {
+      if (document.contextType !== type || typeof document.contextId !== "string") continue;
+      const target = live.get(document.contextId);
+      resolved.set(document.id, {
+        type,
+        id: document.contextId,
+        label:
+          target?.label ??
+          (typeof document.contextLabel === "string" ? document.contextLabel : "Unavailable"),
+        href: target?.href ?? null,
+        available: target !== undefined,
+      });
+    }
+  }
+  return resolved;
+}
+
 export async function enrichForumPosts(
   documents: ForumPostDocument[],
-  collectionSlug: string,
+  runtime: NpForumRuntime,
 ): Promise<NpForumPostSummary[]> {
   const authorIds = documents
     .map((document) => document.memberAuthorId)
     .filter((value): value is string => typeof value === "string" && value.length > 0);
-  const [profiles, engagement] = await Promise.all([
+  const [profiles, engagement, contexts] = await Promise.all([
     getMemberProfiles(authorIds),
     npListContentEngagement(
-      collectionSlug,
+      runtime.collections.posts,
       documents.map((document) => document.id),
     ),
+    resolveForumQuestionContexts(runtime, documents),
   ]);
   return documents.map((document, index) => {
     const profile = document.memberAuthorId ? profiles.get(document.memberAuthorId) : null;
@@ -280,6 +431,13 @@ export async function enrichForumPosts(
       author,
       engagement: engagement[index],
       attachmentCount: normalizeForumAttachmentIds(document.attachments).length,
+      questionContext: contexts.get(document.id) ?? null,
+      questionStatus:
+        contexts.has(document.id) && document.answeredAt instanceof Date
+          ? "answered"
+          : contexts.has(document.id)
+            ? "waiting"
+            : null,
     };
   });
 }
@@ -461,6 +619,14 @@ export async function getForumMessages(): Promise<NpForumMessages> {
       "commentMuteFailed",
       "emptyBody",
       "attachments",
+      "questionHeading",
+      "questionWaiting",
+      "questionAnswered",
+      "questionAsk",
+      "questionEmpty",
+      "questionPrivate",
+      "questionOfficialAnswer",
+      "questionContextUnavailable",
     ].map(read),
   );
   const [
@@ -596,6 +762,14 @@ export async function getForumMessages(): Promise<NpForumMessages> {
     commentMuteFailed,
     emptyBody,
     attachments,
+    questionHeading,
+    questionWaiting,
+    questionAnswered,
+    questionAsk,
+    questionEmpty,
+    questionPrivate,
+    questionOfficialAnswer,
+    questionContextUnavailable,
   ] = values;
   return {
     locale,
@@ -736,6 +910,15 @@ export async function getForumMessages(): Promise<NpForumMessages> {
     commentMuteFailed: commentMuteFailed ?? "Could not mute this member.",
     emptyBody: emptyBody ?? "No content.",
     attachments: attachments ?? "Attachments",
+    questionHeading: questionHeading ?? "Questions",
+    questionWaiting: questionWaiting ?? "Waiting for answer",
+    questionAnswered: questionAnswered ?? "Answered",
+    questionAsk: questionAsk ?? "Ask a question",
+    questionEmpty: questionEmpty ?? "No questions have been posted for this item.",
+    questionPrivate: questionPrivate ?? "Private",
+    questionOfficialAnswer: questionOfficialAnswer ?? "Official answer",
+    questionContextUnavailable:
+      questionContextUnavailable ?? "The linked item is no longer available.",
   };
 }
 

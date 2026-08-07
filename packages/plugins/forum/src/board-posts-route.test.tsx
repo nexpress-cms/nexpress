@@ -74,6 +74,7 @@ const runtime = {
   collections: { boards: "forum-boards", posts: "forum-posts" },
   defaultSkinId: "classic",
   skins: new Map(),
+  contextualQuestions: null,
 };
 
 function result(overrides: Record<string, unknown> = {}) {

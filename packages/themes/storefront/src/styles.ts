@@ -286,6 +286,9 @@ export const storefrontCss = `
   border-radius: 0;
 }
 .np-storefront-shell [data-np-shop-reviews] { margin-top: 4rem; }
+.np-storefront-shell [data-np-forum-context-questions] { margin-top: 4rem; border-radius: 0; box-shadow: none; }
+.np-storefront-shell [data-np-forum-context-questions] h2 { font-family: var(--np-font-heading, Georgia, serif); font-weight: 500; }
+.np-storefront-shell [data-np-forum-question-status="answered"] { color: var(--np-storefront-accent); }
 .np-storefront-shell .np-shop-review-summary,
 .np-storefront-shell [data-np-shop-review-form] { border-radius: 0; box-shadow: none; }
 .np-storefront-shell [data-np-shop-review] > header strong { color: var(--np-storefront-accent); }

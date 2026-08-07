@@ -13,8 +13,10 @@ The collection relationship keeps posts tied to a valid board.
 
 ## Default setup
 
-Generated NexPress projects already include the paired `forumCollections` and
-`forumPlugin` exports through `defaultCollections` and `defaultPlugins`.
+Generated NexPress projects already include one paired Forum factory result
+through `defaultCollections` and `defaultPlugins`. The framework default also
+wires the optional Shop product-inquiry bridge; Forum and Shop remain usable
+independently when a project replaces either default.
 After setup:
 
 1. Open Admin → Community → Forum boards.
@@ -75,8 +77,9 @@ the public detail route, plus board-list pending/report indicators and inline
 report handling. Their list includes published posts and eligible member or
 previously-hidden pending posts, including pending rows that were pinned before
 moderation; initial staff drafts never cross this member surface. Members can
-submit only `board`, `title`, `body`, `category`, `attachments`, and
-`audience`. A post can be public, member-only, or private to its author and
+submit only `board`, `title`, `body`, `category`, `attachments`, `audience`,
+and the proof-bound contextual fields described below. A post can be public,
+member-only, or private to its author and
 scoped moderators, but never broader than its board. Narrowing a board is
 rejected until every existing post uses an equally restrictive audience; this
 keeps direct URLs and discovery consistent without a non-atomic background
@@ -90,6 +93,59 @@ forces `pending` even when the board normally publishes immediately.
 Deleting a board with posts is intentionally restricted by the relationship
 foreign key. Move or delete its posts first so a stale post can never point to
 a missing board.
+
+## Contextual Q&A and Shop product inquiries
+
+Forum can reuse one ordinary board as a signed contextual Q&A surface. The
+default project expects a published board whose key is `product-questions`,
+whose audience is `public` or `members`, and whose write mode is `members`.
+Until that board exists, product pages simply omit the inquiry section; no
+parallel inquiry collection or placeholder data is created.
+
+The Shop package supplies only a batched, server-only product context source.
+Forum owns the post, audience, moderation, attachment, answer, notification,
+and route policies. Shop receives only Forum's structural renderer adapter, so
+neither package imports the other and either continues to work alone:
+
+```ts
+import { defineConfig } from "@nexpress/core";
+import { createForum } from "@nexpress/plugin-forum";
+import { createShop, createShopProductInquiryContextSource } from "@nexpress/plugin-shop";
+
+const forum = createForum({
+  contextualQuestions: {
+    boardKey: "product-questions",
+    sources: [createShopProductInquiryContextSource()],
+  },
+});
+if (!forum.contextualQuestions) throw new Error("Forum inquiry adapter is unavailable");
+const shop = createShop({ inquiries: { adapter: forum.contextualQuestions } });
+
+export default defineConfig({
+  collections: [...forum.collections, ...shop.collections],
+  plugins: [forum.plugin, shop.plugin],
+});
+```
+
+`createShopProductInquiryContextSource({ basePath, productsCollection })` must
+receive the matching custom Shop route and collection values when those are
+renamed. A one-hour HMAC proof binds the current site, board, product UUID,
+label, and local product path before a member may create a linked question.
+The raw proof is discarded before persistence. Members cannot add, move, or
+edit a context without a fresh proof; deleted or unpublished products render
+as unavailable rather than trusting a stale link snapshot. On the configured
+question board, staff-authenticated content transfer can restore a proof-free
+historical snapshot only after its type, UUID, bounded label, and local path are
+revalidated; member writes never use that restoration path.
+
+Staff answer the linked row in Admin → Community → Forum posts using the
+`Official answer` rich-text field. The first unanswered-to-answered transition
+records the time and direct staff user id and sends the author a
+`forum.question-answered` inbox notification. Clearing and saving the answer
+returns the row to waiting. Both bundled skins render the linked context,
+waiting/answered state, and official answer. Admin Health checks the configured
+board and a bounded newest-100 sample for unavailable targets; Plugin Doctor
+verifies the matching definition-level status action.
 
 ## Attachments
 
@@ -449,6 +505,9 @@ It also publishes `engagement` and `engagement-summary` slots backed by
 `data-np-forum-metric="views|comments|reactions"`.
 The `subscription` slot targets `[data-np-forum-subscription]`; themes may style
 that stable state hook without importing the plugin client component.
+Contextual Q&A publishes `[data-np-forum-context-questions]`,
+`[data-np-forum-question-context]`, `[data-np-forum-question-status]`, and
+`[data-np-forum-official-answer]` for the same theme-independent enhancement.
 Moderator surfaces expose `data-np-forum-moderation="reports"`,
 `data-np-forum-report="<reportId>"`,
 `data-np-forum-moderation-action="hide|restore|lock|unlock|pin|unpin"`, and
@@ -483,7 +542,8 @@ discovery, daily-unique views, document recommendations, batched engagement
 counts, board/post subscriptions, deduplicated actionable notifications,
 bounded popular ranking, home-page directory/feed blocks, a
 community-home pattern, a theme-neutral style contract, plugin i18n catalogs,
-an Admin dashboard metric, and explicit public member-profile document/comment
+an Admin dashboard metric, optional signed contextual Q&A with official answers
+and health, and explicit public member-profile document/comment
 activity. Forum posts opt into Core's generic profile projection and expose
 their configured UUID detail route through `seo.urlPath`; neither skin nor a
 theme queries the forum collections to build member activity.

@@ -1,8 +1,21 @@
-import { definePlugin, type NpPluginPageRouteRegistration } from "@nexpress/plugin-sdk";
-import { notifyFollowers } from "@nexpress/core/community";
+import {
+  definePlugin,
+  npAdminStatus,
+  type NpPluginPageRouteRegistration,
+} from "@nexpress/plugin-sdk";
+import {
+  createNotification,
+  notifyFollowers,
+  registerNotificationKind,
+} from "@nexpress/core/community";
 
 import { defineForumBoardsCollection, defineForumPostsCollection } from "./collections.js";
 import { createForumHomeBlocks, forumHomePatterns } from "./home-blocks.js";
+import {
+  createForumContextualQuestionsAdapter,
+  npInspectForumContextualQuestions,
+  npRequireForumQuestionContextSource,
+} from "./contextual-questions.js";
 import { createBoardIndexMetadata, createBoardIndexRoute } from "./routes/board-index.js";
 import { createBoardPostsMetadata, createBoardPostsRoute } from "./routes/board-posts.js";
 import { createForumPostDetailRoute, createForumPostMetadata } from "./routes/forum-post-detail.js";
@@ -11,7 +24,7 @@ import { createForumPostNewRoute } from "./routes/forum-post-new.js";
 import type { NpForumRuntime } from "./runtime.js";
 import { classicForumSkin } from "./skins/classic.js";
 import { communityFullForumSkin } from "./skins/community-full.js";
-import type { NpForumCollectionSlugs, NpForumSkin } from "./types.js";
+import type { NpForumCollectionSlugs, NpForumQuestionContextSource, NpForumSkin } from "./types.js";
 
 const SAFE_SEGMENT = /^[a-z][a-z0-9-]*$/u;
 
@@ -24,6 +37,11 @@ export interface NpForumOptions {
   skins?: readonly NpForumSkin[];
   /** Default skin for the board index and newly-created boards. */
   defaultSkinId?: string;
+  /** Optional contextual Q&A board and server-only target sources. */
+  contextualQuestions?: {
+    boardKey: string;
+    sources: readonly NpForumQuestionContextSource[];
+  };
 }
 
 function requireBasePath(value: string): string {
@@ -77,11 +95,33 @@ function createRuntime(options: NpForumOptions): NpForumRuntime {
   if (collections.boards === collections.posts) {
     throw new Error("Forum board and post collection slugs must be different.");
   }
+  let contextualQuestions: NpForumRuntime["contextualQuestions"] = null;
+  if (options.contextualQuestions) {
+    if (!SAFE_SEGMENT.test(options.contextualQuestions.boardKey)) {
+      throw new Error("Forum contextual question boardKey must be a canonical lowercase segment.");
+    }
+    const sources = new Map<string, NpForumQuestionContextSource>();
+    for (const rawSource of options.contextualQuestions.sources) {
+      const source = npRequireForumQuestionContextSource(rawSource);
+      if (sources.has(source.type)) {
+        throw new Error(`Forum question context source "${source.type}" is duplicated.`);
+      }
+      sources.set(source.type, source);
+    }
+    if (sources.size === 0) {
+      throw new Error("Forum contextual questions require at least one context source.");
+    }
+    contextualQuestions = {
+      boardKey: options.contextualQuestions.boardKey,
+      sources,
+    };
+  }
   return {
     basePath: requireBasePath(options.basePath ?? "/boards"),
     collections,
     defaultSkinId,
     skins,
+    contextualQuestions,
   };
 }
 
@@ -222,6 +262,14 @@ const messages = {
     "forum.commentMuteFailed": "Could not mute this member.",
     "forum.emptyBody": "No content.",
     "forum.attachments": "Attachments",
+    "forum.questionHeading": "Questions",
+    "forum.questionWaiting": "Waiting for answer",
+    "forum.questionAnswered": "Answered",
+    "forum.questionAsk": "Ask a question",
+    "forum.questionEmpty": "No questions have been posted for this item.",
+    "forum.questionPrivate": "Private",
+    "forum.questionOfficialAnswer": "Official answer",
+    "forum.questionContextUnavailable": "The linked item is no longer available.",
     "forum.attachmentAdd": "Add files",
     "forum.attachmentUploading": "Uploading…",
     "forum.attachmentRemove": "Remove",
@@ -367,6 +415,14 @@ const messages = {
     "forum.commentMuteFailed": "회원을 차단하지 못했습니다.",
     "forum.emptyBody": "내용이 없습니다.",
     "forum.attachments": "첨부파일",
+    "forum.questionHeading": "문의",
+    "forum.questionWaiting": "답변 대기",
+    "forum.questionAnswered": "답변 완료",
+    "forum.questionAsk": "문의하기",
+    "forum.questionEmpty": "이 항목에 등록된 문의가 없습니다.",
+    "forum.questionPrivate": "비밀글",
+    "forum.questionOfficialAnswer": "공식 답변",
+    "forum.questionContextUnavailable": "연결된 항목을 더 이상 확인할 수 없습니다.",
     "forum.attachmentAdd": "파일 추가",
     "forum.attachmentUploading": "업로드 중…",
     "forum.attachmentRemove": "삭제",
@@ -385,6 +441,7 @@ const messages = {
  */
 export function createForum(options: NpForumOptions = {}) {
   const runtime = createRuntime(options);
+  const contextualQuestions = createForumContextualQuestionsAdapter(runtime);
   const pageRoutes = [
     {
       pattern: runtime.basePath,
@@ -421,7 +478,7 @@ export function createForum(options: NpForumOptions = {}) {
   const plugin = definePlugin({
     manifest: {
       id: "forum",
-      version: "0.4.1",
+      version: "0.4.2",
       name: "Forum",
       description:
         "Korean-style multi-board community with searchable skins, member posts, moderation, and comments.",
@@ -478,11 +535,22 @@ export function createForum(options: NpForumOptions = {}) {
         "board-directory-block": '[data-np-forum-block="board-directory"]',
         "post-feed-block": '[data-np-forum-block="post-feed"]',
         "feed-item": ".np-forum-block-feed-list > li",
+        "context-questions": "[data-np-forum-context-questions]",
+        "question-context": "[data-np-forum-question-context]",
+        "question-status": "[data-np-forum-question-status]",
+        "official-answer": "[data-np-forum-official-answer]",
       },
     },
     blocks,
     patterns: forumHomePatterns,
     i18n: messages,
+    setup: () => {
+      registerNotificationKind({
+        kind: "forum.question-answered",
+        label: "Official answers",
+        description: "Staff posted an official answer to one of your contextual questions.",
+      });
+    },
     hooks: {
       "content:afterPublish": async ({ data }) => {
         const { collection, document, principal } = data;
@@ -513,6 +581,29 @@ export function createForum(options: NpForumOptions = {}) {
           actorMemberId: principal?.kind === "member" ? principal.memberId : memberAuthorId,
         });
       },
+      "content:afterUpdate": async ({ data }) => {
+        if (
+          data.collection !== runtime.collections.posts ||
+          data.originalDocument === null ||
+          data.originalDocument.answeredAt != null ||
+          data.document.answeredAt == null ||
+          typeof data.document.memberAuthorId !== "string" ||
+          typeof data.document.boardKey !== "string" ||
+          typeof data.document.id !== "string"
+        ) {
+          return;
+        }
+        await createNotification({
+          memberId: data.document.memberAuthorId,
+          kind: "forum.question-answered",
+          payload: {
+            href: `${runtime.basePath}/${data.document.boardKey}/${data.document.id}`,
+            title: typeof data.document.title === "string" ? data.document.title.slice(0, 200) : "",
+            targetType: runtime.collections.posts,
+            targetId: data.document.id,
+          },
+        });
+      },
     },
     admin: {
       dashboardWidgets: [
@@ -524,6 +615,18 @@ export function createForum(options: NpForumOptions = {}) {
           description: "Total posts across all forum boards.",
           priority: 20,
         },
+        ...(runtime.contextualQuestions
+          ? [
+              {
+                id: "forum-contextual-question-health",
+                label: "Contextual questions",
+                kind: "status" as const,
+                actionId: "contextualQuestionHealth",
+                description: "Configured question board, official-answer, and live target health.",
+                priority: 19,
+              },
+            ]
+          : []),
       ],
     },
     actions: {
@@ -544,11 +647,58 @@ export function createForum(options: NpForumOptions = {}) {
           }
         },
       },
+      ...(runtime.contextualQuestions
+        ? {
+            contextualQuestionHealth: {
+              kind: "status" as const,
+              handler: async () => {
+                try {
+                  const inspection = await npInspectForumContextualQuestions(runtime);
+                  if (inspection.boardState !== "ready") {
+                    const problem = {
+                      missing: "does not exist",
+                      draft: "is not published",
+                      restricted: "is moderator-only",
+                      closed: "does not allow member posts",
+                    }[inspection.boardState];
+                    return npAdminStatus(
+                      "warn",
+                      `Contextual question board ${runtime.contextualQuestions?.boardKey ?? "unknown"} ${problem}.`,
+                    );
+                  }
+                  if (inspection.unavailableTargets > 0) {
+                    return npAdminStatus(
+                      "warn",
+                      `${inspection.unavailableTargets.toString()} of ${inspection.sampled.toString()} sampled contextual question(s) reference unavailable targets.`,
+                    );
+                  }
+                  if (inspection.sampleBoundReached) {
+                    return npAdminStatus(
+                      "warn",
+                      `The question board has ${inspection.total.toString()} post(s); health inspected contextual links in its newest 100 rows.`,
+                    );
+                  }
+                  return npAdminStatus(
+                    "ok",
+                    `${inspection.waiting.toString()} waiting and ${inspection.answered.toString()} answered contextual question(s).`,
+                  );
+                } catch (error) {
+                  return npAdminStatus(
+                    "error",
+                    error instanceof Error
+                      ? error.message
+                      : "Contextual question health check failed.",
+                  );
+                }
+              },
+            },
+          }
+        : {}),
     },
     pageRoutes,
   });
 
-  return { plugin, collections, runtime } as const;
+  return { plugin, collections, runtime, contextualQuestions } as const;
 }
 
 const defaultForum = createForum();
@@ -577,6 +727,12 @@ export type {
   NpForumPostListQueryPatch,
   NpForumPostListSkinProps,
   NpForumPostSummary,
+  NpForumQuestionContext,
+  NpForumQuestionContextSource,
+  NpForumQuestionContextTarget,
+  NpForumQuestionStatus,
+  NpForumContextQuestionsRenderInput,
+  NpForumContextualQuestionsAdapter,
   NpForumSkin,
 } from "./types.js";
 

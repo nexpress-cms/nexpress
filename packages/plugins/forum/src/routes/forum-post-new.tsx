@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ForumPostForm } from "@nexpress/plugin-forum/client";
+import { npReadForumQuestionSubmissionContext } from "../contextual-questions.js";
 
 import {
   findForumBoardByKey,
@@ -14,15 +15,22 @@ import {
 } from "../runtime.js";
 
 export function createForumPostNewRoute(runtime: NpForumRuntime) {
-  return async function ForumPostNewRoute({ params }: NpRouteRenderProps) {
+  return async function ForumPostNewRoute({ params, searchParams }: NpRouteRenderProps) {
     const member = await getSiteMember();
     const [board, messages] = await Promise.all([
       findForumBoardByKey(runtime, params.boardKey ?? "", member?.id ?? null),
       getForumMessages(),
     ]);
     if (!board || board.writeMode !== "members") notFound();
-    const attachmentLabels = await getForumAttachmentFormLabels(board);
-    const next = `${runtime.basePath}/${board.key}/new`;
+    const rawContext = Array.isArray(searchParams.context)
+      ? searchParams.context[0]
+      : searchParams.context;
+    const [attachmentLabels, context] = await Promise.all([
+      getForumAttachmentFormLabels(board),
+      npReadForumQuestionSubmissionContext(runtime, board, rawContext),
+    ]);
+    if (rawContext !== undefined && !context) notFound();
+    const next = `${runtime.basePath}/${board.key}/new${rawContext ? `?context=${encodeURIComponent(rawContext)}` : ""}`;
     const content = member ? (
       <ForumPostForm
         mode="create"
@@ -35,6 +43,7 @@ export function createForumPostNewRoute(runtime: NpForumRuntime) {
           categories: board.categories,
           attachments: board.attachments,
         }}
+        context={context ?? undefined}
         labels={{
           category: messages.category,
           categoryNone: messages.categoryNone,

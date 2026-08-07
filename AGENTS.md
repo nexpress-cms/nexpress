@@ -2,7 +2,16 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-06 (Shop products now add one member-owned
+**Last refreshed:** 2026-08-07 (Forum may now reuse one ordinary board as a
+signed contextual Q&A surface; the default Shop integration contributes only
+a batched published-product context source and consumes Forum's structural
+renderer adapter. Site/board/product-bound proofs, immutable context, existing
+audience/moderation/attachment policy, staff rich-text answers, member
+notifications, Admin/Doctor health, both skin fallbacks, Storefront hooks,
+scaffold guidance, and a generated migration share the contract while Forum,
+Shop, and Storefront remain independently usable.)
+
+**Earlier:** 2026-08-06 (Shop products now add one member-owned
 verified-purchase review contract over shipped order lines, short-lived signed
 eligibility, one-way purchase keys, bounded ratings/text/photos, exact
 non-hidden public aggregates, safe author projections, audited Admin

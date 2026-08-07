@@ -177,7 +177,7 @@ async function listForumFeed(
       (mode !== "popular" || document.createdAt.getTime() >= cutoff)
     );
   });
-  const posts = await enrichForumPosts(activeDocuments, runtime.collections.posts);
+  const posts = await enrichForumPosts(activeDocuments, runtime);
   const orderedPosts =
     mode === "popular"
       ? posts

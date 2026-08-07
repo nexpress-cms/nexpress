@@ -99,8 +99,8 @@ export function createBoardPostsRoute(runtime: NpForumRuntime) {
       ? result.docs.filter((post) => npIsMemberModeratableDocument(postConfig, post))
       : result.docs;
     const [posts, pinnedPosts, reportCounts] = await Promise.all([
-      enrichForumPosts(visibleDocs, runtime.collections.posts),
-      enrichForumPosts(pinnedResult.docs, runtime.collections.posts),
+      enrichForumPosts(visibleDocs, runtime),
+      enrichForumPosts(pinnedResult.docs, runtime),
       canReviewReports
         ? countUnresolvedDocumentReports(
             runtime.collections.posts,

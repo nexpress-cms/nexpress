@@ -39,10 +39,15 @@ export function createShopProductRoute(runtime: NpShopRuntime) {
       ? searchParams.reviewPage[0]
       : searchParams.reviewPage;
     const reviewPageNumber = Number(rawReviewPage ?? "1");
-    const [allCategories, messages, reviews] = await Promise.all([
+    const [allCategories, messages, reviews, inquiryAction] = await Promise.all([
       listShopCategories(runtime),
       getShopMessages(),
       npGetShopProductReviewPage(runtime, product.id, member?.id ?? null, reviewPageNumber),
+      runtime.inquiryAdapter?.renderContextQuestions({
+        contextType: "shop-product",
+        contextId: product.id,
+        memberId: member?.id ?? null,
+      }) ?? Promise.resolve(null),
     ]);
     const categories = allCategories.filter((category) =>
       product.categoryIds.includes(category.id),
@@ -95,6 +100,7 @@ export function createShopProductRoute(runtime: NpShopRuntime) {
         />
       ),
       reviews,
+      inquiryAction,
       messages,
     });
   };

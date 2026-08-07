@@ -3,8 +3,8 @@
 Multi-board forum plugin for [NexPress](https://github.com/nexpress-cms/nexpress).
 It combines native board/post collections, member writes, moderation, rich
 text, public/member/private audiences, daily-unique views, recommendations,
-bounded popular feeds, comments, validated member attachments, and
-theme-neutral build-time skins.
+bounded popular feeds, comments, validated member attachments, optional signed
+contextual Q&A with official answers, and theme-neutral build-time skins.
 
 ## Install
 
@@ -12,9 +12,12 @@ theme-neutral build-time skins.
 pnpm add @nexpress/plugin-forum
 ```
 
-Generated projects already receive `forumCollections` and `forumPlugin` through
-the framework defaults. For a custom path, collection names, or skin catalog,
-use one paired factory result:
+Generated projects receive Forum through the framework defaults. The
+standalone `forumCollections` and `forumPlugin` exports remain available, while
+framework defaults use one paired factory result and additionally wire optional
+Shop product inquiries. For a custom
+path, collection names, skin catalog, or contextual source, use one paired
+factory result:
 
 ```ts
 import { defineConfig } from "@nexpress/core";
@@ -63,6 +66,14 @@ remain uploader-only while unreferenced, and inherit the audience of every
 referencing document. They are served only as forced sandboxed downloads.
 Both bundled skins render the same attachment count, detail list, and
 route-owned composer controls.
+
+Forum can also reuse an ordinary member-write board for contextual questions.
+Its one-hour `NP_SECRET` proof binds the site, board, source type/id, label, and
+local path; the proof is removed before persistence. Forum keeps ownership of
+audience, moderation, attachments, answers, and author notifications. The
+default Shop bridge expects a published `product-questions` board and otherwise
+renders nothing. See the live guide for the independent Forum/Shop factory
+wiring and custom-path source options.
 
 Two bundled skins are always available: `classic` for the familiar compact
 table and `community-full` for policy summaries, author identity, status-rich
