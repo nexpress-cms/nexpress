@@ -17,6 +17,7 @@ type SearchIndexDocumentRefSource =
   Iterable<SearchIndexDocumentRef> | AsyncIterable<SearchIndexDocumentRef>;
 
 function collectionSupportsSearch(collection: string): boolean {
+  if (getCollectionConfig(collection).search === false) return false;
   const table = getCollectionTable(collection) as Record<string, unknown>;
   return table.searchVector !== undefined;
 }
@@ -94,6 +95,7 @@ export async function npReplaceSearchCollectionIndex(
   const adapter = getSearchAdapter();
   const indexing = adapter?.indexing;
   if (!adapter || !indexing) return;
+  if (!collectionSupportsSearch(collection)) return;
 
   let claimed = false;
   let completed = false;

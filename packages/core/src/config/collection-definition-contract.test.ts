@@ -12,6 +12,7 @@ function validCollection(): NpCollectionConfig {
   return {
     slug: "articles",
     labels: { singular: "Article", plural: "Articles" },
+    search: false,
     slugField: { useField: "title", unique: true },
     fields: [
       { name: "title", type: "text" as const, minLength: 1, maxLength: 120 },
@@ -59,6 +60,7 @@ describe("collection definition contract", () => {
     const collection = validCollection();
     expect(npValidateCollectionDefinition(collection)).toEqual({ ok: true });
     expect(defineCollection(collection)).toBe(collection);
+    expect(collection.search).toBe(false);
   });
 
   it("makes defineCollection fail immediately for an invalid definition", () => {

@@ -15,6 +15,8 @@ const external = [
   "@nexpress/core/fields",
   "@nexpress/core/i18n",
   "@nexpress/core/media",
+  "@nexpress/core/media-contract",
+  "@nexpress/core/community",
   "@nexpress/core/sites",
   "@nexpress/editor",
   "@nexpress/editor/server",

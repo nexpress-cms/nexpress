@@ -385,6 +385,7 @@ describe("getProjectFiles", () => {
     expect(env).toContain("# NP_TOSS_PAYMENTS_SECRET_KEY=");
     expect(env).not.toMatch(/^NP_TOSS_PAYMENTS_(?:CLIENT|SECRET)_KEY=/m);
     expect(readme).toContain("pnpm add @nexpress/shop-payment-toss");
+    expect(readme).toContain("verified-purchase product review");
     expect(readme).toContain("defaultPlugins");
     expect(env).toContain("createShop({ shipping: { adapter } })");
     expect(env).toContain("createShop({ tax: { adapter } })");

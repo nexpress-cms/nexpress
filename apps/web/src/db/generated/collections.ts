@@ -871,6 +871,95 @@ export const shopShippingPoliciesCategoriesTableRelations = relations(
   }),
 );
 
+export const shopProductReviewsTable = pgTable(
+  "np_c_shop-product-reviews",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    status: text("status", { enum: ["draft", "scheduled", "published", "archived", "pending"] })
+      .default("draft")
+      .notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+    createdBy: uuid("created_by").references((): AnyPgColumn => npUsers.id),
+    updatedBy: uuid("updated_by").references((): AnyPgColumn => npUsers.id),
+    visibility: text("visibility", { enum: ["public", "private"] })
+      .default("public")
+      .notNull(),
+    memberAuthorId: uuid("member_author_id").references((): AnyPgColumn => npMembers.id, {
+      onDelete: "set null",
+    }),
+    product: uuid("product")
+      .references((): AnyPgColumn => shopProductsTable.id)
+      .notNull(),
+    purchaseKey: text("purchase_key").notNull(),
+    rating: integer("rating").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    verifiedPurchase: boolean("verified_purchase").default(true).notNull(),
+    moderationHidden: boolean("moderation_hidden").default(false).notNull(),
+    siteId: text("site_id").default("default").notNull(),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    searchVector: tsvector("search_vector"),
+  },
+  (table) => [
+    index("np_c_shop-product-reviews_status_idx").on(table.status),
+    index("np_c_shop-product-reviews_member_author_idx").on(table.memberAuthorId),
+    uniqueIndex("np_c_shop-product-reviews_site_purchase_key_uidx").on(
+      table.siteId,
+      table.purchaseKey,
+    ),
+    index("np_c_shop-product-reviews_site_idx").on(table.siteId),
+  ],
+);
+
+export const shopProductReviewsTableRelations = relations(
+  shopProductReviewsTable,
+  ({ many, one }) => ({
+    createdByUser: one(npUsers, {
+      fields: [shopProductReviewsTable.createdBy],
+      references: [npUsers.id],
+    }),
+    updatedByUser: one(npUsers, {
+      fields: [shopProductReviewsTable.updatedBy],
+      references: [npUsers.id],
+    }),
+    memberAuthor: one(npMembers, {
+      fields: [shopProductReviewsTable.memberAuthorId],
+      references: [npMembers.id],
+    }),
+    product: one(shopProductsTable, {
+      fields: [shopProductReviewsTable.product],
+      references: [shopProductsTable.id],
+    }),
+  }),
+);
+
+export const shopProductReviewsPhotosTable = pgTable(
+  "np_c_shop-product-reviews__photos",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    parentId: uuid("parent_id")
+      .notNull()
+      .references((): AnyPgColumn => shopProductReviewsTable.id, { onDelete: "cascade" }),
+    order: integer("order").default(0).notNull(),
+    file: uuid("file")
+      .references((): AnyPgColumn => npMedia.id)
+      .notNull(),
+  },
+  (table) => [index("np_c_shop-product-reviews__photos_parent_idx").on(table.parentId)],
+);
+
+export const shopProductReviewsPhotosTableRelations = relations(
+  shopProductReviewsPhotosTable,
+  ({ many, one }) => ({
+    parent: one(shopProductReviewsTable, {
+      fields: [shopProductReviewsPhotosTable.parentId],
+      references: [shopProductReviewsTable.id],
+    }),
+    file: one(npMedia, { fields: [shopProductReviewsPhotosTable.file], references: [npMedia.id] }),
+  }),
+);
+
 export const discussionsTable = pgTable(
   "np_c_discussions",
   {

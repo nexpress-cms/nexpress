@@ -10,6 +10,7 @@ import {
   type ShopCategoryDocument,
   type ShopProductDocument,
 } from "./runtime.js";
+import { npAttachShopProductReviewAggregates } from "./review-service.js";
 import { ProductCard } from "./skins/shared.js";
 
 const MAX_PRODUCTS = 24;
@@ -54,8 +55,9 @@ async function FeaturedProductsBlock({
     }),
     getShopMessages(),
   ]);
-  const products = await Promise.all(
-    (result.docs as ShopProductDocument[]).map(normalizeShopProductSummary),
+  const products = await npAttachShopProductReviewAggregates(
+    runtime,
+    await Promise.all((result.docs as ShopProductDocument[]).map(normalizeShopProductSummary)),
   );
   return (
     <section className="np-shop-block np-shop-featured-products" data-np-shop-block="products">

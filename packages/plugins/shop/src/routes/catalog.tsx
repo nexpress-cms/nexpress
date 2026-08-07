@@ -14,6 +14,7 @@ import {
   type NpShopRuntime,
   type ShopProductDocument,
 } from "../runtime.js";
+import { npAttachShopProductReviewAggregates } from "../review-service.js";
 
 export function createShopCatalogMetadata(runtime: NpShopRuntime) {
   return async function shopCatalogMetadata() {
@@ -44,7 +45,10 @@ export function createShopCatalogRoute(runtime: NpShopRuntime) {
       getShopMessages(),
     ]);
     if (query.page > Math.max(1, result.totalPages)) notFound();
-    const products = await Promise.all(result.docs.map(normalizeShopProductSummary));
+    const products = await npAttachShopProductReviewAggregates(
+      runtime,
+      await Promise.all(result.docs.map(normalizeShopProductSummary)),
+    );
     return resolveShopSkin(runtime).renderCatalog({
       basePath: runtime.basePath,
       products,

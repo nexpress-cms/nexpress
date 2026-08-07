@@ -235,6 +235,7 @@ export const collectionConfigSchema = z.strictObject({
     singular: z.string().min(1),
     plural: z.string().min(1),
   }),
+  search: z.boolean().optional(),
   slugField: z
     .union([
       z.boolean(),

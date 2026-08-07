@@ -362,6 +362,12 @@ export type NpImageSize = NpMediaImageSize;
 export interface NpCollectionConfig {
   slug: string;
   labels: { singular: string; plural: string };
+  /**
+   * Include this collection in cross-collection search and external search
+   * indexing. Defaults to `true`; set `false` for internal collections whose
+   * public projection is owned by a separate, narrower API.
+   */
+  search?: boolean;
   slugField?:
     | boolean
     | {

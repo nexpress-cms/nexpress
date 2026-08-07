@@ -285,6 +285,10 @@ export const storefrontCss = `
 .np-storefront-shell [data-np-shop-surface="order"] .np-shop-order-layout > aside {
   border-radius: 0;
 }
+.np-storefront-shell [data-np-shop-reviews] { margin-top: 4rem; }
+.np-storefront-shell .np-shop-review-summary,
+.np-storefront-shell [data-np-shop-review-form] { border-radius: 0; box-shadow: none; }
+.np-storefront-shell [data-np-shop-review] > header strong { color: var(--np-storefront-accent); }
 @media (max-width: 52rem) {
   .np-storefront-header-main { grid-template-columns: 1fr auto; min-height: 4.5rem; }
   .np-storefront-header nav { grid-column: 1 / -1; justify-content: flex-start; padding-bottom: 1rem; overflow-x: auto; }

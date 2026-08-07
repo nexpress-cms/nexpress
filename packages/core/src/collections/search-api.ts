@@ -55,6 +55,10 @@ function hasSearchVectorColumn(table: PgTable): boolean {
   return (table as unknown as Record<string, unknown>).searchVector !== undefined;
 }
 
+function collectionSearchEnabled(config: NpCollectionConfig): boolean {
+  return config.search !== false;
+}
+
 interface SearchCandidate {
   collection: string;
   doc: Record<string, unknown>;
@@ -275,6 +279,10 @@ function createSearchAdapterContext(
 ): NpSearchAdapterContext {
   return npRequireSearchAdapterContext({
     ...request,
+    // External engines must receive the resolved inventory even when callers
+    // omit a collection filter. Otherwise an adapter could search stale rows
+    // from a collection that was later disabled with `search: false`.
+    collections: slugs,
     audience: {
       mode: request.visibility,
       collections: slugs.filter((slug) => getCollectionConfig(slug).community?.audience === true),
@@ -302,6 +310,16 @@ function resolveSearchCatalog(collections: readonly string[] | undefined): {
           code: "invalid-field",
           path: "search.request.collections",
           message: `collection "${slug}" is not registered.`,
+        },
+      ]);
+    }
+    if (!collectionSearchEnabled(config)) {
+      if (!collections) continue;
+      throw new NpSearchContractError("Invalid search request", [
+        {
+          code: "invalid-field",
+          path: "search.request.collections",
+          message: `collection "${slug}" is excluded from search.`,
         },
       ]);
     }
@@ -412,6 +430,15 @@ export async function npReindexCollectionWithProgress(
         code: "invalid-field",
         path: "search.reindex.collection",
         message: `collection "${collection}" is not registered.`,
+      },
+    ]);
+  }
+  if (!collectionSearchEnabled(config)) {
+    throw new NpSearchContractError("Invalid search reindex request", [
+      {
+        code: "invalid-field",
+        path: "search.reindex.collection",
+        message: `collection "${collection}" is excluded from search.`,
       },
     ]);
   }

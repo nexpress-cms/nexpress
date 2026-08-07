@@ -21,7 +21,8 @@ collections.
 
 It provides:
 
-- product, category, promotion, and private shipping-policy collections;
+- product, category, promotion, private shipping-policy, and verified-purchase
+  review collections;
 - exact integer-minor-unit prices and bounded variants;
 - on-hand inventory projection plus transaction-safe pending-order
   reservations;
@@ -31,6 +32,10 @@ It provides:
 - automatic and code-based fixed/percentage promotions with time, target,
   minimum-spend, cap, stacking, global/per-owner usage, deterministic line
   allocation, and atomic reservation/redemption/release counters;
+- one member-owned review per shipped purchase line, with 1–5 ratings,
+  bounded text and photos, exact public aggregates, safe author projection,
+  audited Admin hide/restore, and no order/member identifier in the public
+  contract;
 - local base-rate and additive-surcharge delivery methods with destination,
   product/category, time, priority, delivery-estimate, and gross/discounted
   free-shipping-threshold rules; external quote adapters override these rules;

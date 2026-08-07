@@ -124,6 +124,7 @@ function getPublicSearchCollections(): SearchCollectionOption[] {
   for (const collection of getAllCollectionSlugs()) {
     try {
       const config = getCollectionConfig(collection);
+      if (config.search === false) continue;
       if (typeof config.seo?.urlPath !== "function") continue;
       options.push({ collection, label: config.labels.plural });
     } catch {

@@ -2,7 +2,16 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-05 (Shop now owns one private Admin-managed local
+**Last refreshed:** 2026-08-06 (Shop products now add one member-owned
+verified-purchase review contract over shipped order lines, short-lived signed
+eligibility, one-way purchase keys, bounded ratings/text/photos, exact
+non-hidden public aggregates, safe author projections, audited Admin
+hide/restore, Doctor/runtime diagnostics, independent Storefront hooks, and
+scaffold guidance without extending order or PII retention. Its private source
+collection uses the shared explicit search opt-out, which also excludes external
+index writes and reindex inventories.)
+
+**Earlier:** 2026-08-05 (Shop now owns one private Admin-managed local
 shipping-policy contract with deterministic base selection, additive Korean
 postal/administrative/cart surcharges, gross or discounted free thresholds,
 bounded methods and time windows, external-adapter precedence, frozen delivery

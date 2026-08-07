@@ -291,6 +291,30 @@ export interface ShopShippingPoliciesDocument {
 export type ShopShippingPoliciesDocumentWire =
   NpCollectionDocumentWire<ShopShippingPoliciesDocument>;
 
+export interface ShopProductReviewsDocument {
+  id: string;
+  status: "draft" | "scheduled" | "published" | "archived" | "pending";
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+  updatedBy: string | null;
+  memberAuthorId: string | null;
+  publishedAt: Date | null;
+  visibility: "public" | "private";
+  siteId: string;
+  product: string;
+  purchaseKey: string;
+  rating: number;
+  title: string;
+  body: string;
+  photos: Array<{
+    file: string;
+  }>;
+  verifiedPurchase: boolean;
+  moderationHidden: boolean;
+}
+export type ShopProductReviewsDocumentWire = NpCollectionDocumentWire<ShopProductReviewsDocument>;
+
 export interface DiscussionsDocument {
   id: string;
   status: "draft" | "scheduled" | "published" | "archived" | "pending";
@@ -460,6 +484,22 @@ export function getShopShippingPoliciesDocument(
   user?: NpAuthUser,
 ): Promise<ShopShippingPoliciesDocument | null> {
   return getDocumentById<ShopShippingPoliciesDocument>("shop-shipping-policies", id, user);
+}
+
+/** Typed listing query for the `shop-product-reviews` collection. */
+export function findShopProductReviews(
+  options: NpFindOptions<ShopProductReviewsDocument> = {},
+  user?: NpAuthUser,
+): Promise<NpFindResult<ShopProductReviewsDocument>> {
+  return findDocuments<ShopProductReviewsDocument>("shop-product-reviews", options, user);
+}
+
+/** Typed by-id fetch for the `shop-product-reviews` collection. */
+export function getShopProductReviewsDocument(
+  id: string,
+  user?: NpAuthUser,
+): Promise<ShopProductReviewsDocument | null> {
+  return getDocumentById<ShopProductReviewsDocument>("shop-product-reviews", id, user);
 }
 
 /** Typed listing query for the `discussions` collection. */

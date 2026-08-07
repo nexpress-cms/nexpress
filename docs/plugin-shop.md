@@ -1,7 +1,7 @@
 # Shop plugin and Storefront theme
 
 `@nexpress/plugin-shop` is the first-party catalog foundation for NexPress.
-It owns product, category, promotion, and local shipping-policy data, inventory projection, public catalog
+It owns product, category, promotion, local shipping-policy, and verified-purchase review data, inventory projection, public catalog
 routes, bounded guest/member carts, checkout intents, private order drafts,
 durable orders, transaction-safe inventory reservations, local or optional
 external provider-neutral shipping quotes and selected delivery snapshots, an optional
@@ -46,12 +46,14 @@ migration:
 3. Optionally publish automatic promotions or coupon codes under Commerce → Promotions.
 4. Optionally publish a base delivery rule and regional surcharges under
    Commerce → Shipping policies.
-5. Visit `/shop`.
-6. Add a product to the cart, visit `/shop/cart`, create a short-lived
+5. Ship a member order to make its purchased line eligible for one product
+   review; merely paid or unfulfilled orders are not eligible.
+6. Visit `/shop`.
+7. Add a product to the cart, visit `/shop/cart`, create a short-lived
    checkout intent, continue to the 24-hour private order draft, and optionally
    create a durable pending order reference.
-7. Optionally activate Storefront from Admin → Appearance.
-8. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
+8. Optionally activate Storefront from Admin → Appearance.
+9. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
    or insert the `shop.storefront-home` pattern.
 
 Sites upgrading from a version without Shop must generate, review, and apply
@@ -104,6 +106,63 @@ page is older or another visitor is ordering concurrently.
 
 Categories cannot be deleted while any product still references them. Move or
 remove the relationship first.
+
+## Verified-purchase reviews
+
+The fifth Commerce collection, `shop-product-reviews`, owns product reviews
+without coupling the catalog to a payment or carrier provider. Eligibility
+requires an authenticated member order whose current fulfillment is exactly
+`shipped`; a paid, processing, cancelled, or guest order is not enough. The
+product page issues a 30-minute HMAC purchase token for each eligible order
+line. Create rechecks the live order owner, product/line snapshot, paid or
+refunded commercial state, and shipped fulfillment before committing.
+
+Each purchased line can create at most one review. Persistence stores only a
+site-unique SHA-256 purchase key plus the product, rating, title, body, photos,
+and verified flag. It never stores the raw token, order id, line key, or another
+purchase/customer snapshot in the review document. Reviews therefore remain
+valid after the normal 365-day order purge without extending commerce or PII
+retention. Product deletion is blocked while reviews still reference it.
+
+The exact author contract is:
+
+- integer rating from 1 through 5;
+- title from 1 through 120 trimmed characters;
+- body from 1 through 2,000 trimmed characters;
+- at most five member-owned, ready image uploads, each limited to 5 MiB by the
+  member upload endpoint and revalidated against media ownership on the server;
+- member-owned edit and delete, with product, purchase key, author, and
+  verified state immutable.
+
+`GET /api/plugins/shop/reviews?productId=...&page=...` returns
+`np.shop-product-review-page.v1`. Public rows expose a safe member profile or
+`null`, photo URLs, ownership boolean, and review text. They never expose the
+member id, purchase key, order id, or line key. Counts use exact SQL over only
+published, verified, non-hidden rows. The average is integer basis points
+(`5000 = 5.0`) derived from `ratingTotal / count`; the response also includes
+the exact 1–5 distribution, avoiding persisted floating-point drift. Catalog,
+category, featured-product cards, and product detail share this aggregate.
+
+Create, update, and delete use the same route with `POST`, `PATCH`, and
+`DELETE`, the existing `np-mb-csrf` double-submit cookie, and exact request
+shapes. Unknown fields fail closed. Document update/delete releases removed
+media after the collection transaction while shared references remain safe.
+
+Admin → Health shows total/published/pending/hidden and malformed review
+counts. The recent-review table excludes purchase and member identities.
+Direct staff **Hide** removes a review from every public list and aggregate and
+records the reason in the normal community audit trail. **Restore** uses the
+existing member-document promotion contract, so a restored review is not
+credited twice. Plugin Doctor validates the declared collection, Admin surface,
+route, and typed action inventory; runtime health reports malformed hashes,
+flags, ratings, and text bounds. Product and media foreign keys prevent
+persisted orphan relationships.
+
+`@nexpress/theme-storefront` remains independently usable. It imports no Shop
+code and enhances reviews only through `[data-np-shop-reviews]`,
+`[data-np-shop-review]`, `[data-np-shop-review-form]`, and the plugin's CSS
+variables. Both bundled Shop skins render the complete fallback surface when
+Storefront is absent.
 
 ## Public routes and discovery
 
@@ -1403,14 +1462,14 @@ full reversal is applied automatically; partial or multi-cancellation history
 stays blocked manual review.
 
 In a generated project, `defaultCollections` and `defaultPlugins` already
-contain the default Shop instance. Filter the four Shop collections
+contain the default Shop instance. Filter the five Shop collections
 and the plugin whose manifest id is `shop`, then append `shop.collections` and
 `shop.plugin` from the single configured factory above. Do not register both
 Shop instances.
 
 ## Admin surfaces
 
-The four collections appear in the Commerce group. Product editing includes
+The five collections appear in the Commerce group. Product editing includes
 price, tax-display, media, SKU, inventory, variants, featured state, and skin
 selection. Operator-only derived fields stay hidden.
 
@@ -1420,6 +1479,8 @@ The plugin declares these baseline typed dashboard metric actions:
 - published low-stock products;
 - published promotions plus PII-free promotion reservation/redemption health;
 - published local shipping policies plus base/surcharge/method health;
+- verified-purchase reviews split across published, pending, hidden, and
+  malformed states, with PII-free recent rows and audited hide/restore;
 - active unexpired carts;
 - unexpired non-cancelled checkout-intent records (public reads still
   revalidate the current cart).
@@ -1591,6 +1652,7 @@ const shop = createShop({
     products: "catalog-products",
     promotions: "catalog-promotions",
     shippingPolicies: "catalog-shipping-policies",
+    reviews: "catalog-reviews",
   },
   defaultSkinId: "storefront-full",
   payment: { adapter }, // optional; omitted means the webhook route does not exist

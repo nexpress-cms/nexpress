@@ -39,6 +39,7 @@ import {
   npShopPromotionLimits,
   type NpShopPromotionDefinition,
 } from "./promotion-contract.js";
+import { npEmptyShopProductReviewAggregate } from "./review-contract.js";
 
 export const npShopSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 export const npShopSkuPattern = /^[A-Z0-9][A-Z0-9._-]{0,63}$/u;
@@ -459,6 +460,7 @@ export async function normalizeShopProductSummary(
   if (compareAtPriceMinor !== null && compareAtPriceMinor <= priceMinor) {
     throw new Error("Shop compare-at price must be greater than the selling price.");
   }
+  const reviewAggregate = npEmptyShopProductReviewAggregate();
   return {
     id: document.id,
     slug: document.slug,
@@ -475,6 +477,8 @@ export async function normalizeShopProductSummary(
     inventoryState: inventoryState(document),
     stockQuantity: getShopStockQuantity(document),
     categoryIds: normalizeShopCategoryIds(document.categories),
+    reviewCount: reviewAggregate.count,
+    reviewAverageBasisPoints: reviewAggregate.averageRatingBasisPoints,
   };
 }
 
@@ -623,6 +627,24 @@ export async function getShopMessages(): Promise<NpShopMessages> {
     "categories",
     "featuredProducts",
     "featured",
+    "reviewHeading",
+    "reviewVerified",
+    "reviewEmpty",
+    "reviewWrite",
+    "reviewEdit",
+    "reviewLogin",
+    "reviewUnavailable",
+    "reviewPurchase",
+    "reviewRating",
+    "reviewTitle",
+    "reviewBody",
+    "reviewPhotos",
+    "reviewUpload",
+    "reviewRemove",
+    "reviewSave",
+    "reviewSaving",
+    "reviewDelete",
+    "reviewFailed",
     "search",
     "searchPlaceholder",
     "sort",

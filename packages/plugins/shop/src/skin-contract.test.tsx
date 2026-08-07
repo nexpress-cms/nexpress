@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { ShopProductReviews } from "./client.js";
 import { classicShopSkin } from "./skins/classic.js";
 import type { NpShopCatalogQuery, NpShopMessages, NpShopProduct } from "./types.js";
 
@@ -13,6 +14,24 @@ const messages = {
   categories: "카테고리",
   featuredProducts: "추천 상품",
   featured: "추천",
+  reviewHeading: "상품 리뷰",
+  reviewVerified: "구매 확인",
+  reviewEmpty: "리뷰 없음",
+  reviewWrite: "리뷰 작성",
+  reviewEdit: "리뷰 수정",
+  reviewLogin: "로그인 필요",
+  reviewUnavailable: "구매 건 없음",
+  reviewPurchase: "구매 상품",
+  reviewRating: "평점",
+  reviewTitle: "제목",
+  reviewBody: "내용",
+  reviewPhotos: "사진",
+  reviewUpload: "사진 추가",
+  reviewRemove: "삭제",
+  reviewSave: "저장",
+  reviewSaving: "저장 중",
+  reviewDelete: "리뷰 삭제",
+  reviewFailed: "리뷰 실패",
   search: "상품 검색",
   searchPlaceholder: "검색",
   sort: "정렬",
@@ -259,6 +278,7 @@ describe("shop skin contract", () => {
               </ul>
             </>
           ),
+          reviewAction: <section data-review-fallback>리뷰</section>,
           messages,
         })}
       </>,
@@ -271,6 +291,7 @@ describe("shop skin contract", () => {
     expect(html).toContain("<th>가격</th>");
     expect(html).toContain("<h2>설명</h2>");
     expect(html).toContain("<ul><li>도자기</li></ul>");
+    expect(html).toContain("data-review-fallback");
   });
 
   it("keeps plugin structure in the block layer with semantic rich-text rules", () => {
@@ -280,6 +301,7 @@ describe("shop skin contract", () => {
     expect(styles).toContain(".np-shop-product-description h2");
     expect(styles).toContain(".np-shop-product-description ul");
     expect(styles).toContain(".np-shop-product-description blockquote");
+    expect(styles).toContain("[data-np-shop-review-form]");
     for (const property of [
       "--np-shop-content-max",
       "--np-shop-surface",
@@ -292,6 +314,57 @@ describe("shop skin contract", () => {
     ]) {
       expect(styles).toMatch(new RegExp(`var\\(\\s*${property},`, "u"));
     }
+  });
+
+  it("renders translated review pagination from the exact page contract", () => {
+    const html = renderToStaticMarkup(
+      <ShopProductReviews
+        apiPath="/api/plugins/shop/reviews"
+        productId={product.id}
+        productPath="/shop/products/cup"
+        initialPage={{
+          contract: "np.shop-product-review-page.v1",
+          reviews: [],
+          aggregate: {
+            count: 21,
+            ratingTotal: 100,
+            averageRatingBasisPoints: 4_762,
+            distribution: { 1: 0, 2: 0, 3: 1, 4: 3, 5: 17 },
+          },
+          eligibility: [],
+          page: 1,
+          totalPages: 2,
+          totalReviews: 21,
+        }}
+        messages={{
+          locale: messages.locale,
+          heading: messages.reviewHeading,
+          verified: messages.reviewVerified,
+          empty: messages.reviewEmpty,
+          write: messages.reviewWrite,
+          edit: messages.reviewEdit,
+          login: messages.reviewLogin,
+          unavailable: messages.reviewUnavailable,
+          purchase: messages.reviewPurchase,
+          rating: messages.reviewRating,
+          title: messages.reviewTitle,
+          body: messages.reviewBody,
+          photos: messages.reviewPhotos,
+          upload: messages.reviewUpload,
+          remove: messages.reviewRemove,
+          save: messages.reviewSave,
+          saving: messages.reviewSaving,
+          delete: messages.reviewDelete,
+          failed: messages.reviewFailed,
+          previous: messages.previous,
+          next: messages.next,
+        }}
+        signedIn={false}
+      />,
+    );
+    expect(html).toContain("상품 리뷰");
+    expect(html).toContain('href="/shop/products/cup?reviewPage=2"');
+    expect(html).toContain(">다음</a>");
   });
 
   it("preserves catalog query controls and translated product counts", async () => {
