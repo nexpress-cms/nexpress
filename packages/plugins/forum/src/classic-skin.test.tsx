@@ -147,6 +147,14 @@ const messages: NpForumMessages = {
   hideReportedPost: "게시글 숨기고 처리",
   resolvingReport: "처리 중",
   resolveReportFailed: "신고 처리 실패",
+  questionHeading: "상품 문의",
+  questionWaiting: "답변 대기",
+  questionAnswered: "답변 완료",
+  questionAsk: "문의하기",
+  questionEmpty: "문의 없음",
+  questionPrivate: "비밀글",
+  questionOfficialAnswer: "공식 답변",
+  questionContextUnavailable: "상품 없음",
 };
 
 const board: NpForumBoard = {
@@ -189,6 +197,8 @@ const post: NpForumPostSummary = {
     reactions: { like: 2 },
   },
   attachmentCount: 1,
+  questionContext: null,
+  questionStatus: null,
   unresolvedReportCount: 2,
 };
 
@@ -324,6 +334,8 @@ describe("classic forum skin", () => {
         engagement: <div data-testid="engagement" />,
         comments: null,
         attachments: [attachment],
+        questionContext: null,
+        officialAnswer: null,
         messages,
       }),
     );

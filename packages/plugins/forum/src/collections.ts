@@ -12,6 +12,7 @@ import {
   npIsSupportedMediaAttachment,
   npMediaAttachmentLimits,
 } from "@nexpress/core/media";
+import { isNpRichTextContent } from "@nexpress/core/fields";
 
 import {
   findForumBoardById,
@@ -22,6 +23,7 @@ import {
   type ForumPostDocument,
   type NpForumRuntime,
 } from "./runtime.js";
+import { npValidateForumQuestionContextCreate } from "./contextual-questions.js";
 import type { NpForumBoard } from "./types.js";
 
 const audienceRank = { public: 0, members: 1, private: 2 } as const;
@@ -113,6 +115,64 @@ function validateStableCategoryKeys(
 function categoryAllowed(board: NpForumBoard, value: unknown): boolean {
   if (value === undefined || value === null || value === "") return true;
   return typeof value === "string" && board.categories.some((category) => category.key === value);
+}
+
+function richTextHasText(value: unknown): boolean {
+  if (!isNpRichTextContent(value)) return false;
+  const visit = (node: unknown): boolean => {
+    if (!node || typeof node !== "object" || Array.isArray(node)) return false;
+    const record = node as Record<string, unknown>;
+    if (typeof record.text === "string" && record.text.trim().length > 0) return true;
+    return Array.isArray(record.children) && record.children.some(visit);
+  };
+  return visit(value.document.root);
+}
+
+function requireStableQuestionContext(
+  data: Readonly<Record<string, unknown>>,
+  originalDoc: Readonly<Record<string, unknown>> | null | undefined,
+): void {
+  if (!originalDoc) return;
+  for (const field of ["contextType", "contextId", "contextLabel", "contextHref"] as const) {
+    if ((data[field] ?? null) !== (originalDoc[field] ?? null)) {
+      throw new NpValidationError("Forum question context is immutable", [
+        { field, message: "Create another question instead of changing its linked context." },
+      ]);
+    }
+  }
+}
+
+function normalizeQuestionAnswer(
+  data: Record<string, unknown>,
+  originalDoc: Readonly<Record<string, unknown>> | null | undefined,
+  principal: { kind: "staff"; user: { id: string } } | { kind: "member" } | null | undefined,
+): Record<string, unknown> {
+  const contextual = typeof data.contextType === "string" && typeof data.contextId === "string";
+  const answered = richTextHasText(data.answerBody);
+  if (!contextual && answered) {
+    throw new NpValidationError("Official answers require a contextual question", [
+      { field: "answerBody", message: "Only contextual Q&A posts accept an official answer." },
+    ]);
+  }
+  if (!contextual) {
+    return { ...data, answerBody: null, answeredAt: null, answeredByUserId: null };
+  }
+  if (principal?.kind !== "staff") {
+    return {
+      ...data,
+      answerBody: originalDoc?.answerBody ?? null,
+      answeredAt: originalDoc?.answeredAt ?? null,
+      answeredByUserId: originalDoc?.answeredByUserId ?? null,
+      contextProof: null,
+    };
+  }
+  return {
+    ...data,
+    contextProof: null,
+    answerBody: answered ? data.answerBody : null,
+    answeredAt: answered ? (originalDoc?.answeredAt ?? new Date()) : null,
+    answeredByUserId: answered ? (originalDoc?.answeredByUserId ?? principal.user.id) : null,
+  };
 }
 
 async function boardAllowsMemberWrite(
@@ -443,6 +503,8 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
       listColumns: [
         "title",
         "board",
+        "contextLabel",
+        "answeredAt",
         "category",
         "audience",
         "status",
@@ -472,7 +534,19 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
         create: true,
         update: true,
         delete: true,
-        writableFields: ["board", "title", "body", "category", "attachments", "audience"],
+        writableFields: [
+          "board",
+          "title",
+          "body",
+          "category",
+          "attachments",
+          "audience",
+          "contextType",
+          "contextId",
+          "contextLabel",
+          "contextHref",
+          "contextProof",
+        ],
         access: {
           create: async ({ data, memberId }) =>
             data !== null && (await boardAllowsMemberWrite(runtime, data, memberId)) !== null,
@@ -531,11 +605,20 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
             ]);
           }
           await validateForumAttachments(board, data, principal);
-          return {
-            ...data,
-            boardKey: board.key,
-            ...(!board.commentsEnabled ? { locked: true } : {}),
-          };
+          const context = await npValidateForumQuestionContextCreate(runtime, data, {
+            allowUnsignedSnapshot:
+              principal?.kind === "staff" && runtime.contextualQuestions?.boardKey === board.key,
+          });
+          return normalizeQuestionAnswer(
+            {
+              ...data,
+              boardKey: board.key,
+              ...context,
+              ...(!board.commentsEnabled ? { locked: true } : {}),
+            },
+            null,
+            principal,
+          );
         },
       ],
       beforeUpdate: [
@@ -566,7 +649,8 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
             ]);
           }
           await validateForumAttachments(board, data, principal, originalDoc?.attachments);
-          return { ...data, boardKey: board.key };
+          requireStableQuestionContext(data, originalDoc);
+          return normalizeQuestionAnswer({ ...data, boardKey: board.key }, originalDoc, principal);
         },
       ],
     },
@@ -634,6 +718,65 @@ export function defineForumPostsCollection(runtime: NpForumRuntime): NpCollectio
           group: "Board",
           description: "Use a category key configured on the selected board.",
         },
+      },
+      {
+        type: "text",
+        name: "contextType",
+        label: "Context type",
+        maxLength: 63,
+        hidden: true,
+      },
+      {
+        type: "text",
+        name: "contextId",
+        label: "Context id",
+        maxLength: 36,
+        hidden: true,
+      },
+      {
+        type: "text",
+        name: "contextLabel",
+        label: "Linked item",
+        maxLength: 160,
+        hidden: true,
+      },
+      {
+        type: "text",
+        name: "contextHref",
+        label: "Linked item path",
+        maxLength: 512,
+        hidden: true,
+      },
+      {
+        type: "text",
+        name: "contextProof",
+        label: "Context proof",
+        maxLength: 2048,
+        hidden: true,
+      },
+      {
+        type: "richText",
+        name: "answerBody",
+        label: "Official answer",
+        admin: {
+          group: "Q&A",
+          condition: { when: "contextType", exists: true },
+          description:
+            "Available only for a signed contextual question. Saving non-empty content marks it answered and notifies its author.",
+        },
+      },
+      {
+        type: "date",
+        name: "answeredAt",
+        label: "Answered at",
+        hidden: true,
+      },
+      {
+        type: "text",
+        name: "answeredByUserId",
+        label: "Answering staff id",
+        maxLength: 36,
+        hidden: true,
       },
       {
         type: "select",

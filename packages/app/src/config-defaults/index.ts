@@ -14,8 +14,8 @@ import { latestPostsPlugin } from "@nexpress/plugin-block-latest-posts";
 import { newsletterPlugin } from "@nexpress/plugin-block-newsletter";
 import { pricingPlugin } from "@nexpress/plugin-block-pricing";
 import { statsBlockPlugin } from "@nexpress/plugin-block-stats";
-import { forumCollections, forumPlugin } from "@nexpress/plugin-forum";
-import { shopCollections, shopPlugin } from "@nexpress/plugin-shop";
+import { createForum } from "@nexpress/plugin-forum";
+import { createShop, createShopProductInquiryContextSource } from "@nexpress/plugin-shop";
 import { githubOAuthPlugin } from "@nexpress/plugin-oauth-github";
 import { googleOAuthPlugin } from "@nexpress/plugin-oauth-google";
 import { readingTimePlugin } from "@nexpress/plugin-reading-time";
@@ -26,6 +26,22 @@ import { pagesCollection } from "../collections/pages";
 import { postsCollection } from "../collections/posts";
 import { tagsCollection } from "../collections/tags";
 import { i18nConfig } from "../i18n-config";
+
+const defaultForumDefinition = createForum({
+  contextualQuestions: {
+    boardKey: "product-questions",
+    sources: [createShopProductInquiryContextSource()],
+  },
+});
+if (!defaultForumDefinition.contextualQuestions) {
+  throw new Error("Default Forum contextual question adapter was not created.");
+}
+const defaultShopDefinition = createShop({
+  inquiries: { adapter: defaultForumDefinition.contextualQuestions },
+});
+
+export const defaultForumPlugin = defaultForumDefinition.plugin;
+export const defaultShopPlugin = defaultShopDefinition.plugin;
 
 /**
  * The built-in NexPress collections. A scaffolded site spreads
@@ -50,8 +66,8 @@ export const defaultCollections: NpConfig["collections"] = [
   pagesCollection,
   categoriesCollection,
   tagsCollection,
-  ...forumCollections,
-  ...shopCollections,
+  ...defaultForumDefinition.collections,
+  ...defaultShopDefinition.collections,
 ];
 
 /**
@@ -66,12 +82,14 @@ export const defaultCollections: NpConfig["collections"] = [
  *   - reading-time, seo-audit — content-pipeline hooks, no extra
  *     surface.
  *   - forum — uses the board/post collections pre-included in
- *     `defaultCollections` and owns the public routes under `/boards`.
+ *     `defaultCollections`, owns the public routes under `/boards`, and can
+ *     reuse a published `product-questions` board for Shop inquiries.
  *   - shop — owns catalog categories/products, `/shop` routes, bounded carts
  *     and checkout intents, pending orders, inventory reservations, skins,
  *     homepage blocks, and Admin health; payment initiation and verification
  *     stay disabled unless a custom project registers a build-time provider
- *     adapter.
+ *     adapter. It contributes only product context to the optional Forum
+ *     inquiry bridge; Forum, Shop, and every theme remain independently usable.
  *   - oauth-github, oauth-google — register OAuth provider entries
  *     but only become reachable when the corresponding env vars
  *     (or admin auto-form values) are populated; the empty case logs
@@ -92,8 +110,8 @@ export const defaultPlugins: NonNullable<NpConfig["plugins"]> = [
   readingTimePlugin,
   seoAuditPlugin,
   // Surface-contributing plugins.
-  forumPlugin,
-  shopPlugin,
+  defaultForumPlugin,
+  defaultShopPlugin,
   // Env / admin-form gated — register-safe, no side effect without
   // credentials.
   githubOAuthPlugin,

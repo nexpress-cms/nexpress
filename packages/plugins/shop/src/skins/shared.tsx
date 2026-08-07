@@ -522,6 +522,7 @@ export function ShopProductSurface({ skin, ...props }: NpShopProductSkinProps & 
         </section>
       ) : null}
       <article className="np-shop-product-description">{props.description}</article>
+      {props.inquiryAction}
       {props.reviewAction}
     </main>
   );

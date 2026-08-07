@@ -180,7 +180,11 @@ import {
 import { npRequireShopTaxProviderId, type NpShopTaxAdapter } from "./tax-contract.js";
 import { classicShopSkin } from "./skins/classic.js";
 import { storefrontFullShopSkin } from "./skins/storefront-full.js";
-import type { NpShopCollectionSlugs, NpShopSkin } from "./types.js";
+import type {
+  NpShopCollectionSlugs,
+  NpShopContextualQuestionsAdapter,
+  NpShopSkin,
+} from "./types.js";
 
 const SAFE_SEGMENT = /^[a-z][a-z0-9-]*$/u;
 
@@ -212,6 +216,10 @@ export interface NpShopOptions {
     pickupLocationReference?: string;
     /** Provider-owned server-side return destination token. */
     returnLocationReference?: string;
+  };
+  /** Optional contextual Q&A renderer, for example the Forum bridge. */
+  inquiries?: {
+    adapter: NpShopContextualQuestionsAdapter;
   };
 }
 
@@ -278,6 +286,16 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   }
   if (new Set(Object.values(collections)).size !== 5) {
     throw new Error("Shop collection slugs must be different.");
+  }
+  const inquiryAdapter = options.inquiries?.adapter ?? null;
+  if (
+    inquiryAdapter &&
+    (!SAFE_SEGMENT.test(inquiryAdapter.id) ||
+      typeof inquiryAdapter.renderContextQuestions !== "function")
+  ) {
+    throw new Error(
+      "Shop inquiry adapter requires a canonical id and renderContextQuestions method.",
+    );
   }
   const configuredPaymentAdapter = options.payment?.adapter ?? null;
   let paymentAdapter: NpShopPaymentAdapter | null = null;
@@ -594,6 +612,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     carrierReturnTrackingPollAdapter,
     carrierTrackingAdapter,
     carrierTrackingPollAdapter,
+    inquiryAdapter,
   };
 }
 
@@ -1302,6 +1321,7 @@ export function createShop(options: NpShopOptions = {}) {
         "return-status": "[data-np-shop-return-status]",
         "product-card": ".np-shop-product-card",
         reviews: "[data-np-shop-reviews]",
+        inquiries: "[data-np-forum-context-questions]",
         "review-card": "[data-np-shop-review]",
         "review-form": "[data-np-shop-review-form]",
         "product-grid": ".np-shop-product-grid",
@@ -4979,6 +4999,7 @@ export {
   npShopOrderLimits,
 } from "./order-contract.js";
 export type { NpShopOrderCancelInput, NpShopOrderCreateInput } from "./order-contract.js";
+export { createShopProductInquiryContextSource } from "./inquiry-context.js";
 export {
   NP_SHOP_PRODUCT_REVIEW_CONTRACT,
   NP_SHOP_PRODUCT_REVIEW_PAGE_CONTRACT,
@@ -5390,6 +5411,7 @@ export type {
   NpShopCategory,
   NpShopCategorySkinProps,
   NpShopCollectionSlugs,
+  NpShopContextualQuestionsAdapter,
   NpShopCurrency,
   NpShopInventoryState,
   NpShopInventoryReservationStatus,
@@ -5397,6 +5419,8 @@ export type {
   NpShopFulfillmentStatus,
   NpShopMessages,
   NpShopProduct,
+  NpShopProductInquiryContextSource,
+  NpShopProductInquiryContextTarget,
   NpShopProductSkinProps,
   NpShopProductSummary,
   NpShopReviewClientMessages,
@@ -5407,5 +5431,6 @@ export type {
   NpShopSkin,
   NpShopVariant,
 } from "./types.js";
+export type { NpShopProductInquiryContextSourceOptions } from "./inquiry-context.js";
 
 export default shopPlugin;

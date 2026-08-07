@@ -279,6 +279,7 @@ describe("shop skin contract", () => {
             </>
           ),
           reviewAction: <section data-review-fallback>리뷰</section>,
+          inquiryAction: <section data-inquiry-fallback>문의</section>,
           messages,
         })}
       </>,
@@ -292,6 +293,7 @@ describe("shop skin contract", () => {
     expect(html).toContain("<h2>설명</h2>");
     expect(html).toContain("<ul><li>도자기</li></ul>");
     expect(html).toContain("data-review-fallback");
+    expect(html).toContain("data-inquiry-fallback");
   });
 
   it("keeps plugin structure in the block layer with semantic rich-text rules", () => {

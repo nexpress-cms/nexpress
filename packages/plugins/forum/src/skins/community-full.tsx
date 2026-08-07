@@ -130,6 +130,7 @@ function PostStateBadges({
     !post.locked &&
     post.status === "published" &&
     post.audience === "public" &&
+    post.questionStatus === null &&
     (post.unresolvedReportCount ?? 0) === 0
   )
     return null;
@@ -143,6 +144,16 @@ function PostStateBadges({
       {post.audience !== "public" ? (
         <span className="np-forum-state-badge">
           {post.audience === "members" ? messages.audienceMembers : messages.audiencePrivate}
+        </span>
+      ) : null}
+      {post.questionStatus ? (
+        <span
+          className="np-forum-question-badge"
+          data-np-forum-question-status={post.questionStatus}
+        >
+          {post.questionStatus === "answered"
+            ? messages.questionAnswered
+            : messages.questionWaiting}
         </span>
       ) : null}
       {(post.unresolvedReportCount ?? 0) > 0 ? (
@@ -565,6 +576,7 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
             </div>
           ) : null}
         </header>
+        {props.questionContext}
         <div className="np-forum-post-body np-forum-rich-text">{props.body}</div>
         {props.attachments.length > 0 ? (
           <section
@@ -587,6 +599,7 @@ function renderPostDetail(props: NpForumPostDetailSkinProps) {
             </ul>
           </section>
         ) : null}
+        {props.officialAnswer}
         {props.moderationPanel}
         {props.engagement}
         {props.comments ? <section className="np-forum-comments">{props.comments}</section> : null}

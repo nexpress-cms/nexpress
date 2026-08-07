@@ -366,7 +366,29 @@ export interface NpShopProductSkinProps {
   cartAction?: ReactNode;
   reviewAction?: ReactNode;
   reviews?: NpShopProductReviewPage;
+  inquiryAction?: ReactNode;
   messages: NpShopMessages;
+}
+
+/** Optional structural bridge. The implementing package remains independent. */
+export interface NpShopContextualQuestionsAdapter {
+  id: string;
+  renderContextQuestions(input: {
+    contextType: string;
+    contextId: string;
+    memberId: string | null;
+  }): Promise<ReactNode>;
+}
+
+export interface NpShopProductInquiryContextTarget {
+  id: string;
+  label: string;
+  href: string;
+}
+
+export interface NpShopProductInquiryContextSource {
+  type: "shop-product";
+  resolve(ids: readonly string[]): Promise<readonly NpShopProductInquiryContextTarget[]>;
 }
 
 export const npShopCartIssueCodes = [

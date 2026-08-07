@@ -36,6 +36,13 @@ interface ForumPostFormProps {
     audience: NpCommunityDocumentAudience;
     attachments: ForumFormAttachment[];
   };
+  context?: {
+    type: string;
+    id: string;
+    label: string;
+    href: string;
+    proof: string;
+  };
   labels: {
     category: string;
     categoryNone: string;
@@ -149,6 +156,7 @@ export function ForumPostForm({
   collectionSlug,
   board,
   initial,
+  context,
   labels,
 }: ForumPostFormProps) {
   const router = useRouter();
@@ -191,6 +199,15 @@ export function ForumPostForm({
             category: category || null,
             audience,
             attachments: attachments.map((attachment) => ({ file: attachment.id })),
+            ...(mode === "create" && context
+              ? {
+                  contextType: context.type,
+                  contextId: context.id,
+                  contextLabel: context.label,
+                  contextHref: context.href,
+                  contextProof: context.proof,
+                }
+              : {}),
           }),
         },
       );
@@ -283,6 +300,11 @@ export function ForumPostForm({
       {error ? (
         <p role="alert" className="np-form-error">
           {error}
+        </p>
+      ) : null}
+      {context ? (
+        <p className="np-forum-question-context" data-np-forum-question-context={context.type}>
+          <span>{context.label}</span>
         </p>
       ) : null}
       {board.categories.length > 0 ? (

@@ -6,6 +6,7 @@ import {
   npShopCurrencies,
   type NpShopCatalogQuery,
   type NpShopCategory,
+  type NpShopContextualQuestionsAdapter,
   type NpShopCurrency,
   type NpShopMessages,
   type NpShopProduct,
@@ -78,6 +79,7 @@ export interface NpShopRuntime {
   carrierReturnTrackingPollAdapter: NpShopCarrierReturnTrackingPollAdapter | null;
   carrierTrackingAdapter: NpShopCarrierTrackingAdapter | null;
   carrierTrackingPollAdapter: NpShopCarrierTrackingPollAdapter | null;
+  inquiryAdapter: NpShopContextualQuestionsAdapter | null;
 }
 
 export interface ShopCategoryDocument extends Record<string, unknown> {

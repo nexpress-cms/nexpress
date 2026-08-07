@@ -102,6 +102,7 @@ const runtime = {
   collections: { boards: "forum-boards", posts: "forum-posts" },
   defaultSkinId: "classic",
   skins: new Map(),
+  contextualQuestions: null,
 };
 
 const routeProps = {

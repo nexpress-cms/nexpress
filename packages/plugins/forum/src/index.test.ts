@@ -69,6 +69,10 @@ describe("forum factory", () => {
       "board-directory-block": '[data-np-forum-block="board-directory"]',
       "post-feed-block": '[data-np-forum-block="post-feed"]',
       "feed-item": ".np-forum-block-feed-list > li",
+      "context-questions": "[data-np-forum-context-questions]",
+      "question-context": "[data-np-forum-question-context]",
+      "question-status": "[data-np-forum-question-status]",
+      "official-answer": "[data-np-forum-official-answer]",
     });
   });
 
@@ -138,13 +142,45 @@ describe("forum factory", () => {
     });
   });
 
+  it("declares the contextual question adapter and matching Admin health contract", () => {
+    const source = {
+      type: "shop-product",
+      resolve: () => Promise.resolve([]),
+    };
+    const forum = createForum({
+      contextualQuestions: { boardKey: "product-questions", sources: [source] },
+    });
+
+    expect(forum.contextualQuestions).toMatchObject({ id: "forum-contextual-questions" });
+    expect(forum.plugin.admin?.dashboardWidgets).toContainEqual(
+      expect.objectContaining({
+        id: "forum-contextual-question-health",
+        kind: "status",
+        actionId: "contextualQuestionHealth",
+      }),
+    );
+    expect(forum.plugin.actions?.contextualQuestionHealth?.kind).toBe("status");
+  });
+
   it("defines an exact member-write boundary for forum posts", () => {
     const forum = createForum();
     expect(forum.collections[1].community?.memberWrite).toMatchObject({
       create: true,
       update: true,
       delete: true,
-      writableFields: ["board", "title", "body", "category", "attachments", "audience"],
+      writableFields: [
+        "board",
+        "title",
+        "body",
+        "category",
+        "attachments",
+        "audience",
+        "contextType",
+        "contextId",
+        "contextLabel",
+        "contextHref",
+        "contextProof",
+      ],
     });
     expect(forum.collections[1].community?.memberWrite?.access?.create).toBeTypeOf("function");
     expect(forum.collections[1].community?.memberWrite?.access?.update).toBeTypeOf("function");
@@ -232,6 +268,22 @@ describe("forum factory", () => {
     expect(() => createForum({ collections: { boards: "same", posts: "same" } })).toThrow(
       /must be different/u,
     );
+    expect(() =>
+      createForum({
+        contextualQuestions: { boardKey: "Product-Questions", sources: [] },
+      }),
+    ).toThrow(/boardKey/u);
+    expect(() =>
+      createForum({
+        contextualQuestions: {
+          boardKey: "product-questions",
+          sources: [
+            { type: "shop-product", resolve: () => Promise.resolve([]) },
+            { type: "shop-product", resolve: () => Promise.resolve([]) },
+          ],
+        },
+      }),
+    ).toThrow(/duplicated/u);
     expect(() =>
       createForum({
         skins: [

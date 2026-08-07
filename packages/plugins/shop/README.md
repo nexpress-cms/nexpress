@@ -36,6 +36,9 @@ It provides:
   bounded text and photos, exact public aggregates, safe author projection,
   audited Admin hide/restore, and no order/member identifier in the public
   contract;
+- an optional structural inquiry renderer plus a batched published-product
+  context source, allowing Forum to reuse one ordinary board for signed product
+  questions and official answers without either package importing the other;
 - local base-rate and additive-surcharge delivery methods with destination,
   product/category, time, priority, delivery-estimate, and gross/discounted
   free-shipping-threshold rules; external quote adapters override these rules;
@@ -132,6 +135,8 @@ payment receipts, and transfer. A durable `pending-payment` order reference
 still does not imply that a visitor paid for a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
-for the exact price, SKU, inventory, cart, promotion, checkout-intent, private-draft,
-shipping-quote, tax-quote, pending-order, payment-attempt/event/adjustment, fulfillment, parcel, carrier, pickup, tracking/polling, full-refund, return-linked partial-refund, return, return-logistics,
-skin, block, and theme-integration contracts.
+for the exact price, SKU, inventory, review, Forum-backed inquiry, cart,
+promotion, checkout-intent, private-draft, shipping-quote, tax-quote,
+pending-order, payment-attempt/event/adjustment, fulfillment, parcel, carrier,
+pickup, tracking/polling, full-refund, return-linked partial-refund, return,
+return-logistics, skin, block, and theme-integration contracts.

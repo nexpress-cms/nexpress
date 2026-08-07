@@ -15,6 +15,7 @@ import { renderRichText } from "@nexpress/editor/server";
 import { Comments } from "@nexpress/next/client";
 import { buildPageMetadata, getSiteMember, JsonLd } from "@nexpress/next";
 import type { NpRouteRenderProps } from "@nexpress/next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import {
@@ -98,9 +99,12 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
       notFound();
     }
 
-    const [summary] = await enrichForumPosts([post], runtime.collections.posts);
+    const [summary] = await enrichForumPosts([post], runtime);
     if (!summary) notFound();
     const body: NpRichTextContent | null = isNpRichTextContent(post.body) ? post.body : null;
+    const answerBody: NpRichTextContent | null = isNpRichTextContent(post.answerBody)
+      ? post.answerBody
+      : null;
     const [messages, attachments, reportCases] = await Promise.all([
       getForumMessages(),
       resolveForumAttachments(post.attachments),
@@ -310,6 +314,30 @@ export function createForumPostDetailRoute(runtime: NpForumRuntime) {
       ),
       comments,
       attachments,
+      questionContext: summary.questionContext ? (
+        <aside
+          className="np-forum-question-context"
+          data-np-forum-question-context={summary.questionContext.type}
+        >
+          {summary.questionContext.href ? (
+            <Link href={summary.questionContext.href}>{summary.questionContext.label}</Link>
+          ) : (
+            <span>{messages.questionContextUnavailable}</span>
+          )}
+          <strong data-np-forum-question-status={summary.questionStatus ?? "waiting"}>
+            {summary.questionStatus === "answered"
+              ? messages.questionAnswered
+              : messages.questionWaiting}
+          </strong>
+        </aside>
+      ) : null,
+      officialAnswer:
+        summary.questionStatus === "answered" && answerBody ? (
+          <section className="np-forum-official-answer" data-np-forum-official-answer>
+            <h2>{messages.questionOfficialAnswer}</h2>
+            <div className="np-forum-rich-text">{renderRichText(answerBody)}</div>
+          </section>
+        ) : null,
       messages,
     });
     return (

@@ -14,3 +14,6 @@ and journal entries without requiring Shop data.
 
 Optional Shop integration consumes only documented public CSS hooks. See the
 [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md).
+When Forum-backed product inquiries are also enabled, Storefront enhances the
+stable `[data-np-forum-context-questions]` hook without importing Forum or
+requiring either plugin.
