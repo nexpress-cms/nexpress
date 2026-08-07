@@ -1,7 +1,7 @@
 {
   "name": "@nexpress/plugin-shop",
   "version": "0.4.2",
-  "description": "Catalog, member wishlists, promotions, local shipping policies, verified-purchase reviews, cart, checkout, durable order, inventory, payment, carrier fulfillment, refund, return logistics, and storefront plugin for NexPress.",
+  "description": "Catalog, member wishlists, restock alerts, promotions, local shipping policies, reviews, cart, checkout, order, inventory, payment, fulfillment, refund, return, and storefront plugin for NexPress.",
   "license": "MIT",
   "author": "Nexpress",
   "homepage": "https://github.com/nexpress-cms/nexpress#readme",
@@ -19,6 +19,7 @@
     "shop",
     "catalog",
     "wishlist",
+    "restock-alert",
     "storefront"
   ],
   "type": "module",
@@ -34,6 +35,11 @@
       "types": "./dist/client.d.ts",
       "import": "./dist/client.js",
       "default": "./dist/client.js"
+    },
+    "./restock-alert-client": {
+      "types": "./dist/restock-alert-client.d.ts",
+      "import": "./dist/restock-alert-client.js",
+      "default": "./dist/restock-alert-client.js"
     },
     "./styles.css": "./src/styles.css"
   },

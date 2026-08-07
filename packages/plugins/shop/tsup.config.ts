@@ -23,6 +23,7 @@ const external = [
   "@nexpress/next",
   "@nexpress/plugin-sdk",
   "@nexpress/plugin-shop/client",
+  "@nexpress/plugin-shop/restock-alert-client",
   "drizzle-orm",
 ];
 
@@ -35,7 +36,10 @@ export default defineConfig([
     external,
   },
   {
-    entry: { client: "src/client.tsx" },
+    entry: {
+      client: "src/client.tsx",
+      "restock-alert-client": "src/restock-alert-client.tsx",
+    },
     format: ["esm"],
     dts: !fast,
     sourcemap: !fast,

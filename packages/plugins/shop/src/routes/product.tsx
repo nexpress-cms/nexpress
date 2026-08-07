@@ -5,8 +5,10 @@ import type { NpRouteRenderProps } from "@nexpress/next";
 import { notFound } from "next/navigation";
 
 import { ShopAddToCart, ShopProductReviews } from "@nexpress/plugin-shop/client";
+import { ShopRestockAlert } from "@nexpress/plugin-shop/restock-alert-client";
 
 import { npGetShopProductReviewPage } from "../review-service.js";
+import { npListShopRestockAlerts } from "../restock-alert-service.js";
 
 import {
   findShopProduct,
@@ -40,7 +42,7 @@ export function createShopProductRoute(runtime: NpShopRuntime) {
       ? searchParams.reviewPage[0]
       : searchParams.reviewPage;
     const reviewPageNumber = Number(rawReviewPage ?? "1");
-    const [allCategories, messages, reviews, inquiryAction] = await Promise.all([
+    const [allCategories, messages, reviews, inquiryAction, restockAlerts] = await Promise.all([
       listShopCategories(runtime),
       getShopMessages(),
       npGetShopProductReviewPage(runtime, product.id, member?.id ?? null, reviewPageNumber),
@@ -49,6 +51,7 @@ export function createShopProductRoute(runtime: NpShopRuntime) {
         contextId: product.id,
         memberId: member?.id ?? null,
       }) ?? Promise.resolve(null),
+      member ? npListShopRestockAlerts(member.id, product.id) : Promise.resolve([]),
     ]);
     const categories = allCategories.filter((category) =>
       product.categoryIds.includes(category.id),
@@ -111,6 +114,25 @@ export function createShopProductRoute(runtime: NpShopRuntime) {
       reviews,
       inquiryAction,
       wishlistAction: wishlistActions[product.id],
+      restockAction: (
+        <ShopRestockAlert
+          apiPath="/api/plugins/shop/restock-alerts"
+          product={product}
+          initialVariantSkus={restockAlerts.map((alert) => alert.variantSku)}
+          signedIn={member !== null}
+          loginHref={`/members/login?next=${encodeURIComponent(productPath)}`}
+          labels={{
+            heading: messages.restockHeading,
+            select: messages.restockSelect,
+            subscribe: messages.restockSubscribe,
+            subscribed: messages.restockSubscribed,
+            saving: messages.restockSaving,
+            signIn: messages.restockSignIn,
+            unavailable: messages.restockUnavailable,
+            failed: messages.restockFailed,
+          }}
+        />
+      ),
       messages,
     });
   };

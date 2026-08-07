@@ -142,6 +142,14 @@ export interface NpShopMessages {
   wishlistEmpty: string;
   wishlistLogin: string;
   wishlistBrowse: string;
+  restockHeading: string;
+  restockSelect: string;
+  restockSubscribe: string;
+  restockSubscribed: string;
+  restockSaving: string;
+  restockSignIn: string;
+  restockUnavailable: string;
+  restockFailed: string;
   search: string;
   searchPlaceholder: string;
   sort: string;
@@ -386,6 +394,7 @@ export interface NpShopProductSkinProps {
   reviews?: NpShopProductReviewPage;
   inquiryAction?: ReactNode;
   wishlistAction?: ReactNode;
+  restockAction?: ReactNode;
   messages: NpShopMessages;
 }
 

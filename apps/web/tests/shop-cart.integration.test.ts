@@ -1,4 +1,4 @@
-import { npAuditEvents, npPluginStorage, withCurrentSite } from "@nexpress/core";
+import { npAuditEvents, npNotifications, npPluginStorage, withCurrentSite } from "@nexpress/core";
 import {
   countFollows,
   follow,
@@ -17,6 +17,7 @@ import {
   npListShopProductReviews,
   npGetShopWishlistPage,
   npReadShopProductReviewAggregate,
+  npProcessShopRestockAlerts,
   shopCollections,
   shopPlugin,
   type NpShopCarrierBookingRequest,
@@ -509,6 +510,98 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     await expect(
       withCurrentSite("default", () => countFollows(shop.runtime.collections.products)),
     ).resolves.toBe(0);
+  });
+
+  it("delivers one member-owned restock notification and retains a dedupe receipt", async () => {
+    const db = await getTestDb();
+    const shop = createShop();
+    await shop.plugin.setup?.({} as never);
+    const member = await seedActiveMember({ handle: "restock-member" });
+    await db
+      .update(shopProductsTable)
+      .set({ stockQuantity: 0, available: false, inventoryState: "out-of-stock" })
+      .where(eq(shopProductsTable.id, productId));
+
+    await expect(
+      configuredShopCall(shop, "GET", "/restock-alerts", { query: { productId } }),
+    ).resolves.toMatchObject({ status: 403 });
+    await expect(
+      configuredShopCall(shop, "POST", "/restock-alerts", {
+        cookie: "np-mb-csrf=restock-csrf",
+        member: { id: member.memberId },
+        body: { productId, variantSku: null },
+      }),
+    ).resolves.toMatchObject({ status: 403 });
+
+    const subscribed = await configuredShopCall(shop, "POST", "/restock-alerts", {
+      cookie: "np-mb-csrf=restock-csrf",
+      csrf: "restock-csrf",
+      member: { id: member.memberId },
+      body: { productId, variantSku: null },
+    });
+    expect(subscribed).toMatchObject({
+      status: 200,
+      body: { alert: { productId, variantSku: null } },
+    });
+    await expect(
+      configuredShopCall(shop, "POST", "/restock-alerts", {
+        cookie: "np-mb-csrf=restock-csrf",
+        csrf: "restock-csrf",
+        member: { id: member.memberId },
+        body: { productId, variantSku: null },
+      }),
+    ).resolves.toMatchObject({ status: 200, body: { alert: { productId } } });
+    await expect(
+      configuredShopCall(shop, "GET", "/restock-alerts", {
+        member: { id: member.memberId },
+        query: { productId },
+      }),
+    ).resolves.toMatchObject({
+      status: 200,
+      body: { alerts: [{ productId, variantSku: null }] },
+    });
+    await expect(
+      withCurrentSite("other-site", () => npProcessShopRestockAlerts(shop.runtime, { productId })),
+    ).resolves.toMatchObject({ inspected: 0, notified: 0 });
+
+    await db
+      .update(shopProductsTable)
+      .set({ stockQuantity: 4, available: true, inventoryState: "in-stock" })
+      .where(eq(shopProductsTable.id, productId));
+    await expect(
+      withCurrentSite("default", () => npProcessShopRestockAlerts(shop.runtime, { productId })),
+    ).resolves.toMatchObject({ inspected: 1, notified: 1, suppressed: 0 });
+    await expect(
+      withCurrentSite("default", () => npProcessShopRestockAlerts(shop.runtime, { productId })),
+    ).resolves.toMatchObject({ inspected: 0, notified: 0 });
+
+    const notifications = await db
+      .select({ kind: npNotifications.kind, payload: npNotifications.payload })
+      .from(npNotifications)
+      .where(
+        and(
+          eq(npNotifications.siteId, "default"),
+          eq(npNotifications.memberId, member.memberId),
+          eq(npNotifications.kind, "shop.product-restocked"),
+        ),
+      );
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]?.payload).toMatchObject({
+      href: "/shop/products/everyday-cup",
+      productId,
+      variantSku: null,
+    });
+    const [receipt] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          like(npPluginStorage.key, `restock-alert:${productId}:%`),
+        ),
+      );
+    expect(receipt?.value).toMatchObject({ status: "completed", outcome: "notified" });
   });
 
   it("projects exact PII-free review aggregates and rows", async () => {

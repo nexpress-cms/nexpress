@@ -387,6 +387,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("pnpm add @nexpress/shop-payment-toss");
     expect(readme).toContain("verified-purchase product review");
     expect(readme).toContain("follow graph at `/shop/wishlist`");
+    expect(readme).toContain("one-shot member restock alerts");
     expect(readme).toContain("existing site-scoped follow graph");
     expect(readme).toContain("product-questions");
     expect(readme).toContain("create no inquiry collection");

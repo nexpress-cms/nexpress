@@ -58,6 +58,7 @@ describe("shop factory", () => {
     expect(shopPlugin.manifest.styleSlots?.["wishlist-action"]).toBe(
       "[data-np-shop-wishlist-action]",
     );
+    expect(shopPlugin.manifest.styleSlots?.["restock-alert"]).toBe("[data-np-shop-restock-alert]");
     expect(
       Object.entries(shopPlugin.actions ?? {}).map(([id, action]) => ({
         id,
@@ -75,6 +76,9 @@ describe("shop factory", () => {
       { id: "restoreProductReview", kind: "action" },
       { id: "countProductWishlistSaves", kind: "metric" },
       { id: "wishlistHealth", kind: "status" },
+      { id: "countActiveRestockAlerts", kind: "metric" },
+      { id: "restockAlertHealth", kind: "status" },
+      { id: "reconcileRestockAlerts", kind: "action" },
       { id: "countProducts", kind: "metric" },
       { id: "countLowStockProducts", kind: "metric" },
       { id: "countActiveCarts", kind: "metric" },
@@ -150,6 +154,9 @@ describe("shop factory", () => {
       "POST /reviews",
       "PATCH /reviews",
       "DELETE /reviews",
+      "GET /restock-alerts",
+      "POST /restock-alerts",
+      "DELETE /restock-alerts",
       "POST /cart",
       "PATCH /cart",
       "PUT /cart",
@@ -169,6 +176,7 @@ describe("shop factory", () => {
       "DELETE /returns",
     ]);
     expect(shopPlugin.scheduled?.map((task) => task.id)).toEqual([
+      "reconcile-restock-alerts",
       "cleanup-expired-carts",
       "cleanup-expired-checkout-intents",
       "cleanup-expired-order-drafts",
@@ -177,6 +185,16 @@ describe("shop factory", () => {
     ]);
     expect([...createShop().runtime.skins.keys()]).toEqual(["classic", "storefront-full"]);
     expect(storefrontFullShopSkin.id).toBe("storefront-full");
+    expect(shopPlugin.hooks?.["content:afterUpdate"]).toBeTypeOf("function");
+    expect(shopPlugin.hooks?.["content:afterDelete"]).toBeTypeOf("function");
+    expect(shopPlugin.manifest.provides.apiRoutes).toContain("/restock-alerts");
+    expect(shopPlugin.manifest.provides.adminExtensions).toEqual(
+      expect.arrayContaining([
+        "dashboard:shop-restock-alerts",
+        "widget:shop-restock-alert-health",
+        "action:shop-restock-alert-reconcile",
+      ]),
+    );
   });
 
   it("adds the exact public raw webhook only when a payment adapter is configured", () => {

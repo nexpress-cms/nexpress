@@ -2,7 +2,18 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-07 (Shop products now opt into the existing
+**Last refreshed:** 2026-08-08 (Shop now owns an independent member restock
+alert contract for exact tracked product or enabled-variant targets: only
+out-of-stock targets can be subscribed, active alerts expire after 180 days,
+availability delivers one preference-aware in-app notification with a stable
+event id, and 30-day completion receipts make crash recovery idempotent.
+Product update hooks provide the fast path while a five-minute bounded
+site-scoped reconciliation catches direct inventory writes; Admin, Doctor,
+both skins, the independent Storefront theme, scaffold guidance, and tests
+share the same PII-free contract. Wishlists never auto-enroll, and alerts do
+not reserve inventory, add carts, track prices, or recur.)
+
+**Earlier:** 2026-08-07 (Shop products now opt into the existing
 site-scoped community follow graph for member wishlists; catalog cards use one
 bounded batch state read, `/shop/wishlist` hydrates only current public
 products in deterministic save order, shared member API/CSRF and deletion

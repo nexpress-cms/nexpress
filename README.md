@@ -111,7 +111,7 @@ Switch themes from Admin → Appearance or configure them in
 | Theme authoring    | [docs/theme-authoring.md](./docs/theme-authoring.md)                             |
 | Plugin authoring   | [docs/plugin-quickstart.md](./docs/plugin-quickstart.md)                         |
 | Multi-board forum  | [docs/plugin-forum.md](./docs/plugin-forum.md)                                   |
-| Catalog and shop   | [docs/plugin-shop.md](./docs/plugin-shop.md) — wishlists, orders, fulfillment    |
+| Catalog and shop   | [docs/plugin-shop.md](./docs/plugin-shop.md) — wishlists, restock alerts, orders |
 | Toss Payments      | [Shop payment guide](./docs/plugin-shop.md#payment-initiation-and-toss-payments) |
 | Deployment         | [docs/deployment.md](./docs/deployment.md)                                       |
 | Site customization | [docs/site-customization.md](./docs/site-customization.md)                       |
