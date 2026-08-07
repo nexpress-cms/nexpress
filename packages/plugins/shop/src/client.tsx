@@ -1,6 +1,7 @@
 "use client";
 
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { npRequireFollowWireRow, npRequireOkWire } from "@nexpress/core/community-contract";
 import { npRequireMediaAttachmentWire } from "@nexpress/core/media-contract";
 
 import { npRequireShopCartQuote } from "./cart-contract.js";
@@ -2006,6 +2007,100 @@ function readMemberCsrf(): string | null {
   if (typeof document === "undefined") return null;
   const match = /(?:^|;\s*)np-mb-csrf=([^;]+)/u.exec(document.cookie);
   return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+export interface ShopWishlistActionProps {
+  targetType: string;
+  productId: string;
+  initialSaved: boolean;
+  signedIn: boolean;
+  loginHref: string;
+  reloadOnChange?: boolean;
+  labels: {
+    save: string;
+    saved: string;
+    saving: string;
+    signIn: string;
+    failed: string;
+  };
+}
+
+export function ShopWishlistAction(props: ShopWishlistActionProps) {
+  const targetKey = `${props.targetType}:${props.productId}`;
+  const [saved, setSaved] = useState(props.initialSaved);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setSaved(props.initialSaved);
+    setBusy(false);
+    setError("");
+  }, [props.initialSaved, targetKey]);
+
+  if (!props.signedIn) {
+    return (
+      <span className="np-shop-wishlist-action" data-np-shop-wishlist-action="signed-out">
+        <a href={props.loginHref}>{props.labels.signIn}</a>
+      </span>
+    );
+  }
+
+  async function toggle(): Promise<void> {
+    if (busy) return;
+    const next = !saved;
+    setSaved(next);
+    setBusy(true);
+    setError("");
+    try {
+      const csrf = readMemberCsrf();
+      const headers = {
+        Accept: "application/json",
+        ...(csrf ? { "X-CSRF-Token": csrf } : {}),
+      };
+      if (next) {
+        const response = await fetch("/api/follows", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { ...headers, "Content-Type": "application/json" },
+          body: JSON.stringify({ targetType: props.targetType, targetId: props.productId }),
+        });
+        const payload: unknown = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(props.labels.failed);
+        npRequireFollowWireRow(payload);
+      } else {
+        const query = new URLSearchParams({
+          targetType: props.targetType,
+          targetId: props.productId,
+        });
+        const response = await fetch(`/api/follows?${query.toString()}`, {
+          method: "DELETE",
+          credentials: "same-origin",
+          headers,
+        });
+        const payload: unknown = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(props.labels.failed);
+        npRequireOkWire(payload);
+      }
+      if (props.reloadOnChange) window.location.reload();
+    } catch {
+      setSaved(!next);
+      setError(props.labels.failed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span
+      className="np-shop-wishlist-action"
+      data-np-shop-wishlist-action={saved ? "saved" : "available"}
+    >
+      <button type="button" aria-pressed={saved} disabled={busy} onClick={() => void toggle()}>
+        {busy ? props.labels.saving : saved ? props.labels.saved : props.labels.save}
+      </button>
+      {error ? <span role="alert">{error}</span> : null}
+    </span>
+  );
 }
 
 async function uploadReviewPhoto(file: File): Promise<NpShopProductReviewPhoto> {

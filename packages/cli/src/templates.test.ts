@@ -386,6 +386,8 @@ describe("getProjectFiles", () => {
     expect(env).not.toMatch(/^NP_TOSS_PAYMENTS_(?:CLIENT|SECRET)_KEY=/m);
     expect(readme).toContain("pnpm add @nexpress/shop-payment-toss");
     expect(readme).toContain("verified-purchase product review");
+    expect(readme).toContain("follow graph at `/shop/wishlist`");
+    expect(readme).toContain("existing site-scoped follow graph");
     expect(readme).toContain("product-questions");
     expect(readme).toContain("create no inquiry collection");
     expect(readme).toContain("defaultPlugins");

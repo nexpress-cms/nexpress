@@ -949,7 +949,7 @@ function readmeTemplate(config: TemplateConfig): string {
 
   return `# ${config.projectName}
 
-A NexPress site ready to customize, publish, and deploy.
+A NexPress site ready to customize, publish, and deploy, with Shop saved products on the existing site-scoped follow graph at \`/shop/wishlist\`.
 
 ## Quickstart
 

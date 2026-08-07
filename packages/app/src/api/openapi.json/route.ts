@@ -5216,6 +5216,8 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
   paths["/api/follows"] = {
     get: {
       summary: "List the authenticated member's follows",
+      description:
+        "Returns a site-scoped deterministic newest-first window; follow UUID is the stable tie-breaker.",
       parameters: [
         {
           in: "query",

@@ -101,6 +101,13 @@ export interface NpShopCatalogQuery {
   inStockOnly: boolean;
 }
 
+export interface NpShopWishlistPage {
+  products: NpShopProductSummary[];
+  page: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}
+
 export interface NpShopMessages {
   locale: string;
   catalog: string;
@@ -126,6 +133,15 @@ export interface NpShopMessages {
   reviewSaving: string;
   reviewDelete: string;
   reviewFailed: string;
+  wishlist: string;
+  wishlistSave: string;
+  wishlistSaved: string;
+  wishlistSaving: string;
+  wishlistSignIn: string;
+  wishlistFailed: string;
+  wishlistEmpty: string;
+  wishlistLogin: string;
+  wishlistBrowse: string;
   search: string;
   searchPlaceholder: string;
   sort: string;
@@ -345,6 +361,7 @@ export interface NpShopCatalogSkinProps {
   query: NpShopCatalogQuery;
   totalPages: number;
   totalProducts: number;
+  wishlistActions?: Readonly<Record<string, ReactNode>>;
   messages: NpShopMessages;
 }
 
@@ -355,6 +372,7 @@ export interface NpShopCategorySkinProps {
   query: NpShopCatalogQuery;
   totalPages: number;
   totalProducts: number;
+  wishlistActions?: Readonly<Record<string, ReactNode>>;
   messages: NpShopMessages;
 }
 
@@ -367,6 +385,16 @@ export interface NpShopProductSkinProps {
   reviewAction?: ReactNode;
   reviews?: NpShopProductReviewPage;
   inquiryAction?: ReactNode;
+  wishlistAction?: ReactNode;
+  messages: NpShopMessages;
+}
+
+export interface NpShopWishlistSkinProps {
+  basePath: string;
+  page: NpShopWishlistPage;
+  signedIn: boolean;
+  loginHref: string;
+  wishlistActions?: Readonly<Record<string, ReactNode>>;
   messages: NpShopMessages;
 }
 
@@ -839,4 +867,5 @@ export interface NpShopSkin {
   renderOrderDraft?: (props: NpShopOrderDraftSkinProps) => ReactNode | Promise<ReactNode>;
   renderOrders?: (props: NpShopOrdersSkinProps) => ReactNode | Promise<ReactNode>;
   renderOrder?: (props: NpShopOrderSkinProps) => ReactNode | Promise<ReactNode>;
+  renderWishlist?: (props: NpShopWishlistSkinProps) => ReactNode | Promise<ReactNode>;
 }

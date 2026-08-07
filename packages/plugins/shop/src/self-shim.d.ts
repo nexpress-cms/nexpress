@@ -7,5 +7,7 @@ declare module "@nexpress/plugin-shop/client" {
     ShopOrderDraft,
     ShopOrders,
     ShopProductReviews,
+    ShopWishlistAction,
   } from "./client.js";
+  export type { ShopWishlistActionProps } from "./client.js";
 }

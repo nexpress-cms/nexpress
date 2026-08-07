@@ -1,6 +1,7 @@
-import { and, asc, eq, gt } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray } from "drizzle-orm";
 
 import {
+  npCommunityContractLimits,
   npRequireCommunityId,
   npRequireFollowActivityNotificationPayload,
   npRequireFollowRow,
@@ -212,7 +213,7 @@ export async function listFollowing(
   const checkedFollowerId = npRequireCommunityId(followerId, "community.follow.followerId");
   const checkedTargetType =
     options.targetType === undefined ? undefined : npRequireFollowTargetType(options.targetType);
-  const limit = Math.min(Math.max(options.limit ?? 50, 1), 200);
+  const limit = Math.min(Math.max(options.limit ?? 50, 1), npCommunityContractLimits.pageRows);
   const offset = Math.max(options.offset ?? 0, 0);
   // Phase 18 — scope to current site. A member who follows on
   // tenant A and tenant B should see two separate "Following"
@@ -230,9 +231,69 @@ export async function listFollowing(
     .select()
     .from(npFollows)
     .where(where)
+    .orderBy(desc(npFollows.createdAt), desc(npFollows.id))
     .limit(limit)
     .offset(offset)) as NpFollowRow[];
   return rows.map(npRequireFollowRow);
+}
+
+/**
+ * Resolve one bounded card/list window without issuing one follow probe per
+ * document. The result preserves the caller's input order and contains only
+ * targets followed by this member on the current site.
+ */
+export async function listFollowingTargetIds(
+  followerId: string,
+  targetType: FollowTarget,
+  targetIds: readonly string[],
+): Promise<string[]> {
+  const checkedFollowerId = npRequireCommunityId(followerId, "community.follow.followerId");
+  const checkedTargetType = npRequireFollowTargetType(targetType);
+  if (targetIds.length > npCommunityContractLimits.pageRows) {
+    throw new NpValidationError("Invalid follow targets", [
+      {
+        field: "targetIds",
+        message: `At most ${npCommunityContractLimits.pageRows.toString()} follow targets may be inspected at once.`,
+      },
+    ]);
+  }
+  const checkedTargetIds = targetIds.map(
+    (targetId) => npRequireFollowTarget({ targetType: checkedTargetType, targetId }).targetId,
+  );
+  if (new Set(checkedTargetIds).size !== checkedTargetIds.length) {
+    throw new NpValidationError("Invalid follow targets", [
+      { field: "targetIds", message: "Follow target ids must be unique." },
+    ]);
+  }
+  if (checkedTargetIds.length === 0) return [];
+
+  const db = getDb();
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+  const rows = (await db
+    .select({ targetId: npFollows.targetId })
+    .from(npFollows)
+    .where(
+      and(
+        eq(npFollows.followerId, checkedFollowerId),
+        eq(npFollows.targetType, checkedTargetType),
+        eq(npFollows.siteId, siteId),
+        inArray(npFollows.targetId, checkedTargetIds),
+      ),
+    )) as Array<{ targetId: string }>;
+  const followed = new Set(rows.map((row) => row.targetId));
+  return checkedTargetIds.filter((targetId) => followed.has(targetId));
+}
+
+/** Site-scoped aggregate used by plugin/Admin diagnostics without exposing members. */
+export async function countFollows(targetType: FollowTarget): Promise<number> {
+  const checkedTargetType = npRequireFollowTargetType(targetType);
+  const db = getDb();
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+  const [row] = await db
+    .select({ value: count() })
+    .from(npFollows)
+    .where(and(eq(npFollows.targetType, checkedTargetType), eq(npFollows.siteId, siteId)));
+  return row?.value ?? 0;
 }
 
 export interface NpNotifyFollowersInput extends NpFollowActivityNotificationPayload {

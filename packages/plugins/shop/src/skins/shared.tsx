@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import {
   ShopCart,
@@ -21,6 +22,7 @@ import type {
   NpShopMessages,
   NpShopProductSkinProps,
   NpShopProductSummary,
+  NpShopWishlistSkinProps,
 } from "../types.js";
 
 function cartClientMessages(messages: NpShopMessages): NpShopCartClientMessages {
@@ -227,10 +229,12 @@ export function ProductCard({
   basePath,
   product,
   messages,
+  wishlistAction,
 }: {
   basePath: string;
   product: NpShopProductSummary;
   messages: NpShopMessages;
+  wishlistAction?: ReactNode;
 }) {
   return (
     <article className="np-shop-product-card" data-np-shop-product={product.id}>
@@ -243,8 +247,13 @@ export function ProductCard({
       </Link>
       <div className="np-shop-product-card-body">
         <div className="np-shop-product-card-kicker">
-          <InventoryLabel product={product} messages={messages} />
-          {product.featured ? <span className="np-shop-featured">{messages.featured}</span> : null}
+          <span>
+            <InventoryLabel product={product} messages={messages} />
+            {product.featured ? (
+              <span className="np-shop-featured">{messages.featured}</span>
+            ) : null}
+          </span>
+          {wishlistAction}
         </div>
         <h2>
           <Link href={`${basePath}/products/${product.slug}`}>{product.name}</Link>
@@ -345,17 +354,25 @@ function ProductGrid({
   basePath,
   products,
   messages,
+  wishlistActions,
 }: {
   basePath: string;
   products: NpShopProductSummary[];
   messages: NpShopMessages;
+  wishlistActions?: Readonly<Record<string, ReactNode>>;
 }) {
   return products.length === 0 ? (
     <p className="np-shop-empty">{messages.emptyProducts}</p>
   ) : (
     <div className="np-shop-product-grid">
       {products.map((product) => (
-        <ProductCard key={product.id} basePath={basePath} product={product} messages={messages} />
+        <ProductCard
+          key={product.id}
+          basePath={basePath}
+          product={product}
+          messages={messages}
+          wishlistAction={wishlistActions?.[product.id]}
+        />
       ))}
     </div>
   );
@@ -371,9 +388,12 @@ export function ShopCatalogSurface({ skin, ...props }: NpShopCatalogSkinProps & 
       <header className="np-shop-page-header">
         <p>{props.messages.catalogOnly}</p>
         <h1>{props.messages.catalog}</h1>
-        <span>
-          {props.totalProducts.toLocaleString(props.messages.locale)} {props.messages.products}
-        </span>
+        <div className="np-shop-page-header-actions">
+          <span>
+            {props.totalProducts.toLocaleString(props.messages.locale)} {props.messages.products}
+          </span>
+          <Link href={`${props.basePath}/wishlist`}>{props.messages.wishlist}</Link>
+        </div>
       </header>
       {props.categories.length > 0 ? (
         <nav className="np-shop-category-strip" aria-label={props.messages.categories}>
@@ -385,7 +405,12 @@ export function ShopCatalogSurface({ skin, ...props }: NpShopCatalogSkinProps & 
         </nav>
       ) : null}
       <CatalogFilters action={props.basePath} query={props.query} messages={props.messages} />
-      <ProductGrid basePath={props.basePath} products={props.products} messages={props.messages} />
+      <ProductGrid
+        basePath={props.basePath}
+        products={props.products}
+        messages={props.messages}
+        wishlistActions={props.wishlistActions}
+      />
       <Pagination
         basePath={props.basePath}
         query={props.query}
@@ -411,12 +436,18 @@ export function ShopCategorySurface({
         {props.category.imageUrl ? <img src={props.category.imageUrl} alt="" /> : null}
         <div>
           <Link href={props.basePath}>{props.messages.backToCatalog}</Link>
+          <Link href={`${props.basePath}/wishlist`}>{props.messages.wishlist}</Link>
           <h1>{props.category.name}</h1>
           {props.category.description ? <p>{props.category.description}</p> : null}
         </div>
       </header>
       <CatalogFilters action={routePath} query={props.query} messages={props.messages} />
-      <ProductGrid basePath={props.basePath} products={props.products} messages={props.messages} />
+      <ProductGrid
+        basePath={props.basePath}
+        products={props.products}
+        messages={props.messages}
+        wishlistActions={props.wishlistActions}
+      />
       <Pagination
         basePath={routePath}
         query={props.query}
@@ -482,6 +513,7 @@ export function ShopProductSurface({ skin, ...props }: NpShopProductSkinProps & 
             <strong>{props.messages.catalogOnly}</strong>
           </div>
           {props.cartAction}
+          {props.wishlistAction}
           <Link className="np-shop-cart-link" href={`${props.basePath}/cart`}>
             {props.messages.cart}
           </Link>
@@ -524,6 +556,66 @@ export function ShopProductSurface({ skin, ...props }: NpShopProductSkinProps & 
       <article className="np-shop-product-description">{props.description}</article>
       {props.inquiryAction}
       {props.reviewAction}
+    </main>
+  );
+}
+
+export function ShopWishlistSurface({
+  skin,
+  ...props
+}: NpShopWishlistSkinProps & { skin: string }) {
+  const routePath = `${props.basePath}/wishlist`;
+  return (
+    <main
+      className="np-shop np-shop-wishlist"
+      data-np-shop-surface="wishlist"
+      data-np-shop-skin={skin}
+    >
+      <header className="np-shop-page-header">
+        <p>{props.messages.catalogOnly}</p>
+        <h1>{props.messages.wishlist}</h1>
+        <Link href={props.basePath}>{props.messages.wishlistBrowse}</Link>
+      </header>
+      {!props.signedIn ? (
+        <section className="np-shop-wishlist-login">
+          <p>{props.messages.wishlistLogin}</p>
+          <a href={props.loginHref}>{props.messages.wishlistSignIn}</a>
+        </section>
+      ) : props.page.products.length === 0 ? (
+        <p className="np-shop-empty">{props.messages.wishlistEmpty}</p>
+      ) : (
+        <ProductGrid
+          basePath={props.basePath}
+          products={props.page.products}
+          messages={props.messages}
+          wishlistActions={props.wishlistActions}
+        />
+      )}
+      {props.signedIn && (props.page.hasPrevious || props.page.hasNext) ? (
+        <nav className="np-shop-pagination" aria-label={props.messages.wishlist}>
+          {props.page.hasPrevious ? (
+            <Link
+              href={
+                props.page.page === 2
+                  ? routePath
+                  : `${routePath}?page=${(props.page.page - 1).toString()}`
+              }
+            >
+              {props.messages.previous}
+            </Link>
+          ) : (
+            <span aria-disabled="true">{props.messages.previous}</span>
+          )}
+          <strong>{props.page.page.toLocaleString(props.messages.locale)}</strong>
+          {props.page.hasNext ? (
+            <Link href={`${routePath}?page=${(props.page.page + 1).toString()}`}>
+              {props.messages.next}
+            </Link>
+          ) : (
+            <span aria-disabled="true">{props.messages.next}</span>
+          )}
+        </nav>
+      ) : null}
     </main>
   );
 }

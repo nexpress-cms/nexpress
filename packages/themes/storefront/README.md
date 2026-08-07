@@ -17,3 +17,6 @@ Optional Shop integration consumes only documented public CSS hooks. See the
 When Forum-backed product inquiries are also enabled, Storefront enhances the
 stable `[data-np-forum-context-questions]` hook without importing Forum or
 requiring either plugin.
+The same independent integration styles Shop's optional
+`[data-np-shop-surface="wishlist"]` and `[data-np-shop-wishlist-action]`
+hooks; Storefront does not own wishlist data, routes, or authentication.

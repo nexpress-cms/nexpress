@@ -41,6 +41,7 @@ describe("shop factory", () => {
       "/shop",
       "/shop/categories/:categorySlug",
       "/shop/products/:productSlug",
+      "/shop/wishlist",
       "/shop/cart",
       "/shop/checkout/:intentId",
       "/shop/order-drafts/:draftId",
@@ -52,6 +53,11 @@ describe("shop factory", () => {
       "shop.category-grid",
     ]);
     expect(shopPlugin.patterns?.map((pattern) => pattern.id)).toEqual(["shop.storefront-home"]);
+    expect(shopCollections[1].community?.follows).toBe(true);
+    expect(shopPlugin.manifest.styleSlots?.wishlist).toBe('[data-np-shop-surface="wishlist"]');
+    expect(shopPlugin.manifest.styleSlots?.["wishlist-action"]).toBe(
+      "[data-np-shop-wishlist-action]",
+    );
     expect(
       Object.entries(shopPlugin.actions ?? {}).map(([id, action]) => ({
         id,
@@ -67,6 +73,8 @@ describe("shop factory", () => {
       { id: "recentProductReviews", kind: "table" },
       { id: "hideProductReview", kind: "action" },
       { id: "restoreProductReview", kind: "action" },
+      { id: "countProductWishlistSaves", kind: "metric" },
+      { id: "wishlistHealth", kind: "status" },
       { id: "countProducts", kind: "metric" },
       { id: "countLowStockProducts", kind: "metric" },
       { id: "countActiveCarts", kind: "metric" },
