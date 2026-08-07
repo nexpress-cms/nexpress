@@ -312,6 +312,14 @@ placeholder `thread` and `tag` enum values never had runtime
 subjects and are no longer advertised. Custom forum collection slugs work
 without a generic thread alias.
 
+`listFollowing()` returns a deterministic newest-first window, with the follow
+UUID as its tie-breaker. `listFollowingTargetIds(followerId, targetType,
+targetIds)` checks at most 200 unique targets in one site-scoped query and
+preserves the caller's input order; list/card surfaces should use it instead of
+issuing one `isFollowing()` query per row. `countFollows(targetType)` exposes
+only a site-scoped aggregate for Admin diagnostics and never returns member
+identity.
+
 `notifyFollowers()` is the server-side fan-out primitive for activity on a
 followed document. Its exact tagged payload currently distinguishes
 `comment.created` from `document.published`, requires one validated local

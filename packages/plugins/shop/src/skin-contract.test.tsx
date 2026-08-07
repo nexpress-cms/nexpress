@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ShopProductReviews } from "./client.js";
+import { ShopProductReviews, ShopWishlistAction } from "./client.js";
 import { classicShopSkin } from "./skins/classic.js";
 import type { NpShopCatalogQuery, NpShopMessages, NpShopProduct } from "./types.js";
 
@@ -32,6 +32,15 @@ const messages = {
   reviewSaving: "저장 중",
   reviewDelete: "리뷰 삭제",
   reviewFailed: "리뷰 실패",
+  wishlist: "찜한 상품",
+  wishlistSave: "찜하기",
+  wishlistSaved: "찜함",
+  wishlistSaving: "저장 중",
+  wishlistSignIn: "로그인하고 찜하기",
+  wishlistFailed: "찜하기 실패",
+  wishlistEmpty: "찜한 상품이 없습니다.",
+  wishlistLogin: "찜한 상품은 로그인 후 확인할 수 있습니다.",
+  wishlistBrowse: "상품 둘러보기",
   search: "상품 검색",
   searchPlaceholder: "검색",
   sort: "정렬",
@@ -304,6 +313,7 @@ describe("shop skin contract", () => {
     expect(styles).toContain(".np-shop-product-description ul");
     expect(styles).toContain(".np-shop-product-description blockquote");
     expect(styles).toContain("[data-np-shop-review-form]");
+    expect(styles).toContain("data-np-shop-wishlist-action");
     for (const property of [
       "--np-shop-content-max",
       "--np-shop-surface",
@@ -387,6 +397,43 @@ describe("shop skin contract", () => {
     expect(html).toContain('role="search"');
     expect(html).toContain('name="q"');
     expect(html).toContain(">추천</span>");
+    expect(html).toContain('href="/shop/wishlist"');
+  });
+
+  it("renders the member wishlist surface and signed-out action fallback", async () => {
+    const action = (
+      <ShopWishlistAction
+        targetType="shop-products"
+        productId={product.id}
+        initialSaved={false}
+        signedIn={false}
+        loginHref="/members/login?next=%2Fshop"
+        labels={{
+          save: messages.wishlistSave,
+          saved: messages.wishlistSaved,
+          saving: messages.wishlistSaving,
+          signIn: messages.wishlistSignIn,
+          failed: messages.wishlistFailed,
+        }}
+      />
+    );
+    expect(renderToStaticMarkup(action)).toContain('data-np-shop-wishlist-action="signed-out"');
+
+    const html = renderToStaticMarkup(
+      <>
+        {await classicShopSkin.renderWishlist?.({
+          basePath: "/shop",
+          page: { products: [product], page: 1, hasPrevious: false, hasNext: false },
+          signedIn: true,
+          loginHref: "/members/login?next=%2Fshop%2Fwishlist",
+          wishlistActions: { [product.id]: action },
+          messages,
+        })}
+      </>,
+    );
+    expect(html).toContain('data-np-shop-surface="wishlist"');
+    expect(html).toContain('data-np-shop-product="product-1"');
+    expect(html).toContain("찜한 상품");
   });
 
   it("renders the complete cart fallback through the skin contract", async () => {

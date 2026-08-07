@@ -1,4 +1,11 @@
 import { npAuditEvents, npPluginStorage, withCurrentSite } from "@nexpress/core";
+import {
+  countFollows,
+  follow,
+  listFollowing,
+  listFollowingTargetIds,
+  unfollow,
+} from "@nexpress/core/community";
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import {
   createShop,
@@ -8,6 +15,7 @@ import {
   npAnalyzeStoredShopOrder,
   npRequireShopOrderDraft,
   npListShopProductReviews,
+  npGetShopWishlistPage,
   npReadShopProductReviewAggregate,
   shopCollections,
   shopPlugin,
@@ -429,6 +437,78 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       skin: "classic",
       publishedAt: new Date(),
     });
+  });
+
+  it("stores member wishlists in the site-scoped follow graph and hydrates public products", async () => {
+    const db = await getTestDb();
+    const shop = createShop();
+    const member = await seedActiveMember({ handle: "wishlist-member" });
+    const missingProductId = "323e4567-e89b-42d3-a456-426614174000";
+
+    await withCurrentSite("default", () =>
+      follow({
+        followerId: member.memberId,
+        targetType: shop.runtime.collections.products,
+        targetId: productId,
+      }),
+    );
+
+    await expect(
+      withCurrentSite("default", () =>
+        listFollowingTargetIds(member.memberId, shop.runtime.collections.products, [
+          missingProductId,
+          productId,
+        ]),
+      ),
+    ).resolves.toEqual([productId]);
+    await expect(
+      withCurrentSite("default", () =>
+        listFollowing(member.memberId, { targetType: shop.runtime.collections.products }),
+      ),
+    ).resolves.toMatchObject([{ targetId: productId, siteId: "default" }]);
+    await expect(
+      withCurrentSite("default", () => countFollows(shop.runtime.collections.products)),
+    ).resolves.toBe(1);
+    await expect(
+      withCurrentSite("other-site", () => countFollows(shop.runtime.collections.products)),
+    ).resolves.toBe(0);
+
+    const page = await withCurrentSite("default", () =>
+      npGetShopWishlistPage(shop.runtime, member.memberId, 1),
+    );
+    expect(page).toMatchObject({
+      page: 1,
+      hasPrevious: false,
+      hasNext: false,
+      products: [{ id: productId, slug: "everyday-cup" }],
+    });
+    const metric = await withCurrentSite("default", () =>
+      shop.plugin.actions?.countProductWishlistSaves?.handler(undefined, {} as never),
+    );
+    expect(metric).toMatchObject({ ok: true, data: { value: 1 } });
+    const health = await withCurrentSite("default", () =>
+      shop.plugin.actions?.wishlistHealth?.handler(undefined, {} as never),
+    );
+    expect(health).toMatchObject({ ok: true, data: { level: "ok" } });
+
+    await db
+      .update(shopProductsTable)
+      .set({ status: "draft" })
+      .where(eq(shopProductsTable.id, productId));
+    await expect(
+      withCurrentSite("default", () => npGetShopWishlistPage(shop.runtime, member.memberId, 1)),
+    ).resolves.toMatchObject({ products: [] });
+
+    await withCurrentSite("default", () =>
+      unfollow({
+        followerId: member.memberId,
+        targetType: shop.runtime.collections.products,
+        targetId: productId,
+      }),
+    );
+    await expect(
+      withCurrentSite("default", () => countFollows(shop.runtime.collections.products)),
+    ).resolves.toBe(0);
   });
 
   it("projects exact PII-free review aggregates and rows", async () => {

@@ -16,7 +16,8 @@ provider-neutral full refunds with safe inventory
 compensation, owner-scoped item return intake with audited receipt inventory,
 provider-neutral partial refunds linked to received returns,
 optional owner-scoped return shipment/drop-off or pickup creation with transient labels,
-Admin collection forms and health actions, blocks, and skins.
+member-owned saved products over the shared follow graph, Admin collection
+forms and health actions, blocks, and skins.
 
 `@nexpress/theme-storefront` is a separate brand/content theme. It works with
 ordinary pages and posts when Shop is absent. When both packages are active,
@@ -50,12 +51,14 @@ package remains independently replaceable. After applying the generated migratio
 5. Ship a member order to make its purchased line eligible for one product
    review; merely paid or unfulfilled orders are not eligible.
 6. Visit `/shop`.
-7. Add a product to the cart, visit `/shop/cart`, create a short-lived
+7. Sign in, save a product from any catalog surface, and visit
+   `/shop/wishlist`.
+8. Add a product to the cart, visit `/shop/cart`, create a short-lived
    checkout intent, continue to the 24-hour private order draft, and optionally
    create a durable pending order reference.
-8. Optionally activate Storefront from Admin → Appearance.
-9. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
-   or insert the `shop.storefront-home` pattern.
+9. Optionally activate Storefront from Admin → Appearance.
+10. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
+    or insert the `shop.storefront-home` pattern.
 
 Sites upgrading from a version without Shop must generate, review, and apply
 the collection migration:
@@ -107,6 +110,33 @@ page is older or another visitor is ordering concurrently.
 
 Categories cannot be deleted while any product still references them. Move or
 remove the relationship first.
+
+## Member wishlists
+
+Products opt into the existing `community.follows` document contract. Shop
+does not add a wishlist table or duplicate authentication endpoint: its buttons
+use the authenticated `POST` / `DELETE /api/follows` routes, the member CSRF
+cookie, and the configured product collection slug. Core therefore enforces
+site scope, published/readable product existence, and the product's validated
+local `seo.urlPath` before a save is persisted.
+
+Catalog, category, and product routes render a sign-in link for visitors. For
+members, each card window resolves saved state in one bounded query of at most
+200 unique product IDs rather than one request per product. `/shop/wishlist`
+reads deterministic newest-first follow windows of 24, hydrates only currently
+published products, preserves save order, and omits unavailable or malformed
+documents without exposing the member ID. Removing a save from that page
+refreshes the bounded window after the exact API response validates.
+
+This is a saved-product contract only. It does not emit `follow.activity`,
+promise back-in-stock alerts, or couple saves to carts, orders, pricing, or
+inventory reservations. Unpublishing a product hides it while retaining the
+member relation; republishing makes it visible again. Product deletion uses
+Core's existing transactional polymorphic-follow cleanup.
+
+Admin exposes a site-scoped saved-product count and status without follower
+identity. Generic plugin Doctor follow diagnostics continue to report malformed
+and orphaned relations, so Shop does not maintain a second integrity scanner.
 
 ## Verified-purchase reviews
 
@@ -1624,7 +1654,7 @@ Every Shop factory registers:
 | `classic`         | Compact, neutral catalog and detail fallback               |
 | `storefront-full` | Larger editorial header and image-led product presentation |
 
-Both skins implement catalog, category, product, cart, checkout-intent,
+Both skins implement catalog, category, product, wishlist, cart, checkout-intent,
 private order-draft, order-history, and order-detail rendering. They receive
 prepared products, localized messages, safe formatted money, and rendered
 rich text; they do not own identity, private-data, collection, or transaction
@@ -1648,6 +1678,7 @@ with core-token fallbacks:
 The main public hooks are `.np-shop`, `.np-shop-product-card`,
 `.np-shop-product-grid`, `.np-shop-category-grid`, `.np-shop-filters`,
 `.np-shop-cart-client`, `[data-np-shop-cart-action]`,
+`[data-np-shop-surface="wishlist"]`, `[data-np-shop-wishlist-action]`,
 `[data-np-shop-cart-line]`,
 `.np-shop-checkout-client`, `[data-np-shop-checkout-line]`,
 `[data-np-shop-checkout-status]`,

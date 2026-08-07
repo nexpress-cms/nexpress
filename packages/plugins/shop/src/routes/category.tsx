@@ -1,9 +1,10 @@
 import { findDocuments } from "@nexpress/core/collections";
-import { buildPageMetadata } from "@nexpress/next";
+import { buildPageMetadata, getSiteMember } from "@nexpress/next";
 import type { NpRouteRenderProps } from "@nexpress/next";
 import { notFound } from "next/navigation";
 
 import {
+  buildShopCatalogHref,
   findShopCategory,
   getShopMessages,
   normalizeShopProductSummary,
@@ -15,6 +16,7 @@ import {
   type ShopProductDocument,
 } from "../runtime.js";
 import { npAttachShopProductReviewAggregates } from "../review-service.js";
+import { npCreateShopWishlistActions } from "../wishlist-actions.js";
 
 export function createShopCategoryMetadata(runtime: NpShopRuntime) {
   return async function shopCategoryMetadata({ params }: NpRouteRenderProps) {
@@ -29,9 +31,10 @@ export function createShopCategoryMetadata(runtime: NpShopRuntime) {
 
 export function createShopCategoryRoute(runtime: NpShopRuntime) {
   return async function ShopCategoryRoute({ params, searchParams }: NpRouteRenderProps) {
-    const [category, messages] = await Promise.all([
+    const [category, messages, member] = await Promise.all([
       findShopCategory(runtime, params.categorySlug ?? ""),
       getShopMessages(),
+      getSiteMember(),
     ]);
     const query = parseShopCatalogQuery(searchParams);
     if (!category || !query) notFound();
@@ -52,6 +55,14 @@ export function createShopCategoryRoute(runtime: NpShopRuntime) {
       runtime,
       await Promise.all(result.docs.map(normalizeShopProductSummary)),
     );
+    const routePath = `${runtime.basePath}/categories/${category.slug}`;
+    const wishlistActions = await npCreateShopWishlistActions(
+      runtime,
+      products,
+      member?.id ?? null,
+      buildShopCatalogHref(routePath, query),
+      messages,
+    );
     return resolveShopSkin(runtime).renderCategory({
       basePath: runtime.basePath,
       category,
@@ -59,6 +70,7 @@ export function createShopCategoryRoute(runtime: NpShopRuntime) {
       query,
       totalPages: result.totalPages,
       totalProducts: result.totalDocs,
+      wishlistActions,
       messages,
     });
   };

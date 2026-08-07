@@ -2,7 +2,15 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-07 (Forum may now reuse one ordinary board as a
+**Last refreshed:** 2026-08-07 (Shop products now opt into the existing
+site-scoped community follow graph for member wishlists; catalog cards use one
+bounded batch state read, `/shop/wishlist` hydrates only current public
+products in deterministic save order, shared member API/CSRF and deletion
+cleanup remain authoritative, Admin exposes PII-free totals/health, Doctor
+keeps generic orphan diagnostics, both skins and independent Storefront hooks
+are complete, and saves do not imply inventory alerts, cart, or order state.)
+
+**Earlier:** 2026-08-07 (Forum may now reuse one ordinary board as a
 signed contextual Q&A surface; the default Shop integration contributes only
 a batched published-product context source and consumes Forum's structural
 renderer adapter. Site/board/product-bound proofs, immutable context, existing

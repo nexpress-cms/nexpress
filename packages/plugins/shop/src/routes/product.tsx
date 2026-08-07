@@ -16,6 +16,7 @@ import {
   type NpShopRuntime,
 } from "../runtime.js";
 import { getShopCartClientMessages } from "../skins/shared.js";
+import { npCreateShopWishlistActions } from "../wishlist-actions.js";
 
 export function createShopProductMetadata(runtime: NpShopRuntime) {
   return async function shopProductMetadata({ params }: NpRouteRenderProps) {
@@ -55,6 +56,14 @@ export function createShopProductRoute(runtime: NpShopRuntime) {
     const description = isNpRichTextContent(product.description)
       ? renderRichText(product.description)
       : null;
+    const productPath = `${runtime.basePath}/products/${product.slug}`;
+    const wishlistActions = await npCreateShopWishlistActions(
+      runtime,
+      [product],
+      member?.id ?? null,
+      productPath,
+      messages,
+    );
     return resolveShopSkin(runtime, product.skinId).renderProduct({
       basePath: runtime.basePath,
       product,
@@ -71,7 +80,7 @@ export function createShopProductRoute(runtime: NpShopRuntime) {
         <ShopProductReviews
           apiPath="/api/plugins/shop/reviews"
           productId={product.id}
-          productPath={`${runtime.basePath}/products/${product.slug}`}
+          productPath={productPath}
           initialPage={reviews}
           messages={{
             locale: messages.locale,
@@ -101,6 +110,7 @@ export function createShopProductRoute(runtime: NpShopRuntime) {
       ),
       reviews,
       inquiryAction,
+      wishlistAction: wishlistActions[product.id],
       messages,
     });
   };

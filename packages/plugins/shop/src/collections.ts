@@ -334,6 +334,7 @@ export function defineShopProductsCollection(runtime: NpShopRuntime): NpCollecti
       update: isEditorOrAbove,
       delete: isEditorOrAbove,
     },
+    community: { follows: true },
     hooks: {
       beforeCreate: [({ data }) => validateShopProduct(data)],
       beforeUpdate: [({ data }) => validateShopProduct(data)],

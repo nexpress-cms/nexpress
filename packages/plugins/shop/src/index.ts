@@ -157,6 +157,7 @@ import { createShopOrderDraftRoute } from "./routes/order-draft.js";
 import { createShopOrderRoute } from "./routes/order.js";
 import { createShopOrdersRoute } from "./routes/orders.js";
 import { createShopProductMetadata, createShopProductRoute } from "./routes/product.js";
+import { createShopWishlistRoute } from "./routes/wishlist.js";
 import { npCountShopPromotionUsage } from "./promotion-service.js";
 import { npShopPromotionLimits } from "./promotion-contract.js";
 import type { NpShopRuntime } from "./runtime.js";
@@ -185,6 +186,7 @@ import type {
   NpShopContextualQuestionsAdapter,
   NpShopSkin,
 } from "./types.js";
+import { npCountShopWishlistSaves } from "./wishlist-service.js";
 
 const SAFE_SEGMENT = /^[a-z][a-z0-9-]*$/u;
 
@@ -641,6 +643,15 @@ const messages = {
     "shop.reviewSaving": "Saving…",
     "shop.reviewDelete": "Delete my review",
     "shop.reviewFailed": "The review could not be updated.",
+    "shop.wishlist": "Saved products",
+    "shop.wishlistSave": "Save",
+    "shop.wishlistSaved": "Saved",
+    "shop.wishlistSaving": "Saving…",
+    "shop.wishlistSignIn": "Sign in to save",
+    "shop.wishlistFailed": "The saved-product list could not be updated.",
+    "shop.wishlistEmpty": "You have not saved any available products yet.",
+    "shop.wishlistLogin": "Sign in to keep a site-scoped list of products you want to revisit.",
+    "shop.wishlistBrowse": "Browse products",
     "shop.search": "Search products",
     "shop.searchPlaceholder": "Name, summary, or description",
     "shop.sort": "Sort",
@@ -869,6 +880,15 @@ const messages = {
     "shop.reviewSaving": "저장 중…",
     "shop.reviewDelete": "내 리뷰 삭제",
     "shop.reviewFailed": "리뷰를 갱신하지 못했습니다.",
+    "shop.wishlist": "찜한 상품",
+    "shop.wishlistSave": "찜하기",
+    "shop.wishlistSaved": "찜함",
+    "shop.wishlistSaving": "저장 중…",
+    "shop.wishlistSignIn": "로그인하고 찜하기",
+    "shop.wishlistFailed": "찜 목록을 갱신하지 못했습니다.",
+    "shop.wishlistEmpty": "현재 볼 수 있는 찜한 상품이 없습니다.",
+    "shop.wishlistLogin": "로그인하면 이 사이트에서 다시 보고 싶은 상품을 저장할 수 있습니다.",
+    "shop.wishlistBrowse": "상품 둘러보기",
     "shop.search": "상품 검색",
     "shop.searchPlaceholder": "상품명, 요약 또는 설명",
     "shop.sort": "정렬",
@@ -1128,6 +1148,10 @@ export function createShop(options: NpShopOptions = {}) {
       metadata: createShopProductMetadata(runtime),
     },
     {
+      pattern: `${runtime.basePath}/wishlist`,
+      component: createShopWishlistRoute(runtime),
+    },
+    {
       pattern: `${runtime.basePath}/cart`,
       component: createShopCartRoute(runtime),
     },
@@ -1155,7 +1179,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, verified-purchase reviews, bounded carts, checkout intents, private order drafts, built-in shipping policies or provider-neutral quotes, additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, outbound and return tracking, physical returns, return-linked partial refunds, return logistics, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, member wishlists, verified-purchase reviews, bounded carts, checkout intents, private order drafts, built-in shipping policies or provider-neutral quotes, additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, outbound and return tracking, physical returns, return-linked partial refunds, return logistics, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -1189,6 +1213,8 @@ export function createShop(options: NpShopOptions = {}) {
           "table:shop-product-reviews",
           "action:shop-product-review-hide",
           "action:shop-product-review-restore",
+          "dashboard:shop-wishlists",
+          "widget:shop-wishlist-health",
           "dashboard:shop-carts",
           "widget:shop-cart-health",
           "action:shop-cart-cleanup",
@@ -1277,9 +1303,9 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with transient labels, and independent verified or reconciled reverse tracking. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
+          "Catalog, member-owned saved products over the shared follow graph, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with transient labels, and independent verified or reconciled reverse tracking. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
-        tags: ["shop", "catalog", "product", "review", "inventory", "storefront"],
+        tags: ["shop", "catalog", "product", "wishlist", "review", "inventory", "storefront"],
       },
       usesTokens: [
         "colors.primary",
@@ -1302,6 +1328,7 @@ export function createShop(options: NpShopOptions = {}) {
         catalog: '[data-np-shop-surface="catalog"]',
         category: '[data-np-shop-surface="category"]',
         product: '[data-np-shop-surface="product"]',
+        wishlist: '[data-np-shop-surface="wishlist"]',
         cart: '[data-np-shop-surface="cart"]',
         checkout: '[data-np-shop-surface="checkout"]',
         "order-draft": '[data-np-shop-surface="order-draft"]',
@@ -1320,6 +1347,7 @@ export function createShop(options: NpShopOptions = {}) {
         "return-tracking-status": "[data-np-shop-return-tracking-status]",
         "return-status": "[data-np-shop-return-status]",
         "product-card": ".np-shop-product-card",
+        "wishlist-action": "[data-np-shop-wishlist-action]",
         reviews: "[data-np-shop-reviews]",
         inquiries: "[data-np-forum-context-questions]",
         "review-card": "[data-np-shop-review]",
@@ -1377,6 +1405,14 @@ export function createShop(options: NpShopOptions = {}) {
           description:
             "Verified-purchase review rows across published, pending, and hidden states.",
           priority: 19,
+        },
+        {
+          id: "shop-wishlists-total",
+          label: "Saved products",
+          kind: "metric",
+          actionId: "countProductWishlistSaves",
+          description: "Site-scoped member-to-product saves in the shared community follow graph.",
+          priority: 18,
         },
         {
           id: "shop-carts-total",
@@ -1552,6 +1588,14 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Product review contract",
           kind: "status",
           actionId: "productReviewHealth",
+        },
+        {
+          id: "shop-wishlist-health",
+          label: "Saved-product contract",
+          kind: "status",
+          actionId: "wishlistHealth",
+          description:
+            "Checks the site-scoped shared follow graph used by member product wishlists.",
         },
         {
           id: "shop-cart-health",
@@ -2622,6 +2666,34 @@ export function createShop(options: NpShopOptions = {}) {
             return { ok: true, data: "The review is restored to public lists and aggregates." };
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      countProductWishlistSaves: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const total = await npCountShopWishlistSaves(runtime);
+            return { ok: true, data: { value: total, delta: "member saves" } };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      wishlistHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const total = await npCountShopWishlistSaves(runtime);
+            return npAdminStatus(
+              "ok",
+              `${total.toString()} site-scoped saved-product relation(s); generic follow integrity remains covered by plugin Doctor.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Wishlist health check failed.",
+            );
           }
         },
       },
@@ -5430,7 +5502,16 @@ export type {
   NpShopPromotionTarget,
   NpShopSkin,
   NpShopVariant,
+  NpShopWishlistPage,
+  NpShopWishlistSkinProps,
 } from "./types.js";
 export type { NpShopProductInquiryContextSourceOptions } from "./inquiry-context.js";
+export {
+  npCountShopWishlistSaves,
+  npGetShopWishlistPage,
+  npListShopWishlistSavedProductIds,
+  npShopWishlistLimits,
+  parseShopWishlistPage,
+} from "./wishlist-service.js";
 
 export default shopPlugin;
