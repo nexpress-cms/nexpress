@@ -2,7 +2,7 @@ import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import { createForum } from "@nexpress/plugin-forum";
 import { eq, sql } from "drizzle-orm";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { GET as collectionGET, POST as collectionPOST } from "@/app/api/collections/[slug]/route";
 import {
@@ -106,7 +106,6 @@ describe.skipIf(skipIfNoTestDb())("forum board member policy", () => {
   });
 
   beforeEach(async () => {
-    vi.stubEnv("NP_SECRET", "forum-context-integration-secret-32-bytes-minimum");
     await truncateAll();
   });
 
