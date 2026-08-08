@@ -181,6 +181,13 @@ import {
   npInspectShopRestockAlerts,
   npProcessShopRestockAlerts,
 } from "./restock-alert-service.js";
+import { createShopPriceAlertApiHandler } from "./price-alert-api.js";
+import { NP_SHOP_PRICE_DROP_NOTIFICATION_KIND } from "./price-alert-contract.js";
+import {
+  npDeleteShopPriceAlertsForProduct,
+  npInspectShopPriceAlerts,
+  npProcessShopPriceAlerts,
+} from "./price-alert-service.js";
 import {
   npInspectShopOrderNotifications,
   npListRecentShopOrderNotifications,
@@ -674,6 +681,14 @@ const messages = {
     "shop.restockSignIn": "Sign in to request a one-time alert",
     "shop.restockUnavailable": "This item is unavailable.",
     "shop.restockFailed": "The restock alert could not be updated.",
+    "shop.priceAlertHeading": "Price-drop alert",
+    "shop.priceAlertSelect": "Catalog price target",
+    "shop.priceAlertSubscribe": "Notify me if this price drops",
+    "shop.priceAlertSubscribed": "Price alert requested · cancel",
+    "shop.priceAlertSaving": "Updating…",
+    "shop.priceAlertSignIn": "Sign in to request a one-time price alert",
+    "shop.priceAlertUnavailable": "This price cannot decrease.",
+    "shop.priceAlertFailed": "The price alert could not be updated.",
     "shop.search": "Search products",
     "shop.searchPlaceholder": "Name, summary, or description",
     "shop.sort": "Sort",
@@ -920,6 +935,14 @@ const messages = {
     "shop.restockSignIn": "로그인하고 일회성 재입고 알림 받기",
     "shop.restockUnavailable": "현재 품절된 상품입니다.",
     "shop.restockFailed": "재입고 알림을 갱신하지 못했습니다.",
+    "shop.priceAlertHeading": "가격 인하 알림",
+    "shop.priceAlertSelect": "카탈로그 가격 대상",
+    "shop.priceAlertSubscribe": "가격이 내려가면 알림 받기",
+    "shop.priceAlertSubscribed": "가격 알림 신청됨 · 취소",
+    "shop.priceAlertSaving": "처리 중…",
+    "shop.priceAlertSignIn": "로그인하고 일회성 가격 인하 알림 받기",
+    "shop.priceAlertUnavailable": "더 낮아질 수 없는 가격입니다.",
+    "shop.priceAlertFailed": "가격 인하 알림을 갱신하지 못했습니다.",
     "shop.search": "상품 검색",
     "shop.searchPlaceholder": "상품명, 요약 또는 설명",
     "shop.sort": "정렬",
@@ -1141,6 +1164,7 @@ export function createShop(options: NpShopOptions = {}) {
   const cartApiHandler = createShopCartApiHandler(runtime);
   const reviewApiHandler = createShopProductReviewApiHandler(runtime);
   const restockAlertApiHandler = createShopRestockAlertApiHandler(runtime);
+  const priceAlertApiHandler = createShopPriceAlertApiHandler(runtime);
   const checkoutApiHandler = createShopCheckoutApiHandler(runtime);
   const orderDraftApiHandler = createShopOrderDraftApiHandler(runtime);
   const orderApiHandler = createShopOrderApiHandler(runtime);
@@ -1212,7 +1236,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, member wishlists, one-shot restock alerts, verified-purchase reviews, bounded carts, checkout intents, private order drafts, built-in shipping policies or provider-neutral quotes, additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, outbound and return tracking, physical returns, return-linked partial refunds, return logistics, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, member wishlists, one-shot restock and catalog price-drop alerts, verified-purchase reviews, bounded carts, checkout intents, private order drafts, built-in shipping policies or provider-neutral quotes, additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, outbound and return tracking, physical returns, return-linked partial refunds, return logistics, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -1251,6 +1275,9 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-restock-alerts",
           "widget:shop-restock-alert-health",
           "action:shop-restock-alert-reconcile",
+          "dashboard:shop-price-alerts",
+          "widget:shop-price-alert-health",
+          "action:shop-price-alert-reconcile",
           "dashboard:shop-order-notifications",
           "widget:shop-order-notification-health",
           "table:shop-order-notifications",
@@ -1332,6 +1359,7 @@ export function createShop(options: NpShopOptions = {}) {
           "/orders",
           "/reviews",
           "/restock-alerts",
+          "/price-alerts",
           "/returns",
           ...(paymentApiHandler ? ["/payments/webhook"] : []),
           ...(trackingApiHandler ? ["/carrier/tracking/webhook"] : []),
@@ -1345,7 +1373,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with transient labels, and independent verified or reconciled reverse tracking. Price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
+          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with transient labels, and independent verified or reconciled reverse tracking. Recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: [
           "shop",
@@ -1353,6 +1381,7 @@ export function createShop(options: NpShopOptions = {}) {
           "product",
           "wishlist",
           "restock-alert",
+          "price-alert",
           "review",
           "inventory",
           "storefront",
@@ -1401,6 +1430,7 @@ export function createShop(options: NpShopOptions = {}) {
         "product-card": ".np-shop-product-card",
         "wishlist-action": "[data-np-shop-wishlist-action]",
         "restock-alert": "[data-np-shop-restock-alert]",
+        "price-alert": "[data-np-shop-price-alert]",
         reviews: "[data-np-shop-reviews]",
         inquiries: "[data-np-forum-context-questions]",
         "review-card": "[data-np-shop-review]",
@@ -1423,6 +1453,11 @@ export function createShop(options: NpShopOptions = {}) {
         description: "One selected Shop product or option became available again.",
       });
       registerNotificationKind({
+        kind: NP_SHOP_PRICE_DROP_NOTIFICATION_KIND,
+        label: "Product price-drop alerts",
+        description: "One selected Shop catalog price dropped below its subscription baseline.",
+      });
+      registerNotificationKind({
         kind: NP_SHOP_ORDER_NOTIFICATION_KIND,
         label: "Shop order updates",
         description: "A durable Shop order, payment, delivery, return, or refund state changed.",
@@ -1436,11 +1471,17 @@ export function createShop(options: NpShopOptions = {}) {
         ) {
           return;
         }
-        await npProcessShopRestockAlerts(runtime, { productId: data.document.id });
+        await Promise.all([
+          npProcessShopRestockAlerts(runtime, { productId: data.document.id }),
+          npProcessShopPriceAlerts(runtime, { productId: data.document.id }),
+        ]);
       },
       "content:afterDelete": async ({ data }) => {
         if (data.collection !== runtime.collections.products) return;
-        await npDeleteShopRestockAlertsForProduct(data.documentId);
+        await Promise.all([
+          npDeleteShopRestockAlertsForProduct(data.documentId),
+          npDeleteShopPriceAlertsForProduct(data.documentId),
+        ]);
       },
     },
     admin: {
@@ -1504,12 +1545,20 @@ export function createShop(options: NpShopOptions = {}) {
           priority: 17,
         },
         {
+          id: "shop-price-alerts-total",
+          label: "Active price-drop alerts",
+          kind: "metric",
+          actionId: "countActivePriceAlerts",
+          description: "PII-free member-owned catalog price baselines awaiting one exact decrease.",
+          priority: 16,
+        },
+        {
           id: "shop-order-notifications-total",
           label: "Order notification events",
           kind: "metric",
           actionId: "countOrderNotifications",
           description: "PII-free durable order timeline and delivery outbox events.",
-          priority: 16,
+          priority: 15,
         },
         {
           id: "shop-carts-total",
@@ -1703,6 +1752,14 @@ export function createShop(options: NpShopOptions = {}) {
             "Checks bounded storage, member/product targets, processing leases, and pending availability.",
         },
         {
+          id: "shop-price-alert-health",
+          label: "Price-drop alert contract",
+          kind: "status",
+          actionId: "priceAlertHealth",
+          description:
+            "Checks bounded catalog-price baselines, targets, currencies, processing leases, and due decreases.",
+        },
+        {
           id: "shop-order-notification-health",
           label: "Order notification delivery",
           kind: "status",
@@ -1841,6 +1898,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Reconcile restock alerts",
           actionId: "reconcileRestockAlerts",
           confirm: "Process one bounded batch of active Shop restock alerts for this site?",
+        },
+        {
+          id: "shop-price-alert-reconcile",
+          label: "Reconcile price-drop alerts",
+          actionId: "reconcilePriceAlerts",
+          confirm: "Process one bounded batch of active Shop price-drop alerts for this site?",
         },
         {
           id: "shop-order-notification-reconcile",
@@ -2905,6 +2968,72 @@ export function createShop(options: NpShopOptions = {}) {
             return {
               ok: true,
               data: `Inspected ${result.inspected.toString()}, notified ${result.notified.toString()}, suppressed ${result.suppressed.toString()}, retained ${result.unavailable.toString()} unavailable, removed ${result.orphaned.toString()} orphaned, found ${result.invalid.toString()} malformed, and cleaned ${result.cleaned.toString()} expired restock alert row(s).`,
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      countActivePriceAlerts: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npInspectShopPriceAlerts(runtime);
+            return {
+              ok: true,
+              data: {
+                value: counts.active + counts.claimed,
+                delta: `${counts.completed.toString()} completion receipt(s)`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      priceAlertHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npInspectShopPriceAlerts(runtime);
+            if (counts.invalidSample > 0 || counts.orphanSample > 0) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed and ${counts.orphanSample.toString()} orphaned price alert row(s) in the newest bounded sample.`,
+              );
+            }
+            if (
+              counts.readySample > 0 ||
+              counts.currencyMismatchSample > 0 ||
+              counts.staleClaimSample > 0 ||
+              counts.expired > 0 ||
+              counts.sampleBoundReached
+            ) {
+              return npAdminStatus(
+                "warn",
+                `${counts.readySample.toString()} ready, ${counts.currencyMismatchSample.toString()} currency-mismatched, ${counts.staleClaimSample.toString()} stale-claimed, and ${counts.expired.toString()} expired row(s) await bounded reconciliation${counts.sampleBoundReached ? "; diagnostic sample bound reached" : ""}.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.active.toString()} active, ${counts.claimed.toString()} claimed, and ${counts.completed.toString()} retained completion receipt(s).`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Price alert health check failed.",
+            );
+          }
+        },
+      },
+      reconcilePriceAlerts: {
+        kind: "action",
+        handler: async () => {
+          try {
+            const result = await npProcessShopPriceAlerts(runtime);
+            return {
+              ok: true,
+              data: `Inspected ${result.inspected.toString()}, notified ${result.notified.toString()}, suppressed ${result.suppressed.toString()}, retained ${result.unchanged.toString()} unchanged and ${result.currencyMismatch.toString()} currency-mismatched, removed ${result.orphaned.toString()} orphaned, found ${result.invalid.toString()} malformed, and cleaned ${result.cleaned.toString()} expired price alert row(s).`,
             };
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
@@ -4792,6 +4921,25 @@ export function createShop(options: NpShopOptions = {}) {
         handler: restockAlertApiHandler,
       },
       {
+        method: "GET",
+        path: "/price-alerts",
+        description: "Read one member's active catalog price alerts for an exact Shop product.",
+        handler: priceAlertApiHandler,
+      },
+      {
+        method: "POST",
+        path: "/price-alerts",
+        description:
+          "Request one member-owned, time-bounded, one-shot alert from the current catalog price baseline.",
+        handler: priceAlertApiHandler,
+      },
+      {
+        method: "DELETE",
+        path: "/price-alerts",
+        description: "Cancel one member-owned active Shop price-drop alert.",
+        handler: priceAlertApiHandler,
+      },
+      {
         method: "POST",
         path: "/cart",
         description: "Add a published product or variant to the current cart.",
@@ -5031,6 +5179,15 @@ export function createShop(options: NpShopOptions = {}) {
           "Reconcile one bounded oldest-first batch of member restock alerts and retain one-shot completion receipts.",
         handler: async () => {
           await npProcessShopRestockAlerts(runtime);
+        },
+      },
+      {
+        id: "reconcile-price-alerts",
+        cron: "*/5 * * * *",
+        description:
+          "Reconcile one bounded oldest-first batch of catalog price alerts and retain one-shot completion receipts.",
+        handler: async () => {
+          await npProcessShopPriceAlerts(runtime);
         },
       },
       {
@@ -5891,6 +6048,43 @@ export {
   npResolveShopRestockTarget,
   npSubscribeShopRestockAlert,
 } from "./restock-alert-service.js";
+export {
+  NP_SHOP_PRICE_ALERT_STORAGE_CONTRACT,
+  NP_SHOP_PRICE_DROP_NOTIFICATION_KIND,
+  NpShopPriceAlertContractError,
+  npAnalyzeShopPriceAlertStorage,
+  npRequireShopPriceAlertInput,
+  npRequireShopPriceAlertListWire,
+  npRequireShopPriceAlertMutationWire,
+  npRequireShopPriceAlertStorage,
+  npShopPriceAlertLimits,
+  npToShopPriceAlertWire,
+} from "./price-alert-contract.js";
+export type {
+  NpShopPriceAlertInput,
+  NpShopPriceAlertListWire,
+  NpShopPriceAlertMutationWire,
+  NpShopPriceAlertOutcome,
+  NpShopPriceAlertStatus,
+  NpShopPriceAlertStorage,
+  NpShopPriceAlertWire,
+} from "./price-alert-contract.js";
+export {
+  npCancelShopPriceAlert,
+  npCleanupShopPriceAlerts,
+  npDeleteShopPriceAlertsForProduct,
+  npInspectShopPriceAlerts,
+  npListShopPriceAlerts,
+  npListShopPriceAlertsForProducts,
+  npProcessShopPriceAlerts,
+  npResolveShopPriceAlertTarget,
+  npSubscribeShopPriceAlert,
+} from "./price-alert-service.js";
+export type {
+  NpShopPriceAlertInspection,
+  NpShopPriceAlertProcessResult,
+  NpShopPriceAlertTargetState,
+} from "./price-alert-service.js";
 export {
   NP_SHOP_ORDER_NOTIFICATION_KIND,
   NP_SHOP_ORDER_NOTIFICATION_LIST_CONTRACT,

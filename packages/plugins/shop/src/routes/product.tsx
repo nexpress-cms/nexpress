@@ -6,9 +6,11 @@ import { notFound } from "next/navigation";
 
 import { ShopAddToCart, ShopProductReviews } from "@nexpress/plugin-shop/client";
 import { ShopRestockAlert } from "@nexpress/plugin-shop/restock-alert-client";
+import { ShopPriceAlert } from "@nexpress/plugin-shop/price-alert-client";
 
 import { npGetShopProductReviewPage } from "../review-service.js";
 import { npListShopRestockAlerts } from "../restock-alert-service.js";
+import { npListShopPriceAlerts } from "../price-alert-service.js";
 
 import {
   findShopProduct,
@@ -42,17 +44,19 @@ export function createShopProductRoute(runtime: NpShopRuntime) {
       ? searchParams.reviewPage[0]
       : searchParams.reviewPage;
     const reviewPageNumber = Number(rawReviewPage ?? "1");
-    const [allCategories, messages, reviews, inquiryAction, restockAlerts] = await Promise.all([
-      listShopCategories(runtime),
-      getShopMessages(),
-      npGetShopProductReviewPage(runtime, product.id, member?.id ?? null, reviewPageNumber),
-      runtime.inquiryAdapter?.renderContextQuestions({
-        contextType: "shop-product",
-        contextId: product.id,
-        memberId: member?.id ?? null,
-      }) ?? Promise.resolve(null),
-      member ? npListShopRestockAlerts(member.id, product.id) : Promise.resolve([]),
-    ]);
+    const [allCategories, messages, reviews, inquiryAction, restockAlerts, priceAlerts] =
+      await Promise.all([
+        listShopCategories(runtime),
+        getShopMessages(),
+        npGetShopProductReviewPage(runtime, product.id, member?.id ?? null, reviewPageNumber),
+        runtime.inquiryAdapter?.renderContextQuestions({
+          contextType: "shop-product",
+          contextId: product.id,
+          memberId: member?.id ?? null,
+        }) ?? Promise.resolve(null),
+        member ? npListShopRestockAlerts(member.id, product.id) : Promise.resolve([]),
+        member ? npListShopPriceAlerts(member.id, product.id) : Promise.resolve([]),
+      ]);
     const categories = allCategories.filter((category) =>
       product.categoryIds.includes(category.id),
     );
@@ -130,6 +134,25 @@ export function createShopProductRoute(runtime: NpShopRuntime) {
             signIn: messages.restockSignIn,
             unavailable: messages.restockUnavailable,
             failed: messages.restockFailed,
+          }}
+        />
+      ),
+      priceAlertAction: (
+        <ShopPriceAlert
+          apiPath="/api/plugins/shop/price-alerts"
+          product={product}
+          initialVariantSkus={priceAlerts.map((alert) => alert.variantSku)}
+          signedIn={member !== null}
+          loginHref={`/members/login?next=${encodeURIComponent(productPath)}`}
+          labels={{
+            heading: messages.priceAlertHeading,
+            select: messages.priceAlertSelect,
+            subscribe: messages.priceAlertSubscribe,
+            subscribed: messages.priceAlertSubscribed,
+            saving: messages.priceAlertSaving,
+            signIn: messages.priceAlertSignIn,
+            unavailable: messages.priceAlertUnavailable,
+            failed: messages.priceAlertFailed,
           }}
         />
       ),

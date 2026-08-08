@@ -98,4 +98,45 @@ describe("NotificationsInbox", () => {
     expect(html).toContain('href="/shop/orders/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"');
     expect(html).not.toContain("@example.com");
   });
+
+  it("renders one Shop catalog price drop", () => {
+    const notification: NotificationInboxItem = {
+      ...base,
+      id: "88888888-8888-4888-8888-888888888888",
+      kind: "shop.product-price-dropped",
+      payload: {
+        eventId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        href: "/shop/products/mug",
+        title: "Mug",
+        option: "Blue",
+        currency: "KRW",
+        previousPriceMinor: 20_000,
+        currentPriceMinor: 18_000,
+      },
+    };
+    const html = renderToStaticMarkup(
+      <NotificationsInbox initialNotifications={[notification]} initialUnread={1} totalDocs={1} />,
+    );
+    expect(html).toContain("Price dropped");
+    expect(html).toContain("Mug");
+    expect(html).toContain('href="/shop/products/mug"');
+  });
+
+  it("fails closed over malformed Shop price notification money", () => {
+    const notification: NotificationInboxItem = {
+      ...base,
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      kind: "shop.product-price-dropped",
+      payload: {
+        title: "Mug",
+        currency: "NOT-A-CURRENCY",
+        currentPriceMinor: -1,
+      },
+    };
+    const html = renderToStaticMarkup(
+      <NotificationsInbox initialNotifications={[notification]} initialUnread={1} totalDocs={1} />,
+    );
+    expect(html).toContain("Mug");
+    expect(html).toContain("has a lower catalog price");
+  });
 });

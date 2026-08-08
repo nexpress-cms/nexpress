@@ -27,6 +27,7 @@ const LABELS: Record<string, string> = {
   "follow.activity": "Subscribed activity",
   "forum.question-answered": "Question answered",
   "shop.product-restocked": "Back in stock",
+  "shop.product-price-dropped": "Price dropped",
   "shop.order-update": "Order update",
 };
 
@@ -321,6 +322,35 @@ function summaryFor(item: NotificationInboxItem): string {
       const option = readString(item.payload, "option");
       if (title && option && title !== option) return `“${title}” (${option}) is available again.`;
       return title ? `“${title}” is available again.` : "A product is available again.";
+    }
+    case "shop.product-price-dropped": {
+      const title = readString(item.payload, "title");
+      const option = readString(item.payload, "option");
+      const currency = readString(item.payload, "currency");
+      const currentPrice = item.payload.currentPriceMinor;
+      const supportedCurrency =
+        currency === "KRW" || currency === "JPY" || currency === "USD" || currency === "EUR";
+      const fractionDigits = currency === "KRW" || currency === "JPY" ? 0 : 2;
+      const amount =
+        supportedCurrency &&
+        typeof currentPrice === "number" &&
+        Number.isSafeInteger(currentPrice) &&
+        currentPrice >= 0 &&
+        currentPrice <= 2_147_483_647
+          ? new Intl.NumberFormat("en", {
+              style: "currency",
+              currency,
+              minimumFractionDigits: fractionDigits,
+              maximumFractionDigits: fractionDigits,
+            }).format(currentPrice / (fractionDigits === 0 ? 1 : 100))
+          : null;
+      const target =
+        title && option && title !== option
+          ? `“${title}” (${option})`
+          : title
+            ? `“${title}”`
+            : "A product";
+      return amount ? `${target} dropped to ${amount}.` : `${target} has a lower catalog price.`;
     }
     case "shop.order-update": {
       const title = readString(item.payload, "title");

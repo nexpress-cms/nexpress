@@ -24,6 +24,7 @@ const external = [
   "@nexpress/plugin-sdk",
   "@nexpress/plugin-shop/client",
   "@nexpress/plugin-shop/restock-alert-client",
+  "@nexpress/plugin-shop/price-alert-client",
   "drizzle-orm",
 ];
 
@@ -39,6 +40,7 @@ export default defineConfig([
     entry: {
       client: "src/client.tsx",
       "restock-alert-client": "src/restock-alert-client.tsx",
+      "price-alert-client": "src/price-alert-client.tsx",
     },
     format: ["esm"],
     dts: !fast,

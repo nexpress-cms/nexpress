@@ -26,7 +26,8 @@ It provides:
 - exact integer-minor-unit prices and bounded variants;
 - on-hand inventory projection plus transaction-safe pending-order
   reservations;
-- catalog, category, product, member wishlist, restock-alert, cart, checkout-intent, private order-draft,
+- catalog, category, product, member wishlist, restock-alert,
+  catalog-price-alert, cart, checkout-intent, private order-draft,
   order-history, and order-detail routes;
 - authenticated saved products over the shared site-scoped community follow
   graph, with one bounded batch state read for catalog cards, public-product
@@ -35,6 +36,11 @@ It provides:
   products or enabled variants, with 180-day subscriptions, fast product-update
   processing, five-minute bounded reconciliation, preference-aware inbox
   delivery, stable-event dedupe, 30-day receipts, and PII-free Admin/Doctor health;
+- independent member-owned one-shot alerts when an exact product or enabled
+  variant catalog price falls below its captured same-currency baseline, with
+  180-day subscriptions, fast product-update processing, five-minute bounded
+  reconciliation, stable-event inbox dedupe, 30-day receipts, and PII-free
+  Admin/Doctor health;
 - bounded guest/member carts with revision-safe mutations and live price/stock quotes;
 - automatic and code-based fixed/percentage promotions with time, target,
   minimum-spend, cap, stacking, global/per-owner usage, deterministic line
@@ -147,7 +153,7 @@ payment receipts, and transfer. A durable `pending-payment` order reference
 still does not imply that a visitor paid for a product.
 
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
-for the exact price, SKU, inventory, wishlist, restock-alert, review, Forum-backed inquiry, cart,
+for the exact price, SKU, inventory, wishlist, restock-alert, price-alert, review, Forum-backed inquiry, cart,
 promotion, checkout-intent, private-draft, shipping-quote, tax-quote,
 pending-order, payment-attempt/event/adjustment, fulfillment, parcel, carrier,
 pickup, tracking/polling, full-refund, return-linked partial-refund, return,

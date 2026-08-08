@@ -303,6 +303,11 @@ real product domain, not just blog/community. Ship as a plugin package
 - **Product catalog (shipped)** — collections for products, variants, categories.
   Built on top of the existing `defineCollection()` so admins get the
   full editing surface for free.
+- **Member wishlists and one-shot alerts (shipped)** — saved products reuse the
+  site-scoped follow graph. Independent 180-day restock and same-currency
+  catalog-price alert contracts deliver preference-aware member-inbox events,
+  retain 30-day dedupe receipts, expose PII-free Admin/Doctor health, and never
+  imply cart, reservation, availability, promotion, or price guarantees.
 - **Cart and checkout intent (shipped)** — bounded guest/member carts plus
   owner-scoped, idempotent 15-minute quote snapshots. These do not collect PII,
   reserve stock, create orders, or take payment.
@@ -437,9 +442,14 @@ real product domain, not just blog/community. Ship as a plugin package
   return destination, a maximum-24-hour private origin deleted after
   confirmation, durable two-stage reconciliation, transient owner label bytes,
   PII-free Admin/Doctor diagnostics, scaffold guidance, cleanup, both skins,
-  and PostgreSQL coverage share the contract. Return postage quotes, reverse
-  tracking, recurring pickup, exchanges/automatic refunds, eligibility policy, and
+  and PostgreSQL coverage share the contract. Return postage quotes,
+  recurring pickup, exchanges/automatic refunds, eligibility policy, and
   provider protocols remain separate.
+- **Provider-neutral return tracking (shipped)** — optional exact raw-body
+  callback and bounded polling capabilities advance one independent PII-free
+  reverse-shipment state with stable receipts, leases/backoff, owner-visible
+  projection, Admin/Doctor diagnostics, and PostgreSQL coverage. Delivery does
+  not receive the physical return, restore inventory, or issue a refund.
 - **Provider-neutral shipping quote and selection (shipped)** — one optional
   build-time server adapter receives the exact private draft destination and
   bounded cart snapshot outside database transactions. Exact short-lived
@@ -447,7 +457,7 @@ real product domain, not just blog/community. Ship as a plugin package
   delivery snapshot; orders, payment attempts/events, and full refunds share
   `subtotalMinor + shippingMinor + taxMinor = totalMinor`. Closed PII-free provider health
   reaches Admin while Doctor verifies its declarative diagnostic contract.
-  Return postage, reverse tracking and provider-specific tracking, customs, and jurisdiction policy
+  Return postage and provider-specific tracking, customs, and jurisdiction policy
   remain separate.
 - **Provider-neutral additional-tax quote (shipped)** — one optional
   server-only adapter receives exact item/shipping totals, immutable lines,
@@ -464,14 +474,19 @@ real product domain, not just blog/community. Ship as a plugin package
   refunds deliberately do not compensate inventory a second time. A verified
   single full provider reversal reuses the exact unshipped compensation rule;
   partial or cumulative ambiguity remains blocked manual review.
-- **Public surfaces (shipped)** — product detail, listing, cart,
+- **Order transition notifications (shipped)** — order, payment, fulfillment,
+  delivery, return, and refund transitions atomically stage one PII-free owner
+  timeline plus member-inbox/direct-email outbox. Raw recipient email stays in
+  the bounded private sidecar, retries are leased and capped, stable event ids
+  reconcile crashes, and Admin/Doctor expose delivery health.
+- **Public surfaces (shipped)** — product detail, listing, wishlist, cart,
   checkout-intent, private order-draft, order-history, order-detail, and return
   intake pages
   use independent plugin skins and stable theme hooks.
 - **Tax compliance, carrier logistics, and shipping policy (future)** — shipping,
   additional-tax quote, and carrier-booking boundaries are shipped; tax remittance/filing,
-  invoices, exemptions/nexus, customs/duties, free-shipping eligibility,
-  outbound label purchase/regeneration, recurring pickup, reverse tracking,
+  invoices, exemptions/nexus, customs/duties, return-postage quotes,
+  outbound label purchase/regeneration, recurring pickup,
   provider APIs, automatic packaging, and regional policy require
   separate contracts.
 

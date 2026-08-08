@@ -59,6 +59,7 @@ describe("shop factory", () => {
       "[data-np-shop-wishlist-action]",
     );
     expect(shopPlugin.manifest.styleSlots?.["restock-alert"]).toBe("[data-np-shop-restock-alert]");
+    expect(shopPlugin.manifest.styleSlots?.["price-alert"]).toBe("[data-np-shop-price-alert]");
     expect(shopPlugin.manifest.styleSlots?.["order-notifications"]).toBe(
       "[data-np-shop-order-notifications]",
     );
@@ -82,6 +83,9 @@ describe("shop factory", () => {
       { id: "countActiveRestockAlerts", kind: "metric" },
       { id: "restockAlertHealth", kind: "status" },
       { id: "reconcileRestockAlerts", kind: "action" },
+      { id: "countActivePriceAlerts", kind: "metric" },
+      { id: "priceAlertHealth", kind: "status" },
+      { id: "reconcilePriceAlerts", kind: "action" },
       { id: "countOrderNotifications", kind: "metric" },
       { id: "orderNotificationHealth", kind: "status" },
       { id: "recentOrderNotifications", kind: "table" },
@@ -165,6 +169,9 @@ describe("shop factory", () => {
       "GET /restock-alerts",
       "POST /restock-alerts",
       "DELETE /restock-alerts",
+      "GET /price-alerts",
+      "POST /price-alerts",
+      "DELETE /price-alerts",
       "POST /cart",
       "PATCH /cart",
       "PUT /cart",
@@ -186,6 +193,7 @@ describe("shop factory", () => {
     expect(shopPlugin.scheduled?.map((task) => task.id)).toEqual([
       "process-order-notifications",
       "reconcile-restock-alerts",
+      "reconcile-price-alerts",
       "cleanup-expired-carts",
       "cleanup-expired-checkout-intents",
       "cleanup-expired-order-drafts",
@@ -197,11 +205,15 @@ describe("shop factory", () => {
     expect(shopPlugin.hooks?.["content:afterUpdate"]).toBeTypeOf("function");
     expect(shopPlugin.hooks?.["content:afterDelete"]).toBeTypeOf("function");
     expect(shopPlugin.manifest.provides.apiRoutes).toContain("/restock-alerts");
+    expect(shopPlugin.manifest.provides.apiRoutes).toContain("/price-alerts");
     expect(shopPlugin.manifest.provides.adminExtensions).toEqual(
       expect.arrayContaining([
         "dashboard:shop-restock-alerts",
         "widget:shop-restock-alert-health",
         "action:shop-restock-alert-reconcile",
+        "dashboard:shop-price-alerts",
+        "widget:shop-price-alert-health",
+        "action:shop-price-alert-reconcile",
         "dashboard:shop-order-notifications",
         "widget:shop-order-notification-health",
         "table:shop-order-notifications",

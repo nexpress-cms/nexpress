@@ -388,6 +388,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("verified-purchase product review");
     expect(readme).toContain("follow graph at `/shop/wishlist`");
     expect(readme).toContain("one-shot member restock alerts");
+    expect(readme).toContain("catalog price-drop alerts");
     expect(readme).toContain("PII-free order-update timeline/outbox");
     expect(readme).toContain("existing site-scoped follow graph");
     expect(readme).toContain("product-questions");

@@ -150,6 +150,14 @@ export interface NpShopMessages {
   restockSignIn: string;
   restockUnavailable: string;
   restockFailed: string;
+  priceAlertHeading: string;
+  priceAlertSelect: string;
+  priceAlertSubscribe: string;
+  priceAlertSubscribed: string;
+  priceAlertSaving: string;
+  priceAlertSignIn: string;
+  priceAlertUnavailable: string;
+  priceAlertFailed: string;
   search: string;
   searchPlaceholder: string;
   sort: string;
@@ -396,6 +404,7 @@ export interface NpShopProductSkinProps {
   inquiryAction?: ReactNode;
   wishlistAction?: ReactNode;
   restockAction?: ReactNode;
+  priceAlertAction?: ReactNode;
   messages: NpShopMessages;
 }
 
@@ -405,6 +414,7 @@ export interface NpShopWishlistSkinProps {
   signedIn: boolean;
   loginHref: string;
   wishlistActions?: Readonly<Record<string, ReactNode>>;
+  priceAlertActions?: Readonly<Record<string, ReactNode>>;
   messages: NpShopMessages;
 }
 
