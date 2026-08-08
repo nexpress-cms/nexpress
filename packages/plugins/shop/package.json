@@ -1,7 +1,7 @@
 {
   "name": "@nexpress/plugin-shop",
   "version": "0.4.2",
-  "description": "Catalog, member wishlists, restock alerts, promotions, local shipping policies, reviews, cart, checkout, order, inventory, payment, fulfillment, refund, return, and storefront plugin for NexPress.",
+  "description": "Catalog, member wishlists, restock and price-drop alerts, promotions, local shipping policies, reviews, cart, checkout, order, inventory, payment, fulfillment, refund, return, and storefront plugin for NexPress.",
   "license": "MIT",
   "author": "Nexpress",
   "homepage": "https://github.com/nexpress-cms/nexpress#readme",
@@ -20,6 +20,7 @@
     "catalog",
     "wishlist",
     "restock-alert",
+    "price-alert",
     "storefront"
   ],
   "type": "module",
@@ -40,6 +41,11 @@
       "types": "./dist/restock-alert-client.d.ts",
       "import": "./dist/restock-alert-client.js",
       "default": "./dist/restock-alert-client.js"
+    },
+    "./price-alert-client": {
+      "types": "./dist/price-alert-client.d.ts",
+      "import": "./dist/price-alert-client.js",
+      "default": "./dist/price-alert-client.js"
     },
     "./styles.css": "./src/styles.css"
   },

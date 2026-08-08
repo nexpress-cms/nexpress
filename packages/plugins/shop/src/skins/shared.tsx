@@ -231,11 +231,13 @@ export function ProductCard({
   product,
   messages,
   wishlistAction,
+  priceAlertAction,
 }: {
   basePath: string;
   product: NpShopProductSummary;
   messages: NpShopMessages;
   wishlistAction?: ReactNode;
+  priceAlertAction?: ReactNode;
 }) {
   return (
     <article className="np-shop-product-card" data-np-shop-product={product.id}>
@@ -273,6 +275,7 @@ export function ProductCard({
           <ProductPrice product={product} messages={messages} />
           <Link href={`${basePath}/products/${product.slug}`}>{messages.viewProduct}</Link>
         </div>
+        {priceAlertAction}
       </div>
     </article>
   );
@@ -356,11 +359,13 @@ function ProductGrid({
   products,
   messages,
   wishlistActions,
+  priceAlertActions,
 }: {
   basePath: string;
   products: NpShopProductSummary[];
   messages: NpShopMessages;
   wishlistActions?: Readonly<Record<string, ReactNode>>;
+  priceAlertActions?: Readonly<Record<string, ReactNode>>;
 }) {
   return products.length === 0 ? (
     <p className="np-shop-empty">{messages.emptyProducts}</p>
@@ -373,6 +378,7 @@ function ProductGrid({
           product={product}
           messages={messages}
           wishlistAction={wishlistActions?.[product.id]}
+          priceAlertAction={priceAlertActions?.[product.id]}
         />
       ))}
     </div>
@@ -515,6 +521,7 @@ export function ShopProductSurface({ skin, ...props }: NpShopProductSkinProps & 
           </div>
           {props.cartAction}
           {props.restockAction}
+          {props.priceAlertAction}
           {props.wishlistAction}
           <Link className="np-shop-cart-link" href={`${props.basePath}/cart`}>
             {props.messages.cart}
@@ -591,6 +598,7 @@ export function ShopWishlistSurface({
           products={props.page.products}
           messages={props.messages}
           wishlistActions={props.wishlistActions}
+          priceAlertActions={props.priceAlertActions}
         />
       )}
       {props.signedIn && (props.page.hasPrevious || props.page.hasNext) ? (

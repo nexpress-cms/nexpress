@@ -17,7 +17,7 @@ compensation, owner-scoped item return intake with audited receipt inventory,
 provider-neutral partial refunds linked to received returns,
 optional owner-scoped return shipment/drop-off or pickup creation with transient labels,
 member-owned saved products over the shared follow graph, independent one-shot
-restock alerts, Admin collection
+restock and catalog price-drop alerts, Admin collection
 forms and health actions, blocks, and skins.
 
 `@nexpress/theme-storefront` is a separate brand/content theme. It works with
@@ -56,11 +56,13 @@ package remains independently replaceable. After applying the generated migratio
    `/shop/wishlist`.
 8. Set one tracked product or enabled variant to zero stock and use its product
    page to request a one-shot restock alert.
-9. Add a product to the cart, visit `/shop/cart`, create a short-lived
-   checkout intent, continue to the 24-hour private order draft, and optionally
-   create a durable pending order reference.
-10. Optionally activate Storefront from Admin → Appearance.
-11. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
+9. Request a one-shot catalog price alert for a product or enabled variant,
+   then lower that exact catalog price below its captured baseline.
+10. Add a product to the cart, visit `/shop/cart`, create a short-lived
+    checkout intent, continue to the 24-hour private order draft, and optionally
+    create a durable pending order reference.
+11. Optionally activate Storefront from Admin → Appearance.
+12. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
     or insert the `shop.storefront-home` pattern.
 
 Sites upgrading from a version without Shop must generate, review, and apply
@@ -172,9 +174,45 @@ Admin exposes only aggregate active/completed counts and bounded malformed,
 orphan, ready, expired, and stale-lease health. The manual reconcile action and
 scheduled task share the same processor. Plugin Doctor validates the declared
 API route, content hooks, schedule, metric, status, and action registries before
-runtime; setup registers the bounded notification-kind metadata. The contract never reserves inventory, inserts an
-item into a cart, changes a wishlist, watches price, guarantees availability,
-or repeats after one completion; a later stock cycle requires a new request.
+runtime; setup registers the bounded notification-kind metadata. The contract
+never reserves inventory, inserts an item into a cart, changes a wishlist,
+watches price, guarantees availability, or repeats after one completion; a
+later stock cycle requires a new request.
+
+## Member catalog price-drop alerts
+
+Price-drop alerts are independent of wishlists, restock alerts, carts, and
+promotions. An authenticated member may send `POST /api/plugins/shop/price-alerts`
+with the member CSRF token and exact
+`{ productId, variantSku }`. `variantSku: null` selects the product's own
+published catalog price even when variants exist; an exact enabled SKU selects
+its override or the product-price fallback. The response exposes only the
+target, currency, captured baseline, and expiry. `GET` lists the current
+member's active targets for one product, while `DELETE` cancels an unclaimed
+request. Zero-price and unpublished targets fail closed.
+
+Each request captures the current integer-minor-unit catalog price and currency
+for 180 days. It completes once, and only when that exact target remains
+published in the same currency and its current catalog price is strictly below
+the baseline. Compare-at prices, promotion/coupon results, cart allocation,
+shipping, and tax do not participate. Reposting an active target is idempotent;
+cancel and subscribe again to capture a new baseline.
+
+Product update hooks provide the fast path, and the five-minute
+`reconcile-price-alerts` task catches direct SQL changes, imports, or other
+writes that bypass content hooks. A due row is leased before delivery and uses
+one stable `eventId` to deduplicate the `shop.product-price-dropped` member
+inbox notification after crashes. Disabled inbox preferences produce a
+suppressed completion. Completed receipts remain for 30 days; currency
+changes remain active and reach health diagnostics instead of comparing
+unlike units.
+
+Admin exposes PII-free active totals and bounded malformed, orphan, due,
+currency-mismatch, expiry, and stale-lease health plus one manual reconcile
+action. Plugin Doctor validates the API routes, hooks, schedule, notification
+kind, and exact action registry. The contract does not reserve inventory,
+guarantee a future price, add an item to a cart, send direct marketing email,
+or recur after completion.
 
 ## Verified-purchase reviews
 
@@ -1726,7 +1764,8 @@ Every Shop factory registers:
 | `classic`         | Compact, neutral catalog and detail fallback               |
 | `storefront-full` | Larger editorial header and image-led product presentation |
 
-Both skins implement catalog, category, product, wishlist, prepared restock action, cart, checkout-intent,
+Both skins implement catalog, category, product, wishlist, prepared restock
+and price-alert actions, cart, checkout-intent,
 private order-draft, order-history, and order-detail rendering. They receive
 prepared products, localized messages, safe formatted money, and rendered
 rich text; they do not own identity, private-data, collection, or transaction
@@ -1752,6 +1791,7 @@ The main public hooks are `.np-shop`, `.np-shop-product-card`,
 `.np-shop-cart-client`, `[data-np-shop-cart-action]`,
 `[data-np-shop-surface="wishlist"]`, `[data-np-shop-wishlist-action]`,
 `[data-np-shop-restock-alert]`,
+`[data-np-shop-price-alert]`,
 `[data-np-shop-cart-line]`,
 `.np-shop-checkout-client`, `[data-np-shop-checkout-line]`,
 `[data-np-shop-checkout-status]`,

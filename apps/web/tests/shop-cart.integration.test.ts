@@ -16,6 +16,7 @@ import {
   npRequireShopOrderDraft,
   npListShopProductReviews,
   npGetShopWishlistPage,
+  npProcessShopPriceAlerts,
   npReadShopProductReviewAggregate,
   npProcessShopRestockAlerts,
   npProcessShopOrderNotifications,
@@ -603,6 +604,103 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         ),
       );
     expect(receipt?.value).toMatchObject({ status: "completed", outcome: "notified" });
+  });
+
+  it("delivers one member-owned price-drop notification below the exact baseline", async () => {
+    const db = await getTestDb();
+    const shop = createShop();
+    await shop.plugin.setup?.({} as never);
+    const member = await seedActiveMember({ handle: "price-alert-member" });
+
+    await expect(
+      configuredShopCall(shop, "GET", "/price-alerts", { query: { productId } }),
+    ).resolves.toMatchObject({ status: 403 });
+    await expect(
+      configuredShopCall(shop, "POST", "/price-alerts", {
+        cookie: "np-mb-csrf=price-alert-csrf",
+        member: { id: member.memberId },
+        body: { productId, variantSku: null },
+      }),
+    ).resolves.toMatchObject({ status: 403 });
+
+    await expect(
+      configuredShopCall(shop, "POST", "/price-alerts", {
+        cookie: "np-mb-csrf=price-alert-csrf",
+        csrf: "price-alert-csrf",
+        member: { id: member.memberId },
+        body: { productId, variantSku: null },
+      }),
+    ).resolves.toMatchObject({
+      status: 200,
+      body: {
+        alert: {
+          productId,
+          variantSku: null,
+          currency: "KRW",
+          baselinePriceMinor: 25_000,
+        },
+      },
+    });
+    await expect(
+      withCurrentSite("other-site", () => npProcessShopPriceAlerts(shop.runtime, { productId })),
+    ).resolves.toMatchObject({ inspected: 0, notified: 0 });
+    await expect(
+      withCurrentSite("default", () => npProcessShopPriceAlerts(shop.runtime, { productId })),
+    ).resolves.toMatchObject({ inspected: 1, notified: 0, unchanged: 1 });
+
+    await db
+      .update(shopProductsTable)
+      .set({ currency: "USD", priceMinor: 22_000 })
+      .where(eq(shopProductsTable.id, productId));
+    await expect(
+      withCurrentSite("default", () => npProcessShopPriceAlerts(shop.runtime, { productId })),
+    ).resolves.toMatchObject({ inspected: 1, notified: 0, currencyMismatch: 1 });
+
+    await db
+      .update(shopProductsTable)
+      .set({ currency: "KRW", priceMinor: 22_000 })
+      .where(eq(shopProductsTable.id, productId));
+    await expect(
+      withCurrentSite("default", () => npProcessShopPriceAlerts(shop.runtime, { productId })),
+    ).resolves.toMatchObject({ inspected: 1, notified: 1, suppressed: 0 });
+    await expect(
+      withCurrentSite("default", () => npProcessShopPriceAlerts(shop.runtime, { productId })),
+    ).resolves.toMatchObject({ inspected: 0, notified: 0 });
+
+    const notifications = await db
+      .select({ payload: npNotifications.payload })
+      .from(npNotifications)
+      .where(
+        and(
+          eq(npNotifications.siteId, "default"),
+          eq(npNotifications.memberId, member.memberId),
+          eq(npNotifications.kind, "shop.product-price-dropped"),
+        ),
+      );
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]?.payload).toMatchObject({
+      href: "/shop/products/everyday-cup",
+      productId,
+      variantSku: null,
+      currency: "KRW",
+      previousPriceMinor: 25_000,
+      currentPriceMinor: 22_000,
+    });
+    const [receipt] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          like(npPluginStorage.key, `price-alert:${productId}:%`),
+        ),
+      );
+    expect(receipt?.value).toMatchObject({
+      status: "completed",
+      outcome: "notified",
+      baselinePriceMinor: 25_000,
+    });
   });
 
   it("projects exact PII-free review aggregates and rows", async () => {

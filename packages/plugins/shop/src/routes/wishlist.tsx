@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { getShopMessages, resolveShopSkin, type NpShopRuntime } from "../runtime.js";
 import { ShopWishlistSurface } from "../skins/shared.js";
 import { npCreateShopWishlistActions } from "../wishlist-actions.js";
+import { npCreateShopPriceAlertActions } from "../price-alert-actions.js";
 import { npGetShopWishlistPage, parseShopWishlistPage } from "../wishlist-service.js";
 
 export function createShopWishlistRoute(runtime: NpShopRuntime) {
@@ -25,6 +26,12 @@ export function createShopWishlistRoute(runtime: NpShopRuntime) {
       page.products.map((product) => product.id),
       true,
     );
+    const priceAlertActions = await npCreateShopPriceAlertActions(
+      page.products,
+      member?.id ?? null,
+      page.page > 1 ? `${routePath}?page=${page.page.toString()}` : routePath,
+      messages,
+    );
     const skin = resolveShopSkin(runtime);
     const props = {
       basePath: runtime.basePath,
@@ -32,6 +39,7 @@ export function createShopWishlistRoute(runtime: NpShopRuntime) {
       signedIn: member !== null,
       loginHref: `/members/login?next=${encodeURIComponent(routePath)}`,
       wishlistActions,
+      priceAlertActions,
       messages,
     };
     return skin.renderWishlist?.(props) ?? <ShopWishlistSurface {...props} skin={skin.id} />;

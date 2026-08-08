@@ -2,7 +2,17 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-08 (Shop order/payment/fulfillment/delivery/return/refund
+**Last refreshed:** 2026-08-08 (Shop now owns independent member catalog
+price-drop alerts for the product price or one exact enabled variant. A
+180-day request captures one same-currency baseline, triggers once only below
+that baseline, uses a stable preference-aware member-inbox event, and retains
+a 30-day receipt. Product hooks and five-minute bounded reconciliation share
+the processor; Admin, Doctor, both skins, Storefront hooks, scaffold guidance,
+and tests share the PII-free contract. Promotions, compare-at prices, carts,
+inventory reservations, price guarantees, direct marketing channels, and
+recurrence remain separate.)
+
+**Earlier:** 2026-08-08 (Shop order/payment/fulfillment/delivery/return/refund
 transitions now atomically stage one PII-free owner timeline and durable
 member-inbox/direct-email outbox. Raw recipient email stays in a separate
 maximum-24-hour sidecar deleted after delivery, member inbox preference remains

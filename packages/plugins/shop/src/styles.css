@@ -972,7 +972,8 @@
     margin-top: 0.75rem;
   }
 
-  .np-shop-restock-alert {
+  .np-shop-restock-alert,
+  .np-shop-price-alert {
     display: grid;
     gap: 0.6rem;
     padding: 0.85rem;
@@ -982,18 +983,23 @@
     font-size: 0.78rem;
   }
 
-  .np-shop-restock-alert > strong {
+  .np-shop-restock-alert > strong,
+  .np-shop-price-alert > strong {
     color: var(--np-shop-ink, var(--np-color-foreground, #1c1917));
   }
 
-  .np-shop-restock-alert label {
+  .np-shop-restock-alert label,
+  .np-shop-price-alert label {
     display: grid;
     gap: 0.35rem;
   }
 
   .np-shop-restock-alert select,
   .np-shop-restock-alert button,
-  .np-shop-restock-alert > a {
+  .np-shop-restock-alert > a,
+  .np-shop-price-alert select,
+  .np-shop-price-alert button,
+  .np-shop-price-alert > a {
     min-height: 2.35rem;
     border: 1px solid var(--np-shop-line, var(--np-color-border, #deddd8));
     border-radius: var(--np-radius-sm, 0.35rem);
@@ -1002,13 +1008,16 @@
     font: inherit;
   }
 
-  .np-shop-restock-alert select {
+  .np-shop-restock-alert select,
+  .np-shop-price-alert select {
     width: 100%;
     padding: 0.4rem 0.65rem;
   }
 
   .np-shop-restock-alert button,
-  .np-shop-restock-alert > a {
+  .np-shop-restock-alert > a,
+  .np-shop-price-alert button,
+  .np-shop-price-alert > a {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1019,18 +1028,21 @@
     cursor: pointer;
   }
 
-  .np-shop-restock-alert[data-np-shop-restock-alert="subscribed"] button {
+  .np-shop-restock-alert[data-np-shop-restock-alert="subscribed"] button,
+  .np-shop-price-alert[data-np-shop-price-alert="subscribed"] button {
     border-color: var(--np-shop-accent, var(--np-color-primary, #205c46));
     background: var(--np-shop-accent, var(--np-color-primary, #205c46));
     color: var(--np-shop-accent-foreground, var(--np-color-primary-foreground, #fff));
   }
 
-  .np-shop-restock-alert button:disabled {
+  .np-shop-restock-alert button:disabled,
+  .np-shop-price-alert button:disabled {
     cursor: wait;
     opacity: 0.65;
   }
 
-  .np-shop-restock-alert [role="alert"] {
+  .np-shop-restock-alert [role="alert"],
+  .np-shop-price-alert [role="alert"] {
     color: var(--np-color-destructive, #b42318);
     font-size: 0.72rem;
   }

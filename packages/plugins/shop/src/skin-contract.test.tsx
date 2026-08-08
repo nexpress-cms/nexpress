@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { ShopProductReviews, ShopRestockAlert, ShopWishlistAction } from "./client.js";
+import { ShopPriceAlert } from "./price-alert-client.js";
 import { classicShopSkin } from "./skins/classic.js";
 import type { NpShopCatalogQuery, NpShopMessages, NpShopProduct } from "./types.js";
 
@@ -49,6 +50,14 @@ const messages = {
   restockSignIn: "로그인하고 알림 받기",
   restockUnavailable: "품절",
   restockFailed: "알림 실패",
+  priceAlertHeading: "가격 인하 알림",
+  priceAlertSelect: "가격 대상",
+  priceAlertSubscribe: "가격 알림 신청",
+  priceAlertSubscribed: "가격 알림 취소",
+  priceAlertSaving: "처리 중",
+  priceAlertSignIn: "로그인",
+  priceAlertUnavailable: "신청 불가",
+  priceAlertFailed: "가격 알림 실패",
   search: "상품 검색",
   searchPlaceholder: "검색",
   sort: "정렬",
@@ -324,6 +333,7 @@ describe("shop skin contract", () => {
     expect(styles).toContain("[data-np-shop-review-form]");
     expect(styles).toContain("data-np-shop-wishlist-action");
     expect(styles).toContain("data-np-shop-restock-alert");
+    expect(styles).toContain("data-np-shop-price-alert");
     for (const property of [
       "--np-shop-content-max",
       "--np-shop-surface",
@@ -488,6 +498,43 @@ describe("shop skin contract", () => {
 
     expect(html).toContain('data-np-shop-restock-alert="available"');
     expect(html).toContain("재입고 시 알림 받기");
+  });
+
+  it("renders a prepared one-shot catalog price action through the product skin", async () => {
+    const action = (
+      <ShopPriceAlert
+        apiPath="/api/plugins/shop/price-alerts"
+        product={product}
+        initialVariantSkus={[]}
+        signedIn={true}
+        loginHref="/members/login?next=%2Fshop%2Fproducts%2Fcup"
+        labels={{
+          heading: messages.priceAlertHeading,
+          select: messages.priceAlertSelect,
+          subscribe: messages.priceAlertSubscribe,
+          subscribed: messages.priceAlertSubscribed,
+          saving: messages.priceAlertSaving,
+          signIn: messages.priceAlertSignIn,
+          unavailable: messages.priceAlertUnavailable,
+          failed: messages.priceAlertFailed,
+        }}
+      />
+    );
+    const html = renderToStaticMarkup(
+      <>
+        {await classicShopSkin.renderProduct({
+          basePath: "/shop",
+          product,
+          categories: [],
+          description: null,
+          priceAlertAction: action,
+          messages,
+        })}
+      </>,
+    );
+
+    expect(html).toContain('data-np-shop-price-alert="available"');
+    expect(html).toContain("가격 알림 신청");
   });
 
   it("renders the complete cart fallback through the skin contract", async () => {
