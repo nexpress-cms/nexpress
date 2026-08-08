@@ -59,6 +59,9 @@ describe("shop factory", () => {
       "[data-np-shop-wishlist-action]",
     );
     expect(shopPlugin.manifest.styleSlots?.["restock-alert"]).toBe("[data-np-shop-restock-alert]");
+    expect(shopPlugin.manifest.styleSlots?.["order-notifications"]).toBe(
+      "[data-np-shop-order-notifications]",
+    );
     expect(
       Object.entries(shopPlugin.actions ?? {}).map(([id, action]) => ({
         id,
@@ -79,6 +82,11 @@ describe("shop factory", () => {
       { id: "countActiveRestockAlerts", kind: "metric" },
       { id: "restockAlertHealth", kind: "status" },
       { id: "reconcileRestockAlerts", kind: "action" },
+      { id: "countOrderNotifications", kind: "metric" },
+      { id: "orderNotificationHealth", kind: "status" },
+      { id: "recentOrderNotifications", kind: "table" },
+      { id: "reconcileOrderNotifications", kind: "action" },
+      { id: "retryOrderNotifications", kind: "action" },
       { id: "countProducts", kind: "metric" },
       { id: "countLowStockProducts", kind: "metric" },
       { id: "countActiveCarts", kind: "metric" },
@@ -176,6 +184,7 @@ describe("shop factory", () => {
       "DELETE /returns",
     ]);
     expect(shopPlugin.scheduled?.map((task) => task.id)).toEqual([
+      "process-order-notifications",
       "reconcile-restock-alerts",
       "cleanup-expired-carts",
       "cleanup-expired-checkout-intents",
@@ -193,6 +202,11 @@ describe("shop factory", () => {
         "dashboard:shop-restock-alerts",
         "widget:shop-restock-alert-health",
         "action:shop-restock-alert-reconcile",
+        "dashboard:shop-order-notifications",
+        "widget:shop-order-notification-health",
+        "table:shop-order-notifications",
+        "action:shop-order-notification-reconcile",
+        "action:shop-order-notification-retry",
       ]),
     );
   });

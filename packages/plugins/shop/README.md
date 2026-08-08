@@ -61,6 +61,11 @@ It provides:
   separate pending-payment private sidecars, revision-safe cancellation, bounded
   history/Admin views, transaction-safe product/variant holds, cancellation
   release, and 365-day commercial cleanup;
+- a PII-free durable order timeline plus transactional member-inbox and direct-email
+  outbox for order, payment, fulfillment, delivery, return, and refund transitions;
+  raw guest/member email is isolated only within the existing private-data
+  window in a maximum-24-hour sidecar and deleted immediately after successful
+  delivery or any order PII redaction;
 - an optional build-time payment adapter with bounded owner-scoped initiation
   attempts, exact raw webhook intake, five-minute event replay bound,
   idempotent PII-free receipts, `paid` / `payment-failed` transitions, and

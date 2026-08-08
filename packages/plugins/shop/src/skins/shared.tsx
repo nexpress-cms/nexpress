@@ -173,6 +173,7 @@ function cartClientMessages(messages: NpShopMessages): NpShopCartClientMessages 
     orderReturnTrackingException: messages.orderReturnTrackingException,
     orderExpires: messages.orderExpires,
     orderCreated: messages.orderCreated,
+    orderNotifications: messages.orderNotifications,
     orderCancel: messages.orderCancel,
     orderHistory: messages.orderHistory,
     orderEmpty: messages.orderEmpty,

@@ -2,7 +2,17 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-08 (Shop now owns an independent member restock
+**Last refreshed:** 2026-08-08 (Shop order/payment/fulfillment/delivery/return/refund
+transitions now atomically stage one PII-free owner timeline and durable
+member-inbox/direct-email outbox. Raw recipient email stays in a separate
+maximum-24-hour sidecar deleted after delivery, member inbox preference remains
+authoritative, guest delivery fails closed after PII expiry, bounded leases and
+five-attempt retry state reach Admin/Doctor, and the stable event id makes
+reconciliation explicit. Email remains at-least-once because the generic
+adapter has no provider receipt; no SMS, push, or marketing automation is
+implied.)
+
+**Earlier:** 2026-08-08 (Shop now owns an independent member restock
 alert contract for exact tracked product or enabled-variant targets: only
 out-of-stock targets can be subscribed, active alerts expire after 180 days,
 availability delivers one preference-aware in-app notification with a stable

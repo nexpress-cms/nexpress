@@ -74,4 +74,28 @@ describe("NotificationsInbox", () => {
     expect(html).toContain("Blue");
     expect(html).toContain('href="/shop/products/mug"');
   });
+
+  it("renders one Shop order update without exposing recipient data", () => {
+    const notification: NotificationInboxItem = {
+      ...base,
+      id: "99999999-9999-4999-8999-999999999999",
+      kind: "shop.order-update",
+      payload: {
+        eventId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        eventKind: "fulfillment.shipped",
+        orderId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        href: "/shop/orders/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        title: "Order shipped",
+      },
+    };
+
+    const html = renderToStaticMarkup(
+      <NotificationsInbox initialNotifications={[notification]} initialUnread={1} totalDocs={1} />,
+    );
+
+    expect(html).toContain("Order update");
+    expect(html).toContain("Order shipped");
+    expect(html).toContain('href="/shop/orders/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"');
+    expect(html).not.toContain("@example.com");
+  });
 });

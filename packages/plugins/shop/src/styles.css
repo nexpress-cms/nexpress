@@ -598,6 +598,33 @@
     line-height: 1.5;
   }
 
+  .np-shop-order-notifications {
+    display: grid;
+    gap: 0.6rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--np-shop-line, var(--np-color-border, #deddd8));
+  }
+
+  .np-shop-order-notifications ol {
+    display: grid;
+    gap: 0.55rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .np-shop-order-notifications li {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.75rem;
+    align-items: baseline;
+  }
+
+  .np-shop-order-notifications time {
+    color: var(--np-shop-subtle, var(--np-color-muted-foreground, #6b6b68));
+    font-size: 0.75rem;
+  }
+
   .np-shop-return-form,
   .np-shop-return-summary,
   .np-shop-return-logistics-form,

@@ -36,6 +36,13 @@ customer/shipping values live in a separate private sidecar and are physically
 deleted on cancellation or the 24-hour deadline; commercial snapshots are
 purged after 365 days.
 
+Order transitions also stage a PII-free owner timeline and a durable
+transactional notification outbox. Member inbox delivery respects the shared
+kind preference; direct email uses a maximum-24-hour private recipient sidecar
+that is deleted after success. Configure the normal NexPress email adapter to
+deliver email; the default noop adapter suppresses this channel without
+printing recipient PII.
+
 `create-nexpress` writes both `.env.example` and `.env` for you. Use the
 setup wizard to confirm the DB connection, generate or accept the auth
 secret, run migrations, create the first admin, pick a theme, and optionally

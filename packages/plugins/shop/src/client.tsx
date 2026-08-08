@@ -8,6 +8,11 @@ import { npRequireShopCartQuote } from "./cart-contract.js";
 import { npRequireShopCheckoutIntent } from "./checkout-contract.js";
 import { npRequireShopOrderDraft } from "./order-draft-contract.js";
 import { npRequireShopOrder, npRequireShopOrderList } from "./order-contract.js";
+import {
+  npRequireShopOrderNotificationListWire,
+  type NpShopOrderNotificationKind,
+  type NpShopOrderNotificationListWire,
+} from "./order-notification-contract.js";
 import { npRequireShopReturn, type NpShopReturn } from "./return-contract.js";
 import type {
   NpShopProductReview,
@@ -52,6 +57,7 @@ interface OrderDraftDeleteResponse {
 
 interface OrderResponse {
   order: NpShopOrder;
+  notifications: NpShopOrderNotificationListWire;
   csrfToken: string | null;
 }
 
@@ -214,7 +220,13 @@ async function requestOrder(
       failure.message ?? failure.error ?? "Order request failed.",
     );
   }
-  if ("order" in payload) return { ...payload, order: npRequireShopOrder(payload.order) };
+  if ("order" in payload) {
+    return {
+      ...payload,
+      order: npRequireShopOrder(payload.order),
+      notifications: npRequireShopOrderNotificationListWire(payload.notifications),
+    };
+  }
   if ("list" in payload) return { ...payload, list: npRequireShopOrderList(payload.list) };
   throw new Error("Order response was invalid.");
 }
@@ -1349,6 +1361,7 @@ export function ShopOrder({
   messages: NpShopCartClientMessages;
 }) {
   const [order, setOrder] = useState<NpShopOrder | null>(null);
+  const [notifications, setNotifications] = useState<NpShopOrderNotificationListWire | null>(null);
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
@@ -1360,6 +1373,7 @@ export function ShopOrder({
       .then((response) => {
         if (!("order" in response)) throw new Error(messages.orderFailed);
         setOrder(response.order);
+        setNotifications(response.notifications);
         setCsrfToken(response.csrfToken);
       })
       .catch((caught: unknown) => {
@@ -1373,6 +1387,7 @@ export function ShopOrder({
       const response = await requestOrder(apiPath, "GET", { orderId });
       if (!("order" in response)) return;
       setOrder(response.order);
+      setNotifications(response.notifications);
       setCsrfToken(response.csrfToken);
     } catch {
       // Preserve the mutation error; a normal reload can recover read state.
@@ -1390,6 +1405,7 @@ export function ShopOrder({
       });
       if (!("order" in response)) throw new Error(messages.orderFailed);
       setOrder(response.order);
+      setNotifications(response.notifications);
       setCsrfToken(response.csrfToken);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : messages.orderFailed);
@@ -1426,6 +1442,7 @@ export function ShopOrder({
       });
       setOrder({ ...order, returnRequest: response.returnRequest });
       setCsrfToken(response.csrfToken);
+      await refreshOrderState();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : messages.orderReturnFailed);
     } finally {
@@ -1444,6 +1461,7 @@ export function ShopOrder({
       });
       setOrder({ ...order, returnRequest: response.returnRequest });
       setCsrfToken(response.csrfToken);
+      await refreshOrderState();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : messages.orderReturnFailed);
     } finally {
@@ -1593,6 +1611,25 @@ export function ShopOrder({
       default:
         return null;
     }
+  }
+
+  function notificationMessage(kind: NpShopOrderNotificationKind): string {
+    return {
+      "order.created": messages.orderCreated,
+      "order.cancelled": messages.orderCancelled,
+      "payment.succeeded": messages.orderPaid,
+      "payment.failed": messages.orderPaymentFailed,
+      "fulfillment.processing": messages.orderFulfillmentProcessing,
+      "fulfillment.shipped": messages.orderFulfillmentShipped,
+      "delivery.delivered": messages.orderTrackingDelivered,
+      "return.requested": messages.orderReturnRequested,
+      "return.cancelled": messages.orderReturnCancelled,
+      "return.approved": messages.orderReturnApproved,
+      "return.rejected": messages.orderReturnRejected,
+      "return.received": messages.orderReturnReceived,
+      "refund.completed": messages.orderRefunded,
+      "partial-refund.completed": messages.orderPartialRefundedDetail,
+    }[kind];
   }
 
   return (
@@ -1757,6 +1794,24 @@ export function ShopOrder({
                   timeStyle: "short",
                 }).format(new Date(order.createdAt))}
               </p>
+              {notifications && notifications.events.length > 0 ? (
+                <section className="np-shop-order-notifications" data-np-shop-order-notifications>
+                  <h2>{messages.orderNotifications}</h2>
+                  <ol>
+                    {notifications.events.map((event) => (
+                      <li key={event.id} data-np-shop-order-notification={event.kind}>
+                        <span>{notificationMessage(event.kind)}</span>
+                        <time dateTime={event.occurredAt}>
+                          {new Intl.DateTimeFormat(messages.locale, {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          }).format(new Date(event.occurredAt))}
+                        </time>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              ) : null}
               {order.status === "pending-payment" ? (
                 <>
                   {paymentAction ? (
