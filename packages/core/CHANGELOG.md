@@ -1,5 +1,32 @@
 # @nexpress/core
 
+## 0.4.3
+
+### Patch Changes
+
+- 5560f00: Add exact Admin table row actions and trusted action invocation context, then use them for revision-safe Shop fulfillment, audited staff-only shipping-data access, shipment/30-day private-data deletion, owner tracking status, diagnostics, scaffolds, and documentation.
+- 1b34745: Add bounded site-owned Shop carts for guests and members, including signed
+  guest identity, revision-safe mutations, live product/variant quotes, cart
+  skins, Admin health and cleanup, an hourly expiry task, and member identity on
+  plugin API route requests. Checkout, payment, orders, and inventory reservation
+  remain explicitly outside the contract.
+- 33d4c85: Add member Shop wishlists over the shared site-scoped follow graph, including bounded batch state reads, complete Shop skin routes and actions, PII-free Admin diagnostics, independent Storefront styling, and scaffold guidance.
+- 6b8cd26: Add the first-party Shop catalog and independent Storefront theme, including
+  bounded product/category collections, exact integer-money and inventory
+  contracts, public routes, skins, blocks, Admin metrics, scaffold defaults, and
+  generated migrations. Text fields marked `unique` now receive a site-scoped
+  database unique index, making product SKU uniqueness race-safe.
+- bd52dc5: Add an opt-in, one-MiB exact raw-body contract for signed plugin API callbacks, including early route validation, runtime and discovery metadata, OpenAPI projection, bounded dispatch, and a safe CLI scaffold example.
+- d39f368: Add bounded binary plugin API responses and authenticated declarative Admin
+  downloads, then let Shop carrier adapters retrieve already-booked PDF, PNG, or
+  ZPL shipping labels through a PII-free, staff-audited, transient byte contract.
+- cc2bc2c: Add one exact verified-purchase product-review contract. Shipped member order
+  lines receive short-lived signed eligibility, persist only one-way purchase
+  keys, and support bounded ratings, text, photos, member edits/deletes, exact
+  public aggregates, safe author projections, audited Admin hide/restore,
+  runtime health, both Shop skins, and independent Storefront theme hooks. Fresh
+  project guidance now includes the shipped-purchase review flow.
+
 ## 0.4.2
 
 ### Patch Changes

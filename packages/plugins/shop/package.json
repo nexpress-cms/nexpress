@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/plugin-shop",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Catalog, member wishlists, restock and price-drop alerts, promotions, local shipping policies, reviews, cart, checkout, order, inventory, payment, fulfillment, refund, return, and storefront plugin for NexPress.",
   "license": "MIT",
   "author": "Nexpress",
