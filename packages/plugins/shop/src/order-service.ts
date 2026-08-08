@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { getDb, npAuditEvents, npPluginStorage } from "@nexpress/core/db";
 import { requireSiteId } from "@nexpress/core/sites";
-import { and, asc, desc, eq, gt, inArray, like, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, like, lte, or, sql } from "drizzle-orm";
 
 import {
   NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT,
@@ -109,6 +109,7 @@ import {
   npShopOrderDraftStorageKey,
   type NpShopTransaction,
 } from "./order-draft-service.js";
+import { npStageShopOrderNotification } from "./order-notification-service.js";
 import {
   npLockShopCart,
   npQuoteShopCart,
@@ -1118,6 +1119,16 @@ async function removePrivateAndMaintenance(
         sql`${npPluginStorage.key} in (${privateStorageKey(ownerSegment, orderId)}, ${maintenanceStorageKey(ownerSegment, orderId)})`,
       ),
     );
+  await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "order-notification-private:%"),
+        sql`${npPluginStorage.value}->>'orderId' = ${orderId}`,
+      ),
+    );
 }
 
 async function projectOrder(
@@ -1311,6 +1322,15 @@ async function cancelStoredOrder(
     cancellationReason: reason,
   } satisfies NpShopStoredOrder;
   await persistOrder(tx, siteId, cancelled);
+  await npStageShopOrderNotification(tx, siteId, {
+    orderId: cancelled.id,
+    ownerSegment: cancelled.ownerSegment,
+    kind: "order.cancelled",
+    orderRevision: cancelled.revision,
+    occurredAt: cancelled.updatedAt,
+    purgeAt: cancelled.purgeAt,
+    email: null,
+  });
   await removePrivateAndMaintenance(tx, siteId, order.ownerSegment, order.id);
   return cancelled;
 }
@@ -1502,6 +1522,15 @@ export async function npApplyShopPaymentEvent(
         ownerSegment: order.ownerSegment,
         dueAt: privateExpiresAt,
       });
+      await npStageShopOrderNotification(tx, siteId, {
+        orderId: order.id,
+        ownerSegment: order.ownerSegment,
+        kind: "payment.succeeded",
+        orderRevision: order.revision,
+        occurredAt: receivedAt.toISOString(),
+        purgeAt: order.purgeAt,
+        email: privateData.customer.email,
+      });
       outcome = "paid";
     } else {
       await npLockShopInventoryProducts(
@@ -1539,6 +1568,15 @@ export async function npApplyShopPaymentEvent(
         updatedAt: receivedAt.toISOString(),
       };
       await persistOrder(tx, siteId, order);
+      await npStageShopOrderNotification(tx, siteId, {
+        orderId: order.id,
+        ownerSegment: order.ownerSegment,
+        kind: "payment.failed",
+        orderRevision: order.revision,
+        occurredAt: receivedAt.toISOString(),
+        purgeAt: order.purgeAt,
+        email: null,
+      });
       await removePrivateAndMaintenance(tx, siteId, order.ownerSegment, order.id);
       outcome = "payment-failed";
     }
@@ -1757,6 +1795,15 @@ export async function npApplyShopPaymentAdjustmentEvent(
         updatedAt: receivedAt.toISOString(),
       };
       await persistOrder(tx, siteId, order);
+      await npStageShopOrderNotification(tx, siteId, {
+        orderId: order.id,
+        ownerSegment: order.ownerSegment,
+        kind: "payment.failed",
+        orderRevision: order.revision,
+        occurredAt: receivedAt.toISOString(),
+        purgeAt: order.purgeAt,
+        email: null,
+      });
       await removePrivateAndMaintenance(tx, siteId, order.ownerSegment, order.id);
       outcome = "closed-unpaid-order";
     } else if (
@@ -1811,6 +1858,15 @@ export async function npApplyShopPaymentAdjustmentEvent(
         updatedAt: now,
       };
       await persistOrder(tx, siteId, order);
+      await npStageShopOrderNotification(tx, siteId, {
+        orderId: order.id,
+        ownerSegment: order.ownerSegment,
+        kind: "refund.completed",
+        orderRevision: order.revision,
+        occurredAt: now,
+        purgeAt: order.purgeAt,
+        email: null,
+      });
       await removePrivateAndMaintenance(tx, siteId, order.ownerSegment, order.id);
       const refund: NpShopStoredRefund = {
         contract: NP_SHOP_REFUND_STORAGE_CONTRACT,
@@ -1945,6 +2001,21 @@ async function purgeOrder(
         eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, "payment-event:%"),
         sql`${npPluginStorage.value}->'event'->>'orderId' = ${order.id}`,
+      ),
+    );
+  await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        or(
+          like(npPluginStorage.key, `order-notification:${order.id}:%`),
+          and(
+            like(npPluginStorage.key, "order-notification-private:%"),
+            sql`${npPluginStorage.value}->>'orderId' = ${order.id}`,
+          ),
+        ),
       ),
     );
   await tx
@@ -2186,6 +2257,15 @@ export async function npCreateShopOrder(
       orderId: order.id,
       ownerSegment,
       dueAt: pendingExpiresAt,
+    });
+    await npStageShopOrderNotification(tx, siteId, {
+      orderId: order.id,
+      ownerSegment: order.ownerSegment,
+      kind: "order.created",
+      orderRevision: order.revision,
+      occurredAt: order.createdAt,
+      purgeAt: order.purgeAt,
+      email: privateData.customer.email,
     });
     await tx
       .delete(npPluginStorage)
@@ -3289,6 +3369,15 @@ export async function npRefundShopOrder(
       updatedAt: now,
     } satisfies NpShopStoredOrder;
     await persistOrder(tx, siteId, refundedOrder);
+    await npStageShopOrderNotification(tx, siteId, {
+      orderId: refundedOrder.id,
+      ownerSegment: refundedOrder.ownerSegment,
+      kind: "refund.completed",
+      orderRevision: refundedOrder.revision,
+      occurredAt: now,
+      purgeAt: refundedOrder.purgeAt,
+      email: null,
+    });
     await removePrivateAndMaintenance(tx, siteId, order.ownerSegment, order.id);
     const refunded: NpShopStoredRefund = {
       ...currentRefund,
@@ -3470,7 +3559,11 @@ export async function npProcessShopFulfillment(
 ): Promise<NpShopFulfillment> {
   const siteId = await requireSiteId();
   return getDb().transaction(async (tx) => {
-    const { fulfillment: current } = await readFulfillmentForAction(tx, siteId, input.orderId);
+    const { fulfillment: current, order } = await readFulfillmentForAction(
+      tx,
+      siteId,
+      input.orderId,
+    );
     if (await readStoredCarrierBooking(tx, siteId, input.orderId, true)) {
       throw new NpShopFulfillmentConflictError(
         "fulfillment_terminal",
@@ -3493,6 +3586,16 @@ export async function npProcessShopFulfillment(
       updatedAt: now,
     } satisfies NpShopStoredFulfillment;
     await persistFulfillment(tx, siteId, next);
+    const privateData = await readStoredPrivate(tx, siteId, order.ownerSegment, order.id);
+    await npStageShopOrderNotification(tx, siteId, {
+      orderId: order.id,
+      ownerSegment: order.ownerSegment,
+      kind: "fulfillment.processing",
+      orderRevision: order.revision,
+      occurredAt: now,
+      purgeAt: order.purgeAt,
+      email: privateData?.customer.email ?? null,
+    });
     await recordRequiredShopFulfillmentAudit(
       tx,
       siteId,
@@ -3550,6 +3653,15 @@ export async function npShipShopFulfillment(
         updatedAt: now,
       });
     }
+    await npStageShopOrderNotification(tx, siteId, {
+      orderId: order.id,
+      ownerSegment: order.ownerSegment,
+      kind: "fulfillment.shipped",
+      orderRevision: order.privateDataStatus === "retained" ? order.revision + 1 : order.revision,
+      occurredAt: now,
+      purgeAt: order.purgeAt,
+      email: null,
+    });
     await removePrivateAndMaintenance(tx, siteId, current.ownerSegment, current.orderId);
     await recordRequiredShopFulfillmentAudit(
       tx,
@@ -4043,6 +4155,15 @@ export async function npBookShopCarrierShipment(
         revision: order.revision + 1,
         privateDataStatus: "redacted",
         updatedAt: now,
+      });
+      await npStageShopOrderNotification(tx, siteId, {
+        orderId: order.id,
+        ownerSegment: order.ownerSegment,
+        kind: "fulfillment.shipped",
+        orderRevision: order.revision + 1,
+        occurredAt: now,
+        purgeAt: order.purgeAt,
+        email: null,
       });
       await removePrivateAndMaintenance(tx, siteId, current.ownerSegment, current.orderId);
       const completed = {
@@ -4911,6 +5032,15 @@ export async function npRequestShopReturn(
       purgeAt: order.purgeAt,
     };
     await persistReturn(tx, siteId, returnRequest);
+    await npStageShopOrderNotification(tx, siteId, {
+      orderId: order.id,
+      ownerSegment,
+      kind: "return.requested",
+      orderRevision: order.revision,
+      occurredAt: now,
+      purgeAt: order.purgeAt,
+      email: null,
+    });
     return npProjectShopReturn(returnRequest);
   });
 }
@@ -4946,6 +5076,15 @@ export async function npCancelShopReturn(
       decidedAt: now,
     };
     await persistReturn(tx, siteId, cancelled);
+    await npStageShopOrderNotification(tx, siteId, {
+      orderId: order.id,
+      ownerSegment,
+      kind: "return.cancelled",
+      orderRevision: order.revision,
+      occurredAt: now,
+      purgeAt: order.purgeAt,
+      email: null,
+    });
     return npProjectShopReturn(cancelled);
   });
 }
@@ -4956,7 +5095,7 @@ export async function npApproveShopReturn(
 ): Promise<NpShopReturn> {
   const siteId = await requireSiteId();
   return getDb().transaction(async (tx) => {
-    const { returnRequest } = await readReturnOrderForStaff(tx, siteId, input.orderId);
+    const { order, returnRequest } = await readReturnOrderForStaff(tx, siteId, input.orderId);
     requireReturnRevision(returnRequest, input.expectedRevision);
     if (returnRequest.status !== "requested") {
       throw new NpShopReturnConflictError(
@@ -4974,6 +5113,15 @@ export async function npApproveShopReturn(
       decidedAt: now,
     };
     await persistReturn(tx, siteId, approved);
+    await npStageShopOrderNotification(tx, siteId, {
+      orderId: order.id,
+      ownerSegment: order.ownerSegment,
+      kind: "return.approved",
+      orderRevision: order.revision,
+      occurredAt: now,
+      purgeAt: order.purgeAt,
+      email: null,
+    });
     await recordRequiredShopFulfillmentAudit(
       tx,
       siteId,
@@ -4996,7 +5144,7 @@ export async function npRejectShopReturn(
 ): Promise<NpShopReturn> {
   const siteId = await requireSiteId();
   return getDb().transaction(async (tx) => {
-    const { returnRequest } = await readReturnOrderForStaff(tx, siteId, input.orderId);
+    const { order, returnRequest } = await readReturnOrderForStaff(tx, siteId, input.orderId);
     requireReturnRevision(returnRequest, input.expectedRevision);
     if (returnRequest.status !== "requested") {
       throw new NpShopReturnConflictError(
@@ -5015,6 +5163,15 @@ export async function npRejectShopReturn(
       decidedAt: now,
     };
     await persistReturn(tx, siteId, rejected);
+    await npStageShopOrderNotification(tx, siteId, {
+      orderId: order.id,
+      ownerSegment: order.ownerSegment,
+      kind: "return.rejected",
+      orderRevision: order.revision,
+      occurredAt: now,
+      purgeAt: order.purgeAt,
+      email: null,
+    });
     await recordRequiredShopFulfillmentAudit(
       tx,
       siteId,
@@ -5072,6 +5229,15 @@ export async function npReceiveShopReturn(
       receivedAt: now,
     };
     await persistReturn(tx, siteId, received);
+    await npStageShopOrderNotification(tx, siteId, {
+      orderId: order.id,
+      ownerSegment: order.ownerSegment,
+      kind: "return.received",
+      orderRevision: order.revision,
+      occurredAt: now,
+      purgeAt: order.purgeAt,
+      email: null,
+    });
     await recordRequiredShopFulfillmentAudit(
       tx,
       siteId,

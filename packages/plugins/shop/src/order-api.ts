@@ -15,6 +15,7 @@ import {
   npListShopOrders,
   npReadShopOrder,
 } from "./order-service.js";
+import { npListShopOrderNotifications } from "./order-notification-service.js";
 import {
   npRequireShopMutationCsrf,
   npResolveShopRequestIdentity,
@@ -69,8 +70,12 @@ export function createShopOrderApiHandler(runtime: NpShopRuntime) {
           const list = await npListShopOrders(resolved.owner);
           return { status: 200, body: { list, csrfToken }, headers };
         }
-        const order = await npReadShopOrder(resolved.owner, npRequireShopOrderId(rawId));
-        return { status: 200, body: { order, csrfToken }, headers };
+        const orderId = npRequireShopOrderId(rawId);
+        const [order, notifications] = await Promise.all([
+          npReadShopOrder(resolved.owner, orderId),
+          npListShopOrderNotifications(resolved.owner, orderId),
+        ]);
+        return { status: 200, body: { order, notifications, csrfToken }, headers };
       }
 
       npRequireShopMutationCsrf(request, resolved);
@@ -80,14 +85,16 @@ export function createShopOrderApiHandler(runtime: NpShopRuntime) {
           resolved.owner,
           npRequireShopOrderCreateInput(request.body),
         );
-        return { status: 200, body: { order, csrfToken }, headers };
+        const notifications = await npListShopOrderNotifications(resolved.owner, order.id);
+        return { status: 200, body: { order, notifications, csrfToken }, headers };
       }
       if (request.method === "DELETE") {
         const order = await npCancelShopOrder(
           resolved.owner,
           npRequireShopOrderCancelInput(request.body),
         );
-        return { status: 200, body: { order, csrfToken }, headers };
+        const notifications = await npListShopOrderNotifications(resolved.owner, order.id);
+        return { status: 200, body: { order, notifications, csrfToken }, headers };
       }
       return {
         status: 405,

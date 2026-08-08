@@ -18,6 +18,7 @@ import {
   npGetShopWishlistPage,
   npReadShopProductReviewAggregate,
   npProcessShopRestockAlerts,
+  npProcessShopOrderNotifications,
   shopCollections,
   shopPlugin,
   type NpShopCarrierBookingRequest,
@@ -1039,7 +1040,38 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           totalMinor: 20_000,
           promotions: { applied: [{ id: promotionId, code: "WELCOME" }] },
         },
+        notifications: {
+          contract: "np.shop-order-notification-list.v1",
+          events: [{ kind: "order.created" }],
+        },
       },
+    });
+    const noopLog = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await withCurrentSite("default", () => npProcessShopOrderNotifications("/shop"));
+    } finally {
+      noopLog.mockRestore();
+    }
+    expect(noopLog).not.toHaveBeenCalled();
+    const [createdNotification] = await (
+      await getTestDb()
+    )
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          eq(
+            npPluginStorage.key,
+            "order-notification:a53e4567-e89b-42d3-a456-426614174000:order.created",
+          ),
+        ),
+      );
+    expect(createdNotification?.value).toMatchObject({
+      status: "completed",
+      inboxStatus: "not-applicable",
+      emailStatus: "suppressed",
     });
 
     const secondInitial = await call("GET");
@@ -1064,12 +1096,21 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       },
     });
 
-    await orderCall("DELETE", {
+    const cancelledOrder = await orderCall("DELETE", {
       cookie: first.cookie,
       csrf: first.csrf,
       body: {
         orderId: "a53e4567-e89b-42d3-a456-426614174000",
         expectedRevision: 1,
+      },
+    });
+    expect(cancelledOrder).toMatchObject({
+      status: 200,
+      body: {
+        notifications: {
+          contract: "np.shop-order-notification-list.v1",
+          events: [{ kind: "order.created" }, { kind: "order.cancelled" }],
+        },
       },
     });
     const availableAgain = await call("GET", { cookie: secondCookie });

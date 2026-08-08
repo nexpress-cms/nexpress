@@ -9,6 +9,7 @@ import {
   type NpShopStoredFulfillment,
 } from "./fulfillment-contract.js";
 import { NP_SHOP_PLUGIN_ID, type NpShopTransaction } from "./order-draft-service.js";
+import { npStageShopOrderNotification } from "./order-notification-service.js";
 import {
   NpShopOrderContractError,
   npRequireStoredShopOrder,
@@ -857,6 +858,15 @@ export async function npPartiallyRefundShopReturn(
       updatedAt: now,
     };
     await persistPartialRefund(tx, siteId, completed);
+    await npStageShopOrderNotification(tx, siteId, {
+      orderId: updatedOrder.id,
+      ownerSegment: updatedOrder.ownerSegment,
+      kind: "partial-refund.completed",
+      orderRevision: updatedOrder.revision,
+      occurredAt: now,
+      purgeAt: updatedOrder.purgeAt,
+      email: null,
+    });
     await recordAudit(tx, siteId, staffUserId, "shop.partial-refund.complete", order.id, {
       refundId: completed.id,
       returnId: completed.returnId,

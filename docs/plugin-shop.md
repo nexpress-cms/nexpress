@@ -768,6 +768,40 @@ cancels at most 500 due orders and purges at most 500 expired commercial
 snapshots, oldest first. Site deletion remains the final tenant-wide deletion
 boundary.
 
+### Order updates and delivery outbox
+
+Every successful order creation/cancellation, payment result, fulfillment
+processing/shipment, delivered carrier event, physical-return transition, and
+full or return-linked partial refund atomically stages one
+`np.shop-order-notification.v1` event in the same transaction as the state
+change. The owner order API returns an exact PII-free timeline, and both
+bundled skins render it through `[data-np-shop-order-notifications]`.
+
+The site-scoped `process-order-notifications` task leases at most 100 due
+events each minute. Member orders receive the registered
+`shop.order-update` inbox kind subject to the member's normal notification
+preference. Transactional email is independent of that inbox preference:
+guest/member email copied from retained order data lives only in a separate
+`np.shop-order-notification-private.v1` sidecar for at most 24 hours and is
+physically deleted after a successful send. The built-in noop email adapter is
+treated as a suppressed channel and is never called, so recipient PII is not
+printed to development logs. Once normal order PII is redacted,
+active members can use their current account email; a guest event without a
+live private sidecar remains timeline-only. Any transition that redacts normal
+order PII (cancellation, payment failure, shipment, or refund) also deletes all
+still-pending notification recipient sidecars for that order immediately.
+
+Delivery failures use fixed bounded backoff and stop after five attempts in
+the PII-free `attention` state. Admin Health exposes counts, stale leases,
+malformed samples, and expired private rows without exposing a recipient, and
+offers bounded reconcile and explicit retry actions. The email adapter has no
+provider receipt/idempotency field, so processing is at-least-once: a worker
+crash after provider acceptance but before the local completion write can
+duplicate an email. Each message includes the stable event UUID for support
+reconciliation and uses the validated `SITE_URL` origin when configured;
+Admin warns about possible duplication before retrying an attention event.
+Commercial purge deletes timeline, outbox, and private rows.
+
 Owner responses are `private, no-store`. Owner history can include private
 details only while their matching sidecar exists; failed/cancelled/refunded/shipped
 orders always return `customer: null` and `shipping: null`. Admin exposes

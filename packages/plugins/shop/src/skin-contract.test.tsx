@@ -218,6 +218,7 @@ const messages = {
   orderReturnTrackingException: "반품 운송 예외",
   orderExpires: "주문 만료",
   orderCreated: "생성",
+  orderNotifications: "주문 진행 내역",
   orderCancel: "주문 취소",
   orderHistory: "주문 내역",
   orderEmpty: "주문 없음",

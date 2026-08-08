@@ -182,6 +182,13 @@ import {
   npProcessShopRestockAlerts,
 } from "./restock-alert-service.js";
 import {
+  npInspectShopOrderNotifications,
+  npListRecentShopOrderNotifications,
+  npProcessShopOrderNotifications,
+  npRetryShopOrderNotifications,
+} from "./order-notification-service.js";
+import { NP_SHOP_ORDER_NOTIFICATION_KIND } from "./order-notification-contract.js";
+import {
   npInspectShopShippingPolicies,
   npListShopShippingPolicies,
 } from "./shipping-policy-service.js";
@@ -853,6 +860,7 @@ const messages = {
       "The carrier reported an exception while transporting your return.",
     "shop.orderExpires": "Pending order expires",
     "shop.orderCreated": "Created",
+    "shop.orderNotifications": "Order updates",
     "shop.orderCancel": "Cancel order and delete private details",
     "shop.orderHistory": "Order history",
     "shop.orderEmpty": "No orders have been created for this browser identity.",
@@ -1093,6 +1101,7 @@ const messages = {
     "shop.orderReturnTrackingException": "반품 운송 중 택배사 예외가 발생했습니다.",
     "shop.orderExpires": "결제 대기 만료",
     "shop.orderCreated": "생성",
+    "shop.orderNotifications": "주문 진행 내역",
     "shop.orderCancel": "주문 취소 및 개인정보 삭제",
     "shop.orderHistory": "주문 내역",
     "shop.orderEmpty": "이 브라우저 식별자로 만든 주문이 없습니다.",
@@ -1242,6 +1251,11 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-restock-alerts",
           "widget:shop-restock-alert-health",
           "action:shop-restock-alert-reconcile",
+          "dashboard:shop-order-notifications",
+          "widget:shop-order-notification-health",
+          "table:shop-order-notifications",
+          "action:shop-order-notification-reconcile",
+          "action:shop-order-notification-retry",
           "dashboard:shop-carts",
           "widget:shop-cart-health",
           "action:shop-cart-cleanup",
@@ -1379,6 +1393,7 @@ export function createShop(options: NpShopOptions = {}) {
         "order-draft-status": "[data-np-shop-order-draft-status]",
         "order-line": "[data-np-shop-order-line]",
         "order-status": "[data-np-shop-order-status]",
+        "order-notifications": "[data-np-shop-order-notifications]",
         "fulfillment-status": "[data-np-shop-fulfillment-status]",
         "tracking-status": "[data-np-shop-tracking-status]",
         "return-tracking-status": "[data-np-shop-return-tracking-status]",
@@ -1406,6 +1421,11 @@ export function createShop(options: NpShopOptions = {}) {
         kind: "shop.product-restocked",
         label: "Product restock alerts",
         description: "One selected Shop product or option became available again.",
+      });
+      registerNotificationKind({
+        kind: NP_SHOP_ORDER_NOTIFICATION_KIND,
+        label: "Shop order updates",
+        description: "A durable Shop order, payment, delivery, return, or refund state changed.",
       });
     },
     hooks: {
@@ -1482,6 +1502,14 @@ export function createShop(options: NpShopOptions = {}) {
           description:
             "PII-free member-owned product or option alerts awaiting one availability transition.",
           priority: 17,
+        },
+        {
+          id: "shop-order-notifications-total",
+          label: "Order notification events",
+          kind: "metric",
+          actionId: "countOrderNotifications",
+          description: "PII-free durable order timeline and delivery outbox events.",
+          priority: 16,
         },
         {
           id: "shop-carts-total",
@@ -1675,6 +1703,14 @@ export function createShop(options: NpShopOptions = {}) {
             "Checks bounded storage, member/product targets, processing leases, and pending availability.",
         },
         {
+          id: "shop-order-notification-health",
+          label: "Order notification delivery",
+          kind: "status",
+          actionId: "orderNotificationHealth",
+          description:
+            "Checks PII-free delivery state, bounded leases, and expired private recipient sidecars.",
+        },
+        {
           id: "shop-cart-health",
           label: "Cart storage",
           kind: "status",
@@ -1807,6 +1843,19 @@ export function createShop(options: NpShopOptions = {}) {
           confirm: "Process one bounded batch of active Shop restock alerts for this site?",
         },
         {
+          id: "shop-order-notification-reconcile",
+          label: "Deliver order notifications",
+          actionId: "reconcileOrderNotifications",
+          confirm: "Process one bounded batch of pending Shop order notifications for this site?",
+        },
+        {
+          id: "shop-order-notification-retry",
+          label: "Retry attention order notifications",
+          actionId: "retryOrderNotifications",
+          confirm:
+            "Reset one bounded batch of attention notifications? An ambiguous prior email delivery may be duplicated.",
+        },
+        {
           id: "shop-cart-cleanup",
           label: "Clean expired carts",
           actionId: "cleanupExpiredCarts",
@@ -1834,6 +1883,23 @@ export function createShop(options: NpShopOptions = {}) {
         },
       ],
       tables: [
+        {
+          id: "shop-order-notifications",
+          label: "Recent order notifications (recipient withheld)",
+          columns: [
+            { name: "eventId", label: "Event" },
+            { name: "orderId", label: "Order" },
+            { name: "kind", label: "Kind" },
+            { name: "status", label: "Status" },
+            { name: "inboxStatus", label: "Inbox" },
+            { name: "emailStatus", label: "Email" },
+            { name: "attempts", label: "Attempts" },
+            { name: "occurredAt", label: "Occurred" },
+            { name: "lastErrorCode", label: "Error" },
+          ],
+          rowsActionId: "recentOrderNotifications",
+          emptyMessage: "No Shop order notification event exists for this site.",
+        },
         {
           id: "shop-product-reviews",
           label: "Recent verified-purchase reviews",
@@ -2840,6 +2906,102 @@ export function createShop(options: NpShopOptions = {}) {
               ok: true,
               data: `Inspected ${result.inspected.toString()}, notified ${result.notified.toString()}, suppressed ${result.suppressed.toString()}, retained ${result.unavailable.toString()} unavailable, removed ${result.orphaned.toString()} orphaned, found ${result.invalid.toString()} malformed, and cleaned ${result.cleaned.toString()} expired restock alert row(s).`,
             };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      countOrderNotifications: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npInspectShopOrderNotifications();
+            return {
+              ok: true,
+              data: {
+                value: counts.pending + counts.claimed + counts.completed + counts.attention,
+                delta: `${counts.pending.toString()} pending, ${counts.attention.toString()} attention`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      orderNotificationHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npInspectShopOrderNotifications();
+            if (
+              counts.invalidSample > 0 ||
+              counts.invalidPrivateSample > 0 ||
+              counts.orphanPrivateSample > 0 ||
+              counts.attention > 0
+            ) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed event(s), ${counts.invalidPrivateSample.toString()} malformed and ${counts.orphanPrivateSample.toString()} orphaned private row(s), and ${counts.attention.toString()} attention event(s).`,
+              );
+            }
+            if (
+              counts.pending > 0 ||
+              counts.claimed > 0 ||
+              counts.staleClaimSample > 0 ||
+              counts.expiredPrivate > 0 ||
+              counts.sampleBoundReached
+            ) {
+              return npAdminStatus(
+                "warn",
+                `${counts.pending.toString()} pending, ${counts.claimed.toString()} claimed, ${counts.staleClaimSample.toString()} stale lease(s), and ${counts.expiredPrivate.toString()} expired private recipient row(s) await bounded reconciliation${counts.sampleBoundReached ? "; diagnostic sample bound reached" : ""}.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.completed.toString()} completed order notification event(s).`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Order notification health check failed.",
+            );
+          }
+        },
+      },
+      recentOrderNotifications: {
+        kind: "table",
+        handler: async () => {
+          try {
+            const rows = await npListRecentShopOrderNotifications();
+            return npAdminTable(rows, rows.length);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      reconcileOrderNotifications: {
+        kind: "action",
+        handler: async () => {
+          try {
+            const result = await npProcessShopOrderNotifications(runtime.basePath);
+            return {
+              ok: true,
+              data: `Inspected ${result.inspected.toString()}, completed ${result.completed.toString()}, deferred ${result.deferred.toString()}, moved ${result.attention.toString()} to attention, found ${result.invalid.toString()} malformed, and cleaned ${result.cleaned.toString()} expired row(s).`,
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      retryOrderNotifications: {
+        kind: "action",
+        handler: async (_data, ctx) => {
+          if (ctx.actionInvocation?.kind !== "staff") {
+            return { ok: false, error: "Order notification retry requires a direct staff action." };
+          }
+          try {
+            const count = await npRetryShopOrderNotifications();
+            return { ok: true, data: `Reset ${count.toString()} attention event(s).` };
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
           }
@@ -4854,6 +5016,15 @@ export function createShop(options: NpShopOptions = {}) {
     ],
     scheduled: [
       {
+        id: "process-order-notifications",
+        cron: "* * * * *",
+        description:
+          "Deliver one bounded batch of durable order notifications and expire private recipient sidecars.",
+        handler: async () => {
+          await npProcessShopOrderNotifications(runtime.basePath);
+        },
+      },
+      {
         id: "reconcile-restock-alerts",
         cron: "*/5 * * * *",
         description:
@@ -5720,6 +5891,43 @@ export {
   npResolveShopRestockTarget,
   npSubscribeShopRestockAlert,
 } from "./restock-alert-service.js";
+export {
+  NP_SHOP_ORDER_NOTIFICATION_KIND,
+  NP_SHOP_ORDER_NOTIFICATION_LIST_CONTRACT,
+  NP_SHOP_ORDER_NOTIFICATION_PRIVATE_CONTRACT,
+  NP_SHOP_ORDER_NOTIFICATION_STORAGE_CONTRACT,
+  NpShopOrderNotificationContractError,
+  npAnalyzeShopOrderNotificationPrivate,
+  npAnalyzeShopOrderNotificationStorage,
+  npRequireShopOrderNotificationListWire,
+  npRequireShopOrderNotificationPrivate,
+  npRequireShopOrderNotificationStorage,
+  npShopOrderNotificationKinds,
+  npShopOrderNotificationLimits,
+} from "./order-notification-contract.js";
+export type {
+  NpShopOrderNotificationChannelStatus,
+  NpShopOrderNotificationKind,
+  NpShopOrderNotificationListWire,
+  NpShopOrderNotificationPrivate,
+  NpShopOrderNotificationStatus,
+  NpShopOrderNotificationStorage,
+  NpShopOrderNotificationWire,
+} from "./order-notification-contract.js";
+export {
+  npBuildShopOrderNotificationEmail,
+  npCleanupShopOrderNotifications,
+  npInspectShopOrderNotifications,
+  npListRecentShopOrderNotifications,
+  npListShopOrderNotifications,
+  npProcessShopOrderNotifications,
+  npRetryShopOrderNotifications,
+} from "./order-notification-service.js";
+export type {
+  NpShopOrderNotificationAdminRow,
+  NpShopOrderNotificationInspection,
+  NpShopOrderNotificationProcessResult,
+} from "./order-notification-service.js";
 export type {
   NpShopRestockAlertInspection,
   NpShopRestockProcessResult,

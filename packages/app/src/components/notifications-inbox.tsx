@@ -27,6 +27,7 @@ const LABELS: Record<string, string> = {
   "follow.activity": "Subscribed activity",
   "forum.question-answered": "Question answered",
   "shop.product-restocked": "Back in stock",
+  "shop.order-update": "Order update",
 };
 
 export function NotificationsInbox({
@@ -320,6 +321,10 @@ function summaryFor(item: NotificationInboxItem): string {
       const option = readString(item.payload, "option");
       if (title && option && title !== option) return `“${title}” (${option}) is available again.`;
       return title ? `“${title}” is available again.` : "A product is available again.";
+    }
+    case "shop.order-update": {
+      const title = readString(item.payload, "title");
+      return title ? `${title}.` : "Your order status changed.";
     }
     default:
       return "A new notification was added to your inbox.";

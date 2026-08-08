@@ -319,6 +319,7 @@ export interface NpShopMessages {
   orderReturnTrackingException: string;
   orderExpires: string;
   orderCreated: string;
+  orderNotifications: string;
   orderCancel: string;
   orderHistory: string;
   orderEmpty: string;
@@ -623,6 +624,7 @@ export interface NpShopCartClientMessages {
   orderReturnTrackingException: string;
   orderExpires: string;
   orderCreated: string;
+  orderNotifications: string;
   orderCancel: string;
   orderHistory: string;
   orderEmpty: string;

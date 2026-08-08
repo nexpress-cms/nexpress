@@ -14,6 +14,8 @@ import {
   type NpShopStoredFulfillment,
 } from "./fulfillment-contract.js";
 import { NP_SHOP_PLUGIN_ID, type NpShopTransaction } from "./order-draft-service.js";
+import { npStageShopOrderNotification } from "./order-notification-service.js";
+import { npRequireStoredShopOrder } from "./order-contract.js";
 import {
   NP_SHOP_TRACKING_RECEIPT_CONTRACT,
   NP_SHOP_TRACKING_POLL_CURSOR_CONTRACT,
@@ -120,7 +122,7 @@ function requireOrderLookupRow(
   key: string,
   orderId: string,
   purgeAt: string,
-): void {
+): string {
   if (
     typeof value !== "object" ||
     value === null ||
@@ -149,6 +151,7 @@ function requireOrderLookupRow(
       "tracking order lookup must exactly match its shipment retention.",
     ]);
   }
+  return candidate.ownerSegment;
 }
 
 function requireBookingRow(
@@ -454,13 +457,32 @@ export async function npApplyShopTrackingEvent(
         "The tracking event has no retained commercial order.",
       );
     }
-    requireOrderLookupRow(
+    const ownerSegment = requireOrderLookupRow(
       lookupRow.value,
       lookupRow.expiresAt,
       lookupRow.key,
       event.orderId,
       booking.purgeAt,
     );
+    const orderRow = await readExactRow(tx, siteId, `order:${ownerSegment}:${event.orderId}`, true);
+    if (!orderRow) {
+      throw new NpShopTrackingConflictError(
+        "tracking_booking_not_found",
+        "The tracking event has no retained commercial order.",
+      );
+    }
+    const order = npRequireStoredShopOrder(orderRow.value);
+    if (
+      orderRow.expiresAt === null ||
+      orderRow.expiresAt.toISOString() !== order.purgeAt ||
+      order.id !== event.orderId ||
+      order.ownerSegment !== ownerSegment ||
+      order.purgeAt !== booking.purgeAt
+    ) {
+      throw new NpShopTrackingContractError("Invalid tracking order storage", [
+        "tracking order must exactly match its lookup and shipment retention.",
+      ]);
+    }
     if (new Date(booking.purgeAt) <= receivedAt) {
       throw new NpShopTrackingConflictError(
         "tracking_shipment_expired",
@@ -572,7 +594,20 @@ export async function npApplyShopTrackingEvent(
               "the first canonical tracking event must create durable state.",
             ]);
           })());
-    if (outcome === "advanced") await persistTracking(tx, siteId, tracking);
+    if (outcome === "advanced") {
+      await persistTracking(tx, siteId, tracking);
+      if (event.status === "delivered") {
+        await npStageShopOrderNotification(tx, siteId, {
+          orderId: order.id,
+          ownerSegment: order.ownerSegment,
+          kind: "delivery.delivered",
+          orderRevision: order.revision,
+          occurredAt: event.occurredAt,
+          purgeAt: order.purgeAt,
+          email: null,
+        });
+      }
+    }
     const receipt: NpShopStoredTrackingReceipt = {
       contract: NP_SHOP_TRACKING_RECEIPT_CONTRACT,
       providerId,
