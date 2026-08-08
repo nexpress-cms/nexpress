@@ -1,5 +1,16 @@
 # @nexpress/plugin-block-stats
 
+## 0.4.3
+
+### Patch Changes
+
+- Updated dependencies [5560f00]
+- Updated dependencies [1b34745]
+- Updated dependencies [bd52dc5]
+- Updated dependencies [d39f368]
+  - @nexpress/plugin-sdk@0.4.3
+  - @nexpress/blocks@0.4.3
+
 ## 0.4.2
 
 ### Patch Changes
