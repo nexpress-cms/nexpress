@@ -442,9 +442,17 @@ real product domain, not just blog/community. Ship as a plugin package
   return destination, a maximum-24-hour private origin deleted after
   confirmation, durable two-stage reconciliation, transient owner label bytes,
   PII-free Admin/Doctor diagnostics, scaffold guidance, cleanup, both skins,
-  and PostgreSQL coverage share the contract. Return postage quotes,
-  recurring pickup, exchanges/automatic refunds, eligibility policy, and
+  and PostgreSQL coverage share the contract. Return postage charging,
+  recurring pickup, exchanges/automatic refunds, eligibility/payer policy, and
   provider protocols remain separate.
+- **Provider-neutral return-postage quote and selection (shipped)** — carrier
+  adapters may add paired quote/create-v2 methods over approved-return
+  logistics. One exact bounded same-currency method list, revision-safe owner
+  selection, a maximum-one-hour private origin sidecar, provider I/O outside
+  transactions, and an immutable PII-free method snapshot reach both skins,
+  Storefront hooks, Admin/Doctor, cleanup, scaffolds, and PostgreSQL coverage.
+  Existing v1 return creation stays valid. Charging, refund deduction, payer
+  and jurisdiction policy, recurrence, and provider protocols remain separate.
 - **Provider-neutral return tracking (shipped)** — optional exact raw-body
   callback and bounded polling capabilities advance one independent PII-free
   reverse-shipment state with stable receipts, leases/backoff, owner-visible

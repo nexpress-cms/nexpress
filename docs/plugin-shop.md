@@ -1303,6 +1303,83 @@ Once the first verified reverse-tracking event exists, return-shipment
 cancellation closes: local cancellation can no longer safely claim that the
 physical parcel stopped moving.
 
+### Return-postage quote and selection
+
+Carrier adapters that already implement paired return logistics may add
+`quoteReturnShipping` and `createQuotedReturnShipment` together. The pair is
+additive: omitting both preserves the existing v1 return-creation flow, while
+providing only one fails during `createShop()` configuration. Quoting also
+requires the same completed outbound booking, approved physical return, and
+opaque server-only `returnLocationReference` as return logistics.
+
+```ts
+const carrier: NpShopCarrierAdapter = {
+  // bookShipment, createReturnShipment, cancelReturnShipment omitted here
+  async quoteReturnShipping(request) {
+    const quote = await quoteProviderReturn({
+      quoteId: request.quoteId,
+      origin: request.origin,
+      destinationReference: "configured-server-side",
+      mode: request.mode,
+      items: request.items,
+    });
+    return {
+      contract: "np.shop-return-postage-quote-result.v1",
+      quoteId: request.quoteId,
+      methods: quote.methods.map((method) => ({
+        id: method.id,
+        label: method.label,
+        amountMinor: method.amountMinor,
+        estimatedTransit: method.estimatedTransit,
+      })),
+      expiresAt: quote.expiresAt,
+    };
+  },
+  async createQuotedReturnShipment(request) {
+    return createProviderReturn({
+      ...request,
+      selectedPostage: request.postageMethod,
+    });
+  },
+};
+```
+
+`np.shop-return-postage-quote-request.v1` contains one fresh quote UUID, the
+approved immutable line subset, outbound shipment/booking tuple, order
+currency, drop-off or pickup mode, optional window, and exact private origin.
+The provider call occurs outside a database transaction. Its exact result has
+1–20 unique methods, integer minor-unit amounts in the same order currency,
+optional bounded transit days, and an expiry no later than one hour after the
+request. Provider results cannot echo an address, customer identity, opaque
+destination token, URL, or arbitrary metadata.
+
+Shop re-locks the order, return, and outbound booking after provider I/O, then
+stores `np.shop-return-postage-storage.v1` separately from the private origin.
+The public quote is PII-free. Its sidecar expires with the quote within one
+hour, and bounded scheduled cleanup deletes both rows. Owner selection is an
+exact quote-revision compare-and-swap and freezes
+`np.shop-return-postage-method.v1`: provider, quote/method ids, label,
+currency, integer amount, transit estimate, and quote timestamps.
+
+Quoted logistics creation consumes that selected snapshot and origin in the
+same transaction that creates the durable logistics intent, permanently
+deletes both quote rows, then calls `createQuotedReturnShipment` outside the
+transaction with `np.shop-return-logistics-request.v2`. Provider retry keeps
+the same logistics UUID, private logistics sidecar, and selected method. The
+existing v1 method remains the path for a return created without a quote.
+
+The owner order page exposes quote, selection, and creation controls only when
+the capability is configured. Classic and storefront-full skins share the
+same prepared UI contract, while the independent Storefront theme consumes
+only `[data-np-shop-return-postage-status]`. Admin and Doctor expose PII-free counts,
+health, newest rows, API/action inventory, provider mismatch, malformed rows,
+private-sidecar mismatch, and expired cleanup state.
+
+The quoted amount is informational logistics state. This contract does not
+charge a payment method, change frozen order totals, deduct a refund, decide
+whether the merchant or customer pays, implement jurisdiction policy, recur a
+quote, or define provider-specific protocols.
+
 ### Reverse-shipment tracking
 
 `verifyReturnTrackingWebhook` and `readReturnTracking` are independent,
@@ -1377,7 +1454,7 @@ manual poll action; Doctor validates the same optional route, scheduled task,
 and action-kind inventory after adapter removal.
 
 This boundary assumes one completed outbound booking from the same configured
-carrier. It does not buy or regenerate the outbound label, quote return postage,
+carrier. It does not buy or regenerate the outbound label, charge return postage,
 schedule recurring pickups, inspect warehouse contents, implement
 exchanges/refunds, or decide return eligibility and customer-service policy.
 
@@ -1803,6 +1880,7 @@ The main public hooks are `.np-shop`, `.np-shop-product-card`,
 `[data-np-shop-fulfillment-status]`,
 `.np-shop-return-form`, `.np-shop-return-summary`,
 `[data-np-shop-return-status]`,
+`[data-np-shop-return-postage-status]`,
 `[data-np-shop-return-tracking-status]`,
 `[data-np-shop-surface]`, `[data-np-shop-skin]`,
 `[data-np-shop-inventory]`, `[data-np-shop-block]`, and

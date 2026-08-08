@@ -628,7 +628,8 @@
   .np-shop-return-form,
   .np-shop-return-summary,
   .np-shop-return-logistics-form,
-  .np-shop-return-logistics-summary {
+  .np-shop-return-logistics-summary,
+  .np-shop-return-postage {
     display: grid;
     gap: 0.75rem;
     padding-top: 1rem;
@@ -669,9 +670,28 @@
   }
 
   .np-shop-return-logistics-form,
-  .np-shop-return-logistics-summary {
+  .np-shop-return-logistics-summary,
+  .np-shop-return-postage,
+  .np-shop-return-postage-methods,
+  .np-shop-return-postage-selected {
     display: grid;
     gap: 0.75rem;
+  }
+
+  .np-shop-return-postage-methods article,
+  .np-shop-return-postage-selected {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.5rem 1rem;
+    align-items: center;
+    padding: 0.75rem;
+    border: 1px solid var(--np-shop-line, var(--np-color-border, #deddd8));
+    border-radius: var(--np-radius-sm, 0.35rem);
+  }
+
+  .np-shop-return-postage-methods button,
+  .np-shop-return-postage-selected button {
+    grid-column: 1 / -1;
   }
 
   .np-shop-return-logistics-summary[data-np-shop-return-logistics-status="active"] {

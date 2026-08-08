@@ -23,6 +23,10 @@ import {
   npRequireShopReturnLogistics,
   type NpShopReturnLogistics,
 } from "./return-logistics-contract.js";
+import {
+  npRequireShopReturnPostageQuote,
+  type NpShopReturnPostageQuote,
+} from "./return-postage-contract.js";
 import type {
   NpShopCartClientMessages,
   NpShopCartQuote,
@@ -74,6 +78,11 @@ interface ReturnResponse {
 interface ReturnLogisticsResponse {
   logistics: NpShopReturnLogistics;
   duplicate: boolean;
+  csrfToken: string | null;
+}
+
+interface ReturnPostageResponse {
+  quote: NpShopReturnPostageQuote;
   csrfToken: string | null;
 }
 
@@ -286,6 +295,35 @@ async function requestReturnLogistics(
     );
   }
   return { ...payload, logistics: npRequireShopReturnLogistics(payload.logistics) };
+}
+
+async function requestReturnPostage(
+  apiPath: string,
+  method: "POST" | "PATCH",
+  csrfToken: string | null,
+  body: unknown,
+): Promise<ReturnPostageResponse> {
+  const response = await fetch(apiPath, {
+    method,
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = (await response.json()) as
+    ReturnPostageResponse | { message?: string; error?: string };
+  if (!response.ok || !("quote" in payload)) {
+    const failure = payload as { message?: string; error?: string };
+    throw new ShopRequestError(
+      failure.error ?? "return_postage_failed",
+      failure.message ?? failure.error ?? "Return shipping quote failed.",
+    );
+  }
+  return { ...payload, quote: npRequireShopReturnPostageQuote(payload.quote) };
 }
 
 export function ShopAddToCart({
@@ -1345,6 +1383,7 @@ export function ShopOrder({
   apiPath,
   returnApiPath,
   returnLogisticsApiPath,
+  returnPostageApiPath,
   returnLogisticsLabelPath,
   basePath,
   orderId,
@@ -1354,6 +1393,7 @@ export function ShopOrder({
   apiPath: string;
   returnApiPath: string;
   returnLogisticsApiPath?: string;
+  returnPostageApiPath?: string;
   returnLogisticsLabelPath?: string;
   basePath: string;
   orderId: string;
@@ -1367,6 +1407,9 @@ export function ShopOrder({
   const [error, setError] = useState("");
   const [returnLogisticsMode, setReturnLogisticsMode] =
     useState<NpShopReturnLogistics["mode"]>("dropoff");
+  const [returnPostageQuote, setReturnPostageQuote] = useState<NpShopReturnPostageQuote | null>(
+    null,
+  );
 
   useEffect(() => {
     void requestOrder(apiPath, "GET", { orderId })
@@ -1469,13 +1512,126 @@ export function ShopOrder({
     }
   }
 
+  async function quoteReturnShipping(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (
+      !order?.returnRequest ||
+      order.returnRequest.status !== "approved" ||
+      order.returnRequest.logistics ||
+      !returnPostageApiPath
+    ) {
+      return;
+    }
+    const form = new FormData(event.currentTarget);
+    const text = (name: string): string => {
+      const value = form.get(name);
+      return typeof value === "string" ? value.trim() : "";
+    };
+    const nullable = (name: string): string | null => text(name) || null;
+    const mode = text("mode");
+    const readyValue = text("readyAt");
+    const closeValue = text("closeAt");
+    setBusy(true);
+    setError("");
+    try {
+      const response = await requestReturnPostage(returnPostageApiPath, "POST", csrfToken, {
+        orderId: order.id,
+        returnId: order.returnRequest.id,
+        expectedReturnRevision: order.returnRequest.revision,
+        mode,
+        origin: {
+          recipientName: text("recipientName"),
+          phone: text("phone"),
+          countryCode: text("countryCode").toUpperCase(),
+          postalCode: text("postalCode"),
+          addressLine1: text("addressLine1"),
+          addressLine2: nullable("addressLine2"),
+          locality: text("locality"),
+          administrativeArea: nullable("administrativeArea"),
+        },
+        readyAt: mode === "pickup" && readyValue ? new Date(readyValue).toISOString() : null,
+        closeAt: mode === "pickup" && closeValue ? new Date(closeValue).toISOString() : null,
+      });
+      setReturnPostageQuote(response.quote);
+      setCsrfToken(response.csrfToken);
+    } catch (caught) {
+      if (
+        caught instanceof ShopRequestError &&
+        [
+          "return_postage_expired",
+          "return_postage_revision_conflict",
+          "return_postage_return_conflict",
+          "return_postage_not_found",
+        ].includes(caught.code)
+      ) {
+        setReturnPostageQuote(null);
+      }
+      setError(caught instanceof Error ? caught.message : messages.orderReturnPostageFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function selectReturnPostage(methodId: string): Promise<void> {
+    if (!order?.returnRequest || !returnPostageQuote || !returnPostageApiPath) return;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await requestReturnPostage(returnPostageApiPath, "PATCH", csrfToken, {
+        orderId: order.id,
+        returnId: order.returnRequest.id,
+        quoteId: returnPostageQuote.id,
+        expectedRevision: returnPostageQuote.revision,
+        methodId,
+      });
+      setReturnPostageQuote(response.quote);
+      setCsrfToken(response.csrfToken);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : messages.orderReturnPostageFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createQuotedReturnShipping(): Promise<void> {
+    if (!order?.returnRequest || !returnPostageQuote?.selectedMethod || !returnLogisticsApiPath) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const response = await requestReturnLogistics(returnLogisticsApiPath, "POST", csrfToken, {
+        orderId: order.id,
+        returnId: order.returnRequest.id,
+        expectedReturnRevision: order.returnRequest.revision,
+        postageQuoteId: returnPostageQuote.id,
+        expectedPostageRevision: returnPostageQuote.revision,
+      });
+      setOrder({
+        ...order,
+        returnRequest: { ...order.returnRequest, logistics: response.logistics },
+      });
+      setReturnPostageQuote(null);
+      setCsrfToken(response.csrfToken);
+    } catch (caught) {
+      await refreshOrderState();
+      if (caught instanceof ShopRequestError && caught.code.startsWith("return_postage_")) {
+        setReturnPostageQuote(null);
+      }
+      setError(caught instanceof Error ? caught.message : messages.orderReturnLogisticsFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function createReturnShipping(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (
       !order?.returnRequest ||
       order.returnRequest.status !== "approved" ||
       order.returnRequest.logistics ||
-      !returnLogisticsApiPath
+      !returnLogisticsApiPath ||
+      returnPostageApiPath
     ) {
       return;
     }
@@ -1916,13 +2072,104 @@ export function ShopOrder({
                         </button>
                       ) : null}
                     </section>
+                  ) : order.returnRequest.status === "approved" &&
+                    returnLogisticsApiPath &&
+                    returnPostageQuote ? (
+                    <section
+                      className="np-shop-return-postage"
+                      data-np-shop-return-postage-status={returnPostageQuote.status}
+                    >
+                      <h3>{messages.orderReturnLogistics}</h3>
+                      <p>{messages.orderReturnPostageBoundary}</p>
+                      <p>
+                        {messages.orderReturnPostageExpires}:{" "}
+                        <time dateTime={returnPostageQuote.expiresAt}>
+                          {new Intl.DateTimeFormat(messages.locale, {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          }).format(new Date(returnPostageQuote.expiresAt))}
+                        </time>
+                      </p>
+                      {returnPostageQuote.selectedMethod ? (
+                        <article className="np-shop-return-postage-selected">
+                          <strong>{messages.orderReturnPostageSelected}</strong>
+                          <span>{returnPostageQuote.selectedMethod.label}</span>
+                          <span>
+                            {formatMoney(
+                              messages.locale,
+                              returnPostageQuote.selectedMethod.amountMinor,
+                              returnPostageQuote.selectedMethod.currency,
+                            )}
+                          </span>
+                          {returnPostageQuote.selectedMethod.estimatedTransit ? (
+                            <span>
+                              {returnPostageQuote.selectedMethod.estimatedTransit.minimumDays ===
+                              returnPostageQuote.selectedMethod.estimatedTransit.maximumDays
+                                ? returnPostageQuote.selectedMethod.estimatedTransit.minimumDays.toString()
+                                : `${returnPostageQuote.selectedMethod.estimatedTransit.minimumDays.toString()}–${returnPostageQuote.selectedMethod.estimatedTransit.maximumDays.toString()}`}{" "}
+                              {messages.orderDraftShippingDays}
+                            </span>
+                          ) : null}
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void createQuotedReturnShipping()}
+                          >
+                            {busy
+                              ? messages.orderReturnLogisticsCreating
+                              : messages.orderReturnLogisticsCreate}
+                          </button>
+                        </article>
+                      ) : (
+                        <div className="np-shop-return-postage-methods">
+                          {returnPostageQuote.methods.map((method) => (
+                            <article key={method.id}>
+                              <strong>{method.label}</strong>
+                              <span>
+                                {formatMoney(
+                                  messages.locale,
+                                  method.amountMinor,
+                                  returnPostageQuote.currency,
+                                )}
+                              </span>
+                              {method.estimatedTransit ? (
+                                <span>
+                                  {method.estimatedTransit.minimumDays ===
+                                  method.estimatedTransit.maximumDays
+                                    ? method.estimatedTransit.minimumDays.toString()
+                                    : `${method.estimatedTransit.minimumDays.toString()}–${method.estimatedTransit.maximumDays.toString()}`}{" "}
+                                  {messages.orderDraftShippingDays}
+                                </span>
+                              ) : null}
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => void selectReturnPostage(method.id)}
+                              >
+                                {busy
+                                  ? messages.orderReturnPostageSelecting
+                                  : messages.orderReturnPostageSelect}
+                              </button>
+                            </article>
+                          ))}
+                        </div>
+                      )}
+                    </section>
                   ) : order.returnRequest.status === "approved" && returnLogisticsApiPath ? (
                     <form
                       className="np-shop-return-logistics-form"
-                      onSubmit={(event) => void createReturnShipping(event)}
+                      onSubmit={(event) =>
+                        void (returnPostageApiPath
+                          ? quoteReturnShipping(event)
+                          : createReturnShipping(event))
+                      }
                     >
                       <h3>{messages.orderReturnLogistics}</h3>
-                      <p>{messages.orderReturnLogisticsPrivacy}</p>
+                      <p>
+                        {returnPostageApiPath
+                          ? messages.orderReturnPostagePrivacy
+                          : messages.orderReturnLogisticsPrivacy}
+                      </p>
                       <label>
                         <span>{messages.orderReturnLogistics}</span>
                         <select
@@ -1990,9 +2237,13 @@ export function ShopOrder({
                         </>
                       ) : null}
                       <button type="submit" disabled={busy}>
-                        {busy
-                          ? messages.orderReturnLogisticsCreating
-                          : messages.orderReturnLogisticsCreate}
+                        {returnPostageApiPath
+                          ? busy
+                            ? messages.orderReturnPostageQuoting
+                            : messages.orderReturnPostageQuote
+                          : busy
+                            ? messages.orderReturnLogisticsCreating
+                            : messages.orderReturnLogisticsCreate}
                       </button>
                     </form>
                   ) : null}

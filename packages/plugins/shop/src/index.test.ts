@@ -63,6 +63,9 @@ describe("shop factory", () => {
     expect(shopPlugin.manifest.styleSlots?.["order-notifications"]).toBe(
       "[data-np-shop-order-notifications]",
     );
+    expect(shopPlugin.manifest.styleSlots?.["return-postage"]).toBe(
+      "[data-np-shop-return-postage-status]",
+    );
     expect(
       Object.entries(shopPlugin.actions ?? {}).map(([id, action]) => ({
         id,
@@ -122,6 +125,9 @@ describe("shop factory", () => {
       { id: "countReturnLogistics", kind: "metric" },
       { id: "returnLogisticsHealth", kind: "status" },
       { id: "recentReturnLogistics", kind: "table" },
+      { id: "countReturnPostage", kind: "metric" },
+      { id: "returnPostageHealth", kind: "status" },
+      { id: "recentReturnPostage", kind: "table" },
       { id: "approveReturn", kind: "action" },
       { id: "rejectReturn", kind: "action" },
       { id: "receiveReturn", kind: "action" },
@@ -198,6 +204,7 @@ describe("shop factory", () => {
       "cleanup-expired-checkout-intents",
       "cleanup-expired-order-drafts",
       "cleanup-expired-return-logistics-private",
+      "cleanup-expired-return-postage",
       "maintain-orders",
     ]);
     expect([...createShop().runtime.skins.keys()]).toEqual(["classic", "storefront-full"]);
@@ -593,6 +600,67 @@ describe("shop factory", () => {
         },
       }),
     ).toThrow(/returnLocationReference requires return logistics methods/u);
+  });
+
+  it("adds return-postage quoting only as a paired additive return-logistics capability", () => {
+    const shop = createShop({
+      carrier: {
+        returnLocationReference: "returns-seoul-1",
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          createReturnShipment: () => Promise.reject(new Error("not called")),
+          cancelReturnShipment: () => Promise.reject(new Error("not called")),
+          quoteReturnShipping: () => Promise.reject(new Error("not called")),
+          createQuotedReturnShipment: () => Promise.reject(new Error("not called")),
+        },
+      },
+    });
+
+    expect(shop.runtime.carrierReturnPostageAdapter?.id).toBe("test-carrier");
+    expect(
+      shop.plugin.routes
+        ?.filter((route) => route.path === "/returns/postage")
+        .map((route) => route.method),
+    ).toEqual(["POST", "PATCH"]);
+    expect(shop.plugin.manifest.provides.apiRoutes).toContain("/returns/postage");
+    expect(shop.plugin.manifest.provides.adminExtensions).toEqual(
+      expect.arrayContaining([
+        "dashboard:shop-return-postage",
+        "widget:shop-return-postage-health",
+        "table:shop-return-postage",
+        "action:shop-return-postage",
+      ]),
+    );
+    expect(shop.plugin.actions?.countReturnPostage?.kind).toBe("metric");
+    expect(shop.plugin.actions?.returnPostageHealth?.kind).toBe("status");
+
+    expect(() =>
+      createShop({
+        carrier: {
+          returnLocationReference: "returns-seoul-1",
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+            createReturnShipment: () => Promise.reject(new Error("not called")),
+            cancelReturnShipment: () => Promise.reject(new Error("not called")),
+            quoteReturnShipping: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/quoteReturnShipping and createQuotedReturnShipment together/u);
+    expect(() =>
+      createShop({
+        carrier: {
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+            quoteReturnShipping: () => Promise.reject(new Error("not called")),
+            createQuotedReturnShipment: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/requires the paired return logistics methods/u);
   });
 
   it("adds reverse tracking as independent webhook and polling capabilities over return logistics", () => {

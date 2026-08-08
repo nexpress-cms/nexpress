@@ -44,6 +44,7 @@ import {
   type NpShopCarrierPickupAdapter,
   type NpShopCarrierReturnLabelAdapter,
   type NpShopCarrierReturnLogisticsAdapter,
+  type NpShopCarrierReturnPostageAdapter,
   type NpShopCarrierReturnTrackingAdapter,
   type NpShopCarrierReturnTrackingPollAdapter,
   type NpShopCarrierTrackingAdapter,
@@ -104,6 +105,7 @@ import {
 import { createShopReturnApiHandler } from "./return-api.js";
 import { createShopReturnLogisticsApiHandler } from "./return-logistics-api.js";
 import { createShopReturnLogisticsLabelApiHandler } from "./return-logistics-label-api.js";
+import { createShopReturnPostageApiHandler } from "./return-postage-api.js";
 import { createShopReturnTrackingApiHandler } from "./return-tracking-api.js";
 import {
   npRequireShopReturnApproveInput,
@@ -116,6 +118,12 @@ import {
   npCountShopReturnLogistics,
   npListRecentShopReturnLogistics,
 } from "./return-logistics-service.js";
+import {
+  npCleanupExpiredShopReturnPostage,
+  npCountShopReturnPostage,
+  npListRecentShopReturnPostage,
+  npReadShopReturnPostageHealth,
+} from "./return-postage-service.js";
 import {
   npCountShopReturnTrackingEvents,
   npCountShopReturnTrackingPolls,
@@ -415,6 +423,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   let carrierPickupAdapter: NpShopCarrierPickupAdapter | null = null;
   let carrierPickupLocationReference: string | null = null;
   let carrierReturnLogisticsAdapter: NpShopCarrierReturnLogisticsAdapter | null = null;
+  let carrierReturnPostageAdapter: NpShopCarrierReturnPostageAdapter | null = null;
   let carrierReturnLabelAdapter: NpShopCarrierReturnLabelAdapter | null = null;
   let carrierReturnLocationReference: string | null = null;
   let carrierReturnTrackingAdapter: NpShopCarrierReturnTrackingAdapter | null = null;
@@ -435,6 +444,8 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     const hasReturnCreate = configuredCarrierAdapter.createReturnShipment !== undefined;
     const hasReturnCancel = configuredCarrierAdapter.cancelReturnShipment !== undefined;
     const hasReturnLabel = configuredCarrierAdapter.readReturnLabel !== undefined;
+    const hasReturnPostageQuote = configuredCarrierAdapter.quoteReturnShipping !== undefined;
+    const hasQuotedReturnCreate = configuredCarrierAdapter.createQuotedReturnShipment !== undefined;
     const hasReturnTrackingWebhook =
       configuredCarrierAdapter.verifyReturnTrackingWebhook !== undefined;
     const hasReturnTrackingPoll = configuredCarrierAdapter.readReturnTracking !== undefined;
@@ -467,6 +478,21 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
       throw new Error(
         "Shop return logistics requires createReturnShipment and cancelReturnShipment together.",
       );
+    }
+    if (hasReturnPostageQuote !== hasQuotedReturnCreate) {
+      throw new Error(
+        "Shop return postage requires quoteReturnShipping and createQuotedReturnShipment together.",
+      );
+    }
+    if ((hasReturnPostageQuote || hasQuotedReturnCreate) && !hasReturnCreate) {
+      throw new Error("Shop return postage requires the paired return logistics methods.");
+    }
+    if (
+      hasReturnPostageQuote &&
+      (typeof configuredCarrierAdapter.quoteReturnShipping !== "function" ||
+        typeof configuredCarrierAdapter.createQuotedReturnShipment !== "function")
+    ) {
+      throw new Error("Shop return postage methods must be functions when provided.");
     }
     if (
       hasReturnCreate &&
@@ -563,6 +589,15 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
               configuredCarrierAdapter.cancelReturnShipment.bind(configuredCarrierAdapter),
           }
         : {}),
+      ...(configuredCarrierAdapter.quoteReturnShipping &&
+      configuredCarrierAdapter.createQuotedReturnShipment
+        ? {
+            quoteReturnShipping:
+              configuredCarrierAdapter.quoteReturnShipping.bind(configuredCarrierAdapter),
+            createQuotedReturnShipment:
+              configuredCarrierAdapter.createQuotedReturnShipment.bind(configuredCarrierAdapter),
+          }
+        : {}),
       ...(configuredCarrierAdapter.readReturnLabel
         ? {
             readReturnLabel:
@@ -600,6 +635,13 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     if (carrierAdapter.createReturnShipment && carrierAdapter.cancelReturnShipment) {
       carrierReturnLogisticsAdapter = carrierAdapter as NpShopCarrierReturnLogisticsAdapter;
     }
+    if (
+      carrierReturnLogisticsAdapter?.quoteReturnShipping &&
+      carrierReturnLogisticsAdapter.createQuotedReturnShipment
+    ) {
+      carrierReturnPostageAdapter =
+        carrierReturnLogisticsAdapter as NpShopCarrierReturnPostageAdapter;
+    }
     if (carrierReturnLogisticsAdapter?.readReturnLabel) {
       carrierReturnLabelAdapter = carrierReturnLogisticsAdapter as NpShopCarrierReturnLabelAdapter;
     }
@@ -629,6 +671,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     carrierPickupAdapter,
     carrierPickupLocationReference,
     carrierReturnLogisticsAdapter,
+    carrierReturnPostageAdapter,
     carrierReturnLabelAdapter,
     carrierReturnLocationReference,
     carrierReturnTrackingAdapter,
@@ -866,6 +909,17 @@ const messages = {
     "shop.orderReturnLogisticsPrivacy":
       "The pickup address is sent only to the configured carrier, deleted after confirmation, and otherwise expires within 24 hours.",
     "shop.orderReturnLogisticsFailed": "Return shipping could not be updated.",
+    "shop.orderReturnPostageQuote": "Get return shipping prices",
+    "shop.orderReturnPostageQuoting": "Getting return shipping prices…",
+    "shop.orderReturnPostageSelect": "Select this return method",
+    "shop.orderReturnPostageSelecting": "Selecting return method…",
+    "shop.orderReturnPostageSelected": "Selected return shipping method",
+    "shop.orderReturnPostageExpires": "Quote expires",
+    "shop.orderReturnPostagePrivacy":
+      "The origin is sent only to the configured carrier and expires with this quote within one hour.",
+    "shop.orderReturnPostageBoundary":
+      "This carrier price is informational for return shipment creation. It is not charged, deducted from a refund, or a decision about who pays.",
+    "shop.orderReturnPostageFailed": "Return shipping prices could not be updated.",
     "shop.orderReturnTrackingInTransit": "Your return is in transit to the return facility.",
     "shop.orderReturnTrackingOutForDelivery":
       "Your return is out for delivery to the return facility.",
@@ -1117,6 +1171,17 @@ const messages = {
     "shop.orderReturnLogisticsPrivacy":
       "회수 주소는 설정된 택배사에만 전달하고 확인 즉시 삭제하며, 확인되지 않아도 24시간 안에 만료됩니다.",
     "shop.orderReturnLogisticsFailed": "반품 배송을 갱신하지 못했습니다.",
+    "shop.orderReturnPostageQuote": "반품 배송비 조회",
+    "shop.orderReturnPostageQuoting": "반품 배송비를 조회하는 중…",
+    "shop.orderReturnPostageSelect": "이 반품 배송 방법 선택",
+    "shop.orderReturnPostageSelecting": "반품 배송 방법을 선택하는 중…",
+    "shop.orderReturnPostageSelected": "선택한 반품 배송 방법",
+    "shop.orderReturnPostageExpires": "견적 만료",
+    "shop.orderReturnPostagePrivacy":
+      "회수 주소는 설정된 택배사에만 전달하며 이 견적과 함께 1시간 안에 만료됩니다.",
+    "shop.orderReturnPostageBoundary":
+      "표시 금액은 반품 배송 생성용 운송사 견적입니다. 자동 결제·환불 차감이나 비용 부담자 판단을 하지 않습니다.",
+    "shop.orderReturnPostageFailed": "반품 배송비를 갱신하지 못했습니다.",
     "shop.orderReturnTrackingInTransit": "반품 상품이 반품 센터로 이동 중입니다.",
     "shop.orderReturnTrackingOutForDelivery": "반품 상품이 반품 센터 배송 출발 상태입니다.",
     "shop.orderReturnTrackingDelivered":
@@ -1174,6 +1239,9 @@ export function createShop(options: NpShopOptions = {}) {
     : null;
   const returnLogisticsLabelApiHandler = runtime.carrierReturnLabelAdapter
     ? createShopReturnLogisticsLabelApiHandler(runtime)
+    : null;
+  const returnPostageApiHandler = runtime.carrierReturnPostageAdapter
+    ? createShopReturnPostageApiHandler(runtime)
     : null;
   const returnTrackingApiHandler = runtime.carrierReturnTrackingAdapter
     ? createShopReturnTrackingApiHandler(runtime.carrierReturnTrackingAdapter)
@@ -1311,6 +1379,10 @@ export function createShop(options: NpShopOptions = {}) {
           "table:shop-return-logistics",
           ...(returnLogisticsApiHandler ? ["action:shop-return-logistics"] : []),
           ...(returnLogisticsLabelApiHandler ? ["action:shop-return-label-download"] : []),
+          "dashboard:shop-return-postage",
+          "widget:shop-return-postage-health",
+          "table:shop-return-postage",
+          ...(returnPostageApiHandler ? ["action:shop-return-postage"] : []),
           "dashboard:shop-carrier-pickups",
           "widget:shop-carrier-pickup-health",
           "table:shop-carrier-pickups",
@@ -1366,6 +1438,7 @@ export function createShop(options: NpShopOptions = {}) {
           ...(returnTrackingApiHandler ? ["/carrier/return-tracking/webhook"] : []),
           ...(carrierLabelApiHandler ? ["/carrier/shipping-label"] : []),
           ...(returnLogisticsApiHandler ? ["/returns/logistics"] : []),
+          ...(returnPostageApiHandler ? ["/returns/postage"] : []),
           ...(returnLogisticsLabelApiHandler ? ["/returns/logistics/label"] : []),
           ...(paymentAttemptApiHandler ? ["/payments/attempts"] : []),
         ],
@@ -1373,7 +1446,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with transient labels, and independent verified or reconciled reverse tracking. Recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
+          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Return-postage charging or payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: [
           "shop",
@@ -1427,6 +1500,7 @@ export function createShop(options: NpShopOptions = {}) {
         "tracking-status": "[data-np-shop-tracking-status]",
         "return-tracking-status": "[data-np-shop-return-tracking-status]",
         "return-status": "[data-np-shop-return-status]",
+        "return-postage": "[data-np-shop-return-postage-status]",
         "product-card": ".np-shop-product-card",
         "wishlist-action": "[data-np-shop-wishlist-action]",
         "restock-alert": "[data-np-shop-restock-alert]",
@@ -1702,6 +1776,15 @@ export function createShop(options: NpShopOptions = {}) {
             "PII-free provider return shipment and pickup state; origin addresses are excluded.",
           priority: 38,
         },
+        {
+          id: "shop-return-postage-total",
+          label: "Return-postage quotes",
+          kind: "metric" as const,
+          actionId: "countReturnPostage",
+          description:
+            "Short-lived PII-free carrier methods; private origins are withheld and expire with quotes.",
+          priority: 42,
+        },
         ...(paymentAttemptApiHandler
           ? [
               {
@@ -1880,6 +1963,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Return logistics contract",
           kind: "status" as const,
           actionId: "returnLogisticsHealth",
+        },
+        {
+          id: "shop-return-postage-health",
+          label: "Return-postage quote contract",
+          kind: "status" as const,
+          actionId: "returnPostageHealth",
         },
         ...(paymentAttemptApiHandler
           ? [
@@ -2677,6 +2766,22 @@ export function createShop(options: NpShopOptions = {}) {
           ],
           rowsActionId: "recentReturnLogistics",
           emptyMessage: "No provider-backed return shipment exists for this site.",
+        },
+        {
+          id: "shop-return-postage",
+          label: "Recent return-postage quotes (PII withheld)",
+          columns: [
+            { name: "quoteId", label: "Quote" },
+            { name: "returnId", label: "Return" },
+            { name: "provider", label: "Provider" },
+            { name: "status", label: "Status" },
+            { name: "currency", label: "Currency" },
+            { name: "amount", label: "Selected amount" },
+            { name: "privateOrigin", label: "Private origin" },
+            { name: "expiresAt", label: "Expires" },
+          ],
+          rowsActionId: "recentReturnPostage",
+          emptyMessage: "No return-postage quote exists for this site.",
         },
         ...(paymentAttemptApiHandler
           ? [
@@ -3758,6 +3863,91 @@ export function createShop(options: NpShopOptions = {}) {
           try {
             const result = await npListRecentShopReturnLogistics();
             return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      countReturnPostage: {
+        kind: "metric" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopReturnPostage(runtime.carrierReturnPostageAdapter?.id);
+            return {
+              ok: true as const,
+              data: {
+                value: counts.total,
+                delta: `${counts.selected.toString()} selected, ${counts.quoted.toString()} awaiting selection`,
+              },
+            };
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      returnPostageHealth: {
+        kind: "status" as const,
+        handler: async () => {
+          try {
+            const [counts, health] = await Promise.all([
+              npCountShopReturnPostage(runtime.carrierReturnPostageAdapter?.id),
+              runtime.carrierReturnPostageAdapter
+                ? npReadShopReturnPostageHealth()
+                : Promise.resolve(null),
+            ]);
+            if (
+              counts.invalidSample > 0 ||
+              counts.privateMismatchSample > 0 ||
+              counts.providerMismatchSample > 0
+            ) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed, ${counts.privateMismatchSample.toString()} private-sidecar-mismatched, and ${counts.providerMismatchSample.toString()} provider-mismatched return-postage row(s).`,
+              );
+            }
+            if (
+              health &&
+              (health.status === "error" ||
+                health.providerId !== runtime.carrierReturnPostageAdapter?.id)
+            ) {
+              return npAdminStatus(
+                "error",
+                `Return-postage provider last reported ${health.errorCode ?? "provider mismatch"} at ${health.attemptedAt}; no PII is retained in this diagnostic.`,
+              );
+            }
+            if (counts.expired > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.expired.toString()} expired return-postage quote(s) await bounded cleanup.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.selected.toString()} selected and ${counts.quoted.toString()} open return-postage quote(s); provider "${runtime.carrierReturnPostageAdapter?.id ?? "disabled"}" is configured.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Return-postage health check failed.",
+            );
+          }
+        },
+      },
+      recentReturnPostage: {
+        kind: "table" as const,
+        handler: async () => {
+          try {
+            const result = await npListRecentShopReturnPostage();
+            return npAdminTable(
+              result.rows,
+              result.truncated ? result.rows.length + 1 : result.rows.length,
+            );
           } catch (error) {
             return {
               ok: false as const,
@@ -5148,6 +5338,26 @@ export function createShop(options: NpShopOptions = {}) {
             },
           ]
         : []),
+      ...(returnPostageApiHandler
+        ? [
+            {
+              method: "POST" as const,
+              path: "/returns/postage",
+              description:
+                "Quote exact owner-scoped return-postage methods from one short-lived private origin.",
+              auth: false,
+              handler: returnPostageApiHandler,
+            },
+            {
+              method: "PATCH" as const,
+              path: "/returns/postage",
+              description:
+                "Freeze one revision-safe PII-free return-postage method for logistics creation.",
+              auth: false,
+              handler: returnPostageApiHandler,
+            },
+          ]
+        : []),
       ...(returnLogisticsLabelApiHandler
         ? [
             {
@@ -5222,6 +5432,15 @@ export function createShop(options: NpShopOptions = {}) {
           "Permanently delete one bounded oldest-first batch of expired return-origin sidecars for each active site.",
         handler: async () => {
           await npCleanupExpiredShopReturnLogisticsPrivate();
+        },
+      },
+      {
+        id: "cleanup-expired-return-postage",
+        cron: "47 * * * *",
+        description:
+          "Permanently delete one bounded batch of expired return-postage quotes and private origins.",
+        handler: async () => {
+          await npCleanupExpiredShopReturnPostage();
         },
       },
       ...(runtime.carrierTrackingPollAdapter
@@ -5693,6 +5912,54 @@ export {
   npShopReturnLogisticsModes,
   npShopReturnLogisticsStatuses,
 } from "./return-logistics-contract.js";
+export {
+  NP_SHOP_QUOTED_RETURN_LOGISTICS_REQUEST_CONTRACT,
+  NP_SHOP_RETURN_POSTAGE_HEALTH_CONTRACT,
+  NP_SHOP_RETURN_POSTAGE_METHOD_CONTRACT,
+  NP_SHOP_RETURN_POSTAGE_PRIVATE_CONTRACT,
+  NP_SHOP_RETURN_POSTAGE_QUOTE_CONTRACT,
+  NP_SHOP_RETURN_POSTAGE_QUOTE_REQUEST_CONTRACT,
+  NP_SHOP_RETURN_POSTAGE_QUOTE_RESULT_CONTRACT,
+  NP_SHOP_RETURN_POSTAGE_STORAGE_CONTRACT,
+  NpShopReturnPostageConflictError,
+  NpShopReturnPostageContractError,
+  NpShopReturnPostageUnavailableError,
+  npAnalyzeShopReturnPostageHealth,
+  npAnalyzeShopReturnPostageMethod,
+  npAnalyzeShopReturnPostageQuote,
+  npAnalyzeStoredShopReturnPostage,
+  npAnalyzeStoredShopReturnPostagePrivate,
+  npProjectShopReturnPostage,
+  npRequireShopQuotedReturnLogisticsCreateInput,
+  npRequireShopQuotedReturnLogisticsRequest,
+  npRequireShopReturnPostageHealth,
+  npRequireShopReturnPostageMethod,
+  npRequireShopReturnPostageQuote,
+  npRequireShopReturnPostageQuoteInput,
+  npRequireShopReturnPostageQuoteRequest,
+  npRequireShopReturnPostageQuoteResult,
+  npRequireShopReturnPostageSelectInput,
+  npRequireStoredShopReturnPostage,
+  npRequireStoredShopReturnPostagePrivate,
+  npShopReturnPostageLimits,
+  npShopReturnPostageStatuses,
+} from "./return-postage-contract.js";
+export type {
+  NpShopQuotedReturnLogisticsCreateInput,
+  NpShopQuotedReturnLogisticsRequest,
+  NpShopReturnPostageEstimate,
+  NpShopReturnPostageHealth,
+  NpShopReturnPostageMethod,
+  NpShopReturnPostageQuote,
+  NpShopReturnPostageQuoteInput,
+  NpShopReturnPostageQuoteMethod,
+  NpShopReturnPostageQuoteRequest,
+  NpShopReturnPostageQuoteResult,
+  NpShopReturnPostageSelectInput,
+  NpShopReturnPostageStatus,
+  NpShopStoredReturnPostage,
+  NpShopStoredReturnPostagePrivate,
+} from "./return-postage-contract.js";
 export type {
   NpShopReturnLogistics,
   NpShopReturnLogisticsCancelRequest,
@@ -5769,6 +6036,7 @@ export type {
   NpShopCarrierPickupAdapter,
   NpShopCarrierReturnLabelAdapter,
   NpShopCarrierReturnLogisticsAdapter,
+  NpShopCarrierReturnPostageAdapter,
   NpShopCarrierReturnTrackingAdapter,
   NpShopCarrierReturnTrackingPollAdapter,
   NpShopCarrierTrackingAdapter,
