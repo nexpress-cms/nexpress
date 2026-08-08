@@ -650,7 +650,15 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
 
     await db
       .update(shopProductsTable)
-      .set({ priceMinor: 22_000 })
+      .set({ currency: "USD", priceMinor: 22_000 })
+      .where(eq(shopProductsTable.id, productId));
+    await expect(
+      withCurrentSite("default", () => npProcessShopPriceAlerts(shop.runtime, { productId })),
+    ).resolves.toMatchObject({ inspected: 1, notified: 0, currencyMismatch: 1 });
+
+    await db
+      .update(shopProductsTable)
+      .set({ currency: "KRW", priceMinor: 22_000 })
       .where(eq(shopProductsTable.id, productId));
     await expect(
       withCurrentSite("default", () => npProcessShopPriceAlerts(shop.runtime, { productId })),
