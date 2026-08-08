@@ -25,6 +25,11 @@ import type {
   NpShopReturnLogisticsResult,
 } from "./return-logistics-contract.js";
 import type {
+  NpShopQuotedReturnLogisticsRequest,
+  NpShopReturnPostageQuoteRequest,
+  NpShopReturnPostageQuoteResult,
+} from "./return-postage-contract.js";
+import type {
   NpShopReturnTrackingPollRequest,
   NpShopReturnTrackingPollResult,
   NpShopReturnTrackingWebhookResult,
@@ -189,6 +194,20 @@ export interface NpShopCarrierAdapter {
   createReturnShipment?(
     input: NpShopReturnLogisticsRequest,
   ): NpShopReturnLogisticsResult | Promise<NpShopReturnLogisticsResult>;
+  /**
+   * Quote bounded return-postage methods for one approved physical return.
+   * The origin is short-lived private data and must never be logged or echoed.
+   */
+  quoteReturnShipping?(
+    input: NpShopReturnPostageQuoteRequest,
+  ): NpShopReturnPostageQuoteResult | Promise<NpShopReturnPostageQuoteResult>;
+  /**
+   * Create return logistics from the exact selected postage snapshot. This
+   * method is paired with quoteReturnShipping and preserves v1 creation.
+   */
+  createQuotedReturnShipment?(
+    input: NpShopQuotedReturnLogisticsRequest,
+  ): NpShopReturnLogisticsResult | Promise<NpShopReturnLogisticsResult>;
   /** Cancel one return shipment with the stable cancellation idempotency key. */
   cancelReturnShipment?(
     input: NpShopReturnLogisticsCancelRequest,
@@ -224,6 +243,9 @@ export type NpShopCarrierPickupAdapter = NpShopCarrierAdapter &
 
 export type NpShopCarrierReturnLogisticsAdapter = NpShopCarrierAdapter &
   Required<Pick<NpShopCarrierAdapter, "createReturnShipment" | "cancelReturnShipment">>;
+
+export type NpShopCarrierReturnPostageAdapter = NpShopCarrierReturnLogisticsAdapter &
+  Required<Pick<NpShopCarrierAdapter, "quoteReturnShipping" | "createQuotedReturnShipment">>;
 
 export type NpShopCarrierReturnLabelAdapter = NpShopCarrierReturnLogisticsAdapter &
   Required<Pick<NpShopCarrierAdapter, "readReturnLabel">>;

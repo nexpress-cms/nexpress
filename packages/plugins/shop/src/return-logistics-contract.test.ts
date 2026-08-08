@@ -18,6 +18,7 @@ import {
   npRequireShopReturnLogisticsCreateInput,
 } from "./return-logistics-contract.js";
 import { NP_SHOP_RETURN_TRACKING_CONTRACT } from "./return-tracking-contract.js";
+import { NP_SHOP_RETURN_POSTAGE_METHOD_CONTRACT } from "./return-postage-contract.js";
 
 const logisticsId = "123e4567-e89b-42d3-a456-426614174000";
 const returnId = "223e4567-e89b-42d3-a456-426614174000";
@@ -173,6 +174,37 @@ describe("Shop return logistics contract", () => {
       updatedAt: confirmedAt,
     } as const;
     expect(npAnalyzeStoredShopReturnLogistics(active)).toEqual([]);
+    const quoted = {
+      ...active,
+      postageMethod: {
+        contract: NP_SHOP_RETURN_POSTAGE_METHOD_CONTRACT,
+        providerId: "test-carrier",
+        quoteId: "723e4567-e89b-42d3-a456-426614174000",
+        methodId: "pickup-standard",
+        label: "Standard return",
+        currency: "KRW",
+        amountMinor: 4_000,
+        estimatedTransit: { minimumDays: 1, maximumDays: 3 },
+        quotedAt: requestedAt,
+        quoteExpiresAt: "2026-08-03T01:00:00.000Z",
+      },
+    } as const;
+    expect(npAnalyzeStoredShopReturnLogistics(quoted)).toEqual([]);
+    expect(
+      npAnalyzeStoredShopReturnLogistics({
+        ...quoted,
+        postageMethod: { ...quoted.postageMethod, providerId: "other-carrier" },
+      }),
+    ).toContain("stored return logistics.postageMethod provider must match logistics.");
+    expect(
+      npAnalyzeStoredShopReturnLogistics({
+        ...quoted,
+        postageMethod: {
+          ...quoted.postageMethod,
+          quoteExpiresAt: requestedAt,
+        },
+      }),
+    ).toContain("stored return logistics.postageMethod must be live at creation.");
     expect(npAnalyzeStoredShopReturnLogistics({ ...pending, status: "active" })).toContain(
       "stored return logistics provider confirmation fields do not match status.",
     );
@@ -232,6 +264,12 @@ describe("Shop return logistics contract", () => {
       },
     } as const;
     expect(npAnalyzeShopReturnLogistics(projected)).toEqual([]);
+    expect(
+      npAnalyzeShopReturnLogistics({
+        ...projected,
+        postageMethod: quoted.postageMethod,
+      }),
+    ).toEqual([]);
     expect(
       npAnalyzeShopReturnLogistics({
         ...projected,

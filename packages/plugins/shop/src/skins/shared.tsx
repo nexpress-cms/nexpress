@@ -167,6 +167,15 @@ function cartClientMessages(messages: NpShopMessages): NpShopCartClientMessages 
     orderReturnLogisticsCloseAt: messages.orderReturnLogisticsCloseAt,
     orderReturnLogisticsPrivacy: messages.orderReturnLogisticsPrivacy,
     orderReturnLogisticsFailed: messages.orderReturnLogisticsFailed,
+    orderReturnPostageQuote: messages.orderReturnPostageQuote,
+    orderReturnPostageQuoting: messages.orderReturnPostageQuoting,
+    orderReturnPostageSelect: messages.orderReturnPostageSelect,
+    orderReturnPostageSelecting: messages.orderReturnPostageSelecting,
+    orderReturnPostageSelected: messages.orderReturnPostageSelected,
+    orderReturnPostageExpires: messages.orderReturnPostageExpires,
+    orderReturnPostagePrivacy: messages.orderReturnPostagePrivacy,
+    orderReturnPostageBoundary: messages.orderReturnPostageBoundary,
+    orderReturnPostageFailed: messages.orderReturnPostageFailed,
     orderReturnTrackingInTransit: messages.orderReturnTrackingInTransit,
     orderReturnTrackingOutForDelivery: messages.orderReturnTrackingOutForDelivery,
     orderReturnTrackingDelivered: messages.orderReturnTrackingDelivered,
@@ -720,6 +729,7 @@ export function ShopOrderSurface({ skin, ...props }: NpShopOrderSkinProps & { sk
         apiPath={props.apiPath}
         returnApiPath={props.returnApiPath}
         returnLogisticsApiPath={props.returnLogisticsApiPath}
+        returnPostageApiPath={props.returnPostageApiPath}
         returnLogisticsLabelPath={props.returnLogisticsLabelPath}
         basePath={props.basePath}
         orderId={props.orderId}

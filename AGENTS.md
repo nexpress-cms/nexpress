@@ -2,7 +2,16 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-08 (Shop now owns independent member catalog
+**Last refreshed:** 2026-08-08 (Shop carrier adapters may now add one paired
+approved-return postage quote/create-v2 capability. Exact bounded
+same-currency methods, revision-safe owner selection, a maximum-one-hour
+private origin sidecar, provider I/O outside transactions, immutable PII-free
+logistics snapshots, Admin/Doctor, both skins, Storefront hooks, scaffold
+guidance, cleanup, and PostgreSQL coverage share the contract while v1 return
+creation remains valid. Charging, refund deduction, payer/jurisdiction policy,
+recurrence, and provider protocols remain separate.)
+
+**Earlier:** 2026-08-08 (Shop now owns independent member catalog
 price-drop alerts for the product price or one exact enabled variant. A
 180-day request captures one same-currency baseline, triggers once only below
 that baseline, uses a stable preference-aware member-inbox event, and retains

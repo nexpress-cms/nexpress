@@ -21,3 +21,6 @@ The same independent integration styles Shop's optional
 `[data-np-shop-surface="wishlist"]`, `[data-np-shop-wishlist-action]`, and
 `[data-np-shop-restock-alert]` hooks; Storefront does not own wishlist or
 restock-alert data, routes, delivery, or authentication.
+It also enhances `[data-np-shop-return-postage-status]` when Shop exposes optional
+return-postage quoting; the theme remains usable without Shop and owns no
+carrier, quote, selection, payment, or return policy.

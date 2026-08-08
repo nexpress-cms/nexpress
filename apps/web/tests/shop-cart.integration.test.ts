@@ -30,6 +30,8 @@ import {
   type NpShopReturnLogisticsCancelRequest,
   type NpShopReturnLogisticsLabelRequest,
   type NpShopReturnLogisticsRequest,
+  type NpShopQuotedReturnLogisticsRequest,
+  type NpShopReturnPostageQuoteRequest,
   type NpShopReturnTrackingPollRequest,
   type NpShopTrackingPollRequest,
 } from "@nexpress/plugin-shop";
@@ -5487,6 +5489,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       content: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
       retrievedAt: request.requestedAt,
     }));
+    const quoteReturnShipping = vi.fn(() => Promise.reject(new Error("not called")));
+    const createQuotedReturnShipment = vi.fn(() => Promise.reject(new Error("not called")));
     const returnShop = createShop({
       payment: {
         adapter: {
@@ -5510,6 +5514,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           createReturnShipment,
           cancelReturnShipment,
           readReturnLabel,
+          quoteReturnShipping,
+          createQuotedReturnShipment,
         },
       },
     });
@@ -5680,6 +5686,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(createReturnShipment).toHaveBeenCalledTimes(2);
     expect(cancelReturnShipment).toHaveBeenCalledTimes(1);
     expect(readReturnLabel).toHaveBeenCalledTimes(1);
+    expect(quoteReturnShipping).not.toHaveBeenCalled();
+    expect(createQuotedReturnShipment).not.toHaveBeenCalled();
     const expiredOrderId = "dd3e4567-e89b-42d3-a456-426614174000";
     const expiredLogisticsId = "ed3e4567-e89b-42d3-a456-426614174000";
     const expiredReturnId = "fd3e4567-e89b-42d3-a456-426614174000";
@@ -5807,6 +5815,246 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         returnShop.plugin.actions?.returnLogisticsHealth?.handler(undefined, {} as never),
       ),
     ).toMatchObject({ ok: true, data: { level: "ok" } });
+  });
+
+  it("quotes and freezes one return-postage method before creating v2 return logistics", async () => {
+    const ids = {
+      intentId: "413e4567-e89b-42d3-a456-426614174000",
+      draftId: "423e4567-e89b-42d3-a456-426614174000",
+      orderId: "433e4567-e89b-42d3-a456-426614174000",
+    };
+    const owner = await createPendingOrder(ids, "return-postage@example.com");
+    const quoteReturnShipping = vi.fn(async (request: NpShopReturnPostageQuoteRequest) => {
+      const providerDb = await getTestDb();
+      expect(
+        await providerDb
+          .select({ key: npPluginStorage.key })
+          .from(npPluginStorage)
+          .where(like(npPluginStorage.key, `return-postage%:${request.orderId}`)),
+      ).toEqual([]);
+      expect(request.origin.addressLine1).toBe("1 Return Quote Street");
+      expect(request.returnLocationReference).toBe("returns-seoul-1");
+      return {
+        contract: "np.shop-return-postage-quote-result.v1" as const,
+        quoteId: request.quoteId,
+        methods: [
+          {
+            id: "dropoff-standard",
+            label: "Standard return",
+            amountMinor: 4_000,
+            estimatedTransit: { minimumDays: 1, maximumDays: 3 },
+          },
+          {
+            id: "dropoff-express",
+            label: "Express return",
+            amountMinor: 6_000,
+            estimatedTransit: { minimumDays: 1, maximumDays: 1 },
+          },
+        ],
+        expiresAt: request.maximumExpiresAt,
+      };
+    });
+    const createQuotedReturnShipment = vi.fn(
+      async (request: NpShopQuotedReturnLogisticsRequest) => {
+        const providerDb = await getTestDb();
+        expect(
+          await providerDb
+            .select({ key: npPluginStorage.key })
+            .from(npPluginStorage)
+            .where(like(npPluginStorage.key, `return-postage%:${request.orderId}`)),
+        ).toEqual([]);
+        expect(request.origin.addressLine1).toBe("1 Return Quote Street");
+        expect(request.postageMethod).toMatchObject({
+          providerId: "test-carrier",
+          methodId: "dropoff-standard",
+          currency: "KRW",
+          amountMinor: 4_000,
+        });
+        return {
+          contract: "np.shop-return-logistics-result.v1" as const,
+          logisticsId: request.logisticsId,
+          returnId: request.returnId,
+          orderId: request.orderId,
+          returnReference: "return_quoted_1",
+          carrier: "Parcel Co",
+          trackingNumber: "RETURN-QUOTED-1",
+          readyAt: request.readyAt,
+          closeAt: request.closeAt,
+          confirmedAt: request.requestedAt,
+        };
+      },
+    );
+    const returnShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
+      carrier: {
+        returnLocationReference: "returns-seoul-1",
+        adapter: {
+          id: "test-carrier",
+          bookShipment: (request) => ({
+            contract: "np.shop-carrier-booking-result.v1" as const,
+            shipmentId: request.shipmentId,
+            orderId: request.orderId,
+            bookingReference: "booking_return_quote_1",
+            carrier: "Parcel Co",
+            trackingNumber: "OUTBOUND-RETURN-QUOTE-1",
+            bookedAt: request.requestedAt,
+          }),
+          createReturnShipment: () => Promise.reject(new Error("v1 must not be called")),
+          cancelReturnShipment: () => Promise.reject(new Error("not called")),
+          quoteReturnShipping,
+          createQuotedReturnShipment,
+        },
+      },
+    });
+    await payPendingOrder(returnShop, {
+      orderId: ids.orderId,
+      eventId: "evt_return_postage",
+      paymentReference: "pay_return_postage",
+    });
+    const staff = await seedUser({ email: "return-postage-operator@example.com" });
+    const actionContext = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    await withCurrentSite("default", () =>
+      returnShop.plugin.actions?.processFulfillment?.handler(
+        {
+          row: { id: ids.orderId, fulfillmentRevision: 1 },
+          values: { operatorNote: "Packed" },
+        },
+        actionContext,
+      ),
+    );
+    await withCurrentSite("default", () =>
+      returnShop.plugin.actions?.bookCarrierShipment?.handler(
+        {
+          row: { id: ids.orderId, fulfillmentRevision: 2 },
+          values: { operatorNote: "Booked" },
+        },
+        actionContext,
+      ),
+    );
+    const shipped = await configuredShopCall(returnShop, "GET", "/orders", {
+      ...owner,
+      id: ids.orderId,
+    });
+    const shippedOrder = (
+      shipped.body as {
+        order: { revision: number; totalMinor: number; lines: Array<{ key: string }> };
+      }
+    ).order;
+    const requested = await configuredShopCall(returnShop, "POST", "/returns", {
+      ...owner,
+      body: {
+        orderId: ids.orderId,
+        expectedOrderRevision: shippedOrder.revision,
+        lines: [{ lineKey: shippedOrder.lines[0]!.key, quantity: 1 }],
+        reason: "defective",
+        detail: null,
+      },
+    });
+    const returnId = (requested.body as { returnRequest: { id: string } }).returnRequest.id;
+    await withCurrentSite("default", () =>
+      returnShop.plugin.actions?.approveReturn?.handler(
+        {
+          row: { id: ids.orderId, returnRevision: 1 },
+          values: { operatorNote: "Approved" },
+        },
+        actionContext,
+      ),
+    );
+    const quoted = await configuredShopCall(returnShop, "POST", "/returns/postage", {
+      ...owner,
+      body: {
+        orderId: ids.orderId,
+        returnId,
+        expectedReturnRevision: 2,
+        mode: "dropoff",
+        origin: {
+          recipientName: "Return Sender",
+          phone: "+82-10-0000-0000",
+          countryCode: "KR",
+          postalCode: "04524",
+          addressLine1: "1 Return Quote Street",
+          addressLine2: null,
+          locality: "Seoul",
+          administrativeArea: null,
+        },
+        readyAt: null,
+        closeAt: null,
+      },
+    });
+    expect(quoted).toMatchObject({
+      status: 200,
+      body: {
+        quote: {
+          status: "quoted",
+          revision: 1,
+          currency: "KRW",
+          methods: [
+            { id: "dropoff-standard", amountMinor: 4_000 },
+            { id: "dropoff-express", amountMinor: 6_000 },
+          ],
+        },
+      },
+    });
+    const quote = (quoted.body as { quote: { id: string; revision: number } }).quote;
+    const selected = await configuredShopCall(returnShop, "PATCH", "/returns/postage", {
+      ...owner,
+      body: {
+        orderId: ids.orderId,
+        returnId,
+        quoteId: quote.id,
+        expectedRevision: quote.revision,
+        methodId: "dropoff-standard",
+      },
+    });
+    expect(selected).toMatchObject({
+      status: 200,
+      body: {
+        quote: {
+          status: "selected",
+          revision: 2,
+          selectedMethod: { methodId: "dropoff-standard", amountMinor: 4_000 },
+        },
+      },
+    });
+    const selectedQuote = (selected.body as { quote: { id: string; revision: number } }).quote;
+    const created = await configuredShopCall(returnShop, "POST", "/returns/logistics", {
+      ...owner,
+      body: {
+        orderId: ids.orderId,
+        returnId,
+        expectedReturnRevision: 2,
+        postageQuoteId: selectedQuote.id,
+        expectedPostageRevision: selectedQuote.revision,
+      },
+    });
+    expect(created).toMatchObject({
+      status: 200,
+      body: {
+        logistics: {
+          status: "active",
+          postageMethod: { methodId: "dropoff-standard", amountMinor: 4_000 },
+        },
+      },
+    });
+    const db = await getTestDb();
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(like(npPluginStorage.key, `return-postage%:${ids.orderId}`)),
+    ).toEqual([]);
+    expect(
+      await configuredShopCall(returnShop, "GET", "/orders", { ...owner, id: ids.orderId }),
+    ).toMatchObject({ body: { order: { totalMinor: shippedOrder.totalMinor } } });
+    expect(quoteReturnShipping).toHaveBeenCalledTimes(1);
+    expect(createQuotedReturnShipment).toHaveBeenCalledTimes(1);
   });
 
   it("tracks an active reverse shipment without receiving, restocking, or refunding the return", async () => {

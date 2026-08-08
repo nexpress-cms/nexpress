@@ -8,6 +8,11 @@ import {
   npRequireShopReturnLogisticsExistingInput,
 } from "./return-logistics-contract.js";
 import {
+  NpShopReturnPostageConflictError,
+  NpShopReturnPostageContractError,
+  npRequireShopQuotedReturnLogisticsCreateInput,
+} from "./return-postage-contract.js";
+import {
   npCancelShopReturnLogistics,
   npCreateShopReturnLogistics,
   npResumeShopReturnLogistics,
@@ -41,6 +46,16 @@ function errorResponse(error: unknown): NpRouteResponse | null {
       headers,
     };
   }
+  if (error instanceof NpShopReturnPostageConflictError) {
+    return { status: 409, body: { error: error.code, message: error.message }, headers };
+  }
+  if (error instanceof NpShopReturnPostageContractError) {
+    return {
+      status: 400,
+      body: { error: "invalid_return_postage", message: error.issues.join(" ") },
+      headers,
+    };
+  }
   return null;
 }
 
@@ -57,10 +72,16 @@ export function createShopReturnLogisticsApiHandler(runtime: NpShopRuntime) {
       };
       npRequireShopMutationCsrf(request, resolved);
       if (request.method === "POST") {
+        const body = request.body;
         const result = await npCreateShopReturnLogistics(
           runtime,
           resolved.owner,
-          npRequireShopReturnLogisticsCreateInput(request.body),
+          body &&
+            typeof body === "object" &&
+            !Array.isArray(body) &&
+            Object.hasOwn(body, "postageQuoteId")
+            ? npRequireShopQuotedReturnLogisticsCreateInput(body)
+            : npRequireShopReturnLogisticsCreateInput(body),
         );
         return { status: 200, body: { ...result, csrfToken }, headers };
       }

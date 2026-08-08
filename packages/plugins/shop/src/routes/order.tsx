@@ -33,6 +33,9 @@ export function createShopOrderRoute(runtime: NpShopRuntime) {
       ...(runtime.carrierReturnLogisticsAdapter
         ? { returnLogisticsApiPath: "/api/plugins/shop/returns/logistics" }
         : {}),
+      ...(runtime.carrierReturnPostageAdapter
+        ? { returnPostageApiPath: "/api/plugins/shop/returns/postage" }
+        : {}),
       ...(runtime.carrierReturnLabelAdapter
         ? { returnLogisticsLabelPath: "/api/plugins/shop/returns/logistics/label" }
         : {}),

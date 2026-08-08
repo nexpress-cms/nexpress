@@ -3,6 +3,7 @@ import {
   npAnalyzeShopReturnTracking,
   type NpShopReturnTracking,
 } from "./return-tracking-contract.js";
+import type { NpShopReturnPostageMethod } from "./return-postage-contract.js";
 
 export const NP_SHOP_RETURN_LOGISTICS_REQUEST_CONTRACT =
   "np.shop-return-logistics-request.v1" as const;
@@ -164,6 +165,8 @@ export interface NpShopStoredReturnLogistics {
   cancelledAt: string | null;
   updatedAt: string;
   purgeAt: string;
+  /** Immutable PII-free provider quote selected before v2 creation. */
+  postageMethod?: NpShopReturnPostageMethod | null;
 }
 
 export interface NpShopStoredReturnLogisticsPrivate {
@@ -191,6 +194,8 @@ export interface NpShopReturnLogistics {
   confirmedAt: string | null;
   cancelledAt: string | null;
   updatedAt: string;
+  /** Present when the owner selected a provider-quoted return method. */
+  postageMethod?: NpShopReturnPostageMethod;
   /** Present after the first verified reverse-shipment carrier event. */
   tracking?: NpShopReturnTracking;
 }
@@ -265,6 +270,7 @@ const isoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/u;
 const guestOwnerPattern = /^guest:[0-9a-f]{64}$/u;
 const providerPattern = /^[a-z][a-z0-9-]{0,31}$/u;
 const referencePattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/u;
+const postageMethodPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/u;
 const errorCodePattern = /^[a-z][a-z0-9-]{0,99}$/u;
 const countryPattern = /^[A-Z]{2}$/u;
 
@@ -374,6 +380,89 @@ function analyzeWindow(
     duration > npShopReturnLogisticsLimits.maximumWindowSeconds * 1_000
   ) {
     issues.push(`${path} pickup window duration is invalid.`);
+  }
+}
+
+function analyzePostageMethod(value: unknown, path: string, issues: string[]): void {
+  if (!isRecord(value)) {
+    issues.push(`${path} must be a plain object.`);
+    return;
+  }
+  exactKeys(
+    value,
+    [
+      "contract",
+      "providerId",
+      "quoteId",
+      "methodId",
+      "label",
+      "currency",
+      "amountMinor",
+      "estimatedTransit",
+      "quotedAt",
+      "quoteExpiresAt",
+    ],
+    path,
+    issues,
+  );
+  if (value.contract !== "np.shop-return-postage-method.v1") {
+    issues.push(`${path}.contract is invalid.`);
+  }
+  if (typeof value.providerId !== "string" || !providerPattern.test(value.providerId)) {
+    issues.push(`${path}.providerId is invalid.`);
+  }
+  if (!isUuid(value.quoteId)) issues.push(`${path}.quoteId is invalid.`);
+  if (!isText(value.methodId, 64) || !postageMethodPattern.test(value.methodId)) {
+    issues.push(`${path}.methodId is invalid.`);
+  }
+  if (!isText(value.label, 120)) issues.push(`${path}.label is invalid.`);
+  if (!["KRW", "USD", "EUR", "JPY"].includes(String(value.currency))) {
+    issues.push(`${path}.currency is invalid.`);
+  }
+  if (
+    !Number.isSafeInteger(value.amountMinor) ||
+    (value.amountMinor as number) < 0 ||
+    (value.amountMinor as number) > 2_147_483_647
+  ) {
+    issues.push(`${path}.amountMinor is invalid.`);
+  }
+  if (value.estimatedTransit !== null) {
+    if (!isRecord(value.estimatedTransit)) {
+      issues.push(`${path}.estimatedTransit is invalid.`);
+    } else {
+      exactKeys(
+        value.estimatedTransit,
+        ["minimumDays", "maximumDays"],
+        `${path}.estimatedTransit`,
+        issues,
+      );
+      for (const key of ["minimumDays", "maximumDays"] as const) {
+        if (
+          !Number.isSafeInteger(value.estimatedTransit[key]) ||
+          (value.estimatedTransit[key] as number) < 0 ||
+          (value.estimatedTransit[key] as number) > 365
+        ) {
+          issues.push(`${path}.estimatedTransit.${key} is invalid.`);
+        }
+      }
+      if (
+        Number.isSafeInteger(value.estimatedTransit.minimumDays) &&
+        Number.isSafeInteger(value.estimatedTransit.maximumDays) &&
+        (value.estimatedTransit.minimumDays as number) >
+          (value.estimatedTransit.maximumDays as number)
+      ) {
+        issues.push(`${path}.estimatedTransit.minimumDays must not exceed maximumDays.`);
+      }
+    }
+  }
+  if (!isIso(value.quotedAt)) issues.push(`${path}.quotedAt is invalid.`);
+  if (!isIso(value.quoteExpiresAt)) issues.push(`${path}.quoteExpiresAt is invalid.`);
+  if (
+    isIso(value.quotedAt) &&
+    isIso(value.quoteExpiresAt) &&
+    value.quoteExpiresAt <= value.quotedAt
+  ) {
+    issues.push(`${path} expiry must follow quotedAt.`);
   }
 }
 
@@ -599,37 +688,40 @@ export function npRequireShopReturnLogisticsCancelResult(
 export function npAnalyzeStoredShopReturnLogistics(value: unknown): string[] {
   if (!isRecord(value)) return ["stored return logistics must be a plain object."];
   const issues: string[] = [];
-  exactKeys(
-    value,
-    [
-      "contract",
-      "id",
-      "returnId",
-      "orderId",
-      "ownerSegment",
-      "providerId",
-      "status",
-      "revision",
-      "mode",
-      "originalShipmentId",
-      "originalBookingReference",
-      "returnReference",
-      "carrier",
-      "trackingNumber",
-      "readyAt",
-      "closeAt",
-      "providerErrorCode",
-      "cancellationId",
-      "requestedAt",
-      "confirmedAt",
-      "cancelRequestedAt",
-      "cancelledAt",
-      "updatedAt",
-      "purgeAt",
-    ],
-    "stored return logistics",
-    issues,
-  );
+  const requiredKeys = [
+    "contract",
+    "id",
+    "returnId",
+    "orderId",
+    "ownerSegment",
+    "providerId",
+    "status",
+    "revision",
+    "mode",
+    "originalShipmentId",
+    "originalBookingReference",
+    "returnReference",
+    "carrier",
+    "trackingNumber",
+    "readyAt",
+    "closeAt",
+    "providerErrorCode",
+    "cancellationId",
+    "requestedAt",
+    "confirmedAt",
+    "cancelRequestedAt",
+    "cancelledAt",
+    "updatedAt",
+    "purgeAt",
+  ] as const;
+  for (const key of Object.keys(value)) {
+    if (![...requiredKeys, "postageMethod"].includes(key)) {
+      issues.push(`stored return logistics.${key} is not supported.`);
+    }
+  }
+  for (const key of requiredKeys) {
+    if (!Object.hasOwn(value, key)) issues.push(`stored return logistics.${key} is required.`);
+  }
   if (value.contract !== NP_SHOP_RETURN_LOGISTICS_STORAGE_CONTRACT)
     issues.push("stored return logistics.contract is invalid.");
   const identity = { ...value, logisticsId: value.id };
@@ -738,6 +830,22 @@ export function npAnalyzeStoredShopReturnLogistics(value: unknown): string[] {
   }
   if (value.status === "manual-review" && value.providerErrorCode === null) {
     issues.push("manual-review return logistics requires one closed provider error code.");
+  }
+  if (Object.hasOwn(value, "postageMethod") && value.postageMethod !== null) {
+    analyzePostageMethod(value.postageMethod, "stored return logistics.postageMethod", issues);
+    if (isRecord(value.postageMethod) && value.postageMethod.providerId !== value.providerId) {
+      issues.push("stored return logistics.postageMethod provider must match logistics.");
+    }
+    if (
+      isRecord(value.postageMethod) &&
+      isIso(value.postageMethod.quotedAt) &&
+      isIso(value.postageMethod.quoteExpiresAt) &&
+      isIso(value.requestedAt) &&
+      (value.postageMethod.quotedAt > value.requestedAt ||
+        value.postageMethod.quoteExpiresAt <= value.requestedAt)
+    ) {
+      issues.push("stored return logistics.postageMethod must be live at creation.");
+    }
   }
   if (
     isIso(value.requestedAt) &&
@@ -853,6 +961,7 @@ export function npProjectShopReturnLogistics(
     confirmedAt: value.confirmedAt,
     cancelledAt: value.cancelledAt,
     updatedAt: value.updatedAt,
+    ...(value.postageMethod ? { postageMethod: value.postageMethod } : {}),
     ...(tracking ? { tracking } : {}),
   };
 }
@@ -876,7 +985,7 @@ export function npAnalyzeShopReturnLogistics(value: unknown): string[] {
     "updatedAt",
   ] as const;
   for (const key of Object.keys(value)) {
-    if (![...publicKeys, "tracking"].includes(key))
+    if (![...publicKeys, "tracking", "postageMethod"].includes(key))
       issues.push(`return logistics.${key} is not supported.`);
   }
   for (const key of publicKeys) {
@@ -891,6 +1000,19 @@ export function npAnalyzeShopReturnLogistics(value: unknown): string[] {
     }
     if (value.status !== "active") {
       issues.push("return logistics.tracking requires active logistics.");
+    }
+  }
+  if (Object.hasOwn(value, "postageMethod")) {
+    analyzePostageMethod(value.postageMethod, "return logistics.postageMethod", issues);
+    if (
+      isRecord(value.postageMethod) &&
+      isIso(value.postageMethod.quotedAt) &&
+      isIso(value.postageMethod.quoteExpiresAt) &&
+      isIso(value.requestedAt) &&
+      (value.postageMethod.quotedAt > value.requestedAt ||
+        value.postageMethod.quoteExpiresAt <= value.requestedAt)
+    ) {
+      issues.push("return logistics.postageMethod must be live at creation.");
     }
   }
   if (value.contract !== NP_SHOP_RETURN_LOGISTICS_CONTRACT)
