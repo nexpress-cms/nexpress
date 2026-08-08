@@ -47,4 +47,31 @@ describe("NotificationsInbox", () => {
     expect(html).not.toContain("evil.example");
     expect(html.match(/>View<\/a>/gu)).toHaveLength(1);
   });
+
+  it("renders a bounded Shop restock notification with its option", () => {
+    const notification: NotificationInboxItem = {
+      ...base,
+      id: "66666666-6666-4666-8666-666666666666",
+      kind: "shop.product-restocked",
+      payload: {
+        eventId: "77777777-7777-4777-8777-777777777777",
+        href: "/shop/products/mug",
+        title: "Mug",
+        option: "Blue",
+        productId: "88888888-8888-4888-8888-888888888888",
+        variantSku: "MUG-BLUE",
+        targetType: "shop-products",
+        targetId: "88888888-8888-4888-8888-888888888888",
+      },
+    };
+
+    const html = renderToStaticMarkup(
+      <NotificationsInbox initialNotifications={[notification]} initialUnread={1} totalDocs={1} />,
+    );
+
+    expect(html).toContain("Back in stock");
+    expect(html).toContain("Mug");
+    expect(html).toContain("Blue");
+    expect(html).toContain('href="/shop/products/mug"');
+  });
 });

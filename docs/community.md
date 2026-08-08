@@ -433,6 +433,8 @@ readable again.
 - Mention — Phase 16.2 wired `@handle` parsing into the
   notification fan-out, firing `comment.mention` or
   `document.mention` rows.
+- Registered plugin kinds, including Shop's preference-aware one-shot
+  `shop.product-restocked` event.
 
 Each row has `kind`, bounded `payload` JSON, `read_at`, and a tenant-scoped
 `site_id`. Event payloads carry the relevant actor and target identifiers.
@@ -453,6 +455,12 @@ in-app inbox still works, but digest mail is not delivered.
 The open inbox also consumes the private realtime invalidation channel and
 refetches its exact list/unread totals; it never receives another member's id or
 notification payload through SSE.
+
+Plugins register bounded kind metadata during setup and then use the same
+site/member-scoped notification writer. Plugin payloads still pass the shared
+bounded JSON validator, and the member inbox separately rejects non-local View
+destinations. It may add a kind-specific label and summary without giving the
+plugin ownership of inbox, preference, digest, or realtime policy.
 
 Notification preferences are an exact JSONB contract. `{}` is the compact
 default and expands to `disabled: []`, `digest: "off"`, and empty digest

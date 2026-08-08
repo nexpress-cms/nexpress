@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { ShopProductReviews, ShopWishlistAction } from "./client.js";
+import { ShopProductReviews, ShopRestockAlert, ShopWishlistAction } from "./client.js";
 import { classicShopSkin } from "./skins/classic.js";
 import type { NpShopCatalogQuery, NpShopMessages, NpShopProduct } from "./types.js";
 
@@ -41,6 +41,14 @@ const messages = {
   wishlistEmpty: "찜한 상품이 없습니다.",
   wishlistLogin: "찜한 상품은 로그인 후 확인할 수 있습니다.",
   wishlistBrowse: "상품 둘러보기",
+  restockHeading: "재입고 알림",
+  restockSelect: "품절 옵션",
+  restockSubscribe: "재입고 시 알림 받기",
+  restockSubscribed: "알림 신청됨 · 취소",
+  restockSaving: "처리 중",
+  restockSignIn: "로그인하고 알림 받기",
+  restockUnavailable: "품절",
+  restockFailed: "알림 실패",
   search: "상품 검색",
   searchPlaceholder: "검색",
   sort: "정렬",
@@ -314,6 +322,7 @@ describe("shop skin contract", () => {
     expect(styles).toContain(".np-shop-product-description blockquote");
     expect(styles).toContain("[data-np-shop-review-form]");
     expect(styles).toContain("data-np-shop-wishlist-action");
+    expect(styles).toContain("data-np-shop-restock-alert");
     for (const property of [
       "--np-shop-content-max",
       "--np-shop-surface",
@@ -434,6 +443,50 @@ describe("shop skin contract", () => {
     expect(html).toContain('data-np-shop-surface="wishlist"');
     expect(html).toContain('data-np-shop-product="product-1"');
     expect(html).toContain("찜한 상품");
+  });
+
+  it("renders a prepared one-shot restock action through the product skin", async () => {
+    const variant = product.variants[0];
+    if (!variant) throw new Error("Expected the Shop fixture to include a variant.");
+    const unavailableProduct: NpShopProduct = {
+      ...product,
+      inventoryState: "out-of-stock",
+      variants: [{ ...variant, stockQuantity: 0 }],
+    };
+    const action = (
+      <ShopRestockAlert
+        apiPath="/api/plugins/shop/restock-alerts"
+        product={unavailableProduct}
+        initialVariantSkus={[]}
+        signedIn={true}
+        loginHref="/members/login?next=%2Fshop%2Fproducts%2Fcup"
+        labels={{
+          heading: messages.restockHeading,
+          select: messages.restockSelect,
+          subscribe: messages.restockSubscribe,
+          subscribed: messages.restockSubscribed,
+          saving: messages.restockSaving,
+          signIn: messages.restockSignIn,
+          unavailable: messages.restockUnavailable,
+          failed: messages.restockFailed,
+        }}
+      />
+    );
+    const html = renderToStaticMarkup(
+      <>
+        {await classicShopSkin.renderProduct({
+          basePath: "/shop",
+          product: unavailableProduct,
+          categories: [],
+          description: null,
+          restockAction: action,
+          messages,
+        })}
+      </>,
+    );
+
+    expect(html).toContain('data-np-shop-restock-alert="available"');
+    expect(html).toContain("재입고 시 알림 받기");
   });
 
   it("renders the complete cart fallback through the skin contract", async () => {

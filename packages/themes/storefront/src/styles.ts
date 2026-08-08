@@ -292,6 +292,12 @@ export const storefrontCss = `
   background: var(--np-storefront-accent);
   color: var(--np-storefront-accent-foreground);
 }
+.np-storefront-shell [data-np-shop-restock-alert] { border-radius: 0; }
+.np-storefront-shell [data-np-shop-restock-alert="subscribed"] button {
+  border-color: var(--np-storefront-accent);
+  background: var(--np-storefront-accent);
+  color: var(--np-storefront-accent-foreground);
+}
 .np-storefront-shell [data-np-shop-reviews] { margin-top: 4rem; }
 .np-storefront-shell [data-np-forum-context-questions] { margin-top: 4rem; border-radius: 0; box-shadow: none; }
 .np-storefront-shell [data-np-forum-context-questions] h2 { font-family: var(--np-font-heading, Georgia, serif); font-weight: 500; }

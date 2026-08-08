@@ -5,6 +5,7 @@ import {
   type NpPluginContext,
   type NpPluginPageRouteRegistration,
 } from "@nexpress/plugin-sdk";
+import { registerNotificationKind } from "@nexpress/core/community";
 
 import { createShopCartApiHandler } from "./cart-api.js";
 import { npCleanupExpiredShopCarts, npCountShopCarts } from "./cart-service.js";
@@ -174,6 +175,12 @@ import {
   npListRecentShopProductReviews,
   npRestoreShopProductReview,
 } from "./review-service.js";
+import { createShopRestockAlertApiHandler } from "./restock-alert-api.js";
+import {
+  npDeleteShopRestockAlertsForProduct,
+  npInspectShopRestockAlerts,
+  npProcessShopRestockAlerts,
+} from "./restock-alert-service.js";
 import {
   npInspectShopShippingPolicies,
   npListShopShippingPolicies,
@@ -652,6 +659,14 @@ const messages = {
     "shop.wishlistEmpty": "You have not saved any available products yet.",
     "shop.wishlistLogin": "Sign in to keep a site-scoped list of products you want to revisit.",
     "shop.wishlistBrowse": "Browse products",
+    "shop.restockHeading": "Back-in-stock alert",
+    "shop.restockSelect": "Unavailable option",
+    "shop.restockSubscribe": "Notify me when available",
+    "shop.restockSubscribed": "Alert requested · cancel",
+    "shop.restockSaving": "Updating…",
+    "shop.restockSignIn": "Sign in to request a one-time alert",
+    "shop.restockUnavailable": "This item is unavailable.",
+    "shop.restockFailed": "The restock alert could not be updated.",
     "shop.search": "Search products",
     "shop.searchPlaceholder": "Name, summary, or description",
     "shop.sort": "Sort",
@@ -889,6 +904,14 @@ const messages = {
     "shop.wishlistEmpty": "현재 볼 수 있는 찜한 상품이 없습니다.",
     "shop.wishlistLogin": "로그인하면 이 사이트에서 다시 보고 싶은 상품을 저장할 수 있습니다.",
     "shop.wishlistBrowse": "상품 둘러보기",
+    "shop.restockHeading": "재입고 알림",
+    "shop.restockSelect": "품절 옵션",
+    "shop.restockSubscribe": "재입고 시 알림 받기",
+    "shop.restockSubscribed": "알림 신청됨 · 취소",
+    "shop.restockSaving": "처리 중…",
+    "shop.restockSignIn": "로그인하고 일회성 재입고 알림 받기",
+    "shop.restockUnavailable": "현재 품절된 상품입니다.",
+    "shop.restockFailed": "재입고 알림을 갱신하지 못했습니다.",
     "shop.search": "상품 검색",
     "shop.searchPlaceholder": "상품명, 요약 또는 설명",
     "shop.sort": "정렬",
@@ -1108,6 +1131,7 @@ export function createShop(options: NpShopOptions = {}) {
   const blocks = createShopHomeBlocks(runtime);
   const cartApiHandler = createShopCartApiHandler(runtime);
   const reviewApiHandler = createShopProductReviewApiHandler(runtime);
+  const restockAlertApiHandler = createShopRestockAlertApiHandler(runtime);
   const checkoutApiHandler = createShopCheckoutApiHandler(runtime);
   const orderDraftApiHandler = createShopOrderDraftApiHandler(runtime);
   const orderApiHandler = createShopOrderApiHandler(runtime);
@@ -1179,7 +1203,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, member wishlists, verified-purchase reviews, bounded carts, checkout intents, private order drafts, built-in shipping policies or provider-neutral quotes, additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, outbound and return tracking, physical returns, return-linked partial refunds, return logistics, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, member wishlists, one-shot restock alerts, verified-purchase reviews, bounded carts, checkout intents, private order drafts, built-in shipping policies or provider-neutral quotes, additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, outbound and return tracking, physical returns, return-linked partial refunds, return logistics, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -1215,6 +1239,9 @@ export function createShop(options: NpShopOptions = {}) {
           "action:shop-product-review-restore",
           "dashboard:shop-wishlists",
           "widget:shop-wishlist-health",
+          "dashboard:shop-restock-alerts",
+          "widget:shop-restock-alert-health",
+          "action:shop-restock-alert-reconcile",
           "dashboard:shop-carts",
           "widget:shop-cart-health",
           "action:shop-cart-cleanup",
@@ -1290,6 +1317,7 @@ export function createShop(options: NpShopOptions = {}) {
           "/order-drafts",
           "/orders",
           "/reviews",
+          "/restock-alerts",
           "/returns",
           ...(paymentApiHandler ? ["/payments/webhook"] : []),
           ...(trackingApiHandler ? ["/carrier/tracking/webhook"] : []),
@@ -1303,9 +1331,18 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, member-owned saved products over the shared follow graph, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with transient labels, and independent verified or reconciled reverse tracking. Tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
+          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with transient labels, and independent verified or reconciled reverse tracking. Price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
-        tags: ["shop", "catalog", "product", "wishlist", "review", "inventory", "storefront"],
+        tags: [
+          "shop",
+          "catalog",
+          "product",
+          "wishlist",
+          "restock-alert",
+          "review",
+          "inventory",
+          "storefront",
+        ],
       },
       usesTokens: [
         "colors.primary",
@@ -1348,6 +1385,7 @@ export function createShop(options: NpShopOptions = {}) {
         "return-status": "[data-np-shop-return-status]",
         "product-card": ".np-shop-product-card",
         "wishlist-action": "[data-np-shop-wishlist-action]",
+        "restock-alert": "[data-np-shop-restock-alert]",
         reviews: "[data-np-shop-reviews]",
         inquiries: "[data-np-forum-context-questions]",
         "review-card": "[data-np-shop-review]",
@@ -1363,6 +1401,28 @@ export function createShop(options: NpShopOptions = {}) {
     blocks,
     patterns: shopHomePatterns,
     i18n: messages,
+    setup: () => {
+      registerNotificationKind({
+        kind: "shop.product-restocked",
+        label: "Product restock alerts",
+        description: "One selected Shop product or option became available again.",
+      });
+    },
+    hooks: {
+      "content:afterUpdate": async ({ data }) => {
+        if (
+          data.collection !== runtime.collections.products ||
+          typeof data.document.id !== "string"
+        ) {
+          return;
+        }
+        await npProcessShopRestockAlerts(runtime, { productId: data.document.id });
+      },
+      "content:afterDelete": async ({ data }) => {
+        if (data.collection !== runtime.collections.products) return;
+        await npDeleteShopRestockAlertsForProduct(data.documentId);
+      },
+    },
     admin: {
       dashboardWidgets: [
         {
@@ -1413,6 +1473,15 @@ export function createShop(options: NpShopOptions = {}) {
           actionId: "countProductWishlistSaves",
           description: "Site-scoped member-to-product saves in the shared community follow graph.",
           priority: 18,
+        },
+        {
+          id: "shop-restock-alerts-total",
+          label: "Active restock alerts",
+          kind: "metric",
+          actionId: "countActiveRestockAlerts",
+          description:
+            "PII-free member-owned product or option alerts awaiting one availability transition.",
+          priority: 17,
         },
         {
           id: "shop-carts-total",
@@ -1598,6 +1667,14 @@ export function createShop(options: NpShopOptions = {}) {
             "Checks the site-scoped shared follow graph used by member product wishlists.",
         },
         {
+          id: "shop-restock-alert-health",
+          label: "Restock alert contract",
+          kind: "status",
+          actionId: "restockAlertHealth",
+          description:
+            "Checks bounded storage, member/product targets, processing leases, and pending availability.",
+        },
+        {
           id: "shop-cart-health",
           label: "Cart storage",
           kind: "status",
@@ -1723,6 +1800,12 @@ export function createShop(options: NpShopOptions = {}) {
           : []),
       ],
       actions: [
+        {
+          id: "shop-restock-alert-reconcile",
+          label: "Reconcile restock alerts",
+          actionId: "reconcileRestockAlerts",
+          confirm: "Process one bounded batch of active Shop restock alerts for this site?",
+        },
         {
           id: "shop-cart-cleanup",
           label: "Clean expired carts",
@@ -2694,6 +2777,71 @@ export function createShop(options: NpShopOptions = {}) {
               "error",
               error instanceof Error ? error.message : "Wishlist health check failed.",
             );
+          }
+        },
+      },
+      countActiveRestockAlerts: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npInspectShopRestockAlerts(runtime);
+            return {
+              ok: true,
+              data: {
+                value: counts.active + counts.claimed,
+                delta: `${counts.completed.toString()} completion receipt(s)`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      restockAlertHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npInspectShopRestockAlerts(runtime);
+            if (counts.invalidSample > 0 || counts.orphanSample > 0) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed and ${counts.orphanSample.toString()} orphaned restock alert row(s) in the newest bounded sample.`,
+              );
+            }
+            if (
+              counts.readySample > 0 ||
+              counts.staleClaimSample > 0 ||
+              counts.expired > 0 ||
+              counts.sampleBoundReached
+            ) {
+              return npAdminStatus(
+                "warn",
+                `${counts.readySample.toString()} ready, ${counts.staleClaimSample.toString()} stale-claimed, and ${counts.expired.toString()} expired row(s) await bounded reconciliation${counts.sampleBoundReached ? "; diagnostic sample bound reached" : ""}.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.active.toString()} active, ${counts.claimed.toString()} claimed, and ${counts.completed.toString()} retained completion receipt(s).`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Restock alert health check failed.",
+            );
+          }
+        },
+      },
+      reconcileRestockAlerts: {
+        kind: "action",
+        handler: async () => {
+          try {
+            const result = await npProcessShopRestockAlerts(runtime);
+            return {
+              ok: true,
+              data: `Inspected ${result.inspected.toString()}, notified ${result.notified.toString()}, suppressed ${result.suppressed.toString()}, retained ${result.unavailable.toString()} unavailable, removed ${result.orphaned.toString()} orphaned, found ${result.invalid.toString()} malformed, and cleaned ${result.cleaned.toString()} expired restock alert row(s).`,
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
           }
         },
       },
@@ -4463,6 +4611,25 @@ export function createShop(options: NpShopOptions = {}) {
         handler: reviewApiHandler,
       },
       {
+        method: "GET",
+        path: "/restock-alerts",
+        description: "Read one member's active alerts for an exact Shop product.",
+        handler: restockAlertApiHandler,
+      },
+      {
+        method: "POST",
+        path: "/restock-alerts",
+        description:
+          "Request one member-owned, time-bounded, one-shot alert for an out-of-stock product or option.",
+        handler: restockAlertApiHandler,
+      },
+      {
+        method: "DELETE",
+        path: "/restock-alerts",
+        description: "Cancel one member-owned active Shop restock alert.",
+        handler: restockAlertApiHandler,
+      },
+      {
         method: "POST",
         path: "/cart",
         description: "Add a published product or variant to the current cart.",
@@ -4686,6 +4853,15 @@ export function createShop(options: NpShopOptions = {}) {
         : []),
     ],
     scheduled: [
+      {
+        id: "reconcile-restock-alerts",
+        cron: "*/5 * * * *",
+        description:
+          "Reconcile one bounded oldest-first batch of member restock alerts and retain one-shot completion receipts.",
+        handler: async () => {
+          await npProcessShopRestockAlerts(runtime);
+        },
+      },
       {
         id: "cleanup-expired-carts",
         cron: "17 * * * *",
@@ -5513,5 +5689,41 @@ export {
   npShopWishlistLimits,
   parseShopWishlistPage,
 } from "./wishlist-service.js";
+export {
+  NP_SHOP_RESTOCK_ALERT_STORAGE_CONTRACT,
+  NP_SHOP_RESTOCK_NOTIFICATION_KIND,
+  NpShopRestockAlertContractError,
+  npAnalyzeShopRestockAlertStorage,
+  npRequireShopRestockAlertInput,
+  npRequireShopRestockAlertListWire,
+  npRequireShopRestockAlertMutationWire,
+  npRequireShopRestockAlertStorage,
+  npShopRestockAlertLimits,
+  npToShopRestockAlertWire,
+} from "./restock-alert-contract.js";
+export type {
+  NpShopRestockAlertInput,
+  NpShopRestockAlertListWire,
+  NpShopRestockAlertMutationWire,
+  NpShopRestockAlertOutcome,
+  NpShopRestockAlertStatus,
+  NpShopRestockAlertStorage,
+  NpShopRestockAlertWire,
+} from "./restock-alert-contract.js";
+export {
+  npCancelShopRestockAlert,
+  npCleanupShopRestockAlerts,
+  npDeleteShopRestockAlertsForProduct,
+  npInspectShopRestockAlerts,
+  npListShopRestockAlerts,
+  npProcessShopRestockAlerts,
+  npResolveShopRestockTarget,
+  npSubscribeShopRestockAlert,
+} from "./restock-alert-service.js";
+export type {
+  NpShopRestockAlertInspection,
+  NpShopRestockProcessResult,
+  NpShopRestockTargetState,
+} from "./restock-alert-service.js";
 
 export default shopPlugin;

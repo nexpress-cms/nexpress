@@ -513,6 +513,7 @@ export function ShopProductSurface({ skin, ...props }: NpShopProductSkinProps & 
             <strong>{props.messages.catalogOnly}</strong>
           </div>
           {props.cartAction}
+          {props.restockAction}
           {props.wishlistAction}
           <Link className="np-shop-cart-link" href={`${props.basePath}/cart`}>
             {props.messages.cart}

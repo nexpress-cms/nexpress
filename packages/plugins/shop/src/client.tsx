@@ -2124,6 +2124,8 @@ async function uploadReviewPhoto(file: File): Promise<NpShopProductReviewPhoto> 
   return { id: media.id, url: media.downloadUrl };
 }
 
+export { ShopRestockAlert, type ShopRestockAlertProps } from "./restock-alert-client.js";
+
 async function deleteReviewPhoto(id: string): Promise<void> {
   const csrf = readMemberCsrf();
   const response = await fetch(`/api/members/media/attachments/${encodeURIComponent(id)}`, {
