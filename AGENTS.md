@@ -2,7 +2,17 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-09 (Shop payment adapters may now add one
+**Last refreshed:** 2026-08-10 (Shop now owns one direct-staff same-item
+replacement exchange after a received physical return. Exact immutable lines,
+reservation-aware all-or-none inventory, revision-safe
+awaiting/processing/shipped/cancelled state, cancellation restock, manual
+carrier/tracking, owner notifications, Admin/Doctor, PII-free audit, cleanup,
+both skins, independent Storefront hooks, scaffolds, and PostgreSQL coverage
+share the contract. New address intake, carrier booking, substitutions, payment
+differences, store credit, eligibility policy, and automatic approval remain
+separate.)
+
+**Earlier:** 2026-08-09 (Shop payment adapters may now add one
 quote-backed approved-return settlement capability after physical receipt.
 Direct staff designate merchant or customer responsibility; merchant absorbs
 the immutable same-currency quote while customer responsibility deducts it

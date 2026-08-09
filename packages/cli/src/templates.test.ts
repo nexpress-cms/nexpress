@@ -429,6 +429,9 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("refundReturnSettlement");
     expect(readme).toContain("separate reverse-tracking callback or bounded poll capability");
     expect(readme).toContain("never receives the physical return");
+    expect(readme).toContain("one exact same-item replacement");
+    expect(readme).toContain("no reuse of the deleted outbound address");
+    expect(env).toContain("reservation-aware inventory and manual carrier/tracking");
     expect(readme).toContain("Verified provider cancellation snapshots reconcile known refunds");
     expect(env).toContain("provider-cancellation reconciliation for Shop");
   });

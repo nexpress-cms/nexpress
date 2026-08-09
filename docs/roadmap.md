@@ -443,7 +443,7 @@ real product domain, not just blog/community. Ship as a plugin package
   confirmation, durable two-stage reconciliation, transient owner label bytes,
   PII-free Admin/Doctor diagnostics, scaffold guidance, cleanup, both skins,
   and PostgreSQL coverage share the contract. Return postage charging,
-  recurring pickup, exchanges/automatic refunds, eligibility/payer policy, and
+  recurring pickup, automatic exchange/refund transitions, eligibility/payer policy, and
   provider protocols remain separate.
 - **Provider-neutral return-postage quote and selection (shipped)** — carrier
   adapters may add paired quote/create-v2 methods over approved-return
@@ -462,8 +462,17 @@ real product domain, not just blog/community. Ship as a plugin package
   net refund. The existing one-refund storage, provider-confirmed recovery,
   cancellation reconciliation, Admin/Doctor, owner projection, both skins,
   Storefront hook, Toss, scaffolds, and PostgreSQL coverage share the PII-free
-  contract. Separate charges, automatic/jurisdictional payer policy, exchanges,
+  contract. Separate charges, automatic/jurisdictional payer policy, different-item exchanges,
   arbitrary refunds, and provider protocols remain external.
+- **Same-item replacement exchanges (shipped)** — one received physical return
+  may create one exact replacement over its immutable product/SKU/quantity
+  snapshot. Reservation-aware all-or-none inventory consumption, revision-safe
+  awaiting/processing/shipped/cancelled state, cancellation restock, manual
+  carrier/tracking, owner notifications, both skins, Storefront hooks,
+  Admin/Doctor, audit, cleanup, scaffolds, and PostgreSQL coverage share the
+  PII-free contract. New address intake, carrier booking, substitutions,
+  payment differences, store credit, eligibility policy, and automatic approval
+  remain separate additive contracts.
 - **Provider-neutral return tracking (shipped)** — optional exact raw-body
   callback and bounded polling capabilities advance one independent PII-free
   reverse-shipment state with stable receipts, leases/backoff, owner-visible

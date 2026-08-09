@@ -119,6 +119,10 @@ function fullRefundStorageKey(orderId: string): string {
   return `refund:${orderId}`;
 }
 
+function exchangeStorageKey(orderId: string): string {
+  return `exchange:${orderId}`;
+}
+
 export function npShopPartialRefundStorageKey(orderId: string): string {
   return `partial-refund:${orderId}`;
 }
@@ -714,6 +718,24 @@ async function refundShopReturn(
       throw new NpShopPartialRefundConflictError(
         "partial_refund_full_refund_conflict",
         "A durable full-refund attempt already owns this payment.",
+      );
+    }
+    const [exchange] = await tx
+      .select({ key: npPluginStorage.key })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+          eq(npPluginStorage.siteId, siteId),
+          eq(npPluginStorage.key, exchangeStorageKey(input.orderId)),
+        ),
+      )
+      .limit(1)
+      .for("update");
+    if (exchange) {
+      throw new NpShopPartialRefundConflictError(
+        "partial_refund_already_exists",
+        "A same-item exchange already owns this received return.",
       );
     }
     const adapter = settlesPostage

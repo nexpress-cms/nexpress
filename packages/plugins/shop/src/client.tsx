@@ -1748,6 +1748,15 @@ export function ShopOrder({
     }[reason];
   }
 
+  function exchangeStatusMessage(status: NonNullable<NpShopOrder["exchange"]>["status"]): string {
+    return {
+      awaiting: messages.orderExchangeAwaiting,
+      processing: messages.orderExchangeProcessing,
+      shipped: messages.orderExchangeShipped,
+      cancelled: messages.orderExchangeCancelled,
+    }[status];
+  }
+
   function returnLogisticsStatusMessage(logistics: NpShopReturnLogistics): string {
     if (logistics.status === "active") return messages.orderReturnLogisticsActive;
     if (logistics.status === "cancelled") return messages.orderReturnLogisticsCancelled;
@@ -1783,6 +1792,10 @@ export function ShopOrder({
       "return.approved": messages.orderReturnApproved,
       "return.rejected": messages.orderReturnRejected,
       "return.received": messages.orderReturnReceived,
+      "exchange.created": messages.orderExchangeAwaiting,
+      "exchange.processing": messages.orderExchangeProcessing,
+      "exchange.shipped": messages.orderExchangeShipped,
+      "exchange.cancelled": messages.orderExchangeCancelled,
       "refund.completed": messages.orderRefunded,
       "partial-refund.completed": messages.orderPartialRefundedDetail,
       "return-settlement-refund.completed": messages.orderPartialRefundedDetail,
@@ -2328,6 +2341,39 @@ export function ShopOrder({
                     {busy ? messages.orderReturnSubmitting : messages.orderReturnSubmit}
                   </button>
                 </form>
+              ) : null}
+              {order.exchange ? (
+                <section
+                  className="np-shop-exchange-summary"
+                  data-np-shop-exchange={order.exchange.status}
+                >
+                  <h2>{messages.orderExchange}</h2>
+                  <p>{exchangeStatusMessage(order.exchange.status)}</p>
+                  <ul>
+                    {order.exchange.lines.map((line) => (
+                      <li key={line.lineKey}>
+                        {line.productName}
+                        {line.variantName ? ` · ${line.variantName}` : ""} × {line.quantity}
+                      </li>
+                    ))}
+                  </ul>
+                  {order.exchange.status === "shipped" &&
+                  order.exchange.carrier &&
+                  order.exchange.trackingNumber ? (
+                    <p>
+                      {messages.orderExchangeTracking}: {order.exchange.carrier}{" "}
+                      {order.exchange.trackingNumber}
+                    </p>
+                  ) : order.exchange.status === "cancelled" ? (
+                    <p>
+                      {order.exchange.inventoryOutcome === "restocked"
+                        ? messages.orderExchangeInventoryRestocked
+                        : order.exchange.inventoryOutcome === "manual-required"
+                          ? messages.orderExchangeInventoryManual
+                          : messages.orderInventoryNotRequired}
+                    </p>
+                  ) : null}
+                </section>
               ) : null}
               <a href={`${basePath}/orders`}>{messages.orderHistory}</a>
             </aside>

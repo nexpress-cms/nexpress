@@ -69,6 +69,7 @@ describe("shop factory", () => {
     expect(shopPlugin.manifest.styleSlots?.["return-postage-settlement"]).toBe(
       "[data-np-shop-return-postage-settlement]",
     );
+    expect(shopPlugin.manifest.styleSlots?.exchange).toBe("[data-np-shop-exchange]");
     expect(
       Object.entries(shopPlugin.actions ?? {}).map(([id, action]) => ({
         id,
@@ -126,6 +127,9 @@ describe("shop factory", () => {
       { id: "countReturns", kind: "metric" },
       { id: "returnHealth", kind: "status" },
       { id: "recentReturns", kind: "table" },
+      { id: "countExchanges", kind: "metric" },
+      { id: "exchangeHealth", kind: "status" },
+      { id: "recentExchanges", kind: "table" },
       { id: "countReturnLogistics", kind: "metric" },
       { id: "returnLogisticsHealth", kind: "status" },
       { id: "recentReturnLogistics", kind: "table" },
@@ -135,6 +139,10 @@ describe("shop factory", () => {
       { id: "approveReturn", kind: "action" },
       { id: "rejectReturn", kind: "action" },
       { id: "receiveReturn", kind: "action" },
+      { id: "createExchange", kind: "action" },
+      { id: "processExchange", kind: "action" },
+      { id: "shipExchange", kind: "action" },
+      { id: "cancelExchange", kind: "action" },
       { id: "countFulfillments", kind: "metric" },
       { id: "fulfillmentHealth", kind: "status" },
       { id: "recentFulfillments", kind: "table" },
@@ -230,6 +238,10 @@ describe("shop factory", () => {
         "table:shop-order-notifications",
         "action:shop-order-notification-reconcile",
         "action:shop-order-notification-retry",
+        "dashboard:shop-exchanges",
+        "widget:shop-exchange-health",
+        "table:shop-exchanges",
+        "action:shop-exchange-operations",
       ]),
     );
   });

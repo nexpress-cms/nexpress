@@ -6538,6 +6538,187 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     });
   });
 
+  it("consumes and restores exact replacement inventory for one same-item exchange", async () => {
+    const ids = {
+      intentId: "aa3e4567-e89b-42d3-a456-426614174000",
+      draftId: "ba3e4567-e89b-42d3-a456-426614174000",
+      orderId: "ca3e4567-e89b-42d3-a456-426614174000",
+    };
+    const owner = await createPendingOrder(ids, "exchange-owner@example.com");
+    const paymentShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
+    });
+    await payPendingOrder(paymentShop, {
+      orderId: ids.orderId,
+      eventId: "evt_exchange",
+      paymentReference: "pay_exchange",
+    });
+    const staff = await seedUser({ email: "exchange-operator@example.com" });
+    const actionContext = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    await withCurrentSite("default", () =>
+      paymentShop.plugin.actions?.shipFulfillment?.handler(
+        {
+          row: { id: ids.orderId, fulfillmentRevision: 1 },
+          values: { carrier: "Parcel Co", trackingNumber: "EXCHANGE-ORIGINAL", operatorNote: "" },
+        },
+        actionContext,
+      ),
+    );
+    const shipped = await orderCall("GET", { ...owner, orderId: ids.orderId });
+    const shippedOrder = (
+      shipped.body as { order: { revision: number; lines: Array<{ key: string }> } }
+    ).order;
+    const requested = await returnCall("POST", {
+      ...owner,
+      body: {
+        orderId: ids.orderId,
+        expectedOrderRevision: shippedOrder.revision,
+        lines: [{ lineKey: shippedOrder.lines[0]!.key, quantity: 1 }],
+        reason: "defective",
+        detail: null,
+      },
+    });
+    const returnId = (requested.body as { returnRequest: { id: string } }).returnRequest.id;
+    await withCurrentSite("default", () =>
+      paymentShop.plugin.actions?.approveReturn?.handler(
+        {
+          row: { id: ids.orderId, returnRevision: 1 },
+          values: { operatorNote: "Approved" },
+        },
+        actionContext,
+      ),
+    );
+    await withCurrentSite("default", () =>
+      paymentShop.plugin.actions?.receiveReturn?.handler(
+        {
+          row: { id: ids.orderId, returnRevision: 2 },
+          values: { operatorNote: "Inspected" },
+        },
+        actionContext,
+      ),
+    );
+    const received = await orderCall("GET", { ...owner, orderId: ids.orderId });
+    const receivedOrder = (received.body as { order: { revision: number } }).order;
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.createExchange?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              orderRevision: receivedOrder.revision,
+              returnId,
+              returnRevision: 3,
+            },
+            values: { operatorNote: "Exact replacement" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("inventory consumed") });
+    const db = await getTestDb();
+    expect(
+      await db
+        .select({ stockQuantity: shopProductsTable.stockQuantity })
+        .from(shopProductsTable)
+        .where(eq(shopProductsTable.id, productId)),
+    ).toEqual([{ stockQuantity: 7 }]);
+    const created = await orderCall("GET", { ...owner, orderId: ids.orderId });
+    const createdOrder = (
+      created.body as {
+        order: {
+          revision: number;
+          exchange: { id: string; revision: number; status: string };
+        };
+      }
+    ).order;
+    expect(createdOrder.exchange).toMatchObject({ status: "awaiting", revision: 1 });
+    await withCurrentSite("default", () =>
+      paymentShop.plugin.actions?.processExchange?.handler(
+        {
+          row: {
+            id: ids.orderId,
+            exchangeId: createdOrder.exchange.id,
+            exchangeRevision: 1,
+            orderRevision: createdOrder.revision,
+          },
+          values: { operatorNote: "Packing" },
+        },
+        actionContext,
+      ),
+    );
+    const processing = await orderCall("GET", { ...owner, orderId: ids.orderId });
+    const processingOrder = (
+      processing.body as {
+        order: { revision: number; exchange: { id: string; revision: number } };
+      }
+    ).order;
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.cancelExchange?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              exchangeId: processingOrder.exchange.id,
+              exchangeRevision: processingOrder.exchange.revision,
+              orderRevision: processingOrder.revision,
+            },
+            values: { operatorNote: "Replacement cancelled" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("inventory restocked") });
+    expect(
+      await db
+        .select({ stockQuantity: shopProductsTable.stockQuantity })
+        .from(shopProductsTable)
+        .where(eq(shopProductsTable.id, productId)),
+    ).toEqual([{ stockQuantity: 8 }]);
+    const cancelled = await orderCall("GET", { ...owner, orderId: ids.orderId });
+    expect(cancelled).toMatchObject({
+      body: {
+        order: {
+          exchange: {
+            status: "cancelled",
+            inventoryOutcome: "restocked",
+          },
+        },
+      },
+    });
+    expect((cancelled.body as { order: { exchange: unknown } }).order.exchange).not.toHaveProperty(
+      "operatorNote",
+    );
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.recentExchanges?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { total: 1 } });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.exchangeHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(
+      await db
+        .select({ action: npAuditEvents.action })
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.targetId, ids.orderId)),
+    ).toEqual(
+      expect.arrayContaining([
+        { action: "shop.exchange.create" },
+        { action: "shop.exchange.process" },
+        { action: "shop.exchange.cancel" },
+      ]),
+    );
+  });
+
   it("receives a return without partially restoring drifted catalog inventory", async () => {
     const ids = {
       intentId: "a93e4567-e89b-42d3-a456-426614174000",

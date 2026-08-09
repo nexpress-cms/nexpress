@@ -212,14 +212,14 @@ export async function npReleaseShopInventoryReservations(
  * stock inside the caller's order transaction. Product advisory locks must be
  * held before calling this function.
  */
-export async function npConsumeShopInventoryReservations(
+async function consumeShopInventorySnapshot(
   tx: NpShopTransaction,
   siteId: string,
   runtime: NpShopRuntime,
-  orderId: string,
   lines: readonly NpShopCheckoutIntentLine[],
-): Promise<number> {
-  if (lines.length === 0) return 0;
+  protectedQuantities: ReadonlyMap<string, number> = new Map(),
+): Promise<void> {
+  if (lines.length === 0) return;
   const registration = getCollectionRegistration(runtime.collections.products);
   const productTable = registration.table as PgTable;
   const variantTable = registration.childTables?.variants as PgTable | undefined;
@@ -267,6 +267,15 @@ export async function npConsumeShopInventoryReservations(
 
     for (const line of productLines) {
       if (line.variantSku === null) {
+        const protectedQuantity =
+          protectedQuantities.get(npShopInventoryStockKey(productId, null)) ?? 0;
+        const minimumStock = line.quantity + protectedQuantity;
+        if (!Number.isSafeInteger(minimumStock)) {
+          throw new NpShopPaymentConflictError(
+            "payment_inventory_conflict",
+            "Protected base-product inventory exceeds the safe integer contract.",
+          );
+        }
         const updated = await tx
           .update(productTable)
           .set({
@@ -276,7 +285,7 @@ export async function npConsumeShopInventoryReservations(
             and(
               eq(productIdColumn, productId),
               eq(productSiteIdColumn, siteId),
-              sql`${productStockColumn} >= ${line.quantity}`,
+              sql`${productStockColumn} >= ${minimumStock}`,
             ),
           )
           .returning({ id: productIdColumn });
@@ -298,6 +307,15 @@ export async function npConsumeShopInventoryReservations(
       const variantSkuColumn = tableColumn(variantTable, "sku");
       const variantStockColumn = tableColumn(variantTable, "stockQuantity");
       const variantEnabledColumn = tableColumn(variantTable, "enabled");
+      const protectedQuantity =
+        protectedQuantities.get(npShopInventoryStockKey(productId, line.variantSku)) ?? 0;
+      const minimumStock = line.quantity + protectedQuantity;
+      if (!Number.isSafeInteger(minimumStock)) {
+        throw new NpShopPaymentConflictError(
+          "payment_inventory_conflict",
+          "Protected variant inventory exceeds the safe integer contract.",
+        );
+      }
       const updated = await tx
         .update(variantTable)
         .set({
@@ -308,7 +326,7 @@ export async function npConsumeShopInventoryReservations(
             eq(variantParentColumn, productId),
             eq(variantSkuColumn, line.variantSku),
             eq(variantEnabledColumn, true),
-            sql`${variantStockColumn} >= ${line.quantity}`,
+            sql`${variantStockColumn} >= ${minimumStock}`,
           ),
         )
         .returning({ id: tableColumn(variantTable, "id") });
@@ -374,7 +392,37 @@ export async function npConsumeShopInventoryReservations(
       })
       .where(and(eq(productIdColumn, productId), eq(productSiteIdColumn, siteId)));
   }
+}
 
+/**
+ * Consume an exact tracked catalog snapshot without creating another pending
+ * order reservation. Callers must hold the canonical product advisory locks.
+ * This is used only after a received return restored the same replacement
+ * units for one same-item exchange.
+ */
+export async function npConsumeShopReplacementInventory(
+  tx: NpShopTransaction,
+  siteId: string,
+  runtime: NpShopRuntime,
+  lines: readonly NpShopCheckoutIntentLine[],
+): Promise<void> {
+  const reserved = await npGetShopReservedQuantities(
+    siteId,
+    lines.map((line) => line.productId),
+    tx,
+  );
+  await consumeShopInventorySnapshot(tx, siteId, runtime, lines, reserved);
+}
+
+export async function npConsumeShopInventoryReservations(
+  tx: NpShopTransaction,
+  siteId: string,
+  runtime: NpShopRuntime,
+  orderId: string,
+  lines: readonly NpShopCheckoutIntentLine[],
+): Promise<number> {
+  if (lines.length === 0) return 0;
+  await consumeShopInventorySnapshot(tx, siteId, runtime, lines);
   const released = await npReleaseShopInventoryReservations(tx, siteId, orderId, lines);
   if (released !== lines.length) {
     throw new NpShopPaymentConflictError(

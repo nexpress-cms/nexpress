@@ -647,6 +647,7 @@
 
   .np-shop-return-form,
   .np-shop-return-summary,
+  .np-shop-exchange-summary,
   .np-shop-return-logistics-form,
   .np-shop-return-logistics-summary,
   .np-shop-return-postage {
@@ -686,6 +687,10 @@
   }
 
   .np-shop-return-summary[data-np-shop-return-status="received"] {
+    color: var(--np-shop-accent, var(--np-color-primary, #205c46));
+  }
+
+  .np-shop-exchange-summary[data-np-shop-exchange="shipped"] {
     color: var(--np-shop-accent, var(--np-color-primary, #205c46));
   }
 

@@ -59,6 +59,7 @@ import {
   npCountShopFulfillmentParcels,
   npCountShopRefunds,
   npCountShopReturns,
+  npCountShopExchanges,
   npListRecentShopFulfillments,
   npListRecentShopFulfillmentParcels,
   npListRecentShopCarrierBookings,
@@ -66,6 +67,7 @@ import {
   npListRecentShopPaymentEvents,
   npListRecentShopRefunds,
   npListRecentShopReturns,
+  npListRecentShopExchanges,
   npMaintainShopOrders,
   npProcessShopFulfillment,
   npReadShopFulfillmentPrivate,
@@ -73,6 +75,10 @@ import {
   npApproveShopReturn,
   npReceiveShopReturn,
   npRejectShopReturn,
+  npCreateShopExchange,
+  npProcessShopExchange,
+  npShipShopExchange,
+  npCancelShopExchange,
   npShipShopFulfillment,
   npSaveShopFulfillmentParcels,
 } from "./order-service.js";
@@ -116,6 +122,11 @@ import {
   npRequireShopReturnReceiveInput,
   npRequireShopReturnRejectInput,
 } from "./return-contract.js";
+import {
+  npRequireShopExchangeCreateInput,
+  npRequireShopExchangeShipInput,
+  npRequireShopExchangeUpdateInput,
+} from "./exchange-contract.js";
 import { npRequireShopReturnLocationReference } from "./return-logistics-contract.js";
 import {
   npCleanupExpiredShopReturnLogisticsPrivate,
@@ -895,6 +906,14 @@ const messages = {
     "shop.orderReturnRejected": "Return request rejected.",
     "shop.orderReturnReceived": "Returned items received.",
     "shop.orderReturnCancelled": "Return request cancelled.",
+    "shop.orderExchange": "Replacement exchange",
+    "shop.orderExchangeAwaiting": "The same-item replacement is awaiting processing.",
+    "shop.orderExchangeProcessing": "The same-item replacement is being prepared.",
+    "shop.orderExchangeShipped": "The same-item replacement was shipped.",
+    "shop.orderExchangeCancelled": "The same-item replacement was cancelled.",
+    "shop.orderExchangeInventoryRestocked": "Replacement inventory was restored.",
+    "shop.orderExchangeInventoryManual": "Replacement inventory requires operator reconciliation.",
+    "shop.orderExchangeTracking": "Replacement tracking",
     "shop.orderReturnReason": "Return reason",
     "shop.orderReturnReasonDamaged": "Damaged in transit",
     "shop.orderReturnReasonDefective": "Defective",
@@ -1163,6 +1182,14 @@ const messages = {
     "shop.orderReturnRejected": "반품 요청이 거절되었습니다.",
     "shop.orderReturnReceived": "반품 상품 입고가 확인되었습니다.",
     "shop.orderReturnCancelled": "반품 요청을 취소했습니다.",
+    "shop.orderExchange": "교환 상품",
+    "shop.orderExchangeAwaiting": "동일 상품 교환 처리를 기다리고 있습니다.",
+    "shop.orderExchangeProcessing": "동일 상품 교환 출고를 준비 중입니다.",
+    "shop.orderExchangeShipped": "동일 상품 교환품이 출고되었습니다.",
+    "shop.orderExchangeCancelled": "동일 상품 교환이 취소되었습니다.",
+    "shop.orderExchangeInventoryRestocked": "교환용 재고를 복원했습니다.",
+    "shop.orderExchangeInventoryManual": "교환용 재고를 운영자가 직접 조정해야 합니다.",
+    "shop.orderExchangeTracking": "교환 배송 조회",
     "shop.orderReturnReason": "반품 사유",
     "shop.orderReturnReasonDamaged": "배송 중 파손",
     "shop.orderReturnReasonDefective": "상품 불량",
@@ -1334,7 +1361,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, wishlists, one-shot stock/price alerts, verified-purchase reviews, promotions, carts, checkout, private drafts, shipping/tax quotes, durable orders and inventory, optional payments/refunds with quote-backed return-postage settlement, fulfillment, carrier booking/pickup/tracking, physical returns and logistics, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, wishlists, one-shot stock/price alerts, verified-purchase reviews, promotions, carts, checkout, private drafts, shipping/tax quotes, durable orders and inventory, optional payments/refunds with quote-backed return-postage settlement, fulfillment, carrier booking/pickup/tracking, physical returns, same-item exchanges and logistics, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -1449,6 +1476,10 @@ export function createShop(options: NpShopOptions = {}) {
           "dashboard:shop-returns",
           "widget:shop-return-health",
           "table:shop-returns",
+          "dashboard:shop-exchanges",
+          "widget:shop-exchange-health",
+          "table:shop-exchanges",
+          "action:shop-exchange-operations",
           ...(paymentAttemptApiHandler
             ? [
                 "dashboard:shop-payment-attempts",
@@ -1479,7 +1510,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
+          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, exact same-item replacement exchanges, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: [
           "shop",
@@ -1533,6 +1564,7 @@ export function createShop(options: NpShopOptions = {}) {
         "tracking-status": "[data-np-shop-tracking-status]",
         "return-tracking-status": "[data-np-shop-return-tracking-status]",
         "return-status": "[data-np-shop-return-status]",
+        exchange: "[data-np-shop-exchange]",
         "return-postage": "[data-np-shop-return-postage-status]",
         "return-postage-settlement": "[data-np-shop-return-postage-settlement]",
         "product-card": ".np-shop-product-card",
@@ -1803,6 +1835,14 @@ export function createShop(options: NpShopOptions = {}) {
           priority: 35,
         },
         {
+          id: "shop-exchanges-total",
+          label: "Same-item exchanges",
+          kind: "metric",
+          actionId: "countExchanges",
+          description: "Received returns with one exact replacement inventory and shipment state.",
+          priority: 43,
+        },
+        {
           id: "shop-return-logistics-total",
           label: "Return shipments",
           kind: "metric" as const,
@@ -1992,6 +2032,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Return contract",
           kind: "status",
           actionId: "returnHealth",
+        },
+        {
+          id: "shop-exchange-health",
+          label: "Same-item exchange contract",
+          kind: "status",
+          actionId: "exchangeHealth",
         },
         {
           id: "shop-return-logistics-health",
@@ -2741,6 +2787,7 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "inventory", label: "Inventory" },
             { name: "operatorNote", label: "Operations note" },
             { name: "postageSettlement", label: "Postage settlement" },
+            { name: "exchange", label: "Same-item exchange" },
             { name: "updatedAt", label: "Updated" },
           ],
           rowsActionId: "recentReturns",
@@ -2794,6 +2841,23 @@ export function createShop(options: NpShopOptions = {}) {
               ],
               confirm:
                 "Confirm every requested unit was received? Tracked inventory is restored atomically only when all exact catalog rows still match.",
+            },
+            {
+              id: "create-exchange",
+              label: "Create same-item exchange",
+              actionId: "createExchange",
+              rowFields: ["id", "orderRevision", "returnId", "returnRevision"],
+              visibleWhen: { field: "exchange", oneOf: ["eligible"] },
+              fields: [
+                {
+                  name: "operatorNote",
+                  label: "Operations note",
+                  type: "textarea",
+                  placeholder: "Optional PII-free replacement note",
+                },
+              ],
+              confirm:
+                "Consume the exact same tracked item and quantity for one replacement? No refund, payment difference, address, or carrier booking is created.",
             },
             ...(runtime.paymentPartialRefundAdapter
               ? [
@@ -2886,6 +2950,85 @@ export function createShop(options: NpShopOptions = {}) {
               : []),
           ],
           emptyMessage: "No Shop physical return exists for this site.",
+        },
+        {
+          id: "shop-exchanges",
+          label: "Same-item replacement exchanges (PII withheld)",
+          columns: [
+            { name: "id", label: "Order" },
+            { name: "exchangeId", label: "Exchange" },
+            { name: "returnId", label: "Return" },
+            { name: "status", label: "Status" },
+            { name: "exchangeRevision", label: "Exchange revision" },
+            { name: "orderRevision", label: "Order revision" },
+            { name: "units", label: "Units" },
+            { name: "inventory", label: "Inventory" },
+            { name: "carrier", label: "Carrier" },
+            { name: "trackingNumber", label: "Tracking" },
+            { name: "operatorNote", label: "Operations note" },
+            { name: "updatedAt", label: "Updated" },
+          ],
+          rowsActionId: "recentExchanges",
+          rowActions: [
+            {
+              id: "process-exchange",
+              label: "Start replacement",
+              actionId: "processExchange",
+              rowFields: ["id", "exchangeId", "exchangeRevision", "orderRevision"],
+              visibleWhen: { field: "status", oneOf: ["awaiting"] },
+              fields: [
+                {
+                  name: "operatorNote",
+                  label: "Operations note",
+                  type: "textarea",
+                  placeholder: "Optional PII-free preparation note",
+                },
+              ],
+              confirm: "Mark this exact replacement as processing?",
+            },
+            {
+              id: "ship-exchange",
+              label: "Ship replacement",
+              actionId: "shipExchange",
+              rowFields: ["id", "exchangeId", "exchangeRevision", "orderRevision"],
+              visibleWhen: { field: "status", oneOf: ["awaiting", "processing"] },
+              fields: [
+                { name: "carrier", label: "Carrier", type: "text", required: true },
+                {
+                  name: "trackingNumber",
+                  label: "Tracking number",
+                  type: "text",
+                  required: true,
+                },
+                {
+                  name: "operatorNote",
+                  label: "Operations note",
+                  type: "textarea",
+                  placeholder: "Optional PII-free shipment note",
+                },
+              ],
+              confirm:
+                "Mark the replacement shipped with this manually verified carrier and tracking number?",
+            },
+            {
+              id: "cancel-exchange",
+              label: "Cancel replacement",
+              actionId: "cancelExchange",
+              rowFields: ["id", "exchangeId", "exchangeRevision", "orderRevision"],
+              visibleWhen: { field: "status", oneOf: ["awaiting", "processing"] },
+              fields: [
+                {
+                  name: "operatorNote",
+                  label: "Cancellation note",
+                  type: "textarea",
+                  required: true,
+                },
+              ],
+              confirm:
+                "Cancel this unshipped replacement and restore every exact tracked unit atomically?",
+            },
+          ],
+          emptyMessage: "No same-item exchange exists for this site.",
         },
         {
           id: "shop-return-logistics",
@@ -3950,6 +4093,63 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      countExchanges: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npCountShopExchanges();
+            return {
+              ok: true,
+              data: {
+                value: counts.total,
+                delta: `${counts.awaiting.toString()} awaiting, ${counts.processing.toString()} processing, ${counts.shipped.toString()} shipped`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      exchangeHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopExchanges();
+            if (counts.invalidSample > 0 || counts.orphanSample > 0) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed and ${counts.orphanSample.toString()} orphan exchange row(s) in bounded samples.`,
+              );
+            }
+            if (counts.manualInventory > 0 || counts.awaiting > 0 || counts.processing > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.awaiting.toString()} awaiting, ${counts.processing.toString()} processing, and ${counts.manualInventory.toString()} requiring manual inventory reconciliation.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.shipped.toString()} shipped and ${counts.cancelled.toString()} cancelled same-item exchange(s).`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Exchange health check failed.",
+            );
+          }
+        },
+      },
+      recentExchanges: {
+        kind: "table",
+        handler: async () => {
+          try {
+            const result = await npListRecentShopExchanges();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
       countReturnLogistics: {
         kind: "metric" as const,
         handler: async () => {
@@ -4176,6 +4376,81 @@ export function createShop(options: NpShopOptions = {}) {
               ok: true,
               data: `Return received at revision ${result.revision.toString()}; inventory ${result.inventoryOutcome}.`,
             };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      createExchange: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return { ok: false, error: "Exchange operations require a direct staff action." };
+            }
+            const result = await npCreateShopExchange(
+              runtime,
+              npRequireShopExchangeCreateInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return {
+              ok: true,
+              data: `Same-item exchange created at revision ${result.revision.toString()}; inventory ${result.inventoryOutcome}.`,
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      processExchange: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return { ok: false, error: "Exchange operations require a direct staff action." };
+            }
+            const result = await npProcessShopExchange(
+              runtime,
+              npRequireShopExchangeUpdateInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return { ok: true, data: `Exchange is ${result.status}.` };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      shipExchange: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return { ok: false, error: "Exchange operations require a direct staff action." };
+            }
+            const result = await npShipShopExchange(
+              runtime,
+              npRequireShopExchangeShipInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return { ok: true, data: `Exchange shipped with ${result.carrier ?? "carrier"}.` };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      cancelExchange: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return { ok: false, error: "Exchange operations require a direct staff action." };
+            }
+            const result = await npCancelShopExchange(
+              runtime,
+              npRequireShopExchangeUpdateInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return { ok: true, data: `Exchange cancelled; inventory ${result.inventoryOutcome}.` };
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
           }
@@ -6047,6 +6322,34 @@ export {
   npShopReturnReasons,
   npShopReturnStatuses,
 } from "./return-contract.js";
+export {
+  NP_SHOP_EXCHANGE_CONTRACT,
+  NP_SHOP_EXCHANGE_STORAGE_CONTRACT,
+  NpShopExchangeConflictError,
+  NpShopExchangeContractError,
+  npAnalyzeShopExchange,
+  npAnalyzeStoredShopExchange,
+  npProjectShopExchange,
+  npRequireShopExchange,
+  npRequireShopExchangeCreateInput,
+  npRequireShopExchangeShipInput,
+  npRequireShopExchangeUpdateInput,
+  npRequireStoredShopExchange,
+  npShopExchangeInventoryOutcomes,
+  npShopExchangeLimits,
+  npShopExchangeLinesFromOrder,
+  npShopExchangeStatuses,
+} from "./exchange-contract.js";
+export type {
+  NpShopExchange,
+  NpShopExchangeCreateInput,
+  NpShopExchangeInventoryOutcome,
+  NpShopExchangeLine,
+  NpShopExchangeShipInput,
+  NpShopExchangeStatus,
+  NpShopExchangeUpdateInput,
+  NpShopStoredExchange,
+} from "./exchange-contract.js";
 export {
   NP_SHOP_RETURN_LOGISTICS_CANCEL_REQUEST_CONTRACT,
   NP_SHOP_RETURN_LOGISTICS_CANCEL_RESULT_CONTRACT,

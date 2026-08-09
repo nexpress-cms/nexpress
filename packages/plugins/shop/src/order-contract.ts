@@ -26,6 +26,7 @@ import {
   npAnalyzeShopPaymentAdjustment,
 } from "./payment-adjustment-contract.js";
 import { NP_SHOP_RETURN_CONTRACT, npAnalyzeShopReturn } from "./return-contract.js";
+import { NP_SHOP_EXCHANGE_CONTRACT, npAnalyzeShopExchange } from "./exchange-contract.js";
 import { npAnalyzeShopDeliveryMethod, type NpShopDeliveryMethod } from "./shipping-contract.js";
 import { npAnalyzeShopTaxQuote, type NpShopTaxQuote } from "./tax-contract.js";
 import { npAnalyzeShopTracking } from "./tracking-contract.js";
@@ -816,6 +817,7 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
         "partialRefund",
         "paymentAdjustment",
         "returnRequest",
+        "exchange",
       ].includes(key)
     ) {
       issues.push(`order.${key} is not supported.`);
@@ -837,6 +839,7 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
   delete storedCandidate.partialRefund;
   delete storedCandidate.paymentAdjustment;
   delete storedCandidate.returnRequest;
+  delete storedCandidate.exchange;
   issues.push(...npAnalyzeStoredShopOrder(storedCandidate));
   if (value.contract !== NP_SHOP_ORDER_CONTRACT) {
     issues.push(`order.contract must equal "${NP_SHOP_ORDER_CONTRACT}".`);
@@ -1008,6 +1011,25 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
           "order.partialRefund postage settlement must match one active quote-backed return shipment.",
         );
       }
+    }
+  }
+  if (Object.hasOwn(value, "exchange")) {
+    issues.push(...npAnalyzeShopExchange(value.exchange).map((issue) => `order.${issue}`));
+    if (
+      !isRecord(value.exchange) ||
+      value.exchange.contract !== NP_SHOP_EXCHANGE_CONTRACT ||
+      value.status !== "paid" ||
+      !isRecord(value.fulfillment) ||
+      value.fulfillment.status !== "shipped" ||
+      !isRecord(value.returnRequest) ||
+      value.returnRequest.status !== "received" ||
+      value.exchange.returnId !== value.returnRequest.id ||
+      Object.hasOwn(value, "refund") ||
+      Object.hasOwn(value, "partialRefund")
+    ) {
+      issues.push(
+        "order.exchange must match one paid shipped order and its received, unrefunded return.",
+      );
     }
   }
   if (Object.hasOwn(value, "paymentAdjustment")) {

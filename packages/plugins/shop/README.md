@@ -107,6 +107,10 @@ It provides:
 - owner-scoped item-level physical return requests for shipped orders, with
   revision-safe cancellation, audited staff approval/rejection/receipt,
   all-or-none tracked-inventory restoration, and manual-reconciliation health;
+- one direct-staff same-item exchange after a received return, with exact
+  immutable lines, reservation-aware all-or-none replacement inventory,
+  revision-safe awaiting/processing/shipped/cancelled state, manual tracking,
+  owner notifications, PII-free Admin/Doctor/audit, and cancellation restock;
 - optional provider-neutral partial refunds linked to one received physical
   return, with exact post-discount line allocation, explicit shipping/tax
   allocation, one durable idempotency id, and no second inventory or
@@ -127,13 +131,14 @@ It provides:
   automatic charge, refund deduction, or payer policy by the carrier capability;
 - optional exact raw-body and bounded polling reverse tracking over active
   return logistics, with idempotent receipts, persisted leases/backoff,
-  owner-visible status, and no automatic receipt, restock, refund, or exchange;
+  owner-visible status, and no automatic receipt, restock, refund, or exchange transition;
 - classic and storefront-full skins;
 - featured-product and category-grid blocks.
 
 Provider-specific browser/server protocols, signature algorithms, credentials
 and rotation, initiating repeated or non-return partial refunds, disputes and
-chargebacks, exchanges, separate return-postage charges, automatic or
+chargebacks, different-item or price-difference exchanges, replacement carrier booking,
+separate return-postage charges, automatic or
 jurisdictional responsibility policy, carrier label purchase,
 recurring pickup,
 provider-specific tracking protocols,
@@ -170,5 +175,5 @@ for the exact price, SKU, inventory, wishlist, restock-alert, price-alert, revie
 promotion, checkout-intent, private-draft, shipping-quote, tax-quote,
 pending-order, payment-attempt/event/adjustment, fulfillment, parcel, carrier,
 pickup, tracking/polling, full-refund, return-linked partial-refund, return,
-return-logistics, return-postage, return-postage settlement, skin, block, and
+same-item exchange, return-logistics, return-postage, return-postage settlement, skin, block, and
 theme-integration contracts.
