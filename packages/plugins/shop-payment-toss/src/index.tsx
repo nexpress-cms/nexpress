@@ -651,18 +651,27 @@ export function createTossPaymentsAdapter(
   async function refundReturnSettlement(
     input: NpShopPaymentReturnSettlementRefundInput,
   ): Promise<NpShopPaymentPartialRefundResult> {
+    const allocationAmounts = [
+      input.allocation.itemAmountMinor,
+      input.allocation.shippingMinor,
+      input.allocation.taxMinor,
+    ];
     const grossAmountMinor =
       input.allocation.itemAmountMinor + input.allocation.shippingMinor + input.allocation.taxMinor;
     if (
       input.postageSettlement.contract !== "np.shop-return-postage-settlement.v1" ||
       input.postageSettlement.method.contract !== "np.shop-return-postage-method.v1" ||
+      allocationAmounts.some((amount) => !Number.isSafeInteger(amount) || amount < 0) ||
       !Number.isSafeInteger(grossAmountMinor) ||
       grossAmountMinor < 1 ||
       !Number.isSafeInteger(input.amountMinor) ||
+      input.amountMinor < 1 ||
       !Number.isSafeInteger(input.postageSettlement.method.amountMinor) ||
+      input.postageSettlement.method.amountMinor < 0 ||
       !Number.isSafeInteger(input.postageSettlement.deductionMinor) ||
       !["merchant", "customer"].includes(input.postageSettlement.responsibility) ||
       input.postageSettlement.method.currency !== input.currency ||
+      input.postageSettlement.designatedAt !== input.requestedAt ||
       input.postageSettlement.deductionMinor < 0 ||
       input.postageSettlement.deductionMinor > grossAmountMinor ||
       input.amountMinor !== grossAmountMinor - input.postageSettlement.deductionMinor ||

@@ -296,7 +296,7 @@ describe("Toss Payments Shop adapter", () => {
           quoteExpiresAt: "2026-08-05T01:00:00.000Z",
         },
         deductionMinor: 4_000,
-        designatedAt: "2026-08-05T02:00:00.000Z",
+        designatedAt: "2026-08-05T00:04:00.000Z",
       },
       reason: "Received changed-mind return",
       requestedAt: "2026-08-05T00:04:00.000Z",
@@ -330,6 +330,15 @@ describe("Toss Payments Shop adapter", () => {
       current.refundReturnSettlement({
         ...input,
         postageSettlement: { ...input.postageSettlement, deductionMinor: 3_999 },
+      }),
+    ).rejects.toMatchObject({ code: "toss_return_settlement_mismatch", retryable: false });
+    await expect(
+      current.refundReturnSettlement({
+        ...input,
+        postageSettlement: {
+          ...input.postageSettlement,
+          method: { ...input.postageSettlement.method, amountMinor: -4_000 },
+        },
       }),
     ).rejects.toMatchObject({ code: "toss_return_settlement_mismatch", retryable: false });
     expect(fetcher).toHaveBeenCalledTimes(2);
