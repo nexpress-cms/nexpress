@@ -969,6 +969,46 @@ export function npAnalyzeShopOrder(value: unknown): string[] {
         "order.partialRefund must match one paid shipped order, its received return, currency, and bounded non-full amount.",
       );
     }
+    if (isRecord(value.partialRefund) && Object.hasOwn(value.partialRefund, "postageSettlement")) {
+      const settlement = isRecord(value.partialRefund.postageSettlement)
+        ? value.partialRefund.postageSettlement
+        : null;
+      const logistics =
+        isRecord(value.returnRequest) && isRecord(value.returnRequest.logistics)
+          ? value.returnRequest.logistics
+          : null;
+      const settlementMethod = settlement && isRecord(settlement.method) ? settlement.method : null;
+      const logisticsMethod =
+        logistics && isRecord(logistics.postageMethod) ? logistics.postageMethod : null;
+      const settlementEstimate = settlementMethod?.estimatedTransit;
+      const logisticsEstimate = logisticsMethod?.estimatedTransit;
+      const estimatesMatch =
+        (settlementEstimate === null && logisticsEstimate === null) ||
+        (isRecord(settlementEstimate) &&
+          isRecord(logisticsEstimate) &&
+          settlementEstimate.minimumDays === logisticsEstimate.minimumDays &&
+          settlementEstimate.maximumDays === logisticsEstimate.maximumDays);
+      if (
+        !settlement ||
+        !logistics ||
+        logistics.status !== "active" ||
+        !settlementMethod ||
+        !logisticsMethod ||
+        settlementMethod.providerId !== logisticsMethod.providerId ||
+        settlementMethod.quoteId !== logisticsMethod.quoteId ||
+        settlementMethod.methodId !== logisticsMethod.methodId ||
+        settlementMethod.label !== logisticsMethod.label ||
+        settlementMethod.currency !== logisticsMethod.currency ||
+        settlementMethod.amountMinor !== logisticsMethod.amountMinor ||
+        settlementMethod.quotedAt !== logisticsMethod.quotedAt ||
+        settlementMethod.quoteExpiresAt !== logisticsMethod.quoteExpiresAt ||
+        !estimatesMatch
+      ) {
+        issues.push(
+          "order.partialRefund postage settlement must match one active quote-backed return shipment.",
+        );
+      }
+    }
   }
   if (Object.hasOwn(value, "paymentAdjustment")) {
     issues.push(

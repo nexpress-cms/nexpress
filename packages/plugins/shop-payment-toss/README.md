@@ -5,7 +5,8 @@ an adapter rather than a standalone NexPress plugin: Shop owns orders,
 inventory, attempts, and Admin diagnostics, while this package owns the Toss
 browser SDK handoff, secret-key confirmation, query-verified webhook
 projection, idempotent full-payment cancellation, and one exact partial
-cancellation linked to a received physical return. Query-verified
+cancellation linked to a received physical return, including Shop's optional
+quote-backed return-postage responsibility settlement. Query-verified
 `CANCELED` and `PARTIAL_CANCELED` webhooks become cumulative provider-neutral
 Shop adjustment snapshots rather than being silently ignored.
 
@@ -64,10 +65,21 @@ payment reference, and amount all match. Shop persists provider confirmation
 before local completion and does not repeat the return's inventory restoration
 or change its shipped fulfillment.
 
+When Shop staff instead use **Settle return postage and refund**, the adapter
+accepts only Shop's validated immutable postage snapshot. Merchant
+responsibility sends the full returned allocation; customer responsibility
+subtracts exactly the quoted same-currency postage. Toss still receives one
+positive partial cancellation with the same durable refund UUID. The adapter
+rechecks the gross allocation, deduction, responsibility, currency, and net
+amount before network I/O. It never creates a separate/off-session charge or
+chooses who is responsible; automatic and jurisdictional policy remain outside
+this package.
+
 Shop matches those snapshots to its durable full/return-refund records without
 repeating compensation. A previously unknown single full cancellation safely
 closes an unshipped fulfillment and restores tracked inventory; an unknown
 partial or multi-cancellation snapshot remains PII-free manual review and
 blocks shipment/refund mutation. Disputes, chargebacks, initiating repeated or
-non-return partial refunds, virtual accounts, billing, settlement, exchanges,
-tax, shipping, and carrier integrations remain separate contracts.
+non-return partial refunds, separate postage charges, virtual accounts, billing,
+settlement, exchanges, tax, shipping, and carrier integrations remain separate
+contracts.

@@ -14,7 +14,8 @@ provider-neutral carrier pickup scheduling and cancellation,
 verified or reconciled carrier tracking events and owner-visible delivery state,
 provider-neutral full refunds with safe inventory
 compensation, owner-scoped item return intake with audited receipt inventory,
-provider-neutral partial refunds linked to received returns,
+provider-neutral partial refunds linked to received returns with optional
+quote-backed merchant/customer return-postage settlement,
 optional owner-scoped return shipment/drop-off or pickup creation with transient labels,
 member-owned saved products over the shared follow graph, independent one-shot
 restock and catalog price-drop alerts, Admin collection
@@ -1375,10 +1376,11 @@ only `[data-np-shop-return-postage-status]`. Admin and Doctor expose PII-free co
 health, newest rows, API/action inventory, provider mismatch, malformed rows,
 private-sidecar mismatch, and expired cleanup state.
 
-The quoted amount is informational logistics state. This contract does not
-charge a payment method, change frozen order totals, deduct a refund, decide
-whether the merchant or customer pays, implement jurisdiction policy, recur a
-quote, or define provider-specific protocols.
+The quoted amount is informational logistics state. This carrier contract does
+not charge a payment method, change frozen order totals, automatically deduct a
+refund or choose a responsible party, implement jurisdiction policy, recur a
+quote, or define provider-specific protocols. A payment adapter may separately
+opt into the staff-designated settlement contract described below.
 
 ### Reverse-shipment tracking
 
@@ -1620,6 +1622,44 @@ the warehouse receipt already performed the one allowed all-or-none inventory
 restoration. Owner order detail receives only the bounded allocation, status,
 amount, and timestamps. Provider references, operator reason, owner identity,
 and provider errors stay out of that projection and out of Doctor diagnostics.
+
+### Quote-backed return-postage settlement
+
+`refundReturnSettlement` is a second additive payment-adapter capability. It
+does not replace `refundPaymentPartially`, and a carrier that only implements
+return-postage quote/create remains independently usable. The direct-staff
+action appears only when the payment capability is configured and the return
+has been physically received with one active quote-backed return shipment.
+
+Staff explicitly designate `merchant` or `customer` responsibility. Shop
+copies the immutable `np.shop-return-postage-method.v1` snapshot into one
+optional `np.shop-return-postage-settlement.v1` field on the existing durable
+partial-refund row:
+
+- merchant responsibility records the exact quote and deducts zero;
+- customer responsibility deducts exactly the quoted same-currency amount;
+- the provider receives one net refund equal to returned post-discount items
+  plus explicit refundable outbound shipping and added tax, minus that exact
+  deduction.
+
+The net refund must remain positive and strictly below the original order
+total. A quote that consumes the refundable allocation fails closed for manual
+resolution; Shop never creates a zero/negative refund or a separate/off-session
+charge. One order still owns at most one return-linked refund, and full-refund
+exclusion, provider-confirmed recovery, cancellation reconciliation, retention,
+and inventory/fulfillment boundaries remain the same as the base partial-refund
+contract. Re-entry must match the durable responsibility and exact logistics
+quote. Owner detail projects the PII-free responsibility, method, quoted amount,
+deduction, and net refund through
+`[data-np-shop-return-postage-settlement]`; Admin and Doctor expose only bounded
+PII-free counts and snapshots.
+
+This capability is a staff designation and refund-settlement primitive, not a
+legal or automatic returns policy. Eligibility rules, fault determination,
+jurisdiction/consumer-law decisions, separate postage collection, exchanges,
+and provider-specific protocols remain outside Shop. The bundled Toss adapter
+maps the validated net amount to its existing partial-cancellation request and
+keeps the durable refund UUID as the idempotency key.
 
 ## Payment initiation and Toss Payments
 
@@ -1878,9 +1918,11 @@ The main public hooks are `.np-shop`, `.np-shop-product-card`,
 `.np-shop-payment-action`, `.np-shop-toss-payment`,
 `[data-np-shop-order-line]`, `[data-np-shop-order-status]`,
 `[data-np-shop-fulfillment-status]`,
+`[data-np-shop-partial-refund]`,
 `.np-shop-return-form`, `.np-shop-return-summary`,
 `[data-np-shop-return-status]`,
 `[data-np-shop-return-postage-status]`,
+`[data-np-shop-return-postage-settlement]`,
 `[data-np-shop-return-tracking-status]`,
 `[data-np-shop-surface]`, `[data-np-shop-skin]`,
 `[data-np-shop-inventory]`, `[data-np-shop-block]`, and

@@ -451,8 +451,19 @@ real product domain, not just blog/community. Ship as a plugin package
   selection, a maximum-one-hour private origin sidecar, provider I/O outside
   transactions, and an immutable PII-free method snapshot reach both skins,
   Storefront hooks, Admin/Doctor, cleanup, scaffolds, and PostgreSQL coverage.
-  Existing v1 return creation stays valid. Charging, refund deduction, payer
-  and jurisdiction policy, recurrence, and provider protocols remain separate.
+  Existing v1 return creation stays valid. Charging, refund settlement,
+  responsibility/jurisdiction policy, recurrence, and provider protocols remain
+  separate additive contracts.
+- **Quote-backed return-postage responsibility settlement (shipped)** — payment
+  adapters may add one independent received-return settlement refund over the
+  immutable active logistics quote. Direct staff designate merchant or customer
+  responsibility; merchant responsibility absorbs the quote while customer
+  responsibility deducts exactly that same-currency amount from one positive
+  net refund. The existing one-refund storage, provider-confirmed recovery,
+  cancellation reconciliation, Admin/Doctor, owner projection, both skins,
+  Storefront hook, Toss, scaffolds, and PostgreSQL coverage share the PII-free
+  contract. Separate charges, automatic/jurisdictional payer policy, exchanges,
+  arbitrary refunds, and provider protocols remain external.
 - **Provider-neutral return tracking (shipped)** — optional exact raw-body
   callback and bounded polling capabilities advance one independent PII-free
   reverse-shipment state with stable receipts, leases/backoff, owner-visible

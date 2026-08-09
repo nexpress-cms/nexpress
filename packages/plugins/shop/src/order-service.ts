@@ -155,7 +155,11 @@ import {
   npShopReturnTrackingStorageKey,
 } from "./return-tracking-contract.js";
 import { npRequireStoredShopCarrierPickup } from "./pickup-contract.js";
-import { npReadShopReturnLogisticsForOrder } from "./return-logistics-service.js";
+import {
+  npReadShopReturnLogisticsForOrder,
+  npShopReturnLogisticsStorageKey,
+} from "./return-logistics-service.js";
+import { npRequireStoredShopReturnLogistics } from "./return-logistics-contract.js";
 import {
   npHasShopPartialRefund,
   npReadShopPartialRefundForOrder,
@@ -234,6 +238,7 @@ export interface NpShopAdminReturnRow {
   units: number;
   inventory: string;
   operatorNote: string;
+  postageSettlement: string;
   updatedAt: string;
 }
 
@@ -1199,13 +1204,19 @@ async function projectOrder(
       "A physical return can exist only for one shipped fulfillment.",
     ]);
   }
-  const partialRefund = await npReadShopPartialRefundForOrder(db, siteId, order, returnRequest);
   const returnTracking = returnRequest
     ? await npReadShopReturnTrackingForOrder(db, siteId, order.id)
     : null;
   const returnLogistics = returnRequest
     ? await npReadShopReturnLogisticsForOrder(db, siteId, returnRequest, returnTracking)
     : null;
+  const partialRefund = await npReadShopPartialRefundForOrder(
+    db,
+    siteId,
+    order,
+    returnRequest,
+    returnLogistics,
+  );
   if (
     privateData?.contract === NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT &&
     (!fulfillment ||
@@ -5287,9 +5298,61 @@ export async function npListRecentShopReturns(): Promise<{
         like(npPluginStorage.key, "return:%"),
       ),
     );
+  const returnRequests = rows.map((row) =>
+    requireStoredReturnAtKey(row.value, row.expiresAt, row.key),
+  );
+  const logisticsKeys = returnRequests.map((returnRequest) =>
+    npShopReturnLogisticsStorageKey(returnRequest.orderId),
+  );
+  const partialRefundKeys = returnRequests.map((returnRequest) =>
+    npShopPartialRefundStorageKey(returnRequest.orderId),
+  );
+  const relatedKeys = [...logisticsKeys, ...partialRefundKeys];
+  const relatedRows =
+    relatedKeys.length === 0
+      ? []
+      : await db
+          .select({
+            key: npPluginStorage.key,
+            value: npPluginStorage.value,
+            expiresAt: npPluginStorage.expiresAt,
+          })
+          .from(npPluginStorage)
+          .where(
+            and(
+              eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+              eq(npPluginStorage.siteId, siteId),
+              inArray(npPluginStorage.key, relatedKeys),
+            ),
+          );
+  const relatedByKey = new Map(relatedRows.map((row) => [row.key, row]));
   return {
-    rows: rows.map((row) => {
-      const returnRequest = requireStoredReturnAtKey(row.value, row.expiresAt, row.key);
+    rows: returnRequests.map((returnRequest) => {
+      const logisticsRow = relatedByKey.get(npShopReturnLogisticsStorageKey(returnRequest.orderId));
+      const partialRefundRow = relatedByKey.get(
+        npShopPartialRefundStorageKey(returnRequest.orderId),
+      );
+      let postageSettlement = partialRefundRow ? "refund-exists" : "unavailable";
+      if (!partialRefundRow && logisticsRow) {
+        try {
+          const logistics = npRequireStoredShopReturnLogistics(logisticsRow.value);
+          if (
+            logisticsRow.expiresAt !== null &&
+            logisticsRow.expiresAt.toISOString() === logistics.purgeAt &&
+            logistics.orderId === returnRequest.orderId &&
+            logistics.returnId === returnRequest.id &&
+            logistics.ownerSegment === returnRequest.ownerSegment &&
+            logistics.purgeAt === returnRequest.purgeAt &&
+            logistics.status === "active" &&
+            logistics.postageMethod
+          ) {
+            postageSettlement =
+              returnRequest.status === "received" ? "eligible" : "awaiting-receipt";
+          }
+        } catch {
+          postageSettlement = "invalid";
+        }
+      }
       return {
         id: returnRequest.orderId,
         returnId: returnRequest.id,
@@ -5301,6 +5364,7 @@ export async function npListRecentShopReturns(): Promise<{
         units: returnRequest.lines.reduce((totalUnits, line) => totalUnits + line.quantity, 0),
         inventory: returnRequest.inventoryOutcome,
         operatorNote: returnRequest.operatorNote ?? "—",
+        postageSettlement,
         updatedAt: returnRequest.updatedAt,
       };
     }),

@@ -24,3 +24,6 @@ restock-alert data, routes, delivery, or authentication.
 It also enhances `[data-np-shop-return-postage-status]` when Shop exposes optional
 return-postage quoting; the theme remains usable without Shop and owns no
 carrier, quote, selection, payment, or return policy.
+When Shop later projects a completed quote-backed refund, Storefront styles the
+independent `[data-np-shop-return-postage-settlement]` hook without deciding the
+merchant/customer responsibility or changing the refund amount.

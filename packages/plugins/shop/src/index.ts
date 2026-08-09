@@ -96,11 +96,15 @@ import {
 } from "./fulfillment-contract.js";
 import { npRequireShopFulfillmentParcelsSaveInput } from "./parcel-contract.js";
 import { npRequireShopRefundActionInput } from "./refund-contract.js";
-import { npRequireShopPartialRefundActionInput } from "./partial-refund-contract.js";
+import {
+  npRequireShopPartialRefundActionInput,
+  npRequireShopReturnSettlementRefundActionInput,
+} from "./partial-refund-contract.js";
 import {
   npCountShopPartialRefunds,
   npListRecentShopPartialRefunds,
   npPartiallyRefundShopReturn,
+  npSettleShopReturnPostageRefund,
 } from "./partial-refund-service.js";
 import { createShopReturnApiHandler } from "./return-api.js";
 import { createShopReturnLogisticsApiHandler } from "./return-logistics-api.js";
@@ -156,6 +160,7 @@ import {
   type NpShopPaymentAdapter,
   type NpShopPaymentInitiationAdapter,
   type NpShopPaymentPartialRefundAdapter,
+  type NpShopPaymentReturnSettlementAdapter,
   type NpShopPaymentRefundAdapter,
 } from "./payment-contract.js";
 import { createShopCatalogMetadata, createShopCatalogRoute } from "./routes/catalog.js";
@@ -333,6 +338,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   let paymentInitiationAdapter: NpShopPaymentInitiationAdapter | null = null;
   let paymentRefundAdapter: NpShopPaymentRefundAdapter | null = null;
   let paymentPartialRefundAdapter: NpShopPaymentPartialRefundAdapter | null = null;
+  let paymentReturnSettlementAdapter: NpShopPaymentReturnSettlementAdapter | null = null;
   if (configuredPaymentAdapter) {
     const id = npRequireShopPaymentProviderId(configuredPaymentAdapter.id);
     if (typeof configuredPaymentAdapter.verifyWebhook !== "function") {
@@ -360,6 +366,19 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
         verifyWebhook,
         refundPaymentPartially:
           configuredPaymentAdapter.refundPaymentPartially.bind(configuredPaymentAdapter),
+      });
+    }
+    if (configuredPaymentAdapter.refundReturnSettlement !== undefined) {
+      if (typeof configuredPaymentAdapter.refundReturnSettlement !== "function") {
+        throw new Error(
+          "Shop payment adapter refundReturnSettlement must be a function when provided.",
+        );
+      }
+      paymentReturnSettlementAdapter = Object.freeze({
+        id,
+        verifyWebhook,
+        refundReturnSettlement:
+          configuredPaymentAdapter.refundReturnSettlement.bind(configuredPaymentAdapter),
       });
     }
     const initiationMethods = [
@@ -663,6 +682,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     paymentInitiationAdapter,
     paymentRefundAdapter,
     paymentPartialRefundAdapter,
+    paymentReturnSettlementAdapter,
     shippingAdapter,
     taxAdapter,
     carrierAdapter,
@@ -920,6 +940,11 @@ const messages = {
     "shop.orderReturnPostageBoundary":
       "This carrier price is informational for return shipment creation. It is not charged, deducted from a refund, or a decision about who pays.",
     "shop.orderReturnPostageFailed": "Return shipping prices could not be updated.",
+    "shop.orderReturnPostageResponsibility": "Return-postage responsibility",
+    "shop.orderReturnPostageMerchant": "Merchant absorbs postage",
+    "shop.orderReturnPostageCustomer": "Customer postage is deducted",
+    "shop.orderReturnPostageDeduction": "Return-postage deduction",
+    "shop.orderReturnRefundNet": "Net refund",
     "shop.orderReturnTrackingInTransit": "Your return is in transit to the return facility.",
     "shop.orderReturnTrackingOutForDelivery":
       "Your return is out for delivery to the return facility.",
@@ -1182,6 +1207,11 @@ const messages = {
     "shop.orderReturnPostageBoundary":
       "표시 금액은 반품 배송 생성용 운송사 견적입니다. 자동 결제·환불 차감이나 비용 부담자 판단을 하지 않습니다.",
     "shop.orderReturnPostageFailed": "반품 배송비를 갱신하지 못했습니다.",
+    "shop.orderReturnPostageResponsibility": "반품 배송비 부담",
+    "shop.orderReturnPostageMerchant": "판매자 부담",
+    "shop.orderReturnPostageCustomer": "구매자 부담 및 환불 차감",
+    "shop.orderReturnPostageDeduction": "반품 배송비 차감",
+    "shop.orderReturnRefundNet": "최종 환불액",
     "shop.orderReturnTrackingInTransit": "반품 상품이 반품 센터로 이동 중입니다.",
     "shop.orderReturnTrackingOutForDelivery": "반품 상품이 반품 센터 배송 출발 상태입니다.",
     "shop.orderReturnTrackingDelivered":
@@ -1304,7 +1334,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, member wishlists, one-shot restock and catalog price-drop alerts, verified-purchase reviews, bounded carts, checkout intents, private order drafts, built-in shipping policies or provider-neutral quotes, additional-tax quotes, durable orders, optional payment and carrier adapters, fulfillment parcels, pickup, outbound and return tracking, physical returns, return-linked partial refunds, return logistics, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, wishlists, one-shot stock/price alerts, verified-purchase reviews, promotions, carts, checkout, private drafts, shipping/tax quotes, durable orders and inventory, optional payments/refunds with quote-backed return-postage settlement, fulfillment, carrier booking/pickup/tracking, physical returns and logistics, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -1413,6 +1443,9 @@ export function createShop(options: NpShopOptions = {}) {
           "widget:shop-partial-refund-health",
           "table:shop-partial-refunds",
           ...(runtime.paymentPartialRefundAdapter ? ["action:shop-return-partial-refund"] : []),
+          ...(runtime.paymentReturnSettlementAdapter
+            ? ["action:shop-return-postage-settlement-refund"]
+            : []),
           "dashboard:shop-returns",
           "widget:shop-return-health",
           "table:shop-returns",
@@ -1446,7 +1479,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Return-postage charging or payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
+          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: [
           "shop",
@@ -1501,6 +1534,7 @@ export function createShop(options: NpShopOptions = {}) {
         "return-tracking-status": "[data-np-shop-return-tracking-status]",
         "return-status": "[data-np-shop-return-status]",
         "return-postage": "[data-np-shop-return-postage-status]",
+        "return-postage-settlement": "[data-np-shop-return-postage-settlement]",
         "product-card": ".np-shop-product-card",
         "wishlist-action": "[data-np-shop-wishlist-action]",
         "restock-alert": "[data-np-shop-restock-alert]",
@@ -1756,7 +1790,8 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Return refunds",
           kind: "metric",
           actionId: "countPartialRefunds",
-          description: "Durable provider partial refunds linked to received physical returns.",
+          description:
+            "Durable provider refunds linked to received physical returns, including quote-backed postage settlements.",
           priority: 40,
         },
         {
@@ -2595,6 +2630,9 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "itemAmount", label: "Items" },
             { name: "shippingAmount", label: "Shipping" },
             { name: "taxAmount", label: "Tax" },
+            { name: "responsibility", label: "Return postage responsibility" },
+            { name: "returnPostage", label: "Quoted return postage" },
+            { name: "postageDeduction", label: "Postage deduction" },
             { name: "total", label: "Total" },
             { name: "providerError", label: "Provider error" },
             { name: "updatedAt", label: "Updated" },
@@ -2607,8 +2645,8 @@ export function createShop(options: NpShopOptions = {}) {
               actionId: "partialRefundReturn",
               rowFields: ["id", "orderRevision", "returnId", "returnRevision"],
               visibleWhen: {
-                field: "status",
-                oneOf: ["pending", "provider-confirmed"],
+                field: "actionKind",
+                oneOf: ["partial-refund"],
               },
               fields: [
                 {
@@ -2636,6 +2674,55 @@ export function createShop(options: NpShopOptions = {}) {
               confirm:
                 "Resume this durable partial refund? A provider-confirmed row performs only local reconciliation; a pending row still requires its original adapter.",
             },
+            ...(runtime.paymentReturnSettlementAdapter
+              ? [
+                  {
+                    id: "resume-return-postage-settlement-refund",
+                    label: "Resume postage settlement refund",
+                    actionId: "returnPostageSettlementRefund",
+                    rowFields: ["id", "orderRevision", "returnId", "returnRevision"],
+                    visibleWhen: {
+                      field: "actionKind",
+                      oneOf: ["return-postage-settlement"],
+                    },
+                    fields: [
+                      {
+                        name: "responsibility",
+                        label: "Original postage responsibility",
+                        type: "select" as const,
+                        required: true,
+                        options: [
+                          { label: "Merchant absorbs postage", value: "merchant" },
+                          { label: "Deduct postage from customer refund", value: "customer" },
+                        ],
+                      },
+                      {
+                        name: "shippingMinor",
+                        label: "Original outbound shipping refund",
+                        type: "text" as const,
+                        required: true,
+                        placeholder: "Re-enter the original minor-unit amount",
+                      },
+                      {
+                        name: "taxMinor",
+                        label: "Original additional-tax refund",
+                        type: "text" as const,
+                        required: true,
+                        placeholder: "Re-enter the original minor-unit amount",
+                      },
+                      {
+                        name: "reason",
+                        label: "Original refund reason",
+                        type: "textarea" as const,
+                        required: true,
+                        placeholder: "The durable original is preserved",
+                      },
+                    ],
+                    confirm:
+                      "Resume this exact quote-backed postage settlement refund? The durable responsibility and quote remain authoritative.",
+                  },
+                ]
+              : []),
           ],
           emptyMessage: "No return-linked partial refund exists for this site.",
         },
@@ -2653,6 +2740,7 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "units", label: "Units" },
             { name: "inventory", label: "Inventory" },
             { name: "operatorNote", label: "Operations note" },
+            { name: "postageSettlement", label: "Postage settlement" },
             { name: "updatedAt", label: "Updated" },
           ],
           rowsActionId: "recentReturns",
@@ -2742,6 +2830,57 @@ export function createShop(options: NpShopOptions = {}) {
                       "Refund the original price of every received return line plus the explicit shipping and tax amounts? This does not change fulfillment or inventory.",
                     description:
                       "The computed total must remain smaller than the complete order payment.",
+                  },
+                ]
+              : []),
+            ...(runtime.paymentReturnSettlementAdapter
+              ? [
+                  {
+                    id: "return-postage-settlement-refund",
+                    label: "Settle return postage and refund",
+                    actionId: "returnPostageSettlementRefund",
+                    rowFields: ["id", "orderRevision", "returnId", "returnRevision"],
+                    visibleWhen: { field: "postageSettlement", oneOf: ["eligible"] },
+                    fields: [
+                      {
+                        name: "responsibility",
+                        label: "Return-postage responsibility",
+                        type: "select" as const,
+                        required: true,
+                        options: [
+                          { label: "Merchant absorbs exact quoted postage", value: "merchant" },
+                          {
+                            label: "Deduct exact quoted postage from customer refund",
+                            value: "customer",
+                          },
+                        ],
+                      },
+                      {
+                        name: "shippingMinor",
+                        label: "Refund outbound shipping (minor units)",
+                        type: "text" as const,
+                        required: true,
+                        placeholder: "0",
+                      },
+                      {
+                        name: "taxMinor",
+                        label: "Refund additional tax (minor units)",
+                        type: "text" as const,
+                        required: true,
+                        placeholder: "0",
+                      },
+                      {
+                        name: "reason",
+                        label: "Provider refund reason",
+                        type: "textarea" as const,
+                        required: true,
+                        placeholder: "PII-free reason, at most 200 characters",
+                      },
+                    ],
+                    confirm:
+                      "Use the immutable carrier quote to settle return-postage responsibility and issue one net provider refund? This never creates a separate charge.",
+                    description:
+                      "Merchant responsibility deducts nothing; customer responsibility deducts the exact quote. The resulting refund must remain positive and below the full payment.",
                   },
                 ]
               : []),
@@ -3655,7 +3794,7 @@ export function createShop(options: NpShopOptions = {}) {
             }
             return npAdminStatus(
               "ok",
-              `${counts.refunded.toString()} completed return-linked partial refund(s); ${runtime.paymentPartialRefundAdapter ? `provider "${runtime.paymentPartialRefundAdapter.id}" is enabled` : "no partial-refund-capable provider is configured"}.`,
+              `${counts.refunded.toString()} completed return-linked refund(s), including ${counts.merchantResponsibility.toString()} merchant-responsibility and ${counts.customerResponsibility.toString()} customer-responsibility postage settlement(s); ${runtime.paymentPartialRefundAdapter ? `partial-refund provider "${runtime.paymentPartialRefundAdapter.id}" is enabled` : "no general partial-refund provider is configured"}; ${runtime.paymentReturnSettlementAdapter ? `postage-settlement provider "${runtime.paymentReturnSettlementAdapter.id}" is enabled` : "no postage-settlement provider is configured"}.`,
             );
           } catch (error) {
             return npAdminStatus(
@@ -3723,6 +3862,31 @@ export function createShop(options: NpShopOptions = {}) {
             return {
               ok: true,
               data: `Return-linked partial refund ${result.duplicate ? "already reconciled" : "completed"}; ${result.refund.currency} ${result.refund.amountMinor.toString()} allocated without another inventory or fulfillment transition.`,
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      returnPostageSettlementRefund: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return {
+                ok: false,
+                error: "Return-postage settlement refunds require a direct staff action.",
+              };
+            }
+            const result = await npSettleShopReturnPostageRefund(
+              runtime,
+              npRequireShopReturnSettlementRefundActionInput(data),
+              ctx.actionInvocation.userId,
+            );
+            const settlement = result.refund.postageSettlement;
+            return {
+              ok: true,
+              data: `Quote-backed return refund ${result.duplicate ? "already reconciled" : "completed"}; ${result.refund.currency} ${result.refund.amountMinor.toString()} net with ${settlement?.responsibility ?? "unknown"} postage responsibility and ${settlement?.deductionMinor.toString() ?? "0"} minor units deducted.`,
             };
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
@@ -5547,6 +5711,7 @@ export type {
   NpShopPaymentAdapter,
   NpShopPaymentInitiationAdapter,
   NpShopPaymentPartialRefundAdapter,
+  NpShopPaymentReturnSettlementAdapter,
   NpShopPaymentRefundAdapter,
   NpShopPaymentEventType,
   NpShopIgnoredPaymentWebhook,
@@ -5608,6 +5773,7 @@ export {
   NP_SHOP_PARTIAL_REFUND_CONTRACT,
   NP_SHOP_PARTIAL_REFUND_RESULT_CONTRACT,
   NP_SHOP_PARTIAL_REFUND_STORAGE_CONTRACT,
+  NP_SHOP_RETURN_POSTAGE_SETTLEMENT_CONTRACT,
   NpShopPartialRefundConflictError,
   NpShopPartialRefundContractError,
   npAnalyzeShopPartialRefund,
@@ -5616,9 +5782,11 @@ export {
   npRequireShopPartialRefund,
   npRequireShopPartialRefundActionInput,
   npRequireShopPaymentPartialRefundResult,
+  npRequireShopReturnSettlementRefundActionInput,
   npRequireStoredShopPartialRefund,
   npShopPartialRefundLimits,
   npShopPartialRefundStatuses,
+  npShopReturnPostageResponsibilities,
 } from "./partial-refund-contract.js";
 export type {
   NpShopPartialRefund,
@@ -5628,6 +5796,10 @@ export type {
   NpShopPartialRefundStatus,
   NpShopPaymentPartialRefundInput,
   NpShopPaymentPartialRefundResult,
+  NpShopPaymentReturnSettlementRefundInput,
+  NpShopReturnPostageResponsibility,
+  NpShopReturnPostageSettlement,
+  NpShopReturnSettlementRefundActionInput,
   NpShopStoredPartialRefund,
 } from "./partial-refund-contract.js";
 export type {

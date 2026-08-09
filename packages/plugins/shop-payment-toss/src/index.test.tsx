@@ -212,11 +212,13 @@ describe("Toss Payments Shop adapter", () => {
   });
 
   it("partially cancels one received return allocation with the durable refund UUID", async () => {
-    const fetcher = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify(partiallyCancelledPayment()), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }),
+    const fetcher = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(partiallyCancelledPayment()), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
     );
     const returnId = "423e4567-e89b-42d3-a456-426614174000";
     const result = await adapter(fetcher).refundPaymentPartially({
@@ -252,6 +254,85 @@ describe("Toss Payments Shop adapter", () => {
     expect(init.body).toBe(
       JSON.stringify({ cancelReason: "Received defective return", cancelAmount: 10_000 }),
     );
+  });
+
+  it("cancels only the exact net refund after quote-backed return-postage settlement", async () => {
+    const fetcher = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(partiallyCancelledPayment()), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+    const returnId = "423e4567-e89b-42d3-a456-426614174000";
+    const current = adapter(fetcher);
+    const input = {
+      refundId,
+      orderId,
+      returnId,
+      paymentReference: paymentKey,
+      currency: "KRW" as const,
+      amountMinor: 10_000,
+      allocation: {
+        lines: [{ lineKey: "line-1", quantity: 1, amountMinor: 14_000 }],
+        itemAmountMinor: 14_000,
+        shippingMinor: 0,
+        taxMinor: 0,
+      },
+      postageSettlement: {
+        contract: "np.shop-return-postage-settlement.v1" as const,
+        responsibility: "customer" as const,
+        method: {
+          contract: "np.shop-return-postage-method.v1" as const,
+          providerId: "test-carrier",
+          quoteId: "523e4567-e89b-42d3-a456-426614174000",
+          methodId: "dropoff-standard",
+          label: "Standard return",
+          currency: "KRW" as const,
+          amountMinor: 4_000,
+          estimatedTransit: null,
+          quotedAt: "2026-08-05T00:00:00.000Z",
+          quoteExpiresAt: "2026-08-05T01:00:00.000Z",
+        },
+        deductionMinor: 4_000,
+        designatedAt: "2026-08-05T02:00:00.000Z",
+      },
+      reason: "Received changed-mind return",
+      requestedAt: "2026-08-05T00:04:00.000Z",
+    };
+    await expect(current.refundReturnSettlement(input)).resolves.toMatchObject({
+      amountMinor: 10_000,
+      refundReference: "partial_refund_transaction_123",
+    });
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(init.body).toBe(JSON.stringify({ cancelReason: input.reason, cancelAmount: 10_000 }));
+
+    await expect(
+      current.refundReturnSettlement({
+        ...input,
+        refundId: "623e4567-e89b-42d3-a456-426614174000",
+        allocation: {
+          lines: [{ lineKey: "line-1", quantity: 1, amountMinor: 10_000 }],
+          itemAmountMinor: 10_000,
+          shippingMinor: 0,
+          taxMinor: 0,
+        },
+        postageSettlement: {
+          ...input.postageSettlement,
+          responsibility: "merchant",
+          deductionMinor: 0,
+        },
+      }),
+    ).resolves.toMatchObject({ amountMinor: 10_000 });
+
+    await expect(
+      current.refundReturnSettlement({
+        ...input,
+        postageSettlement: { ...input.postageSettlement, deductionMinor: 3_999 },
+      }),
+    ).rejects.toMatchObject({ code: "toss_return_settlement_mismatch", retryable: false });
+    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
   it("fails closed when Toss returns a partial cancellation", async () => {

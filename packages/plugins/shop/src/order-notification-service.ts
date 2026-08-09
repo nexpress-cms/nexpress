@@ -382,6 +382,7 @@ const eventLabels: Record<NpShopOrderNotificationKind, string> = {
   "return.received": "Return received",
   "refund.completed": "Refund completed",
   "partial-refund.completed": "Partial refund completed",
+  "return-settlement-refund.completed": "Return-postage settlement refunded",
 };
 
 function escapeHtml(value: string): string {

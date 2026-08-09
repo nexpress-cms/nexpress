@@ -3,9 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   NP_SHOP_PARTIAL_REFUND_RESULT_CONTRACT,
   NP_SHOP_PARTIAL_REFUND_STORAGE_CONTRACT,
+  NP_SHOP_RETURN_POSTAGE_SETTLEMENT_CONTRACT,
   npAnalyzeStoredShopPartialRefund,
+  npProjectShopPartialRefund,
+  npRequireShopPartialRefund,
   npRequireShopPartialRefundActionInput,
   npRequireShopPaymentPartialRefundResult,
+  npRequireShopReturnSettlementRefundActionInput,
   npRequireStoredShopPartialRefund,
   type NpShopStoredPartialRefund,
 } from "./partial-refund-contract.js";
@@ -14,6 +18,20 @@ import { npDeriveShopPartialRefundAllocation } from "./partial-refund-service.js
 const refundId = "123e4567-e89b-42d3-a456-426614174000";
 const orderId = "223e4567-e89b-42d3-a456-426614174000";
 const returnId = "323e4567-e89b-42d3-a456-426614174000";
+const quoteId = "423e4567-e89b-42d3-a456-426614174000";
+
+const postageMethod = {
+  contract: "np.shop-return-postage-method.v1" as const,
+  providerId: "test-carrier",
+  quoteId,
+  methodId: "dropoff-standard",
+  label: "Standard return",
+  currency: "KRW" as const,
+  amountMinor: 4_000,
+  estimatedTransit: { minimumDays: 1, maximumDays: 3 },
+  quotedAt: "2026-08-04T23:00:00.000Z",
+  quoteExpiresAt: "2026-08-05T00:00:00.000Z",
+};
 
 function stored(overrides: Partial<NpShopStoredPartialRefund> = {}): NpShopStoredPartialRefund {
   return {
@@ -139,6 +157,65 @@ describe("Shop partial refund contract", () => {
     ).toThrow();
   });
 
+  it("freezes exact merchant/customer return-postage settlement into the net refund", () => {
+    const customer = stored({
+      amountMinor: 7_000,
+      postageSettlement: {
+        contract: NP_SHOP_RETURN_POSTAGE_SETTLEMENT_CONTRACT,
+        responsibility: "customer",
+        method: postageMethod,
+        deductionMinor: 4_000,
+        designatedAt: "2026-08-05T00:00:00.000Z",
+      },
+    });
+    expect(npRequireStoredShopPartialRefund(customer).postageSettlement).toMatchObject({
+      responsibility: "customer",
+      deductionMinor: 4_000,
+      method: { quoteId, amountMinor: 4_000 },
+    });
+    expect(npRequireShopPartialRefund(npProjectShopPartialRefund(customer))).toMatchObject({
+      amountMinor: 7_000,
+      postageSettlement: { responsibility: "customer", deductionMinor: 4_000 },
+    });
+    expect(
+      npRequireStoredShopPartialRefund({
+        ...customer,
+        amountMinor: 11_000,
+        postageSettlement: {
+          ...customer.postageSettlement!,
+          responsibility: "merchant",
+          deductionMinor: 0,
+        },
+      }).amountMinor,
+    ).toBe(11_000);
+  });
+
+  it("rejects settlement deduction, currency, and method drift", () => {
+    const settlement = {
+      contract: NP_SHOP_RETURN_POSTAGE_SETTLEMENT_CONTRACT,
+      responsibility: "customer" as const,
+      method: postageMethod,
+      deductionMinor: 4_000,
+      designatedAt: "2026-08-05T00:00:00.000Z",
+    };
+    expect(
+      npAnalyzeStoredShopPartialRefund(
+        stored({ amountMinor: 7_001, postageSettlement: { ...settlement, deductionMinor: 3_999 } }),
+      ).join(" "),
+    ).toMatch(/deduction|net allocation/u);
+    expect(
+      npAnalyzeStoredShopPartialRefund(
+        stored({
+          amountMinor: 7_000,
+          postageSettlement: {
+            ...settlement,
+            method: { ...postageMethod, currency: "USD" },
+          },
+        }),
+      ).join(" "),
+    ).toMatch(/currency/u);
+  });
+
   it("parses canonical minor-unit text from generic Admin row actions", () => {
     expect(
       npRequireShopPartialRefundActionInput({
@@ -160,5 +237,32 @@ describe("Shop partial refund contract", () => {
         values: { shippingMinor: "01", taxMinor: "0", reason: "Received return" },
       }),
     ).toThrow();
+    expect(
+      npRequireShopReturnSettlementRefundActionInput({
+        row: { id: orderId, orderRevision: 2, returnId, returnRevision: 3 },
+        values: {
+          responsibility: "customer",
+          shippingMinor: "500",
+          taxMinor: "0",
+          reason: "Received return",
+        },
+      }),
+    ).toMatchObject({ responsibility: "customer", shippingMinor: 500, taxMinor: 0 });
+    try {
+      npRequireShopReturnSettlementRefundActionInput({
+        row: { id: orderId, orderRevision: 2, returnId, returnRevision: 3 },
+        values: {
+          responsibility: "platform",
+          shippingMinor: "500",
+          taxMinor: "0",
+          reason: "Received return",
+        },
+      });
+      throw new Error("expected rejection");
+    } catch (error) {
+      expect(error).toMatchObject({
+        issues: expect.arrayContaining([expect.stringMatching(/responsibility/u)]),
+      });
+    }
   });
 });

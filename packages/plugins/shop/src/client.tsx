@@ -1785,6 +1785,7 @@ export function ShopOrder({
       "return.received": messages.orderReturnReceived,
       "refund.completed": messages.orderRefunded,
       "partial-refund.completed": messages.orderPartialRefundedDetail,
+      "return-settlement-refund.completed": messages.orderPartialRefundedDetail,
     }[kind];
   }
 
@@ -1900,7 +1901,39 @@ export function ShopOrder({
                       order.currency,
                     )}
                   </p>
+                  {order.partialRefund.postageSettlement ? (
+                    <div
+                      data-np-shop-return-postage-settlement={
+                        order.partialRefund.postageSettlement.responsibility
+                      }
+                    >
+                      <p>
+                        {messages.orderReturnPostageResponsibility}:{" "}
+                        {order.partialRefund.postageSettlement.responsibility === "merchant"
+                          ? messages.orderReturnPostageMerchant
+                          : messages.orderReturnPostageCustomer}
+                      </p>
+                      <p>
+                        {order.partialRefund.postageSettlement.method.label}:{" "}
+                        {formatMoney(
+                          messages.locale,
+                          order.partialRefund.postageSettlement.method.amountMinor,
+                          order.currency,
+                        )}
+                        {" · "}
+                        {messages.orderReturnPostageDeduction}:{" "}
+                        {formatMoney(
+                          messages.locale,
+                          order.partialRefund.postageSettlement.deductionMinor,
+                          order.currency,
+                        )}
+                      </p>
+                    </div>
+                  ) : null}
                   <strong>
+                    {order.partialRefund.postageSettlement
+                      ? `${messages.orderReturnRefundNet}: `
+                      : ""}
                     {formatMoney(messages.locale, order.partialRefund.amountMinor, order.currency)}
                   </strong>
                 </div>
