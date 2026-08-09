@@ -2991,7 +2991,7 @@ export function createShop(options: NpShopOptions = {}) {
               label: "Ship replacement",
               actionId: "shipExchange",
               rowFields: ["id", "exchangeId", "exchangeRevision", "orderRevision"],
-              visibleWhen: { field: "status", oneOf: ["awaiting", "processing"] },
+              visibleWhen: { field: "status", oneOf: ["processing"] },
               fields: [
                 { name: "carrier", label: "Carrier", type: "text", required: true },
                 {

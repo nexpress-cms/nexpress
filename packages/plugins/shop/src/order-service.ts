@@ -5661,6 +5661,12 @@ async function updateShopExchange(
         "Only an awaiting exchange can enter processing.",
       );
     }
+    if (action === "ship" && exchange.status !== "processing") {
+      throw new NpShopExchangeConflictError(
+        "exchange_revision_conflict",
+        "Only a processing exchange can be shipped.",
+      );
+    }
     const now = new Date().toISOString();
     let inventoryOutcome = exchange.inventoryOutcome;
     if (action === "cancel") {

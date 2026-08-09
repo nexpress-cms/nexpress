@@ -6639,6 +6639,26 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       }
     ).order;
     expect(createdOrder.exchange).toMatchObject({ status: "awaiting", revision: 1 });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.shipExchange?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              exchangeId: createdOrder.exchange.id,
+              exchangeRevision: createdOrder.exchange.revision,
+              orderRevision: createdOrder.revision,
+            },
+            values: {
+              carrier: "Parcel Co",
+              trackingNumber: "EXCHANGE-REPLACEMENT",
+              operatorNote: "Skipped processing",
+            },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("processing") });
     await withCurrentSite("default", () =>
       paymentShop.plugin.actions?.processExchange?.handler(
         {
