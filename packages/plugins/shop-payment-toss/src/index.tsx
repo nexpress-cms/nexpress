@@ -13,6 +13,8 @@ import {
   type NpShopPaymentPartialRefundAdapter,
   type NpShopPaymentPartialRefundInput,
   type NpShopPaymentPartialRefundResult,
+  type NpShopPaymentReturnSettlementAdapter,
+  type NpShopPaymentReturnSettlementRefundInput,
   type NpShopPaymentRefundAdapter,
   type NpShopPaymentRefundInput,
   type NpShopPaymentRefundResult,
@@ -384,7 +386,10 @@ function paymentAdjustmentEventId(payment: TossCancellationSnapshot): string {
 
 export function createTossPaymentsAdapter(
   options: NpTossPaymentsOptions,
-): NpShopPaymentInitiationAdapter & NpShopPaymentRefundAdapter & NpShopPaymentPartialRefundAdapter {
+): NpShopPaymentInitiationAdapter &
+  NpShopPaymentRefundAdapter &
+  NpShopPaymentPartialRefundAdapter &
+  NpShopPaymentReturnSettlementAdapter {
   const client = requireKey(options.clientKey, "ck");
   const secret = requireKey(options.secretKey, "sk");
   if (client.mode !== secret.mode || client.family !== secret.family) {
@@ -643,6 +648,47 @@ export function createTossPaymentsAdapter(
     };
   }
 
+  async function refundReturnSettlement(
+    input: NpShopPaymentReturnSettlementRefundInput,
+  ): Promise<NpShopPaymentPartialRefundResult> {
+    const allocationAmounts = [
+      input.allocation.itemAmountMinor,
+      input.allocation.shippingMinor,
+      input.allocation.taxMinor,
+    ];
+    const grossAmountMinor =
+      input.allocation.itemAmountMinor + input.allocation.shippingMinor + input.allocation.taxMinor;
+    if (
+      input.postageSettlement.contract !== "np.shop-return-postage-settlement.v1" ||
+      input.postageSettlement.method.contract !== "np.shop-return-postage-method.v1" ||
+      allocationAmounts.some((amount) => !Number.isSafeInteger(amount) || amount < 0) ||
+      !Number.isSafeInteger(grossAmountMinor) ||
+      grossAmountMinor < 1 ||
+      !Number.isSafeInteger(input.amountMinor) ||
+      input.amountMinor < 1 ||
+      !Number.isSafeInteger(input.postageSettlement.method.amountMinor) ||
+      input.postageSettlement.method.amountMinor < 0 ||
+      !Number.isSafeInteger(input.postageSettlement.deductionMinor) ||
+      !["merchant", "customer"].includes(input.postageSettlement.responsibility) ||
+      input.postageSettlement.method.currency !== input.currency ||
+      input.postageSettlement.designatedAt !== input.requestedAt ||
+      input.postageSettlement.deductionMinor < 0 ||
+      input.postageSettlement.deductionMinor > grossAmountMinor ||
+      input.amountMinor !== grossAmountMinor - input.postageSettlement.deductionMinor ||
+      (input.postageSettlement.responsibility === "merchant" &&
+        input.postageSettlement.deductionMinor !== 0) ||
+      (input.postageSettlement.responsibility === "customer" &&
+        input.postageSettlement.deductionMinor !== input.postageSettlement.method.amountMinor)
+    ) {
+      throw new NpShopPaymentProviderError(
+        "toss_return_settlement_mismatch",
+        "The Shop return-postage settlement does not match its exact refund amount.",
+        false,
+      );
+    }
+    return refundPaymentPartially(input);
+  }
+
   async function verifyWebhook(
     input: NpShopPaymentWebhookInput,
   ): Promise<NpShopPaymentWebhookResult> {
@@ -719,6 +765,7 @@ export function createTossPaymentsAdapter(
     verifyWebhook,
     refundPayment,
     refundPaymentPartially,
+    refundReturnSettlement,
     renderPaymentLauncher: (props: NpShopPaymentLauncherProps) => (
       <TossPaymentLauncher {...props} />
     ),
@@ -730,7 +777,8 @@ export function tossPaymentsFromEnv(input: {
   fetch?: typeof fetch;
 }): NpShopPaymentInitiationAdapter &
   NpShopPaymentRefundAdapter &
-  NpShopPaymentPartialRefundAdapter {
+  NpShopPaymentPartialRefundAdapter &
+  NpShopPaymentReturnSettlementAdapter {
   const clientKey = process.env.NP_TOSS_PAYMENTS_CLIENT_KEY;
   const secretKey = process.env.NP_TOSS_PAYMENTS_SECRET_KEY;
   if (!clientKey || !secretKey) {

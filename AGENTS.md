@@ -2,14 +2,26 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-08 (Shop carrier adapters may now add one paired
+**Last refreshed:** 2026-08-09 (Shop payment adapters may now add one
+quote-backed approved-return settlement capability after physical receipt.
+Direct staff designate merchant or customer responsibility; merchant absorbs
+the immutable same-currency quote while customer responsibility deducts it
+exactly from one positive net refund. Existing one-refund storage,
+provider-confirmed recovery and cancellation reconciliation, PII-free audit,
+Admin/Doctor, owner UI, both skins, Storefront hooks, Toss, scaffolds, and
+PostgreSQL coverage share the contract. Separate charges, automatic or
+jurisdictional payer policy, exchanges, arbitrary refunds, and provider
+protocols remain external.)
+
+**Earlier:** 2026-08-08 (Shop carrier adapters may now add one paired
 approved-return postage quote/create-v2 capability. Exact bounded
 same-currency methods, revision-safe owner selection, a maximum-one-hour
 private origin sidecar, provider I/O outside transactions, immutable PII-free
 logistics snapshots, Admin/Doctor, both skins, Storefront hooks, scaffold
 guidance, cleanup, and PostgreSQL coverage share the contract while v1 return
-creation remains valid. Charging, refund deduction, payer/jurisdiction policy,
-recurrence, and provider protocols remain separate.)
+creation remains valid. Charging, refund settlement, responsibility and
+jurisdiction policy, recurrence, and provider protocols remain separate
+additive contracts.)
 
 **Earlier:** 2026-08-08 (Shop now owns independent member catalog
 price-drop alerts for the product price or one exact enabled variant. A

@@ -1,8 +1,19 @@
 import { npShopCurrencies, type NpShopCurrency } from "./types.js";
+import {
+  NP_SHOP_RETURN_POSTAGE_METHOD_CONTRACT,
+  npAnalyzeShopReturnPostageMethod,
+  type NpShopReturnPostageMethod,
+} from "./return-postage-contract.js";
 
 export const NP_SHOP_PARTIAL_REFUND_RESULT_CONTRACT = "np.shop-partial-refund-result.v1" as const;
 export const NP_SHOP_PARTIAL_REFUND_STORAGE_CONTRACT = "np.shop-partial-refund-storage.v1" as const;
 export const NP_SHOP_PARTIAL_REFUND_CONTRACT = "np.shop-partial-refund.v1" as const;
+export const NP_SHOP_RETURN_POSTAGE_SETTLEMENT_CONTRACT =
+  "np.shop-return-postage-settlement.v1" as const;
+
+export const npShopReturnPostageResponsibilities = ["merchant", "customer"] as const;
+export type NpShopReturnPostageResponsibility =
+  (typeof npShopReturnPostageResponsibilities)[number];
 
 export const npShopPartialRefundStatuses = [
   "pending",
@@ -33,6 +44,19 @@ export interface NpShopPartialRefundAllocation {
   taxMinor: number;
 }
 
+/**
+ * Immutable, PII-free staff designation for one quote-backed return shipment.
+ * A customer responsibility is settled only by deducting the exact quoted
+ * postage from the provider refund; Shop never initiates a separate charge.
+ */
+export interface NpShopReturnPostageSettlement {
+  contract: typeof NP_SHOP_RETURN_POSTAGE_SETTLEMENT_CONTRACT;
+  responsibility: NpShopReturnPostageResponsibility;
+  method: NpShopReturnPostageMethod;
+  deductionMinor: number;
+  designatedAt: string;
+}
+
 export interface NpShopPaymentPartialRefundInput {
   refundId: string;
   orderId: string;
@@ -43,6 +67,10 @@ export interface NpShopPaymentPartialRefundInput {
   allocation: NpShopPartialRefundAllocation;
   reason: string;
   requestedAt: string;
+}
+
+export interface NpShopPaymentReturnSettlementRefundInput extends NpShopPaymentPartialRefundInput {
+  postageSettlement: NpShopReturnPostageSettlement;
 }
 
 export interface NpShopPaymentPartialRefundResult {
@@ -71,6 +99,8 @@ export interface NpShopStoredPartialRefund {
   currency: NpShopCurrency;
   amountMinor: number;
   allocation: NpShopPartialRefundAllocation;
+  /** Present only for a quote-backed staff-designated postage settlement. */
+  postageSettlement?: NpShopReturnPostageSettlement;
   reason: string;
   providerErrorCode: string | null;
   requestedAt: string;
@@ -87,6 +117,8 @@ export interface NpShopPartialRefund {
   currency: NpShopCurrency;
   amountMinor: number;
   allocation: NpShopPartialRefundAllocation;
+  /** Present only when return postage was absorbed or deducted. */
+  postageSettlement?: NpShopReturnPostageSettlement;
   requestedAt: string;
   refundedAt: string | null;
 }
@@ -99,6 +131,10 @@ export interface NpShopPartialRefundActionInput {
   shippingMinor: number;
   taxMinor: number;
   reason: string;
+}
+
+export interface NpShopReturnSettlementRefundActionInput extends NpShopPartialRefundActionInput {
+  responsibility: NpShopReturnPostageResponsibility;
 }
 
 export class NpShopPartialRefundContractError extends Error {
@@ -154,6 +190,23 @@ function exactKeys(
     if (!expected.includes(key)) issues.push(`${path}.${key} is not supported.`);
   }
   for (const key of expected) {
+    if (!Object.hasOwn(value, key)) issues.push(`${path}.${key} is required.`);
+  }
+}
+
+function exactKeysWithOptional(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[],
+  path: string,
+  issues: string[],
+): void {
+  for (const key of Object.keys(value)) {
+    if (!required.includes(key) && !optional.includes(key)) {
+      issues.push(`${path}.${key} is not supported.`);
+    }
+  }
+  for (const key of required) {
     if (!Object.hasOwn(value, key)) issues.push(`${path}.${key} is required.`);
   }
 }
@@ -226,6 +279,42 @@ function analyzeAllocation(value: unknown, path: string, issues: string[]): void
   for (const key of ["itemAmountMinor", "shippingMinor", "taxMinor"] as const) {
     if (!Number.isSafeInteger(value[key]) || (value[key] as number) < 0) {
       issues.push(`${path}.${key} is invalid.`);
+    }
+  }
+}
+
+function analyzePostageSettlement(value: unknown, path: string, issues: string[]): void {
+  if (!isRecord(value)) {
+    issues.push(`${path} must be a plain object.`);
+    return;
+  }
+  exactKeys(
+    value,
+    ["contract", "responsibility", "method", "deductionMinor", "designatedAt"],
+    path,
+    issues,
+  );
+  if (value.contract !== NP_SHOP_RETURN_POSTAGE_SETTLEMENT_CONTRACT) {
+    issues.push(`${path}.contract must equal "${NP_SHOP_RETURN_POSTAGE_SETTLEMENT_CONTRACT}".`);
+  }
+  if (!(npShopReturnPostageResponsibilities as readonly unknown[]).includes(value.responsibility)) {
+    issues.push(`${path}.responsibility is invalid.`);
+  }
+  issues.push(
+    ...npAnalyzeShopReturnPostageMethod(value.method).map((issue) =>
+      issue.replace("return postage method", `${path}.method`),
+    ),
+  );
+  if (!Number.isSafeInteger(value.deductionMinor) || (value.deductionMinor as number) < 0) {
+    issues.push(`${path}.deductionMinor is invalid.`);
+  }
+  if (!isCanonicalIso(value.designatedAt)) issues.push(`${path}.designatedAt is invalid.`);
+  if (isRecord(value.method) && Number.isSafeInteger(value.method.amountMinor)) {
+    const expected = value.responsibility === "customer" ? value.method.amountMinor : 0;
+    if (value.deductionMinor !== expected) {
+      issues.push(
+        `${path}.deductionMinor must equal the exact quoted postage for customer responsibility and zero for merchant responsibility.`,
+      );
     }
   }
 }
@@ -310,7 +399,7 @@ const storedKeys = [
 export function npAnalyzeStoredShopPartialRefund(value: unknown): string[] {
   if (!isRecord(value)) return ["partial refund must be a plain object."];
   const issues: string[] = [];
-  exactKeys(value, storedKeys, "partial refund", issues);
+  exactKeysWithOptional(value, storedKeys, ["postageSettlement"], "partial refund", issues);
   if (value.contract !== NP_SHOP_PARTIAL_REFUND_STORAGE_CONTRACT) {
     issues.push(`partial refund.contract must equal "${NP_SHOP_PARTIAL_REFUND_STORAGE_CONTRACT}".`);
   }
@@ -348,6 +437,24 @@ export function npAnalyzeStoredShopPartialRefund(value: unknown): string[] {
     issues.push("partial refund.amountMinor is invalid.");
   }
   analyzeAllocation(value.allocation, "partial refund.allocation", issues);
+  if (Object.hasOwn(value, "postageSettlement")) {
+    analyzePostageSettlement(value.postageSettlement, "partial refund.postageSettlement", issues);
+    if (
+      isRecord(value.postageSettlement) &&
+      isRecord(value.postageSettlement.method) &&
+      value.postageSettlement.method.currency !== value.currency
+    ) {
+      issues.push("partial refund postage settlement currency must match the refund currency.");
+    }
+    if (
+      isRecord(value.postageSettlement) &&
+      isCanonicalIso(value.postageSettlement.designatedAt) &&
+      isCanonicalIso(value.requestedAt) &&
+      value.postageSettlement.designatedAt !== value.requestedAt
+    ) {
+      issues.push("partial refund postage settlement must be designated at request creation.");
+    }
+  }
   if (
     isRecord(value.allocation) &&
     Number.isSafeInteger(value.amountMinor) &&
@@ -357,9 +464,15 @@ export function npAnalyzeStoredShopPartialRefund(value: unknown): string[] {
     value.amountMinor !==
       (value.allocation.itemAmountMinor as number) +
         (value.allocation.shippingMinor as number) +
-        (value.allocation.taxMinor as number)
+        (value.allocation.taxMinor as number) -
+        (isRecord(value.postageSettlement) &&
+        Number.isSafeInteger(value.postageSettlement.deductionMinor)
+          ? (value.postageSettlement.deductionMinor as number)
+          : 0)
   ) {
-    issues.push("partial refund.amountMinor must equal its item, shipping, and tax allocation.");
+    issues.push(
+      "partial refund.amountMinor must equal its item, shipping, and tax allocation minus the exact return-postage deduction.",
+    );
   }
   if (!isBoundedText(value.reason, npShopPartialRefundLimits.reasonLength)) {
     issues.push("partial refund.reason is invalid.");
@@ -441,6 +554,7 @@ export function npProjectShopPartialRefund(value: NpShopStoredPartialRefund): Np
     currency: value.currency,
     amountMinor: value.amountMinor,
     allocation: value.allocation,
+    ...(value.postageSettlement ? { postageSettlement: value.postageSettlement } : {}),
     requestedAt: value.requestedAt,
     refundedAt: value.refundedAt,
   };
@@ -518,10 +632,50 @@ export function npRequireShopPartialRefundActionInput(
   };
 }
 
+export function npRequireShopReturnSettlementRefundActionInput(
+  value: unknown,
+): NpShopReturnSettlementRefundActionInput {
+  if (!isRecord(value) || !isRecord(value.row) || !isRecord(value.values)) {
+    throw new NpShopPartialRefundContractError("Invalid Shop return settlement action", [
+      "payload, payload.row, and payload.values must be plain objects.",
+    ]);
+  }
+  const issues: string[] = [];
+  exactKeys(value, ["row", "values"], "payload", issues);
+  exactKeys(
+    value.values,
+    ["shippingMinor", "taxMinor", "reason", "responsibility"],
+    "payload.values",
+    issues,
+  );
+  if (
+    !(npShopReturnPostageResponsibilities as readonly unknown[]).includes(
+      value.values.responsibility,
+    )
+  ) {
+    issues.push("payload.values.responsibility is invalid.");
+  }
+  if (issues.length) {
+    throw new NpShopPartialRefundContractError("Invalid Shop return settlement action", issues);
+  }
+  const base = npRequireShopPartialRefundActionInput({
+    row: value.row,
+    values: {
+      shippingMinor: value.values.shippingMinor,
+      taxMinor: value.values.taxMinor,
+      reason: value.values.reason,
+    },
+  });
+  return {
+    ...base,
+    responsibility: value.values.responsibility as NpShopReturnPostageResponsibility,
+  };
+}
+
 export function npAnalyzeShopPartialRefund(value: unknown): string[] {
   if (!isRecord(value)) return ["partial refund must be a plain object."];
   const issues: string[] = [];
-  exactKeys(
+  exactKeysWithOptional(
     value,
     [
       "contract",
@@ -534,6 +688,7 @@ export function npAnalyzeShopPartialRefund(value: unknown): string[] {
       "requestedAt",
       "refundedAt",
     ],
+    ["postageSettlement"],
     "partial refund",
     issues,
   );
@@ -553,6 +708,31 @@ export function npAnalyzeShopPartialRefund(value: unknown): string[] {
     issues.push("partial refund.amountMinor is invalid.");
   }
   analyzeAllocation(value.allocation, "partial refund.allocation", issues);
+  if (Object.hasOwn(value, "postageSettlement")) {
+    analyzePostageSettlement(value.postageSettlement, "partial refund.postageSettlement", issues);
+    if (
+      isRecord(value.postageSettlement) &&
+      isRecord(value.postageSettlement.method) &&
+      value.postageSettlement.method.contract !== NP_SHOP_RETURN_POSTAGE_METHOD_CONTRACT
+    ) {
+      issues.push("partial refund postage settlement method contract is invalid.");
+    }
+    if (
+      isRecord(value.postageSettlement) &&
+      isRecord(value.postageSettlement.method) &&
+      value.postageSettlement.method.currency !== value.currency
+    ) {
+      issues.push("partial refund postage settlement currency must match the refund currency.");
+    }
+    if (
+      isRecord(value.postageSettlement) &&
+      isCanonicalIso(value.postageSettlement.designatedAt) &&
+      isCanonicalIso(value.requestedAt) &&
+      value.postageSettlement.designatedAt !== value.requestedAt
+    ) {
+      issues.push("partial refund postage settlement must be designated at request creation.");
+    }
+  }
   if (
     isRecord(value.allocation) &&
     Number.isSafeInteger(value.amountMinor) &&
@@ -562,9 +742,13 @@ export function npAnalyzeShopPartialRefund(value: unknown): string[] {
     value.amountMinor !==
       (value.allocation.itemAmountMinor as number) +
         (value.allocation.shippingMinor as number) +
-        (value.allocation.taxMinor as number)
+        (value.allocation.taxMinor as number) -
+        (isRecord(value.postageSettlement) &&
+        Number.isSafeInteger(value.postageSettlement.deductionMinor)
+          ? (value.postageSettlement.deductionMinor as number)
+          : 0)
   ) {
-    issues.push("partial refund.amountMinor must equal its exact allocation.");
+    issues.push("partial refund.amountMinor must equal its exact net allocation.");
   }
   for (const key of ["requestedAt"] as const) {
     if (!isCanonicalIso(value[key])) issues.push(`partial refund.${key} is invalid.`);

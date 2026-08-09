@@ -330,6 +330,11 @@ export interface NpShopMessages {
   orderReturnPostagePrivacy: string;
   orderReturnPostageBoundary: string;
   orderReturnPostageFailed: string;
+  orderReturnPostageResponsibility: string;
+  orderReturnPostageMerchant: string;
+  orderReturnPostageCustomer: string;
+  orderReturnPostageDeduction: string;
+  orderReturnRefundNet: string;
   orderReturnTrackingInTransit: string;
   orderReturnTrackingOutForDelivery: string;
   orderReturnTrackingDelivered: string;
@@ -646,6 +651,11 @@ export interface NpShopCartClientMessages {
   orderReturnPostagePrivacy: string;
   orderReturnPostageBoundary: string;
   orderReturnPostageFailed: string;
+  orderReturnPostageResponsibility: string;
+  orderReturnPostageMerchant: string;
+  orderReturnPostageCustomer: string;
+  orderReturnPostageDeduction: string;
+  orderReturnRefundNet: string;
   orderReturnTrackingInTransit: string;
   orderReturnTrackingOutForDelivery: string;
   orderReturnTrackingDelivered: string;

@@ -10,6 +10,7 @@ import type { NpShopPaymentRefundInput, NpShopPaymentRefundResult } from "./refu
 import type {
   NpShopPaymentPartialRefundInput,
   NpShopPaymentPartialRefundResult,
+  NpShopPaymentReturnSettlementRefundInput,
 } from "./partial-refund-contract.js";
 import type { NpShopVerifiedPaymentAdjustmentEvent } from "./payment-adjustment-contract.js";
 import { npShopCurrencies, type NpShopCurrency } from "./types.js";
@@ -112,6 +113,14 @@ export interface NpShopPaymentAdapter {
   refundPaymentPartially?(
     input: NpShopPaymentPartialRefundInput,
   ): NpShopPaymentPartialRefundResult | Promise<NpShopPaymentPartialRefundResult>;
+  /**
+   * Refund one received physical return while atomically applying Shop's
+   * immutable quote-backed postage responsibility snapshot. Implementations
+   * must refund exactly amountMinor and must not create a separate charge.
+   */
+  refundReturnSettlement?(
+    input: NpShopPaymentReturnSettlementRefundInput,
+  ): NpShopPaymentPartialRefundResult | Promise<NpShopPaymentPartialRefundResult>;
 }
 
 export type NpShopPaymentRefundAdapter = NpShopPaymentAdapter &
@@ -119,6 +128,9 @@ export type NpShopPaymentRefundAdapter = NpShopPaymentAdapter &
 
 export type NpShopPaymentPartialRefundAdapter = NpShopPaymentAdapter &
   Required<Pick<NpShopPaymentAdapter, "refundPaymentPartially">>;
+
+export type NpShopPaymentReturnSettlementAdapter = NpShopPaymentAdapter &
+  Required<Pick<NpShopPaymentAdapter, "refundReturnSettlement">>;
 
 export type NpShopPaymentInitiationAdapter = NpShopPaymentAdapter &
   Required<

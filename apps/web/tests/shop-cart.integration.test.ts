@@ -5884,11 +5884,32 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         };
       },
     );
+    const refundReturnSettlement = vi.fn(
+      (input: {
+        refundId: string;
+        orderId: string;
+        returnId: string;
+        paymentReference: string;
+        currency: "KRW";
+        amountMinor: number;
+      }) => ({
+        contract: "np.shop-partial-refund-result.v1" as const,
+        refundId: input.refundId,
+        orderId: input.orderId,
+        returnId: input.returnId,
+        paymentReference: input.paymentReference,
+        refundReference: "return_postage_settlement_1",
+        currency: input.currency,
+        amountMinor: input.amountMinor,
+        refundedAt: new Date().toISOString(),
+      }),
+    );
     const returnShop = createShop({
       payment: {
         adapter: {
           id: "test-pay",
           verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+          refundReturnSettlement,
         },
       },
       carrier: {
@@ -6043,6 +6064,76 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         },
       },
     });
+    expect(
+      await withCurrentSite("default", () =>
+        returnShop.plugin.actions?.receiveReturn?.handler(
+          {
+            row: { id: ids.orderId, returnRevision: 2 },
+            values: { operatorNote: "Quoted shipment received" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true });
+    const received = await configuredShopCall(returnShop, "GET", "/orders", {
+      ...owner,
+      id: ids.orderId,
+    });
+    const receivedOrder = (
+      received.body as {
+        order: { revision: number; returnRequest: { id: string; revision: number } };
+      }
+    ).order;
+    expect(
+      await withCurrentSite("default", () =>
+        returnShop.plugin.actions?.returnPostageSettlementRefund?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              orderRevision: receivedOrder.revision,
+              returnId: receivedOrder.returnRequest.id,
+              returnRevision: receivedOrder.returnRequest.revision,
+            },
+            values: {
+              responsibility: "customer",
+              shippingMinor: "0",
+              taxMinor: "0",
+              reason: "Received changed-mind return",
+            },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("KRW 21000 net") });
+    expect(refundReturnSettlement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: ids.orderId,
+        returnId,
+        amountMinor: 21_000,
+        postageSettlement: expect.objectContaining({
+          responsibility: "customer",
+          deductionMinor: 4_000,
+          method: expect.objectContaining({ amountMinor: 4_000, methodId: "dropoff-standard" }),
+        }),
+      }),
+    );
+    expect(
+      await configuredShopCall(returnShop, "GET", "/orders", { ...owner, id: ids.orderId }),
+    ).toMatchObject({
+      body: {
+        order: {
+          partialRefund: {
+            status: "refunded",
+            amountMinor: 21_000,
+            postageSettlement: {
+              responsibility: "customer",
+              deductionMinor: 4_000,
+              method: { amountMinor: 4_000, methodId: "dropoff-standard" },
+            },
+          },
+        },
+      },
+    });
     const db = await getTestDb();
     expect(
       await db
@@ -6053,6 +6144,25 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(
       await configuredShopCall(returnShop, "GET", "/orders", { ...owner, id: ids.orderId }),
     ).toMatchObject({ body: { order: { totalMinor: shippedOrder.totalMinor } } });
+    expect(
+      await withCurrentSite("default", () =>
+        returnShop.plugin.actions?.partialRefundHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: { level: "ok", message: expect.stringContaining("1 customer-responsibility") },
+    });
+    expect(
+      await db
+        .select({ action: npAuditEvents.action })
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.targetId, ids.orderId)),
+    ).toEqual(
+      expect.arrayContaining([
+        { action: "shop.return-settlement-refund.request" },
+        { action: "shop.return-settlement-refund.complete" },
+      ]),
+    );
     expect(quoteReturnShipping).toHaveBeenCalledTimes(1);
     expect(createQuotedReturnShipment).toHaveBeenCalledTimes(1);
   });

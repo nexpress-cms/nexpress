@@ -21,6 +21,7 @@ import { npReadStoredShopPaymentAdjustment } from "./payment-adjustment-service.
 import {
   NP_SHOP_PARTIAL_REFUND_RESULT_CONTRACT,
   NP_SHOP_PARTIAL_REFUND_STORAGE_CONTRACT,
+  NP_SHOP_RETURN_POSTAGE_SETTLEMENT_CONTRACT,
   NpShopPartialRefundConflictError,
   npProjectShopPartialRefund,
   npRequireShopPaymentPartialRefundResult,
@@ -29,10 +30,21 @@ import {
   type NpShopPartialRefund,
   type NpShopPartialRefundActionInput,
   type NpShopPaymentPartialRefundResult,
+  type NpShopReturnPostageSettlement,
+  type NpShopReturnSettlementRefundActionInput,
   type NpShopStoredPartialRefund,
 } from "./partial-refund-contract.js";
 import { npRequireStoredShopRefund, type NpShopStoredRefund } from "./refund-contract.js";
 import { npRequireStoredShopReturn, type NpShopStoredReturn } from "./return-contract.js";
+import {
+  npReadStoredShopReturnLogisticsForSettlement,
+  npShopReturnLogisticsStorageKey,
+} from "./return-logistics-service.js";
+import {
+  npRequireStoredShopReturnLogistics,
+  type NpShopReturnLogistics,
+  type NpShopStoredReturnLogistics,
+} from "./return-logistics-contract.js";
 import type { NpShopRuntime } from "./runtime.js";
 
 interface NpShopOrderLookup {
@@ -51,9 +63,13 @@ export interface NpShopAdminPartialRefundRow {
   returnRevision: number;
   provider: string;
   status: string;
+  actionKind: string;
   itemAmount: string;
   shippingAmount: string;
   taxAmount: string;
+  responsibility: string;
+  returnPostage: string;
+  postageDeduction: string;
   total: string;
   providerError: string;
   updatedAt: string;
@@ -193,6 +209,24 @@ function requirePartialRefund(
     ]);
   }
   return refund;
+}
+
+function requireReturnLogistics(
+  value: unknown,
+  expiresAt: Date | null,
+  key: string,
+): NpShopStoredReturnLogistics {
+  const logistics = npRequireStoredShopReturnLogistics(value);
+  if (
+    key !== npShopReturnLogisticsStorageKey(logistics.orderId) ||
+    expiresAt === null ||
+    expiresAt.toISOString() !== logistics.purgeAt
+  ) {
+    throw new NpShopOrderContractError("Invalid Shop return logistics storage metadata", [
+      "Return logistics key and expiry must match its canonical value.",
+    ]);
+  }
+  return logistics;
 }
 
 async function readLookupForUpdate(
@@ -445,6 +479,48 @@ function matchesOrderAndReturn(
   );
 }
 
+function samePostageMethod(
+  settlement: NpShopReturnPostageSettlement,
+  logistics: NpShopStoredReturnLogistics | NpShopReturnLogistics,
+): boolean {
+  const method = logistics.postageMethod;
+  if (!method) return false;
+  const settlementEstimate = settlement.method.estimatedTransit;
+  const logisticsEstimate = method.estimatedTransit;
+  return (
+    settlement.method.contract === method.contract &&
+    settlement.method.providerId === method.providerId &&
+    settlement.method.quoteId === method.quoteId &&
+    settlement.method.methodId === method.methodId &&
+    settlement.method.label === method.label &&
+    settlement.method.currency === method.currency &&
+    settlement.method.amountMinor === method.amountMinor &&
+    settlement.method.quotedAt === method.quotedAt &&
+    settlement.method.quoteExpiresAt === method.quoteExpiresAt &&
+    ((settlementEstimate === null && logisticsEstimate === null) ||
+      (settlementEstimate !== null &&
+        logisticsEstimate !== null &&
+        settlementEstimate.minimumDays === logisticsEstimate.minimumDays &&
+        settlementEstimate.maximumDays === logisticsEstimate.maximumDays))
+  );
+}
+
+function settlementMatchesLogistics(
+  refund: NpShopStoredPartialRefund,
+  order: NpShopStoredOrder,
+  returnRequest: NpShopStoredReturn,
+  logistics: NpShopStoredReturnLogistics | NpShopReturnLogistics | null,
+): boolean {
+  if (!refund.postageSettlement) return true;
+  return (
+    logistics !== null &&
+    (!("orderId" in logistics) ||
+      (logistics.orderId === order.id && logistics.returnId === returnRequest.id)) &&
+    logistics.status === "active" &&
+    samePostageMethod(refund.postageSettlement, logistics)
+  );
+}
+
 export function npDeriveShopPartialRefundAllocation(
   order: Pick<
     NpShopStoredOrder,
@@ -521,12 +597,17 @@ export async function npReadShopPartialRefundForOrder(
   siteId: string,
   order: NpShopStoredOrder,
   returnRequest: NpShopStoredReturn | null,
+  returnLogistics: NpShopReturnLogistics | null,
 ): Promise<NpShopPartialRefund | null> {
   const refund = await readPartialRefund(db, siteId, order.id);
   if (!refund) return null;
-  if (!returnRequest || !matchesOrderAndReturn(refund, order, returnRequest)) {
+  if (
+    !returnRequest ||
+    !matchesOrderAndReturn(refund, order, returnRequest) ||
+    !settlementMatchesLogistics(refund, order, returnRequest, returnLogistics)
+  ) {
     throw new NpShopOrderContractError("Shop partial refund does not match its order", [
-      "Partial refund identity, received return, payment, allocation, retention, and revision must match.",
+      "Partial refund identity, received return, payment, allocation, optional postage settlement, retention, and revision must match.",
     ]);
   }
   return npProjectShopPartialRefund(refund);
@@ -540,12 +621,13 @@ export async function npHasShopPartialRefund(
   return (await readPartialRefund(tx, siteId, orderId, true)) !== null;
 }
 
-export async function npPartiallyRefundShopReturn(
+async function refundShopReturn(
   runtime: NpShopRuntime,
-  input: NpShopPartialRefundActionInput,
+  input: NpShopPartialRefundActionInput | NpShopReturnSettlementRefundActionInput,
   staffUserId: string,
 ): Promise<{ refund: NpShopPartialRefund; duplicate: boolean }> {
   const siteId = await requireSiteId();
+  const settlesPostage = "responsibility" in input;
   const prepared = await getDb().transaction(async (tx) => {
     const lookup = await readLookupForUpdate(tx, siteId, input.orderId);
     if (!lookup) {
@@ -563,8 +645,36 @@ export async function npPartiallyRefundShopReturn(
       );
     }
     const existing = await readPartialRefund(tx, siteId, input.orderId, true);
+    if (existing && Boolean(existing.postageSettlement) !== settlesPostage) {
+      throw new NpShopPartialRefundConflictError(
+        "partial_refund_already_exists",
+        existing.postageSettlement
+          ? "This return already owns a postage-settlement refund; resume it through the matching action."
+          : "This return already owns a standard partial refund; resume it through the matching action.",
+      );
+    }
+    const logistics =
+      settlesPostage || existing?.postageSettlement
+        ? await npReadStoredShopReturnLogisticsForSettlement(tx, siteId, input.orderId, true)
+        : null;
+    if (
+      existing?.postageSettlement &&
+      settlesPostage &&
+      existing.postageSettlement.responsibility !== input.responsibility
+    ) {
+      throw new NpShopPartialRefundConflictError(
+        "partial_refund_revision_conflict",
+        "The re-entered return-postage responsibility does not match the durable settlement.",
+      );
+    }
+    if (existing && !settlementMatchesLogistics(existing, order, returnRequest, logistics)) {
+      throw new NpShopPartialRefundConflictError(
+        "partial_refund_amount_invalid",
+        "The durable postage settlement no longer matches one active quote-backed return shipment.",
+      );
+    }
     if (existing?.status === "refunded") {
-      return { order, returnRequest, refund: existing, complete: true as const };
+      return { order, returnRequest, logistics, refund: existing, complete: true as const };
     }
     const paymentAdjustment = await npReadStoredShopPaymentAdjustment(
       tx,
@@ -587,15 +697,18 @@ export async function npPartiallyRefundShopReturn(
     if (existing) {
       if (
         existing.status === "pending" &&
-        (!runtime.paymentPartialRefundAdapter ||
-          existing.providerId !== runtime.paymentPartialRefundAdapter.id)
+        (existing.postageSettlement
+          ? !runtime.paymentReturnSettlementAdapter ||
+            existing.providerId !== runtime.paymentReturnSettlementAdapter.id
+          : !runtime.paymentPartialRefundAdapter ||
+            existing.providerId !== runtime.paymentPartialRefundAdapter.id)
       ) {
         throw new NpShopPartialRefundConflictError(
           "partial_refund_provider_mismatch",
           "The pending partial refund requires its original payment provider.",
         );
       }
-      return { order, returnRequest, refund: existing, complete: false as const };
+      return { order, returnRequest, logistics, refund: existing, complete: false as const };
     }
     if (await readFullRefund(tx, siteId, input.orderId)) {
       throw new NpShopPartialRefundConflictError(
@@ -603,11 +716,15 @@ export async function npPartiallyRefundShopReturn(
         "A durable full-refund attempt already owns this payment.",
       );
     }
-    const adapter = runtime.paymentPartialRefundAdapter;
+    const adapter = settlesPostage
+      ? runtime.paymentReturnSettlementAdapter
+      : runtime.paymentPartialRefundAdapter;
     if (!adapter) {
       throw new NpShopPartialRefundConflictError(
         "partial_refund_not_supported",
-        "The configured Shop payment provider does not support partial refunds.",
+        settlesPostage
+          ? "The configured Shop payment provider does not support quote-backed return-postage settlement refunds."
+          : "The configured Shop payment provider does not support partial refunds.",
       );
     }
     if (order.revision !== input.orderRevision || returnRequest.revision !== input.returnRevision) {
@@ -642,16 +759,51 @@ export async function npPartiallyRefundShopReturn(
     }
     await requireShippedFulfillment(tx, siteId, order);
     const allocation = npDeriveShopPartialRefundAllocation(order, returnRequest, input);
-    const amountMinor = allocation.itemAmountMinor + allocation.shippingMinor + allocation.taxMinor;
-    if (!Number.isSafeInteger(amountMinor) || amountMinor < 1 || amountMinor >= order.totalMinor) {
-      throw new NpShopPartialRefundConflictError(
-        "partial_refund_amount_invalid",
-        "A return-linked partial refund must be positive and smaller than the complete order total; use the full-refund action for the entire payment.",
-      );
-    }
     const requestedAt = new Date();
     requestedAt.setMilliseconds(0);
     const now = requestedAt.toISOString();
+    let postageSettlement: NpShopReturnPostageSettlement | undefined;
+    if (settlesPostage) {
+      if (
+        !logistics ||
+        logistics.status !== "active" ||
+        logistics.orderId !== order.id ||
+        logistics.returnId !== returnRequest.id ||
+        logistics.ownerSegment !== order.ownerSegment ||
+        logistics.purgeAt !== order.purgeAt ||
+        !logistics.postageMethod ||
+        logistics.postageMethod.currency !== order.currency
+      ) {
+        throw new NpShopPartialRefundConflictError(
+          "partial_refund_amount_invalid",
+          "A postage settlement requires one active quote-backed return shipment in the order currency.",
+        );
+      }
+      postageSettlement = {
+        contract: NP_SHOP_RETURN_POSTAGE_SETTLEMENT_CONTRACT,
+        responsibility: input.responsibility,
+        method: logistics.postageMethod,
+        deductionMinor:
+          input.responsibility === "customer" ? logistics.postageMethod.amountMinor : 0,
+        designatedAt: now,
+      };
+    }
+    const grossAmountMinor =
+      allocation.itemAmountMinor + allocation.shippingMinor + allocation.taxMinor;
+    const amountMinor = grossAmountMinor - (postageSettlement?.deductionMinor ?? 0);
+    if (
+      !Number.isSafeInteger(grossAmountMinor) ||
+      !Number.isSafeInteger(amountMinor) ||
+      amountMinor < 1 ||
+      amountMinor >= order.totalMinor
+    ) {
+      throw new NpShopPartialRefundConflictError(
+        "partial_refund_amount_invalid",
+        postageSettlement?.responsibility === "customer" && amountMinor < 1
+          ? "The exact quoted return postage consumes the complete refundable allocation; collect or resolve that amount outside Shop instead of creating a zero or negative provider refund."
+          : "A return-linked refund must be positive and smaller than the complete order total; use the full-refund action for the entire payment.",
+      );
+    }
     const refund: NpShopStoredPartialRefund = {
       contract: NP_SHOP_PARTIAL_REFUND_STORAGE_CONTRACT,
       id: randomUUID(),
@@ -666,6 +818,7 @@ export async function npPartiallyRefundShopReturn(
       currency: order.currency,
       amountMinor,
       allocation,
+      ...(postageSettlement ? { postageSettlement } : {}),
       reason: input.reason,
       providerErrorCode: null,
       requestedAt: now,
@@ -674,15 +827,29 @@ export async function npPartiallyRefundShopReturn(
       purgeAt: order.purgeAt,
     };
     await persistPartialRefund(tx, siteId, refund);
-    await recordAudit(tx, siteId, staffUserId, "shop.partial-refund.request", order.id, {
-      refundId: refund.id,
-      returnId: refund.returnId,
-      orderRevision: refund.orderRevision,
-      returnRevision: refund.returnRevision,
-      providerId: refund.providerId,
-      amountMinor: refund.amountMinor,
-    });
-    return { order, returnRequest, refund, complete: false as const };
+    await recordAudit(
+      tx,
+      siteId,
+      staffUserId,
+      postageSettlement ? "shop.return-settlement-refund.request" : "shop.partial-refund.request",
+      order.id,
+      {
+        refundId: refund.id,
+        returnId: refund.returnId,
+        orderRevision: refund.orderRevision,
+        returnRevision: refund.returnRevision,
+        providerId: refund.providerId,
+        amountMinor: refund.amountMinor,
+        ...(postageSettlement
+          ? {
+              responsibility: postageSettlement.responsibility,
+              returnPostageMinor: postageSettlement.method.amountMinor,
+              deductionMinor: postageSettlement.deductionMinor,
+            }
+          : {}),
+      },
+    );
+    return { order, returnRequest, logistics, refund, complete: false as const };
   });
   if (prepared.complete) {
     return { refund: npProjectShopPartialRefund(prepared.refund), duplicate: true };
@@ -702,7 +869,9 @@ export async function npPartiallyRefundShopReturn(
       refundedAt: prepared.refund.refundedAt!,
     };
   } else {
-    const adapter = runtime.paymentPartialRefundAdapter;
+    const adapter = prepared.refund.postageSettlement
+      ? runtime.paymentReturnSettlementAdapter
+      : runtime.paymentPartialRefundAdapter;
     if (!adapter || adapter.id !== prepared.refund.providerId) {
       throw new NpShopPartialRefundConflictError(
         "partial_refund_provider_mismatch",
@@ -710,18 +879,24 @@ export async function npPartiallyRefundShopReturn(
       );
     }
     try {
+      const providerInput = {
+        refundId: prepared.refund.id,
+        orderId: prepared.refund.orderId,
+        returnId: prepared.refund.returnId,
+        paymentReference: prepared.refund.paymentReference,
+        currency: prepared.refund.currency,
+        amountMinor: prepared.refund.amountMinor,
+        allocation: prepared.refund.allocation,
+        reason: prepared.refund.reason,
+        requestedAt: prepared.refund.requestedAt,
+      };
       providerResult = npRequireShopPaymentPartialRefundResult(
-        await adapter.refundPaymentPartially({
-          refundId: prepared.refund.id,
-          orderId: prepared.refund.orderId,
-          returnId: prepared.refund.returnId,
-          paymentReference: prepared.refund.paymentReference,
-          currency: prepared.refund.currency,
-          amountMinor: prepared.refund.amountMinor,
-          allocation: prepared.refund.allocation,
-          reason: prepared.refund.reason,
-          requestedAt: prepared.refund.requestedAt,
-        }),
+        prepared.refund.postageSettlement
+          ? await runtime.paymentReturnSettlementAdapter!.refundReturnSettlement({
+              ...providerInput,
+              postageSettlement: prepared.refund.postageSettlement,
+            })
+          : await runtime.paymentPartialRefundAdapter!.refundPaymentPartially(providerInput),
       );
     } catch (error) {
       if (error instanceof NpShopPaymentProviderError && !error.retryable) {
@@ -823,6 +998,9 @@ export async function npPartiallyRefundShopReturn(
     const order = await readOrderForUpdate(tx, siteId, lookup);
     const returnRequest = await readReturnForUpdate(tx, siteId, input.orderId);
     const current = await readPartialRefund(tx, siteId, input.orderId, true);
+    const logistics = current?.postageSettlement
+      ? await npReadStoredShopReturnLogisticsForSettlement(tx, siteId, input.orderId, true)
+      : null;
     if (!order || !returnRequest || !current || current.id !== prepared.refund.id) {
       throw new NpShopPartialRefundConflictError(
         "partial_refund_not_found",
@@ -835,7 +1013,8 @@ export async function npPartiallyRefundShopReturn(
     if (
       current.status !== "provider-confirmed" ||
       order.revision !== prepared.refund.orderRevision ||
-      !matchesOrderAndReturn(current, order, returnRequest)
+      !matchesOrderAndReturn(current, order, returnRequest) ||
+      !settlementMatchesLogistics(current, order, returnRequest, logistics)
     ) {
       throw new NpShopPartialRefundConflictError(
         "partial_refund_revision_conflict",
@@ -861,20 +1040,54 @@ export async function npPartiallyRefundShopReturn(
     await npStageShopOrderNotification(tx, siteId, {
       orderId: updatedOrder.id,
       ownerSegment: updatedOrder.ownerSegment,
-      kind: "partial-refund.completed",
+      kind: completed.postageSettlement
+        ? "return-settlement-refund.completed"
+        : "partial-refund.completed",
       orderRevision: updatedOrder.revision,
       occurredAt: now,
       purgeAt: updatedOrder.purgeAt,
       email: null,
     });
-    await recordAudit(tx, siteId, staffUserId, "shop.partial-refund.complete", order.id, {
-      refundId: completed.id,
-      returnId: completed.returnId,
-      orderRevision: completed.orderRevision,
-      amountMinor: completed.amountMinor,
-    });
+    await recordAudit(
+      tx,
+      siteId,
+      staffUserId,
+      completed.postageSettlement
+        ? "shop.return-settlement-refund.complete"
+        : "shop.partial-refund.complete",
+      order.id,
+      {
+        refundId: completed.id,
+        returnId: completed.returnId,
+        orderRevision: completed.orderRevision,
+        amountMinor: completed.amountMinor,
+        ...(completed.postageSettlement
+          ? {
+              responsibility: completed.postageSettlement.responsibility,
+              returnPostageMinor: completed.postageSettlement.method.amountMinor,
+              deductionMinor: completed.postageSettlement.deductionMinor,
+            }
+          : {}),
+      },
+    );
     return { refund: npProjectShopPartialRefund(completed), duplicate: false };
   });
+}
+
+export async function npPartiallyRefundShopReturn(
+  runtime: NpShopRuntime,
+  input: NpShopPartialRefundActionInput,
+  staffUserId: string,
+): Promise<{ refund: NpShopPartialRefund; duplicate: boolean }> {
+  return refundShopReturn(runtime, input, staffUserId);
+}
+
+export async function npSettleShopReturnPostageRefund(
+  runtime: NpShopRuntime,
+  input: NpShopReturnSettlementRefundActionInput,
+  staffUserId: string,
+): Promise<{ refund: NpShopPartialRefund; duplicate: boolean }> {
+  return refundShopReturn(runtime, input, staffUserId);
 }
 
 export async function npCountShopPartialRefunds(): Promise<{
@@ -883,6 +1096,8 @@ export async function npCountShopPartialRefunds(): Promise<{
   providerConfirmed: number;
   refunded: number;
   manualReview: number;
+  merchantResponsibility: number;
+  customerResponsibility: number;
   invalidSample: number;
   orphanSample: number;
 }> {
@@ -895,6 +1110,8 @@ export async function npCountShopPartialRefunds(): Promise<{
       providerConfirmed: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_PARTIAL_REFUND_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'provider-confirmed')::int`,
       refunded: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_PARTIAL_REFUND_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'refunded')::int`,
       manualReview: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_PARTIAL_REFUND_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'manual-review')::int`,
+      merchantResponsibility: sql<number>`count(*) filter (where ${npPluginStorage.value}->'postageSettlement'->>'responsibility' = 'merchant')::int`,
+      customerResponsibility: sql<number>`count(*) filter (where ${npPluginStorage.value}->'postageSettlement'->>'responsibility' = 'customer')::int`,
     })
     .from(npPluginStorage)
     .where(
@@ -971,6 +1188,7 @@ export async function npCountShopPartialRefunds(): Promise<{
     orderStorageKey(lookup.ownerSegment, refund.orderId),
     returnStorageKey(refund.orderId),
     fulfillmentStorageKey(refund.orderId),
+    ...(refund.postageSettlement ? [npShopReturnLogisticsStorageKey(refund.orderId)] : []),
   ]);
   const relatedRows =
     relatedKeys.length === 0
@@ -994,10 +1212,12 @@ export async function npCountShopPartialRefunds(): Promise<{
     const orderKey = orderStorageKey(lookup.ownerSegment, refund.orderId);
     const returnKey = returnStorageKey(refund.orderId);
     const fulfillmentKey = fulfillmentStorageKey(refund.orderId);
+    const logisticsKey = npShopReturnLogisticsStorageKey(refund.orderId);
     const orderRow = relatedRowsByKey.get(orderKey);
     const returnRow = relatedRowsByKey.get(returnKey);
     const fulfillmentRow = relatedRowsByKey.get(fulfillmentKey);
-    if (!orderRow || !returnRow || !fulfillmentRow) {
+    const logisticsRow = refund.postageSettlement ? relatedRowsByKey.get(logisticsKey) : null;
+    if (!orderRow || !returnRow || !fulfillmentRow || (refund.postageSettlement && !logisticsRow)) {
       orphanSample += 1;
       continue;
     }
@@ -1009,8 +1229,12 @@ export async function npCountShopPartialRefunds(): Promise<{
         fulfillmentRow.expiresAt,
         fulfillmentRow.key,
       );
+      const logistics = logisticsRow
+        ? requireReturnLogistics(logisticsRow.value, logisticsRow.expiresAt, logisticsRow.key)
+        : null;
       if (
         !matchesOrderAndReturn(refund, order, returnRequest) ||
+        !settlementMatchesLogistics(refund, order, returnRequest, logistics) ||
         fulfillment.status !== "shipped" ||
         fulfillment.orderId !== order.id ||
         fulfillment.ownerSegment !== order.ownerSegment ||
@@ -1068,9 +1292,22 @@ export async function npListRecentShopPartialRefunds(): Promise<{
         returnRevision: refund.returnRevision,
         provider: refund.providerId,
         status: refund.status,
+        actionKind:
+          refund.status === "pending" || refund.status === "provider-confirmed"
+            ? refund.postageSettlement
+              ? "return-postage-settlement"
+              : "partial-refund"
+            : "none",
         itemAmount: `${refund.currency} ${refund.allocation.itemAmountMinor.toString()}`,
         shippingAmount: `${refund.currency} ${refund.allocation.shippingMinor.toString()}`,
         taxAmount: `${refund.currency} ${refund.allocation.taxMinor.toString()}`,
+        responsibility: refund.postageSettlement?.responsibility ?? "—",
+        returnPostage: refund.postageSettlement
+          ? `${refund.currency} ${refund.postageSettlement.method.amountMinor.toString()}`
+          : "—",
+        postageDeduction: refund.postageSettlement
+          ? `${refund.currency} ${refund.postageSettlement.deductionMinor.toString()}`
+          : "—",
         total: `${refund.currency} ${refund.amountMinor.toString()}`,
         providerError: refund.providerErrorCode ?? "—",
         updatedAt: refund.updatedAt,

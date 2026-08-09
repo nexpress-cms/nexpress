@@ -242,6 +242,16 @@ async function readLogistics(
   return row ? requireLogisticsAt(row.value, row.expiresAt, row.key) : null;
 }
 
+/** Internal order/refund reconciliation read for one PII-free logistics row. */
+export async function npReadStoredShopReturnLogisticsForSettlement(
+  db: ReturnType<typeof getDb> | NpShopTransaction,
+  siteId: string,
+  orderId: string,
+  forUpdate = false,
+): Promise<NpShopStoredReturnLogistics | null> {
+  return readLogistics(db, siteId, orderId, forUpdate);
+}
+
 async function readPrivate(
   db: ReturnType<typeof getDb> | NpShopTransaction,
   siteId: string,

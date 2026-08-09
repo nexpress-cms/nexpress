@@ -20,6 +20,7 @@ export const npShopOrderNotificationKinds = [
   "return.received",
   "refund.completed",
   "partial-refund.completed",
+  "return-settlement-refund.completed",
 ] as const;
 
 export type NpShopOrderNotificationKind = (typeof npShopOrderNotificationKinds)[number];

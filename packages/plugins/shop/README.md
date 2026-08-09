@@ -111,6 +111,11 @@ It provides:
   return, with exact post-discount line allocation, explicit shipping/tax
   allocation, one durable idempotency id, and no second inventory or
   fulfillment transition;
+- optional quote-backed return-postage settlement through an independent
+  payment-adapter method: staff designate merchant or customer responsibility,
+  merchant responsibility absorbs the immutable quote, customer responsibility
+  deducts exactly that same-currency quote from one positive net refund, and no
+  separate charge or automatic payer policy is created;
 - optional owner-scoped return logistics for approved returns, with paired
   provider create/cancel idempotency, drop-off or bounded pickup mode, a
   maximum-24-hour private origin sidecar deleted on confirmation, transient
@@ -119,7 +124,7 @@ It provides:
   `quoteReturnShipping`/`createQuotedReturnShipment` methods, exact bounded
   same-currency methods, revision-safe owner selection, a maximum-one-hour
   private origin, an immutable PII-free logistics snapshot, and no implied
-  charge, refund deduction, or payer policy;
+  automatic charge, refund deduction, or payer policy by the carrier capability;
 - optional exact raw-body and bounded polling reverse tracking over active
   return logistics, with idempotent receipts, persisted leases/backoff,
   owner-visible status, and no automatic receipt, restock, refund, or exchange;
@@ -128,7 +133,8 @@ It provides:
 
 Provider-specific browser/server protocols, signature algorithms, credentials
 and rotation, initiating repeated or non-return partial refunds, disputes and
-chargebacks, exchanges, carrier label purchase,
+chargebacks, exchanges, separate return-postage charges, automatic or
+jurisdictional responsibility policy, carrier label purchase,
 recurring pickup,
 provider-specific tracking protocols,
 tax remittance/filing, invoices, exemptions, customs, and carrier-owned dynamic
@@ -153,8 +159,8 @@ creation; v1 logistics creation remains valid. The same paired capability may in
 only the PII-free active return-shipment tuple and cannot complete warehouse
 receipt, inventory restoration, or payment compensation.
 `@nexpress/shop-payment-toss` is the bundled Toss Payments v2 initiation,
-full-refund, received-return partial-refund, and query-verified cancellation
-reconciliation adapter. Customer/shipping PII exists only in the short-lived
+full-refund, received-return partial-refund/return-postage settlement, and
+query-verified cancellation reconciliation adapter. Customer/shipping PII exists only in the short-lived
 private draft or order sidecar and stays outside content search, revisions,
 payment receipts, and transfer. A durable `pending-payment` order reference
 still does not imply that a visitor paid for a product.
@@ -164,4 +170,5 @@ for the exact price, SKU, inventory, wishlist, restock-alert, price-alert, revie
 promotion, checkout-intent, private-draft, shipping-quote, tax-quote,
 pending-order, payment-attempt/event/adjustment, fulfillment, parcel, carrier,
 pickup, tracking/polling, full-refund, return-linked partial-refund, return,
-return-logistics, return-postage, skin, block, and theme-integration contracts.
+return-logistics, return-postage, return-postage settlement, skin, block, and
+theme-integration contracts.

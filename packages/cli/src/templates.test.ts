@@ -408,7 +408,9 @@ describe("getProjectFiles", () => {
     expect(env).toContain("quoteReturnShipping");
     expect(env).toContain("createQuotedReturnShipment");
     expect(env).toContain("at most one hour");
-    expect(env).toContain("must not charge, deduct a refund, or decide who pays");
+    expect(env).toContain("must not charge, automatically deduct a refund, or decide who pays");
+    expect(env).toContain("refundReturnSettlement");
+    expect(env).toContain("Never create a separate/off-session charge");
     expect(env).toContain("verifyReturnTrackingWebhook");
     expect(env).toContain("readReturnTracking");
     expect(env).toContain("never put an address in that token");
@@ -424,6 +426,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("paired pickup scheduling/cancellation");
     expect(readme).toContain("maximum-24-hour private origin sidecar");
     expect(readme).toContain("exact return-postage method");
+    expect(readme).toContain("refundReturnSettlement");
     expect(readme).toContain("separate reverse-tracking callback or bounded poll capability");
     expect(readme).toContain("never receives the physical return");
     expect(readme).toContain("Verified provider cancellation snapshots reconcile known refunds");

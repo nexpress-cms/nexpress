@@ -66,6 +66,9 @@ describe("shop factory", () => {
     expect(shopPlugin.manifest.styleSlots?.["return-postage"]).toBe(
       "[data-np-shop-return-postage-status]",
     );
+    expect(shopPlugin.manifest.styleSlots?.["return-postage-settlement"]).toBe(
+      "[data-np-shop-return-postage-settlement]",
+    );
     expect(
       Object.entries(shopPlugin.actions ?? {}).map(([id, action]) => ({
         id,
@@ -119,6 +122,7 @@ describe("shop factory", () => {
       { id: "recentPartialRefunds", kind: "table" },
       { id: "refundOrder", kind: "action" },
       { id: "partialRefundReturn", kind: "action" },
+      { id: "returnPostageSettlementRefund", kind: "action" },
       { id: "countReturns", kind: "metric" },
       { id: "returnHealth", kind: "status" },
       { id: "recentReturns", kind: "table" },
@@ -928,6 +932,52 @@ describe("shop factory", () => {
         ?.find((table) => table.id === "shop-returns")
         ?.rowActions?.map((action) => action.id),
     ).toContain("partial-refund-return");
+  });
+
+  it("exposes quote-backed return-postage settlement only for its additive adapter capability", () => {
+    const withoutSettlement = createShop({
+      payment: { adapter: { id: "test-pay", verifyWebhook: () => null } },
+    });
+    expect(withoutSettlement.runtime.paymentReturnSettlementAdapter).toBeNull();
+    expect(
+      withoutSettlement.plugin.manifest.provides.adminExtensions?.includes(
+        "action:shop-return-postage-settlement-refund",
+      ) ?? false,
+    ).toBe(false);
+    expect(
+      withoutSettlement.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-returns")
+        ?.rowActions?.map((action) => action.id),
+    ).not.toContain("return-postage-settlement-refund");
+
+    const withSettlement = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: () => null,
+          refundReturnSettlement: () => {
+            throw new Error("not called");
+          },
+        },
+      },
+    });
+    expect(withSettlement.runtime.paymentReturnSettlementAdapter?.id).toBe("test-pay");
+    expect(withSettlement.plugin.actions?.returnPostageSettlementRefund?.kind).toBe("action");
+    expect(withSettlement.plugin.manifest.provides.adminExtensions).toContain(
+      "action:shop-return-postage-settlement-refund",
+    );
+    expect(
+      withSettlement.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-returns")
+        ?.rowActions?.find((action) => action.id === "return-postage-settlement-refund"),
+    ).toMatchObject({
+      visibleWhen: { field: "postageSettlement", oneOf: ["eligible"] },
+    });
+    expect(
+      withSettlement.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-partial-refunds")
+        ?.rowActions?.map((action) => action.id),
+    ).toContain("resume-return-postage-settlement-refund");
   });
 
   it("applies custom paths, collection slugs, and skins across the contract", () => {
