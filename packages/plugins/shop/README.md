@@ -115,6 +115,11 @@ It provides:
   provider create/cancel idempotency, drop-off or bounded pickup mode, a
   maximum-24-hour private origin sidecar deleted on confirmation, transient
   owner label downloads, and PII-free Admin/Doctor diagnostics;
+- optional return-postage quoting over that capability, with paired
+  `quoteReturnShipping`/`createQuotedReturnShipment` methods, exact bounded
+  same-currency methods, revision-safe owner selection, a maximum-one-hour
+  private origin, an immutable PII-free logistics snapshot, and no implied
+  charge, refund deduction, or payer policy;
 - optional exact raw-body and bounded polling reverse tracking over active
   return logistics, with idempotent receipts, persisted leases/backoff,
   owner-visible status, and no automatic receipt, restock, refund, or exchange;
@@ -141,7 +146,9 @@ revision-safe selection and both PII-free commercial snapshots. Approved
 returns may independently add paired `createReturnShipment` /
 `cancelReturnShipment` methods with one opaque `returnLocationReference`;
 optional `readReturnLabel` bytes are delivered only to the owner and never
-persisted. The same paired capability may independently add
+persisted. It may add `quoteReturnShipping` and `createQuotedReturnShipment`
+together to freeze one short-lived exact postage method before v2 logistics
+creation; v1 logistics creation remains valid. The same paired capability may independently add
 `verifyReturnTrackingWebhook` and `readReturnTracking`; those methods receive
 only the PII-free active return-shipment tuple and cannot complete warehouse
 receipt, inventory restoration, or payment compensation.
@@ -157,4 +164,4 @@ for the exact price, SKU, inventory, wishlist, restock-alert, price-alert, revie
 promotion, checkout-intent, private-draft, shipping-quote, tax-quote,
 pending-order, payment-attempt/event/adjustment, fulfillment, parcel, carrier,
 pickup, tracking/polling, full-refund, return-linked partial-refund, return,
-return-logistics, skin, block, and theme-integration contracts.
+return-logistics, return-postage, skin, block, and theme-integration contracts.

@@ -42,6 +42,14 @@ import {
   type NpShopStoredReturnLogistics,
   type NpShopStoredReturnLogisticsPrivate,
 } from "./return-logistics-contract.js";
+import {
+  NP_SHOP_QUOTED_RETURN_LOGISTICS_REQUEST_CONTRACT,
+  NpShopReturnPostageConflictError,
+  NpShopReturnPostageContractError,
+  npRequireShopQuotedReturnLogisticsRequest,
+  type NpShopQuotedReturnLogisticsCreateInput,
+} from "./return-postage-contract.js";
+import { npConsumeSelectedShopReturnPostage } from "./return-postage-service.js";
 import { npRequireStoredShopReturn, type NpShopStoredReturn } from "./return-contract.js";
 import {
   npRequireStoredShopReturnTracking,
@@ -463,6 +471,13 @@ function throwProviderFailure(error: unknown, operation: string): never {
       { retryable: false },
     );
   }
+  if (error instanceof NpShopReturnPostageContractError) {
+    throw new NpShopReturnLogisticsProviderError(
+      "invalid-result",
+      `The return logistics provider returned an invalid ${operation} result.`,
+      { retryable: false },
+    );
+  }
   throw new NpShopReturnLogisticsProviderError(
     "provider-unavailable",
     `The return logistics provider failed during ${operation}.`,
@@ -480,14 +495,15 @@ async function persistProviderFailure(
     error instanceof NpShopCarrierProviderError
       ? error
       : null;
-  const code =
-    error instanceof NpShopReturnLogisticsContractError
-      ? "invalid-result"
-      : providerError && /^[a-z][a-z0-9-]{0,99}$/u.test(providerError.code)
-        ? providerError.code
-        : "provider-unavailable";
-  const retryable =
-    !(error instanceof NpShopReturnLogisticsContractError) && providerError?.retryable !== false;
+  const contractError =
+    error instanceof NpShopReturnLogisticsContractError ||
+    error instanceof NpShopReturnPostageContractError;
+  const code = contractError
+    ? "invalid-result"
+    : providerError && /^[a-z][a-z0-9-]{0,99}$/u.test(providerError.code)
+      ? providerError.code
+      : "provider-unavailable";
+  const retryable = !contractError && providerError?.retryable !== false;
   await getDb().transaction(async (tx) => {
     const current = await readLogistics(tx, siteId, logistics.orderId, true);
     if (!current || current.id !== logistics.id) return;
@@ -547,8 +563,7 @@ async function executeCreate(
         "The return origin expired before provider confirmation.",
       );
     }
-    const request = npRequireShopReturnLogisticsRequest({
-      contract: NP_SHOP_RETURN_LOGISTICS_REQUEST_CONTRACT,
+    const requestBase = {
       logisticsId: logistics.id,
       returnId: logistics.returnId,
       orderId: logistics.orderId,
@@ -561,9 +576,32 @@ async function executeCreate(
       readyAt: logistics.readyAt,
       closeAt: logistics.closeAt,
       requestedAt: logistics.requestedAt,
-    });
+    };
     try {
-      result = npRequireShopReturnLogisticsResult(await adapter.createReturnShipment(request));
+      if (logistics.postageMethod) {
+        const quotedAdapter = runtime.carrierReturnPostageAdapter;
+        if (!quotedAdapter || quotedAdapter.id !== logistics.providerId) {
+          throw new NpShopReturnLogisticsProviderError(
+            "quoted-capability-missing",
+            "The selected return-postage provider capability is unavailable.",
+            { retryable: true },
+          );
+        }
+        const request = npRequireShopQuotedReturnLogisticsRequest({
+          contract: NP_SHOP_QUOTED_RETURN_LOGISTICS_REQUEST_CONTRACT,
+          ...requestBase,
+          postageMethod: logistics.postageMethod,
+        });
+        result = npRequireShopReturnLogisticsResult(
+          await quotedAdapter.createQuotedReturnShipment(request),
+        );
+      } else {
+        const request = npRequireShopReturnLogisticsRequest({
+          contract: NP_SHOP_RETURN_LOGISTICS_REQUEST_CONTRACT,
+          ...requestBase,
+        });
+        result = npRequireShopReturnLogisticsResult(await adapter.createReturnShipment(request));
+      }
     } catch (error) {
       await persistProviderFailure(siteId, logistics, error);
       throwProviderFailure(error, "creation");
@@ -727,7 +765,7 @@ async function executeCreate(
 export async function npCreateShopReturnLogistics(
   runtime: NpShopRuntime,
   owner: NpShopCartOwner,
-  input: NpShopReturnLogisticsCreateInput,
+  input: NpShopReturnLogisticsCreateInput | NpShopQuotedReturnLogisticsCreateInput,
 ): Promise<{ logistics: NpShopReturnLogistics; duplicate: boolean }> {
   const adapter = runtime.carrierReturnLogisticsAdapter;
   if (!adapter || !runtime.carrierReturnLocationReference) {
@@ -738,6 +776,13 @@ export async function npCreateShopReturnLogistics(
   }
   const siteId = await requireSiteId();
   const ownerSegment = npShopCartOwnerStorageSegment(owner);
+  const quotedInput = "postageQuoteId" in input;
+  if (quotedInput && !runtime.carrierReturnPostageAdapter) {
+    throw new NpShopReturnPostageConflictError(
+      "return_postage_not_supported",
+      "This carrier does not support quoted return-postage creation.",
+    );
+  }
   const prepared = await getDb().transaction(async (tx) => {
     const order = await readOrder(tx, siteId, ownerSegment, input.orderId, true);
     const returnRequest = await readReturn(tx, siteId, input.orderId, true);
@@ -776,7 +821,25 @@ export async function npCreateShopReturnLogistics(
           : "Existing return logistics cannot be recreated.",
       );
     }
-    requireLivePickupWindow(input.readyAt, input.closeAt);
+    const creation = quotedInput
+      ? await npConsumeSelectedShopReturnPostage(
+          tx,
+          siteId,
+          ownerSegment,
+          order,
+          returnRequest,
+          booking,
+          adapter.id,
+          input,
+        )
+      : {
+          method: null,
+          origin: input.origin,
+          mode: input.mode,
+          readyAt: input.readyAt,
+          closeAt: input.closeAt,
+        };
+    requireLivePickupWindow(creation.readyAt, creation.closeAt);
     const now = new Date();
     const requestedAt = now.toISOString();
     const privateExpiresAt = new Date(
@@ -795,14 +858,14 @@ export async function npCreateShopReturnLogistics(
       providerId: adapter.id,
       status: "pending",
       revision: 1,
-      mode: input.mode,
+      mode: creation.mode,
       originalShipmentId: booking.id,
       originalBookingReference: booking.bookingReference!,
       returnReference: null,
       carrier: null,
       trackingNumber: null,
-      readyAt: input.readyAt,
-      closeAt: input.closeAt,
+      readyAt: creation.readyAt,
+      closeAt: creation.closeAt,
       providerErrorCode: null,
       cancellationId: null,
       requestedAt,
@@ -811,6 +874,7 @@ export async function npCreateShopReturnLogistics(
       cancelledAt: null,
       updatedAt: requestedAt,
       purgeAt: order.purgeAt,
+      postageMethod: creation.method,
     } satisfies NpShopStoredReturnLogistics;
     const privateData = {
       contract: NP_SHOP_RETURN_LOGISTICS_PRIVATE_CONTRACT,
@@ -818,7 +882,7 @@ export async function npCreateShopReturnLogistics(
       returnId: returnRequest.id,
       orderId: order.id,
       ownerSegment,
-      origin: input.origin,
+      origin: creation.origin,
       createdAt: requestedAt,
       expiresAt: privateExpiresAt,
     } satisfies NpShopStoredReturnLogisticsPrivate;

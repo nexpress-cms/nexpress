@@ -294,6 +294,10 @@ export const storefrontCss = `
 }
 .np-storefront-shell [data-np-shop-restock-alert],
 .np-storefront-shell [data-np-shop-price-alert] { border-radius: 0; }
+.np-storefront-shell [data-np-shop-return-postage-status] article {
+  border-radius: 0;
+  box-shadow: none;
+}
 .np-storefront-shell [data-np-shop-restock-alert="subscribed"] button,
 .np-storefront-shell [data-np-shop-price-alert="subscribed"] button {
   border-color: var(--np-storefront-accent);
