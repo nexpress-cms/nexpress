@@ -17,6 +17,10 @@ import type {
   NpShopCarrierPickupResult,
 } from "./pickup-contract.js";
 import type {
+  NpShopCarrierPickupAvailabilityRequest,
+  NpShopCarrierPickupAvailabilityResult,
+} from "./pickup-availability-contract.js";
+import type {
   NpShopReturnLogisticsCancelRequest,
   NpShopReturnLogisticsCancelResult,
   NpShopReturnLogisticsLabelRequest,
@@ -207,6 +211,14 @@ export interface NpShopCarrierAdapter {
     input: NpShopCarrierPickupCancelRequest,
   ): NpShopCarrierPickupCancelResult | Promise<NpShopCarrierPickupCancelResult>;
   /**
+   * List bounded, short-lived provider windows for the exact shipment,
+   * location token, and locked parcel snapshot. Shop validates one selected
+   * window before passing its canonical UTC bounds to schedulePickup.
+   */
+  listPickupWindows?(
+    input: NpShopCarrierPickupAvailabilityRequest,
+  ): NpShopCarrierPickupAvailabilityResult | Promise<NpShopCarrierPickupAvailabilityResult>;
+  /**
    * Create one approved return shipment. The origin is short-lived private
    * data and implementations must use logisticsId as the provider idempotency
    * key without logging or returning that address.
@@ -279,6 +291,9 @@ export type NpShopCarrierLabelAcquisitionAdapter = NpShopCarrierLabelAdapter &
 
 export type NpShopCarrierPickupAdapter = NpShopCarrierAdapter &
   Required<Pick<NpShopCarrierAdapter, "schedulePickup" | "cancelPickup">>;
+
+export type NpShopCarrierPickupAvailabilityAdapter = NpShopCarrierPickupAdapter &
+  Required<Pick<NpShopCarrierAdapter, "listPickupWindows">>;
 
 export type NpShopCarrierReturnLogisticsAdapter = NpShopCarrierAdapter &
   Required<Pick<NpShopCarrierAdapter, "createReturnShipment" | "cancelReturnShipment">>;

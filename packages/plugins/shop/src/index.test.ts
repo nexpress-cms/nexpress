@@ -164,6 +164,9 @@ describe("shop factory", () => {
       { id: "countCarrierLabelAcquisitions", kind: "metric" },
       { id: "carrierLabelAcquisitionHealth", kind: "status" },
       { id: "recentCarrierLabelAcquisitions", kind: "table" },
+      { id: "countCarrierPickupAvailability", kind: "metric" },
+      { id: "carrierPickupAvailabilityHealth", kind: "status" },
+      { id: "recentCarrierPickupAvailability", kind: "table" },
       { id: "countCarrierPickups", kind: "metric" },
       { id: "carrierPickupHealth", kind: "status" },
       { id: "recentCarrierPickups", kind: "table" },
@@ -252,6 +255,7 @@ describe("shop factory", () => {
       "cleanup-expired-order-drafts",
       "cleanup-expired-return-logistics-private",
       "cleanup-expired-return-postage",
+      "cleanup-expired-carrier-pickup-availability",
       "maintain-orders",
     ]);
     expect([...createShop().runtime.skins.keys()]).toEqual(["classic", "storefront-full"]);
@@ -689,6 +693,76 @@ describe("shop factory", () => {
         },
       }),
     ).toThrow(/pickup location/u);
+  });
+
+  it("adds short-lived pickup windows only on top of complete pickup scheduling", () => {
+    const shop = createShop({
+      carrier: {
+        pickupLocationReference: "warehouse-seoul-1",
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          bookShipmentWithParcels: () => Promise.reject(new Error("not called")),
+          bookExchangeShipment: () => Promise.reject(new Error("not called")),
+          bookExchangeShipmentWithParcels: () => Promise.reject(new Error("not called")),
+          cancelExchangeShipment: () => Promise.reject(new Error("not called")),
+          schedulePickup: () => Promise.reject(new Error("not called")),
+          cancelPickup: () => Promise.reject(new Error("not called")),
+          listPickupWindows: () => Promise.reject(new Error("not called")),
+        },
+      },
+    });
+    expect(shop.runtime.carrierPickupAvailabilityAdapter?.id).toBe("test-carrier");
+    expect(shop.plugin.actions?.listCarrierPickupWindows?.kind).toBe("action");
+    expect(shop.plugin.actions?.scheduleCarrierPickupWindow?.kind).toBe("action");
+    expect(shop.plugin.actions?.countCarrierPickupAvailability?.kind).toBe("metric");
+    expect(shop.plugin.actions?.carrierPickupAvailabilityHealth?.kind).toBe("status");
+    expect(shop.plugin.actions?.recentCarrierPickupAvailability?.kind).toBe("table");
+    expect(shop.plugin.manifest.provides.adminExtensions).toEqual(
+      expect.arrayContaining([
+        "dashboard:shop-carrier-pickup-availability",
+        "widget:shop-carrier-pickup-availability-health",
+        "table:shop-carrier-pickup-availability",
+        "action:shop-carrier-pickup-availability",
+      ]),
+    );
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-carrier-bookings")
+        ?.rowActions?.flatMap((action) => (action.type === "download" ? [] : [action.actionId])),
+    ).toContain("listCarrierPickupWindows");
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-carrier-bookings")
+        ?.rowActions?.flatMap((action) => (action.type === "download" ? [] : [action.actionId])),
+    ).not.toContain("scheduleCarrierPickup");
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-exchanges")
+        ?.rowActions?.flatMap((action) => (action.type === "download" ? [] : [action.actionId])),
+    ).toContain("listCarrierPickupWindows");
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-exchanges")
+        ?.rowActions?.flatMap((action) => (action.type === "download" ? [] : [action.actionId])),
+    ).not.toContain("scheduleCarrierPickup");
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-carrier-pickup-availability")
+        ?.rowActions?.map((action) => (action.type === "download" ? action.id : action.actionId)),
+    ).toEqual(["scheduleCarrierPickupWindow"]);
+
+    expect(() =>
+      createShop({
+        carrier: {
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+            listPickupWindows: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/pickup availability requires listPickupWindows/u);
   });
 
   it("adds return logistics only as one paired carrier capability with an opaque destination", () => {

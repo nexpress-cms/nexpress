@@ -47,6 +47,7 @@ import {
   type NpShopStoredCarrierPickup,
 } from "./pickup-contract.js";
 import type { NpShopRuntime } from "./runtime.js";
+import type { NpShopCarrierPickupAvailabilityQueryInput } from "./pickup-availability-contract.js";
 import {
   npRequireStoredShopTracking,
   npShopExchangeTrackingStorageKey,
@@ -397,6 +398,13 @@ function pickupPackages(
 
 type NpShopPickupBooking = NpShopStoredCarrierBooking | NpShopStoredExchangeCarrierBooking;
 
+export interface NpShopCarrierPickupAvailabilityContext {
+  booking: NpShopPickupBooking;
+  parcelRevision: number;
+  packages: NpShopCarrierPickupPackage[];
+  locationReference: string;
+}
+
 function completedReplacementBookingMatchesExchange(
   booking: NpShopStoredExchangeCarrierBooking,
   exchange: NpShopStoredExchange,
@@ -493,7 +501,7 @@ function requireLiveWindow(readyAt: string, closeAt: string, now: Date): void {
 }
 
 async function requireScheduleEligibility(
-  tx: NpShopTransaction,
+  db: ReturnType<typeof getDb> | NpShopTransaction,
   siteId: string,
   orderId: string,
   shipmentId: string,
@@ -501,6 +509,7 @@ async function requireScheduleEligibility(
   exchangeId: string | null,
   providerId: string,
   expectedPickup?: NpShopStoredCarrierPickup,
+  forUpdate = true,
 ): Promise<{
   booking: NpShopPickupBooking;
   parcelRevision: number;
@@ -517,8 +526,8 @@ async function requireScheduleEligibility(
   }
   const booking =
     target === "replacement"
-      ? await readExchangeBooking(tx, siteId, orderId, true)
-      : await readBooking(tx, siteId, orderId, true);
+      ? await readExchangeBooking(db, siteId, orderId, forUpdate)
+      : await readBooking(db, siteId, orderId, forUpdate);
   if (
     !booking ||
     booking.id !== shipmentId ||
@@ -537,8 +546,8 @@ async function requireScheduleEligibility(
   }
   const parcels =
     target === "replacement"
-      ? await readExchangeParcels(tx, siteId, orderId, true)
-      : await readParcels(tx, siteId, orderId, true);
+      ? await readExchangeParcels(db, siteId, orderId, forUpdate)
+      : await readParcels(db, siteId, orderId, forUpdate);
   if (
     !parcels ||
     parcels.lockedShipmentId !== shipmentId ||
@@ -564,7 +573,7 @@ async function requireScheduleEligibility(
     );
   }
   if (target === "replacement") {
-    const exchange = await readExchange(tx, siteId, orderId, true);
+    const exchange = await readExchange(db, siteId, orderId, forUpdate);
     if (
       !exchange ||
       exchange.id !== exchangeId ||
@@ -580,13 +589,110 @@ async function requireScheduleEligibility(
       );
     }
   }
-  if (await readTracking(tx, siteId, orderId, shipmentId, target, true)) {
+  if (await readTracking(db, siteId, orderId, shipmentId, target, forUpdate)) {
     throw new NpShopCarrierPickupConflictError(
       "pickup_tracking_started",
       "Pickup cannot change after carrier tracking has started.",
     );
   }
   return { booking, parcelRevision: parcels.revision, packages };
+}
+
+async function lockPickupCreation(
+  tx: NpShopTransaction,
+  siteId: string,
+  shipmentId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-carrier-pickup:${siteId}:${shipmentId}`}, 0))`,
+  );
+}
+
+export async function npLockShopCarrierPickupAvailabilityContext(
+  runtime: NpShopRuntime,
+  input: NpShopCarrierPickupAvailabilityQueryInput,
+  siteId: string,
+  tx: NpShopTransaction,
+): Promise<NpShopCarrierPickupAvailabilityContext> {
+  const adapter = runtime.carrierPickupAdapter;
+  const locationReference = runtime.carrierPickupLocationReference;
+  if (!adapter || !locationReference) {
+    throw new NpShopCarrierPickupConflictError(
+      "pickup_not_supported",
+      "Carrier pickup scheduling is not configured.",
+    );
+  }
+  await lockPickupCreation(tx, siteId, input.shipmentId);
+  const existing = await readPickup(tx, siteId, input.shipmentId, true);
+  const currentRevision = existing?.revision ?? 0;
+  if (currentRevision !== input.expectedPickupRevision) {
+    throw new NpShopCarrierPickupConflictError(
+      "pickup_revision_conflict",
+      "The pickup state changed before availability could be checked.",
+    );
+  }
+  if (existing) {
+    throw new NpShopCarrierPickupConflictError(
+      existing.status === "manual-review" ? "pickup_manual_review" : "pickup_state_conflict",
+      "An existing durable pickup must be handled from the pickup table.",
+    );
+  }
+  const eligible = await requireScheduleEligibility(
+    tx,
+    siteId,
+    input.orderId,
+    input.shipmentId,
+    input.target,
+    input.exchangeId,
+    adapter.id,
+  );
+  return { ...eligible, locationReference };
+}
+
+export async function npResolveShopCarrierPickupAvailabilityContext(
+  runtime: NpShopRuntime,
+  input: NpShopCarrierPickupAvailabilityQueryInput,
+): Promise<NpShopCarrierPickupAvailabilityContext> {
+  const siteId = await requireSiteId();
+  return getDb().transaction((tx) =>
+    npLockShopCarrierPickupAvailabilityContext(runtime, input, siteId, tx),
+  );
+}
+
+export async function npInspectShopCarrierPickupAvailabilityContext(
+  runtime: NpShopRuntime,
+  input: NpShopCarrierPickupAvailabilityQueryInput,
+): Promise<NpShopCarrierPickupAvailabilityContext> {
+  const adapter = runtime.carrierPickupAdapter;
+  const locationReference = runtime.carrierPickupLocationReference;
+  if (!adapter || !locationReference) {
+    throw new NpShopCarrierPickupConflictError(
+      "pickup_not_supported",
+      "Carrier pickup scheduling is not configured.",
+    );
+  }
+  const siteId = await requireSiteId();
+  const db = getDb();
+  const existing = await readPickup(db, siteId, input.shipmentId);
+  const currentRevision = existing?.revision ?? 0;
+  if (currentRevision !== input.expectedPickupRevision || existing) {
+    throw new NpShopCarrierPickupConflictError(
+      "pickup_state_conflict",
+      "An existing durable pickup no longer matches the availability snapshot.",
+    );
+  }
+  const eligible = await requireScheduleEligibility(
+    db,
+    siteId,
+    input.orderId,
+    input.shipmentId,
+    input.target,
+    input.exchangeId,
+    adapter.id,
+    undefined,
+    false,
+  );
+  return { ...eligible, locationReference };
 }
 
 async function requireCancellationEligibility(
@@ -892,6 +998,7 @@ export async function npScheduleShopCarrierPickup(
   }
   const siteId = await requireSiteId();
   const prepared = await getDb().transaction(async (tx) => {
+    await lockPickupCreation(tx, siteId, input.shipmentId);
     const existing = await readPickup(tx, siteId, input.shipmentId, true);
     if (existing?.status === "scheduled") {
       if (

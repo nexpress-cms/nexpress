@@ -28,6 +28,7 @@ import {
   type NpShopCarrierLabelAcquisitionRequest,
   type NpShopCarrierLabelRequest,
   type NpShopCarrierParcelBookingRequest,
+  type NpShopCarrierPickupAvailabilityRequest,
   type NpShopCarrierPickupCancelRequest,
   type NpShopCarrierPickupRequest,
   type NpShopReturnLogisticsCancelRequest,
@@ -3643,6 +3644,23 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       return result;
     });
     let pickupProviderAttempts = 0;
+    const listPickupWindows = vi.fn((request: NpShopCarrierPickupAvailabilityRequest) => {
+      const expiresAt = new Date(new Date(request.requestedAt).getTime() + 15 * 60 * 1_000);
+      const readyAt = new Date(new Date(request.requestedAt).getTime() + 60 * 60 * 1_000);
+      const closeAt = new Date(readyAt.getTime() + 3 * 60 * 60 * 1_000);
+      return {
+        contract: "np.shop-carrier-pickup-availability-result.v1" as const,
+        availabilityId: request.availabilityId,
+        windows: [
+          {
+            id: "provider-window-1",
+            readyAt: readyAt.toISOString(),
+            closeAt: closeAt.toISOString(),
+          },
+        ],
+        expiresAt: expiresAt.toISOString(),
+      };
+    });
     const schedulePickup = vi.fn((request: NpShopCarrierPickupRequest) => {
       pickupProviderAttempts += 1;
       if (pickupProviderAttempts === 1) {
@@ -3687,6 +3705,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           acquireShippingLabel,
           readShippingLabel,
           readTracking,
+          listPickupWindows,
           schedulePickup,
           cancelPickup,
           verifyTrackingWebhook: ({ rawBody }) =>
@@ -4046,10 +4065,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(JSON.stringify(readShippingLabel.mock.calls[0]?.[0])).not.toContain(
       "carrier-private@example.com",
     );
-    const readyAt = new Date(Date.now() + 60 * 60 * 1_000);
-    readyAt.setMilliseconds(0);
-    const closeAt = new Date(readyAt.getTime() + 3 * 60 * 60 * 1_000);
-    const pickupAction = {
+    const pickupAvailabilityAction = {
       row: {
         id: ids.orderId,
         shipmentId,
@@ -4057,15 +4073,107 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         exchangeId: null,
         pickupRevision: 0,
       },
-      values: { readyAt: readyAt.toISOString(), closeAt: closeAt.toISOString() },
+      values: {},
     };
-    const pickupScheduleResult = await withCurrentSite("default", () =>
-      carrierShop.plugin.actions?.scheduleCarrierPickup?.handler(pickupAction, actionContext),
-    );
-    expect(pickupScheduleResult).toMatchObject({
-      ok: false,
-      error: expect.stringContaining("temporarily unavailable"),
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.listCarrierPickupWindows?.handler(
+          pickupAvailabilityAction,
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("1 provider pickup window") });
+    expect(listPickupWindows).toHaveBeenCalledWith({
+      contract: "np.shop-carrier-pickup-availability-request.v1",
+      availabilityId: expect.any(String),
+      shipmentId,
+      orderId: ids.orderId,
+      bookingReference: "booking_transaction_1",
+      carrier: "Parcel Co",
+      trackingNumber: "CARRIER-TRACK-1",
+      locationReference: "warehouse-seoul-1",
+      parcelRevision: 1,
+      packages: [
+        {
+          id: "parcel-1",
+          lengthMm: 300,
+          widthMm: 200,
+          heightMm: 100,
+          weightGrams: 1_500,
+        },
+      ],
+      requestedAt: expect.any(String),
+      maximumExpiresAt: expect.any(String),
     });
+    const [pickupAvailabilityRow] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(like(npPluginStorage.key, `carrier-pickup-availability:${shipmentId}:%`));
+    expect(pickupAvailabilityRow?.value).toMatchObject({
+      contract: "np.shop-carrier-pickup-availability-storage.v1",
+      orderId: ids.orderId,
+      shipmentId,
+      target: "outbound",
+      exchangeId: null,
+      providerId: "test-carrier",
+      bookingFingerprint: expect.stringMatching(/^[0-9a-f]{64}$/u),
+      revision: 1,
+      locationReference: "warehouse-seoul-1",
+      parcelRevision: 1,
+      windows: [{ id: "provider-window-1" }],
+    });
+    const pickupAvailability = pickupAvailabilityRow?.value as
+      | {
+          id?: unknown;
+          revision?: unknown;
+          windows?: Array<{ id?: unknown; readyAt?: unknown; closeAt?: unknown }>;
+        }
+      | undefined;
+    const pickupWindow = pickupAvailability?.windows?.[0];
+    if (
+      typeof pickupAvailability?.id !== "string" ||
+      typeof pickupAvailability.revision !== "number" ||
+      typeof pickupWindow?.id !== "string" ||
+      typeof pickupWindow.readyAt !== "string" ||
+      typeof pickupWindow.closeAt !== "string"
+    ) {
+      throw new Error("Missing durable carrier pickup availability window.");
+    }
+    const pickupAction = {
+      row: {
+        id: ids.orderId,
+        shipmentId,
+        pickupTarget: "outbound",
+        exchangeId: null,
+        pickupRevision: 0,
+        availabilityId: pickupAvailability.id,
+        availabilityRevision: pickupAvailability.revision,
+        windowId: pickupWindow.id,
+      },
+      values: {},
+    };
+    const concurrentPickupScheduleResults = await Promise.all([
+      withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.scheduleCarrierPickupWindow?.handler(
+          pickupAction,
+          actionContext,
+        ),
+      ),
+      withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.scheduleCarrierPickupWindow?.handler(
+          pickupAction,
+          actionContext,
+        ),
+      ),
+    ]);
+    expect(concurrentPickupScheduleResults).toHaveLength(2);
+    expect(concurrentPickupScheduleResults.every((result) => result?.ok === false)).toBe(true);
+    expect(
+      concurrentPickupScheduleResults.some(
+        (result) => result?.ok === false && result.error.includes("temporarily unavailable"),
+      ),
+    ).toBe(true);
+    expect(schedulePickup).toHaveBeenCalledTimes(1);
     const [pendingPickup] = await db
       .select({ value: npPluginStorage.value })
       .from(npPluginStorage)
@@ -4075,6 +4183,12 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       revision: 2,
       providerErrorCode: "pickup-timeout",
     });
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(like(npPluginStorage.key, `carrier-pickup-availability:${shipmentId}:%`)),
+    ).toEqual([]);
     expect(JSON.stringify(pendingPickup)).not.toContain("carrier-private@example.com");
     const pendingPickupId = (pendingPickup?.value as { id?: unknown } | undefined)?.id;
     if (typeof pendingPickupId !== "string") {
@@ -4107,8 +4221,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       carrier: "Parcel Co",
       trackingNumber: "CARRIER-TRACK-1",
       locationReference: "warehouse-seoul-1",
-      readyAt: readyAt.toISOString(),
-      closeAt: closeAt.toISOString(),
+      readyAt: pickupWindow.readyAt,
+      closeAt: pickupWindow.closeAt,
       parcelRevision: 1,
       packages: [
         {
@@ -4188,6 +4302,14 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(
       await withCurrentSite("default", () =>
         carrierShop.plugin.actions?.carrierPickupHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.carrierPickupAvailabilityHealth?.handler(
+          undefined,
+          {} as never,
+        ),
       ),
     ).toMatchObject({ ok: true, data: { level: "ok" } });
     const trackingAction = {
@@ -4438,6 +4560,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         { action: "shop.carrier.booking.confirm" },
         { action: "shop.carrier.label.read" },
         { action: "shop.carrier.label.deliver" },
+        { action: "shop.carrier.pickup.availability.list" },
+        { action: "shop.carrier.pickup.availability.select" },
         { action: "shop.carrier.pickup.request" },
         { action: "shop.carrier.pickup.confirm" },
         { action: "shop.carrier.pickup.schedule" },
