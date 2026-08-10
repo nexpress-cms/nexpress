@@ -383,6 +383,7 @@ const eventLabels: Record<NpShopOrderNotificationKind, string> = {
   "exchange.created": "Same-item exchange created",
   "exchange.processing": "Same-item exchange processing",
   "exchange.shipped": "Same-item exchange shipped",
+  "exchange.delivered": "Same-item exchange delivered",
   "exchange.cancelled": "Same-item exchange cancelled",
   "refund.completed": "Refund completed",
   "partial-refund.completed": "Partial refund completed",

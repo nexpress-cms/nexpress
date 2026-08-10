@@ -148,8 +148,15 @@ import {
   type NpShopReturnStaffInput,
   type NpShopStoredReturn,
 } from "./return-contract.js";
-import { npShopTrackingPollStorageKey } from "./tracking-contract.js";
-import { npReadShopTrackingForOrder } from "./tracking-service.js";
+import {
+  npShopExchangeTrackingPollStorageKey,
+  npShopExchangeTrackingStorageKey,
+  npShopTrackingPollStorageKey,
+} from "./tracking-contract.js";
+import {
+  npReadShopExchangeTrackingForOrder,
+  npReadShopTrackingForOrder,
+} from "./tracking-service.js";
 import { npReadShopReturnTrackingForOrder } from "./return-tracking-service.js";
 import {
   npShopReturnTrackingPollStorageKey,
@@ -417,12 +424,15 @@ export interface NpShopAdminExchangeRow {
   destinationExpiresAt: string;
   carrierBooking: string;
   bookingId: string;
+  shipmentId: string;
   bookingRevision: number;
   provider: string;
   units: number;
   inventory: string;
   carrier: string;
   trackingNumber: string;
+  trackingStatus: string;
+  trackingShipmentId: string;
   operatorNote: string;
   updatedAt: string;
 }
@@ -1696,6 +1706,9 @@ async function projectOrder(
   const exchangeDestination = exchange
     ? await readStoredExchangeDestinationPrivate(db, siteId, order.id)
     : null;
+  const exchangeTracking = exchange
+    ? await npReadShopExchangeTrackingForOrder(db, siteId, order.id)
+    : null;
   if (
     exchange &&
     (!returnRequest ||
@@ -1713,6 +1726,17 @@ async function projectOrder(
   ) {
     throw new NpShopOrderContractError("Shop exchange destination does not match", [
       "Private destination identity, owner, revisions, and submission time must match its awaiting exchange.",
+    ]);
+  }
+  if (
+    exchangeTracking &&
+    (!exchange ||
+      (exchange.status !== "processing" && exchange.status !== "shipped") ||
+      exchange.carrier === null ||
+      exchange.trackingNumber === null)
+  ) {
+    throw new NpShopOrderContractError("Shop exchange tracking does not match", [
+      "Exchange tracking requires one active provider-booked replacement shipment.",
     ]);
   }
   if (
@@ -1757,6 +1781,8 @@ async function projectOrder(
                   accessedAt: exchangeDestination.accessedAt,
                 }
               : null,
+            new Date(),
+            exchangeTracking,
           ),
         }
       : {}),
@@ -2496,7 +2522,7 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${npShopExchangeStorageKey(order.id)}, ${npShopExchangeDestinationPrivateStorageKey(order.id)}, ${npShopExchangeCarrierBookingStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)}, ${`payment-adjustment:${order.id}`}, ${`promotion-reservation:${order.id}`})`,
+        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${npShopExchangeTrackingStorageKey(order.id)}, ${npShopExchangeTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${npShopExchangeStorageKey(order.id)}, ${npShopExchangeDestinationPrivateStorageKey(order.id)}, ${npShopExchangeCarrierBookingStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)}, ${`payment-adjustment:${order.id}`}, ${`promotion-reservation:${order.id}`})`,
       ),
     );
   await tx
@@ -7059,6 +7085,13 @@ export async function npCancelShopExchangeCarrierShipment(
         "The provider-owned replacement booking does not exist.",
       );
     }
+    const tracking = await npReadShopExchangeTrackingForOrder(tx, siteId, input.orderId, true);
+    if (tracking) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_state_conflict",
+        "A replacement shipment with verified tracking state cannot be provider-cancelled or restocked.",
+      );
+    }
     if (current.status === "cancelled" && exchange.status === "cancelled") {
       return { outcome: "cancelled" as const, exchange, booking: current };
     }
@@ -7277,6 +7310,12 @@ export async function npCancelShopExchangeCarrierShipment(
           "The exchange changed after provider cancellation.",
         );
       }
+      if (await npReadShopExchangeTrackingForOrder(tx, siteId, input.orderId, true)) {
+        throw new NpShopExchangeCarrierConflictError(
+          "exchange_carrier_manual_review",
+          "Tracking state was verified while provider cancellation was in progress; inventory cannot be restored automatically.",
+        );
+      }
       const trackedKeys = new Set(order.inventoryReservationLineKeys);
       const trackedLines = exchangeInventoryLines(order, returnRequest).filter((line) =>
         trackedKeys.has(line.key),
@@ -7318,6 +7357,15 @@ export async function npCancelShopExchangeCarrierShipment(
         providerErrorCode: null,
         updatedAt: now,
       } satisfies NpShopStoredExchangeCarrierBooking;
+      await tx
+        .delete(npPluginStorage)
+        .where(
+          and(
+            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+            eq(npPluginStorage.siteId, siteId),
+            eq(npPluginStorage.key, npShopExchangeTrackingPollStorageKey(order.id)),
+          ),
+        );
       await persistOrder(tx, siteId, updatedOrder);
       await persistExchange(tx, siteId, cancelledExchange);
       await persistExchangeCarrierBooking(tx, siteId, cancelledBooking);
@@ -7705,11 +7753,14 @@ export async function npListRecentShopExchanges(): Promise<{
           exchange.orderId,
         );
         const carrierBooking = await readStoredExchangeCarrierBooking(db, siteId, exchange.orderId);
+        const tracking = await npReadShopExchangeTrackingForOrder(db, siteId, exchange.orderId);
         const projected = npProjectShopExchange(
           exchange,
           destination && exchangeDestinationMatches(destination, exchange)
             ? { expiresAt: destination.expiresAt, accessedAt: destination.accessedAt }
             : null,
+          new Date(),
+          tracking,
         );
         const providerOwned = carrierBooking !== null && carrierBooking.status !== "cancelled";
         const adminStatus =
@@ -7732,12 +7783,15 @@ export async function npListRecentShopExchanges(): Promise<{
           destinationExpiresAt: projected.destinationExpiresAt ?? "—",
           carrierBooking: adminCarrierBooking,
           bookingId: carrierBooking?.id ?? "—",
+          shipmentId: carrierBooking?.id ?? "—",
           bookingRevision: carrierBooking?.revision ?? 0,
           provider: carrierBooking?.providerId ?? "—",
           units: exchange.lines.reduce((sum, line) => sum + line.quantity, 0),
           inventory: exchange.inventoryOutcome,
           carrier: exchange.carrier ?? "—",
           trackingNumber: exchange.trackingNumber ?? "—",
+          trackingStatus: tracking?.status ?? "—",
+          trackingShipmentId: tracking?.shipmentId ?? "—",
           operatorNote: exchange.operatorNote ?? "—",
           updatedAt: exchange.updatedAt,
         };

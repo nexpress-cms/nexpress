@@ -43,6 +43,7 @@ describe("storefront theme contract", () => {
     expect(storefrontCss).toContain('[data-np-shop-price-alert="subscribed"]');
     expect(storefrontCss).toContain('[data-np-shop-exchange="shipped"]');
     expect(storefrontCss).toContain("[data-np-shop-exchange-carrier-booking]");
+    expect(storefrontCss).toContain('[data-np-shop-exchange-tracking="delivered"]');
     expect(storefrontCss).toContain('[data-np-shop-exchange-destination="accessed"]');
     expect(storefrontCss).toContain("[data-np-shop-reviews]");
     expect(storefrontCss).toContain("[data-np-shop-review-form]");

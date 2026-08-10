@@ -503,6 +503,15 @@ export function npShopTrackingStorageKey(orderId: string): string {
   return `tracking:${orderId}`;
 }
 
+export function npShopExchangeTrackingStorageKey(orderId: string): string {
+  if (!canonicalUuidPattern.test(orderId)) {
+    throw new NpShopTrackingContractError("Invalid Shop exchange tracking order id", [
+      "exchange tracking order id is invalid.",
+    ]);
+  }
+  return `exchange-tracking:${orderId}`;
+}
+
 export function npShopTrackingPollStorageKey(orderId: string): string {
   if (!canonicalUuidPattern.test(orderId)) {
     throw new NpShopTrackingContractError("Invalid Shop tracking poll order id", [
@@ -510,6 +519,15 @@ export function npShopTrackingPollStorageKey(orderId: string): string {
     ]);
   }
   return `tracking-poll:${orderId}`;
+}
+
+export function npShopExchangeTrackingPollStorageKey(orderId: string): string {
+  if (!canonicalUuidPattern.test(orderId)) {
+    throw new NpShopTrackingContractError("Invalid Shop exchange tracking poll order id", [
+      "exchange tracking poll order id is invalid.",
+    ]);
+  }
+  return `exchange-tracking-poll:${orderId}`;
 }
 
 export const NP_SHOP_TRACKING_POLL_CURSOR_KEY = "tracking-poll-cursor" as const;
@@ -667,8 +685,12 @@ export function npRequireShopTrackingPollCursor(value: unknown): NpShopTrackingP
   if (
     value.lastBookingKey !== null &&
     (typeof value.lastBookingKey !== "string" ||
-      !value.lastBookingKey.startsWith("carrier-booking:") ||
-      !canonicalUuidPattern.test(value.lastBookingKey.slice("carrier-booking:".length)))
+      !(
+        (value.lastBookingKey.startsWith("carrier-booking:") &&
+          canonicalUuidPattern.test(value.lastBookingKey.slice("carrier-booking:".length))) ||
+        (value.lastBookingKey.startsWith("exchange-carrier-booking:") &&
+          canonicalUuidPattern.test(value.lastBookingKey.slice("exchange-carrier-booking:".length)))
+      ))
   ) {
     issues.push("tracking poll cursor.lastBookingKey is invalid.");
   }

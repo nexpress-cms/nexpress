@@ -2,7 +2,18 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-10 (The existing Shop carrier label-read capability
+**Last refreshed:** 2026-08-10 (Shop provider-booked same-item replacements now
+reuse the existing exact tracking callback and bounded polling capabilities.
+Outbound and replacement state remain separately persisted and owner-visible;
+exact booking/exchange tuples, cursor-fair leases/backoff, PII-free receipts,
+Admin/Doctor, both skins, the independent Storefront hook, scaffolds, cleanup,
+owner delivery updates, and PostgreSQL coverage share the contract. Tracking
+does not mutate exchange commercial state, and any verified tracking state blocks
+provider cancellation and automatic inventory restock. Replacement label
+purchase/regeneration, pickup, provider protocols, and customer-service
+cancellation after movement remain separate.)
+
+**Earlier:** 2026-08-10 (The existing Shop carrier label-read capability
 now serves completed provider-booked same-item replacements through the same
 staff-only binary route. Exact booking/exchange state and revisions are checked
 before and after provider I/O, PII-free read/delivery audits distinguish the

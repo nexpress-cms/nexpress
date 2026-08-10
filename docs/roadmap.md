@@ -477,7 +477,7 @@ real product domain, not just blog/community. Ship as a plugin package
   it. The existing label-read capability also serves completed provider-backed
   replacement bookings through one transient staff-only download with exact
   pre/post relationship validation and no byte persistence. Replacement label
-  purchase/regeneration, pickup/tracking callbacks, substitutions, payment
+  purchase/regeneration, replacement pickup, substitutions, payment
   differences, store credit, eligibility policy, automatic address correction,
   and automatic approval remain separate additive contracts.
 - **Provider-neutral return tracking (shipped)** — optional exact raw-body

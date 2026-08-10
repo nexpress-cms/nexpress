@@ -1,4 +1,5 @@
 import type { NpShopCheckoutIntentLine } from "./types.js";
+import { npAnalyzeShopTracking, type NpShopTracking } from "./tracking-contract.js";
 
 export const NP_SHOP_EXCHANGE_STORAGE_CONTRACT = "np.shop-exchange-storage.v1" as const;
 export const NP_SHOP_EXCHANGE_CONTRACT = "np.shop-exchange.v1" as const;
@@ -85,6 +86,7 @@ export interface NpShopExchange {
   inventoryOutcome: NpShopExchangeInventoryOutcome;
   carrier: string | null;
   trackingNumber: string | null;
+  tracking?: NpShopTracking;
   createdAt: string;
   updatedAt: string;
   shippedAt: string | null;
@@ -423,6 +425,7 @@ export function npProjectShopExchange(
   value: NpShopStoredExchange,
   destination: NpShopExchangeDestinationProjection | null = null,
   now = new Date(),
+  tracking: NpShopTracking | null = null,
 ): NpShopExchange {
   const retainedDestination =
     value.status === "awaiting" &&
@@ -455,6 +458,7 @@ export function npProjectShopExchange(
     inventoryOutcome: value.inventoryOutcome,
     carrier: value.carrier,
     trackingNumber: value.trackingNumber,
+    ...(tracking ? { tracking } : {}),
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
     shippedAt: value.shippedAt,
@@ -480,6 +484,7 @@ export function npAnalyzeShopExchange(value: unknown): string[] {
     ),
     "destinationStatus",
     "destinationExpiresAt",
+    ...(Object.hasOwn(value, "tracking") ? ["tracking"] : []),
   ];
   const issues: string[] = [];
   exactKeys(value, publicKeys, "exchange", issues);
@@ -500,6 +505,7 @@ export function npAnalyzeShopExchange(value: unknown): string[] {
   };
   delete (candidate as { destinationStatus?: unknown }).destinationStatus;
   delete (candidate as { destinationExpiresAt?: unknown }).destinationExpiresAt;
+  delete (candidate as { tracking?: unknown }).tracking;
   issues.push(
     ...npAnalyzeStoredShopExchange(candidate).filter(
       (issue) =>
@@ -517,6 +523,17 @@ export function npAnalyzeShopExchange(value: unknown): string[] {
   }
   if (value.destinationExpiresAt !== null && !isIso(value.destinationExpiresAt)) {
     issues.push("exchange.destinationExpiresAt is invalid.");
+  }
+  if (value.tracking !== undefined) {
+    issues.push(...npAnalyzeShopTracking(value.tracking).map((issue) => `exchange.${issue}`));
+  }
+  if (
+    value.tracking !== undefined &&
+    ((value.status !== "processing" && value.status !== "shipped") ||
+      value.carrier === null ||
+      value.trackingNumber === null)
+  ) {
+    issues.push("exchange tracking requires one active replacement carrier shipment.");
   }
   if (
     ((value.destinationStatus === "submitted" || value.destinationStatus === "accessed") &&

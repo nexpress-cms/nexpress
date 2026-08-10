@@ -20,6 +20,8 @@ import {
   npRequireShopTrackingReconcileActionInput,
   npRequireStoredShopTrackingReceipt,
   npShopTrackingEventDigest,
+  npShopExchangeTrackingPollStorageKey,
+  npShopExchangeTrackingStorageKey,
   npShopTrackingPollBackoffSeconds,
   npShopTrackingReceiptStorageKey,
 } from "./tracking-contract.js";
@@ -196,6 +198,20 @@ describe("Shop carrier tracking contract", () => {
         updatedAt: now.toISOString(),
       }),
     ).toMatchObject({ lastBookingKey: `carrier-booking:${event.orderId}` });
+    expect(
+      npRequireShopTrackingPollCursor({
+        contract: NP_SHOP_TRACKING_POLL_CURSOR_CONTRACT,
+        providerId: "test-carrier",
+        lastBookingKey: `exchange-carrier-booking:${event.orderId}`,
+        updatedAt: now.toISOString(),
+      }),
+    ).toMatchObject({ lastBookingKey: `exchange-carrier-booking:${event.orderId}` });
+    expect(npShopExchangeTrackingStorageKey(event.orderId)).toBe(
+      `exchange-tracking:${event.orderId}`,
+    );
+    expect(npShopExchangeTrackingPollStorageKey(event.orderId)).toBe(
+      `exchange-tracking-poll:${event.orderId}`,
+    );
     expect(() =>
       npRequireShopTrackingPollCursor({
         contract: NP_SHOP_TRACKING_POLL_CURSOR_CONTRACT,

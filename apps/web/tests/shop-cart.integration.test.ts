@@ -6574,6 +6574,23 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     const owner = await createPendingOrder(ids, "exchange-owner@example.com");
     const exchangeBookingRequests: NpShopExchangeCarrierBookingRequest[] = [];
     const exchangeCancellationRequests: NpShopExchangeCarrierCancelRequest[] = [];
+    const readExchangeTracking = vi.fn((request: NpShopTrackingPollRequest) => ({
+      contract: "np.shop-tracking-poll-result.v1" as const,
+      shipmentId: request.shipmentId,
+      orderId: request.orderId,
+      checkedAt: request.requestedAt,
+      event: {
+        contract: "np.shop-tracking-event.v1" as const,
+        eventId: "exchange_tracking_polled",
+        shipmentId: request.shipmentId,
+        orderId: request.orderId,
+        bookingReference: request.bookingReference,
+        trackingNumber: request.trackingNumber,
+        status: "out-for-delivery" as const,
+        occurredAt: request.requestedAt,
+        signedAt: request.requestedAt,
+      },
+    }));
     const readExchangeShippingLabel = vi.fn((request: NpShopCarrierLabelRequest) => ({
       contract: "np.shop-carrier-label-result.v1" as const,
       shipmentId: request.shipmentId,
@@ -6596,6 +6613,9 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           id: "test-carrier",
           bookShipment: () => Promise.reject(new Error("not called")),
           readShippingLabel: readExchangeShippingLabel,
+          verifyTrackingWebhook: ({ rawBody }) =>
+            JSON.parse(new TextDecoder().decode(rawBody)) as never,
+          readTracking: readExchangeTracking,
           bookExchangeShipment: (request) => {
             exchangeBookingRequests.push(request);
             if (exchangeBookingRequests.length === 1) {
@@ -7022,6 +7042,184 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(JSON.stringify(readExchangeShippingLabel.mock.calls[0]?.[0])).not.toContain(
       replacementDestination.addressLine1,
     );
+    const exchangeTrackingAt = new Date().toISOString();
+    const exchangeTrackingEvent = {
+      contract: "np.shop-tracking-event.v1",
+      eventId: "exchange_tracking_webhook",
+      shipmentId: exchangeBookingRow.bookingId,
+      orderId: ids.orderId,
+      bookingReference: "replacement_booking_123",
+      trackingNumber: "EXCHANGE-REPLACEMENT",
+      status: "in-transit",
+      occurredAt: exchangeTrackingAt,
+      signedAt: exchangeTrackingAt,
+    };
+    expect(
+      await configuredShopCall(exchangeCarrierShop, "POST", "/carrier/tracking/webhook", {
+        rawBody: new TextEncoder().encode(JSON.stringify(exchangeTrackingEvent)),
+        headers: { "x-carrier-signature": "valid" },
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: {
+        receipt: { outcome: "advanced", trackingStatus: "in-transit" },
+      },
+    });
+    expect(await orderCall("GET", { ...owner, orderId: ids.orderId })).toMatchObject({
+      body: {
+        order: {
+          exchange: {
+            status: "processing",
+            tracking: { shipmentId: exchangeBookingRow.bookingId, status: "in-transit" },
+          },
+        },
+      },
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.reconcileCarrierTracking?.handler(
+          { row: { id: ids.orderId, shipmentId: exchangeBookingRow.bookingId }, values: {} },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("1 advanced") });
+    expect(readExchangeTracking).toHaveBeenCalledWith({
+      contract: "np.shop-tracking-poll-request.v1",
+      shipmentId: exchangeBookingRow.bookingId,
+      orderId: ids.orderId,
+      bookingReference: "replacement_booking_123",
+      trackingNumber: "EXCHANGE-REPLACEMENT",
+      current: {
+        eventId: "exchange_tracking_webhook",
+        status: "in-transit",
+        occurredAt: exchangeTrackingAt,
+      },
+      requestedAt: expect.any(String),
+    });
+    const exchangeDeliveredAt = new Date().toISOString();
+    expect(
+      await configuredShopCall(exchangeCarrierShop, "POST", "/carrier/tracking/webhook", {
+        rawBody: new TextEncoder().encode(
+          JSON.stringify({
+            ...exchangeTrackingEvent,
+            eventId: "exchange_tracking_delivered",
+            status: "delivered",
+            occurredAt: exchangeDeliveredAt,
+            signedAt: exchangeDeliveredAt,
+          }),
+        ),
+        headers: { "x-carrier-signature": "valid" },
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: { receipt: { outcome: "advanced", trackingStatus: "delivered" } },
+    });
+    expect(await orderCall("GET", { ...owner, orderId: ids.orderId })).toMatchObject({
+      body: {
+        order: {
+          exchange: {
+            status: "processing",
+            tracking: { status: "delivered", deliveredAt: exchangeDeliveredAt },
+          },
+        },
+      },
+    });
+    const repeatedDeliveredAt = new Date(Date.now() + 1).toISOString();
+    expect(
+      await configuredShopCall(exchangeCarrierShop, "POST", "/carrier/tracking/webhook", {
+        rawBody: new TextEncoder().encode(
+          JSON.stringify({
+            ...exchangeTrackingEvent,
+            eventId: "exchange_tracking_delivered_repeat",
+            status: "delivered",
+            occurredAt: repeatedDeliveredAt,
+            signedAt: repeatedDeliveredAt,
+          }),
+        ),
+        headers: { "x-carrier-signature": "valid" },
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: { receipt: { outcome: "ignored-terminal", trackingStatus: "delivered" } },
+    });
+    const exchangeNotificationRows = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(like(npPluginStorage.key, `order-notification:${ids.orderId}:%`));
+    expect(exchangeNotificationRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ value: expect.objectContaining({ kind: "exchange.delivered" }) }),
+      ]),
+    );
+    expect(
+      exchangeNotificationRows.filter(
+        (row) => (row.value as { kind?: string }).kind === "exchange.delivered",
+      ),
+    ).toHaveLength(1);
+    const exchangeTrackingRows = await withCurrentSite("default", () =>
+      exchangeCarrierShop.plugin.actions?.recentTrackingEvents?.handler(undefined, {} as never),
+    );
+    expect(exchangeTrackingRows).toMatchObject({ ok: true });
+    expect((exchangeTrackingRows as { data: { rows: unknown[] } }).data.rows).toEqual(
+      expect.arrayContaining([expect.objectContaining({ shipment: "exchange" })]),
+    );
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.recentExchanges?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: {
+        rows: [
+          expect.objectContaining({
+            trackingStatus: "delivered",
+            trackingShipmentId: exchangeBookingRow.bookingId,
+          }),
+        ],
+      },
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.cancelExchangeCarrier?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              exchangeId: processingOrder.exchange.id,
+              exchangeRevision: processingOrder.exchange.revision,
+              orderRevision: processingOrder.revision,
+              bookingId: exchangeBookingRow.bookingId,
+              bookingRevision: exchangeBookingRow.bookingRevision,
+            },
+            values: { operatorNote: "Must not restock after movement" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("cannot be provider-cancelled") });
+    expect(exchangeCancellationRequests).toHaveLength(0);
+
+    // Remove the synthetic verified state so this pre-existing scenario can continue covering
+    // provider cancellation and exact inventory restoration. Keep the successful poll row so
+    // final cancellation must clean that now-orphaned operational state itself.
+    await db
+      .delete(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          eq(npPluginStorage.key, `exchange-tracking:${ids.orderId}`),
+        ),
+      );
+    await db
+      .delete(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          like(npPluginStorage.key, "tracking-event:%"),
+          sql`${npPluginStorage.value}->'event'->>'orderId' = ${ids.orderId}`,
+        ),
+      );
     expect(
       await withCurrentSite("default", () =>
         exchangeCarrierShop.plugin.actions?.cancelExchangeCarrier?.handler(
@@ -7084,6 +7282,18 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       exchangeId: processingOrder.exchange.id,
       bookingReference: "replacement_booking_123",
     });
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(
+          and(
+            eq(npPluginStorage.pluginId, "shop"),
+            eq(npPluginStorage.siteId, "default"),
+            eq(npPluginStorage.key, `exchange-tracking-poll:${ids.orderId}`),
+          ),
+        ),
+    ).toEqual([]);
     expect(
       await db
         .select({ stockQuantity: shopProductsTable.stockQuantity })

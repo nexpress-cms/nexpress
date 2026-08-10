@@ -1582,7 +1582,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, exact same-item replacement exchanges with revision-bound owner address intake, audited short-lived private storage, and optional paired provider booking/cancellation, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, automatic address correction, replacement labels/pickup/tracking callbacks, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
+          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound and replacement tracking, physical return intake, exact same-item replacement exchanges with revision-bound owner address intake, audited short-lived private storage, and optional paired provider booking/cancellation, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, automatic address correction, replacement label purchase or regeneration, replacement pickup, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: [
           "shop",
@@ -1639,6 +1639,7 @@ export function createShop(options: NpShopOptions = {}) {
         exchange: "[data-np-shop-exchange]",
         "exchange-destination": "[data-np-shop-exchange-destination]",
         "exchange-carrier-booking": "[data-np-shop-exchange-carrier-booking]",
+        "exchange-tracking-status": "[data-np-shop-exchange-tracking]",
         "return-postage": "[data-np-shop-return-postage-status]",
         "return-postage-settlement": "[data-np-shop-return-postage-settlement]",
         "product-card": ".np-shop-product-card",
@@ -2567,6 +2568,7 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Recent verified carrier tracking events (PII withheld)",
           columns: [
             { name: "provider", label: "Provider" },
+            { name: "shipment", label: "Shipment kind" },
             { name: "eventId", label: "Event" },
             { name: "shipmentId", label: "Shipment" },
             { name: "orderId", label: "Order" },
@@ -2584,6 +2586,7 @@ export function createShop(options: NpShopOptions = {}) {
           columns: [
             { name: "id", label: "Order" },
             { name: "shipmentId", label: "Shipment" },
+            { name: "shipment", label: "Shipment kind" },
             { name: "provider", label: "Provider" },
             { name: "failures", label: "Failures" },
             { name: "lastAttemptAt", label: "Last attempt" },
@@ -3046,6 +3049,8 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "inventory", label: "Inventory" },
             { name: "carrier", label: "Carrier" },
             { name: "trackingNumber", label: "Tracking" },
+            { name: "trackingStatus", label: "Tracking status" },
+            { name: "trackingShipmentId", label: "Tracked shipment" },
             { name: "operatorNote", label: "Operations note" },
             { name: "updatedAt", label: "Updated" },
           ],
@@ -3184,8 +3189,24 @@ export function createShop(options: NpShopOptions = {}) {
                       },
                     ],
                     confirm:
-                      "Cancel the provider shipment, then cancel the exchange and restore exact tracked inventory?",
+                      "Cancel the provider shipment, then cancel the exchange and restore exact tracked inventory? Any verified tracking state blocks this action.",
                   },
+                  ...(runtime.carrierTrackingPollAdapter
+                    ? [
+                        {
+                          id: "poll-exchange-tracking",
+                          label: "Poll replacement tracking",
+                          actionId: "reconcileCarrierTracking",
+                          rowFields: ["id", "shipmentId"],
+                          visibleWhen: {
+                            field: "carrierBooking",
+                            oneOf: ["completed", "shipped"],
+                          },
+                          confirm:
+                            "Read the latest state for this exact replacement shipment from the configured carrier?",
+                        },
+                      ]
+                    : []),
                 ]
               : []),
             ...(runtime.carrierLabelAdapter
@@ -5230,7 +5251,9 @@ export function createShop(options: NpShopOptions = {}) {
         kind: "metric" as const,
         handler: async () => {
           try {
-            const counts = await npCountShopTrackingEvents(runtime.carrierTrackingAdapter?.id);
+            const counts = await npCountShopTrackingEvents(
+              runtime.carrierTrackingAdapter?.id ?? runtime.carrierTrackingPollAdapter?.id,
+            );
             return {
               ok: true as const,
               data: {
@@ -5250,7 +5273,9 @@ export function createShop(options: NpShopOptions = {}) {
         kind: "status" as const,
         handler: async () => {
           try {
-            const counts = await npCountShopTrackingEvents(runtime.carrierTrackingAdapter?.id);
+            const counts = await npCountShopTrackingEvents(
+              runtime.carrierTrackingAdapter?.id ?? runtime.carrierTrackingPollAdapter?.id,
+            );
             if (
               counts.invalidSample > 0 ||
               counts.orphanSample > 0 ||
@@ -6101,7 +6126,7 @@ export function createShop(options: NpShopOptions = {}) {
               method: "POST" as const,
               path: "/carrier/tracking/webhook",
               description:
-                "Verify one exact carrier callback and idempotently advance its PII-free shipment tracking state.",
+                "Verify one exact carrier callback and idempotently advance its separate PII-free outbound or replacement shipment tracking state.",
               auth: false,
               bodyMode: "raw" as const,
               handler: trackingApiHandler,
@@ -6272,7 +6297,7 @@ export function createShop(options: NpShopOptions = {}) {
               id: "reconcile-carrier-tracking",
               cron: "*/10 * * * *",
               description:
-                "Lease and reconcile one bounded cursor-fair batch of due PII-free carrier tracking reads for each active site.",
+                "Lease and reconcile one bounded cursor-fair batch of due PII-free outbound and replacement carrier tracking reads for each active site.",
               handler: async () => {
                 await npReconcileShopTracking(runtime.carrierTrackingPollAdapter!);
               },
@@ -7076,6 +7101,8 @@ export {
   npRequireStoredShopTrackingPoll,
   npRequireStoredShopTrackingReceipt,
   npShopTrackingEventDigest,
+  npShopExchangeTrackingPollStorageKey,
+  npShopExchangeTrackingStorageKey,
   npShopTrackingLimits,
   npShopTrackingPollBackoffSeconds,
   npShopTrackingPollErrorCodes,

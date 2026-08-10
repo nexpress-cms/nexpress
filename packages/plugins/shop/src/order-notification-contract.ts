@@ -21,6 +21,7 @@ export const npShopOrderNotificationKinds = [
   "exchange.created",
   "exchange.processing",
   "exchange.shipped",
+  "exchange.delivered",
   "exchange.cancelled",
   "refund.completed",
   "partial-refund.completed",

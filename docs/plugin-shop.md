@@ -1474,8 +1474,9 @@ and use the same timestamp as `signedAt`. Returning `event: null` is a
 successful unchanged observation.
 
 Scheduled reconciliation claims at most 25 due shipments per run while a
-persisted site/provider cursor walks at most 500 completed booking rows, so a
-large early key range cannot starve later shipments. A five-minute persisted
+persisted site/provider cursor walks at most 500 completed outbound and
+replacement booking rows, so a large early key range cannot starve later
+shipments. A five-minute persisted
 lease is committed before the adapter call, and provider I/O occurs outside a
 database transaction. Successful active shipments become due again after ten
 minutes; failures retain only `provider-error`, `invalid-result`, or
@@ -1497,23 +1498,33 @@ canonical event. `signedAt` is bounded to a five-minute callback replay window,
 while `occurredAt` may precede it by at most 30 days for delayed carrier
 delivery. That transport timestamp is replay-checked but omitted from the
 semantic digest, allowing an authenticated provider retry to refresh only its
-signature time. The event must exactly match the current site, completed shipment
-UUID, order, booking reference, and tracking number.
+signature time. The event must exactly match the current site and exactly one
+completed outbound or same-item replacement shipment UUID, order, booking
+reference, and tracking number. A replacement additionally rechecks its
+exchange identity, processing-or-shipped state, completed booking revision,
+carrier, and tracking tuple. Ambiguous matches fail closed.
 
 Shop hashes external event ids into storage keys. Replaying the same id and
 content is idempotent; reusing an id for different content returns HTTP 409.
 PII-free receipts record `advanced`, `ignored-stale`, `ignored-regression`, or
 `ignored-terminal`. The current `in-transit | out-for-delivery | delivered |
-exception` state advances independently of fulfillment, so `shipped` keeps its
-existing carrier-handoff and private-data-deletion meaning. `delivered` is
+exception` state is stored separately for outbound and replacement shipments
+and advances independently of fulfillment or exchange state, so `shipped`
+keeps its existing carrier-handoff meaning. Replacement delivery stages an
+owner update but never changes `processing` or `shipped`. `delivered` is
 terminal; stale and regressive events remain diagnosable without rolling the
 owner-visible state backward. The order detail shared by both bundled skins
-exposes the latest state through `data-np-shop-tracking-status`.
+exposes the latest state through `data-np-shop-tracking-status` or
+`data-np-shop-exchange-tracking`.
 
 Tracking metrics, health, and a newest-50 receipt table remain declared after
 adapter removal. Doctor verifies their action kinds and route declaration;
 health samples malformed, orphaned, provider-mismatched, and booking-state-
-mismatched rows without reading private data. Polling has an independent health
+mismatched rows without reading private data. Admin event and poll tables label
+outbound versus replacement shipments, and the exchange row exposes the latest
+closed tracking state. Once any replacement tracking state is durable, provider
+cancellation and automatic inventory restock fail closed. Polling has an
+independent health
 widget and newest-50 state table, including due/backoff/lease state, malformed
 or orphan samples, provider/booking mismatches, and completed bookings not yet
 polled. Doctor verifies both conditional action/schedule declarations. The
@@ -1876,7 +1887,8 @@ The plugin declares these baseline typed dashboard metric actions:
   the adapter is currently disabled.
 - durable PII-free carrier pickup scheduling/cancellation attempts, including
   when the adapter is currently disabled.
-- verified PII-free tracking-event receipts and current shipment states.
+- verified PII-free tracking-event receipts and separate current outbound and
+  replacement shipment states.
 - verified PII-free reverse-tracking receipts, current return-shipment states,
   and durable polling leases/backoff.
 - verified PII-free payment-event receipts.
@@ -1904,7 +1916,8 @@ and cancel actions without exposing the origin token or parcel allocations.
 Carrier tracking has its own metric, health status, and newest-50 receipt table
 even when the callback capability is disabled. It reports current delivered
 and exception counts plus bounded malformed, orphaned, provider, and shipment
-state mismatches. Polling adds a separate health widget, newest-50 poll table,
+state mismatches across outbound and replacement bookings. Polling adds a
+separate health widget, newest-50 poll table,
 audited manual row action, and scheduled reconciliation inventory only when
 `readTracking` is configured; durable rows remain visible after removal.
 Return tracking mirrors that operational surface with separate event and poll
