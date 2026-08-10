@@ -14,6 +14,20 @@ export const npShopExchangeInventoryOutcomes = [
 ] as const;
 export type NpShopExchangeInventoryOutcome = (typeof npShopExchangeInventoryOutcomes)[number];
 
+export const npShopExchangeDestinationStatuses = [
+  "awaiting",
+  "submitted",
+  "accessed",
+  "expired",
+  "redacted",
+] as const;
+export type NpShopExchangeDestinationStatus = (typeof npShopExchangeDestinationStatuses)[number];
+
+export interface NpShopExchangeDestinationProjection {
+  expiresAt: string;
+  accessedAt: string | null;
+}
+
 export const npShopExchangeLimits = Object.freeze({
   maximumLines: 100,
   carrierLength: 80,
@@ -43,6 +57,9 @@ export interface NpShopStoredExchange {
   revision: number;
   orderRevision: number;
   returnRevision: number;
+  destinationRevision: number;
+  destinationSubmittedAt: string | null;
+  destinationRedactedAt: string | null;
   lines: NpShopExchangeLine[];
   inventoryOutcome: NpShopExchangeInventoryOutcome;
   carrier: string | null;
@@ -61,6 +78,9 @@ export interface NpShopExchange {
   returnId: string;
   status: NpShopExchangeStatus;
   revision: number;
+  destinationStatus: NpShopExchangeDestinationStatus;
+  destinationRevision: number;
+  destinationExpiresAt: string | null;
   lines: NpShopExchangeLine[];
   inventoryOutcome: NpShopExchangeInventoryOutcome;
   carrier: string | null;
@@ -237,6 +257,9 @@ const storedKeys = [
   "revision",
   "orderRevision",
   "returnRevision",
+  "destinationRevision",
+  "destinationSubmittedAt",
+  "destinationRedactedAt",
   "lines",
   "inventoryOutcome",
   "carrier",
@@ -267,6 +290,15 @@ export function npAnalyzeStoredShopExchange(value: unknown): string[] {
     if (!Number.isSafeInteger(value[key]) || (value[key] as number) < 1) {
       issues.push(`exchange.${key} is invalid.`);
     }
+  }
+  if (
+    !Number.isSafeInteger(value.destinationRevision) ||
+    (value.destinationRevision as number) < 0
+  ) {
+    issues.push("exchange.destinationRevision is invalid.");
+  }
+  for (const key of ["destinationSubmittedAt", "destinationRedactedAt"] as const) {
+    if (value[key] !== null && !isIso(value[key])) issues.push(`exchange.${key} is invalid.`);
   }
   analyzeLines(value.lines, issues);
   if (!(npShopExchangeInventoryOutcomes as readonly unknown[]).includes(value.inventoryOutcome)) {
@@ -337,6 +369,36 @@ export function npAnalyzeStoredShopExchange(value: unknown): string[] {
   if (value.status === "cancelled" && value.cancelledAt !== value.updatedAt) {
     issues.push("exchange.cancelledAt must equal its terminal update.");
   }
+  if (
+    (value.destinationRevision === 0 && value.destinationSubmittedAt !== null) ||
+    ((value.destinationRevision as number) > 0 && !isIso(value.destinationSubmittedAt))
+  ) {
+    issues.push("exchange destination revision and submission time must advance together.");
+  }
+  if (
+    isIso(value.destinationSubmittedAt) &&
+    isIso(value.destinationRedactedAt) &&
+    value.destinationRedactedAt < value.destinationSubmittedAt
+  ) {
+    issues.push("exchange.destinationRedactedAt cannot precede destinationSubmittedAt.");
+  }
+  if (
+    ((value.status === "processing" ||
+      value.status === "shipped" ||
+      value.status === "cancelled") &&
+      !isIso(value.destinationRedactedAt)) ||
+    (value.status === "awaiting" && value.destinationRedactedAt !== null)
+  ) {
+    issues.push("exchange destination must be redacted exactly when the exchange leaves awaiting.");
+  }
+  if (
+    (value.status === "processing" || value.status === "shipped") &&
+    (!Number.isSafeInteger(value.destinationRevision) ||
+      (value.destinationRevision as number) < 1 ||
+      !isIso(value.destinationSubmittedAt))
+  ) {
+    issues.push("processing and shipped exchanges require one submitted destination revision.");
+  }
   return issues;
 }
 
@@ -346,13 +408,38 @@ export function npRequireStoredShopExchange(value: unknown): NpShopStoredExchang
   return value as NpShopStoredExchange;
 }
 
-export function npProjectShopExchange(value: NpShopStoredExchange): NpShopExchange {
+export function npProjectShopExchange(
+  value: NpShopStoredExchange,
+  destination: NpShopExchangeDestinationProjection | null = null,
+  now = new Date(),
+): NpShopExchange {
+  const retainedDestination =
+    value.status === "awaiting" &&
+    value.destinationRedactedAt === null &&
+    destination !== null &&
+    isIso(destination.expiresAt) &&
+    new Date(destination.expiresAt) > now
+      ? destination
+      : null;
+  const destinationStatus: NpShopExchangeDestinationStatus =
+    value.status !== "awaiting" || value.destinationRedactedAt !== null
+      ? "redacted"
+      : retainedDestination
+        ? retainedDestination.accessedAt
+          ? "accessed"
+          : "submitted"
+        : value.destinationRevision > 0
+          ? "expired"
+          : "awaiting";
   return {
     contract: NP_SHOP_EXCHANGE_CONTRACT,
     id: value.id,
     returnId: value.returnId,
     status: value.status,
     revision: value.revision,
+    destinationStatus,
+    destinationRevision: value.destinationRevision,
+    destinationExpiresAt: retainedDestination?.expiresAt ?? null,
     lines: value.lines,
     inventoryOutcome: value.inventoryOutcome,
     carrier: value.carrier,
@@ -366,17 +453,23 @@ export function npProjectShopExchange(value: NpShopStoredExchange): NpShopExchan
 
 export function npAnalyzeShopExchange(value: unknown): string[] {
   if (!isRecord(value)) return ["exchange must be a plain object."];
-  const publicKeys = storedKeys.filter(
-    (key) =>
-      ![
-        "ownerSegment",
-        "orderId",
-        "orderRevision",
-        "returnRevision",
-        "operatorNote",
-        "purgeAt",
-      ].includes(key),
-  );
+  const publicKeys = [
+    ...storedKeys.filter(
+      (key) =>
+        ![
+          "ownerSegment",
+          "orderId",
+          "orderRevision",
+          "returnRevision",
+          "operatorNote",
+          "purgeAt",
+          "destinationSubmittedAt",
+          "destinationRedactedAt",
+        ].includes(key),
+    ),
+    "destinationStatus",
+    "destinationExpiresAt",
+  ];
   const issues: string[] = [];
   exactKeys(value, publicKeys, "exchange", issues);
   const candidate = {
@@ -386,9 +479,16 @@ export function npAnalyzeShopExchange(value: unknown): string[] {
     ownerSegment: "guest:".padEnd(70, "0"),
     orderRevision: 1,
     returnRevision: 1,
+    destinationSubmittedAt:
+      typeof value.destinationRevision === "number" && value.destinationRevision > 0
+        ? value.createdAt
+        : null,
+    destinationRedactedAt: value.destinationStatus === "redacted" ? value.updatedAt : null,
     operatorNote: null,
     purgeAt: "2099-01-01T00:00:00.000Z",
   };
+  delete (candidate as { destinationStatus?: unknown }).destinationStatus;
+  delete (candidate as { destinationExpiresAt?: unknown }).destinationExpiresAt;
   issues.push(
     ...npAnalyzeStoredShopExchange(candidate).filter(
       (issue) =>
@@ -398,6 +498,34 @@ export function npAnalyzeShopExchange(value: unknown): string[] {
   );
   if (value.contract !== NP_SHOP_EXCHANGE_CONTRACT) {
     issues.push(`exchange.contract must equal "${NP_SHOP_EXCHANGE_CONTRACT}".`);
+  }
+  if (
+    !(npShopExchangeDestinationStatuses as readonly unknown[]).includes(value.destinationStatus)
+  ) {
+    issues.push("exchange.destinationStatus is invalid.");
+  }
+  if (value.destinationExpiresAt !== null && !isIso(value.destinationExpiresAt)) {
+    issues.push("exchange.destinationExpiresAt is invalid.");
+  }
+  if (
+    ((value.destinationStatus === "submitted" || value.destinationStatus === "accessed") &&
+      !isIso(value.destinationExpiresAt)) ||
+    ((value.destinationStatus === "awaiting" ||
+      value.destinationStatus === "expired" ||
+      value.destinationStatus === "redacted") &&
+      value.destinationExpiresAt !== null) ||
+    (value.status === "awaiting" && value.destinationStatus === "redacted") ||
+    (value.status !== "awaiting" && value.destinationStatus !== "redacted") ||
+    ((value.status === "processing" || value.status === "shipped") &&
+      (!Number.isSafeInteger(value.destinationRevision) ||
+        (value.destinationRevision as number) < 1)) ||
+    (value.destinationStatus === "awaiting" && value.destinationRevision !== 0) ||
+    (value.destinationStatus !== "awaiting" &&
+      value.destinationStatus !== "redacted" &&
+      (!Number.isSafeInteger(value.destinationRevision) ||
+        (value.destinationRevision as number) < 1))
+  ) {
+    issues.push("exchange destination projection is inconsistent with its lifecycle.");
   }
   return issues;
 }

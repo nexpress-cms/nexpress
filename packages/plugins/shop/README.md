@@ -110,7 +110,10 @@ It provides:
 - one direct-staff same-item exchange after a received return, with exact
   immutable lines, reservation-aware all-or-none replacement inventory,
   revision-safe awaiting/processing/shipped/cancelled state, manual tracking,
-  owner notifications, PII-free Admin/Doctor/audit, and cancellation restock;
+  owner notifications, a 15-minute one-use owner authority, one maximum-24-hour
+  replacement-address sidecar, audited staff access required before processing,
+  deletion on processing/cancellation/expiry, PII-free Admin/Doctor/audit, and
+  cancellation restock;
 - optional provider-neutral partial refunds linked to one received physical
   return, with exact post-discount line allocation, explicit shipping/tax
   allocation, one durable idempotency id, and no second inventory or

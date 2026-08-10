@@ -432,6 +432,8 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("one exact same-item replacement");
     expect(readme).toContain("no reuse of the deleted outbound address");
     expect(env).toContain("reservation-aware inventory and manual carrier/tracking");
+    expect(env).toContain("separate private sidecar for at most 24 hours");
+    expect(env).toContain("require access before processing");
     expect(readme).toContain("Verified provider cancellation snapshots reconcile known refunds");
     expect(env).toContain("provider-cancellation reconciliation for Shop");
   });

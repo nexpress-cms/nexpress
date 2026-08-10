@@ -301,6 +301,13 @@ export const storefrontCss = `
 .np-storefront-shell [data-np-shop-partial-refund] { border-radius: 0; }
 .np-storefront-shell [data-np-shop-exchange] { border-radius: 0; }
 .np-storefront-shell [data-np-shop-exchange="shipped"] { color: var(--np-storefront-accent); }
+.np-storefront-shell [data-np-shop-exchange-destination] {
+  border-radius: 0;
+  box-shadow: none;
+}
+.np-storefront-shell [data-np-shop-exchange-destination="accessed"] {
+  border-color: var(--np-storefront-accent);
+}
 .np-storefront-shell [data-np-shop-return-postage-settlement] {
   border-color: var(--np-storefront-accent);
 }

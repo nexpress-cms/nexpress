@@ -272,6 +272,31 @@ async function returnCall(
   );
 }
 
+async function exchangeDestinationCall(input: {
+  cookie?: string;
+  csrf?: string;
+  body: unknown;
+  member?: { id: string };
+}) {
+  return withCurrentSite("default", () =>
+    route("POST", "/exchanges/destination")(
+      {
+        method: "POST",
+        path: "/exchanges/destination",
+        params: { pluginId: "shop" },
+        query: {},
+        body: input.body,
+        headers: {
+          ...(input.cookie ? { cookie: input.cookie } : {}),
+          ...(input.csrf ? { "x-csrf-token": input.csrf } : {}),
+        },
+        member: input.member,
+      },
+      {} as never,
+    ),
+  );
+}
+
 async function createPendingOrder(
   ids: { intentId: string; draftId: string; orderId: string },
   privateEmail: string,
@@ -6630,15 +6655,32 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         .where(eq(shopProductsTable.id, productId)),
     ).toEqual([{ stockQuantity: 7 }]);
     const created = await orderCall("GET", { ...owner, orderId: ids.orderId });
-    const createdOrder = (
-      created.body as {
-        order: {
+    const createdBody = created.body as {
+      order: {
+        revision: number;
+        exchange: {
+          id: string;
           revision: number;
-          exchange: { id: string; revision: number; status: string };
+          status: string;
+          destinationStatus: string;
+          destinationRevision: number;
         };
-      }
-    ).order;
-    expect(createdOrder.exchange).toMatchObject({ status: "awaiting", revision: 1 });
+      };
+      exchangeDestinationAuthority: {
+        exchangeId: string;
+        orderRevision: number;
+        exchangeRevision: number;
+        destinationRevision: number;
+        token: string;
+      };
+    };
+    const createdOrder = createdBody.order;
+    expect(createdOrder.exchange).toMatchObject({
+      status: "awaiting",
+      revision: 1,
+      destinationStatus: "awaiting",
+      destinationRevision: 0,
+    });
     expect(
       await withCurrentSite("default", () =>
         paymentShop.plugin.actions?.shipExchange?.handler(
@@ -6659,20 +6701,127 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         ),
       ),
     ).toMatchObject({ ok: false, error: expect.stringContaining("processing") });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.processExchange?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              exchangeId: createdOrder.exchange.id,
+              exchangeRevision: 1,
+              orderRevision: createdOrder.revision,
+            },
+            values: { operatorNote: "Packing" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("destination") });
+    const replacementDestination = {
+      recipientName: "김교환",
+      phone: "010-9876-5432",
+      countryCode: "KR",
+      postalCode: "06236",
+      addressLine1: "서울특별시 강남구 테헤란로 123",
+      addressLine2: "교환동 7층",
+      locality: "강남구",
+      administrativeArea: "서울특별시",
+    };
+    expect(
+      await exchangeDestinationCall({
+        ...owner,
+        body: {
+          orderId: ids.orderId,
+          exchangeId: createdBody.exchangeDestinationAuthority.exchangeId,
+          orderRevision: createdBody.exchangeDestinationAuthority.orderRevision,
+          exchangeRevision: createdBody.exchangeDestinationAuthority.exchangeRevision,
+          destinationRevision: createdBody.exchangeDestinationAuthority.destinationRevision,
+          authorityToken: createdBody.exchangeDestinationAuthority.token,
+          destination: replacementDestination,
+        },
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: {
+        exchange: { revision: 2, destinationStatus: "submitted", destinationRevision: 1 },
+      },
+    });
+    expect(
+      await exchangeDestinationCall({
+        ...owner,
+        body: {
+          orderId: ids.orderId,
+          exchangeId: createdBody.exchangeDestinationAuthority.exchangeId,
+          orderRevision: createdBody.exchangeDestinationAuthority.orderRevision,
+          exchangeRevision: createdBody.exchangeDestinationAuthority.exchangeRevision,
+          destinationRevision: createdBody.exchangeDestinationAuthority.destinationRevision,
+          authorityToken: createdBody.exchangeDestinationAuthority.token,
+          destination: replacementDestination,
+        },
+      }),
+    ).toMatchObject({ status: 409 });
+    const destinationRows = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          eq(npPluginStorage.key, `exchange-destination-private:${ids.orderId}`),
+        ),
+      );
+    expect(destinationRows).toHaveLength(1);
+    expect(destinationRows[0]!.value).toMatchObject({
+      contract: "np.shop-exchange-destination-private.v1",
+      destination: replacementDestination,
+      accessedAt: null,
+    });
+    const submittedOrderResponse = await orderCall("GET", { ...owner, orderId: ids.orderId });
+    const submittedOrder = (
+      submittedOrderResponse.body as {
+        order: {
+          revision: number;
+          exchange: { id: string; revision: number; destinationRevision: number };
+        };
+      }
+    ).order;
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.readExchangeDestination?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              exchangeId: submittedOrder.exchange.id,
+              orderRevision: submittedOrder.revision,
+              exchangeRevision: submittedOrder.exchange.revision,
+              destinationRevision: submittedOrder.exchange.destinationRevision,
+            },
+            values: {},
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: { destination: replacementDestination } });
     await withCurrentSite("default", () =>
       paymentShop.plugin.actions?.processExchange?.handler(
         {
           row: {
             id: ids.orderId,
-            exchangeId: createdOrder.exchange.id,
-            exchangeRevision: 1,
-            orderRevision: createdOrder.revision,
+            exchangeId: submittedOrder.exchange.id,
+            exchangeRevision: submittedOrder.exchange.revision,
+            orderRevision: submittedOrder.revision,
           },
           values: { operatorNote: "Packing" },
         },
         actionContext,
       ),
     );
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `exchange-destination-private:${ids.orderId}`)),
+    ).toEqual([]);
     const processing = await orderCall("GET", { ...owner, orderId: ids.orderId });
     const processingOrder = (
       processing.body as {
@@ -6733,6 +6882,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     ).toEqual(
       expect.arrayContaining([
         { action: "shop.exchange.create" },
+        { action: "shop.exchange.destination.submit" },
+        { action: "shop.exchange.destination.private.read" },
         { action: "shop.exchange.process" },
         { action: "shop.exchange.cancel" },
       ]),
@@ -6973,6 +7124,35 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         expiresAt: purgeAt,
         updatedAt: createdAt,
       },
+      {
+        pluginId: "shop",
+        siteId: "default",
+        key: `exchange-destination-private:${orderId}`,
+        value: {
+          contract: "np.shop-exchange-destination-private.v1",
+          orderId,
+          exchangeId: "da3e4567-e89b-42d3-a456-426614174000",
+          ownerSegment,
+          exchangeRevision: 1,
+          destinationRevision: 1,
+          destination: {
+            recipientName: "만료 배송지",
+            phone: "010-1234-5678",
+            countryCode: "KR",
+            postalCode: "04524",
+            addressLine1: "서울특별시 중구 세종대로 110",
+            addressLine2: null,
+            locality: "중구",
+            administrativeArea: "서울특별시",
+          },
+          submittedAt: new Date(now.getTime() - 23 * 60 * 60 * 1_000).toISOString(),
+          accessedAt: null,
+          updatedAt: new Date(now.getTime() - 23 * 60 * 60 * 1_000).toISOString(),
+          expiresAt: new Date(now.getTime() - 60_000).toISOString(),
+        },
+        expiresAt: new Date(now.getTime() - 60_000),
+        updatedAt: new Date(now.getTime() - 23 * 60 * 60 * 1_000),
+      },
     ]);
     const maintenance = shopPlugin.scheduled?.find((task) => task.id === "maintain-orders");
     expect(maintenance).toBeDefined();
@@ -6998,6 +7178,12 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       },
     });
     expect(JSON.stringify(afterCancellation)).not.toContain("expired-private@example.com");
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `exchange-destination-private:${orderId}`)),
+    ).toEqual([]);
 
     const expiredPurgeAt = new Date(now.getTime() - 1_000);
     const expiredCreatedAt = new Date(expiredPurgeAt.getTime() - 365 * 24 * 60 * 60 * 1_000);

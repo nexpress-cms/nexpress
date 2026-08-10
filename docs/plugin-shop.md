@@ -1603,23 +1603,35 @@ credit through this contract.
 Creation locks the order, return, and every tracked product in canonical order.
 It protects quantities already reserved by pending orders, then consumes every
 exact replacement unit or none. One durable `np.shop-exchange-storage.v1` row
-moves revision-safely through `awaiting → processing → shipped`; staff supply a
-bounded PII-free note and manually verified carrier/tracking data. Before
-shipment, cancellation restores every tracked replacement unit or records
-`manual-required` without claiming a partial restoration. Shipped and cancelled
-states are terminal.
+moves revision-safely through `awaiting → processing → shipped`. Creation does
+not reuse the original order address. Instead, owner order reads issue a
+15-minute, one-use HMAC authority bound to the site, owner, order, exchange, and
+current destination revisions. The owner submits one exact replacement address
+under CSRF protection. Shop stores it only in a separate
+`np.shop-exchange-destination-private.v1` sidecar for at most 24 hours and never
+beyond commercial order retention. A stale or expired authority fails closed;
+an expired address may be submitted again under a newly issued authority. Staff
+supply a bounded PII-free note and manually verified carrier/tracking data.
+Before shipment, cancellation restores every tracked replacement unit or
+records `manual-required` without claiming a partial restoration. Shipped and
+cancelled states are terminal.
 
 The owner projection omits staff notes and identity, exposes the exact lines,
 status, inventory outcome, and optional tracking through
 `[data-np-shop-exchange]`, and stages the same preference-aware member-inbox and
 email events as other order transitions. Admin and Doctor expose bounded
-PII-free totals, recent rows, malformed/orphan samples, and manual-inventory
-work. Exchange creation, processing, shipment, and cancellation each write a
-PII-free direct-staff audit event. Commercial cleanup deletes the exchange with
-the order.
+PII-free totals, recent rows, destination lifecycle, malformed/orphan private
+samples, expired sidecars, and manual-inventory work. The address itself is
+withheld from tables and diagnostics. A direct-staff **View replacement
+address** action performs the only Admin read and audits every access.
+Processing is blocked until a current sidecar has been accessed, then
+atomically deletes it as the exchange leaves `awaiting`; cancellation, expiry
+cleanup, and order cleanup also delete it. Exchange creation, address
+submission/access, processing, shipment, and cancellation write PII-free audit
+metadata.
 
-The original shipping address has already been deleted at first shipment, so
-v1 does not reuse it or collect another address. Carrier booking, replacement
+The original shipping address has already been deleted at first shipment and
+is never reused. Carrier booking, replacement
 labels/pickup/tracking callbacks, different-item substitutions, payment
 differences, store credit, legal eligibility rules, and automatic approval
 remain separate additive contracts.
@@ -1921,7 +1933,8 @@ Every Shop factory registers:
 Both skins implement catalog, category, product, wishlist, prepared restock
 and price-alert actions, cart, checkout-intent,
 private order-draft, order-history, and order-detail rendering, including the
-`[data-np-shop-exchange]` replacement state. They receive
+`[data-np-shop-exchange]` replacement state and independent
+`[data-np-shop-exchange-destination]` intake/status hook. They receive
 prepared products, localized messages, safe formatted money, and rendered
 rich text; they do not own identity, private-data, collection, or transaction
 policy.

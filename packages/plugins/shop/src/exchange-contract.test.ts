@@ -21,6 +21,9 @@ const storedExchange: NpShopStoredExchange = {
   revision: 2,
   orderRevision: 6,
   returnRevision: 4,
+  destinationRevision: 1,
+  destinationSubmittedAt: "2026-08-09T00:01:00.000Z",
+  destinationRedactedAt: "2026-08-09T00:05:00.000Z",
   lines: [
     {
       lineKey: "product:variant",
@@ -50,7 +53,50 @@ describe("Shop same-item exchange contract", () => {
     expect(projected).not.toHaveProperty("ownerSegment");
     expect(projected).not.toHaveProperty("operatorNote");
     expect(projected).not.toHaveProperty("orderRevision");
+    expect(projected).toMatchObject({ destinationStatus: "redacted", destinationRevision: 1 });
     expect(npAnalyzeShopExchange(projected)).toEqual([]);
+  });
+
+  it("projects awaiting, retained, accessed, and expired destination state without PII", () => {
+    const awaiting = {
+      ...storedExchange,
+      status: "awaiting" as const,
+      revision: 1,
+      destinationRevision: 0,
+      destinationSubmittedAt: null,
+      destinationRedactedAt: null,
+      updatedAt: storedExchange.createdAt,
+    };
+    expect(
+      npProjectShopExchange(awaiting, null, new Date("2026-08-09T00:02:00.000Z")),
+    ).toMatchObject({ destinationStatus: "awaiting", destinationExpiresAt: null });
+    const submitted = {
+      ...awaiting,
+      revision: 2,
+      destinationRevision: 1,
+      destinationSubmittedAt: "2026-08-09T00:03:00.000Z",
+      updatedAt: "2026-08-09T00:03:00.000Z",
+    };
+    expect(
+      npProjectShopExchange(
+        submitted,
+        { expiresAt: "2026-08-10T00:03:00.000Z", accessedAt: null },
+        new Date("2026-08-09T00:04:00.000Z"),
+      ),
+    ).toMatchObject({ destinationStatus: "submitted" });
+    expect(
+      npProjectShopExchange(
+        submitted,
+        {
+          expiresAt: "2026-08-10T00:03:00.000Z",
+          accessedAt: "2026-08-09T00:04:00.000Z",
+        },
+        new Date("2026-08-09T00:05:00.000Z"),
+      ),
+    ).toMatchObject({ destinationStatus: "accessed" });
+    expect(
+      npProjectShopExchange(submitted, null, new Date("2026-08-10T00:04:00.000Z")),
+    ).toMatchObject({ destinationStatus: "expired", destinationExpiresAt: null });
   });
 
   it("rejects inconsistent terminal state and duplicate lines", () => {
@@ -69,6 +115,13 @@ describe("Shop same-item exchange contract", () => {
         "shipped exchanges require tracking and consumed replacement inventory.",
       ]),
     );
+    expect(
+      npAnalyzeStoredShopExchange({
+        ...storedExchange,
+        destinationRevision: 0,
+        destinationSubmittedAt: null,
+      }),
+    ).toContain("processing and shipped exchanges require one submitted destination revision.");
   });
 
   it("validates exact generic Admin action payloads", () => {

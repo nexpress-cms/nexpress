@@ -70,6 +70,9 @@ describe("shop factory", () => {
       "[data-np-shop-return-postage-settlement]",
     );
     expect(shopPlugin.manifest.styleSlots?.exchange).toBe("[data-np-shop-exchange]");
+    expect(shopPlugin.manifest.styleSlots?.["exchange-destination"]).toBe(
+      "[data-np-shop-exchange-destination]",
+    );
     expect(
       Object.entries(shopPlugin.actions ?? {}).map(([id, action]) => ({
         id,
@@ -130,6 +133,7 @@ describe("shop factory", () => {
       { id: "countExchanges", kind: "metric" },
       { id: "exchangeHealth", kind: "status" },
       { id: "recentExchanges", kind: "table" },
+      { id: "readExchangeDestination", kind: "action" },
       { id: "countReturnLogistics", kind: "metric" },
       { id: "returnLogisticsHealth", kind: "status" },
       { id: "recentReturnLogistics", kind: "table" },
@@ -178,6 +182,22 @@ describe("shop factory", () => {
       { id: "recentPaymentAdjustments", kind: "table" },
       { id: "maintainOrders", kind: "action" },
     ]);
+    const exchangeTable = shopPlugin.admin?.tables?.find((table) => table.id === "shop-exchanges");
+    expect(exchangeTable?.columns.map((column) => column.name)).toEqual(
+      expect.arrayContaining(["destination", "destinationRevision", "destinationExpiresAt"]),
+    );
+    expect(
+      exchangeTable?.rowActions?.find((action) => action.id === "read-exchange-destination"),
+    ).toMatchObject({
+      actionId: "readExchangeDestination",
+      result: "details",
+      visibleWhen: { field: "destination", oneOf: ["submitted", "accessed"] },
+    });
+    expect(
+      shopPlugin.admin?.tables
+        ?.find((table) => table.id === "shop-partial-refunds")
+        ?.rowActions?.some((action) => action.id === "read-exchange-destination"),
+    ).toBe(false);
     expect(shopPlugin.routes?.map((route) => `${route.method} ${route.path}`)).toEqual([
       "GET /cart",
       "GET /reviews",
@@ -207,6 +227,7 @@ describe("shop factory", () => {
       "DELETE /orders",
       "POST /returns",
       "DELETE /returns",
+      "POST /exchanges/destination",
     ]);
     expect(shopPlugin.scheduled?.map((task) => task.id)).toEqual([
       "process-order-notifications",
@@ -242,6 +263,7 @@ describe("shop factory", () => {
         "widget:shop-exchange-health",
         "table:shop-exchanges",
         "action:shop-exchange-operations",
+        "action:shop-exchange-destination-private-read",
       ]),
     );
   });

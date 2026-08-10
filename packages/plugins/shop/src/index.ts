@@ -35,6 +35,7 @@ import {
   npReadShopTaxHealth,
 } from "./order-draft-service.js";
 import { createShopOrderApiHandler } from "./order-api.js";
+import { createShopExchangeDestinationApiHandler } from "./exchange-destination-api.js";
 import {
   npRequireShopCarrierBookingActionInput,
   npRequireShopCarrierProviderId,
@@ -77,6 +78,7 @@ import {
   npRejectShopReturn,
   npCreateShopExchange,
   npProcessShopExchange,
+  npReadShopExchangeDestination,
   npShipShopExchange,
   npCancelShopExchange,
   npShipShopFulfillment,
@@ -127,6 +129,7 @@ import {
   npRequireShopExchangeShipInput,
   npRequireShopExchangeUpdateInput,
 } from "./exchange-contract.js";
+import { npRequireShopExchangeDestinationReadInput } from "./exchange-destination-contract.js";
 import { npRequireShopReturnLocationReference } from "./return-logistics-contract.js";
 import {
   npCleanupExpiredShopReturnLogisticsPrivate,
@@ -914,6 +917,20 @@ const messages = {
     "shop.orderExchangeInventoryRestocked": "Replacement inventory was restored.",
     "shop.orderExchangeInventoryManual": "Replacement inventory requires operator reconciliation.",
     "shop.orderExchangeTracking": "Replacement tracking",
+    "shop.orderExchangeDestination": "Replacement delivery address",
+    "shop.orderExchangeDestinationAwaiting":
+      "Enter a new delivery address for this replacement. The original order address is never reused.",
+    "shop.orderExchangeDestinationSubmitted":
+      "The replacement address is retained while staff review it.",
+    "shop.orderExchangeDestinationAccessed":
+      "Staff accessed the replacement address and can begin processing.",
+    "shop.orderExchangeDestinationExpired":
+      "The retained replacement address expired. Submit it again to continue.",
+    "shop.orderExchangeDestinationSubmit": "Submit replacement address",
+    "shop.orderExchangeDestinationSubmitting": "Submitting replacement address…",
+    "shop.orderExchangeDestinationPrivacy":
+      "This address is kept separately for at most 24 hours, access is audited, and it is deleted when processing begins.",
+    "shop.orderExchangeDestinationFailed": "The replacement address could not be submitted.",
     "shop.orderReturnReason": "Return reason",
     "shop.orderReturnReasonDamaged": "Damaged in transit",
     "shop.orderReturnReasonDefective": "Defective",
@@ -1190,6 +1207,20 @@ const messages = {
     "shop.orderExchangeInventoryRestocked": "교환용 재고를 복원했습니다.",
     "shop.orderExchangeInventoryManual": "교환용 재고를 운영자가 직접 조정해야 합니다.",
     "shop.orderExchangeTracking": "교환 배송 조회",
+    "shop.orderExchangeDestination": "교환품 배송지",
+    "shop.orderExchangeDestinationAwaiting":
+      "교환품을 받을 새 배송지를 입력해 주세요. 기존 주문 배송지는 재사용하지 않습니다.",
+    "shop.orderExchangeDestinationSubmitted":
+      "관리자가 확인할 때까지 교환품 배송지를 별도로 보관합니다.",
+    "shop.orderExchangeDestinationAccessed":
+      "관리자가 교환품 배송지를 확인해 처리를 시작할 수 있습니다.",
+    "shop.orderExchangeDestinationExpired":
+      "보관 중이던 교환품 배송지가 만료되었습니다. 계속하려면 다시 제출해 주세요.",
+    "shop.orderExchangeDestinationSubmit": "교환품 배송지 제출",
+    "shop.orderExchangeDestinationSubmitting": "교환품 배송지 제출 중…",
+    "shop.orderExchangeDestinationPrivacy":
+      "배송지는 별도 저장소에 최대 24시간만 보관하고 열람을 감사하며, 처리 시작 시 삭제합니다.",
+    "shop.orderExchangeDestinationFailed": "교환품 배송지를 제출하지 못했습니다.",
     "shop.orderReturnReason": "반품 사유",
     "shop.orderReturnReasonDamaged": "배송 중 파손",
     "shop.orderReturnReasonDefective": "상품 불량",
@@ -1290,6 +1321,7 @@ export function createShop(options: NpShopOptions = {}) {
   const checkoutApiHandler = createShopCheckoutApiHandler(runtime);
   const orderDraftApiHandler = createShopOrderDraftApiHandler(runtime);
   const orderApiHandler = createShopOrderApiHandler(runtime);
+  const exchangeDestinationApiHandler = createShopExchangeDestinationApiHandler();
   const returnApiHandler = createShopReturnApiHandler();
   const returnLogisticsApiHandler = runtime.carrierReturnLogisticsAdapter
     ? createShopReturnLogisticsApiHandler(runtime)
@@ -1361,7 +1393,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, wishlists, one-shot stock/price alerts, verified-purchase reviews, promotions, carts, checkout, private drafts, shipping/tax quotes, durable orders and inventory, optional payments/refunds with quote-backed return-postage settlement, fulfillment, carrier booking/pickup/tracking, physical returns, same-item exchanges and logistics, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, wishlists, one-shot stock/price alerts, verified-purchase reviews, promotions, carts, checkout, private drafts, shipping/tax quotes, durable orders and inventory, optional payments/refunds with quote-backed return-postage settlement, fulfillment, carrier booking/pickup/tracking, physical returns, same-item exchanges with short-lived replacement destinations, logistics, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -1480,6 +1512,7 @@ export function createShop(options: NpShopOptions = {}) {
           "widget:shop-exchange-health",
           "table:shop-exchanges",
           "action:shop-exchange-operations",
+          "action:shop-exchange-destination-private-read",
           ...(paymentAttemptApiHandler
             ? [
                 "dashboard:shop-payment-attempts",
@@ -1497,6 +1530,7 @@ export function createShop(options: NpShopOptions = {}) {
           "/restock-alerts",
           "/price-alerts",
           "/returns",
+          "/exchanges/destination",
           ...(paymentApiHandler ? ["/payments/webhook"] : []),
           ...(trackingApiHandler ? ["/carrier/tracking/webhook"] : []),
           ...(returnTrackingApiHandler ? ["/carrier/return-tracking/webhook"] : []),
@@ -1510,7 +1544,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, exact same-item replacement exchanges, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
+          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, exact same-item replacement exchanges with revision-bound owner address intake and audited short-lived private storage, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, replacement carrier booking, automatic address correction, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: [
           "shop",
@@ -1565,6 +1599,7 @@ export function createShop(options: NpShopOptions = {}) {
         "return-tracking-status": "[data-np-shop-return-tracking-status]",
         "return-status": "[data-np-shop-return-status]",
         exchange: "[data-np-shop-exchange]",
+        "exchange-destination": "[data-np-shop-exchange-destination]",
         "return-postage": "[data-np-shop-return-postage-status]",
         "return-postage-settlement": "[data-np-shop-return-postage-settlement]",
         "product-card": ".np-shop-product-card",
@@ -2961,6 +2996,9 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "status", label: "Status" },
             { name: "exchangeRevision", label: "Exchange revision" },
             { name: "orderRevision", label: "Order revision" },
+            { name: "destination", label: "Replacement destination" },
+            { name: "destinationRevision", label: "Destination revision" },
+            { name: "destinationExpiresAt", label: "Destination expires" },
             { name: "units", label: "Units" },
             { name: "inventory", label: "Inventory" },
             { name: "carrier", label: "Carrier" },
@@ -2971,11 +3009,28 @@ export function createShop(options: NpShopOptions = {}) {
           rowsActionId: "recentExchanges",
           rowActions: [
             {
+              id: "read-exchange-destination",
+              label: "View replacement address",
+              actionId: "readExchangeDestination",
+              rowFields: [
+                "id",
+                "exchangeId",
+                "orderRevision",
+                "exchangeRevision",
+                "destinationRevision",
+              ],
+              visibleWhen: { field: "destination", oneOf: ["submitted", "accessed"] },
+              result: "details",
+              confirm: "View this short-lived replacement address? Direct staff access is audited.",
+              description:
+                "The address is withheld from this table and deleted when processing begins or its 24-hour limit expires.",
+            },
+            {
               id: "process-exchange",
               label: "Start replacement",
               actionId: "processExchange",
               rowFields: ["id", "exchangeId", "exchangeRevision", "orderRevision"],
-              visibleWhen: { field: "status", oneOf: ["awaiting"] },
+              visibleWhen: { field: "destination", oneOf: ["accessed"] },
               fields: [
                 {
                   name: "operatorNote",
@@ -4115,16 +4170,27 @@ export function createShop(options: NpShopOptions = {}) {
         handler: async () => {
           try {
             const counts = await npCountShopExchanges();
-            if (counts.invalidSample > 0 || counts.orphanSample > 0) {
+            if (
+              counts.invalidSample > 0 ||
+              counts.orphanSample > 0 ||
+              counts.invalidPrivateSample > 0 ||
+              counts.orphanPrivateSample > 0
+            ) {
               return npAdminStatus(
                 "error",
-                `${counts.invalidSample.toString()} malformed and ${counts.orphanSample.toString()} orphan exchange row(s) in bounded samples.`,
+                `${counts.invalidSample.toString()} malformed and ${counts.orphanSample.toString()} orphan exchange row(s), plus ${counts.invalidPrivateSample.toString()} malformed/mismatched and ${counts.orphanPrivateSample.toString()} orphan private destination row(s) in bounded samples.`,
               );
             }
-            if (counts.manualInventory > 0 || counts.awaiting > 0 || counts.processing > 0) {
+            if (
+              counts.manualInventory > 0 ||
+              counts.awaiting > 0 ||
+              counts.processing > 0 ||
+              counts.destinationExpiredSample > 0 ||
+              counts.expiredPrivateSample > 0
+            ) {
               return npAdminStatus(
                 "warn",
-                `${counts.awaiting.toString()} awaiting, ${counts.processing.toString()} processing, and ${counts.manualInventory.toString()} requiring manual inventory reconciliation.`,
+                `${counts.awaiting.toString()} awaiting (${counts.destinationAwaitingSample.toString()} destination submissions, ${counts.destinationSubmittedSample.toString()} staff reads, ${counts.destinationAccessedSample.toString()} ready, ${counts.destinationExpiredSample.toString()} expired in the bounded exchange sample), ${counts.expiredPrivateSample.toString()} expired private row(s) await cleanup, ${counts.processing.toString()} processing, and ${counts.manualInventory.toString()} requiring manual inventory reconciliation.`,
               );
             }
             return npAdminStatus(
@@ -4145,6 +4211,28 @@ export function createShop(options: NpShopOptions = {}) {
           try {
             const result = await npListRecentShopExchanges();
             return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      readExchangeDestination: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return {
+                ok: false,
+                error: "Replacement destination access requires a direct staff action.",
+              };
+            }
+            return {
+              ok: true,
+              data: await npReadShopExchangeDestination(
+                npRequireShopExchangeDestinationReadInput(data),
+                ctx.actionInvocation.userId,
+              ),
+            };
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
           }
@@ -5491,7 +5579,7 @@ export function createShop(options: NpShopOptions = {}) {
             const result = await npMaintainShopOrders();
             return {
               ok: true,
-              data: `Cancelled ${result.cancelled.toString()} expired pending order(s), deleted ${result.privateRedacted.toString()} overdue fulfillment private sidecar(s), purged ${result.purged.toString()} expired commercial snapshot(s), and removed ${result.reservationsCleaned.toString()} leftover expired reservation row(s).`,
+              data: `Cancelled ${result.cancelled.toString()} expired pending order(s), deleted ${result.privateRedacted.toString()} overdue fulfillment and ${result.exchangeDestinationsCleaned.toString()} expired exchange-destination private sidecar(s), purged ${result.purged.toString()} expired commercial snapshot(s), and removed ${result.reservationsCleaned.toString()} leftover expired reservation row(s).`,
             };
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
@@ -5673,6 +5761,13 @@ export function createShop(options: NpShopOptions = {}) {
         path: "/returns",
         description: "Cancel one owner-scoped return while it still awaits staff review.",
         handler: returnApiHandler,
+      },
+      {
+        method: "POST",
+        path: "/exchanges/destination",
+        description:
+          "Submit one short-lived owner-scoped replacement destination under a revision-bound authority.",
+        handler: exchangeDestinationApiHandler,
       },
       ...(paymentAttemptApiHandler
         ? [
@@ -6323,6 +6418,25 @@ export {
   npShopReturnStatuses,
 } from "./return-contract.js";
 export {
+  NP_SHOP_EXCHANGE_DESTINATION_AUTHORITY_CONTRACT,
+  NP_SHOP_EXCHANGE_DESTINATION_PRIVATE_CONTRACT,
+  NpShopExchangeDestinationConflictError,
+  NpShopExchangeDestinationContractError,
+  npAnalyzeShopExchangeDestinationAuthority,
+  npAnalyzeStoredShopExchangeDestinationPrivate,
+  npRequireShopExchangeDestinationAuthority,
+  npRequireShopExchangeDestinationReadInput,
+  npRequireShopExchangeDestinationSubmitInput,
+  npRequireStoredShopExchangeDestinationPrivate,
+  npShopExchangeDestinationLimits,
+} from "./exchange-destination-contract.js";
+export type {
+  NpShopExchangeDestinationAuthority,
+  NpShopExchangeDestinationReadInput,
+  NpShopExchangeDestinationSubmitInput,
+  NpShopStoredExchangeDestinationPrivate,
+} from "./exchange-destination-contract.js";
+export {
   NP_SHOP_EXCHANGE_CONTRACT,
   NP_SHOP_EXCHANGE_STORAGE_CONTRACT,
   NpShopExchangeConflictError,
@@ -6335,6 +6449,7 @@ export {
   npRequireShopExchangeShipInput,
   npRequireShopExchangeUpdateInput,
   npRequireStoredShopExchange,
+  npShopExchangeDestinationStatuses,
   npShopExchangeInventoryOutcomes,
   npShopExchangeLimits,
   npShopExchangeLinesFromOrder,
@@ -6343,6 +6458,8 @@ export {
 export type {
   NpShopExchange,
   NpShopExchangeCreateInput,
+  NpShopExchangeDestinationProjection,
+  NpShopExchangeDestinationStatus,
   NpShopExchangeInventoryOutcome,
   NpShopExchangeLine,
   NpShopExchangeShipInput,
