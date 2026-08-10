@@ -176,8 +176,16 @@ The same carrier may add `bookExchangeShipment` and
 replacement destination outside a transaction, deletes it only after durable
 provider confirmation, persists stable booking/cancellation idempotency keys,
 and blocks manual exchange operations while that provider intent exists.
+It may additionally implement `bookExchangeShipmentWithParcels`; new provider
+bookings then require an exact, revision-safe mm/gram parcel allocation over
+every immutable replacement line. Shop locks that PII-free snapshot to the
+durable replacement shipment UUID before provider I/O and reuses it unchanged
+for every retry. The v1 replacement method remains valid when the additive v2
+method is absent.
 Replacement label bytes remain transient and direct-staff-only; label
-purchase/regeneration, pickup, and tracking callbacks/polling remain independent.
+purchase/regeneration and replacement pickup remain independent. The existing
+tracking callback and polling capabilities already serve completed replacement
+bookings without changing exchange commercial state.
 `@nexpress/shop-payment-toss` is the bundled Toss Payments v2 initiation,
 full-refund, received-return partial-refund/return-postage settlement, and
 query-verified cancellation reconciliation adapter. Customer/shipping PII exists only in the short-lived

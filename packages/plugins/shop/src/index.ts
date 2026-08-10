@@ -41,6 +41,7 @@ import {
   npRequireShopCarrierProviderId,
   type NpShopCarrierAdapter,
   type NpShopCarrierExchangeAdapter,
+  type NpShopCarrierExchangeParcelAdapter,
   type NpShopCarrierLabelAdapter,
   type NpShopCarrierParcelAdapter,
   type NpShopCarrierPickupAdapter,
@@ -63,6 +64,7 @@ import {
   npCountShopReturns,
   npCountShopExchanges,
   npCountShopExchangeCarrierBookings,
+  npCountShopExchangeParcels,
   npListRecentShopFulfillments,
   npListRecentShopFulfillmentParcels,
   npListRecentShopCarrierBookings,
@@ -88,6 +90,7 @@ import {
   npShipBookedShopExchange,
   npShipShopFulfillment,
   npSaveShopFulfillmentParcels,
+  npSaveShopExchangeParcels,
 } from "./order-service.js";
 import {
   npCancelShopCarrierPickup,
@@ -108,6 +111,7 @@ import {
   npRequireShopFulfillmentShipInput,
 } from "./fulfillment-contract.js";
 import { npRequireShopFulfillmentParcelsSaveInput } from "./parcel-contract.js";
+import { npRequireShopExchangeParcelsSaveInput } from "./exchange-parcel-contract.js";
 import { npRequireShopRefundActionInput } from "./refund-contract.js";
 import {
   npRequireShopPartialRefundActionInput,
@@ -461,6 +465,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   const configuredCarrierAdapter = options.carrier?.adapter ?? null;
   let carrierAdapter: NpShopCarrierAdapter | null = null;
   let carrierExchangeAdapter: NpShopCarrierExchangeAdapter | null = null;
+  let carrierExchangeParcelAdapter: NpShopCarrierExchangeParcelAdapter | null = null;
   let carrierLabelAdapter: NpShopCarrierLabelAdapter | null = null;
   let carrierParcelAdapter: NpShopCarrierParcelAdapter | null = null;
   let carrierPickupAdapter: NpShopCarrierPickupAdapter | null = null;
@@ -493,6 +498,8 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
       configuredCarrierAdapter.verifyReturnTrackingWebhook !== undefined;
     const hasReturnTrackingPoll = configuredCarrierAdapter.readReturnTracking !== undefined;
     const hasExchangeBooking = configuredCarrierAdapter.bookExchangeShipment !== undefined;
+    const hasExchangeParcelBooking =
+      configuredCarrierAdapter.bookExchangeShipmentWithParcels !== undefined;
     const hasExchangeCancellation = configuredCarrierAdapter.cancelExchangeShipment !== undefined;
     if (
       hasTrackingWebhook &&
@@ -529,12 +536,25 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
         "Shop exchange carrier booking requires bookExchangeShipment and cancelExchangeShipment together.",
       );
     }
+    if (hasExchangeParcelBooking && !hasExchangeBooking) {
+      throw new Error(
+        "Shop exchange parcel booking requires the paired exchange booking and cancellation methods.",
+      );
+    }
     if (
       hasExchangeBooking &&
       (typeof configuredCarrierAdapter.bookExchangeShipment !== "function" ||
         typeof configuredCarrierAdapter.cancelExchangeShipment !== "function")
     ) {
       throw new Error("Shop exchange carrier methods must be functions when provided.");
+    }
+    if (
+      hasExchangeParcelBooking &&
+      typeof configuredCarrierAdapter.bookExchangeShipmentWithParcels !== "function"
+    ) {
+      throw new Error(
+        "Shop carrier adapter bookExchangeShipmentWithParcels must be a function when provided.",
+      );
     }
     if (hasReturnPostageQuote !== hasQuotedReturnCreate) {
       throw new Error(
@@ -682,6 +702,14 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
               configuredCarrierAdapter.cancelExchangeShipment.bind(configuredCarrierAdapter),
           }
         : {}),
+      ...(configuredCarrierAdapter.bookExchangeShipmentWithParcels
+        ? {
+            bookExchangeShipmentWithParcels:
+              configuredCarrierAdapter.bookExchangeShipmentWithParcels.bind(
+                configuredCarrierAdapter,
+              ),
+          }
+        : {}),
     });
     if (carrierAdapter.verifyTrackingWebhook) {
       carrierTrackingAdapter = carrierAdapter as NpShopCarrierTrackingAdapter;
@@ -722,6 +750,9 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     if (carrierAdapter.bookExchangeShipment && carrierAdapter.cancelExchangeShipment) {
       carrierExchangeAdapter = carrierAdapter as NpShopCarrierExchangeAdapter;
     }
+    if (carrierExchangeAdapter?.bookExchangeShipmentWithParcels) {
+      carrierExchangeParcelAdapter = carrierExchangeAdapter as NpShopCarrierExchangeParcelAdapter;
+    }
   }
   return {
     basePath: requireBasePath(options.basePath ?? "/shop"),
@@ -737,6 +768,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     taxAdapter,
     carrierAdapter,
     carrierExchangeAdapter,
+    carrierExchangeParcelAdapter,
     carrierLabelAdapter,
     carrierParcelAdapter,
     carrierPickupAdapter,
@@ -1551,6 +1583,7 @@ export function createShop(options: NpShopOptions = {}) {
           "action:shop-exchange-operations",
           "action:shop-exchange-destination-private-read",
           ...(runtime.carrierExchangeAdapter ? ["action:shop-exchange-carrier-booking"] : []),
+          ...(runtime.carrierExchangeParcelAdapter ? ["action:shop-exchange-parcel-snapshot"] : []),
           ...(paymentAttemptApiHandler
             ? [
                 "dashboard:shop-payment-attempts",
@@ -3045,6 +3078,8 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "bookingId", label: "Shipment" },
             { name: "bookingRevision", label: "Booking revision" },
             { name: "provider", label: "Provider" },
+            { name: "parcels", label: "Replacement parcels" },
+            { name: "parcelRevision", label: "Parcel revision" },
             { name: "units", label: "Units" },
             { name: "inventory", label: "Inventory" },
             { name: "carrier", label: "Carrier" },
@@ -3091,6 +3126,29 @@ export function createShop(options: NpShopOptions = {}) {
             },
             ...(runtime.carrierExchangeAdapter
               ? [
+                  ...(runtime.carrierExchangeParcelAdapter
+                    ? [
+                        {
+                          id: "save-exchange-parcels",
+                          label: "Save replacement parcels",
+                          actionId: "saveExchangeParcels",
+                          rowFields: ["id", "exchangeId", "exchangeRevision", "parcelRevision"],
+                          visibleWhen: { field: "destination", oneOf: ["accessed"] },
+                          fields: [
+                            {
+                              name: "parcels",
+                              label: "Parcels JSON",
+                              type: "textarea" as const,
+                              required: true,
+                              placeholder:
+                                '[{"id":"parcel-1","lengthMm":300,"widthMm":200,"heightMm":100,"weightGrams":1500,"items":[{"lineKey":"…","quantity":1}]}]',
+                            },
+                          ],
+                          confirm:
+                            "Save this exact PII-free replacement parcel allocation? Every immutable exchange line and quantity must be covered.",
+                        },
+                      ]
+                    : []),
                   {
                     id: "book-exchange-carrier",
                     label: "Book replacement carrier",
@@ -4337,15 +4395,16 @@ export function createShop(options: NpShopOptions = {}) {
         kind: "metric",
         handler: async () => {
           try {
-            const [counts, carrier] = await Promise.all([
+            const [counts, carrier, parcels] = await Promise.all([
               npCountShopExchanges(),
               npCountShopExchangeCarrierBookings(runtime.carrierExchangeAdapter?.id),
+              npCountShopExchangeParcels(),
             ]);
             return {
               ok: true,
               data: {
                 value: counts.total,
-                delta: `${counts.awaiting.toString()} awaiting, ${counts.processing.toString()} processing, ${counts.shipped.toString()} shipped; ${carrier.total.toString()} provider booking(s)`,
+                delta: `${counts.awaiting.toString()} awaiting, ${counts.processing.toString()} processing, ${counts.shipped.toString()} shipped; ${carrier.total.toString()} provider booking(s), ${parcels.total.toString()} parcel snapshot(s)`,
               },
             };
           } catch (error) {
@@ -4357,9 +4416,10 @@ export function createShop(options: NpShopOptions = {}) {
         kind: "status",
         handler: async () => {
           try {
-            const [counts, carrier] = await Promise.all([
+            const [counts, carrier, parcels] = await Promise.all([
               npCountShopExchanges(),
               npCountShopExchangeCarrierBookings(runtime.carrierExchangeAdapter?.id),
+              npCountShopExchangeParcels(),
             ]);
             if (
               counts.invalidSample > 0 ||
@@ -4368,11 +4428,15 @@ export function createShop(options: NpShopOptions = {}) {
               counts.orphanPrivateSample > 0 ||
               carrier.invalidSample > 0 ||
               carrier.orphanSample > 0 ||
-              carrier.providerMismatchSample > 0
+              carrier.providerMismatchSample > 0 ||
+              parcels.invalidSample > 0 ||
+              parcels.orphanSample > 0 ||
+              parcels.allocationMismatchSample > 0 ||
+              parcels.lockMismatchSample > 0
             ) {
               return npAdminStatus(
                 "error",
-                `${counts.invalidSample.toString()} malformed and ${counts.orphanSample.toString()} orphan exchange row(s), ${counts.invalidPrivateSample.toString()} malformed/mismatched and ${counts.orphanPrivateSample.toString()} orphan private destination row(s), plus ${carrier.invalidSample.toString()} invalid, ${carrier.orphanSample.toString()} orphan, and ${carrier.providerMismatchSample.toString()} provider-mismatched carrier booking row(s) in bounded samples.`,
+                `${counts.invalidSample.toString()} malformed and ${counts.orphanSample.toString()} orphan exchange row(s), ${counts.invalidPrivateSample.toString()} malformed/mismatched and ${counts.orphanPrivateSample.toString()} orphan private destination row(s), ${carrier.invalidSample.toString()} invalid, ${carrier.orphanSample.toString()} orphan, and ${carrier.providerMismatchSample.toString()} provider-mismatched carrier booking row(s), plus ${parcels.invalidSample.toString()} invalid, ${parcels.orphanSample.toString()} orphan, ${parcels.allocationMismatchSample.toString()} allocation-mismatched, and ${parcels.lockMismatchSample.toString()} lock-mismatched parcel row(s) in bounded samples.`,
               );
             }
             if (
@@ -4393,7 +4457,7 @@ export function createShop(options: NpShopOptions = {}) {
             }
             return npAdminStatus(
               "ok",
-              `${counts.shipped.toString()} shipped and ${counts.cancelled.toString()} cancelled same-item exchange(s); ${carrier.completed.toString()} completed and ${carrier.cancelled.toString()} cancelled provider booking(s), provider "${runtime.carrierExchangeAdapter?.id ?? "disabled"}".`,
+              `${counts.shipped.toString()} shipped and ${counts.cancelled.toString()} cancelled same-item exchange(s); ${carrier.completed.toString()} completed and ${carrier.cancelled.toString()} cancelled provider booking(s), ${parcels.unlocked.toString()} unlocked and ${parcels.locked.toString()} locked parcel snapshot(s), provider "${runtime.carrierExchangeAdapter?.id ?? "disabled"}".`,
             );
           } catch (error) {
             return npAdminStatus(
@@ -4414,6 +4478,36 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      ...(runtime.carrierExchangeParcelAdapter
+        ? {
+            saveExchangeParcels: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Replacement parcel preparation requires a direct staff action.",
+                    };
+                  }
+                  const result = await npSaveShopExchangeParcels(
+                    npRequireShopExchangeParcelsSaveInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Saved replacement parcel revision ${result.revision.toString()} with ${result.parcels.length.toString()} package(s).`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+          }
+        : {}),
       readExchangeDestination: {
         kind: "action",
         handler: async (data, ctx) => {
@@ -6712,6 +6806,18 @@ export type {
   NpShopStoredFulfillmentParcels,
 } from "./parcel-contract.js";
 export {
+  NP_SHOP_EXCHANGE_PARCELS_STORAGE_CONTRACT,
+  NpShopExchangeParcelConflictError,
+  NpShopExchangeParcelContractError,
+  npAnalyzeStoredShopExchangeParcels,
+  npRequireShopExchangeParcelsSaveInput,
+  npRequireStoredShopExchangeParcels,
+} from "./exchange-parcel-contract.js";
+export type {
+  NpShopExchangeParcelsSaveInput,
+  NpShopStoredExchangeParcels,
+} from "./exchange-parcel-contract.js";
+export {
   NP_SHOP_RETURN_CONTRACT,
   NP_SHOP_RETURN_STORAGE_CONTRACT,
   NpShopReturnConflictError,
@@ -6746,6 +6852,7 @@ export {
 } from "./exchange-destination-contract.js";
 export {
   NP_SHOP_EXCHANGE_CARRIER_BOOKING_REQUEST_CONTRACT,
+  NP_SHOP_EXCHANGE_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT,
   NP_SHOP_EXCHANGE_CARRIER_BOOKING_RESULT_CONTRACT,
   NP_SHOP_EXCHANGE_CARRIER_BOOKING_STORAGE_CONTRACT,
   NP_SHOP_EXCHANGE_CARRIER_CANCEL_REQUEST_CONTRACT,
@@ -6753,9 +6860,11 @@ export {
   NpShopExchangeCarrierConflictError,
   NpShopExchangeCarrierContractError,
   npAnalyzeShopExchangeCarrierBookingRequest,
+  npAnalyzeShopExchangeCarrierParcelBookingRequest,
   npAnalyzeStoredShopExchangeCarrierBooking,
   npRequireShopExchangeCarrierBookActionInput,
   npRequireShopExchangeCarrierBookingRequest,
+  npRequireShopExchangeCarrierParcelBookingRequest,
   npRequireShopExchangeCarrierBookingResult,
   npRequireShopExchangeCarrierCancelRequest,
   npRequireShopExchangeCarrierCancelResult,
@@ -6766,6 +6875,7 @@ export {
 export type {
   NpShopExchangeCarrierBookActionInput,
   NpShopExchangeCarrierBookingRequest,
+  NpShopExchangeCarrierParcelBookingRequest,
   NpShopExchangeCarrierBookingResult,
   NpShopExchangeCarrierBookingStatus,
   NpShopExchangeCarrierCancelRequest,
@@ -6963,6 +7073,7 @@ export {
 export type {
   NpShopCarrierAdapter,
   NpShopCarrierExchangeAdapter,
+  NpShopCarrierExchangeParcelAdapter,
   NpShopCarrierLabelAdapter,
   NpShopCarrierLabelFormat,
   NpShopCarrierLabelReadInput,

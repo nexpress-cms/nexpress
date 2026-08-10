@@ -469,7 +469,9 @@ real product domain, not just blog/community. Ship as a plugin package
   snapshot. Reservation-aware all-or-none inventory consumption, revision-safe
   awaiting/processing/shipped/cancelled state, cancellation restock, manual
   carrier/tracking or paired provider-neutral booking/cancellation with durable
-  idempotency and reconciliation, owner notifications, both skins, Storefront hooks,
+  idempotency and reconciliation, plus an additive parcel-aware v2 that locks
+  one exact mm/gram allocation over every immutable replacement line before
+  provider I/O, owner notifications, both skins, Storefront hooks,
   Admin/Doctor, audit, cleanup, scaffolds, and PostgreSQL coverage share the
   PII-free contract. Owners submit one new address under a 15-minute
   revision-bound authority into a maximum-24-hour private sidecar; audited staff

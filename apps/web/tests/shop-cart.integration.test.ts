@@ -23,7 +23,7 @@ import {
   shopCollections,
   shopPlugin,
   type NpShopCarrierBookingRequest,
-  type NpShopExchangeCarrierBookingRequest,
+  type NpShopExchangeCarrierParcelBookingRequest,
   type NpShopExchangeCarrierCancelRequest,
   type NpShopCarrierLabelRequest,
   type NpShopCarrierParcelBookingRequest,
@@ -6572,7 +6572,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       orderId: "ca3e4567-e89b-42d3-a456-426614174000",
     };
     const owner = await createPendingOrder(ids, "exchange-owner@example.com");
-    const exchangeBookingRequests: NpShopExchangeCarrierBookingRequest[] = [];
+    const exchangeBookingRequests: NpShopExchangeCarrierParcelBookingRequest[] = [];
     const exchangeCancellationRequests: NpShopExchangeCarrierCancelRequest[] = [];
     const readExchangeTracking = vi.fn((request: NpShopTrackingPollRequest) => ({
       contract: "np.shop-tracking-poll-result.v1" as const,
@@ -6616,7 +6616,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           verifyTrackingWebhook: ({ rawBody }) =>
             JSON.parse(new TextDecoder().decode(rawBody)) as never,
           readTracking: readExchangeTracking,
-          bookExchangeShipment: (request) => {
+          bookExchangeShipment: () => Promise.reject(new Error("v1 replacement not called")),
+          bookExchangeShipmentWithParcels: (request) => {
             exchangeBookingRequests.push(request);
             if (exchangeBookingRequests.length === 1) {
               throw new NpShopCarrierProviderError("exchange-timeout", "private provider detail", {
@@ -6885,6 +6886,55 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         ),
       ),
     ).toMatchObject({ ok: true, data: { destination: replacementDestination } });
+    const replacementParcels = [
+      {
+        id: "replacement-1",
+        lengthMm: 300,
+        widthMm: 200,
+        heightMm: 100,
+        weightGrams: 1_500,
+        items: [{ lineKey: shippedOrder.lines[0]!.key, quantity: 1 }],
+      },
+    ];
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.saveExchangeParcels?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              exchangeId: submittedOrder.exchange.id,
+              exchangeRevision: submittedOrder.exchange.revision,
+              parcelRevision: null,
+            },
+            values: {
+              parcels: JSON.stringify([
+                {
+                  ...replacementParcels[0],
+                  items: [{ lineKey: "unknown-line", quantity: 1 }],
+                },
+              ]),
+            },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("immutable exchange line") });
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.saveExchangeParcels?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              exchangeId: submittedOrder.exchange.id,
+              exchangeRevision: submittedOrder.exchange.revision,
+              parcelRevision: null,
+            },
+            values: { parcels: JSON.stringify(replacementParcels) },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("revision 1") });
     expect(
       await withCurrentSite("default", () =>
         exchangeCarrierShop.plugin.actions?.bookExchangeCarrier?.handler(
@@ -6917,8 +6967,30 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     ).data.rows[0]!;
     expect(pendingBookingRows).toMatchObject({
       ok: true,
-      data: { rows: [expect.objectContaining({ carrierBooking: "pending" })] },
+      data: {
+        rows: [
+          expect.objectContaining({
+            carrierBooking: "pending",
+            parcels: "1 package(s) (locked)",
+            parcelRevision: 1,
+          }),
+        ],
+      },
     });
+    expect(
+      await db
+        .select({ value: npPluginStorage.value })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `exchange-parcels:${ids.orderId}`)),
+    ).toEqual([
+      {
+        value: expect.objectContaining({
+          contract: "np.shop-exchange-parcels-storage.v1",
+          lockedShipmentId: pendingBookingRow.bookingId,
+          parcels: replacementParcels,
+        }),
+      },
+    ]);
     expect(
       await db
         .select({ key: npPluginStorage.key })
@@ -6946,12 +7018,14 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(exchangeBookingRequests).toHaveLength(2);
     expect(exchangeBookingRequests[1]).toEqual(exchangeBookingRequests[0]);
     expect(exchangeBookingRequests[0]).toMatchObject({
-      contract: "np.shop-exchange-carrier-booking-request.v1",
+      contract: "np.shop-exchange-carrier-booking-request.v2",
       orderId: ids.orderId,
       exchangeId: submittedOrder.exchange.id,
       exchangeRevision: submittedOrder.exchange.revision,
       destinationRevision: submittedOrder.exchange.destinationRevision,
       destination: replacementDestination,
+      parcelRevision: 1,
+      parcels: replacementParcels,
       items: [
         {
           productId,
@@ -7357,6 +7431,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         { action: "shop.exchange.create" },
         { action: "shop.exchange.destination.submit" },
         { action: "shop.exchange.destination.private.read" },
+        { action: "shop.exchange.parcels.save" },
         { action: "shop.exchange.carrier.booking.prepare" },
         { action: "shop.exchange.carrier.booking.confirm" },
         { action: "shop.exchange.carrier.booking.complete" },

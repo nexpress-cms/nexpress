@@ -37,6 +37,7 @@ import type {
 import type {
   NpShopExchangeCarrierBookingRequest,
   NpShopExchangeCarrierBookingResult,
+  NpShopExchangeCarrierParcelBookingRequest,
   NpShopExchangeCarrierCancelRequest,
   NpShopExchangeCarrierCancelResult,
 } from "./exchange-carrier-contract.js";
@@ -238,6 +239,10 @@ export interface NpShopCarrierAdapter {
   bookExchangeShipment?(
     input: NpShopExchangeCarrierBookingRequest,
   ): NpShopExchangeCarrierBookingResult | Promise<NpShopExchangeCarrierBookingResult>;
+  /** Book one replacement from an exact, revision-safe parcel snapshot. */
+  bookExchangeShipmentWithParcels?(
+    input: NpShopExchangeCarrierParcelBookingRequest,
+  ): NpShopExchangeCarrierBookingResult | Promise<NpShopExchangeCarrierBookingResult>;
   /** Cancel one booked replacement shipment with its stable cancellation id. */
   cancelExchangeShipment?(
     input: NpShopExchangeCarrierCancelRequest,
@@ -276,6 +281,9 @@ export type NpShopCarrierReturnTrackingPollAdapter = NpShopCarrierReturnLogistic
 
 export type NpShopCarrierExchangeAdapter = NpShopCarrierAdapter &
   Required<Pick<NpShopCarrierAdapter, "bookExchangeShipment" | "cancelExchangeShipment">>;
+
+export type NpShopCarrierExchangeParcelAdapter = NpShopCarrierExchangeAdapter &
+  Required<Pick<NpShopCarrierAdapter, "bookExchangeShipmentWithParcels">>;
 
 export interface NpShopStoredCarrierBooking {
   contract: typeof NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT;

@@ -1,9 +1,15 @@
 import { npShopCarrierLimits, type NpShopCarrierBookingItem } from "./carrier-contract.js";
 import { npShopExchangeDestinationLimits } from "./exchange-destination-contract.js";
+import {
+  npAnalyzeShopFulfillmentParcels,
+  type NpShopFulfillmentParcel,
+} from "./parcel-contract.js";
 import type { NpShopOrderDraftShipping } from "./types.js";
 
 export const NP_SHOP_EXCHANGE_CARRIER_BOOKING_REQUEST_CONTRACT =
   "np.shop-exchange-carrier-booking-request.v1" as const;
+export const NP_SHOP_EXCHANGE_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT =
+  "np.shop-exchange-carrier-booking-request.v2" as const;
 export const NP_SHOP_EXCHANGE_CARRIER_BOOKING_RESULT_CONTRACT =
   "np.shop-exchange-carrier-booking-result.v1" as const;
 export const NP_SHOP_EXCHANGE_CARRIER_CANCEL_REQUEST_CONTRACT =
@@ -35,6 +41,15 @@ export interface NpShopExchangeCarrierBookingRequest {
   items: NpShopCarrierBookingItem[];
   destination: NpShopOrderDraftShipping;
   requestedAt: string;
+}
+
+export interface NpShopExchangeCarrierParcelBookingRequest extends Omit<
+  NpShopExchangeCarrierBookingRequest,
+  "contract"
+> {
+  contract: typeof NP_SHOP_EXCHANGE_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT;
+  parcelRevision: number;
+  parcels: NpShopFulfillmentParcel[];
 }
 
 export interface NpShopExchangeCarrierBookingResult {
@@ -342,6 +357,71 @@ export function npRequireShopExchangeCarrierBookingRequest(
     );
   }
   return value as NpShopExchangeCarrierBookingRequest;
+}
+
+export function npAnalyzeShopExchangeCarrierParcelBookingRequest(value: unknown): string[] {
+  if (!isRecord(value)) return ["exchange parcel carrier booking request must be a plain object."];
+  const issues: string[] = [];
+  exactKeys(
+    value,
+    [
+      "contract",
+      "shipmentId",
+      "orderId",
+      "exchangeId",
+      "exchangeRevision",
+      "destinationRevision",
+      "items",
+      "destination",
+      "requestedAt",
+      "parcelRevision",
+      "parcels",
+    ],
+    "exchange parcel carrier booking request",
+    issues,
+  );
+  if (value.contract !== NP_SHOP_EXCHANGE_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT) {
+    issues.push("exchange parcel carrier booking request.contract is invalid.");
+  }
+  for (const key of ["shipmentId", "orderId", "exchangeId"] as const) {
+    if (typeof value[key] !== "string" || !uuidPattern.test(value[key])) {
+      issues.push(`exchange parcel carrier booking request.${key} is invalid.`);
+    }
+  }
+  for (const key of ["exchangeRevision", "destinationRevision", "parcelRevision"] as const) {
+    if (!isRevision(value[key])) {
+      issues.push(`exchange parcel carrier booking request.${key} is invalid.`);
+    }
+  }
+  analyzeItems(value.items, "exchange parcel carrier booking request.items", issues);
+  analyzeDestination(
+    value.destination,
+    "exchange parcel carrier booking request.destination",
+    issues,
+  );
+  issues.push(
+    ...npAnalyzeShopFulfillmentParcels(
+      value.parcels,
+      "exchange parcel carrier booking request.parcels",
+    ),
+  );
+  if (!isIso(value.requestedAt)) {
+    issues.push("exchange parcel carrier booking request.requestedAt is invalid.");
+  }
+  return issues;
+}
+
+export function npRequireShopExchangeCarrierParcelBookingRequest(
+  value: unknown,
+): NpShopExchangeCarrierParcelBookingRequest {
+  const issues = npAnalyzeShopExchangeCarrierParcelBookingRequest(value);
+  if (issues.length) {
+    throw new NpShopExchangeCarrierContractError(
+      "Invalid exchange parcel carrier booking request",
+      issues,
+    );
+  }
+  return value as NpShopExchangeCarrierParcelBookingRequest;
 }
 
 function analyzeBookingResult(value: unknown, issues: string[]): void {

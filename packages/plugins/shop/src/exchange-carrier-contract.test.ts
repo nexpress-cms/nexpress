@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   NP_SHOP_EXCHANGE_CARRIER_BOOKING_REQUEST_CONTRACT,
   NP_SHOP_EXCHANGE_CARRIER_BOOKING_RESULT_CONTRACT,
+  NP_SHOP_EXCHANGE_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT,
   NP_SHOP_EXCHANGE_CARRIER_BOOKING_STORAGE_CONTRACT,
   NP_SHOP_EXCHANGE_CARRIER_CANCEL_REQUEST_CONTRACT,
   NP_SHOP_EXCHANGE_CARRIER_CANCEL_RESULT_CONTRACT,
   NpShopExchangeCarrierContractError,
   npAnalyzeShopExchangeCarrierBookingRequest,
+  npAnalyzeShopExchangeCarrierParcelBookingRequest,
   npAnalyzeStoredShopExchangeCarrierBooking,
   npRequireShopExchangeCarrierBookActionInput,
   npRequireShopExchangeCarrierBookingResult,
@@ -60,6 +62,44 @@ describe("Shop exchange carrier contract", () => {
         destination: { ...destination, instructions: "문 앞" },
       }),
     ).toContain("exchange carrier booking request.destination.instructions is not supported.");
+  });
+
+  it("adds one exact parcel-aware v2 request without changing v1", () => {
+    const request = {
+      contract: NP_SHOP_EXCHANGE_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT,
+      shipmentId,
+      orderId,
+      exchangeId,
+      exchangeRevision: 2,
+      destinationRevision: 1,
+      items: [
+        {
+          key: "line:one",
+          productId: "523e4567-e89b-42d3-a456-426614174000",
+          productName: "교환 상품",
+          variantSku: null,
+          variantName: null,
+          quantity: 1,
+        },
+      ],
+      destination,
+      requestedAt: "2026-08-10T00:00:00.000Z",
+      parcelRevision: 1,
+      parcels: [
+        {
+          id: "replacement-1",
+          lengthMm: 300,
+          widthMm: 200,
+          heightMm: 100,
+          weightGrams: 1_500,
+          items: [{ lineKey: "line:one", quantity: 1 }],
+        },
+      ],
+    };
+    expect(npAnalyzeShopExchangeCarrierParcelBookingRequest(request)).toEqual([]);
+    expect(npAnalyzeShopExchangeCarrierBookingRequest(request)).toContain(
+      "exchange carrier booking request.parcelRevision is not supported.",
+    );
   });
 
   it("requires exact provider booking and cancellation identities", () => {
