@@ -3510,6 +3510,9 @@ async function readShopCarrierLabelSource(
   providerId: string,
 ): Promise<NpShopCarrierLabelSource> {
   const sources: NpShopCarrierLabelSource[] = [];
+  // Shop transitions that inspect both domains lock the exchange before any
+  // carrier booking. Preserve that order so label reads cannot deadlock them.
+  const exchange = await readStoredExchange(tx, siteId, input.orderId, true);
   const fulfillmentBooking = await readStoredCarrierBooking(tx, siteId, input.orderId, true);
   let candidateCount = fulfillmentBooking?.id === input.shipmentId ? 1 : 0;
   if (
@@ -3531,10 +3534,6 @@ async function readShopCarrierLabelSource(
       exchangeId: null,
     });
   }
-
-  // Exchange mutations lock the exchange before its carrier booking. Preserve
-  // that order here so a label read cannot deadlock cancellation or shipment.
-  const exchange = await readStoredExchange(tx, siteId, input.orderId, true);
   const exchangeBooking = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
   if (exchangeBooking?.id === input.shipmentId) candidateCount += 1;
   if (
