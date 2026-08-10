@@ -28,6 +28,7 @@ import type {
   NpShopCarrierAdapter,
   NpShopCarrierExchangeAdapter,
   NpShopCarrierExchangeParcelAdapter,
+  NpShopCarrierLabelAcquisitionAdapter,
   NpShopCarrierLabelAdapter,
   NpShopCarrierParcelAdapter,
   NpShopCarrierPickupAdapter,
@@ -75,6 +76,7 @@ export interface NpShopRuntime {
   carrierAdapter: NpShopCarrierAdapter | null;
   carrierExchangeAdapter: NpShopCarrierExchangeAdapter | null;
   carrierExchangeParcelAdapter: NpShopCarrierExchangeParcelAdapter | null;
+  carrierLabelAcquisitionAdapter: NpShopCarrierLabelAcquisitionAdapter | null;
   carrierLabelAdapter: NpShopCarrierLabelAdapter | null;
   carrierParcelAdapter: NpShopCarrierParcelAdapter | null;
   carrierPickupAdapter: NpShopCarrierPickupAdapter | null;

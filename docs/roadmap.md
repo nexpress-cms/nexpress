@@ -448,6 +448,15 @@ real product domain, not just blog/community. Ship as a plugin package
   and PostgreSQL coverage share the contract. Return postage charging,
   recurring pickup, automatic exchange/refund transitions, eligibility/payer policy, and
   provider protocols remain separate.
+- **Provider-neutral outbound and replacement label acquisition (shipped)** —
+  carrier adapters may add one `acquireShippingLabel` method alongside the
+  existing transient `readShippingLabel`. Shop owns shipment-keyed purchase and
+  regeneration generations, stable provider idempotency, calls outside database
+  transactions, durable two-stage confirmation, atomic opaque-reference
+  replacement, verified-tracking closure, Admin/Doctor, cleanup, scaffolds, and
+  PostgreSQL coverage for both outbound and provider-booked same-item replacement
+  shipments. Label bytes and URLs remain transient. Provider billing, paper
+  layout, void/refund policy, and provider protocols remain separate.
 - **Provider-neutral return-postage quote and selection (shipped)** — carrier
   adapters may add paired quote/create-v2 methods over approved-return
   logistics. One exact bounded same-currency method list, revision-safe owner
@@ -481,8 +490,9 @@ real product domain, not just blog/community. Ship as a plugin package
   access is required before processing and processing/cancellation/expiry delete
   it. The existing label-read capability also serves completed provider-backed
   replacement bookings through one transient staff-only download with exact
-  pre/post relationship validation and no byte persistence. Replacement label
-  purchase/regeneration, substitutions, payment
+  pre/post relationship validation and no byte persistence. The additive shared
+  acquisition method also serves this exact replacement booking before verified
+  tracking. Substitutions, payment
   differences, store credit, eligibility policy, automatic address correction,
   and automatic approval remain separate additive contracts.
 - **Provider-neutral return tracking (shipped)** — optional exact raw-body
@@ -526,7 +536,7 @@ real product domain, not just blog/community. Ship as a plugin package
 - **Tax compliance, carrier logistics, and shipping policy (future)** — shipping,
   additional-tax quote, and carrier-booking boundaries are shipped; tax remittance/filing,
   invoices, exemptions/nexus, customs/duties, return-postage quotes,
-  outbound label purchase/regeneration, recurring pickup,
+  label billing/void policy, recurring pickup,
   provider APIs, automatic packaging, and regional policy require
   separate contracts.
 

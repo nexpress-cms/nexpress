@@ -9,7 +9,7 @@ provider-neutral additional-tax quote and frozen tax snapshot, an optional
 provider-neutral payment initiation and verified-event boundary, revision-safe
 fulfillment operations, optional provider-neutral carrier booking,
 revision-safe PII-free fulfillment parcel snapshots,
-transient provider-neutral shipping-label retrieval,
+durable provider-neutral shipping-label purchase/regeneration with transient retrieval,
 provider-neutral carrier pickup scheduling and cancellation,
 verified or reconciled carrier tracking events and owner-visible delivery state,
 provider-neutral full refunds with safe inventory
@@ -36,7 +36,7 @@ the exact provider-neutral event that moves that order to `paid` or
 payment or one exact amount linked to a received physical return. Shop owns attempts, order/refund transitions, fulfillment and return
 state, carrier booking/pickup/tracking/return-logistics receipts, and local compensation, but does not choose a provider protocol, remit
 or file tax, issue tax invoices, decide exemptions, physically fulfill goods,
-purchase/regenerate outbound labels, schedule recurring pickups, implement a provider protocol, or decide jurisdiction-specific return eligibility.
+choose label billing, paper layout, or void/refund policy, schedule recurring pickups, implement a provider protocol, or decide jurisdiction-specific return eligibility.
 
 ## Default setup
 
@@ -978,6 +978,7 @@ instead pass one server-only adapter to the same `createShop()` factory:
 ```ts
 import {
   NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
+  NP_SHOP_CARRIER_LABEL_ACQUISITION_RESULT_CONTRACT,
   NP_SHOP_CARRIER_LABEL_RESULT_CONTRACT,
   NP_SHOP_CARRIER_PICKUP_CANCEL_RESULT_CONTRACT,
   NP_SHOP_CARRIER_PICKUP_RESULT_CONTRACT,
@@ -1071,6 +1072,26 @@ const carrier: NpShopCarrierAdapter = {
       format: "pdf",
       content: label.bytes,
       retrievedAt: new Date().toISOString(),
+    };
+  },
+  async acquireShippingLabel(request) {
+    // acquisitionId is stable across retries. For regeneration the provider
+    // must atomically replace replacesLabelReference rather than create two
+    // simultaneously current labels. Return no bytes or URL here.
+    const label = await acquireProviderShippingLabel({
+      idempotencyKey: request.acquisitionId,
+      bookingReference: request.bookingReference,
+      replacesLabelReference: request.replacesLabelReference,
+    });
+    return {
+      contract: NP_SHOP_CARRIER_LABEL_ACQUISITION_RESULT_CONTRACT,
+      acquisitionId: request.acquisitionId,
+      shipmentId: request.shipmentId,
+      orderId: request.orderId,
+      generation: request.generation,
+      operation: request.operation,
+      labelReference: label.reference,
+      acquiredAt: new Date().toISOString(),
     };
   },
   async schedulePickup(request) {
@@ -1199,9 +1220,51 @@ MiB of `Uint8Array` content. Shop delivers those bytes through the framework's
 bounded binary route response with attachment, private/no-store, and nosniff
 headers only after the full outbound or replacement relationship is rechecked and successful
 delivery is audited with format and byte count. Label bytes and URLs are never stored, projected through Admin JSON,
-logged, or placed in public media. This capability reads a label that the
-existing provider booking already owns; it does not purchase/regenerate a
-label, choose paper size, or implement a carrier protocol.
+logged, or placed in public media. On its own this capability reads a label
+that the existing provider booking already owns. It remains valid without the
+separate acquisition method below.
+
+`acquireShippingLabel` is an additive capability that requires
+`readShippingLabel`. A read-only adapter remains valid, while an acquisition
+method without the transient read method fails during `createShop()` so an
+operator cannot purchase an inaccessible label. Completed outbound and
+replacement bookings with no verified tracking state expose **Purchase
+label**. Shop stores one shipment-keyed
+`np.shop-carrier-label-acquisition-storage.v1` row before provider I/O. It
+contains only the exact booking/exchange tuple, stable acquisition UUID,
+`purchase` operation, generation 1, provider id, and PII-free lifecycle data.
+
+The exact `np.shop-carrier-label-acquisition-request.v1` uses the acquisition
+UUID as provider idempotency and contains no destination, owner, line item,
+label bytes, or URL. A matching result returns one opaque bounded
+`labelReference` and fresh confirmation time. Shop persists
+`provider-confirmed` before local `completed`, so retries reuse the same UUID
+and the provider must return the exact same result for that UUID. Concurrent
+identical results converge as duplicate success; an inconsistent result enters
+manual review. Provider-confirmed retries perform local completion only. Retryable
+ambiguity remains `pending`; closed rejection, malformed results, or
+post-provider local conflict become PII-free `manual-review`.
+
+After completion the same action creates generation N+1 with operation
+`regenerate` and the current opaque reference as `replacesLabelReference`.
+The provider contract requires an atomic replacement: the result identifies
+the new current label and must not leave two labels current under this
+contract. Shop retains only the latest generation snapshot; audit events retain
+the purchase/regeneration trail without label bytes. Any verified outbound or
+replacement tracking state blocks a new purchase, regeneration, or resume.
+When acquisition is configured, the binary route also requires a completed
+acquisition and rechecks the same generation, revision, and opaque reference
+after provider I/O before delivering bytes. Read-only adapters retain their
+existing completed-booking behavior.
+
+Admin exposes a metric, health status, newest-50 acquisition table, actions on
+both booking surfaces, and an independent reconciliation action on the
+acquisition table. Doctor uses the same declarative inventory and checks
+malformed/orphan/provider/booking mismatches even after the adapter is removed.
+Commercial order cleanup deletes label acquisition state. Provider billing,
+paper size/layout, label rendering, void/refund policy, and provider-specific
+protocols remain outside this contract; binary delivery still uses the
+independent bounded read route above.
 
 ### Carrier pickup scheduling
 
@@ -1718,8 +1781,9 @@ submission/access, processing, shipment, and cancellation write PII-free audit
 metadata.
 
 The original shipping address has already been deleted at first shipment and
-is never reused. Replacement label purchase/regeneration,
-automatic address correction, different-item substitutions, payment
+is never reused. The shared label-acquisition capability may purchase or
+atomically regenerate the provider-backed replacement label before verified
+tracking starts. Automatic address correction, different-item substitutions, payment
 differences, store credit, legal eligibility rules, and automatic approval
 remain separate additive contracts.
 
@@ -2128,9 +2192,9 @@ Future transaction work should remain separable from this foundation:
 1. additional provider packages for Stripe or KG Inicis;
 2. authorization/capture, settlement corrections, disputes/chargebacks, and
    initiating repeated or non-return partial-refund contracts;
-3. carrier label purchase/regeneration, recurring pickup, provider-specific
-   tracking packages, replacement-address/carrier automation, different-item
-   exchanges, and customer-service policy;
+3. recurring pickup, provider-specific tracking packages,
+   replacement-address/carrier automation, different-item exchanges, and
+   customer-service policy;
 4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and
    carrier-owned dynamic rate integrations.
 

@@ -441,12 +441,17 @@ describe("getProjectFiles", () => {
     expect(env).toContain("bookExchangeShipmentWithParcels adds one exact v2 request");
     expect(readme).toContain("locks one exact PII-free mm/gram allocation");
     expect(env).toContain("readShippingLabel capability serves completed outbound");
+    expect(env).toContain("acquireShippingLabel adds durable purchase/regeneration");
+    expect(env).toContain("acquisitionId as the provider idempotency key");
     expect(env).toContain("never persist or log those bytes");
     expect(env).toContain("Cancel the pickup");
     expect(env).toContain("verifyTrackingWebhook and readTracking methods also serve exact");
     expect(env).toContain("verified state blocks provider cancellation/restock");
     expect(readme).toContain("completed outbound and replacement labels");
-    expect(readme).toContain("Verified tracking blocks pickup and shipment cancellation");
+    expect(readme).toContain("durable first-label purchase and atomic regeneration");
+    expect(readme).toContain(
+      "Verified tracking blocks label acquisition, pickup, and shipment cancellation",
+    );
     expect(readme).toContain("Verified provider cancellation snapshots reconcile known refunds");
     expect(env).toContain("provider-cancellation reconciliation for Shop");
   });

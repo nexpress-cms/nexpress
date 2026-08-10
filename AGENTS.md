@@ -2,7 +2,16 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-10 (Shop provider-booked same-item replacements now
+**Last refreshed:** 2026-08-10 (Shop carrier adapters may now add one outbound
+and same-item replacement label acquisition capability on top of the existing
+transient label read. Shipment-keyed purchase/regeneration generations, stable
+provider idempotency, atomic opaque-reference replacement, provider I/O outside
+transactions, tracking-start closure, replacement-cancellation reconciliation,
+Admin/Doctor, cleanup, scaffolds, docs, and PostgreSQL coverage share the
+PII-free contract. Label bytes/URLs remain transient; billing, paper layout,
+void/refund policy, provider protocols, and recurring pickup remain separate.)
+
+**Earlier:** 2026-08-10 (Shop provider-booked same-item replacements now
 reuse the existing paired pickup capability over their exact locked parcel
 snapshot. Shipment-keyed outbound/replacement state, unchanged provider v1
 requests, durable scheduling/cancellation, tracking-start closure, pickup
