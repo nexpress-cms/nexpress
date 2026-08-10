@@ -27,3 +27,6 @@ carrier, quote, selection, payment, or return policy.
 When Shop later projects a completed quote-backed refund, Storefront styles the
 independent `[data-np-shop-return-postage-settlement]` hook without deciding the
 merchant/customer responsibility or changing the refund amount.
+Same-item replacement state is enhanced independently through
+`[data-np-shop-exchange]`; Storefront owns presentation only and does not import
+Shop, decide eligibility, consume inventory, or dispatch exchange operations.

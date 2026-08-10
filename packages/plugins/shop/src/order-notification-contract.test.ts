@@ -97,5 +97,11 @@ describe("Shop order notification contract", () => {
     expect(message.subject).toContain("Payment confirmed");
     expect(message.text).toContain(event.id);
     expect(message.html).not.toContain("buyer@example.com");
+
+    const exchangeMessage = npBuildShopOrderNotificationEmail(
+      { ...event, kind: "exchange.shipped" },
+      "/shop/orders/22222222-2222-4222-8222-222222222222",
+    );
+    expect(exchangeMessage.subject).toContain("Same-item exchange shipped");
   });
 });

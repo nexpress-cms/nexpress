@@ -256,6 +256,90 @@ describe("Shop order contract", () => {
     ).toEqual([]);
   });
 
+  it("binds one same-item exchange to its received return and shipped paid order", () => {
+    const paymentResolvedAt = "2026-07-30T00:05:00.000Z";
+    const shippedAt = "2026-07-30T01:00:00.000Z";
+    const receivedAt = "2026-07-31T01:00:00.000Z";
+    const exchangeAt = "2026-07-31T01:05:00.000Z";
+    const returnId = "523e4567-e89b-42d3-a456-426614174000";
+    const exchangeId = "623e4567-e89b-42d3-a456-426614174000";
+    const exchangedOrder = {
+      ...publicOrder,
+      status: "paid",
+      revision: 4,
+      privateDataStatus: "redacted",
+      inventoryReservationStatus: "consumed",
+      customer: null,
+      shipping: null,
+      paymentProvider: "test-pay",
+      paymentReference: "pay_exchange",
+      paymentEventId: "evt_exchange",
+      paymentResolvedAt,
+      updatedAt: exchangeAt,
+      fulfillment: {
+        contract: "np.shop-fulfillment.v1",
+        orderId,
+        status: "shipped",
+        revision: 2,
+        privateDataStatus: "redacted",
+        carrier: "Parcel Co",
+        trackingNumber: "ORIGINAL-TRACKING",
+        createdAt: paymentResolvedAt,
+        updatedAt: shippedAt,
+        shippedAt,
+      },
+      returnRequest: {
+        contract: "np.shop-return.v1",
+        id: returnId,
+        orderId,
+        status: "received",
+        revision: 3,
+        lines: [{ lineKey: line.key, quantity: 1 }],
+        reason: "defective",
+        detail: null,
+        inventoryOutcome: "restocked",
+        requestedAt: shippedAt,
+        updatedAt: receivedAt,
+        decidedAt: receivedAt,
+        receivedAt,
+      },
+      exchange: {
+        contract: "np.shop-exchange.v1",
+        id: exchangeId,
+        returnId,
+        status: "awaiting",
+        revision: 1,
+        lines: [
+          {
+            lineKey: line.key,
+            productId,
+            productSlug: line.productSlug,
+            productName: line.productName,
+            variantSku: null,
+            variantName: null,
+            quantity: 1,
+          },
+        ],
+        inventoryOutcome: "consumed",
+        carrier: null,
+        trackingNumber: null,
+        createdAt: exchangeAt,
+        updatedAt: exchangeAt,
+        shippedAt: null,
+        cancelledAt: null,
+      },
+    } as const;
+    expect(npAnalyzeShopOrder(exchangedOrder)).toEqual([]);
+    expect(
+      npAnalyzeShopOrder({
+        ...exchangedOrder,
+        exchange: { ...exchangedOrder.exchange, returnId: orderId },
+      }),
+    ).toContain(
+      "order.exchange must match one paid shipped order and its received, unrefunded return.",
+    );
+  });
+
   it("requires canonical guest hashes or member UUIDs for stored ownership", () => {
     expect(
       npAnalyzeStoredShopOrder({

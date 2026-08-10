@@ -1585,10 +1585,44 @@ restock or an implied success. Payment refunds remain a separate explicit
 staff/provider operation, and a received return does not change the shipped
 fulfillment.
 
-This contract deliberately does not implement exchanges, automatic approval
+This intake contract deliberately does not by itself implement exchanges, automatic approval
 windows, return shipping fees, labels, pickup booking, warehouse inspection
 policy, or automatic payment refunds. Sites must publish and enforce their own legal and
 customer-service policy around this neutral intake state machine.
+
+## Same-item replacement exchanges
+
+After staff mark one return `received`, Admin may create one exact same-item
+replacement when the commercial order is still `paid`, the original fulfillment
+is `shipped`, receipt inventory is `restocked` or `not-required`, and no full or
+partial refund owns the payment. The replacement copies only the immutable
+product, SKU, variant, and received quantity snapshot. Staff cannot substitute a
+different item, change quantities, collect a price difference, or create store
+credit through this contract.
+
+Creation locks the order, return, and every tracked product in canonical order.
+It protects quantities already reserved by pending orders, then consumes every
+exact replacement unit or none. One durable `np.shop-exchange-storage.v1` row
+moves revision-safely through `awaiting → processing → shipped`; staff supply a
+bounded PII-free note and manually verified carrier/tracking data. Before
+shipment, cancellation restores every tracked replacement unit or records
+`manual-required` without claiming a partial restoration. Shipped and cancelled
+states are terminal.
+
+The owner projection omits staff notes and identity, exposes the exact lines,
+status, inventory outcome, and optional tracking through
+`[data-np-shop-exchange]`, and stages the same preference-aware member-inbox and
+email events as other order transitions. Admin and Doctor expose bounded
+PII-free totals, recent rows, malformed/orphan samples, and manual-inventory
+work. Exchange creation, processing, shipment, and cancellation each write a
+PII-free direct-staff audit event. Commercial cleanup deletes the exchange with
+the order.
+
+The original shipping address has already been deleted at first shipment, so
+v1 does not reuse it or collect another address. Carrier booking, replacement
+labels/pickup/tracking callbacks, different-item substitutions, payment
+differences, store credit, legal eligibility rules, and automatic approval
+remain separate additive contracts.
 
 ## Received-return partial refunds
 
@@ -1656,7 +1690,7 @@ PII-free counts and snapshots.
 
 This capability is a staff designation and refund-settlement primitive, not a
 legal or automatic returns policy. Eligibility rules, fault determination,
-jurisdiction/consumer-law decisions, separate postage collection, exchanges,
+jurisdiction/consumer-law decisions, separate postage collection, different-item exchanges,
 and provider-specific protocols remain outside Shop. The bundled Toss adapter
 maps the validated net amount to its existing partial-cancellation request and
 keeps the durable refund UUID as the idempotency key.
@@ -1774,6 +1808,9 @@ The plugin declares these baseline typed dashboard metric actions:
   revalidate the current cart).
 - unexpired private order-draft records, without any customer or shipping
   values.
+- same-item replacements split across awaiting, processing, shipped, cancelled,
+  and manual-inventory states, with PII-free recent rows and direct-staff
+  create/process/ship/cancel actions.
 - durable pending, paid, refunded, failed, and cancelled commercial order records, without owner or PII
   values.
 - active PII-free inventory reservation rows.
@@ -1883,7 +1920,8 @@ Every Shop factory registers:
 
 Both skins implement catalog, category, product, wishlist, prepared restock
 and price-alert actions, cart, checkout-intent,
-private order-draft, order-history, and order-detail rendering. They receive
+private order-draft, order-history, and order-detail rendering, including the
+`[data-np-shop-exchange]` replacement state. They receive
 prepared products, localized messages, safe formatted money, and rendered
 rich text; they do not own identity, private-data, collection, or transaction
 policy.
@@ -1989,7 +2027,8 @@ Future transaction work should remain separable from this foundation:
 2. authorization/capture, settlement corrections, disputes/chargebacks, and
    initiating repeated or non-return partial-refund contracts;
 3. carrier label purchase/regeneration, recurring pickup, provider-specific
-   tracking packages, exchanges, and customer-service policy;
+   tracking packages, replacement-address/carrier automation, different-item
+   exchanges, and customer-service policy;
 4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and
    carrier-owned dynamic rate integrations.
 

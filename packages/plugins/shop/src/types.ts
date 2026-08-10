@@ -9,6 +9,7 @@ import type { NpShopRefund } from "./refund-contract.js";
 import type { NpShopPartialRefund } from "./partial-refund-contract.js";
 import type { NpShopPaymentAdjustment } from "./payment-adjustment-contract.js";
 import type { NpShopReturn } from "./return-contract.js";
+import type { NpShopExchange } from "./exchange-contract.js";
 
 export const npShopCurrencies = ["KRW", "USD", "EUR", "JPY"] as const;
 export type NpShopCurrency = (typeof npShopCurrencies)[number];
@@ -290,6 +291,14 @@ export interface NpShopMessages {
   orderReturnRejected: string;
   orderReturnReceived: string;
   orderReturnCancelled: string;
+  orderExchange: string;
+  orderExchangeAwaiting: string;
+  orderExchangeProcessing: string;
+  orderExchangeShipped: string;
+  orderExchangeCancelled: string;
+  orderExchangeInventoryRestocked: string;
+  orderExchangeInventoryManual: string;
+  orderExchangeTracking: string;
   orderReturnReason: string;
   orderReturnReasonDamaged: string;
   orderReturnReasonDefective: string;
@@ -611,6 +620,14 @@ export interface NpShopCartClientMessages {
   orderReturnRejected: string;
   orderReturnReceived: string;
   orderReturnCancelled: string;
+  orderExchange: string;
+  orderExchangeAwaiting: string;
+  orderExchangeProcessing: string;
+  orderExchangeShipped: string;
+  orderExchangeCancelled: string;
+  orderExchangeInventoryRestocked: string;
+  orderExchangeInventoryManual: string;
+  orderExchangeTracking: string;
   orderReturnReason: string;
   orderReturnReasonDamaged: string;
   orderReturnReasonDefective: string;
@@ -879,6 +896,8 @@ export interface NpShopOrder {
   paymentAdjustment?: NpShopPaymentAdjustment;
   /** Present after the owner requests a physical return. */
   returnRequest?: NpShopReturn;
+  /** Present after staff create one same-item replacement for a received return. */
+  exchange?: NpShopExchange;
   purgeAt: string;
 }
 

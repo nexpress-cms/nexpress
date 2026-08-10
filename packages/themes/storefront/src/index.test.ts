@@ -41,6 +41,7 @@ describe("storefront theme contract", () => {
     expect(storefrontCss).toContain('[data-np-shop-wishlist-action="saved"]');
     expect(storefrontCss).toContain('[data-np-shop-restock-alert="subscribed"]');
     expect(storefrontCss).toContain('[data-np-shop-price-alert="subscribed"]');
+    expect(storefrontCss).toContain('[data-np-shop-exchange="shipped"]');
     expect(storefrontCss).toContain("[data-np-shop-reviews]");
     expect(storefrontCss).toContain("[data-np-shop-review-form]");
   });
