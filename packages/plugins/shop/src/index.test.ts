@@ -161,6 +161,9 @@ describe("shop factory", () => {
       { id: "countCarrierBookings", kind: "metric" },
       { id: "carrierBookingHealth", kind: "status" },
       { id: "recentCarrierBookings", kind: "table" },
+      { id: "countCarrierLabelAcquisitions", kind: "metric" },
+      { id: "carrierLabelAcquisitionHealth", kind: "status" },
+      { id: "recentCarrierLabelAcquisitions", kind: "table" },
       { id: "countCarrierPickups", kind: "metric" },
       { id: "carrierPickupHealth", kind: "status" },
       { id: "recentCarrierPickups", kind: "table" },
@@ -1008,6 +1011,43 @@ describe("shop factory", () => {
         ?.find((table) => table.id === "shop-exchanges")
         ?.rowActions?.some((action) => action.type === "download"),
     ).toBe(false);
+  });
+
+  it("adds label purchase and regeneration only as an additive read-capable carrier capability", () => {
+    const withAcquisition = createShop({
+      carrier: {
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          readShippingLabel: () => Promise.reject(new Error("not called")),
+          acquireShippingLabel: () => Promise.reject(new Error("not called")),
+        },
+      },
+    });
+    expect(withAcquisition.runtime.carrierLabelAcquisitionAdapter?.id).toBe("test-carrier");
+    expect(withAcquisition.plugin.actions?.acquireCarrierShippingLabel?.kind).toBe("action");
+    expect(
+      withAcquisition.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-carrier-bookings")
+        ?.rowActions?.map((action) => action.id),
+    ).toEqual(
+      expect.arrayContaining([
+        "purchase-shipping-label",
+        "regenerate-shipping-label",
+        "resume-shipping-label",
+      ]),
+    );
+    expect(() =>
+      createShop({
+        carrier: {
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+            acquireShippingLabel: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/requires acquireShippingLabel and readShippingLabel together/u);
   });
 
   it("adds owner-scoped attempt routes and diagnostics only for a complete initiation adapter", () => {

@@ -149,6 +149,7 @@ import {
   type NpShopStoredReturn,
 } from "./return-contract.js";
 import {
+  npRequireStoredShopTracking,
   npShopExchangeTrackingPollStorageKey,
   npShopExchangeTrackingStorageKey,
   npShopTrackingPollStorageKey,
@@ -166,6 +167,13 @@ import {
   npRequireStoredShopCarrierPickup,
   type NpShopStoredCarrierPickup,
 } from "./pickup-contract.js";
+import {
+  npReadShopCarrierLabelSource,
+  npReadStoredShopCarrierLabelAcquisition,
+  npRequireStoredShopCarrierLabelAcquisitionAtKey,
+  npShopCarrierLabelAcquisitionMatchesSource,
+  npShopCarrierLabelAcquisitionStorageKey,
+} from "./label-acquisition-service.js";
 import {
   npReadShopReturnLogisticsForOrder,
   npShopReturnLogisticsStorageKey,
@@ -442,6 +450,9 @@ export interface NpShopAdminExchangeRow {
   pickupRevision: number;
   pickupTarget: "replacement";
   pickupStatus: string;
+  labelAction: string;
+  expectedRevision: number;
+  target: "replacement";
   provider: string;
   parcels: string;
   parcelRevision: number | null;
@@ -511,6 +522,9 @@ export interface NpShopAdminCarrierBookingRow {
   pickupRevision: number;
   pickupTarget: "outbound";
   exchangeId: null;
+  labelAction: string;
+  expectedRevision: number;
+  target: "outbound";
   updatedAt: string;
 }
 
@@ -2673,6 +2687,16 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "carrier-label-acquisition:%"),
+        sql`${npPluginStorage.value}->>'orderId' = ${order.id}`,
+      ),
+    );
+  await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
         eq(npPluginStorage.key, npShopPartialRefundStorageKey(order.id)),
       ),
     );
@@ -3660,93 +3684,6 @@ async function recordRequiredShopFulfillmentAudit(
   });
 }
 
-interface NpShopCarrierLabelSource {
-  kind: "fulfillment" | "exchange";
-  shipmentId: string;
-  orderId: string;
-  providerId: string;
-  bookingReference: string;
-  carrier: string;
-  trackingNumber: string;
-  exchangeId: string | null;
-}
-
-async function readShopCarrierLabelSource(
-  tx: NpShopTransaction,
-  siteId: string,
-  input: NpShopCarrierLabelReadInput,
-  providerId: string,
-): Promise<NpShopCarrierLabelSource> {
-  const sources: NpShopCarrierLabelSource[] = [];
-  // Shop transitions that inspect both domains lock the exchange before any
-  // carrier booking. Preserve that order so label reads cannot deadlock them.
-  const exchange = await readStoredExchange(tx, siteId, input.orderId, true);
-  const fulfillmentBooking = await readStoredCarrierBooking(tx, siteId, input.orderId, true);
-  let candidateCount = fulfillmentBooking?.id === input.shipmentId ? 1 : 0;
-  if (
-    fulfillmentBooking?.id === input.shipmentId &&
-    fulfillmentBooking.status === "completed" &&
-    fulfillmentBooking.providerId === providerId &&
-    fulfillmentBooking.bookingReference &&
-    fulfillmentBooking.carrier &&
-    fulfillmentBooking.trackingNumber
-  ) {
-    sources.push({
-      kind: "fulfillment",
-      shipmentId: fulfillmentBooking.id,
-      orderId: fulfillmentBooking.orderId,
-      providerId: fulfillmentBooking.providerId,
-      bookingReference: fulfillmentBooking.bookingReference,
-      carrier: fulfillmentBooking.carrier,
-      trackingNumber: fulfillmentBooking.trackingNumber,
-      exchangeId: null,
-    });
-  }
-  const exchangeBooking = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
-  if (exchangeBooking?.id === input.shipmentId) candidateCount += 1;
-  if (
-    exchangeBooking?.id === input.shipmentId &&
-    exchangeBooking.status === "completed" &&
-    exchangeBooking.providerId === providerId &&
-    exchangeBooking.bookingReference &&
-    exchangeBooking.carrier &&
-    exchangeBooking.trackingNumber &&
-    exchangeBooking.completedExchangeRevision !== null
-  ) {
-    const revisionMatches =
-      exchange?.status === "processing"
-        ? exchange.revision === exchangeBooking.completedExchangeRevision
-        : exchange?.status === "shipped"
-          ? exchange.revision === exchangeBooking.completedExchangeRevision + 1
-          : false;
-    if (
-      exchange?.id === exchangeBooking.exchangeId &&
-      revisionMatches &&
-      exchange.carrier === exchangeBooking.carrier &&
-      exchange.trackingNumber === exchangeBooking.trackingNumber
-    ) {
-      sources.push({
-        kind: "exchange",
-        shipmentId: exchangeBooking.id,
-        orderId: exchangeBooking.orderId,
-        providerId: exchangeBooking.providerId,
-        bookingReference: exchangeBooking.bookingReference,
-        carrier: exchangeBooking.carrier,
-        trackingNumber: exchangeBooking.trackingNumber,
-        exchangeId: exchangeBooking.exchangeId,
-      });
-    }
-  }
-
-  if (candidateCount !== 1 || sources.length !== 1) {
-    throw new NpShopCarrierConflictError(
-      "carrier_label_not_available",
-      "One completed outbound or replacement booking owned by the configured carrier is required for label retrieval.",
-    );
-  }
-  return sources[0];
-}
-
 export async function npReadShopCarrierShippingLabel(
   runtime: NpShopRuntime,
   input: NpShopCarrierLabelReadInput,
@@ -3763,7 +3700,21 @@ export async function npReadShopCarrierShippingLabel(
   const requestedAt = new Date();
   requestedAt.setMilliseconds(0);
   const prepared = await getDb().transaction(async (tx) => {
-    const source = await readShopCarrierLabelSource(tx, siteId, input, adapter.id);
+    const source = await npReadShopCarrierLabelSource(tx, siteId, input, adapter.id, true);
+    const acquisition = runtime.carrierLabelAcquisitionAdapter
+      ? await npReadStoredShopCarrierLabelAcquisition(tx, siteId, source.shipmentId, true)
+      : null;
+    if (
+      runtime.carrierLabelAcquisitionAdapter &&
+      (!acquisition ||
+        acquisition.status !== "completed" ||
+        !npShopCarrierLabelAcquisitionMatchesSource(acquisition, source))
+    ) {
+      throw new NpShopCarrierConflictError(
+        "carrier_label_not_available",
+        "A completed durable label acquisition is required before label retrieval.",
+      );
+    }
     const prepared = npRequireShopCarrierLabelRequest({
       contract: NP_SHOP_CARRIER_LABEL_REQUEST_CONTRACT,
       shipmentId: source.shipmentId,
@@ -3777,7 +3728,9 @@ export async function npReadShopCarrierShippingLabel(
       tx,
       siteId,
       staffUserId,
-      source.kind === "exchange" ? "shop.exchange.carrier.label.read" : "shop.carrier.label.read",
+      source.target === "replacement"
+        ? "shop.exchange.carrier.label.read"
+        : "shop.carrier.label.read",
       source.orderId,
       {
         ...(source.exchangeId ? { exchangeId: source.exchangeId } : {}),
@@ -3785,9 +3738,9 @@ export async function npReadShopCarrierShippingLabel(
         providerId: source.providerId,
       },
     );
-    return { request: prepared, source };
+    return { request: prepared, source, acquisition };
   });
-  const { request, source } = prepared;
+  const { request, source, acquisition } = prepared;
 
   const result = npRequireShopCarrierLabelResult(await adapter.readShippingLabel(request));
   if (result.shipmentId !== request.shipmentId || result.orderId !== request.orderId) {
@@ -3806,9 +3759,9 @@ export async function npReadShopCarrierShippingLabel(
     ]);
   }
   await getDb().transaction(async (tx) => {
-    const current = await readShopCarrierLabelSource(tx, siteId, input, adapter.id);
+    const current = await npReadShopCarrierLabelSource(tx, siteId, input, adapter.id, true);
     if (
-      current.kind !== source.kind ||
+      current.target !== source.target ||
       current.exchangeId !== source.exchangeId ||
       current.shipmentId !== request.shipmentId ||
       current.bookingReference !== request.bookingReference ||
@@ -3820,11 +3773,33 @@ export async function npReadShopCarrierShippingLabel(
         "The carrier booking changed before its label could be delivered.",
       );
     }
+    if (acquisition) {
+      const currentAcquisition = await npReadStoredShopCarrierLabelAcquisition(
+        tx,
+        siteId,
+        current.shipmentId,
+        true,
+      );
+      if (
+        !currentAcquisition ||
+        currentAcquisition.id !== acquisition.id ||
+        currentAcquisition.status !== "completed" ||
+        currentAcquisition.revision !== acquisition.revision ||
+        currentAcquisition.generation !== acquisition.generation ||
+        currentAcquisition.labelReference !== acquisition.labelReference ||
+        !npShopCarrierLabelAcquisitionMatchesSource(currentAcquisition, current)
+      ) {
+        throw new NpShopCarrierConflictError(
+          "carrier_label_not_available",
+          "The current label generation changed before its bytes could be delivered.",
+        );
+      }
+    }
     await recordRequiredShopFulfillmentAudit(
       tx,
       siteId,
       staffUserId,
-      current.kind === "exchange"
+      current.target === "replacement"
         ? "shop.exchange.carrier.label.deliver"
         : "shop.carrier.label.deliver",
       current.orderId,
@@ -5484,10 +5459,96 @@ export async function npListRecentShopCarrierBookings(): Promise<{
       return [pickup.shipmentId, pickup] as const;
     }),
   );
+  const labelRows = rows.length
+    ? await db
+        .select({
+          key: npPluginStorage.key,
+          value: npPluginStorage.value,
+          expiresAt: npPluginStorage.expiresAt,
+        })
+        .from(npPluginStorage)
+        .where(
+          and(
+            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+            eq(npPluginStorage.siteId, siteId),
+            inArray(
+              npPluginStorage.key,
+              rows.map((row) => {
+                const booking = requireStoredCarrierBookingAtKey(row.value, row.expiresAt, row.key);
+                return npShopCarrierLabelAcquisitionStorageKey(booking.id);
+              }),
+            ),
+          ),
+        )
+    : [];
+  const labelAcquisitions = new Map(
+    labelRows.map((row) => {
+      const acquisition = npRequireStoredShopCarrierLabelAcquisitionAtKey(
+        row.value,
+        row.expiresAt,
+        row.key,
+      );
+      if (acquisition.target !== "outbound" || acquisition.exchangeId !== null) {
+        throw new NpShopCarrierContractError("Invalid outbound label acquisition metadata", [
+          "outbound label acquisition target must not identify an exchange.",
+        ]);
+      }
+      return [acquisition.shipmentId, acquisition] as const;
+    }),
+  );
+  const trackingRows = rows.length
+    ? await db
+        .select({
+          key: npPluginStorage.key,
+          value: npPluginStorage.value,
+          expiresAt: npPluginStorage.expiresAt,
+        })
+        .from(npPluginStorage)
+        .where(
+          and(
+            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+            eq(npPluginStorage.siteId, siteId),
+            inArray(
+              npPluginStorage.key,
+              rows.map((row) => {
+                const booking = requireStoredCarrierBookingAtKey(row.value, row.expiresAt, row.key);
+                return `tracking:${booking.orderId}`;
+              }),
+            ),
+          ),
+        )
+    : [];
+  const trackedShipments = new Set(
+    trackingRows.map((row) => {
+      const tracking = npRequireStoredShopTracking(row.value);
+      if (
+        row.key !== `tracking:${tracking.orderId}` ||
+        row.expiresAt === null ||
+        row.expiresAt.toISOString() !== tracking.purgeAt
+      ) {
+        throw new NpShopCarrierContractError("Invalid outbound tracking metadata", [
+          "tracking key and expiry must match their canonical values.",
+        ]);
+      }
+      return tracking.shipmentId;
+    }),
+  );
   return {
     rows: rows.map((row) => {
       const booking = requireStoredCarrierBookingAtKey(row.value, row.expiresAt, row.key);
       const pickup = pickups.get(booking.id);
+      const labelAcquisition = labelAcquisitions.get(booking.id);
+      const labelAction =
+        booking.status !== "completed" || trackedShipments.has(booking.id)
+          ? "—"
+          : !labelAcquisition
+            ? "purchase"
+            : labelAcquisition.status === "completed"
+              ? "regenerate"
+              : labelAcquisition.status === "pending" ||
+                  labelAcquisition.status === "provider-confirmed"
+                ? "resume"
+                : "—";
       return {
         id: booking.orderId,
         shipmentId: booking.id,
@@ -5501,6 +5562,9 @@ export async function npListRecentShopCarrierBookings(): Promise<{
         pickupRevision: pickup?.revision ?? 0,
         pickupTarget: "outbound",
         exchangeId: null,
+        labelAction,
+        expectedRevision: labelAcquisition?.revision ?? 0,
+        target: "outbound",
         updatedAt: booking.updatedAt,
       };
     }),
@@ -7420,6 +7484,18 @@ export async function npCancelShopExchangeCarrierShipment(
         "The replacement pickup must be fully cancelled before its shipment can be provider-cancelled or restocked.",
       );
     }
+    const labelAcquisition = await npReadStoredShopCarrierLabelAcquisition(
+      tx,
+      siteId,
+      current.id,
+      true,
+    );
+    if (labelAcquisition && labelAcquisition.status !== "completed") {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_state_conflict",
+        "The replacement label acquisition must complete or be manually reconciled before its shipment can be provider-cancelled or restocked.",
+      );
+    }
     if (current.status === "cancelled" && exchange.status === "cancelled") {
       return { outcome: "cancelled" as const, exchange, booking: current };
     }
@@ -8099,6 +8175,9 @@ export async function npListRecentShopExchanges(): Promise<{
         const pickup = carrierBooking
           ? await readStoredCarrierPickupByShipment(db, siteId, carrierBooking.id)
           : null;
+        const labelAcquisition = carrierBooking
+          ? await npReadStoredShopCarrierLabelAcquisition(db, siteId, carrierBooking.id)
+          : null;
         if (
           pickup &&
           (pickup.orderId !== exchange.orderId ||
@@ -8128,6 +8207,28 @@ export async function npListRecentShopExchanges(): Promise<{
           carrierBooking?.status === "completed" && exchange.status === "shipped"
             ? "shipped"
             : (carrierBooking?.status ?? "none");
+        if (
+          labelAcquisition &&
+          (labelAcquisition.orderId !== exchange.orderId ||
+            labelAcquisition.target !== "replacement" ||
+            labelAcquisition.exchangeId !== exchange.id ||
+            labelAcquisition.providerId !== carrierBooking?.providerId)
+        ) {
+          throw new NpShopCarrierContractError("Invalid replacement label relationship", [
+            "replacement label acquisition must match its exact order, exchange, and shipment.",
+          ]);
+        }
+        const labelAction =
+          carrierBooking?.status !== "completed" || tracking
+            ? "—"
+            : !labelAcquisition
+              ? "purchase"
+              : labelAcquisition.status === "completed"
+                ? "regenerate"
+                : labelAcquisition.status === "pending" ||
+                    labelAcquisition.status === "provider-confirmed"
+                  ? "resume"
+                  : "—";
         return {
           id: exchange.orderId,
           exchangeId: exchange.id,
@@ -8152,6 +8253,9 @@ export async function npListRecentShopExchanges(): Promise<{
           pickupRevision: pickup?.revision ?? 0,
           pickupTarget: "replacement",
           pickupStatus: pickup?.status ?? "none",
+          labelAction,
+          expectedRevision: labelAcquisition?.revision ?? 0,
+          target: "replacement",
           provider: carrierBooking?.providerId ?? "—",
           parcels: parcelSnapshot
             ? `${parcelSnapshot.parcels.length.toString()} package(s)${parcelSnapshot.lockedShipmentId ? " (locked)" : ""}`

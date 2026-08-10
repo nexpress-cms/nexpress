@@ -41,6 +41,10 @@ import type {
   NpShopExchangeCarrierCancelRequest,
   NpShopExchangeCarrierCancelResult,
 } from "./exchange-carrier-contract.js";
+import type {
+  NpShopCarrierLabelAcquisitionRequest,
+  NpShopCarrierLabelAcquisitionResult,
+} from "./label-acquisition-contract.js";
 
 export const NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT =
   "np.shop-carrier-booking-request.v1" as const;
@@ -182,6 +186,15 @@ export interface NpShopCarrierAdapter {
     input: NpShopCarrierLabelRequest,
   ): NpShopCarrierLabelResult | Promise<NpShopCarrierLabelResult>;
   /**
+   * Purchase the first label or atomically replace the current label. The
+   * acquisition id is the provider idempotency key and repeated requests must
+   * return the same result. Results contain only an opaque PII-free reference;
+   * bytes remain available through readShippingLabel.
+   */
+  acquireShippingLabel?(
+    input: NpShopCarrierLabelAcquisitionRequest,
+  ): NpShopCarrierLabelAcquisitionResult | Promise<NpShopCarrierLabelAcquisitionResult>;
+  /**
    * Schedule one pickup from a locked PII-free parcel snapshot and a
    * provider-owned location reference. Implementations must use pickupId as
    * the provider idempotency key.
@@ -260,6 +273,9 @@ export type NpShopCarrierParcelAdapter = NpShopCarrierAdapter &
 
 export type NpShopCarrierLabelAdapter = NpShopCarrierAdapter &
   Required<Pick<NpShopCarrierAdapter, "readShippingLabel">>;
+
+export type NpShopCarrierLabelAcquisitionAdapter = NpShopCarrierLabelAdapter &
+  Required<Pick<NpShopCarrierAdapter, "acquireShippingLabel">>;
 
 export type NpShopCarrierPickupAdapter = NpShopCarrierAdapter &
   Required<Pick<NpShopCarrierAdapter, "schedulePickup" | "cancelPickup">>;

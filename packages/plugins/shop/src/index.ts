@@ -42,6 +42,7 @@ import {
   type NpShopCarrierAdapter,
   type NpShopCarrierExchangeAdapter,
   type NpShopCarrierExchangeParcelAdapter,
+  type NpShopCarrierLabelAcquisitionAdapter,
   type NpShopCarrierLabelAdapter,
   type NpShopCarrierParcelAdapter,
   type NpShopCarrierPickupAdapter,
@@ -53,6 +54,12 @@ import {
   type NpShopCarrierTrackingAdapter,
   type NpShopCarrierTrackingPollAdapter,
 } from "./carrier-contract.js";
+import {
+  npAcquireShopCarrierShippingLabel,
+  npCountShopCarrierLabelAcquisitions,
+  npListRecentShopCarrierLabelAcquisitions,
+} from "./label-acquisition-service.js";
+import { npRequireShopCarrierLabelAcquisitionActionInput } from "./label-acquisition-contract.js";
 import {
   npBookShopCarrierShipment,
   npCountShopCarrierBookings,
@@ -466,6 +473,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   let carrierAdapter: NpShopCarrierAdapter | null = null;
   let carrierExchangeAdapter: NpShopCarrierExchangeAdapter | null = null;
   let carrierExchangeParcelAdapter: NpShopCarrierExchangeParcelAdapter | null = null;
+  let carrierLabelAcquisitionAdapter: NpShopCarrierLabelAcquisitionAdapter | null = null;
   let carrierLabelAdapter: NpShopCarrierLabelAdapter | null = null;
   let carrierParcelAdapter: NpShopCarrierParcelAdapter | null = null;
   let carrierPickupAdapter: NpShopCarrierPickupAdapter | null = null;
@@ -487,6 +495,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     const hasTrackingPoll = configuredCarrierAdapter.readTracking !== undefined;
     const hasParcelBooking = configuredCarrierAdapter.bookShipmentWithParcels !== undefined;
     const hasShippingLabel = configuredCarrierAdapter.readShippingLabel !== undefined;
+    const hasLabelAcquisition = configuredCarrierAdapter.acquireShippingLabel !== undefined;
     const hasPickupSchedule = configuredCarrierAdapter.schedulePickup !== undefined;
     const hasPickupCancel = configuredCarrierAdapter.cancelPickup !== undefined;
     const hasReturnCreate = configuredCarrierAdapter.createReturnShipment !== undefined;
@@ -522,6 +531,14 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     }
     if (hasShippingLabel && typeof configuredCarrierAdapter.readShippingLabel !== "function") {
       throw new Error("Shop carrier adapter readShippingLabel must be a function when provided.");
+    }
+    if (
+      hasLabelAcquisition &&
+      (!hasShippingLabel || typeof configuredCarrierAdapter.acquireShippingLabel !== "function")
+    ) {
+      throw new Error(
+        "Shop carrier label acquisition requires acquireShippingLabel and readShippingLabel together.",
+      );
     }
     if (hasPickupSchedule !== hasPickupCancel) {
       throw new Error("Shop carrier pickup requires schedulePickup and cancelPickup together.");
@@ -651,6 +668,12 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
               configuredCarrierAdapter.readShippingLabel.bind(configuredCarrierAdapter),
           }
         : {}),
+      ...(configuredCarrierAdapter.acquireShippingLabel
+        ? {
+            acquireShippingLabel:
+              configuredCarrierAdapter.acquireShippingLabel.bind(configuredCarrierAdapter),
+          }
+        : {}),
       ...(configuredCarrierAdapter.schedulePickup && configuredCarrierAdapter.cancelPickup
         ? {
             schedulePickup: configuredCarrierAdapter.schedulePickup.bind(configuredCarrierAdapter),
@@ -723,6 +746,9 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     if (carrierAdapter.readShippingLabel) {
       carrierLabelAdapter = carrierAdapter as NpShopCarrierLabelAdapter;
     }
+    if (carrierLabelAdapter?.acquireShippingLabel) {
+      carrierLabelAcquisitionAdapter = carrierLabelAdapter as NpShopCarrierLabelAcquisitionAdapter;
+    }
     if (carrierAdapter.schedulePickup && carrierAdapter.cancelPickup) {
       carrierPickupAdapter = carrierAdapter as NpShopCarrierPickupAdapter;
     }
@@ -769,6 +795,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     carrierAdapter,
     carrierExchangeAdapter,
     carrierExchangeParcelAdapter,
+    carrierLabelAcquisitionAdapter,
     carrierLabelAdapter,
     carrierParcelAdapter,
     carrierPickupAdapter,
@@ -1532,6 +1559,12 @@ export function createShop(options: NpShopOptions = {}) {
           "widget:shop-carrier-booking-health",
           "table:shop-carrier-bookings",
           ...(carrierLabelApiHandler ? ["action:shop-carrier-label-download"] : []),
+          "dashboard:shop-carrier-label-acquisitions",
+          "widget:shop-carrier-label-acquisition-health",
+          "table:shop-carrier-label-acquisitions",
+          ...(runtime.carrierLabelAcquisitionAdapter
+            ? ["action:shop-carrier-label-acquisition"]
+            : []),
           "dashboard:shop-return-logistics",
           "widget:shop-return-logistics-health",
           "table:shop-return-logistics",
@@ -1615,7 +1648,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded outbound and replacement carrier pickup scheduling, verified or reconciled outbound and replacement tracking, physical return intake, exact same-item replacement exchanges with revision-bound owner address intake, audited short-lived private storage, and optional paired provider booking/cancellation, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, automatic address correction, replacement label purchase or regeneration, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
+          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, carrier booking, durable outbound and replacement shipping-label acquisition with transient retrieval, bounded outbound and replacement carrier pickup scheduling, verified or reconciled outbound and replacement tracking, physical return intake, exact same-item replacement exchanges with revision-bound owner address intake, audited short-lived private storage, and optional paired provider booking/cancellation, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, automatic address correction, label billing/void policy, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: [
           "shop",
@@ -1876,6 +1909,14 @@ export function createShop(options: NpShopOptions = {}) {
           priority: 30,
         },
         {
+          id: "shop-carrier-label-acquisitions-total",
+          label: "Carrier labels",
+          kind: "metric",
+          actionId: "countCarrierLabelAcquisitions",
+          description: "PII-free durable label purchase and regeneration attempts.",
+          priority: 44,
+        },
+        {
           id: "shop-carrier-pickups-total",
           label: "Carrier pickups",
           kind: "metric",
@@ -2080,6 +2121,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Carrier booking contract",
           kind: "status",
           actionId: "carrierBookingHealth",
+        },
+        {
+          id: "shop-carrier-label-acquisition-health",
+          label: "Carrier label acquisition contract",
+          kind: "status",
+          actionId: "carrierLabelAcquisitionHealth",
         },
         {
           id: "shop-carrier-pickup-health",
@@ -2512,9 +2559,42 @@ export function createShop(options: NpShopOptions = {}) {
                       { name: "orderId", rowField: "id" },
                       { name: "shipmentId", rowField: "shipmentId" },
                     ],
-                    visibleWhen: { field: "status", oneOf: ["completed"] },
+                    visibleWhen: runtime.carrierLabelAcquisitionAdapter
+                      ? { field: "labelAction", oneOf: ["regenerate"] }
+                      : { field: "status", oneOf: ["completed"] },
                     description:
                       "Retrieve the current label from the carrier without storing its bytes in NexPress.",
+                  },
+                ]
+              : []),
+            ...(runtime.carrierLabelAcquisitionAdapter
+              ? [
+                  {
+                    id: "purchase-shipping-label",
+                    label: "Purchase label",
+                    actionId: "acquireCarrierShippingLabel",
+                    rowFields: ["id", "shipmentId", "target", "exchangeId", "expectedRevision"],
+                    visibleWhen: { field: "labelAction", oneOf: ["purchase"] },
+                    confirm:
+                      "Purchase the first label for this exact booking? Provider charges remain provider-owned.",
+                  },
+                  {
+                    id: "regenerate-shipping-label",
+                    label: "Regenerate label",
+                    actionId: "acquireCarrierShippingLabel",
+                    rowFields: ["id", "shipmentId", "target", "exchangeId", "expectedRevision"],
+                    visibleWhen: { field: "labelAction", oneOf: ["regenerate"] },
+                    confirm:
+                      "Atomically replace the current provider label? The previous label reference will no longer be current.",
+                  },
+                  {
+                    id: "resume-shipping-label",
+                    label: "Resume label acquisition",
+                    actionId: "acquireCarrierShippingLabel",
+                    rowFields: ["id", "shipmentId", "target", "exchangeId", "expectedRevision"],
+                    visibleWhen: { field: "labelAction", oneOf: ["resume"] },
+                    confirm:
+                      "Resume this stable label acquisition? Provider-confirmed rows perform only local completion.",
                   },
                 ]
               : []),
@@ -2549,6 +2629,39 @@ export function createShop(options: NpShopOptions = {}) {
               : []),
           ],
           emptyMessage: "No carrier shipment booking exists for this site.",
+        },
+        {
+          id: "shop-carrier-label-acquisitions",
+          label: "Carrier label acquisitions (PII withheld)",
+          columns: [
+            { name: "id", label: "Order" },
+            { name: "acquisitionId", label: "Acquisition" },
+            { name: "shipmentId", label: "Shipment" },
+            { name: "target", label: "Shipment kind" },
+            { name: "exchangeId", label: "Exchange" },
+            { name: "provider", label: "Provider" },
+            { name: "status", label: "Status" },
+            { name: "operation", label: "Operation" },
+            { name: "generation", label: "Generation" },
+            { name: "labelReference", label: "Opaque label reference" },
+            { name: "providerError", label: "Closed error" },
+            { name: "updatedAt", label: "Updated" },
+          ],
+          rowsActionId: "recentCarrierLabelAcquisitions",
+          rowActions: runtime.carrierLabelAcquisitionAdapter
+            ? [
+                {
+                  id: "resume-carrier-label-acquisition",
+                  label: "Resume acquisition",
+                  actionId: "acquireCarrierShippingLabel",
+                  rowFields: ["id", "shipmentId", "target", "exchangeId", "expectedRevision"],
+                  visibleWhen: { field: "status", oneOf: ["pending", "provider-confirmed"] },
+                  confirm:
+                    "Resume this stable label acquisition? Provider-confirmed rows perform only local completion.",
+                },
+              ]
+            : [],
+          emptyMessage: "No durable carrier label acquisition exists for this site.",
         },
         {
           id: "shop-carrier-pickups",
@@ -3319,6 +3432,35 @@ export function createShop(options: NpShopOptions = {}) {
                     : []),
                 ]
               : []),
+            ...(runtime.carrierLabelAcquisitionAdapter
+              ? [
+                  {
+                    id: "purchase-exchange-shipping-label",
+                    label: "Purchase replacement label",
+                    actionId: "acquireCarrierShippingLabel",
+                    rowFields: ["id", "shipmentId", "target", "exchangeId", "expectedRevision"],
+                    visibleWhen: { field: "labelAction", oneOf: ["purchase"] },
+                    confirm: "Purchase the first label for this exact replacement booking?",
+                  },
+                  {
+                    id: "regenerate-exchange-shipping-label",
+                    label: "Regenerate replacement label",
+                    actionId: "acquireCarrierShippingLabel",
+                    rowFields: ["id", "shipmentId", "target", "exchangeId", "expectedRevision"],
+                    visibleWhen: { field: "labelAction", oneOf: ["regenerate"] },
+                    confirm: "Atomically replace the current replacement label at the provider?",
+                  },
+                  {
+                    id: "resume-exchange-shipping-label",
+                    label: "Resume replacement label",
+                    actionId: "acquireCarrierShippingLabel",
+                    rowFields: ["id", "shipmentId", "target", "exchangeId", "expectedRevision"],
+                    visibleWhen: { field: "labelAction", oneOf: ["resume"] },
+                    confirm:
+                      "Resume this stable replacement-label acquisition? Provider-confirmed rows perform only local completion.",
+                  },
+                ]
+              : []),
             ...(runtime.carrierLabelAdapter
               ? [
                   {
@@ -3330,7 +3472,9 @@ export function createShop(options: NpShopOptions = {}) {
                       { name: "orderId", rowField: "id" },
                       { name: "shipmentId", rowField: "bookingId" },
                     ],
-                    visibleWhen: { field: "carrierBooking", oneOf: ["completed", "shipped"] },
+                    visibleWhen: runtime.carrierLabelAcquisitionAdapter
+                      ? { field: "labelAction", oneOf: ["regenerate"] }
+                      : { field: "carrierBooking", oneOf: ["completed", "shipped"] },
                     description:
                       "Retrieve the current replacement label from the carrier without storing its bytes in NexPress.",
                   },
@@ -5232,6 +5376,118 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      countCarrierLabelAcquisitions: {
+        kind: "metric" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopCarrierLabelAcquisitions(
+              runtime.carrierLabelAcquisitionAdapter?.id,
+            );
+            return {
+              ok: true as const,
+              data: {
+                value: counts.total,
+                delta: `${counts.completed.toString()} completed, ${(counts.pending + counts.providerConfirmed).toString()} pending reconciliation`,
+              },
+            };
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      carrierLabelAcquisitionHealth: {
+        kind: "status" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopCarrierLabelAcquisitions(
+              runtime.carrierLabelAcquisitionAdapter?.id,
+            );
+            if (
+              !runtime.carrierLabelAcquisitionAdapter &&
+              (counts.pending > 0 || counts.providerConfirmed > 0)
+            ) {
+              return npAdminStatus(
+                "error",
+                `${counts.pending.toString()} pending and ${counts.providerConfirmed.toString()} provider-confirmed label acquisition(s) require their original adapter.`,
+              );
+            }
+            if (
+              counts.invalidSample > 0 ||
+              counts.orphanSample > 0 ||
+              counts.bookingMismatchSample > 0 ||
+              counts.providerMismatchSample > 0
+            ) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed, ${counts.orphanSample.toString()} orphan, ${counts.bookingMismatchSample.toString()} booking-mismatched, and ${counts.providerMismatchSample.toString()} provider-mismatched label row(s) in bounded samples.`,
+              );
+            }
+            if (counts.pending > 0 || counts.providerConfirmed > 0 || counts.manualReview > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.pending.toString()} provider-pending, ${counts.providerConfirmed.toString()} provider-confirmed awaiting local completion, and ${counts.manualReview.toString()} label acquisition(s) requiring manual review.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.completed.toString()} completed acquisition(s) across ${counts.outbound.toString()} outbound and ${counts.replacement.toString()} replacement shipment(s); ${runtime.carrierLabelAcquisitionAdapter ? `provider "${runtime.carrierLabelAcquisitionAdapter.id}" is enabled` : "label purchase and regeneration are disabled"}.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Carrier label acquisition health failed.",
+            );
+          }
+        },
+      },
+      recentCarrierLabelAcquisitions: {
+        kind: "table" as const,
+        handler: async () => {
+          try {
+            const result = await npListRecentShopCarrierLabelAcquisitions();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      ...(runtime.carrierLabelAcquisitionAdapter
+        ? {
+            acquireCarrierShippingLabel: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Carrier label acquisition requires a direct staff action.",
+                    };
+                  }
+                  const result = await npAcquireShopCarrierShippingLabel(
+                    runtime,
+                    npRequireShopCarrierLabelAcquisitionActionInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Carrier label ${result.duplicate ? "already reconciled" : result.acquisition.operation === "purchase" ? "purchased" : "regenerated"} at generation ${result.acquisition.generation.toString()} and revision ${result.acquisition.revision.toString()}.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+          }
+        : {}),
       countCarrierPickups: {
         kind: "metric" as const,
         handler: async () => {
@@ -7126,6 +7382,7 @@ export type {
   NpShopCarrierAdapter,
   NpShopCarrierExchangeAdapter,
   NpShopCarrierExchangeParcelAdapter,
+  NpShopCarrierLabelAcquisitionAdapter,
   NpShopCarrierLabelAdapter,
   NpShopCarrierLabelFormat,
   NpShopCarrierLabelReadInput,
@@ -7148,6 +7405,33 @@ export type {
   NpShopCarrierBookingStatus,
   NpShopStoredCarrierBooking,
 } from "./carrier-contract.js";
+export {
+  NP_SHOP_CARRIER_LABEL_ACQUISITION_REQUEST_CONTRACT,
+  NP_SHOP_CARRIER_LABEL_ACQUISITION_RESULT_CONTRACT,
+  NP_SHOP_CARRIER_LABEL_ACQUISITION_STORAGE_CONTRACT,
+  NpShopCarrierLabelAcquisitionConflictError,
+  NpShopCarrierLabelAcquisitionContractError,
+  npAnalyzeShopCarrierLabelAcquisitionRequest,
+  npAnalyzeShopCarrierLabelAcquisitionResult,
+  npAnalyzeStoredShopCarrierLabelAcquisition,
+  npRequireShopCarrierLabelAcquisitionActionInput,
+  npRequireShopCarrierLabelAcquisitionRequest,
+  npRequireShopCarrierLabelAcquisitionResult,
+  npRequireStoredShopCarrierLabelAcquisition,
+  npShopCarrierLabelAcquisitionLimits,
+  npShopCarrierLabelAcquisitionOperations,
+  npShopCarrierLabelAcquisitionStatuses,
+  npShopCarrierLabelAcquisitionTargets,
+} from "./label-acquisition-contract.js";
+export type {
+  NpShopCarrierLabelAcquisitionActionInput,
+  NpShopCarrierLabelAcquisitionOperation,
+  NpShopCarrierLabelAcquisitionRequest,
+  NpShopCarrierLabelAcquisitionResult,
+  NpShopCarrierLabelAcquisitionStatus,
+  NpShopCarrierLabelAcquisitionTarget,
+  NpShopStoredCarrierLabelAcquisition,
+} from "./label-acquisition-contract.js";
 export {
   NP_SHOP_RETURN_TRACKING_CONTRACT,
   NP_SHOP_RETURN_TRACKING_EVENT_CONTRACT,

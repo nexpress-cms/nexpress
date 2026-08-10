@@ -16,6 +16,7 @@ import {
   type NpShopCarrierLabelReadInput,
 } from "./carrier-contract.js";
 import { npReadShopCarrierShippingLabel } from "./order-service.js";
+import { NpShopCarrierLabelAcquisitionContractError } from "./label-acquisition-contract.js";
 import type { NpShopRuntime } from "./runtime.js";
 
 const mediaTypes: Record<NpShopCarrierLabelFormat, string> = {
@@ -37,7 +38,10 @@ export function createShopCarrierLabelApiHandler(runtime: NpShopRuntime) {
     try {
       input = npRequireShopCarrierLabelReadInput(request.query);
     } catch (error) {
-      if (error instanceof NpShopCarrierContractError) {
+      if (
+        error instanceof NpShopCarrierContractError ||
+        error instanceof NpShopCarrierLabelAcquisitionContractError
+      ) {
         throw new NpValidationError(
           "Invalid carrier label request",
           error.issues.map((message) => ({ field: "carrierLabel", message })),
@@ -67,7 +71,10 @@ export function createShopCarrierLabelApiHandler(runtime: NpShopRuntime) {
       ) {
         throw new NpServiceUnavailableError("The carrier label provider is unavailable.");
       }
-      if (error instanceof NpShopCarrierContractError) {
+      if (
+        error instanceof NpShopCarrierContractError ||
+        error instanceof NpShopCarrierLabelAcquisitionContractError
+      ) {
         throw new NpServiceUnavailableError(
           "The carrier label provider returned an invalid response.",
         );

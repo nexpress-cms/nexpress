@@ -25,6 +25,7 @@ import {
   type NpShopCarrierBookingRequest,
   type NpShopExchangeCarrierParcelBookingRequest,
   type NpShopExchangeCarrierCancelRequest,
+  type NpShopCarrierLabelAcquisitionRequest,
   type NpShopCarrierLabelRequest,
   type NpShopCarrierParcelBookingRequest,
   type NpShopCarrierPickupCancelRequest,
@@ -3603,6 +3604,44 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       content: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
       retrievedAt: request.requestedAt,
     }));
+    let labelAcquisitionAttempts = 0;
+    const acquiredLabelResults = new Map<
+      string,
+      {
+        contract: "np.shop-carrier-label-acquisition-result.v1";
+        acquisitionId: string;
+        shipmentId: string;
+        orderId: string;
+        generation: number;
+        operation: "purchase" | "regenerate";
+        labelReference: string;
+        acquiredAt: string;
+      }
+    >();
+    const acquireShippingLabel = vi.fn((request: NpShopCarrierLabelAcquisitionRequest) => {
+      labelAcquisitionAttempts += 1;
+      if (labelAcquisitionAttempts === 1) {
+        throw new NpShopCarrierProviderError(
+          "label-timeout",
+          "carrier-private@example.com must never reach durable label state",
+          { retryable: true },
+        );
+      }
+      const existing = acquiredLabelResults.get(request.acquisitionId);
+      if (existing) return existing;
+      const result = {
+        contract: "np.shop-carrier-label-acquisition-result.v1" as const,
+        acquisitionId: request.acquisitionId,
+        shipmentId: request.shipmentId,
+        orderId: request.orderId,
+        generation: request.generation,
+        operation: request.operation,
+        labelReference: `label_${request.generation.toString()}`,
+        acquiredAt: new Date().toISOString(),
+      };
+      acquiredLabelResults.set(request.acquisitionId, result);
+      return result;
+    });
     let pickupProviderAttempts = 0;
     const schedulePickup = vi.fn((request: NpShopCarrierPickupRequest) => {
       pickupProviderAttempts += 1;
@@ -3645,6 +3684,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           id: "test-carrier",
           bookShipment: () => Promise.reject(new Error("legacy booking must not be called")),
           bookShipmentWithParcels,
+          acquireShippingLabel,
           readShippingLabel,
           readTracking,
           schedulePickup,
@@ -3837,6 +3877,147 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     trackingBase.setMilliseconds(0);
     const shipmentId = bookShipmentWithParcels.mock.calls[1]?.[0].shipmentId;
     if (!shipmentId) throw new Error("Missing durable carrier shipment id.");
+    await expect(
+      configuredShopCall(carrierShop, "GET", "/carrier/shipping-label", {
+        query: { orderId: ids.orderId, shipmentId },
+        user: {
+          id: staff.userId,
+          email: "carrier-operator@example.com",
+          role: "admin",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      statusCode: 409,
+      details: { code: "carrier_label_not_available" },
+    });
+    expect(readShippingLabel).not.toHaveBeenCalled();
+    const initialLabelAction = {
+      row: {
+        id: ids.orderId,
+        shipmentId,
+        target: "outbound",
+        exchangeId: null,
+        expectedRevision: 0,
+      },
+      values: {},
+    };
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.acquireCarrierShippingLabel?.handler(
+          initialLabelAction,
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("temporarily unavailable") });
+    const [pendingLabel] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `carrier-label-acquisition:${shipmentId}`));
+    expect(pendingLabel?.value).toMatchObject({
+      contract: "np.shop-carrier-label-acquisition-storage.v1",
+      orderId: ids.orderId,
+      shipmentId,
+      target: "outbound",
+      exchangeId: null,
+      providerId: "test-carrier",
+      status: "pending",
+      revision: 1,
+      generation: 1,
+      operation: "purchase",
+      replacesLabelReference: null,
+      labelReference: null,
+    });
+    expect(JSON.stringify(pendingLabel)).not.toContain("carrier-private@example.com");
+    expect(JSON.stringify(pendingLabel)).not.toContain("세종대로");
+    const retryLabelAction = {
+      ...initialLabelAction,
+      row: { ...initialLabelAction.row, expectedRevision: 1 },
+    };
+    const concurrentLabelResults = await Promise.all([
+      withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.acquireCarrierShippingLabel?.handler(
+          retryLabelAction,
+          actionContext,
+        ),
+      ),
+      withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.acquireCarrierShippingLabel?.handler(
+          retryLabelAction,
+          actionContext,
+        ),
+      ),
+    ]);
+    expect(concurrentLabelResults).toEqual([
+      expect.objectContaining({ ok: true, data: expect.stringContaining("generation 1") }),
+      expect.objectContaining({ ok: true, data: expect.stringContaining("generation 1") }),
+    ]);
+    expect(acquireShippingLabel).toHaveBeenCalledTimes(3);
+    expect(acquireShippingLabel.mock.calls[0]?.[0].acquisitionId).toBe(
+      acquireShippingLabel.mock.calls[1]?.[0].acquisitionId,
+    );
+    expect(acquireShippingLabel.mock.calls[1]?.[0]).toEqual(
+      acquireShippingLabel.mock.calls[2]?.[0],
+    );
+    expect(acquireShippingLabel.mock.calls[1]?.[0]).toMatchObject({
+      contract: "np.shop-carrier-label-acquisition-request.v1",
+      shipmentId,
+      orderId: ids.orderId,
+      generation: 1,
+      operation: "purchase",
+      bookingReference: "booking_transaction_1",
+      carrier: "Parcel Co",
+      trackingNumber: "CARRIER-TRACK-1",
+      replacesLabelReference: null,
+      requestedAt: expect.any(String),
+    });
+    expect(JSON.stringify(acquireShippingLabel.mock.calls[1]?.[0])).not.toContain(
+      "carrier-private@example.com",
+    );
+    const [purchasedLabel] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `carrier-label-acquisition:${shipmentId}`));
+    expect(purchasedLabel?.value).toMatchObject({
+      status: "completed",
+      revision: 3,
+      generation: 1,
+      labelReference: "label_1",
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.acquireCarrierShippingLabel?.handler(
+          {
+            ...initialLabelAction,
+            row: { ...initialLabelAction.row, expectedRevision: 3 },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("regenerated") });
+    expect(acquireShippingLabel).toHaveBeenCalledTimes(4);
+    expect(acquireShippingLabel.mock.calls[3]?.[0]).toMatchObject({
+      generation: 2,
+      operation: "regenerate",
+      replacesLabelReference: "label_1",
+    });
+    const [regeneratedLabel] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `carrier-label-acquisition:${shipmentId}`));
+    expect(regeneratedLabel?.value).toMatchObject({
+      status: "completed",
+      revision: 6,
+      generation: 2,
+      operation: "regenerate",
+      replacesLabelReference: "label_1",
+      labelReference: "label_2",
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.carrierLabelAcquisitionHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
     const labelResponse = await configuredShopCall(carrierShop, "GET", "/carrier/shipping-label", {
       query: { orderId: ids.orderId, shipmentId },
       user: {
@@ -4070,6 +4251,18 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       leaseId: null,
       leaseExpiresAt: null,
     });
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.acquireCarrierShippingLabel?.handler(
+          {
+            ...initialLabelAction,
+            row: { ...initialLabelAction.row, expectedRevision: 6 },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("tracking state blocks") });
+    expect(acquireShippingLabel).toHaveBeenCalledTimes(4);
     await withCurrentSite("default", async () => {
       await carrierShop.plugin.scheduled
         ?.find((task) => task.id === "reconcile-carrier-tracking")
@@ -6598,6 +6791,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     const exchangeCancellationRequests: NpShopExchangeCarrierCancelRequest[] = [];
     const replacementPickupRequests: NpShopCarrierPickupRequest[] = [];
     const replacementPickupCancellationRequests: NpShopCarrierPickupCancelRequest[] = [];
+    const replacementLabelAcquisitionRequests: NpShopCarrierLabelAcquisitionRequest[] = [];
     const readExchangeTracking = vi.fn((request: NpShopTrackingPollRequest) => ({
       contract: "np.shop-tracking-poll-result.v1" as const,
       shipmentId: request.shipmentId,
@@ -6637,6 +6831,26 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         adapter: {
           id: "test-carrier",
           bookShipment: () => Promise.reject(new Error("not called")),
+          acquireShippingLabel: (request) => {
+            replacementLabelAcquisitionRequests.push(request);
+            if (replacementLabelAcquisitionRequests.length === 1) {
+              throw new NpShopCarrierProviderError(
+                "replacement-label-timeout",
+                "private replacement label detail",
+                { retryable: true },
+              );
+            }
+            return {
+              contract: "np.shop-carrier-label-acquisition-result.v1",
+              acquisitionId: request.acquisitionId,
+              shipmentId: request.shipmentId,
+              orderId: request.orderId,
+              generation: request.generation,
+              operation: request.operation,
+              labelReference: "replacement_label_1",
+              acquiredAt: request.requestedAt,
+            };
+          },
           readShippingLabel: readExchangeShippingLabel,
           verifyTrackingWebhook: ({ rawBody }) =>
             JSON.parse(new TextDecoder().decode(rawBody)) as never,
@@ -7139,6 +7353,79 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         };
       }
     ).data.rows[0]!;
+    const replacementLabelAction = {
+      row: {
+        id: ids.orderId,
+        shipmentId: exchangeBookingRow.bookingId,
+        target: "replacement" as const,
+        exchangeId: processingOrder.exchange.id,
+        expectedRevision: 0,
+      },
+      values: {},
+    };
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.acquireCarrierShippingLabel?.handler(
+          replacementLabelAction,
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("temporarily unavailable") });
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.cancelExchangeCarrier?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              exchangeId: processingOrder.exchange.id,
+              exchangeRevision: processingOrder.exchange.revision,
+              orderRevision: processingOrder.revision,
+              bookingId: exchangeBookingRow.bookingId,
+              bookingRevision: exchangeBookingRow.bookingRevision,
+            },
+            values: { operatorNote: "Blocked by ambiguous label" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("label acquisition") });
+    expect(exchangeCancellationRequests).toHaveLength(0);
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.acquireCarrierShippingLabel?.handler(
+          {
+            ...replacementLabelAction,
+            row: { ...replacementLabelAction.row, expectedRevision: 1 },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("generation 1") });
+    expect(replacementLabelAcquisitionRequests).toHaveLength(2);
+    expect(replacementLabelAcquisitionRequests[0]).toEqual(replacementLabelAcquisitionRequests[1]);
+    expect(replacementLabelAcquisitionRequests[1]).toMatchObject({
+      contract: "np.shop-carrier-label-acquisition-request.v1",
+      shipmentId: exchangeBookingRow.bookingId,
+      orderId: ids.orderId,
+      generation: 1,
+      operation: "purchase",
+      bookingReference: "replacement_booking_123",
+      carrier: "Parcel Co",
+      trackingNumber: "EXCHANGE-REPLACEMENT",
+      replacesLabelReference: null,
+    });
+    const [replacementLabelAcquisition] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `carrier-label-acquisition:${exchangeBookingRow.bookingId}`));
+    expect(replacementLabelAcquisition?.value).toMatchObject({
+      target: "replacement",
+      exchangeId: processingOrder.exchange.id,
+      status: "completed",
+      revision: 3,
+      generation: 1,
+      labelReference: "replacement_label_1",
+    });
     const exchangeLabelResponse = await configuredShopCall(
       exchangeCarrierShop,
       "GET",
@@ -7374,6 +7661,14 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(
       await withCurrentSite("default", () =>
         exchangeCarrierShop.plugin.actions?.carrierPickupHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.carrierLabelAcquisitionHealth?.handler(
+          undefined,
+          {} as never,
+        ),
       ),
     ).toMatchObject({ ok: true, data: { level: "ok" } });
     const exchangeTrackingAt = new Date().toISOString();
@@ -7681,6 +7976,14 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(
       await withCurrentSite("default", () =>
         exchangeCarrierShop.plugin.actions?.carrierPickupHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.carrierLabelAcquisitionHealth?.handler(
+          undefined,
+          {} as never,
+        ),
       ),
     ).toMatchObject({ ok: true, data: { level: "ok" } });
     expect(
@@ -8198,6 +8501,37 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       expiresAt: expiredPurgeAt,
       updatedAt: expiredCreatedAt,
     });
+    await db.insert(npPluginStorage).values({
+      pluginId: "shop",
+      siteId: "default",
+      key: `carrier-label-acquisition:${expiredPickupShipmentId}`,
+      value: {
+        contract: "np.shop-carrier-label-acquisition-storage.v1",
+        id: "143e4567-e89b-42d3-a456-426614174000",
+        orderId,
+        shipmentId: expiredPickupShipmentId,
+        target: "outbound",
+        exchangeId: null,
+        providerId: "retired-carrier",
+        status: "completed",
+        revision: 3,
+        sourceRevision: 1,
+        generation: 1,
+        operation: "purchase",
+        bookingReference: "retired-booking",
+        carrier: "Retired Carrier",
+        trackingNumber: "RETIRED-TRACKING",
+        replacesLabelReference: null,
+        labelReference: "retired-label",
+        providerErrorCode: null,
+        requestedAt: expiredCreatedAt.toISOString(),
+        confirmedAt: expiredCreatedAt.toISOString(),
+        updatedAt: expiredCreatedAt.toISOString(),
+        purgeAt: expiredPurgeAt.toISOString(),
+      },
+      expiresAt: expiredPurgeAt,
+      updatedAt: expiredCreatedAt,
+    });
     await withCurrentSite("default", () => maintenance?.handler({} as never));
     expect(
       await db
@@ -8239,6 +8573,12 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         .select({ key: npPluginStorage.key })
         .from(npPluginStorage)
         .where(eq(npPluginStorage.key, `carrier-pickup:${expiredPickupShipmentId}`)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `carrier-label-acquisition:${expiredPickupShipmentId}`)),
     ).toHaveLength(0);
   });
 });
