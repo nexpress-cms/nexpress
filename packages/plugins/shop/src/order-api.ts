@@ -13,6 +13,7 @@ import {
   npCancelShopOrder,
   npCreateShopOrder,
   npListShopOrders,
+  npIssueShopExchangeDestinationAuthority,
   npReadShopOrder,
 } from "./order-service.js";
 import { npListShopOrderNotifications } from "./order-notification-service.js";
@@ -75,7 +76,15 @@ export function createShopOrderApiHandler(runtime: NpShopRuntime) {
           npReadShopOrder(resolved.owner, orderId),
           npListShopOrderNotifications(resolved.owner, orderId),
         ]);
-        return { status: 200, body: { order, notifications, csrfToken }, headers };
+        const exchangeDestinationAuthority = await npIssueShopExchangeDestinationAuthority(
+          resolved.owner,
+          order,
+        );
+        return {
+          status: 200,
+          body: { order, notifications, exchangeDestinationAuthority, csrfToken },
+          headers,
+        };
       }
 
       npRequireShopMutationCsrf(request, resolved);
@@ -86,7 +95,15 @@ export function createShopOrderApiHandler(runtime: NpShopRuntime) {
           npRequireShopOrderCreateInput(request.body),
         );
         const notifications = await npListShopOrderNotifications(resolved.owner, order.id);
-        return { status: 200, body: { order, notifications, csrfToken }, headers };
+        const exchangeDestinationAuthority = await npIssueShopExchangeDestinationAuthority(
+          resolved.owner,
+          order,
+        );
+        return {
+          status: 200,
+          body: { order, notifications, exchangeDestinationAuthority, csrfToken },
+          headers,
+        };
       }
       if (request.method === "DELETE") {
         const order = await npCancelShopOrder(
@@ -94,7 +111,15 @@ export function createShopOrderApiHandler(runtime: NpShopRuntime) {
           npRequireShopOrderCancelInput(request.body),
         );
         const notifications = await npListShopOrderNotifications(resolved.owner, order.id);
-        return { status: 200, body: { order, notifications, csrfToken }, headers };
+        const exchangeDestinationAuthority = await npIssueShopExchangeDestinationAuthority(
+          resolved.owner,
+          order,
+        );
+        return {
+          status: 200,
+          body: { order, notifications, exchangeDestinationAuthority, csrfToken },
+          headers,
+        };
       }
       return {
         status: 405,

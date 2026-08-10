@@ -144,6 +144,15 @@ function cartClientMessages(messages: NpShopMessages): NpShopCartClientMessages 
     orderExchangeInventoryRestocked: messages.orderExchangeInventoryRestocked,
     orderExchangeInventoryManual: messages.orderExchangeInventoryManual,
     orderExchangeTracking: messages.orderExchangeTracking,
+    orderExchangeDestination: messages.orderExchangeDestination,
+    orderExchangeDestinationAwaiting: messages.orderExchangeDestinationAwaiting,
+    orderExchangeDestinationSubmitted: messages.orderExchangeDestinationSubmitted,
+    orderExchangeDestinationAccessed: messages.orderExchangeDestinationAccessed,
+    orderExchangeDestinationExpired: messages.orderExchangeDestinationExpired,
+    orderExchangeDestinationSubmit: messages.orderExchangeDestinationSubmit,
+    orderExchangeDestinationSubmitting: messages.orderExchangeDestinationSubmitting,
+    orderExchangeDestinationPrivacy: messages.orderExchangeDestinationPrivacy,
+    orderExchangeDestinationFailed: messages.orderExchangeDestinationFailed,
     orderReturnReason: messages.orderReturnReason,
     orderReturnReasonDamaged: messages.orderReturnReasonDamaged,
     orderReturnReasonDefective: messages.orderReturnReasonDefective,
@@ -741,6 +750,7 @@ export function ShopOrderSurface({ skin, ...props }: NpShopOrderSkinProps & { sk
       <ShopOrder
         apiPath={props.apiPath}
         returnApiPath={props.returnApiPath}
+        exchangeDestinationApiPath={props.exchangeDestinationApiPath}
         returnLogisticsApiPath={props.returnLogisticsApiPath}
         returnPostageApiPath={props.returnPostageApiPath}
         returnLogisticsLabelPath={props.returnLogisticsLabelPath}

@@ -470,8 +470,11 @@ real product domain, not just blog/community. Ship as a plugin package
   awaiting/processing/shipped/cancelled state, cancellation restock, manual
   carrier/tracking, owner notifications, both skins, Storefront hooks,
   Admin/Doctor, audit, cleanup, scaffolds, and PostgreSQL coverage share the
-  PII-free contract. New address intake, carrier booking, substitutions,
-  payment differences, store credit, eligibility policy, and automatic approval
+  PII-free contract. Owners submit one new address under a 15-minute
+  revision-bound authority into a maximum-24-hour private sidecar; audited staff
+  access is required before processing and processing/cancellation/expiry delete
+  it. Carrier booking, substitutions, payment differences, store credit,
+  eligibility policy, automatic address correction, and automatic approval
   remain separate additive contracts.
 - **Provider-neutral return tracking (shipped)** — optional exact raw-body
   callback and bounded polling capabilities advance one independent PII-free

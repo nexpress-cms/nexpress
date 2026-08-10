@@ -1,7 +1,7 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { getDb, npAuditEvents, npPluginStorage } from "@nexpress/core/db";
-import { requireSiteId } from "@nexpress/core/sites";
+import { npIsCanonicalSiteId, requireSiteId } from "@nexpress/core/sites";
 import { and, asc, desc, eq, gt, inArray, like, lte, or, sql } from "drizzle-orm";
 
 import {
@@ -180,6 +180,18 @@ import {
   type NpShopExchangeUpdateInput,
   type NpShopStoredExchange,
 } from "./exchange-contract.js";
+import {
+  NP_SHOP_EXCHANGE_DESTINATION_AUTHORITY_CONTRACT,
+  NP_SHOP_EXCHANGE_DESTINATION_PRIVATE_CONTRACT,
+  NpShopExchangeDestinationConflictError,
+  npRequireShopExchangeDestinationAuthority,
+  npRequireStoredShopExchangeDestinationPrivate,
+  npShopExchangeDestinationLimits,
+  type NpShopExchangeDestinationAuthority,
+  type NpShopExchangeDestinationReadInput,
+  type NpShopExchangeDestinationSubmitInput,
+  type NpShopStoredExchangeDestinationPrivate,
+} from "./exchange-destination-contract.js";
 
 interface NpShopOrderMaintenanceMarker {
   contract: "np.shop-order-maintenance.v1";
@@ -195,9 +207,125 @@ interface NpShopOrderLookup {
   purgeAt: string;
 }
 
+interface NpShopExchangeDestinationAuthorityPayload {
+  version: 1;
+  siteId: string;
+  ownerSegment: string;
+  orderId: string;
+  exchangeId: string;
+  orderRevision: number;
+  exchangeRevision: number;
+  destinationRevision: number;
+  issuedAt: number;
+  expiresAt: number;
+}
+
 const canonicalUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const guestOwnerSegmentPattern = /^guest:[0-9a-f]{64}$/u;
+
+function shopSecret(): string {
+  const value = process.env.NP_SECRET;
+  if (!value || value.length < 32) {
+    throw new Error(
+      "NP_SECRET must contain at least 32 characters for Shop exchange destination authority.",
+    );
+  }
+  return value;
+}
+
+function signExchangeDestinationAuthority(value: string): string {
+  return createHmac("sha256", shopSecret())
+    .update(`shop-exchange-destination:${value}`)
+    .digest("base64url");
+}
+
+function safeEqual(left: string, right: string): boolean {
+  const leftBytes = Buffer.from(left);
+  const rightBytes = Buffer.from(right);
+  return leftBytes.length === rightBytes.length && timingSafeEqual(leftBytes, rightBytes);
+}
+
+function encodeExchangeDestinationAuthority(
+  payload: NpShopExchangeDestinationAuthorityPayload,
+): string {
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  return `${encoded}.${signExchangeDestinationAuthority(encoded)}`;
+}
+
+function invalidExchangeDestinationAuthority(): NpShopExchangeDestinationConflictError {
+  return new NpShopExchangeDestinationConflictError(
+    "exchange_destination_authority_invalid",
+    "The exchange destination authority is invalid.",
+  );
+}
+
+function decodeExchangeDestinationAuthority(
+  token: string,
+): NpShopExchangeDestinationAuthorityPayload {
+  const [encoded, signature, ...remainder] = token.split(".");
+  if (
+    !encoded ||
+    !signature ||
+    remainder.length > 0 ||
+    !safeEqual(signature, signExchangeDestinationAuthority(encoded))
+  ) {
+    throw invalidExchangeDestinationAuthority();
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as unknown;
+  } catch {
+    throw invalidExchangeDestinationAuthority();
+  }
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    throw invalidExchangeDestinationAuthority();
+  }
+  const candidate = value as Record<string, unknown>;
+  const keys = Object.keys(candidate).sort();
+  const expected = [
+    "destinationRevision",
+    "exchangeId",
+    "exchangeRevision",
+    "expiresAt",
+    "issuedAt",
+    "orderId",
+    "orderRevision",
+    "ownerSegment",
+    "siteId",
+    "version",
+  ];
+  if (
+    keys.length !== expected.length ||
+    keys.some((key, index) => key !== expected[index]) ||
+    candidate.version !== 1 ||
+    !npIsCanonicalSiteId(candidate.siteId) ||
+    !isOwnerSegment(candidate.ownerSegment) ||
+    typeof candidate.orderId !== "string" ||
+    !canonicalUuidPattern.test(candidate.orderId) ||
+    typeof candidate.exchangeId !== "string" ||
+    !canonicalUuidPattern.test(candidate.exchangeId) ||
+    !Number.isSafeInteger(candidate.orderRevision) ||
+    (candidate.orderRevision as number) < 1 ||
+    !Number.isSafeInteger(candidate.exchangeRevision) ||
+    (candidate.exchangeRevision as number) < 1 ||
+    !Number.isSafeInteger(candidate.destinationRevision) ||
+    (candidate.destinationRevision as number) < 0 ||
+    !Number.isSafeInteger(candidate.issuedAt) ||
+    !Number.isSafeInteger(candidate.expiresAt) ||
+    (candidate.expiresAt as number) <= (candidate.issuedAt as number) ||
+    (candidate.expiresAt as number) - (candidate.issuedAt as number) >
+      npShopExchangeDestinationLimits.authorityTtlSeconds * 1_000
+  ) {
+    throw invalidExchangeDestinationAuthority();
+  }
+  return candidate as unknown as NpShopExchangeDestinationAuthorityPayload;
+}
 
 function isCanonicalIso(value: unknown): value is string {
   if (typeof value !== "string") return false;
@@ -265,6 +393,9 @@ export interface NpShopAdminExchangeRow {
   status: string;
   exchangeRevision: number;
   orderRevision: number;
+  destination: string;
+  destinationRevision: number;
+  destinationExpiresAt: string;
   units: number;
   inventory: string;
   carrier: string;
@@ -373,6 +504,10 @@ export function npShopExchangeStorageKey(orderId: string): string {
   return `exchange:${orderId}`;
 }
 
+export function npShopExchangeDestinationPrivateStorageKey(orderId: string): string {
+  return `exchange-destination-private:${orderId}`;
+}
+
 function maintenanceStorageKey(ownerSegment: string, orderId: string): string {
   return `order-maintenance:${ownerSegment}:${orderId}`;
 }
@@ -421,6 +556,24 @@ function requireStoredExchangeAtKey(
     ]);
   }
   return exchange;
+}
+
+function requireStoredExchangeDestinationPrivateAtKey(
+  value: unknown,
+  expiresAt: Date | null,
+  key: string,
+): NpShopStoredExchangeDestinationPrivate {
+  const destination = npRequireStoredShopExchangeDestinationPrivate(value);
+  if (
+    key !== npShopExchangeDestinationPrivateStorageKey(destination.orderId) ||
+    expiresAt === null ||
+    expiresAt.toISOString() !== destination.expiresAt
+  ) {
+    throw new NpShopOrderContractError("Invalid Shop exchange destination storage metadata", [
+      "Exchange destination key and expiry must match its canonical value.",
+    ]);
+  }
+  return destination;
 }
 
 function requireStoredPrivate(
@@ -601,6 +754,24 @@ function exchangeMatchesOrder(
         line.quantity === expected.quantity,
       );
     })
+  );
+}
+
+function exchangeDestinationMatches(
+  destination: NpShopStoredExchangeDestinationPrivate,
+  exchange: NpShopStoredExchange,
+): boolean {
+  return (
+    exchange.status === "awaiting" &&
+    exchange.destinationRedactedAt === null &&
+    exchange.destinationRevision > 0 &&
+    destination.orderId === exchange.orderId &&
+    destination.exchangeId === exchange.id &&
+    destination.ownerSegment === exchange.ownerSegment &&
+    destination.exchangeRevision === exchange.revision &&
+    destination.destinationRevision === exchange.destinationRevision &&
+    destination.submittedAt === exchange.destinationSubmittedAt &&
+    destination.expiresAt <= exchange.purgeAt
   );
 }
 
@@ -971,6 +1142,34 @@ async function readStoredExchange(
   return row ? requireStoredExchangeAtKey(row.value, row.expiresAt, row.key) : null;
 }
 
+async function readStoredExchangeDestinationPrivate(
+  db: ReturnType<typeof getDb> | NpShopTransaction,
+  siteId: string,
+  orderId: string,
+  forUpdate = false,
+): Promise<NpShopStoredExchangeDestinationPrivate | null> {
+  let query = db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        eq(npPluginStorage.key, npShopExchangeDestinationPrivateStorageKey(orderId)),
+      ),
+    )
+    .limit(1);
+  if (forUpdate) query = query.for("update") as typeof query;
+  const [row] = await query;
+  return row
+    ? requireStoredExchangeDestinationPrivateAtKey(row.value, row.expiresAt, row.key)
+    : null;
+}
+
 async function persistOrder(
   tx: NpShopTransaction,
   siteId: string,
@@ -1220,6 +1419,48 @@ async function persistExchange(
     });
 }
 
+async function persistExchangeDestinationPrivate(
+  tx: NpShopTransaction,
+  siteId: string,
+  destination: NpShopStoredExchangeDestinationPrivate,
+): Promise<void> {
+  npRequireStoredShopExchangeDestinationPrivate(destination);
+  await tx
+    .insert(npPluginStorage)
+    .values({
+      pluginId: NP_SHOP_PLUGIN_ID,
+      siteId,
+      key: npShopExchangeDestinationPrivateStorageKey(destination.orderId),
+      value: destination,
+      expiresAt: new Date(destination.expiresAt),
+      updatedAt: new Date(destination.updatedAt),
+    })
+    .onConflictDoUpdate({
+      target: [npPluginStorage.pluginId, npPluginStorage.siteId, npPluginStorage.key],
+      set: {
+        value: destination,
+        expiresAt: new Date(destination.expiresAt),
+        updatedAt: new Date(destination.updatedAt),
+      },
+    });
+}
+
+async function deleteExchangeDestinationPrivate(
+  tx: NpShopTransaction,
+  siteId: string,
+  orderId: string,
+): Promise<void> {
+  await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        eq(npPluginStorage.key, npShopExchangeDestinationPrivateStorageKey(orderId)),
+      ),
+    );
+}
+
 async function persistMaintenanceMarker(
   tx: NpShopTransaction,
   siteId: string,
@@ -1355,6 +1596,9 @@ async function projectOrder(
     returnLogistics,
   );
   const exchange = await readStoredExchange(db, siteId, order.id);
+  const exchangeDestination = exchange
+    ? await readStoredExchangeDestinationPrivate(db, siteId, order.id)
+    : null;
   if (
     exchange &&
     (!returnRequest ||
@@ -1364,6 +1608,14 @@ async function projectOrder(
   ) {
     throw new NpShopOrderContractError("Shop exchange does not match its order", [
       "Exchange identity, received return, exact lines, revision, retention, and refund exclusion must match.",
+    ]);
+  }
+  if (
+    exchangeDestination &&
+    (!exchange || !exchangeDestinationMatches(exchangeDestination, exchange))
+  ) {
+    throw new NpShopOrderContractError("Shop exchange destination does not match", [
+      "Private destination identity, owner, revisions, and submission time must match its awaiting exchange.",
     ]);
   }
   if (
@@ -1398,7 +1650,19 @@ async function projectOrder(
     ...(returnRequest
       ? { returnRequest: npProjectShopReturn(returnRequest, returnLogistics) }
       : {}),
-    ...(exchange ? { exchange: npProjectShopExchange(exchange) } : {}),
+    ...(exchange
+      ? {
+          exchange: npProjectShopExchange(
+            exchange,
+            exchangeDestination
+              ? {
+                  expiresAt: exchangeDestination.expiresAt,
+                  accessedAt: exchangeDestination.accessedAt,
+                }
+              : null,
+          ),
+        }
+      : {}),
   });
 }
 
@@ -2135,7 +2399,7 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${npShopExchangeStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)}, ${`payment-adjustment:${order.id}`}, ${`promotion-reservation:${order.id}`})`,
+        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${npShopExchangeStorageKey(order.id)}, ${npShopExchangeDestinationPrivateStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)}, ${`payment-adjustment:${order.id}`}, ${`promotion-reservation:${order.id}`})`,
       ),
     );
   await tx
@@ -2553,6 +2817,7 @@ export async function npCancelShopOrder(
 export async function npMaintainShopOrders(): Promise<{
   cancelled: number;
   privateRedacted: number;
+  exchangeDestinationsCleaned: number;
   purged: number;
   reservationsCleaned: number;
 }> {
@@ -2614,6 +2879,39 @@ export async function npMaintainShopOrders(): Promise<{
     if (outcome === "cancelled") cancelled += 1;
     if (outcome === "redacted") privateRedacted += 1;
   }
+  const exchangeDestinationRows = await db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "exchange-destination-private:%"),
+        lte(npPluginStorage.expiresAt, now),
+      ),
+    )
+    .orderBy(asc(npPluginStorage.expiresAt), asc(npPluginStorage.key))
+    .limit(npShopOrderLimits.cleanupBatchSize);
+  let exchangeDestinationsCleaned = 0;
+  for (const row of exchangeDestinationRows) {
+    requireStoredExchangeDestinationPrivateAtKey(row.value, row.expiresAt, row.key);
+    const deleted = await db
+      .delete(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+          eq(npPluginStorage.siteId, siteId),
+          eq(npPluginStorage.key, row.key),
+          lte(npPluginStorage.expiresAt, now),
+        ),
+      )
+      .returning({ key: npPluginStorage.key });
+    exchangeDestinationsCleaned += deleted.length;
+  }
 
   const purgeRows = await db
     .select({
@@ -2644,7 +2942,13 @@ export async function npMaintainShopOrders(): Promise<{
     });
   }
   const reservationsCleaned = await npCleanupExpiredShopInventoryReservations();
-  return { cancelled, privateRedacted, purged, reservationsCleaned };
+  return {
+    cancelled,
+    privateRedacted,
+    exchangeDestinationsCleaned,
+    purged,
+    reservationsCleaned,
+  };
 }
 
 export async function npCountShopOrders(): Promise<{
@@ -5487,6 +5791,245 @@ function requireExchangeRevisions(
   }
 }
 
+export async function npIssueShopExchangeDestinationAuthority(
+  owner: NpShopCartOwner,
+  order: NpShopOrder,
+): Promise<NpShopExchangeDestinationAuthority | null> {
+  const exchange = order.exchange;
+  if (
+    !exchange ||
+    exchange.status !== "awaiting" ||
+    (exchange.destinationStatus !== "awaiting" && exchange.destinationStatus !== "expired")
+  ) {
+    return null;
+  }
+  const siteId = await requireSiteId();
+  const now = Date.now();
+  const expiresAt = now + npShopExchangeDestinationLimits.authorityTtlSeconds * 1_000;
+  const payload: NpShopExchangeDestinationAuthorityPayload = {
+    version: 1,
+    siteId,
+    ownerSegment: npShopCartOwnerStorageSegment(owner),
+    orderId: order.id,
+    exchangeId: exchange.id,
+    orderRevision: order.revision,
+    exchangeRevision: exchange.revision,
+    destinationRevision: exchange.destinationRevision,
+    issuedAt: now,
+    expiresAt,
+  };
+  return npRequireShopExchangeDestinationAuthority({
+    contract: NP_SHOP_EXCHANGE_DESTINATION_AUTHORITY_CONTRACT,
+    orderId: order.id,
+    exchangeId: exchange.id,
+    orderRevision: order.revision,
+    exchangeRevision: exchange.revision,
+    destinationRevision: exchange.destinationRevision,
+    token: encodeExchangeDestinationAuthority(payload),
+    issuedAt: new Date(now).toISOString(),
+    expiresAt: new Date(expiresAt).toISOString(),
+  });
+}
+
+export async function npSubmitShopExchangeDestination(
+  owner: NpShopCartOwner,
+  input: NpShopExchangeDestinationSubmitInput,
+): Promise<NpShopExchange> {
+  const siteId = await requireSiteId();
+  const ownerSegment = npShopCartOwnerStorageSegment(owner);
+  const authority = decodeExchangeDestinationAuthority(input.authorityToken);
+  if (
+    authority.siteId !== siteId ||
+    authority.ownerSegment !== ownerSegment ||
+    authority.orderId !== input.orderId ||
+    authority.exchangeId !== input.exchangeId ||
+    authority.orderRevision !== input.orderRevision ||
+    authority.exchangeRevision !== input.exchangeRevision ||
+    authority.destinationRevision !== input.destinationRevision ||
+    authority.expiresAt <= Date.now()
+  ) {
+    throw invalidExchangeDestinationAuthority();
+  }
+  return getDb().transaction(async (tx) => {
+    await lockOrder(tx, siteId, ownerSegment, input.orderId);
+    const order = await readStoredOrderForUpdate(tx, siteId, ownerSegment, input.orderId);
+    const returnRequest = await readStoredReturn(tx, siteId, input.orderId, true);
+    const exchange = await readStoredExchange(tx, siteId, input.orderId, true);
+    if (
+      !order ||
+      !returnRequest ||
+      !exchange ||
+      !returnMatchesOrder(returnRequest, order) ||
+      !exchangeMatchesOrder(exchange, order, returnRequest) ||
+      exchange.id !== input.exchangeId
+    ) {
+      throw new NpShopExchangeDestinationConflictError(
+        "exchange_destination_not_found",
+        "The exchange awaiting a replacement destination is missing.",
+      );
+    }
+    if (
+      order.revision !== input.orderRevision ||
+      exchange.revision !== input.exchangeRevision ||
+      exchange.destinationRevision !== input.destinationRevision
+    ) {
+      throw new NpShopExchangeDestinationConflictError(
+        "exchange_destination_revision_conflict",
+        "The exchange changed before the replacement destination was submitted.",
+      );
+    }
+    if (exchange.status !== "awaiting" || exchange.destinationRedactedAt !== null) {
+      throw new NpShopExchangeDestinationConflictError(
+        "exchange_destination_unavailable",
+        "This exchange no longer accepts a replacement destination.",
+      );
+    }
+    const nowDate = new Date();
+    const currentDestination = await readStoredExchangeDestinationPrivate(
+      tx,
+      siteId,
+      input.orderId,
+      true,
+    );
+    if (currentDestination && !exchangeDestinationMatches(currentDestination, exchange)) {
+      throw new NpShopExchangeDestinationConflictError(
+        "exchange_destination_revision_conflict",
+        "The retained replacement destination does not match this exchange revision.",
+      );
+    }
+    if (currentDestination && new Date(currentDestination.expiresAt) > nowDate) {
+      throw new NpShopExchangeDestinationConflictError(
+        "exchange_destination_already_submitted",
+        "A replacement destination is already retained for this exchange.",
+      );
+    }
+    if (currentDestination) {
+      await deleteExchangeDestinationPrivate(tx, siteId, input.orderId);
+    }
+    const now = nowDate.toISOString();
+    const expiresAt = new Date(
+      Math.min(
+        nowDate.getTime() + npShopExchangeDestinationLimits.privateRetentionSeconds * 1_000,
+        new Date(order.purgeAt).getTime(),
+      ),
+    ).toISOString();
+    if (expiresAt <= now) {
+      throw new NpShopExchangeDestinationConflictError(
+        "exchange_destination_unavailable",
+        "This order is no longer retained long enough to accept a destination.",
+      );
+    }
+    const updatedOrder: NpShopStoredOrder = {
+      ...order,
+      revision: order.revision + 1,
+      updatedAt: now,
+    };
+    const updatedExchange: NpShopStoredExchange = {
+      ...exchange,
+      revision: exchange.revision + 1,
+      orderRevision: updatedOrder.revision,
+      destinationRevision: exchange.destinationRevision + 1,
+      destinationSubmittedAt: now,
+      destinationRedactedAt: null,
+      updatedAt: now,
+    };
+    const destination: NpShopStoredExchangeDestinationPrivate = {
+      contract: NP_SHOP_EXCHANGE_DESTINATION_PRIVATE_CONTRACT,
+      orderId: order.id,
+      exchangeId: exchange.id,
+      ownerSegment,
+      exchangeRevision: updatedExchange.revision,
+      destinationRevision: updatedExchange.destinationRevision,
+      destination: input.destination,
+      submittedAt: now,
+      accessedAt: null,
+      updatedAt: now,
+      expiresAt,
+    };
+    await persistOrder(tx, siteId, updatedOrder);
+    await persistExchange(tx, siteId, updatedExchange);
+    await persistExchangeDestinationPrivate(tx, siteId, destination);
+    await tx.insert(npAuditEvents).values({
+      actorKind: owner.kind === "member" ? "member" : "system",
+      actorUserId: null,
+      actorMemberId: owner.kind === "member" ? owner.memberId : null,
+      action: "shop.exchange.destination.submit",
+      targetType: "shop-order",
+      targetId: order.id,
+      payload: {
+        exchangeId: exchange.id,
+        exchangeRevision: updatedExchange.revision,
+        destinationRevision: updatedExchange.destinationRevision,
+        expiresAt,
+      },
+      siteId,
+    });
+    return npProjectShopExchange(updatedExchange, destination);
+  });
+}
+
+export async function npReadShopExchangeDestination(
+  input: NpShopExchangeDestinationReadInput,
+  staffUserId: string,
+): Promise<{
+  destination: NpShopStoredExchangeDestinationPrivate["destination"];
+  expiresAt: string;
+}> {
+  const siteId = await requireSiteId();
+  return getDb().transaction(async (tx) => {
+    const { order, exchange } = await readExchangeForAction(tx, siteId, input.orderId);
+    if (
+      exchange.id !== input.exchangeId ||
+      order.revision !== input.orderRevision ||
+      exchange.revision !== input.exchangeRevision ||
+      exchange.destinationRevision !== input.destinationRevision
+    ) {
+      throw new NpShopExchangeDestinationConflictError(
+        "exchange_destination_revision_conflict",
+        "The exchange destination changed before it was accessed.",
+      );
+    }
+    if (exchange.status !== "awaiting" || exchange.destinationRedactedAt !== null) {
+      throw new NpShopExchangeDestinationConflictError(
+        "exchange_destination_unavailable",
+        "This exchange no longer retains a destination.",
+      );
+    }
+    const current = await readStoredExchangeDestinationPrivate(tx, siteId, input.orderId, true);
+    if (!current || !exchangeDestinationMatches(current, exchange)) {
+      throw new NpShopExchangeDestinationConflictError(
+        "exchange_destination_not_found",
+        "The replacement destination is missing.",
+      );
+    }
+    const nowDate = new Date();
+    if (new Date(current.expiresAt) <= nowDate) {
+      throw new NpShopExchangeDestinationConflictError(
+        "exchange_destination_expired",
+        "The replacement destination expired and must be submitted again.",
+      );
+    }
+    const accessed: NpShopStoredExchangeDestinationPrivate = current.accessedAt
+      ? current
+      : { ...current, accessedAt: nowDate.toISOString(), updatedAt: nowDate.toISOString() };
+    if (accessed !== current) await persistExchangeDestinationPrivate(tx, siteId, accessed);
+    await recordRequiredShopFulfillmentAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.exchange.destination.private.read",
+      input.orderId,
+      {
+        exchangeId: exchange.id,
+        exchangeRevision: exchange.revision,
+        destinationRevision: exchange.destinationRevision,
+        expiresAt: accessed.expiresAt,
+      },
+    );
+    return { destination: accessed.destination, expiresAt: accessed.expiresAt };
+  });
+}
+
 export async function npCreateShopExchange(
   runtime: NpShopRuntime,
   input: NpShopExchangeCreateInput,
@@ -5596,6 +6139,9 @@ export async function npCreateShopExchange(
       revision: 1,
       orderRevision: updatedOrder.revision,
       returnRevision: returnRequest.revision,
+      destinationRevision: 0,
+      destinationSubmittedAt: null,
+      destinationRedactedAt: null,
       lines: npShopExchangeLinesFromOrder(order.lines, returnRequest.lines),
       inventoryOutcome: trackedLines.length === 0 ? "not-required" : "consumed",
       carrier: null,
@@ -5668,6 +6214,32 @@ async function updateShopExchange(
       );
     }
     const now = new Date().toISOString();
+    if (action === "process") {
+      const destination = await readStoredExchangeDestinationPrivate(
+        tx,
+        siteId,
+        input.orderId,
+        true,
+      );
+      if (!destination || !exchangeDestinationMatches(destination, exchange)) {
+        throw new NpShopExchangeDestinationConflictError(
+          "exchange_destination_access_required",
+          "A current replacement destination must be submitted and accessed before processing.",
+        );
+      }
+      if (destination.expiresAt <= now) {
+        throw new NpShopExchangeDestinationConflictError(
+          "exchange_destination_expired",
+          "The replacement destination expired and must be submitted again.",
+        );
+      }
+      if (destination.accessedAt === null) {
+        throw new NpShopExchangeDestinationConflictError(
+          "exchange_destination_access_required",
+          "Staff must access the replacement destination before processing.",
+        );
+      }
+    }
     let inventoryOutcome = exchange.inventoryOutcome;
     if (action === "cancel") {
       const trackedKeys = new Set(order.inventoryReservationLineKeys);
@@ -5701,12 +6273,21 @@ async function updateShopExchange(
       inventoryOutcome,
       carrier: action === "ship" ? shipment.carrier : null,
       trackingNumber: action === "ship" ? shipment.trackingNumber : null,
+      destinationRedactedAt:
+        action === "process"
+          ? now
+          : action === "cancel"
+            ? (exchange.destinationRedactedAt ?? now)
+            : exchange.destinationRedactedAt,
       updatedAt: now,
       shippedAt: action === "ship" ? now : null,
       cancelledAt: action === "cancel" ? now : null,
     };
     await persistOrder(tx, siteId, updatedOrder);
     await persistExchange(tx, siteId, updated);
+    if (action === "process" || action === "cancel") {
+      await deleteExchangeDestinationPrivate(tx, siteId, input.orderId);
+    }
     await npStageShopOrderNotification(tx, siteId, {
       orderId: order.id,
       ownerSegment: order.ownerSegment,
@@ -6038,23 +6619,39 @@ export async function npListRecentShopExchanges(): Promise<{
       ),
     );
   return {
-    rows: rows.map((row) => {
-      const exchange = requireStoredExchangeAtKey(row.value, row.expiresAt, row.key);
-      return {
-        id: exchange.orderId,
-        exchangeId: exchange.id,
-        returnId: exchange.returnId,
-        status: exchange.status,
-        exchangeRevision: exchange.revision,
-        orderRevision: exchange.orderRevision,
-        units: exchange.lines.reduce((sum, line) => sum + line.quantity, 0),
-        inventory: exchange.inventoryOutcome,
-        carrier: exchange.carrier ?? "—",
-        trackingNumber: exchange.trackingNumber ?? "—",
-        operatorNote: exchange.operatorNote ?? "—",
-        updatedAt: exchange.updatedAt,
-      };
-    }),
+    rows: await Promise.all(
+      rows.map(async (row) => {
+        const exchange = requireStoredExchangeAtKey(row.value, row.expiresAt, row.key);
+        const destination = await readStoredExchangeDestinationPrivate(
+          db,
+          siteId,
+          exchange.orderId,
+        );
+        const projected = npProjectShopExchange(
+          exchange,
+          destination && exchangeDestinationMatches(destination, exchange)
+            ? { expiresAt: destination.expiresAt, accessedAt: destination.accessedAt }
+            : null,
+        );
+        return {
+          id: exchange.orderId,
+          exchangeId: exchange.id,
+          returnId: exchange.returnId,
+          status: exchange.status,
+          exchangeRevision: exchange.revision,
+          orderRevision: exchange.orderRevision,
+          destination: projected.destinationStatus,
+          destinationRevision: projected.destinationRevision,
+          destinationExpiresAt: projected.destinationExpiresAt ?? "—",
+          units: exchange.lines.reduce((sum, line) => sum + line.quantity, 0),
+          inventory: exchange.inventoryOutcome,
+          carrier: exchange.carrier ?? "—",
+          trackingNumber: exchange.trackingNumber ?? "—",
+          operatorNote: exchange.operatorNote ?? "—",
+          updatedAt: exchange.updatedAt,
+        };
+      }),
+    ),
     total,
   };
 }
@@ -6066,6 +6663,13 @@ export async function npCountShopExchanges(): Promise<{
   shipped: number;
   cancelled: number;
   manualInventory: number;
+  destinationAwaitingSample: number;
+  destinationSubmittedSample: number;
+  destinationAccessedSample: number;
+  destinationExpiredSample: number;
+  expiredPrivateSample: number;
+  invalidPrivateSample: number;
+  orphanPrivateSample: number;
   invalidSample: number;
   orphanSample: number;
 }> {
@@ -6106,6 +6710,11 @@ export async function npCountShopExchanges(): Promise<{
     .limit(npShopExchangeLimits.diagnosticSampleSize);
   let invalidSample = 0;
   let orphanSample = 0;
+  let destinationAwaitingSample = 0;
+  let destinationSubmittedSample = 0;
+  let destinationAccessedSample = 0;
+  let destinationExpiredSample = 0;
+  const invalidPrivateKeys = new Set<string>();
   for (const row of rows) {
     try {
       const exchange = requireStoredExchangeAtKey(row.value, row.expiresAt, row.key);
@@ -6183,9 +6792,79 @@ export async function npCountShopExchanges(): Promise<{
       ) {
         invalidSample += 1;
       }
+      let destination: NpShopStoredExchangeDestinationPrivate | null;
+      try {
+        destination = await readStoredExchangeDestinationPrivate(db, siteId, exchange.orderId);
+      } catch {
+        invalidPrivateKeys.add(npShopExchangeDestinationPrivateStorageKey(exchange.orderId));
+        continue;
+      }
+      if (exchange.status === "awaiting") {
+        if (destination) {
+          if (!exchangeDestinationMatches(destination, exchange)) {
+            invalidPrivateKeys.add(npShopExchangeDestinationPrivateStorageKey(exchange.orderId));
+          } else if (new Date(destination.expiresAt) <= new Date()) {
+            destinationExpiredSample += 1;
+          } else if (destination.accessedAt) {
+            destinationAccessedSample += 1;
+          } else {
+            destinationSubmittedSample += 1;
+          }
+        } else if (exchange.destinationRevision > 0) {
+          destinationExpiredSample += 1;
+        } else {
+          destinationAwaitingSample += 1;
+        }
+      } else if (destination) {
+        invalidPrivateKeys.add(npShopExchangeDestinationPrivateStorageKey(exchange.orderId));
+      }
     } catch {
       invalidSample += 1;
     }
   }
-  return { ...counts, invalidSample, orphanSample };
+  const privateRows = await db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "exchange-destination-private:%"),
+      ),
+    )
+    .orderBy(desc(npPluginStorage.updatedAt))
+    .limit(npShopExchangeLimits.diagnosticSampleSize);
+  let orphanPrivateSample = 0;
+  let expiredPrivateSample = 0;
+  for (const row of privateRows) {
+    try {
+      const destination = requireStoredExchangeDestinationPrivateAtKey(
+        row.value,
+        row.expiresAt,
+        row.key,
+      );
+      const exchange = await readStoredExchange(db, siteId, destination.orderId);
+      if (!exchange) orphanPrivateSample += 1;
+      else if (!exchangeDestinationMatches(destination, exchange)) invalidPrivateKeys.add(row.key);
+      else if (new Date(destination.expiresAt) <= new Date()) expiredPrivateSample += 1;
+    } catch {
+      invalidPrivateKeys.add(row.key);
+    }
+  }
+  return {
+    ...counts,
+    destinationAwaitingSample,
+    destinationSubmittedSample,
+    destinationAccessedSample,
+    destinationExpiredSample,
+    expiredPrivateSample,
+    invalidPrivateSample: invalidPrivateKeys.size,
+    orphanPrivateSample,
+    invalidSample,
+    orphanSample,
+  };
 }

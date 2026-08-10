@@ -2,7 +2,17 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-10 (Shop now owns one direct-staff same-item
+**Last refreshed:** 2026-08-10 (Shop same-item exchanges now require the owner
+to submit one new delivery destination under a 15-minute, revision-bound,
+single-use authority. A separate maximum-24-hour private sidecar, audited
+direct-staff read required before processing, processing/cancellation/expiry
+deletion, PII-free Admin/Doctor state, both skins, independent Storefront hook,
+scaffold guidance, cleanup, and PostgreSQL coverage share the contract. The
+deleted original address is never reused. Carrier booking, automatic address
+correction, substitutions, payment differences, store credit, eligibility
+policy, and automatic approval remain separate.)
+
+**Earlier:** 2026-08-10 (Shop now owns one direct-staff same-item
 replacement exchange after a received physical return. Exact immutable lines,
 reservation-aware all-or-none inventory, revision-safe
 awaiting/processing/shipped/cancelled state, cancellation restock, manual

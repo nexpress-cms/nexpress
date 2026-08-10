@@ -28,5 +28,7 @@ When Shop later projects a completed quote-backed refund, Storefront styles the
 independent `[data-np-shop-return-postage-settlement]` hook without deciding the
 merchant/customer responsibility or changing the refund amount.
 Same-item replacement state is enhanced independently through
-`[data-np-shop-exchange]`; Storefront owns presentation only and does not import
-Shop, decide eligibility, consume inventory, or dispatch exchange operations.
+`[data-np-shop-exchange]`, while the short-lived owner replacement-address form
+and its non-PII status use `[data-np-shop-exchange-destination]`; Storefront owns
+presentation only and does not import Shop, retain/read addresses, decide
+eligibility, consume inventory, or dispatch exchange operations.

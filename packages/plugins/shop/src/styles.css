@@ -694,6 +694,40 @@
     color: var(--np-shop-accent, var(--np-color-primary, #205c46));
   }
 
+  [data-np-shop-exchange-destination] {
+    display: grid;
+    gap: 0.75rem;
+    padding: 1rem;
+    border: 1px solid var(--np-shop-line, var(--np-color-border, #deddd8));
+    border-radius: var(--np-radius-md, 0.5rem);
+    color: var(--np-color-foreground, #171716);
+  }
+
+  [data-np-shop-exchange-destination="accessed"] {
+    border-color: var(--np-shop-accent, var(--np-color-primary, #205c46));
+  }
+
+  [data-np-shop-exchange-destination="expired"] {
+    border-color: var(--np-color-destructive, #b42318);
+  }
+
+  [data-np-shop-exchange-destination] form,
+  [data-np-shop-exchange-destination] label {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  [data-np-shop-exchange-destination] input {
+    width: 100%;
+    min-width: 0;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--np-shop-line, var(--np-color-border, #deddd8));
+    border-radius: var(--np-radius-sm, 0.35rem);
+    background: var(--np-color-background, #fff);
+    color: var(--np-color-foreground, #171716);
+    font: inherit;
+  }
+
   .np-shop-return-logistics-form,
   .np-shop-return-logistics-summary,
   .np-shop-return-postage,

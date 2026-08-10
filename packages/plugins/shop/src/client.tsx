@@ -9,6 +9,11 @@ import { npRequireShopCheckoutIntent } from "./checkout-contract.js";
 import { npRequireShopOrderDraft } from "./order-draft-contract.js";
 import { npRequireShopOrder, npRequireShopOrderList } from "./order-contract.js";
 import {
+  npRequireShopExchangeDestinationAuthority,
+  type NpShopExchangeDestinationAuthority,
+} from "./exchange-destination-contract.js";
+import { npRequireShopExchange, type NpShopExchange } from "./exchange-contract.js";
+import {
   npRequireShopOrderNotificationListWire,
   type NpShopOrderNotificationKind,
   type NpShopOrderNotificationListWire,
@@ -62,6 +67,7 @@ interface OrderDraftDeleteResponse {
 interface OrderResponse {
   order: NpShopOrder;
   notifications: NpShopOrderNotificationListWire;
+  exchangeDestinationAuthority: NpShopExchangeDestinationAuthority | null;
   csrfToken: string | null;
 }
 
@@ -72,6 +78,11 @@ interface OrderListResponse {
 
 interface ReturnResponse {
   returnRequest: NpShopReturn;
+  csrfToken: string | null;
+}
+
+interface ExchangeDestinationResponse {
+  exchange: NpShopExchange;
   csrfToken: string | null;
 }
 
@@ -234,10 +245,42 @@ async function requestOrder(
       ...payload,
       order: npRequireShopOrder(payload.order),
       notifications: npRequireShopOrderNotificationListWire(payload.notifications),
+      exchangeDestinationAuthority:
+        payload.exchangeDestinationAuthority === null
+          ? null
+          : npRequireShopExchangeDestinationAuthority(payload.exchangeDestinationAuthority),
     };
   }
   if ("list" in payload) return { ...payload, list: npRequireShopOrderList(payload.list) };
   throw new Error("Order response was invalid.");
+}
+
+async function requestExchangeDestination(
+  apiPath: string,
+  csrfToken: string | null,
+  body: unknown,
+): Promise<ExchangeDestinationResponse> {
+  const response = await fetch(apiPath, {
+    method: "POST",
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  const payload = (await response.json()) as
+    ExchangeDestinationResponse | { message?: string; error?: string };
+  if (!response.ok || !("exchange" in payload)) {
+    const failure = payload as { message?: string; error?: string };
+    throw new ShopRequestError(
+      failure.error ?? "exchange_destination_request_failed",
+      failure.message ?? failure.error ?? "Exchange destination request failed.",
+    );
+  }
+  return { ...payload, exchange: npRequireShopExchange(payload.exchange) };
 }
 
 async function requestReturn(
@@ -1382,6 +1425,7 @@ export function ShopOrders({
 export function ShopOrder({
   apiPath,
   returnApiPath,
+  exchangeDestinationApiPath,
   returnLogisticsApiPath,
   returnPostageApiPath,
   returnLogisticsLabelPath,
@@ -1392,6 +1436,7 @@ export function ShopOrder({
 }: {
   apiPath: string;
   returnApiPath: string;
+  exchangeDestinationApiPath: string;
   returnLogisticsApiPath?: string;
   returnPostageApiPath?: string;
   returnLogisticsLabelPath?: string;
@@ -1403,6 +1448,8 @@ export function ShopOrder({
   const [order, setOrder] = useState<NpShopOrder | null>(null);
   const [notifications, setNotifications] = useState<NpShopOrderNotificationListWire | null>(null);
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
+  const [exchangeDestinationAuthority, setExchangeDestinationAuthority] =
+    useState<NpShopExchangeDestinationAuthority | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
   const [returnLogisticsMode, setReturnLogisticsMode] =
@@ -1417,6 +1464,7 @@ export function ShopOrder({
         if (!("order" in response)) throw new Error(messages.orderFailed);
         setOrder(response.order);
         setNotifications(response.notifications);
+        setExchangeDestinationAuthority(response.exchangeDestinationAuthority);
         setCsrfToken(response.csrfToken);
       })
       .catch((caught: unknown) => {
@@ -1431,6 +1479,7 @@ export function ShopOrder({
       if (!("order" in response)) return;
       setOrder(response.order);
       setNotifications(response.notifications);
+      setExchangeDestinationAuthority(response.exchangeDestinationAuthority);
       setCsrfToken(response.csrfToken);
     } catch {
       // Preserve the mutation error; a normal reload can recover read state.
@@ -1449,6 +1498,7 @@ export function ShopOrder({
       if (!("order" in response)) throw new Error(messages.orderFailed);
       setOrder(response.order);
       setNotifications(response.notifications);
+      setExchangeDestinationAuthority(response.exchangeDestinationAuthority);
       setCsrfToken(response.csrfToken);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : messages.orderFailed);
@@ -1488,6 +1538,48 @@ export function ShopOrder({
       await refreshOrderState();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : messages.orderReturnFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitExchangeDestination(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!order?.exchange || !exchangeDestinationAuthority) return;
+    const form = new FormData(event.currentTarget);
+    const text = (name: string): string => {
+      const value = form.get(name);
+      return typeof value === "string" ? value.trim() : "";
+    };
+    const nullable = (name: string): string | null => text(name) || null;
+    setBusy(true);
+    setError("");
+    try {
+      const response = await requestExchangeDestination(exchangeDestinationApiPath, csrfToken, {
+        orderId: exchangeDestinationAuthority.orderId,
+        exchangeId: exchangeDestinationAuthority.exchangeId,
+        orderRevision: exchangeDestinationAuthority.orderRevision,
+        exchangeRevision: exchangeDestinationAuthority.exchangeRevision,
+        destinationRevision: exchangeDestinationAuthority.destinationRevision,
+        authorityToken: exchangeDestinationAuthority.token,
+        destination: {
+          recipientName: text("recipientName"),
+          phone: text("phone"),
+          countryCode: text("countryCode"),
+          postalCode: text("postalCode"),
+          addressLine1: text("addressLine1"),
+          addressLine2: nullable("addressLine2"),
+          locality: text("locality"),
+          administrativeArea: nullable("administrativeArea"),
+        },
+      });
+      setOrder({ ...order, exchange: response.exchange });
+      setExchangeDestinationAuthority(null);
+      setCsrfToken(response.csrfToken);
+      await refreshOrderState();
+    } catch (caught) {
+      await refreshOrderState();
+      setError(caught instanceof Error ? caught.message : messages.orderExchangeDestinationFailed);
     } finally {
       setBusy(false);
     }
@@ -2357,6 +2449,71 @@ export function ShopOrder({
                       </li>
                     ))}
                   </ul>
+                  {order.exchange.status === "awaiting" ? (
+                    <section data-np-shop-exchange-destination={order.exchange.destinationStatus}>
+                      <h3>{messages.orderExchangeDestination}</h3>
+                      <p>
+                        {
+                          {
+                            awaiting: messages.orderExchangeDestinationAwaiting,
+                            submitted: messages.orderExchangeDestinationSubmitted,
+                            accessed: messages.orderExchangeDestinationAccessed,
+                            expired: messages.orderExchangeDestinationExpired,
+                            redacted: messages.orderExchangeDestinationSubmitted,
+                          }[order.exchange.destinationStatus]
+                        }
+                      </p>
+                      {exchangeDestinationAuthority ? (
+                        <form onSubmit={(event) => void submitExchangeDestination(event)}>
+                          <label>
+                            <span>{messages.orderDraftRecipientName}</span>
+                            <input name="recipientName" required maxLength={120} disabled={busy} />
+                          </label>
+                          <label>
+                            <span>{messages.orderDraftPhone}</span>
+                            <input name="phone" required maxLength={40} disabled={busy} />
+                          </label>
+                          <label>
+                            <span>{messages.orderDraftCountryCode}</span>
+                            <input
+                              name="countryCode"
+                              required
+                              pattern="[A-Za-z]{2}"
+                              maxLength={2}
+                              defaultValue="KR"
+                              disabled={busy}
+                            />
+                          </label>
+                          <label>
+                            <span>{messages.orderDraftPostalCode}</span>
+                            <input name="postalCode" required maxLength={32} disabled={busy} />
+                          </label>
+                          <label>
+                            <span>{messages.orderDraftAddressLine1}</span>
+                            <input name="addressLine1" required maxLength={200} disabled={busy} />
+                          </label>
+                          <label>
+                            <span>{messages.orderDraftAddressLine2}</span>
+                            <input name="addressLine2" maxLength={200} disabled={busy} />
+                          </label>
+                          <label>
+                            <span>{messages.orderDraftLocality}</span>
+                            <input name="locality" required maxLength={120} disabled={busy} />
+                          </label>
+                          <label>
+                            <span>{messages.orderDraftAdministrativeArea}</span>
+                            <input name="administrativeArea" maxLength={120} disabled={busy} />
+                          </label>
+                          <p>{messages.orderExchangeDestinationPrivacy}</p>
+                          <button type="submit" disabled={busy}>
+                            {busy
+                              ? messages.orderExchangeDestinationSubmitting
+                              : messages.orderExchangeDestinationSubmit}
+                          </button>
+                        </form>
+                      ) : null}
+                    </section>
+                  ) : null}
                   {order.exchange.status === "shipped" &&
                   order.exchange.carrier &&
                   order.exchange.trackingNumber ? (

@@ -309,6 +309,9 @@ describe("Shop order contract", () => {
         returnId,
         status: "awaiting",
         revision: 1,
+        destinationStatus: "awaiting",
+        destinationRevision: 0,
+        destinationExpiresAt: null,
         lines: [
           {
             lineKey: line.key,

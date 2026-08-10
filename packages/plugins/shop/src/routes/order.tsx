@@ -30,6 +30,7 @@ export function createShopOrderRoute(runtime: NpShopRuntime) {
       basePath: runtime.basePath,
       apiPath: "/api/plugins/shop/orders",
       returnApiPath: "/api/plugins/shop/returns",
+      exchangeDestinationApiPath: "/api/plugins/shop/exchanges/destination",
       ...(runtime.carrierReturnLogisticsAdapter
         ? { returnLogisticsApiPath: "/api/plugins/shop/returns/logistics" }
         : {}),
