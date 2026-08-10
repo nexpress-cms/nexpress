@@ -2,7 +2,15 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-10 (Shop provider-booked same-item replacements now
+**Last refreshed:** 2026-08-10 (Shop same-item replacement exchanges now add one
+independent PII-free parcel snapshot over their exact immutable lines and an
+additive carrier booking v2. Revision-safe Admin preparation, durable
+shipment locking before provider I/O, unchanged retries, v1 fallback,
+Doctor, cleanup, scaffolds, docs, and PostgreSQL coverage share the contract.
+Packaging calculation, replacement pickup, label purchase/regeneration, and
+provider protocols remain separate.)
+
+**Earlier:** 2026-08-10 (Shop provider-booked same-item replacements now
 reuse the existing exact tracking callback and bounded polling capabilities.
 Outbound and replacement state remain separately persisted and owner-visible;
 exact booking/exchange tuples, cursor-fair leases/backoff, PII-free receipts,

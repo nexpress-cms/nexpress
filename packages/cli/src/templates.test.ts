@@ -437,6 +437,8 @@ describe("getProjectFiles", () => {
     expect(env).toContain("require access before processing");
     expect(env).toContain("bookExchangeShipment and cancelExchangeShipment together");
     expect(env).toContain("deletes the replacement address only after durable");
+    expect(env).toContain("bookExchangeShipmentWithParcels adds one exact v2 request");
+    expect(readme).toContain("locks one exact PII-free mm/gram allocation");
     expect(env).toContain("readShippingLabel capability serves completed outbound");
     expect(env).toContain("never persist or log those bytes");
     expect(env).toContain("verifyTrackingWebhook and readTracking methods also serve exact");

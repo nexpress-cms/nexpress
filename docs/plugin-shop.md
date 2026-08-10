@@ -1639,6 +1639,23 @@ database transaction and must use `shipmentId` as its provider idempotency key.
 The result contains only a bounded booking reference, carrier, tracking number,
 and timestamp; returning an address or any additional field fails closed.
 
+The same adapter may add `bookExchangeShipmentWithParcels`. When present, a
+new booking first requires direct staff to save one exact
+`np.shop-exchange-parcels-storage.v1` snapshot. It reuses the outbound parcel
+shape and bounds, but allocation is checked against every immutable exchange
+line and exact replacement quantity rather than the full order. Exchange and
+parcel revisions are compare-and-swap inputs, and an existing durable booking
+or shipment lock makes the snapshot immutable.
+
+The booking transaction locks that snapshot to the stable replacement shipment
+UUID before provider I/O. The provider then receives
+`np.shop-exchange-carrier-booking-request.v2`, which adds only the parcel
+revision and exact parcel array to the v1 request. Retryable ambiguity reuses
+the same UUID, destination revision, parcel revision, dimensions, weights, and
+allocations. A pending locked booking requires its original parcel-aware
+capability. When the additive method is absent, v1 remains authoritative and
+does not reinterpret or lock an independently prepared snapshot.
+
 Shop durably records `provider-confirmed` before deleting the destination
 sidecar and completing the exchange as `processing`. A crash in between can be
 resumed without retaining or rereading the address. Retryable ambiguity remains
@@ -1673,7 +1690,8 @@ also exposes `[data-np-shop-exchange-carrier-booking]` without identifying the
 adapter. The flow stages the same preference-aware member-inbox and
 email events as other order transitions. Admin exposes bounded PII-free totals,
 recent rows, destination and carrier-booking lifecycle,
-malformed/orphan/provider-mismatched samples, expired sidecars, and manual
+parcel revision/lock state, malformed/orphan/provider-mismatched samples,
+parcel allocation or lock mismatches, expired sidecars, and manual
 reconciliation/inventory work. Doctor validates the matching declarative
 metric, status, table, and conditional action inventory without provider I/O.
 The address itself is
@@ -1686,7 +1704,7 @@ submission/access, processing, shipment, and cancellation write PII-free audit
 metadata.
 
 The original shipping address has already been deleted at first shipment and
-is never reused. Replacement label purchase/regeneration, pickup, tracking callbacks/polling,
+is never reused. Replacement label purchase/regeneration, replacement pickup,
 automatic address correction, different-item substitutions, payment
 differences, store credit, legal eligibility rules, and automatic approval
 remain separate additive contracts.

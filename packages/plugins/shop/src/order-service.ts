@@ -201,6 +201,7 @@ import {
 } from "./exchange-destination-contract.js";
 import {
   NP_SHOP_EXCHANGE_CARRIER_BOOKING_REQUEST_CONTRACT,
+  NP_SHOP_EXCHANGE_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT,
   NP_SHOP_EXCHANGE_CARRIER_BOOKING_RESULT_CONTRACT,
   NP_SHOP_EXCHANGE_CARRIER_BOOKING_STORAGE_CONTRACT,
   NP_SHOP_EXCHANGE_CARRIER_CANCEL_REQUEST_CONTRACT,
@@ -208,6 +209,7 @@ import {
   NpShopExchangeCarrierConflictError,
   NpShopExchangeCarrierContractError,
   npRequireShopExchangeCarrierBookingRequest,
+  npRequireShopExchangeCarrierParcelBookingRequest,
   npRequireShopExchangeCarrierBookingResult,
   npRequireShopExchangeCarrierCancelRequest,
   npRequireShopExchangeCarrierCancelResult,
@@ -218,6 +220,13 @@ import {
   type NpShopExchangeCarrierExistingActionInput,
   type NpShopStoredExchangeCarrierBooking,
 } from "./exchange-carrier-contract.js";
+import {
+  NP_SHOP_EXCHANGE_PARCELS_STORAGE_CONTRACT,
+  NpShopExchangeParcelConflictError,
+  npRequireStoredShopExchangeParcels,
+  type NpShopExchangeParcelsSaveInput,
+  type NpShopStoredExchangeParcels,
+} from "./exchange-parcel-contract.js";
 
 interface NpShopOrderMaintenanceMarker {
   contract: "np.shop-order-maintenance.v1";
@@ -427,6 +436,8 @@ export interface NpShopAdminExchangeRow {
   shipmentId: string;
   bookingRevision: number;
   provider: string;
+  parcels: string;
+  parcelRevision: number | null;
   units: number;
   inventory: string;
   carrier: string;
@@ -545,6 +556,10 @@ export function npShopExchangeCarrierBookingStorageKey(orderId: string): string 
   return `exchange-carrier-booking:${orderId}`;
 }
 
+export function npShopExchangeParcelsStorageKey(orderId: string): string {
+  return `exchange-parcels:${orderId}`;
+}
+
 function maintenanceStorageKey(ownerSegment: string, orderId: string): string {
   return `order-maintenance:${ownerSegment}:${orderId}`;
 }
@@ -629,6 +644,24 @@ function requireStoredExchangeCarrierBookingAtKey(
     ]);
   }
   return booking;
+}
+
+function requireStoredExchangeParcelsAtKey(
+  value: unknown,
+  expiresAt: Date | null,
+  key: string,
+): NpShopStoredExchangeParcels {
+  const parcels = npRequireStoredShopExchangeParcels(value);
+  if (
+    key !== npShopExchangeParcelsStorageKey(parcels.orderId) ||
+    expiresAt === null ||
+    expiresAt.toISOString() !== parcels.purgeAt
+  ) {
+    throw new NpShopOrderContractError("Invalid Shop exchange parcel storage metadata", [
+      "Exchange parcel storage key and expiry must match their canonical values.",
+    ]);
+  }
+  return parcels;
 }
 
 function requireStoredPrivate(
@@ -1251,6 +1284,32 @@ async function readStoredExchangeCarrierBooking(
   return row ? requireStoredExchangeCarrierBookingAtKey(row.value, row.expiresAt, row.key) : null;
 }
 
+async function readStoredExchangeParcels(
+  db: ReturnType<typeof getDb> | NpShopTransaction,
+  siteId: string,
+  orderId: string,
+  forUpdate = false,
+): Promise<NpShopStoredExchangeParcels | null> {
+  let query = db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        eq(npPluginStorage.key, npShopExchangeParcelsStorageKey(orderId)),
+      ),
+    )
+    .limit(1);
+  if (forUpdate) query = query.for("update") as typeof query;
+  const [row] = await query;
+  return row ? requireStoredExchangeParcelsAtKey(row.value, row.expiresAt, row.key) : null;
+}
+
 async function persistOrder(
   tx: NpShopTransaction,
   siteId: string,
@@ -1548,6 +1607,32 @@ async function persistExchangeCarrierBooking(
         value: booking,
         expiresAt: new Date(booking.purgeAt),
         updatedAt: new Date(booking.updatedAt),
+      },
+    });
+}
+
+async function persistExchangeParcels(
+  tx: NpShopTransaction,
+  siteId: string,
+  parcels: NpShopStoredExchangeParcels,
+): Promise<void> {
+  npRequireStoredShopExchangeParcels(parcels);
+  await tx
+    .insert(npPluginStorage)
+    .values({
+      pluginId: NP_SHOP_PLUGIN_ID,
+      siteId,
+      key: npShopExchangeParcelsStorageKey(parcels.orderId),
+      value: parcels,
+      expiresAt: new Date(parcels.purgeAt),
+      updatedAt: new Date(parcels.updatedAt),
+    })
+    .onConflictDoUpdate({
+      target: [npPluginStorage.pluginId, npPluginStorage.siteId, npPluginStorage.key],
+      set: {
+        value: parcels,
+        expiresAt: new Date(parcels.purgeAt),
+        updatedAt: new Date(parcels.updatedAt),
       },
     });
 }
@@ -2522,7 +2607,7 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${npShopExchangeTrackingStorageKey(order.id)}, ${npShopExchangeTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${npShopExchangeStorageKey(order.id)}, ${npShopExchangeDestinationPrivateStorageKey(order.id)}, ${npShopExchangeCarrierBookingStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)}, ${`payment-adjustment:${order.id}`}, ${`promotion-reservation:${order.id}`})`,
+        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${npShopExchangeTrackingStorageKey(order.id)}, ${npShopExchangeTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${npShopExchangeStorageKey(order.id)}, ${npShopExchangeDestinationPrivateStorageKey(order.id)}, ${npShopExchangeCarrierBookingStorageKey(order.id)}, ${npShopExchangeParcelsStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)}, ${`payment-adjustment:${order.id}`}, ${`promotion-reservation:${order.id}`})`,
       ),
     );
   await tx
@@ -6567,6 +6652,100 @@ function exchangeCarrierItems(exchange: NpShopStoredExchange) {
   }));
 }
 
+function requireExchangeParcelAllocation(
+  exchange: NpShopStoredExchange,
+  parcels: NpShopStoredExchangeParcels["parcels"],
+): void {
+  const allocated = new Map<string, number>();
+  for (const parcel of parcels) {
+    for (const item of parcel.items) {
+      allocated.set(item.lineKey, (allocated.get(item.lineKey) ?? 0) + item.quantity);
+    }
+  }
+  if (
+    allocated.size !== exchange.lines.length ||
+    exchange.lines.some((line) => allocated.get(line.lineKey) !== line.quantity) ||
+    [...allocated.keys()].some(
+      (lineKey) => !exchange.lines.some((line) => line.lineKey === lineKey),
+    )
+  ) {
+    throw new NpShopExchangeParcelConflictError(
+      "exchange_parcel_allocation_mismatch",
+      "Replacement parcel allocations must cover every immutable exchange line and exact quantity.",
+    );
+  }
+}
+
+export async function npSaveShopExchangeParcels(
+  input: NpShopExchangeParcelsSaveInput,
+  staffUserId: string,
+): Promise<NpShopStoredExchangeParcels> {
+  const siteId = await requireSiteId();
+  return getDb().transaction(async (tx) => {
+    const { order, exchange } = await readExchangeForAction(tx, siteId, input.orderId);
+    if (exchange.id !== input.exchangeId || exchange.status !== "awaiting") {
+      throw new NpShopExchangeParcelConflictError(
+        "exchange_parcel_not_awaiting",
+        "Replacement parcels can be prepared only for the current awaiting exchange.",
+      );
+    }
+    if (exchange.revision !== input.expectedExchangeRevision) {
+      throw new NpShopExchangeParcelConflictError(
+        "exchange_parcel_revision_conflict",
+        "The exchange changed before the parcel snapshot was saved.",
+      );
+    }
+    const existing = await readStoredExchangeParcels(tx, siteId, input.orderId, true);
+    if (
+      (await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true)) ||
+      existing?.lockedShipmentId
+    ) {
+      throw new NpShopExchangeParcelConflictError(
+        "exchange_parcel_locked",
+        "The replacement parcel snapshot is locked by a durable carrier booking.",
+      );
+    }
+    if ((existing?.revision ?? null) !== input.expectedParcelRevision) {
+      throw new NpShopExchangeParcelConflictError(
+        "exchange_parcel_revision_conflict",
+        "The replacement parcel snapshot changed before this action was applied.",
+      );
+    }
+    requireExchangeParcelAllocation(exchange, input.parcels);
+    const now = new Date().toISOString();
+    const next = {
+      contract: NP_SHOP_EXCHANGE_PARCELS_STORAGE_CONTRACT,
+      orderId: order.id,
+      exchangeId: exchange.id,
+      exchangeRevision: exchange.revision,
+      revision: (existing?.revision ?? 0) + 1,
+      parcels: input.parcels,
+      lockedShipmentId: null,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+      purgeAt: order.purgeAt,
+    } satisfies NpShopStoredExchangeParcels;
+    await persistExchangeParcels(tx, siteId, next);
+    const totals = npShopFulfillmentParcelTotals(next.parcels);
+    await recordRequiredShopFulfillmentAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.exchange.parcels.save",
+      order.id,
+      {
+        exchangeId: exchange.id,
+        exchangeRevision: exchange.revision,
+        parcelRevision: next.revision,
+        parcelCount: totals.parcelCount,
+        unitCount: totals.unitCount,
+        weightGrams: totals.weightGrams,
+      },
+    );
+    return next;
+  });
+}
+
 function nextExchangeCarrierTimestamp(...values: Array<string | null | undefined>): string {
   return new Date(
     Math.max(
@@ -6636,6 +6815,7 @@ export async function npBookShopExchangeCarrierShipment(
   duplicate: boolean;
 }> {
   const adapter = runtime.carrierExchangeAdapter;
+  const parcelAdapter = runtime.carrierExchangeParcelAdapter;
   if (!adapter) {
     throw new NpShopExchangeCarrierConflictError(
       "exchange_carrier_not_supported",
@@ -6647,6 +6827,7 @@ export async function npBookShopExchangeCarrierShipment(
   const prepared = await getDb().transaction(async (tx) => {
     const { order, exchange } = await readExchangeForAction(tx, siteId, input.orderId);
     const current = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
+    let parcelSnapshot = await readStoredExchangeParcels(tx, siteId, input.orderId, true);
     if (
       exchange.id !== input.exchangeId ||
       order.revision !== input.orderRevision ||
@@ -6666,6 +6847,22 @@ export async function npBookShopExchangeCarrierShipment(
       }
       if (current.status === "completed") {
         return { outcome: "complete" as const, order, exchange, booking: current };
+      }
+      if (parcelSnapshot?.lockedShipmentId && parcelSnapshot.lockedShipmentId !== current.id) {
+        throw new NpShopExchangeParcelConflictError(
+          "exchange_parcel_locked",
+          "The replacement parcel snapshot belongs to a different durable shipment.",
+        );
+      }
+      if (
+        current.status === "pending" &&
+        parcelSnapshot?.lockedShipmentId === current.id &&
+        !parcelAdapter
+      ) {
+        throw new NpShopExchangeCarrierConflictError(
+          "exchange_carrier_provider_mismatch",
+          "The durable replacement parcel booking requires its original parcel-aware carrier capability.",
+        );
       }
       if (
         !resuming ||
@@ -6726,7 +6923,14 @@ export async function npBookShopExchangeCarrierShipment(
             }
           : current;
       if (booking !== current) await persistExchangeCarrierBooking(tx, siteId, booking);
-      return { outcome: "prepared" as const, order, exchange, booking, destination };
+      return {
+        outcome: "prepared" as const,
+        order,
+        exchange,
+        booking,
+        destination,
+        parcelSnapshot: parcelSnapshot?.lockedShipmentId === booking.id ? parcelSnapshot : null,
+      };
     }
     if (resuming) {
       throw new NpShopExchangeCarrierConflictError(
@@ -6783,6 +6987,26 @@ export async function npBookShopExchangeCarrierShipment(
       updatedAt: requestedAt,
       purgeAt: order.purgeAt,
     } satisfies NpShopStoredExchangeCarrierBooking;
+    if (parcelAdapter) {
+      if (
+        !parcelSnapshot ||
+        parcelSnapshot.exchangeId !== exchange.id ||
+        parcelSnapshot.exchangeRevision !== exchange.revision ||
+        parcelSnapshot.lockedShipmentId !== null
+      ) {
+        throw new NpShopExchangeParcelConflictError(
+          "exchange_parcel_required",
+          "The parcel-aware replacement carrier requires one current unlocked parcel snapshot.",
+        );
+      }
+      requireExchangeParcelAllocation(exchange, parcelSnapshot.parcels);
+      parcelSnapshot = {
+        ...parcelSnapshot,
+        lockedShipmentId: booking.id,
+        updatedAt: nextExchangeCarrierTimestamp(parcelSnapshot.updatedAt),
+      };
+      await persistExchangeParcels(tx, siteId, parcelSnapshot);
+    }
     await persistExchangeCarrierBooking(tx, siteId, booking);
     await recordRequiredShopFulfillmentAudit(
       tx,
@@ -6795,9 +7019,18 @@ export async function npBookShopExchangeCarrierShipment(
         shipmentId: booking.id,
         providerId: booking.providerId,
         destinationRevision: booking.destinationRevision,
+        parcelRevision:
+          parcelSnapshot?.lockedShipmentId === booking.id ? parcelSnapshot.revision : null,
       },
     );
-    return { outcome: "prepared" as const, order, exchange, booking, destination };
+    return {
+      outcome: "prepared" as const,
+      order,
+      exchange,
+      booking,
+      destination,
+      parcelSnapshot: parcelSnapshot?.lockedShipmentId === booking.id ? parcelSnapshot : null,
+    };
   });
   if (prepared.outcome === "private-expired") {
     throw new NpShopExchangeCarrierConflictError(
@@ -6832,8 +7065,7 @@ export async function npBookShopExchangeCarrierShipment(
         "The pending replacement booking lost its private destination.",
       );
     }
-    const request = npRequireShopExchangeCarrierBookingRequest({
-      contract: NP_SHOP_EXCHANGE_CARRIER_BOOKING_REQUEST_CONTRACT,
+    const commonRequest = {
       shipmentId: prepared.booking.id,
       orderId: prepared.order.id,
       exchangeId: prepared.exchange.id,
@@ -6842,11 +7074,32 @@ export async function npBookShopExchangeCarrierShipment(
       items: exchangeCarrierItems(prepared.exchange),
       destination: prepared.destination.destination,
       requestedAt: prepared.booking.requestedAt,
-    });
+    };
+    let invokeProvider: () =>
+      NpShopExchangeCarrierBookingResult | Promise<NpShopExchangeCarrierBookingResult>;
+    if (prepared.parcelSnapshot) {
+      if (!parcelAdapter || parcelAdapter.id !== prepared.booking.providerId) {
+        throw new NpShopExchangeCarrierConflictError(
+          "exchange_carrier_provider_mismatch",
+          "The pending replacement parcel booking requires its original parcel-aware carrier provider.",
+        );
+      }
+      const request = npRequireShopExchangeCarrierParcelBookingRequest({
+        ...commonRequest,
+        contract: NP_SHOP_EXCHANGE_CARRIER_PARCEL_BOOKING_REQUEST_CONTRACT,
+        parcelRevision: prepared.parcelSnapshot.revision,
+        parcels: prepared.parcelSnapshot.parcels,
+      });
+      invokeProvider = () => parcelAdapter.bookExchangeShipmentWithParcels(request);
+    } else {
+      const request = npRequireShopExchangeCarrierBookingRequest({
+        ...commonRequest,
+        contract: NP_SHOP_EXCHANGE_CARRIER_BOOKING_REQUEST_CONTRACT,
+      });
+      invokeProvider = () => adapter.bookExchangeShipment(request);
+    }
     try {
-      providerResult = npRequireShopExchangeCarrierBookingResult(
-        await adapter.bookExchangeShipment(request),
-      );
+      providerResult = npRequireShopExchangeCarrierBookingResult(await invokeProvider());
     } catch (error) {
       await persistExchangeCarrierFailure(
         siteId,
@@ -7753,6 +8006,7 @@ export async function npListRecentShopExchanges(): Promise<{
           exchange.orderId,
         );
         const carrierBooking = await readStoredExchangeCarrierBooking(db, siteId, exchange.orderId);
+        const parcelSnapshot = await readStoredExchangeParcels(db, siteId, exchange.orderId);
         const tracking = await npReadShopExchangeTrackingForOrder(db, siteId, exchange.orderId);
         const projected = npProjectShopExchange(
           exchange,
@@ -7786,6 +8040,10 @@ export async function npListRecentShopExchanges(): Promise<{
           shipmentId: carrierBooking?.id ?? "—",
           bookingRevision: carrierBooking?.revision ?? 0,
           provider: carrierBooking?.providerId ?? "—",
+          parcels: parcelSnapshot
+            ? `${parcelSnapshot.parcels.length.toString()} package(s)${parcelSnapshot.lockedShipmentId ? " (locked)" : ""}`
+            : "not prepared",
+          parcelRevision: parcelSnapshot?.revision ?? null,
           units: exchange.lines.reduce((sum, line) => sum + line.quantity, 0),
           inventory: exchange.inventoryOutcome,
           carrier: exchange.carrier ?? "—",
@@ -7798,6 +8056,105 @@ export async function npListRecentShopExchanges(): Promise<{
       }),
     ),
     total,
+  };
+}
+
+export async function npCountShopExchangeParcels(): Promise<{
+  total: number;
+  unlocked: number;
+  locked: number;
+  invalidSample: number;
+  orphanSample: number;
+  allocationMismatchSample: number;
+  lockMismatchSample: number;
+}> {
+  const siteId = await requireSiteId();
+  const db = getDb();
+  const [counts] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      unlocked: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_EXCHANGE_PARCELS_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'lockedShipmentId' is null)::int`,
+      locked: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_EXCHANGE_PARCELS_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'lockedShipmentId' is not null)::int`,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "exchange-parcels:%"),
+      ),
+    );
+  const rows = await db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "exchange-parcels:%"),
+      ),
+    )
+    .orderBy(desc(npPluginStorage.updatedAt))
+    .limit(npShopExchangeLimits.diagnosticSampleSize);
+  let invalidSample = 0;
+  let orphanSample = 0;
+  let allocationMismatchSample = 0;
+  let lockMismatchSample = 0;
+  for (const row of rows) {
+    try {
+      const snapshot = requireStoredExchangeParcelsAtKey(row.value, row.expiresAt, row.key);
+      const exchange = await readStoredExchange(db, siteId, snapshot.orderId);
+      if (
+        !exchange ||
+        exchange.id !== snapshot.exchangeId ||
+        exchange.purgeAt !== snapshot.purgeAt
+      ) {
+        orphanSample += 1;
+        continue;
+      }
+      try {
+        requireExchangeParcelAllocation(exchange, snapshot.parcels);
+      } catch (error) {
+        if (error instanceof NpShopExchangeParcelConflictError) {
+          allocationMismatchSample += 1;
+          continue;
+        }
+        throw error;
+      }
+      const booking = await readStoredExchangeCarrierBooking(db, siteId, snapshot.orderId);
+      if (
+        snapshot.lockedShipmentId !== null &&
+        (!booking ||
+          booking.id !== snapshot.lockedShipmentId ||
+          booking.exchangeId !== snapshot.exchangeId ||
+          booking.sourceExchangeRevision !== snapshot.exchangeRevision)
+      ) {
+        lockMismatchSample += 1;
+      }
+      if (
+        exchange.revision < snapshot.exchangeRevision ||
+        (exchange.revision === snapshot.exchangeRevision && exchange.status !== "awaiting") ||
+        (exchange.revision > snapshot.exchangeRevision &&
+          exchange.status !== "processing" &&
+          exchange.status !== "shipped" &&
+          exchange.status !== "cancelled")
+      ) {
+        invalidSample += 1;
+      }
+    } catch {
+      invalidSample += 1;
+    }
+  }
+  return {
+    ...counts,
+    invalidSample,
+    orphanSample,
+    allocationMismatchSample,
+    lockMismatchSample,
   };
 }
 

@@ -491,6 +491,41 @@ describe("shop factory", () => {
     ).toThrow(/bookExchangeShipment and cancelExchangeShipment together/u);
   });
 
+  it("adds parcel-aware replacement booking only on top of the paired exchange capability", () => {
+    const shop = createShop({
+      carrier: {
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          bookExchangeShipment: () => Promise.reject(new Error("not called")),
+          bookExchangeShipmentWithParcels: () => Promise.reject(new Error("not called")),
+          cancelExchangeShipment: () => Promise.reject(new Error("not called")),
+        },
+      },
+    });
+    expect(shop.runtime.carrierExchangeParcelAdapter?.id).toBe("test-carrier");
+    expect(shop.plugin.actions?.saveExchangeParcels?.kind).toBe("action");
+    expect(shop.plugin.manifest.provides.adminExtensions).toContain(
+      "action:shop-exchange-parcel-snapshot",
+    );
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-exchanges")
+        ?.rowActions?.map((action) => action.id),
+    ).toContain("save-exchange-parcels");
+    expect(() =>
+      createShop({
+        carrier: {
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+            bookExchangeShipmentWithParcels: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/paired exchange booking and cancellation/u);
+  });
+
   it("adds a raw tracking webhook only for the optional carrier capability", () => {
     const shop = createShop({
       carrier: {

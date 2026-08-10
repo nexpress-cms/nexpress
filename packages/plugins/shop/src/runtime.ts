@@ -27,6 +27,7 @@ import type { NpShopTaxAdapter } from "./tax-contract.js";
 import type {
   NpShopCarrierAdapter,
   NpShopCarrierExchangeAdapter,
+  NpShopCarrierExchangeParcelAdapter,
   NpShopCarrierLabelAdapter,
   NpShopCarrierParcelAdapter,
   NpShopCarrierPickupAdapter,
@@ -73,6 +74,7 @@ export interface NpShopRuntime {
   taxAdapter: NpShopTaxAdapter | null;
   carrierAdapter: NpShopCarrierAdapter | null;
   carrierExchangeAdapter: NpShopCarrierExchangeAdapter | null;
+  carrierExchangeParcelAdapter: NpShopCarrierExchangeParcelAdapter | null;
   carrierLabelAdapter: NpShopCarrierLabelAdapter | null;
   carrierParcelAdapter: NpShopCarrierParcelAdapter | null;
   carrierPickupAdapter: NpShopCarrierPickupAdapter | null;
