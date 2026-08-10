@@ -699,6 +699,14 @@
     border-inline-start: 3px solid var(--np-shop-accent, var(--np-color-primary, #205c46));
   }
 
+  [data-np-shop-exchange-tracking] {
+    font-weight: 600;
+  }
+
+  [data-np-shop-exchange-tracking="exception"] {
+    color: var(--np-color-destructive, #b42318);
+  }
+
   [data-np-shop-exchange-destination] {
     display: grid;
     gap: 0.75rem;

@@ -112,11 +112,13 @@ It provides:
   revision-safe awaiting/processing/shipped/cancelled state, manual tracking or
   an optional paired provider-neutral booking/cancellation capability with
   durable idempotency and reconciliation plus optional transient staff label
-  retrieval through the existing PII-free label-read capability,
+  retrieval through the existing PII-free label-read capability; the existing
+  callback and bounded polling methods also advance a separate owner-visible
+  replacement tracking state without changing exchange status,
   owner notifications, a 15-minute one-use owner authority, one maximum-24-hour
   replacement-address sidecar, audited staff access required before processing,
   deletion on processing/cancellation/expiry, PII-free Admin/Doctor/audit, and
-  cancellation restock;
+  cancellation restock only before verified carrier tracking state;
 - optional provider-neutral partial refunds linked to one received physical
   return, with exact post-discount line allocation, explicit shipping/tax
   allocation, one durable idempotency id, and no second inventory or

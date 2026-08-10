@@ -304,6 +304,9 @@ export const storefrontCss = `
 .np-storefront-shell [data-np-shop-exchange-carrier-booking] {
   border-inline-start-color: var(--np-storefront-accent);
 }
+.np-storefront-shell [data-np-shop-exchange-tracking="delivered"] {
+  color: var(--np-storefront-accent);
+}
 .np-storefront-shell [data-np-shop-exchange-destination] {
   border-radius: 0;
   box-shadow: none;

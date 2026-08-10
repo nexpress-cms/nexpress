@@ -439,7 +439,10 @@ describe("getProjectFiles", () => {
     expect(env).toContain("deletes the replacement address only after durable");
     expect(env).toContain("readShippingLabel capability serves completed outbound");
     expect(env).toContain("never persist or log those bytes");
+    expect(env).toContain("verifyTrackingWebhook and readTracking methods also serve exact");
+    expect(env).toContain("verified state blocks provider cancellation/restock");
     expect(readme).toContain("completed outbound and replacement labels");
+    expect(readme).toContain("verified tracking state blocks provider cancellation");
     expect(readme).toContain("Verified provider cancellation snapshots reconcile known refunds");
     expect(env).toContain("provider-cancellation reconciliation for Shop");
   });

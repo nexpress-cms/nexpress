@@ -10,6 +10,7 @@ import {
   npShopExchangeLinesFromOrder,
   type NpShopStoredExchange,
 } from "./exchange-contract.js";
+import { NP_SHOP_TRACKING_CONTRACT } from "./tracking-contract.js";
 
 const storedExchange: NpShopStoredExchange = {
   contract: NP_SHOP_EXCHANGE_STORAGE_CONTRACT,
@@ -65,6 +66,25 @@ describe("Shop same-item exchange contract", () => {
     expect(projected).not.toHaveProperty("orderRevision");
     expect(projected).toMatchObject({ destinationStatus: "redacted", destinationRevision: 1 });
     expect(npAnalyzeShopExchange(projected)).toEqual([]);
+    const tracking = {
+      contract: NP_SHOP_TRACKING_CONTRACT,
+      shipmentId: "623e4567-e89b-42d3-a456-426614174000",
+      status: "in-transit" as const,
+      occurredAt: "2026-08-09T00:06:00.000Z",
+      deliveredAt: null,
+      updatedAt: "2026-08-09T00:06:01.000Z",
+    };
+    const tracked = npProjectShopExchange(
+      { ...storedExchange, carrier: "CJ Logistics", trackingNumber: "1234567890" },
+      null,
+      new Date(),
+      tracking,
+    );
+    expect(tracked.tracking).toEqual(tracking);
+    expect(npAnalyzeShopExchange(tracked)).toEqual([]);
+    expect(npAnalyzeShopExchange({ ...tracked, carrier: null, trackingNumber: null })).toContain(
+      "exchange tracking requires one active replacement carrier shipment.",
+    );
   });
 
   it("projects awaiting, retained, accessed, and expired destination state without PII", () => {

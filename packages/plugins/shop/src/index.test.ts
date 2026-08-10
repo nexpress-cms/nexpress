@@ -840,6 +840,8 @@ describe("shop factory", () => {
         adapter: {
           id: "test-carrier",
           bookShipment: () => Promise.reject(new Error("not called")),
+          bookExchangeShipment: () => Promise.reject(new Error("not called")),
+          cancelExchangeShipment: () => Promise.reject(new Error("not called")),
           readTracking: () => Promise.reject(new Error("not called")),
         },
       },
@@ -852,6 +854,14 @@ describe("shop factory", () => {
         ?.find((table) => table.id === "shop-carrier-bookings")
         ?.rowActions?.flatMap((action) => (action.type === "download" ? [] : [action.actionId])),
     ).toContain("reconcileCarrierTracking");
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-exchanges")
+        ?.rowActions?.flatMap((action) => (action.type === "download" ? [] : [action.actionId])),
+    ).toContain("reconcileCarrierTracking");
+    expect(shop.plugin.manifest.styleSlots?.["exchange-tracking-status"]).toBe(
+      "[data-np-shop-exchange-tracking]",
+    );
     const withoutPolling = createShop({
       carrier: {
         adapter: {

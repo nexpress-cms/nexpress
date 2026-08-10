@@ -1849,6 +1849,21 @@ export function ShopOrder({
     }[status];
   }
 
+  function exchangeTrackingStatusMessage(): string | null {
+    switch (order?.exchange?.tracking?.status) {
+      case "in-transit":
+        return messages.orderTrackingInTransit;
+      case "out-for-delivery":
+        return messages.orderTrackingOutForDelivery;
+      case "delivered":
+        return messages.orderTrackingDelivered;
+      case "exception":
+        return messages.orderTrackingException;
+      default:
+        return null;
+    }
+  }
+
   function returnLogisticsStatusMessage(logistics: NpShopReturnLogistics): string {
     if (logistics.status === "active") return messages.orderReturnLogisticsActive;
     if (logistics.status === "cancelled") return messages.orderReturnLogisticsCancelled;
@@ -1887,6 +1902,7 @@ export function ShopOrder({
       "exchange.created": messages.orderExchangeAwaiting,
       "exchange.processing": messages.orderExchangeProcessing,
       "exchange.shipped": messages.orderExchangeShipped,
+      "exchange.delivered": messages.orderTrackingDelivered,
       "exchange.cancelled": messages.orderExchangeCancelled,
       "refund.completed": messages.orderRefunded,
       "partial-refund.completed": messages.orderPartialRefundedDetail,
@@ -2518,14 +2534,21 @@ export function ShopOrder({
                     order.exchange.status === "shipped") &&
                   order.exchange.carrier &&
                   order.exchange.trackingNumber ? (
-                    <p
-                      data-np-shop-exchange-carrier-booking={
-                        order.exchange.status === "processing" ? "booked" : "shipped"
-                      }
-                    >
-                      {messages.orderExchangeTracking}: {order.exchange.carrier}{" "}
-                      {order.exchange.trackingNumber}
-                    </p>
+                    <>
+                      <p
+                        data-np-shop-exchange-carrier-booking={
+                          order.exchange.status === "processing" ? "booked" : "shipped"
+                        }
+                      >
+                        {messages.orderExchangeTracking}: {order.exchange.carrier}{" "}
+                        {order.exchange.trackingNumber}
+                      </p>
+                      {order.exchange.tracking ? (
+                        <p data-np-shop-exchange-tracking={order.exchange.tracking.status}>
+                          {exchangeTrackingStatusMessage()}
+                        </p>
+                      ) : null}
+                    </>
                   ) : order.exchange.status === "cancelled" ? (
                     <p>
                       {order.exchange.inventoryOutcome === "restocked"

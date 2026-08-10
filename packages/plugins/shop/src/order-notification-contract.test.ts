@@ -103,5 +103,11 @@ describe("Shop order notification contract", () => {
       "/shop/orders/22222222-2222-4222-8222-222222222222",
     );
     expect(exchangeMessage.subject).toContain("Same-item exchange shipped");
+    expect(
+      npBuildShopOrderNotificationEmail(
+        { ...event, kind: "exchange.delivered" },
+        "/shop/orders/22222222-2222-4222-8222-222222222222",
+      ).subject,
+    ).toContain("Same-item exchange delivered");
   });
 });
