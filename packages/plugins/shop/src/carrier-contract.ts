@@ -34,6 +34,12 @@ import type {
   NpShopReturnTrackingPollResult,
   NpShopReturnTrackingWebhookResult,
 } from "./return-tracking-contract.js";
+import type {
+  NpShopExchangeCarrierBookingRequest,
+  NpShopExchangeCarrierBookingResult,
+  NpShopExchangeCarrierCancelRequest,
+  NpShopExchangeCarrierCancelResult,
+} from "./exchange-carrier-contract.js";
 
 export const NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT =
   "np.shop-carrier-booking-request.v1" as const;
@@ -224,6 +230,18 @@ export interface NpShopCarrierAdapter {
   readReturnTracking?(
     input: NpShopReturnTrackingPollRequest,
   ): NpShopReturnTrackingPollResult | Promise<NpShopReturnTrackingPollResult>;
+  /**
+   * Book one exact same-item replacement shipment. The destination is
+   * short-lived private data; implementations must use shipmentId as the
+   * provider idempotency key and never echo or log that destination.
+   */
+  bookExchangeShipment?(
+    input: NpShopExchangeCarrierBookingRequest,
+  ): NpShopExchangeCarrierBookingResult | Promise<NpShopExchangeCarrierBookingResult>;
+  /** Cancel one booked replacement shipment with its stable cancellation id. */
+  cancelExchangeShipment?(
+    input: NpShopExchangeCarrierCancelRequest,
+  ): NpShopExchangeCarrierCancelResult | Promise<NpShopExchangeCarrierCancelResult>;
 }
 
 export type NpShopCarrierTrackingAdapter = NpShopCarrierAdapter &
@@ -255,6 +273,9 @@ export type NpShopCarrierReturnTrackingAdapter = NpShopCarrierReturnLogisticsAda
 
 export type NpShopCarrierReturnTrackingPollAdapter = NpShopCarrierReturnLogisticsAdapter &
   Required<Pick<NpShopCarrierAdapter, "readReturnTracking">>;
+
+export type NpShopCarrierExchangeAdapter = NpShopCarrierAdapter &
+  Required<Pick<NpShopCarrierAdapter, "bookExchangeShipment" | "cancelExchangeShipment">>;
 
 export interface NpShopStoredCarrierBooking {
   contract: typeof NP_SHOP_CARRIER_BOOKING_STORAGE_CONTRACT;

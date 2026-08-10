@@ -32,3 +32,6 @@ Same-item replacement state is enhanced independently through
 and its non-PII status use `[data-np-shop-exchange-destination]`; Storefront owns
 presentation only and does not import Shop, retain/read addresses, decide
 eligibility, consume inventory, or dispatch exchange operations.
+Optional provider-booked replacement tracking is enhanced through the separate
+`[data-np-shop-exchange-carrier-booking]` hook; the theme remains independent
+of carrier configuration, booking, cancellation, and reconciliation.

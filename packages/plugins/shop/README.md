@@ -109,7 +109,9 @@ It provides:
   all-or-none tracked-inventory restoration, and manual-reconciliation health;
 - one direct-staff same-item exchange after a received return, with exact
   immutable lines, reservation-aware all-or-none replacement inventory,
-  revision-safe awaiting/processing/shipped/cancelled state, manual tracking,
+  revision-safe awaiting/processing/shipped/cancelled state, manual tracking or
+  an optional paired provider-neutral booking/cancellation capability with
+  durable idempotency and reconciliation,
   owner notifications, a 15-minute one-use owner authority, one maximum-24-hour
   replacement-address sidecar, audited staff access required before processing,
   deletion on processing/cancellation/expiry, PII-free Admin/Doctor/audit, and
@@ -140,7 +142,7 @@ It provides:
 
 Provider-specific browser/server protocols, signature algorithms, credentials
 and rotation, initiating repeated or non-return partial refunds, disputes and
-chargebacks, different-item or price-difference exchanges, replacement carrier booking,
+chargebacks, different-item or price-difference exchanges,
 separate return-postage charges, automatic or
 jurisdictional responsibility policy, carrier label purchase,
 recurring pickup,
@@ -166,6 +168,12 @@ creation; v1 logistics creation remains valid. The same paired capability may in
 `verifyReturnTrackingWebhook` and `readReturnTracking`; those methods receive
 only the PII-free active return-shipment tuple and cannot complete warehouse
 receipt, inventory restoration, or payment compensation.
+The same carrier may add `bookExchangeShipment` and
+`cancelExchangeShipment` together. Shop supplies one exact staff-accessed
+replacement destination outside a transaction, deletes it only after durable
+provider confirmation, persists stable booking/cancellation idempotency keys,
+and blocks manual exchange operations while that provider intent exists.
+Replacement labels, pickup, and tracking callbacks/polling remain independent.
 `@nexpress/shop-payment-toss` is the bundled Toss Payments v2 initiation,
 full-refund, received-return partial-refund/return-postage settlement, and
 query-verified cancellation reconciliation adapter. Customer/shipping PII exists only in the short-lived

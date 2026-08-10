@@ -468,14 +468,15 @@ real product domain, not just blog/community. Ship as a plugin package
   may create one exact replacement over its immutable product/SKU/quantity
   snapshot. Reservation-aware all-or-none inventory consumption, revision-safe
   awaiting/processing/shipped/cancelled state, cancellation restock, manual
-  carrier/tracking, owner notifications, both skins, Storefront hooks,
+  carrier/tracking or paired provider-neutral booking/cancellation with durable
+  idempotency and reconciliation, owner notifications, both skins, Storefront hooks,
   Admin/Doctor, audit, cleanup, scaffolds, and PostgreSQL coverage share the
   PII-free contract. Owners submit one new address under a 15-minute
   revision-bound authority into a maximum-24-hour private sidecar; audited staff
   access is required before processing and processing/cancellation/expiry delete
-  it. Carrier booking, substitutions, payment differences, store credit,
-  eligibility policy, automatic address correction, and automatic approval
-  remain separate additive contracts.
+  it. Replacement labels/pickup/tracking callbacks, substitutions, payment
+  differences, store credit, eligibility policy, automatic address correction,
+  and automatic approval remain separate additive contracts.
 - **Provider-neutral return tracking (shipped)** — optional exact raw-body
   callback and bounded polling capabilities advance one independent PII-free
   reverse-shipment state with stable receipts, leases/backoff, owner-visible

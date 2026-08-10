@@ -1611,17 +1611,49 @@ under CSRF protection. Shop stores it only in a separate
 `np.shop-exchange-destination-private.v1` sidecar for at most 24 hours and never
 beyond commercial order retention. A stale or expired authority fails closed;
 an expired address may be submitted again under a newly issued authority. Staff
-supply a bounded PII-free note and manually verified carrier/tracking data.
-Before shipment, cancellation restores every tracked replacement unit or
-records `manual-required` without claiming a partial restoration. Shipped and
-cancelled states are terminal.
+supply a bounded PII-free note and may use the existing manual
+processing/carrier/tracking flow. Before shipment, cancellation restores every
+tracked replacement unit or records `manual-required` without claiming a
+partial restoration. Shipped and cancelled states are terminal.
+
+A carrier adapter may independently implement `bookExchangeShipment` and
+`cancelExchangeShipment` together. Shop creates one durable
+`np.shop-exchange-carrier-booking-storage.v1` intent with a stable replacement
+shipment UUID before provider I/O. Booking receives the immutable replacement
+lines and the current staff-accessed private destination through the exact
+`np.shop-exchange-carrier-booking-request.v1` contract. It runs outside the
+database transaction and must use `shipmentId` as its provider idempotency key.
+The result contains only a bounded booking reference, carrier, tracking number,
+and timestamp; returning an address or any additional field fails closed.
+
+Shop durably records `provider-confirmed` before deleting the destination
+sidecar and completing the exchange as `processing`. A crash in between can be
+resumed without retaining or rereading the address. Retryable ambiguity remains
+`pending`; definitive provider failure, malformed output, result mismatch, or a
+post-confirmation local conflict becomes closed `manual-review` work. Once an
+intent exists, the manual process/cancel actions and address replacement are
+blocked so they cannot race a provider result. Staff may explicitly mark a
+completed booking shipped with its exact stored carrier/tracking pair.
+
+Provider cancellation likewise persists one stable cancellation UUID before
+calling `cancelExchangeShipment` outside the transaction. Only a matching
+durable confirmation permits the final atomic exchange cancellation and exact
+inventory restoration. `cancel-pending` and `cancel-confirmed` are resumable;
+Shop never treats an ambiguous provider response as a cancelled shipment.
+Manual exchange processing remains available when this paired capability is
+not used.
 
 The owner projection omits staff notes and identity, exposes the exact lines,
 status, inventory outcome, and optional tracking through
-`[data-np-shop-exchange]`, and stages the same preference-aware member-inbox and
-email events as other order transitions. Admin and Doctor expose bounded
-PII-free totals, recent rows, destination lifecycle, malformed/orphan private
-samples, expired sidecars, and manual-inventory work. The address itself is
+`[data-np-shop-exchange]`. A provider-booked processing or shipped replacement
+also exposes `[data-np-shop-exchange-carrier-booking]` without identifying the
+adapter. The flow stages the same preference-aware member-inbox and
+email events as other order transitions. Admin exposes bounded PII-free totals,
+recent rows, destination and carrier-booking lifecycle,
+malformed/orphan/provider-mismatched samples, expired sidecars, and manual
+reconciliation/inventory work. Doctor validates the matching declarative
+metric, status, table, and conditional action inventory without provider I/O.
+The address itself is
 withheld from tables and diagnostics. A direct-staff **View replacement
 address** action performs the only Admin read and audits every access.
 Processing is blocked until a current sidecar has been accessed, then
@@ -1631,8 +1663,8 @@ submission/access, processing, shipment, and cancellation write PII-free audit
 metadata.
 
 The original shipping address has already been deleted at first shipment and
-is never reused. Carrier booking, replacement
-labels/pickup/tracking callbacks, different-item substitutions, payment
+is never reused. Replacement labels, pickup, tracking callbacks/polling,
+automatic address correction, different-item substitutions, payment
 differences, store credit, legal eligibility rules, and automatic approval
 remain separate additive contracts.
 

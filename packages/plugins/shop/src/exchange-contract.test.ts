@@ -49,6 +49,16 @@ const storedExchange: NpShopStoredExchange = {
 describe("Shop same-item exchange contract", () => {
   it("accepts exact durable state and strips staff-only metadata", () => {
     expect(npAnalyzeStoredShopExchange(storedExchange)).toEqual([]);
+    expect(
+      npAnalyzeStoredShopExchange({
+        ...storedExchange,
+        carrier: "CJ Logistics",
+        trackingNumber: "1234567890",
+      }),
+    ).toEqual([]);
+    expect(npAnalyzeStoredShopExchange({ ...storedExchange, carrier: "CJ Logistics" })).toContain(
+      "processing exchanges require consumed inventory and coherent optional booked shipment metadata.",
+    );
     const projected = npProjectShopExchange(storedExchange);
     expect(projected).not.toHaveProperty("ownerSegment");
     expect(projected).not.toHaveProperty("operatorNote");

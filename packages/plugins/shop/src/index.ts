@@ -40,6 +40,7 @@ import {
   npRequireShopCarrierBookingActionInput,
   npRequireShopCarrierProviderId,
   type NpShopCarrierAdapter,
+  type NpShopCarrierExchangeAdapter,
   type NpShopCarrierLabelAdapter,
   type NpShopCarrierParcelAdapter,
   type NpShopCarrierPickupAdapter,
@@ -61,6 +62,7 @@ import {
   npCountShopRefunds,
   npCountShopReturns,
   npCountShopExchanges,
+  npCountShopExchangeCarrierBookings,
   npListRecentShopFulfillments,
   npListRecentShopFulfillmentParcels,
   npListRecentShopCarrierBookings,
@@ -81,6 +83,9 @@ import {
   npReadShopExchangeDestination,
   npShipShopExchange,
   npCancelShopExchange,
+  npBookShopExchangeCarrierShipment,
+  npCancelShopExchangeCarrierShipment,
+  npShipBookedShopExchange,
   npShipShopFulfillment,
   npSaveShopFulfillmentParcels,
 } from "./order-service.js";
@@ -130,6 +135,10 @@ import {
   npRequireShopExchangeUpdateInput,
 } from "./exchange-contract.js";
 import { npRequireShopExchangeDestinationReadInput } from "./exchange-destination-contract.js";
+import {
+  npRequireShopExchangeCarrierBookActionInput,
+  npRequireShopExchangeCarrierExistingActionInput,
+} from "./exchange-carrier-contract.js";
 import { npRequireShopReturnLocationReference } from "./return-logistics-contract.js";
 import {
   npCleanupExpiredShopReturnLogisticsPrivate,
@@ -451,6 +460,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   }
   const configuredCarrierAdapter = options.carrier?.adapter ?? null;
   let carrierAdapter: NpShopCarrierAdapter | null = null;
+  let carrierExchangeAdapter: NpShopCarrierExchangeAdapter | null = null;
   let carrierLabelAdapter: NpShopCarrierLabelAdapter | null = null;
   let carrierParcelAdapter: NpShopCarrierParcelAdapter | null = null;
   let carrierPickupAdapter: NpShopCarrierPickupAdapter | null = null;
@@ -482,6 +492,8 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     const hasReturnTrackingWebhook =
       configuredCarrierAdapter.verifyReturnTrackingWebhook !== undefined;
     const hasReturnTrackingPoll = configuredCarrierAdapter.readReturnTracking !== undefined;
+    const hasExchangeBooking = configuredCarrierAdapter.bookExchangeShipment !== undefined;
+    const hasExchangeCancellation = configuredCarrierAdapter.cancelExchangeShipment !== undefined;
     if (
       hasTrackingWebhook &&
       typeof configuredCarrierAdapter.verifyTrackingWebhook !== "function"
@@ -511,6 +523,18 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
       throw new Error(
         "Shop return logistics requires createReturnShipment and cancelReturnShipment together.",
       );
+    }
+    if (hasExchangeBooking !== hasExchangeCancellation) {
+      throw new Error(
+        "Shop exchange carrier booking requires bookExchangeShipment and cancelExchangeShipment together.",
+      );
+    }
+    if (
+      hasExchangeBooking &&
+      (typeof configuredCarrierAdapter.bookExchangeShipment !== "function" ||
+        typeof configuredCarrierAdapter.cancelExchangeShipment !== "function")
+    ) {
+      throw new Error("Shop exchange carrier methods must be functions when provided.");
     }
     if (hasReturnPostageQuote !== hasQuotedReturnCreate) {
       throw new Error(
@@ -649,6 +673,15 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
               configuredCarrierAdapter.readReturnTracking.bind(configuredCarrierAdapter),
           }
         : {}),
+      ...(configuredCarrierAdapter.bookExchangeShipment &&
+      configuredCarrierAdapter.cancelExchangeShipment
+        ? {
+            bookExchangeShipment:
+              configuredCarrierAdapter.bookExchangeShipment.bind(configuredCarrierAdapter),
+            cancelExchangeShipment:
+              configuredCarrierAdapter.cancelExchangeShipment.bind(configuredCarrierAdapter),
+          }
+        : {}),
     });
     if (carrierAdapter.verifyTrackingWebhook) {
       carrierTrackingAdapter = carrierAdapter as NpShopCarrierTrackingAdapter;
@@ -686,6 +719,9 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
       carrierReturnTrackingPollAdapter =
         carrierReturnLogisticsAdapter as NpShopCarrierReturnTrackingPollAdapter;
     }
+    if (carrierAdapter.bookExchangeShipment && carrierAdapter.cancelExchangeShipment) {
+      carrierExchangeAdapter = carrierAdapter as NpShopCarrierExchangeAdapter;
+    }
   }
   return {
     basePath: requireBasePath(options.basePath ?? "/shop"),
@@ -700,6 +736,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     shippingAdapter,
     taxAdapter,
     carrierAdapter,
+    carrierExchangeAdapter,
     carrierLabelAdapter,
     carrierParcelAdapter,
     carrierPickupAdapter,
@@ -1393,7 +1430,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, wishlists, one-shot stock/price alerts, verified-purchase reviews, promotions, carts, checkout, private drafts, shipping/tax quotes, durable orders and inventory, optional payments/refunds with quote-backed return-postage settlement, fulfillment, carrier booking/pickup/tracking, physical returns, same-item exchanges with short-lived replacement destinations, logistics, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, wishlists, one-shot stock/price alerts, verified-purchase reviews, promotions, carts, checkout, private drafts, shipping/tax quotes, durable orders and inventory, optional payments/refunds with quote-backed return-postage settlement, fulfillment, carrier booking/pickup/tracking, physical returns, same-item exchanges with short-lived replacement destinations and optional carrier booking/cancellation, logistics, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -1513,6 +1550,7 @@ export function createShop(options: NpShopOptions = {}) {
           "table:shop-exchanges",
           "action:shop-exchange-operations",
           "action:shop-exchange-destination-private-read",
+          ...(runtime.carrierExchangeAdapter ? ["action:shop-exchange-carrier-booking"] : []),
           ...(paymentAttemptApiHandler
             ? [
                 "dashboard:shop-payment-attempts",
@@ -1544,7 +1582,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, exact same-item replacement exchanges with revision-bound owner address intake and audited short-lived private storage, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, replacement carrier booking, automatic address correction, outbound label purchase, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
+          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound tracking, physical return intake, exact same-item replacement exchanges with revision-bound owner address intake, audited short-lived private storage, and optional paired provider booking/cancellation, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, automatic address correction, replacement labels/pickup/tracking callbacks, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: [
           "shop",
@@ -1600,6 +1638,7 @@ export function createShop(options: NpShopOptions = {}) {
         "return-status": "[data-np-shop-return-status]",
         exchange: "[data-np-shop-exchange]",
         "exchange-destination": "[data-np-shop-exchange-destination]",
+        "exchange-carrier-booking": "[data-np-shop-exchange-carrier-booking]",
         "return-postage": "[data-np-shop-return-postage-status]",
         "return-postage-settlement": "[data-np-shop-return-postage-settlement]",
         "product-card": ".np-shop-product-card",
@@ -2999,6 +3038,10 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "destination", label: "Replacement destination" },
             { name: "destinationRevision", label: "Destination revision" },
             { name: "destinationExpiresAt", label: "Destination expires" },
+            { name: "carrierBooking", label: "Carrier booking" },
+            { name: "bookingId", label: "Shipment" },
+            { name: "bookingRevision", label: "Booking revision" },
+            { name: "provider", label: "Provider" },
             { name: "units", label: "Units" },
             { name: "inventory", label: "Inventory" },
             { name: "carrier", label: "Carrier" },
@@ -3041,6 +3084,110 @@ export function createShop(options: NpShopOptions = {}) {
               ],
               confirm: "Mark this exact replacement as processing?",
             },
+            ...(runtime.carrierExchangeAdapter
+              ? [
+                  {
+                    id: "book-exchange-carrier",
+                    label: "Book replacement carrier",
+                    actionId: "bookExchangeCarrier",
+                    rowFields: [
+                      "id",
+                      "exchangeId",
+                      "orderRevision",
+                      "exchangeRevision",
+                      "destinationRevision",
+                    ],
+                    visibleWhen: { field: "destination", oneOf: ["accessed"] },
+                    fields: [
+                      {
+                        name: "operatorNote",
+                        label: "Operations note",
+                        type: "textarea" as const,
+                        placeholder: "Optional PII-free provider booking note",
+                      },
+                    ],
+                    confirm:
+                      "Book this exact replacement with the configured carrier? The private address is deleted only after durable provider confirmation.",
+                  },
+                  {
+                    id: "resume-exchange-carrier",
+                    label: "Resume carrier booking",
+                    actionId: "resumeExchangeCarrier",
+                    rowFields: [
+                      "id",
+                      "exchangeId",
+                      "orderRevision",
+                      "exchangeRevision",
+                      "bookingId",
+                      "bookingRevision",
+                    ],
+                    visibleWhen: {
+                      field: "carrierBooking",
+                      oneOf: ["pending", "provider-confirmed"],
+                    },
+                    fields: [
+                      {
+                        name: "operatorNote",
+                        label: "Operations note",
+                        type: "textarea" as const,
+                        placeholder: "Optional PII-free reconciliation note",
+                      },
+                    ],
+                    confirm: "Resume this exact durable replacement booking?",
+                  },
+                  {
+                    id: "ship-booked-exchange",
+                    label: "Mark booked replacement shipped",
+                    actionId: "shipBookedExchange",
+                    rowFields: [
+                      "id",
+                      "exchangeId",
+                      "orderRevision",
+                      "exchangeRevision",
+                      "bookingId",
+                      "bookingRevision",
+                    ],
+                    visibleWhen: { field: "carrierBooking", oneOf: ["completed"] },
+                    fields: [
+                      {
+                        name: "operatorNote",
+                        label: "Shipment note",
+                        type: "textarea" as const,
+                        placeholder: "Optional PII-free handoff note",
+                      },
+                    ],
+                    confirm:
+                      "Mark this replacement shipped with the exact provider carrier and tracking number?",
+                  },
+                  {
+                    id: "cancel-booked-exchange",
+                    label: "Cancel booked replacement",
+                    actionId: "cancelExchangeCarrier",
+                    rowFields: [
+                      "id",
+                      "exchangeId",
+                      "orderRevision",
+                      "exchangeRevision",
+                      "bookingId",
+                      "bookingRevision",
+                    ],
+                    visibleWhen: {
+                      field: "carrierBooking",
+                      oneOf: ["completed", "cancel-pending", "cancel-confirmed"],
+                    },
+                    fields: [
+                      {
+                        name: "operatorNote",
+                        label: "Cancellation note",
+                        type: "textarea" as const,
+                        placeholder: "Optional PII-free cancellation note",
+                      },
+                    ],
+                    confirm:
+                      "Cancel the provider shipment, then cancel the exchange and restore exact tracked inventory?",
+                  },
+                ]
+              : []),
             {
               id: "ship-exchange",
               label: "Ship replacement",
@@ -4152,12 +4299,15 @@ export function createShop(options: NpShopOptions = {}) {
         kind: "metric",
         handler: async () => {
           try {
-            const counts = await npCountShopExchanges();
+            const [counts, carrier] = await Promise.all([
+              npCountShopExchanges(),
+              npCountShopExchangeCarrierBookings(runtime.carrierExchangeAdapter?.id),
+            ]);
             return {
               ok: true,
               data: {
                 value: counts.total,
-                delta: `${counts.awaiting.toString()} awaiting, ${counts.processing.toString()} processing, ${counts.shipped.toString()} shipped`,
+                delta: `${counts.awaiting.toString()} awaiting, ${counts.processing.toString()} processing, ${counts.shipped.toString()} shipped; ${carrier.total.toString()} provider booking(s)`,
               },
             };
           } catch (error) {
@@ -4169,16 +4319,22 @@ export function createShop(options: NpShopOptions = {}) {
         kind: "status",
         handler: async () => {
           try {
-            const counts = await npCountShopExchanges();
+            const [counts, carrier] = await Promise.all([
+              npCountShopExchanges(),
+              npCountShopExchangeCarrierBookings(runtime.carrierExchangeAdapter?.id),
+            ]);
             if (
               counts.invalidSample > 0 ||
               counts.orphanSample > 0 ||
               counts.invalidPrivateSample > 0 ||
-              counts.orphanPrivateSample > 0
+              counts.orphanPrivateSample > 0 ||
+              carrier.invalidSample > 0 ||
+              carrier.orphanSample > 0 ||
+              carrier.providerMismatchSample > 0
             ) {
               return npAdminStatus(
                 "error",
-                `${counts.invalidSample.toString()} malformed and ${counts.orphanSample.toString()} orphan exchange row(s), plus ${counts.invalidPrivateSample.toString()} malformed/mismatched and ${counts.orphanPrivateSample.toString()} orphan private destination row(s) in bounded samples.`,
+                `${counts.invalidSample.toString()} malformed and ${counts.orphanSample.toString()} orphan exchange row(s), ${counts.invalidPrivateSample.toString()} malformed/mismatched and ${counts.orphanPrivateSample.toString()} orphan private destination row(s), plus ${carrier.invalidSample.toString()} invalid, ${carrier.orphanSample.toString()} orphan, and ${carrier.providerMismatchSample.toString()} provider-mismatched carrier booking row(s) in bounded samples.`,
               );
             }
             if (
@@ -4186,16 +4342,20 @@ export function createShop(options: NpShopOptions = {}) {
               counts.awaiting > 0 ||
               counts.processing > 0 ||
               counts.destinationExpiredSample > 0 ||
-              counts.expiredPrivateSample > 0
+              counts.expiredPrivateSample > 0 ||
+              carrier.pending > 0 ||
+              carrier.providerConfirmed > 0 ||
+              carrier.cancelling > 0 ||
+              carrier.manualReview > 0
             ) {
               return npAdminStatus(
                 "warn",
-                `${counts.awaiting.toString()} awaiting (${counts.destinationAwaitingSample.toString()} destination submissions, ${counts.destinationSubmittedSample.toString()} staff reads, ${counts.destinationAccessedSample.toString()} ready, ${counts.destinationExpiredSample.toString()} expired in the bounded exchange sample), ${counts.expiredPrivateSample.toString()} expired private row(s) await cleanup, ${counts.processing.toString()} processing, and ${counts.manualInventory.toString()} requiring manual inventory reconciliation.`,
+                `${counts.awaiting.toString()} awaiting (${counts.destinationAwaitingSample.toString()} destination submissions, ${counts.destinationSubmittedSample.toString()} staff reads, ${counts.destinationAccessedSample.toString()} ready, ${counts.destinationExpiredSample.toString()} expired), ${counts.expiredPrivateSample.toString()} expired private row(s), ${counts.processing.toString()} processing, ${counts.manualInventory.toString()} manual inventory; carrier has ${carrier.pending.toString()} pending, ${carrier.providerConfirmed.toString()} provider-confirmed, ${carrier.cancelling.toString()} cancelling, and ${carrier.manualReview.toString()} manual-review row(s).`,
               );
             }
             return npAdminStatus(
               "ok",
-              `${counts.shipped.toString()} shipped and ${counts.cancelled.toString()} cancelled same-item exchange(s).`,
+              `${counts.shipped.toString()} shipped and ${counts.cancelled.toString()} cancelled same-item exchange(s); ${carrier.completed.toString()} completed and ${carrier.cancelled.toString()} cancelled provider booking(s), provider "${runtime.carrierExchangeAdapter?.id ?? "disabled"}".`,
             );
           } catch (error) {
             return npAdminStatus(
@@ -4544,6 +4704,118 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      ...(runtime.carrierExchangeAdapter
+        ? {
+            bookExchangeCarrier: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Replacement carrier booking requires a direct staff action.",
+                    };
+                  }
+                  const result = await npBookShopExchangeCarrierShipment(
+                    runtime,
+                    npRequireShopExchangeCarrierBookActionInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Replacement carrier booking ${result.booking.status}; shipment ${result.booking.id}.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+            resumeExchangeCarrier: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Replacement carrier reconciliation requires a direct staff action.",
+                    };
+                  }
+                  const result = await npBookShopExchangeCarrierShipment(
+                    runtime,
+                    npRequireShopExchangeCarrierExistingActionInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Replacement carrier booking ${result.booking.status}; shipment ${result.booking.id}.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+            shipBookedExchange: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Replacement shipment handoff requires a direct staff action.",
+                    };
+                  }
+                  const result = await npShipBookedShopExchange(
+                    runtime,
+                    npRequireShopExchangeCarrierExistingActionInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Exchange shipped with ${result.carrier ?? "provider carrier"}.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+            cancelExchangeCarrier: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Replacement carrier cancellation requires a direct staff action.",
+                    };
+                  }
+                  const result = await npCancelShopExchangeCarrierShipment(
+                    runtime,
+                    npRequireShopExchangeCarrierExistingActionInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Replacement carrier booking ${result.booking.status}; exchange ${result.exchange.status}.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+          }
+        : {}),
       countFulfillments: {
         kind: "metric",
         handler: async () => {
@@ -6430,6 +6702,35 @@ export {
   npRequireStoredShopExchangeDestinationPrivate,
   npShopExchangeDestinationLimits,
 } from "./exchange-destination-contract.js";
+export {
+  NP_SHOP_EXCHANGE_CARRIER_BOOKING_REQUEST_CONTRACT,
+  NP_SHOP_EXCHANGE_CARRIER_BOOKING_RESULT_CONTRACT,
+  NP_SHOP_EXCHANGE_CARRIER_BOOKING_STORAGE_CONTRACT,
+  NP_SHOP_EXCHANGE_CARRIER_CANCEL_REQUEST_CONTRACT,
+  NP_SHOP_EXCHANGE_CARRIER_CANCEL_RESULT_CONTRACT,
+  NpShopExchangeCarrierConflictError,
+  NpShopExchangeCarrierContractError,
+  npAnalyzeShopExchangeCarrierBookingRequest,
+  npAnalyzeStoredShopExchangeCarrierBooking,
+  npRequireShopExchangeCarrierBookActionInput,
+  npRequireShopExchangeCarrierBookingRequest,
+  npRequireShopExchangeCarrierBookingResult,
+  npRequireShopExchangeCarrierCancelRequest,
+  npRequireShopExchangeCarrierCancelResult,
+  npRequireShopExchangeCarrierExistingActionInput,
+  npRequireStoredShopExchangeCarrierBooking,
+  npShopExchangeCarrierBookingStatuses,
+} from "./exchange-carrier-contract.js";
+export type {
+  NpShopExchangeCarrierBookActionInput,
+  NpShopExchangeCarrierBookingRequest,
+  NpShopExchangeCarrierBookingResult,
+  NpShopExchangeCarrierBookingStatus,
+  NpShopExchangeCarrierCancelRequest,
+  NpShopExchangeCarrierCancelResult,
+  NpShopExchangeCarrierExistingActionInput,
+  NpShopStoredExchangeCarrierBooking,
+} from "./exchange-carrier-contract.js";
 export type {
   NpShopExchangeDestinationAuthority,
   NpShopExchangeDestinationReadInput,
@@ -6619,6 +6920,7 @@ export {
 } from "./carrier-contract.js";
 export type {
   NpShopCarrierAdapter,
+  NpShopCarrierExchangeAdapter,
   NpShopCarrierLabelAdapter,
   NpShopCarrierLabelFormat,
   NpShopCarrierLabelReadInput,

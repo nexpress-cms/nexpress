@@ -73,6 +73,9 @@ describe("shop factory", () => {
     expect(shopPlugin.manifest.styleSlots?.["exchange-destination"]).toBe(
       "[data-np-shop-exchange-destination]",
     );
+    expect(shopPlugin.manifest.styleSlots?.["exchange-carrier-booking"]).toBe(
+      "[data-np-shop-exchange-carrier-booking]",
+    );
     expect(
       Object.entries(shopPlugin.actions ?? {}).map(([id, action]) => ({
         id,
@@ -184,7 +187,15 @@ describe("shop factory", () => {
     ]);
     const exchangeTable = shopPlugin.admin?.tables?.find((table) => table.id === "shop-exchanges");
     expect(exchangeTable?.columns.map((column) => column.name)).toEqual(
-      expect.arrayContaining(["destination", "destinationRevision", "destinationExpiresAt"]),
+      expect.arrayContaining([
+        "destination",
+        "destinationRevision",
+        "destinationExpiresAt",
+        "carrierBooking",
+        "bookingId",
+        "bookingRevision",
+        "provider",
+      ]),
     );
     expect(
       exchangeTable?.rowActions?.find((action) => action.id === "read-exchange-destination"),
@@ -414,6 +425,70 @@ describe("shop factory", () => {
         },
       }),
     ).toThrow(/carrier provider id/u);
+  });
+
+  it("adds replacement booking only as one paired carrier capability", () => {
+    const shop = createShop({
+      carrier: {
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          bookExchangeShipment: (request) => ({
+            contract: "np.shop-exchange-carrier-booking-result.v1",
+            shipmentId: request.shipmentId,
+            orderId: request.orderId,
+            exchangeId: request.exchangeId,
+            bookingReference: "replacement_123",
+            carrier: "Parcel Co",
+            trackingNumber: "REPLACEMENT-123",
+            bookedAt: request.requestedAt,
+          }),
+          cancelExchangeShipment: (request) => ({
+            contract: "np.shop-exchange-carrier-cancel-result.v1",
+            cancellationId: request.cancellationId,
+            shipmentId: request.shipmentId,
+            orderId: request.orderId,
+            exchangeId: request.exchangeId,
+            cancelledAt: request.requestedAt,
+          }),
+        },
+      },
+    });
+    expect(shop.runtime.carrierExchangeAdapter?.id).toBe("test-carrier");
+    expect(Object.keys(shop.plugin.actions ?? {})).toEqual(
+      expect.arrayContaining([
+        "bookExchangeCarrier",
+        "resumeExchangeCarrier",
+        "shipBookedExchange",
+        "cancelExchangeCarrier",
+      ]),
+    );
+    expect(shop.plugin.manifest.provides.adminExtensions).toContain(
+      "action:shop-exchange-carrier-booking",
+    );
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-exchanges")
+        ?.rowActions?.map((action) => action.id),
+    ).toEqual(
+      expect.arrayContaining([
+        "book-exchange-carrier",
+        "resume-exchange-carrier",
+        "ship-booked-exchange",
+        "cancel-booked-exchange",
+      ]),
+    );
+    expect(() =>
+      createShop({
+        carrier: {
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+            bookExchangeShipment: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/bookExchangeShipment and cancelExchangeShipment together/u);
   });
 
   it("adds a raw tracking webhook only for the optional carrier capability", () => {
