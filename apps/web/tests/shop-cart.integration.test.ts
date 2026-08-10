@@ -7371,6 +7371,11 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       pickupId: replacementPickupId,
       pickupReference: "replacement_pickup_123",
     });
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.carrierPickupHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
     const exchangeTrackingAt = new Date().toISOString();
     const exchangeTrackingEvent = {
       contract: "np.shop-tracking-event.v1",
@@ -7586,6 +7591,11 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     });
     expect(
       await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.carrierPickupHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(
+      await withCurrentSite("default", () =>
         exchangeCarrierShop.plugin.actions?.cancelExchangeCarrier?.handler(
           {
             row: {
@@ -7666,6 +7676,11 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(
       await withCurrentSite("default", () =>
         exchangeCarrierShop.plugin.actions?.exchangeHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.carrierPickupHealth?.handler(undefined, {} as never),
       ),
     ).toMatchObject({ ok: true, data: { level: "ok" } });
     expect(

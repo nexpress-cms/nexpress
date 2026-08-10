@@ -397,6 +397,55 @@ function pickupPackages(
 
 type NpShopPickupBooking = NpShopStoredCarrierBooking | NpShopStoredExchangeCarrierBooking;
 
+function completedReplacementBookingMatchesExchange(
+  booking: NpShopStoredExchangeCarrierBooking,
+  exchange: NpShopStoredExchange,
+): boolean {
+  return (
+    booking.completedExchangeRevision !== null &&
+    exchange.id === booking.exchangeId &&
+    ((exchange.status === "processing" &&
+      exchange.revision === booking.completedExchangeRevision) ||
+      (exchange.status === "shipped" &&
+        exchange.revision === booking.completedExchangeRevision + 1)) &&
+    exchange.carrier === booking.carrier &&
+    exchange.trackingNumber === booking.trackingNumber
+  );
+}
+
+function replacementPickupLifecycleMatches(
+  booking: NpShopStoredExchangeCarrierBooking,
+  exchange: NpShopStoredExchange,
+  pickup: NpShopStoredCarrierPickup,
+): boolean {
+  if (
+    booking.exchangeId !== pickup.exchangeId ||
+    booking.completedExchangeRevision === null ||
+    booking.purgeAt !== pickup.purgeAt
+  ) {
+    return false;
+  }
+  if (booking.status === "completed") {
+    return completedReplacementBookingMatchesExchange(booking, exchange);
+  }
+  if (pickup.status !== "cancelled") return false;
+  if (booking.status === "cancel-pending" || booking.status === "cancel-confirmed") {
+    return (
+      exchange.id === booking.exchangeId &&
+      exchange.status === "processing" &&
+      exchange.revision === booking.completedExchangeRevision &&
+      exchange.carrier === booking.carrier &&
+      exchange.trackingNumber === booking.trackingNumber
+    );
+  }
+  return (
+    booking.status === "cancelled" &&
+    exchange.id === booking.exchangeId &&
+    exchange.status === "cancelled" &&
+    exchange.revision === booking.completedExchangeRevision + 1
+  );
+}
+
 function samePackages(
   left: readonly NpShopCarrierPickupPackage[],
   right: readonly NpShopCarrierPickupPackage[],
@@ -523,10 +572,7 @@ async function requireScheduleEligibility(
       !("exchangeId" in booking) ||
       !("exchangeId" in parcels) ||
       booking.sourceExchangeRevision !== parcels.exchangeRevision ||
-      booking.completedExchangeRevision === null ||
-      exchange.revision < booking.completedExchangeRevision ||
-      exchange.carrier !== booking.carrier ||
-      exchange.trackingNumber !== booking.trackingNumber
+      !completedReplacementBookingMatchesExchange(booking, exchange)
     ) {
       throw new NpShopCarrierPickupConflictError(
         "pickup_booking_not_found",
@@ -1372,7 +1418,9 @@ export async function npCountShopCarrierPickups(expectedProviderId?: string): Pr
           )) ||
         booking.providerId !== pickup.providerId ||
         (pickup.target === "replacement" &&
-          ("exchangeId" in booking ? booking.exchangeId !== pickup.exchangeId : true))
+          ("exchangeId" in booking
+            ? !exchange || !replacementPickupLifecycleMatches(booking, exchange, pickup)
+            : true))
       ) {
         counts.bookingMismatchSample += 1;
       }
@@ -1380,8 +1428,14 @@ export async function npCountShopCarrierPickups(expectedProviderId?: string): Pr
         !parcels ||
         parcels.lockedShipmentId !== pickup.shipmentId ||
         parcels.revision !== pickup.parcelRevision ||
+        parcels.purgeAt !== pickup.purgeAt ||
         (pickup.target === "replacement" &&
-          ("exchangeId" in parcels ? parcels.exchangeId !== pickup.exchangeId : true)) ||
+          ("exchangeId" in parcels
+            ? parcels.exchangeId !== pickup.exchangeId ||
+              !booking ||
+              !("exchangeId" in booking) ||
+              booking.sourceExchangeRevision !== parcels.exchangeRevision
+            : true)) ||
         !samePackages(pickupPackages(parcels), pickup.packages)
       ) {
         counts.parcelMismatchSample += 1;
