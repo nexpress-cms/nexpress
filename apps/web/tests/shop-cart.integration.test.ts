@@ -6574,6 +6574,14 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     const owner = await createPendingOrder(ids, "exchange-owner@example.com");
     const exchangeBookingRequests: NpShopExchangeCarrierBookingRequest[] = [];
     const exchangeCancellationRequests: NpShopExchangeCarrierCancelRequest[] = [];
+    const readExchangeShippingLabel = vi.fn((request: NpShopCarrierLabelRequest) => ({
+      contract: "np.shop-carrier-label-result.v1" as const,
+      shipmentId: request.shipmentId,
+      orderId: request.orderId,
+      format: "pdf" as const,
+      content: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      retrievedAt: request.requestedAt,
+    }));
     const paymentShop = createShop({
       payment: {
         adapter: {
@@ -6587,6 +6595,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         adapter: {
           id: "test-carrier",
           bookShipment: () => Promise.reject(new Error("not called")),
+          readShippingLabel: readExchangeShippingLabel,
           bookExchangeShipment: (request) => {
             exchangeBookingRequests.push(request);
             if (exchangeBookingRequests.length === 1) {
@@ -6980,6 +6989,39 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         };
       }
     ).data.rows[0]!;
+    const exchangeLabelResponse = await configuredShopCall(
+      exchangeCarrierShop,
+      "GET",
+      "/carrier/shipping-label",
+      {
+        query: { orderId: ids.orderId, shipmentId: exchangeBookingRow.bookingId },
+        user: {
+          id: staff.userId,
+          email: "exchange-operator@example.com",
+          role: "admin",
+        },
+      },
+    );
+    expect(exchangeLabelResponse).toMatchObject({
+      status: 200,
+      body: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      headers: {
+        "Content-Type": "application/pdf",
+        "Cache-Control": "private, no-store",
+      },
+    });
+    expect(readExchangeShippingLabel).toHaveBeenCalledWith({
+      contract: "np.shop-carrier-label-request.v1",
+      shipmentId: exchangeBookingRow.bookingId,
+      orderId: ids.orderId,
+      bookingReference: "replacement_booking_123",
+      carrier: "Parcel Co",
+      trackingNumber: "EXCHANGE-REPLACEMENT",
+      requestedAt: expect.any(String),
+    });
+    expect(JSON.stringify(readExchangeShippingLabel.mock.calls[0]?.[0])).not.toContain(
+      replacementDestination.addressLine1,
+    );
     expect(
       await withCurrentSite("default", () =>
         exchangeCarrierShop.plugin.actions?.cancelExchangeCarrier?.handler(
@@ -7062,6 +7104,21 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect((cancelled.body as { order: { exchange: unknown } }).order.exchange).not.toHaveProperty(
       "operatorNote",
     );
+    await expect(
+      configuredShopCall(exchangeCarrierShop, "GET", "/carrier/shipping-label", {
+        query: { orderId: ids.orderId, shipmentId: exchangeBookingRow.bookingId },
+        user: {
+          id: staff.userId,
+          email: "exchange-operator@example.com",
+          role: "admin",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      statusCode: 409,
+      details: { code: "carrier_label_not_available" },
+    });
+    expect(readExchangeShippingLabel).toHaveBeenCalledTimes(1);
     expect(
       await withCurrentSite("default", () =>
         paymentShop.plugin.actions?.recentExchanges?.handler(undefined, {} as never),
@@ -7093,6 +7150,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         { action: "shop.exchange.carrier.booking.prepare" },
         { action: "shop.exchange.carrier.booking.confirm" },
         { action: "shop.exchange.carrier.booking.complete" },
+        { action: "shop.exchange.carrier.label.read" },
+        { action: "shop.exchange.carrier.label.deliver" },
         { action: "shop.exchange.carrier.cancellation.prepare" },
         { action: "shop.exchange.carrier.cancellation.confirm" },
         { action: "shop.exchange.carrier.cancellation.complete" },

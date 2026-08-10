@@ -3188,6 +3188,23 @@ export function createShop(options: NpShopOptions = {}) {
                   },
                 ]
               : []),
+            ...(runtime.carrierLabelAdapter
+              ? [
+                  {
+                    type: "download" as const,
+                    id: "download-exchange-shipping-label",
+                    label: "Download replacement label",
+                    routePath: "/carrier/shipping-label",
+                    query: [
+                      { name: "orderId", rowField: "id" },
+                      { name: "shipmentId", rowField: "bookingId" },
+                    ],
+                    visibleWhen: { field: "carrierBooking", oneOf: ["completed", "shipped"] },
+                    description:
+                      "Retrieve the current replacement label from the carrier without storing its bytes in NexPress.",
+                  },
+                ]
+              : []),
             {
               id: "ship-exchange",
               label: "Ship replacement",
@@ -6110,7 +6127,7 @@ export function createShop(options: NpShopOptions = {}) {
               method: "GET" as const,
               path: "/carrier/shipping-label",
               description:
-                "Retrieve one completed carrier booking label as bounded transient bytes.",
+                "Retrieve one completed outbound or replacement carrier booking label as bounded transient bytes.",
               auth: true,
               responseMode: "binary" as const,
               handler: carrierLabelApiHandler,

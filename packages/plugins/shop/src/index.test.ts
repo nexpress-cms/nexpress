@@ -887,6 +887,18 @@ describe("shop factory", () => {
         ?.find((table) => table.id === "shop-carrier-bookings")
         ?.rowActions?.find((action) => action.type === "download"),
     ).toMatchObject({ routePath: "/carrier/shipping-label" });
+    expect(
+      withLabels.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-exchanges")
+        ?.rowActions?.find((action) => action.type === "download"),
+    ).toMatchObject({
+      routePath: "/carrier/shipping-label",
+      query: [
+        { name: "orderId", rowField: "id" },
+        { name: "shipmentId", rowField: "bookingId" },
+      ],
+      visibleWhen: { field: "carrierBooking", oneOf: ["completed", "shipped"] },
+    });
     const labelRoute = withLabels.plugin.routes?.find(
       (route) => route.path === "/carrier/shipping-label",
     );
@@ -919,6 +931,11 @@ describe("shop factory", () => {
     expect(withoutLabels.runtime.carrierLabelAdapter).toBeNull();
     expect(
       withoutLabels.plugin.routes?.some((route) => route.path === "/carrier/shipping-label"),
+    ).toBe(false);
+    expect(
+      withoutLabels.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-exchanges")
+        ?.rowActions?.some((action) => action.type === "download"),
     ).toBe(false);
   });
 

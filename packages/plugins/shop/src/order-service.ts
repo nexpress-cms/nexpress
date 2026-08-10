@@ -3492,6 +3492,94 @@ async function recordRequiredShopFulfillmentAudit(
   });
 }
 
+interface NpShopCarrierLabelSource {
+  kind: "fulfillment" | "exchange";
+  shipmentId: string;
+  orderId: string;
+  providerId: string;
+  bookingReference: string;
+  carrier: string;
+  trackingNumber: string;
+  exchangeId: string | null;
+}
+
+async function readShopCarrierLabelSource(
+  tx: NpShopTransaction,
+  siteId: string,
+  input: NpShopCarrierLabelReadInput,
+  providerId: string,
+): Promise<NpShopCarrierLabelSource> {
+  const sources: NpShopCarrierLabelSource[] = [];
+  const fulfillmentBooking = await readStoredCarrierBooking(tx, siteId, input.orderId, true);
+  let candidateCount = fulfillmentBooking?.id === input.shipmentId ? 1 : 0;
+  if (
+    fulfillmentBooking?.id === input.shipmentId &&
+    fulfillmentBooking.status === "completed" &&
+    fulfillmentBooking.providerId === providerId &&
+    fulfillmentBooking.bookingReference &&
+    fulfillmentBooking.carrier &&
+    fulfillmentBooking.trackingNumber
+  ) {
+    sources.push({
+      kind: "fulfillment",
+      shipmentId: fulfillmentBooking.id,
+      orderId: fulfillmentBooking.orderId,
+      providerId: fulfillmentBooking.providerId,
+      bookingReference: fulfillmentBooking.bookingReference,
+      carrier: fulfillmentBooking.carrier,
+      trackingNumber: fulfillmentBooking.trackingNumber,
+      exchangeId: null,
+    });
+  }
+
+  // Exchange mutations lock the exchange before its carrier booking. Preserve
+  // that order here so a label read cannot deadlock cancellation or shipment.
+  const exchange = await readStoredExchange(tx, siteId, input.orderId, true);
+  const exchangeBooking = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
+  if (exchangeBooking?.id === input.shipmentId) candidateCount += 1;
+  if (
+    exchangeBooking?.id === input.shipmentId &&
+    exchangeBooking.status === "completed" &&
+    exchangeBooking.providerId === providerId &&
+    exchangeBooking.bookingReference &&
+    exchangeBooking.carrier &&
+    exchangeBooking.trackingNumber &&
+    exchangeBooking.completedExchangeRevision !== null
+  ) {
+    const revisionMatches =
+      exchange?.status === "processing"
+        ? exchange.revision === exchangeBooking.completedExchangeRevision
+        : exchange?.status === "shipped"
+          ? exchange.revision === exchangeBooking.completedExchangeRevision + 1
+          : false;
+    if (
+      exchange?.id === exchangeBooking.exchangeId &&
+      revisionMatches &&
+      exchange.carrier === exchangeBooking.carrier &&
+      exchange.trackingNumber === exchangeBooking.trackingNumber
+    ) {
+      sources.push({
+        kind: "exchange",
+        shipmentId: exchangeBooking.id,
+        orderId: exchangeBooking.orderId,
+        providerId: exchangeBooking.providerId,
+        bookingReference: exchangeBooking.bookingReference,
+        carrier: exchangeBooking.carrier,
+        trackingNumber: exchangeBooking.trackingNumber,
+        exchangeId: exchangeBooking.exchangeId,
+      });
+    }
+  }
+
+  if (candidateCount !== 1 || sources.length !== 1) {
+    throw new NpShopCarrierConflictError(
+      "carrier_label_not_available",
+      "One completed outbound or replacement booking owned by the configured carrier is required for label retrieval.",
+    );
+  }
+  return sources[0];
+}
+
 export async function npReadShopCarrierShippingLabel(
   runtime: NpShopRuntime,
   input: NpShopCarrierLabelReadInput,
@@ -3507,44 +3595,32 @@ export async function npReadShopCarrierShippingLabel(
   const siteId = await requireSiteId();
   const requestedAt = new Date();
   requestedAt.setMilliseconds(0);
-  const request = await getDb().transaction(async (tx) => {
-    const booking = await readStoredCarrierBooking(tx, siteId, input.orderId, true);
-    if (
-      !booking ||
-      booking.id !== input.shipmentId ||
-      booking.status !== "completed" ||
-      booking.providerId !== adapter.id ||
-      !booking.bookingReference ||
-      !booking.carrier ||
-      !booking.trackingNumber
-    ) {
-      throw new NpShopCarrierConflictError(
-        "carrier_label_not_available",
-        "A completed booking owned by the configured carrier is required for label retrieval.",
-      );
-    }
+  const prepared = await getDb().transaction(async (tx) => {
+    const source = await readShopCarrierLabelSource(tx, siteId, input, adapter.id);
     const prepared = npRequireShopCarrierLabelRequest({
       contract: NP_SHOP_CARRIER_LABEL_REQUEST_CONTRACT,
-      shipmentId: booking.id,
-      orderId: booking.orderId,
-      bookingReference: booking.bookingReference,
-      carrier: booking.carrier,
-      trackingNumber: booking.trackingNumber,
+      shipmentId: source.shipmentId,
+      orderId: source.orderId,
+      bookingReference: source.bookingReference,
+      carrier: source.carrier,
+      trackingNumber: source.trackingNumber,
       requestedAt: requestedAt.toISOString(),
     });
     await recordRequiredShopFulfillmentAudit(
       tx,
       siteId,
       staffUserId,
-      "shop.carrier.label.read",
-      booking.orderId,
+      source.kind === "exchange" ? "shop.exchange.carrier.label.read" : "shop.carrier.label.read",
+      source.orderId,
       {
-        shipmentId: booking.id,
-        providerId: booking.providerId,
+        ...(source.exchangeId ? { exchangeId: source.exchangeId } : {}),
+        shipmentId: source.shipmentId,
+        providerId: source.providerId,
       },
     );
-    return prepared;
+    return { request: prepared, source };
   });
+  const { request, source } = prepared;
 
   const result = npRequireShopCarrierLabelResult(await adapter.readShippingLabel(request));
   if (result.shipmentId !== request.shipmentId || result.orderId !== request.orderId) {
@@ -3563,12 +3639,11 @@ export async function npReadShopCarrierShippingLabel(
     ]);
   }
   await getDb().transaction(async (tx) => {
-    const current = await readStoredCarrierBooking(tx, siteId, input.orderId, true);
+    const current = await readShopCarrierLabelSource(tx, siteId, input, adapter.id);
     if (
-      !current ||
-      current.id !== request.shipmentId ||
-      current.status !== "completed" ||
-      current.providerId !== adapter.id ||
+      current.kind !== source.kind ||
+      current.exchangeId !== source.exchangeId ||
+      current.shipmentId !== request.shipmentId ||
       current.bookingReference !== request.bookingReference ||
       current.carrier !== request.carrier ||
       current.trackingNumber !== request.trackingNumber
@@ -3582,10 +3657,13 @@ export async function npReadShopCarrierShippingLabel(
       tx,
       siteId,
       staffUserId,
-      "shop.carrier.label.deliver",
+      current.kind === "exchange"
+        ? "shop.exchange.carrier.label.deliver"
+        : "shop.carrier.label.deliver",
       current.orderId,
       {
-        shipmentId: current.id,
+        ...(current.exchangeId ? { exchangeId: current.exchangeId } : {}),
+        shipmentId: current.shipmentId,
         providerId: current.providerId,
         format: result.format,
         bytes: result.content.byteLength,

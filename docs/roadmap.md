@@ -474,7 +474,10 @@ real product domain, not just blog/community. Ship as a plugin package
   PII-free contract. Owners submit one new address under a 15-minute
   revision-bound authority into a maximum-24-hour private sidecar; audited staff
   access is required before processing and processing/cancellation/expiry delete
-  it. Replacement labels/pickup/tracking callbacks, substitutions, payment
+  it. The existing label-read capability also serves completed provider-backed
+  replacement bookings through one transient staff-only download with exact
+  pre/post relationship validation and no byte persistence. Replacement label
+  purchase/regeneration, pickup/tracking callbacks, substitutions, payment
   differences, store credit, eligibility policy, automatic address correction,
   and automatic approval remain separate additive contracts.
 - **Provider-neutral return tracking (shipped)** — optional exact raw-body
