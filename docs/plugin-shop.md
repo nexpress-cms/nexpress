@@ -980,6 +980,7 @@ import {
   NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
   NP_SHOP_CARRIER_LABEL_ACQUISITION_RESULT_CONTRACT,
   NP_SHOP_CARRIER_LABEL_RESULT_CONTRACT,
+  NP_SHOP_CARRIER_PICKUP_AVAILABILITY_RESULT_CONTRACT,
   NP_SHOP_CARRIER_PICKUP_CANCEL_RESULT_CONTRACT,
   NP_SHOP_CARRIER_PICKUP_RESULT_CONTRACT,
   NP_SHOP_TRACKING_POLL_RESULT_CONTRACT,
@@ -1108,6 +1109,22 @@ const carrier: NpShopCarrierAdapter = {
       readyAt: request.readyAt,
       closeAt: request.closeAt,
       scheduledAt: pickup.scheduledAt,
+    };
+  },
+  async listPickupWindows(request) {
+    // This exact booked-shipment read contains only the opaque origin and
+    // PII-free parcel summaries. Return ordered UTC windows valid for at most
+    // the requested one-hour lifetime.
+    const availability = await listProviderPickupWindows(request);
+    return {
+      contract: NP_SHOP_CARRIER_PICKUP_AVAILABILITY_RESULT_CONTRACT,
+      availabilityId: request.availabilityId,
+      windows: availability.windows.map((window) => ({
+        id: window.id,
+        readyAt: window.readyAt,
+        closeAt: window.closeAt,
+      })),
+      expiresAt: availability.expiresAt,
     };
   },
   async cancelPickup(request) {
@@ -1276,10 +1293,37 @@ warehouse/account token, not an address: it is retained server-side and must
 contain no customer, staff, or location PII that NexPress would need to
 interpret. Existing carrier adapters remain valid without these methods.
 
+`listPickupWindows` is an independent additive read on top of that complete
+pair. When present, Shop removes arbitrary UTC inputs from the outbound and
+replacement booking tables. A direct staff action sends one exact
+`np.shop-carrier-pickup-availability-request.v1` outside the transaction with a
+fresh trace UUID, completed booking references, the opaque origin token, parcel
+revision, and the same at-most-20 PII-free package summaries. The request also
+bounds the result to one hour and the existing 14-day scheduling horizon.
+
+The provider returns `np.shop-carrier-pickup-availability-result.v1` with 1–20
+uniquely identified, ordered, non-overlapping UTC windows. Each window remains
+15 minutes–12 hours long. Result expiry must
+be after the request, no later than the requested one-hour maximum, and before
+every offered window. Shop rechecks booking, tracking, provider, location,
+parcel revision, package summaries, and commercial retention after provider
+I/O, then stores one short-lived one-way booking fingerprint and
+`np.shop-carrier-pickup-availability-storage.v1` snapshot.
+
+Admin lists each offered window without addresses. Selection sends only the
+snapshot UUID/revision and provider window id; clients cannot replace its UTC
+bounds. Shop rechecks the full snapshot before passing those unchanged bounds
+to the existing `schedulePickup` v1 method. Creating the durable pickup intent
+consumes the availability even when a retryable provider ambiguity must later
+be resumed from the pickup table. Expired rows use bounded oldest-first hourly
+cleanup. Metric, health, table, provider-health receipt, Doctor inventory,
+audit, and adapter-removal diagnostics remain PII-free.
+
 A completed outbound or same-item replacement parcel-aware booking with no
 verified tracking state exposes **Schedule pickup**. The direct-staff action
-accepts one canonical UTC `readyAt`/`closeAt` window: 15 minutes–12 hours long,
-live, and starting within 14 days. Shop locks the completed booking and its
+accepts one selected provider window, or when `listPickupWindows` is omitted,
+one canonical UTC `readyAt`/`closeAt` window: 15 minutes–12 hours long, live,
+and starting within 14 days. Shop locks the completed booking and its
 already shipment-locked parcel snapshot, writes
 `np.shop-carrier-pickup-storage.v2` with a stable
 pickup UUID and an explicit `outbound | replacement` target, then calls the
@@ -1323,9 +1367,9 @@ cancel actions and labels outbound versus replacement shipments. Health samples
 malformed rows, missing bookings/parcels, provider mismatch, exact parcel
 mismatch, reconciliation state, and manual review. Commercial order purge
 removes pickup state with its booking. This contract does not buy labels,
-create recurring pickups, schedule return
-pickups, expose provider availability calendars, store addresses, or implement
-provider-specific pickup protocols.
+create recurring pickups, schedule return pickups, expose a general provider
+calendar outside exact booked shipments, store addresses, calculate pickup
+charges, or implement provider-specific pickup protocols.
 
 ### Approved-return logistics and transient labels
 

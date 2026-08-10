@@ -2,7 +2,15 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-10 (Shop carrier adapters may now add one outbound
+**Last refreshed:** 2026-08-11 (Shop pickup-capable carrier adapters may now add
+one exact outbound and same-item replacement availability read over the locked
+booking, opaque origin, and parcel snapshot. Bounded ordered UTC windows,
+one-hour PII-free snapshots with one-way booking fingerprints, revision-safe staff selection, unchanged pickup v1
+scheduling, single-use consumption, Admin/Doctor, cleanup, scaffolds, docs, and
+PostgreSQL coverage share the contract. General calendars, recurrence, charges,
+addresses, automatic scheduling, and provider protocols remain separate.)
+
+**Earlier:** 2026-08-10 (Shop carrier adapters may now add one outbound
 and same-item replacement label acquisition capability on top of the existing
 transient label read. Shipment-keyed purchase/regeneration generations, stable
 provider idempotency, atomic opaque-reference replacement, provider I/O outside

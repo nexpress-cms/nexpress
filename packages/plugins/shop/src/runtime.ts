@@ -31,6 +31,7 @@ import type {
   NpShopCarrierLabelAcquisitionAdapter,
   NpShopCarrierLabelAdapter,
   NpShopCarrierParcelAdapter,
+  NpShopCarrierPickupAvailabilityAdapter,
   NpShopCarrierPickupAdapter,
   NpShopCarrierReturnLabelAdapter,
   NpShopCarrierReturnLogisticsAdapter,
@@ -80,6 +81,7 @@ export interface NpShopRuntime {
   carrierLabelAdapter: NpShopCarrierLabelAdapter | null;
   carrierParcelAdapter: NpShopCarrierParcelAdapter | null;
   carrierPickupAdapter: NpShopCarrierPickupAdapter | null;
+  carrierPickupAvailabilityAdapter: NpShopCarrierPickupAvailabilityAdapter | null;
   carrierPickupLocationReference: string | null;
   carrierReturnLogisticsAdapter: NpShopCarrierReturnLogisticsAdapter | null;
   carrierReturnPostageAdapter: NpShopCarrierReturnPostageAdapter | null;

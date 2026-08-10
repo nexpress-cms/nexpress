@@ -383,8 +383,16 @@ real product domain, not just blog/community. Ship as a plugin package
   cancellation-before-restock, direct-staff audit, commercial cleanup,
   Admin/Doctor, scaffold guidance, and PostgreSQL coverage share one durable
   contract.
-  Label purchase, recurring pickup, provider availability calendars,
-  addresses, and provider-specific protocols remain separate.
+  Label purchase, recurring pickup, general provider calendars, addresses,
+  and provider-specific protocols remain separate.
+- **Provider-neutral carrier pickup availability (shipped)** — pickup-capable
+  adapters may add one exact `listPickupWindows` read over a completed outbound
+  or replacement booking, opaque origin, and locked parcel snapshot. At most 20
+  ordered UTC windows, a one-hour PII-free snapshot, revision-safe direct-staff
+  selection, unchanged pickup v1 scheduling, single-use consumption, bounded
+  cleanup, Admin/Doctor health, scaffold guidance, audit, and PostgreSQL
+  coverage share the contract. General calendars, recurring pickup, charges,
+  addresses, automatic scheduling, and provider protocols remain separate.
 - **Provider-neutral carrier tracking events (shipped)** — carrier adapters may
   add one exact raw-body callback verifier that projects bounded PII-free
   `in-transit`, `out-for-delivery`, `delivered`, or `exception` events. Exact
@@ -536,7 +544,7 @@ real product domain, not just blog/community. Ship as a plugin package
 - **Tax compliance, carrier logistics, and shipping policy (future)** — shipping,
   additional-tax quote, and carrier-booking boundaries are shipped; tax remittance/filing,
   invoices, exemptions/nexus, customs/duties, return-postage quotes,
-  label billing/void policy, recurring pickup,
+  label billing/void policy, recurring pickup and general carrier calendars,
   provider APIs, automatic packaging, and regional policy require
   separate contracts.
 

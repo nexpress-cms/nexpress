@@ -106,6 +106,10 @@ It provides:
   summaries, stable schedule/cancellation idempotency, provider calls outside
   transactions, revision-safe reconciliation, Admin/Doctor diagnostics, and a
   tracking-start cancellation boundary;
+- optional provider pickup availability over that scheduling capability, with
+  exact shipment/location/parcel requests, at most 20 ordered UTC windows,
+  one-hour PII-free snapshots with one-way booking fingerprints, revision-safe staff selection, bounded cleanup,
+  and Admin/Doctor health without addresses or provider calendar protocols;
 - provider-neutral, staff-audited full refunds with one durable idempotency id,
   cancelled unshipped fulfillment, all-or-none tracked-inventory restoration,
   and explicit manual-compensation diagnostics;
@@ -170,7 +174,11 @@ parcel-aware adapter may additionally implement both
 `schedulePickup` and `cancelPickup`; `createShop()` then requires at least one
 outbound or replacement parcel-booking capability and one opaque
 `pickupLocationReference` that only the provider can resolve. Shop owns
-revision-safe selection and both PII-free commercial snapshots. Approved
+revision-safe selection and both PII-free commercial snapshots. The adapter
+may additionally implement `listPickupWindows`; Shop then replaces arbitrary
+Admin time input with a bounded short-lived provider-window inventory and
+passes only the selected canonical UTC bounds to the unchanged scheduling
+method. Approved
 returns may independently add paired `createReturnShipment` /
 `cancelReturnShipment` methods with one opaque `returnLocationReference`;
 optional `readReturnLabel` bytes are delivered only to the owner and never

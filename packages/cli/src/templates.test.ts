@@ -402,6 +402,10 @@ describe("getProjectFiles", () => {
     expect(env).toContain("bookShipmentWithParcels");
     expect(env).toContain("and cancelPickup together; Shop keeps shipment-keyed pickup state");
     expect(env).toContain("pickupLocationReference");
+    expect(env).toContain(
+      "Optional listPickupWindows adds exact outbound/replacement availability",
+    );
+    expect(env).toContain("selected bounds to unchanged schedulePickup v1");
     expect(env).toContain("createReturnShipment and cancelReturnShipment");
     expect(env).toContain("returnLocationReference");
     expect(env).toContain("readReturnLabel");
@@ -424,6 +428,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("one idempotent booking and atomic private-data deletion");
     expect(readme).toContain("exact PII-free mm/gram package allocation");
     expect(readme).toContain("paired pickup scheduling/cancellation");
+    expect(readme).toContain("bounded one-hour provider availability");
     expect(readme).toContain("active replacement pickup must be cancelled");
     expect(readme).toContain("maximum-24-hour private origin sidecar");
     expect(readme).toContain("exact return-postage method");
