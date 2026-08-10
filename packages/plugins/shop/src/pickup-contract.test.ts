@@ -20,6 +20,7 @@ const pickupId = "123e4567-e89b-42d3-a456-426614174000";
 const shipmentId = "223e4567-e89b-42d3-a456-426614174000";
 const orderId = "323e4567-e89b-42d3-a456-426614174000";
 const cancellationId = "423e4567-e89b-42d3-a456-426614174000";
+const exchangeId = "523e4567-e89b-42d3-a456-426614174000";
 const requestedAt = "2026-08-03T00:00:00.000Z";
 const readyAt = "2026-08-03T01:00:00.000Z";
 const closeAt = "2026-08-03T04:00:00.000Z";
@@ -49,6 +50,8 @@ const pending = {
   id: pickupId,
   orderId,
   shipmentId,
+  target: "outbound",
+  exchangeId: null,
   providerId: "test-carrier",
   status: "pending",
   revision: 1,
@@ -119,6 +122,9 @@ describe("Shop carrier pickup contract", () => {
 
   it("enforces each durable confirmation state", () => {
     expect(npAnalyzeStoredShopCarrierPickup(pending)).toEqual([]);
+    expect(
+      npAnalyzeStoredShopCarrierPickup({ ...pending, target: "replacement", exchangeId: null }),
+    ).toContain("carrier pickup exchange identity does not match its target.");
     const confirmed = {
       ...pending,
       status: "provider-confirmed",
@@ -178,26 +184,65 @@ describe("Shop carrier pickup contract", () => {
   it("parses exact revision-safe Admin actions", () => {
     expect(
       npRequireShopCarrierPickupScheduleInput({
-        row: { id: orderId, shipmentId, pickupRevision: 0 },
+        row: {
+          id: orderId,
+          shipmentId,
+          pickupTarget: "replacement",
+          exchangeId,
+          pickupRevision: 0,
+        },
         values: { readyAt, closeAt },
       }),
-    ).toEqual({ orderId, shipmentId, expectedRevision: 0, readyAt, closeAt });
+    ).toEqual({
+      orderId,
+      shipmentId,
+      target: "replacement",
+      exchangeId,
+      expectedRevision: 0,
+      readyAt,
+      closeAt,
+    });
     const existing = {
-      row: { id: orderId, pickupId, pickupRevision: 3 },
+      row: {
+        id: orderId,
+        shipmentId,
+        pickupTarget: "outbound",
+        exchangeId: null,
+        pickupId,
+        pickupRevision: 3,
+      },
       values: {},
     };
     expect(npRequireShopCarrierPickupResumeInput(existing)).toEqual({
       orderId,
+      shipmentId,
+      target: "outbound",
+      exchangeId: null,
       pickupId,
       expectedRevision: 3,
     });
     expect(npRequireShopCarrierPickupCancelInput(existing)).toEqual({
       orderId,
+      shipmentId,
+      target: "outbound",
+      exchangeId: null,
       pickupId,
       expectedRevision: 3,
     });
     expect(() =>
       npRequireShopCarrierPickupCancelInput({ ...existing, values: { reason: "changed" } }),
     ).toThrow(/Invalid existing Shop pickup action/u);
+    expect(() =>
+      npRequireShopCarrierPickupScheduleInput({
+        row: {
+          id: orderId,
+          shipmentId,
+          pickupTarget: "outbound",
+          exchangeId,
+          pickupRevision: 0,
+        },
+        values: { readyAt, closeAt },
+      }),
+    ).toThrow(/Invalid Shop pickup scheduling action/u);
   });
 });

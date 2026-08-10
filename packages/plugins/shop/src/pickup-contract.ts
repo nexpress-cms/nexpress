@@ -4,7 +4,10 @@ export const NP_SHOP_CARRIER_PICKUP_CANCEL_REQUEST_CONTRACT =
   "np.shop-carrier-pickup-cancel-request.v1" as const;
 export const NP_SHOP_CARRIER_PICKUP_CANCEL_RESULT_CONTRACT =
   "np.shop-carrier-pickup-cancel-result.v1" as const;
-export const NP_SHOP_CARRIER_PICKUP_STORAGE_CONTRACT = "np.shop-carrier-pickup-storage.v1" as const;
+export const NP_SHOP_CARRIER_PICKUP_STORAGE_CONTRACT = "np.shop-carrier-pickup-storage.v2" as const;
+
+export const npShopCarrierPickupTargets = ["outbound", "replacement"] as const;
+export type NpShopCarrierPickupTarget = (typeof npShopCarrierPickupTargets)[number];
 
 export const npShopCarrierPickupStatuses = [
   "pending",
@@ -94,6 +97,8 @@ export interface NpShopStoredCarrierPickup {
   id: string;
   orderId: string;
   shipmentId: string;
+  target: NpShopCarrierPickupTarget;
+  exchangeId: string | null;
   providerId: string;
   status: NpShopCarrierPickupStatus;
   revision: number;
@@ -116,6 +121,8 @@ export interface NpShopStoredCarrierPickup {
 export interface NpShopCarrierPickupScheduleInput {
   orderId: string;
   shipmentId: string;
+  target: NpShopCarrierPickupTarget;
+  exchangeId: string | null;
   expectedRevision: number;
   readyAt: string;
   closeAt: string;
@@ -123,6 +130,9 @@ export interface NpShopCarrierPickupScheduleInput {
 
 export interface NpShopCarrierPickupExistingActionInput {
   orderId: string;
+  shipmentId: string;
+  target: NpShopCarrierPickupTarget;
+  exchangeId: string | null;
   pickupId: string;
   expectedRevision: number;
 }
@@ -468,6 +478,8 @@ const storedKeys = [
   "id",
   "orderId",
   "shipmentId",
+  "target",
+  "exchangeId",
   "providerId",
   "status",
   "revision",
@@ -496,6 +508,18 @@ export function npAnalyzeStoredShopCarrierPickup(value: unknown): string[] {
   }
   for (const key of ["id", "orderId", "shipmentId"] as const) {
     analyzeUuid(value[key], `carrier pickup.${key}`, issues);
+  }
+  if (!(npShopCarrierPickupTargets as readonly unknown[]).includes(value.target)) {
+    issues.push("carrier pickup.target is invalid.");
+  }
+  if (value.exchangeId !== null) {
+    analyzeUuid(value.exchangeId, "carrier pickup.exchangeId", issues);
+  }
+  if (
+    (value.target === "outbound" && value.exchangeId !== null) ||
+    (value.target === "replacement" && value.exchangeId === null)
+  ) {
+    issues.push("carrier pickup exchange identity does not match its target.");
   }
   if (typeof value.providerId !== "string" || !providerIdPattern.test(value.providerId)) {
     issues.push("carrier pickup.providerId is invalid.");
@@ -673,10 +697,25 @@ export function npRequireShopCarrierPickupScheduleInput(
 ): NpShopCarrierPickupScheduleInput {
   const { row, values } = requireActionEnvelope(value);
   const issues: string[] = [];
-  exactKeys(row, ["id", "shipmentId", "pickupRevision"], "payload.row", issues);
+  exactKeys(
+    row,
+    ["id", "shipmentId", "pickupTarget", "exchangeId", "pickupRevision"],
+    "payload.row",
+    issues,
+  );
   exactKeys(values, ["readyAt", "closeAt"], "payload.values", issues);
   analyzeUuid(row.id, "payload.row.id", issues);
   analyzeUuid(row.shipmentId, "payload.row.shipmentId", issues);
+  if (!(npShopCarrierPickupTargets as readonly unknown[]).includes(row.pickupTarget)) {
+    issues.push("payload.row.pickupTarget is invalid.");
+  }
+  if (row.exchangeId !== null) analyzeUuid(row.exchangeId, "payload.row.exchangeId", issues);
+  if (
+    (row.pickupTarget === "outbound" && row.exchangeId !== null) ||
+    (row.pickupTarget === "replacement" && row.exchangeId === null)
+  ) {
+    issues.push("payload.row exchange identity does not match its pickup target.");
+  }
   if (!Number.isSafeInteger(row.pickupRevision) || (row.pickupRevision as number) < 0) {
     issues.push("payload.row.pickupRevision is invalid.");
   }
@@ -687,6 +726,8 @@ export function npRequireShopCarrierPickupScheduleInput(
   return {
     orderId: row.id as string,
     shipmentId: row.shipmentId as string,
+    target: row.pickupTarget as NpShopCarrierPickupTarget,
+    exchangeId: row.exchangeId as string | null,
     expectedRevision: row.pickupRevision as number,
     readyAt: values.readyAt as string,
     closeAt: values.closeAt as string,
@@ -696,9 +737,25 @@ export function npRequireShopCarrierPickupScheduleInput(
 function requireExistingAction(value: unknown): NpShopCarrierPickupExistingActionInput {
   const { row, values } = requireActionEnvelope(value);
   const issues: string[] = [];
-  exactKeys(row, ["id", "pickupId", "pickupRevision"], "payload.row", issues);
+  exactKeys(
+    row,
+    ["id", "shipmentId", "pickupTarget", "exchangeId", "pickupId", "pickupRevision"],
+    "payload.row",
+    issues,
+  );
   exactKeys(values, [], "payload.values", issues);
   analyzeUuid(row.id, "payload.row.id", issues);
+  analyzeUuid(row.shipmentId, "payload.row.shipmentId", issues);
+  if (!(npShopCarrierPickupTargets as readonly unknown[]).includes(row.pickupTarget)) {
+    issues.push("payload.row.pickupTarget is invalid.");
+  }
+  if (row.exchangeId !== null) analyzeUuid(row.exchangeId, "payload.row.exchangeId", issues);
+  if (
+    (row.pickupTarget === "outbound" && row.exchangeId !== null) ||
+    (row.pickupTarget === "replacement" && row.exchangeId === null)
+  ) {
+    issues.push("payload.row exchange identity does not match its pickup target.");
+  }
   analyzeUuid(row.pickupId, "payload.row.pickupId", issues);
   if (!isPositiveSafeInteger(row.pickupRevision, Number.MAX_SAFE_INTEGER)) {
     issues.push("payload.row.pickupRevision is invalid.");
@@ -708,6 +765,9 @@ function requireExistingAction(value: unknown): NpShopCarrierPickupExistingActio
   }
   return {
     orderId: row.id as string,
+    shipmentId: row.shipmentId as string,
+    target: row.pickupTarget as NpShopCarrierPickupTarget,
+    exchangeId: row.exchangeId as string | null,
     pickupId: row.pickupId as string,
     expectedRevision: row.pickupRevision as number,
   };

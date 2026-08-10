@@ -400,7 +400,7 @@ describe("getProjectFiles", () => {
     expect(env).toContain("verifyTrackingWebhook");
     expect(env).toContain("readTracking");
     expect(env).toContain("bookShipmentWithParcels");
-    expect(env).toContain("schedulePickup and cancelPickup together");
+    expect(env).toContain("and cancelPickup together; Shop keeps shipment-keyed pickup state");
     expect(env).toContain("pickupLocationReference");
     expect(env).toContain("createReturnShipment and cancelReturnShipment");
     expect(env).toContain("returnLocationReference");
@@ -424,6 +424,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("one idempotent booking and atomic private-data deletion");
     expect(readme).toContain("exact PII-free mm/gram package allocation");
     expect(readme).toContain("paired pickup scheduling/cancellation");
+    expect(readme).toContain("active replacement pickup must be cancelled");
     expect(readme).toContain("maximum-24-hour private origin sidecar");
     expect(readme).toContain("exact return-postage method");
     expect(readme).toContain("refundReturnSettlement");
@@ -441,10 +442,11 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("locks one exact PII-free mm/gram allocation");
     expect(env).toContain("readShippingLabel capability serves completed outbound");
     expect(env).toContain("never persist or log those bytes");
+    expect(env).toContain("Cancel the pickup");
     expect(env).toContain("verifyTrackingWebhook and readTracking methods also serve exact");
     expect(env).toContain("verified state blocks provider cancellation/restock");
     expect(readme).toContain("completed outbound and replacement labels");
-    expect(readme).toContain("verified tracking state blocks provider cancellation");
+    expect(readme).toContain("Verified tracking blocks pickup and shipment cancellation");
     expect(readme).toContain("Verified provider cancellation snapshots reconcile known refunds");
     expect(env).toContain("provider-cancellation reconciliation for Shop");
   });

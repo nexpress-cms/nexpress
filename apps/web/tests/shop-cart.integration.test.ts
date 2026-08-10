@@ -3869,7 +3869,13 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     readyAt.setMilliseconds(0);
     const closeAt = new Date(readyAt.getTime() + 3 * 60 * 60 * 1_000);
     const pickupAction = {
-      row: { id: ids.orderId, shipmentId, pickupRevision: 0 },
+      row: {
+        id: ids.orderId,
+        shipmentId,
+        pickupTarget: "outbound",
+        exchangeId: null,
+        pickupRevision: 0,
+      },
       values: { readyAt: readyAt.toISOString(), closeAt: closeAt.toISOString() },
     };
     const pickupScheduleResult = await withCurrentSite("default", () =>
@@ -3882,7 +3888,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     const [pendingPickup] = await db
       .select({ value: npPluginStorage.value })
       .from(npPluginStorage)
-      .where(eq(npPluginStorage.key, `carrier-pickup:${ids.orderId}`));
+      .where(eq(npPluginStorage.key, `carrier-pickup:${shipmentId}`));
     expect(pendingPickup?.value).toMatchObject({
       status: "pending",
       revision: 2,
@@ -3897,7 +3903,14 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       await withCurrentSite("default", () =>
         carrierShop.plugin.actions?.resumeCarrierPickup?.handler(
           {
-            row: { id: ids.orderId, pickupId: pendingPickupId, pickupRevision: 2 },
+            row: {
+              id: ids.orderId,
+              shipmentId,
+              pickupTarget: "outbound",
+              exchangeId: null,
+              pickupId: pendingPickupId,
+              pickupRevision: 2,
+            },
             values: {},
           },
           actionContext,
@@ -3937,11 +3950,13 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     const [scheduledPickup] = await db
       .select({ value: npPluginStorage.value })
       .from(npPluginStorage)
-      .where(eq(npPluginStorage.key, `carrier-pickup:${ids.orderId}`));
+      .where(eq(npPluginStorage.key, `carrier-pickup:${shipmentId}`));
     expect(scheduledPickup?.value).toMatchObject({
-      contract: "np.shop-carrier-pickup-storage.v1",
+      contract: "np.shop-carrier-pickup-storage.v2",
       orderId: ids.orderId,
       shipmentId,
+      target: "outbound",
+      exchangeId: null,
       providerId: "test-carrier",
       status: "scheduled",
       revision: 4,
@@ -3956,7 +3971,14 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       await withCurrentSite("default", () =>
         carrierShop.plugin.actions?.cancelCarrierPickup?.handler(
           {
-            row: { id: ids.orderId, pickupId, pickupRevision: 4 },
+            row: {
+              id: ids.orderId,
+              shipmentId,
+              pickupTarget: "outbound",
+              exchangeId: null,
+              pickupId,
+              pickupRevision: 4,
+            },
             values: {},
           },
           actionContext,
@@ -3975,7 +3997,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     const [cancelledPickup] = await db
       .select({ value: npPluginStorage.value })
       .from(npPluginStorage)
-      .where(eq(npPluginStorage.key, `carrier-pickup:${ids.orderId}`));
+      .where(eq(npPluginStorage.key, `carrier-pickup:${shipmentId}`));
     expect(cancelledPickup?.value).toMatchObject({
       status: "cancelled",
       revision: 7,
@@ -6574,6 +6596,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     const owner = await createPendingOrder(ids, "exchange-owner@example.com");
     const exchangeBookingRequests: NpShopExchangeCarrierParcelBookingRequest[] = [];
     const exchangeCancellationRequests: NpShopExchangeCarrierCancelRequest[] = [];
+    const replacementPickupRequests: NpShopCarrierPickupRequest[] = [];
+    const replacementPickupCancellationRequests: NpShopCarrierPickupCancelRequest[] = [];
     const readExchangeTracking = vi.fn((request: NpShopTrackingPollRequest) => ({
       contract: "np.shop-tracking-poll-result.v1" as const,
       shipmentId: request.shipmentId,
@@ -6609,6 +6633,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     });
     const exchangeCarrierShop = createShop({
       carrier: {
+        pickupLocationReference: "warehouse-seoul-1",
         adapter: {
           id: "test-carrier",
           bookShipment: () => Promise.reject(new Error("not called")),
@@ -6633,6 +6658,37 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
               carrier: "Parcel Co",
               trackingNumber: "EXCHANGE-REPLACEMENT",
               bookedAt: request.requestedAt,
+            };
+          },
+          schedulePickup: (request) => {
+            replacementPickupRequests.push(request);
+            if (replacementPickupRequests.length === 1) {
+              throw new NpShopCarrierProviderError(
+                "replacement-pickup-timeout",
+                "private provider detail",
+                { retryable: true },
+              );
+            }
+            return {
+              contract: "np.shop-carrier-pickup-result.v1",
+              pickupId: request.pickupId,
+              shipmentId: request.shipmentId,
+              orderId: request.orderId,
+              pickupReference: "replacement_pickup_123",
+              readyAt: request.readyAt,
+              closeAt: request.closeAt,
+              scheduledAt: request.requestedAt,
+            };
+          },
+          cancelPickup: (request) => {
+            replacementPickupCancellationRequests.push(request);
+            return {
+              contract: "np.shop-carrier-pickup-cancel-result.v1",
+              cancellationId: request.cancellationId,
+              pickupId: request.pickupId,
+              shipmentId: request.shipmentId,
+              orderId: request.orderId,
+              cancelledAt: request.requestedAt,
             };
           },
           cancelExchangeShipment: (request) => {
@@ -7116,6 +7172,205 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(JSON.stringify(readExchangeShippingLabel.mock.calls[0]?.[0])).not.toContain(
       replacementDestination.addressLine1,
     );
+    const replacementReadyAt = new Date(Date.now() + 60 * 60 * 1_000);
+    replacementReadyAt.setMilliseconds(0);
+    const replacementCloseAt = new Date(replacementReadyAt.getTime() + 3 * 60 * 60 * 1_000);
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.scheduleCarrierPickup?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              shipmentId: exchangeBookingRow.bookingId,
+              pickupTarget: "replacement",
+              exchangeId: processingOrder.exchange.id,
+              pickupRevision: 0,
+            },
+            values: {
+              readyAt: replacementReadyAt.toISOString(),
+              closeAt: replacementCloseAt.toISOString(),
+            },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("temporarily unavailable") });
+    const [pendingReplacementPickup] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `carrier-pickup:${exchangeBookingRow.bookingId}`));
+    expect(pendingReplacementPickup?.value).toMatchObject({
+      contract: "np.shop-carrier-pickup-storage.v2",
+      orderId: ids.orderId,
+      shipmentId: exchangeBookingRow.bookingId,
+      target: "replacement",
+      exchangeId: processingOrder.exchange.id,
+      status: "pending",
+      revision: 2,
+      providerErrorCode: "replacement-pickup-timeout",
+      parcelRevision: 1,
+    });
+    const replacementPickupId = (pendingReplacementPickup?.value as { id?: unknown } | undefined)
+      ?.id;
+    if (typeof replacementPickupId !== "string") {
+      throw new Error("Missing durable replacement pickup id.");
+    }
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.resumeCarrierPickup?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              shipmentId: exchangeBookingRow.bookingId,
+              pickupTarget: "replacement",
+              exchangeId: processingOrder.exchange.id,
+              pickupId: replacementPickupId,
+              pickupRevision: 2,
+            },
+            values: {},
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("revision 4") });
+    expect(replacementPickupRequests).toHaveLength(2);
+    expect(replacementPickupRequests[1]).toEqual(replacementPickupRequests[0]);
+    expect(replacementPickupRequests[0]).toMatchObject({
+      contract: "np.shop-carrier-pickup-request.v1",
+      orderId: ids.orderId,
+      shipmentId: exchangeBookingRow.bookingId,
+      bookingReference: "replacement_booking_123",
+      carrier: "Parcel Co",
+      trackingNumber: "EXCHANGE-REPLACEMENT",
+      locationReference: "warehouse-seoul-1",
+      parcelRevision: 1,
+      packages: [
+        {
+          id: "replacement-1",
+          lengthMm: 300,
+          widthMm: 200,
+          heightMm: 100,
+          weightGrams: 1_500,
+        },
+      ],
+    });
+    expect(JSON.stringify(replacementPickupRequests[0])).not.toContain(
+      replacementDestination.addressLine1,
+    );
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.recentCarrierPickups?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: {
+        rows: [
+          expect.objectContaining({
+            id: ids.orderId,
+            shipmentId: exchangeBookingRow.bookingId,
+            pickupTarget: "replacement",
+            exchangeId: processingOrder.exchange.id,
+            status: "scheduled",
+          }),
+        ],
+      },
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.cancelExchangeCarrier?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              exchangeId: processingOrder.exchange.id,
+              exchangeRevision: processingOrder.exchange.revision,
+              orderRevision: processingOrder.revision,
+              bookingId: exchangeBookingRow.bookingId,
+              bookingRevision: exchangeBookingRow.bookingRevision,
+            },
+            values: { operatorNote: "Pickup still active" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("pickup must be fully cancelled"),
+    });
+    expect(exchangeCancellationRequests).toHaveLength(0);
+    const pickupBlockingTrackingAt = new Date().toISOString();
+    expect(
+      await configuredShopCall(exchangeCarrierShop, "POST", "/carrier/tracking/webhook", {
+        rawBody: new TextEncoder().encode(
+          JSON.stringify({
+            contract: "np.shop-tracking-event.v1",
+            eventId: "exchange_pickup_block_tracking",
+            shipmentId: exchangeBookingRow.bookingId,
+            orderId: ids.orderId,
+            bookingReference: "replacement_booking_123",
+            trackingNumber: "EXCHANGE-REPLACEMENT",
+            status: "in-transit",
+            occurredAt: pickupBlockingTrackingAt,
+            signedAt: pickupBlockingTrackingAt,
+          }),
+        ),
+        headers: { "x-carrier-signature": "valid" },
+      }),
+    ).toMatchObject({ status: 200, body: { receipt: { outcome: "advanced" } } });
+    const cancelReplacementPickupAction = {
+      row: {
+        id: ids.orderId,
+        shipmentId: exchangeBookingRow.bookingId,
+        pickupTarget: "replacement",
+        exchangeId: processingOrder.exchange.id,
+        pickupId: replacementPickupId,
+        pickupRevision: 4,
+      },
+      values: {},
+    };
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.cancelCarrierPickup?.handler(
+          cancelReplacementPickupAction,
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("tracking has started") });
+    expect(replacementPickupCancellationRequests).toHaveLength(0);
+    await db
+      .delete(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          eq(npPluginStorage.key, `exchange-tracking:${ids.orderId}`),
+        ),
+      );
+    await db
+      .delete(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          like(npPluginStorage.key, "tracking-event:%"),
+          sql`${npPluginStorage.value}->'event'->>'eventId' = 'exchange_pickup_block_tracking'`,
+        ),
+      );
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.cancelCarrierPickup?.handler(
+          cancelReplacementPickupAction,
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("revision 7") });
+    expect(replacementPickupCancellationRequests).toHaveLength(1);
+    expect(replacementPickupCancellationRequests[0]).toMatchObject({
+      contract: "np.shop-carrier-pickup-cancel-request.v1",
+      orderId: ids.orderId,
+      shipmentId: exchangeBookingRow.bookingId,
+      pickupId: replacementPickupId,
+      pickupReference: "replacement_pickup_123",
+    });
     const exchangeTrackingAt = new Date().toISOString();
     const exchangeTrackingEvent = {
       contract: "np.shop-tracking-event.v1",
@@ -7437,6 +7692,12 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         { action: "shop.exchange.carrier.booking.complete" },
         { action: "shop.exchange.carrier.label.read" },
         { action: "shop.exchange.carrier.label.deliver" },
+        { action: "shop.carrier.pickup.request" },
+        { action: "shop.carrier.pickup.confirm" },
+        { action: "shop.carrier.pickup.schedule" },
+        { action: "shop.carrier.pickup.cancel.request" },
+        { action: "shop.carrier.pickup.cancel.confirm" },
+        { action: "shop.carrier.pickup.cancel" },
         { action: "shop.exchange.carrier.cancellation.prepare" },
         { action: "shop.exchange.carrier.cancellation.confirm" },
         { action: "shop.exchange.carrier.cancellation.complete" },
@@ -7881,6 +8142,47 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       expiresAt: expiredPurgeAt,
       updatedAt: expiredCreatedAt,
     });
+    const expiredPickupShipmentId = "e43e4567-e89b-42d3-a456-426614174000";
+    await db.insert(npPluginStorage).values({
+      pluginId: "shop",
+      siteId: "default",
+      key: `carrier-pickup:${expiredPickupShipmentId}`,
+      value: {
+        contract: "np.shop-carrier-pickup-storage.v2",
+        id: "f43e4567-e89b-42d3-a456-426614174000",
+        orderId,
+        shipmentId: expiredPickupShipmentId,
+        target: "outbound",
+        exchangeId: null,
+        providerId: "retired-carrier",
+        status: "pending",
+        revision: 1,
+        locationReference: "retired-warehouse",
+        readyAt: new Date(expiredCreatedAt.getTime() + 60 * 60 * 1_000).toISOString(),
+        closeAt: new Date(expiredCreatedAt.getTime() + 2 * 60 * 60 * 1_000).toISOString(),
+        parcelRevision: 1,
+        packages: [
+          {
+            id: "parcel-1",
+            lengthMm: 300,
+            widthMm: 200,
+            heightMm: 100,
+            weightGrams: 1_500,
+          },
+        ],
+        pickupReference: null,
+        providerErrorCode: null,
+        cancellationId: null,
+        requestedAt: expiredCreatedAt.toISOString(),
+        scheduledAt: null,
+        cancelRequestedAt: null,
+        cancelledAt: null,
+        updatedAt: expiredCreatedAt.toISOString(),
+        purgeAt: expiredPurgeAt.toISOString(),
+      },
+      expiresAt: expiredPurgeAt,
+      updatedAt: expiredCreatedAt,
+    });
     await withCurrentSite("default", () => maintenance?.handler({} as never));
     expect(
       await db
@@ -7916,6 +8218,12 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         .select({ key: npPluginStorage.key })
         .from(npPluginStorage)
         .where(eq(npPluginStorage.key, `fulfillment-parcels:${orderId}`)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `carrier-pickup:${expiredPickupShipmentId}`)),
     ).toHaveLength(0);
   });
 });
