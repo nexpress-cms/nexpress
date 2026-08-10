@@ -374,12 +374,15 @@ real product domain, not just blog/community. Ship as a plugin package
   share the contract. Labels, provider-specific tracking protocols,
   automatic packaging, customs, and jurisdiction policy remain separate.
 - **Provider-neutral carrier pickup scheduling (shipped)** — parcel-aware
-  carrier adapters may add paired schedule/cancel methods plus one server-only
+  outbound and same-item replacement carrier bookings may share paired
+  schedule/cancel methods plus one server-only
   provider-owned opaque origin reference. Exact PII-free package summaries,
   live bounded UTC windows, stable pickup and cancellation idempotency,
-  provider confirmation before local completion, revision-safe resume,
-  tracking-start closure, direct-staff audit, commercial cleanup, Admin/Doctor,
-  scaffold guidance, and PostgreSQL coverage share one durable contract.
+  shipment-keyed independent state, provider confirmation before local
+  completion, revision-safe resume, tracking-start closure, replacement
+  cancellation-before-restock, direct-staff audit, commercial cleanup,
+  Admin/Doctor, scaffold guidance, and PostgreSQL coverage share one durable
+  contract.
   Label purchase, recurring pickup, provider availability calendars,
   addresses, and provider-specific protocols remain separate.
 - **Provider-neutral carrier tracking events (shipped)** — carrier adapters may
@@ -479,7 +482,7 @@ real product domain, not just blog/community. Ship as a plugin package
   it. The existing label-read capability also serves completed provider-backed
   replacement bookings through one transient staff-only download with exact
   pre/post relationship validation and no byte persistence. Replacement label
-  purchase/regeneration, replacement pickup, substitutions, payment
+  purchase/regeneration, substitutions, payment
   differences, store credit, eligibility policy, automatic address correction,
   and automatic approval remain separate additive contracts.
 - **Provider-neutral return tracking (shipped)** — optional exact raw-body

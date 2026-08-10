@@ -97,7 +97,8 @@ It provides:
   with a PII-free provider request, direct-staff audit, bounded PDF/PNG/ZPL
   bytes, authenticated Admin download, and no durable label storage;
 - optional provider-neutral pickup scheduling for parcel-aware completed
-  bookings, with a server-only opaque origin reference, exact PII-free package
+  outbound and same-item replacement bookings, with shipment-keyed independent
+  state, a server-only opaque origin reference, exact PII-free package
   summaries, stable schedule/cancellation idempotency, provider calls outside
   transactions, revision-safe reconciliation, Admin/Doctor diagnostics, and a
   tracking-start cancellation boundary;
@@ -159,7 +160,8 @@ consume a locked parcel snapshot through additive `bookShipmentWithParcels`,
 authenticate tracking callbacks or reconcile tracking through bounded
 server-only reads, and may retrieve an already-booked outbound or replacement
 label through `readShippingLabel`. A parcel-aware adapter may additionally implement both
-`schedulePickup` and `cancelPickup`; `createShop()` then requires one opaque
+`schedulePickup` and `cancelPickup`; `createShop()` then requires at least one
+outbound or replacement parcel-booking capability and one opaque
 `pickupLocationReference` that only the provider can resolve. Shop owns
 revision-safe selection and both PII-free commercial snapshots. Approved
 returns may independently add paired `createReturnShipment` /
@@ -183,9 +185,12 @@ durable replacement shipment UUID before provider I/O and reuses it unchanged
 for every retry. The v1 replacement method remains valid when the additive v2
 method is absent.
 Replacement label bytes remain transient and direct-staff-only; label
-purchase/regeneration and replacement pickup remain independent. The existing
-tracking callback and polling capabilities already serve completed replacement
-bookings without changing exchange commercial state.
+purchase/regeneration remains independent. The generic pickup methods consume
+the exact locked replacement parcels without receiving exchange or PII data,
+and an active pickup must be cancelled before provider shipment cancellation
+or automatic inventory restoration. The existing tracking callback and polling
+capabilities already serve completed replacement bookings without changing
+exchange commercial state.
 `@nexpress/shop-payment-toss` is the bundled Toss Payments v2 initiation,
 full-refund, received-return partial-refund/return-postage settlement, and
 query-verified cancellation reconciliation adapter. Customer/shipping PII exists only in the short-lived

@@ -2,7 +2,16 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-10 (Shop same-item replacement exchanges now add one
+**Last refreshed:** 2026-08-10 (Shop provider-booked same-item replacements now
+reuse the existing paired pickup capability over their exact locked parcel
+snapshot. Shipment-keyed outbound/replacement state, unchanged provider v1
+requests, durable scheduling/cancellation, tracking-start closure, pickup
+cancellation before provider cancellation or restock, Admin/Doctor, cleanup,
+scaffolds, docs, and PostgreSQL coverage share the contract. Packaging
+calculation, label purchase/regeneration, recurring pickup, availability
+calendars, and provider protocols remain separate.)
+
+**Earlier:** 2026-08-10 (Shop same-item replacement exchanges now add one
 independent PII-free parcel snapshot over their exact immutable lines and an
 additive carrier booking v2. Revision-safe Admin preparation, durable
 shipment locking before provider I/O, unchanged retries, v1 fallback,

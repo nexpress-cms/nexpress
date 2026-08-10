@@ -621,6 +621,32 @@ describe("shop factory", () => {
         ?.rowActions?.map((action) => (action.type === "download" ? action.id : action.actionId)),
     ).toEqual(["resumeCarrierPickup", "cancelCarrierPickup"]);
 
+    const replacementOnly = createShop({
+      carrier: {
+        pickupLocationReference: "warehouse-seoul-1",
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          bookExchangeShipment: () => Promise.reject(new Error("not called")),
+          bookExchangeShipmentWithParcels: () => Promise.reject(new Error("not called")),
+          cancelExchangeShipment: () => Promise.reject(new Error("not called")),
+          schedulePickup: () => Promise.reject(new Error("not called")),
+          cancelPickup: () => Promise.reject(new Error("not called")),
+        },
+      },
+    });
+    expect(replacementOnly.runtime.carrierPickupAdapter?.id).toBe("test-carrier");
+    expect(
+      replacementOnly.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-carrier-bookings")
+        ?.rowActions?.flatMap((action) => (action.type === "download" ? [] : [action.actionId])),
+    ).not.toContain("scheduleCarrierPickup");
+    expect(
+      replacementOnly.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-exchanges")
+        ?.rowActions?.flatMap((action) => (action.type === "download" ? [] : [action.actionId])),
+    ).toContain("scheduleCarrierPickup");
+
     expect(() =>
       createShop({
         carrier: {

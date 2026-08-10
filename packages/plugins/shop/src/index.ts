@@ -603,12 +603,12 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     }
     if (
       hasPickupSchedule &&
-      (!hasParcelBooking ||
+      ((!hasParcelBooking && !hasExchangeParcelBooking) ||
         typeof configuredCarrierAdapter.schedulePickup !== "function" ||
         typeof configuredCarrierAdapter.cancelPickup !== "function")
     ) {
       throw new Error(
-        "Shop carrier pickup requires parcel-aware booking plus schedulePickup and cancelPickup functions.",
+        "Shop carrier pickup requires outbound or replacement parcel-aware booking plus schedulePickup and cancelPickup functions.",
       );
     }
     if (hasPickupSchedule) {
@@ -1462,7 +1462,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, wishlists, one-shot stock/price alerts, verified-purchase reviews, promotions, carts, checkout, private drafts, shipping/tax quotes, durable orders and inventory, optional payments/refunds with quote-backed return-postage settlement, fulfillment, carrier booking/pickup/tracking, physical returns, same-item exchanges with short-lived replacement destinations and optional carrier booking/cancellation, logistics, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, wishlists, one-shot stock/price alerts, verified-purchase reviews, promotions, carts, checkout, private drafts, shipping/tax quotes, durable orders and inventory, optional payments/refunds with quote-backed return-postage settlement, fulfillment, carrier booking/pickup/tracking, physical returns, same-item exchanges with short-lived replacement destinations plus optional carrier booking, pickup, and cancellation, logistics, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -1615,7 +1615,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded carrier pickup scheduling, verified or reconciled outbound and replacement tracking, physical return intake, exact same-item replacement exchanges with revision-bound owner address intake, audited short-lived private storage, and optional paired provider booking/cancellation, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, automatic address correction, replacement label purchase or regeneration, replacement pickup, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
+          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, carrier booking, transient shipping-label retrieval, bounded outbound and replacement carrier pickup scheduling, verified or reconciled outbound and replacement tracking, physical return intake, exact same-item replacement exchanges with revision-bound owner address intake, audited short-lived private storage, and optional paired provider booking/cancellation, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, automatic address correction, replacement label purchase or regeneration, recurring pickup, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: [
           "shop",
@@ -2518,13 +2518,13 @@ export function createShop(options: NpShopOptions = {}) {
                   },
                 ]
               : []),
-            ...(runtime.carrierPickupAdapter
+            ...(runtime.carrierPickupAdapter && runtime.carrierParcelAdapter
               ? [
                   {
                     id: "schedule-carrier-pickup",
                     label: "Schedule pickup",
                     actionId: "scheduleCarrierPickup",
-                    rowFields: ["id", "shipmentId", "pickupRevision"],
+                    rowFields: ["id", "shipmentId", "pickupTarget", "exchangeId", "pickupRevision"],
                     visibleWhen: { field: "pickupAction", oneOf: ["schedule"] },
                     fields: [
                       {
@@ -2557,6 +2557,8 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "id", label: "Order" },
             { name: "pickupId", label: "Pickup" },
             { name: "shipmentId", label: "Shipment" },
+            { name: "pickupTarget", label: "Shipment kind" },
+            { name: "exchangeId", label: "Exchange" },
             { name: "provider", label: "Provider" },
             { name: "status", label: "Status" },
             { name: "window", label: "UTC window" },
@@ -2572,7 +2574,14 @@ export function createShop(options: NpShopOptions = {}) {
                   id: "resume-carrier-pickup",
                   label: "Resume pickup",
                   actionId: "resumeCarrierPickup",
-                  rowFields: ["id", "pickupId", "pickupRevision"],
+                  rowFields: [
+                    "id",
+                    "shipmentId",
+                    "pickupTarget",
+                    "exchangeId",
+                    "pickupId",
+                    "pickupRevision",
+                  ],
                   visibleWhen: {
                     field: "status",
                     oneOf: ["pending", "provider-confirmed"],
@@ -2584,7 +2593,14 @@ export function createShop(options: NpShopOptions = {}) {
                   id: "cancel-carrier-pickup",
                   label: "Cancel pickup",
                   actionId: "cancelCarrierPickup",
-                  rowFields: ["id", "pickupId", "pickupRevision"],
+                  rowFields: [
+                    "id",
+                    "shipmentId",
+                    "pickupTarget",
+                    "exchangeId",
+                    "pickupId",
+                    "pickupRevision",
+                  ],
                   visibleWhen: {
                     field: "status",
                     oneOf: ["scheduled", "cancel-pending", "cancel-confirmed"],
@@ -3077,6 +3093,7 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "carrierBooking", label: "Carrier booking" },
             { name: "bookingId", label: "Shipment" },
             { name: "bookingRevision", label: "Booking revision" },
+            { name: "pickupStatus", label: "Replacement pickup" },
             { name: "provider", label: "Provider" },
             { name: "parcels", label: "Replacement parcels" },
             { name: "parcelRevision", label: "Parcel revision" },
@@ -3222,6 +3239,41 @@ export function createShop(options: NpShopOptions = {}) {
                     confirm:
                       "Mark this replacement shipped with the exact provider carrier and tracking number?",
                   },
+                  ...(runtime.carrierPickupAdapter && runtime.carrierExchangeParcelAdapter
+                    ? [
+                        {
+                          id: "schedule-exchange-carrier-pickup",
+                          label: "Schedule replacement pickup",
+                          actionId: "scheduleCarrierPickup",
+                          rowFields: [
+                            "id",
+                            "shipmentId",
+                            "pickupTarget",
+                            "exchangeId",
+                            "pickupRevision",
+                          ],
+                          visibleWhen: { field: "pickupAction", oneOf: ["schedule"] },
+                          fields: [
+                            {
+                              name: "readyAt",
+                              label: "Ready at (UTC ISO)",
+                              type: "text" as const,
+                              required: true,
+                              placeholder: "YYYY-MM-DDTHH:mm:ss.sssZ",
+                            },
+                            {
+                              name: "closeAt",
+                              label: "Close at (UTC ISO)",
+                              type: "text" as const,
+                              required: true,
+                              placeholder: "YYYY-MM-DDTHH:mm:ss.sssZ",
+                            },
+                          ],
+                          confirm:
+                            "Schedule carrier pickup for this exact replacement parcel snapshot?",
+                        },
+                      ]
+                    : []),
                   {
                     id: "cancel-booked-exchange",
                     label: "Cancel booked replacement",
@@ -5189,7 +5241,7 @@ export function createShop(options: NpShopOptions = {}) {
               ok: true as const,
               data: {
                 value: counts.total,
-                delta: `${counts.scheduled.toString()} scheduled, ${counts.cancelled.toString()} cancelled, ${(counts.pending + counts.providerConfirmed + counts.cancelling).toString()} pending reconciliation`,
+                delta: `${counts.scheduled.toString()} scheduled, ${counts.cancelled.toString()} cancelled, ${(counts.pending + counts.providerConfirmed + counts.cancelling).toString()} pending reconciliation; ${counts.replacement.toString()} replacement`,
               },
             };
           } catch (error) {
@@ -5232,7 +5284,7 @@ export function createShop(options: NpShopOptions = {}) {
             }
             return npAdminStatus(
               "ok",
-              `${counts.scheduled.toString()} scheduled and ${counts.cancelled.toString()} cancelled pickup(s); ${runtime.carrierPickupAdapter ? `provider "${runtime.carrierPickupAdapter.id}" is enabled with a server-only location reference` : "pickup scheduling is disabled"}.`,
+              `${counts.scheduled.toString()} scheduled and ${counts.cancelled.toString()} cancelled pickup(s) across ${counts.outbound.toString()} outbound and ${counts.replacement.toString()} replacement shipment(s); ${runtime.carrierPickupAdapter ? `provider "${runtime.carrierPickupAdapter.id}" is enabled with a server-only location reference` : "pickup scheduling is disabled"}.`,
             );
           } catch (error) {
             return npAdminStatus(
@@ -7168,6 +7220,7 @@ export {
   npRequireStoredShopCarrierPickup,
   npShopCarrierPickupLimits,
   npShopCarrierPickupStatuses,
+  npShopCarrierPickupTargets,
 } from "./pickup-contract.js";
 export type {
   NpShopCarrierPickupCancelRequest,
@@ -7178,6 +7231,7 @@ export type {
   NpShopCarrierPickupResult,
   NpShopCarrierPickupScheduleInput,
   NpShopCarrierPickupStatus,
+  NpShopCarrierPickupTarget,
   NpShopStoredCarrierPickup,
 } from "./pickup-contract.js";
 export {

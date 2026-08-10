@@ -1206,18 +1206,22 @@ label, choose paper size, or implement a carrier protocol.
 ### Carrier pickup scheduling
 
 `schedulePickup` and `cancelPickup` form one paired additive capability. Shop
-rejects a partial pair and also requires `bookShipmentWithParcels` plus one
-build-time `pickupLocationReference`. That reference is a provider-owned opaque
+rejects a partial pair and also requires `bookShipmentWithParcels` and/or
+`bookExchangeShipmentWithParcels` plus one build-time
+`pickupLocationReference`. That reference is a provider-owned opaque
 warehouse/account token, not an address: it is retained server-side and must
 contain no customer, staff, or location PII that NexPress would need to
 interpret. Existing carrier adapters remain valid without these methods.
 
-A completed parcel-aware booking with no verified tracking state exposes
-**Schedule pickup**. The direct-staff action accepts one canonical UTC
-`readyAt`/`closeAt` window: 15 minutes–12 hours long, live, and starting within
-14 days. Shop locks the completed booking and its already shipment-locked
-parcel snapshot, writes `np.shop-carrier-pickup-storage.v1` with a stable
-pickup UUID, then calls the provider outside the transaction. The exact
+A completed outbound or same-item replacement parcel-aware booking with no
+verified tracking state exposes **Schedule pickup**. The direct-staff action
+accepts one canonical UTC `readyAt`/`closeAt` window: 15 minutes–12 hours long,
+live, and starting within 14 days. Shop locks the completed booking and its
+already shipment-locked parcel snapshot, writes
+`np.shop-carrier-pickup-storage.v2` with a stable
+pickup UUID and an explicit `outbound | replacement` target, then calls the
+provider outside the transaction. Storage is keyed by shipment UUID, so one
+order's outbound and replacement pickups remain independent. The exact
 `np.shop-carrier-pickup-request.v1` includes booking/carrier/tracking
 references, the opaque origin token, parcel revision, and at most 20 package
 summaries with id, integer millimetre dimensions, and gram weight. It excludes
@@ -1240,13 +1244,23 @@ exists; Shop does not claim that an in-transit parcel remains at the pickup
 origin. Cancellation after carrier movement is provider/customer-service
 policy outside this contract.
 
+A replacement pickup additionally locks the exact completed exchange booking,
+exchange identity, processing-or-shipped commercial state, and replacement
+parcel snapshot. The provider still receives the unchanged generic v1 pickup
+request because the shipment UUID is sufficient for fulfillment; `exchangeId`
+remains Shop-owned diagnostic state. Provider cancellation and automatic
+replacement inventory restoration are blocked until any durable replacement
+pickup has reached `cancelled`, and that relationship is rechecked again after
+provider cancellation before local compensation.
+
 The baseline PII-free pickup metric, health widget, newest-50 table, and Doctor
 inventory stay declared after adapter removal so pending durable effects remain
 visible. With the adapter enabled, the table adds revision-safe resume and
-cancel actions. Health samples malformed rows, missing bookings/parcels,
-provider mismatch, exact parcel mismatch, reconciliation state, and manual
-review. Commercial order purge removes pickup state with its booking. This
-contract does not buy labels, create recurring pickups, schedule return
+cancel actions and labels outbound versus replacement shipments. Health samples
+malformed rows, missing bookings/parcels, provider mismatch, exact parcel
+mismatch, reconciliation state, and manual review. Commercial order purge
+removes pickup state with its booking. This contract does not buy labels,
+create recurring pickups, schedule return
 pickups, expose provider availability calendars, store addresses, or implement
 provider-specific pickup protocols.
 
@@ -1704,7 +1718,7 @@ submission/access, processing, shipment, and cancellation write PII-free audit
 metadata.
 
 The original shipping address has already been deleted at first shipment and
-is never reused. Replacement label purchase/regeneration, replacement pickup,
+is never reused. Replacement label purchase/regeneration,
 automatic address correction, different-item substitutions, payment
 differences, store credit, legal eligibility rules, and automatic approval
 remain separate additive contracts.
