@@ -23,6 +23,8 @@ import {
   shopCollections,
   shopPlugin,
   type NpShopCarrierBookingRequest,
+  type NpShopExchangeCarrierBookingRequest,
+  type NpShopExchangeCarrierCancelRequest,
   type NpShopCarrierLabelRequest,
   type NpShopCarrierParcelBookingRequest,
   type NpShopCarrierPickupCancelRequest,
@@ -6570,11 +6572,57 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       orderId: "ca3e4567-e89b-42d3-a456-426614174000",
     };
     const owner = await createPendingOrder(ids, "exchange-owner@example.com");
+    const exchangeBookingRequests: NpShopExchangeCarrierBookingRequest[] = [];
+    const exchangeCancellationRequests: NpShopExchangeCarrierCancelRequest[] = [];
     const paymentShop = createShop({
       payment: {
         adapter: {
           id: "test-pay",
           verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
+    });
+    const exchangeCarrierShop = createShop({
+      carrier: {
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          bookExchangeShipment: (request) => {
+            exchangeBookingRequests.push(request);
+            if (exchangeBookingRequests.length === 1) {
+              throw new NpShopCarrierProviderError("exchange-timeout", "private provider detail", {
+                retryable: true,
+              });
+            }
+            return {
+              contract: "np.shop-exchange-carrier-booking-result.v1",
+              shipmentId: request.shipmentId,
+              orderId: request.orderId,
+              exchangeId: request.exchangeId,
+              bookingReference: "replacement_booking_123",
+              carrier: "Parcel Co",
+              trackingNumber: "EXCHANGE-REPLACEMENT",
+              bookedAt: request.requestedAt,
+            };
+          },
+          cancelExchangeShipment: (request) => {
+            exchangeCancellationRequests.push(request);
+            if (exchangeCancellationRequests.length === 1) {
+              throw new NpShopCarrierProviderError(
+                "exchange-cancel-timeout",
+                "private provider detail",
+                { retryable: true },
+              );
+            }
+            return {
+              contract: "np.shop-exchange-carrier-cancel-result.v1",
+              cancellationId: request.cancellationId,
+              shipmentId: request.shipmentId,
+              orderId: request.orderId,
+              exchangeId: request.exchangeId,
+              cancelledAt: request.requestedAt,
+            };
+          },
         },
       },
     });
@@ -6587,15 +6635,17 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     const actionContext = {
       actionInvocation: { kind: "staff" as const, userId: staff.userId },
     } as never;
-    await withCurrentSite("default", () =>
-      paymentShop.plugin.actions?.shipFulfillment?.handler(
-        {
-          row: { id: ids.orderId, fulfillmentRevision: 1 },
-          values: { carrier: "Parcel Co", trackingNumber: "EXCHANGE-ORIGINAL", operatorNote: "" },
-        },
-        actionContext,
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.shipFulfillment?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 1 },
+            values: { carrier: "Parcel Co", trackingNumber: "EXCHANGE-ORIGINAL", operatorNote: "" },
+          },
+          actionContext,
+        ),
       ),
-    );
+    ).toMatchObject({ ok: true });
     const shipped = await orderCall("GET", { ...owner, orderId: ids.orderId });
     const shippedOrder = (
       shipped.body as { order: { revision: number; lines: Array<{ key: string }> } }
@@ -6609,6 +6659,10 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         reason: "defective",
         detail: null,
       },
+    });
+    expect(requested).toMatchObject({
+      status: 200,
+      body: { returnRequest: { id: expect.any(String) } },
     });
     const returnId = (requested.body as { returnRequest: { id: string } }).returnRequest.id;
     await withCurrentSite("default", () =>
@@ -6802,20 +6856,80 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         ),
       ),
     ).toMatchObject({ ok: true, data: { destination: replacementDestination } });
-    await withCurrentSite("default", () =>
-      paymentShop.plugin.actions?.processExchange?.handler(
-        {
-          row: {
-            id: ids.orderId,
-            exchangeId: submittedOrder.exchange.id,
-            exchangeRevision: submittedOrder.exchange.revision,
-            orderRevision: submittedOrder.revision,
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.bookExchangeCarrier?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              exchangeId: submittedOrder.exchange.id,
+              exchangeRevision: submittedOrder.exchange.revision,
+              orderRevision: submittedOrder.revision,
+              destinationRevision: submittedOrder.exchange.destinationRevision,
+            },
+            values: { operatorNote: "Provider booking" },
           },
-          values: { operatorNote: "Packing" },
-        },
-        actionContext,
+          actionContext,
+        ),
       ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("temporarily unavailable") });
+    const pendingBookingRows = await withCurrentSite("default", () =>
+      exchangeCarrierShop.plugin.actions?.recentExchanges?.handler(undefined, {} as never),
     );
+    const pendingBookingRow = (
+      pendingBookingRows as {
+        data: {
+          rows: Array<{
+            bookingId: string;
+            bookingRevision: number;
+          }>;
+        };
+      }
+    ).data.rows[0]!;
+    expect(pendingBookingRows).toMatchObject({
+      ok: true,
+      data: { rows: [expect.objectContaining({ carrierBooking: "pending" })] },
+    });
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(eq(npPluginStorage.key, `exchange-destination-private:${ids.orderId}`)),
+    ).toHaveLength(1);
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.resumeExchangeCarrier?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              exchangeId: submittedOrder.exchange.id,
+              exchangeRevision: submittedOrder.exchange.revision,
+              orderRevision: submittedOrder.revision,
+              bookingId: pendingBookingRow.bookingId,
+              bookingRevision: pendingBookingRow.bookingRevision,
+            },
+            values: { operatorNote: "Provider booking resumed" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("completed") });
+    expect(exchangeBookingRequests).toHaveLength(2);
+    expect(exchangeBookingRequests[1]).toEqual(exchangeBookingRequests[0]);
+    expect(exchangeBookingRequests[0]).toMatchObject({
+      contract: "np.shop-exchange-carrier-booking-request.v1",
+      orderId: ids.orderId,
+      exchangeId: submittedOrder.exchange.id,
+      exchangeRevision: submittedOrder.exchange.revision,
+      destinationRevision: submittedOrder.exchange.destinationRevision,
+      destination: replacementDestination,
+      items: [
+        {
+          productId,
+          quantity: 1,
+        },
+      ],
+    });
     expect(
       await db
         .select({ key: npPluginStorage.key })
@@ -6825,25 +6939,109 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     const processing = await orderCall("GET", { ...owner, orderId: ids.orderId });
     const processingOrder = (
       processing.body as {
-        order: { revision: number; exchange: { id: string; revision: number } };
+        order: {
+          revision: number;
+          exchange: {
+            id: string;
+            revision: number;
+            status: string;
+            carrier: string;
+            trackingNumber: string;
+          };
+        };
       }
     ).order;
+    expect(processingOrder.exchange).toMatchObject({
+      status: "processing",
+      carrier: "Parcel Co",
+      trackingNumber: "EXCHANGE-REPLACEMENT",
+    });
+    const exchangeRowsResult = await withCurrentSite("default", () =>
+      exchangeCarrierShop.plugin.actions?.recentExchanges?.handler(undefined, {} as never),
+    );
+    expect(exchangeRowsResult).toMatchObject({
+      ok: true,
+      data: {
+        rows: [
+          expect.objectContaining({
+            carrierBooking: "completed",
+            provider: "test-carrier",
+          }),
+        ],
+      },
+    });
+    const exchangeBookingRow = (
+      exchangeRowsResult as {
+        data: {
+          rows: Array<{
+            bookingId: string;
+            bookingRevision: number;
+          }>;
+        };
+      }
+    ).data.rows[0]!;
     expect(
       await withCurrentSite("default", () =>
-        paymentShop.plugin.actions?.cancelExchange?.handler(
+        exchangeCarrierShop.plugin.actions?.cancelExchangeCarrier?.handler(
           {
             row: {
               id: ids.orderId,
               exchangeId: processingOrder.exchange.id,
               exchangeRevision: processingOrder.exchange.revision,
               orderRevision: processingOrder.revision,
+              bookingId: exchangeBookingRow.bookingId,
+              bookingRevision: exchangeBookingRow.bookingRevision,
             },
-            values: { operatorNote: "Replacement cancelled" },
+            values: { operatorNote: "Provider cancellation" },
           },
           actionContext,
         ),
       ),
-    ).toMatchObject({ ok: true, data: expect.stringContaining("inventory restocked") });
+    ).toMatchObject({ ok: false, error: expect.stringContaining("temporarily unavailable") });
+    const cancellingRows = await withCurrentSite("default", () =>
+      exchangeCarrierShop.plugin.actions?.recentExchanges?.handler(undefined, {} as never),
+    );
+    const cancellingRow = (
+      cancellingRows as {
+        data: {
+          rows: Array<{
+            bookingId: string;
+            bookingRevision: number;
+          }>;
+        };
+      }
+    ).data.rows[0]!;
+    expect(cancellingRows).toMatchObject({
+      ok: true,
+      data: { rows: [expect.objectContaining({ carrierBooking: "cancel-pending" })] },
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.cancelExchangeCarrier?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              exchangeId: processingOrder.exchange.id,
+              exchangeRevision: processingOrder.exchange.revision,
+              orderRevision: processingOrder.revision,
+              bookingId: cancellingRow.bookingId,
+              bookingRevision: cancellingRow.bookingRevision,
+            },
+            values: { operatorNote: "Provider cancellation resumed" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("cancelled") });
+    expect(exchangeCancellationRequests).toHaveLength(2);
+    expect(exchangeCancellationRequests[1]).toEqual(exchangeCancellationRequests[0]);
+    expect(exchangeCancellationRequests[0]).toMatchObject({
+      contract: "np.shop-exchange-carrier-cancel-request.v1",
+      shipmentId: exchangeBookingRow.bookingId,
+      orderId: ids.orderId,
+      exchangeId: processingOrder.exchange.id,
+      bookingReference: "replacement_booking_123",
+    });
     expect(
       await db
         .select({ stockQuantity: shopProductsTable.stockQuantity })
@@ -6871,9 +7069,17 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     ).toMatchObject({ ok: true, data: { total: 1 } });
     expect(
       await withCurrentSite("default", () =>
-        paymentShop.plugin.actions?.exchangeHealth?.handler(undefined, {} as never),
+        exchangeCarrierShop.plugin.actions?.exchangeHealth?.handler(undefined, {} as never),
       ),
     ).toMatchObject({ ok: true, data: { level: "ok" } });
+    expect(
+      await withCurrentSite("default", () =>
+        paymentShop.plugin.actions?.exchangeHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: { level: "error", message: expect.stringContaining("provider-mismatched") },
+    });
     expect(
       await db
         .select({ action: npAuditEvents.action })
@@ -6884,8 +7090,12 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         { action: "shop.exchange.create" },
         { action: "shop.exchange.destination.submit" },
         { action: "shop.exchange.destination.private.read" },
-        { action: "shop.exchange.process" },
-        { action: "shop.exchange.cancel" },
+        { action: "shop.exchange.carrier.booking.prepare" },
+        { action: "shop.exchange.carrier.booking.confirm" },
+        { action: "shop.exchange.carrier.booking.complete" },
+        { action: "shop.exchange.carrier.cancellation.prepare" },
+        { action: "shop.exchange.carrier.cancellation.confirm" },
+        { action: "shop.exchange.carrier.cancellation.complete" },
       ]),
     );
   });

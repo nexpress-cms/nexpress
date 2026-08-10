@@ -2514,10 +2514,15 @@ export function ShopOrder({
                       ) : null}
                     </section>
                   ) : null}
-                  {order.exchange.status === "shipped" &&
+                  {(order.exchange.status === "processing" ||
+                    order.exchange.status === "shipped") &&
                   order.exchange.carrier &&
                   order.exchange.trackingNumber ? (
-                    <p>
+                    <p
+                      data-np-shop-exchange-carrier-booking={
+                        order.exchange.status === "processing" ? "booked" : "shipped"
+                      }
+                    >
                       {messages.orderExchangeTracking}: {order.exchange.carrier}{" "}
                       {order.exchange.trackingNumber}
                     </p>

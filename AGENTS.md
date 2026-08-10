@@ -2,7 +2,17 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-10 (Shop same-item exchanges now require the owner
+**Last refreshed:** 2026-08-10 (Shop carrier adapters may now add one paired
+same-item replacement booking/cancellation capability. Stable provider
+idempotency, exact immutable lines, the current staff-accessed private
+destination, calls outside transactions, durable confirmation before address
+deletion, resumable ambiguity, exact cancellation-before-restock, Admin/Doctor,
+both skins, the independent Storefront hook, scaffolds, and PostgreSQL coverage
+share the contract. Manual exchange handling remains valid; replacement labels,
+pickup, tracking callbacks/polling, automatic address correction, substitutions,
+price differences, provider protocols, and automatic policy remain separate.)
+
+**Earlier:** 2026-08-10 (Shop same-item exchanges now require the owner
 to submit one new delivery destination under a 15-minute, revision-bound,
 single-use authority. A separate maximum-24-hour private sidecar, audited
 direct-staff read required before processing, processing/cancellation/expiry

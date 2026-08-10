@@ -192,6 +192,25 @@ import {
   type NpShopExchangeDestinationSubmitInput,
   type NpShopStoredExchangeDestinationPrivate,
 } from "./exchange-destination-contract.js";
+import {
+  NP_SHOP_EXCHANGE_CARRIER_BOOKING_REQUEST_CONTRACT,
+  NP_SHOP_EXCHANGE_CARRIER_BOOKING_RESULT_CONTRACT,
+  NP_SHOP_EXCHANGE_CARRIER_BOOKING_STORAGE_CONTRACT,
+  NP_SHOP_EXCHANGE_CARRIER_CANCEL_REQUEST_CONTRACT,
+  NP_SHOP_EXCHANGE_CARRIER_CANCEL_RESULT_CONTRACT,
+  NpShopExchangeCarrierConflictError,
+  NpShopExchangeCarrierContractError,
+  npRequireShopExchangeCarrierBookingRequest,
+  npRequireShopExchangeCarrierBookingResult,
+  npRequireShopExchangeCarrierCancelRequest,
+  npRequireShopExchangeCarrierCancelResult,
+  npRequireStoredShopExchangeCarrierBooking,
+  type NpShopExchangeCarrierBookActionInput,
+  type NpShopExchangeCarrierBookingResult,
+  type NpShopExchangeCarrierCancelResult,
+  type NpShopExchangeCarrierExistingActionInput,
+  type NpShopStoredExchangeCarrierBooking,
+} from "./exchange-carrier-contract.js";
 
 interface NpShopOrderMaintenanceMarker {
   contract: "np.shop-order-maintenance.v1";
@@ -396,6 +415,10 @@ export interface NpShopAdminExchangeRow {
   destination: string;
   destinationRevision: number;
   destinationExpiresAt: string;
+  carrierBooking: string;
+  bookingId: string;
+  bookingRevision: number;
+  provider: string;
   units: number;
   inventory: string;
   carrier: string;
@@ -508,6 +531,10 @@ export function npShopExchangeDestinationPrivateStorageKey(orderId: string): str
   return `exchange-destination-private:${orderId}`;
 }
 
+export function npShopExchangeCarrierBookingStorageKey(orderId: string): string {
+  return `exchange-carrier-booking:${orderId}`;
+}
+
 function maintenanceStorageKey(ownerSegment: string, orderId: string): string {
   return `order-maintenance:${ownerSegment}:${orderId}`;
 }
@@ -574,6 +601,24 @@ function requireStoredExchangeDestinationPrivateAtKey(
     ]);
   }
   return destination;
+}
+
+function requireStoredExchangeCarrierBookingAtKey(
+  value: unknown,
+  expiresAt: Date | null,
+  key: string,
+): NpShopStoredExchangeCarrierBooking {
+  const booking = npRequireStoredShopExchangeCarrierBooking(value);
+  if (
+    key !== npShopExchangeCarrierBookingStorageKey(booking.orderId) ||
+    expiresAt === null ||
+    expiresAt.toISOString() !== booking.purgeAt
+  ) {
+    throw new NpShopOrderContractError("Invalid Shop exchange carrier booking metadata", [
+      "Exchange carrier booking key and expiry must match its canonical values.",
+    ]);
+  }
+  return booking;
 }
 
 function requireStoredPrivate(
@@ -1170,6 +1215,32 @@ async function readStoredExchangeDestinationPrivate(
     : null;
 }
 
+async function readStoredExchangeCarrierBooking(
+  db: ReturnType<typeof getDb> | NpShopTransaction,
+  siteId: string,
+  orderId: string,
+  forUpdate = false,
+): Promise<NpShopStoredExchangeCarrierBooking | null> {
+  let query = db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        eq(npPluginStorage.key, npShopExchangeCarrierBookingStorageKey(orderId)),
+      ),
+    )
+    .limit(1);
+  if (forUpdate) query = query.for("update") as typeof query;
+  const [row] = await query;
+  return row ? requireStoredExchangeCarrierBookingAtKey(row.value, row.expiresAt, row.key) : null;
+}
+
 async function persistOrder(
   tx: NpShopTransaction,
   siteId: string,
@@ -1441,6 +1512,32 @@ async function persistExchangeDestinationPrivate(
         value: destination,
         expiresAt: new Date(destination.expiresAt),
         updatedAt: new Date(destination.updatedAt),
+      },
+    });
+}
+
+async function persistExchangeCarrierBooking(
+  tx: NpShopTransaction,
+  siteId: string,
+  booking: NpShopStoredExchangeCarrierBooking,
+): Promise<void> {
+  npRequireStoredShopExchangeCarrierBooking(booking);
+  await tx
+    .insert(npPluginStorage)
+    .values({
+      pluginId: NP_SHOP_PLUGIN_ID,
+      siteId,
+      key: npShopExchangeCarrierBookingStorageKey(booking.orderId),
+      value: booking,
+      expiresAt: new Date(booking.purgeAt),
+      updatedAt: new Date(booking.updatedAt),
+    })
+    .onConflictDoUpdate({
+      target: [npPluginStorage.pluginId, npPluginStorage.siteId, npPluginStorage.key],
+      set: {
+        value: booking,
+        expiresAt: new Date(booking.purgeAt),
+        updatedAt: new Date(booking.updatedAt),
       },
     });
 }
@@ -2399,7 +2496,7 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${npShopExchangeStorageKey(order.id)}, ${npShopExchangeDestinationPrivateStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)}, ${`payment-adjustment:${order.id}`}, ${`promotion-reservation:${order.id}`})`,
+        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`carrier-pickup:${order.id}`}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${npShopExchangeStorageKey(order.id)}, ${npShopExchangeDestinationPrivateStorageKey(order.id)}, ${npShopExchangeCarrierBookingStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)}, ${`payment-adjustment:${order.id}`}, ${`promotion-reservation:${order.id}`})`,
       ),
     );
   await tx
@@ -5891,6 +5988,12 @@ export async function npSubmitShopExchangeDestination(
       input.orderId,
       true,
     );
+    if (await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true)) {
+      throw new NpShopExchangeDestinationConflictError(
+        "exchange_destination_unavailable",
+        "A durable replacement carrier operation already owns this destination revision.",
+      );
+    }
     if (currentDestination && !exchangeDestinationMatches(currentDestination, exchange)) {
       throw new NpShopExchangeDestinationConflictError(
         "exchange_destination_revision_conflict",
@@ -6195,6 +6298,36 @@ async function updateShopExchange(
       input.orderId,
     );
     requireExchangeRevisions(order, exchange, input);
+    const exchangeCarrierBooking = await readStoredExchangeCarrierBooking(
+      tx,
+      siteId,
+      input.orderId,
+      true,
+    );
+    if (exchangeCarrierBooking) {
+      if (
+        action !== "ship" ||
+        exchangeCarrierBooking.status !== "completed" ||
+        exchangeCarrierBooking.exchangeId !== exchange.id
+      ) {
+        throw new NpShopExchangeCarrierConflictError(
+          exchangeCarrierBooking.status === "manual-review"
+            ? "exchange_carrier_manual_review"
+            : "exchange_carrier_state_conflict",
+          "This exchange owns a carrier booking that must be reconciled or cancelled through its provider path.",
+        );
+      }
+      const shipment = input as NpShopExchangeShipInput;
+      if (
+        shipment.carrier !== exchangeCarrierBooking.carrier ||
+        shipment.trackingNumber !== exchangeCarrierBooking.trackingNumber
+      ) {
+        throw new NpShopExchangeCarrierConflictError(
+          "exchange_carrier_state_conflict",
+          "A booked exchange must ship with its exact provider carrier and tracking number.",
+        );
+      }
+    }
     if (exchange.status === "shipped" || exchange.status === "cancelled") {
       throw new NpShopExchangeConflictError(
         "exchange_terminal",
@@ -6318,6 +6451,873 @@ async function updateShopExchange(
     );
     return npProjectShopExchange(updated);
   });
+}
+
+function exchangeCarrierItems(exchange: NpShopStoredExchange) {
+  return exchange.lines.map((line) => ({
+    key: line.lineKey,
+    productId: line.productId,
+    productName: line.productName,
+    variantSku: line.variantSku,
+    variantName: line.variantName,
+    quantity: line.quantity,
+  }));
+}
+
+function nextExchangeCarrierTimestamp(...values: Array<string | null | undefined>): string {
+  return new Date(
+    Math.max(
+      Date.now(),
+      ...values.filter((value): value is string => Boolean(value)).map(Date.parse),
+    ),
+  ).toISOString();
+}
+
+function closedExchangeCarrierErrorCode(error: unknown): string {
+  if (error instanceof NpShopExchangeCarrierContractError) return "invalid-result";
+  if (error instanceof NpShopCarrierProviderError && /^[a-z][a-z0-9-]{0,99}$/u.test(error.code)) {
+    return error.code;
+  }
+  return "provider-unavailable";
+}
+
+async function persistExchangeCarrierFailure(
+  siteId: string,
+  orderId: string,
+  bookingId: string,
+  expectedStatus: "pending" | "cancel-pending",
+  error: unknown,
+): Promise<void> {
+  const terminal =
+    error instanceof NpShopExchangeCarrierContractError ||
+    (error instanceof NpShopCarrierProviderError && !error.retryable);
+  await getDb().transaction(async (tx) => {
+    const current = await readStoredExchangeCarrierBooking(tx, siteId, orderId, true);
+    if (!current || current.id !== bookingId || current.status !== expectedStatus) return;
+    await persistExchangeCarrierBooking(tx, siteId, {
+      ...current,
+      status: terminal ? "manual-review" : expectedStatus,
+      revision: current.revision + 1,
+      providerErrorCode: closedExchangeCarrierErrorCode(error),
+      updatedAt: nextExchangeCarrierTimestamp(current.updatedAt),
+    });
+  });
+}
+
+async function markExchangeCarrierManualReview(
+  siteId: string,
+  orderId: string,
+  bookingId: string,
+  code: string,
+): Promise<void> {
+  await getDb().transaction(async (tx) => {
+    const current = await readStoredExchangeCarrierBooking(tx, siteId, orderId, true);
+    if (!current || current.id !== bookingId || current.status === "cancelled") return;
+    await persistExchangeCarrierBooking(tx, siteId, {
+      ...current,
+      status: "manual-review",
+      revision: current.revision + 1,
+      providerErrorCode: code,
+      updatedAt: nextExchangeCarrierTimestamp(current.updatedAt, current.confirmedAt),
+    });
+  });
+}
+
+export async function npBookShopExchangeCarrierShipment(
+  runtime: NpShopRuntime,
+  input: NpShopExchangeCarrierBookActionInput | NpShopExchangeCarrierExistingActionInput,
+  staffUserId: string,
+): Promise<{
+  exchange: NpShopExchange;
+  booking: NpShopStoredExchangeCarrierBooking;
+  duplicate: boolean;
+}> {
+  const adapter = runtime.carrierExchangeAdapter;
+  if (!adapter) {
+    throw new NpShopExchangeCarrierConflictError(
+      "exchange_carrier_not_supported",
+      "Replacement carrier booking is not configured for this Shop.",
+    );
+  }
+  const siteId = await requireSiteId();
+  const resuming = "bookingId" in input;
+  const prepared = await getDb().transaction(async (tx) => {
+    const { order, exchange } = await readExchangeForAction(tx, siteId, input.orderId);
+    const current = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
+    if (
+      exchange.id !== input.exchangeId ||
+      order.revision !== input.orderRevision ||
+      exchange.revision !== input.exchangeRevision
+    ) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_revision_conflict",
+        "The order or exchange changed before replacement booking started.",
+      );
+    }
+    if (current) {
+      if (current.exchangeId !== exchange.id || current.providerId !== adapter.id) {
+        throw new NpShopExchangeCarrierConflictError(
+          "exchange_carrier_provider_mismatch",
+          "The durable replacement booking belongs to a different exchange or provider.",
+        );
+      }
+      if (current.status === "completed") {
+        return { outcome: "complete" as const, order, exchange, booking: current };
+      }
+      if (
+        !resuming ||
+        current.id !== input.bookingId ||
+        current.revision !== input.bookingRevision
+      ) {
+        throw new NpShopExchangeCarrierConflictError(
+          "exchange_carrier_revision_conflict",
+          "The existing replacement booking must be resumed with its current revision.",
+        );
+      }
+      if (current.status !== "pending" && current.status !== "provider-confirmed") {
+        throw new NpShopExchangeCarrierConflictError(
+          current.status === "manual-review"
+            ? "exchange_carrier_manual_review"
+            : "exchange_carrier_state_conflict",
+          "Only pending or provider-confirmed replacement bookings can be resumed.",
+        );
+      }
+      if (
+        current.sourceOrderRevision !== order.revision ||
+        current.sourceExchangeRevision !== exchange.revision ||
+        current.destinationRevision !== exchange.destinationRevision ||
+        exchange.status !== "awaiting"
+      ) {
+        throw new NpShopExchangeCarrierConflictError(
+          "exchange_carrier_revision_conflict",
+          "The exchange changed after replacement booking was prepared.",
+        );
+      }
+      const destination =
+        current.status === "pending"
+          ? await readStoredExchangeDestinationPrivate(tx, siteId, input.orderId, true)
+          : null;
+      if (
+        current.status === "pending" &&
+        (!destination ||
+          !exchangeDestinationMatches(destination, exchange) ||
+          destination.accessedAt === null ||
+          destination.expiresAt <= new Date().toISOString())
+      ) {
+        await persistExchangeCarrierBooking(tx, siteId, {
+          ...current,
+          status: "manual-review",
+          revision: current.revision + 1,
+          providerErrorCode: "private-expired",
+          updatedAt: nextExchangeCarrierTimestamp(current.updatedAt),
+        });
+        return { outcome: "private-expired" as const };
+      }
+      const booking =
+        input.operatorNote !== null && input.operatorNote !== current.operatorNote
+          ? {
+              ...current,
+              revision: current.revision + 1,
+              operatorNote: input.operatorNote,
+              updatedAt: nextExchangeCarrierTimestamp(current.updatedAt),
+            }
+          : current;
+      if (booking !== current) await persistExchangeCarrierBooking(tx, siteId, booking);
+      return { outcome: "prepared" as const, order, exchange, booking, destination };
+    }
+    if (resuming) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_not_found",
+        "The resumable replacement booking does not exist.",
+      );
+    }
+    if (
+      exchange.status !== "awaiting" ||
+      exchange.destinationRedactedAt !== null ||
+      exchange.destinationRevision !== input.destinationRevision
+    ) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_state_conflict",
+        "Only an awaiting exchange with the exact destination revision can be booked.",
+      );
+    }
+    const destination = await readStoredExchangeDestinationPrivate(tx, siteId, input.orderId, true);
+    if (
+      !destination ||
+      !exchangeDestinationMatches(destination, exchange) ||
+      destination.accessedAt === null ||
+      destination.expiresAt <= new Date().toISOString()
+    ) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_destination_expired",
+        "A current staff-accessed replacement destination is required for carrier booking.",
+      );
+    }
+    const requestedAt = new Date().toISOString();
+    const booking = {
+      contract: NP_SHOP_EXCHANGE_CARRIER_BOOKING_STORAGE_CONTRACT,
+      id: randomUUID(),
+      orderId: order.id,
+      exchangeId: exchange.id,
+      providerId: adapter.id,
+      status: "pending",
+      revision: 1,
+      sourceOrderRevision: order.revision,
+      sourceExchangeRevision: exchange.revision,
+      destinationRevision: exchange.destinationRevision,
+      completedOrderRevision: null,
+      completedExchangeRevision: null,
+      operatorNote: input.operatorNote,
+      bookingReference: null,
+      carrier: null,
+      trackingNumber: null,
+      providerErrorCode: null,
+      cancellationId: null,
+      requestedAt,
+      confirmedAt: null,
+      cancelRequestedAt: null,
+      cancelledAt: null,
+      updatedAt: requestedAt,
+      purgeAt: order.purgeAt,
+    } satisfies NpShopStoredExchangeCarrierBooking;
+    await persistExchangeCarrierBooking(tx, siteId, booking);
+    await recordRequiredShopFulfillmentAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.exchange.carrier.booking.prepare",
+      order.id,
+      {
+        exchangeId: exchange.id,
+        shipmentId: booking.id,
+        providerId: booking.providerId,
+        destinationRevision: booking.destinationRevision,
+      },
+    );
+    return { outcome: "prepared" as const, order, exchange, booking, destination };
+  });
+  if (prepared.outcome === "private-expired") {
+    throw new NpShopExchangeCarrierConflictError(
+      "exchange_carrier_destination_expired",
+      "The replacement destination expired before provider confirmation.",
+    );
+  }
+  if (prepared.outcome === "complete") {
+    return {
+      exchange: npProjectShopExchange(prepared.exchange),
+      booking: prepared.booking,
+      duplicate: true,
+    };
+  }
+
+  let providerResult: NpShopExchangeCarrierBookingResult;
+  if (prepared.booking.status === "provider-confirmed") {
+    providerResult = npRequireShopExchangeCarrierBookingResult({
+      contract: NP_SHOP_EXCHANGE_CARRIER_BOOKING_RESULT_CONTRACT,
+      shipmentId: prepared.booking.id,
+      orderId: prepared.booking.orderId,
+      exchangeId: prepared.booking.exchangeId,
+      bookingReference: prepared.booking.bookingReference,
+      carrier: prepared.booking.carrier,
+      trackingNumber: prepared.booking.trackingNumber,
+      bookedAt: prepared.booking.confirmedAt,
+    });
+  } else {
+    if (!prepared.destination) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_destination_expired",
+        "The pending replacement booking lost its private destination.",
+      );
+    }
+    const request = npRequireShopExchangeCarrierBookingRequest({
+      contract: NP_SHOP_EXCHANGE_CARRIER_BOOKING_REQUEST_CONTRACT,
+      shipmentId: prepared.booking.id,
+      orderId: prepared.order.id,
+      exchangeId: prepared.exchange.id,
+      exchangeRevision: prepared.exchange.revision,
+      destinationRevision: prepared.exchange.destinationRevision,
+      items: exchangeCarrierItems(prepared.exchange),
+      destination: prepared.destination.destination,
+      requestedAt: prepared.booking.requestedAt,
+    });
+    try {
+      providerResult = npRequireShopExchangeCarrierBookingResult(
+        await adapter.bookExchangeShipment(request),
+      );
+    } catch (error) {
+      await persistExchangeCarrierFailure(
+        siteId,
+        input.orderId,
+        prepared.booking.id,
+        "pending",
+        error,
+      );
+      if (
+        error instanceof NpShopExchangeCarrierContractError ||
+        (error instanceof NpShopCarrierProviderError && !error.retryable)
+      ) {
+        throw new NpShopExchangeCarrierConflictError(
+          "exchange_carrier_manual_review",
+          "The replacement carrier result requires manual reconciliation.",
+        );
+      }
+      throw new NpShopCarrierUnavailableError(
+        "The replacement carrier is temporarily unavailable; resume the same booking.",
+      );
+    }
+  }
+  if (
+    providerResult.shipmentId !== prepared.booking.id ||
+    providerResult.orderId !== prepared.order.id ||
+    providerResult.exchangeId !== prepared.exchange.id ||
+    new Date(providerResult.bookedAt) < new Date(prepared.booking.requestedAt) ||
+    new Date(providerResult.bookedAt).getTime() >
+      Date.now() + npShopCarrierLimits.futureToleranceSeconds * 1_000
+  ) {
+    await markExchangeCarrierManualReview(
+      siteId,
+      input.orderId,
+      prepared.booking.id,
+      "invalid-result",
+    );
+    throw new NpShopExchangeCarrierConflictError(
+      "exchange_carrier_result_mismatch",
+      "The provider result does not match the durable replacement shipment intent.",
+    );
+  }
+
+  const confirmed = await getDb().transaction(async (tx) => {
+    const current = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
+    if (!current || current.id !== prepared.booking.id) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_manual_review",
+        "The durable replacement booking disappeared after provider confirmation.",
+      );
+    }
+    if (current.status === "completed") return current;
+    if (current.status === "provider-confirmed") {
+      if (
+        current.bookingReference === providerResult.bookingReference &&
+        current.carrier === providerResult.carrier &&
+        current.trackingNumber === providerResult.trackingNumber &&
+        current.confirmedAt === providerResult.bookedAt
+      ) {
+        return current;
+      }
+      const conflict = {
+        ...current,
+        status: "manual-review",
+        revision: current.revision + 1,
+        providerErrorCode: "idempotency-conflict",
+        updatedAt: nextExchangeCarrierTimestamp(current.updatedAt, current.confirmedAt),
+      } satisfies NpShopStoredExchangeCarrierBooking;
+      await persistExchangeCarrierBooking(tx, siteId, conflict);
+      return conflict;
+    }
+    if (current.status !== "pending") {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_manual_review",
+        "The replacement booking changed before confirmation was stored.",
+      );
+    }
+    const next = {
+      ...current,
+      status: "provider-confirmed",
+      revision: current.revision + 1,
+      bookingReference: providerResult.bookingReference,
+      carrier: providerResult.carrier,
+      trackingNumber: providerResult.trackingNumber,
+      providerErrorCode: null,
+      confirmedAt: providerResult.bookedAt,
+      updatedAt: nextExchangeCarrierTimestamp(current.updatedAt, providerResult.bookedAt),
+    } satisfies NpShopStoredExchangeCarrierBooking;
+    await persistExchangeCarrierBooking(tx, siteId, next);
+    await deleteExchangeDestinationPrivate(tx, siteId, next.orderId);
+    await recordRequiredShopFulfillmentAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.exchange.carrier.booking.confirm",
+      next.orderId,
+      { exchangeId: next.exchangeId, shipmentId: next.id, providerId: next.providerId },
+    );
+    return next;
+  });
+  if (confirmed.status === "completed") {
+    const exchange = await readStoredExchange(getDb(), siteId, input.orderId);
+    if (!exchange) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_not_found",
+        "The completed replacement booking has no exchange.",
+      );
+    }
+    return { exchange: npProjectShopExchange(exchange), booking: confirmed, duplicate: true };
+  }
+  if (confirmed.status === "manual-review") {
+    throw new NpShopExchangeCarrierConflictError(
+      "exchange_carrier_manual_review",
+      "The provider returned conflicting results for one replacement shipment id.",
+    );
+  }
+
+  try {
+    return await getDb().transaction(async (tx) => {
+      const { order, exchange } = await readExchangeForAction(tx, siteId, input.orderId);
+      const booking = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
+      if (
+        !booking ||
+        booking.id !== confirmed.id ||
+        booking.status !== "provider-confirmed" ||
+        exchange.id !== booking.exchangeId ||
+        exchange.status !== "awaiting" ||
+        order.revision !== booking.sourceOrderRevision ||
+        exchange.revision !== booking.sourceExchangeRevision ||
+        exchange.destinationRevision !== booking.destinationRevision
+      ) {
+        throw new NpShopExchangeCarrierConflictError(
+          "exchange_carrier_manual_review",
+          "The exchange changed after provider confirmation.",
+        );
+      }
+      const now = nextExchangeCarrierTimestamp(exchange.updatedAt, booking.confirmedAt);
+      const updatedOrder = {
+        ...order,
+        revision: order.revision + 1,
+        updatedAt: now,
+      } satisfies NpShopStoredOrder;
+      const updatedExchange = {
+        ...exchange,
+        status: "processing",
+        revision: exchange.revision + 1,
+        orderRevision: updatedOrder.revision,
+        carrier: booking.carrier,
+        trackingNumber: booking.trackingNumber,
+        operatorNote: booking.operatorNote ?? exchange.operatorNote,
+        destinationRedactedAt: now,
+        updatedAt: now,
+      } satisfies NpShopStoredExchange;
+      const completed = {
+        ...booking,
+        status: "completed",
+        revision: booking.revision + 1,
+        completedOrderRevision: updatedOrder.revision,
+        completedExchangeRevision: updatedExchange.revision,
+        providerErrorCode: null,
+        updatedAt: now,
+      } satisfies NpShopStoredExchangeCarrierBooking;
+      await persistOrder(tx, siteId, updatedOrder);
+      await persistExchange(tx, siteId, updatedExchange);
+      await persistExchangeCarrierBooking(tx, siteId, completed);
+      await npStageShopOrderNotification(tx, siteId, {
+        orderId: order.id,
+        ownerSegment: order.ownerSegment,
+        kind: "exchange.processing",
+        orderRevision: updatedOrder.revision,
+        occurredAt: now,
+        purgeAt: order.purgeAt,
+        email: null,
+      });
+      await recordRequiredShopFulfillmentAudit(
+        tx,
+        siteId,
+        staffUserId,
+        "shop.exchange.carrier.booking.complete",
+        order.id,
+        {
+          exchangeId: exchange.id,
+          shipmentId: completed.id,
+          providerId: completed.providerId,
+          exchangeRevision: updatedExchange.revision,
+        },
+      );
+      return {
+        exchange: npProjectShopExchange(updatedExchange),
+        booking: completed,
+        duplicate: false,
+      };
+    });
+  } catch (error) {
+    await markExchangeCarrierManualReview(
+      siteId,
+      input.orderId,
+      prepared.booking.id,
+      "local-state-conflict",
+    );
+    if (error instanceof NpShopOrderContractError) throw error;
+    throw new NpShopExchangeCarrierConflictError(
+      "exchange_carrier_manual_review",
+      "The provider confirmed replacement shipment but local completion requires reconciliation.",
+    );
+  }
+}
+
+export async function npCancelShopExchangeCarrierShipment(
+  runtime: NpShopRuntime,
+  input: NpShopExchangeCarrierExistingActionInput,
+  staffUserId: string,
+): Promise<{
+  exchange: NpShopExchange;
+  booking: NpShopStoredExchangeCarrierBooking;
+  duplicate: boolean;
+}> {
+  const adapter = runtime.carrierExchangeAdapter;
+  if (!adapter) {
+    throw new NpShopExchangeCarrierConflictError(
+      "exchange_carrier_not_supported",
+      "Replacement carrier cancellation is not configured.",
+    );
+  }
+  const siteId = await requireSiteId();
+  const prepared = await getDb().transaction(async (tx) => {
+    const { order, exchange } = await readExchangeForAction(tx, siteId, input.orderId);
+    const current = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
+    if (
+      !current ||
+      current.id !== input.bookingId ||
+      current.exchangeId !== input.exchangeId ||
+      current.providerId !== adapter.id
+    ) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_not_found",
+        "The provider-owned replacement booking does not exist.",
+      );
+    }
+    if (current.status === "cancelled" && exchange.status === "cancelled") {
+      return { outcome: "cancelled" as const, exchange, booking: current };
+    }
+    if (
+      order.revision !== input.orderRevision ||
+      exchange.revision !== input.exchangeRevision ||
+      current.revision !== input.bookingRevision
+    ) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_revision_conflict",
+        "The exchange or replacement booking changed before cancellation.",
+      );
+    }
+    if (exchange.status !== "processing") {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_state_conflict",
+        "Only a processing booked replacement can be cancelled.",
+      );
+    }
+    if (
+      current.status !== "completed" &&
+      current.status !== "cancel-pending" &&
+      current.status !== "cancel-confirmed"
+    ) {
+      throw new NpShopExchangeCarrierConflictError(
+        current.status === "manual-review"
+          ? "exchange_carrier_manual_review"
+          : "exchange_carrier_state_conflict",
+        "Only completed or already-cancelling replacement bookings can be cancelled.",
+      );
+    }
+    if (current.status !== "completed") {
+      const booking =
+        input.operatorNote !== null && input.operatorNote !== current.operatorNote
+          ? {
+              ...current,
+              revision: current.revision + 1,
+              operatorNote: input.operatorNote,
+              updatedAt: nextExchangeCarrierTimestamp(current.updatedAt),
+            }
+          : current;
+      if (booking !== current) await persistExchangeCarrierBooking(tx, siteId, booking);
+      return { outcome: "prepared" as const, exchange, booking };
+    }
+    const requestedAt = nextExchangeCarrierTimestamp(current.updatedAt);
+    const booking = {
+      ...current,
+      status: "cancel-pending",
+      revision: current.revision + 1,
+      cancellationId: randomUUID(),
+      operatorNote: input.operatorNote ?? current.operatorNote,
+      providerErrorCode: null,
+      cancelRequestedAt: requestedAt,
+      updatedAt: requestedAt,
+    } satisfies NpShopStoredExchangeCarrierBooking;
+    await persistExchangeCarrierBooking(tx, siteId, booking);
+    await recordRequiredShopFulfillmentAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.exchange.carrier.cancellation.prepare",
+      order.id,
+      { exchangeId: exchange.id, shipmentId: booking.id, cancellationId: booking.cancellationId },
+    );
+    return { outcome: "prepared" as const, exchange, booking };
+  });
+  if (prepared.outcome === "cancelled") {
+    return {
+      exchange: npProjectShopExchange(prepared.exchange),
+      booking: prepared.booking,
+      duplicate: true,
+    };
+  }
+  let booking = prepared.booking;
+  let providerResult: NpShopExchangeCarrierCancelResult;
+  if (booking.status === "cancel-confirmed") {
+    providerResult = npRequireShopExchangeCarrierCancelResult({
+      contract: NP_SHOP_EXCHANGE_CARRIER_CANCEL_RESULT_CONTRACT,
+      cancellationId: booking.cancellationId,
+      shipmentId: booking.id,
+      orderId: booking.orderId,
+      exchangeId: booking.exchangeId,
+      cancelledAt: booking.cancelledAt,
+    });
+  } else {
+    const request = npRequireShopExchangeCarrierCancelRequest({
+      contract: NP_SHOP_EXCHANGE_CARRIER_CANCEL_REQUEST_CONTRACT,
+      cancellationId: booking.cancellationId,
+      shipmentId: booking.id,
+      orderId: booking.orderId,
+      exchangeId: booking.exchangeId,
+      bookingReference: booking.bookingReference,
+      requestedAt: booking.cancelRequestedAt,
+    });
+    try {
+      providerResult = npRequireShopExchangeCarrierCancelResult(
+        await adapter.cancelExchangeShipment(request),
+      );
+    } catch (error) {
+      await persistExchangeCarrierFailure(
+        siteId,
+        input.orderId,
+        booking.id,
+        "cancel-pending",
+        error,
+      );
+      if (
+        error instanceof NpShopExchangeCarrierContractError ||
+        (error instanceof NpShopCarrierProviderError && !error.retryable)
+      ) {
+        throw new NpShopExchangeCarrierConflictError(
+          "exchange_carrier_manual_review",
+          "Replacement carrier cancellation requires manual reconciliation.",
+        );
+      }
+      throw new NpShopCarrierUnavailableError(
+        "The replacement carrier cancellation is temporarily unavailable; resume it.",
+      );
+    }
+  }
+  if (
+    providerResult.cancellationId !== booking.cancellationId ||
+    providerResult.shipmentId !== booking.id ||
+    providerResult.orderId !== booking.orderId ||
+    providerResult.exchangeId !== booking.exchangeId ||
+    new Date(providerResult.cancelledAt) < new Date(booking.cancelRequestedAt ?? 0) ||
+    new Date(providerResult.cancelledAt).getTime() >
+      Date.now() + npShopCarrierLimits.futureToleranceSeconds * 1_000
+  ) {
+    await markExchangeCarrierManualReview(siteId, input.orderId, booking.id, "invalid-result");
+    throw new NpShopExchangeCarrierConflictError(
+      "exchange_carrier_result_mismatch",
+      "The provider cancellation result does not match its durable intent.",
+    );
+  }
+  booking = await getDb().transaction(async (tx) => {
+    const current = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
+    if (!current || current.id !== booking.id) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_manual_review",
+        "The replacement booking disappeared after provider cancellation.",
+      );
+    }
+    if (current.status === "cancel-confirmed" || current.status === "cancelled") {
+      if (current.cancelledAt === providerResult.cancelledAt) return current;
+      const conflict = {
+        ...current,
+        status: "manual-review",
+        revision: current.revision + 1,
+        providerErrorCode: "idempotency-conflict",
+        updatedAt: nextExchangeCarrierTimestamp(current.updatedAt, current.cancelledAt),
+      } satisfies NpShopStoredExchangeCarrierBooking;
+      await persistExchangeCarrierBooking(tx, siteId, conflict);
+      return conflict;
+    }
+    if (current.status !== "cancel-pending") {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_manual_review",
+        "The replacement booking changed before cancellation confirmation was stored.",
+      );
+    }
+    const next = {
+      ...current,
+      status: "cancel-confirmed",
+      revision: current.revision + 1,
+      providerErrorCode: null,
+      cancelledAt: providerResult.cancelledAt,
+      updatedAt: nextExchangeCarrierTimestamp(current.updatedAt, providerResult.cancelledAt),
+    } satisfies NpShopStoredExchangeCarrierBooking;
+    await persistExchangeCarrierBooking(tx, siteId, next);
+    await recordRequiredShopFulfillmentAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.exchange.carrier.cancellation.confirm",
+      next.orderId,
+      { exchangeId: next.exchangeId, shipmentId: next.id, cancellationId: next.cancellationId },
+    );
+    return next;
+  });
+  if (booking.status === "manual-review") {
+    throw new NpShopExchangeCarrierConflictError(
+      "exchange_carrier_manual_review",
+      "The provider returned conflicting replacement cancellation results.",
+    );
+  }
+  if (booking.status === "cancelled") {
+    const exchange = await readStoredExchange(getDb(), siteId, input.orderId);
+    if (!exchange) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_not_found",
+        "The cancelled replacement booking has no exchange.",
+      );
+    }
+    return { exchange: npProjectShopExchange(exchange), booking, duplicate: true };
+  }
+  try {
+    return await getDb().transaction(async (tx) => {
+      const { order, returnRequest, exchange } = await readExchangeForAction(
+        tx,
+        siteId,
+        input.orderId,
+      );
+      const current = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
+      if (
+        !current ||
+        current.id !== booking.id ||
+        current.status !== "cancel-confirmed" ||
+        exchange.status !== "processing" ||
+        exchange.id !== current.exchangeId ||
+        order.revision !== current.completedOrderRevision ||
+        exchange.revision !== current.completedExchangeRevision
+      ) {
+        throw new NpShopExchangeCarrierConflictError(
+          "exchange_carrier_manual_review",
+          "The exchange changed after provider cancellation.",
+        );
+      }
+      const trackedKeys = new Set(order.inventoryReservationLineKeys);
+      const trackedLines = exchangeInventoryLines(order, returnRequest).filter((line) =>
+        trackedKeys.has(line.key),
+      );
+      await npLockShopInventoryProducts(
+        tx,
+        siteId,
+        trackedLines.map((line) => line.productId),
+      );
+      const inventoryOutcome =
+        trackedLines.length === 0
+          ? "not-required"
+          : (await npRestoreShopOrderInventory(tx, siteId, runtime, trackedLines))
+            ? "restocked"
+            : "manual-required";
+      const now = nextExchangeCarrierTimestamp(exchange.updatedAt, current.cancelledAt);
+      const updatedOrder = {
+        ...order,
+        revision: order.revision + 1,
+        updatedAt: now,
+      } satisfies NpShopStoredOrder;
+      const cancelledExchange = {
+        ...exchange,
+        status: "cancelled",
+        revision: exchange.revision + 1,
+        orderRevision: updatedOrder.revision,
+        inventoryOutcome,
+        carrier: null,
+        trackingNumber: null,
+        operatorNote: current.operatorNote ?? exchange.operatorNote,
+        updatedAt: now,
+        shippedAt: null,
+        cancelledAt: now,
+      } satisfies NpShopStoredExchange;
+      const cancelledBooking = {
+        ...current,
+        status: "cancelled",
+        revision: current.revision + 1,
+        providerErrorCode: null,
+        updatedAt: now,
+      } satisfies NpShopStoredExchangeCarrierBooking;
+      await persistOrder(tx, siteId, updatedOrder);
+      await persistExchange(tx, siteId, cancelledExchange);
+      await persistExchangeCarrierBooking(tx, siteId, cancelledBooking);
+      await npStageShopOrderNotification(tx, siteId, {
+        orderId: order.id,
+        ownerSegment: order.ownerSegment,
+        kind: "exchange.cancelled",
+        orderRevision: updatedOrder.revision,
+        occurredAt: now,
+        purgeAt: order.purgeAt,
+        email: null,
+      });
+      await recordRequiredShopFulfillmentAudit(
+        tx,
+        siteId,
+        staffUserId,
+        "shop.exchange.carrier.cancellation.complete",
+        order.id,
+        {
+          exchangeId: exchange.id,
+          shipmentId: current.id,
+          inventoryOutcome,
+          exchangeRevision: cancelledExchange.revision,
+        },
+      );
+      return {
+        exchange: npProjectShopExchange(cancelledExchange),
+        booking: cancelledBooking,
+        duplicate: false,
+      };
+    });
+  } catch (error) {
+    await markExchangeCarrierManualReview(
+      siteId,
+      input.orderId,
+      booking.id,
+      "local-state-conflict",
+    );
+    if (error instanceof NpShopOrderContractError) throw error;
+    throw new NpShopExchangeCarrierConflictError(
+      "exchange_carrier_manual_review",
+      "The provider cancelled replacement shipment but local completion requires reconciliation.",
+    );
+  }
+}
+
+export async function npShipBookedShopExchange(
+  runtime: NpShopRuntime,
+  input: NpShopExchangeCarrierExistingActionInput,
+  staffUserId: string,
+): Promise<NpShopExchange> {
+  const siteId = await requireSiteId();
+  const booking = await readStoredExchangeCarrierBooking(getDb(), siteId, input.orderId);
+  if (
+    !booking ||
+    booking.id !== input.bookingId ||
+    booking.exchangeId !== input.exchangeId ||
+    booking.revision !== input.bookingRevision ||
+    booking.status !== "completed" ||
+    !booking.carrier ||
+    !booking.trackingNumber
+  ) {
+    throw new NpShopExchangeCarrierConflictError(
+      "exchange_carrier_revision_conflict",
+      "The completed replacement booking changed before shipment handoff.",
+    );
+  }
+  const shipment = {
+    orderId: input.orderId,
+    exchangeId: input.exchangeId,
+    orderRevision: input.orderRevision,
+    exchangeRevision: input.exchangeRevision,
+    operatorNote: input.operatorNote,
+    carrier: booking.carrier,
+    trackingNumber: booking.trackingNumber,
+  } satisfies NpShopExchangeShipInput;
+  return updateShopExchange(runtime, shipment, staffUserId, "ship");
 }
 
 export function npProcessShopExchange(
@@ -6627,22 +7627,36 @@ export async function npListRecentShopExchanges(): Promise<{
           siteId,
           exchange.orderId,
         );
+        const carrierBooking = await readStoredExchangeCarrierBooking(db, siteId, exchange.orderId);
         const projected = npProjectShopExchange(
           exchange,
           destination && exchangeDestinationMatches(destination, exchange)
             ? { expiresAt: destination.expiresAt, accessedAt: destination.accessedAt }
             : null,
         );
+        const providerOwned = carrierBooking !== null && carrierBooking.status !== "cancelled";
+        const adminStatus =
+          providerOwned && (exchange.status === "awaiting" || exchange.status === "processing")
+            ? `provider-${exchange.status}`
+            : exchange.status;
+        const adminCarrierBooking =
+          carrierBooking?.status === "completed" && exchange.status === "shipped"
+            ? "shipped"
+            : (carrierBooking?.status ?? "none");
         return {
           id: exchange.orderId,
           exchangeId: exchange.id,
           returnId: exchange.returnId,
-          status: exchange.status,
+          status: adminStatus,
           exchangeRevision: exchange.revision,
           orderRevision: exchange.orderRevision,
-          destination: projected.destinationStatus,
+          destination: providerOwned ? "provider-owned" : projected.destinationStatus,
           destinationRevision: projected.destinationRevision,
           destinationExpiresAt: projected.destinationExpiresAt ?? "—",
+          carrierBooking: adminCarrierBooking,
+          bookingId: carrierBooking?.id ?? "—",
+          bookingRevision: carrierBooking?.revision ?? 0,
+          provider: carrierBooking?.providerId ?? "—",
           units: exchange.lines.reduce((sum, line) => sum + line.quantity, 0),
           inventory: exchange.inventoryOutcome,
           carrier: exchange.carrier ?? "—",
@@ -6866,5 +7880,108 @@ export async function npCountShopExchanges(): Promise<{
     orphanPrivateSample,
     invalidSample,
     orphanSample,
+  };
+}
+
+export async function npCountShopExchangeCarrierBookings(
+  expectedProviderId: string | null | undefined,
+): Promise<{
+  total: number;
+  pending: number;
+  providerConfirmed: number;
+  completed: number;
+  cancelling: number;
+  cancelled: number;
+  manualReview: number;
+  invalidSample: number;
+  orphanSample: number;
+  providerMismatchSample: number;
+}> {
+  const siteId = await requireSiteId();
+  const db = getDb();
+  const [counts] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      pending: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_EXCHANGE_CARRIER_BOOKING_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'pending')::int`,
+      providerConfirmed: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_EXCHANGE_CARRIER_BOOKING_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'provider-confirmed')::int`,
+      completed: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_EXCHANGE_CARRIER_BOOKING_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'completed')::int`,
+      cancelling: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_EXCHANGE_CARRIER_BOOKING_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' in ('cancel-pending', 'cancel-confirmed'))::int`,
+      cancelled: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_EXCHANGE_CARRIER_BOOKING_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'cancelled')::int`,
+      manualReview: sql<number>`count(*) filter (where ${npPluginStorage.value}->>'contract' = ${NP_SHOP_EXCHANGE_CARRIER_BOOKING_STORAGE_CONTRACT} and ${npPluginStorage.value}->>'status' = 'manual-review')::int`,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "exchange-carrier-booking:%"),
+      ),
+    );
+  const rows = await db
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "exchange-carrier-booking:%"),
+      ),
+    )
+    .orderBy(desc(npPluginStorage.updatedAt))
+    .limit(npShopExchangeLimits.diagnosticSampleSize);
+  let invalidSample = 0;
+  let orphanSample = 0;
+  let providerMismatchSample = 0;
+  for (const row of rows) {
+    try {
+      const booking = requireStoredExchangeCarrierBookingAtKey(row.value, row.expiresAt, row.key);
+      const exchange = await readStoredExchange(db, siteId, booking.orderId);
+      if (!exchange || exchange.id !== booking.exchangeId || exchange.purgeAt !== booking.purgeAt) {
+        orphanSample += 1;
+        continue;
+      }
+      if (booking.providerId !== (expectedProviderId ?? null)) {
+        providerMismatchSample += 1;
+      }
+      if (
+        ((booking.status === "pending" || booking.status === "provider-confirmed") &&
+          (exchange.status !== "awaiting" ||
+            exchange.revision !== booking.sourceExchangeRevision ||
+            exchange.destinationRevision !== booking.destinationRevision)) ||
+        (booking.status === "completed" &&
+          (booking.completedExchangeRevision === null ||
+            (exchange.status !== "processing" && exchange.status !== "shipped") ||
+            (exchange.status === "processing" &&
+              exchange.revision !== booking.completedExchangeRevision) ||
+            (exchange.status === "shipped" &&
+              exchange.revision !== booking.completedExchangeRevision + 1) ||
+            exchange.carrier !== booking.carrier ||
+            exchange.trackingNumber !== booking.trackingNumber)) ||
+        ((booking.status === "cancel-pending" || booking.status === "cancel-confirmed") &&
+          (booking.completedExchangeRevision === null ||
+            exchange.status !== "processing" ||
+            exchange.revision !== booking.completedExchangeRevision ||
+            exchange.carrier !== booking.carrier ||
+            exchange.trackingNumber !== booking.trackingNumber)) ||
+        (booking.status === "cancelled" &&
+          (booking.completedExchangeRevision === null ||
+            exchange.status !== "cancelled" ||
+            exchange.revision !== booking.completedExchangeRevision + 1))
+      ) {
+        invalidSample += 1;
+      }
+    } catch {
+      invalidSample += 1;
+    }
+  }
+  return {
+    ...counts,
+    invalidSample,
+    orphanSample,
+    providerMismatchSample,
   };
 }

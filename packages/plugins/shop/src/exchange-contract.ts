@@ -326,14 +326,25 @@ export function npAnalyzeStoredShopExchange(value: unknown): string[] {
     if (value[key] !== null && !isIso(value[key])) issues.push(`exchange.${key} is invalid.`);
   }
   if (
-    (value.status === "awaiting" || value.status === "processing") &&
+    value.status === "awaiting" &&
     (value.carrier !== null ||
       value.trackingNumber !== null ||
       value.shippedAt !== null ||
       value.cancelledAt !== null ||
       (value.inventoryOutcome !== "consumed" && value.inventoryOutcome !== "not-required"))
   ) {
-    issues.push("active exchanges require consumed inventory and no terminal metadata.");
+    issues.push("awaiting exchanges require consumed inventory and no shipment metadata.");
+  }
+  if (
+    value.status === "processing" &&
+    ((value.carrier === null) !== (value.trackingNumber === null) ||
+      value.shippedAt !== null ||
+      value.cancelledAt !== null ||
+      (value.inventoryOutcome !== "consumed" && value.inventoryOutcome !== "not-required"))
+  ) {
+    issues.push(
+      "processing exchanges require consumed inventory and coherent optional booked shipment metadata.",
+    );
   }
   if (
     value.status === "shipped" &&
