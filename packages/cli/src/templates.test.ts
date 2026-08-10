@@ -437,6 +437,9 @@ describe("getProjectFiles", () => {
     expect(env).toContain("require access before processing");
     expect(env).toContain("bookExchangeShipment and cancelExchangeShipment together");
     expect(env).toContain("deletes the replacement address only after durable");
+    expect(env).toContain("readShippingLabel capability serves completed outbound");
+    expect(env).toContain("never persist or log those bytes");
+    expect(readme).toContain("completed outbound and replacement labels");
     expect(readme).toContain("Verified provider cancellation snapshots reconcile known refunds");
     expect(env).toContain("provider-cancellation reconciliation for Shop");
   });

@@ -2,7 +2,15 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-10 (Shop carrier adapters may now add one paired
+**Last refreshed:** 2026-08-10 (The existing Shop carrier label-read capability
+now serves completed provider-booked same-item replacements through the same
+staff-only binary route. Exact booking/exchange state and revisions are checked
+before and after provider I/O, PII-free read/delivery audits distinguish the
+replacement, Admin/Doctor, scaffolds, docs, and PostgreSQL coverage share the
+contract, and bytes/URLs remain transient. Label purchase/regeneration, pickup,
+tracking callbacks/polling, and provider protocols remain separate.)
+
+**Earlier:** 2026-08-10 (Shop carrier adapters may now add one paired
 same-item replacement booking/cancellation capability. Stable provider
 idempotency, exact immutable lines, the current staff-accessed private
 destination, calls outside transactions, durable confirmation before address

@@ -111,7 +111,8 @@ It provides:
   immutable lines, reservation-aware all-or-none replacement inventory,
   revision-safe awaiting/processing/shipped/cancelled state, manual tracking or
   an optional paired provider-neutral booking/cancellation capability with
-  durable idempotency and reconciliation,
+  durable idempotency and reconciliation plus optional transient staff label
+  retrieval through the existing PII-free label-read capability,
   owner notifications, a 15-minute one-use owner authority, one maximum-24-hour
   replacement-address sidecar, audited staff access required before processing,
   deletion on processing/cancellation/expiry, PII-free Admin/Doctor/audit, and
@@ -154,8 +155,8 @@ added on top of displayed product prices. `NpShopCarrierAdapter` may book one
 shipment with its stable shipment UUID as the provider idempotency key and may
 consume a locked parcel snapshot through additive `bookShipmentWithParcels`,
 authenticate tracking callbacks or reconcile tracking through bounded
-server-only reads, and may retrieve an already-booked label through
-`readShippingLabel`. A parcel-aware adapter may additionally implement both
+server-only reads, and may retrieve an already-booked outbound or replacement
+label through `readShippingLabel`. A parcel-aware adapter may additionally implement both
 `schedulePickup` and `cancelPickup`; `createShop()` then requires one opaque
 `pickupLocationReference` that only the provider can resolve. Shop owns
 revision-safe selection and both PII-free commercial snapshots. Approved
@@ -173,7 +174,8 @@ The same carrier may add `bookExchangeShipment` and
 replacement destination outside a transaction, deletes it only after durable
 provider confirmation, persists stable booking/cancellation idempotency keys,
 and blocks manual exchange operations while that provider intent exists.
-Replacement labels, pickup, and tracking callbacks/polling remain independent.
+Replacement label bytes remain transient and direct-staff-only; label
+purchase/regeneration, pickup, and tracking callbacks/polling remain independent.
 `@nexpress/shop-payment-toss` is the bundled Toss Payments v2 initiation,
 full-refund, received-return partial-refund/return-postage settlement, and
 query-verified cancellation reconciliation adapter. Customer/shipping PII exists only in the short-lived

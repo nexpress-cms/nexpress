@@ -1182,12 +1182,14 @@ state. This contract records prepared packages only: it does not calculate
 packaging, buy labels, or choose a carrier protocol.
 
 `readShippingLabel` is another independent additive capability. When present,
-completed rows in the carrier-booking Admin table expose **Download label**.
+completed rows in the outbound carrier-booking table and completed or shipped
+provider-booked rows in the exchange table expose a label download action.
 The linked `GET /api/plugins/shop/carrier/shipping-label` route requires a
 staff session and accepts only the exact order/shipment query projected from
-that row. Shop rechecks the current site, completed booking, shipment id, and
-configured provider, appends a direct-staff audit event, then calls the provider
-outside the database transaction with the PII-free
+that row. Shop rechecks the current site, exactly one completed booking,
+shipment id, configured provider, and—when it is a replacement—the matching
+exchange identity, state, revision, carrier, and tracking tuple. It appends a
+direct-staff audit event, then calls the provider outside the database transaction with the PII-free
 `np.shop-carrier-label-request.v1` tuple. It contains only shipment/order ids,
 booking reference, carrier, tracking number, and request time.
 
@@ -1195,7 +1197,7 @@ The provider returns `np.shop-carrier-label-result.v1` with matching ids, a
 fresh retrieval timestamp, one closed `pdf | png | zpl` format, and 1 byte–5
 MiB of `Uint8Array` content. Shop delivers those bytes through the framework's
 bounded binary route response with attachment, private/no-store, and nosniff
-headers only after the completed booking tuple is rechecked and successful
+headers only after the full outbound or replacement relationship is rechecked and successful
 delivery is audited with format and byte count. Label bytes and URLs are never stored, projected through Admin JSON,
 logged, or placed in public media. This capability reads a label that the
 existing provider booking already owns; it does not purchase/regenerate a
@@ -1643,6 +1645,16 @@ Shop never treats an ambiguous provider response as a cancelled shipment.
 Manual exchange processing remains available when this paired capability is
 not used.
 
+When that carrier also implements the independent `readShippingLabel`
+capability, a completed provider booking exposes **Download replacement
+label** to direct staff through the same authenticated binary route used for
+outbound labels. Shop supplies only the PII-free booking tuple, performs the
+provider call outside the transaction, and revalidates the booking/exchange
+identity, state, revisions, carrier, and tracking before delivering at most 5
+MiB of PDF, PNG, or ZPL bytes. Read and delivery audits include the exchange
+and shipment ids, provider id, and—on delivery—format and byte count; no label
+bytes or URL are persisted or logged.
+
 The owner projection omits staff notes and identity, exposes the exact lines,
 status, inventory outcome, and optional tracking through
 `[data-np-shop-exchange]`. A provider-booked processing or shipped replacement
@@ -1663,7 +1675,7 @@ submission/access, processing, shipment, and cancellation write PII-free audit
 metadata.
 
 The original shipping address has already been deleted at first shipment and
-is never reused. Replacement labels, pickup, tracking callbacks/polling,
+is never reused. Replacement label purchase/regeneration, pickup, tracking callbacks/polling,
 automatic address correction, different-item substitutions, payment
 differences, store credit, legal eligibility rules, and automatic approval
 remain separate additive contracts.
