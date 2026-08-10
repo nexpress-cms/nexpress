@@ -2687,6 +2687,16 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "carrier-pickup-availability:%"),
+        sql`${npPluginStorage.value}->>'orderId' = ${order.id}`,
+      ),
+    );
+  await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, "carrier-label-acquisition:%"),
         sql`${npPluginStorage.value}->>'orderId' = ${order.id}`,
       ),

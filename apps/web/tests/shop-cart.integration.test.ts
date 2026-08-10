@@ -8625,6 +8625,47 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       expiresAt: expiredPurgeAt,
       updatedAt: expiredCreatedAt,
     });
+    const expiredAvailabilityId = "243e4567-e89b-42d3-a456-426614174000";
+    const expiredAvailabilityAt = new Date(expiredCreatedAt.getTime() + 30 * 60 * 1_000);
+    await db.insert(npPluginStorage).values({
+      pluginId: "shop",
+      siteId: "default",
+      key: `carrier-pickup-availability:${expiredPickupShipmentId}:${expiredAvailabilityId}`,
+      value: {
+        contract: "np.shop-carrier-pickup-availability-storage.v1",
+        id: expiredAvailabilityId,
+        orderId,
+        shipmentId: expiredPickupShipmentId,
+        target: "outbound",
+        exchangeId: null,
+        providerId: "retired-carrier",
+        bookingFingerprint: "f".repeat(64),
+        revision: 1,
+        locationReference: "retired-warehouse",
+        parcelRevision: 1,
+        packages: [
+          {
+            id: "parcel-1",
+            lengthMm: 300,
+            widthMm: 200,
+            heightMm: 100,
+            weightGrams: 1_500,
+          },
+        ],
+        windows: [
+          {
+            id: "retired-window",
+            readyAt: new Date(expiredCreatedAt.getTime() + 60 * 60 * 1_000).toISOString(),
+            closeAt: new Date(expiredCreatedAt.getTime() + 2 * 60 * 60 * 1_000).toISOString(),
+          },
+        ],
+        requestedAt: expiredCreatedAt.toISOString(),
+        expiresAt: expiredAvailabilityAt.toISOString(),
+        purgeAt: expiredPurgeAt.toISOString(),
+      },
+      expiresAt: expiredAvailabilityAt,
+      updatedAt: expiredCreatedAt,
+    });
     await db.insert(npPluginStorage).values({
       pluginId: "shop",
       siteId: "default",
@@ -8697,6 +8738,17 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         .select({ key: npPluginStorage.key })
         .from(npPluginStorage)
         .where(eq(npPluginStorage.key, `carrier-pickup:${expiredPickupShipmentId}`)),
+    ).toHaveLength(0);
+    expect(
+      await db
+        .select({ key: npPluginStorage.key })
+        .from(npPluginStorage)
+        .where(
+          eq(
+            npPluginStorage.key,
+            `carrier-pickup-availability:${expiredPickupShipmentId}:${expiredAvailabilityId}`,
+          ),
+        ),
     ).toHaveLength(0);
     expect(
       await db
