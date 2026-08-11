@@ -9,6 +9,7 @@ provider-neutral additional-tax quote and frozen tax snapshot, an optional
 provider-neutral payment initiation and verified-event boundary, revision-safe
 fulfillment operations, optional provider-neutral carrier booking,
 revision-safe PII-free fulfillment parcel snapshots,
+optional read-only outbound and replacement packaging proposals,
 durable provider-neutral shipping-label purchase/regeneration with transient retrieval,
 provider-neutral carrier pickup scheduling and cancellation,
 verified or reconciled carrier tracking events and owner-visible delivery state,
@@ -1216,8 +1217,98 @@ Rows distinguish an editable `prepared` snapshot from a v1-booking `frozen`,
 terminal manual `archived`, or v2 shipment-`locked` snapshot.
 Doctor verifies the matching declarative metric/status/table/action kinds.
 Commercial expiry removes the parcel row with the fulfillment and carrier
-state. This contract records prepared packages only: it does not calculate
-packaging, buy labels, or choose a carrier protocol.
+state. The manual contract records prepared packages without calculating them;
+the optional proposal adapter below can suggest the same canonical snapshot
+without changing carrier, warehouse, or material state.
+
+### Packaging proposal adapter
+
+Packaging proposals are an independent build-time capability. They do not
+require a carrier adapter, and enabling a carrier does not enable proposals. A
+project registers one server-only adapter on the same `createShop()` result:
+
+```ts
+import {
+  NP_SHOP_PACKAGING_PROPOSAL_RESULT_CONTRACT,
+  createShop,
+  type NpShopPackagingAdapter,
+} from "@nexpress/plugin-shop";
+
+const packaging: NpShopPackagingAdapter = {
+  id: "my-packaging-catalog",
+  async proposeParcels(request) {
+    // This must be a read-only calculation. Use proposalId only to correlate
+    // this call; do not reserve boxes, create WMS work, or charge a rate.
+    const proposal = await calculateParcelsFromProviderCatalog(request.lines);
+    return {
+      contract: NP_SHOP_PACKAGING_PROPOSAL_RESULT_CONTRACT,
+      proposalId: request.proposalId,
+      orderId: request.orderId,
+      target: request.target,
+      exchangeId: request.exchangeId,
+      sourceRevision: request.sourceRevision,
+      expectedParcelRevision: request.expectedParcelRevision,
+      parcels: proposal.parcels,
+      proposedAt: new Date().toISOString(),
+      expiresAt: request.expiresAt,
+    };
+  },
+};
+
+const shop = createShop({ packaging: { adapter: packaging } });
+```
+
+`proposeParcels` is deliberately read-only and side-effect-free. Shop may make
+more than one concurrent calculation for one row; parcel compare-and-swap
+allows only one result to be saved. The fresh proposal UUID is a trace id, not
+a durable provider-effect idempotency key. A provider that reserves packaging
+material, creates warehouse work, or charges for a selection needs a separate
+durable prepare/confirm/reconcile contract.
+
+The exact `np.shop-packaging-proposal-request.v1` contains the proposal and
+order ids, an `outbound | replacement` target, a replacement exchange id only
+for that target, the current fulfillment or exchange revision, the expected
+parcel revision, and 1–100 immutable lines. Each line contains only its line
+key, product id, product slug, optional variant SKU, and quantity. Customer and
+member identity, product names, prices, addresses, delivery methods, private
+order data, and operator notes are excluded. The request expires exactly 60
+seconds after `requestedAt`.
+
+The provider returns `np.shop-packaging-proposal-result.v1`, echoes every
+request identity and revision plus that exact expiry, and supplies the normal
+bounded parcel array with a fresh `proposedAt`. Shop rejects expired or
+future-dated results, extra fields, malformed dimensions or weights, unknown
+lines, and any allocation that does not cover every requested line and exact
+quantity. Shop stops awaiting the call at the request expiry; adapters should
+also apply a transport timeout so their own network work is cancelled. No
+provider label, explanatory text, URL, raw payload, or credential
+can enter the result, parcel snapshot, audit, or Admin health surface.
+
+Shop performs a short preflight transaction to capture the current processing
+outbound fulfillment or awaiting same-item replacement and its unlocked parcel
+revision. Provider I/O runs outside every database transaction. A second short
+transaction then rechecks the source and parcel revisions, exact allocations,
+commercial relationship, carrier-booking absence, and shipment lock before
+writing the next ordinary parcel revision and one PII-free audit. A concurrent
+manual edit, proposal, fulfillment/exchange transition, or carrier booking wins
+normally and causes the stale provider result to be discarded rather than
+overwriting newer state.
+
+The saved result is the same provider-neutral parcel snapshot as a manual
+entry. Staff can replace it through the manual JSON action until carrier
+booking locks it; proposal controls do not replace that fallback when the
+configured provider is unavailable. Admin health keeps independent latest
+`outbound` and `replacement` receipts with only provider id, closed
+`provider-error | invalid-result` state, and attempt time; diagnostics perform
+no provider reads and take no order locks.
+
+Shop has no immutable product dimensions or weights in the order contract. The
+adapter therefore maps the exact product id/slug and optional SKU to its own
+physical catalog and owns the quality of the recommendation. NexPress validates
+the bounded shape and allocation, but does not prove that items fit, mutate a
+WMS, book a carrier, calculate shipping rates, read an address, buy or render a
+label, reserve packaging material, or claim that a parcel was physically
+packed.
 
 `readShippingLabel` is another independent additive capability. When present,
 completed rows in the outbound carrier-booking table and completed or shipped
@@ -2202,6 +2293,8 @@ const shop = createShop({
   payment: { adapter }, // optional; omitted means the webhook route does not exist
   // Optional external override; omitted uses local policies or zero fallback.
   shipping: { adapter: shippingAdapter },
+  // Independent read-only parcel calculation; manual parcel JSON remains available.
+  packaging: { adapter: packagingAdapter },
   carrier: {
     adapter: carrierAdapter,
     // Required only with paired schedulePickup/cancelPickup methods.
@@ -2240,7 +2333,9 @@ Future transaction work should remain separable from this foundation:
    replacement-address/carrier automation, different-item exchanges, and
    customer-service policy;
 4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and
-   carrier-owned dynamic rate integrations.
+   carrier-owned dynamic rate integrations;
+5. warehouse mutations, physical packing automation, and packaging-material
+   reservation or purchasing.
 
 Those features require their own payment, security, and operational contracts.
 The provider-neutral event boundary does not pre-authorize or emulate them.

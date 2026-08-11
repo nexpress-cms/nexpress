@@ -362,8 +362,19 @@ real product domain, not just blog/community. Ship as a plugin package
   atomically locks the snapshot to the durable shipment UUID before provider
   I/O, while existing v1 adapters and manual shipping stay independent. Audit,
   Admin/Doctor diagnostics, commercial cleanup, scaffold guidance, and
-  PostgreSQL coverage share the contract. Labels, automatic packaging,
-  and provider protocols remain separate.
+  PostgreSQL coverage share the contract. Labels, packaging proposals, and
+  provider protocols remain separate.
+- **Provider-neutral packaging proposals (shipped)** — one independent
+  server-only `createShop({ packaging: { adapter } })` capability performs a
+  read-only, side-effect-free calculation for exact processing-outbound or
+  awaiting-replacement lines. PII-free product/SKU/quantity requests and exact
+  parcel results expire after 60 seconds; provider I/O runs outside database
+  transactions, then source and parcel revisions, allocation, booking absence,
+  and shipment locks are rechecked before compare-and-swap storage. Existing
+  manual parcel editing remains authoritative, while target-specific
+  Admin/Doctor health records no provider payload. Providers map identifiers to
+  their own measurements; WMS mutation, carrier booking/rates, addresses,
+  labels, physical packing, and packaging-material inventory remain separate.
 - **Provider-neutral carrier shipment booking (shipped)** — one optional
   server-only adapter receives an exact fulfillment revision, immutable order
   lines, selected delivery snapshot, and private destination outside database
@@ -372,7 +383,7 @@ real product domain, not just blog/community. Ship as a plugin package
   private-data-deletion transition. Closed PII-free retry/manual-review state,
   direct-staff audit, Admin, Doctor, scaffold guidance, and integration tests
   share the contract. Labels, provider-specific tracking protocols,
-  automatic packaging, customs, and jurisdiction policy remain separate.
+  WMS mutation, customs, and jurisdiction policy remain separate.
 - **Provider-neutral carrier pickup scheduling (shipped)** — parcel-aware
   outbound and same-item replacement carrier bookings may share paired
   schedule/cancel methods plus one server-only
@@ -545,8 +556,8 @@ real product domain, not just blog/community. Ship as a plugin package
   additional-tax quote, and carrier-booking boundaries are shipped; tax remittance/filing,
   invoices, exemptions/nexus, customs/duties, return-postage quotes,
   label billing/void policy, recurring pickup and general carrier calendars,
-  provider APIs, automatic packaging, and regional policy require
-  separate contracts.
+  provider APIs, WMS mutation, physical packing, packaging-material inventory,
+  and regional policy require separate contracts.
 
 Resolved foundation decision:
 

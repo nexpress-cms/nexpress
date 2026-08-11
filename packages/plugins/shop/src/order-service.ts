@@ -37,6 +37,11 @@ import {
   type NpShopStoredFulfillmentParcels,
 } from "./parcel-contract.js";
 import {
+  NpShopPackagingProposalUnavailableError,
+  type NpShopPackagingProposalInput,
+  type NpShopPackagingProposalLine,
+} from "./packaging-contract.js";
+import {
   npCleanupExpiredShopInventoryReservations,
   npConsumeShopInventoryReservations,
   npLockShopInventoryProducts,
@@ -4288,6 +4293,7 @@ function requireFulfillmentParcelAllocation(
 export async function npSaveShopFulfillmentParcels(
   input: NpShopFulfillmentParcelsSaveInput,
   staffUserId: string,
+  proposal: { proposalId: string; providerId: string; expiresAt: string } | null = null,
 ): Promise<NpShopStoredFulfillmentParcels> {
   const siteId = await requireSiteId();
   return getDb().transaction(async (tx) => {
@@ -4304,11 +4310,9 @@ export async function npSaveShopFulfillmentParcels(
         "The fulfillment changed before the parcel snapshot was saved.",
       );
     }
+    const booking = await readStoredCarrierBooking(tx, siteId, input.orderId, true);
     const existing = await readStoredFulfillmentParcels(tx, siteId, input.orderId, true);
-    if (
-      (await readStoredCarrierBooking(tx, siteId, input.orderId, true)) ||
-      existing?.lockedShipmentId
-    ) {
+    if (booking || existing?.lockedShipmentId) {
       throw new NpShopFulfillmentParcelConflictError(
         "parcel_locked",
         "The parcel snapshot is locked by a durable carrier booking.",
@@ -4321,7 +4325,13 @@ export async function npSaveShopFulfillmentParcels(
       );
     }
     requireFulfillmentParcelAllocation(order, input.parcels);
-    const now = new Date().toISOString();
+    const nowDate = new Date();
+    if (proposal && new Date(proposal.expiresAt).getTime() <= nowDate.getTime()) {
+      throw new NpShopPackagingProposalUnavailableError(
+        "The packaging proposal expired before it could be saved.",
+      );
+    }
+    const now = nowDate.toISOString();
     const next = {
       contract: NP_SHOP_FULFILLMENT_PARCELS_STORAGE_CONTRACT,
       orderId: order.id,
@@ -4339,7 +4349,7 @@ export async function npSaveShopFulfillmentParcels(
       tx,
       siteId,
       staffUserId,
-      "shop.fulfillment.parcels.save",
+      proposal ? "shop.fulfillment.parcels.propose" : "shop.fulfillment.parcels.save",
       order.id,
       {
         fulfillmentRevision: next.fulfillmentRevision,
@@ -4347,6 +4357,7 @@ export async function npSaveShopFulfillmentParcels(
         parcelCount: totals.parcelCount,
         unitCount: totals.unitCount,
         weightGrams: totals.weightGrams,
+        ...(proposal ? { proposalId: proposal.proposalId, providerId: proposal.providerId } : {}),
       },
     );
     return next;
@@ -6814,6 +6825,7 @@ function requireExchangeParcelAllocation(
 export async function npSaveShopExchangeParcels(
   input: NpShopExchangeParcelsSaveInput,
   staffUserId: string,
+  proposal: { proposalId: string; providerId: string; expiresAt: string } | null = null,
 ): Promise<NpShopStoredExchangeParcels> {
   const siteId = await requireSiteId();
   return getDb().transaction(async (tx) => {
@@ -6830,11 +6842,9 @@ export async function npSaveShopExchangeParcels(
         "The exchange changed before the parcel snapshot was saved.",
       );
     }
+    const booking = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
     const existing = await readStoredExchangeParcels(tx, siteId, input.orderId, true);
-    if (
-      (await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true)) ||
-      existing?.lockedShipmentId
-    ) {
+    if (booking || existing?.lockedShipmentId) {
       throw new NpShopExchangeParcelConflictError(
         "exchange_parcel_locked",
         "The replacement parcel snapshot is locked by a durable carrier booking.",
@@ -6847,7 +6857,13 @@ export async function npSaveShopExchangeParcels(
       );
     }
     requireExchangeParcelAllocation(exchange, input.parcels);
-    const now = new Date().toISOString();
+    const nowDate = new Date();
+    if (proposal && new Date(proposal.expiresAt).getTime() <= nowDate.getTime()) {
+      throw new NpShopPackagingProposalUnavailableError(
+        "The packaging proposal expired before it could be saved.",
+      );
+    }
+    const now = nowDate.toISOString();
     const next = {
       contract: NP_SHOP_EXCHANGE_PARCELS_STORAGE_CONTRACT,
       orderId: order.id,
@@ -6866,7 +6882,7 @@ export async function npSaveShopExchangeParcels(
       tx,
       siteId,
       staffUserId,
-      "shop.exchange.parcels.save",
+      proposal ? "shop.exchange.parcels.propose" : "shop.exchange.parcels.save",
       order.id,
       {
         exchangeId: exchange.id,
@@ -6875,9 +6891,112 @@ export async function npSaveShopExchangeParcels(
         parcelCount: totals.parcelCount,
         unitCount: totals.unitCount,
         weightGrams: totals.weightGrams,
+        ...(proposal ? { proposalId: proposal.proposalId, providerId: proposal.providerId } : {}),
       },
     );
     return next;
+  });
+}
+
+interface NpShopPreparedPackagingProposalBase {
+  orderId: string;
+  sourceRevision: number;
+  parcelRevision: number | null;
+  lines: NpShopPackagingProposalLine[];
+}
+
+export type NpShopPreparedPackagingProposal = NpShopPreparedPackagingProposalBase &
+  ({ target: "outbound"; exchangeId: null } | { target: "replacement"; exchangeId: string });
+
+export async function npPrepareShopPackagingProposal(
+  input: NpShopPackagingProposalInput,
+): Promise<NpShopPreparedPackagingProposal> {
+  const siteId = await requireSiteId();
+  if (input.target === "outbound") {
+    return getDb().transaction(async (tx) => {
+      const { fulfillment, order } = await readFulfillmentForAction(tx, siteId, input.orderId);
+      if (fulfillment.status !== "processing") {
+        throw new NpShopFulfillmentParcelConflictError(
+          "parcel_fulfillment_not_processing",
+          "Parcels can be proposed only for a processing fulfillment.",
+        );
+      }
+      if (fulfillment.revision !== input.expectedSourceRevision) {
+        throw new NpShopFulfillmentParcelConflictError(
+          "parcel_fulfillment_revision_conflict",
+          "The fulfillment changed before parcel proposal started.",
+        );
+      }
+      const booking = await readStoredCarrierBooking(tx, siteId, input.orderId, true);
+      const parcels = await readStoredFulfillmentParcels(tx, siteId, input.orderId, true);
+      if (booking || parcels?.lockedShipmentId) {
+        throw new NpShopFulfillmentParcelConflictError(
+          "parcel_locked",
+          "The parcel snapshot is locked by a durable carrier booking.",
+        );
+      }
+      if ((parcels?.revision ?? null) !== input.expectedParcelRevision) {
+        throw new NpShopFulfillmentParcelConflictError(
+          "parcel_revision_conflict",
+          "The parcel snapshot changed before parcel proposal started.",
+        );
+      }
+      return {
+        orderId: order.id,
+        target: "outbound",
+        exchangeId: null,
+        sourceRevision: fulfillment.revision,
+        parcelRevision: parcels?.revision ?? null,
+        lines: order.lines.map((line) => ({
+          lineKey: line.key,
+          productId: line.productId,
+          productSlug: line.productSlug,
+          variantSku: line.variantSku,
+          quantity: line.quantity,
+        })),
+      };
+    });
+  }
+  return getDb().transaction(async (tx) => {
+    const { order, exchange } = await readExchangeForAction(tx, siteId, input.orderId);
+    if (
+      exchange.id !== input.exchangeId ||
+      exchange.status !== "awaiting" ||
+      exchange.revision !== input.expectedSourceRevision
+    ) {
+      throw new NpShopExchangeParcelConflictError(
+        "exchange_parcel_revision_conflict",
+        "The replacement exchange changed before parcel proposal started.",
+      );
+    }
+    const booking = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
+    const parcels = await readStoredExchangeParcels(tx, siteId, input.orderId, true);
+    if (booking || parcels?.lockedShipmentId) {
+      throw new NpShopExchangeParcelConflictError(
+        "exchange_parcel_locked",
+        "The replacement parcel snapshot is locked by a durable carrier booking.",
+      );
+    }
+    if ((parcels?.revision ?? null) !== input.expectedParcelRevision) {
+      throw new NpShopExchangeParcelConflictError(
+        "exchange_parcel_revision_conflict",
+        "The replacement parcel snapshot changed before parcel proposal started.",
+      );
+    }
+    return {
+      orderId: order.id,
+      target: "replacement",
+      exchangeId: exchange.id,
+      sourceRevision: exchange.revision,
+      parcelRevision: parcels?.revision ?? null,
+      lines: exchange.lines.map((line) => ({
+        lineKey: line.lineKey,
+        productId: line.productId,
+        productSlug: line.productSlug,
+        variantSku: line.variantSku,
+        quantity: line.quantity,
+      })),
+    };
   });
 }
 

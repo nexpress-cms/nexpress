@@ -47,6 +47,7 @@ import {
   type NpShopPromotionDefinition,
 } from "./promotion-contract.js";
 import { npEmptyShopProductReviewAggregate } from "./review-contract.js";
+import type { NpShopPackagingAdapter } from "./packaging-contract.js";
 
 export const npShopSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 export const npShopSkuPattern = /^[A-Z0-9][A-Z0-9._-]{0,63}$/u;
@@ -74,6 +75,7 @@ export interface NpShopRuntime {
   paymentReturnSettlementAdapter: NpShopPaymentReturnSettlementAdapter | null;
   shippingAdapter: NpShopShippingAdapter | null;
   taxAdapter: NpShopTaxAdapter | null;
+  packagingAdapter: NpShopPackagingAdapter | null;
   carrierAdapter: NpShopCarrierAdapter | null;
   carrierExchangeAdapter: NpShopCarrierExchangeAdapter | null;
   carrierExchangeParcelAdapter: NpShopCarrierExchangeParcelAdapter | null;

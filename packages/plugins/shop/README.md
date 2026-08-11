@@ -85,6 +85,11 @@ It provides:
 - revision-safe PII-free fulfillment parcel snapshots with bounded integer
   millimetre dimensions, gram weights, exact order-line allocations, Admin
   health, and optional atomic locking to one durable carrier shipment;
+- an independent optional read-only packaging adapter for processing outbound
+  fulfillments and awaiting same-item replacements, with exact PII-free
+  product/SKU/quantity inputs, a 60-second proposal expiry, provider I/O outside
+  database transactions, revision-safe parcel compare-and-swap, per-target
+  health, and the existing manual JSON fallback;
 - an optional provider-neutral carrier adapter with one durable shipment UUID,
   calls outside database transactions, resumable provider confirmation,
   atomic tracking/shipped completion and private-data deletion, and closed
@@ -160,9 +165,24 @@ jurisdictional responsibility policy, carrier label billing/void policy,
 recurring pickup,
 provider-specific tracking protocols,
 tax remittance/filing, invoices, exemptions, customs, and carrier-owned dynamic
-rate policy remain outside this package. A server-only `NpShopShippingAdapter` may supply
+rate policy, WMS mutation, physical packing, and packaging-material inventory
+remain outside this package. A server-only `NpShopShippingAdapter` may supply
 exact bounded delivery methods, and `NpShopTaxAdapter` may return only tax
-added on top of displayed product prices. `NpShopCarrierAdapter` may book one
+added on top of displayed product prices. An independent server-only
+`NpShopPackagingAdapter` may map Shop's exact immutable line keys, product
+ids/slugs, optional SKUs, and quantities to its own physical catalog and return
+the ordinary bounded parcel shape. Register it separately with
+`createShop({ packaging: { adapter: packagingAdapter } })`; it does not require
+a carrier. Its `proposeParcels` call is a
+side-effect-free read: the fresh proposal UUID is a trace id, its exact result
+expires after 60 seconds, Shop stops awaiting at that boundary, and the adapter
+should also cancel its own network I/O. It must not reserve materials, mutate a WMS, book
+a shipment, calculate a rate, receive an address, or buy a label. Shop calls it
+outside transactions, then rechecks source/parcel revisions and booking locks
+before saving; any saved snapshot remains replaceable through the manual parcel
+action. Shop validates shape and allocation but cannot prove physical fit or
+weight because product measurements remain provider-catalog data.
+`NpShopCarrierAdapter` may book one
 shipment with its stable shipment UUID as the provider idempotency key and may
 consume a locked parcel snapshot through additive `bookShipmentWithParcels`,
 authenticate tracking callbacks or reconcile tracking through bounded
@@ -218,6 +238,6 @@ See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/doc
 for the exact price, SKU, inventory, wishlist, restock-alert, price-alert, review, Forum-backed inquiry, cart,
 promotion, checkout-intent, private-draft, shipping-quote, tax-quote,
 pending-order, payment-attempt/event/adjustment, fulfillment, parcel, carrier,
-label acquisition/read, pickup, tracking/polling, full-refund, return-linked partial-refund, return,
+packaging-proposal, label acquisition/read, pickup, tracking/polling, full-refund, return-linked partial-refund, return,
 same-item exchange, return-logistics, return-postage, return-postage settlement, skin, block, and
 theme-integration contracts.

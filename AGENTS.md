@@ -2,7 +2,16 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-11 (Shop pickup-capable carrier adapters may now add
+**Last refreshed:** 2026-08-11 (Shop may now use one independent read-only
+packaging proposal adapter for outbound processing fulfillments and awaiting
+same-item replacements. Exact PII-free immutable lines, 60-second result
+expiry, provider I/O outside transactions, revision-safe parcel CAS, unchanged
+manual editing and carrier booking, target-specific Admin/Doctor health,
+scaffolds, docs, and PostgreSQL coverage share the contract. Physical packing,
+WMS mutations, addresses, rates, labels, packaging-material inventory, and
+provider protocols remain separate.)
+
+**Earlier:** 2026-08-11 (Shop pickup-capable carrier adapters may now add
 one exact outbound and same-item replacement availability read over the locked
 booking, opaque origin, and parcel snapshot. Bounded ordered UTC windows,
 one-hour PII-free snapshots with one-way booking fingerprints, revision-safe staff selection, unchanged pickup v1
