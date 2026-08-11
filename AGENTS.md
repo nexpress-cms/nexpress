@@ -2,7 +2,18 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-11 (Shop may now use one independent read-only
+**Last refreshed:** 2026-08-11 (Shop now atomically consumes the exact source
+cart only on the first durable pending-order commit. Existing cart/order locks,
+revision and fingerprint checks, replay-safe idempotency, intent/draft stages
+that leave the cart intact, and no automatic restoration protect concurrent
+owners. After the order leaves `pending-payment`, an owner/CSRF/revision-bound explicit re-add
+rebuilds available lines from the current public catalog, preserves current
+cart coupons, and reports bounded per-line added/skipped outcomes without
+copying old commercial values, reservations, or PII. Both skins, the independent
+Storefront hook, scaffolds, docs, and PostgreSQL coverage share the contract;
+Admin, Doctor, and scheduled jobs remain unchanged.)
+
+**Earlier:** 2026-08-11 (Shop may now use one independent read-only
 packaging proposal adapter for outbound processing fulfillments and awaiting
 same-item replacements. Exact PII-free immutable lines, 60-second result
 expiry, provider I/O outside transactions, revision-safe parcel CAS, unchanged

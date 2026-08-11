@@ -365,6 +365,18 @@ export interface NpShopMessages {
   orderEmpty: string;
   orderReference: string;
   orderPaymentUnavailable: string;
+  orderReAdd?: string;
+  orderReAdding?: string;
+  orderReAddBoundary?: string;
+  orderReAddAdded?: string;
+  orderReAddSkipped?: string;
+  orderReAddCart?: string;
+  orderReAddFailed?: string;
+  orderReAddConflict?: string;
+  orderReAddProductUnavailable?: string;
+  orderReAddVariantUnavailable?: string;
+  orderReAddLineLimit?: string;
+  orderReAddQuantityLimit?: string;
   orderPay?: string;
   orderPaymentPreparing?: string;
   orderPaymentConfirming?: string;
@@ -703,6 +715,18 @@ export interface NpShopCartClientMessages {
   orderEmpty: string;
   orderReference: string;
   orderPaymentUnavailable: string;
+  orderReAdd?: string;
+  orderReAdding?: string;
+  orderReAddBoundary?: string;
+  orderReAddAdded?: string;
+  orderReAddSkipped?: string;
+  orderReAddCart?: string;
+  orderReAddFailed?: string;
+  orderReAddConflict?: string;
+  orderReAddProductUnavailable?: string;
+  orderReAddVariantUnavailable?: string;
+  orderReAddLineLimit?: string;
+  orderReAddQuantityLimit?: string;
   orderFailed: string;
 }
 
@@ -934,6 +958,8 @@ export interface NpShopOrdersSkinProps {
 export interface NpShopOrderSkinProps {
   basePath: string;
   apiPath: string;
+  cartApiPath?: string;
+  cartReAddApiPath?: string;
   returnApiPath: string;
   exchangeDestinationApiPath: string;
   returnLogisticsApiPath?: string;

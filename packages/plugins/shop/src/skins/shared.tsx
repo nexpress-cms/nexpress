@@ -210,6 +210,18 @@ function cartClientMessages(messages: NpShopMessages): NpShopCartClientMessages 
     orderEmpty: messages.orderEmpty,
     orderReference: messages.orderReference,
     orderPaymentUnavailable: messages.orderPaymentUnavailable,
+    orderReAdd: messages.orderReAdd,
+    orderReAdding: messages.orderReAdding,
+    orderReAddBoundary: messages.orderReAddBoundary,
+    orderReAddAdded: messages.orderReAddAdded,
+    orderReAddSkipped: messages.orderReAddSkipped,
+    orderReAddCart: messages.orderReAddCart,
+    orderReAddFailed: messages.orderReAddFailed,
+    orderReAddConflict: messages.orderReAddConflict,
+    orderReAddProductUnavailable: messages.orderReAddProductUnavailable,
+    orderReAddVariantUnavailable: messages.orderReAddVariantUnavailable,
+    orderReAddLineLimit: messages.orderReAddLineLimit,
+    orderReAddQuantityLimit: messages.orderReAddQuantityLimit,
     orderFailed: messages.orderFailed,
   };
 }
@@ -749,6 +761,8 @@ export function ShopOrderSurface({ skin, ...props }: NpShopOrderSkinProps & { sk
     <main className="np-shop np-shop-order" data-np-shop-surface="order" data-np-shop-skin={skin}>
       <ShopOrder
         apiPath={props.apiPath}
+        cartApiPath={props.cartApiPath}
+        cartReAddApiPath={props.cartReAddApiPath}
         returnApiPath={props.returnApiPath}
         exchangeDestinationApiPath={props.exchangeDestinationApiPath}
         returnLogisticsApiPath={props.returnLogisticsApiPath}

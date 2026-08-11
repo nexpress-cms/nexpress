@@ -7,11 +7,17 @@ import { and, asc, eq, like, lt, sql } from "drizzle-orm";
 
 import {
   NP_SHOP_CART_QUOTE_CONTRACT,
+  NP_SHOP_CART_READD_CONTRACT,
   NP_SHOP_CART_STORAGE_CONTRACT,
   NpShopCartContractError,
+  npRequireShopCartReAddResult,
   npRequireShopCartStorageValue,
   npShopCartLimits,
   npShopCartLineKey,
+  type NpShopCartReAddInput,
+  type NpShopCartReAddIssueCode,
+  type NpShopCartReAddLineResult,
+  type NpShopCartReAddResult,
   type NpShopCartStorageValue,
   type NpShopCartStoredLine,
 } from "./cart-contract.js";
@@ -141,9 +147,32 @@ export async function npReadStoredShopCartForUpdate(
         eq(npPluginStorage.key, storageKey(owner)),
       ),
     )
-    .limit(1);
+    .limit(1)
+    .for("update");
   if (!row || (row.expiresAt !== null && row.expiresAt <= new Date())) return null;
   return npRequireShopCartStorageValue(row.value);
+}
+
+export async function npConsumeShopCartForOrder(
+  tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0],
+  siteId: string,
+  owner: NpShopCartOwner,
+  expectedRevision: number,
+): Promise<boolean> {
+  const current = await npReadStoredShopCartForUpdate(tx, siteId, owner);
+  if (!current || current.revision !== expectedRevision) return false;
+  const deleted = await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        eq(npPluginStorage.key, storageKey(owner)),
+        sql`${npPluginStorage.value}->>'revision' = ${expectedRevision.toString()}`,
+      ),
+    )
+    .returning({ key: npPluginStorage.key });
+  return deleted.length === 1;
 }
 
 async function persistCart(
@@ -428,6 +457,139 @@ export async function npAddShopCartLine(
   return npQuoteShopCart(runtime, owner);
 }
 
+type NpShopCartReAddSourceLine = {
+  productId: string;
+  variantSku: string | null;
+  quantity: number;
+};
+
+export async function npReAddShopCartLines(
+  runtime: NpShopRuntime,
+  owner: NpShopCartOwner,
+  input: NpShopCartReAddInput & { lines: readonly NpShopCartReAddSourceLine[] },
+): Promise<NpShopCartReAddResult> {
+  if (input.lines.length < 1 || input.lines.length > npShopCartLimits.maximumLines) {
+    throw new NpShopCartContractError("Invalid order lines for cart re-add", [
+      `An order re-add must contain 1–${npShopCartLimits.maximumLines.toString()} lines.`,
+    ]);
+  }
+  const sourceLines = input.lines.map((line) => {
+    const variantSku = line.variantSku?.trim().toUpperCase() ?? null;
+    if (
+      !Number.isSafeInteger(line.quantity) ||
+      line.quantity < 1 ||
+      line.quantity > npShopCartLimits.maximumQuantityPerLine ||
+      (variantSku !== null && (variantSku.length < 1 || variantSku.length > 64))
+    ) {
+      throw new NpShopCartContractError("Invalid order lines for cart re-add", [
+        "Order line quantities and option identifiers must fit the current cart contract.",
+      ]);
+    }
+    return {
+      lineKey: npShopCartLineKey(line.productId, variantSku),
+      productId: line.productId,
+      variantSku,
+      quantity: line.quantity,
+    };
+  });
+  if (new Set(sourceLines.map((line) => line.lineKey)).size !== sourceLines.length) {
+    throw new NpShopCartContractError("Invalid order lines for cart re-add", [
+      "Order lines must identify unique product options.",
+    ]);
+  }
+  const products = await findPublishedProducts(runtime, [
+    ...new Set(sourceLines.map((line) => line.productId)),
+  ]);
+  const siteId = await requireSiteId();
+  const result = await getDb().transaction(async (tx) => {
+    await npLockShopCart(tx, siteId, owner);
+    const current = await npReadStoredShopCartForUpdate(tx, siteId, owner);
+    requireRevision(current, input.expectedCartRevision);
+    const nextLines = [...(current?.lines ?? [])];
+    const outcomes: NpShopCartReAddLineResult[] = [];
+    let addedUnits = 0;
+    let skippedUnits = 0;
+
+    for (const source of sourceLines) {
+      const product = products.get(source.productId);
+      const enabledVariants = product?.variants.filter((variant) => variant.enabled) ?? [];
+      const variant =
+        source.variantSku === null
+          ? null
+          : enabledVariants.find((candidate) => candidate.sku === source.variantSku);
+      let issue: NpShopCartReAddIssueCode | null = null;
+      if (!product) issue = "product-unavailable";
+      else if (
+        (source.variantSku === null && enabledVariants.length > 0) ||
+        (source.variantSku !== null && !variant)
+      ) {
+        issue = "variant-unavailable";
+      }
+
+      const existingIndex = nextLines.findIndex((line) => line.key === source.lineKey);
+      const existing = existingIndex < 0 ? null : nextLines[existingIndex];
+      if (!issue && !existing && nextLines.length >= npShopCartLimits.maximumLines) {
+        issue = "cart-line-limit";
+      }
+      const capacity = existing
+        ? npShopCartLimits.maximumQuantityPerLine - existing.quantity
+        : npShopCartLimits.maximumQuantityPerLine;
+      const addedQuantity = issue ? 0 : Math.min(source.quantity, Math.max(0, capacity));
+      const skippedQuantity = source.quantity - addedQuantity;
+      if (!issue && skippedQuantity > 0) issue = "quantity-limit";
+
+      if (addedQuantity > 0 && product) {
+        const line: NpShopCartStoredLine = {
+          key: source.lineKey,
+          productId: product.id,
+          productSlug: product.slug,
+          productName: product.name,
+          variantSku: source.variantSku,
+          variantName: variant?.name ?? null,
+          quantity: (existing?.quantity ?? 0) + addedQuantity,
+          currency: product.currency,
+          unitPriceMinor: variant?.priceMinor ?? product.priceMinor,
+        };
+        if (existingIndex < 0) nextLines.push(line);
+        else nextLines[existingIndex] = line;
+      }
+      addedUnits += addedQuantity;
+      skippedUnits += skippedQuantity;
+      outcomes.push({
+        lineKey: source.lineKey,
+        productId: source.productId,
+        variantSku: source.variantSku,
+        requestedQuantity: source.quantity,
+        addedQuantity,
+        skippedQuantity,
+        issue,
+      });
+    }
+
+    const cartRevision = addedUnits > 0 ? (current?.revision ?? 0) + 1 : (current?.revision ?? 0);
+    if (addedUnits > 0) {
+      const now = new Date().toISOString();
+      await persistCart(tx, siteId, owner, {
+        contract: NP_SHOP_CART_STORAGE_CONTRACT,
+        revision: cartRevision,
+        lines: nextLines,
+        couponCodes: current?.couponCodes ?? [],
+        createdAt: current?.createdAt ?? now,
+        updatedAt: now,
+      });
+    }
+    return npRequireShopCartReAddResult({
+      contract: NP_SHOP_CART_READD_CONTRACT,
+      orderId: input.orderId,
+      cartRevision,
+      addedUnits,
+      skippedUnits,
+      lines: outcomes,
+    });
+  });
+  return result;
+}
+
 export async function npSetShopCartCoupons(
   runtime: NpShopRuntime,
   owner: NpShopCartOwner,
@@ -583,21 +745,22 @@ export async function npMergeShopGuestCart(
 export async function npCleanupExpiredShopCarts(): Promise<number> {
   const siteId = await requireSiteId();
   const db = getDb();
-  const rows = await db
-    .select({ key: npPluginStorage.key })
-    .from(npPluginStorage)
-    .where(
-      and(
-        eq(npPluginStorage.pluginId, SHOP_PLUGIN_ID),
-        eq(npPluginStorage.siteId, siteId),
-        like(npPluginStorage.key, "cart:%"),
-        lt(npPluginStorage.expiresAt, new Date()),
-      ),
-    )
-    .orderBy(asc(npPluginStorage.expiresAt), asc(npPluginStorage.key))
-    .limit(npShopCartLimits.cleanupBatchSize);
-  if (rows.length === 0) return 0;
   return db.transaction(async (tx) => {
+    const now = new Date();
+    const rows = await tx
+      .select({ key: npPluginStorage.key })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, SHOP_PLUGIN_ID),
+          eq(npPluginStorage.siteId, siteId),
+          like(npPluginStorage.key, "cart:%"),
+          lt(npPluginStorage.expiresAt, now),
+        ),
+      )
+      .orderBy(asc(npPluginStorage.expiresAt), asc(npPluginStorage.key))
+      .limit(npShopCartLimits.cleanupBatchSize)
+      .for("update", { skipLocked: true });
     let deleted = 0;
     for (const row of rows) {
       const removed = await tx
@@ -607,7 +770,7 @@ export async function npCleanupExpiredShopCarts(): Promise<number> {
             eq(npPluginStorage.pluginId, SHOP_PLUGIN_ID),
             eq(npPluginStorage.siteId, siteId),
             eq(npPluginStorage.key, row.key),
-            lt(npPluginStorage.expiresAt, new Date()),
+            lt(npPluginStorage.expiresAt, now),
           ),
         )
         .returning({ key: npPluginStorage.key });

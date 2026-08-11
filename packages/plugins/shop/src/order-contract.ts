@@ -134,7 +134,8 @@ export class NpShopOrderConflictError extends Error {
     | "order_inventory_unavailable"
     | "order_source_stale"
     | "order_pending_limit"
-    | "order_not_cancellable";
+    | "order_not_cancellable"
+    | "order_not_readdable";
 
   constructor(code: NpShopOrderConflictError["code"], message: string) {
     super(message);

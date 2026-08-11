@@ -28,7 +28,8 @@ the theme enhances Shop through documented CSS variables, classes, data
 attributes, and optional page blocks; neither package imports the other.
 
 The cart, checkout intent, and order draft are deliberately **pre-order
-state**. A reviewable draft can create a durable `pending-payment` order that
+state**. Intent and draft creation leave the cart intact. The first commit of a
+durable `pending-payment` order atomically consumes that exact source cart and
 reserves tracked product or variant inventory for its 24-hour lifetime. An
 optional build-time adapter may prepare a provider handoff, confirm the
 browser return on the server, authenticate an external callback, and project
@@ -62,7 +63,9 @@ package remains independently replaceable. After applying the generated migratio
    then lower that exact catalog price below its captured baseline.
 10. Add a product to the cart, visit `/shop/cart`, create a short-lived
     checkout intent, continue to the 24-hour private order draft, and optionally
-    create a durable pending order reference.
+    create a durable pending order that atomically consumes its exact source
+    cart. After that order leaves `pending-payment`, its owner may explicitly
+    add currently available order items to the cart again.
 11. Optionally activate Storefront from Admin → Appearance.
 12. Add the `shop.category-grid` and `shop.featured-products` blocks to a page,
     or insert the `shop.storefront-home` pattern.
@@ -376,6 +379,37 @@ own contracts, while the optional verified event boundary owns terminal
 idempotency and reservation consumption. Quotes subtract every unexpired
 pending-order reservation for the same product or canonical variant SKU.
 
+### Explicit order re-add
+
+`POST /api/plugins/shop/cart/re-add` is a separate owner action with the exact
+body `{ orderId, expectedCartRevision }`. It uses the same signed guest or
+active-member identity, CSRF token, `private, no-store` response policy, cart
+lock, and revision-conflict response as ordinary cart mutations. Shop reads the
+same-owner order itself; the browser cannot submit product lines, prices, owner
+identity, or order status. An order still in `pending-payment` fails with HTTP
+409 `order_not_readdable`, avoiding a second cart while the original payment is
+unresolved.
+
+For every immutable order line, Shop re-reads the current published product and
+exact enabled variant. Added cart lines use current product/variant names,
+slugs, currency, and prices while retaining the current cart's coupon codes.
+The original order's price, promotion/coupon snapshot, delivery, tax, payment,
+inventory reservation, customer, shipping, provider, and fulfillment state are
+never copied or changed. Re-add does not reserve inventory or guarantee the
+quoted stock or price; the normal live cart quote remains authoritative.
+
+The exact `np.shop-cart-readd.v1` result reports the resulting `cartRevision`,
+total `addedUnits` and `skippedUnits`, plus one ordered allocation for every
+requested order line.
+`requestedQuantity = addedQuantity + skippedQuantity`, and each skipped part
+has one closed issue: `product-unavailable`, `variant-unavailable`,
+`cart-line-limit`, or `quantity-limit`. Shop may therefore add available units
+while explicitly skipping unavailable or over-limit units. All successful
+additions commit together under the expected cart revision; a revision conflict
+commits none. The existing cart stays first, no cart may exceed 50 option lines
+or 99 units per line, and an all-skipped result leaves the cart and its revision
+unchanged.
+
 ### Promotions and coupons
 
 The third Commerce collection, `shop-promotions`, defines automatic campaigns
@@ -448,7 +482,8 @@ HTTP 409. Different keys are admitted under an owner-level lock so concurrent
 requests cannot exceed the five-intent limit. The intent remains only a quote
 boundary: it does not clear the cart, create an order, reserve inventory, or
 authorize later payment. Every future consumer must read it again and require
-`open` immediately before its own external effect.
+`open` immediately before its own external effect. Draft creation likewise
+leaves the cart intact; only the first durable pending-order commit consumes it.
 
 Checkout intent rows share site-scoped `np_plugin_storage` with carts and stay
 outside content search, revisions, transfer, and document quotas. An hourly
@@ -716,7 +751,10 @@ Shop exposes `GET`, `POST`, and `DELETE` at
   transition. A fresh quote subtracts existing active holds. Commercial
   snapshot creation, PII-free product/variant reservation rows,
   private-sidecar creation, pending-expiry marker creation, and source-draft
-  deletion commit atomically.
+  and exact source-cart deletion commit atomically. A stale or missing cart
+  rolls the entire transition back.
+- An idempotent replay that finds the already-created order returns that order
+  without reading, changing, or deleting any newer cart the owner created.
 - If another order consumed the final sellable unit first, creation returns
   HTTP 409 `order_inventory_unavailable`. Deterministic product locking keeps
   multi-line orders deadlock-safe and prevents two pending orders from holding
@@ -727,6 +765,13 @@ Shop exposes `GET`, `POST`, and `DELETE` at
   newest 20 same-owner orders and an exact total.
 - `DELETE { orderId, expectedRevision }` is revision-safe. Repeating a
   successful cancellation is idempotent.
+
+Checkout-intent and draft creation never consume the cart. Order cancellation,
+verified payment failure, and pending-order expiry never restore it
+automatically because a replacement could overwrite later owner edits or
+revive obsolete catalog state. Once an order is no longer `pending-payment`,
+its owner may use `POST /cart/re-add`; the explicit action follows the current
+catalog and bounded partial-result contract above without changing the order.
 
 The only browser-creatable status is `pending-payment`. It means that the
 immutable product, option, item subtotal, selected delivery method and amount,
@@ -2167,6 +2212,10 @@ audited explicit private read; every mutation uses the current fulfillment
 revision. The scheduled-task and
 action registries make these contracts visible to plugin doctor without
 executing them.
+
+Pending-order cart consumption and explicit order re-add reuse those existing
+cart/order counts, storage health, and declared API inventory. They add no
+Admin action, Doctor diagnostic, cleanup task, health row, or scheduled job.
 Payment-adjustment health independently reports malformed or orphan state and
 any manual-review order that blocks fulfillment/refunds. Its newest-50 receipt
 table contains only provider/event/order ids, exact currency amounts,
@@ -2248,6 +2297,7 @@ The main public hooks are `.np-shop`, `.np-shop-product-card`,
 `.np-shop-order-list`, `.np-shop-order-client`,
 `.np-shop-payment-action`, `.np-shop-toss-payment`,
 `[data-np-shop-order-line]`, `[data-np-shop-order-status]`,
+`[data-np-shop-order-readd]`,
 `[data-np-shop-fulfillment-status]`,
 `[data-np-shop-partial-refund]`,
 `.np-shop-return-form`, `.np-shop-return-summary`,

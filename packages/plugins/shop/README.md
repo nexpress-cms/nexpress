@@ -41,7 +41,9 @@ It provides:
   180-day subscriptions, fast product-update processing, five-minute bounded
   reconciliation, stable-event inbox dedupe, 30-day receipts, and PII-free
   Admin/Doctor health;
-- bounded guest/member carts with revision-safe mutations and live price/stock quotes;
+- bounded guest/member carts with revision-safe mutations, live price/stock
+  quotes, exact source-cart consumption only on the first durable order commit,
+  and explicit owner re-add from non-pending orders;
 - automatic and code-based fixed/percentage promotions with time, target,
   minimum-spend, cap, stacking, global/per-owner usage, deterministic line
   allocation, and atomic reservation/redemption/release counters;
@@ -66,7 +68,13 @@ It provides:
   tax, and payment total,
   separate pending-payment private sidecars, revision-safe cancellation, bounded
   history/Admin views, transaction-safe product/variant holds, cancellation
-  release, and 365-day commercial cleanup;
+  release, exact transactional source-cart deletion, replay-safe preservation of
+  newer carts, no automatic cart restoration, and 365-day commercial cleanup;
+- `POST /api/plugins/shop/cart/re-add` with owner identity, CSRF, and expected
+  cart revision; it rebuilds available immutable order-line identities from
+  current published products/enabled variants and current names/prices, keeps
+  current cart coupons, enforces 50-line/99-unit bounds with closed per-line
+  added/skipped issues, and copies no old commercial values, reservation, or PII;
 - a PII-free durable order timeline plus transactional member-inbox and direct-email
   outbox for order, payment, fulfillment, delivery, return, and refund transitions;
   raw guest/member email is isolated only within the existing private-data

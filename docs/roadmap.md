@@ -309,8 +309,9 @@ real product domain, not just blog/community. Ship as a plugin package
   retain 30-day dedupe receipts, expose PII-free Admin/Doctor health, and never
   imply cart, reservation, availability, promotion, or price guarantees.
 - **Cart and checkout intent (shipped)** — bounded guest/member carts plus
-  owner-scoped, idempotent 15-minute quote snapshots. These do not collect PII,
-  reserve stock, create orders, or take payment.
+  owner-scoped, idempotent 15-minute quote snapshots. Intents and private drafts
+  retain their source cart; these stages do not collect PII in the cart, reserve
+  stock, create orders, or take payment.
 - **Private order draft (shipped)** — an open checkout intent can create one
   owner-scoped, revision-safe 24-hour draft with a minimal all-or-nothing
   customer/shipping contract. Cancellation physically deletes it; read-time
@@ -318,9 +319,15 @@ real product domain, not just blog/community. Ship as a plugin package
   logs, public discovery, and Admin values exclude its PII.
 - **Durable pending order (shipped)** — a reviewable draft atomically becomes
   one idempotent `pending-payment` commercial snapshot plus a separate private
-  sidecar. Cancellation, payment failure, or the 24-hour pending deadline
-  deletes PII; successful payment promotes the sidecar to a fulfillment-only
-  30-day maximum and the commercial record is purged after 365 days.
+  sidecar while deleting only its exact source cart in the same transaction.
+  Idempotent replay never touches a newer cart. Cancellation, payment failure,
+  or the 24-hour pending deadline deletes PII without automatically restoring
+  cart state; successful payment promotes the sidecar to a fulfillment-only
+  30-day maximum and the commercial record is purged after 365 days. Once the
+  order leaves `pending-payment`, its owner can explicitly re-add current public
+  product/variant lines under cart revision and 50-line/99-unit bounds, with
+  per-line added/skipped outcomes and no old commercial values, reservations,
+  or PII.
 - **Inventory reservation (shipped)** — pending-order creation locks product
   ids canonically, subtracts active holds from current tracked product/variant
   stock, and atomically writes one exact PII-free reservation per tracked
@@ -550,12 +557,12 @@ real product domain, not just blog/community. Ship as a plugin package
   reconcile crashes, and Admin/Doctor expose delivery health.
 - **Public surfaces (shipped)** — product detail, listing, wishlist, cart,
   checkout-intent, private order-draft, order-history, order-detail, and return
-  intake pages
-  use independent plugin skins and stable theme hooks.
+  intake pages use independent plugin skins and stable theme hooks. Order detail
+  exposes the explicit current-catalog re-add action after `pending-payment`.
 - **Tax compliance, carrier logistics, and shipping policy (future)** — shipping,
   additional-tax quote, and carrier-booking boundaries are shipped; tax remittance/filing,
-  invoices, exemptions/nexus, customs/duties, return-postage quotes,
-  label billing/void policy, recurring pickup and general carrier calendars,
+  invoices, exemptions/nexus, customs/duties, label billing/void policy,
+  recurring pickup and general carrier calendars,
   provider APIs, WMS mutation, physical packing, packaging-material inventory,
   and regional policy require separate contracts.
 

@@ -390,6 +390,12 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("one-shot member restock alerts");
     expect(readme).toContain("catalog price-drop alerts");
     expect(readme).toContain("PII-free order-update timeline/outbox");
+    expect(readme).toContain("Checkout intents and private drafts retain the cart");
+    expect(readme).toContain("first durable pending-order commit atomically consumes");
+    expect(readme).toContain("idempotent replay never touches a newer cart");
+    expect(readme).toContain("explicitly re-add current public product and enabled-variant lines");
+    expect(readme).toContain("bounded per-line added/skipped outcomes");
+    expect(readme).toContain("old order commercial values, reservations, and PII do not return");
     expect(readme).toContain("existing site-scoped follow graph");
     expect(readme).toContain("product-questions");
     expect(readme).toContain("create no inquiry collection");

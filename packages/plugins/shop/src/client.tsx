@@ -4,7 +4,12 @@ import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "rea
 import { npRequireFollowWireRow, npRequireOkWire } from "@nexpress/core/community-contract";
 import { npRequireMediaAttachmentWire } from "@nexpress/core/media-contract";
 
-import { npRequireShopCartQuote } from "./cart-contract.js";
+import {
+  npRequireShopCartQuote,
+  npRequireShopCartReAddResponse,
+  type NpShopCartReAddInput,
+  type NpShopCartReAddResult,
+} from "./cart-contract.js";
 import { npRequireShopCheckoutIntent } from "./checkout-contract.js";
 import { npRequireShopOrderDraft } from "./order-draft-contract.js";
 import { npRequireShopOrder, npRequireShopOrderList } from "./order-contract.js";
@@ -46,6 +51,11 @@ import type {
 
 interface CartResponse {
   quote: NpShopCartQuote;
+  csrfToken: string | null;
+}
+
+interface CartReAddResponse {
+  result: NpShopCartReAddResult;
   csrfToken: string | null;
 }
 
@@ -141,6 +151,37 @@ async function requestCart(
     throw new Error(failure.message ?? failure.error ?? "Cart request failed.");
   }
   return { ...payload, quote: npRequireShopCartQuote(payload.quote) };
+}
+
+async function requestCartReAdd(
+  apiPath: string,
+  csrfToken: string | null,
+  body: NpShopCartReAddInput,
+  orderLines: NpShopOrder["lines"],
+): Promise<CartReAddResponse> {
+  const response = await fetch(apiPath, {
+    method: "POST",
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      ...(csrfToken ? { "x-csrf-token": csrfToken } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+  const payload: unknown = await response.json();
+  if (!response.ok) {
+    const failure =
+      typeof payload === "object" && payload !== null
+        ? (payload as { message?: string; error?: string })
+        : {};
+    throw new ShopRequestError(
+      failure.error ?? "cart_readd_failed",
+      failure.message ?? failure.error ?? "Order items could not be added to the cart.",
+    );
+  }
+  return npRequireShopCartReAddResponse(payload, body, orderLines);
 }
 
 async function requestCheckout(
@@ -1424,6 +1465,8 @@ export function ShopOrders({
 
 export function ShopOrder({
   apiPath,
+  cartApiPath,
+  cartReAddApiPath,
   returnApiPath,
   exchangeDestinationApiPath,
   returnLogisticsApiPath,
@@ -1435,6 +1478,8 @@ export function ShopOrder({
   messages,
 }: {
   apiPath: string;
+  cartApiPath?: string;
+  cartReAddApiPath?: string;
   returnApiPath: string;
   exchangeDestinationApiPath: string;
   returnLogisticsApiPath?: string;
@@ -1457,6 +1502,10 @@ export function ShopOrder({
   const [returnPostageQuote, setReturnPostageQuote] = useState<NpShopReturnPostageQuote | null>(
     null,
   );
+  const [reAddResult, setReAddResult] = useState<NpShopCartReAddResult | null>(null);
+  const [reAddState, setReAddState] = useState<
+    "idle" | "loading" | "complete" | "partial" | "none" | "conflict" | "error"
+  >("idle");
 
   useEffect(() => {
     void requestOrder(apiPath, "GET", { orderId })
@@ -1502,6 +1551,47 @@ export function ShopOrder({
       setCsrfToken(response.csrfToken);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : messages.orderFailed);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reAddOrderLines(): Promise<void> {
+    if (!order || order.status === "pending-payment" || !cartApiPath || !cartReAddApiPath) return;
+    setBusy(true);
+    setError("");
+    setReAddResult(null);
+    setReAddState("loading");
+    try {
+      const cart = await requestCart(cartApiPath, "GET");
+      const input = { orderId: order.id, expectedCartRevision: cart.quote.revision };
+      const response = await requestCartReAdd(
+        cartReAddApiPath,
+        cart.csrfToken ?? csrfToken,
+        input,
+        order.lines,
+      );
+      setReAddResult(response.result);
+      setCsrfToken(response.csrfToken);
+      setReAddState(
+        response.result.addedUnits === 0
+          ? "none"
+          : response.result.skippedUnits > 0
+            ? "partial"
+            : "complete",
+      );
+    } catch (caught) {
+      setReAddResult(null);
+      setReAddState(
+        caught instanceof ShopRequestError && caught.code === "cart_revision_conflict"
+          ? "conflict"
+          : "error",
+      );
+      setError(
+        caught instanceof ShopRequestError && caught.code === "cart_revision_conflict"
+          ? (messages.orderReAddConflict ?? messages.orderReAddFailed ?? messages.orderFailed)
+          : (messages.orderReAddFailed ?? messages.orderFailed),
+      );
     } finally {
       setBusy(false);
     }
@@ -1910,6 +2000,17 @@ export function ShopOrder({
     }[kind];
   }
 
+  function reAddIssueMessage(
+    issue: NonNullable<NpShopCartReAddResult["lines"][number]["issue"]>,
+  ): string {
+    return {
+      "product-unavailable": messages.orderReAddProductUnavailable ?? messages.cartUnavailable,
+      "variant-unavailable": messages.orderReAddVariantUnavailable ?? messages.cartUnavailable,
+      "cart-line-limit": messages.orderReAddLineLimit ?? messages.cartUpdateFailed,
+      "quantity-limit": messages.orderReAddQuantityLimit ?? messages.cartUpdateFailed,
+    }[issue];
+  }
+
   return (
     <div className="np-shop-order-client" aria-busy={busy}>
       {error ? (
@@ -1982,6 +2083,61 @@ export function ShopOrder({
                 <span>{messages.orderTotal}</span>
                 <strong>{formatMoney(messages.locale, order.totalMinor, order.currency)}</strong>
               </div>
+              {order.status !== "pending-payment" && cartApiPath && cartReAddApiPath ? (
+                <section
+                  className="np-shop-order-readd"
+                  data-np-shop-order-readd={reAddState}
+                  aria-live="polite"
+                >
+                  <h3>{messages.orderReAdd ?? "Add order items to cart"}</h3>
+                  <p>
+                    {messages.orderReAddBoundary ??
+                      "Items are rebuilt from the current catalog without changing this order."}
+                  </p>
+                  <button type="button" disabled={busy} onClick={() => void reAddOrderLines()}>
+                    {reAddState === "loading"
+                      ? (messages.orderReAdding ?? "Adding current items…")
+                      : (messages.orderReAdd ?? "Add order items to cart")}
+                  </button>
+                  {reAddResult ? (
+                    <div className="np-shop-order-readd-result">
+                      <p>
+                        <strong>{messages.orderReAddAdded ?? "Units added"}</strong>{" "}
+                        {reAddResult.addedUnits.toLocaleString(messages.locale)}
+                        {" · "}
+                        <strong>{messages.orderReAddSkipped ?? "Units skipped"}</strong>{" "}
+                        {reAddResult.skippedUnits.toLocaleString(messages.locale)}
+                      </p>
+                      {reAddResult.skippedUnits > 0 ? (
+                        <ul>
+                          {reAddResult.lines
+                            .filter((line) => line.skippedQuantity > 0 && line.issue !== null)
+                            .map((line) => {
+                              const source = order.lines.find(
+                                (candidate) => candidate.key === line.lineKey,
+                              );
+                              return (
+                                <li key={line.lineKey} data-np-shop-order-readd-issue={line.issue}>
+                                  <span>
+                                    {source?.productName ?? line.lineKey}
+                                    {source?.variantName || source?.variantSku
+                                      ? ` · ${source.variantName ?? source.variantSku}`
+                                      : ""}
+                                  </span>
+                                  <span>
+                                    {line.skippedQuantity.toLocaleString(messages.locale)} ·{" "}
+                                    {line.issue ? reAddIssueMessage(line.issue) : ""}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                        </ul>
+                      ) : null}
+                      <a href={`${basePath}/cart`}>{messages.orderReAddCart ?? messages.cart}</a>
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
             </section>
             <aside>
               <p>

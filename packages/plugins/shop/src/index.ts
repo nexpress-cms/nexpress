@@ -8,6 +8,7 @@ import {
 import { registerNotificationKind } from "@nexpress/core/community";
 
 import { createShopCartApiHandler } from "./cart-api.js";
+import { createShopCartReAddApiHandler } from "./cart-readd-api.js";
 import { npCleanupExpiredShopCarts, npCountShopCarts } from "./cart-service.js";
 import { createShopCheckoutApiHandler } from "./checkout-api.js";
 import { createShopCarrierLabelApiHandler } from "./carrier-label-api.js";
@@ -1151,6 +1152,19 @@ const messages = {
     "shop.orderReference": "Order reference",
     "shop.orderPaymentUnavailable":
       "This order remains pending until an enabled provider supplies a verified callback. Tax remittance, carrier booking, fulfillment, and refunds are separate.",
+    "shop.orderReAdd": "Add order items to cart",
+    "shop.orderReAdding": "Adding current items…",
+    "shop.orderReAddBoundary":
+      "Available products and options are added with current names and prices. The original order, discounts, delivery, tax, payment, and reservations do not change.",
+    "shop.orderReAddAdded": "Units added",
+    "shop.orderReAddSkipped": "Units skipped",
+    "shop.orderReAddCart": "Review cart",
+    "shop.orderReAddFailed": "The order items could not be added to the cart.",
+    "shop.orderReAddConflict": "The cart changed. Review it and try again.",
+    "shop.orderReAddProductUnavailable": "The product is no longer available.",
+    "shop.orderReAddVariantUnavailable": "The selected option is no longer available.",
+    "shop.orderReAddLineLimit": "The cart has reached its line limit.",
+    "shop.orderReAddQuantityLimit": "The cart has reached this item's quantity limit.",
     "shop.orderPay": "Pay with configured provider",
     "shop.orderPaymentPreparing": "Preparing secure payment…",
     "shop.orderPaymentConfirming": "Confirming payment with the provider…",
@@ -1438,6 +1452,19 @@ const messages = {
     "shop.orderReference": "주문 번호",
     "shop.orderPaymentUnavailable":
       "활성 결제사가 검증된 콜백을 보낼 때까지 결제 대기 상태입니다. 세금 신고·납부, 운송사 예약, 배송 처리 및 환불은 별도 계약입니다.",
+    "shop.orderReAdd": "주문 상품 다시 담기",
+    "shop.orderReAdding": "현재 상품을 담는 중…",
+    "shop.orderReAddBoundary":
+      "현재 판매 중인 상품과 옵션을 현재 이름·가격으로 담습니다. 기존 주문, 할인, 배송, 세금, 결제 및 재고 예약은 변경하지 않습니다.",
+    "shop.orderReAddAdded": "담은 수량",
+    "shop.orderReAddSkipped": "건너뛴 수량",
+    "shop.orderReAddCart": "장바구니 확인",
+    "shop.orderReAddFailed": "주문 상품을 장바구니에 담지 못했습니다.",
+    "shop.orderReAddConflict": "장바구니가 변경되었습니다. 확인한 뒤 다시 시도해 주세요.",
+    "shop.orderReAddProductUnavailable": "현재 판매하지 않는 상품입니다.",
+    "shop.orderReAddVariantUnavailable": "현재 선택할 수 없는 상품 옵션입니다.",
+    "shop.orderReAddLineLimit": "장바구니 상품 종류 한도에 도달했습니다.",
+    "shop.orderReAddQuantityLimit": "이 상품의 장바구니 수량 한도에 도달했습니다.",
     "shop.orderPay": "연결된 결제사로 결제하기",
     "shop.orderPaymentPreparing": "안전한 결제를 준비하는 중…",
     "shop.orderPaymentConfirming": "결제사에서 결제를 승인하는 중…",
@@ -1469,6 +1496,7 @@ export function createShop(options: NpShopOptions = {}) {
   ] as const;
   const blocks = createShopHomeBlocks(runtime);
   const cartApiHandler = createShopCartApiHandler(runtime);
+  const cartReAddApiHandler = createShopCartReAddApiHandler(runtime);
   const reviewApiHandler = createShopProductReviewApiHandler(runtime);
   const restockAlertApiHandler = createShopRestockAlertApiHandler(runtime);
   const priceAlertApiHandler = createShopPriceAlertApiHandler(runtime);
@@ -1696,6 +1724,7 @@ export function createShop(options: NpShopOptions = {}) {
         ],
         apiRoutes: [
           "/cart",
+          "/cart/re-add",
           "/checkout",
           "/order-drafts",
           "/orders",
@@ -1766,6 +1795,7 @@ export function createShop(options: NpShopOptions = {}) {
         "order-draft-status": "[data-np-shop-order-draft-status]",
         "order-line": "[data-np-shop-order-line]",
         "order-status": "[data-np-shop-order-status]",
+        "order-readd": "[data-np-shop-order-readd]",
         "order-notifications": "[data-np-shop-order-notifications]",
         "fulfillment-status": "[data-np-shop-fulfillment-status]",
         "tracking-status": "[data-np-shop-tracking-status]",
@@ -6820,6 +6850,13 @@ export function createShop(options: NpShopOptions = {}) {
         handler: cartApiHandler,
       },
       {
+        method: "POST",
+        path: "/cart/re-add",
+        description:
+          "Add one owner-scoped order's immutable product identities to the current cart under current catalog rules.",
+        handler: cartReAddApiHandler,
+      },
+      {
         method: "PATCH",
         path: "/cart",
         description: "Change one cart line quantity with revision protection.",
@@ -7440,7 +7477,10 @@ export type {
 } from "./payment-attempt-contract.js";
 export {
   NP_SHOP_CART_QUOTE_CONTRACT,
+  NP_SHOP_CART_READD_CONTRACT,
   NP_SHOP_CART_STORAGE_CONTRACT,
+  npAnalyzeShopCartReAddResponse,
+  npAnalyzeShopCartReAddResult,
   npAnalyzeShopCartStorageValue,
   npAnalyzeShopCartQuote,
   npIsShopCartIssueCode,
@@ -7449,13 +7489,23 @@ export {
   npRequireShopCartSetQuantityInput,
   npRequireShopCartSetCouponsInput,
   npRequireShopCartQuote,
+  npRequireShopCartReAddInput,
+  npRequireShopCartReAddResponse,
+  npRequireShopCartReAddResult,
   npRequireShopCartStorageValue,
   npShopCartLimits,
   npShopCartLineKey,
+  npShopCartReAddIssueCodes,
 } from "./cart-contract.js";
 export type {
   NpShopCartAddInput,
   NpShopCartDeleteInput,
+  NpShopCartReAddInput,
+  NpShopCartReAddExpectedLine,
+  NpShopCartReAddIssueCode,
+  NpShopCartReAddLineResult,
+  NpShopCartReAddResult,
+  NpShopCartReAddResponse,
   NpShopCartSetQuantityInput,
   NpShopCartSetCouponsInput,
   NpShopCartStorageValue,

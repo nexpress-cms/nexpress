@@ -117,11 +117,14 @@ import {
 } from "./order-draft-service.js";
 import { npStageShopOrderNotification } from "./order-notification-service.js";
 import {
+  npConsumeShopCartForOrder,
   npLockShopCart,
   npQuoteShopCart,
+  npReAddShopCartLines,
   npShopCartOwnerStorageSegment,
   type NpShopCartOwner,
 } from "./cart-service.js";
+import type { NpShopCartReAddInput, NpShopCartReAddResult } from "./cart-contract.js";
 import type { NpShopRuntime } from "./runtime.js";
 import { listShopPromotions } from "./runtime.js";
 import { npIsShopShippingProviderActive } from "./shipping-policy-service.js";
@@ -2998,6 +3001,12 @@ export async function npCreateShopOrder(
       purgeAt: order.purgeAt,
       email: privateData.customer.email,
     });
+    if (!(await npConsumeShopCartForOrder(tx, siteId, owner, draft.cartRevision))) {
+      throw new NpShopOrderConflictError(
+        "order_source_stale",
+        "The cart changed before the order could consume its source snapshot.",
+      );
+    }
     await tx
       .delete(npPluginStorage)
       .where(
@@ -3009,6 +3018,21 @@ export async function npCreateShopOrder(
       );
     return projectOrder(tx, siteId, order);
   });
+}
+
+export async function npReAddShopOrderLines(
+  runtime: NpShopRuntime,
+  owner: NpShopCartOwner,
+  input: NpShopCartReAddInput,
+): Promise<NpShopCartReAddResult> {
+  const order = await npReadShopOrder(owner, input.orderId);
+  if (order.status === "pending-payment") {
+    throw new NpShopOrderConflictError(
+      "order_not_readdable",
+      "Cancel or complete the pending order before adding its items to the cart again.",
+    );
+  }
+  return npReAddShopCartLines(runtime, owner, { ...input, lines: order.lines });
 }
 
 export async function npReadShopOrder(

@@ -1009,7 +1009,7 @@ function readmeTemplate(config: TemplateConfig): string {
 
   return `# ${config.projectName}
 
-A NexPress site ready to customize, publish, and deploy, with Shop saved products on the existing site-scoped follow graph at \`/shop/wishlist\`, independent one-shot member restock alerts and catalog price-drop alerts, and a durable PII-free order-update timeline/outbox.
+A NexPress site ready to customize, publish, and deploy, with Shop saved products on the existing site-scoped follow graph at \`/shop/wishlist\`, independent one-shot member restock alerts and catalog price-drop alerts, and a durable PII-free order-update timeline/outbox. Checkout intents and private drafts retain the cart; the first durable pending-order commit atomically consumes only its exact source cart, and an idempotent replay never touches a newer cart. After the order leaves \`pending-payment\`, its owner may explicitly re-add current public product and enabled-variant lines with current names/prices and bounded per-line added/skipped outcomes; current cart coupons stay while old order commercial values, reservations, and PII do not return.
 
 ## Quickstart
 

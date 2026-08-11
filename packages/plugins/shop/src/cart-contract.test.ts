@@ -1,17 +1,24 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  NP_SHOP_CART_READD_CONTRACT,
   NP_SHOP_CART_STORAGE_CONTRACT,
+  npAnalyzeShopCartReAddResponse,
+  npAnalyzeShopCartReAddResult,
   npAnalyzeShopCartStorageValue,
   npRequireShopCartAddInput,
   npRequireShopCartDeleteInput,
   npRequireShopCartQuote,
+  npRequireShopCartReAddInput,
+  npRequireShopCartReAddResponse,
+  npRequireShopCartReAddResult,
   npRequireShopCartSetQuantityInput,
   npRequireShopCartStorageValue,
   npShopCartLineKey,
 } from "./cart-contract.js";
 
 const productId = "123e4567-e89b-42d3-a456-426614174000";
+const secondProductId = "223e4567-e89b-42d3-a456-426614174000";
 const promotions = {
   contract: "np.shop-promotion-snapshot.v1",
   couponCodes: [],
@@ -103,6 +110,138 @@ describe("shop cart contract", () => {
         priceMinor: 1,
       }),
     ).toThrow(/Invalid cart add request/u);
+  });
+
+  it("validates exact revision-bound order re-add inputs and allocated results", () => {
+    expect(
+      npRequireShopCartReAddInput({
+        orderId: productId,
+        expectedCartRevision: 0,
+      }),
+    ).toEqual({ orderId: productId, expectedCartRevision: 0 });
+    expect(() =>
+      npRequireShopCartReAddInput({
+        orderId: productId,
+        expectedCartRevision: 0,
+        lines: [],
+      }),
+    ).toThrow(/Invalid cart re-add request/u);
+
+    const result = {
+      contract: NP_SHOP_CART_READD_CONTRACT,
+      orderId: productId,
+      cartRevision: 1,
+      addedUnits: 2,
+      skippedUnits: 1,
+      lines: [
+        {
+          lineKey: `${productId}:CUP-S`,
+          productId,
+          variantSku: "CUP-S",
+          requestedQuantity: 3,
+          addedQuantity: 2,
+          skippedQuantity: 1,
+          issue: "quantity-limit",
+        },
+      ],
+    } as const;
+    expect(npRequireShopCartReAddResult(result)).toEqual(result);
+    const request = { orderId: productId, expectedCartRevision: 0 };
+    const sourceLines = [
+      { key: `${productId}:CUP-S`, productId, variantSku: "CUP-S", quantity: 3 },
+    ];
+    const response = { result, csrfToken: "current-csrf-token" };
+    expect(npRequireShopCartReAddResponse(response, request, sourceLines)).toEqual(response);
+    expect(
+      npAnalyzeShopCartReAddResult({
+        ...result,
+        addedUnits: 3,
+        lines: [
+          {
+            ...result.lines[0],
+            lineKey: `${productId}:WRONG`,
+            addedQuantity: 3,
+            skippedQuantity: 0,
+          },
+        ],
+        extra: true,
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        "cart re-add result.extra is not supported.",
+        "cart re-add result.lines[0].lineKey does not match its product option.",
+        "cart re-add result.lines[0].issue must be null when no quantity was skipped.",
+      ]),
+    );
+    expect(
+      npAnalyzeShopCartReAddResponse(
+        {
+          result: {
+            ...result,
+            orderId: secondProductId,
+            cartRevision: 2,
+            skippedUnits: 0,
+            lines: [
+              {
+                ...result.lines[0],
+                requestedQuantity: 2,
+                skippedQuantity: 0,
+                issue: null,
+              },
+            ],
+          },
+          csrfToken: { leaked: true },
+          extra: true,
+        },
+        request,
+        sourceLines,
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        "cart re-add response.extra is not supported.",
+        "cart re-add response.csrfToken must be a bounded string or null.",
+        "cart re-add response.result.orderId does not match the request.",
+        "cart re-add response.result.cartRevision does not match the request outcome.",
+        "cart re-add response.result.lines[0] mismatches the ordered order snapshot.",
+      ]),
+    );
+
+    const secondResultLine = {
+      lineKey: `${secondProductId}:_`,
+      productId: secondProductId,
+      variantSku: null,
+      requestedQuantity: 1,
+      addedQuantity: 1,
+      skippedQuantity: 0,
+      issue: null,
+    } as const;
+    expect(
+      npAnalyzeShopCartReAddResponse(
+        {
+          result: {
+            ...result,
+            addedUnits: 3,
+            lines: [secondResultLine, result.lines[0]],
+          },
+          csrfToken: null,
+        },
+        request,
+        [
+          sourceLines[0],
+          {
+            key: `${secondProductId}:_`,
+            productId: secondProductId,
+            variantSku: null,
+            quantity: 1,
+          },
+        ],
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        "cart re-add response.result.lines[0] mismatches the ordered order snapshot.",
+        "cart re-add response.result.lines[1] mismatches the ordered order snapshot.",
+      ]),
+    );
   });
 
   it("validates the client-safe quote envelope before rendering", () => {
