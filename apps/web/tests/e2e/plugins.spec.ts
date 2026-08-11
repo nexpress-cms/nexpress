@@ -7,12 +7,23 @@
  * This spec exercises both through the built-in Reading Time plugin.
  */
 
-import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
+import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 
 const PLUGIN_ID = "reading-time";
 const DEFAULT_CONFIG = { wordsPerMinute: 220 };
+const PLUGIN_TEST_TITLES = {
+  detail: "lists installed plugins and renders the config-backed detail page",
+  dialog: "renders the configSchema auto-form in the plugin list Configure dialog",
+  dispatch: "saves config through the dedicated route and applies it during plugin dispatch",
+} as const;
+const PLUGIN_TEST_BUCKETS = new Map<string, number>([
+  [PLUGIN_TEST_TITLES.detail, 160],
+  [PLUGIN_TEST_TITLES.dialog, 161],
+  [PLUGIN_TEST_TITLES.dispatch, 162],
+]);
 
 interface PluginDetail {
   enabled: boolean;
@@ -71,14 +82,32 @@ function words(count: number): string {
   return Array.from({ length: count }, (_, i) => `word${i + 1}`).join(" ");
 }
 
+function rateLimitBucketFor(testInfo: TestInfo): number {
+  const base = PLUGIN_TEST_BUCKETS.get(testInfo.title);
+  if (base === undefined) {
+    throw new Error(`Missing plugin E2E rate-limit bucket for test: ${testInfo.title}`);
+  }
+
+  // A failed serial group restarts in a fresh Playwright worker while the app
+  // process (and its fixed-window limiter) stays alive. Reserve disjoint ranges
+  // for retries and repeat-each stress runs so those restarts cannot inherit a
+  // bucket consumed by the previous worker. The fixture fails fast if an
+  // unusually large repeat count exhausts this suite's TEST-NET-3 range.
+  const attemptsPerRepeat = PLUGIN_TEST_BUCKETS.size * (testInfo.project.retries + 1);
+  return (
+    base + testInfo.retry * PLUGIN_TEST_BUCKETS.size + testInfo.repeatEachIndex * attemptsPerRepeat
+  );
+}
+
 test.describe("plugin admin and config", () => {
   test.describe.configure({ mode: "serial" });
 
   let restoreEnabled: boolean | null = null;
   let restoreConfig: typeof DEFAULT_CONFIG | null = null;
 
-  test.beforeEach(async ({ page, context }) => {
+  test.beforeEach(async ({ page, context }, testInfo) => {
     await context.clearCookies();
+    await isolateE2ERateLimitBucket(context, rateLimitBucketFor(testInfo));
     await signInAsE2EAdmin(page);
 
     const detail = await getReadingTimeDetail(page);
@@ -104,7 +133,7 @@ test.describe("plugin admin and config", () => {
     }
   });
 
-  test("lists installed plugins and renders the config-backed detail page", async ({ page }) => {
+  test(PLUGIN_TEST_TITLES.detail, async ({ page }) => {
     const listResponse = await page.request.get("/api/plugins");
     expect(listResponse.status()).toBe(200);
     const list = (await listResponse.json()) as PluginListResponse;
@@ -127,9 +156,7 @@ test.describe("plugin admin and config", () => {
     await expect(page.getByLabel("Words per minute")).toHaveValue("220");
   });
 
-  test("renders the configSchema auto-form in the plugin list Configure dialog", async ({
-    page,
-  }) => {
+  test(PLUGIN_TEST_TITLES.dialog, async ({ page }) => {
     await page.goto("/admin/plugins");
 
     await page
@@ -157,10 +184,7 @@ test.describe("plugin admin and config", () => {
     expect(detail.config?.wordsPerMinute).toBe(180);
   });
 
-  test("saves config through the dedicated route and applies it during plugin dispatch", async ({
-    page,
-    context,
-  }) => {
+  test(PLUGIN_TEST_TITLES.dispatch, async ({ page, context }) => {
     await page.goto(`/admin/plugins/${PLUGIN_ID}`);
 
     const wordsPerMinute = page.getByLabel("Words per minute");

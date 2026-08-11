@@ -247,6 +247,12 @@ CI sets `PLAYWRIGHT_USE_BUILD=1` so the run instead uses
 transpile cost. Browsers install via
 `playwright install --with-deps chromium` in the CI job.
 
+High-request specs must give each test context a distinct reserved TEST-NET
+`x-forwarded-for` identity with the shared rate-limit fixture. Keep retry and
+repeat buckets distinct: the Playwright worker may restart while the built app
+and its fixed-window in-memory limiter remain alive. This isolates test traffic
+without weakening production limits or adding sleeps.
+
 ### Current coverage
 
 | Spec                            | Covers                                                                                                                                                                                                                                         |
@@ -285,7 +291,9 @@ changeset-only pushes are ignored on `main`). It defines four jobs on Ubuntu
    `nexpress_e2e`), `playwright install --with-deps chromium`,
    `pnpm build`, then `pnpm --filter @nexpress/web test:e2e` with
    `PLAYWRIGHT_USE_BUILD=1`. Runs on pull requests and manual dispatch, not
-   push-to-main. Uploads the Playwright report as a build artifact on failure.
+   push-to-main. On failure it uploads `apps/web/test-results/` as the
+   `playwright-test-results` artifact, including retained traces and error
+   context, without enabling a second report or rerunning the suite.
 4. `scaffold smoke (fresh scaffold journey)` — packs the workspace packages,
    scaffolds a temp project outside the monorepo, installs it, typechecks it,
    builds generated `nexpress create *-plugin` packages, verifies their
