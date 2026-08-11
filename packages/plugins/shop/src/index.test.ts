@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createShop, shopCollections, shopPlugin, storefrontFullShopSkin } from "./index.js";
+import {
+  createShop,
+  shopCollections,
+  shopPlugin,
+  storefrontFullShopSkin,
+  type NpShopPackagingAdapter,
+} from "./index.js";
 
 function validProductData() {
   return {
@@ -383,6 +389,131 @@ describe("shop factory", () => {
         },
       }),
     ).toThrow(/tax provider id/u);
+  });
+
+  it("adds exact packaging proposal operations without requiring a carrier", async () => {
+    const proposeParcels = vi.fn(() => Promise.reject(new Error("must not be called")));
+    const shop = createShop({
+      packaging: {
+        adapter: {
+          id: "test-packaging",
+          proposeParcels,
+        },
+      },
+    });
+
+    expect(shop.runtime.packagingAdapter?.id).toBe("test-packaging");
+    expect(shop.runtime.carrierAdapter).toBeNull();
+    expect(shop.plugin.actions?.proposeFulfillmentParcels).toMatchObject({ kind: "action" });
+    expect(shop.plugin.actions?.proposeExchangeParcels).toMatchObject({ kind: "action" });
+    expect(shop.plugin.actions?.packagingProposalHealth).toMatchObject({ kind: "status" });
+    expect(shop.plugin.actions?.packagingProposalHealth?.handler).toBeTypeOf("function");
+    expect(
+      shop.plugin.admin?.widgets?.find((widget) => widget.id === "shop-packaging-proposal-health"),
+    ).toMatchObject({
+      kind: "status",
+      actionId: "packagingProposalHealth",
+    });
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-fulfillments")
+        ?.rowActions?.find((action) => action.id === "suggest-parcels"),
+    ).toMatchObject({
+      actionId: "proposeFulfillmentParcels",
+      rowFields: ["id", "fulfillmentRevision", "parcelRevision"],
+      visibleWhen: { field: "status", oneOf: ["processing"] },
+    });
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-exchanges")
+        ?.rowActions?.find((action) => action.id === "suggest-exchange-parcels"),
+    ).toMatchObject({
+      actionId: "proposeExchangeParcels",
+      rowFields: ["id", "exchangeId", "exchangeRevision", "parcelRevision"],
+      visibleWhen: { field: "destination", oneOf: ["accessed"] },
+    });
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-exchanges")
+        ?.rowActions?.find((action) => action.id === "save-exchange-parcels"),
+    ).toMatchObject({
+      actionId: "saveExchangeParcels",
+      rowFields: ["id", "exchangeId", "exchangeRevision", "parcelRevision"],
+    });
+    expect(shop.plugin.actions?.saveExchangeParcels).toMatchObject({ kind: "action" });
+    expect(shop.plugin.manifest.provides.adminExtensions).toEqual(
+      expect.arrayContaining([
+        "widget:shop-packaging-proposal-health",
+        "action:shop-packaging-proposal",
+        "action:shop-exchange-parcel-snapshot",
+      ]),
+    );
+
+    const fulfillmentHandler = shop.plugin.actions?.proposeFulfillmentParcels?.handler;
+    const exchangeHandler = shop.plugin.actions?.proposeExchangeParcels?.handler;
+    expect(fulfillmentHandler).toBeTypeOf("function");
+    expect(exchangeHandler).toBeTypeOf("function");
+    if (!fulfillmentHandler || !exchangeHandler) {
+      throw new Error("Packaging proposal handlers are missing.");
+    }
+    await expect(fulfillmentHandler(null, {} as never)).resolves.toEqual({
+      ok: false,
+      error: "Parcel proposals require a direct staff action.",
+    });
+    await expect(exchangeHandler(null, {} as never)).resolves.toEqual({
+      ok: false,
+      error: "Replacement parcel proposals require a direct staff action.",
+    });
+    expect(proposeParcels).not.toHaveBeenCalled();
+  });
+
+  it("omits packaging proposal surfaces without an adapter and rejects malformed adapters", () => {
+    const shop = createShop();
+    expect(shop.runtime.packagingAdapter).toBeNull();
+    expect(shop.plugin.actions?.proposeFulfillmentParcels).toBeUndefined();
+    expect(shop.plugin.actions?.proposeExchangeParcels).toBeUndefined();
+    expect(shop.plugin.actions?.packagingProposalHealth).toBeUndefined();
+    expect(
+      shop.plugin.admin?.widgets?.some((widget) => widget.id === "shop-packaging-proposal-health"),
+    ).toBe(false);
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-fulfillments")
+        ?.rowActions?.some((action) => action.id === "suggest-parcels"),
+    ).toBe(false);
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-exchanges")
+        ?.rowActions?.some((action) => action.id === "suggest-exchange-parcels"),
+    ).toBe(false);
+    expect(shop.plugin.manifest.provides.adminExtensions).not.toContain(
+      "widget:shop-packaging-proposal-health",
+    );
+    expect(shop.plugin.manifest.provides.adminExtensions).not.toContain(
+      "action:shop-packaging-proposal",
+    );
+
+    expect(() =>
+      createShop({
+        packaging: {
+          adapter: {
+            id: "Invalid Provider",
+            proposeParcels: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/packaging provider id/u);
+
+    expect(() =>
+      createShop({
+        packaging: {
+          adapter: {
+            id: "test-packaging",
+            proposeParcels: "not-a-function",
+          } as unknown as NpShopPackagingAdapter,
+        },
+      }),
+    ).toThrow(/proposeParcels must be a function/u);
   });
 
   it("uses one complete server-side carrier adapter and exposes only its closed operations", () => {

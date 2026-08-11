@@ -131,6 +131,13 @@ import {
   npRequireShopFulfillmentShipInput,
 } from "./fulfillment-contract.js";
 import { npRequireShopFulfillmentParcelsSaveInput } from "./parcel-contract.js";
+import {
+  npRequireShopExchangePackagingProposalInput,
+  npRequireShopFulfillmentPackagingProposalInput,
+  npRequireShopPackagingProviderId,
+  type NpShopPackagingAdapter,
+} from "./packaging-contract.js";
+import { npProposeShopPackaging, npReadShopPackagingProposalHealth } from "./packaging-service.js";
 import { npRequireShopExchangeParcelsSaveInput } from "./exchange-parcel-contract.js";
 import { npRequireShopRefundActionInput } from "./refund-contract.js";
 import {
@@ -291,6 +298,10 @@ export interface NpShopOptions {
   /** Optional server-only additional-tax quote provider. */
   tax?: {
     adapter: NpShopTaxAdapter;
+  };
+  /** Optional read-only server-side provider for exact parcel proposals. */
+  packaging?: {
+    adapter: NpShopPackagingAdapter;
   };
   /** Optional server-only carrier booking, pickup, label, and tracking provider. */
   carrier?: {
@@ -480,6 +491,18 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     taxAdapter = Object.freeze({
       id,
       quoteTax: configuredTaxAdapter.quoteTax.bind(configuredTaxAdapter),
+    });
+  }
+  const configuredPackagingAdapter = options.packaging?.adapter ?? null;
+  let packagingAdapter: NpShopPackagingAdapter | null = null;
+  if (configuredPackagingAdapter) {
+    const id = npRequireShopPackagingProviderId(configuredPackagingAdapter.id);
+    if (typeof configuredPackagingAdapter.proposeParcels !== "function") {
+      throw new Error("Shop packaging adapter proposeParcels must be a function.");
+    }
+    packagingAdapter = Object.freeze({
+      id,
+      proposeParcels: configuredPackagingAdapter.proposeParcels.bind(configuredPackagingAdapter),
     });
   }
   const configuredCarrierAdapter = options.carrier?.adapter ?? null;
@@ -825,6 +848,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     paymentReturnSettlementAdapter,
     shippingAdapter,
     taxAdapter,
+    packagingAdapter,
     carrierAdapter,
     carrierExchangeAdapter,
     carrierExchangeParcelAdapter,
@@ -1523,7 +1547,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, wishlists, stock and price alerts, verified reviews, promotions, carts, checkout, private drafts, shipping and tax quotes, durable orders, inventory, optional payments and refunds, fulfillment, carrier booking, labels, pickup availability and scheduling, tracking, physical returns, same-item exchanges, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, wishlists, stock and price alerts, verified reviews, promotions, carts, checkout, private drafts, shipping and tax quotes, durable orders, inventory, optional payments and refunds, fulfillment, packaging proposals, carrier booking, labels, pickup availability and scheduling, tracking, physical returns, same-item exchanges, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -1589,6 +1613,9 @@ export function createShop(options: NpShopOptions = {}) {
           "widget:shop-fulfillment-parcel-health",
           "table:shop-fulfillment-parcels",
           "action:shop-fulfillment-parcels",
+          ...(runtime.packagingAdapter
+            ? ["widget:shop-packaging-proposal-health", "action:shop-packaging-proposal"]
+            : []),
           "dashboard:shop-carrier-bookings",
           "widget:shop-carrier-booking-health",
           "table:shop-carrier-bookings",
@@ -1656,7 +1683,9 @@ export function createShop(options: NpShopOptions = {}) {
           "action:shop-exchange-operations",
           "action:shop-exchange-destination-private-read",
           ...(runtime.carrierExchangeAdapter ? ["action:shop-exchange-carrier-booking"] : []),
-          ...(runtime.carrierExchangeParcelAdapter ? ["action:shop-exchange-parcel-snapshot"] : []),
+          ...(runtime.carrierExchangeParcelAdapter || runtime.packagingAdapter
+            ? ["action:shop-exchange-parcel-snapshot"]
+            : []),
           ...(paymentAttemptApiHandler
             ? [
                 "dashboard:shop-payment-attempts",
@@ -1688,7 +1717,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, carrier booking, durable outbound and replacement shipping-label acquisition with transient retrieval, bounded outbound and replacement carrier pickup availability plus scheduling, verified or reconciled outbound and replacement tracking, physical return intake, exact same-item replacement exchanges with revision-bound owner address intake, audited short-lived private storage, and optional paired provider booking/cancellation, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, automatic address correction, label billing/void policy, recurring pickup, general carrier calendars, warehouse automation, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
+          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, independent read-only outbound/replacement packaging proposals, carrier booking, durable outbound and replacement shipping-label acquisition with transient retrieval, bounded outbound and replacement carrier pickup availability plus scheduling, verified or reconciled outbound and replacement tracking, physical return intake, exact same-item replacement exchanges with revision-bound owner address intake, audited short-lived private storage, and optional paired provider booking/cancellation, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, automatic address correction, label billing/void policy, recurring pickup, general carrier calendars, warehouse mutation and physical packing, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
         category: "ecommerce",
         tags: [
           "shop",
@@ -2164,6 +2193,18 @@ export function createShop(options: NpShopOptions = {}) {
           kind: "status",
           actionId: "fulfillmentParcelHealth",
         },
+        ...(runtime.packagingAdapter
+          ? [
+              {
+                id: "shop-packaging-proposal-health",
+                label: "Packaging proposal provider",
+                kind: "status" as const,
+                actionId: "packagingProposalHealth",
+                description:
+                  "Checks the latest outbound and replacement proposal receipts without storing provider payloads.",
+              },
+            ]
+          : []),
         {
           id: "shop-carrier-booking-health",
           label: "Carrier booking contract",
@@ -2490,6 +2531,21 @@ export function createShop(options: NpShopOptions = {}) {
               description:
                 "Editable until carrier booking starts; parcel-aware carriers lock this snapshot to the durable shipment UUID.",
             },
+            ...(runtime.packagingAdapter
+              ? [
+                  {
+                    id: "suggest-parcels",
+                    label: "Suggest parcels",
+                    actionId: "proposeFulfillmentParcels",
+                    rowFields: ["id", "fulfillmentRevision", "parcelRevision"],
+                    visibleWhen: { field: "status", oneOf: ["processing"] },
+                    confirm:
+                      "Request and save one exact PII-free parcel proposal? Current fulfillment and parcel revisions are checked again after provider I/O.",
+                    description:
+                      "The read-only provider receives immutable product identifiers and quantities only. Its saved JSON remains manually editable until carrier booking.",
+                  },
+                ]
+              : []),
             ...(runtime.carrierAdapter
               ? [
                   {
@@ -3358,31 +3414,46 @@ export function createShop(options: NpShopOptions = {}) {
               ],
               confirm: "Mark this exact replacement as processing?",
             },
+            ...(runtime.carrierExchangeParcelAdapter || runtime.packagingAdapter
+              ? [
+                  {
+                    id: "save-exchange-parcels",
+                    label: "Save replacement parcels",
+                    actionId: "saveExchangeParcels",
+                    rowFields: ["id", "exchangeId", "exchangeRevision", "parcelRevision"],
+                    visibleWhen: { field: "destination", oneOf: ["accessed"] },
+                    fields: [
+                      {
+                        name: "parcels",
+                        label: "Parcels JSON",
+                        type: "textarea" as const,
+                        required: true,
+                        placeholder:
+                          '[{"id":"parcel-1","lengthMm":300,"widthMm":200,"heightMm":100,"weightGrams":1500,"items":[{"lineKey":"…","quantity":1}]}]',
+                      },
+                    ],
+                    confirm:
+                      "Save this exact PII-free replacement parcel allocation? Every immutable exchange line and quantity must be covered.",
+                  },
+                ]
+              : []),
+            ...(runtime.packagingAdapter
+              ? [
+                  {
+                    id: "suggest-exchange-parcels",
+                    label: "Suggest replacement parcels",
+                    actionId: "proposeExchangeParcels",
+                    rowFields: ["id", "exchangeId", "exchangeRevision", "parcelRevision"],
+                    visibleWhen: { field: "destination", oneOf: ["accessed"] },
+                    confirm:
+                      "Request and save one exact PII-free replacement parcel proposal? Current exchange and parcel revisions are checked again after provider I/O.",
+                    description:
+                      "The read-only provider receives exact replacement product identifiers and quantities only. Its saved JSON remains manually editable until booking.",
+                  },
+                ]
+              : []),
             ...(runtime.carrierExchangeAdapter
               ? [
-                  ...(runtime.carrierExchangeParcelAdapter
-                    ? [
-                        {
-                          id: "save-exchange-parcels",
-                          label: "Save replacement parcels",
-                          actionId: "saveExchangeParcels",
-                          rowFields: ["id", "exchangeId", "exchangeRevision", "parcelRevision"],
-                          visibleWhen: { field: "destination", oneOf: ["accessed"] },
-                          fields: [
-                            {
-                              name: "parcels",
-                              label: "Parcels JSON",
-                              type: "textarea" as const,
-                              required: true,
-                              placeholder:
-                                '[{"id":"parcel-1","lengthMm":300,"widthMm":200,"heightMm":100,"weightGrams":1500,"items":[{"lineKey":"…","quantity":1}]}]',
-                            },
-                          ],
-                          confirm:
-                            "Save this exact PII-free replacement parcel allocation? Every immutable exchange line and quantity must be covered.",
-                        },
-                      ]
-                    : []),
                   {
                     id: "book-exchange-carrier",
                     label: "Book replacement carrier",
@@ -4789,7 +4860,7 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
-      ...(runtime.carrierExchangeParcelAdapter
+      ...(runtime.carrierExchangeParcelAdapter || runtime.packagingAdapter
         ? {
             saveExchangeParcels: {
               kind: "action" as const,
@@ -4808,6 +4879,37 @@ export function createShop(options: NpShopOptions = {}) {
                   return {
                     ok: true as const,
                     data: `Saved replacement parcel revision ${result.revision.toString()} with ${result.parcels.length.toString()} package(s).`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+          }
+        : {}),
+      ...(runtime.packagingAdapter
+        ? {
+            proposeExchangeParcels: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Replacement parcel proposals require a direct staff action.",
+                    };
+                  }
+                  const result = await npProposeShopPackaging(
+                    runtime,
+                    npRequireShopExchangePackagingProposalInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Saved proposed replacement parcel revision ${result.revision.toString()} with ${result.parcels.length.toString()} package(s).`,
                   };
                 } catch (error) {
                   return {
@@ -5397,6 +5499,83 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      ...(runtime.packagingAdapter
+        ? {
+            packagingProposalHealth: {
+              kind: "status" as const,
+              handler: async () => {
+                try {
+                  const providerId = runtime.packagingAdapter!.id;
+                  const receipts = await Promise.all([
+                    npReadShopPackagingProposalHealth("outbound"),
+                    npReadShopPackagingProposalHealth("replacement"),
+                  ]);
+                  const current = receipts.filter((receipt) => receipt?.providerId === providerId);
+                  const failed = current.filter((receipt) => receipt?.status === "error");
+                  if (failed.length) {
+                    return npAdminStatus(
+                      "error",
+                      failed
+                        .map(
+                          (receipt) =>
+                            `${receipt!.target} ${receipt!.errorCode ?? "provider-error"} at ${receipt!.attemptedAt}`,
+                        )
+                        .join("; "),
+                    );
+                  }
+                  const completed = current.filter((receipt) => receipt?.status === "ok");
+                  const stale = receipts.filter(
+                    (receipt) => receipt && receipt.providerId !== providerId,
+                  );
+                  if (completed.length < 2) {
+                    return npAdminStatus(
+                      "warn",
+                      `${completed.length.toString()} of 2 proposal targets have a valid provider receipt for "${providerId}"${stale.length ? `; ${stale.length.toString()} stale receipt(s) from a previous provider are ignored` : ""}.`,
+                    );
+                  }
+                  return npAdminStatus(
+                    "ok",
+                    `Outbound and replacement proposal receipts are valid for provider "${providerId}".`,
+                  );
+                } catch (error) {
+                  return npAdminStatus(
+                    "error",
+                    error instanceof Error
+                      ? error.message
+                      : "Packaging proposal health check failed.",
+                  );
+                }
+              },
+            },
+            proposeFulfillmentParcels: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Parcel proposals require a direct staff action.",
+                    };
+                  }
+                  const result = await npProposeShopPackaging(
+                    runtime,
+                    npRequireShopFulfillmentPackagingProposalInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Saved proposed parcel revision ${result.revision.toString()} with ${result.parcels.length.toString()} package(s).`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+          }
+        : {}),
       processFulfillment: {
         kind: "action",
         handler: async (data, ctx) => {
@@ -8083,5 +8262,32 @@ export type {
   NpShopRestockProcessResult,
   NpShopRestockTargetState,
 } from "./restock-alert-service.js";
+export {
+  NP_SHOP_PACKAGING_PROPOSAL_HEALTH_CONTRACT,
+  NP_SHOP_PACKAGING_PROPOSAL_REQUEST_CONTRACT,
+  NP_SHOP_PACKAGING_PROPOSAL_RESULT_CONTRACT,
+  NpShopPackagingProposalContractError,
+  NpShopPackagingProposalUnavailableError,
+  npAnalyzeShopPackagingProposalHealth,
+  npAnalyzeShopPackagingProposalRequest,
+  npAnalyzeShopPackagingProposalResult,
+  npAnalyzeShopPackagingProposalResultForRequest,
+  npCreateShopPackagingProposalResult,
+  npRequireShopPackagingProposalHealth,
+  npRequireShopPackagingProposalRequest,
+  npRequireShopPackagingProposalResult,
+  npRequireShopPackagingProviderId,
+  npShopPackagingProposalLimits,
+} from "./packaging-contract.js";
+export type {
+  NpShopPackagingAdapter,
+  NpShopPackagingProposalHealth,
+  NpShopPackagingProposalInput,
+  NpShopPackagingProposalLine,
+  NpShopPackagingProposalRequest,
+  NpShopPackagingProposalResult,
+  NpShopPackagingProposalResultFor,
+  NpShopPackagingProposalTarget,
+} from "./packaging-contract.js";
 
 export default shopPlugin;

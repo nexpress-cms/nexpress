@@ -3689,6 +3689,58 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       orderId: request.orderId,
       cancelledAt: new Date().toISOString(),
     }));
+    let packagingAttempts = 0;
+    let requestMutationRejected = false;
+    let unsupportedPayloadRead = false;
+    const proposeParcels = vi.fn((request) => {
+      packagingAttempts += 1;
+      if (packagingAttempts === 1) {
+        try {
+          (request as { expiresAt: string }).expiresAt = new Date(
+            Date.now() + 5 * 60_000,
+          ).toISOString();
+        } catch {
+          requestMutationRejected = true;
+        }
+        throw new Error("packaging-private@example.com must never escape");
+      }
+      const result = {
+        contract: "np.shop-packaging-proposal-result.v1" as const,
+        proposalId: request.proposalId,
+        orderId: request.orderId,
+        target: request.target,
+        exchangeId: request.exchangeId,
+        sourceRevision: request.sourceRevision,
+        expectedParcelRevision: request.expectedParcelRevision,
+        parcels: [
+          {
+            id: "parcel-1",
+            lengthMm: 300,
+            widthMm: 200,
+            heightMm: 100,
+            weightGrams: 1_500,
+            items: [
+              {
+                lineKey: `${productId}:_`,
+                quantity: packagingAttempts === 2 ? 2 : 1,
+              },
+            ],
+          },
+        ],
+        proposedAt: request.requestedAt,
+        expiresAt: request.expiresAt,
+      };
+      if (packagingAttempts === 2) {
+        Object.defineProperty(result, "rawPayload", {
+          enumerable: true,
+          get() {
+            unsupportedPayloadRead = true;
+            return new ArrayBuffer(1024 * 1024);
+          },
+        });
+      }
+      return result;
+    });
     const carrierShop = createShop({
       payment: {
         adapter: {
@@ -3696,6 +3748,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
         },
       },
+      packaging: { adapter: { id: "test-packaging", proposeParcels } },
       carrier: {
         pickupLocationReference: "warehouse-seoul-1",
         adapter: {
@@ -3767,17 +3820,84 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         ),
       ),
     ).toMatchObject({ ok: false, error: expect.stringContaining("exact quantity") });
+    const packagingAction = {
+      row: { id: ids.orderId, fulfillmentRevision: 2, parcelRevision: null },
+      values: {},
+    };
+    const providerFailure = await withCurrentSite("default", () =>
+      carrierShop.plugin.actions?.proposeFulfillmentParcels?.handler(
+        packagingAction,
+        actionContext,
+      ),
+    );
+    expect(providerFailure).toEqual({
+      ok: false,
+      error: "Packaging proposals are temporarily unavailable.",
+    });
+    expect(requestMutationRejected).toBe(true);
+    expect(JSON.stringify(providerFailure)).not.toContain("packaging-private");
+    const packagingDb = await getTestDb();
+    const readPackagingHealth = async () =>
+      (
+        await packagingDb
+          .select({ value: npPluginStorage.value })
+          .from(npPluginStorage)
+          .where(eq(npPluginStorage.key, "packaging-proposal-health:outbound"))
+      )[0]?.value;
+    expect(await readPackagingHealth()).toMatchObject({
+      providerId: "test-packaging",
+      target: "outbound",
+      status: "error",
+      errorCode: "provider-error",
+    });
+    expect(JSON.stringify(await readPackagingHealth())).not.toContain("packaging-private");
+    const invalidResult = await withCurrentSite("default", () =>
+      carrierShop.plugin.actions?.proposeFulfillmentParcels?.handler(
+        packagingAction,
+        actionContext,
+      ),
+    );
+    expect(invalidResult).toEqual({
+      ok: false,
+      error: "Packaging proposals are temporarily unavailable.",
+    });
+    expect(unsupportedPayloadRead).toBe(false);
+    expect(await readPackagingHealth()).toMatchObject({
+      status: "error",
+      errorCode: "invalid-result",
+    });
     expect(
       await withCurrentSite("default", () =>
-        carrierShop.plugin.actions?.saveFulfillmentParcels?.handler(
-          {
-            row: { id: ids.orderId, fulfillmentRevision: 2, parcelRevision: null },
-            values: { parcels: parcelJson },
-          },
+        carrierShop.plugin.actions?.proposeFulfillmentParcels?.handler(
+          packagingAction,
           actionContext,
         ),
       ),
     ).toMatchObject({ ok: true, data: expect.stringContaining("parcel revision 1") });
+    expect(proposeParcels).toHaveBeenCalledTimes(3);
+    expect(proposeParcels.mock.calls[2]?.[0]).toMatchObject({
+      contract: "np.shop-packaging-proposal-request.v1",
+      proposalId: expect.any(String),
+      orderId: ids.orderId,
+      target: "outbound",
+      exchangeId: null,
+      sourceRevision: 2,
+      expectedParcelRevision: null,
+      lines: [
+        {
+          lineKey: `${productId}:_`,
+          productId,
+          productSlug: "everyday-cup",
+          variantSku: null,
+          quantity: 1,
+        },
+      ],
+      requestedAt: expect.any(String),
+      expiresAt: expect.any(String),
+    });
+    expect(JSON.stringify(proposeParcels.mock.calls[2]?.[0])).not.toMatch(
+      /carrier-private@example\.com|carrier-operator|홍길동|010-1234-5678|세종대로|Everyday cup|unitPrice|customer|shipping/u,
+    );
     const carrierAction = {
       row: { id: ids.orderId, fulfillmentRevision: 2 },
       values: { operatorNote: "Handoff ready" },
@@ -4530,6 +4650,30 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         carrierShop.plugin.actions?.fulfillmentParcelHealth?.handler(undefined, {} as never),
       ),
     ).toMatchObject({ ok: true, data: { level: "ok" } });
+    const staleHealthAt = new Date().toISOString();
+    await db.insert(npPluginStorage).values({
+      pluginId: "shop",
+      siteId: "default",
+      key: "packaging-proposal-health:replacement",
+      value: {
+        contract: "np.shop-packaging-proposal-health.v1",
+        providerId: "retired-packaging",
+        target: "replacement",
+        status: "error",
+        errorCode: "provider-error",
+        attemptedAt: staleHealthAt,
+      },
+      expiresAt: null,
+      updatedAt: new Date(staleHealthAt),
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.packagingProposalHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({
+      ok: true,
+      data: { level: "warn", message: expect.stringContaining("stale receipt") },
+    });
     expect(
       await withCurrentSite("default", () =>
         carrierShop.plugin.actions?.recentFulfillmentParcels?.handler(undefined, {} as never),
@@ -4569,10 +4713,288 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         { action: "shop.carrier.pickup.cancel.confirm" },
         { action: "shop.carrier.pickup.cancel" },
         { action: "shop.carrier.tracking.poll" },
-        { action: "shop.fulfillment.parcels.save" },
+        { action: "shop.fulfillment.parcels.propose" },
         { action: "shop.fulfillment.ship" },
       ]),
     );
+  });
+
+  it("lets a manual parcel save win while read-only packaging provider I/O is pending", async () => {
+    const ids = {
+      intentId: "b13e4567-e89b-42d3-a456-426614174000",
+      draftId: "c13e4567-e89b-42d3-a456-426614174000",
+      orderId: "d13e4567-e89b-42d3-a456-426614174000",
+    };
+    await createPendingOrder(ids, "packaging-race-private@example.com");
+    let markStarted!: () => void;
+    let releaseProvider!: () => void;
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const release = new Promise<void>((resolve) => {
+      releaseProvider = resolve;
+    });
+    let lastProviderResult: { parcels: Array<{ weightGrams: number }> } | null = null;
+    const proposeParcels = vi.fn(async (request) => {
+      markStarted();
+      await release;
+      const result = {
+        contract: "np.shop-packaging-proposal-result.v1" as const,
+        proposalId: request.proposalId,
+        orderId: request.orderId,
+        target: request.target,
+        exchangeId: request.exchangeId,
+        sourceRevision: request.sourceRevision,
+        expectedParcelRevision: request.expectedParcelRevision,
+        parcels: [
+          {
+            id: "provider-parcel",
+            lengthMm: 280,
+            widthMm: 180,
+            heightMm: 90,
+            weightGrams: 1_400,
+            items: request.lines.map((line) => ({
+              lineKey: line.lineKey,
+              quantity: line.quantity,
+            })),
+          },
+        ],
+        proposedAt: request.requestedAt,
+        expiresAt: request.expiresAt,
+      };
+      lastProviderResult = result;
+      return result;
+    });
+    const packagingShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
+      packaging: { adapter: { id: "race-packaging", proposeParcels } },
+    });
+    await payPendingOrder(packagingShop, {
+      orderId: ids.orderId,
+      eventId: "evt_packaging_race",
+      paymentReference: "pay_packaging_race",
+    });
+    const staff = await seedUser({ email: "packaging-race-operator@example.com" });
+    const actionContext = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    expect(
+      await withCurrentSite("default", () =>
+        packagingShop.plugin.actions?.processFulfillment?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 1 },
+            values: { operatorNote: "Prepare exact parcels" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("revision 2") });
+
+    const proposal = withCurrentSite("default", () =>
+      packagingShop.plugin.actions?.proposeFulfillmentParcels?.handler(
+        {
+          row: { id: ids.orderId, fulfillmentRevision: 2, parcelRevision: null },
+          values: {},
+        },
+        actionContext,
+      ),
+    );
+    const startPhase = await Promise.race([
+      started.then(() => ({ kind: "started" as const })),
+      proposal.then((result) => ({ kind: "finished" as const, result })),
+    ]);
+    expect(startPhase).toEqual({ kind: "started" });
+    const manualParcels = [
+      {
+        id: "manual-parcel",
+        lengthMm: 300,
+        widthMm: 200,
+        heightMm: 100,
+        weightGrams: 1_600,
+        items: [{ lineKey: `${productId}:_`, quantity: 1 }],
+      },
+    ];
+    const manualSave = withCurrentSite("default", () =>
+      packagingShop.plugin.actions?.saveFulfillmentParcels?.handler(
+        {
+          row: { id: ids.orderId, fulfillmentRevision: 2, parcelRevision: null },
+          values: { parcels: JSON.stringify(manualParcels) },
+        },
+        actionContext,
+      ),
+    );
+    const manualPhase = await Promise.race([
+      manualSave.then((result) => ({ kind: "saved" as const, result })),
+      new Promise<{ kind: "blocked" }>((resolve) => {
+        setTimeout(() => resolve({ kind: "blocked" }), 2_000);
+      }),
+    ]);
+    if (manualPhase.kind === "blocked") {
+      releaseProvider();
+      const [proposalResult, manualResult] = await Promise.all([proposal, manualSave]);
+      throw new Error(
+        `Manual parcel save blocked behind provider I/O: ${JSON.stringify({ proposalResult, manualResult })}`,
+      );
+    }
+    expect(manualPhase.result).toMatchObject({
+      ok: true,
+      data: expect.stringContaining("revision 1"),
+    });
+    releaseProvider();
+    expect(await proposal).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("snapshot changed"),
+    });
+
+    const db = await getTestDb();
+    const [storedParcels] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `fulfillment-parcels:${ids.orderId}`));
+    expect(storedParcels?.value).toMatchObject({
+      revision: 1,
+      parcels: [{ id: "manual-parcel", weightGrams: 1_600 }],
+    });
+    const [health] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, "packaging-proposal-health:outbound"));
+    expect(health?.value).toMatchObject({
+      providerId: "race-packaging",
+      target: "outbound",
+      status: "ok",
+      errorCode: null,
+    });
+    expect(
+      await db
+        .select({ action: npAuditEvents.action })
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.targetId, ids.orderId)),
+    ).toEqual(expect.arrayContaining([{ action: "shop.fulfillment.parcels.save" }]));
+
+    const holdHealth = async () => {
+      let markLocked!: () => void;
+      let releaseLock!: () => void;
+      const locked = new Promise<void>((resolve) => {
+        markLocked = resolve;
+      });
+      const releaseLockPromise = new Promise<void>((resolve) => {
+        releaseLock = resolve;
+      });
+      const held = db.transaction(async (tx) => {
+        await tx
+          .select({ key: npPluginStorage.key })
+          .from(npPluginStorage)
+          .where(eq(npPluginStorage.key, "packaging-proposal-health:outbound"))
+          .for("update");
+        markLocked();
+        await releaseLockPromise;
+      });
+      await locked;
+      let released = false;
+      return {
+        held,
+        unlock: () => {
+          if (released) return;
+          released = true;
+          releaseLock();
+        },
+      };
+    };
+    const waitForBlockedHealthWrite = async () => {
+      await vi.waitFor(
+        async () => {
+          const waiting = await db.execute<{ waiting: boolean }>(sql`
+            select exists (
+              select 1
+              from pg_stat_activity
+              where datname = current_database()
+                and pid <> pg_backend_pid()
+                and wait_event_type = 'Lock'
+                and query like 'insert into "np_plugin_storage"%'
+            ) as waiting
+          `);
+          expect(waiting.rows[0]?.waiting).toBe(true);
+        },
+        { timeout: 5_000, interval: 20 },
+      );
+    };
+
+    const mutationLock = await holdHealth();
+    try {
+      const mutationProposal = withCurrentSite("default", () =>
+        packagingShop.plugin.actions?.proposeFulfillmentParcels?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 2, parcelRevision: 1 },
+            values: {},
+          },
+          actionContext,
+        ),
+      );
+      await vi.waitFor(() => expect(proposeParcels).toHaveBeenCalledTimes(2));
+      await waitForBlockedHealthWrite();
+      if (!lastProviderResult) throw new Error("Missing packaging provider result.");
+      lastProviderResult.parcels[0]!.weightGrams = 1_900;
+      mutationLock.unlock();
+      await mutationLock.held;
+      expect(await mutationProposal).toMatchObject({
+        ok: true,
+        data: expect.stringContaining("parcel revision 2"),
+      });
+    } finally {
+      mutationLock.unlock();
+      await mutationLock.held;
+    }
+    const [materialized] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `fulfillment-parcels:${ids.orderId}`));
+    expect(materialized?.value).toMatchObject({
+      revision: 2,
+      parcels: [{ id: "provider-parcel", weightGrams: 1_400 }],
+    });
+
+    const expiryLock = await holdHealth();
+    try {
+      const expiringProposal = withCurrentSite("default", () =>
+        packagingShop.plugin.actions?.proposeFulfillmentParcels?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 2, parcelRevision: 2 },
+            values: {},
+          },
+          actionContext,
+        ),
+      );
+      await vi.waitFor(() => expect(proposeParcels).toHaveBeenCalledTimes(3));
+      await waitForBlockedHealthWrite();
+      const expiringRequest = proposeParcels.mock.calls[2]![0];
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(expiringRequest.expiresAt).getTime() + 1);
+      expiryLock.unlock();
+      await expiryLock.held;
+      expect(await expiringProposal).toMatchObject({
+        ok: false,
+        error: expect.stringContaining("expired before it could be saved"),
+      });
+    } finally {
+      expiryLock.unlock();
+      await expiryLock.held;
+      vi.useRealTimers();
+    }
+    const [stillMaterialized] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `fulfillment-parcels:${ids.orderId}`));
+    expect(stillMaterialized?.value).toMatchObject({
+      revision: 2,
+      parcels: [{ id: "provider-parcel", weightGrams: 1_400 }],
+    });
+    expect(proposeParcels).toHaveBeenCalledTimes(3);
   });
 
   it("keeps v1 carrier booking independent from an unlocked parcel snapshot", async () => {
@@ -6941,6 +7363,46 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       content: new Uint8Array([0x25, 0x50, 0x44, 0x46]),
       retrievedAt: request.requestedAt,
     }));
+    let replacementProposalAttempts = 0;
+    let markReplacementProposalStarted!: () => void;
+    let releaseReplacementProposal!: () => void;
+    const replacementProposalStarted = new Promise<void>((resolve) => {
+      markReplacementProposalStarted = resolve;
+    });
+    const replacementProposalRelease = new Promise<void>((resolve) => {
+      releaseReplacementProposal = resolve;
+    });
+    const proposeReplacementParcels = vi.fn(async (request) => {
+      replacementProposalAttempts += 1;
+      if (replacementProposalAttempts === 1) {
+        markReplacementProposalStarted();
+        await replacementProposalRelease;
+      }
+      return {
+        contract: "np.shop-packaging-proposal-result.v1" as const,
+        proposalId: request.proposalId,
+        orderId: request.orderId,
+        target: request.target,
+        exchangeId: request.exchangeId,
+        sourceRevision: request.sourceRevision,
+        expectedParcelRevision: request.expectedParcelRevision,
+        parcels: [
+          {
+            id: "replacement-1",
+            lengthMm: 300,
+            widthMm: 200,
+            heightMm: 100,
+            weightGrams: 1_500,
+            items: request.lines.map((line) => ({
+              lineKey: line.lineKey,
+              quantity: line.quantity,
+            })),
+          },
+        ],
+        proposedAt: request.requestedAt,
+        expiresAt: request.expiresAt,
+      };
+    });
     const paymentShop = createShop({
       payment: {
         adapter: {
@@ -6950,6 +7412,9 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       },
     });
     const exchangeCarrierShop = createShop({
+      packaging: {
+        adapter: { id: "test-packaging", proposeParcels: proposeReplacementParcels },
+      },
       carrier: {
         pickupLocationReference: "warehouse-seoul-1",
         adapter: {
@@ -7313,22 +7778,110 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         ),
       ),
     ).toMatchObject({ ok: false, error: expect.stringContaining("immutable exchange line") });
+    const firstReplacementProposal = withCurrentSite("default", () =>
+      exchangeCarrierShop.plugin.actions?.proposeExchangeParcels?.handler(
+        {
+          row: {
+            id: ids.orderId,
+            exchangeId: submittedOrder.exchange.id,
+            exchangeRevision: submittedOrder.exchange.revision,
+            parcelRevision: null,
+          },
+          values: {},
+        },
+        actionContext,
+      ),
+    );
+    const replacementProposalPhase = await Promise.race([
+      replacementProposalStarted.then(() => ({ kind: "started" as const })),
+      firstReplacementProposal.then((result) => ({ kind: "finished" as const, result })),
+    ]);
+    expect(replacementProposalPhase).toEqual({ kind: "started" });
+    const replacementManualSave = withCurrentSite("default", () =>
+      exchangeCarrierShop.plugin.actions?.saveExchangeParcels?.handler(
+        {
+          row: {
+            id: ids.orderId,
+            exchangeId: submittedOrder.exchange.id,
+            exchangeRevision: submittedOrder.exchange.revision,
+            parcelRevision: null,
+          },
+          values: {
+            parcels: JSON.stringify([{ ...replacementParcels[0], id: "manual-replacement" }]),
+          },
+        },
+        actionContext,
+      ),
+    );
+    const replacementManualPhase = await Promise.race([
+      replacementManualSave.then((result) => ({ kind: "saved" as const, result })),
+      new Promise<{ kind: "blocked" }>((resolve) => {
+        setTimeout(() => resolve({ kind: "blocked" }), 2_000);
+      }),
+    ]);
+    if (replacementManualPhase.kind === "blocked") {
+      releaseReplacementProposal();
+      const [proposalResult, manualResult] = await Promise.all([
+        firstReplacementProposal,
+        replacementManualSave,
+      ]);
+      throw new Error(
+        `Manual replacement parcel save blocked behind provider I/O: ${JSON.stringify({ proposalResult, manualResult })}`,
+      );
+    }
+    expect(replacementManualPhase.result).toMatchObject({
+      ok: true,
+      data: expect.stringContaining("revision 1"),
+    });
+    releaseReplacementProposal();
+    expect(await firstReplacementProposal).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("snapshot changed"),
+    });
     expect(
       await withCurrentSite("default", () =>
-        exchangeCarrierShop.plugin.actions?.saveExchangeParcels?.handler(
+        exchangeCarrierShop.plugin.actions?.proposeExchangeParcels?.handler(
           {
             row: {
               id: ids.orderId,
               exchangeId: submittedOrder.exchange.id,
               exchangeRevision: submittedOrder.exchange.revision,
-              parcelRevision: null,
+              parcelRevision: 1,
             },
-            values: { parcels: JSON.stringify(replacementParcels) },
+            values: {},
           },
           actionContext,
         ),
       ),
-    ).toMatchObject({ ok: true, data: expect.stringContaining("revision 1") });
+    ).toMatchObject({ ok: true, data: expect.stringContaining("revision 2") });
+    expect(proposeReplacementParcels).toHaveBeenCalledTimes(2);
+    expect(proposeReplacementParcels.mock.calls[1]?.[0]).toMatchObject({
+      contract: "np.shop-packaging-proposal-request.v1",
+      orderId: ids.orderId,
+      target: "replacement",
+      exchangeId: submittedOrder.exchange.id,
+      sourceRevision: submittedOrder.exchange.revision,
+      expectedParcelRevision: 1,
+      lines: [
+        expect.objectContaining({
+          lineKey: shippedOrder.lines[0]!.key,
+          quantity: 1,
+        }),
+      ],
+    });
+    expect(JSON.stringify(proposeReplacementParcels.mock.calls)).not.toMatch(
+      /exchange-owner@example\.com|홍길동|010-1234-5678|세종대로|김교환|010-9876-5432|테헤란로|customer|shipping|productName|unitPrice/u,
+    );
+    const [replacementPackagingHealth] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, "packaging-proposal-health:replacement"));
+    expect(replacementPackagingHealth?.value).toMatchObject({
+      providerId: "test-packaging",
+      target: "replacement",
+      status: "ok",
+      errorCode: null,
+    });
     expect(
       await withCurrentSite("default", () =>
         exchangeCarrierShop.plugin.actions?.bookExchangeCarrier?.handler(
@@ -7366,7 +7919,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           expect.objectContaining({
             carrierBooking: "pending",
             parcels: "1 package(s) (locked)",
-            parcelRevision: 1,
+            parcelRevision: 2,
           }),
         ],
       },
@@ -7418,7 +7971,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       exchangeRevision: submittedOrder.exchange.revision,
       destinationRevision: submittedOrder.exchange.destinationRevision,
       destination: replacementDestination,
-      parcelRevision: 1,
+      parcelRevision: 2,
       parcels: replacementParcels,
       items: [
         {
@@ -7619,7 +8172,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       status: "pending",
       revision: 2,
       providerErrorCode: "replacement-pickup-timeout",
-      parcelRevision: 1,
+      parcelRevision: 2,
     });
     const replacementPickupId = (pendingReplacementPickup?.value as { id?: unknown } | undefined)
       ?.id;
@@ -7654,7 +8207,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       carrier: "Parcel Co",
       trackingNumber: "EXCHANGE-REPLACEMENT",
       locationReference: "warehouse-seoul-1",
-      parcelRevision: 1,
+      parcelRevision: 2,
       packages: [
         {
           id: "replacement-1",
@@ -8129,6 +8682,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         { action: "shop.exchange.destination.submit" },
         { action: "shop.exchange.destination.private.read" },
         { action: "shop.exchange.parcels.save" },
+        { action: "shop.exchange.parcels.propose" },
         { action: "shop.exchange.carrier.booking.prepare" },
         { action: "shop.exchange.carrier.booking.confirm" },
         { action: "shop.exchange.carrier.booking.complete" },

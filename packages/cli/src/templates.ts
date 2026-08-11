@@ -816,6 +816,18 @@ function envExampleTemplate(config: TemplateConfig): string {
     "# Replace the default Shop instance with one createShop({ tax: { adapter } })",
     "# factory. It returns only added tax; destination PII must stay out of results.",
     "",
+    "# Optional independent server-only Shop packaging proposal adapter.",
+    "# Replace the default Shop instance with one createShop({ packaging: { adapter } })",
+    "# factory. proposeParcels is a read-only calculation for exact outbound and",
+    "# same-item replacement line, product, slug, SKU identifiers and quantities.",
+    "# Return one exact PII-free parcel result within its 60-second lifetime and",
+    "# never mutate provider state. Shop performs provider I/O outside transactions,",
+    "# then compare-and-swaps the source and parcel revisions into the existing",
+    "# editable snapshot; direct-staff manual parcel JSON remains the fallback.",
+    "# Packaging proposals receive no address or delivery data and stay independent",
+    "# from carrier booking, shipping rates, labels, physical packing/WMS, and",
+    "# provider-specific protocols.",
+    "",
     "# Optional server-only Shop carrier booking and tracking adapter.",
     "# Replace the default Shop instance with one createShop({ carrier: { adapter } })",
     "# factory. Use shipmentId for provider idempotency; never log destination PII.",
@@ -1008,9 +1020,7 @@ pnpm run setup          # browser env wizard (DB / NP_SECRET / storage / migrati
 pnpm dev
 \`\`\`
 
-> \`pnpm run setup\`, not \`pnpm setup\` — \`pnpm setup\`, \`pnpm doctor\`,
-> and \`pnpm init\` are all pnpm built-ins that shadow our package
-> scripts of the same name. Invoke ours with \`pnpm run <name>\`.
+> \`pnpm run setup\`, not \`pnpm setup\` — \`pnpm setup\`, \`pnpm doctor\`, and \`pnpm init\` are all pnpm built-ins that shadow our package scripts of the same name. Invoke ours with \`pnpm run <name>\`.
 
 ## First Site
 
@@ -1019,6 +1029,8 @@ pnpm dev
 3. Create the first admin, name the site, pick a theme, and seed sample content if useful.
 4. Publish a page, post, Shop product, and optional automatic promotion or coupon; the bounded cart, promotion snapshot, checkout-intent, 24-hour private draft, durable pending order, tracked-inventory reservation, fulfillment, verified-purchase product review, and item-return preview start at \`/shop/cart\`. To show product inquiries, publish a normal Forum board with key \`product-questions\`, audience \`public\` or \`members\`, and member posting enabled; the defaults reuse that board and create no inquiry collection. Publish private Shop shipping policies for local base rates, free thresholds, and regional/cart surcharges; without policies the zero-shipping fallback remains. An external shipping adapter overrides local policies. Payment stays disabled until a build-time payment adapter is registered, and additional tax remains zero until its independent server-only quote adapter is registered. Shop freezes gross item subtotal, discount, shipping amount, added tax, and payment total after any required delivery selection. A server-only carrier adapter may replace manual tracking entry with one idempotent booking and atomic private-data deletion; the optional parcel-aware capability first locks an exact PII-free mm/gram package allocation and may add paired pickup scheduling/cancellation with an opaque server-only origin token. Optional \`listPickupWindows\` adds bounded one-hour provider availability for those exact outbound and replacement shipments while leaving recurring pickup, general calendars, charges, and automatic scheduling external. Optional \`acquireShippingLabel\` plus \`readShippingLabel\` adds durable first-label purchase and atomic regeneration while bytes and URLs remain transient. Exact raw-body callback and bounded polling capabilities advance a separate owner-visible tracking state independently. Approved returns may independently create/cancel drop-off or pickup logistics from one maximum-24-hour private origin sidecar, download transient labels, and add a separate reverse-tracking callback or bounded poll capability. A paired quote/create-v2 extension may first freeze one exact return-postage method while keeping its origin for at most one hour; the carrier capability does not automatically charge, deduct a refund, or decide who pays. Carrier delivery never receives the physical return, restores inventory, or issues a refund. After direct staff receive a return, Shop may create one exact same-item replacement with reservation-aware inventory, manual carrier/tracking, and no reuse of the deleted outbound address. A payment adapter may independently add one exact partial refund after staff receive that return; Shop derives returned-item value after its frozen line discount and never repeats inventory restoration. Its separate \`refundReturnSettlement\` method lets direct staff absorb the immutable quote for the merchant or deduct it exactly from one positive customer refund, without a separate charge or automatic policy. Verified provider cancellation snapshots reconcile known refunds, safely compensate one unknown full reversal, and block ambiguous partial adjustments. Recurring pickup, provider-specific protocols, disputes, different-item or price-difference exchanges, and initiating repeated or non-return partial refunds remain separate. For Toss, run \`pnpm add @nexpress/shop-payment-toss\`; payment, shipping, tax, and carrier adapters replace the \`defaultPlugins\` Shop with one configured factory. See the [Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md#local-shipping-policies).
 5. A carrier may pair \`bookExchangeShipment\` with \`cancelExchangeShipment\`. Shop persists stable provider idempotency, deletes the replacement destination only after durable confirmation, and makes ambiguous booking or cancellation explicitly resumable. An additive \`bookExchangeShipmentWithParcels\` method requires and locks one exact PII-free mm/gram allocation over every immutable replacement line before provider I/O while v1 remains valid without it. Its independent \`readShippingLabel\` capability may retrieve completed outbound and replacement labels as transient direct-staff bytes; optional \`acquireShippingLabel\` adds shipment-keyed purchase/regeneration generations with stable provider idempotency and opaque PII-free references. Existing \`schedulePickup\` / \`cancelPickup\`, optional \`listPickupWindows\`, \`verifyTrackingWebhook\`, and \`readTracking\` methods also serve exact completed replacement bookings through shipment-keyed pickup state, short-lived availability, and separate owner-visible tracking state. Verified tracking blocks label acquisition, pickup, and shipment cancellation; an active replacement pickup must be cancelled before provider cancellation or automatic restock.
+
+**Optional packaging proposals.** Replace the default Shop instance with one \`createShop({ packaging: { adapter } })\` factory to add read-only parcel proposals for exact PII-free outbound and same-item replacement identifiers and quantities. A result is valid for at most 60 seconds. Shop calls the provider outside the database transaction, then compare-and-swaps the current fulfillment or exchange and parcel revisions into the existing editable snapshot; direct staff can always use the manual parcel JSON fallback. The adapter receives no address or delivery data and remains independent from carrier booking, shipping rates, labels, physical packing/WMS, and provider-specific protocols.
 
 ## Useful Checks
 
