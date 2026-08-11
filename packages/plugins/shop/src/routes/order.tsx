@@ -29,6 +29,8 @@ export function createShopOrderRoute(runtime: NpShopRuntime) {
     const props = {
       basePath: runtime.basePath,
       apiPath: "/api/plugins/shop/orders",
+      cartApiPath: "/api/plugins/shop/cart",
+      cartReAddApiPath: "/api/plugins/shop/cart/re-add",
       returnApiPath: "/api/plugins/shop/returns",
       exchangeDestinationApiPath: "/api/plugins/shop/exchanges/destination",
       ...(runtime.carrierReturnLogisticsAdapter

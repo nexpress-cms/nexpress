@@ -21,6 +21,10 @@ The same independent integration styles Shop's optional
 `[data-np-shop-surface="wishlist"]`, `[data-np-shop-wishlist-action]`, and
 `[data-np-shop-restock-alert]` hooks; Storefront does not own wishlist or
 restock-alert data, routes, delivery, or authentication.
+Order-detail cart rebuilding is styled only through the optional
+`[data-np-shop-order-readd]` hook. Shop continues to own order authorization,
+current-catalog validation, cart revisions, and partial added/skipped results;
+the theme never reads order data or imports Shop.
 It also enhances `[data-np-shop-return-postage-status]` when Shop exposes optional
 return-postage quoting; the theme remains usable without Shop and owns no
 carrier, quote, selection, payment, or return policy.

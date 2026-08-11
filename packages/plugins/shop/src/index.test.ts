@@ -69,6 +69,7 @@ describe("shop factory", () => {
     expect(shopPlugin.manifest.styleSlots?.["order-notifications"]).toBe(
       "[data-np-shop-order-notifications]",
     );
+    expect(shopPlugin.manifest.styleSlots?.["order-readd"]).toBe("[data-np-shop-order-readd]");
     expect(shopPlugin.manifest.styleSlots?.["return-postage"]).toBe(
       "[data-np-shop-return-postage-status]",
     );
@@ -234,6 +235,7 @@ describe("shop factory", () => {
       "POST /price-alerts",
       "DELETE /price-alerts",
       "POST /cart",
+      "POST /cart/re-add",
       "PATCH /cart",
       "PUT /cart",
       "DELETE /cart",
@@ -270,6 +272,7 @@ describe("shop factory", () => {
     expect(shopPlugin.hooks?.["content:afterDelete"]).toBeTypeOf("function");
     expect(shopPlugin.manifest.provides.apiRoutes).toContain("/restock-alerts");
     expect(shopPlugin.manifest.provides.apiRoutes).toContain("/price-alerts");
+    expect(shopPlugin.manifest.provides.apiRoutes).toContain("/cart/re-add");
     expect(shopPlugin.manifest.provides.adminExtensions).toEqual(
       expect.arrayContaining([
         "dashboard:shop-restock-alerts",

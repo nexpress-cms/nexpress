@@ -365,6 +365,7 @@ describe("shop skin contract", () => {
     expect(styles).toContain("data-np-shop-wishlist-action");
     expect(styles).toContain("data-np-shop-restock-alert");
     expect(styles).toContain("data-np-shop-price-alert");
+    expect(styles).toContain("data-np-shop-order-readd");
     for (const property of [
       "--np-shop-content-max",
       "--np-shop-surface",

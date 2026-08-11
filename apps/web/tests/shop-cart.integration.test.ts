@@ -248,6 +248,31 @@ async function orderCall(
   );
 }
 
+async function cartReAddCall(input: {
+  cookie?: string;
+  csrf?: string;
+  body?: unknown;
+  member?: { id: string };
+}) {
+  return withCurrentSite("default", () =>
+    route("POST", "/cart/re-add")(
+      {
+        method: "POST",
+        path: "/cart/re-add",
+        params: { pluginId: "shop" },
+        query: {},
+        body: input.body,
+        headers: {
+          ...(input.cookie ? { cookie: input.cookie } : {}),
+          ...(input.csrf ? { "x-csrf-token": input.csrf } : {}),
+        },
+        member: input.member,
+      },
+      {} as never,
+    ),
+  );
+}
+
 async function returnCall(
   method: "POST" | "DELETE",
   input: {
@@ -2244,6 +2269,16 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       ),
     ).toMatchObject({ ok: true, data: { level: "ok" } });
 
+    const freshCart = await configuredShopCall(shippingShop, "POST", "/cart", {
+      cookie,
+      csrf,
+      body: { productId, variantSku: null, quantity: 1, expectedRevision: 0 },
+    });
+    const freshQuote = (
+      freshCart.body as {
+        quote: { revision: number; fingerprint: string };
+      }
+    ).quote;
     quoteShipping.mockImplementationOnce(() => {
       throw new Error(`provider rejected ${privateEmail}`);
     });
@@ -2254,8 +2289,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       csrf,
       body: {
         idempotencyKey: failedIntentId,
-        expectedRevision: addedQuote.revision,
-        expectedFingerprint: addedQuote.fingerprint,
+        expectedRevision: freshQuote.revision,
+        expectedFingerprint: freshQuote.fingerprint,
       },
     });
     await configuredShopCall(shippingShop, "POST", "/order-drafts", {
@@ -2307,8 +2342,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       csrf,
       body: {
         idempotencyKey: taxFailedIntentId,
-        expectedRevision: addedQuote.revision,
-        expectedFingerprint: addedQuote.fingerprint,
+        expectedRevision: freshQuote.revision,
+        expectedFingerprint: freshQuote.fingerprint,
       },
     });
     await configuredShopCall(shippingShop, "POST", "/order-drafts", {
@@ -2385,8 +2420,8 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       csrf,
       body: {
         idempotencyKey: taxOnlyIntentId,
-        expectedRevision: addedQuote.revision,
-        expectedFingerprint: addedQuote.fingerprint,
+        expectedRevision: freshQuote.revision,
+        expectedFingerprint: freshQuote.fingerprint,
       },
     });
     await configuredShopCall(taxOnlyShop, "POST", "/order-drafts", {
@@ -2553,6 +2588,23 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       },
     });
     expect(repeated.body).toEqual(created.body);
+    expect(await call("GET", { cookie })).toMatchObject({
+      body: { quote: { revision: 0, lines: [], totalUnits: 0 } },
+    });
+    const nextCart = await call("POST", {
+      cookie,
+      csrf: addedBody.csrfToken,
+      body: { productId, variantSku: null, quantity: 2, expectedRevision: 0 },
+    });
+    expect(nextCart).toMatchObject({
+      status: 200,
+      body: { quote: { revision: 1, lines: [{ quantity: 2 }] } },
+    });
+    const replayed = await orderCall("POST", createInput);
+    expect(replayed.body).toEqual(created.body);
+    expect(await call("GET", { cookie })).toMatchObject({
+      body: { quote: { revision: 1, lines: [{ quantity: 2 }] } },
+    });
     expect(await orderDraftCall("GET", { cookie, draftId })).toMatchObject({
       status: 404,
       body: { error: "order_draft_not_found" },
@@ -2613,7 +2665,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     });
     expect(JSON.stringify(reservation)).not.toContain(privateEmail);
     expect(await call("GET", { cookie })).toMatchObject({
-      body: { quote: { lines: [{ stockQuantity: 7 }] } },
+      body: { quote: { lines: [{ quantity: 2, stockQuantity: 7 }] } },
     });
 
     const recentAction = shopPlugin.actions?.recentOrders;
@@ -2701,7 +2753,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         .where(like(npPluginStorage.key, "inventory-reservation:%")),
     ).toHaveLength(0);
     expect(await call("GET", { cookie })).toMatchObject({
-      body: { quote: { lines: [{ stockQuantity: 8 }] } },
+      body: { quote: { lines: [{ quantity: 2, stockQuantity: 8 }] } },
     });
     expect(await orderCall("GET", { cookie, orderId })).toMatchObject({
       body: { order: { status: "cancelled", privateDataStatus: "redacted" } },
@@ -2738,6 +2790,183 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(await orderCall("GET", { cookie })).toMatchObject({
       status: 200,
       body: { list: { total: 0, orders: [] } },
+    });
+  });
+
+  it("rebuilds non-pending order lines under current catalog and cart revision limits", async () => {
+    const ids = {
+      intentId: "ad3e4567-e89b-42d3-a456-426614174000",
+      draftId: "bd3e4567-e89b-42d3-a456-426614174000",
+      orderId: "cd3e4567-e89b-42d3-a456-426614174000",
+    };
+    const owner = await createPendingOrder(ids, "cart-readd-private@example.com", {
+      variantSku: null,
+      quantity: 2,
+    });
+    expect(await call("GET", { cookie: owner.cookie })).toMatchObject({
+      body: { quote: { revision: 0, lines: [] } },
+    });
+    expect(
+      await cartReAddCall({
+        cookie: owner.cookie,
+        body: { orderId: ids.orderId, expectedCartRevision: 0 },
+      }),
+    ).toMatchObject({ status: 400, body: { error: "invalid_cart_readd_request" } });
+    expect(
+      await cartReAddCall({
+        ...owner,
+        body: { orderId: ids.orderId, expectedCartRevision: 0 },
+      }),
+    ).toMatchObject({ status: 409, body: { error: "order_not_readdable" } });
+
+    const other = await call("GET");
+    expect(
+      await cartReAddCall({
+        cookie: other.headers?.["Set-Cookie"],
+        csrf: (other.body as { csrfToken: string }).csrfToken,
+        body: { orderId: ids.orderId, expectedCartRevision: 0 },
+      }),
+    ).toMatchObject({ status: 404, body: { error: "order_not_found" } });
+
+    expect(
+      await orderCall("DELETE", {
+        ...owner,
+        body: { orderId: ids.orderId, expectedRevision: 1 },
+      }),
+    ).toMatchObject({ status: 200, body: { order: { status: "cancelled" } } });
+    const db = await getTestDb();
+    await db
+      .update(shopProductsTable)
+      .set({ name: "Current everyday cup", slug: "current-everyday-cup", priceMinor: 27_000 })
+      .where(eq(shopProductsTable.id, productId));
+
+    const concurrent = await Promise.all([
+      cartReAddCall({
+        ...owner,
+        body: { orderId: ids.orderId, expectedCartRevision: 0 },
+      }),
+      cartReAddCall({
+        ...owner,
+        body: { orderId: ids.orderId, expectedCartRevision: 0 },
+      }),
+    ]);
+    expect(concurrent.map((response) => response.status).sort()).toEqual([200, 409]);
+    expect(concurrent.find((response) => response.status === 200)).toMatchObject({
+      body: {
+        result: {
+          contract: "np.shop-cart-readd.v1",
+          orderId: ids.orderId,
+          cartRevision: 1,
+          addedUnits: 2,
+          skippedUnits: 0,
+          lines: [
+            {
+              productId,
+              requestedQuantity: 2,
+              addedQuantity: 2,
+              skippedQuantity: 0,
+              issue: null,
+            },
+          ],
+        },
+      },
+    });
+    expect(concurrent.find((response) => response.status === 409)).toMatchObject({
+      body: { error: "cart_revision_conflict", actualRevision: 1 },
+    });
+    expect(await call("GET", { cookie: owner.cookie })).toMatchObject({
+      body: {
+        quote: {
+          revision: 1,
+          lines: [
+            {
+              productSlug: "current-everyday-cup",
+              productName: "Current everyday cup",
+              quantity: 2,
+              unitPriceMinor: 27_000,
+            },
+          ],
+        },
+      },
+    });
+
+    await call("DELETE", {
+      ...owner,
+      body: { lineKey: null, expectedRevision: 1 },
+    });
+    const crowded = await call("POST", {
+      ...owner,
+      body: { productId, variantSku: null, quantity: 98, expectedRevision: 0 },
+    });
+    expect(crowded).toMatchObject({ status: 200, body: { quote: { revision: 1 } } });
+    await call("PUT", {
+      ...owner,
+      body: { couponCodes: ["WELCOME"], expectedRevision: 1 },
+    });
+    const partial = await cartReAddCall({
+      ...owner,
+      body: { orderId: ids.orderId, expectedCartRevision: 2 },
+    });
+    expect(partial).toMatchObject({
+      status: 200,
+      body: {
+        result: {
+          cartRevision: 3,
+          addedUnits: 1,
+          skippedUnits: 1,
+          lines: [
+            {
+              requestedQuantity: 2,
+              addedQuantity: 1,
+              skippedQuantity: 1,
+              issue: "quantity-limit",
+            },
+          ],
+        },
+      },
+    });
+    expect(await call("GET", { cookie: owner.cookie })).toMatchObject({
+      body: {
+        quote: {
+          revision: 3,
+          lines: [{ quantity: 99, unitPriceMinor: 27_000 }],
+          promotions: { couponCodes: ["WELCOME"] },
+        },
+      },
+    });
+
+    await call("DELETE", {
+      ...owner,
+      body: { lineKey: null, expectedRevision: 3 },
+    });
+    await db
+      .update(shopProductsTable)
+      .set({ status: "draft" })
+      .where(eq(shopProductsTable.id, productId));
+    expect(
+      await cartReAddCall({
+        ...owner,
+        body: { orderId: ids.orderId, expectedCartRevision: 0 },
+      }),
+    ).toMatchObject({
+      status: 200,
+      body: {
+        result: {
+          cartRevision: 0,
+          addedUnits: 0,
+          skippedUnits: 2,
+          lines: [
+            {
+              addedQuantity: 0,
+              skippedQuantity: 2,
+              issue: "product-unavailable",
+            },
+          ],
+        },
+      },
+    });
+    expect(await call("GET", { cookie: owner.cookie })).toMatchObject({
+      body: { quote: { revision: 0, lines: [] } },
     });
   });
 
