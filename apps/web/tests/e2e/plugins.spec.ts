@@ -91,8 +91,12 @@ function rateLimitBucketFor(testInfo: TestInfo): number {
   // A failed serial group restarts in a fresh Playwright worker while the app
   // process (and its fixed-window limiter) stays alive. Reserve disjoint ranges
   // for retries and repeat-each stress runs so those restarts cannot inherit a
-  // bucket consumed by the previous worker.
-  return base + testInfo.retry * 3 + testInfo.repeatEachIndex * 6;
+  // bucket consumed by the previous worker. The fixture fails fast if an
+  // unusually large repeat count exhausts this suite's TEST-NET-3 range.
+  const attemptsPerRepeat = PLUGIN_TEST_BUCKETS.size * (testInfo.project.retries + 1);
+  return (
+    base + testInfo.retry * PLUGIN_TEST_BUCKETS.size + testInfo.repeatEachIndex * attemptsPerRepeat
+  );
 }
 
 test.describe("plugin admin and config", () => {
