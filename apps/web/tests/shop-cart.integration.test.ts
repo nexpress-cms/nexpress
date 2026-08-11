@@ -3691,6 +3691,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     }));
     let packagingAttempts = 0;
     let requestMutationRejected = false;
+    let unsupportedPayloadRead = false;
     const proposeParcels = vi.fn((request) => {
       packagingAttempts += 1;
       if (packagingAttempts === 1) {
@@ -3703,7 +3704,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         }
         throw new Error("packaging-private@example.com must never escape");
       }
-      return {
+      const result = {
         contract: "np.shop-packaging-proposal-result.v1" as const,
         proposalId: request.proposalId,
         orderId: request.orderId,
@@ -3729,6 +3730,16 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         proposedAt: request.requestedAt,
         expiresAt: request.expiresAt,
       };
+      if (packagingAttempts === 2) {
+        Object.defineProperty(result, "rawPayload", {
+          enumerable: true,
+          get() {
+            unsupportedPayloadRead = true;
+            return new ArrayBuffer(1024 * 1024);
+          },
+        });
+      }
+      return result;
     });
     const carrierShop = createShop({
       payment: {
@@ -3850,6 +3861,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       ok: false,
       error: "Packaging proposals are temporarily unavailable.",
     });
+    expect(unsupportedPayloadRead).toBe(false);
     expect(await readPackagingHealth()).toMatchObject({
       status: "error",
       errorCode: "invalid-result",

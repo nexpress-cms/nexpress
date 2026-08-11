@@ -22,6 +22,7 @@ import {
   type NpShopPackagingAdapter,
 } from "./packaging-contract.js";
 import { NP_SHOP_PLUGIN_ID } from "./order-draft-service.js";
+import { npShopFulfillmentParcelLimits } from "./parcel-contract.js";
 import {
   npPrepareShopPackagingProposal,
   npSaveShopExchangeParcels,
@@ -131,16 +132,133 @@ function freezePackagingRequest(
   return Object.freeze(request);
 }
 
-function materializePackagingResult(value: unknown): NpShopPackagingProposalResult {
-  let snapshot: unknown;
-  try {
-    snapshot = structuredClone(value);
-  } catch {
-    throw new NpShopPackagingProposalContractError("Invalid Shop packaging proposal result", [
-      "packaging proposal result must contain cloneable data properties only.",
-    ]);
+function invalidMaterializedResult(issue: string): never {
+  throw new NpShopPackagingProposalContractError("Invalid Shop packaging proposal result", [issue]);
+}
+
+function readExactDataObject(
+  value: unknown,
+  expectedKeys: readonly string[],
+  path: string,
+): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return invalidMaterializedResult(`${path} must be a plain object.`);
   }
-  return npRequireShopPackagingProposalResult(snapshot);
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  if (prototype !== Object.prototype && prototype !== null) {
+    return invalidMaterializedResult(`${path} must be a plain object.`);
+  }
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length !== expectedKeys.length ||
+    keys.some((key) => typeof key !== "string" || !expectedKeys.includes(key))
+  ) {
+    return invalidMaterializedResult(`${path} must contain only its exact contract fields.`);
+  }
+  const result: Record<string, unknown> = {};
+  for (const key of expectedKeys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !("value" in descriptor)) {
+      return invalidMaterializedResult(`${path}.${key} must be a data property.`);
+    }
+    result[key] = descriptor.value;
+  }
+  return result;
+}
+
+function readBoundedDataArray(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+  path: string,
+): unknown[] {
+  if (!Array.isArray(value) || value.length < minimum || value.length > maximum) {
+    return invalidMaterializedResult(
+      `${path} must contain between ${minimum.toString()} and ${maximum.toString()} entries.`,
+    );
+  }
+  const result: unknown[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, index.toString());
+    if (!descriptor || !("value" in descriptor)) {
+      return invalidMaterializedResult(`${path}[${index.toString()}] must be a data property.`);
+    }
+    result.push(descriptor.value);
+  }
+  return result;
+}
+
+function materializePackagingResult(value: unknown): NpShopPackagingProposalResult {
+  const result = readExactDataObject(
+    value,
+    [
+      "contract",
+      "proposalId",
+      "orderId",
+      "target",
+      "exchangeId",
+      "sourceRevision",
+      "expectedParcelRevision",
+      "parcels",
+      "proposedAt",
+      "expiresAt",
+    ],
+    "packaging proposal result",
+  );
+  const parcels = readBoundedDataArray(
+    result.parcels,
+    1,
+    npShopFulfillmentParcelLimits.maximumParcels,
+    "packaging proposal result.parcels",
+  );
+  let allocationCount = 0;
+  const materializedParcels = parcels.map((parcelValue, parcelIndex) => {
+    const path = `packaging proposal result.parcels[${parcelIndex.toString()}]`;
+    const parcel = readExactDataObject(
+      parcelValue,
+      ["id", "lengthMm", "widthMm", "heightMm", "weightGrams", "items"],
+      path,
+    );
+    const items = readBoundedDataArray(
+      parcel.items,
+      1,
+      npShopFulfillmentParcelLimits.maximumAllocations,
+      `${path}.items`,
+    );
+    allocationCount += items.length;
+    if (allocationCount > npShopFulfillmentParcelLimits.maximumAllocations) {
+      return invalidMaterializedResult(
+        `packaging proposal result.parcels accepts at most ${npShopFulfillmentParcelLimits.maximumAllocations.toString()} item allocations.`,
+      );
+    }
+    return {
+      id: parcel.id,
+      lengthMm: parcel.lengthMm,
+      widthMm: parcel.widthMm,
+      heightMm: parcel.heightMm,
+      weightGrams: parcel.weightGrams,
+      items: items.map((itemValue, itemIndex) => {
+        const item = readExactDataObject(
+          itemValue,
+          ["lineKey", "quantity"],
+          `${path}.items[${itemIndex.toString()}]`,
+        );
+        return { lineKey: item.lineKey, quantity: item.quantity };
+      }),
+    };
+  });
+  return npRequireShopPackagingProposalResult({
+    contract: result.contract,
+    proposalId: result.proposalId,
+    orderId: result.orderId,
+    target: result.target,
+    exchangeId: result.exchangeId,
+    sourceRevision: result.sourceRevision,
+    expectedParcelRevision: result.expectedParcelRevision,
+    parcels: materializedParcels,
+    proposedAt: result.proposedAt,
+    expiresAt: result.expiresAt,
+  });
 }
 
 export async function npProposeShopPackaging(
