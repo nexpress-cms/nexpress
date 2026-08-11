@@ -8272,6 +8272,7 @@ export {
   npAnalyzeShopPackagingProposalRequest,
   npAnalyzeShopPackagingProposalResult,
   npAnalyzeShopPackagingProposalResultForRequest,
+  npCreateShopPackagingProposalResult,
   npRequireShopPackagingProposalHealth,
   npRequireShopPackagingProposalRequest,
   npRequireShopPackagingProposalResult,
@@ -8285,6 +8286,7 @@ export type {
   NpShopPackagingProposalLine,
   NpShopPackagingProposalRequest,
   NpShopPackagingProposalResult,
+  NpShopPackagingProposalResultFor,
   NpShopPackagingProposalTarget,
 } from "./packaging-contract.js";
 

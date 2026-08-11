@@ -65,6 +65,34 @@ export type NpShopPackagingProposalResult = NpShopPackagingProposalResultBase &
     | { readonly target: "replacement"; readonly exchangeId: string }
   );
 
+export type NpShopPackagingProposalResultFor<TRequest extends NpShopPackagingProposalRequest> =
+  TRequest extends NpShopPackagingProposalRequest
+    ? NpShopPackagingProposalResultBase & Pick<TRequest, "target" | "exchangeId">
+    : never;
+
+export function npCreateShopPackagingProposalResult<
+  TRequest extends NpShopPackagingProposalRequest,
+>(
+  request: TRequest,
+  proposal: Pick<NpShopPackagingProposalResultBase, "parcels" | "proposedAt">,
+): NpShopPackagingProposalResultFor<TRequest> {
+  const common = {
+    contract: NP_SHOP_PACKAGING_PROPOSAL_RESULT_CONTRACT,
+    proposalId: request.proposalId,
+    orderId: request.orderId,
+    sourceRevision: request.sourceRevision,
+    expectedParcelRevision: request.expectedParcelRevision,
+    parcels: proposal.parcels,
+    proposedAt: proposal.proposedAt,
+    expiresAt: request.expiresAt,
+  };
+  return (
+    request.target === "outbound"
+      ? { ...common, target: "outbound", exchangeId: null }
+      : { ...common, target: "replacement", exchangeId: request.exchangeId }
+  ) as NpShopPackagingProposalResultFor<TRequest>;
+}
+
 export interface NpShopPackagingProposalHealth {
   contract: typeof NP_SHOP_PACKAGING_PROPOSAL_HEALTH_CONTRACT;
   providerId: string;
@@ -89,9 +117,11 @@ export interface NpShopPackagingAdapter {
    * Calculate parcels without reserving provider resources, creating warehouse
    * work, charging money, or otherwise mutating provider state.
    */
-  proposeParcels(
-    input: NpShopPackagingProposalRequest,
-  ): NpShopPackagingProposalResult | Promise<NpShopPackagingProposalResult>;
+  proposeParcels<TRequest extends NpShopPackagingProposalRequest>(
+    input: TRequest,
+  ):
+    | NpShopPackagingProposalResultFor<TRequest>
+    | Promise<NpShopPackagingProposalResultFor<TRequest>>;
 }
 
 export class NpShopPackagingProposalContractError extends Error {

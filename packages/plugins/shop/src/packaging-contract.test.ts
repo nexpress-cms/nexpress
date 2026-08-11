@@ -8,12 +8,16 @@ import {
   npAnalyzeShopPackagingProposalRequest,
   npAnalyzeShopPackagingProposalResult,
   npAnalyzeShopPackagingProposalResultForRequest,
+  npCreateShopPackagingProposalResult,
   npRequireShopExchangePackagingProposalInput,
   npRequireShopFulfillmentPackagingProposalInput,
   npRequireShopPackagingProposalHealth,
   npRequireShopPackagingProposalRequest,
   npRequireShopPackagingProposalResult,
   npRequireShopPackagingProviderId,
+  type NpShopPackagingAdapter,
+  type NpShopPackagingProposalRequest,
+  type NpShopPackagingProposalResultFor,
 } from "./packaging-contract.js";
 
 const proposalId = "11111111-1111-4111-8111-111111111111";
@@ -99,6 +103,43 @@ function resultFor(
 }
 
 describe("Shop packaging proposal contracts", () => {
+  it("contextually links the documented adapter result to its request target", async () => {
+    const adapter: NpShopPackagingAdapter = {
+      id: "warehouse-pack",
+      proposeParcels(request) {
+        return Promise.resolve(
+          npCreateShopPackagingProposalResult(request, {
+            parcels,
+            proposedAt,
+          }),
+        );
+      },
+    };
+
+    const outbound = await adapter.proposeParcels(outboundRequest());
+    const replacement = await adapter.proposeParcels(replacementRequest());
+    const outboundExchangeId: null = outbound.exchangeId;
+    const replacementExchangeId: string = replacement.exchangeId;
+    type BroadResult = NpShopPackagingProposalResultFor<NpShopPackagingProposalRequest>;
+    type SameType<TLeft, TRight> = [TLeft] extends [TRight]
+      ? [TRight] extends [TLeft]
+        ? true
+        : false
+      : false;
+    const broadOutboundIdentityIsExact: SameType<
+      Extract<BroadResult, { target: "outbound" }>["exchangeId"],
+      null
+    > = true;
+    const broadReplacementIdentityIsExact: SameType<
+      Extract<BroadResult, { target: "replacement" }>["exchangeId"],
+      string
+    > = true;
+    expect(outboundExchangeId).toBeNull();
+    expect(replacementExchangeId).toBe(exchangeId);
+    expect(broadOutboundIdentityIsExact).toBe(true);
+    expect(broadReplacementIdentityIsExact).toBe(true);
+  });
+
   it("accepts exact outbound and replacement requests and results", () => {
     const outbound = outboundRequest();
     const replacement = replacementRequest();

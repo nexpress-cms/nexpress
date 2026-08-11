@@ -1229,8 +1229,8 @@ project registers one server-only adapter on the same `createShop()` result:
 
 ```ts
 import {
-  NP_SHOP_PACKAGING_PROPOSAL_RESULT_CONTRACT,
   createShop,
+  npCreateShopPackagingProposalResult,
   type NpShopPackagingAdapter,
 } from "@nexpress/plugin-shop";
 
@@ -1240,18 +1240,10 @@ const packaging: NpShopPackagingAdapter = {
     // This must be a read-only calculation. Use proposalId only to correlate
     // this call; do not reserve boxes, create WMS work, or charge a rate.
     const proposal = await calculateParcelsFromProviderCatalog(request.lines);
-    return {
-      contract: NP_SHOP_PACKAGING_PROPOSAL_RESULT_CONTRACT,
-      proposalId: request.proposalId,
-      orderId: request.orderId,
-      target: request.target,
-      exchangeId: request.exchangeId,
-      sourceRevision: request.sourceRevision,
-      expectedParcelRevision: request.expectedParcelRevision,
+    return npCreateShopPackagingProposalResult(request, {
       parcels: proposal.parcels,
       proposedAt: new Date().toISOString(),
-      expiresAt: request.expiresAt,
-    };
+    });
   },
 };
 
