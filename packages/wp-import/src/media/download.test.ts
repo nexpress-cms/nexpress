@@ -1,6 +1,10 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { Agent } from "undici";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  createPinnedAgent,
   downloadMedia,
   isAllowedMimeType,
   resolveEnvDownloadOptions,
@@ -16,6 +20,46 @@ function makeFetchOnce(body: Uint8Array, init: ResponseInit & { url?: string } =
 // IP. The `dnsLookupImpl` injection is the cheapest way to keep
 // the test suite hermetic without touching real DNS.
 const publicDns = vi.fn(() => Promise.resolve([{ address: "93.184.216.34", family: 4 }]));
+
+function observePinnedAgents(delegate: typeof fetch): {
+  fetchImpl: typeof fetch;
+  agents: Agent[];
+} {
+  const agents: Agent[] = [];
+  const fetchImpl = vi.fn((...args: Parameters<typeof fetch>) => {
+    const init = args[1];
+    const dispatcher = (init as { dispatcher?: unknown } | undefined)?.dispatcher;
+    if (!(dispatcher instanceof Agent)) {
+      return Promise.reject(new Error("expected a pinned undici Agent"));
+    }
+    agents.push(dispatcher);
+    return delegate(...args);
+  }) as unknown as typeof fetch;
+  return { fetchImpl, agents };
+}
+
+function destroyedStates(agents: Agent[]): boolean[] {
+  return agents.map((agent) => agent.destroyed);
+}
+
+function makeCancellableResponse(init: ResponseInit): {
+  response: Response;
+  wasCancelled: () => boolean;
+} {
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array([1]));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  return {
+    response: new Response(body, init),
+    wasCancelled: () => cancelled,
+  };
+}
 
 describe("downloadMedia", () => {
   it("returns the body, mime, and inferred filename for a 200 response", async () => {
@@ -411,6 +455,163 @@ describe("resolveEnvDownloadOptions (#270)", () => {
 });
 
 describe("downloadMedia — DNS pinning (#382)", () => {
+  it("connects through the exact pinned address with the original hostname", async () => {
+    let receivedHost: string | undefined;
+    const server = createServer((req, res) => {
+      receivedHost = req.headers.host;
+      res.writeHead(200, { "content-type": "image/jpeg" });
+      res.end(Buffer.from([1, 2, 3]));
+    });
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolve);
+    });
+
+    const address = server.address() as AddressInfo;
+    const dispatcher = createPinnedAgent({ address: "127.0.0.1", family: 4 });
+    try {
+      const init: Omit<RequestInit, "dispatcher"> & { dispatcher: unknown } = {
+        dispatcher,
+        signal: AbortSignal.timeout(2_000),
+      };
+      const response = await fetch(
+        `http://media.example:${address.port}/x.jpg`,
+        init as RequestInit,
+      );
+      expect(response.status).toBe(200);
+      expect(Array.from(new Uint8Array(await response.arrayBuffer()))).toEqual([1, 2, 3]);
+      expect(receivedHost).toBe(`media.example:${address.port}`);
+    } finally {
+      try {
+        await dispatcher.close();
+      } finally {
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => (error ? reject(error) : resolve()));
+        });
+      }
+    }
+  });
+
+  it("destroys every one-shot pinned agent across terminal paths", async () => {
+    const success = observePinnedAgents(
+      makeFetchOnce(new Uint8Array([1]), {
+        status: 200,
+        headers: { "content-type": "image/jpeg" },
+      }),
+    );
+    await downloadMedia("https://example.com/success.jpg", {
+      fetchImpl: success.fetchImpl,
+      retries: 0,
+      dnsLookupImpl: publicDns,
+    });
+    expect(destroyedStates(success.agents)).toEqual([true]);
+
+    const redirectDelegate = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response("", {
+          status: 302,
+          headers: { location: "https://cdn.example.com/final.jpg" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([2]), {
+          status: 200,
+          headers: { "content-type": "image/jpeg" },
+        }),
+      ) as unknown as typeof fetch;
+    const redirect = observePinnedAgents(redirectDelegate);
+    await downloadMedia("https://example.com/redirect.jpg", {
+      fetchImpl: redirect.fetchImpl,
+      retries: 0,
+      dnsLookupImpl: publicDns,
+    });
+    expect(destroyedStates(redirect.agents)).toEqual([true, true]);
+
+    const error = observePinnedAgents(makeFetchOnce(new Uint8Array(), { status: 500 }));
+    await expect(
+      downloadMedia("https://example.com/error.jpg", {
+        fetchImpl: error.fetchImpl,
+        retries: 0,
+        dnsLookupImpl: publicDns,
+      }),
+    ).rejects.toBeInstanceOf(WpMediaDownloadError);
+    expect(destroyedStates(error.agents)).toEqual([true]);
+
+    const oversized = observePinnedAgents(
+      makeFetchOnce(new Uint8Array([1]), {
+        status: 200,
+        headers: { "content-length": "2", "content-type": "image/jpeg" },
+      }),
+    );
+    await expect(
+      downloadMedia("https://example.com/oversized.jpg", {
+        fetchImpl: oversized.fetchImpl,
+        retries: 0,
+        maxBytes: 1,
+        dnsLookupImpl: publicDns,
+      }),
+    ).rejects.toBeInstanceOf(WpMediaDownloadError);
+    expect(destroyedStates(oversized.agents)).toEqual([true]);
+
+    const failingFetch = vi.fn(() => Promise.reject(new Error("network")));
+    const network = observePinnedAgents(failingFetch);
+    await expect(
+      downloadMedia("https://example.com/network.jpg", {
+        fetchImpl: network.fetchImpl,
+        retries: 0,
+        dnsLookupImpl: publicDns,
+      }),
+    ).rejects.toBeInstanceOf(WpMediaDownloadError);
+    expect(destroyedStates(network.agents)).toEqual([true]);
+  });
+
+  it("cancels unread bodies when private hosts use the shared dispatcher", async () => {
+    const redirectBody = makeCancellableResponse({
+      status: 302,
+      headers: { location: "http://10.0.0.2/final.jpg" },
+    });
+    const redirectFetch = vi
+      .fn()
+      .mockResolvedValueOnce(redirectBody.response)
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([2]), {
+          status: 200,
+          headers: { "content-type": "image/jpeg" },
+        }),
+      ) as unknown as typeof fetch;
+    await downloadMedia("http://10.0.0.1/redirect.jpg", {
+      fetchImpl: redirectFetch,
+      retries: 0,
+      allowPrivateHosts: true,
+    });
+    expect(redirectBody.wasCancelled()).toBe(true);
+
+    const errorBody = makeCancellableResponse({ status: 500 });
+    await expect(
+      downloadMedia("http://10.0.0.1/error.jpg", {
+        fetchImpl: vi.fn(() => Promise.resolve(errorBody.response)),
+        retries: 0,
+        allowPrivateHosts: true,
+      }),
+    ).rejects.toBeInstanceOf(WpMediaDownloadError);
+    expect(errorBody.wasCancelled()).toBe(true);
+
+    const oversizedBody = makeCancellableResponse({
+      status: 200,
+      headers: { "content-length": "2", "content-type": "image/jpeg" },
+    });
+    await expect(
+      downloadMedia("http://10.0.0.1/oversized.jpg", {
+        fetchImpl: vi.fn(() => Promise.resolve(oversizedBody.response)),
+        retries: 0,
+        maxBytes: 1,
+        allowPrivateHosts: true,
+      }),
+    ).rejects.toBeInstanceOf(WpMediaDownloadError);
+    expect(oversizedBody.wasCancelled()).toBe(true);
+  });
+
   it("attaches an undici Agent dispatcher when the preflight DNS check passes", async () => {
     // Whatever init.dispatcher fetch receives must be a non-null
     // undici Agent — that is the connect-time pin that closes the

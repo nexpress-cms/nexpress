@@ -202,60 +202,79 @@ async function fetchWithRedirects(
     // `dispatcher` option. Keep the property as `unknown` so the
     // call site does not couple ambient fetch types to our explicit
     // undici dependency version.
-    const init: FetchInitWithDispatcher = {
-      signal: opts.signal,
-      redirect: "manual",
-    };
-    if (dispatcher) {
-      init.dispatcher = dispatcher;
-    }
-    const res = await opts.fetchImpl(currentUrl, init as RequestInit);
-    if (isRedirectStatus(res.status)) {
-      const next = res.headers.get("location");
-      if (!next) {
+    let res: Response | undefined;
+    try {
+      const init: FetchInitWithDispatcher = {
+        signal: opts.signal,
+        redirect: "manual",
+      };
+      if (dispatcher) {
+        init.dispatcher = dispatcher;
+      }
+      res = await opts.fetchImpl(currentUrl, init as RequestInit);
+      if (isRedirectStatus(res.status)) {
+        const next = res.headers.get("location");
+        if (!next) {
+          throw new WpMediaDownloadError(
+            currentUrl,
+            `redirect ${res.status} without Location header`,
+            res.status,
+          );
+        }
+        // `new URL(next, currentUrl)` resolves relative redirects
+        // against the prior hop, matching browser semantics.
+        currentUrl = new URL(next, currentUrl).toString();
+        assertHttpScheme(currentUrl);
+        continue;
+      }
+      if (!res.ok) {
         throw new WpMediaDownloadError(
           currentUrl,
-          `redirect ${res.status} without Location header`,
+          `source responded ${res.status} ${res.statusText || ""}`.trim(),
           res.status,
         );
       }
-      // `new URL(next, currentUrl)` resolves relative redirects
-      // against the prior hop, matching browser semantics.
-      currentUrl = new URL(next, currentUrl).toString();
-      assertHttpScheme(currentUrl);
-      continue;
-    }
-    if (!res.ok) {
-      throw new WpMediaDownloadError(
-        currentUrl,
-        `source responded ${res.status} ${res.statusText || ""}`.trim(),
-        res.status,
-      );
-    }
-    const declaredLength = res.headers.get("content-length");
-    if (declaredLength !== null) {
-      const n = Number(declaredLength);
-      if (Number.isFinite(n) && n > opts.maxBytes) {
+      const declaredLength = res.headers.get("content-length");
+      if (declaredLength !== null) {
+        const n = Number(declaredLength);
+        if (Number.isFinite(n) && n > opts.maxBytes) {
+          throw new WpMediaDownloadError(
+            currentUrl,
+            `content-length ${n} exceeds maxBytes ${opts.maxBytes}`,
+          );
+        }
+      }
+      const arrayBuffer = await res.arrayBuffer();
+      if (arrayBuffer.byteLength > opts.maxBytes) {
         throw new WpMediaDownloadError(
           currentUrl,
-          `content-length ${n} exceeds maxBytes ${opts.maxBytes}`,
+          `body ${arrayBuffer.byteLength} bytes exceeds maxBytes ${opts.maxBytes}`,
         );
       }
+      const buffer = Buffer.from(arrayBuffer);
+      const mimeType = parseMime(res.headers.get("content-type"));
+      // Filename is derived from the URL the WXR pointed at — not the
+      // final hop. CDNs frequently rewrite paths in ways that lose the
+      // original basename ("a1b2c3.cdn.com/asset?id=42").
+      const filename = inferFilename(originalUrl);
+      return { buffer, mimeType, filename };
+    } finally {
+      // Redirect, HTTP-error, and declared-oversize paths do not read the
+      // body. Cancel it even when private hosts use the shared global pool;
+      // a cleanup failure must not replace the primary download outcome.
+      if (res && !res.bodyUsed) {
+        try {
+          await res.body?.cancel();
+        } catch {
+          // Best-effort stream cleanup; the owned dispatcher is still
+          // force-closed below when DNS pinning is active.
+        }
+      }
+      // Each hop owns a one-shot Agent. Force-close it instead of waiting
+      // for an attacker-controlled redirect/error body to finish; normal
+      // success reaches this point only after the body has been consumed.
+      if (dispatcher) await dispatcher.destroy();
     }
-    const arrayBuffer = await res.arrayBuffer();
-    if (arrayBuffer.byteLength > opts.maxBytes) {
-      throw new WpMediaDownloadError(
-        currentUrl,
-        `body ${arrayBuffer.byteLength} bytes exceeds maxBytes ${opts.maxBytes}`,
-      );
-    }
-    const buffer = Buffer.from(arrayBuffer);
-    const mimeType = parseMime(res.headers.get("content-type"));
-    // Filename is derived from the URL the WXR pointed at — not the
-    // final hop. CDNs frequently rewrite paths in ways that lose the
-    // original basename ("a1b2c3.cdn.com/asset?id=42").
-    const filename = inferFilename(originalUrl);
-    return { buffer, mimeType, filename };
   }
   throw new WpMediaDownloadError(currentUrl, `too many redirects (max ${opts.maxRedirects})`);
 }
@@ -354,10 +373,18 @@ async function assertHostAllowed(
  * returns the already-vetted address. The Host header / SNI stay
  * set to the original hostname (undici uses `req.host` for those,
  * not the connect target) so HTTPS cert validation works.
+ *
+ * @internal Exported only for transport-level regression tests.
  */
-function createPinnedAgent(pinned: PinnedAddress): Agent {
+export function createPinnedAgent(pinned: PinnedAddress): Agent {
   return new Agent({
     connect: {
+      // Node enables Happy Eyeballs address selection by default. That asks
+      // custom lookup functions for an array (`all: true`), while this agent
+      // intentionally exposes one already-vetted address. Disable the extra
+      // selection so the scalar lookup contract stays exact and the connect
+      // step cannot re-resolve or substitute another address.
+      autoSelectFamily: false,
       lookup: (
         _hostname: string,
         _options: unknown,
