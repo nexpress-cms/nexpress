@@ -88,7 +88,7 @@
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/pg": "^8.15.5",
     "@types/react": "^19.2.17",
