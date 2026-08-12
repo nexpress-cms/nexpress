@@ -69,7 +69,11 @@ It provides:
   separate pending-payment private sidecars, revision-safe cancellation, bounded
   history/Admin views, transaction-safe product/variant holds, cancellation
   release, exact transactional source-cart deletion, replay-safe preservation of
-  newer carts, no automatic cart restoration, and 365-day commercial cleanup;
+  newer carts, no automatic cart restoration, and normally 365-day commercial
+  cleanup; relationship-nonterminal packing work—including a `cancelled`
+  shipment attachment whose exact carrier compensation is unfinished—is the
+  narrow external-effect exception that retains its exact commercial source
+  order until resolution;
 - `POST /api/plugins/shop/cart/re-add` with owner identity, CSRF, and expected
   cart revision; it rebuilds available immutable order-line identities from
   current published products/enabled variants and current names/prices, keeps
@@ -98,6 +102,14 @@ It provides:
   product/SKU/quantity inputs, a 60-second proposal expiry, provider I/O outside
   database transactions, revision-safe parcel compare-and-swap, per-target
   health, and the existing manual JSON fallback;
+- an independent optional paired packing-work adapter for processing outbound
+  fulfillments and awaiting same-item replacements, with exact PII-free lines
+  and parcels, stable create/cancel UUIDs, provider I/O outside transactions,
+  durable confirmation and cancellation-dominant tombstones, parcel-edit
+  exclusion, exact carrier attachment/consumption, tracking-aware
+  cancellation-before-compensation ordering, adapter-free local confirmation
+  recovery, always-declared Admin/Doctor diagnostics, and cleanup; only an
+  unattached cancelled tombstone reopens the manual fallback;
 - an optional provider-neutral carrier adapter with one durable shipment UUID,
   calls outside database transactions, resumable provider confirmation,
   atomic tracking/shipped completion and private-data deletion, and closed
@@ -173,8 +185,10 @@ jurisdictional responsibility policy, carrier label billing/void policy,
 recurring pickup,
 provider-specific tracking protocols,
 tax remittance/filing, invoices, exemptions, customs, and carrier-owned dynamic
-rate policy, WMS mutation, physical packing, and packaging-material inventory
-remain outside this package. A server-only `NpShopShippingAdapter` may supply
+rate policy, physical packing completion evidence, picking/bin/worker
+coordination, packaging-material inventory/reservation/purchase, and
+provider-specific WMS callbacks or polling remain outside this package. A
+server-only `NpShopShippingAdapter` may supply
 exact bounded delivery methods, and `NpShopTaxAdapter` may return only tax
 added on top of displayed product prices. An independent server-only
 `NpShopPackagingAdapter` may map Shop's exact immutable line keys, product
@@ -190,6 +204,72 @@ outside transactions, then rechecks source/parcel revisions and booking locks
 before saving; any saved snapshot remains replaceable through the manual parcel
 action. Shop validates shape and allocation but cannot prove physical fit or
 weight because product measurements remain provider-catalog data.
+
+An independent server-only `NpShopPackingWorkAdapter` may accept those already
+prepared parcels through
+`createShop({ packing: { adapter: packingAdapter } })`.
+`createPackingWork` and `cancelPackingWork` must be implemented together. Shop
+allows exactly one durable work identity per `target + orderId`, writes a
+stable packing-work or cancellation UUID before provider I/O, calls the adapter
+outside every database transaction, and persists exact provider confirmation
+before local `active` or `cancelled` state. Requests freeze the
+`outbound | replacement` identity, source and parcel revisions, one-way parcel
+fingerprint, immutable lines, and complete parcel allocation without owner,
+address, delivery, price, label, credential, note, or provider payload data.
+Retryable ambiguity remains pending; stored `provider-confirmed` and
+`cancel-confirmed` transitions are locally finalizable after adapter removal
+without repeating the provider effect, and closed or conflicting outcomes
+reach PII-free manual review. Shop does not impose an adapter-call timeout, so
+the adapter must bound every network operation; timeout or transport ambiguity
+must remain retryable under the stable `pending` / `cancel-pending` identity.
+Unresolved or active work blocks parcel edits. An
+exact parcel-aware carrier booking attaches the same source/parcel revision
+and fingerprint before provider I/O; outbound completion consumes it
+immediately, while a replacement remains active until its explicit ship
+action. Manual ship also consumes active work, and a carrier without the
+parcel-aware capability fails closed. Direct full refund or replacement
+cancellation resolves packing cancellation before existing downstream
+payment, carrier, or inventory compensation. Admin, Doctor, commercial
+cleanup, and provider-removal visibility share that durable contract. The
+provider must retain a cancellation-dominant tombstone for each exact
+`workId + cancellationId`, so a delayed or retried create can never resurrect
+cancelled work. Shop keeps that single `cancelled` target/order tombstone until
+order cleanup and rejects another packing-work create. Only an unattached
+`cancelled` tombstone reopens manual parcel, carrier, refund, or replacement
+inventory fallback. When cancellation is attached, its exact shipment identity
+and parcel fingerprint remain fail-closed. Before verified tracking, only
+cancellation of that exact carrier shipment may unwind it. After verified
+tracking, carrier cancellation and automatic inventory restock fail closed;
+only exact booked shipment completion may proceed, and that completion leaves
+the packing conflict visible in diagnostics and retention. A packing
+cancellation started before tracking may still retry, reconcile, or finish its
+local `cancel-confirmed` transition after tracking with the same cancellation
+UUID. Tracking never creates a replacement cancellation identity.
+Metric/status/table diagnostics remain declared after adapter removal.
+Any create, cancel, or reconciliation action that still needs provider I/O,
+including applicable `pending`, `cancel-pending`, or `manual-review` recovery,
+remains conditional on the original adapter, while stored confirmations finish
+locally without it.
+Every relationship-nonterminal packing work is a narrow exception to the normal
+365-day commercial cleanup. That includes a `cancelled` shipment attachment
+until exact replacement carrier cancellation/restock or exact tracking-won
+booked completion; an attached outbound cancellation stays retained for
+diagnosis because v1 has no outbound carrier-cancellation operation. Shop
+preserves its commercial source order, including a
+member-linked owner segment, until an exact `provider-confirmed` or
+`cancel-confirmed` transition is finalized locally, the original adapter
+returns for provider I/O with the existing stable UUID, exact `active` work is
+consumed through the existing manual ship path, or site deletion removes the
+tenant. There is no generic override that terminalizes
+`pending` or `manual-review`. Private customer/shipping retention is not
+extended; privacy-only redaction preserves the commercial order/fulfillment
+revisions so exact parcel, carrier, and packing recovery remains usable.
+Terminal order purge remains bounded and non-starving. Omitting the adapter
+preserves the normal manual flow.
+Packing-work acceptance does not prove physical completion or add picking,
+bin, worker, address, rate, label, material inventory/reservation/purchase,
+callback, or polling behavior.
+
 `NpShopCarrierAdapter` may book one
 shipment with its stable shipment UUID as the provider idempotency key and may
 consume a locked parcel snapshot through additive `bookShipmentWithParcels`,
@@ -246,6 +326,7 @@ See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/doc
 for the exact price, SKU, inventory, wishlist, restock-alert, price-alert, review, Forum-backed inquiry, cart,
 promotion, checkout-intent, private-draft, shipping-quote, tax-quote,
 pending-order, payment-attempt/event/adjustment, fulfillment, parcel, carrier,
-packaging-proposal, label acquisition/read, pickup, tracking/polling, full-refund, return-linked partial-refund, return,
+packaging-proposal, packing-work, label acquisition/read, pickup,
+tracking/polling, full-refund, return-linked partial-refund, return,
 same-item exchange, return-logistics, return-postage, return-postage settlement, skin, block, and
 theme-integration contracts.

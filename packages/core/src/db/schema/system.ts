@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   boolean,
@@ -382,6 +383,12 @@ export const npPluginStorage = pgTable(
       table.siteId,
       table.expiresAt,
     ),
+    // Keep arbitrary plugin JSON strings write-compatible: a raw-text btree
+    // can exceed PostgreSQL's index-row limit, while this equality-only hash
+    // lookup remains fixed-size. Plugin/site/key are exact residual filters.
+    orderIdHashIdx: index("np_plugin_storage_order_id_hash_idx")
+      .using("hash", sql`(${table.value}->>'orderId')`)
+      .where(sql`(${table.value}->>'orderId') is not null`),
   }),
 );
 

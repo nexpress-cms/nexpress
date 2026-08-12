@@ -698,8 +698,8 @@ export function npAnalyzeStoredShopExchangeCarrierBooking(value: unknown): strin
   if (isIso(value.requestedAt) && isIso(value.updatedAt) && value.updatedAt < value.requestedAt) {
     issues.push("exchange carrier booking.updatedAt cannot precede requestedAt.");
   }
-  if (isIso(value.updatedAt) && isIso(value.purgeAt) && value.updatedAt > value.purgeAt) {
-    issues.push("exchange carrier booking.updatedAt cannot follow purgeAt.");
+  if (isIso(value.requestedAt) && isIso(value.purgeAt) && value.requestedAt >= value.purgeAt) {
+    issues.push("exchange carrier booking.purgeAt must follow requestedAt.");
   }
   return issues;
 }

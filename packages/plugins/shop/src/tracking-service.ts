@@ -607,6 +607,11 @@ export async function npApplyShopTrackingEvent(
       );
     }
     let ownerSegmentForLock: string;
+    let outboundLookupRow: {
+      key: string;
+      value: unknown;
+      expiresAt: Date | null;
+    } | null = null;
     if (shipment === "exchange") {
       const exchangeCandidateRow = await readExactRow(
         tx,
@@ -626,22 +631,25 @@ export async function npApplyShopTrackingEvent(
         exchangeCandidateRow.key,
       ).ownerSegment;
     } else {
-      const lookupCandidateRow = await readExactRow(
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-order-lookup:${siteId}:${event.orderId}`}, 0))`,
+      );
+      outboundLookupRow = await readExactRow(
         tx,
         siteId,
         orderLookupStorageKey(event.orderId),
-        false,
+        true,
       );
-      if (!lookupCandidateRow) {
+      if (!outboundLookupRow) {
         throw new NpShopTrackingConflictError(
           "tracking_booking_not_found",
           "The outbound tracking event has no retained order lookup.",
         );
       }
       ownerSegmentForLock = requireOrderLookupRow(
-        lookupCandidateRow.value,
-        lookupCandidateRow.expiresAt,
-        lookupCandidateRow.key,
+        outboundLookupRow.value,
+        outboundLookupRow.expiresAt,
+        outboundLookupRow.key,
         event.orderId,
         candidateBooking.purgeAt,
       );
@@ -715,17 +723,16 @@ export async function npApplyShopTrackingEvent(
     }
     let order: ReturnType<typeof npRequireStoredShopOrder> | null = null;
     if (shipment === "outbound") {
-      const lookupRow = await readExactRow(tx, siteId, orderLookupStorageKey(event.orderId), true);
-      if (!lookupRow) {
+      if (!outboundLookupRow) {
         throw new NpShopTrackingConflictError(
           "tracking_booking_not_found",
           "The tracking event has no retained commercial order.",
         );
       }
       const ownerSegment = requireOrderLookupRow(
-        lookupRow.value,
-        lookupRow.expiresAt,
-        lookupRow.key,
+        outboundLookupRow.value,
+        outboundLookupRow.expiresAt,
+        outboundLookupRow.key,
         event.orderId,
         booking.purgeAt,
       );
@@ -784,7 +791,6 @@ export async function npApplyShopTrackingEvent(
         "The tracking event does not match one active replacement shipment.",
       );
     }
-
     const stateKey =
       shipment === "exchange"
         ? npShopExchangeTrackingStorageKey(event.orderId)
@@ -1160,6 +1166,26 @@ async function claimTrackingPoll(
   return getDb().transaction(async (tx) => {
     const now = new Date();
     const shipment = candidate.shipment;
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-order-lookup:${siteId}:${candidate.booking.orderId}`}, 0))`,
+    );
+    const orderLookupRow = await readExactRow(
+      tx,
+      siteId,
+      orderLookupStorageKey(candidate.booking.orderId),
+      true,
+    );
+    if (!orderLookupRow) return null;
+    const ownerSegment = requireOrderLookupRow(
+      orderLookupRow.value,
+      orderLookupRow.expiresAt,
+      orderLookupRow.key,
+      candidate.booking.orderId,
+      candidate.booking.purgeAt,
+    );
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-order:${siteId}:${ownerSegment}:${candidate.booking.orderId}`}, 0))`,
+    );
     const exchangeRow =
       shipment === "exchange"
         ? await readExactRow(tx, siteId, exchangeStorageKey(candidate.booking.orderId), true)
@@ -1197,17 +1223,10 @@ async function claimTrackingPoll(
       const exchangeBooking = booking as NpShopStoredExchangeCarrierBooking;
       if (!exchangeBookingMatchesExchange(exchangeBooking, exchange)) return null;
     } else {
-      const lookupRow = await readExactRow(
-        tx,
-        siteId,
-        orderLookupStorageKey(booking.orderId),
-        true,
-      );
-      if (!lookupRow) return null;
       requireOrderLookupRow(
-        lookupRow.value,
-        lookupRow.expiresAt,
-        lookupRow.key,
+        orderLookupRow.value,
+        orderLookupRow.expiresAt,
+        orderLookupRow.key,
         booking.orderId,
         booking.purgeAt,
       );
@@ -1546,6 +1565,16 @@ export async function npReadShopExchangeTrackingForOrder(
   orderId: string,
   forUpdate = false,
 ): Promise<NpShopTracking | null> {
+  const stored = await npReadStoredShopExchangeTrackingForOrder(db, siteId, orderId, forUpdate);
+  return stored ? npProjectShopTracking(stored) : null;
+}
+
+export async function npReadStoredShopExchangeTrackingForOrder(
+  db: ReturnType<typeof getDb> | NpShopTransaction,
+  siteId: string,
+  orderId: string,
+  forUpdate = false,
+): Promise<NpShopStoredTracking | null> {
   let query = db
     .select({
       key: npPluginStorage.key,
@@ -1563,9 +1592,7 @@ export async function npReadShopExchangeTrackingForOrder(
     .limit(1);
   if (forUpdate) query = query.for("update") as typeof query;
   const [row] = await query;
-  return row
-    ? npProjectShopTracking(requireTrackingRow(row.value, row.expiresAt, row.key, "exchange"))
-    : null;
+  return row ? requireTrackingRow(row.value, row.expiresAt, row.key, "exchange") : null;
 }
 
 export async function npListShopTrackingPolls(): Promise<{

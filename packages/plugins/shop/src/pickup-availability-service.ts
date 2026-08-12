@@ -25,6 +25,7 @@ import {
   npInspectShopCarrierPickupAvailabilityContext,
   npLockShopCarrierPickupAvailabilityContext,
   npReadShopCarrierPickupSummary,
+  npRequireLiveShopCarrierPickupWindow,
   npResolveShopCarrierPickupAvailabilityContext,
   npScheduleShopCarrierPickup,
 } from "./pickup-service.js";
@@ -50,6 +51,7 @@ export interface NpShopAdminCarrierPickupAvailabilityRow {
   packages: number;
   weightGrams: number;
   expiresAt: string;
+  scheduleEligible: boolean;
 }
 
 export interface NpShopCarrierPickupAvailabilityCounts {
@@ -557,7 +559,10 @@ async function consumeAvailability(
   });
 }
 
-export async function npListRecentShopCarrierPickupAvailability(): Promise<{
+export async function npListRecentShopCarrierPickupAvailability(
+  runtime: NpShopRuntime,
+  expectedProviderId?: string,
+): Promise<{
   rows: NpShopAdminCarrierPickupAvailabilityRow[];
   total: number;
 }> {
@@ -578,34 +583,77 @@ export async function npListRecentShopCarrierPickupAvailability(): Promise<{
     )
     .orderBy(desc(npPluginStorage.updatedAt), desc(npPluginStorage.key))
     .limit(npShopCarrierPickupAvailabilityLimits.adminListSize);
-  const projected = rows.flatMap((row) => {
-    const availability = npRequireStoredShopCarrierPickupAvailability(row.value);
-    if (
-      row.key !==
-        npShopCarrierPickupAvailabilityStorageKey(availability.shipmentId, availability.id) ||
-      row.expiresAt?.toISOString() !== availability.expiresAt
-    ) {
-      throw new NpShopCarrierPickupAvailabilityContractError(
-        "Invalid carrier pickup availability storage metadata",
-        ["availability key and expiry must match its canonical values."],
-      );
-    }
-    return availability.windows.map((window) => ({
-      id: availability.orderId,
-      shipmentId: availability.shipmentId,
-      pickupTarget: availability.target,
-      exchangeId: availability.exchangeId,
-      pickupRevision: 0,
-      availabilityId: availability.id,
-      availabilityRevision: availability.revision,
-      windowId: window.id,
-      provider: availability.providerId,
-      window: `${window.readyAt} – ${window.closeAt}`,
-      packages: availability.packages.length,
-      weightGrams: availability.packages.reduce((sum, item) => sum + item.weightGrams, 0),
-      expiresAt: availability.expiresAt,
-    }));
-  });
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const projected = (
+    await Promise.all(
+      rows.map(async (row) => {
+        const availability = npRequireStoredShopCarrierPickupAvailability(row.value);
+        if (
+          row.key !==
+            npShopCarrierPickupAvailabilityStorageKey(availability.shipmentId, availability.id) ||
+          row.expiresAt?.toISOString() !== availability.expiresAt
+        ) {
+          throw new NpShopCarrierPickupAvailabilityContractError(
+            "Invalid carrier pickup availability storage metadata",
+            ["availability key and expiry must match its canonical values."],
+          );
+        }
+        let sourceEligible = false;
+        if (
+          expectedProviderId !== undefined &&
+          runtime.carrierPickupAvailabilityAdapter?.id === expectedProviderId &&
+          availability.providerId === expectedProviderId &&
+          availability.expiresAt > nowIso
+        ) {
+          try {
+            const context = await npInspectShopCarrierPickupAvailabilityContext(runtime, {
+              orderId: availability.orderId,
+              shipmentId: availability.shipmentId,
+              target: availability.target,
+              exchangeId: availability.exchangeId,
+              expectedPickupRevision: 0,
+            });
+            sourceEligible =
+              context.booking.purgeAt === availability.purgeAt &&
+              bookingFingerprint(context.booking) === availability.bookingFingerprint &&
+              context.locationReference === availability.locationReference &&
+              context.parcelRevision === availability.parcelRevision &&
+              samePackages(context.packages, availability.packages);
+          } catch {
+            sourceEligible = false;
+          }
+        }
+        return availability.windows.map((window) => {
+          let scheduleEligible = false;
+          if (sourceEligible) {
+            try {
+              npRequireLiveShopCarrierPickupWindow(window.readyAt, window.closeAt, now);
+              scheduleEligible = true;
+            } catch {
+              scheduleEligible = false;
+            }
+          }
+          return {
+            id: availability.orderId,
+            shipmentId: availability.shipmentId,
+            pickupTarget: availability.target,
+            exchangeId: availability.exchangeId,
+            pickupRevision: 0,
+            availabilityId: availability.id,
+            availabilityRevision: availability.revision,
+            windowId: window.id,
+            provider: availability.providerId,
+            window: `${window.readyAt} – ${window.closeAt}`,
+            packages: availability.packages.length,
+            weightGrams: availability.packages.reduce((sum, item) => sum + item.weightGrams, 0),
+            expiresAt: availability.expiresAt,
+            scheduleEligible,
+          };
+        });
+      }),
+    )
+  ).flat();
   return {
     rows: projected.slice(0, npShopCarrierPickupAvailabilityLimits.adminListSize),
     total: projected.length,

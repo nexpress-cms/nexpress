@@ -1,0 +1,1 @@
+CREATE INDEX "np_plugin_storage_order_id_hash_idx" ON "np_plugin_storage" USING hash (("value"->>'orderId')) WHERE ("np_plugin_storage"."value"->>'orderId') is not null;

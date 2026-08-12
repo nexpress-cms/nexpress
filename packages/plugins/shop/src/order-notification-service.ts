@@ -132,6 +132,12 @@ export async function npStageShopOrderNotification(
 ): Promise<void> {
   const occurredAt = new Date(input.occurredAt);
   const purgeAt = new Date(input.purgeAt);
+  // Commercial rows retained past their nominal purge deadline may still need
+  // exact local reconciliation of an already-durable provider effect. The
+  // order-notification contract deliberately cannot create a new outbox event
+  // after that retention boundary, so the commercial transition proceeds
+  // without extending notification retention.
+  if (occurredAt >= purgeAt) return;
   const eventId = randomUUID();
   const memberOwned = input.ownerSegment.startsWith("member:");
   const email = normalizeEmail(input.email);

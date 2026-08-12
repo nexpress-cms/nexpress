@@ -40,7 +40,9 @@ payment refund or carrier booking. The bundled
 flow plus exact full cancellation when explicitly installed and configured. Order
 customer/shipping values live in a separate private sidecar and are physically
 deleted on cancellation or the 24-hour deadline; commercial snapshots are
-purged after 365 days.
+normally purged after 365 days. Non-terminal packing work is the narrow
+external-effect exception described below and does not extend private-data
+retention.
 
 Order transitions also stage a PII-free owner timeline and a durable
 transactional notification outbox. Member inbox delivery respects the shared
@@ -48,6 +50,39 @@ kind preference; direct email uses a maximum-24-hour private recipient sidecar
 that is deleted after success. Configure the normal NexPress email adapter to
 deliver email; the default noop adapter suppresses this channel without
 printing recipient PII.
+
+Projects may independently register paired Shop packing-work create/cancel
+methods with `createShop({ packing: { adapter } })`. The provider receives only
+exact PII-free outbound or replacement lines and prepared parcels behind stable
+operation UUIDs; Shop performs provider I/O outside transactions and durably
+reconciles confirmation. V1 permits exactly one durable work per target/order.
+Shop does not impose an adapter-call timeout, so every adapter network
+operation needs its own finite bound; timeout or transport ambiguity remains a
+stable retryable `pending` / `cancel-pending` intent.
+Cancellation must permanently dominate delayed or retried creation for the
+same work/cancellation UUIDs, and Shop retains that `cancelled` tombstone until
+order cleanup. Only a cancelled tombstone that was never attached to a shipment
+reopens manual parcel, carrier, refund, or replacement-inventory fallback.
+Before verified tracking, an attached cancellation may unwind only by
+cancelling its exact carrier shipment. After tracking, carrier cancellation and
+automatic inventory restock fail closed; only exact booked shipment completion
+may proceed, and its packing conflict remains diagnosed and retained. A WMS
+cancellation started before tracking may still retry, reconcile, or finish its
+local transition afterward under the same cancellation UUID. PII-free Admin
+diagnostics remain visible after adapter removal. Stored `provider-confirmed`
+and `cancel-confirmed` transitions finish locally without the adapter; any
+remaining provider create, cancel, or reconciliation I/O requires the original
+adapter. Any relationship-nonterminal work—including a `cancelled` shipment
+attachment whose exact carrier compensation is unfinished—keeps its commercial
+source order, including a member-linked owner segment, past 365 days until an exact local transition is
+finalized, provider reconciliation completes under its stable UUID, exact
+`active` work is consumed by the existing manual ship path, or site deletion
+removes the tenant.
+No generic override terminalizes `pending` or `manual-review`; private data
+still expires normally. This work intent does not prove physical packing or
+add picking/bin/worker,
+address/rate/label, material-inventory, or provider-specific callback/polling
+behavior. Without the adapter, existing manual Shop flows remain unchanged.
 
 `create-nexpress` writes both `.env.example` and `.env` for you. Use the
 setup wizard to confirm the DB connection, generate or accept the auth

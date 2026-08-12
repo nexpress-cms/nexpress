@@ -64,6 +64,7 @@ import {
 import { npRequireShopCarrierLabelAcquisitionActionInput } from "./label-acquisition-contract.js";
 import {
   npBookShopCarrierShipment,
+  npCancelShopPackingWork,
   npCountShopCarrierBookings,
   npCountShopOrders,
   npCountShopPaymentEvents,
@@ -74,6 +75,8 @@ import {
   npCountShopExchanges,
   npCountShopExchangeCarrierBookings,
   npCountShopExchangeParcels,
+  npCreateShopPackingWork,
+  npFinalizeConfirmedShopPackingWork,
   npListRecentShopFulfillments,
   npListRecentShopFulfillmentParcels,
   npListRecentShopCarrierBookings,
@@ -83,6 +86,7 @@ import {
   npListRecentShopReturns,
   npListRecentShopExchanges,
   npMaintainShopOrders,
+  npMaintainShopPackingWork,
   npProcessShopFulfillment,
   npReadShopFulfillmentPrivate,
   npRefundShopOrder,
@@ -100,6 +104,7 @@ import {
   npShipShopFulfillment,
   npSaveShopFulfillmentParcels,
   npSaveShopExchangeParcels,
+  npReconcileShopPackingWork,
 } from "./order-service.js";
 import {
   npCancelShopCarrierPickup,
@@ -139,6 +144,14 @@ import {
   type NpShopPackagingAdapter,
 } from "./packaging-contract.js";
 import { npProposeShopPackaging, npReadShopPackagingProposalHealth } from "./packaging-service.js";
+import {
+  npRequireShopExchangePackingWorkCreateInput,
+  npRequireShopFulfillmentPackingWorkCreateInput,
+  npRequireShopPackingWorkExistingActionInput,
+  npRequireShopPackingWorkProviderId,
+  type NpShopPackingWorkAdapter,
+} from "./packing-contract.js";
+import { npCountShopPackingWork, npListRecentShopPackingWork } from "./packing-work-ops.js";
 import { npRequireShopExchangeParcelsSaveInput } from "./exchange-parcel-contract.js";
 import { npRequireShopRefundActionInput } from "./refund-contract.js";
 import {
@@ -303,6 +316,10 @@ export interface NpShopOptions {
   /** Optional read-only server-side provider for exact parcel proposals. */
   packaging?: {
     adapter: NpShopPackagingAdapter;
+  };
+  /** Optional server-only durable warehouse packing-work provider. */
+  packing?: {
+    adapter: NpShopPackingWorkAdapter;
   };
   /** Optional server-only carrier booking, pickup, label, and tracking provider. */
   carrier?: {
@@ -504,6 +521,28 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     packagingAdapter = Object.freeze({
       id,
       proposeParcels: configuredPackagingAdapter.proposeParcels.bind(configuredPackagingAdapter),
+    });
+  }
+  const configuredPackingWorkAdapter = options.packing?.adapter ?? null;
+  let packingWorkAdapter: NpShopPackingWorkAdapter | null = null;
+  if (configuredPackingWorkAdapter) {
+    const id = npRequireShopPackingWorkProviderId(configuredPackingWorkAdapter.id);
+    if (
+      typeof configuredPackingWorkAdapter.createPackingWork !== "function" ||
+      typeof configuredPackingWorkAdapter.cancelPackingWork !== "function"
+    ) {
+      throw new Error(
+        "Shop packing-work adapter requires createPackingWork and cancelPackingWork functions.",
+      );
+    }
+    packingWorkAdapter = Object.freeze({
+      id,
+      createPackingWork: configuredPackingWorkAdapter.createPackingWork.bind(
+        configuredPackingWorkAdapter,
+      ),
+      cancelPackingWork: configuredPackingWorkAdapter.cancelPackingWork.bind(
+        configuredPackingWorkAdapter,
+      ),
     });
   }
   const configuredCarrierAdapter = options.carrier?.adapter ?? null;
@@ -850,6 +889,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     shippingAdapter,
     taxAdapter,
     packagingAdapter,
+    packingWorkAdapter,
     carrierAdapter,
     carrierExchangeAdapter,
     carrierExchangeParcelAdapter,
@@ -1575,7 +1615,7 @@ export function createShop(options: NpShopOptions = {}) {
       version: "0.4.2",
       name: "Shop",
       description:
-        "Product catalog, wishlists, stock and price alerts, verified reviews, promotions, carts, checkout, private drafts, shipping and tax quotes, durable orders, inventory, optional payments and refunds, fulfillment, packaging proposals, carrier booking, labels, pickup availability and scheduling, tracking, physical returns, same-item exchanges, public storefront routes, skins, and homepage blocks.",
+        "Product catalog, wishlists, stock and price alerts, verified reviews, promotions, carts, checkout, private drafts, shipping and tax quotes, durable orders, inventory, optional payments and refunds, fulfillment, packaging proposals, durable packing work, carrier booking, labels, pickup availability and scheduling, tracking, physical returns, same-item exchanges, public storefront routes, skins, and homepage blocks.",
       author: { name: "NexPress" },
       license: "MIT",
       nexpress: { minVersion: "0.4.2" },
@@ -1644,6 +1684,13 @@ export function createShop(options: NpShopOptions = {}) {
           ...(runtime.packagingAdapter
             ? ["widget:shop-packaging-proposal-health", "action:shop-packaging-proposal"]
             : []),
+          "dashboard:shop-packing-work",
+          "widget:shop-packing-work-health",
+          "table:shop-packing-work",
+          "action:shop-packing-work-finalize",
+          ...(runtime.packingWorkAdapter
+            ? ["action:shop-packing-work-create", "action:shop-packing-work-provider"]
+            : []),
           "dashboard:shop-carrier-bookings",
           "widget:shop-carrier-booking-health",
           "table:shop-carrier-bookings",
@@ -1711,7 +1758,9 @@ export function createShop(options: NpShopOptions = {}) {
           "action:shop-exchange-operations",
           "action:shop-exchange-destination-private-read",
           ...(runtime.carrierExchangeAdapter ? ["action:shop-exchange-carrier-booking"] : []),
-          ...(runtime.carrierExchangeParcelAdapter || runtime.packagingAdapter
+          ...(runtime.carrierExchangeParcelAdapter ||
+          runtime.packagingAdapter ||
+          runtime.packingWorkAdapter
             ? ["action:shop-exchange-parcel-snapshot"]
             : []),
           ...(paymentAttemptApiHandler
@@ -1746,7 +1795,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, independent read-only outbound/replacement packaging proposals, carrier booking, durable outbound and replacement shipping-label acquisition with transient retrieval, bounded outbound and replacement carrier pickup availability plus scheduling, verified or reconciled outbound and replacement tracking, physical return intake, exact same-item replacement exchanges with revision-bound owner address intake, audited short-lived private storage, and optional paired provider booking/cancellation, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, automatic address correction, label billing/void policy, recurring pickup, general carrier calendars, warehouse mutation and physical packing, dynamic carrier-rate policy, and provider-specific carrier protocols remain external.",
+          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, independent read-only outbound/replacement packaging proposals, paired durable outbound/replacement packing-work intents, carrier booking, durable outbound and replacement shipping-label acquisition with transient retrieval, bounded outbound and replacement carrier pickup availability plus scheduling, verified or reconciled outbound and replacement tracking, physical return intake, exact same-item replacement exchanges with revision-bound owner address intake, audited short-lived private storage, and optional paired provider booking/cancellation, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, automatic address correction, label billing/void policy, recurring pickup, general carrier calendars, physical packing completion, picking/bin/worker state, dynamic carrier-rate policy, provider-specific WMS callbacks/polling, and carrier protocols remain external.",
         category: "ecommerce",
         tags: [
           "shop",
@@ -2000,6 +2049,14 @@ export function createShop(options: NpShopOptions = {}) {
           priority: 36,
         },
         {
+          id: "shop-packing-work-total",
+          label: "Packing work",
+          kind: "metric",
+          actionId: "countPackingWork",
+          description: "PII-free durable outbound and replacement warehouse work intents.",
+          priority: 46,
+        },
+        {
           id: "shop-carrier-bookings-total",
           label: "Carrier bookings",
           kind: "metric",
@@ -2222,6 +2279,14 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Fulfillment parcel storage",
           kind: "status",
           actionId: "fulfillmentParcelHealth",
+        },
+        {
+          id: "shop-packing-work-health",
+          label: "Packing-work contract",
+          kind: "status",
+          actionId: "packingWorkHealth",
+          description:
+            "Checks exact source, parcel fingerprint, shipment attachment, provider, and unresolved durable state without exposing PII.",
         },
         ...(runtime.packagingAdapter
           ? [
@@ -2477,7 +2542,7 @@ export function createShop(options: NpShopOptions = {}) {
                   label: "Full refund",
                   actionId: "refundOrder",
                   rowFields: ["id", "revision"],
-                  visibleWhen: { field: "status", oneOf: ["paid"] },
+                  visibleWhen: { field: "refundEligible", oneOf: [true] },
                   fields: [
                     {
                       name: "reason",
@@ -2505,6 +2570,8 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "fulfillmentRevision", label: "Revision" },
             { name: "parcels", label: "Parcels" },
             { name: "parcelRevision", label: "Parcel revision" },
+            { name: "packingWorkStatus", label: "Packing work" },
+            { name: "packingWorkRevision", label: "Packing revision" },
             { name: "privateData", label: "Private data" },
             { name: "carrier", label: "Carrier" },
             { name: "trackingNumber", label: "Tracking" },
@@ -2529,7 +2596,7 @@ export function createShop(options: NpShopOptions = {}) {
               label: "Start processing",
               actionId: "processFulfillment",
               rowFields: ["id", "fulfillmentRevision"],
-              visibleWhen: { field: "status", oneOf: ["awaiting"] },
+              visibleWhen: { field: "processEligible", oneOf: [true] },
               fields: [
                 {
                   name: "operatorNote",
@@ -2545,7 +2612,7 @@ export function createShop(options: NpShopOptions = {}) {
               label: "Save parcel snapshot",
               actionId: "saveFulfillmentParcels",
               rowFields: ["id", "fulfillmentRevision", "parcelRevision"],
-              visibleWhen: { field: "status", oneOf: ["processing"] },
+              visibleWhen: { field: "parcelMutationEligible", oneOf: [true] },
               fields: [
                 {
                   name: "parcels",
@@ -2568,7 +2635,7 @@ export function createShop(options: NpShopOptions = {}) {
                     label: "Suggest parcels",
                     actionId: "proposeFulfillmentParcels",
                     rowFields: ["id", "fulfillmentRevision", "parcelRevision"],
-                    visibleWhen: { field: "status", oneOf: ["processing"] },
+                    visibleWhen: { field: "parcelMutationEligible", oneOf: [true] },
                     confirm:
                       "Request and save one exact PII-free parcel proposal? Current fulfillment and parcel revisions are checked again after provider I/O.",
                     description:
@@ -2576,33 +2643,51 @@ export function createShop(options: NpShopOptions = {}) {
                   },
                 ]
               : []),
-            ...(runtime.carrierAdapter
+            ...(runtime.packingWorkAdapter
               ? [
                   {
-                    id: "book-carrier",
-                    label: "Book carrier shipment",
-                    actionId: "bookCarrierShipment",
-                    rowFields: ["id", "fulfillmentRevision"],
-                    visibleWhen: { field: "status", oneOf: ["processing"] },
-                    fields: [
-                      {
-                        name: "operatorNote",
-                        label: "Operations note",
-                        type: "textarea" as const,
-                        placeholder: "Optional PII-free internal note",
-                      },
+                    id: "create-packing-work",
+                    label: "Create packing work",
+                    actionId: "createFulfillmentPackingWork",
+                    rowFields: [
+                      "id",
+                      "fulfillmentRevision",
+                      "parcelRevision",
+                      "packingWorkRevision",
                     ],
+                    visibleWhen: { field: "packingWorkAction", oneOf: ["create"] },
                     confirm:
-                      "Send the retained shipping destination to the configured carrier, then mark the fulfillment shipped and permanently delete private data?",
+                      "Create one durable provider packing-work intent for this exact PII-free line and parcel snapshot?",
+                    description:
+                      "The stable work UUID is persisted before provider I/O; active work freezes this parcel revision until cancellation or shipment.",
                   },
                 ]
-              : [
+              : []),
+            {
+              id: "book-carrier",
+              label: "Book or resume carrier shipment",
+              actionId: "bookCarrierShipment",
+              rowFields: ["id", "fulfillmentRevision"],
+              visibleWhen: { field: "carrierShipmentEligible", oneOf: [true] },
+              fields: [
+                {
+                  name: "operatorNote",
+                  label: "Operations note",
+                  type: "textarea" as const,
+                  placeholder: "Optional PII-free internal note",
+                },
+              ],
+              confirm:
+                "Book or locally finish this durable carrier shipment, then mark the fulfillment shipped and permanently delete private data?",
+            },
+            ...(!runtime.carrierAdapter
+              ? [
                   {
                     id: "ship",
                     label: "Mark shipped",
                     actionId: "shipFulfillment",
                     rowFields: ["id", "fulfillmentRevision"],
-                    visibleWhen: { field: "status", oneOf: ["awaiting", "processing"] },
+                    visibleWhen: { field: "manualShipmentEligible", oneOf: [true] },
                     fields: [
                       { name: "carrier", label: "Carrier", type: "text" as const, required: true },
                       {
@@ -2621,7 +2706,8 @@ export function createShop(options: NpShopOptions = {}) {
                     confirm:
                       "Mark this fulfillment shipped and permanently delete retained customer and shipping data?",
                   },
-                ]),
+                ]
+              : []),
           ],
           emptyMessage: "No paid order fulfillment records exist for this site.",
         },
@@ -2641,6 +2727,82 @@ export function createShop(options: NpShopOptions = {}) {
           ],
           rowsActionId: "recentFulfillmentParcels",
           emptyMessage: "No fulfillment parcel snapshots exist for this site.",
+        },
+        {
+          id: "shop-packing-work",
+          label: "Packing work (PII-free)",
+          columns: [
+            { name: "id", label: "Order" },
+            { name: "packingWorkId", label: "Work" },
+            { name: "packingWorkTarget", label: "Target" },
+            { name: "provider", label: "Provider" },
+            { name: "status", label: "Status" },
+            { name: "packingWorkRevision", label: "Revision" },
+            { name: "sourceRevision", label: "Source revision" },
+            { name: "parcelRevision", label: "Parcel revision" },
+            { name: "parcels", label: "Parcels" },
+            { name: "units", label: "Units" },
+            { name: "weightGrams", label: "Weight (g)" },
+            { name: "shipmentId", label: "Attached shipment" },
+            { name: "providerError", label: "Closed error" },
+            { name: "updatedAt", label: "Updated" },
+          ],
+          rowsActionId: "recentPackingWork",
+          rowActions: [
+            {
+              id: "finalize-packing-work",
+              label: "Finalize locally",
+              actionId: "finalizePackingWork",
+              rowFields: [
+                "id",
+                "packingWorkTarget",
+                "exchangeId",
+                "packingWorkId",
+                "packingWorkRevision",
+              ],
+              visibleWhen: {
+                field: "localFinalizeEligible",
+                oneOf: [true],
+              },
+              confirm:
+                "Recheck the exact local source and finish this provider-confirmed packing-work transition without repeating provider I/O?",
+            },
+            ...(runtime.packingWorkAdapter
+              ? [
+                  {
+                    id: "reconcile-packing-work",
+                    label: "Retry provider step",
+                    actionId: "reconcilePackingWork",
+                    rowFields: [
+                      "id",
+                      "packingWorkTarget",
+                      "exchangeId",
+                      "packingWorkId",
+                      "packingWorkRevision",
+                    ],
+                    visibleWhen: { field: "providerRetryEligible", oneOf: [true] },
+                    confirm:
+                      "Retry the exact stable provider operation? Provider idempotency and cancellation dominance are required.",
+                  },
+                  {
+                    id: "cancel-packing-work",
+                    label: "Cancel packing work",
+                    actionId: "cancelPackingWork",
+                    rowFields: [
+                      "id",
+                      "packingWorkTarget",
+                      "exchangeId",
+                      "packingWorkId",
+                      "packingWorkRevision",
+                    ],
+                    visibleWhen: { field: "providerCancelEligible", oneOf: [true] },
+                    confirm:
+                      "Persist one stable cancellation intent and ask the original provider to cancel this exact work?",
+                  },
+                ]
+              : []),
+          ],
+          emptyMessage: "No durable packing-work intent exists for this site.",
         },
         {
           id: "shop-carrier-bookings",
@@ -2663,7 +2825,7 @@ export function createShop(options: NpShopOptions = {}) {
               label: "Resume booking",
               actionId: "bookCarrierShipment",
               rowFields: ["id", "fulfillmentRevision"],
-              visibleWhen: { field: "status", oneOf: ["pending", "provider-confirmed"] },
+              visibleWhen: { field: "carrierResumeEligible", oneOf: [true] },
               fields: [
                 {
                   name: "operatorNote",
@@ -2700,7 +2862,7 @@ export function createShop(options: NpShopOptions = {}) {
                       { name: "shipmentId", rowField: "shipmentId" },
                     ],
                     visibleWhen: runtime.carrierLabelAcquisitionAdapter
-                      ? { field: "labelAction", oneOf: ["regenerate"] }
+                      ? { field: "labelDownloadEligible", oneOf: [true] }
                       : { field: "status", oneOf: ["completed"] },
                     description:
                       "Retrieve the current label from the carrier without storing its bytes in NexPress.",
@@ -2806,7 +2968,7 @@ export function createShop(options: NpShopOptions = {}) {
                   label: "Resume acquisition",
                   actionId: "acquireCarrierShippingLabel",
                   rowFields: ["id", "shipmentId", "target", "exchangeId", "expectedRevision"],
-                  visibleWhen: { field: "status", oneOf: ["pending", "provider-confirmed"] },
+                  visibleWhen: { field: "resumeEligible", oneOf: [true] },
                   confirm:
                     "Resume this stable label acquisition? Provider-confirmed rows perform only local completion.",
                 },
@@ -2846,6 +3008,7 @@ export function createShop(options: NpShopOptions = {}) {
                     "availabilityRevision",
                     "windowId",
                   ],
+                  visibleWhen: { field: "scheduleEligible", oneOf: [true] },
                   confirm:
                     "Schedule pickup using this exact short-lived provider window and parcel snapshot?",
                 },
@@ -2886,8 +3049,8 @@ export function createShop(options: NpShopOptions = {}) {
                     "pickupRevision",
                   ],
                   visibleWhen: {
-                    field: "status",
-                    oneOf: ["pending", "provider-confirmed"],
+                    field: "resumeEligible",
+                    oneOf: [true],
                   },
                   confirm:
                     "Resume this pickup? Provider-confirmed rows perform only local completion.",
@@ -3400,6 +3563,8 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "provider", label: "Provider" },
             { name: "parcels", label: "Replacement parcels" },
             { name: "parcelRevision", label: "Parcel revision" },
+            { name: "packingWorkStatus", label: "Packing work" },
+            { name: "packingWorkRevision", label: "Packing revision" },
             { name: "units", label: "Units" },
             { name: "inventory", label: "Inventory" },
             { name: "carrier", label: "Carrier" },
@@ -3433,7 +3598,7 @@ export function createShop(options: NpShopOptions = {}) {
               label: "Start replacement",
               actionId: "processExchange",
               rowFields: ["id", "exchangeId", "exchangeRevision", "orderRevision"],
-              visibleWhen: { field: "destination", oneOf: ["accessed"] },
+              visibleWhen: { field: "processEligible", oneOf: [true] },
               fields: [
                 {
                   name: "operatorNote",
@@ -3444,14 +3609,16 @@ export function createShop(options: NpShopOptions = {}) {
               ],
               confirm: "Mark this exact replacement as processing?",
             },
-            ...(runtime.carrierExchangeParcelAdapter || runtime.packagingAdapter
+            ...(runtime.carrierExchangeParcelAdapter ||
+            runtime.packagingAdapter ||
+            runtime.packingWorkAdapter
               ? [
                   {
                     id: "save-exchange-parcels",
                     label: "Save replacement parcels",
                     actionId: "saveExchangeParcels",
                     rowFields: ["id", "exchangeId", "exchangeRevision", "parcelRevision"],
-                    visibleWhen: { field: "destination", oneOf: ["accessed"] },
+                    visibleWhen: { field: "parcelMutationEligible", oneOf: [true] },
                     fields: [
                       {
                         name: "parcels",
@@ -3474,11 +3641,32 @@ export function createShop(options: NpShopOptions = {}) {
                     label: "Suggest replacement parcels",
                     actionId: "proposeExchangeParcels",
                     rowFields: ["id", "exchangeId", "exchangeRevision", "parcelRevision"],
-                    visibleWhen: { field: "destination", oneOf: ["accessed"] },
+                    visibleWhen: { field: "parcelMutationEligible", oneOf: [true] },
                     confirm:
                       "Request and save one exact PII-free replacement parcel proposal? Current exchange and parcel revisions are checked again after provider I/O.",
                     description:
                       "The read-only provider receives exact replacement product identifiers and quantities only. Its saved JSON remains manually editable until booking.",
+                  },
+                ]
+              : []),
+            ...(runtime.packingWorkAdapter
+              ? [
+                  {
+                    id: "create-exchange-packing-work",
+                    label: "Create replacement packing work",
+                    actionId: "createExchangePackingWork",
+                    rowFields: [
+                      "id",
+                      "exchangeId",
+                      "exchangeRevision",
+                      "parcelRevision",
+                      "packingWorkRevision",
+                    ],
+                    visibleWhen: { field: "packingWorkAction", oneOf: ["create"] },
+                    confirm:
+                      "Create one durable provider packing-work intent for this exact PII-free replacement parcel snapshot?",
+                    description:
+                      "The stable work UUID is persisted before provider I/O and remains independent from the private replacement destination.",
                   },
                 ]
               : []),
@@ -3495,7 +3683,7 @@ export function createShop(options: NpShopOptions = {}) {
                       "exchangeRevision",
                       "destinationRevision",
                     ],
-                    visibleWhen: { field: "destination", oneOf: ["accessed"] },
+                    visibleWhen: { field: "carrierBookEligible", oneOf: [true] },
                     fields: [
                       {
                         name: "operatorNote",
@@ -3519,10 +3707,7 @@ export function createShop(options: NpShopOptions = {}) {
                       "bookingId",
                       "bookingRevision",
                     ],
-                    visibleWhen: {
-                      field: "carrierBooking",
-                      oneOf: ["pending", "provider-confirmed"],
-                    },
+                    visibleWhen: { field: "carrierResumeEligible", oneOf: [true] },
                     fields: [
                       {
                         name: "operatorNote",
@@ -3545,7 +3730,7 @@ export function createShop(options: NpShopOptions = {}) {
                       "bookingId",
                       "bookingRevision",
                     ],
-                    visibleWhen: { field: "carrierBooking", oneOf: ["completed"] },
+                    visibleWhen: { field: "carrierShipEligible", oneOf: [true] },
                     fields: [
                       {
                         name: "operatorNote",
@@ -3615,10 +3800,7 @@ export function createShop(options: NpShopOptions = {}) {
                       "bookingId",
                       "bookingRevision",
                     ],
-                    visibleWhen: {
-                      field: "carrierBooking",
-                      oneOf: ["completed", "cancel-pending", "cancel-confirmed"],
-                    },
+                    visibleWhen: { field: "carrierCancelEligible", oneOf: [true] },
                     fields: [
                       {
                         name: "operatorNote",
@@ -3647,7 +3829,80 @@ export function createShop(options: NpShopOptions = {}) {
                       ]
                     : []),
                 ]
-              : []),
+              : [
+                  {
+                    id: "resume-exchange-carrier",
+                    label: "Finalize carrier booking",
+                    actionId: "resumeExchangeCarrier",
+                    rowFields: [
+                      "id",
+                      "exchangeId",
+                      "orderRevision",
+                      "exchangeRevision",
+                      "bookingId",
+                      "bookingRevision",
+                    ],
+                    visibleWhen: { field: "carrierResumeEligible", oneOf: [true] },
+                    fields: [
+                      {
+                        name: "operatorNote",
+                        label: "Operations note",
+                        type: "textarea" as const,
+                        placeholder: "Optional PII-free reconciliation note",
+                      },
+                    ],
+                    confirm:
+                      "Finish this provider-confirmed replacement booking using only durable local state?",
+                  },
+                  {
+                    id: "ship-booked-exchange",
+                    label: "Mark booked replacement shipped",
+                    actionId: "shipBookedExchange",
+                    rowFields: [
+                      "id",
+                      "exchangeId",
+                      "orderRevision",
+                      "exchangeRevision",
+                      "bookingId",
+                      "bookingRevision",
+                    ],
+                    visibleWhen: { field: "carrierShipEligible", oneOf: [true] },
+                    fields: [
+                      {
+                        name: "operatorNote",
+                        label: "Shipment note",
+                        type: "textarea" as const,
+                        placeholder: "Optional PII-free handoff note",
+                      },
+                    ],
+                    confirm:
+                      "Mark this replacement shipped with the exact durable provider carrier and tracking number?",
+                  },
+                  {
+                    id: "cancel-booked-exchange",
+                    label: "Finalize booked replacement cancellation",
+                    actionId: "cancelExchangeCarrier",
+                    rowFields: [
+                      "id",
+                      "exchangeId",
+                      "orderRevision",
+                      "exchangeRevision",
+                      "bookingId",
+                      "bookingRevision",
+                    ],
+                    visibleWhen: { field: "carrierCancelEligible", oneOf: [true] },
+                    fields: [
+                      {
+                        name: "operatorNote",
+                        label: "Cancellation note",
+                        type: "textarea" as const,
+                        placeholder: "Optional PII-free cancellation note",
+                      },
+                    ],
+                    confirm:
+                      "Finish this provider-confirmed cancellation, then restore exact tracked inventory?",
+                  },
+                ]),
             ...(runtime.carrierLabelAcquisitionAdapter
               ? [
                   {
@@ -3689,7 +3944,7 @@ export function createShop(options: NpShopOptions = {}) {
                       { name: "shipmentId", rowField: "bookingId" },
                     ],
                     visibleWhen: runtime.carrierLabelAcquisitionAdapter
-                      ? { field: "labelAction", oneOf: ["regenerate"] }
+                      ? { field: "labelDownloadEligible", oneOf: [true] }
                       : { field: "carrierBooking", oneOf: ["completed", "shipped"] },
                     description:
                       "Retrieve the current replacement label from the carrier without storing its bytes in NexPress.",
@@ -3701,7 +3956,7 @@ export function createShop(options: NpShopOptions = {}) {
               label: "Ship replacement",
               actionId: "shipExchange",
               rowFields: ["id", "exchangeId", "exchangeRevision", "orderRevision"],
-              visibleWhen: { field: "status", oneOf: ["processing"] },
+              visibleWhen: { field: "manualShipEligible", oneOf: [true] },
               fields: [
                 { name: "carrier", label: "Carrier", type: "text", required: true },
                 {
@@ -3725,7 +3980,7 @@ export function createShop(options: NpShopOptions = {}) {
               label: "Cancel replacement",
               actionId: "cancelExchange",
               rowFields: ["id", "exchangeId", "exchangeRevision", "orderRevision"],
-              visibleWhen: { field: "status", oneOf: ["awaiting", "processing"] },
+              visibleWhen: { field: "cancelEligible", oneOf: [true] },
               fields: [
                 {
                   name: "operatorNote",
@@ -4883,14 +5138,19 @@ export function createShop(options: NpShopOptions = {}) {
         kind: "table",
         handler: async () => {
           try {
-            const result = await npListRecentShopExchanges();
+            const result = await npListRecentShopExchanges(
+              runtime.carrierExchangeAdapter?.id,
+              Boolean(runtime.carrierExchangeParcelAdapter),
+            );
             return npAdminTable(result.rows, result.total);
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
           }
         },
       },
-      ...(runtime.carrierExchangeParcelAdapter || runtime.packagingAdapter
+      ...(runtime.carrierExchangeParcelAdapter ||
+      runtime.packagingAdapter ||
+      runtime.packingWorkAdapter
         ? {
             saveExchangeParcels: {
               kind: "action" as const,
@@ -4940,6 +5200,37 @@ export function createShop(options: NpShopOptions = {}) {
                   return {
                     ok: true as const,
                     data: `Saved proposed replacement parcel revision ${result.revision.toString()} with ${result.parcels.length.toString()} package(s).`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+          }
+        : {}),
+      ...(runtime.packingWorkAdapter
+        ? {
+            createExchangePackingWork: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Replacement packing-work creation requires a direct staff action.",
+                    };
+                  }
+                  const result = await npCreateShopPackingWork(
+                    runtime,
+                    npRequireShopExchangePackingWorkCreateInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Replacement packing work ${result.work.workId} is ${result.work.status} at revision ${result.work.revision.toString()}.`,
                   };
                 } catch (error) {
                   return {
@@ -5391,6 +5682,91 @@ export function createShop(options: NpShopOptions = {}) {
             },
           }
         : {}),
+      ...(!runtime.carrierExchangeAdapter
+        ? {
+            resumeExchangeCarrier: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Replacement carrier reconciliation requires a direct staff action.",
+                    };
+                  }
+                  const result = await npBookShopExchangeCarrierShipment(
+                    runtime,
+                    npRequireShopExchangeCarrierExistingActionInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Replacement carrier booking ${result.booking.status}; shipment ${result.booking.id}.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+            shipBookedExchange: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Replacement shipment handoff requires a direct staff action.",
+                    };
+                  }
+                  const result = await npShipBookedShopExchange(
+                    runtime,
+                    npRequireShopExchangeCarrierExistingActionInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Exchange shipped with ${result.carrier ?? "provider carrier"}.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+            cancelExchangeCarrier: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Replacement carrier cancellation requires a direct staff action.",
+                    };
+                  }
+                  const result = await npCancelShopExchangeCarrierShipment(
+                    runtime,
+                    npRequireShopExchangeCarrierExistingActionInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Replacement carrier booking ${result.booking.status}; exchange ${result.exchange.status}.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+          }
+        : {}),
       countFulfillments: {
         kind: "metric",
         handler: async () => {
@@ -5445,7 +5821,10 @@ export function createShop(options: NpShopOptions = {}) {
         kind: "table",
         handler: async () => {
           try {
-            const result = await npListRecentShopFulfillments();
+            const result = await npListRecentShopFulfillments(
+              runtime.carrierAdapter?.id,
+              Boolean(runtime.carrierParcelAdapter),
+            );
             return npAdminTable(result.rows, result.total);
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
@@ -5503,6 +5882,105 @@ export function createShop(options: NpShopOptions = {}) {
           try {
             const result = await npListRecentShopFulfillmentParcels();
             return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      countPackingWork: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npCountShopPackingWork(runtime.packingWorkAdapter?.id);
+            return {
+              ok: true,
+              data: {
+                value: counts.total,
+                delta: `${counts.outbound.toString()} outbound, ${counts.replacement.toString()} replacement; ${counts.active.toString()} active, ${counts.consumed.toString()} consumed`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      packingWorkHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopPackingWork(runtime.packingWorkAdapter?.id);
+            const invalid =
+              counts.invalidSample +
+              counts.expiredSample +
+              counts.providerMismatchSample +
+              counts.orphanSourceSample +
+              counts.sourceMismatchSample +
+              counts.exchangeIdentityMismatchSample +
+              counts.parcelMismatchSample +
+              counts.fingerprintMismatchSample +
+              counts.attachedShipmentMismatchSample +
+              counts.trackingMismatchSample;
+            if (invalid > 0) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed, ${counts.expiredSample.toString()} expired, ${counts.providerMismatchSample.toString()} provider-mismatched, ${counts.orphanSourceSample.toString()} orphan, ${counts.sourceMismatchSample.toString()} source-mismatched, ${counts.exchangeIdentityMismatchSample.toString()} exchange-mismatched, ${counts.parcelMismatchSample.toString()} parcel-mismatched, ${counts.fingerprintMismatchSample.toString()} fingerprint-mismatched, ${counts.attachedShipmentMismatchSample.toString()} shipment-mismatched, and ${counts.trackingMismatchSample.toString()} tracking-mismatched row(s) in a ${counts.sampleSize.toString()}-row bounded sample.`,
+              );
+            }
+            if (
+              counts.unresolved > 0 ||
+              counts.active > 0 ||
+              counts.manualReview > 0 ||
+              counts.trackingConflictSample > 0 ||
+              counts.unresolvedAttachedCancellationSample > 0 ||
+              counts.retainedPastPurgeSample > 0 ||
+              counts.sampleBoundReached
+            ) {
+              return npAdminStatus(
+                "warn",
+                `${counts.pending.toString()} pending, ${counts.providerConfirmed.toString()} provider-confirmed, ${counts.active.toString()} active, ${counts.cancelling.toString()} cancelling, ${counts.manualReview.toString()} manual-review, ${counts.retainedPastPurgeSample.toString()} retained past commercial purge, ${counts.unresolvedAttachedCancellationSample.toString()} unresolved attached cancellation, and ${counts.trackingConflictSample.toString()} verified-tracking conflict packing work row(s)${runtime.packingWorkAdapter ? ` for provider "${runtime.packingWorkAdapter.id}"` : "; no provider is configured"}${counts.sampleBoundReached ? `; only the newest ${counts.sampleSize.toString()} of ${counts.total.toString()} rows were inspected for structural and relationship health` : ""}.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.cancelled.toString()} cancelled and ${counts.consumed.toString()} consumed packing-work intent(s); provider "${runtime.packingWorkAdapter?.id ?? "disabled"}".`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Packing-work health check failed.",
+            );
+          }
+        },
+      },
+      recentPackingWork: {
+        kind: "table",
+        handler: async () => {
+          try {
+            const result = await npListRecentShopPackingWork(runtime.packingWorkAdapter?.id);
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      finalizePackingWork: {
+        kind: "action",
+        handler: async (data, ctx) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return {
+                ok: false,
+                error: "Packing-work reconciliation requires a direct staff action.",
+              };
+            }
+            const result = await npFinalizeConfirmedShopPackingWork(
+              npRequireShopPackingWorkExistingActionInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return {
+              ok: true,
+              data: `Packing work ${result.work.workId} is ${result.work.status} at revision ${result.work.revision.toString()}.`,
+            };
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
           }
@@ -5606,6 +6084,91 @@ export function createShop(options: NpShopOptions = {}) {
             },
           }
         : {}),
+      ...(runtime.packingWorkAdapter
+        ? {
+            createFulfillmentPackingWork: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Packing-work creation requires a direct staff action.",
+                    };
+                  }
+                  const result = await npCreateShopPackingWork(
+                    runtime,
+                    npRequireShopFulfillmentPackingWorkCreateInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Packing work ${result.work.workId} is ${result.work.status} at revision ${result.work.revision.toString()}.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+            reconcilePackingWork: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Packing-work reconciliation requires a direct staff action.",
+                    };
+                  }
+                  const result = await npReconcileShopPackingWork(
+                    runtime,
+                    npRequireShopPackingWorkExistingActionInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Packing work ${result.work.workId} is ${result.work.status} at revision ${result.work.revision.toString()}.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+            cancelPackingWork: {
+              kind: "action" as const,
+              handler: async (data: unknown, ctx: NpPluginContext) => {
+                try {
+                  if (ctx.actionInvocation?.kind !== "staff") {
+                    return {
+                      ok: false as const,
+                      error: "Packing-work cancellation requires a direct staff action.",
+                    };
+                  }
+                  const result = await npCancelShopPackingWork(
+                    runtime,
+                    npRequireShopPackingWorkExistingActionInput(data),
+                    ctx.actionInvocation.userId,
+                  );
+                  return {
+                    ok: true as const,
+                    data: `Packing work ${result.work.workId} is ${result.work.status} at revision ${result.work.revision.toString()}.`,
+                  };
+                } catch (error) {
+                  return {
+                    ok: false as const,
+                    error: error instanceof Error ? error.message : "Unknown error",
+                  };
+                }
+              },
+            },
+          }
+        : {}),
       processFulfillment: {
         kind: "action",
         handler: async (data, ctx) => {
@@ -5690,7 +6253,10 @@ export function createShop(options: NpShopOptions = {}) {
         kind: "table" as const,
         handler: async () => {
           try {
-            const result = await npListRecentShopCarrierBookings();
+            const result = await npListRecentShopCarrierBookings(
+              runtime.carrierAdapter?.id,
+              Boolean(runtime.carrierParcelAdapter),
+            );
             return npAdminTable(result.rows, result.total);
           } catch (error) {
             return {
@@ -5771,7 +6337,9 @@ export function createShop(options: NpShopOptions = {}) {
         kind: "table" as const,
         handler: async () => {
           try {
-            const result = await npListRecentShopCarrierLabelAcquisitions();
+            const result = await npListRecentShopCarrierLabelAcquisitions(
+              runtime.carrierLabelAcquisitionAdapter?.id,
+            );
             return npAdminTable(result.rows, result.total);
           } catch (error) {
             return {
@@ -5891,7 +6459,10 @@ export function createShop(options: NpShopOptions = {}) {
         kind: "table" as const,
         handler: async () => {
           try {
-            const result = await npListRecentShopCarrierPickupAvailability();
+            const result = await npListRecentShopCarrierPickupAvailability(
+              runtime,
+              runtime.carrierPickupAvailabilityAdapter?.id,
+            );
             return npAdminTable(result.rows, result.total);
           } catch (error) {
             return {
@@ -6025,7 +6596,7 @@ export function createShop(options: NpShopOptions = {}) {
         kind: "table" as const,
         handler: async () => {
           try {
-            const result = await npListRecentShopCarrierPickups();
+            const result = await npListRecentShopCarrierPickups(runtime.carrierPickupAdapter?.id);
             return npAdminTable(result.rows, result.total);
           } catch (error) {
             return {
@@ -7215,6 +7786,15 @@ export function createShop(options: NpShopOptions = {}) {
           await npMaintainShopOrders();
         },
       },
+      {
+        id: "reconcile-packing-work",
+        cron: "2-59/5 * * * *",
+        description:
+          "Reconcile one bounded oldest-first batch of durable PII-free packing-work confirmations and stable provider retries.",
+        handler: async () => {
+          await npMaintainShopPackingWork(runtime);
+        },
+      },
     ],
     pageRoutes,
   });
@@ -8339,5 +8919,57 @@ export type {
   NpShopPackagingProposalResultFor,
   NpShopPackagingProposalTarget,
 } from "./packaging-contract.js";
+export {
+  NP_SHOP_PACKING_WORK_CANCEL_REQUEST_CONTRACT,
+  NP_SHOP_PACKING_WORK_CANCEL_RESULT_CONTRACT,
+  NP_SHOP_PACKING_WORK_CREATE_REQUEST_CONTRACT,
+  NP_SHOP_PACKING_WORK_CREATE_RESULT_CONTRACT,
+  NP_SHOP_PACKING_WORK_STORAGE_CONTRACT,
+  NpShopPackingWorkConflictError,
+  NpShopPackingWorkContractError,
+  NpShopPackingWorkProviderError,
+  NpShopPackingWorkUnavailableError,
+  npAnalyzeShopPackingWorkCancelRequest,
+  npAnalyzeShopPackingWorkCancelResult,
+  npAnalyzeShopPackingWorkCancelResultForRequest,
+  npAnalyzeShopPackingWorkCreateRequest,
+  npAnalyzeShopPackingWorkCreateResult,
+  npAnalyzeShopPackingWorkCreateResultForRequest,
+  npAnalyzeShopPackingWorkFingerprintSource,
+  npAnalyzeStoredShopPackingWork,
+  npCreateShopPackingWorkCancelResult,
+  npCreateShopPackingWorkCreateResult,
+  npRequireShopPackingWorkCancelRequest,
+  npRequireShopPackingWorkCancelResult,
+  npRequireShopPackingWorkCreateRequest,
+  npRequireShopPackingWorkCreateResult,
+  npRequireShopPackingWorkParcelFingerprint,
+  npRequireShopPackingWorkProviderId,
+  npRequireStoredShopPackingWork,
+  npSerializeShopPackingWorkFingerprintSource,
+  npShopPackingWorkLimits,
+  npShopPackingWorkStatuses,
+  npShopPackingWorkStorageKey,
+  npShopPackingWorkTargets,
+} from "./packing-contract.js";
+export type {
+  NpShopPackingWorkAdapter,
+  NpShopPackingWorkCancelRequest,
+  NpShopPackingWorkCancelResult,
+  NpShopPackingWorkCancelResultFor,
+  NpShopPackingWorkCreateActionInput,
+  NpShopPackingWorkCreateRequest,
+  NpShopPackingWorkCreateResult,
+  NpShopPackingWorkCreateResultFor,
+  NpShopPackingWorkExistingActionInput,
+  NpShopPackingWorkFingerprintSource,
+  NpShopPackingWorkLine,
+  NpShopPackingWorkParcel,
+  NpShopPackingWorkParcelItem,
+  NpShopPackingWorkStatus,
+  NpShopPackingWorkTarget,
+  NpShopPackingWorkTargetIdentity,
+  NpShopStoredPackingWork,
+} from "./packing-contract.js";
 
 export default shopPlugin;

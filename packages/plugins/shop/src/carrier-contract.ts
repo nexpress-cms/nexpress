@@ -958,11 +958,11 @@ export function npAnalyzeStoredShopCarrierBooking(value: unknown): string[] {
     issues.push("carrier booking.bookedAt cannot follow updatedAt.");
   }
   if (
-    isCanonicalIso(value.updatedAt) &&
+    isCanonicalIso(value.requestedAt) &&
     isCanonicalIso(value.purgeAt) &&
-    value.updatedAt > value.purgeAt
+    value.requestedAt >= value.purgeAt
   ) {
-    issues.push("carrier booking.updatedAt cannot follow purgeAt.");
+    issues.push("carrier booking.purgeAt must follow requestedAt.");
   }
   return issues;
 }

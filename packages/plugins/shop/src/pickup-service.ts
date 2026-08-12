@@ -19,7 +19,17 @@ import {
   type NpShopStoredExchangeParcels,
 } from "./exchange-parcel-contract.js";
 import { npRequireStoredShopExchange, type NpShopStoredExchange } from "./exchange-contract.js";
+import {
+  npRequireStoredShopFulfillment,
+  type NpShopStoredFulfillment,
+} from "./fulfillment-contract.js";
+import { npRequireStoredShopOrder, type NpShopStoredOrder } from "./order-contract.js";
 import { NP_SHOP_PLUGIN_ID, type NpShopTransaction } from "./order-draft-service.js";
+import {
+  npReadStoredShopPackingWork,
+  npShopPackingWorkAllowsShipmentEffectForSource,
+} from "./packing-work-storage.js";
+import type { NpShopPackingWorkLine } from "./packing-contract.js";
 import {
   npRequireStoredShopFulfillmentParcels,
   type NpShopStoredFulfillmentParcels,
@@ -69,6 +79,7 @@ export interface NpShopAdminCarrierPickupRow {
   packages: number;
   weightGrams: number;
   providerError: string;
+  resumeEligible: boolean;
   updatedAt: string;
 }
 
@@ -90,6 +101,14 @@ function carrierBookingStorageKey(orderId: string): string {
 
 function fulfillmentParcelsStorageKey(orderId: string): string {
   return `fulfillment-parcels:${orderId}`;
+}
+
+function fulfillmentStorageKey(orderId: string): string {
+  return `fulfillment:${orderId}`;
+}
+
+function orderStorageKey(ownerSegment: string, orderId: string): string {
+  return `order:${ownerSegment}:${orderId}`;
 }
 
 function exchangeBookingStorageKey(orderId: string): string {
@@ -138,6 +157,42 @@ function requireParcelsAtStorage(
     ]);
   }
   return parcels;
+}
+
+function requireFulfillmentAtStorage(
+  value: unknown,
+  expiresAt: Date | null,
+  key: string,
+): NpShopStoredFulfillment {
+  const fulfillment = npRequireStoredShopFulfillment(value);
+  if (
+    key !== fulfillmentStorageKey(fulfillment.orderId) ||
+    expiresAt === null ||
+    expiresAt.toISOString() !== fulfillment.purgeAt
+  ) {
+    throw new NpShopCarrierPickupContractError("Invalid pickup fulfillment metadata", [
+      "fulfillment key and expiry must match their canonical values.",
+    ]);
+  }
+  return fulfillment;
+}
+
+function requireOrderAtStorage(
+  value: unknown,
+  expiresAt: Date | null,
+  key: string,
+): NpShopStoredOrder {
+  const order = npRequireStoredShopOrder(value);
+  if (
+    key !== orderStorageKey(order.ownerSegment, order.id) ||
+    expiresAt === null ||
+    expiresAt.toISOString() !== order.purgeAt
+  ) {
+    throw new NpShopCarrierPickupContractError("Invalid pickup order metadata", [
+      "order key and expiry must match their canonical values.",
+    ]);
+  }
+  return order;
 }
 
 function requireExchangeBookingAtStorage(
@@ -258,6 +313,27 @@ async function readParcels(
   return row ? requireParcelsAtStorage(row.value, row.expiresAt, row.key) : null;
 }
 
+async function readFulfillment(
+  db: ReturnType<typeof getDb> | NpShopTransaction,
+  siteId: string,
+  orderId: string,
+  forUpdate = false,
+): Promise<NpShopStoredFulfillment | null> {
+  const row = await readStorageRow(db, siteId, fulfillmentStorageKey(orderId), forUpdate);
+  return row ? requireFulfillmentAtStorage(row.value, row.expiresAt, row.key) : null;
+}
+
+async function readOrder(
+  db: ReturnType<typeof getDb> | NpShopTransaction,
+  siteId: string,
+  ownerSegment: string,
+  orderId: string,
+  forUpdate = false,
+): Promise<NpShopStoredOrder | null> {
+  const row = await readStorageRow(db, siteId, orderStorageKey(ownerSegment, orderId), forUpdate);
+  return row ? requireOrderAtStorage(row.value, row.expiresAt, row.key) : null;
+}
+
 async function readExchangeBooking(
   db: ReturnType<typeof getDb> | NpShopTransaction,
   siteId: string,
@@ -301,6 +377,27 @@ async function readPickup(
     forUpdate,
   );
   return row ? requirePickupAtStorage(row.value, row.expiresAt, row.key) : null;
+}
+
+async function lockPickupOrderBeforeRow(
+  tx: NpShopTransaction,
+  siteId: string,
+  orderId: string,
+  target: NpShopCarrierPickupTarget,
+): Promise<void> {
+  const ownerSegment =
+    target === "replacement"
+      ? (await readExchange(tx, siteId, orderId, false))?.ownerSegment
+      : (await readFulfillment(tx, siteId, orderId, false))?.ownerSegment;
+  if (!ownerSegment) {
+    throw new NpShopCarrierPickupConflictError(
+      "pickup_booking_not_found",
+      "The pickup order source no longer exists.",
+    );
+  }
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-order:${siteId}:${ownerSegment}:${orderId}`}, 0))`,
+  );
 }
 
 async function readTracking(
@@ -405,16 +502,53 @@ export interface NpShopCarrierPickupAvailabilityContext {
   locationReference: string;
 }
 
-function completedReplacementBookingMatchesExchange(
+function replacementBookingMatchesCurrentSource(
   booking: NpShopStoredExchangeCarrierBooking,
+  order: NpShopStoredOrder,
   exchange: NpShopStoredExchange,
 ): boolean {
+  if (
+    booking.orderId !== order.id ||
+    booking.exchangeId !== exchange.id ||
+    booking.purgeAt !== order.purgeAt ||
+    exchange.orderId !== order.id ||
+    exchange.ownerSegment !== order.ownerSegment ||
+    exchange.purgeAt !== order.purgeAt ||
+    exchange.orderRevision !== order.revision ||
+    exchange.destinationRevision !== booking.destinationRevision ||
+    order.status !== "paid" ||
+    booking.completedOrderRevision === null ||
+    booking.completedExchangeRevision === null ||
+    booking.completedOrderRevision !== booking.sourceOrderRevision + 1 ||
+    booking.completedExchangeRevision !== booking.sourceExchangeRevision + 1
+  ) {
+    return false;
+  }
+  if (booking.status === "cancelled") {
+    return (
+      order.revision === booking.completedOrderRevision + 1 &&
+      exchange.status === "cancelled" &&
+      exchange.revision === booking.completedExchangeRevision + 1 &&
+      exchange.carrier === null &&
+      exchange.trackingNumber === null
+    );
+  }
+  if (booking.status === "cancel-pending" || booking.status === "cancel-confirmed") {
+    return (
+      order.revision === booking.completedOrderRevision &&
+      exchange.status === "processing" &&
+      exchange.revision === booking.completedExchangeRevision &&
+      exchange.carrier === booking.carrier &&
+      exchange.trackingNumber === booking.trackingNumber
+    );
+  }
   return (
-    booking.completedExchangeRevision !== null &&
-    exchange.id === booking.exchangeId &&
-    ((exchange.status === "processing" &&
+    booking.status === "completed" &&
+    ((order.revision === booking.completedOrderRevision &&
+      exchange.status === "processing" &&
       exchange.revision === booking.completedExchangeRevision) ||
-      (exchange.status === "shipped" &&
+      (order.revision === booking.completedOrderRevision + 1 &&
+        exchange.status === "shipped" &&
         exchange.revision === booking.completedExchangeRevision + 1)) &&
     exchange.carrier === booking.carrier &&
     exchange.trackingNumber === booking.trackingNumber
@@ -423,6 +557,7 @@ function completedReplacementBookingMatchesExchange(
 
 function replacementPickupLifecycleMatches(
   booking: NpShopStoredExchangeCarrierBooking,
+  order: NpShopStoredOrder,
   exchange: NpShopStoredExchange,
   pickup: NpShopStoredCarrierPickup,
 ): boolean {
@@ -433,25 +568,8 @@ function replacementPickupLifecycleMatches(
   ) {
     return false;
   }
-  if (booking.status === "completed") {
-    return completedReplacementBookingMatchesExchange(booking, exchange);
-  }
-  if (pickup.status !== "cancelled") return false;
-  if (booking.status === "cancel-pending" || booking.status === "cancel-confirmed") {
-    return (
-      exchange.id === booking.exchangeId &&
-      exchange.status === "processing" &&
-      exchange.revision === booking.completedExchangeRevision &&
-      exchange.carrier === booking.carrier &&
-      exchange.trackingNumber === booking.trackingNumber
-    );
-  }
-  return (
-    booking.status === "cancelled" &&
-    exchange.id === booking.exchangeId &&
-    exchange.status === "cancelled" &&
-    exchange.revision === booking.completedExchangeRevision + 1
-  );
+  if (booking.status !== "completed" && pickup.status !== "cancelled") return false;
+  return replacementBookingMatchesCurrentSource(booking, order, exchange);
 }
 
 function samePackages(
@@ -485,7 +603,11 @@ function nextTimestamp(...values: Array<string | null>): string {
   ).toISOString();
 }
 
-function requireLiveWindow(readyAt: string, closeAt: string, now: Date): void {
+export function npRequireLiveShopCarrierPickupWindow(
+  readyAt: string,
+  closeAt: string,
+  now: Date,
+): void {
   const ready = new Date(readyAt).getTime();
   const close = new Date(closeAt).getTime();
   if (
@@ -524,6 +646,66 @@ async function requireScheduleEligibility(
       "The pickup target does not match its exchange identity.",
     );
   }
+  let replacementExchange: NpShopStoredExchange | null = null;
+  let replacementOrder: NpShopStoredOrder | null = null;
+  let outboundFulfillment: NpShopStoredFulfillment | null = null;
+  let outboundOrder: NpShopStoredOrder | null = null;
+  if (target === "replacement") {
+    const candidate = await readExchange(db, siteId, orderId, false);
+    if (!candidate) {
+      throw new NpShopCarrierPickupConflictError(
+        "pickup_booking_not_found",
+        "Replacement pickup requires its retained exchange.",
+      );
+    }
+    if (forUpdate) {
+      await db.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-order:${siteId}:${candidate.ownerSegment}:${orderId}`}, 0))`,
+      );
+      replacementExchange = await readExchange(db, siteId, orderId, true);
+      replacementOrder = replacementExchange
+        ? await readOrder(db, siteId, replacementExchange.ownerSegment, orderId, true)
+        : null;
+    } else {
+      replacementExchange = candidate;
+      replacementOrder = await readOrder(db, siteId, candidate.ownerSegment, orderId, false);
+    }
+  } else {
+    const candidate = await readFulfillment(db, siteId, orderId, false);
+    if (!candidate) {
+      throw new NpShopCarrierPickupConflictError(
+        "pickup_booking_not_found",
+        "Outbound pickup requires its retained fulfillment.",
+      );
+    }
+    if (forUpdate) {
+      await db.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-order:${siteId}:${candidate.ownerSegment}:${orderId}`}, 0))`,
+      );
+      outboundFulfillment = await readFulfillment(db, siteId, orderId, true);
+      outboundOrder = outboundFulfillment
+        ? await readOrder(db, siteId, outboundFulfillment.ownerSegment, orderId, true)
+        : null;
+    } else {
+      outboundFulfillment = candidate;
+      outboundOrder = await readOrder(db, siteId, candidate.ownerSegment, orderId, false);
+    }
+    if (
+      !outboundFulfillment ||
+      !outboundOrder ||
+      outboundFulfillment.orderId !== outboundOrder.id ||
+      outboundFulfillment.ownerSegment !== outboundOrder.ownerSegment ||
+      outboundFulfillment.purgeAt !== outboundOrder.purgeAt ||
+      outboundFulfillment.privateDataStatus !== outboundOrder.privateDataStatus ||
+      outboundFulfillment.createdAt !== outboundOrder.paymentResolvedAt ||
+      (outboundOrder.status !== "paid" && outboundOrder.status !== "refunded")
+    ) {
+      throw new NpShopCarrierPickupConflictError(
+        "pickup_booking_not_found",
+        "Outbound pickup requires its exact retained order and fulfillment.",
+      );
+    }
+  }
   const booking =
     target === "replacement"
       ? await readExchangeBooking(db, siteId, orderId, forUpdate)
@@ -544,6 +726,23 @@ async function requireScheduleEligibility(
       "A completed booking owned by the configured carrier is required for pickup.",
     );
   }
+  if (
+    target === "outbound" &&
+    (!outboundFulfillment ||
+      !outboundOrder ||
+      !("fulfillmentRevision" in booking) ||
+      outboundFulfillment.status !== "shipped" ||
+      outboundFulfillment.revision !== booking.fulfillmentRevision + 1 ||
+      outboundFulfillment.carrier !== booking.carrier ||
+      outboundFulfillment.trackingNumber !== booking.trackingNumber ||
+      outboundFulfillment.purgeAt !== booking.purgeAt ||
+      outboundOrder.purgeAt !== booking.purgeAt)
+  ) {
+    throw new NpShopCarrierPickupConflictError(
+      "pickup_booking_not_found",
+      "Outbound pickup requires its exact shipped fulfillment and retained order.",
+    );
+  }
   const parcels =
     target === "replacement"
       ? await readExchangeParcels(db, siteId, orderId, forUpdate)
@@ -551,6 +750,11 @@ async function requireScheduleEligibility(
   if (
     !parcels ||
     parcels.lockedShipmentId !== shipmentId ||
+    parcels.purgeAt !== booking.purgeAt ||
+    (target === "outbound" &&
+      (!("fulfillmentRevision" in parcels) ||
+        !("fulfillmentRevision" in booking) ||
+        parcels.fulfillmentRevision !== booking.fulfillmentRevision)) ||
     (target === "replacement" &&
       ("exchangeId" in parcels ? parcels.exchangeId !== exchangeId : true))
   ) {
@@ -562,8 +766,12 @@ async function requireScheduleEligibility(
   const packages = pickupPackages(parcels);
   if (
     expectedPickup &&
-    (expectedPickup.target !== target ||
+    (expectedPickup.orderId !== orderId ||
+      expectedPickup.shipmentId !== shipmentId ||
+      expectedPickup.target !== target ||
       expectedPickup.exchangeId !== exchangeId ||
+      expectedPickup.providerId !== providerId ||
+      expectedPickup.purgeAt !== booking.purgeAt ||
       expectedPickup.parcelRevision !== parcels.revision ||
       !samePackages(expectedPickup.packages, packages))
   ) {
@@ -573,21 +781,66 @@ async function requireScheduleEligibility(
     );
   }
   if (target === "replacement") {
-    const exchange = await readExchange(db, siteId, orderId, forUpdate);
+    const exchange = replacementExchange;
     if (
       !exchange ||
+      !replacementOrder ||
       exchange.id !== exchangeId ||
+      exchange.orderId !== orderId ||
+      exchange.purgeAt !== booking.purgeAt ||
       (exchange.status !== "processing" && exchange.status !== "shipped") ||
       !("exchangeId" in booking) ||
       !("exchangeId" in parcels) ||
       booking.sourceExchangeRevision !== parcels.exchangeRevision ||
-      !completedReplacementBookingMatchesExchange(booking, exchange)
+      !replacementBookingMatchesCurrentSource(booking, replacementOrder, exchange)
     ) {
       throw new NpShopCarrierPickupConflictError(
         "pickup_booking_not_found",
         "Replacement pickup requires its exact processing or shipped exchange.",
       );
     }
+  }
+  const packingWork = await npReadStoredShopPackingWork(db, siteId, target, orderId, forUpdate);
+  const packingSourceRevision =
+    target === "replacement" && "sourceExchangeRevision" in booking
+      ? booking.sourceExchangeRevision
+      : "fulfillmentRevision" in booking
+        ? booking.fulfillmentRevision
+        : -1;
+  const packingLines: NpShopPackingWorkLine[] =
+    target === "replacement"
+      ? (replacementExchange?.lines ?? []).map((line) => ({
+          lineKey: line.lineKey,
+          productId: line.productId,
+          productSlug: line.productSlug,
+          variantSku: line.variantSku,
+          quantity: line.quantity,
+        }))
+      : (outboundOrder?.lines ?? []).map((line) => ({
+          lineKey: line.key,
+          productId: line.productId,
+          productSlug: line.productSlug,
+          variantSku: line.variantSku,
+          quantity: line.quantity,
+        }));
+  if (
+    !expectedPickup &&
+    !npShopPackingWorkAllowsShipmentEffectForSource(packingWork, {
+      target,
+      orderId,
+      exchangeId,
+      sourceRevision: packingSourceRevision,
+      parcelRevision: parcels.revision,
+      purgeAt: booking.purgeAt,
+      shipmentId,
+      lines: packingLines,
+      parcels: parcels.parcels,
+    })
+  ) {
+    throw new NpShopCarrierPickupConflictError(
+      "pickup_state_conflict",
+      "Resolve the durable packing work before scheduling a new carrier pickup.",
+    );
   }
   if (await readTracking(db, siteId, orderId, shipmentId, target, forUpdate)) {
     throw new NpShopCarrierPickupConflictError(
@@ -934,6 +1187,7 @@ async function executeSchedule(
 
   try {
     return await getDb().transaction(async (tx) => {
+      await lockPickupOrderBeforeRow(tx, siteId, pickup.orderId, pickup.target);
       const current = await readPickup(tx, siteId, pickup.shipmentId, true);
       if (current?.id === pickup.id && current.status === "scheduled") {
         return { pickup: current, duplicate: true };
@@ -944,7 +1198,7 @@ async function executeSchedule(
           "The pickup changed before local scheduling completed.",
         );
       }
-      requireLiveWindow(current.readyAt, current.closeAt, new Date());
+      npRequireLiveShopCarrierPickupWindow(current.readyAt, current.closeAt, new Date());
       await requireScheduleEligibility(
         tx,
         siteId,
@@ -1027,7 +1281,7 @@ export async function npScheduleShopCarrierPickup(
     }
     const requestedAt = new Date();
     requestedAt.setMilliseconds(0);
-    requireLiveWindow(input.readyAt, input.closeAt, requestedAt);
+    npRequireLiveShopCarrierPickupWindow(input.readyAt, input.closeAt, requestedAt);
     const eligible = await requireScheduleEligibility(
       tx,
       siteId,
@@ -1097,6 +1351,7 @@ export async function npResumeShopCarrierPickup(
       };
   try {
     prepared = await getDb().transaction(async (tx) => {
+      await lockPickupOrderBeforeRow(tx, siteId, input.orderId, input.target);
       const pickup = await readPickup(tx, siteId, input.shipmentId, true);
       if (
         !pickup ||
@@ -1123,7 +1378,7 @@ export async function npResumeShopCarrierPickup(
           "Only a pending or provider-confirmed pickup can be resumed.",
         );
       }
-      requireLiveWindow(pickup.readyAt, pickup.closeAt, new Date());
+      npRequireLiveShopCarrierPickupWindow(pickup.readyAt, pickup.closeAt, new Date());
       const eligible = await requireScheduleEligibility(
         tx,
         siteId,
@@ -1175,6 +1430,7 @@ export async function npCancelShopCarrierPickup(
   }
   const siteId = await requireSiteId();
   const prepared = await getDb().transaction(async (tx) => {
+    await lockPickupOrderBeforeRow(tx, siteId, input.orderId, input.target);
     const current = await readPickup(tx, siteId, input.shipmentId, true);
     if (
       !current ||
@@ -1326,6 +1582,7 @@ export async function npCancelShopCarrierPickup(
 
   try {
     return await getDb().transaction(async (tx) => {
+      await lockPickupOrderBeforeRow(tx, siteId, pickup.orderId, pickup.target);
       const current = await readPickup(tx, siteId, pickup.shipmentId, true);
       if (current?.id === pickup.id && current.status === "cancelled") {
         return { pickup: current, duplicate: true };
@@ -1378,7 +1635,7 @@ export async function npReadShopCarrierPickupSummary(
     : null;
 }
 
-export async function npListRecentShopCarrierPickups(): Promise<{
+export async function npListRecentShopCarrierPickups(expectedProviderId?: string): Promise<{
   rows: NpShopAdminCarrierPickupRow[];
   total: number;
 }> {
@@ -1405,27 +1662,54 @@ export async function npListRecentShopCarrierPickups(): Promise<{
     .where(where)
     .limit(1);
   return {
-    rows: rows.map((row) => {
-      const pickup = requirePickupAtStorage(row.value, row.expiresAt, row.key);
-      return {
-        id: pickup.orderId,
-        pickupId: pickup.id,
-        pickupRevision: pickup.revision,
-        shipmentId: pickup.shipmentId,
-        pickupTarget: pickup.target,
-        exchangeId: pickup.exchangeId,
-        provider: pickup.providerId,
-        status: pickup.status,
-        window: `${pickup.readyAt} – ${pickup.closeAt}`,
-        packages: pickup.packages.length,
-        weightGrams: pickup.packages.reduce(
-          (totalWeight, item) => totalWeight + item.weightGrams,
-          0,
-        ),
-        providerError: pickup.providerErrorCode ?? "—",
-        updatedAt: pickup.updatedAt,
-      };
-    }),
+    rows: await Promise.all(
+      rows.map(async (row) => {
+        const pickup = requirePickupAtStorage(row.value, row.expiresAt, row.key);
+        let resumeEligible = false;
+        if (
+          expectedProviderId !== undefined &&
+          pickup.providerId === expectedProviderId &&
+          (pickup.status === "pending" || pickup.status === "provider-confirmed")
+        ) {
+          try {
+            npRequireLiveShopCarrierPickupWindow(pickup.readyAt, pickup.closeAt, new Date());
+            await requireScheduleEligibility(
+              db,
+              siteId,
+              pickup.orderId,
+              pickup.shipmentId,
+              pickup.target,
+              pickup.exchangeId,
+              expectedProviderId,
+              pickup,
+              false,
+            );
+            resumeEligible = true;
+          } catch {
+            resumeEligible = false;
+          }
+        }
+        return {
+          id: pickup.orderId,
+          pickupId: pickup.id,
+          pickupRevision: pickup.revision,
+          shipmentId: pickup.shipmentId,
+          pickupTarget: pickup.target,
+          exchangeId: pickup.exchangeId,
+          provider: pickup.providerId,
+          status: pickup.status,
+          window: `${pickup.readyAt} – ${pickup.closeAt}`,
+          packages: pickup.packages.length,
+          weightGrams: pickup.packages.reduce(
+            (totalWeight, item) => totalWeight + item.weightGrams,
+            0,
+          ),
+          providerError: pickup.providerErrorCode ?? "—",
+          resumeEligible,
+          updatedAt: pickup.updatedAt,
+        };
+      }),
+    ),
     total: Number(total),
   };
 }
@@ -1510,6 +1794,10 @@ export async function npCountShopCarrierPickups(expectedProviderId?: string): Pr
           ? readExchange(db, siteId, pickup.orderId)
           : Promise.resolve(null),
       ]);
+      const replacementOrder =
+        pickup.target === "replacement" && exchange
+          ? await readOrder(db, siteId, exchange.ownerSegment, pickup.orderId)
+          : null;
       if (!booking && !parcels) {
         counts.orphanSample += 1;
         continue;
@@ -1526,7 +1814,9 @@ export async function npCountShopCarrierPickups(expectedProviderId?: string): Pr
         booking.providerId !== pickup.providerId ||
         (pickup.target === "replacement" &&
           ("exchangeId" in booking
-            ? !exchange || !replacementPickupLifecycleMatches(booking, exchange, pickup)
+            ? !exchange ||
+              !replacementOrder ||
+              !replacementPickupLifecycleMatches(booking, replacementOrder, exchange, pickup)
             : true))
       ) {
         counts.bookingMismatchSample += 1;
