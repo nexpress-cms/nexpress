@@ -10,6 +10,7 @@ provider-neutral payment initiation and verified-event boundary, revision-safe
 fulfillment operations, optional provider-neutral carrier booking,
 revision-safe PII-free fulfillment parcel snapshots,
 optional read-only outbound and replacement packaging proposals,
+optional durable outbound and replacement packing-work intents,
 durable provider-neutral shipping-label purchase/regeneration with transient retrieval,
 provider-neutral carrier pickup scheduling and cancellation,
 verified or reconciled carrier tracking events and owner-visible delivery state,
@@ -845,13 +846,33 @@ orders retain their promoted private sidecar until shipment or at most 30 days
 after verified payment. Marking a fulfillment shipped atomically stores
 carrier/tracking, redacts both order and fulfillment projections, and
 physically deletes the private sidecar. Owner reads and hourly maintenance
-enforce the same maximum deadline without changing the paid state. The
+enforce the same maximum deadline without changing the paid state or either
+commercial revision; PII-bearing actions recheck the retained sidecar instead.
+This keeps exact parcel, carrier, and packing snapshots usable after privacy
+expiry without retaining customer data. The
 commercial snapshot, matching payment receipts, refund record, and physical
-return record remain for 365 days and are then physically purged. Each
-scheduled or confirmed Admin pass
+return record normally remain for 365 days and are then physically purged.
+There is one narrow external-effect safety exception: an unresolved
+`pending`, `provider-confirmed`, `active`, `cancel-pending`,
+`cancel-confirmed`, or `manual-review` packing-work row keeps its exact
+commercial order source and relationships past that deadline. A
+`cancelled` work attached to a shipment is also unresolved until its exact
+replacement carrier cancellation and restock completes, or exact verified
+tracking wins and the booked shipment completes; an attached outbound
+cancellation remains retained for diagnosis because v1 has no outbound
+carrier-cancellation contract. For a member
+order this preserves the member-linked owner segment until the exact
+`provider-confirmed` or `cancel-confirmed` transition is finalized locally,
+including after adapter removal; the original adapter returns and completes
+exact provider create/cancel reconciliation; the existing manual ship path
+consumes exact `active` work; or site deletion removes the tenant. There is no
+generic/manual acknowledgement that terminalizes `pending` or `manual-review`.
+Private customer and shipping sidecars still follow their unchanged
+24-hour/30-day deletion deadlines. Each scheduled or confirmed Admin pass
 cancels at most 500 due orders and purges at most 500 expired commercial
-snapshots, oldest first. Site deletion remains the final tenant-wide deletion
-boundary.
+snapshots through a bounded fair cursor; malformed rows are retained for
+diagnosis but rotated so valid terminal orders continue. Site deletion remains
+the final tenant-wide deletion boundary.
 
 ### Order updates and delivery outbox
 
@@ -904,10 +925,14 @@ That cookie uses a rolling 30-day lifetime, so a guest who clears it or does
 not revisit before it expires cannot recover the otherwise-retained commercial
 snapshot. Member ownership remains tied to the authenticated member id.
 
-The 24-hour pending-private, 30-day fulfillment-private, and 365-day commercial
-defaults are application cleanup guarantees, not jurisdiction-specific
-accounting or privacy advice. Backup retention can outlive physical row
-deletion and must be governed separately.
+The 24-hour pending-private and 30-day fulfillment-private defaults are
+application cleanup guarantees. The 365-day commercial guarantee has only the
+relationship-nonterminal packing-work safety exception above: its member-linked
+commercial order source remains until every attached external effect reaches
+exact carrier compensation or tracking-won booked completion, while site
+deletion remains authoritative. None of these defaults
+is jurisdiction-specific accounting or privacy advice. Backup retention can
+outlive physical row deletion and must be governed separately.
 
 ## Verified payment-event and adjustment contracts
 
@@ -1346,6 +1371,196 @@ the bounded shape and allocation, but does not prove that items fit, mutate a
 WMS, book a carrier, calculate shipping rates, read an address, buy or render a
 label, reserve packaging material, or claim that a parcel was physically
 packed.
+
+### Packing-work adapter
+
+Packing work is an independent optional build-time capability. It does not
+require the packaging-proposal or carrier adapter, and those adapters do not
+enable it implicitly. Register one server-only adapter on the same Shop
+factory:
+
+```ts
+import {
+  createShop,
+  NpShopPackingWorkProviderError,
+  npCreateShopPackingWorkCancelResult,
+  npCreateShopPackingWorkCreateResult,
+  type NpShopPackingWorkAdapter,
+} from "@nexpress/plugin-shop";
+
+const packingAdapter: NpShopPackingWorkAdapter = {
+  id: "my-warehouse",
+  async createPackingWork(request) {
+    // The provider uses request.workId as its idempotency key and receives
+    // only this exact PII-free request.
+    const created = await warehouseClient.createPackingWork(request);
+    if (created.status === "rejected") {
+      throw new NpShopPackingWorkProviderError(
+        "warehouse-rejected",
+        "The warehouse rejected this packing-work intent.",
+        { retryable: false },
+      );
+    }
+    return npCreateShopPackingWorkCreateResult(request, {
+      providerWorkReference: created.reference,
+      confirmedAt: new Date().toISOString(),
+    });
+  },
+  async cancelPackingWork(request) {
+    // The provider durably tombstones request.workId + cancellationId even
+    // when providerWorkReference is null.
+    await warehouseClient.cancelPackingWork(request);
+    return npCreateShopPackingWorkCancelResult(request, {
+      cancelledAt: new Date().toISOString(),
+    });
+  },
+};
+
+const shop = createShop({ packing: { adapter: packingAdapter } });
+```
+
+A generic thrown value, including a timeout or transport error, is treated as
+retryable ambiguity and keeps the stable `pending` or `cancel-pending` intent.
+Use `NpShopPackingWorkProviderError` with `retryable: false` only when the
+provider has returned a closed create or cancel rejection. Its `code` becomes
+durable diagnostics, so it must be a canonical lowercase PII- and secret-free
+slug; the free-text message is neither persisted nor shown. Both provider
+calls still need their own finite timeout.
+
+The adapter implements `createPackingWork` and `cancelPackingWork` as one
+paired capability; `createShop()` rejects either method on its own. The pair
+creates and cancels one provider-neutral durable work intent. V1 allows
+exactly one work identity for each `target + orderId`; there are no replacement
+generations. It does not calculate parcels, so direct staff must first save the
+normal parcel snapshot manually or through the independent read-only packaging
+proposal adapter. Projects without `packing` keep the existing manual parcel,
+carrier, refund, and exchange flows unchanged.
+
+Create accepts one eligible `outbound | replacement` target: a processing
+fulfillment or an awaiting same-item replacement with an editable exact parcel
+snapshot. The `np.shop-packing-work-create-request.v1` request freezes the
+target, order and optional exchange identity, source revision, parcel revision
+and fingerprint, every immutable line, and the complete bounded parcel
+allocation. Lines and parcels are PII-free: there is no owner/member identity,
+customer or warehouse address, delivery method or rate, product display text,
+price, note, credential, label, or provider payload.
+
+Shop writes `np.shop-packing-work-storage.v1` as `pending` with a fresh stable
+packing-work UUID before provider I/O. Retries must reuse that UUID as provider
+idempotency and send the same frozen request. The provider call runs outside
+every database transaction. An exact `np.shop-packing-work-create-result.v1`
+is durably stored as `provider-confirmed` before the short local transaction
+rechecks the target and parcel snapshot and advances the work to `active`.
+It echoes the frozen identity/revisions/fingerprint and adds only one opaque
+bounded `providerWorkReference` plus `confirmedAt`; raw provider output is not
+stored.
+The closed stored inventory is `pending`, `provider-confirmed`, `active`,
+`cancel-pending`, `cancel-confirmed`, `cancelled`, `consumed`, or
+`manual-review`.
+`provider-confirmed` reconciliation performs only that local completion and
+remains available after adapter removal; it does not repeat provider creation.
+Retryable ambiguity stays `pending`, while a
+closed provider rejection, malformed or conflicting result, or post-provider
+local conflict reaches PII-free `manual-review` rather than inventing success.
+Shop does not impose a timeout around the adapter call. Adapters must apply a
+finite, bounded timeout to every network operation and report timeout or other
+ambiguous transport failure as retryable; the stable work or cancellation UUID
+then remains in `pending` or `cancel-pending` for an exact retry.
+
+Any unresolved or active work keeps its exact parcel revision immutable. A
+manual edit, another packing-work create, or a stale provider result therefore
+cannot replace the packages being processed. A parcel-aware carrier-booking
+preflight may attach only the same source revision, parcel revision, and
+fingerprint and records its `attachedShipmentId` before provider I/O. An
+outbound booking becomes `consumed` in the final shipped transaction. A
+replacement booking stays attached and active while the exchange is
+`processing`, then the explicit ship action consumes it; the existing manual
+ship action also consumes active work. A configured carrier without the
+parcel-aware method cannot attach active packing work and fails closed. Any
+revision mismatch fails rather than silently shipping work the packing
+provider did not receive. Consumption is not a statement that physical
+packing finished.
+
+Cancellation has the same durable boundary. Shop persists `cancel-pending`
+with a stable cancellation UUID before calling `cancelPackingWork` outside a
+transaction. An exact `np.shop-packing-work-cancel-result.v1` becomes
+`cancel-confirmed` before local `cancelled`; retries reuse the original UUID,
+and ambiguity or conflicts remain reconcilable or enter `manual-review`. The
+cancel request/result echoes the same frozen tuple and opaque work reference;
+it cannot replace parcels or add provider payload. The provider must retain a
+permanent tombstone for the exact `workId + cancellationId`: cancellation wins
+over a delayed, duplicated, or retried create, which must never resurrect the
+cancelled work effect, even when cancellation arrived before a provider work
+reference existed.
+The local `cancelled` row remains the one target/order tombstone until order
+cleanup and rejects every attempt to create another packing work. Only a
+`cancelled` tombstone that was never attached to a carrier shipment reopens the
+existing manual parcel, carrier, refund, or replacement-inventory fallback.
+When cancellation wins after carrier preflight attached a shipment, Shop keeps
+that exact shipment UUID as a terminal relationship. Before verified tracking,
+an attached cancellation intent or tombstone may unwind only by cancelling
+that exact provider shipment; direct parcel mutation, commercial compensation,
+or unrelated carrier reuse fails closed if its exact identity, fingerprint,
+lock, or purge state is missing or changed. After verified tracking, carrier
+cancellation and automatic inventory restock fail closed. Only completion of
+the exact booked shipment may proceed, and that shipment completion does not
+erase or reclassify the packing cancellation conflict: Admin health and
+retention keep it visible for exact resolution.
+
+A packing cancellation started before verified tracking keeps its original
+cancellation UUID and request. It may still retry the same provider
+cancellation, durably reconcile its exact result, or finish a stored
+`cancel-confirmed` local transition after tracking begins; tracking prevents a
+new cancellation identity, not recovery of an external effect already in
+flight. A closed provider error may likewise be retried from `manual-review`
+with that same UUID and original request time. No path creates a second
+cancellation identity.
+Direct full-refund and same-item replacement-cancellation paths must resolve
+packing cancellation before their existing payment, carrier, or inventory
+compensation can make the commercial state terminal. A carrier-consumed work
+item is no longer cancellable through this pair.
+
+Admin always exposes the PII-free metric, health status, and bounded table,
+including after adapter removal. Actions are state- and adapter-gated:
+any create, cancel, or reconciliation action that still needs provider I/O,
+including applicable `pending`, `cancel-pending`, and `manual-review` recovery,
+appears only when the original adapter operation is available. Stored
+`provider-confirmed` activation and `cancel-confirmed` local cancellation can
+finish after adapter removal without repeating provider I/O.
+Doctor validates the matching declarative metric/status/table/action inventory.
+The Admin health action separately inspects a bounded newest-row sample for
+malformed, orphaned, provider-mismatched, stale-revision, fingerprint, and
+shipment-link state, and warns whenever that diagnostic bound is reached.
+Commercial cleanup removes work with the related order only after their exact
+relationships prove every packing and carrier effect terminal. An unattached,
+self-valid `cancelled` tombstone is terminal. A `consumed` work must match its
+exact completed manual or carrier shipment. A replacement `cancelled` work
+attached to a shipment becomes terminal only after exact carrier cancellation
+and exchange restock, or after exact verified tracking wins and the booked
+shipment completes. An unresolved attached cancellation is retained and
+warned even though its packing status says `cancelled`; attached outbound
+cancellation remains retained because v1 has no outbound carrier-cancellation
+operation. As the narrow external-effect safety exception to normal 365-day
+commercial retention, every relationship-nonterminal work keeps both the work
+and its exact commercial source order. That includes the member-linked owner segment
+needed to prove the source relationship, but never restores or extends private
+customer/shipping data. Those rows are excluded from the bounded commercial
+purge batch so terminal orders cannot be starved. Admin health keeps the
+unresolved state visible so an operator can finalize an exact
+`provider-confirmed` or `cancel-confirmed` local transition, restore the
+original adapter for provider I/O under the existing stable UUID, or consume
+exact `active` work through the existing manual ship path. An attached
+tracking-era cancellation conflict remains visible until exact resolution. No
+blind override can acknowledge an unknown provider effect as terminal.
+Reconciliation after the original commercial deadline does not create a new
+order-notification outbox row or extend notification retention. Site deletion
+remains the final tenant boundary.
+
+This contract records provider acceptance and cancellation of a work intent;
+it does not prove that a parcel was physically packed. Picking queues, bins,
+worker assignment, completion scans or evidence, addresses, shipping rates,
+labels, packaging-material inventory/reservation/purchase, and
+provider-specific WMS callback or polling protocols remain separate.
 
 `readShippingLabel` is another independent additive capability. When present,
 completed rows in the outbound carrier-booking table and completed or shipped
@@ -2337,6 +2552,8 @@ const shop = createShop({
   shipping: { adapter: shippingAdapter },
   // Independent read-only parcel calculation; manual parcel JSON remains available.
   packaging: { adapter: packagingAdapter },
+  // Independent paired durable work intent over an existing parcel snapshot.
+  packing: { adapter: packingAdapter },
   carrier: {
     adapter: carrierAdapter,
     // Required only with paired schedulePickup/cancelPickup methods.
@@ -2376,8 +2593,9 @@ Future transaction work should remain separable from this foundation:
    customer-service policy;
 4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and
    carrier-owned dynamic rate integrations;
-5. warehouse mutations, physical packing automation, and packaging-material
-   reservation or purchasing.
+5. physical packing completion evidence, picking/bin/worker coordination,
+   packaging-material reservation or purchasing, and provider-specific WMS
+   callbacks or polling.
 
 Those features require their own payment, security, and operational contracts.
 The provider-neutral event boundary does not pre-authorize or emulate them.

@@ -323,7 +323,10 @@ real product domain, not just blog/community. Ship as a plugin package
   Idempotent replay never touches a newer cart. Cancellation, payment failure,
   or the 24-hour pending deadline deletes PII without automatically restoring
   cart state; successful payment promotes the sidecar to a fulfillment-only
-  30-day maximum and the commercial record is purged after 365 days. Once the
+  30-day maximum and the commercial record is normally purged after 365 days.
+  Relationship-nonterminal Shop packing work may retain only its exact
+  commercial source for fail-closed reconciliation; it never extends
+  private-sidecar retention. Once the
   order leaves `pending-payment`, its owner can explicitly re-add current public
   product/variant lines under cart revision and 50-line/99-unit bounds, with
   per-line added/skipped outcomes and no old commercial values, reservations,
@@ -382,6 +385,33 @@ real product domain, not just blog/community. Ship as a plugin package
   Admin/Doctor health records no provider payload. Providers map identifiers to
   their own measurements; WMS mutation, carrier booking/rates, addresses,
   labels, physical packing, and packaging-material inventory remain separate.
+- **Provider-neutral packing-work intents (shipped)** — one independent
+  server-only `createShop({ packing: { adapter } })` capability pairs exact
+  create/cancel methods for processing outbound and awaiting same-item
+  replacement targets. Shop freezes PII-free immutable lines and parcels,
+  source/parcel revisions, and a parcel fingerprint behind stable operation
+  UUIDs; provider I/O stays outside transactions and confirmation is durable
+  before local active/cancelled state, with cancellation-dominant provider
+  tombstones preventing late create resurrection. Active work blocks parcel
+  edits; an exact parcel-aware booking attaches the same revision/fingerprint
+  and local shipment completion consumes it. Only a cancelled, unattached
+  tombstone reopens manual fallback. Before verified tracking, an attached
+  cancellation may unwind only through cancellation of its exact shipment.
+  After tracking, carrier cancellation and automatic restock fail closed while
+  exact booked shipment completion remains possible and leaves any packing
+  conflict diagnosed and retained. A WMS cancellation started before tracking
+  may still reconcile or finalize under its same UUID. Stored
+  `provider-confirmed` and `cancel-confirmed` transitions finish locally even
+  after adapter removal; provider I/O still requires the original adapter.
+  Direct full refund or replacement cancellation resolves packing and carrier
+  effects before downstream compensation. Always-declared Admin/Doctor
+  diagnostics, relationship-aware commercial cleanup, and bounded unresolved
+  source retention—including cancelled shipment attachments until exact
+  carrier compensation or tracking-won completion—share the contract without
+  extending private customer/shipping retention.
+  Physical completion evidence, picking/bin/worker coordination,
+  addresses/rates/labels, material inventory/reservation/purchase, and
+  provider-specific WMS callbacks or polling remain separate.
 - **Provider-neutral carrier shipment booking (shipped)** — one optional
   server-only adapter receives an exact fulfillment revision, immutable order
   lines, selected delivery snapshot, and private destination outside database
@@ -560,11 +590,12 @@ real product domain, not just blog/community. Ship as a plugin package
   intake pages use independent plugin skins and stable theme hooks. Order detail
   exposes the explicit current-catalog re-add action after `pending-payment`.
 - **Tax compliance, carrier logistics, and shipping policy (future)** — shipping,
-  additional-tax quote, and carrier-booking boundaries are shipped; tax remittance/filing,
-  invoices, exemptions/nexus, customs/duties, label billing/void policy,
-  recurring pickup and general carrier calendars,
-  provider APIs, WMS mutation, physical packing, packaging-material inventory,
-  and regional policy require separate contracts.
+  additional-tax quote, carrier-booking, and packing-work intent boundaries are
+  shipped; tax remittance/filing, invoices, exemptions/nexus, customs/duties,
+  label billing/void policy, recurring pickup and general carrier calendars,
+  provider APIs, physical packing completion evidence, picking/bin/worker
+  coordination, packaging-material inventory, and regional policy require
+  separate contracts.
 
 Resolved foundation decision:
 

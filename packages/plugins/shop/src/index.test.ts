@@ -6,6 +6,7 @@ import {
   shopPlugin,
   storefrontFullShopSkin,
   type NpShopPackagingAdapter,
+  type NpShopPackingWorkAdapter,
 } from "./index.js";
 
 function validProductData() {
@@ -157,12 +158,19 @@ describe("shop factory", () => {
       { id: "processExchange", kind: "action" },
       { id: "shipExchange", kind: "action" },
       { id: "cancelExchange", kind: "action" },
+      { id: "resumeExchangeCarrier", kind: "action" },
+      { id: "shipBookedExchange", kind: "action" },
+      { id: "cancelExchangeCarrier", kind: "action" },
       { id: "countFulfillments", kind: "metric" },
       { id: "fulfillmentHealth", kind: "status" },
       { id: "recentFulfillments", kind: "table" },
       { id: "countFulfillmentParcels", kind: "metric" },
       { id: "fulfillmentParcelHealth", kind: "status" },
       { id: "recentFulfillmentParcels", kind: "table" },
+      { id: "countPackingWork", kind: "metric" },
+      { id: "packingWorkHealth", kind: "status" },
+      { id: "recentPackingWork", kind: "table" },
+      { id: "finalizePackingWork", kind: "action" },
       { id: "saveFulfillmentParcels", kind: "action" },
       { id: "processFulfillment", kind: "action" },
       { id: "countCarrierBookings", kind: "metric" },
@@ -265,6 +273,7 @@ describe("shop factory", () => {
       "cleanup-expired-return-postage",
       "cleanup-expired-carrier-pickup-availability",
       "maintain-orders",
+      "reconcile-packing-work",
     ]);
     expect([...createShop().runtime.skins.keys()]).toEqual(["classic", "storefront-full"]);
     expect(storefrontFullShopSkin.id).toBe("storefront-full");
@@ -291,6 +300,10 @@ describe("shop factory", () => {
         "table:shop-exchanges",
         "action:shop-exchange-operations",
         "action:shop-exchange-destination-private-read",
+        "dashboard:shop-packing-work",
+        "widget:shop-packing-work-health",
+        "table:shop-packing-work",
+        "action:shop-packing-work-finalize",
       ]),
     );
   });
@@ -424,7 +437,7 @@ describe("shop factory", () => {
     ).toMatchObject({
       actionId: "proposeFulfillmentParcels",
       rowFields: ["id", "fulfillmentRevision", "parcelRevision"],
-      visibleWhen: { field: "status", oneOf: ["processing"] },
+      visibleWhen: { field: "parcelMutationEligible", oneOf: [true] },
     });
     expect(
       shop.plugin.admin?.tables
@@ -433,7 +446,7 @@ describe("shop factory", () => {
     ).toMatchObject({
       actionId: "proposeExchangeParcels",
       rowFields: ["id", "exchangeId", "exchangeRevision", "parcelRevision"],
-      visibleWhen: { field: "destination", oneOf: ["accessed"] },
+      visibleWhen: { field: "parcelMutationEligible", oneOf: [true] },
     });
     expect(
       shop.plugin.admin?.tables
@@ -519,6 +532,297 @@ describe("shop factory", () => {
     ).toThrow(/proposeParcels must be a function/u);
   });
 
+  it("adds exact durable packing-work surfaces for one complete paired adapter", () => {
+    const createPackingWork = vi.fn(() => Promise.reject(new Error("must not be called")));
+    const cancelPackingWork = vi.fn(() => Promise.reject(new Error("must not be called")));
+    const shop = createShop({
+      packing: {
+        adapter: {
+          id: "test-packing",
+          createPackingWork,
+          cancelPackingWork,
+        },
+      },
+    });
+
+    expect(shop.runtime.packingWorkAdapter?.id).toBe("test-packing");
+    expect(shop.runtime.packagingAdapter).toBeNull();
+    expect(shop.runtime.carrierAdapter).toBeNull();
+    expect(shop.plugin.actions?.countPackingWork).toMatchObject({ kind: "metric" });
+    expect(shop.plugin.actions?.packingWorkHealth).toMatchObject({ kind: "status" });
+    expect(shop.plugin.actions?.recentPackingWork).toMatchObject({ kind: "table" });
+    expect(shop.plugin.actions?.finalizePackingWork).toMatchObject({ kind: "action" });
+    expect(shop.plugin.actions?.createFulfillmentPackingWork).toMatchObject({ kind: "action" });
+    expect(shop.plugin.actions?.createExchangePackingWork).toMatchObject({ kind: "action" });
+    expect(shop.plugin.actions?.reconcilePackingWork).toMatchObject({ kind: "action" });
+    expect(shop.plugin.actions?.cancelPackingWork).toMatchObject({ kind: "action" });
+    expect(shop.plugin.scheduled?.map((task) => task.id)).toContain("reconcile-packing-work");
+
+    const dashboard = shop.plugin.admin?.dashboardWidgets?.find(
+      (widget) => widget.id === "shop-packing-work-total",
+    );
+    const health = shop.plugin.admin?.widgets?.find(
+      (widget) => widget.id === "shop-packing-work-health",
+    );
+    const packingTable = shop.plugin.admin?.tables?.find(
+      (table) => table.id === "shop-packing-work",
+    );
+    const fulfillmentTable = shop.plugin.admin?.tables?.find(
+      (table) => table.id === "shop-fulfillments",
+    );
+    const exchangeTable = shop.plugin.admin?.tables?.find((table) => table.id === "shop-exchanges");
+    expect(dashboard).toMatchObject({ kind: "metric", actionId: "countPackingWork" });
+    expect(health).toMatchObject({ kind: "status", actionId: "packingWorkHealth" });
+    expect(packingTable).toMatchObject({ rowsActionId: "recentPackingWork" });
+    expect(
+      packingTable?.rowActions?.map((action) =>
+        action.type === "download" ? action.id : action.actionId,
+      ),
+    ).toEqual(["finalizePackingWork", "reconcilePackingWork", "cancelPackingWork"]);
+    expect(
+      packingTable?.rowActions?.find((action) => action.id === "reconcile-packing-work"),
+    ).toMatchObject({
+      visibleWhen: { field: "providerRetryEligible", oneOf: [true] },
+    });
+    expect(
+      packingTable?.rowActions?.find((action) => action.id === "cancel-packing-work"),
+    ).toMatchObject({
+      visibleWhen: { field: "providerCancelEligible", oneOf: [true] },
+    });
+    expect(
+      fulfillmentTable?.rowActions?.find((action) => action.id === "create-packing-work"),
+    ).toMatchObject({
+      actionId: "createFulfillmentPackingWork",
+      rowFields: ["id", "fulfillmentRevision", "parcelRevision", "packingWorkRevision"],
+      visibleWhen: { field: "packingWorkAction", oneOf: ["create"] },
+    });
+    expect(
+      fulfillmentTable?.rowActions?.find((action) => action.id === "save-parcels"),
+    ).toMatchObject({ visibleWhen: { field: "parcelMutationEligible", oneOf: [true] } });
+    expect(fulfillmentTable?.rowActions?.find((action) => action.id === "ship")).toMatchObject({
+      visibleWhen: { field: "manualShipmentEligible", oneOf: [true] },
+    });
+    expect(
+      exchangeTable?.rowActions?.find((action) => action.id === "create-exchange-packing-work"),
+    ).toMatchObject({
+      actionId: "createExchangePackingWork",
+      rowFields: ["id", "exchangeId", "exchangeRevision", "parcelRevision", "packingWorkRevision"],
+      visibleWhen: { field: "packingWorkAction", oneOf: ["create"] },
+    });
+    expect(
+      exchangeTable?.rowActions?.find((action) => action.id === "save-exchange-parcels"),
+    ).toMatchObject({
+      actionId: "saveExchangeParcels",
+      visibleWhen: { field: "parcelMutationEligible", oneOf: [true] },
+    });
+    expect(
+      exchangeTable?.rowActions?.find((action) => action.id === "process-exchange"),
+    ).toMatchObject({ visibleWhen: { field: "processEligible", oneOf: [true] } });
+    expect(
+      exchangeTable?.rowActions?.find((action) => action.id === "ship-exchange"),
+    ).toMatchObject({ visibleWhen: { field: "manualShipEligible", oneOf: [true] } });
+    expect(
+      exchangeTable?.rowActions?.find((action) => action.id === "cancel-exchange"),
+    ).toMatchObject({ visibleWhen: { field: "cancelEligible", oneOf: [true] } });
+    expect(shop.plugin.actions?.saveExchangeParcels).toMatchObject({ kind: "action" });
+
+    const referencedKinds = [
+      [dashboard?.actionId, "metric"],
+      [health?.actionId, "status"],
+      [packingTable?.rowsActionId, "table"],
+      ["finalizePackingWork", "action"],
+      ["reconcilePackingWork", "action"],
+      ["cancelPackingWork", "action"],
+      ["createFulfillmentPackingWork", "action"],
+      ["createExchangePackingWork", "action"],
+      ["saveExchangeParcels", "action"],
+    ] as const;
+    for (const [actionId, kind] of referencedKinds) {
+      expect(actionId).toBeTypeOf("string");
+      expect(shop.plugin.actions?.[actionId ?? ""]?.kind).toBe(kind);
+    }
+
+    expect(
+      shop.plugin.manifest.provides.adminExtensions?.filter((id) => id.includes("packing-work")),
+    ).toEqual([
+      "dashboard:shop-packing-work",
+      "widget:shop-packing-work-health",
+      "table:shop-packing-work",
+      "action:shop-packing-work-finalize",
+      "action:shop-packing-work-create",
+      "action:shop-packing-work-provider",
+    ]);
+    expect(shop.plugin.manifest.provides.adminExtensions).toContain(
+      "action:shop-exchange-parcel-snapshot",
+    );
+    expect(createPackingWork).not.toHaveBeenCalled();
+    expect(cancelPackingWork).not.toHaveBeenCalled();
+  });
+
+  it("keeps durable local packing-work operations without a provider", () => {
+    const shop = createShop();
+    expect(shop.runtime.packingWorkAdapter).toBeNull();
+    expect(shop.plugin.actions?.countPackingWork).toMatchObject({ kind: "metric" });
+    expect(shop.plugin.actions?.packingWorkHealth).toMatchObject({ kind: "status" });
+    expect(shop.plugin.actions?.recentPackingWork).toMatchObject({ kind: "table" });
+    expect(shop.plugin.actions?.finalizePackingWork).toMatchObject({ kind: "action" });
+    expect(shop.plugin.scheduled?.map((task) => task.id)).toContain("reconcile-packing-work");
+    for (const actionId of [
+      "createFulfillmentPackingWork",
+      "createExchangePackingWork",
+      "reconcilePackingWork",
+      "cancelPackingWork",
+    ] as const) {
+      expect(shop.plugin.actions?.[actionId]).toBeUndefined();
+    }
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-packing-work")
+        ?.rowActions?.map((action) => (action.type === "download" ? action.id : action.actionId)),
+    ).toEqual(["finalizePackingWork"]);
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-fulfillments")
+        ?.rowActions?.some((action) => action.id === "create-packing-work"),
+    ).toBe(false);
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-exchanges")
+        ?.rowActions?.some(
+          (action) =>
+            action.id === "create-exchange-packing-work" || action.id === "save-exchange-parcels",
+        ),
+    ).toBe(false);
+    expect(
+      shop.plugin.manifest.provides.adminExtensions?.filter((id) => id.includes("packing-work")),
+    ).toEqual([
+      "dashboard:shop-packing-work",
+      "widget:shop-packing-work-health",
+      "table:shop-packing-work",
+      "action:shop-packing-work-finalize",
+    ]);
+  });
+
+  it("keeps read-only parcel proposals independent from durable packing work", () => {
+    const proposeParcels = vi.fn(() => Promise.reject(new Error("must not be called")));
+    const createPackingWork = vi.fn(() => Promise.reject(new Error("must not be called")));
+    const cancelPackingWork = vi.fn(() => Promise.reject(new Error("must not be called")));
+    const proposalOnly = createShop({
+      packaging: { adapter: { id: "test-packaging", proposeParcels } },
+    });
+    const both = createShop({
+      packaging: { adapter: { id: "test-packaging", proposeParcels } },
+      packing: {
+        adapter: { id: "test-packing", createPackingWork, cancelPackingWork },
+      },
+    });
+
+    expect(proposalOnly.runtime.packagingAdapter?.id).toBe("test-packaging");
+    expect(proposalOnly.runtime.packingWorkAdapter).toBeNull();
+    expect(proposalOnly.plugin.actions?.proposeFulfillmentParcels).toMatchObject({
+      kind: "action",
+    });
+    expect(proposalOnly.plugin.actions?.createFulfillmentPackingWork).toBeUndefined();
+    expect(proposalOnly.plugin.actions?.countPackingWork).toMatchObject({ kind: "metric" });
+
+    expect(both.runtime.packagingAdapter?.id).toBe("test-packaging");
+    expect(both.runtime.packingWorkAdapter?.id).toBe("test-packing");
+    expect(both.plugin.actions?.proposeFulfillmentParcels).toMatchObject({ kind: "action" });
+    expect(both.plugin.actions?.createFulfillmentPackingWork).toMatchObject({ kind: "action" });
+    expect(both.plugin.actions?.proposeExchangeParcels).toMatchObject({ kind: "action" });
+    expect(both.plugin.actions?.createExchangePackingWork).toMatchObject({ kind: "action" });
+    expect(both.plugin.manifest.provides.adminExtensions).toEqual(
+      expect.arrayContaining([
+        "widget:shop-packaging-proposal-health",
+        "action:shop-packaging-proposal",
+        "action:shop-packing-work-create",
+        "action:shop-packing-work-provider",
+      ]),
+    );
+    expect(proposeParcels).not.toHaveBeenCalled();
+    expect(createPackingWork).not.toHaveBeenCalled();
+    expect(cancelPackingWork).not.toHaveBeenCalled();
+  });
+
+  it("rejects incomplete, non-function, and invalid-id packing-work adapters", () => {
+    const createPackingWork = () => Promise.reject(new Error("must not be called"));
+    const cancelPackingWork = () => Promise.reject(new Error("must not be called"));
+    expect(() =>
+      createShop({
+        packing: {
+          adapter: {
+            id: "Invalid Provider",
+            createPackingWork,
+            cancelPackingWork,
+          },
+        },
+      }),
+    ).toThrow(/packing work provider id/u);
+    expect(() =>
+      createShop({
+        packing: {
+          adapter: { id: "test-packing", createPackingWork } as unknown as NpShopPackingWorkAdapter,
+        },
+      }),
+    ).toThrow(/requires createPackingWork and cancelPackingWork functions/u);
+    expect(() =>
+      createShop({
+        packing: {
+          adapter: { id: "test-packing", cancelPackingWork } as unknown as NpShopPackingWorkAdapter,
+        },
+      }),
+    ).toThrow(/requires createPackingWork and cancelPackingWork functions/u);
+    expect(() =>
+      createShop({
+        packing: {
+          adapter: {
+            id: "test-packing",
+            createPackingWork: "not-a-function",
+            cancelPackingWork,
+          } as unknown as NpShopPackingWorkAdapter,
+        },
+      }),
+    ).toThrow(/requires createPackingWork and cancelPackingWork functions/u);
+    expect(() =>
+      createShop({
+        packing: {
+          adapter: {
+            id: "test-packing",
+            createPackingWork,
+            cancelPackingWork: "not-a-function",
+          } as unknown as NpShopPackingWorkAdapter,
+        },
+      }),
+    ).toThrow(/requires createPackingWork and cancelPackingWork functions/u);
+  });
+
+  it("rejects non-staff packing-work actions before provider calls", async () => {
+    const createPackingWork = vi.fn(() => Promise.reject(new Error("provider was called")));
+    const cancelPackingWork = vi.fn(() => Promise.reject(new Error("provider was called")));
+    const shop = createShop({
+      packing: {
+        adapter: { id: "test-packing", createPackingWork, cancelPackingWork },
+      },
+    });
+    const handlers = [
+      shop.plugin.actions?.createFulfillmentPackingWork?.handler,
+      shop.plugin.actions?.createExchangePackingWork?.handler,
+      shop.plugin.actions?.reconcilePackingWork?.handler,
+      shop.plugin.actions?.cancelPackingWork?.handler,
+      shop.plugin.actions?.finalizePackingWork?.handler,
+    ];
+    for (const handler of handlers) {
+      expect(handler).toBeTypeOf("function");
+      if (!handler) throw new Error("Packing-work action handler is missing.");
+      await expect(handler(null, {} as never)).resolves.toEqual({
+        ok: false,
+        error: expect.stringContaining("direct staff action"),
+      });
+    }
+    expect(createPackingWork).not.toHaveBeenCalled();
+    expect(cancelPackingWork).not.toHaveBeenCalled();
+  });
+
   it("uses one complete server-side carrier adapter and exposes only its closed operations", () => {
     const shop = createShop({
       carrier: {
@@ -554,8 +858,12 @@ describe("shop factory", () => {
       ]),
     );
     expect(
-      shop.plugin.admin?.tables?.find((table) => table.id === "shop-fulfillments")?.rowActions,
-    ).toEqual(expect.arrayContaining([expect.objectContaining({ id: "book-carrier" })]));
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-fulfillments")
+        ?.rowActions?.find((action) => action.id === "book-carrier"),
+    ).toMatchObject({
+      visibleWhen: { field: "carrierShipmentEligible", oneOf: [true] },
+    });
     expect(() =>
       createShop({
         carrier: {
@@ -618,6 +926,21 @@ describe("shop factory", () => {
         "ship-booked-exchange",
         "cancel-booked-exchange",
       ]),
+    );
+    const exchangeActions = shop.plugin.admin?.tables?.find(
+      (table) => table.id === "shop-exchanges",
+    )?.rowActions;
+    expect(exchangeActions?.find((action) => action.id === "book-exchange-carrier")).toMatchObject({
+      visibleWhen: { field: "carrierBookEligible", oneOf: [true] },
+    });
+    expect(
+      exchangeActions?.find((action) => action.id === "resume-exchange-carrier"),
+    ).toMatchObject({ visibleWhen: { field: "carrierResumeEligible", oneOf: [true] } });
+    expect(exchangeActions?.find((action) => action.id === "ship-booked-exchange")).toMatchObject({
+      visibleWhen: { field: "carrierShipEligible", oneOf: [true] },
+    });
+    expect(exchangeActions?.find((action) => action.id === "cancel-booked-exchange")).toMatchObject(
+      { visibleWhen: { field: "carrierCancelEligible", oneOf: [true] } },
     );
     expect(() =>
       createShop({
@@ -761,6 +1084,11 @@ describe("shop factory", () => {
         ?.find((table) => table.id === "shop-carrier-pickups")
         ?.rowActions?.map((action) => (action.type === "download" ? action.id : action.actionId)),
     ).toEqual(["resumeCarrierPickup", "cancelCarrierPickup"]);
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-carrier-pickups")
+        ?.rowActions?.find((action) => action.id === "resume-carrier-pickup"),
+    ).toMatchObject({ visibleWhen: { field: "resumeEligible", oneOf: [true] } });
 
     const replacementOnly = createShop({
       carrier: {
@@ -885,6 +1213,11 @@ describe("shop factory", () => {
         ?.find((table) => table.id === "shop-carrier-pickup-availability")
         ?.rowActions?.map((action) => (action.type === "download" ? action.id : action.actionId)),
     ).toEqual(["scheduleCarrierPickupWindow"]);
+    expect(
+      shop.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-carrier-pickup-availability")
+        ?.rowActions?.find((action) => action.id === "schedule-carrier-pickup-window"),
+    ).toMatchObject({ visibleWhen: { field: "scheduleEligible", oneOf: [true] } });
 
     expect(() =>
       createShop({
@@ -1245,6 +1578,11 @@ describe("shop factory", () => {
         "resume-shipping-label",
       ]),
     );
+    expect(
+      withAcquisition.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-carrier-label-acquisitions")
+        ?.rowActions?.find((action) => action.id === "resume-carrier-label-acquisition"),
+    ).toMatchObject({ visibleWhen: { field: "resumeEligible", oneOf: [true] } });
     expect(() =>
       createShop({
         carrier: {
@@ -1330,6 +1668,11 @@ describe("shop factory", () => {
       },
     });
     expect(withRefund.runtime.paymentRefundAdapter?.id).toBe("test-pay");
+    expect(
+      withRefund.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-recent-orders")
+        ?.rowActions?.find((action) => action.id === "full-refund"),
+    ).toMatchObject({ visibleWhen: { field: "refundEligible", oneOf: [true] } });
     expect(withRefund.plugin.actions?.refundOrder?.kind).toBe("action");
     expect(
       withRefund.plugin.admin?.tables

@@ -2,7 +2,21 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto
 
 import { getDb, npAuditEvents, npPluginStorage } from "@nexpress/core/db";
 import { npIsCanonicalSiteId, requireSiteId } from "@nexpress/core/sites";
-import { and, asc, desc, eq, gt, inArray, like, lte, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  like,
+  lte,
+  notExists,
+  or,
+  sql,
+} from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 
 import {
   NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT,
@@ -30,6 +44,7 @@ import {
 import {
   NP_SHOP_FULFILLMENT_PARCELS_STORAGE_CONTRACT,
   NpShopFulfillmentParcelConflictError,
+  NpShopFulfillmentParcelContractError,
   npRequireStoredShopFulfillmentParcels,
   npShopFulfillmentParcelLimits,
   npShopFulfillmentParcelTotals,
@@ -41,6 +56,39 @@ import {
   type NpShopPackagingProposalInput,
   type NpShopPackagingProposalLine,
 } from "./packaging-contract.js";
+import {
+  NP_SHOP_PACKING_WORK_CANCEL_REQUEST_CONTRACT,
+  NP_SHOP_PACKING_WORK_CREATE_REQUEST_CONTRACT,
+  NP_SHOP_PACKING_WORK_STORAGE_CONTRACT,
+  NpShopPackingWorkContractError,
+  NpShopPackingWorkConflictError,
+  NpShopPackingWorkProviderError,
+  NpShopPackingWorkUnavailableError,
+  npAnalyzeShopPackingWorkCancelResultForRequest,
+  npAnalyzeShopPackingWorkCreateResultForRequest,
+  npRequireShopPackingWorkCancelResult,
+  npRequireShopPackingWorkCreateResult,
+  npSerializeShopPackingWorkFingerprintSource,
+  npShopPackingWorkStorageKey,
+  type NpShopPackingWorkCancelRequest,
+  type NpShopPackingWorkCancelResult,
+  type NpShopPackingWorkCreateActionInput,
+  type NpShopPackingWorkCreateRequest,
+  type NpShopPackingWorkCreateResult,
+  type NpShopPackingWorkExistingActionInput,
+  type NpShopPackingWorkTarget,
+  type NpShopStoredPackingWork,
+} from "./packing-contract.js";
+import {
+  npPersistStoredShopPackingWork,
+  npReadStoredShopPackingWork,
+  npRequireStoredShopPackingWorkAtKey,
+  npShopPackingWorkAllowsShipmentEffect,
+  npShopPackingWorkIsPurgeTerminal,
+  npShopPackingWorkMatchesIdentity,
+  npShopPackingWorkMatchesUnattachedTombstone,
+  type NpShopPackingWorkPurgeSource,
+} from "./packing-work-storage.js";
 import {
   npCleanupExpiredShopInventoryReservations,
   npConsumeShopInventoryReservations,
@@ -99,6 +147,7 @@ import {
 import {
   NP_SHOP_FULFILLMENT_STORAGE_CONTRACT,
   NpShopFulfillmentConflictError,
+  NpShopFulfillmentContractError,
   npProjectShopFulfillment,
   npRequireStoredShopFulfillment,
   npShopFulfillmentLimits,
@@ -157,13 +206,17 @@ import {
   type NpShopStoredReturn,
 } from "./return-contract.js";
 import {
+  NpShopTrackingContractError,
+  npProjectShopTracking,
   npRequireStoredShopTracking,
   npShopExchangeTrackingPollStorageKey,
   npShopExchangeTrackingStorageKey,
   npShopTrackingPollStorageKey,
+  type NpShopStoredTracking,
 } from "./tracking-contract.js";
 import {
   npReadShopExchangeTrackingForOrder,
+  npReadStoredShopExchangeTrackingForOrder,
   npReadShopTrackingForOrder,
 } from "./tracking-service.js";
 import { npReadShopReturnTrackingForOrder } from "./return-tracking-service.js";
@@ -182,6 +235,7 @@ import {
   npShopCarrierLabelAcquisitionMatchesSource,
   npShopCarrierLabelAcquisitionStorageKey,
 } from "./label-acquisition-service.js";
+import type { NpShopStoredCarrierLabelAcquisition } from "./label-acquisition-contract.js";
 import {
   npReadShopReturnLogisticsForOrder,
   npShopReturnLogisticsStorageKey,
@@ -196,6 +250,7 @@ import {
 import {
   NP_SHOP_EXCHANGE_STORAGE_CONTRACT,
   NpShopExchangeConflictError,
+  NpShopExchangeContractError,
   npProjectShopExchange,
   npRequireStoredShopExchange,
   npShopExchangeLimits,
@@ -242,6 +297,7 @@ import {
 import {
   NP_SHOP_EXCHANGE_PARCELS_STORAGE_CONTRACT,
   NpShopExchangeParcelConflictError,
+  NpShopExchangeParcelContractError,
   npRequireStoredShopExchangeParcels,
   type NpShopExchangeParcelsSaveInput,
   type NpShopStoredExchangeParcels,
@@ -418,6 +474,7 @@ export interface NpShopAdminOrderRow {
   fulfillmentRevision: number | null;
   revision: number;
   refund: string;
+  refundEligible: boolean;
   returnRequest: string;
   createdAt: string;
 }
@@ -459,11 +516,23 @@ export interface NpShopAdminExchangeRow {
   pickupTarget: "replacement";
   pickupStatus: string;
   labelAction: string;
+  labelDownloadEligible: boolean;
   expectedRevision: number;
   target: "replacement";
   provider: string;
   parcels: string;
   parcelRevision: number | null;
+  packingWorkStatus: string;
+  packingWorkRevision: number | null;
+  packingWorkAction: string;
+  parcelMutationEligible: boolean;
+  processEligible: boolean;
+  manualShipEligible: boolean;
+  cancelEligible: boolean;
+  carrierBookEligible: boolean;
+  carrierResumeEligible: boolean;
+  carrierShipEligible: boolean;
+  carrierCancelEligible: boolean;
   units: number;
   inventory: string;
   carrier: string;
@@ -495,6 +564,13 @@ export interface NpShopAdminFulfillmentRow {
   status: string;
   fulfillmentRevision: number;
   parcelRevision: number | null;
+  packingWorkStatus: string;
+  packingWorkRevision: number | null;
+  packingWorkAction: string;
+  processEligible: boolean;
+  parcelMutationEligible: boolean;
+  manualShipmentEligible: boolean;
+  carrierShipmentEligible: boolean;
   parcels: string;
   privateData: string;
   carrier: string;
@@ -526,11 +602,13 @@ export interface NpShopAdminCarrierBookingRow {
   carrier: string;
   trackingNumber: string;
   providerError: string;
+  carrierResumeEligible: boolean;
   pickupAction: string;
   pickupRevision: number;
   pickupTarget: "outbound";
   exchangeId: null;
   labelAction: string;
+  labelDownloadEligible: boolean;
   expectedRevision: number;
   target: "outbound";
   updatedAt: string;
@@ -593,6 +671,29 @@ export function npShopExchangeParcelsStorageKey(orderId: string): string {
 
 function maintenanceStorageKey(ownerSegment: string, orderId: string): string {
   return `order-maintenance:${ownerSegment}:${orderId}`;
+}
+
+function orderScopedIdentityFromKey(
+  key: string,
+  prefix: "order-maintenance:" | "order-private:",
+): { ownerSegment: string; orderId: string } | null {
+  if (!key.startsWith(prefix)) return null;
+  const suffix = key.slice(prefix.length);
+  const separator = suffix.length - 37;
+  if (separator <= 0 || suffix[separator] !== ":") return null;
+  const ownerSegment = suffix.slice(0, separator);
+  const orderId = suffix.slice(separator + 1);
+  return isOwnerSegment(ownerSegment) && canonicalUuidPattern.test(orderId)
+    ? { ownerSegment, orderId }
+    : null;
+}
+
+function maintenanceIdentityFromKey(key: string): { ownerSegment: string; orderId: string } | null {
+  return orderScopedIdentityFromKey(key, "order-maintenance:");
+}
+
+function privateIdentityFromKey(key: string): { ownerSegment: string; orderId: string } | null {
+  return orderScopedIdentityFromKey(key, "order-private:");
 }
 
 function lookupStorageKey(orderId: string): string {
@@ -876,6 +977,108 @@ function exchangeMatchesOrder(
   );
 }
 
+function exchangeTrackingMatchesBooking(
+  tracking: NpShopStoredTracking,
+  booking: NpShopStoredExchangeCarrierBooking,
+  exchange: NpShopStoredExchange,
+): boolean {
+  const lifecycleMatches =
+    booking.completedOrderRevision !== null &&
+    booking.completedExchangeRevision !== null &&
+    booking.completedOrderRevision === booking.sourceOrderRevision + 1 &&
+    booking.completedExchangeRevision === booking.sourceExchangeRevision + 1 &&
+    ((exchange.status === "processing" &&
+      exchange.orderRevision === booking.completedOrderRevision &&
+      exchange.revision === booking.completedExchangeRevision) ||
+      (exchange.status === "shipped" &&
+        exchange.orderRevision === booking.completedOrderRevision + 1 &&
+        exchange.revision === booking.completedExchangeRevision + 1));
+  return (
+    booking.status === "completed" &&
+    lifecycleMatches &&
+    booking.exchangeId === exchange.id &&
+    booking.orderId === exchange.orderId &&
+    booking.purgeAt === exchange.purgeAt &&
+    booking.bookingReference !== null &&
+    booking.carrier !== null &&
+    booking.trackingNumber !== null &&
+    exchange.carrier === booking.carrier &&
+    exchange.trackingNumber === booking.trackingNumber &&
+    tracking.orderId === exchange.orderId &&
+    tracking.shipmentId === booking.id &&
+    tracking.providerId === booking.providerId &&
+    tracking.bookingReference === booking.bookingReference &&
+    tracking.trackingNumber === booking.trackingNumber &&
+    tracking.purgeAt === exchange.purgeAt
+  );
+}
+
+function exchangeCarrierBookingMatchesCurrentSource(
+  booking: NpShopStoredExchangeCarrierBooking,
+  order: NpShopStoredOrder,
+  exchange: NpShopStoredExchange,
+): boolean {
+  if (
+    booking.orderId !== order.id ||
+    booking.exchangeId !== exchange.id ||
+    booking.purgeAt !== order.purgeAt ||
+    exchange.orderId !== order.id ||
+    exchange.ownerSegment !== order.ownerSegment ||
+    exchange.purgeAt !== order.purgeAt ||
+    exchange.orderRevision !== order.revision ||
+    exchange.destinationRevision !== booking.destinationRevision
+  ) {
+    return false;
+  }
+  if (booking.status === "pending" || booking.status === "provider-confirmed") {
+    return (
+      booking.completedOrderRevision === null &&
+      booking.completedExchangeRevision === null &&
+      order.revision === booking.sourceOrderRevision &&
+      exchange.status === "awaiting" &&
+      exchange.revision === booking.sourceExchangeRevision
+    );
+  }
+  if (
+    booking.status === "manual-review" ||
+    booking.completedOrderRevision === null ||
+    booking.completedExchangeRevision === null ||
+    booking.completedOrderRevision !== booking.sourceOrderRevision + 1 ||
+    booking.completedExchangeRevision !== booking.sourceExchangeRevision + 1
+  ) {
+    return false;
+  }
+  if (booking.status === "cancelled") {
+    return (
+      order.revision === booking.completedOrderRevision + 1 &&
+      exchange.status === "cancelled" &&
+      exchange.revision === booking.completedExchangeRevision + 1 &&
+      exchange.carrier === null &&
+      exchange.trackingNumber === null
+    );
+  }
+  if (booking.status === "cancel-pending" || booking.status === "cancel-confirmed") {
+    return (
+      order.revision === booking.completedOrderRevision &&
+      exchange.status === "processing" &&
+      exchange.revision === booking.completedExchangeRevision &&
+      exchange.carrier === booking.carrier &&
+      exchange.trackingNumber === booking.trackingNumber
+    );
+  }
+  return (
+    booking.status === "completed" &&
+    ((order.revision === booking.completedOrderRevision &&
+      exchange.status === "processing" &&
+      exchange.revision === booking.completedExchangeRevision) ||
+      (order.revision === booking.completedOrderRevision + 1 &&
+        exchange.status === "shipped" &&
+        exchange.revision === booking.completedExchangeRevision + 1)) &&
+    exchange.carrier === booking.carrier &&
+    exchange.trackingNumber === booking.trackingNumber
+  );
+}
+
 function exchangeDestinationMatches(
   destination: NpShopStoredExchangeDestinationPrivate,
   exchange: NpShopStoredExchange,
@@ -1083,8 +1286,9 @@ async function readStoredPrivate(
   siteId: string,
   ownerSegment: string,
   orderId: string,
+  forUpdate = false,
 ): Promise<NpShopStoredOrderPrivateData | null> {
-  const [row] = await db
+  let query = db
     .select({ value: npPluginStorage.value, expiresAt: npPluginStorage.expiresAt })
     .from(npPluginStorage)
     .where(
@@ -1095,6 +1299,8 @@ async function readStoredPrivate(
       ),
     )
     .limit(1);
+  if (forUpdate) query = query.for("update") as typeof query;
+  const [row] = await query;
   if (!row) return null;
   const privateData = requireStoredPrivate(row.value, row.expiresAt);
   if (privateData.orderId !== orderId) {
@@ -1103,6 +1309,21 @@ async function readStoredPrivate(
     ]);
   }
   return privateData;
+}
+
+async function readStoredPrivateForExpiry(
+  db: ReturnType<typeof getDb> | NpShopTransaction,
+  siteId: string,
+  ownerSegment: string,
+  orderId: string,
+  forUpdate = false,
+): Promise<NpShopStoredOrderPrivateData | null> {
+  try {
+    return await readStoredPrivate(db, siteId, ownerSegment, orderId, forUpdate);
+  } catch (error) {
+    if (error instanceof NpShopOrderContractError) return null;
+    throw error;
+  }
 }
 
 async function readStoredFulfillment(
@@ -1207,6 +1428,22 @@ async function readStoredRefund(
   if (forUpdate) query = query.for("update") as typeof query;
   const [row] = await query;
   return row ? requireStoredRefundAtKey(row.value, row.expiresAt, row.key) : null;
+}
+
+type NpShopAdminPackingWorkState = NpShopStoredPackingWork | "invalid" | null;
+
+async function readAdminPackingWork(
+  db: ReturnType<typeof getDb>,
+  siteId: string,
+  target: NpShopPackingWorkTarget,
+  orderId: string,
+): Promise<NpShopAdminPackingWorkState> {
+  try {
+    return await npReadStoredShopPackingWork(db, siteId, target, orderId);
+  } catch (error) {
+    if (error instanceof NpShopPackingWorkContractError) return "invalid";
+    throw error;
+  }
 }
 
 async function readStoredReturn(
@@ -1784,9 +2021,12 @@ async function projectOrder(
     order.privateDataStatus === "retained"
       ? await readStoredPrivate(db, siteId, order.ownerSegment, order.id)
       : null;
-  if (order.privateDataStatus === "retained" && !privateData) {
+  if (
+    order.privateDataStatus === "retained" &&
+    (!privateData || new Date(privateData.expiresAt) <= new Date())
+  ) {
     throw new NpShopOrderContractError("Shop order private data is missing", [
-      "A retained order must have one matching private sidecar.",
+      "A retained order must have one live matching private sidecar.",
     ]);
   }
   if (
@@ -2043,32 +2283,46 @@ async function redactStoredOrderPrivate(
   order: NpShopStoredOrder,
   now: Date,
 ): Promise<NpShopStoredOrder> {
-  const fulfillment = await readStoredFulfillment(tx, siteId, order.id, true);
-  if (fulfillment && !fulfillmentMatchesOrder(fulfillment, order)) {
-    throw new NpShopOrderContractError("Shop fulfillment does not match its order", [
-      "Fulfillment must match the paid order before private data can be redacted.",
-    ]);
+  const redactedAt = new Date(
+    Math.min(now.getTime(), new Date(order.purgeAt).getTime()),
+  ).toISOString();
+  await removePrivateAndMaintenance(tx, siteId, order.ownerSegment, order.id);
+  let fulfillment: NpShopStoredFulfillment | null = null;
+  try {
+    fulfillment = await readStoredFulfillment(tx, siteId, order.id, true);
+  } catch (error) {
+    if (
+      !(error instanceof NpShopFulfillmentContractError) &&
+      !(error instanceof NpShopOrderContractError)
+    ) {
+      throw error;
+    }
+    // PII expiry cannot depend on repairing a malformed commercial row. The
+    // fulfillment remains for health diagnostics while canonical private keys
+    // are removed and the valid order projection is closed below.
   }
-  if (fulfillment?.privateDataStatus === "retained") {
+  // Private-sidecar expiry is not a commercial mutation. Keep both revisions stable so
+  // durable parcel, carrier, and packing snapshots remain tied to the same exact source;
+  // every PII-bearing action independently rechecks the retained status and sidecar.
+  if (
+    fulfillment?.privateDataStatus === "retained" &&
+    fulfillmentMatchesOrder(fulfillment, order)
+  ) {
     await persistFulfillment(tx, siteId, {
       ...fulfillment,
-      revision: fulfillment.revision + 1,
       privateDataStatus: "redacted",
-      updatedAt: now.toISOString(),
+      updatedAt: redactedAt,
     });
   }
   if (order.privateDataStatus === "redacted") {
-    await removePrivateAndMaintenance(tx, siteId, order.ownerSegment, order.id);
     return order;
   }
   const redacted = {
     ...order,
-    revision: order.revision + 1,
     privateDataStatus: "redacted",
-    updatedAt: now.toISOString(),
+    updatedAt: redactedAt,
   } satisfies NpShopStoredOrder;
   await persistOrder(tx, siteId, redacted);
-  await removePrivateAndMaintenance(tx, siteId, order.ownerSegment, order.id);
   return redacted;
 }
 
@@ -2133,15 +2387,16 @@ export async function npApplyShopPaymentEvent(
     }
 
     let outcome: NpShopStoredPaymentReceipt["outcome"];
-    if (
-      order.status === "paid" &&
-      order.privateDataStatus === "retained" &&
-      new Date(
-        (await readStoredPrivate(tx, siteId, order.ownerSegment, order.id))?.expiresAt ??
-          order.pendingExpiresAt,
-      ) <= receivedAt
-    ) {
-      order = await redactStoredOrderPrivate(tx, siteId, order, receivedAt);
+    if (order.status === "paid" && order.privateDataStatus === "retained") {
+      const privateData = await readStoredPrivateForExpiry(
+        tx,
+        siteId,
+        order.ownerSegment,
+        order.id,
+      );
+      if (!privateData || new Date(privateData.expiresAt) <= receivedAt) {
+        order = await redactStoredOrderPrivate(tx, siteId, order, receivedAt);
+      }
     }
     if (order.status !== "pending-payment") {
       outcome = "ignored-terminal";
@@ -2426,6 +2681,23 @@ export async function npApplyShopPaymentAdjustmentEvent(
     const exchange = await readStoredExchange(tx, siteId, order.id, true);
     const carrierBooking =
       order.status === "paid" ? await readStoredCarrierBooking(tx, siteId, order.id, true) : null;
+    const adjustmentFulfillment =
+      order.status === "paid" ? await readStoredFulfillment(tx, siteId, order.id, true) : null;
+    const adjustmentParcels =
+      order.status === "paid"
+        ? await readStoredFulfillmentParcels(tx, siteId, order.id, true)
+        : null;
+    const packingWork =
+      order.status === "paid"
+        ? await npReadStoredShopPackingWork(tx, siteId, "outbound", order.id, true)
+        : null;
+    const packingWorkSafeForAdjustment = packingWorkAllowsFullRefund(
+      packingWork,
+      order,
+      adjustmentFulfillment,
+      carrierBooking,
+      adjustmentParcels,
+    );
     const matchesFullRefund =
       fullRefund !== null &&
       fullRefund.status !== "manual-review" &&
@@ -2457,6 +2729,7 @@ export async function npApplyShopPaymentAdjustmentEvent(
       fullRefund !== null ||
       partialRefund !== null ||
       exchange !== null ||
+      !packingWorkSafeForAdjustment ||
       (carrierBooking !== null && carrierBooking.status !== "completed") ||
       (event.remainingAmountMinor === 0 && event.cancellations.length !== 1)
     ) {
@@ -2518,7 +2791,7 @@ export async function npApplyShopPaymentAdjustmentEvent(
       new Date(event.cancellations[0].cancelledAt) >= new Date(order.paymentResolvedAt)
     ) {
       const cancellation = event.cancellations[0];
-      const fulfillment = await readStoredFulfillment(tx, siteId, order.id, true);
+      const fulfillment = adjustmentFulfillment;
       if (!fulfillment || !fulfillmentMatchesOrder(fulfillment, order)) {
         throw new NpShopOrderContractError("Reversed payment fulfillment is invalid", [
           "A fully reversed paid order must retain one exact fulfillment before compensation.",
@@ -2653,11 +2926,133 @@ export async function npApplyShopPaymentAdjustmentEvent(
   });
 }
 
+function isPackingPurgeSourceContractError(error: unknown): boolean {
+  return (
+    error instanceof NpShopPackingWorkContractError ||
+    error instanceof NpShopOrderContractError ||
+    error instanceof NpShopFulfillmentContractError ||
+    error instanceof NpShopFulfillmentParcelContractError ||
+    error instanceof NpShopCarrierContractError ||
+    error instanceof NpShopReturnContractError ||
+    error instanceof NpShopExchangeContractError ||
+    error instanceof NpShopExchangeParcelContractError ||
+    error instanceof NpShopExchangeCarrierContractError ||
+    error instanceof NpShopTrackingContractError
+  );
+}
+
+async function readPackingWorkPurgeState(
+  tx: NpShopTransaction,
+  siteId: string,
+  order: NpShopStoredOrder,
+): Promise<{
+  readonly works: readonly (NpShopStoredPackingWork | null)[];
+  readonly source: NpShopPackingWorkPurgeSource;
+} | null> {
+  let outboundCandidate: NpShopStoredPackingWork | null;
+  let replacementCandidate: NpShopStoredPackingWork | null;
+  try {
+    // Discover which commercial rows are needed without taking packing locks.
+    // The caller already owns the canonical order lock, so no in-scope action
+    // can create or replace a work before the locked re-read below.
+    outboundCandidate = await npReadStoredShopPackingWork(tx, siteId, "outbound", order.id);
+    replacementCandidate = await npReadStoredShopPackingWork(tx, siteId, "replacement", order.id);
+
+    const fulfillment = outboundCandidate
+      ? await readStoredFulfillment(tx, siteId, order.id, true)
+      : null;
+    const outboundBooking = outboundCandidate
+      ? await readStoredCarrierBooking(tx, siteId, order.id, true)
+      : null;
+    const outboundParcels = outboundCandidate
+      ? await readStoredFulfillmentParcels(tx, siteId, order.id, true)
+      : null;
+    const returnRequest = replacementCandidate
+      ? await readStoredReturn(tx, siteId, order.id, true)
+      : null;
+    const exchange = replacementCandidate
+      ? await readStoredExchange(tx, siteId, order.id, true)
+      : null;
+    const replacementBooking = replacementCandidate
+      ? await readStoredExchangeCarrierBooking(tx, siteId, order.id, true)
+      : null;
+    const replacementParcels = replacementCandidate
+      ? await readStoredExchangeParcels(tx, siteId, order.id, true)
+      : null;
+
+    // Packing is deliberately locked after its source, booking, and parcel
+    // rows. This matches every mutation path and avoids purge/action inversion.
+    const outboundWork = await npReadStoredShopPackingWork(tx, siteId, "outbound", order.id, true);
+    const replacementWork = await npReadStoredShopPackingWork(
+      tx,
+      siteId,
+      "replacement",
+      order.id,
+      true,
+    );
+    const replacementTracking =
+      replacementWork?.attachedShipmentId !== null &&
+      replacementWork?.attachedShipmentId !== undefined
+        ? await npReadStoredShopExchangeTrackingForOrder(tx, siteId, order.id, true)
+        : null;
+    return {
+      works: [outboundWork, replacementWork],
+      source: {
+        order,
+        fulfillment,
+        outboundParcels,
+        outboundBooking,
+        returnRequest,
+        exchange,
+        replacementParcels,
+        replacementBooking,
+        replacementTracking,
+      },
+    };
+  } catch (error) {
+    if (isPackingPurgeSourceContractError(error)) return null;
+    throw error;
+  }
+}
+
 async function purgeOrder(
   tx: NpShopTransaction,
   siteId: string,
   order: NpShopStoredOrder,
-): Promise<void> {
+): Promise<boolean> {
+  const packingState = await readPackingWorkPurgeState(tx, siteId, order);
+  if (!packingState) return false;
+  const [outboundPackingWork, replacementPackingWork] = packingState.works;
+  const relatedPackingKeys = await tx
+    .select({ key: npPluginStorage.key })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "packing-work:%"),
+        sql`${npPluginStorage.value}->>'orderId' = ${order.id}`,
+      ),
+    )
+    .orderBy(asc(npPluginStorage.key))
+    .for("update");
+  const canonicalPackingKeys = new Set([
+    npShopPackingWorkStorageKey("outbound", order.id),
+    npShopPackingWorkStorageKey("replacement", order.id),
+  ]);
+  if (relatedPackingKeys.some((row) => !canonicalPackingKeys.has(row.key))) {
+    return false;
+  }
+  if (
+    [outboundPackingWork, replacementPackingWork].some(
+      (work) =>
+        work &&
+        (work.purgeAt !== order.purgeAt ||
+          !npShopPackingWorkIsPurgeTerminal(work, packingState.source)),
+    )
+  ) {
+    return false;
+  }
   await npLockShopInventoryProducts(
     tx,
     siteId,
@@ -2676,7 +3071,7 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${npShopExchangeTrackingStorageKey(order.id)}, ${npShopExchangeTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${npShopExchangeStorageKey(order.id)}, ${npShopExchangeDestinationPrivateStorageKey(order.id)}, ${npShopExchangeCarrierBookingStorageKey(order.id)}, ${npShopExchangeParcelsStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)}, ${`payment-adjustment:${order.id}`}, ${`promotion-reservation:${order.id}`})`,
+        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${npShopPackingWorkStorageKey("outbound", order.id)}, ${npShopPackingWorkStorageKey("replacement", order.id)}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${npShopExchangeTrackingStorageKey(order.id)}, ${npShopExchangeTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${npShopExchangeStorageKey(order.id)}, ${npShopExchangeDestinationPrivateStorageKey(order.id)}, ${npShopExchangeCarrierBookingStorageKey(order.id)}, ${npShopExchangeParcelsStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)}, ${`payment-adjustment:${order.id}`}, ${`promotion-reservation:${order.id}`})`,
       ),
     );
   await tx
@@ -2782,6 +3177,29 @@ async function purgeOrder(
         sql`${npPluginStorage.value}->'event'->>'orderId' = ${order.id}`,
       ),
     );
+  return true;
+}
+
+async function rotateShopStorageMaintenanceCursor(
+  siteId: string,
+  key: string,
+  selectedUpdatedAt: Date,
+): Promise<void> {
+  const rotatedAt = new Date(Math.max(Date.now(), selectedUpdatedAt.getTime() + 1));
+  // Maintenance ordering uses row metadata as a bounded fair cursor. Contract
+  // timestamps stay untouched, including for malformed rows that cannot be
+  // safely materialized.
+  await getDb()
+    .update(npPluginStorage)
+    .set({ updatedAt: rotatedAt })
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        eq(npPluginStorage.key, key),
+        eq(npPluginStorage.updatedAt, selectedUpdatedAt),
+      ),
+    );
 }
 
 export async function npCreateShopOrder(
@@ -2791,7 +3209,7 @@ export async function npCreateShopOrder(
 ): Promise<NpShopOrder> {
   const siteId = await requireSiteId();
   const ownerSegment = npShopCartOwnerStorageSegment(owner);
-  return getDb().transaction(async (tx) => {
+  const result = await getDb().transaction(async (tx) => {
     await npLockShopOrderDraftOwner(tx, siteId, owner);
     await npLockShopCart(tx, siteId, owner);
     await npLockShopOrderDraft(tx, siteId, owner, input.draftId);
@@ -2812,12 +3230,31 @@ export async function npCreateShopOrder(
     );
     if (existingAfterLock) {
       requireIdempotencyMatch(existingAfterLock, input);
-      const current =
+      const now = new Date();
+      let committedPrivacyMutation = false;
+      let current = existingAfterLock;
+      if (
         existingAfterLock.status === "pending-payment" &&
-        new Date(existingAfterLock.pendingExpiresAt) <= new Date()
-          ? await cancelStoredOrder(tx, siteId, existingAfterLock, "payment-timeout", new Date())
-          : existingAfterLock;
-      return projectOrder(tx, siteId, current);
+        new Date(existingAfterLock.pendingExpiresAt) <= now
+      ) {
+        current = await cancelStoredOrder(tx, siteId, existingAfterLock, "payment-timeout", now);
+        committedPrivacyMutation = true;
+      }
+      if (current.status === "paid" && current.privateDataStatus === "retained") {
+        const privateData = await readStoredPrivateForExpiry(
+          tx,
+          siteId,
+          current.ownerSegment,
+          current.id,
+        );
+        if (!privateData || new Date(privateData.expiresAt) <= now) {
+          current = await redactStoredOrderPrivate(tx, siteId, current, now);
+          committedPrivacyMutation = true;
+        }
+      }
+      return committedPrivacyMutation
+        ? ({ outcome: "project-after-commit", order: current } as const)
+        : ({ outcome: "projected", order: await projectOrder(tx, siteId, current) } as const);
     }
     if (existingLookup) {
       throw new NpShopOrderContractError("Shop order lookup is orphaned", [
@@ -3016,8 +3453,11 @@ export async function npCreateShopOrder(
           eq(npPluginStorage.key, npShopOrderDraftStorageKey(owner, draft.id)),
         ),
       );
-    return projectOrder(tx, siteId, order);
+    return { outcome: "projected", order: await projectOrder(tx, siteId, order) } as const;
   });
+  return result.outcome === "projected"
+    ? result.order
+    : projectOrder(getDb(), siteId, result.order);
 }
 
 export async function npReAddShopOrderLines(
@@ -3042,30 +3482,46 @@ export async function npReadShopOrder(
   const siteId = await requireSiteId();
   const ownerSegment = npShopCartOwnerStorageSegment(owner);
   const result = await getDb().transaction(async (tx) => {
+    await lockOrderLookup(tx, siteId, orderId);
+    const lookup = await readOrderLookupForUpdate(tx, siteId, orderId);
+    if (!lookup || lookup.ownerSegment !== ownerSegment) return null;
     await lockOrder(tx, siteId, ownerSegment, orderId);
     let order = await readStoredOrderForUpdate(tx, siteId, ownerSegment, orderId);
     if (!order) return null;
     const now = new Date();
     if (new Date(order.purgeAt) <= now) {
+      // Preserve the canonical source -> packing lock order. If a missed privacy
+      // pass left a sidecar behind, remove it before purgeOrder locks packing rows.
+      if (order.privateDataStatus === "retained") {
+        order = await redactStoredOrderPrivate(tx, siteId, order, now);
+      }
       await purgeOrder(tx, siteId, order);
       return null;
     }
+    let committedPrivacyMutation = false;
     if (order.status === "pending-payment" && new Date(order.pendingExpiresAt) <= now) {
       order = await cancelStoredOrder(tx, siteId, order, "payment-timeout", now);
-    } else if (
-      order.status === "paid" &&
-      order.privateDataStatus === "retained" &&
-      new Date(
-        (await readStoredPrivate(tx, siteId, order.ownerSegment, order.id))?.expiresAt ??
-          order.pendingExpiresAt,
-      ) <= now
-    ) {
-      order = await redactStoredOrderPrivate(tx, siteId, order, now);
+      committedPrivacyMutation = true;
+    } else if (order.status === "paid" && order.privateDataStatus === "retained") {
+      const privateData = await readStoredPrivateForExpiry(
+        tx,
+        siteId,
+        order.ownerSegment,
+        order.id,
+      );
+      if (!privateData || new Date(privateData.expiresAt) <= now) {
+        order = await redactStoredOrderPrivate(tx, siteId, order, now);
+        committedPrivacyMutation = true;
+      }
     }
-    return projectOrder(tx, siteId, order);
+    return committedPrivacyMutation
+      ? ({ outcome: "project-after-commit", order } as const)
+      : ({ outcome: "projected", order: await projectOrder(tx, siteId, order) } as const);
   });
   if (!result) throw new NpShopOrderNotFoundError();
-  return result;
+  return result.outcome === "projected"
+    ? result.order
+    : projectOrder(getDb(), siteId, result.order);
 }
 
 export async function npListShopOrders(owner: NpShopCartOwner): Promise<NpShopOrderList> {
@@ -3157,6 +3613,7 @@ export async function npMaintainShopOrders(): Promise<{
       key: npPluginStorage.key,
       value: npPluginStorage.value,
       expiresAt: npPluginStorage.expiresAt,
+      updatedAt: npPluginStorage.updatedAt,
     })
     .from(npPluginStorage)
     .where(
@@ -3164,7 +3621,14 @@ export async function npMaintainShopOrders(): Promise<{
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, "order-maintenance:%"),
-        lte(npPluginStorage.expiresAt, now),
+        or(
+          isNull(npPluginStorage.expiresAt),
+          lte(npPluginStorage.expiresAt, now),
+          lte(
+            npPluginStorage.updatedAt,
+            new Date(now.getTime() - npShopFulfillmentLimits.privateRetentionSeconds * 1_000),
+          ),
+        ),
       ),
     )
     .orderBy(asc(npPluginStorage.expiresAt), asc(npPluginStorage.key))
@@ -3172,27 +3636,68 @@ export async function npMaintainShopOrders(): Promise<{
   let cancelled = 0;
   let privateRedacted = 0;
   for (const row of pendingRows) {
-    const marker = requireMaintenanceMarker(row.value, row.expiresAt);
-    if (row.key !== maintenanceStorageKey(marker.ownerSegment, marker.orderId)) {
-      throw new NpShopOrderContractError("Invalid Shop order maintenance storage key", [
-        "Order maintenance key must match its owner segment and order id.",
-      ]);
+    let marker: NpShopOrderMaintenanceMarker;
+    try {
+      marker = requireMaintenanceMarker(row.value, row.expiresAt);
+      if (row.key !== maintenanceStorageKey(marker.ownerSegment, marker.orderId)) {
+        throw new NpShopOrderContractError("Invalid Shop order maintenance storage key", [
+          "Order maintenance key must match its owner segment and order id.",
+        ]);
+      }
+    } catch (error) {
+      if (!(error instanceof NpShopOrderContractError)) throw error;
+      const identity = maintenanceIdentityFromKey(row.key);
+      if (identity) {
+        await db.transaction(async (tx) => {
+          await lockOrder(tx, siteId, identity.ownerSegment, identity.orderId);
+          await removePrivateAndMaintenance(tx, siteId, identity.ownerSegment, identity.orderId);
+        });
+      } else {
+        const privateKey = row.key.replace(/^order-maintenance:/u, "order-private:");
+        await db
+          .delete(npPluginStorage)
+          .where(
+            and(
+              eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+              eq(npPluginStorage.siteId, siteId),
+              inArray(npPluginStorage.key, [row.key, privateKey]),
+            ),
+          );
+      }
+      continue;
     }
     const outcome = await db.transaction(async (tx) => {
       await lockOrder(tx, siteId, marker.ownerSegment, marker.orderId);
-      const order = await readStoredOrderForUpdate(tx, siteId, marker.ownerSegment, marker.orderId);
+      let order: NpShopStoredOrder | null;
+      try {
+        order = await readStoredOrderForUpdate(tx, siteId, marker.ownerSegment, marker.orderId);
+      } catch (error) {
+        if (!(error instanceof NpShopOrderContractError)) throw error;
+        await removePrivateAndMaintenance(tx, siteId, marker.ownerSegment, marker.orderId);
+        return "none" as const;
+      }
       if (!order) {
         await removePrivateAndMaintenance(tx, siteId, marker.ownerSegment, marker.orderId);
         return "none" as const;
       }
       if (order.status === "paid" && order.privateDataStatus === "retained") {
-        const privateData = await readStoredPrivate(
+        const privateData = await readStoredPrivateForExpiry(
           tx,
           siteId,
           marker.ownerSegment,
           marker.orderId,
+          true,
         );
-        if (privateData && new Date(privateData.expiresAt) > now) return "none" as const;
+        const retentionBackstopDue =
+          row.updatedAt <=
+          new Date(now.getTime() - npShopFulfillmentLimits.privateRetentionSeconds * 1_000);
+        if (privateData && new Date(privateData.expiresAt) > now && !retentionBackstopDue) {
+          await persistMaintenanceMarker(tx, siteId, {
+            ...marker,
+            dueAt: privateData.expiresAt,
+          });
+          return "none" as const;
+        }
         await redactStoredOrderPrivate(tx, siteId, order, now);
         return "redacted" as const;
       }
@@ -3200,9 +3705,107 @@ export async function npMaintainShopOrders(): Promise<{
         await removePrivateAndMaintenance(tx, siteId, marker.ownerSegment, marker.orderId);
         return "none" as const;
       }
-      if (new Date(order.pendingExpiresAt) > now) return "none" as const;
+      if (new Date(order.pendingExpiresAt) > now) {
+        await persistMaintenanceMarker(tx, siteId, {
+          ...marker,
+          dueAt: order.pendingExpiresAt,
+        });
+        return "none" as const;
+      }
       await cancelStoredOrder(tx, siteId, order, "payment-timeout", now);
       return "cancelled" as const;
+    });
+    if (outcome === "cancelled") cancelled += 1;
+    if (outcome === "redacted") privateRedacted += 1;
+  }
+
+  // The private sidecar is the retention authority. A missing, stale, or
+  // malformed maintenance marker must never extend its deadline, so this lane
+  // independently advances the oldest expired sidecars under the canonical
+  // order lock. It has its own quota and cannot be starved by marker backlog.
+  const expiredPrivateRows = await db
+    .select({
+      key: npPluginStorage.key,
+      expiresAt: npPluginStorage.expiresAt,
+      updatedAt: npPluginStorage.updatedAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "order-private:%"),
+        or(
+          isNull(npPluginStorage.expiresAt),
+          lte(npPluginStorage.expiresAt, now),
+          lte(
+            npPluginStorage.updatedAt,
+            new Date(now.getTime() - npShopFulfillmentLimits.privateRetentionSeconds * 1_000),
+          ),
+        ),
+      ),
+    )
+    .orderBy(asc(npPluginStorage.expiresAt), asc(npPluginStorage.key))
+    .limit(npShopOrderLimits.cleanupBatchSize);
+  for (const row of expiredPrivateRows) {
+    const identity = privateIdentityFromKey(row.key);
+    if (!identity) {
+      await db
+        .delete(npPluginStorage)
+        .where(
+          and(
+            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+            eq(npPluginStorage.siteId, siteId),
+            eq(npPluginStorage.key, row.key),
+            or(
+              isNull(npPluginStorage.expiresAt),
+              lte(npPluginStorage.expiresAt, now),
+              lte(
+                npPluginStorage.updatedAt,
+                new Date(now.getTime() - npShopFulfillmentLimits.privateRetentionSeconds * 1_000),
+              ),
+            ),
+          ),
+        );
+      continue;
+    }
+    const outcome = await db.transaction(async (tx) => {
+      await lockOrder(tx, siteId, identity.ownerSegment, identity.orderId);
+      const privateData = await readStoredPrivateForExpiry(
+        tx,
+        siteId,
+        identity.ownerSegment,
+        identity.orderId,
+        true,
+      );
+      const retentionBackstopDue =
+        row.updatedAt <=
+        new Date(now.getTime() - npShopFulfillmentLimits.privateRetentionSeconds * 1_000);
+      if (privateData && new Date(privateData.expiresAt) > now && !retentionBackstopDue) {
+        return "none" as const;
+      }
+      let order: NpShopStoredOrder | null;
+      try {
+        order = await readStoredOrderForUpdate(tx, siteId, identity.ownerSegment, identity.orderId);
+      } catch (error) {
+        if (!(error instanceof NpShopOrderContractError)) throw error;
+        await removePrivateAndMaintenance(tx, siteId, identity.ownerSegment, identity.orderId);
+        return "none" as const;
+      }
+      if (!order) {
+        await removePrivateAndMaintenance(tx, siteId, identity.ownerSegment, identity.orderId);
+        return "none" as const;
+      }
+      if (order.status === "paid" && order.privateDataStatus === "retained") {
+        await redactStoredOrderPrivate(tx, siteId, order, now);
+        return "redacted" as const;
+      }
+      if (order.status === "pending-payment") {
+        await cancelStoredOrder(tx, siteId, order, "payment-timeout", now);
+        return "cancelled" as const;
+      }
+      await removePrivateAndMaintenance(tx, siteId, identity.ownerSegment, identity.orderId);
+      return "none" as const;
     });
     if (outcome === "cancelled") cancelled += 1;
     if (outcome === "redacted") privateRedacted += 1;
@@ -3226,7 +3829,6 @@ export async function npMaintainShopOrders(): Promise<{
     .limit(npShopOrderLimits.cleanupBatchSize);
   let exchangeDestinationsCleaned = 0;
   for (const row of exchangeDestinationRows) {
-    requireStoredExchangeDestinationPrivateAtKey(row.value, row.expiresAt, row.key);
     const deleted = await db
       .delete(npPluginStorage)
       .where(
@@ -3241,33 +3843,132 @@ export async function npMaintainShopOrders(): Promise<{
     exchangeDestinationsCleaned += deleted.length;
   }
 
-  const purgeRows = await db
+  const packingPurgeQuota = Math.ceil(npShopOrderLimits.cleanupBatchSize / 2);
+  const terminalPackingRows = await db
     .select({
       key: npPluginStorage.key,
       value: npPluginStorage.value,
       expiresAt: npPluginStorage.expiresAt,
+      updatedAt: npPluginStorage.updatedAt,
     })
     .from(npPluginStorage)
     .where(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        like(npPluginStorage.key, "order:%"),
+        like(npPluginStorage.key, "packing-work:%"),
         lte(npPluginStorage.expiresAt, now),
+        sql`${npPluginStorage.value}->>'contract' = ${NP_SHOP_PACKING_WORK_STORAGE_CONTRACT}`,
+        sql`${npPluginStorage.value}->>'status' in ('cancelled', 'consumed')`,
       ),
     )
-    .orderBy(asc(npPluginStorage.expiresAt), asc(npPluginStorage.key))
+    .orderBy(asc(npPluginStorage.updatedAt), asc(npPluginStorage.key))
     .limit(npShopOrderLimits.cleanupBatchSize);
   let purged = 0;
-  for (const row of purgeRows) {
-    const order = requireStoredOrderAtKey(row.value, row.expiresAt, row.key);
-    purged += await db.transaction(async (tx) => {
-      await lockOrder(tx, siteId, order.ownerSegment, order.id);
-      const current = await readStoredOrderForUpdate(tx, siteId, order.ownerSegment, order.id);
-      if (!current || new Date(current.purgeAt) > now) return 0;
-      await purgeOrder(tx, siteId, current);
-      return 1;
-    });
+  const purgeTerminalPackingRows = async (
+    selectedRows: typeof terminalPackingRows,
+  ): Promise<void> => {
+    for (const row of selectedRows) {
+      let removed = false;
+      try {
+        const work = npRequireStoredShopPackingWorkAtKey(row.value, row.expiresAt, row.key);
+        removed = await db.transaction(async (tx) => {
+          await lockOrderLookup(tx, siteId, work.orderId);
+          const lookup = await readOrderLookupForUpdate(tx, siteId, work.orderId);
+          if (!lookup) return false;
+          await lockOrder(tx, siteId, lookup.ownerSegment, work.orderId);
+          const order = await readStoredOrderForUpdate(
+            tx,
+            siteId,
+            lookup.ownerSegment,
+            work.orderId,
+          );
+          if (!order || new Date(order.purgeAt) > now) return false;
+          return purgeOrder(tx, siteId, order);
+        });
+      } catch {
+        // A malformed terminal-looking row is retained for Admin diagnosis, but
+        // cannot monopolize every future bounded cleanup batch.
+      }
+      if (removed) purged += 1;
+      else await rotateShopStorageMaintenanceCursor(siteId, row.key, row.updatedAt);
+    }
+  };
+  const primaryTerminalPackingRows = terminalPackingRows.slice(0, packingPurgeQuota);
+  await purgeTerminalPackingRows(primaryTerminalPackingRows);
+
+  const remainingPurgeCapacity = Math.max(
+    0,
+    npShopOrderLimits.cleanupBatchSize - primaryTerminalPackingRows.length,
+  );
+  let ordinaryPurgeRowsScanned = 0;
+  if (remainingPurgeCapacity > 0) {
+    const packingWorkRows = alias(npPluginStorage, "packing_work_retention");
+    const purgeRows = await db
+      .select({
+        key: npPluginStorage.key,
+        value: npPluginStorage.value,
+        expiresAt: npPluginStorage.expiresAt,
+        updatedAt: npPluginStorage.updatedAt,
+      })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+          eq(npPluginStorage.siteId, siteId),
+          like(npPluginStorage.key, "order:%"),
+          lte(npPluginStorage.expiresAt, now),
+          notExists(
+            db
+              .select({ key: packingWorkRows.key })
+              .from(packingWorkRows)
+              .where(
+                and(
+                  eq(packingWorkRows.pluginId, NP_SHOP_PLUGIN_ID),
+                  eq(packingWorkRows.siteId, siteId),
+                  sql`${packingWorkRows.key} in ('packing-work:outbound:' || (${npPluginStorage.value}->>'id'), 'packing-work:replacement:' || (${npPluginStorage.value}->>'id'))`,
+                ),
+              ),
+          ),
+        ),
+      )
+      .orderBy(asc(npPluginStorage.updatedAt), asc(npPluginStorage.key))
+      .limit(remainingPurgeCapacity);
+    ordinaryPurgeRowsScanned = purgeRows.length;
+    for (const row of purgeRows) {
+      let removed = false;
+      try {
+        const order = requireStoredOrderAtKey(row.value, row.expiresAt, row.key);
+        removed = await db.transaction(async (tx) => {
+          await lockOrderLookup(tx, siteId, order.id);
+          const lookup = await readOrderLookupForUpdate(tx, siteId, order.id);
+          if (!lookup || lookup.ownerSegment !== order.ownerSegment) return false;
+          await lockOrder(tx, siteId, order.ownerSegment, order.id);
+          const current = await readStoredOrderForUpdate(tx, siteId, order.ownerSegment, order.id);
+          if (!current || new Date(current.purgeAt) > now) return false;
+          return purgeOrder(tx, siteId, current);
+        });
+      } catch {
+        // Preserve malformed commercial state for diagnosis while rotating its
+        // storage cursor so later valid orders can still make progress.
+      }
+      if (removed) purged += 1;
+      else await rotateShopStorageMaintenanceCursor(siteId, row.key, row.updatedAt);
+    }
+  }
+  const terminalBackfillCapacity = Math.max(
+    0,
+    npShopOrderLimits.cleanupBatchSize -
+      primaryTerminalPackingRows.length -
+      ordinaryPurgeRowsScanned,
+  );
+  if (terminalBackfillCapacity > 0) {
+    await purgeTerminalPackingRows(
+      terminalPackingRows.slice(
+        primaryTerminalPackingRows.length,
+        primaryTerminalPackingRows.length + terminalBackfillCapacity,
+      ),
+    );
   }
   const reservationsCleaned = await npCleanupExpiredShopInventoryReservations();
   return {
@@ -3497,6 +4198,9 @@ export async function npListRecentShopOrders(): Promise<{
         const fulfillment = await readStoredFulfillment(db, siteId, order.id);
         const refund = await readStoredRefund(db, siteId, order.id);
         const returnRequest = await readStoredReturn(db, siteId, order.id);
+        const carrierBooking = await readStoredCarrierBooking(db, siteId, order.id);
+        const parcelSnapshot = await readStoredFulfillmentParcels(db, siteId, order.id);
+        const packingWork = await readAdminPackingWork(db, siteId, "outbound", order.id);
         return {
           id: order.id,
           revision: order.revision,
@@ -3508,6 +4212,18 @@ export async function npListRecentShopOrders(): Promise<{
           fulfillment: fulfillment?.status ?? "not-created",
           fulfillmentRevision: fulfillment?.revision ?? null,
           refund: refund?.status ?? "not-requested",
+          refundEligible:
+            order.status === "paid" &&
+            packingWork !== "invalid" &&
+            (refund !== null ||
+              ((carrierBooking === null || carrierBooking.status === "completed") &&
+                packingWorkAllowsFullRefund(
+                  packingWork,
+                  order,
+                  fulfillment,
+                  carrierBooking,
+                  parcelSnapshot,
+                ))),
           returnRequest: returnRequest?.status ?? "not-requested",
           createdAt: order.createdAt,
         };
@@ -3929,6 +4645,23 @@ export async function npRefundShopOrder(
         "The carrier shipment must be reconciled before starting a full refund.",
       );
     }
+    const fulfillment = await readStoredFulfillment(tx, siteId, input.orderId, true);
+    const parcelSnapshot = await readStoredFulfillmentParcels(tx, siteId, input.orderId, true);
+    const packingWork = await npReadStoredShopPackingWork(
+      tx,
+      siteId,
+      "outbound",
+      input.orderId,
+      true,
+    );
+    if (
+      !packingWorkAllowsFullRefund(packingWork, order, fulfillment, carrierBooking, parcelSnapshot)
+    ) {
+      throw new NpShopRefundConflictError(
+        "refund_manual_review",
+        "Packing work must be cancelled before an unshipped full refund can start.",
+      );
+    }
     const adapter = runtime.paymentRefundAdapter;
     if (!adapter) {
       throw new NpShopRefundConflictError(
@@ -4151,11 +4884,22 @@ export async function npRefundShopOrder(
         "The provider refunded the payment but the local order changed; manual reconciliation is required.",
       );
     }
+    const carrierBooking = await readStoredCarrierBooking(tx, siteId, order.id, true);
     const fulfillment = await readStoredFulfillment(tx, siteId, order.id, true);
+    const parcelSnapshot = await readStoredFulfillmentParcels(tx, siteId, order.id, true);
     if (!fulfillment || !fulfillmentMatchesOrder(fulfillment, order)) {
       throw new NpShopOrderContractError("Refund fulfillment is invalid", [
         "A refundable paid order must have one exact fulfillment.",
       ]);
+    }
+    const packingWork = await npReadStoredShopPackingWork(tx, siteId, "outbound", order.id, true);
+    if (
+      !packingWorkAllowsFullRefund(packingWork, order, fulfillment, carrierBooking, parcelSnapshot)
+    ) {
+      throw new NpShopRefundConflictError(
+        "refund_manual_review",
+        "The provider refunded the payment, but packing work changed before local compensation; reconcile it before resuming the refund.",
+      );
     }
     const shipped = fulfillment.status === "shipped";
     let inventoryOutcome: NpShopStoredRefund["inventoryOutcome"] = "not-required";
@@ -4336,6 +5080,19 @@ export async function npSaveShopFulfillmentParcels(
     }
     const booking = await readStoredCarrierBooking(tx, siteId, input.orderId, true);
     const existing = await readStoredFulfillmentParcels(tx, siteId, input.orderId, true);
+    const packingWork = await npReadStoredShopPackingWork(
+      tx,
+      siteId,
+      "outbound",
+      input.orderId,
+      true,
+    );
+    requirePackingWorkAllowsParcelMutation(packingWork, {
+      target: "outbound",
+      orderId: order.id,
+      exchangeId: null,
+      purgeAt: order.purgeAt,
+    });
     if (booking || existing?.lockedShipmentId) {
       throw new NpShopFulfillmentParcelConflictError(
         "parcel_locked",
@@ -4394,11 +5151,9 @@ export async function npProcessShopFulfillment(
 ): Promise<NpShopFulfillment> {
   const siteId = await requireSiteId();
   return getDb().transaction(async (tx) => {
-    const { fulfillment: current, order } = await readFulfillmentForAction(
-      tx,
-      siteId,
-      input.orderId,
-    );
+    const source = await readFulfillmentForAction(tx, siteId, input.orderId);
+    let current = source.fulfillment;
+    let order = source.order;
     if (await readStoredCarrierBooking(tx, siteId, input.orderId, true)) {
       throw new NpShopFulfillmentConflictError(
         "fulfillment_terminal",
@@ -4406,13 +5161,50 @@ export async function npProcessShopFulfillment(
       );
     }
     requireFulfillmentRevision(current, input.expectedRevision);
-    if (current.status === "shipped" || current.status === "cancelled") {
+    if (current.status !== "awaiting") {
       throw new NpShopFulfillmentConflictError(
         "fulfillment_terminal",
-        "A shipped or refunded fulfillment cannot return to processing.",
+        "Only an awaiting fulfillment can move to processing once.",
       );
     }
-    const now = new Date().toISOString();
+    const packingWork = await npReadStoredShopPackingWork(
+      tx,
+      siteId,
+      "outbound",
+      input.orderId,
+      true,
+    );
+    if (
+      packingWork &&
+      !packingWorkAllowsUnattachedFallback(packingWork, {
+        target: "outbound",
+        orderId: order.id,
+        exchangeId: null,
+        purgeAt: order.purgeAt,
+      })
+    ) {
+      throw new NpShopPackingWorkConflictError(
+        packingWork.status === "manual-review"
+          ? "packing_work_manual_review"
+          : "packing_work_state_conflict",
+        "Reconcile the durable packing work before processing this fulfillment.",
+      );
+    }
+    const transitionAt = new Date();
+    const privateData = await readStoredPrivateForExpiry(tx, siteId, order.ownerSegment, order.id);
+    const privateIsLive = Boolean(
+      current.privateDataStatus === "retained" &&
+      order.privateDataStatus === "retained" &&
+      privateData?.contract === NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT &&
+      privateData.retainedAt === current.createdAt &&
+      privateData.expiresAt === current.privateExpiresAt &&
+      new Date(privateData.expiresAt) > transitionAt,
+    );
+    if (!privateIsLive && order.privateDataStatus === "retained") {
+      order = await redactStoredOrderPrivate(tx, siteId, order, transitionAt);
+      current = { ...current, privateDataStatus: "redacted" };
+    }
+    const now = transitionAt.toISOString();
     const next = {
       ...current,
       status: "processing",
@@ -4421,7 +5213,6 @@ export async function npProcessShopFulfillment(
       updatedAt: now,
     } satisfies NpShopStoredFulfillment;
     await persistFulfillment(tx, siteId, next);
-    const privateData = await readStoredPrivate(tx, siteId, order.ownerSegment, order.id);
     await npStageShopOrderNotification(tx, siteId, {
       orderId: order.id,
       ownerSegment: order.ownerSegment,
@@ -4429,7 +5220,7 @@ export async function npProcessShopFulfillment(
       orderRevision: order.revision,
       occurredAt: now,
       purgeAt: order.purgeAt,
-      email: privateData?.customer.email ?? null,
+      email: privateIsLive ? (privateData?.customer.email ?? null) : null,
     });
     await recordRequiredShopFulfillmentAudit(
       tx,
@@ -4454,12 +5245,14 @@ export async function npShipShopFulfillment(
       siteId,
       input.orderId,
     );
-    if (await readStoredCarrierBooking(tx, siteId, input.orderId, true)) {
+    const booking = await readStoredCarrierBooking(tx, siteId, input.orderId, true);
+    if (booking) {
       throw new NpShopFulfillmentConflictError(
         "fulfillment_terminal",
         "A durable carrier booking must be reconciled instead of manually shipping this order.",
       );
     }
+    const parcelSnapshot = await readStoredFulfillmentParcels(tx, siteId, input.orderId, true);
     requireFulfillmentRevision(current, input.expectedRevision);
     if (current.status === "shipped" || current.status === "cancelled") {
       throw new NpShopFulfillmentConflictError(
@@ -4467,6 +5260,22 @@ export async function npShipShopFulfillment(
         "The fulfillment is already shipped or cancelled after refund.",
       );
     }
+    await consumeShopPackingWork(
+      tx,
+      siteId,
+      {
+        target: "outbound",
+        exchangeId: null,
+        order,
+        sourceRevision: current.revision,
+        sourceStatus: current.status,
+        booking,
+        parcelSnapshot,
+        lines: order.lines,
+      },
+      null,
+      staffUserId,
+    );
     const now = new Date().toISOString();
     const next = {
       ...current,
@@ -4618,24 +5427,25 @@ export async function npBookShopCarrierShipment(
         "The durable parcel booking requires its original parcel-aware carrier capability.",
       );
     }
-    const privateData = await readStoredPrivate(
+    const privateData = await readStoredPrivateForExpiry(
       tx,
       siteId,
       fulfillment.ownerSegment,
       fulfillment.orderId,
     );
-    if (
-      fulfillment.privateDataStatus !== "retained" ||
-      order.privateDataStatus !== "retained" ||
-      !privateData ||
-      privateData.contract !== NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT ||
-      privateData.expiresAt !== fulfillment.privateExpiresAt ||
-      new Date(privateData.expiresAt) <= new Date()
-    ) {
+    const privateIsLive = Boolean(
+      fulfillment.privateDataStatus === "retained" &&
+      order.privateDataStatus === "retained" &&
+      privateData?.contract === NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT &&
+      privateData.retainedAt === fulfillment.createdAt &&
+      privateData.expiresAt === fulfillment.privateExpiresAt &&
+      new Date(privateData.expiresAt) > new Date(),
+    );
+    if (!privateIsLive) {
       if (order.privateDataStatus === "retained") {
         await redactStoredOrderPrivate(tx, siteId, order, new Date());
       }
-      if (existing) {
+      if (existing && existing.status !== "provider-confirmed") {
         await persistCarrierBooking(tx, siteId, {
           ...existing,
           status: "manual-review",
@@ -4645,9 +5455,11 @@ export async function npBookShopCarrierShipment(
           ).toISOString(),
         });
       }
-      return { outcome: "private-expired" as const };
+      if (existing?.status !== "provider-confirmed") {
+        return { outcome: "private-expired" as const };
+      }
     }
-    if (!privateData.shipping) {
+    if (privateIsLive && !privateData?.shipping) {
       throw new NpShopOrderContractError("Shop carrier destination is missing", [
         "A retained fulfillment must have one exact shipping destination.",
       ]);
@@ -4727,13 +5539,31 @@ export async function npBookShopCarrierShipment(
         },
       );
     }
+    const attachedPackingWork = await attachShopPackingWorkToShipment(
+      tx,
+      siteId,
+      {
+        target: "outbound",
+        exchangeId: null,
+        order,
+        sourceRevision: fulfillment.revision,
+        sourceStatus: fulfillment.status,
+        booking,
+        parcelSnapshot,
+        lines: order.lines,
+      },
+      booking.id,
+      Boolean(parcelAdapter && parcelSnapshot?.lockedShipmentId === booking.id),
+      staffUserId,
+    );
     return {
       outcome: "prepared" as const,
       fulfillment,
       order,
-      privateData,
+      privateData: privateIsLive ? privateData : null,
       booking,
       parcelSnapshot: parcelSnapshot?.lockedShipmentId === booking.id ? parcelSnapshot : null,
+      packingWorkId: attachedPackingWork?.status === "active" ? attachedPackingWork.workId : null,
     };
   });
   if (prepared.outcome === "private-expired") {
@@ -4769,6 +5599,40 @@ export async function npBookShopCarrierShipment(
         "The pending booking requires its original carrier provider.",
       );
     }
+    // Provider I/O is intentionally outside the transaction. Re-read the
+    // private authority immediately before materializing the request so a
+    // sidecar that expired or was redacted after prepare is never sent.
+    const invocationPrivate = await readStoredPrivateForExpiry(
+      getDb(),
+      siteId,
+      prepared.fulfillment.ownerSegment,
+      prepared.fulfillment.orderId,
+    );
+    const invocationNow = new Date();
+    if (
+      !invocationPrivate?.shipping ||
+      invocationPrivate.contract !== NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT ||
+      invocationPrivate.retainedAt !== prepared.fulfillment.createdAt ||
+      invocationPrivate.expiresAt !== prepared.fulfillment.privateExpiresAt ||
+      new Date(invocationPrivate.expiresAt) <= invocationNow
+    ) {
+      await updatePendingCarrierBooking(
+        siteId,
+        input.orderId,
+        prepared.booking.id,
+        (current, now) => ({
+          ...current,
+          status: "manual-review",
+          providerErrorCode: "private-data-expired",
+          updatedAt: now,
+        }),
+      );
+      throw new NpShopCarrierConflictError(
+        "carrier_private_expired",
+        "The private shipping destination expired before carrier booking.",
+      );
+    }
+    const destination = invocationPrivate.shipping;
     const commonRequest = {
       shipmentId: prepared.booking.id,
       orderId: prepared.order.id,
@@ -4781,7 +5645,7 @@ export async function npBookShopCarrierShipment(
         variantName: line.variantName,
         quantity: line.quantity,
       })),
-      destination: prepared.privateData.shipping,
+      destination,
       deliveryMethod: prepared.order.deliveryMethod,
       requestedAt: prepared.booking.requestedAt,
     };
@@ -4956,18 +5820,43 @@ export async function npBookShopCarrierShipment(
         input.orderId,
       );
       const booking = await readStoredCarrierBooking(tx, siteId, input.orderId, true);
+      const parcelSnapshot = await readStoredFulfillmentParcels(tx, siteId, input.orderId, true);
       if (
         !booking ||
         booking.id !== confirmed.id ||
         booking.status !== "provider-confirmed" ||
         current.status !== "processing" ||
-        current.revision !== booking.fulfillmentRevision ||
-        current.privateDataStatus !== "retained" ||
-        order.privateDataStatus !== "retained"
+        current.revision !== booking.fulfillmentRevision
       ) {
         throw new NpShopCarrierConflictError(
           "carrier_manual_review",
           "The local fulfillment changed after carrier confirmation.",
+        );
+      }
+      const consumedPackingWork = await consumeShopPackingWork(
+        tx,
+        siteId,
+        {
+          target: "outbound",
+          exchangeId: null,
+          order,
+          sourceRevision: current.revision,
+          sourceStatus: current.status,
+          booking,
+          parcelSnapshot,
+          lines: order.lines,
+        },
+        booking.id,
+        staffUserId,
+      );
+      if (
+        prepared.packingWorkId &&
+        (consumedPackingWork?.workId !== prepared.packingWorkId ||
+          consumedPackingWork.status !== "consumed")
+      ) {
+        throw new NpShopPackingWorkConflictError(
+          "packing_work_shipment_conflict",
+          "Packing-work cancellation won while carrier booking was in progress.",
         );
       }
       const now = new Date(
@@ -5032,6 +5921,7 @@ export async function npBookShopCarrierShipment(
     if (
       !(error instanceof NpShopCarrierConflictError) &&
       !(error instanceof NpShopFulfillmentConflictError) &&
+      !(error instanceof NpShopPackingWorkConflictError) &&
       !(error instanceof NpShopOrderContractError)
     ) {
       throw error;
@@ -5060,7 +5950,12 @@ export async function npReadShopFulfillmentPrivate(
       input.orderId,
     );
     requireFulfillmentRevision(current, input.expectedRevision);
-    const privateData = await readStoredPrivate(tx, siteId, current.ownerSegment, current.orderId);
+    const privateData = await readStoredPrivateForExpiry(
+      tx,
+      siteId,
+      current.ownerSegment,
+      current.orderId,
+    );
     if (
       current.privateDataStatus !== "retained" ||
       !privateData ||
@@ -5092,7 +5987,10 @@ export async function npReadShopFulfillmentPrivate(
   return result;
 }
 
-export async function npListRecentShopFulfillments(): Promise<{
+export async function npListRecentShopFulfillments(
+  carrierProviderId?: string,
+  parcelAwareCarrier = false,
+): Promise<{
   rows: NpShopAdminFulfillmentRow[];
   total: number;
 }> {
@@ -5128,12 +6026,142 @@ export async function npListRecentShopFulfillments(): Promise<{
     rows: await Promise.all(
       rows.map(async (row) => {
         const fulfillment = requireStoredFulfillment(row.value, row.expiresAt, row.key);
+        const order = await readStoredOrderForUpdate(
+          db,
+          siteId,
+          fulfillment.ownerSegment,
+          fulfillment.orderId,
+        );
+        const privateData = order
+          ? await readStoredPrivateForExpiry(db, siteId, order.ownerSegment, fulfillment.orderId)
+          : null;
         const parcelSnapshot = await readStoredFulfillmentParcels(db, siteId, fulfillment.orderId);
+        const packingWork = await readAdminPackingWork(db, siteId, "outbound", fulfillment.orderId);
+        const exactPackingWork = packingWork === "invalid" ? null : packingWork;
+        const carrierBooking = await readStoredCarrierBooking(db, siteId, fulfillment.orderId);
+        const exactUnlockedParcelSnapshot = Boolean(
+          parcelSnapshot &&
+          parcelSnapshot.orderId === fulfillment.orderId &&
+          parcelSnapshot.fulfillmentRevision === fulfillment.revision &&
+          parcelSnapshot.purgeAt === fulfillment.purgeAt &&
+          parcelSnapshot.lockedShipmentId === null,
+        );
+        const exactLockedParcelSnapshot = Boolean(
+          parcelSnapshot &&
+          carrierBooking &&
+          parcelSnapshot.orderId === fulfillment.orderId &&
+          parcelSnapshot.fulfillmentRevision === carrierBooking.fulfillmentRevision &&
+          parcelSnapshot.purgeAt === fulfillment.purgeAt &&
+          parcelSnapshot.lockedShipmentId === carrierBooking.id,
+        );
+        const commercialSourceValid = Boolean(order && fulfillmentMatchesOrder(fulfillment, order));
+        const privateSourceAvailable = Boolean(
+          order &&
+          fulfillment.privateDataStatus === "retained" &&
+          order.privateDataStatus === "retained" &&
+          privateData?.contract === NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT &&
+          privateData.retainedAt === fulfillment.createdAt &&
+          privateData.expiresAt === fulfillment.privateExpiresAt &&
+          new Date(privateData.expiresAt) > new Date(),
+        );
+        const packingSourceValid =
+          commercialSourceValid &&
+          packingWork !== "invalid" &&
+          (exactPackingWork === null ||
+            (order !== null &&
+              packingWorkMatchesOutboundAdminSource(
+                exactPackingWork,
+                order,
+                fulfillment,
+                parcelSnapshot,
+                carrierBooking,
+              )));
+        const carrierResumeEligible = Boolean(
+          carrierBooking &&
+          (carrierBooking.status === "pending" || carrierBooking.status === "provider-confirmed") &&
+          packingSourceValid &&
+          packingWorkAllowsCarrierShipment(
+            exactPackingWork,
+            carrierBooking.status === "pending" && parcelAwareCarrier,
+            carrierBooking.id,
+            {
+              target: "outbound",
+              orderId: fulfillment.orderId,
+              exchangeId: null,
+              purgeAt: fulfillment.purgeAt,
+            },
+          ) &&
+          (carrierBooking.status === "provider-confirmed" ||
+            (privateSourceAvailable &&
+              carrierBooking.providerId === carrierProviderId &&
+              ((parcelSnapshot?.lockedShipmentId ?? null) === null ||
+                (parcelAwareCarrier && exactLockedParcelSnapshot)))),
+        );
         return {
           id: fulfillment.orderId,
           status: fulfillment.status,
           fulfillmentRevision: fulfillment.revision,
           parcelRevision: parcelSnapshot?.revision ?? null,
+          packingWorkStatus:
+            packingWork === "invalid" ? "invalid" : (exactPackingWork?.status ?? "none"),
+          packingWorkRevision: exactPackingWork?.revision ?? null,
+          packingWorkAction:
+            fulfillment.status === "processing" &&
+            commercialSourceValid &&
+            carrierBooking === null &&
+            exactUnlockedParcelSnapshot &&
+            packingWork === null
+              ? "create"
+              : "—",
+          processEligible:
+            fulfillment.status === "awaiting" &&
+            carrierBooking === null &&
+            commercialSourceValid &&
+            packingWork !== "invalid" &&
+            (exactPackingWork === null ||
+              packingWorkAllowsUnattachedFallback(exactPackingWork, {
+                target: "outbound",
+                orderId: fulfillment.orderId,
+                exchangeId: null,
+                purgeAt: fulfillment.purgeAt,
+              })),
+          parcelMutationEligible:
+            fulfillment.status === "processing" &&
+            commercialSourceValid &&
+            carrierBooking === null &&
+            (parcelSnapshot?.lockedShipmentId ?? null) === null &&
+            packingWork !== "invalid" &&
+            packingWorkAllowsParcelMutation(exactPackingWork, {
+              target: "outbound",
+              orderId: fulfillment.orderId,
+              exchangeId: null,
+              purgeAt: fulfillment.purgeAt,
+            }),
+          manualShipmentEligible:
+            (fulfillment.status === "awaiting" || fulfillment.status === "processing") &&
+            carrierBooking === null &&
+            packingSourceValid &&
+            packingWorkAllowsManualShipment(exactPackingWork, {
+              target: "outbound",
+              orderId: fulfillment.orderId,
+              exchangeId: null,
+              purgeAt: fulfillment.purgeAt,
+            }),
+          carrierShipmentEligible:
+            fulfillment.status === "processing" &&
+            (carrierBooking === null
+              ? carrierProviderId !== undefined &&
+                privateSourceAvailable &&
+                (!parcelAwareCarrier || exactUnlockedParcelSnapshot) &&
+                packingWork !== "invalid" &&
+                packingSourceValid &&
+                packingWorkAllowsCarrierShipment(exactPackingWork, parcelAwareCarrier, null, {
+                  target: "outbound",
+                  orderId: fulfillment.orderId,
+                  exchangeId: null,
+                  purgeAt: fulfillment.purgeAt,
+                })
+              : carrierResumeEligible),
           parcels: parcelSnapshot
             ? parcelSnapshot.lockedShipmentId
               ? "locked"
@@ -5440,7 +6468,10 @@ export async function npCountShopFulfillmentParcels(): Promise<{
   };
 }
 
-export async function npListRecentShopCarrierBookings(): Promise<{
+export async function npListRecentShopCarrierBookings(
+  carrierProviderId?: string,
+  parcelAwareCarrier = false,
+): Promise<{
   rows: NpShopAdminCarrierBookingRow[];
   total: number;
 }> {
@@ -5579,40 +6610,121 @@ export async function npListRecentShopCarrierBookings(): Promise<{
     }),
   );
   return {
-    rows: rows.map((row) => {
-      const booking = requireStoredCarrierBookingAtKey(row.value, row.expiresAt, row.key);
-      const pickup = pickups.get(booking.id);
-      const labelAcquisition = labelAcquisitions.get(booking.id);
-      const labelAction =
-        booking.status !== "completed" || trackedShipments.has(booking.id)
-          ? "—"
-          : !labelAcquisition
-            ? "purchase"
-            : labelAcquisition.status === "completed"
-              ? "regenerate"
-              : labelAcquisition.status === "pending" ||
-                  labelAcquisition.status === "provider-confirmed"
-                ? "resume"
-                : "—";
-      return {
-        id: booking.orderId,
-        shipmentId: booking.id,
-        provider: booking.providerId,
-        status: booking.status,
-        fulfillmentRevision: booking.fulfillmentRevision,
-        carrier: booking.carrier ?? "—",
-        trackingNumber: booking.trackingNumber ?? "—",
-        providerError: booking.providerErrorCode ?? "—",
-        pickupAction: booking.status === "completed" && !pickup ? "schedule" : "—",
-        pickupRevision: pickup?.revision ?? 0,
-        pickupTarget: "outbound",
-        exchangeId: null,
-        labelAction,
-        expectedRevision: labelAcquisition?.revision ?? 0,
-        target: "outbound",
-        updatedAt: booking.updatedAt,
-      };
-    }),
+    rows: await Promise.all(
+      rows.map(async (row) => {
+        const booking = requireStoredCarrierBookingAtKey(row.value, row.expiresAt, row.key);
+        const pickup = pickups.get(booking.id);
+        const labelAcquisition = labelAcquisitions.get(booking.id);
+        const parcelSnapshot = await readStoredFulfillmentParcels(db, siteId, booking.orderId);
+        const fulfillment = await readStoredFulfillment(db, siteId, booking.orderId);
+        const order = fulfillment
+          ? await readStoredOrderForUpdate(db, siteId, fulfillment.ownerSegment, booking.orderId)
+          : null;
+        const privateData = order
+          ? await readStoredPrivateForExpiry(db, siteId, order.ownerSegment, booking.orderId)
+          : null;
+        const packingWork = await readAdminPackingWork(db, siteId, "outbound", booking.orderId);
+        const exactPackingWork = packingWork === "invalid" ? null : packingWork;
+        const commercialSourceValid = outboundCarrierBookingMatchesAdminSource(
+          booking,
+          fulfillment,
+          order,
+        );
+        const privateSourceAvailable = Boolean(
+          fulfillment &&
+          order &&
+          fulfillment.privateDataStatus === "retained" &&
+          order.privateDataStatus === "retained" &&
+          privateData?.contract === NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT &&
+          privateData.retainedAt === fulfillment.createdAt &&
+          privateData.expiresAt === fulfillment.privateExpiresAt &&
+          new Date(privateData.expiresAt) > new Date(),
+        );
+        const packingSourceValid =
+          commercialSourceValid &&
+          packingWork !== "invalid" &&
+          (exactPackingWork === null ||
+            (fulfillment !== null &&
+              order !== null &&
+              packingWorkMatchesOutboundAdminSource(
+                exactPackingWork,
+                order,
+                fulfillment,
+                parcelSnapshot,
+                booking,
+              )));
+        const exactLockedParcelSnapshot = Boolean(
+          parcelSnapshot &&
+          parcelSnapshot.orderId === booking.orderId &&
+          parcelSnapshot.fulfillmentRevision === booking.fulfillmentRevision &&
+          parcelSnapshot.purgeAt === booking.purgeAt &&
+          parcelSnapshot.lockedShipmentId === booking.id,
+        );
+        const packingAllowsNewShipmentEffect =
+          booking.providerId === carrierProviderId &&
+          packingSourceValid &&
+          npShopPackingWorkAllowsShipmentEffect(exactPackingWork, booking.id);
+        const labelRelationshipValid = Boolean(
+          labelAcquisition && outboundLabelAcquisitionMatchesBooking(labelAcquisition, booking),
+        );
+        const labelAction =
+          booking.status !== "completed" || trackedShipments.has(booking.id)
+            ? "—"
+            : labelAcquisition?.status === "pending" ||
+                labelAcquisition?.status === "provider-confirmed"
+              ? packingWork === "invalid"
+                ? "—"
+                : labelRelationshipValid && booking.providerId === carrierProviderId
+                  ? "resume"
+                  : "—"
+              : !packingAllowsNewShipmentEffect
+                ? "—"
+                : !labelAcquisition
+                  ? "purchase"
+                  : labelAcquisition.status === "completed" && labelRelationshipValid
+                    ? "regenerate"
+                    : "—";
+        return {
+          id: booking.orderId,
+          shipmentId: booking.id,
+          provider: booking.providerId,
+          status: booking.status,
+          fulfillmentRevision: booking.fulfillmentRevision,
+          carrier: booking.carrier ?? "—",
+          trackingNumber: booking.trackingNumber ?? "—",
+          providerError: booking.providerErrorCode ?? "—",
+          carrierResumeEligible:
+            (booking.status === "pending" || booking.status === "provider-confirmed") &&
+            packingSourceValid &&
+            npShopPackingWorkAllowsShipmentEffect(exactPackingWork, booking.id) &&
+            (booking.status === "provider-confirmed" ||
+              (privateSourceAvailable &&
+                booking.providerId === carrierProviderId &&
+                ((parcelSnapshot?.lockedShipmentId ?? null) === null ||
+                  (parcelSnapshot?.lockedShipmentId === booking.id && parcelAwareCarrier)))),
+          pickupAction:
+            booking.status === "completed" &&
+            !trackedShipments.has(booking.id) &&
+            !pickup &&
+            exactLockedParcelSnapshot &&
+            packingAllowsNewShipmentEffect
+              ? "schedule"
+              : "—",
+          pickupRevision: pickup?.revision ?? 0,
+          pickupTarget: "outbound",
+          exchangeId: null,
+          labelAction,
+          labelDownloadEligible: Boolean(
+            labelAcquisition?.status === "completed" &&
+            labelRelationshipValid &&
+            booking.providerId === carrierProviderId,
+          ),
+          expectedRevision: labelAcquisition?.revision ?? 0,
+          target: "outbound",
+          updatedAt: booking.updatedAt,
+        };
+      }),
+    ),
     total,
   };
 }
@@ -6380,14 +7492,17 @@ export async function npSubmitShopExchangeDestination(
         "This order is no longer retained long enough to accept a destination.",
       );
     }
-    const updatedOrder: NpShopStoredOrder = {
-      ...order,
-      revision: order.revision + 1,
-      updatedAt: now,
-    };
+    const privacyOnlyResubmission = exchange.destinationRevision > 0;
+    const updatedOrder: NpShopStoredOrder = privacyOnlyResubmission
+      ? order
+      : {
+          ...order,
+          revision: order.revision + 1,
+          updatedAt: now,
+        };
     const updatedExchange: NpShopStoredExchange = {
       ...exchange,
-      revision: exchange.revision + 1,
+      revision: exchange.revision + (privacyOnlyResubmission ? 0 : 1),
       orderRevision: updatedOrder.revision,
       destinationRevision: exchange.destinationRevision + 1,
       destinationSubmittedAt: now,
@@ -6407,7 +7522,7 @@ export async function npSubmitShopExchangeDestination(
       updatedAt: now,
       expiresAt,
     };
-    await persistOrder(tx, siteId, updatedOrder);
+    if (!privacyOnlyResubmission) await persistOrder(tx, siteId, updatedOrder);
     await persistExchange(tx, siteId, updatedExchange);
     await persistExchangeDestinationPrivate(tx, siteId, destination);
     await tx.insert(npAuditEvents).values({
@@ -6662,11 +7777,24 @@ async function updateShopExchange(
       input.orderId,
       true,
     );
+    const parcelSnapshot = await readStoredExchangeParcels(tx, siteId, input.orderId, true);
+    const packingWork = await npReadStoredShopPackingWork(
+      tx,
+      siteId,
+      "replacement",
+      input.orderId,
+      true,
+    );
+    const exchangeTracking =
+      action === "ship"
+        ? await npReadStoredShopExchangeTrackingForOrder(tx, siteId, input.orderId, true)
+        : null;
     if (exchangeCarrierBooking) {
       if (
         action !== "ship" ||
         exchangeCarrierBooking.status !== "completed" ||
-        exchangeCarrierBooking.exchangeId !== exchange.id
+        exchangeCarrierBooking.exchangeId !== exchange.id ||
+        !exchangeCarrierBookingMatchesCurrentSource(exchangeCarrierBooking, order, exchange)
       ) {
         throw new NpShopExchangeCarrierConflictError(
           exchangeCarrierBooking.status === "manual-review"
@@ -6686,6 +7814,17 @@ async function updateShopExchange(
         );
       }
     }
+    if (
+      action === "ship" &&
+      exchangeTracking &&
+      (!exchangeCarrierBooking ||
+        !exchangeTrackingMatchesBooking(exchangeTracking, exchangeCarrierBooking, exchange))
+    ) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_state_conflict",
+        "The verified replacement tracking state no longer matches its exact carrier booking.",
+      );
+    }
     if (exchange.status === "shipped" || exchange.status === "cancelled") {
       throw new NpShopExchangeConflictError(
         "exchange_terminal",
@@ -6703,6 +7842,85 @@ async function updateShopExchange(
         "exchange_revision_conflict",
         "Only a processing exchange can be shipped.",
       );
+    }
+    const packingFallbackIdentity = {
+      target: "replacement" as const,
+      orderId: order.id,
+      exchangeId: exchange.id,
+      purgeAt: order.purgeAt,
+    };
+    if (
+      action === "process" &&
+      packingWork &&
+      packingWork.status !== "active" &&
+      !packingWorkAllowsUnattachedFallback(packingWork, packingFallbackIdentity)
+    ) {
+      throw new NpShopPackingWorkConflictError(
+        packingWork.status === "manual-review"
+          ? "packing_work_manual_review"
+          : "packing_work_state_conflict",
+        "Reconcile the replacement packing work before processing the exchange.",
+      );
+    }
+    if (
+      action === "process" &&
+      packingWork?.status === "active" &&
+      !packingWorkMatchesSource(packingWork, {
+        target: "replacement",
+        exchangeId: exchange.id,
+        order,
+        sourceRevision: exchange.revision,
+        sourceStatus: exchange.status,
+        booking: exchangeCarrierBooking,
+        parcelSnapshot,
+        lines: exchange.lines,
+      })
+    ) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_revision_conflict",
+        "The active replacement packing work no longer matches its exact parcel source.",
+      );
+    }
+    if (
+      action === "cancel" &&
+      packingWork &&
+      !packingWorkAllowsUnattachedFallback(packingWork, packingFallbackIdentity)
+    ) {
+      throw new NpShopPackingWorkConflictError(
+        packingWork.status === "manual-review"
+          ? "packing_work_manual_review"
+          : "packing_work_state_conflict",
+        "Confirm packing-work cancellation before restoring replacement inventory.",
+      );
+    }
+    if (action === "ship") {
+      const packingSource = {
+        target: "replacement" as const,
+        exchangeId: exchange.id,
+        order,
+        sourceRevision: exchange.revision,
+        sourceStatus: exchange.status,
+        booking: exchangeCarrierBooking,
+        parcelSnapshot,
+        lines: exchange.lines,
+      };
+      const trackingWinsPackingCancellation = Boolean(
+        exchangeTracking &&
+        exchangeCarrierBooking &&
+        exchangeTrackingMatchesBooking(exchangeTracking, exchangeCarrierBooking, exchange) &&
+        packingWork?.attachedShipmentId === exchangeCarrierBooking.id &&
+        packingWorkHasCancellationIntent(packingWork) &&
+        packingWorkMatchesSnapshot(packingWork, packingSource),
+      );
+      if (!trackingWinsPackingCancellation) {
+        await consumeShopPackingWork(
+          tx,
+          siteId,
+          packingSource,
+          exchangeCarrierBooking?.id ?? null,
+          staffUserId,
+        );
+      }
     }
     const now = new Date().toISOString();
     if (action === "process") {
@@ -6823,7 +8041,7 @@ function exchangeCarrierItems(exchange: NpShopStoredExchange) {
 }
 
 function requireExchangeParcelAllocation(
-  exchange: NpShopStoredExchange,
+  exchange: Pick<NpShopStoredExchange, "lines">,
   parcels: NpShopStoredExchangeParcels["parcels"],
 ): void {
   const allocated = new Map<string, number>();
@@ -6868,6 +8086,19 @@ export async function npSaveShopExchangeParcels(
     }
     const booking = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
     const existing = await readStoredExchangeParcels(tx, siteId, input.orderId, true);
+    const packingWork = await npReadStoredShopPackingWork(
+      tx,
+      siteId,
+      "replacement",
+      input.orderId,
+      true,
+    );
+    requirePackingWorkAllowsParcelMutation(packingWork, {
+      target: "replacement",
+      orderId: order.id,
+      exchangeId: exchange.id,
+      purgeAt: order.purgeAt,
+    });
     if (booking || existing?.lockedShipmentId) {
       throw new NpShopExchangeParcelConflictError(
         "exchange_parcel_locked",
@@ -6922,6 +8153,1966 @@ export async function npSaveShopExchangeParcels(
   });
 }
 
+type NpShopLockedPackingWorkSource =
+  | {
+      target: "outbound";
+      exchangeId: null;
+      order: NpShopStoredOrder;
+      sourceRevision: number;
+      sourceStatus: NpShopStoredFulfillment["status"];
+      booking: NpShopStoredCarrierBooking | null;
+      parcelSnapshot: NpShopStoredFulfillmentParcels | null;
+      lines: NpShopStoredOrder["lines"];
+    }
+  | {
+      target: "replacement";
+      exchangeId: string;
+      order: NpShopStoredOrder;
+      sourceRevision: number;
+      sourceStatus: NpShopStoredExchange["status"];
+      booking: NpShopStoredExchangeCarrierBooking | null;
+      parcelSnapshot: NpShopStoredExchangeParcels | null;
+      lines: NpShopStoredExchange["lines"];
+    };
+
+async function readLockedPackingWorkSource(
+  tx: NpShopTransaction,
+  siteId: string,
+  target: NpShopPackingWorkTarget,
+  orderId: string,
+): Promise<NpShopLockedPackingWorkSource> {
+  if (target === "outbound") {
+    const { fulfillment, order } = await readFulfillmentForAction(tx, siteId, orderId);
+    const booking = await readStoredCarrierBooking(tx, siteId, orderId, true);
+    const parcelSnapshot = await readStoredFulfillmentParcels(tx, siteId, orderId, true);
+    return {
+      target: "outbound",
+      exchangeId: null,
+      order,
+      sourceRevision: fulfillment.revision,
+      sourceStatus: fulfillment.status,
+      booking,
+      parcelSnapshot,
+      lines: order.lines,
+    };
+  }
+  const { exchange, order } = await readExchangeForAction(tx, siteId, orderId);
+  const booking = await readStoredExchangeCarrierBooking(tx, siteId, orderId, true);
+  const parcelSnapshot = await readStoredExchangeParcels(tx, siteId, orderId, true);
+  return {
+    target: "replacement",
+    exchangeId: exchange.id,
+    order,
+    sourceRevision: exchange.revision,
+    sourceStatus: exchange.status,
+    booking,
+    parcelSnapshot,
+    lines: exchange.lines,
+  };
+}
+
+async function readLockedPackingWorkCancellationSource(
+  tx: NpShopTransaction,
+  siteId: string,
+  target: NpShopPackingWorkTarget,
+  orderId: string,
+): Promise<NpShopLockedPackingWorkSource> {
+  if (target === "outbound") {
+    const candidate = await readStoredFulfillment(tx, siteId, orderId);
+    if (!candidate) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_not_found",
+        "The packing-work fulfillment no longer exists.",
+      );
+    }
+    await lockOrder(tx, siteId, candidate.ownerSegment, orderId);
+    const fulfillment = await readStoredFulfillment(tx, siteId, orderId, true);
+    const order = await readStoredOrderForUpdate(tx, siteId, candidate.ownerSegment, orderId);
+    if (!fulfillment || !order || !fulfillmentMatchesOrder(fulfillment, order)) {
+      throw new NpShopOrderContractError("Packing-work fulfillment source is invalid", [
+        "Packing-work cancellation requires one exact retained order and fulfillment relationship.",
+      ]);
+    }
+    const booking = await readStoredCarrierBooking(tx, siteId, orderId, true);
+    const parcelSnapshot = await readStoredFulfillmentParcels(tx, siteId, orderId, true);
+    return {
+      target: "outbound",
+      exchangeId: null,
+      order,
+      sourceRevision: fulfillment.revision,
+      sourceStatus: fulfillment.status,
+      booking,
+      parcelSnapshot,
+      lines: order.lines,
+    };
+  }
+  const candidate = await readStoredExchange(tx, siteId, orderId);
+  if (!candidate) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_not_found",
+      "The replacement packing-work source no longer exists.",
+    );
+  }
+  await lockOrder(tx, siteId, candidate.ownerSegment, orderId);
+  const exchange = await readStoredExchange(tx, siteId, orderId, true);
+  const order = await readStoredOrderForUpdate(tx, siteId, candidate.ownerSegment, orderId);
+  if (
+    !exchange ||
+    !order ||
+    exchange.ownerSegment !== order.ownerSegment ||
+    exchange.orderId !== order.id ||
+    exchange.purgeAt !== order.purgeAt
+  ) {
+    throw new NpShopOrderContractError("Replacement packing-work source is invalid", [
+      "Packing-work cancellation requires one exact retained order and exchange relationship.",
+    ]);
+  }
+  const booking = await readStoredExchangeCarrierBooking(tx, siteId, orderId, true);
+  const parcelSnapshot = await readStoredExchangeParcels(tx, siteId, orderId, true);
+  return {
+    target: "replacement",
+    exchangeId: exchange.id,
+    order,
+    sourceRevision: exchange.revision,
+    sourceStatus: exchange.status,
+    booking,
+    parcelSnapshot,
+    lines: exchange.lines,
+  };
+}
+
+function packingWorkLines(source: NpShopLockedPackingWorkSource) {
+  return source.target === "outbound"
+    ? source.lines.map((line) => ({
+        lineKey: line.key,
+        productId: line.productId,
+        productSlug: line.productSlug,
+        variantSku: line.variantSku,
+        quantity: line.quantity,
+      }))
+    : source.lines.map((line) => ({
+        lineKey: line.lineKey,
+        productId: line.productId,
+        productSlug: line.productSlug,
+        variantSku: line.variantSku,
+        quantity: line.quantity,
+      }));
+}
+
+function packingWorkParcels(source: NpShopLockedPackingWorkSource) {
+  return (source.parcelSnapshot?.parcels ?? []).map((parcel) => ({
+    id: parcel.id,
+    lengthMm: parcel.lengthMm,
+    widthMm: parcel.widthMm,
+    heightMm: parcel.heightMm,
+    weightGrams: parcel.weightGrams,
+    items: parcel.items.map((item) => ({ lineKey: item.lineKey, quantity: item.quantity })),
+  }));
+}
+
+function packingWorkFingerprint(
+  source: Parameters<typeof npSerializeShopPackingWorkFingerprintSource>[0],
+): string {
+  return createHash("sha256")
+    .update(npSerializeShopPackingWorkFingerprintSource(source), "utf8")
+    .digest("hex");
+}
+
+function shopPackingWorkFingerprint(source: NpShopLockedPackingWorkSource): string {
+  if (!source.parcelSnapshot) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_parcels_required",
+      "Packing work requires one exact current parcel snapshot.",
+    );
+  }
+  return packingWorkFingerprint({
+    target: source.target,
+    exchangeId: source.exchangeId,
+    sourceRevision:
+      source.target === "replacement"
+        ? source.parcelSnapshot.exchangeRevision
+        : source.sourceRevision,
+    parcelRevision: source.parcelSnapshot.revision,
+    lines: packingWorkLines(source),
+    parcels: packingWorkParcels(source),
+  });
+}
+
+function storedPackingWorkFingerprint(work: NpShopStoredPackingWork): string {
+  return packingWorkFingerprint({
+    target: work.target,
+    exchangeId: work.exchangeId,
+    sourceRevision: work.sourceRevision,
+    parcelRevision: work.parcelRevision,
+    lines: work.lines,
+    parcels: work.parcels,
+  });
+}
+
+function packingWorkCreateSourceRelationshipsMatch(source: NpShopLockedPackingWorkSource): boolean {
+  if (
+    !source.parcelSnapshot ||
+    source.parcelSnapshot.orderId !== source.order.id ||
+    source.parcelSnapshot.purgeAt !== source.order.purgeAt
+  ) {
+    return false;
+  }
+  return source.target === "outbound"
+    ? source.parcelSnapshot.fulfillmentRevision === source.sourceRevision
+    : source.parcelSnapshot.exchangeId === source.exchangeId &&
+        source.parcelSnapshot.exchangeRevision === source.sourceRevision;
+}
+
+function packingWorkStoredSourceRelationshipsMatch(
+  work: NpShopStoredPackingWork,
+  source: NpShopLockedPackingWorkSource,
+): boolean {
+  if (
+    !source.parcelSnapshot ||
+    source.parcelSnapshot.orderId !== source.order.id ||
+    source.parcelSnapshot.purgeAt !== source.order.purgeAt
+  ) {
+    return false;
+  }
+  if (source.target === "outbound") {
+    return (
+      source.parcelSnapshot.fulfillmentRevision === work.sourceRevision &&
+      source.sourceRevision === work.sourceRevision
+    );
+  }
+  return (
+    source.parcelSnapshot.exchangeId === work.exchangeId &&
+    source.parcelSnapshot.exchangeRevision === work.sourceRevision &&
+    ((source.sourceStatus === "awaiting" && source.sourceRevision === work.sourceRevision) ||
+      (source.sourceStatus === "processing" && source.sourceRevision === work.sourceRevision + 1))
+  );
+}
+
+function requirePackingWorkCreateSource(
+  source: NpShopLockedPackingWorkSource,
+  input: NpShopPackingWorkCreateActionInput,
+): void {
+  if (
+    source.target !== input.target ||
+    source.exchangeId !== input.exchangeId ||
+    source.sourceRevision !== input.expectedSourceRevision
+  ) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_revision_conflict",
+      "The packing-work source changed before this action was applied.",
+    );
+  }
+  if (
+    (source.target === "outbound" && source.sourceStatus !== "processing") ||
+    (source.target === "replacement" && source.sourceStatus !== "awaiting")
+  ) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_state_conflict",
+      "Packing work can start only for a processing fulfillment or awaiting replacement.",
+    );
+  }
+  if (!source.parcelSnapshot || source.parcelSnapshot.revision !== input.expectedParcelRevision) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_revision_conflict",
+      "The parcel snapshot changed before packing work started.",
+    );
+  }
+  if (!packingWorkCreateSourceRelationshipsMatch(source)) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_state_conflict",
+      "The parcel snapshot no longer matches its retained order and source revision.",
+    );
+  }
+  if (source.booking || source.parcelSnapshot.lockedShipmentId) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_shipment_conflict",
+      "Packing work must start before a durable carrier booking locks the parcels.",
+    );
+  }
+  if (source.target === "outbound") {
+    requireFulfillmentParcelAllocation(source.order, source.parcelSnapshot.parcels);
+  } else {
+    requireExchangeParcelAllocation({ lines: source.lines }, source.parcelSnapshot.parcels);
+  }
+}
+
+function packingWorkMatchesSource(
+  work: NpShopStoredPackingWork,
+  source: NpShopLockedPackingWorkSource,
+): boolean {
+  return (
+    work.target === source.target &&
+    work.orderId === source.order.id &&
+    work.exchangeId === source.exchangeId &&
+    work.purgeAt === source.order.purgeAt &&
+    work.parcelFingerprint === storedPackingWorkFingerprint(work) &&
+    packingWorkStoredSourceRelationshipsMatch(work, source) &&
+    source.parcelSnapshot !== null &&
+    work.sourceRevision ===
+      (source.target === "replacement"
+        ? source.parcelSnapshot.exchangeRevision
+        : source.sourceRevision) &&
+    work.parcelRevision === source.parcelSnapshot.revision &&
+    work.parcelFingerprint === shopPackingWorkFingerprint(source)
+  );
+}
+
+type NpShopPackingWorkFallbackIdentity = {
+  target: NpShopPackingWorkTarget;
+  orderId: string;
+  exchangeId: string | null;
+  purgeAt: string;
+};
+
+function packingWorkAllowsUnattachedFallback(
+  work: NpShopStoredPackingWork,
+  identity: NpShopPackingWorkFallbackIdentity,
+): boolean {
+  return npShopPackingWorkMatchesUnattachedTombstone(work, identity);
+}
+
+function packingWorkAllowsParcelMutation(
+  work: NpShopStoredPackingWork | null,
+  identity: NpShopPackingWorkFallbackIdentity,
+): boolean {
+  return work === null || packingWorkAllowsUnattachedFallback(work, identity);
+}
+
+function packingWorkHasCancellationIntent(work: NpShopStoredPackingWork): boolean {
+  return (
+    work.consumedAt === null &&
+    (work.status === "cancel-pending" ||
+      work.status === "cancel-confirmed" ||
+      work.status === "cancelled" ||
+      (work.status === "manual-review" &&
+        work.cancellationId !== null &&
+        work.cancelRequestedAt !== null))
+  );
+}
+
+function packingWorkAllowsManualShipment(
+  work: NpShopStoredPackingWork | null,
+  identity: NpShopPackingWorkFallbackIdentity,
+): boolean {
+  return (
+    work === null ||
+    (work.status === "active" && work.attachedShipmentId === null) ||
+    packingWorkAllowsUnattachedFallback(work, identity)
+  );
+}
+
+function packingWorkAllowsCarrierShipment(
+  work: NpShopStoredPackingWork | null,
+  parcelAware: boolean,
+  shipmentId: string | null,
+  identity: NpShopPackingWorkFallbackIdentity,
+): boolean {
+  if (!work) return true;
+  if (work.status === "cancelled") return packingWorkAllowsUnattachedFallback(work, identity);
+  if (work.status !== "active") return false;
+  if (shipmentId !== null && work.attachedShipmentId === shipmentId) return true;
+  return parcelAware && work.attachedShipmentId === null;
+}
+
+function packingWorkAllowsShipmentCompletion(
+  work: NpShopStoredPackingWork | null,
+  shipmentId: string | null,
+  identity: NpShopPackingWorkFallbackIdentity,
+): boolean {
+  if (!work) return true;
+  if (work.status === "cancelled") return packingWorkAllowsUnattachedFallback(work, identity);
+  if (work.status === "active" || work.status === "consumed") {
+    return work.attachedShipmentId === shipmentId;
+  }
+  return false;
+}
+
+function packingWorkMatchesReplacementAdminSource(
+  work: NpShopStoredPackingWork,
+  exchange: NpShopStoredExchange,
+  parcelSnapshot: NpShopStoredExchangeParcels | null,
+  booking: NpShopStoredExchangeCarrierBooking,
+): boolean {
+  if (
+    work.status === "cancelled" &&
+    work.attachedShipmentId === null &&
+    work.target === "replacement" &&
+    work.orderId === exchange.orderId &&
+    work.exchangeId === exchange.id &&
+    work.purgeAt === exchange.purgeAt
+  ) {
+    return storedPackingWorkFingerprint(work) === work.parcelFingerprint;
+  }
+  if (
+    work.target !== "replacement" ||
+    work.orderId !== exchange.orderId ||
+    work.exchangeId !== exchange.id ||
+    work.purgeAt !== exchange.purgeAt ||
+    work.attachedShipmentId !== booking.id ||
+    booking.orderId !== exchange.orderId ||
+    booking.exchangeId !== exchange.id ||
+    booking.sourceExchangeRevision !== work.sourceRevision ||
+    booking.purgeAt !== exchange.purgeAt ||
+    !parcelSnapshot ||
+    parcelSnapshot.orderId !== exchange.orderId ||
+    parcelSnapshot.exchangeId !== exchange.id ||
+    parcelSnapshot.exchangeRevision !== work.sourceRevision ||
+    parcelSnapshot.revision !== work.parcelRevision ||
+    parcelSnapshot.purgeAt !== exchange.purgeAt ||
+    parcelSnapshot.lockedShipmentId !== booking.id ||
+    storedPackingWorkFingerprint(work) !== work.parcelFingerprint
+  ) {
+    return false;
+  }
+  const lifecycleMatches =
+    (exchange.status === "awaiting" && exchange.revision === work.sourceRevision) ||
+    (exchange.status === "processing" && exchange.revision === work.sourceRevision + 1) ||
+    (exchange.status === "shipped" && exchange.revision === work.sourceRevision + 2) ||
+    (exchange.status === "cancelled" &&
+      exchange.revision === work.sourceRevision + 2 &&
+      booking.status === "cancelled");
+  if (!lifecycleMatches) return false;
+  return (
+    packingWorkFingerprint({
+      target: "replacement",
+      exchangeId: exchange.id,
+      sourceRevision: work.sourceRevision,
+      parcelRevision: parcelSnapshot.revision,
+      lines: exchange.lines.map((line) => ({
+        lineKey: line.lineKey,
+        productId: line.productId,
+        productSlug: line.productSlug,
+        variantSku: line.variantSku,
+        quantity: line.quantity,
+      })),
+      parcels: parcelSnapshot.parcels,
+    }) === work.parcelFingerprint
+  );
+}
+
+function packingWorkMatchesOutboundAdminSource(
+  work: NpShopStoredPackingWork,
+  order: NpShopStoredOrder,
+  fulfillment: NpShopStoredFulfillment,
+  parcelSnapshot: NpShopStoredFulfillmentParcels | null,
+  booking: NpShopStoredCarrierBooking | null,
+): boolean {
+  if (
+    work.target !== "outbound" ||
+    work.orderId !== order.id ||
+    work.orderId !== fulfillment.orderId ||
+    work.exchangeId !== null ||
+    order.ownerSegment !== fulfillment.ownerSegment ||
+    order.purgeAt !== fulfillment.purgeAt ||
+    work.purgeAt !== fulfillment.purgeAt ||
+    storedPackingWorkFingerprint(work) !== work.parcelFingerprint
+  ) {
+    return false;
+  }
+  if (work.status === "cancelled" && work.attachedShipmentId === null) return true;
+  if (
+    !parcelSnapshot ||
+    parcelSnapshot.orderId !== fulfillment.orderId ||
+    parcelSnapshot.fulfillmentRevision !== work.sourceRevision ||
+    parcelSnapshot.revision !== work.parcelRevision ||
+    parcelSnapshot.purgeAt !== fulfillment.purgeAt ||
+    parcelSnapshot.lockedShipmentId !== work.attachedShipmentId ||
+    (work.attachedShipmentId !== null &&
+      (!booking ||
+        booking.id !== work.attachedShipmentId ||
+        booking.orderId !== fulfillment.orderId ||
+        booking.fulfillmentRevision !== work.sourceRevision ||
+        booking.purgeAt !== fulfillment.purgeAt))
+  ) {
+    return false;
+  }
+  const lifecycleMatches =
+    (fulfillment.status === "processing" && fulfillment.revision === work.sourceRevision) ||
+    (fulfillment.status === "shipped" && fulfillment.revision === work.sourceRevision + 1);
+  if (!lifecycleMatches) return false;
+  return (
+    packingWorkFingerprint({
+      target: "outbound",
+      exchangeId: null,
+      sourceRevision: work.sourceRevision,
+      parcelRevision: parcelSnapshot.revision,
+      lines: order.lines.map((line) => ({
+        lineKey: line.key,
+        productId: line.productId,
+        productSlug: line.productSlug,
+        variantSku: line.variantSku,
+        quantity: line.quantity,
+      })),
+      parcels: parcelSnapshot.parcels,
+    }) === work.parcelFingerprint
+  );
+}
+
+function outboundLabelAcquisitionMatchesBooking(
+  acquisition: NpShopStoredCarrierLabelAcquisition,
+  booking: NpShopStoredCarrierBooking,
+): boolean {
+  return (
+    booking.status === "completed" &&
+    acquisition.target === "outbound" &&
+    acquisition.exchangeId === null &&
+    acquisition.shipmentId === booking.id &&
+    acquisition.orderId === booking.orderId &&
+    acquisition.providerId === booking.providerId &&
+    acquisition.sourceRevision === booking.fulfillmentRevision &&
+    acquisition.bookingReference === booking.bookingReference &&
+    acquisition.carrier === booking.carrier &&
+    acquisition.trackingNumber === booking.trackingNumber &&
+    acquisition.purgeAt === booking.purgeAt
+  );
+}
+
+function outboundCarrierBookingMatchesAdminSource(
+  booking: NpShopStoredCarrierBooking,
+  fulfillment: NpShopStoredFulfillment | null,
+  order: NpShopStoredOrder | null,
+): boolean {
+  if (
+    !fulfillment ||
+    !order ||
+    !fulfillmentMatchesOrder(fulfillment, order) ||
+    booking.orderId !== order.id ||
+    booking.purgeAt !== order.purgeAt
+  ) {
+    return false;
+  }
+  if (booking.status === "pending" || booking.status === "provider-confirmed") {
+    return (
+      fulfillment.status === "processing" && fulfillment.revision === booking.fulfillmentRevision
+    );
+  }
+  if (booking.status === "completed") {
+    return (
+      fulfillment.status === "shipped" &&
+      fulfillment.revision === booking.fulfillmentRevision + 1 &&
+      fulfillment.carrier === booking.carrier &&
+      fulfillment.trackingNumber === booking.trackingNumber
+    );
+  }
+  return false;
+}
+
+function replacementLabelAcquisitionMatchesBooking(
+  acquisition: NpShopStoredCarrierLabelAcquisition,
+  booking: NpShopStoredExchangeCarrierBooking,
+  exchange: NpShopStoredExchange,
+): boolean {
+  const exchangeLifecycleMatches =
+    booking.completedExchangeRevision !== null &&
+    ((exchange.status === "processing" &&
+      exchange.revision === booking.completedExchangeRevision) ||
+      (exchange.status === "shipped" &&
+        exchange.revision === booking.completedExchangeRevision + 1));
+  return (
+    booking.status === "completed" &&
+    booking.completedExchangeRevision !== null &&
+    exchangeLifecycleMatches &&
+    exchange.id === booking.exchangeId &&
+    exchange.orderId === booking.orderId &&
+    exchange.purgeAt === booking.purgeAt &&
+    exchange.carrier === booking.carrier &&
+    exchange.trackingNumber === booking.trackingNumber &&
+    acquisition.target === "replacement" &&
+    acquisition.exchangeId === booking.exchangeId &&
+    acquisition.shipmentId === booking.id &&
+    acquisition.orderId === booking.orderId &&
+    acquisition.providerId === booking.providerId &&
+    acquisition.sourceRevision === booking.completedExchangeRevision &&
+    acquisition.bookingReference === booking.bookingReference &&
+    acquisition.carrier === booking.carrier &&
+    acquisition.trackingNumber === booking.trackingNumber &&
+    acquisition.purgeAt === booking.purgeAt
+  );
+}
+
+function packingWorkAllowsFullRefund(
+  work: NpShopStoredPackingWork | null,
+  order: NpShopStoredOrder,
+  fulfillment: NpShopStoredFulfillment | null,
+  carrierBooking: NpShopStoredCarrierBooking | null,
+  parcelSnapshot: NpShopStoredFulfillmentParcels | null,
+): boolean {
+  if (!work) return true;
+  if (work.status === "cancelled" && work.attachedShipmentId === null) {
+    return npShopPackingWorkMatchesUnattachedTombstone(work, {
+      target: "outbound",
+      orderId: order.id,
+      exchangeId: null,
+      purgeAt: order.purgeAt,
+    });
+  }
+  if (
+    (work.status !== "cancelled" && work.status !== "consumed") ||
+    !fulfillment ||
+    fulfillment.status !== "shipped" ||
+    (work.attachedShipmentId !== null &&
+      (carrierBooking?.status !== "completed" || work.attachedShipmentId !== carrierBooking.id))
+  ) {
+    return false;
+  }
+  return packingWorkMatchesOutboundAdminSource(
+    work,
+    order,
+    fulfillment,
+    parcelSnapshot,
+    carrierBooking,
+  );
+}
+
+function requirePackingWorkAllowsParcelMutation(
+  work: NpShopStoredPackingWork | null,
+  identity: NpShopPackingWorkFallbackIdentity,
+): void {
+  if (work && !packingWorkAllowsParcelMutation(work, identity)) {
+    throw new NpShopPackingWorkConflictError(
+      work.status === "manual-review"
+        ? "packing_work_manual_review"
+        : "packing_work_state_conflict",
+      "Cancel or reconcile the durable packing work before changing its parcel snapshot.",
+    );
+  }
+}
+
+function packingWorkMatchesSnapshot(
+  work: NpShopStoredPackingWork,
+  source: NpShopLockedPackingWorkSource,
+): boolean {
+  return packingWorkMatchesSource(work, source);
+}
+
+async function attachShopPackingWorkToShipment(
+  tx: NpShopTransaction,
+  siteId: string,
+  source: NpShopLockedPackingWorkSource,
+  shipmentId: string,
+  parcelAware: boolean,
+  staffUserId: string | null,
+): Promise<NpShopStoredPackingWork | null> {
+  const current = await npReadStoredShopPackingWork(
+    tx,
+    siteId,
+    source.target,
+    source.order.id,
+    true,
+  );
+  if (!current) return null;
+  if (current.status === "cancelled") {
+    if (current.attachedShipmentId !== null) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_shipment_conflict",
+        "Cancelled packing work remains attached to this interrupted carrier shipment and cannot be reused.",
+      );
+    }
+    if (
+      !npShopPackingWorkMatchesUnattachedTombstone(current, {
+        target: source.target,
+        orderId: source.order.id,
+        exchangeId: source.exchangeId,
+        purgeAt: source.order.purgeAt,
+      })
+    ) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_revision_conflict",
+        "The cancelled packing-work tombstone is not internally consistent.",
+      );
+    }
+    return current;
+  }
+  if (current.status === "consumed") {
+    if (current.attachedShipmentId === shipmentId && packingWorkMatchesSnapshot(current, source)) {
+      return current;
+    }
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_shipment_conflict",
+      "The packing work was already consumed by another shipment transition.",
+    );
+  }
+  if (current.status !== "active") {
+    throw new NpShopPackingWorkConflictError(
+      current.status === "manual-review"
+        ? "packing_work_manual_review"
+        : "packing_work_state_conflict",
+      "Only active packing work can be attached to a carrier shipment.",
+    );
+  }
+  if (!packingWorkMatchesSnapshot(current, source)) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_revision_conflict",
+      "The carrier shipment does not match the packing-work parcel fingerprint.",
+    );
+  }
+  if (current.attachedShipmentId && current.attachedShipmentId !== shipmentId) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_shipment_conflict",
+      "The packing work is attached to a different durable shipment.",
+    );
+  }
+  if (current.attachedShipmentId === shipmentId) return current;
+  if (!parcelAware) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_shipment_conflict",
+      "Active packing work requires the exact parcel-aware carrier capability.",
+    );
+  }
+  const next = {
+    ...current,
+    revision: current.revision + 1,
+    attachedShipmentId: shipmentId,
+    updatedAt: nextPackingWorkTimestamp(current.updatedAt),
+  } satisfies NpShopStoredPackingWork;
+  await npPersistStoredShopPackingWork(tx, siteId, next);
+  await recordShopPackingWorkAudit(tx, siteId, staffUserId, "shop.packing-work.attach", next, {
+    shipmentId,
+  });
+  return next;
+}
+
+async function consumeShopPackingWork(
+  tx: NpShopTransaction,
+  siteId: string,
+  source: NpShopLockedPackingWorkSource,
+  shipmentId: string | null,
+  staffUserId: string | null,
+): Promise<NpShopStoredPackingWork | null> {
+  const current = await npReadStoredShopPackingWork(
+    tx,
+    siteId,
+    source.target,
+    source.order.id,
+    true,
+  );
+  if (!current) return null;
+  if (current.status === "cancelled") {
+    if (current.attachedShipmentId !== null) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_shipment_conflict",
+        "Cancelled packing work remains attached to an interrupted carrier shipment.",
+      );
+    }
+    if (
+      !npShopPackingWorkMatchesUnattachedTombstone(current, {
+        target: source.target,
+        orderId: source.order.id,
+        exchangeId: source.exchangeId,
+        purgeAt: source.order.purgeAt,
+      })
+    ) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_revision_conflict",
+        "The cancelled packing-work tombstone is not internally consistent.",
+      );
+    }
+    return current;
+  }
+  if (current.status === "consumed") {
+    if (current.attachedShipmentId === shipmentId && packingWorkMatchesSnapshot(current, source)) {
+      return current;
+    }
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_shipment_conflict",
+      "The packing work was consumed by a different shipment transition.",
+    );
+  }
+  if (current.status !== "active" || !packingWorkMatchesSnapshot(current, source)) {
+    throw new NpShopPackingWorkConflictError(
+      current.status === "manual-review"
+        ? "packing_work_manual_review"
+        : "packing_work_state_conflict",
+      "Only the exact active packing-work snapshot can be consumed by shipment.",
+    );
+  }
+  if (shipmentId !== null && current.attachedShipmentId !== shipmentId) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_shipment_conflict",
+      "The packing work is not attached to this durable shipment.",
+    );
+  }
+  if (shipmentId === null && current.attachedShipmentId !== null) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_shipment_conflict",
+      "Attached packing work must complete through its durable carrier shipment.",
+    );
+  }
+  const now = nextPackingWorkTimestamp(current.updatedAt, current.activatedAt);
+  const next = {
+    ...current,
+    status: "consumed",
+    revision: current.revision + 1,
+    consumedAt: now,
+    updatedAt: now,
+  } satisfies NpShopStoredPackingWork;
+  await npPersistStoredShopPackingWork(tx, siteId, next);
+  await recordShopPackingWorkAudit(tx, siteId, staffUserId, "shop.packing-work.consume", next, {
+    shipmentId,
+  });
+  return next;
+}
+
+function nextPackingWorkTimestamp(...values: Array<string | null | undefined>): string {
+  return new Date(
+    Math.max(
+      Date.now(),
+      ...values.filter((value): value is string => Boolean(value)).map(Date.parse),
+    ),
+  ).toISOString();
+}
+
+async function recordShopPackingWorkAudit(
+  tx: NpShopTransaction,
+  siteId: string,
+  staffUserId: string | null,
+  action: string,
+  work: NpShopStoredPackingWork,
+  payload: Record<string, unknown> = {},
+): Promise<void> {
+  await tx.insert(npAuditEvents).values({
+    actorKind: staffUserId ? "staff" : "system",
+    actorUserId: staffUserId,
+    actorMemberId: null,
+    action,
+    targetType: "shop-order",
+    targetId: work.orderId,
+    payload: {
+      workId: work.workId,
+      target: work.target,
+      exchangeId: work.exchangeId,
+      providerId: work.providerId,
+      sourceRevision: work.sourceRevision,
+      parcelRevision: work.parcelRevision,
+      parcelFingerprint: work.parcelFingerprint,
+      workRevision: work.revision,
+      ...payload,
+    },
+    siteId,
+  });
+}
+
+function freezePackingWorkCreateRequest(
+  work: NpShopStoredPackingWork,
+): NpShopPackingWorkCreateRequest {
+  const lines = Object.freeze(work.lines.map((line) => Object.freeze({ ...line })));
+  const parcels = Object.freeze(
+    work.parcels.map((parcel) =>
+      Object.freeze({
+        ...parcel,
+        items: Object.freeze(parcel.items.map((item) => Object.freeze({ ...item }))),
+      }),
+    ),
+  );
+  return Object.freeze({
+    contract: NP_SHOP_PACKING_WORK_CREATE_REQUEST_CONTRACT,
+    workId: work.workId,
+    orderId: work.orderId,
+    target: work.target,
+    exchangeId: work.exchangeId,
+    sourceRevision: work.sourceRevision,
+    parcelRevision: work.parcelRevision,
+    parcelFingerprint: work.parcelFingerprint,
+    lines,
+    parcels,
+    requestedAt: work.requestedAt,
+  }) as NpShopPackingWorkCreateRequest;
+}
+
+function freezePackingWorkCancelRequest(
+  work: NpShopStoredPackingWork,
+): NpShopPackingWorkCancelRequest {
+  if (!work.cancellationId || !work.cancelRequestedAt) {
+    throw new NpShopPackingWorkContractError("Invalid stored packing-work cancellation", [
+      "A cancel-pending packing work must retain its cancellation identity and request time.",
+    ]);
+  }
+  return Object.freeze({
+    contract: NP_SHOP_PACKING_WORK_CANCEL_REQUEST_CONTRACT,
+    cancellationId: work.cancellationId,
+    workId: work.workId,
+    orderId: work.orderId,
+    target: work.target,
+    exchangeId: work.exchangeId,
+    sourceRevision: work.sourceRevision,
+    parcelRevision: work.parcelRevision,
+    parcelFingerprint: work.parcelFingerprint,
+    providerWorkReference: work.providerWorkReference,
+    requestedAt: work.cancelRequestedAt,
+  }) as NpShopPackingWorkCancelRequest;
+}
+
+export type NpShopPreparedPackingWorkCreate =
+  | { outcome: "active"; work: NpShopStoredPackingWork }
+  | { outcome: "activate"; work: NpShopStoredPackingWork }
+  | { outcome: "manual-review"; work: NpShopStoredPackingWork }
+  | {
+      outcome: "provider";
+      work: NpShopStoredPackingWork;
+      request: NpShopPackingWorkCreateRequest;
+    };
+
+async function requireNoNoncanonicalPackingWork(
+  tx: NpShopTransaction,
+  siteId: string,
+  orderId: string,
+): Promise<void> {
+  const outboundKey = npShopPackingWorkStorageKey("outbound", orderId);
+  const replacementKey = npShopPackingWorkStorageKey("replacement", orderId);
+  const [conflict] = await tx
+    .select({ key: npPluginStorage.key })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "packing-work:%"),
+        sql`${npPluginStorage.value}->>'orderId' = ${orderId}`,
+        sql`not coalesce(((${npPluginStorage.value}->>'target' = 'outbound' and ${npPluginStorage.key} = ${outboundKey}) or (${npPluginStorage.value}->>'target' = 'replacement' and ${npPluginStorage.key} = ${replacementKey})), false)`,
+      ),
+    )
+    .limit(1)
+    .for("update");
+  if (conflict) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_state_conflict",
+      "A noncanonical packing-work row already identifies this order and must be reconciled before provider I/O.",
+    );
+  }
+}
+
+export async function npPrepareShopPackingWorkCreate(
+  input: NpShopPackingWorkCreateActionInput,
+  providerId: string,
+  staffUserId: string | null,
+): Promise<NpShopPreparedPackingWorkCreate> {
+  const siteId = await requireSiteId();
+  return getDb().transaction(async (tx) => {
+    const source = await readLockedPackingWorkSource(tx, siteId, input.target, input.orderId);
+    requirePackingWorkCreateSource(source, input);
+    await requireNoNoncanonicalPackingWork(tx, siteId, input.orderId);
+    const current = await npReadStoredShopPackingWork(
+      tx,
+      siteId,
+      input.target,
+      input.orderId,
+      true,
+    );
+    if ((current?.revision ?? null) !== input.expectedWorkRevision) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_revision_conflict",
+        "The packing work changed before this action was applied.",
+      );
+    }
+    if (current && current.exchangeId !== input.exchangeId) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_state_conflict",
+        "The packing work belongs to a different replacement identity.",
+      );
+    }
+    if (current) {
+      if (current.status === "cancelled") {
+        throw new NpShopPackingWorkConflictError(
+          "packing_work_already_exists",
+          "Packing-work v1 retains one terminal cancellation tombstone per order target; use the manual fulfillment flow after cancellation.",
+        );
+      }
+      if (current.providerId !== providerId) {
+        throw new NpShopPackingWorkConflictError(
+          "packing_work_state_conflict",
+          "The durable packing work belongs to a different provider.",
+        );
+      }
+      if (!packingWorkMatchesSource(current, source)) {
+        const conflict = {
+          ...current,
+          status: "manual-review",
+          revision: current.revision + 1,
+          providerErrorCode: "local-state-conflict",
+          updatedAt: nextPackingWorkTimestamp(current.updatedAt),
+        } satisfies NpShopStoredPackingWork;
+        await npPersistStoredShopPackingWork(tx, siteId, conflict);
+        await recordShopPackingWorkAudit(
+          tx,
+          siteId,
+          staffUserId,
+          "shop.packing-work.create.manual-review",
+          conflict,
+        );
+        return { outcome: "manual-review", work: conflict };
+      }
+      if (current.status === "pending") {
+        return {
+          outcome: "provider",
+          work: current,
+          request: freezePackingWorkCreateRequest(current),
+        };
+      }
+      if (current.status === "provider-confirmed") {
+        return { outcome: "activate", work: current };
+      }
+      if (current.status === "active") return { outcome: "active", work: current };
+      throw new NpShopPackingWorkConflictError(
+        current.status === "manual-review"
+          ? "packing_work_manual_review"
+          : "packing_work_already_exists",
+        "The current packing work must be cancelled or reconciled before another create attempt.",
+      );
+    }
+    const evaluatedAt = new Date();
+    if (new Date(source.order.purgeAt) <= evaluatedAt) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_state_conflict",
+        "The order is past its commercial retention window.",
+      );
+    }
+    const requestedAt = new Date(evaluatedAt);
+    requestedAt.setMilliseconds(0);
+    const now = requestedAt.toISOString();
+    const parcelSnapshot = source.parcelSnapshot;
+    if (!parcelSnapshot) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_parcels_required",
+        "Packing work requires one exact current parcel snapshot.",
+      );
+    }
+    const workBase = {
+      contract: NP_SHOP_PACKING_WORK_STORAGE_CONTRACT,
+      workId: randomUUID(),
+      orderId: source.order.id,
+      providerId,
+      status: "pending",
+      revision: 1,
+      sourceRevision: source.sourceRevision,
+      parcelRevision: parcelSnapshot.revision,
+      parcelFingerprint: shopPackingWorkFingerprint(source),
+      lines: packingWorkLines(source),
+      parcels: packingWorkParcels(source),
+      providerWorkReference: null,
+      providerErrorCode: null,
+      cancellationId: null,
+      attachedShipmentId: null,
+      requestedAt: now,
+      confirmedAt: null,
+      activatedAt: null,
+      cancelRequestedAt: null,
+      cancelledAt: null,
+      consumedAt: null,
+      updatedAt: now,
+      purgeAt: source.order.purgeAt,
+    } as const;
+    const work: NpShopStoredPackingWork =
+      source.target === "outbound"
+        ? { ...workBase, target: "outbound", exchangeId: null }
+        : { ...workBase, target: "replacement", exchangeId: source.exchangeId };
+    await npPersistStoredShopPackingWork(tx, siteId, work);
+    await recordShopPackingWorkAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.packing-work.create.request",
+      work,
+    );
+    return { outcome: "provider", work, request: freezePackingWorkCreateRequest(work) };
+  });
+}
+
+function materializePackingWorkCreateResult(
+  request: NpShopPackingWorkCreateRequest,
+  value: unknown,
+  evaluatedAt: Date,
+): NpShopPackingWorkCreateResult {
+  const raw = npRequireShopPackingWorkCreateResult(value);
+  const result =
+    raw.target === "outbound"
+      ? {
+          contract: raw.contract,
+          workId: raw.workId,
+          orderId: raw.orderId,
+          target: "outbound" as const,
+          exchangeId: null,
+          sourceRevision: raw.sourceRevision,
+          parcelRevision: raw.parcelRevision,
+          parcelFingerprint: raw.parcelFingerprint,
+          providerWorkReference: raw.providerWorkReference,
+          confirmedAt: raw.confirmedAt,
+        }
+      : {
+          contract: raw.contract,
+          workId: raw.workId,
+          orderId: raw.orderId,
+          target: "replacement" as const,
+          exchangeId: raw.exchangeId,
+          sourceRevision: raw.sourceRevision,
+          parcelRevision: raw.parcelRevision,
+          parcelFingerprint: raw.parcelFingerprint,
+          providerWorkReference: raw.providerWorkReference,
+          confirmedAt: raw.confirmedAt,
+        };
+  const issues = npAnalyzeShopPackingWorkCreateResultForRequest(request, result, evaluatedAt);
+  if (issues.length) {
+    throw new NpShopPackingWorkContractError("Invalid Shop packing-work create result", issues);
+  }
+  return Object.freeze(result);
+}
+
+function materializePackingWorkCancelResult(
+  request: NpShopPackingWorkCancelRequest,
+  value: unknown,
+  evaluatedAt: Date,
+): NpShopPackingWorkCancelResult {
+  const raw = npRequireShopPackingWorkCancelResult(value);
+  const result =
+    raw.target === "outbound"
+      ? {
+          contract: raw.contract,
+          cancellationId: raw.cancellationId,
+          workId: raw.workId,
+          orderId: raw.orderId,
+          target: "outbound" as const,
+          exchangeId: null,
+          sourceRevision: raw.sourceRevision,
+          parcelRevision: raw.parcelRevision,
+          parcelFingerprint: raw.parcelFingerprint,
+          providerWorkReference: raw.providerWorkReference,
+          cancelledAt: raw.cancelledAt,
+        }
+      : {
+          contract: raw.contract,
+          cancellationId: raw.cancellationId,
+          workId: raw.workId,
+          orderId: raw.orderId,
+          target: "replacement" as const,
+          exchangeId: raw.exchangeId,
+          sourceRevision: raw.sourceRevision,
+          parcelRevision: raw.parcelRevision,
+          parcelFingerprint: raw.parcelFingerprint,
+          providerWorkReference: raw.providerWorkReference,
+          cancelledAt: raw.cancelledAt,
+        };
+  const issues = npAnalyzeShopPackingWorkCancelResultForRequest(request, result, evaluatedAt);
+  if (issues.length) {
+    throw new NpShopPackingWorkContractError("Invalid Shop packing-work cancel result", issues);
+  }
+  return Object.freeze(result);
+}
+
+interface NpShopPackingWorkProviderFailure {
+  readonly terminal: boolean;
+  readonly code: string;
+}
+
+function classifyPackingWorkProviderFailure(error: unknown): NpShopPackingWorkProviderFailure {
+  try {
+    if (error instanceof NpShopPackingWorkContractError) {
+      return { terminal: true, code: "invalid-result" };
+    }
+    if (error instanceof NpShopPackingWorkProviderError) {
+      const codeDescriptor = Object.getOwnPropertyDescriptor(error, "code");
+      const retryableDescriptor = Object.getOwnPropertyDescriptor(error, "retryable");
+      if (
+        codeDescriptor &&
+        "value" in codeDescriptor &&
+        typeof codeDescriptor.value === "string" &&
+        /^[a-z][a-z0-9-]{0,99}$/u.test(codeDescriptor.value) &&
+        retryableDescriptor &&
+        "value" in retryableDescriptor &&
+        typeof retryableDescriptor.value === "boolean"
+      ) {
+        return { terminal: !retryableDescriptor.value, code: codeDescriptor.value };
+      }
+    }
+  } catch {
+    // Hostile provider errors are retryable ambiguity; never inspect them again.
+  }
+  return { terminal: false, code: "provider-unavailable" };
+}
+
+async function persistPackingWorkProviderFailure(
+  siteId: string,
+  target: NpShopPackingWorkTarget,
+  orderId: string,
+  workId: string,
+  expectedStatus: "pending" | "cancel-pending",
+  failure: NpShopPackingWorkProviderFailure,
+  staffUserId: string | null,
+): Promise<void> {
+  if (!failure.terminal) return;
+  await getDb().transaction(async (tx) => {
+    const current = await npReadStoredShopPackingWork(tx, siteId, target, orderId, true);
+    if (!current || current.workId !== workId || current.status !== expectedStatus) return;
+    const next = {
+      ...current,
+      status: "manual-review",
+      revision: current.revision + 1,
+      providerErrorCode: failure.code,
+      updatedAt: nextPackingWorkTimestamp(current.updatedAt),
+    } satisfies NpShopStoredPackingWork;
+    await npPersistStoredShopPackingWork(tx, siteId, next);
+    await recordShopPackingWorkAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.packing-work.provider.manual-review",
+      next,
+      { previousStatus: current.status, providerErrorCode: next.providerErrorCode },
+    );
+  });
+}
+
+export async function npStoreShopPackingWorkCreateConfirmation(
+  work: Pick<NpShopStoredPackingWork, "target" | "orderId" | "workId">,
+  result: NpShopPackingWorkCreateResult,
+  staffUserId: string | null,
+): Promise<NpShopStoredPackingWork> {
+  const siteId = await requireSiteId();
+  const outcome = await getDb().transaction(async (tx) => {
+    const current = await npReadStoredShopPackingWork(tx, siteId, work.target, work.orderId, true);
+    if (!current || current.workId !== work.workId) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_not_found",
+        "The durable packing work disappeared before provider confirmation.",
+      );
+    }
+    if (current.status === "cancel-pending") {
+      return { kind: "stored" as const, work: current };
+    }
+    if (current.status === "cancel-confirmed" || current.status === "cancelled") {
+      if (
+        current.providerWorkReference !== null &&
+        current.confirmedAt !== null &&
+        current.providerWorkReference === result.providerWorkReference &&
+        current.confirmedAt === result.confirmedAt
+      ) {
+        return { kind: "stored" as const, work: current };
+      }
+      const conflict = {
+        ...current,
+        status: "manual-review",
+        revision: current.revision + 1,
+        providerErrorCode: "cancellation-dominance-violation",
+        updatedAt: nextPackingWorkTimestamp(current.updatedAt, result.confirmedAt),
+      } satisfies NpShopStoredPackingWork;
+      await npPersistStoredShopPackingWork(tx, siteId, conflict);
+      await recordShopPackingWorkAudit(
+        tx,
+        siteId,
+        staffUserId,
+        "shop.packing-work.create.cancellation-dominance-violation",
+        conflict,
+      );
+      return { kind: "cancellation-dominance-violation" as const, work: conflict };
+    }
+    if (
+      current.status === "provider-confirmed" ||
+      current.status === "active" ||
+      current.status === "consumed"
+    ) {
+      if (
+        current.providerWorkReference !== result.providerWorkReference ||
+        current.confirmedAt !== result.confirmedAt
+      ) {
+        const conflict = {
+          ...current,
+          status: "manual-review",
+          revision: current.revision + 1,
+          providerErrorCode: "provider-result-mismatch",
+          updatedAt: nextPackingWorkTimestamp(current.updatedAt, result.confirmedAt),
+        } satisfies NpShopStoredPackingWork;
+        await npPersistStoredShopPackingWork(tx, siteId, conflict);
+        await recordShopPackingWorkAudit(
+          tx,
+          siteId,
+          staffUserId,
+          "shop.packing-work.create.result-conflict",
+          conflict,
+        );
+        return { kind: "result-conflict" as const, work: conflict };
+      }
+      return { kind: "stored" as const, work: current };
+    }
+    if (current.status !== "pending") {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_state_conflict",
+        "The packing work cannot accept a create confirmation in its current state.",
+      );
+    }
+    const next = {
+      ...current,
+      status: "provider-confirmed",
+      revision: current.revision + 1,
+      providerWorkReference: result.providerWorkReference,
+      confirmedAt: result.confirmedAt,
+      updatedAt: nextPackingWorkTimestamp(current.updatedAt, result.confirmedAt),
+    } satisfies NpShopStoredPackingWork;
+    await npPersistStoredShopPackingWork(tx, siteId, next);
+    await recordShopPackingWorkAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.packing-work.create.confirm",
+      next,
+    );
+    return { kind: "stored" as const, work: next };
+  });
+  if (outcome.kind === "cancellation-dominance-violation") {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_result_mismatch",
+      "The provider recreated packing work after its confirmed cancellation; manual review is required.",
+    );
+  }
+  if (outcome.kind === "result-conflict") {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_result_mismatch",
+      "The provider returned conflicting create results for one packing-work idempotency key.",
+    );
+  }
+  return outcome.work;
+}
+
+export async function npActivateShopPackingWork(
+  identity: Pick<NpShopStoredPackingWork, "target" | "orderId" | "workId">,
+  staffUserId: string | null,
+): Promise<NpShopStoredPackingWork> {
+  const siteId = await requireSiteId();
+  const result = await getDb().transaction(async (tx) => {
+    const source = await readLockedPackingWorkSource(tx, siteId, identity.target, identity.orderId);
+    const current = await npReadStoredShopPackingWork(
+      tx,
+      siteId,
+      identity.target,
+      identity.orderId,
+      true,
+    );
+    if (!current || current.workId !== identity.workId) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_not_found",
+        "The provider-confirmed packing work no longer exists.",
+      );
+    }
+    if (current.status === "active") return { outcome: "active" as const, work: current };
+    if (current.status !== "provider-confirmed") {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_state_conflict",
+        "Only provider-confirmed packing work can become active.",
+      );
+    }
+    if (
+      !packingWorkMatchesSource(current, source) ||
+      source.booking !== null ||
+      source.parcelSnapshot?.lockedShipmentId !== null ||
+      (source.target === "outbound" && source.sourceStatus !== "processing") ||
+      (source.target === "replacement" && source.sourceStatus !== "awaiting")
+    ) {
+      const conflict = {
+        ...current,
+        status: "manual-review",
+        revision: current.revision + 1,
+        providerErrorCode: "local-state-conflict",
+        updatedAt: nextPackingWorkTimestamp(current.updatedAt),
+      } satisfies NpShopStoredPackingWork;
+      await npPersistStoredShopPackingWork(tx, siteId, conflict);
+      await recordShopPackingWorkAudit(
+        tx,
+        siteId,
+        staffUserId,
+        "shop.packing-work.activate.manual-review",
+        conflict,
+      );
+      return { outcome: "manual-review" as const, work: conflict };
+    }
+    const now = nextPackingWorkTimestamp(current.updatedAt, current.confirmedAt);
+    const next = {
+      ...current,
+      status: "active",
+      revision: current.revision + 1,
+      activatedAt: now,
+      updatedAt: now,
+    } satisfies NpShopStoredPackingWork;
+    await npPersistStoredShopPackingWork(tx, siteId, next);
+    await recordShopPackingWorkAudit(tx, siteId, staffUserId, "shop.packing-work.activate", next);
+    return { outcome: "active" as const, work: next };
+  });
+  if (result.outcome === "manual-review") {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_manual_review",
+      "The provider accepted packing work after its local source changed; manual review is required.",
+    );
+  }
+  return result.work;
+}
+
+type NpShopPreparedPackingWorkCancellation =
+  | { outcome: "cancelled"; work: NpShopStoredPackingWork }
+  | { outcome: "finalize"; work: NpShopStoredPackingWork }
+  | {
+      outcome: "provider";
+      work: NpShopStoredPackingWork;
+      request: NpShopPackingWorkCancelRequest;
+    };
+
+async function requirePackingWorkCancellationHasNoTracking(
+  tx: NpShopTransaction,
+  siteId: string,
+  work: NpShopStoredPackingWork,
+): Promise<void> {
+  if (work.target !== "replacement" || work.attachedShipmentId === null) return;
+  const tracking = await npReadShopExchangeTrackingForOrder(tx, siteId, work.orderId, true);
+  if (tracking) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_shipment_conflict",
+      "Attached replacement packing work cannot be cancelled after verified tracking starts.",
+    );
+  }
+}
+
+export async function npPrepareShopPackingWorkCancellation(
+  input: NpShopPackingWorkExistingActionInput,
+  providerId: string,
+  staffUserId: string | null,
+): Promise<NpShopPreparedPackingWorkCancellation> {
+  const siteId = await requireSiteId();
+  return getDb().transaction(async (tx) => {
+    const source = await readLockedPackingWorkCancellationSource(
+      tx,
+      siteId,
+      input.target,
+      input.orderId,
+    );
+    const current = await npReadStoredShopPackingWork(
+      tx,
+      siteId,
+      input.target,
+      input.orderId,
+      true,
+    );
+    if (
+      !current ||
+      current.workId !== input.workId ||
+      current.revision !== input.expectedRevision ||
+      current.exchangeId !== input.exchangeId
+    ) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_revision_conflict",
+        "The packing work changed before cancellation started.",
+      );
+    }
+    if (current.providerId !== providerId) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_not_supported",
+        "Packing-work cancellation requires its original provider.",
+      );
+    }
+    if (
+      !npShopPackingWorkMatchesIdentity(current, {
+        target: source.target,
+        orderId: source.order.id,
+        exchangeId: source.exchangeId,
+        purgeAt: source.order.purgeAt,
+      })
+    ) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_revision_conflict",
+        "The packing work no longer matches its retained source identity.",
+      );
+    }
+    if (current.status === "cancelled") return { outcome: "cancelled", work: current };
+    if (current.status === "cancel-confirmed") return { outcome: "finalize", work: current };
+    if (current.status === "consumed" || current.consumedAt !== null) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_shipment_conflict",
+        "Carrier-consumed or manually shipped packing work cannot be cancelled.",
+      );
+    }
+    if (
+      current.target === "outbound" &&
+      current.attachedShipmentId !== null &&
+      !packingWorkHasCancellationIntent(current)
+    ) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_shipment_conflict",
+        "Attached outbound packing work must finish through its exact carrier booking.",
+      );
+    }
+    if (current.status === "cancel-pending") {
+      return {
+        outcome: "provider",
+        work: current,
+        request: freezePackingWorkCancelRequest(current),
+      };
+    }
+    if (!packingWorkHasCancellationIntent(current)) {
+      await requirePackingWorkCancellationHasNoTracking(tx, siteId, current);
+    }
+    if (source.target !== current.target || source.exchangeId !== current.exchangeId) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_state_conflict",
+        "The packing work no longer matches its order target.",
+      );
+    }
+    const requestedAt = new Date();
+    requestedAt.setMilliseconds(0);
+    const cancellationId = current.cancellationId ?? randomUUID();
+    const cancelRequestedAt =
+      current.cancelRequestedAt ??
+      nextPackingWorkTimestamp(
+        current.updatedAt,
+        current.confirmedAt,
+        current.activatedAt,
+        requestedAt.toISOString(),
+      );
+    const now = nextPackingWorkTimestamp(current.updatedAt, cancelRequestedAt);
+    const next = {
+      ...current,
+      status: "cancel-pending",
+      revision: current.revision + 1,
+      providerErrorCode: null,
+      cancellationId,
+      cancelRequestedAt,
+      cancelledAt: null,
+      updatedAt: now,
+    } satisfies NpShopStoredPackingWork;
+    await npPersistStoredShopPackingWork(tx, siteId, next);
+    await recordShopPackingWorkAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.packing-work.cancel.request",
+      next,
+      { attachedShipmentId: next.attachedShipmentId },
+    );
+    return { outcome: "provider", work: next, request: freezePackingWorkCancelRequest(next) };
+  });
+}
+
+export async function npStoreShopPackingWorkCancellationConfirmation(
+  work: Pick<NpShopStoredPackingWork, "target" | "orderId" | "workId">,
+  result: NpShopPackingWorkCancelResult,
+  staffUserId: string | null,
+): Promise<NpShopStoredPackingWork> {
+  const siteId = await requireSiteId();
+  const outcome = await getDb().transaction(async (tx) => {
+    const current = await npReadStoredShopPackingWork(tx, siteId, work.target, work.orderId, true);
+    if (!current || current.workId !== work.workId) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_not_found",
+        "The durable packing work disappeared before cancellation confirmation.",
+      );
+    }
+    if (current.status === "cancel-confirmed" || current.status === "cancelled") {
+      if (
+        current.cancellationId !== result.cancellationId ||
+        current.cancelledAt !== result.cancelledAt
+      ) {
+        const conflict = {
+          ...current,
+          status: "manual-review",
+          revision: current.revision + 1,
+          providerErrorCode: "provider-result-mismatch",
+          updatedAt: nextPackingWorkTimestamp(current.updatedAt, result.cancelledAt),
+        } satisfies NpShopStoredPackingWork;
+        await npPersistStoredShopPackingWork(tx, siteId, conflict);
+        await recordShopPackingWorkAudit(
+          tx,
+          siteId,
+          staffUserId,
+          "shop.packing-work.cancel.result-conflict",
+          conflict,
+        );
+        return { kind: "result-conflict" as const, work: conflict };
+      }
+      return { kind: "stored" as const, work: current };
+    }
+    if (current.status !== "cancel-pending") {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_state_conflict",
+        "The packing work cannot accept cancellation confirmation in its current state.",
+      );
+    }
+    const next = {
+      ...current,
+      status: "cancel-confirmed",
+      revision: current.revision + 1,
+      cancelledAt: result.cancelledAt,
+      updatedAt: nextPackingWorkTimestamp(current.updatedAt, result.cancelledAt),
+    } satisfies NpShopStoredPackingWork;
+    await npPersistStoredShopPackingWork(tx, siteId, next);
+    await recordShopPackingWorkAudit(
+      tx,
+      siteId,
+      staffUserId,
+      "shop.packing-work.cancel.confirm",
+      next,
+      { attachedShipmentId: next.attachedShipmentId },
+    );
+    return { kind: "stored" as const, work: next };
+  });
+  if (outcome.kind === "result-conflict") {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_result_mismatch",
+      "The provider returned conflicting cancellation results for one packing-work idempotency key.",
+    );
+  }
+  return outcome.work;
+}
+
+export async function npFinalizeShopPackingWorkCancellation(
+  identity: Pick<NpShopStoredPackingWork, "target" | "orderId" | "workId">,
+  staffUserId: string | null,
+): Promise<NpShopStoredPackingWork> {
+  const siteId = await requireSiteId();
+  return getDb().transaction(async (tx) => {
+    const source = await readLockedPackingWorkCancellationSource(
+      tx,
+      siteId,
+      identity.target,
+      identity.orderId,
+    );
+    const current = await npReadStoredShopPackingWork(
+      tx,
+      siteId,
+      identity.target,
+      identity.orderId,
+      true,
+    );
+    if (!current || current.workId !== identity.workId) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_not_found",
+        "The provider-confirmed packing-work cancellation no longer exists.",
+      );
+    }
+    if (
+      !npShopPackingWorkMatchesIdentity(current, {
+        target: source.target,
+        orderId: source.order.id,
+        exchangeId: source.exchangeId,
+        purgeAt: source.order.purgeAt,
+      })
+    ) {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_revision_conflict",
+        "The provider-confirmed cancellation no longer matches its retained source identity.",
+      );
+    }
+    if (current.status === "cancelled") return current;
+    if (current.status !== "cancel-confirmed") {
+      throw new NpShopPackingWorkConflictError(
+        "packing_work_state_conflict",
+        "Only provider-confirmed cancellation can complete locally.",
+      );
+    }
+    const now = nextPackingWorkTimestamp(current.updatedAt, current.cancelledAt);
+    const next = {
+      ...current,
+      status: "cancelled",
+      revision: current.revision + 1,
+      updatedAt: now,
+    } satisfies NpShopStoredPackingWork;
+    await npPersistStoredShopPackingWork(tx, siteId, next);
+    await recordShopPackingWorkAudit(tx, siteId, staffUserId, "shop.packing-work.cancel", next);
+    return next;
+  });
+}
+
+export async function npCreateShopPackingWork(
+  runtime: NpShopRuntime,
+  input: NpShopPackingWorkCreateActionInput,
+  staffUserId: string | null,
+): Promise<{ work: NpShopStoredPackingWork; duplicate: boolean }> {
+  const adapter = runtime.packingWorkAdapter;
+  if (!adapter) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_not_supported",
+      "No packing-work adapter is configured for this Shop.",
+    );
+  }
+  const prepared = await npPrepareShopPackingWorkCreate(input, adapter.id, staffUserId);
+  if (prepared.outcome === "active") return { work: prepared.work, duplicate: true };
+  if (prepared.outcome === "manual-review") {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_manual_review",
+      "The durable packing-work snapshot no longer matches its canonical fingerprint or source.",
+    );
+  }
+  if (prepared.outcome === "activate") {
+    return { work: await npActivateShopPackingWork(prepared.work, staffUserId), duplicate: true };
+  }
+  let result: NpShopPackingWorkCreateResult;
+  try {
+    const raw = await adapter.createPackingWork(prepared.request);
+    result = materializePackingWorkCreateResult(prepared.request, raw, new Date());
+  } catch (error) {
+    await persistPackingWorkProviderFailure(
+      await requireSiteId(),
+      prepared.work.target,
+      prepared.work.orderId,
+      prepared.work.workId,
+      "pending",
+      classifyPackingWorkProviderFailure(error),
+      staffUserId,
+    );
+    throw new NpShopPackingWorkUnavailableError();
+  }
+  const confirmed = await npStoreShopPackingWorkCreateConfirmation(
+    prepared.work,
+    result,
+    staffUserId,
+  );
+  if (confirmed.status !== "provider-confirmed" && confirmed.status !== "active") {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_state_conflict",
+      "Packing-work cancellation won a concurrent create attempt.",
+    );
+  }
+  return {
+    work:
+      confirmed.status === "active"
+        ? confirmed
+        : await npActivateShopPackingWork(confirmed, staffUserId),
+    duplicate: false,
+  };
+}
+
+export async function npCancelShopPackingWork(
+  runtime: NpShopRuntime,
+  input: NpShopPackingWorkExistingActionInput,
+  staffUserId: string | null,
+): Promise<{ work: NpShopStoredPackingWork; duplicate: boolean }> {
+  const adapter = runtime.packingWorkAdapter;
+  if (!adapter) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_not_supported",
+      "The packing-work cancellation requires its original provider.",
+    );
+  }
+  const prepared = await npPrepareShopPackingWorkCancellation(input, adapter.id, staffUserId);
+  if (prepared.outcome === "cancelled") return { work: prepared.work, duplicate: true };
+  if (prepared.outcome === "finalize") {
+    return {
+      work: await npFinalizeShopPackingWorkCancellation(prepared.work, staffUserId),
+      duplicate: true,
+    };
+  }
+  if (adapter.id !== prepared.work.providerId) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_not_supported",
+      "The pending cancellation requires its original packing-work provider.",
+    );
+  }
+  let result: NpShopPackingWorkCancelResult;
+  try {
+    const raw = await adapter.cancelPackingWork(prepared.request);
+    result = materializePackingWorkCancelResult(prepared.request, raw, new Date());
+  } catch (error) {
+    await persistPackingWorkProviderFailure(
+      await requireSiteId(),
+      prepared.work.target,
+      prepared.work.orderId,
+      prepared.work.workId,
+      "cancel-pending",
+      classifyPackingWorkProviderFailure(error),
+      staffUserId,
+    );
+    throw new NpShopPackingWorkUnavailableError();
+  }
+  const confirmed = await npStoreShopPackingWorkCancellationConfirmation(
+    prepared.work,
+    result,
+    staffUserId,
+  );
+  return {
+    work:
+      confirmed.status === "cancelled"
+        ? confirmed
+        : await npFinalizeShopPackingWorkCancellation(confirmed, staffUserId),
+    duplicate: false,
+  };
+}
+
+export async function npFinalizeConfirmedShopPackingWork(
+  input: NpShopPackingWorkExistingActionInput,
+  staffUserId: string | null,
+): Promise<{ work: NpShopStoredPackingWork; duplicate: boolean }> {
+  const siteId = await requireSiteId();
+  const current = await npReadStoredShopPackingWork(getDb(), siteId, input.target, input.orderId);
+  if (
+    !current ||
+    current.workId !== input.workId ||
+    current.revision !== input.expectedRevision ||
+    current.exchangeId !== input.exchangeId
+  ) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_revision_conflict",
+      "The packing work changed before local finalization started.",
+    );
+  }
+  if (current.status === "provider-confirmed") {
+    return { work: await npActivateShopPackingWork(current, staffUserId), duplicate: false };
+  }
+  if (current.status === "cancel-confirmed") {
+    return {
+      work: await npFinalizeShopPackingWorkCancellation(current, staffUserId),
+      duplicate: false,
+    };
+  }
+  throw new NpShopPackingWorkConflictError(
+    current.status === "manual-review"
+      ? "packing_work_manual_review"
+      : "packing_work_state_conflict",
+    "Only a provider-confirmed packing-work transition can be finalized without provider I/O.",
+  );
+}
+
+export async function npReconcileShopPackingWork(
+  runtime: NpShopRuntime,
+  input: NpShopPackingWorkExistingActionInput,
+  staffUserId: string | null,
+): Promise<{ work: NpShopStoredPackingWork; duplicate: boolean }> {
+  const siteId = await requireSiteId();
+  const current = await npReadStoredShopPackingWork(getDb(), siteId, input.target, input.orderId);
+  if (
+    !current ||
+    current.workId !== input.workId ||
+    current.revision !== input.expectedRevision ||
+    current.exchangeId !== input.exchangeId
+  ) {
+    throw new NpShopPackingWorkConflictError(
+      "packing_work_revision_conflict",
+      "The packing work changed before reconciliation started.",
+    );
+  }
+  if (current.status === "provider-confirmed") {
+    return { work: await npActivateShopPackingWork(current, staffUserId), duplicate: false };
+  }
+  if (current.status === "cancel-confirmed") {
+    return {
+      work: await npFinalizeShopPackingWorkCancellation(current, staffUserId),
+      duplicate: false,
+    };
+  }
+  if (current.status === "pending") {
+    const createInput: NpShopPackingWorkCreateActionInput =
+      current.target === "outbound"
+        ? {
+            orderId: current.orderId,
+            target: "outbound",
+            exchangeId: null,
+            expectedSourceRevision: current.sourceRevision,
+            expectedParcelRevision: current.parcelRevision,
+            expectedWorkRevision: current.revision,
+          }
+        : {
+            orderId: current.orderId,
+            target: "replacement",
+            exchangeId: current.exchangeId,
+            expectedSourceRevision: current.sourceRevision,
+            expectedParcelRevision: current.parcelRevision,
+            expectedWorkRevision: current.revision,
+          };
+    return npCreateShopPackingWork(runtime, createInput, staffUserId);
+  }
+  if (current.status === "cancel-pending") {
+    return npCancelShopPackingWork(runtime, input, staffUserId);
+  }
+  if (
+    current.status === "active" ||
+    current.status === "cancelled" ||
+    current.status === "consumed"
+  ) {
+    return { work: current, duplicate: true };
+  }
+  throw new NpShopPackingWorkConflictError(
+    "packing_work_manual_review",
+    "This packing work requires manual reconciliation.",
+  );
+}
+
+export async function npMaintainShopPackingWork(
+  runtime: NpShopRuntime,
+): Promise<{ scanned: number; reconciled: number; failed: number }> {
+  const siteId = await requireSiteId();
+  const providerId = runtime.packingWorkAdapter?.id;
+  const batchSize = 25;
+  const localRows = await getDb()
+    .select({
+      key: npPluginStorage.key,
+      value: npPluginStorage.value,
+      expiresAt: npPluginStorage.expiresAt,
+      updatedAt: npPluginStorage.updatedAt,
+    })
+    .from(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "packing-work:%"),
+        sql`${npPluginStorage.value}->>'contract' = ${NP_SHOP_PACKING_WORK_STORAGE_CONTRACT}`,
+        sql`${npPluginStorage.value}->>'status' in ('provider-confirmed', 'cancel-confirmed')`,
+      ),
+    )
+    .orderBy(asc(npPluginStorage.updatedAt), asc(npPluginStorage.key))
+    .limit(batchSize);
+  const providerRows = providerId
+    ? await getDb()
+        .select({
+          key: npPluginStorage.key,
+          value: npPluginStorage.value,
+          expiresAt: npPluginStorage.expiresAt,
+          updatedAt: npPluginStorage.updatedAt,
+        })
+        .from(npPluginStorage)
+        .where(
+          and(
+            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+            eq(npPluginStorage.siteId, siteId),
+            like(npPluginStorage.key, "packing-work:%"),
+            sql`${npPluginStorage.value}->>'contract' = ${NP_SHOP_PACKING_WORK_STORAGE_CONTRACT}`,
+            sql`${npPluginStorage.value}->>'status' in ('pending', 'cancel-pending')`,
+            sql`${npPluginStorage.value}->>'providerId' = ${providerId}`,
+          ),
+        )
+        .orderBy(asc(npPluginStorage.updatedAt), asc(npPluginStorage.key))
+        .limit(batchSize)
+    : [];
+  const localQuota = providerId ? Math.ceil(batchSize / 2) : batchSize;
+  const selectedLocalRows = localRows.slice(0, localQuota);
+  const selectedProviderRows = providerRows.slice(0, batchSize - selectedLocalRows.length);
+  const rows = [
+    ...selectedLocalRows,
+    ...selectedProviderRows,
+    ...localRows.slice(selectedLocalRows.length, batchSize - selectedProviderRows.length),
+  ];
+  let reconciled = 0;
+  let failed = 0;
+  for (const row of rows) {
+    try {
+      const work = npRequireStoredShopPackingWorkAtKey(row.value, row.expiresAt, row.key);
+      const input: NpShopPackingWorkExistingActionInput =
+        work.target === "outbound"
+          ? {
+              orderId: work.orderId,
+              target: "outbound",
+              exchangeId: null,
+              workId: work.workId,
+              expectedRevision: work.revision,
+            }
+          : {
+              orderId: work.orderId,
+              target: "replacement",
+              exchangeId: work.exchangeId,
+              workId: work.workId,
+              expectedRevision: work.revision,
+            };
+      await npReconcileShopPackingWork(runtime, input, null);
+      reconciled += 1;
+    } catch {
+      failed += 1;
+      await rotateShopStorageMaintenanceCursor(siteId, row.key, row.updatedAt);
+    }
+  }
+  return { scanned: rows.length, reconciled, failed };
+}
+
 interface NpShopPreparedPackagingProposalBase {
   orderId: string;
   sourceRevision: number;
@@ -6953,6 +10144,19 @@ export async function npPrepareShopPackagingProposal(
       }
       const booking = await readStoredCarrierBooking(tx, siteId, input.orderId, true);
       const parcels = await readStoredFulfillmentParcels(tx, siteId, input.orderId, true);
+      const packingWork = await npReadStoredShopPackingWork(
+        tx,
+        siteId,
+        "outbound",
+        input.orderId,
+        true,
+      );
+      requirePackingWorkAllowsParcelMutation(packingWork, {
+        target: "outbound",
+        orderId: order.id,
+        exchangeId: null,
+        purgeAt: order.purgeAt,
+      });
       if (booking || parcels?.lockedShipmentId) {
         throw new NpShopFulfillmentParcelConflictError(
           "parcel_locked",
@@ -6995,6 +10199,19 @@ export async function npPrepareShopPackagingProposal(
     }
     const booking = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
     const parcels = await readStoredExchangeParcels(tx, siteId, input.orderId, true);
+    const packingWork = await npReadStoredShopPackingWork(
+      tx,
+      siteId,
+      "replacement",
+      input.orderId,
+      true,
+    );
+    requirePackingWorkAllowsParcelMutation(packingWork, {
+      target: "replacement",
+      orderId: order.id,
+      exchangeId: exchange.id,
+      purgeAt: order.purgeAt,
+    });
     if (booking || parcels?.lockedShipmentId) {
       throw new NpShopExchangeParcelConflictError(
         "exchange_parcel_locked",
@@ -7068,11 +10285,12 @@ async function markExchangeCarrierManualReview(
   siteId: string,
   orderId: string,
   bookingId: string,
+  expectedStatuses: readonly NpShopStoredExchangeCarrierBooking["status"][],
   code: string,
 ): Promise<void> {
   await getDb().transaction(async (tx) => {
     const current = await readStoredExchangeCarrierBooking(tx, siteId, orderId, true);
-    if (!current || current.id !== bookingId || current.status === "cancelled") return;
+    if (!current || current.id !== bookingId || !expectedStatuses.includes(current.status)) return;
     await persistExchangeCarrierBooking(tx, siteId, {
       ...current,
       status: "manual-review",
@@ -7081,6 +10299,15 @@ async function markExchangeCarrierManualReview(
       updatedAt: nextExchangeCarrierTimestamp(current.updatedAt, current.confirmedAt),
     });
   });
+}
+
+function isExchangeCarrierLocalStateConflict(error: unknown): boolean {
+  return (
+    error instanceof NpShopExchangeCarrierConflictError ||
+    error instanceof NpShopExchangeConflictError ||
+    error instanceof NpShopExchangeParcelConflictError ||
+    error instanceof NpShopPackingWorkConflictError
+  );
 }
 
 export async function npBookShopExchangeCarrierShipment(
@@ -7094,12 +10321,6 @@ export async function npBookShopExchangeCarrierShipment(
 }> {
   const adapter = runtime.carrierExchangeAdapter;
   const parcelAdapter = runtime.carrierExchangeParcelAdapter;
-  if (!adapter) {
-    throw new NpShopExchangeCarrierConflictError(
-      "exchange_carrier_not_supported",
-      "Replacement carrier booking is not configured for this Shop.",
-    );
-  }
   const siteId = await requireSiteId();
   const resuming = "bookingId" in input;
   const prepared = await getDb().transaction(async (tx) => {
@@ -7117,14 +10338,20 @@ export async function npBookShopExchangeCarrierShipment(
       );
     }
     if (current) {
-      if (current.exchangeId !== exchange.id || current.providerId !== adapter.id) {
+      if (current.exchangeId !== exchange.id) {
         throw new NpShopExchangeCarrierConflictError(
           "exchange_carrier_provider_mismatch",
-          "The durable replacement booking belongs to a different exchange or provider.",
+          "The durable replacement booking belongs to a different exchange.",
         );
       }
       if (current.status === "completed") {
         return { outcome: "complete" as const, order, exchange, booking: current };
+      }
+      if (current.status === "pending" && (!adapter || adapter.id !== current.providerId)) {
+        throw new NpShopExchangeCarrierConflictError(
+          "exchange_carrier_provider_mismatch",
+          "The pending replacement booking requires its original carrier provider.",
+        );
       }
       if (parcelSnapshot?.lockedShipmentId && parcelSnapshot.lockedShipmentId !== current.id) {
         throw new NpShopExchangeParcelConflictError(
@@ -7135,7 +10362,7 @@ export async function npBookShopExchangeCarrierShipment(
       if (
         current.status === "pending" &&
         parcelSnapshot?.lockedShipmentId === current.id &&
-        !parcelAdapter
+        (!parcelAdapter || parcelAdapter.id !== current.providerId)
       ) {
         throw new NpShopExchangeCarrierConflictError(
           "exchange_carrier_provider_mismatch",
@@ -7201,6 +10428,39 @@ export async function npBookShopExchangeCarrierShipment(
             }
           : current;
       if (booking !== current) await persistExchangeCarrierBooking(tx, siteId, booking);
+      const packingSource = {
+        target: "replacement" as const,
+        exchangeId: exchange.id,
+        order,
+        sourceRevision: exchange.revision,
+        sourceStatus: exchange.status,
+        booking,
+        parcelSnapshot,
+        lines: exchange.lines,
+      };
+      const currentPackingWork = await npReadStoredShopPackingWork(
+        tx,
+        siteId,
+        "replacement",
+        order.id,
+        true,
+      );
+      const packingCancellationWon = Boolean(
+        currentPackingWork &&
+        currentPackingWork.attachedShipmentId === booking.id &&
+        packingWorkHasCancellationIntent(currentPackingWork) &&
+        packingWorkMatchesSnapshot(currentPackingWork, packingSource),
+      );
+      const attachedPackingWork = packingCancellationWon
+        ? currentPackingWork
+        : await attachShopPackingWorkToShipment(
+            tx,
+            siteId,
+            packingSource,
+            booking.id,
+            Boolean(parcelAdapter && parcelSnapshot?.lockedShipmentId === booking.id),
+            staffUserId,
+          );
       return {
         outcome: "prepared" as const,
         order,
@@ -7208,12 +10468,22 @@ export async function npBookShopExchangeCarrierShipment(
         booking,
         destination,
         parcelSnapshot: parcelSnapshot?.lockedShipmentId === booking.id ? parcelSnapshot : null,
+        packingWorkId:
+          attachedPackingWork?.status === "active" || packingCancellationWon
+            ? (attachedPackingWork?.workId ?? null)
+            : null,
       };
     }
     if (resuming) {
       throw new NpShopExchangeCarrierConflictError(
         "exchange_carrier_not_found",
         "The resumable replacement booking does not exist.",
+      );
+    }
+    if (!adapter) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_not_supported",
+        "Replacement carrier booking is not configured for this Shop.",
       );
     }
     if (
@@ -7301,6 +10571,23 @@ export async function npBookShopExchangeCarrierShipment(
           parcelSnapshot?.lockedShipmentId === booking.id ? parcelSnapshot.revision : null,
       },
     );
+    const attachedPackingWork = await attachShopPackingWorkToShipment(
+      tx,
+      siteId,
+      {
+        target: "replacement",
+        exchangeId: exchange.id,
+        order,
+        sourceRevision: exchange.revision,
+        sourceStatus: exchange.status,
+        booking,
+        parcelSnapshot,
+        lines: exchange.lines,
+      },
+      booking.id,
+      Boolean(parcelAdapter && parcelSnapshot?.lockedShipmentId === booking.id),
+      staffUserId,
+    );
     return {
       outcome: "prepared" as const,
       order,
@@ -7308,6 +10595,7 @@ export async function npBookShopExchangeCarrierShipment(
       booking,
       destination,
       parcelSnapshot: parcelSnapshot?.lockedShipmentId === booking.id ? parcelSnapshot : null,
+      packingWorkId: attachedPackingWork?.status === "active" ? attachedPackingWork.workId : null,
     };
   });
   if (prepared.outcome === "private-expired") {
@@ -7337,7 +10625,35 @@ export async function npBookShopExchangeCarrierShipment(
       bookedAt: prepared.booking.confirmedAt,
     });
   } else {
-    if (!prepared.destination) {
+    if (!adapter || adapter.id !== prepared.booking.providerId) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_provider_mismatch",
+        "The pending replacement booking requires its original carrier provider.",
+      );
+    }
+    let invocationDestination: NpShopStoredExchangeDestinationPrivate | null = null;
+    try {
+      invocationDestination = await readStoredExchangeDestinationPrivate(
+        getDb(),
+        siteId,
+        input.orderId,
+      );
+    } catch (error) {
+      if (!(error instanceof NpShopExchangeContractError)) throw error;
+    }
+    if (
+      !invocationDestination ||
+      !exchangeDestinationMatches(invocationDestination, prepared.exchange) ||
+      invocationDestination.accessedAt === null ||
+      new Date(invocationDestination.expiresAt) <= new Date()
+    ) {
+      await markExchangeCarrierManualReview(
+        siteId,
+        input.orderId,
+        prepared.booking.id,
+        ["pending"],
+        "private-expired",
+      );
       throw new NpShopExchangeCarrierConflictError(
         "exchange_carrier_destination_expired",
         "The pending replacement booking lost its private destination.",
@@ -7350,7 +10666,7 @@ export async function npBookShopExchangeCarrierShipment(
       exchangeRevision: prepared.exchange.revision,
       destinationRevision: prepared.exchange.destinationRevision,
       items: exchangeCarrierItems(prepared.exchange),
-      destination: prepared.destination.destination,
+      destination: invocationDestination.destination,
       requestedAt: prepared.booking.requestedAt,
     };
     let invokeProvider: () =>
@@ -7412,6 +10728,7 @@ export async function npBookShopExchangeCarrierShipment(
       siteId,
       input.orderId,
       prepared.booking.id,
+      ["pending"],
       "invalid-result",
     );
     throw new NpShopExchangeCarrierConflictError(
@@ -7498,6 +10815,7 @@ export async function npBookShopExchangeCarrierShipment(
     return await getDb().transaction(async (tx) => {
       const { order, exchange } = await readExchangeForAction(tx, siteId, input.orderId);
       const booking = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
+      const parcelSnapshot = await readStoredExchangeParcels(tx, siteId, input.orderId, true);
       if (
         !booking ||
         booking.id !== confirmed.id ||
@@ -7511,6 +10829,47 @@ export async function npBookShopExchangeCarrierShipment(
         throw new NpShopExchangeCarrierConflictError(
           "exchange_carrier_manual_review",
           "The exchange changed after provider confirmation.",
+        );
+      }
+      const packingSource = {
+        target: "replacement" as const,
+        exchangeId: exchange.id,
+        order,
+        sourceRevision: exchange.revision,
+        sourceStatus: exchange.status,
+        booking,
+        parcelSnapshot,
+        lines: exchange.lines,
+      };
+      const packingWorkAfterProvider = prepared.packingWorkId
+        ? await npReadStoredShopPackingWork(tx, siteId, "replacement", order.id, true)
+        : null;
+      const packingCancellationWon = Boolean(
+        prepared.packingWorkId &&
+        packingWorkAfterProvider?.workId === prepared.packingWorkId &&
+        packingWorkHasCancellationIntent(packingWorkAfterProvider) &&
+        packingWorkAfterProvider.attachedShipmentId === booking.id &&
+        packingWorkAfterProvider.consumedAt === null &&
+        packingWorkMatchesSnapshot(packingWorkAfterProvider, packingSource),
+      );
+      const attachedPackingWork = packingCancellationWon
+        ? packingWorkAfterProvider
+        : await attachShopPackingWorkToShipment(
+            tx,
+            siteId,
+            packingSource,
+            booking.id,
+            Boolean(parcelAdapter && parcelSnapshot?.lockedShipmentId === booking.id),
+            staffUserId,
+          );
+      if (
+        prepared.packingWorkId &&
+        (attachedPackingWork?.workId !== prepared.packingWorkId ||
+          (attachedPackingWork.status !== "active" && !packingCancellationWon))
+      ) {
+        throw new NpShopPackingWorkConflictError(
+          "packing_work_shipment_conflict",
+          "Packing-work cancellation won while replacement booking was in progress.",
         );
       }
       const now = nextExchangeCarrierTimestamp(exchange.updatedAt, booking.confirmedAt);
@@ -7562,6 +10921,7 @@ export async function npBookShopExchangeCarrierShipment(
           shipmentId: completed.id,
           providerId: completed.providerId,
           exchangeRevision: updatedExchange.revision,
+          packingCancellationWon,
         },
       );
       return {
@@ -7571,13 +10931,14 @@ export async function npBookShopExchangeCarrierShipment(
       };
     });
   } catch (error) {
+    if (!isExchangeCarrierLocalStateConflict(error)) throw error;
     await markExchangeCarrierManualReview(
       siteId,
       input.orderId,
       prepared.booking.id,
+      ["provider-confirmed"],
       "local-state-conflict",
     );
-    if (error instanceof NpShopOrderContractError) throw error;
     throw new NpShopExchangeCarrierConflictError(
       "exchange_carrier_manual_review",
       "The provider confirmed replacement shipment but local completion requires reconciliation.",
@@ -7595,25 +10956,23 @@ export async function npCancelShopExchangeCarrierShipment(
   duplicate: boolean;
 }> {
   const adapter = runtime.carrierExchangeAdapter;
-  if (!adapter) {
-    throw new NpShopExchangeCarrierConflictError(
-      "exchange_carrier_not_supported",
-      "Replacement carrier cancellation is not configured.",
-    );
-  }
   const siteId = await requireSiteId();
   const prepared = await getDb().transaction(async (tx) => {
     const { order, exchange } = await readExchangeForAction(tx, siteId, input.orderId);
     const current = await readStoredExchangeCarrierBooking(tx, siteId, input.orderId, true);
-    if (
-      !current ||
-      current.id !== input.bookingId ||
-      current.exchangeId !== input.exchangeId ||
-      current.providerId !== adapter.id
-    ) {
+    if (!current || current.id !== input.bookingId || current.exchangeId !== input.exchangeId) {
       throw new NpShopExchangeCarrierConflictError(
         "exchange_carrier_not_found",
         "The provider-owned replacement booking does not exist.",
+      );
+    }
+    if (
+      (current.status === "completed" || current.status === "cancel-pending") &&
+      (!adapter || adapter.id !== current.providerId)
+    ) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_not_supported",
+        "Provider cancellation requires the original replacement carrier adapter.",
       );
     }
     const tracking = await npReadShopExchangeTrackingForOrder(tx, siteId, input.orderId, true);
@@ -7649,8 +11008,47 @@ export async function npCancelShopExchangeCarrierShipment(
         "The replacement label acquisition must complete or be manually reconciled before its shipment can be provider-cancelled or restocked.",
       );
     }
+    const parcelSnapshot = await readStoredExchangeParcels(tx, siteId, input.orderId, true);
+    const packingWork = await npReadStoredShopPackingWork(
+      tx,
+      siteId,
+      "replacement",
+      input.orderId,
+      true,
+    );
+    const packingCancellationSafe =
+      !packingWork ||
+      (packingWork.status === "cancelled" &&
+        (packingWork.attachedShipmentId === null
+          ? npShopPackingWorkMatchesUnattachedTombstone(packingWork, {
+              target: "replacement",
+              orderId: order.id,
+              exchangeId: exchange.id,
+              purgeAt: order.purgeAt,
+            })
+          : packingWork.attachedShipmentId === current.id &&
+            packingWorkMatchesReplacementAdminSource(
+              packingWork,
+              exchange,
+              parcelSnapshot,
+              current,
+            )));
+    if (!packingCancellationSafe) {
+      throw new NpShopPackingWorkConflictError(
+        packingWork.status === "manual-review"
+          ? "packing_work_manual_review"
+          : "packing_work_state_conflict",
+        "Confirm packing-work cancellation before cancelling the replacement shipment.",
+      );
+    }
     if (current.status === "cancelled" && exchange.status === "cancelled") {
       return { outcome: "cancelled" as const, exchange, booking: current };
+    }
+    if (!exchangeCarrierBookingMatchesCurrentSource(current, order, exchange)) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_state_conflict",
+        "The replacement booking no longer matches its exact completed order and exchange revisions.",
+      );
     }
     if (
       order.revision !== input.orderRevision ||
@@ -7734,6 +11132,12 @@ export async function npCancelShopExchangeCarrierShipment(
       cancelledAt: booking.cancelledAt,
     });
   } else {
+    if (!adapter || adapter.id !== booking.providerId) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_not_supported",
+        "Provider cancellation requires the original replacement carrier adapter.",
+      );
+    }
     const request = npRequireShopExchangeCarrierCancelRequest({
       contract: NP_SHOP_EXCHANGE_CARRIER_CANCEL_REQUEST_CONTRACT,
       cancellationId: booking.cancellationId,
@@ -7778,7 +11182,13 @@ export async function npCancelShopExchangeCarrierShipment(
     new Date(providerResult.cancelledAt).getTime() >
       Date.now() + npShopCarrierLimits.futureToleranceSeconds * 1_000
   ) {
-    await markExchangeCarrierManualReview(siteId, input.orderId, booking.id, "invalid-result");
+    await markExchangeCarrierManualReview(
+      siteId,
+      input.orderId,
+      booking.id,
+      ["cancel-pending"],
+      "invalid-result",
+    );
     throw new NpShopExchangeCarrierConflictError(
       "exchange_carrier_result_mismatch",
       "The provider cancellation result does not match its durable intent.",
@@ -7860,7 +11270,8 @@ export async function npCancelShopExchangeCarrierShipment(
         exchange.status !== "processing" ||
         exchange.id !== current.exchangeId ||
         order.revision !== current.completedOrderRevision ||
-        exchange.revision !== current.completedExchangeRevision
+        exchange.revision !== current.completedExchangeRevision ||
+        !exchangeCarrierBookingMatchesCurrentSource(current, order, exchange)
       ) {
         throw new NpShopExchangeCarrierConflictError(
           "exchange_carrier_manual_review",
@@ -7885,6 +11296,37 @@ export async function npCancelShopExchangeCarrierShipment(
         throw new NpShopExchangeCarrierConflictError(
           "exchange_carrier_manual_review",
           "Replacement pickup state changed while shipment cancellation was in progress; inventory cannot be restored automatically.",
+        );
+      }
+      const parcelSnapshot = await readStoredExchangeParcels(tx, siteId, input.orderId, true);
+      const packingWork = await npReadStoredShopPackingWork(
+        tx,
+        siteId,
+        "replacement",
+        input.orderId,
+        true,
+      );
+      const packingCancellationSafe =
+        !packingWork ||
+        (packingWork.status === "cancelled" &&
+          (packingWork.attachedShipmentId === null
+            ? npShopPackingWorkMatchesUnattachedTombstone(packingWork, {
+                target: "replacement",
+                orderId: order.id,
+                exchangeId: exchange.id,
+                purgeAt: order.purgeAt,
+              })
+            : packingWork.attachedShipmentId === current.id &&
+              packingWorkMatchesReplacementAdminSource(
+                packingWork,
+                exchange,
+                parcelSnapshot,
+                current,
+              )));
+      if (!packingCancellationSafe) {
+        throw new NpShopExchangeCarrierConflictError(
+          "exchange_carrier_manual_review",
+          "Packing-work cancellation is no longer confirmed; inventory cannot be restored automatically.",
         );
       }
       const trackedKeys = new Set(order.inventoryReservationLineKeys);
@@ -7969,13 +11411,14 @@ export async function npCancelShopExchangeCarrierShipment(
       };
     });
   } catch (error) {
+    if (!isExchangeCarrierLocalStateConflict(error)) throw error;
     await markExchangeCarrierManualReview(
       siteId,
       input.orderId,
       booking.id,
+      ["cancel-confirmed"],
       "local-state-conflict",
     );
-    if (error instanceof NpShopOrderContractError) throw error;
     throw new NpShopExchangeCarrierConflictError(
       "exchange_carrier_manual_review",
       "The provider cancelled replacement shipment but local completion requires reconciliation.",
@@ -8282,7 +11725,10 @@ export async function npCountShopReturns(): Promise<{
   return { ...counts, invalidSample, orphanSample };
 }
 
-export async function npListRecentShopExchanges(): Promise<{
+export async function npListRecentShopExchanges(
+  carrierProviderId?: string,
+  parcelAwareCarrier = false,
+): Promise<{
   rows: NpShopAdminExchangeRow[];
   total: number;
 }> {
@@ -8318,6 +11764,13 @@ export async function npListRecentShopExchanges(): Promise<{
     rows: await Promise.all(
       rows.map(async (row) => {
         const exchange = requireStoredExchangeAtKey(row.value, row.expiresAt, row.key);
+        const order = await readStoredOrderForUpdate(
+          db,
+          siteId,
+          exchange.ownerSegment,
+          exchange.orderId,
+        );
+        const returnRequest = await readStoredReturn(db, siteId, exchange.orderId);
         const destination = await readStoredExchangeDestinationPrivate(
           db,
           siteId,
@@ -8325,6 +11778,25 @@ export async function npListRecentShopExchanges(): Promise<{
         );
         const carrierBooking = await readStoredExchangeCarrierBooking(db, siteId, exchange.orderId);
         const parcelSnapshot = await readStoredExchangeParcels(db, siteId, exchange.orderId);
+        const packingWork = await readAdminPackingWork(db, siteId, "replacement", exchange.orderId);
+        const exactPackingWork = packingWork === "invalid" ? null : packingWork;
+        const exactUnlockedParcelSnapshot = Boolean(
+          parcelSnapshot &&
+          parcelSnapshot.orderId === exchange.orderId &&
+          parcelSnapshot.exchangeId === exchange.id &&
+          parcelSnapshot.exchangeRevision === exchange.revision &&
+          parcelSnapshot.purgeAt === exchange.purgeAt &&
+          parcelSnapshot.lockedShipmentId === null,
+        );
+        const exactLockedParcelSnapshot = Boolean(
+          parcelSnapshot &&
+          carrierBooking &&
+          parcelSnapshot.orderId === exchange.orderId &&
+          parcelSnapshot.exchangeId === exchange.id &&
+          parcelSnapshot.exchangeRevision === carrierBooking.sourceExchangeRevision &&
+          parcelSnapshot.purgeAt === exchange.purgeAt &&
+          parcelSnapshot.lockedShipmentId === carrierBooking.id,
+        );
         const pickup = carrierBooking
           ? await readStoredCarrierPickupByShipment(db, siteId, carrierBooking.id)
           : null;
@@ -8342,7 +11814,18 @@ export async function npListRecentShopExchanges(): Promise<{
             "replacement pickup must match its exact order, exchange, and shipment.",
           ]);
         }
-        const tracking = await npReadShopExchangeTrackingForOrder(db, siteId, exchange.orderId);
+        const storedTracking = await npReadStoredShopExchangeTrackingForOrder(
+          db,
+          siteId,
+          exchange.orderId,
+        );
+        const tracking = storedTracking ? npProjectShopTracking(storedTracking) : null;
+        const exactTracking = Boolean(
+          storedTracking &&
+          carrierBooking &&
+          exchangeTrackingMatchesBooking(storedTracking, carrierBooking, exchange),
+        );
+        const trackingRelationshipValid = !storedTracking || exactTracking;
         const projected = npProjectShopExchange(
           exchange,
           destination && exchangeDestinationMatches(destination, exchange)
@@ -8360,6 +11843,16 @@ export async function npListRecentShopExchanges(): Promise<{
           carrierBooking?.status === "completed" && exchange.status === "shipped"
             ? "shipped"
             : (carrierBooking?.status ?? "none");
+        const commercialSourceValid = Boolean(
+          order &&
+          returnRequest &&
+          returnMatchesOrder(returnRequest, order) &&
+          exchangeMatchesOrder(exchange, order, returnRequest),
+        );
+        const carrierBookingSourceValid = Boolean(
+          !carrierBooking ||
+          (order && exchangeCarrierBookingMatchesCurrentSource(carrierBooking, order, exchange)),
+        );
         if (
           labelAcquisition &&
           (labelAcquisition.orderId !== exchange.orderId ||
@@ -8371,17 +11864,114 @@ export async function npListRecentShopExchanges(): Promise<{
             "replacement label acquisition must match its exact order, exchange, and shipment.",
           ]);
         }
+        const packingCarrierSourceValid =
+          commercialSourceValid &&
+          carrierBookingSourceValid &&
+          packingWork !== "invalid" &&
+          (exactPackingWork === null ||
+            (exactPackingWork.status === "cancelled" && exactPackingWork.attachedShipmentId === null
+              ? npShopPackingWorkMatchesUnattachedTombstone(exactPackingWork, {
+                  target: "replacement",
+                  orderId: exchange.orderId,
+                  exchangeId: exchange.id,
+                  purgeAt: exchange.purgeAt,
+                })
+              : carrierBooking !== null &&
+                packingWorkMatchesReplacementAdminSource(
+                  exactPackingWork,
+                  exchange,
+                  parcelSnapshot,
+                  carrierBooking,
+                )));
+        const packingAllowsNewShipmentEffect =
+          carrierBooking !== null &&
+          carrierBooking.providerId === carrierProviderId &&
+          packingCarrierSourceValid &&
+          npShopPackingWorkAllowsShipmentEffect(exactPackingWork, carrierBooking.id);
+        const labelRelationshipValid = Boolean(
+          labelAcquisition &&
+          carrierBooking &&
+          replacementLabelAcquisitionMatchesBooking(labelAcquisition, carrierBooking, exchange),
+        );
         const labelAction =
           carrierBooking?.status !== "completed" || tracking
             ? "—"
-            : !labelAcquisition
-              ? "purchase"
-              : labelAcquisition.status === "completed"
-                ? "regenerate"
-                : labelAcquisition.status === "pending" ||
-                    labelAcquisition.status === "provider-confirmed"
+            : labelAcquisition?.status === "pending" ||
+                labelAcquisition?.status === "provider-confirmed"
+              ? packingWork === "invalid"
+                ? "—"
+                : labelRelationshipValid && carrierBooking.providerId === carrierProviderId
                   ? "resume"
-                  : "—";
+                  : "—"
+              : packingAllowsNewShipmentEffect
+                ? !labelAcquisition
+                  ? "purchase"
+                  : labelAcquisition.status === "completed" && labelRelationshipValid
+                    ? "regenerate"
+                    : "—"
+                : "—";
+        const packingFallbackIdentity = {
+          target: "replacement" as const,
+          orderId: exchange.orderId,
+          exchangeId: exchange.id,
+          purgeAt: exchange.purgeAt,
+        };
+        const activePackingMatchesProcessSource = Boolean(
+          order &&
+          exactPackingWork?.status === "active" &&
+          packingWorkMatchesSource(exactPackingWork, {
+            target: "replacement",
+            exchangeId: exchange.id,
+            order,
+            sourceRevision: exchange.revision,
+            sourceStatus: exchange.status,
+            booking: carrierBooking,
+            parcelSnapshot,
+            lines: exchange.lines,
+          }),
+        );
+        const packingAllowsExchangeProcess =
+          commercialSourceValid &&
+          packingWork !== "invalid" &&
+          (exactPackingWork === null ||
+            activePackingMatchesProcessSource ||
+            (exactPackingWork !== null &&
+              packingWorkAllowsUnattachedFallback(exactPackingWork, packingFallbackIdentity)));
+        const packingAllowsExchangeCancellation =
+          commercialSourceValid &&
+          packingWork !== "invalid" &&
+          (exactPackingWork === null ||
+            (exactPackingWork !== null &&
+              packingWorkAllowsUnattachedFallback(exactPackingWork, packingFallbackIdentity)));
+        const packingAllowsProviderCarrierCancellation =
+          commercialSourceValid &&
+          packingWork !== "invalid" &&
+          (exactPackingWork === null ||
+            (exactPackingWork.status === "cancelled" &&
+              ((exactPackingWork.attachedShipmentId === null &&
+                packingWorkAllowsUnattachedFallback(exactPackingWork, packingFallbackIdentity)) ||
+                (exactPackingWork.attachedShipmentId === carrierBooking?.id &&
+                  packingCarrierSourceValid))));
+        const providerCarrierCancellationStepEligible = Boolean(
+          carrierBooking &&
+          (carrierBooking.status === "cancel-confirmed" ||
+            ((carrierBooking.status === "completed" ||
+              carrierBooking.status === "cancel-pending") &&
+              carrierBooking.providerId === carrierProviderId)),
+        );
+        const trackingAllowsShipmentAfterPackingCancellation = Boolean(
+          exactTracking &&
+          carrierBooking &&
+          packingCarrierSourceValid &&
+          exactPackingWork?.attachedShipmentId === carrierBooking.id &&
+          packingWorkHasCancellationIntent(exactPackingWork),
+        );
+        const packingCancellationOwnsCarrierCompletion = Boolean(
+          carrierBooking?.status === "provider-confirmed" &&
+          packingCarrierSourceValid &&
+          exactPackingWork?.attachedShipmentId === carrierBooking.id &&
+          packingWorkHasCancellationIntent(exactPackingWork),
+        );
         return {
           id: exchange.orderId,
           exchangeId: exchange.id,
@@ -8398,15 +11988,21 @@ export async function npListRecentShopExchanges(): Promise<{
           bookingRevision: carrierBooking?.revision ?? 0,
           pickupAction:
             carrierBooking?.status === "completed" &&
-            parcelSnapshot?.lockedShipmentId === carrierBooking.id &&
+            exactLockedParcelSnapshot &&
             !tracking &&
-            !pickup
+            !pickup &&
+            packingAllowsNewShipmentEffect
               ? "schedule"
               : "—",
           pickupRevision: pickup?.revision ?? 0,
           pickupTarget: "replacement",
           pickupStatus: pickup?.status ?? "none",
           labelAction,
+          labelDownloadEligible: Boolean(
+            labelAcquisition?.status === "completed" &&
+            labelRelationshipValid &&
+            carrierBooking?.providerId === carrierProviderId,
+          ),
           expectedRevision: labelAcquisition?.revision ?? 0,
           target: "replacement",
           provider: carrierBooking?.providerId ?? "—",
@@ -8414,6 +12010,104 @@ export async function npListRecentShopExchanges(): Promise<{
             ? `${parcelSnapshot.parcels.length.toString()} package(s)${parcelSnapshot.lockedShipmentId ? " (locked)" : ""}`
             : "not prepared",
           parcelRevision: parcelSnapshot?.revision ?? null,
+          packingWorkStatus:
+            packingWork === "invalid" ? "invalid" : (exactPackingWork?.status ?? "none"),
+          packingWorkRevision: exactPackingWork?.revision ?? null,
+          packingWorkAction:
+            exchange.status === "awaiting" &&
+            commercialSourceValid &&
+            projected.destinationStatus === "accessed" &&
+            carrierBooking === null &&
+            exactUnlockedParcelSnapshot &&
+            packingWork === null
+              ? "create"
+              : "—",
+          parcelMutationEligible:
+            exchange.status === "awaiting" &&
+            commercialSourceValid &&
+            projected.destinationStatus === "accessed" &&
+            carrierBooking === null &&
+            (parcelSnapshot?.lockedShipmentId ?? null) === null &&
+            packingWork !== "invalid" &&
+            packingWorkAllowsParcelMutation(exactPackingWork, {
+              target: "replacement",
+              orderId: exchange.orderId,
+              exchangeId: exchange.id,
+              purgeAt: exchange.purgeAt,
+            }),
+          processEligible:
+            exchange.status === "awaiting" &&
+            commercialSourceValid &&
+            projected.destinationStatus === "accessed" &&
+            carrierBooking === null &&
+            packingAllowsExchangeProcess,
+          manualShipEligible:
+            adminStatus === "processing" &&
+            carrierBooking === null &&
+            packingAllowsExchangeProcess &&
+            packingWorkAllowsShipmentCompletion(exactPackingWork, null, {
+              target: "replacement",
+              orderId: exchange.orderId,
+              exchangeId: exchange.id,
+              purgeAt: exchange.purgeAt,
+            }),
+          cancelEligible:
+            (adminStatus === "awaiting" || adminStatus === "processing") &&
+            carrierBooking === null &&
+            packingAllowsExchangeCancellation,
+          carrierBookEligible:
+            exchange.status === "awaiting" &&
+            commercialSourceValid &&
+            projected.destinationStatus === "accessed" &&
+            carrierBooking === null &&
+            (!parcelAwareCarrier || exactUnlockedParcelSnapshot) &&
+            packingWork !== "invalid" &&
+            packingWorkAllowsCarrierShipment(exactPackingWork, parcelAwareCarrier, null, {
+              target: "replacement",
+              orderId: exchange.orderId,
+              exchangeId: exchange.id,
+              purgeAt: exchange.purgeAt,
+            }),
+          carrierResumeEligible:
+            (carrierBooking?.status === "pending" ||
+              carrierBooking?.status === "provider-confirmed") &&
+            packingCarrierSourceValid &&
+            (packingWorkAllowsCarrierShipment(
+              exactPackingWork,
+              carrierBooking.status === "pending" && parcelAwareCarrier,
+              carrierBooking.id,
+              {
+                target: "replacement",
+                orderId: exchange.orderId,
+                exchangeId: exchange.id,
+                purgeAt: exchange.purgeAt,
+              },
+            ) ||
+              packingCancellationOwnsCarrierCompletion) &&
+            (carrierBooking.status === "provider-confirmed" ||
+              (carrierBooking.providerId === carrierProviderId &&
+                ((parcelSnapshot?.lockedShipmentId ?? null) === null ||
+                  (parcelAwareCarrier && exactLockedParcelSnapshot)))),
+          carrierShipEligible:
+            exchange.status === "processing" &&
+            carrierBooking?.status === "completed" &&
+            trackingRelationshipValid &&
+            packingCarrierSourceValid &&
+            (packingWorkAllowsShipmentCompletion(exactPackingWork, carrierBooking.id, {
+              target: "replacement",
+              orderId: exchange.orderId,
+              exchangeId: exchange.id,
+              purgeAt: exchange.purgeAt,
+            }) ||
+              trackingAllowsShipmentAfterPackingCancellation),
+          carrierCancelEligible:
+            exchange.status === "processing" &&
+            !tracking &&
+            (!pickup || pickup.status === "cancelled") &&
+            (!labelAcquisition || labelAcquisition.status === "completed") &&
+            providerCarrierCancellationStepEligible &&
+            packingCarrierSourceValid &&
+            packingAllowsProviderCarrierCancellation,
           units: exchange.lines.reduce((sum, line) => sum + line.quantity, 0),
           inventory: exchange.inventoryOutcome,
           carrier: exchange.carrier ?? "—",
@@ -8802,33 +12496,22 @@ export async function npCountShopExchangeCarrierBookings(
         orphanSample += 1;
         continue;
       }
+      const order = await readStoredOrderForUpdate(
+        db,
+        siteId,
+        exchange.ownerSegment,
+        exchange.orderId,
+      );
+      if (!order) {
+        orphanSample += 1;
+        continue;
+      }
       if (booking.providerId !== (expectedProviderId ?? null)) {
         providerMismatchSample += 1;
       }
       if (
-        ((booking.status === "pending" || booking.status === "provider-confirmed") &&
-          (exchange.status !== "awaiting" ||
-            exchange.revision !== booking.sourceExchangeRevision ||
-            exchange.destinationRevision !== booking.destinationRevision)) ||
-        (booking.status === "completed" &&
-          (booking.completedExchangeRevision === null ||
-            (exchange.status !== "processing" && exchange.status !== "shipped") ||
-            (exchange.status === "processing" &&
-              exchange.revision !== booking.completedExchangeRevision) ||
-            (exchange.status === "shipped" &&
-              exchange.revision !== booking.completedExchangeRevision + 1) ||
-            exchange.carrier !== booking.carrier ||
-            exchange.trackingNumber !== booking.trackingNumber)) ||
-        ((booking.status === "cancel-pending" || booking.status === "cancel-confirmed") &&
-          (booking.completedExchangeRevision === null ||
-            exchange.status !== "processing" ||
-            exchange.revision !== booking.completedExchangeRevision ||
-            exchange.carrier !== booking.carrier ||
-            exchange.trackingNumber !== booking.trackingNumber)) ||
-        (booking.status === "cancelled" &&
-          (booking.completedExchangeRevision === null ||
-            exchange.status !== "cancelled" ||
-            exchange.revision !== booking.completedExchangeRevision + 1))
+        booking.status !== "manual-review" &&
+        !exchangeCarrierBookingMatchesCurrentSource(booking, order, exchange)
       ) {
         invalidSample += 1;
       }

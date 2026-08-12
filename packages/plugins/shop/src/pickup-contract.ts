@@ -617,11 +617,11 @@ export function npAnalyzeStoredShopCarrierPickup(value: unknown): string[] {
     issues.push("carrier pickup.updatedAt cannot precede requestedAt.");
   }
   if (
-    isCanonicalIso(value.updatedAt) &&
+    isCanonicalIso(value.requestedAt) &&
     isCanonicalIso(value.purgeAt) &&
-    value.updatedAt > value.purgeAt
+    value.requestedAt >= value.purgeAt
   ) {
-    issues.push("carrier pickup.updatedAt cannot follow purgeAt.");
+    issues.push("carrier pickup.purgeAt must follow requestedAt.");
   }
   if (
     isCanonicalIso(value.closeAt) &&

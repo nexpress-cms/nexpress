@@ -373,9 +373,6 @@ export function npAnalyzeStoredShopExchange(value: unknown): string[] {
   if (isIso(value.createdAt) && isIso(value.updatedAt) && value.updatedAt < value.createdAt) {
     issues.push("exchange.updatedAt cannot precede createdAt.");
   }
-  if (isIso(value.updatedAt) && isIso(value.purgeAt) && value.updatedAt > value.purgeAt) {
-    issues.push("exchange.updatedAt cannot follow purgeAt.");
-  }
   if (value.status === "shipped" && value.shippedAt !== value.updatedAt) {
     issues.push("exchange.shippedAt must equal its terminal update.");
   }
@@ -508,9 +505,7 @@ export function npAnalyzeShopExchange(value: unknown): string[] {
   delete (candidate as { tracking?: unknown }).tracking;
   issues.push(
     ...npAnalyzeStoredShopExchange(candidate).filter(
-      (issue) =>
-        issue !== `exchange.contract must equal "${NP_SHOP_EXCHANGE_STORAGE_CONTRACT}".` &&
-        issue !== "exchange.updatedAt cannot follow purgeAt.",
+      (issue) => issue !== `exchange.contract must equal "${NP_SHOP_EXCHANGE_STORAGE_CONTRACT}".`,
     ),
   );
   if (value.contract !== NP_SHOP_EXCHANGE_CONTRACT) {

@@ -217,13 +217,6 @@ export function npAnalyzeStoredShopFulfillment(value: unknown): string[] {
     issues.push("fulfillment.privateExpiresAt must equal the fixed private retention lifetime.");
   }
   if (
-    isCanonicalIso(value.updatedAt) &&
-    isCanonicalIso(value.purgeAt) &&
-    new Date(value.updatedAt) > new Date(value.purgeAt)
-  ) {
-    issues.push("fulfillment.updatedAt cannot follow purgeAt.");
-  }
-  if (
     isCanonicalIso(value.shippedAt) &&
     isCanonicalIso(value.createdAt) &&
     isCanonicalIso(value.updatedAt) &&
