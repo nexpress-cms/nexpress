@@ -51,6 +51,7 @@ import type { NpShopPackagingAdapter } from "./packaging-contract.js";
 import type {
   NpShopPackingWorkAdapter,
   NpShopPackingWorkCallbackAdapter,
+  NpShopPackingWorkPollAdapter,
 } from "./packing-contract.js";
 
 export const npShopSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
@@ -82,6 +83,7 @@ export interface NpShopRuntime {
   packagingAdapter: NpShopPackagingAdapter | null;
   packingWorkAdapter: NpShopPackingWorkAdapter | null;
   packingWorkCallbackAdapter: NpShopPackingWorkCallbackAdapter | null;
+  packingWorkPollAdapter: NpShopPackingWorkPollAdapter | null;
   carrierAdapter: NpShopCarrierAdapter | null;
   carrierExchangeAdapter: NpShopCarrierExchangeAdapter | null;
   carrierExchangeParcelAdapter: NpShopCarrierExchangeParcelAdapter | null;

@@ -80,11 +80,13 @@ finalized, provider reconciliation completes under its stable UUID, exact
 removes the tenant.
 No generic override terminalizes `pending` or `manual-review`; private data
 still expires normally. An optional `verifyPackingStatusWebhook` authenticates
-exact raw WMS callbacks into monotonic PII-free
-`accepted | picking | failed | packed` evidence and conflict-safe receipts.
+exact raw WMS callbacks, while optional `readPackingStatus` adds lease-safe,
+cursor-fair scheduled and direct-staff polling with bounded backoff. Both feed
+monotonic PII-free `accepted | picking | failed | packed` evidence and
+conflict-safe receipts.
 Packed evidence never completes shipment or consumes work. This capability
 does not add picking/bin/worker, address/rate/label, material-inventory,
-authoritative completion policy, or provider-specific polling behavior.
+authoritative completion policy, or provider-specific WMS protocols.
 Without the adapter, existing manual Shop flows remain unchanged.
 
 `create-nexpress` writes both `.env.example` and `.env` for you. Use the

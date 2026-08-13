@@ -4,6 +4,7 @@ import { npAuditEvents, npPluginStorage, withCurrentSite } from "@nexpress/core"
 import { npCreateEmptyRichTextContent } from "@nexpress/core/fields";
 import {
   createShop,
+  npCreateShopPackingStatusPollResult,
   npCreateShopPackingWorkCancelResult,
   npCreateShopPackingWorkCreateResult,
   NpShopCarrierProviderError,
@@ -16,6 +17,7 @@ import {
   type NpShopPackingWorkCancelRequest,
   type NpShopCarrierParcelBookingRequest,
   type NpShopPackingWorkCreateRequest,
+  type NpShopPackingStatusPollRequest,
   type NpShopExchangeCarrierCancelRequest,
   type NpShopExchangeCarrierParcelBookingRequest,
   type NpShopStoredPackingWork,
@@ -1104,6 +1106,156 @@ describe.skipIf(skipIfNoTestDb())("shop durable packing work", () => {
     expect(await invokeReadAction(shop, "packingStatusHealth")).toMatchObject({
       ok: true,
       data: { level: "error", message: expect.stringContaining("provider-mismatched") },
+    });
+  });
+
+  it("leases cursor-fair packing status polls without completing shipment", async () => {
+    let pollStatus: "accepted" | "packed" = "accepted";
+    let pollError = false;
+    let pollSequence = 0;
+    const readPackingStatus = vi.fn((request: NpShopPackingStatusPollRequest) => {
+      if (pollError) throw new Error("transient warehouse outage with provider-only detail");
+      pollSequence += 1;
+      return npCreateShopPackingStatusPollResult(request, {
+        checkedAt: request.requestedAt,
+        event: {
+          eventId: `poll-event-${pollSequence.toString()}`,
+          status: pollStatus,
+          occurredAt: request.requestedAt,
+        },
+      });
+    });
+    const shop = createShop({
+      payment: { adapter: paymentAdapter() },
+      packing: {
+        adapter: {
+          id: "polling-packing",
+          createPackingWork: (request) =>
+            npCreateShopPackingWorkCreateResult(request, {
+              providerWorkReference: `provider_${request.workId}`,
+              confirmedAt: request.requestedAt,
+            }),
+          cancelPackingWork: (request) =>
+            npCreateShopPackingWorkCancelResult(request, {
+              cancelledAt: request.requestedAt,
+            }),
+          readPackingStatus,
+        },
+      },
+    });
+    const staff = await seedUser({ email: "packing-poll-operator@example.com" });
+    const context = { actionInvocation: { kind: "staff" as const, userId: staff.userId } };
+    const { orderIds } = await prepareOutbound(shop, context);
+    expect(
+      await invokeAction(
+        shop,
+        "createFulfillmentPackingWork",
+        createInput(orderIds.orderId),
+        context,
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("active") });
+    const active = await readPackingWork(orderIds.orderId);
+    const scheduled = shop.plugin.scheduled?.find((task) => task.id === "reconcile-packing-status");
+    if (!scheduled) throw new Error("Missing packing status reconciliation schedule.");
+
+    await withCurrentSite("default", () => scheduled.handler());
+    expect(readPackingStatus).toHaveBeenCalledTimes(1);
+    expect(readPackingStatus.mock.calls[0]?.[0]).toMatchObject({
+      workId: active.workId,
+      orderId: orderIds.orderId,
+      target: "outbound",
+      current: null,
+    });
+    expect(await invokeReadAction(shop, "recentPackingStatusPolls")).toMatchObject({
+      ok: true,
+      data: {
+        total: 1,
+        rows: [expect.objectContaining({ workId: active.workId, failures: 0 })],
+      },
+    });
+    expect(await invokeReadAction(shop, "packingStatusPollHealth")).toMatchObject({
+      ok: true,
+      data: { level: "ok" },
+    });
+
+    pollError = true;
+    expect(
+      await invokeAction(
+        shop,
+        "reconcilePackingStatus",
+        {
+          row: {
+            id: orderIds.orderId,
+            packingWorkId: active.workId,
+            packingWorkTarget: "outbound",
+            exchangeId: null,
+          },
+          values: {},
+        },
+        context,
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("failed 1") });
+    expect(readPackingStatus).toHaveBeenCalledTimes(2);
+    expect(await invokeReadAction(shop, "packingStatusPollHealth")).toMatchObject({
+      ok: true,
+      data: { level: "warn", message: expect.stringContaining("1 failing") },
+    });
+
+    await withCurrentSite("default", () => scheduled.handler());
+    expect(readPackingStatus).toHaveBeenCalledTimes(2);
+
+    pollError = false;
+    pollStatus = "packed";
+    expect(
+      await invokeAction(
+        shop,
+        "reconcilePackingStatus",
+        {
+          row: {
+            id: orderIds.orderId,
+            packingWorkId: active.workId,
+            packingWorkTarget: "outbound",
+            exchangeId: null,
+          },
+          values: {},
+        },
+        context,
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("advanced 1") });
+    expect(readPackingStatus).toHaveBeenCalledTimes(3);
+    expect(readPackingStatus.mock.calls[2]?.[0]).toMatchObject({
+      current: expect.objectContaining({ status: "accepted" }),
+    });
+    expect(await readPackingWork(orderIds.orderId)).toEqual(active);
+    expect(await invokeReadAction(shop, "packingStatusHealth")).toMatchObject({
+      ok: true,
+      data: { level: "ok", message: expect.stringContaining("packed evidence only") },
+    });
+
+    await withCurrentSite("default", () => scheduled.handler());
+    expect(readPackingStatus).toHaveBeenCalledTimes(3);
+    const db = await getTestDb();
+    const [pollRow] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          eq(npPluginStorage.key, `packing-status-poll:outbound:${orderIds.orderId}`),
+        ),
+      );
+    expect(pollRow?.value).toMatchObject({
+      workId: active.workId,
+      consecutiveFailures: 0,
+      lastErrorCode: null,
+      leaseId: null,
+    });
+    expect(JSON.stringify(pollRow)).not.toMatch(privateMarkers);
+    expect(JSON.stringify(pollRow)).not.toContain("provider-only detail");
+    expect(await invokeReadAction(shop, "packingStatusPollHealth")).toMatchObject({
+      ok: true,
+      data: { level: "ok" },
     });
   });
 

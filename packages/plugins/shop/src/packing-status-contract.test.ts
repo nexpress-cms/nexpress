@@ -2,12 +2,23 @@ import { describe, expect, it } from "vitest";
 
 import {
   NP_SHOP_PACKING_STATUS_EVENT_CONTRACT,
+  NP_SHOP_PACKING_STATUS_POLL_CURSOR_CONTRACT,
+  NP_SHOP_PACKING_STATUS_POLL_REQUEST_CONTRACT,
+  NP_SHOP_PACKING_STATUS_POLL_STORAGE_CONTRACT,
   NP_SHOP_PACKING_STATUS_RECEIPT_CONTRACT,
   NP_SHOP_PACKING_STATUS_STORAGE_CONTRACT,
   NpShopPackingStatusContractError,
   npAnalyzeStoredShopPackingStatus,
+  npAnalyzeStoredShopPackingStatusPoll,
   npAnalyzeStoredShopPackingStatusReceipt,
   npRequireFreshShopPackingStatusEvent,
+  npCreateShopPackingStatusPollResult,
+  npRequireShopPackingStatusPollCursor,
+  npRequireShopPackingStatusPollRequest,
+  npRequireShopPackingStatusPollResult,
+  npRequireStoredShopPackingStatusPoll,
+  npShopPackingStatusPollBackoffSeconds,
+  npShopPackingStatusPollStorageKey,
   npShopPackingStatusEventDigest,
   npShopPackingStatusReceiptStorageKey,
   npShopPackingStatusStorageKey,
@@ -144,5 +155,93 @@ describe("Shop packing status callback contract", () => {
     const key = npShopPackingStatusReceiptStorageKey("test-wms", "secret-provider-event-id");
     expect(key).toMatch(/^packing-status-event:test-wms:[0-9a-f]{64}$/u);
     expect(key).not.toContain("secret-provider-event-id");
+  });
+
+  it("validates exact descriptor-safe polling requests and results", () => {
+    const request = npRequireShopPackingStatusPollRequest({
+      contract: NP_SHOP_PACKING_STATUS_POLL_REQUEST_CONTRACT,
+      workId: event.workId,
+      orderId: event.orderId,
+      target: event.target,
+      exchangeId: event.exchangeId,
+      providerWorkReference: event.providerWorkReference,
+      current: null,
+      requestedAt: now.toISOString(),
+    });
+    const checkedAt = new Date(now.getTime() + 1_000).toISOString();
+    const result = npCreateShopPackingStatusPollResult(request, {
+      checkedAt,
+      event: { eventId: "polled-1", status: "packed", occurredAt: now.toISOString() },
+    });
+    expect(
+      npRequireShopPackingStatusPollResult(result, {
+        request,
+        receivedAt: new Date(checkedAt),
+      }),
+    ).toEqual(result);
+    try {
+      npRequireShopPackingStatusPollResult(
+        { ...result, workId: "123e4567-e89b-42d3-a456-426614174009" },
+        { request, receivedAt: new Date(checkedAt) },
+      );
+      throw new Error("Expected cross-work poll rejection.");
+    } catch (error) {
+      expect(error).toBeInstanceOf(NpShopPackingStatusContractError);
+      expect((error as NpShopPackingStatusContractError).issues.join(" ")).toContain(
+        "exact request identity",
+      );
+    }
+
+    let reads = 0;
+    const hostile = new Proxy(result, {
+      get() {
+        reads += 1;
+        throw new Error("hostile get");
+      },
+    });
+    expect(
+      npRequireShopPackingStatusPollResult(hostile, {
+        request,
+        receivedAt: new Date(checkedAt),
+      }),
+    ).toEqual(result);
+    expect(reads).toBe(0);
+  });
+
+  it("validates durable leases, cursors, storage keys, and bounded backoff", () => {
+    const poll = {
+      contract: NP_SHOP_PACKING_STATUS_POLL_STORAGE_CONTRACT,
+      workId: event.workId,
+      orderId: event.orderId,
+      target: event.target,
+      exchangeId: event.exchangeId,
+      providerId: "test-wms",
+      providerWorkReference: event.providerWorkReference,
+      consecutiveFailures: 0,
+      lastAttemptAt: now.toISOString(),
+      lastSuccessAt: null,
+      nextAttemptAt: "2026-08-13T12:05:00.000Z",
+      lastErrorCode: null,
+      leaseId: event.workId,
+      leaseExpiresAt: "2026-08-13T12:05:00.000Z",
+      updatedAt: now.toISOString(),
+      purgeAt: "2027-08-13T12:00:00.000Z",
+    } as const;
+    expect(npAnalyzeStoredShopPackingStatusPoll(poll)).toEqual([]);
+    expect(npRequireStoredShopPackingStatusPoll(poll)).toEqual(poll);
+    expect(npShopPackingStatusPollStorageKey("outbound", event.orderId)).toBe(
+      `packing-status-poll:outbound:${event.orderId}`,
+    );
+    expect(npShopPackingStatusPollBackoffSeconds(1)).toBe(300);
+    expect(npShopPackingStatusPollBackoffSeconds(16)).toBe(21_600);
+    expect(() => npShopPackingStatusPollBackoffSeconds(0)).toThrow(/failure count/u);
+    expect(
+      npRequireShopPackingStatusPollCursor({
+        contract: NP_SHOP_PACKING_STATUS_POLL_CURSOR_CONTRACT,
+        providerId: "test-wms",
+        lastWorkKey: `packing-work:outbound:${event.orderId}`,
+        updatedAt: now.toISOString(),
+      }),
+    ).toMatchObject({ providerId: "test-wms" });
   });
 });

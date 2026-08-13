@@ -1385,6 +1385,7 @@ import {
   NP_SHOP_PACKING_STATUS_EVENT_CONTRACT,
   NP_SHOP_PACKING_STATUS_WEBHOOK_IGNORED_CONTRACT,
   NpShopPackingWorkProviderError,
+  npCreateShopPackingStatusPollResult,
   npCreateShopPackingWorkCancelResult,
   npCreateShopPackingWorkCreateResult,
   type NpShopPackingWorkAdapter,
@@ -1440,6 +1441,22 @@ const packingAdapter: NpShopPackingWorkAdapter = {
       signedAt: event.signedAt,
     };
   },
+  async readPackingStatus(request) {
+    // Poll by the opaque providerWorkReference. This uses the same monotonic,
+    // PII-free evidence engine as authenticated callbacks.
+    const status = await warehouseClient.readPackingStatus(request.providerWorkReference);
+    const checkedAt = new Date().toISOString();
+    return npCreateShopPackingStatusPollResult(request, {
+      checkedAt,
+      event: status
+        ? {
+            eventId: status.id,
+            status: status.status,
+            occurredAt: status.occurredAt,
+          }
+        : null,
+    });
+  },
 };
 
 const shop = createShop({ packing: { adapter: packingAdapter } });
@@ -1462,8 +1479,9 @@ normal parcel snapshot manually or through the independent read-only packaging
 proposal adapter. Projects without `packing` keep the existing manual parcel,
 carrier, refund, and exchange flows unchanged.
 
-`verifyPackingStatusWebhook` is an independent optional method on that same
-provider identity. When present, Shop exposes the raw unauthenticated host
+`verifyPackingStatusWebhook` and `readPackingStatus` are independent optional
+methods on that same provider identity. The callback exposes the raw
+unauthenticated host
 route `/api/plugins/shop/packing/status/webhook`; the adapter authenticates its
 exact bytes and headers and returns `null`, one exact authenticated
 unsupported-event acknowledgement, or one canonical
@@ -1472,6 +1490,17 @@ to the exact work/order/target, optional exchange, opaque provider work
 reference, `accepted | picking | failed | packed` status, occurrence time, and
 signature time. `signedAt` must be within five minutes of receipt and
 `occurredAt` is bounded to 30 days of provider delay.
+
+The poller sends only the exact work identity, opaque provider work reference,
+latest accepted evidence, and request time. A ten-minute scheduled task claims
+five-minute leases in provider-scoped cursor order; failures back off from five
+minutes to six hours. Direct staff can force one exact work reconciliation
+without bypassing an active lease. Provider I/O remains outside database
+transactions. A canonical result either reports no change or supplies the same
+exact event shape used by the callback, so retries, conflicts, and monotonic
+advancement have one implementation. Poll state, health, and its bounded Admin
+table remain PII-free and available after the polling method is removed; only
+new provider reads require the method.
 
 Shop hashes the event id in the durable receipt key, rejects reuse for
 different canonical data, and advances a separate status snapshot
@@ -1608,7 +1637,7 @@ This contract records provider acceptance/cancellation and optional status
 evidence for a work intent; it does not prove commercial shipment completion.
 Picking queues, bins, worker assignment, authoritative completion policy,
 addresses, shipping rates, labels, packaging-material
-inventory/reservation/purchase, and provider-specific WMS polling protocols
+inventory/reservation/purchase, and provider-specific WMS protocols
 remain separate.
 
 `readShippingLabel` is another independent additive capability. When present,
@@ -2644,7 +2673,7 @@ Future transaction work should remain separable from this foundation:
    carrier-owned dynamic rate integrations;
 5. authoritative physical packing completion policy, picking/bin/worker
    coordination, packaging-material reservation or purchasing, and
-   provider-specific WMS polling.
+   provider-specific WMS protocols.
 
 Those features require their own payment, security, and operational contracts.
 The provider-neutral event boundary does not pre-authorize or emulate them.
