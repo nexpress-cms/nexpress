@@ -44,6 +44,7 @@ describe("shop factory", () => {
       "shop-shipping-policies",
       "shop-product-reviews",
     ]);
+    expect(shopPlugin.manifest.agent?.description?.length).toBeLessThanOrEqual(2_000);
     expect(shopPlugin.pageRoutes?.map((route) => route.pattern)).toEqual([
       "/shop",
       "/shop/categories/:categorySlug",
