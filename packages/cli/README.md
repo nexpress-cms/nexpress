@@ -79,10 +79,13 @@ finalized, provider reconciliation completes under its stable UUID, exact
 `active` work is consumed by the existing manual ship path, or site deletion
 removes the tenant.
 No generic override terminalizes `pending` or `manual-review`; private data
-still expires normally. This work intent does not prove physical packing or
-add picking/bin/worker,
-address/rate/label, material-inventory, or provider-specific callback/polling
-behavior. Without the adapter, existing manual Shop flows remain unchanged.
+still expires normally. An optional `verifyPackingStatusWebhook` authenticates
+exact raw WMS callbacks into monotonic PII-free
+`accepted | picking | failed | packed` evidence and conflict-safe receipts.
+Packed evidence never completes shipment or consumes work. This capability
+does not add picking/bin/worker, address/rate/label, material-inventory,
+authoritative completion policy, or provider-specific polling behavior.
+Without the adapter, existing manual Shop flows remain unchanged.
 
 `create-nexpress` writes both `.env.example` and `.env` for you. Use the
 setup wizard to confirm the DB connection, generate or accept the auth

@@ -1,4 +1,8 @@
 import { npShopFulfillmentParcelLimits } from "./parcel-contract.js";
+import type {
+  NpShopPackingStatusWebhookInput,
+  NpShopPackingStatusWebhookResult,
+} from "./packing-status-contract.js";
 
 export const NP_SHOP_PACKING_WORK_CREATE_REQUEST_CONTRACT =
   "np.shop-packing-work-create-request.v1" as const;
@@ -188,9 +192,9 @@ export type NpShopPackingWorkExistingActionInput = NpShopPackingWorkTargetIdenti
 };
 
 /**
- * Packing-work v1 is this paired create/cancel boundary only. Provider
- * callbacks, polling, physical-pack confirmation, and provider-specific
- * protocols are not implied by this adapter.
+ * Packing-work v1 is this paired create/cancel boundary. The optional status
+ * callback verifies provider evidence without making it commercial completion.
+ * Polling and provider-specific protocols are not implied by this adapter.
  */
 export interface NpShopPackingWorkAdapter {
   /** Stable lowercase identifier persisted with every PII-free work intent. */
@@ -219,7 +223,18 @@ export interface NpShopPackingWorkAdapter {
   ):
     | NpShopPackingWorkCancelResultFor<TRequest>
     | Promise<NpShopPackingWorkCancelResultFor<TRequest>>;
+  /**
+   * Authenticate exact WMS callback bytes and project one canonical PII-free
+   * status event. Shop stores evidence monotonically but never ships, refunds,
+   * restores inventory, or consumes work solely because a callback says packed.
+   */
+  verifyPackingStatusWebhook?(
+    input: NpShopPackingStatusWebhookInput,
+  ): NpShopPackingStatusWebhookResult | Promise<NpShopPackingStatusWebhookResult>;
 }
+
+export type NpShopPackingWorkCallbackAdapter = NpShopPackingWorkAdapter &
+  Required<Pick<NpShopPackingWorkAdapter, "verifyPackingStatusWebhook">>;
 
 export class NpShopPackingWorkContractError extends Error {
   readonly issues: string[];

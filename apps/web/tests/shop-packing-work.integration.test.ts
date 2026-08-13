@@ -256,6 +256,28 @@ async function invokeReadAction(shop: Shop, actionId: string) {
   return withCurrentSite("default", () => registration.handler(undefined, {} as never));
 }
 
+async function invokePackingStatusCallback(shop: Shop, event: Record<string, unknown>) {
+  const handler = shop.plugin.routes?.find(
+    (candidate) => candidate.method === "POST" && candidate.path === "/packing/status/webhook",
+  )?.handler;
+  if (!handler) throw new Error("Missing configured packing status callback.");
+  return withCurrentSite("default", () =>
+    handler(
+      {
+        method: "POST",
+        path: "/packing/status/webhook",
+        params: { pluginId: "shop" },
+        query: {},
+        body: undefined,
+        bodyMode: "raw",
+        rawBody: new TextEncoder().encode(JSON.stringify(event)),
+        headers: { "x-wms-signature": "verified-by-adapter" },
+      },
+      {} as never,
+    ),
+  );
+}
+
 function parcels(id = "parcel-1") {
   return [
     {
@@ -919,6 +941,170 @@ describe.skipIf(skipIfNoTestDb())("shop durable packing work", () => {
     );
     expect(JSON.stringify(audits)).not.toMatch(privateMarkers);
     expect(JSON.stringify(audits)).not.toContain("provider-secret");
+  });
+
+  it("stores monotonic verified packing evidence without completing shipment", async () => {
+    const shop = createShop({
+      payment: { adapter: paymentAdapter() },
+      packing: {
+        adapter: {
+          id: "test-packing",
+          createPackingWork: (request) =>
+            npCreateShopPackingWorkCreateResult(request, {
+              providerWorkReference: `provider_${request.workId}`,
+              confirmedAt: request.requestedAt,
+            }),
+          cancelPackingWork: (request) =>
+            npCreateShopPackingWorkCancelResult(request, {
+              cancelledAt: request.requestedAt,
+            }),
+          verifyPackingStatusWebhook: ({ rawBody }) =>
+            JSON.parse(new TextDecoder().decode(rawBody)) as never,
+        },
+      },
+    });
+    const staff = await seedUser({ email: "packing-status-operator@example.com" });
+    const context = { actionInvocation: { kind: "staff" as const, userId: staff.userId } };
+    const { orderIds } = await prepareOutbound(shop, context);
+    expect(
+      await invokeAction(
+        shop,
+        "createFulfillmentPackingWork",
+        createInput(orderIds.orderId),
+        context,
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("active") });
+    const active = await readPackingWork(orderIds.orderId);
+    const callback = shop.plugin.routes?.find(
+      (candidate) => candidate.method === "POST" && candidate.path === "/packing/status/webhook",
+    )?.handler;
+    if (!callback || !active.providerWorkReference) {
+      throw new Error("Missing packing status callback or provider work reference.");
+    }
+    const callbackAt = new Date();
+    const send = async (
+      eventId: string,
+      status: "accepted" | "picking" | "failed" | "packed",
+      occurredAt: Date,
+    ) =>
+      withCurrentSite("default", () =>
+        callback(
+          {
+            method: "POST",
+            path: "/packing/status/webhook",
+            params: { pluginId: "shop" },
+            query: {},
+            body: undefined,
+            bodyMode: "raw",
+            rawBody: new TextEncoder().encode(
+              JSON.stringify({
+                contract: "np.shop-packing-status-event.v1",
+                eventId,
+                workId: active.workId,
+                orderId: orderIds.orderId,
+                target: "outbound",
+                exchangeId: null,
+                providerWorkReference: active.providerWorkReference,
+                status,
+                occurredAt: occurredAt.toISOString(),
+                signedAt: callbackAt.toISOString(),
+              }),
+            ),
+            headers: { "x-wms-signature": "verified-by-adapter" },
+          },
+          {} as never,
+        ),
+      );
+
+    expect(await send("packing-picking", "picking", callbackAt)).toMatchObject({
+      status: 200,
+      body: { receipt: { outcome: "advanced", packingStatus: "picking" }, duplicate: false },
+    });
+    expect(
+      await send("packing-stale-accepted", "accepted", new Date(callbackAt.getTime() - 1_000)),
+    ).toMatchObject({
+      status: 200,
+      body: {
+        receipt: { outcome: "ignored-stale", packingStatus: "picking" },
+        duplicate: false,
+      },
+    });
+    const packed = await send("packing-packed", "packed", new Date(callbackAt.getTime() + 1_000));
+    expect(packed).toMatchObject({
+      status: 200,
+      body: { receipt: { outcome: "advanced", packingStatus: "packed" }, duplicate: false },
+    });
+    expect(
+      await send("packing-packed", "packed", new Date(callbackAt.getTime() + 1_000)),
+    ).toMatchObject({
+      status: 200,
+      body: { receipt: { outcome: "advanced", packingStatus: "packed" }, duplicate: true },
+    });
+    expect(
+      await send("packing-packed", "failed", new Date(callbackAt.getTime() + 1_000)),
+    ).toMatchObject({
+      status: 409,
+      body: { error: "packing_status_event_conflict" },
+    });
+
+    const db = await getTestDb();
+    const statusRows = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          like(npPluginStorage.key, "packing-status:%"),
+        ),
+      );
+    expect(statusRows).toHaveLength(1);
+    expect(statusRows[0]?.value).toMatchObject({
+      workId: active.workId,
+      orderId: orderIds.orderId,
+      status: "packed",
+      latestEventId: "packing-packed",
+      packedAt: new Date(callbackAt.getTime() + 1_000).toISOString(),
+    });
+    expect(JSON.stringify(statusRows)).not.toMatch(privateMarkers);
+    expect(await readPackingWork(orderIds.orderId)).toEqual(active);
+    expect(await invokeReadAction(shop, "packingStatusHealth")).toMatchObject({
+      ok: true,
+      data: { level: "ok", message: expect.stringContaining("3 verified event receipt") },
+    });
+    expect(await invokeReadAction(shop, "recentPackingStatusEvents")).toMatchObject({
+      ok: true,
+      data: {
+        total: 3,
+        rows: expect.arrayContaining([expect.objectContaining({ status: "packed" })]),
+      },
+    });
+    expect(
+      await invokeAction(shop, "cancelPackingWork", existingInput(active), context),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("cancelled") });
+    expect(await invokeReadAction(shop, "packingStatusHealth")).toMatchObject({
+      ok: true,
+      data: { level: "warn", message: expect.stringContaining("1 picking or packed evidence") },
+    });
+    await db
+      .update(npPluginStorage)
+      .set({
+        value: {
+          ...(statusRows[0]?.value as Record<string, unknown>),
+          providerId: "different-packing",
+        },
+      })
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          eq(npPluginStorage.key, `packing-status:outbound:${orderIds.orderId}`),
+        ),
+      );
+    expect(await invokeReadAction(shop, "packingStatusHealth")).toMatchObject({
+      ok: true,
+      data: { level: "error", message: expect.stringContaining("provider-mismatched") },
+    });
   });
 
   it("fails closed before provider I/O when a retryable snapshot is tampered", async () => {
@@ -6382,6 +6568,8 @@ describe.skipIf(skipIfNoTestDb())("shop durable packing work", () => {
             npCreateShopPackingWorkCancelResult(request, {
               cancelledAt: request.requestedAt,
             }),
+          verifyPackingStatusWebhook: ({ rawBody }) =>
+            JSON.parse(new TextDecoder().decode(rawBody)) as never,
         },
       },
     });
@@ -6407,6 +6595,21 @@ describe.skipIf(skipIfNoTestDb())("shop durable packing work", () => {
       ),
     ).toMatchObject({ ok: true });
     const activeTerminal = await readPackingWork(terminal.orderIds.orderId);
+    const statusAt = new Date().toISOString();
+    expect(
+      await invokePackingStatusCallback(shop, {
+        contract: "np.shop-packing-status-event.v1",
+        eventId: "terminal-retention-status",
+        workId: activeTerminal.workId,
+        orderId: terminal.orderIds.orderId,
+        target: "outbound",
+        exchangeId: null,
+        providerWorkReference: activeTerminal.providerWorkReference,
+        status: "picking",
+        occurredAt: statusAt,
+        signedAt: statusAt,
+      }),
+    ).toMatchObject({ status: 200, body: { receipt: { outcome: "advanced" } } });
     expect(
       await invokeAction(shop, "cancelPackingWork", existingInput(activeTerminal), context),
     ).toMatchObject({ ok: true, data: expect.stringContaining("cancelled") });

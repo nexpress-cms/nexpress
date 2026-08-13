@@ -1,7 +1,7 @@
 {
   "name": "@nexpress/plugin-shop",
   "version": "0.4.2",
-  "description": "Catalog, member wishlists, alerts, promotions, reviews, cart, checkout, order, inventory, payment, fulfillment, refund, return, and same-item exchange with packaging proposals, durable packing work, carrier booking, label acquisition, and pickup availability for NexPress.",
+  "description": "Catalog, member wishlists, alerts, promotions, reviews, cart, checkout, order, inventory, payment, fulfillment, refund, return, and same-item exchange with packaging proposals, durable packing work and status evidence, carrier booking, label acquisition, and pickup availability for NexPress.",
   "license": "MIT",
   "author": "Nexpress",
   "homepage": "https://github.com/nexpress-cms/nexpress#readme",

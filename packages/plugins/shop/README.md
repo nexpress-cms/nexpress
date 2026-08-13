@@ -108,8 +108,10 @@ It provides:
   durable confirmation and cancellation-dominant tombstones, parcel-edit
   exclusion, exact carrier attachment/consumption, tracking-aware
   cancellation-before-compensation ordering, adapter-free local confirmation
-  recovery, always-declared Admin/Doctor diagnostics, and cleanup; only an
-  unattached cancelled tombstone reopens the manual fallback;
+  recovery, an optional authenticated raw callback for monotonic PII-free
+  `accepted | picking | failed | packed` evidence, always-declared
+  Admin/Doctor diagnostics, and cleanup; only an unattached cancelled tombstone
+  reopens the manual fallback, and packed evidence never completes shipment;
 - an optional provider-neutral carrier adapter with one durable shipment UUID,
   calls outside database transactions, resumable provider confirmation,
   atomic tracking/shipped completion and private-data deletion, and closed
@@ -185,9 +187,9 @@ jurisdictional responsibility policy, carrier label billing/void policy,
 recurring pickup,
 provider-specific tracking protocols,
 tax remittance/filing, invoices, exemptions, customs, and carrier-owned dynamic
-rate policy, physical packing completion evidence, picking/bin/worker
+rate policy, authoritative physical packing completion, picking/bin/worker
 coordination, packaging-material inventory/reservation/purchase, and
-provider-specific WMS callbacks or polling remain outside this package. A
+provider-specific WMS polling remain outside this package. A
 server-only `NpShopShippingAdapter` may supply
 exact bounded delivery methods, and `NpShopTaxAdapter` may return only tax
 added on top of displayed product prices. An independent server-only
@@ -208,7 +210,9 @@ weight because product measurements remain provider-catalog data.
 An independent server-only `NpShopPackingWorkAdapter` may accept those already
 prepared parcels through
 `createShop({ packing: { adapter: packingAdapter } })`.
-`createPackingWork` and `cancelPackingWork` must be implemented together. Shop
+`createPackingWork` and `cancelPackingWork` must be implemented together. An
+optional `verifyPackingStatusWebhook` authenticates exact raw provider bytes
+and returns one canonical PII-free status event. Shop
 allows exactly one durable work identity per `target + orderId`, writes a
 stable packing-work or cancellation UUID before provider I/O, calls the adapter
 outside every database transaction, and persists exact provider confirmation
@@ -250,6 +254,20 @@ Any create, cancel, or reconciliation action that still needs provider I/O,
 including applicable `pending`, `cancel-pending`, or `manual-review` recovery,
 remains conditional on the original adapter, while stored confirmations finish
 locally without it.
+
+When `verifyPackingStatusWebhook` is present, Shop exposes
+`POST /api/plugins/shop/packing/status/webhook` as an unauthenticated host route
+whose adapter must authenticate the exact raw bytes and headers. The canonical
+event binds one provider event id to the exact work/order/target, optional
+exchange, opaque provider work reference, `accepted | picking | failed |
+packed` evidence, occurrence time, and five-minute signature freshness.
+Event-id receipts make retries conflict-safe; older, regressive, or post-packed
+events are acknowledged without regressing the latest state. Raw callback
+bodies, signatures, free-text provider payloads, people, locations, and
+addresses are never stored. `packed` is evidence only: it does not ship an
+order, consume work, refund payment, restore inventory, or bypass the existing
+exact manual/carrier completion boundary. A picking/packed event that conflicts
+with cancellation remains visible as a warning.
 Every relationship-nonterminal packing work is a narrow exception to the normal
 365-day commercial cleanup. That includes a `cancelled` shipment attachment
 until exact replacement carrier cancellation/restock or exact tracking-won
@@ -266,9 +284,9 @@ extended; privacy-only redaction preserves the commercial order/fulfillment
 revisions so exact parcel, carrier, and packing recovery remains usable.
 Terminal order purge remains bounded and non-starving. Omitting the adapter
 preserves the normal manual flow.
-Packing-work acceptance does not prove physical completion or add picking,
-bin, worker, address, rate, label, material inventory/reservation/purchase,
-callback, or polling behavior.
+Packing-work acceptance or packed callback evidence does not prove commercial
+shipment completion or add picking queues, bin/worker assignment, address,
+rate, label, material inventory/reservation/purchase, or polling behavior.
 
 `NpShopCarrierAdapter` may book one
 shipment with its stable shipment UUID as the provider idempotency key and may

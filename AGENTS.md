@@ -2,14 +2,16 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-12 (Shop may now register one independent paired
+**Last refreshed:** 2026-08-13 (Shop may now register one independent paired
 packing-work adapter for outbound processing fulfillments and awaiting
 same-item replacements. Exact PII-free immutable lines and parcel snapshots,
 exactly one durable work per target/order, stable create/cancel UUIDs, provider
 I/O outside transactions, durable confirmation before local completion,
 same-revision carrier attachment and shipment-time consumption,
 cancellation-dominant provider and order-lifetime tombstones, and exact
-shipment conflict handling share the contract. Only an unattached cancelled
+shipment conflict handling share the contract. An optional authenticated raw
+callback adds conflict-safe monotonic `accepted | picking | failed | packed`
+evidence without automatically shipping or consuming work. Only an unattached cancelled
 tombstone reopens manual fallback. Before tracking, an attached cancellation
 may unwind only its exact shipment; after tracking, carrier cancellation and
 automatic restock stay closed while exact booked completion and recovery of an
@@ -20,9 +22,10 @@ member-linked commercial source cover unresolved effects, including a
 `cancelled` shipment attachment until exact carrier compensation or
 tracking-won completion proves its relationship terminal. Private retention is
 unchanged; privacy-only redaction preserves commercial revisions while
-removing the sidecar, and site deletion is final. Packing work does not prove physical
-completion, assign pickers or bins, handle addresses/rates/labels, manage
-packaging materials, or define provider-specific WMS callbacks or polling.)
+removing the sidecar, and site deletion is final. Packing work or packed
+evidence does not prove commercial shipment completion, assign pickers or
+bins, handle addresses/rates/labels, manage packaging materials, or define
+provider-specific WMS polling.)
 
 **Earlier:** 2026-08-11 (Shop now atomically consumes the exact source
 cart only on the first durable pending-order commit. Existing cart/order locks,
