@@ -89,7 +89,10 @@ import {
   npShopPackingWorkMatchesUnattachedTombstone,
   type NpShopPackingWorkPurgeSource,
 } from "./packing-work-storage.js";
-import { npShopPackingStatusStorageKey } from "./packing-status-contract.js";
+import {
+  npShopPackingStatusPollStorageKey,
+  npShopPackingStatusStorageKey,
+} from "./packing-status-contract.js";
 import {
   npCleanupExpiredShopInventoryReservations,
   npConsumeShopInventoryReservations,
@@ -3072,7 +3075,7 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
-        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${npShopPackingWorkStorageKey("outbound", order.id)}, ${npShopPackingWorkStorageKey("replacement", order.id)}, ${npShopPackingStatusStorageKey("outbound", order.id)}, ${npShopPackingStatusStorageKey("replacement", order.id)}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${npShopExchangeTrackingStorageKey(order.id)}, ${npShopExchangeTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${npShopExchangeStorageKey(order.id)}, ${npShopExchangeDestinationPrivateStorageKey(order.id)}, ${npShopExchangeCarrierBookingStorageKey(order.id)}, ${npShopExchangeParcelsStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)}, ${`payment-adjustment:${order.id}`}, ${`promotion-reservation:${order.id}`})`,
+        sql`${npPluginStorage.key} in (${orderStorageKey(order.ownerSegment, order.id)}, ${privateStorageKey(order.ownerSegment, order.id)}, ${maintenanceStorageKey(order.ownerSegment, order.id)}, ${lookupStorageKey(order.id)}, ${fulfillmentStorageKey(order.id)}, ${fulfillmentParcelsStorageKey(order.id)}, ${carrierBookingStorageKey(order.id)}, ${npShopPackingWorkStorageKey("outbound", order.id)}, ${npShopPackingWorkStorageKey("replacement", order.id)}, ${npShopPackingStatusStorageKey("outbound", order.id)}, ${npShopPackingStatusStorageKey("replacement", order.id)}, ${npShopPackingStatusPollStorageKey("outbound", order.id)}, ${npShopPackingStatusPollStorageKey("replacement", order.id)}, ${`tracking:${order.id}`}, ${npShopTrackingPollStorageKey(order.id)}, ${npShopExchangeTrackingStorageKey(order.id)}, ${npShopExchangeTrackingPollStorageKey(order.id)}, ${refundStorageKey(order.id)}, ${returnStorageKey(order.id)}, ${npShopExchangeStorageKey(order.id)}, ${npShopExchangeDestinationPrivateStorageKey(order.id)}, ${npShopExchangeCarrierBookingStorageKey(order.id)}, ${npShopExchangeParcelsStorageKey(order.id)}, ${`return-logistics:${order.id}`}, ${`return-logistics-private:${order.id}`}, ${npShopReturnTrackingStorageKey(order.id)}, ${npShopReturnTrackingPollStorageKey(order.id)}, ${`payment-adjustment:${order.id}`}, ${`promotion-reservation:${order.id}`})`,
       ),
     );
   await tx

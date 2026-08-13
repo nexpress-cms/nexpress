@@ -174,6 +174,8 @@ describe("shop factory", () => {
       { id: "countPackingStatusEvents", kind: "metric" },
       { id: "packingStatusHealth", kind: "status" },
       { id: "recentPackingStatusEvents", kind: "table" },
+      { id: "packingStatusPollHealth", kind: "status" },
+      { id: "recentPackingStatusPolls", kind: "table" },
       { id: "finalizePackingWork", kind: "action" },
       { id: "saveFulfillmentParcels", kind: "action" },
       { id: "processFulfillment", kind: "action" },
@@ -706,10 +708,52 @@ describe("shop factory", () => {
     expect(verifyPackingStatusWebhook).not.toHaveBeenCalled();
   });
 
+  it("adds bounded packing status polling only for the optional reader", () => {
+    const createPackingWork = vi.fn(() => Promise.reject(new Error("must not be called")));
+    const cancelPackingWork = vi.fn(() => Promise.reject(new Error("must not be called")));
+    const readPackingStatus = vi.fn(() => Promise.reject(new Error("must not be called")));
+    const withoutPolling = createShop({
+      packing: { adapter: { id: "test-packing", createPackingWork, cancelPackingWork } },
+    });
+    const withPolling = createShop({
+      packing: {
+        adapter: { id: "test-packing", createPackingWork, cancelPackingWork, readPackingStatus },
+      },
+    });
+
+    expect(withoutPolling.runtime.packingWorkPollAdapter).toBeNull();
+    expect(withoutPolling.plugin.actions?.reconcilePackingStatus).toBeUndefined();
+    expect(withoutPolling.plugin.scheduled?.map((task) => task.id)).not.toContain(
+      "reconcile-packing-status",
+    );
+    expect(withPolling.runtime.packingWorkPollAdapter?.id).toBe("test-packing");
+    expect(withPolling.plugin.actions?.reconcilePackingStatus).toMatchObject({ kind: "action" });
+    expect(withPolling.plugin.actions?.packingStatusPollHealth).toMatchObject({ kind: "status" });
+    expect(withPolling.plugin.actions?.recentPackingStatusPolls).toMatchObject({ kind: "table" });
+    expect(withPolling.plugin.scheduled?.map((task) => task.id)).toContain(
+      "reconcile-packing-status",
+    );
+    expect(withPolling.plugin.manifest.provides.adminExtensions).toContain(
+      "action:shop-packing-status-poll",
+    );
+    expect(
+      withPolling.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-packing-work")
+        ?.rowActions?.find((action) => action.id === "poll-packing-status"),
+    ).toMatchObject({ actionId: "reconcilePackingStatus" });
+    expect(
+      withPolling.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-fulfillments")
+        ?.rowActions?.some((action) => action.id === "poll-packing-status"),
+    ).toBe(false);
+    expect(readPackingStatus).not.toHaveBeenCalled();
+  });
+
   it("keeps durable local packing-work operations without a provider", () => {
     const shop = createShop();
     expect(shop.runtime.packingWorkAdapter).toBeNull();
     expect(shop.runtime.packingWorkCallbackAdapter).toBeNull();
+    expect(shop.runtime.packingWorkPollAdapter).toBeNull();
     expect(shop.plugin.actions?.countPackingWork).toMatchObject({ kind: "metric" });
     expect(shop.plugin.actions?.packingWorkHealth).toMatchObject({ kind: "status" });
     expect(shop.plugin.actions?.recentPackingWork).toMatchObject({ kind: "table" });
@@ -854,14 +898,27 @@ describe("shop factory", () => {
         },
       }),
     ).toThrow(/verifyPackingStatusWebhook must be a function/u);
+    expect(() =>
+      createShop({
+        packing: {
+          adapter: {
+            id: "test-packing",
+            createPackingWork,
+            cancelPackingWork,
+            readPackingStatus: "not-a-function",
+          } as unknown as NpShopPackingWorkAdapter,
+        },
+      }),
+    ).toThrow(/readPackingStatus must be a function/u);
   });
 
   it("rejects non-staff packing-work actions before provider calls", async () => {
     const createPackingWork = vi.fn(() => Promise.reject(new Error("provider was called")));
     const cancelPackingWork = vi.fn(() => Promise.reject(new Error("provider was called")));
+    const readPackingStatus = vi.fn(() => Promise.reject(new Error("provider was called")));
     const shop = createShop({
       packing: {
-        adapter: { id: "test-packing", createPackingWork, cancelPackingWork },
+        adapter: { id: "test-packing", createPackingWork, cancelPackingWork, readPackingStatus },
       },
     });
     const handlers = [
@@ -870,6 +927,7 @@ describe("shop factory", () => {
       shop.plugin.actions?.reconcilePackingWork?.handler,
       shop.plugin.actions?.cancelPackingWork?.handler,
       shop.plugin.actions?.finalizePackingWork?.handler,
+      shop.plugin.actions?.reconcilePackingStatus?.handler,
     ];
     for (const handler of handlers) {
       expect(handler).toBeTypeOf("function");
@@ -881,6 +939,7 @@ describe("shop factory", () => {
     }
     expect(createPackingWork).not.toHaveBeenCalled();
     expect(cancelPackingWork).not.toHaveBeenCalled();
+    expect(readPackingStatus).not.toHaveBeenCalled();
   });
 
   it("uses one complete server-side carrier adapter and exposes only its closed operations", () => {

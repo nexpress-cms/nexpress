@@ -88,6 +88,7 @@ export interface NpShopAdminPackingWorkRow {
   localFinalizeEligible: boolean;
   providerRetryEligible: boolean;
   providerCancelEligible: boolean;
+  statusPollEligible: boolean;
   updatedAt: string;
 }
 
@@ -537,6 +538,10 @@ function projectAdminRow(
       ) &&
       (!trackingStarted || (work.status === "manual-review" && hasCancellationIntent(work))) &&
       ["pending", "provider-confirmed", "active", "manual-review"].includes(work.status),
+    statusPollEligible:
+      providerMatches &&
+      work.providerWorkReference !== null &&
+      ["provider-confirmed", "active", "cancel-pending", "cancel-confirmed"].includes(work.status),
     updatedAt: work.updatedAt,
   };
 }

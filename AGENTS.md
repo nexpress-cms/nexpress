@@ -10,8 +10,9 @@ I/O outside transactions, durable confirmation before local completion,
 same-revision carrier attachment and shipment-time consumption,
 cancellation-dominant provider and order-lifetime tombstones, and exact
 shipment conflict handling share the contract. An optional authenticated raw
-callback adds conflict-safe monotonic `accepted | picking | failed | packed`
-evidence without automatically shipping or consuming work. Only an unattached cancelled
+callback and an optional lease-safe, cursor-fair scheduled poll add
+conflict-safe monotonic `accepted | picking | failed | packed` evidence without
+automatically shipping or consuming work. Only an unattached cancelled
 tombstone reopens manual fallback. Before tracking, an attached cancellation
 may unwind only its exact shipment; after tracking, carrier cancellation and
 automatic restock stay closed while exact booked completion and recovery of an
@@ -25,7 +26,7 @@ unchanged; privacy-only redaction preserves commercial revisions while
 removing the sidecar, and site deletion is final. Packing work or packed
 evidence does not prove commercial shipment completion, assign pickers or
 bins, handle addresses/rates/labels, manage packaging materials, or define
-provider-specific WMS polling.)
+provider-specific WMS protocols.)
 
 **Earlier:** 2026-08-11 (Shop now atomically consumes the exact source
 cart only on the first durable pending-order commit. Existing cart/order locks,

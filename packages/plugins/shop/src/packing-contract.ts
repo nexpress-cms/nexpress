@@ -1,5 +1,7 @@
 import { npShopFulfillmentParcelLimits } from "./parcel-contract.js";
 import type {
+  NpShopPackingStatusPollRequest,
+  NpShopPackingStatusPollResult,
   NpShopPackingStatusWebhookInput,
   NpShopPackingStatusWebhookResult,
 } from "./packing-status-contract.js";
@@ -193,8 +195,8 @@ export type NpShopPackingWorkExistingActionInput = NpShopPackingWorkTargetIdenti
 
 /**
  * Packing-work v1 is this paired create/cancel boundary. The optional status
- * callback verifies provider evidence without making it commercial completion.
- * Polling and provider-specific protocols are not implied by this adapter.
+ * callback or polling capability verifies provider evidence without making it
+ * commercial completion. Provider-specific protocols are not implied.
  */
 export interface NpShopPackingWorkAdapter {
   /** Stable lowercase identifier persisted with every PII-free work intent. */
@@ -231,10 +233,20 @@ export interface NpShopPackingWorkAdapter {
   verifyPackingStatusWebhook?(
     input: NpShopPackingStatusWebhookInput,
   ): NpShopPackingStatusWebhookResult | Promise<NpShopPackingStatusWebhookResult>;
+  /**
+   * Read one exact PII-free work status. Implementations must enforce a finite
+   * timeout shorter than the Shop lease and return null event when unchanged.
+   */
+  readPackingStatus?(
+    input: NpShopPackingStatusPollRequest,
+  ): NpShopPackingStatusPollResult | Promise<NpShopPackingStatusPollResult>;
 }
 
 export type NpShopPackingWorkCallbackAdapter = NpShopPackingWorkAdapter &
   Required<Pick<NpShopPackingWorkAdapter, "verifyPackingStatusWebhook">>;
+
+export type NpShopPackingWorkPollAdapter = NpShopPackingWorkAdapter &
+  Required<Pick<NpShopPackingWorkAdapter, "readPackingStatus">>;
 
 export class NpShopPackingWorkContractError extends Error {
   readonly issues: string[];

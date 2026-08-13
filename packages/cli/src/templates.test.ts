@@ -451,7 +451,7 @@ describe("getProjectFiles", () => {
     expect(env).toContain("Diagnostics stay visible after");
     expect(env).toContain("adapter removal");
     expect(env).toContain("authoritative completion policy");
-    expect(env).toContain("verifyPackingStatusWebhook authenticates exact raw WMS callbacks");
+    expect(env).toContain("verifyPackingStatusWebhook and lease-safe readPackingStatus polling");
     expect(env).toContain("accepted/picking/failed/packed evidence");
     expect(env).toContain("Packed evidence never ships or consumes work");
     expect(env).toContain("verifyTrackingWebhook");
@@ -526,6 +526,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("any remaining provider create, cancel, or reconciliation I/O");
     expect(readme).toContain("requires the original adapter");
     expect(readme).toContain("`verifyPackingStatusWebhook`");
+    expect(readme).toContain("`readPackingStatus`");
     expect(readme).toContain("`accepted | picking | failed | packed`");
     expect(readme).toContain("Packed evidence never ships or consumes work");
     expect(readme).toContain("Finalize an");
