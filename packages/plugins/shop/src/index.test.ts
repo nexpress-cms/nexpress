@@ -44,6 +44,7 @@ describe("shop factory", () => {
       "shop-shipping-policies",
       "shop-product-reviews",
     ]);
+    expect(shopPlugin.manifest.agent?.description?.length).toBeLessThanOrEqual(2_000);
     expect(shopPlugin.pageRoutes?.map((route) => route.pattern)).toEqual([
       "/shop",
       "/shop/categories/:categorySlug",
@@ -170,6 +171,9 @@ describe("shop factory", () => {
       { id: "countPackingWork", kind: "metric" },
       { id: "packingWorkHealth", kind: "status" },
       { id: "recentPackingWork", kind: "table" },
+      { id: "countPackingStatusEvents", kind: "metric" },
+      { id: "packingStatusHealth", kind: "status" },
+      { id: "recentPackingStatusEvents", kind: "table" },
       { id: "finalizePackingWork", kind: "action" },
       { id: "saveFulfillmentParcels", kind: "action" },
       { id: "processFulfillment", kind: "action" },
@@ -304,6 +308,9 @@ describe("shop factory", () => {
         "widget:shop-packing-work-health",
         "table:shop-packing-work",
         "action:shop-packing-work-finalize",
+        "dashboard:shop-packing-status-events",
+        "widget:shop-packing-status-health",
+        "table:shop-packing-status-events",
       ]),
     );
   });
@@ -659,9 +666,50 @@ describe("shop factory", () => {
     expect(cancelPackingWork).not.toHaveBeenCalled();
   });
 
+  it("adds the authenticated raw packing status callback only for the optional verifier", () => {
+    const createPackingWork = vi.fn(() => Promise.reject(new Error("must not be called")));
+    const cancelPackingWork = vi.fn(() => Promise.reject(new Error("must not be called")));
+    const verifyPackingStatusWebhook = vi.fn(() => null);
+    const withoutCallback = createShop({
+      packing: { adapter: { id: "test-packing", createPackingWork, cancelPackingWork } },
+    });
+    const withCallback = createShop({
+      packing: {
+        adapter: {
+          id: "test-packing",
+          createPackingWork,
+          cancelPackingWork,
+          verifyPackingStatusWebhook,
+        },
+      },
+    });
+
+    expect(withoutCallback.runtime.packingWorkCallbackAdapter).toBeNull();
+    expect(withoutCallback.plugin.manifest.provides.apiRoutes).not.toContain(
+      "/packing/status/webhook",
+    );
+    expect(withCallback.runtime.packingWorkCallbackAdapter?.id).toBe("test-packing");
+    expect(withCallback.plugin.manifest.provides.apiRoutes).toContain("/packing/status/webhook");
+    expect(
+      withCallback.plugin.routes?.find((route) => route.path === "/packing/status/webhook"),
+    ).toMatchObject({ method: "POST", auth: false, bodyMode: "raw" });
+    expect(withCallback.plugin.actions?.countPackingStatusEvents).toMatchObject({
+      kind: "metric",
+    });
+    expect(withCallback.plugin.actions?.packingStatusHealth).toMatchObject({ kind: "status" });
+    expect(withCallback.plugin.actions?.recentPackingStatusEvents).toMatchObject({
+      kind: "table",
+    });
+    expect(
+      withCallback.plugin.admin?.tables?.find((table) => table.id === "shop-packing-status-events"),
+    ).toMatchObject({ rowsActionId: "recentPackingStatusEvents" });
+    expect(verifyPackingStatusWebhook).not.toHaveBeenCalled();
+  });
+
   it("keeps durable local packing-work operations without a provider", () => {
     const shop = createShop();
     expect(shop.runtime.packingWorkAdapter).toBeNull();
+    expect(shop.runtime.packingWorkCallbackAdapter).toBeNull();
     expect(shop.plugin.actions?.countPackingWork).toMatchObject({ kind: "metric" });
     expect(shop.plugin.actions?.packingWorkHealth).toMatchObject({ kind: "status" });
     expect(shop.plugin.actions?.recentPackingWork).toMatchObject({ kind: "table" });
@@ -794,6 +842,18 @@ describe("shop factory", () => {
         },
       }),
     ).toThrow(/requires createPackingWork and cancelPackingWork functions/u);
+    expect(() =>
+      createShop({
+        packing: {
+          adapter: {
+            id: "test-packing",
+            createPackingWork,
+            cancelPackingWork,
+            verifyPackingStatusWebhook: "not-a-function",
+          } as unknown as NpShopPackingWorkAdapter,
+        },
+      }),
+    ).toThrow(/verifyPackingStatusWebhook must be a function/u);
   });
 
   it("rejects non-staff packing-work actions before provider calls", async () => {

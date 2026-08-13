@@ -1382,6 +1382,8 @@ factory:
 ```ts
 import {
   createShop,
+  NP_SHOP_PACKING_STATUS_EVENT_CONTRACT,
+  NP_SHOP_PACKING_STATUS_WEBHOOK_IGNORED_CONTRACT,
   NpShopPackingWorkProviderError,
   npCreateShopPackingWorkCancelResult,
   npCreateShopPackingWorkCreateResult,
@@ -1414,6 +1416,30 @@ const packingAdapter: NpShopPackingWorkAdapter = {
       cancelledAt: new Date().toISOString(),
     });
   },
+  async verifyPackingStatusWebhook({ rawBody, headers, receivedAt }) {
+    // Verify the provider signature over rawBody before parsing.
+    const event = await warehouseClient.verifyStatus(rawBody, headers, receivedAt);
+    if (event === null) return null;
+    if (event.kind !== "packing-status") {
+      return {
+        contract: NP_SHOP_PACKING_STATUS_WEBHOOK_IGNORED_CONTRACT,
+        ignored: true,
+        reason: "unsupported-event",
+      };
+    }
+    return {
+      contract: NP_SHOP_PACKING_STATUS_EVENT_CONTRACT,
+      eventId: event.id,
+      workId: event.workId,
+      orderId: event.orderId,
+      target: event.target,
+      exchangeId: event.exchangeId,
+      providerWorkReference: event.workReference,
+      status: event.status,
+      occurredAt: event.occurredAt,
+      signedAt: event.signedAt,
+    };
+  },
 };
 
 const shop = createShop({ packing: { adapter: packingAdapter } });
@@ -1435,6 +1461,28 @@ generations. It does not calculate parcels, so direct staff must first save the
 normal parcel snapshot manually or through the independent read-only packaging
 proposal adapter. Projects without `packing` keep the existing manual parcel,
 carrier, refund, and exchange flows unchanged.
+
+`verifyPackingStatusWebhook` is an independent optional method on that same
+provider identity. When present, Shop exposes the raw unauthenticated host
+route `/api/plugins/shop/packing/status/webhook`; the adapter authenticates its
+exact bytes and headers and returns `null`, one exact authenticated
+unsupported-event acknowledgement, or one canonical
+`np.shop-packing-status-event.v1`. The event binds a stable provider event id
+to the exact work/order/target, optional exchange, opaque provider work
+reference, `accepted | picking | failed | packed` status, occurrence time, and
+signature time. `signedAt` must be within five minutes of receipt and
+`occurredAt` is bounded to 30 days of provider delay.
+
+Shop hashes the event id in the durable receipt key, rejects reuse for
+different canonical data, and advances a separate status snapshot
+monotonically. Stale, regressive, and post-`packed` events retain an idempotent
+receipt without regressing current evidence. No raw callback, signature,
+free-text provider payload, person, address, location, label, or credential is
+stored. `packed` remains evidence only: it never ships a fulfillment or
+exchange, consumes packing work, refunds payment, restores inventory, or
+bypasses the exact existing manual/carrier completion action. Picking or packed
+evidence arriving across a cancellation is retained as a bounded Admin health
+warning rather than invented commercial success.
 
 Create accepts one eligible `outbound | replacement` target: a processing
 fulfillment or an awaiting same-item replacement with an editable exact parcel
@@ -1556,11 +1604,12 @@ Reconciliation after the original commercial deadline does not create a new
 order-notification outbox row or extend notification retention. Site deletion
 remains the final tenant boundary.
 
-This contract records provider acceptance and cancellation of a work intent;
-it does not prove that a parcel was physically packed. Picking queues, bins,
-worker assignment, completion scans or evidence, addresses, shipping rates,
-labels, packaging-material inventory/reservation/purchase, and
-provider-specific WMS callback or polling protocols remain separate.
+This contract records provider acceptance/cancellation and optional status
+evidence for a work intent; it does not prove commercial shipment completion.
+Picking queues, bins, worker assignment, authoritative completion policy,
+addresses, shipping rates, labels, packaging-material
+inventory/reservation/purchase, and provider-specific WMS polling protocols
+remain separate.
 
 `readShippingLabel` is another independent additive capability. When present,
 completed rows in the outbound carrier-booking table and completed or shipped
@@ -2593,9 +2642,9 @@ Future transaction work should remain separable from this foundation:
    customer-service policy;
 4. tax remittance/filing, invoices, exemptions/nexus, customs/duties, and
    carrier-owned dynamic rate integrations;
-5. physical packing completion evidence, picking/bin/worker coordination,
-   packaging-material reservation or purchasing, and provider-specific WMS
-   callbacks or polling.
+5. authoritative physical packing completion policy, picking/bin/worker
+   coordination, packaging-material reservation or purchasing, and
+   provider-specific WMS polling.
 
 Those features require their own payment, security, and operational contracts.
 The provider-neutral event boundary does not pre-authorize or emulate them.

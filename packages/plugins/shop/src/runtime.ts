@@ -48,7 +48,10 @@ import {
 } from "./promotion-contract.js";
 import { npEmptyShopProductReviewAggregate } from "./review-contract.js";
 import type { NpShopPackagingAdapter } from "./packaging-contract.js";
-import type { NpShopPackingWorkAdapter } from "./packing-contract.js";
+import type {
+  NpShopPackingWorkAdapter,
+  NpShopPackingWorkCallbackAdapter,
+} from "./packing-contract.js";
 
 export const npShopSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 export const npShopSkuPattern = /^[A-Z0-9][A-Z0-9._-]{0,63}$/u;
@@ -78,6 +81,7 @@ export interface NpShopRuntime {
   taxAdapter: NpShopTaxAdapter | null;
   packagingAdapter: NpShopPackagingAdapter | null;
   packingWorkAdapter: NpShopPackingWorkAdapter | null;
+  packingWorkCallbackAdapter: NpShopPackingWorkCallbackAdapter | null;
   carrierAdapter: NpShopCarrierAdapter | null;
   carrierExchangeAdapter: NpShopCarrierExchangeAdapter | null;
   carrierExchangeParcelAdapter: NpShopCarrierExchangeParcelAdapter | null;

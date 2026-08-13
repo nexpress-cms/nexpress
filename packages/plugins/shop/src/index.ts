@@ -150,7 +150,13 @@ import {
   npRequireShopPackingWorkExistingActionInput,
   npRequireShopPackingWorkProviderId,
   type NpShopPackingWorkAdapter,
+  type NpShopPackingWorkCallbackAdapter,
 } from "./packing-contract.js";
+import { createShopPackingStatusApiHandler } from "./packing-status-api.js";
+import {
+  npCountShopPackingStatus,
+  npListRecentShopPackingStatusEvents,
+} from "./packing-status-service.js";
 import { npCountShopPackingWork, npListRecentShopPackingWork } from "./packing-work-ops.js";
 import { npRequireShopExchangeParcelsSaveInput } from "./exchange-parcel-contract.js";
 import { npRequireShopRefundActionInput } from "./refund-contract.js";
@@ -525,6 +531,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   }
   const configuredPackingWorkAdapter = options.packing?.adapter ?? null;
   let packingWorkAdapter: NpShopPackingWorkAdapter | null = null;
+  let packingWorkCallbackAdapter: NpShopPackingWorkCallbackAdapter | null = null;
   if (configuredPackingWorkAdapter) {
     const id = npRequireShopPackingWorkProviderId(configuredPackingWorkAdapter.id);
     if (
@@ -535,6 +542,14 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
         "Shop packing-work adapter requires createPackingWork and cancelPackingWork functions.",
       );
     }
+    if (
+      configuredPackingWorkAdapter.verifyPackingStatusWebhook !== undefined &&
+      typeof configuredPackingWorkAdapter.verifyPackingStatusWebhook !== "function"
+    ) {
+      throw new Error(
+        "Shop packing-work adapter verifyPackingStatusWebhook must be a function when provided.",
+      );
+    }
     packingWorkAdapter = Object.freeze({
       id,
       createPackingWork: configuredPackingWorkAdapter.createPackingWork.bind(
@@ -543,7 +558,18 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
       cancelPackingWork: configuredPackingWorkAdapter.cancelPackingWork.bind(
         configuredPackingWorkAdapter,
       ),
+      ...(configuredPackingWorkAdapter.verifyPackingStatusWebhook === undefined
+        ? {}
+        : {
+            verifyPackingStatusWebhook:
+              configuredPackingWorkAdapter.verifyPackingStatusWebhook.bind(
+                configuredPackingWorkAdapter,
+              ),
+          }),
     });
+    if (configuredPackingWorkAdapter.verifyPackingStatusWebhook !== undefined) {
+      packingWorkCallbackAdapter = packingWorkAdapter as NpShopPackingWorkCallbackAdapter;
+    }
   }
   const configuredCarrierAdapter = options.carrier?.adapter ?? null;
   let carrierAdapter: NpShopCarrierAdapter | null = null;
@@ -890,6 +916,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     taxAdapter,
     packagingAdapter,
     packingWorkAdapter,
+    packingWorkCallbackAdapter,
     carrierAdapter,
     carrierExchangeAdapter,
     carrierExchangeParcelAdapter,
@@ -1561,6 +1588,9 @@ export function createShop(options: NpShopOptions = {}) {
   const trackingApiHandler = runtime.carrierTrackingAdapter
     ? createShopTrackingApiHandler(runtime.carrierTrackingAdapter)
     : null;
+  const packingStatusApiHandler = runtime.packingWorkCallbackAdapter
+    ? createShopPackingStatusApiHandler(runtime.packingWorkCallbackAdapter)
+    : null;
   const carrierLabelApiHandler = runtime.carrierLabelAdapter
     ? createShopCarrierLabelApiHandler(runtime)
     : null;
@@ -1688,6 +1718,9 @@ export function createShop(options: NpShopOptions = {}) {
           "widget:shop-packing-work-health",
           "table:shop-packing-work",
           "action:shop-packing-work-finalize",
+          "dashboard:shop-packing-status-events",
+          "widget:shop-packing-status-health",
+          "table:shop-packing-status-events",
           ...(runtime.packingWorkAdapter
             ? ["action:shop-packing-work-create", "action:shop-packing-work-provider"]
             : []),
@@ -1784,6 +1817,7 @@ export function createShop(options: NpShopOptions = {}) {
           "/exchanges/destination",
           ...(paymentApiHandler ? ["/payments/webhook"] : []),
           ...(trackingApiHandler ? ["/carrier/tracking/webhook"] : []),
+          ...(packingStatusApiHandler ? ["/packing/status/webhook"] : []),
           ...(returnTrackingApiHandler ? ["/carrier/return-tracking/webhook"] : []),
           ...(carrierLabelApiHandler ? ["/carrier/shipping-label"] : []),
           ...(returnLogisticsApiHandler ? ["/returns/logistics"] : []),
@@ -1795,7 +1829,7 @@ export function createShop(options: NpShopOptions = {}) {
       },
       agent: {
         description:
-          "Catalog, member-owned saved products over the shared follow graph, independent one-shot member restock and catalog price-drop alerts, promotions, shipped-purchase reviews, bounded cart, checkout-intent, private order-draft, local shipping policies or optional provider-neutral shipping quotes, additional-tax quotes, exact order totals, durable orders, transaction-safe inventory reservations, optional provider-neutral payment initiation, verified payment events, full refunds with safe compensation, received-return partial refunds with exact allocation and optional quote-backed merchant/customer postage settlement, revision-safe fulfillment and parcel snapshots, independent read-only outbound/replacement packaging proposals, paired durable outbound/replacement packing-work intents, carrier booking, durable outbound and replacement shipping-label acquisition with transient retrieval, bounded outbound and replacement carrier pickup availability plus scheduling, verified or reconciled outbound and replacement tracking, physical return intake, exact same-item replacement exchanges with revision-bound owner address intake, audited short-lived private storage, and optional paired provider booking/cancellation, approved-return logistics with optional return-postage quotes and transient labels, and independent verified or reconciled reverse tracking. Separate return-postage charges, automatic or jurisdictional payer policy, recurring/discount-aware price alerts, recurring restock alerts, inventory reservation, automatic cart insertion, tax remittance/filing, exemptions, invoices, customs, provider settlement, reversals, repeated or non-return partial refunds, substitutions or price-difference exchanges, automatic address correction, label billing/void policy, recurring pickup, general carrier calendars, physical packing completion, picking/bin/worker state, dynamic carrier-rate policy, provider-specific WMS callbacks/polling, and carrier protocols remain external.",
+          "Catalog, member wishlists, one-shot restock and price-drop alerts, promotions, verified reviews, carts, checkout intents, private order drafts, shipping policies or provider quotes, tax quotes, durable orders, inventory reservations, optional payments and refunds, revision-safe fulfillment and parcels, read-only packaging proposals, durable outbound and replacement packing work with verified status evidence, carrier booking, transient labels, pickup availability and scheduling, tracking, physical returns, and same-item replacement exchanges with short-lived private address storage and optional provider logistics. Return-postage charging policy, recurring alerts or pickup, automatic cart insertion, tax filing, exemptions, invoices, customs, settlement, reversals, arbitrary partial refunds, substitutions or price-difference exchanges, address correction, label billing or void policy, authoritative physical packing completion, picking/bin/worker state, dynamic carrier rates, provider-specific WMS polling, and carrier protocols remain external.",
         category: "ecommerce",
         tags: [
           "shop",
@@ -2057,6 +2091,15 @@ export function createShop(options: NpShopOptions = {}) {
           priority: 46,
         },
         {
+          id: "shop-packing-status-events-total",
+          label: "Packing status events",
+          kind: "metric",
+          actionId: "countPackingStatusEvents",
+          description:
+            "Verified PII-free warehouse status evidence retained with its exact packing work.",
+          priority: 47,
+        },
+        {
           id: "shop-carrier-bookings-total",
           label: "Carrier bookings",
           kind: "metric",
@@ -2287,6 +2330,14 @@ export function createShop(options: NpShopOptions = {}) {
           actionId: "packingWorkHealth",
           description:
             "Checks exact source, parcel fingerprint, shipment attachment, provider, and unresolved durable state without exposing PII.",
+        },
+        {
+          id: "shop-packing-status-health",
+          label: "Packing status evidence",
+          kind: "status",
+          actionId: "packingStatusHealth",
+          description:
+            "Checks verified warehouse evidence against exact durable work without treating packed evidence as shipment completion.",
         },
         ...(runtime.packagingAdapter
           ? [
@@ -2803,6 +2854,23 @@ export function createShop(options: NpShopOptions = {}) {
               : []),
           ],
           emptyMessage: "No durable packing-work intent exists for this site.",
+        },
+        {
+          id: "shop-packing-status-events",
+          label: "Recent verified packing status events (PII-free)",
+          columns: [
+            { name: "provider", label: "Provider" },
+            { name: "target", label: "Target" },
+            { name: "eventId", label: "Event" },
+            { name: "workId", label: "Work" },
+            { name: "orderId", label: "Order" },
+            { name: "status", label: "Evidence" },
+            { name: "outcome", label: "Outcome" },
+            { name: "occurredAt", label: "Occurred" },
+            { name: "processedAt", label: "Processed" },
+          ],
+          rowsActionId: "recentPackingStatusEvents",
+          emptyMessage: "No verified packing status event exists for this site.",
         },
         {
           id: "shop-carrier-bookings",
@@ -5963,6 +6031,72 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      countPackingStatusEvents: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npCountShopPackingStatus(runtime.packingWorkAdapter?.id);
+            return {
+              ok: true,
+              data: {
+                value: counts.total,
+                delta: `latest: ${counts.accepted.toString()} accepted, ${counts.picking.toString()} picking, ${counts.failed.toString()} failed, ${counts.packed.toString()} packed`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      packingStatusHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopPackingStatus(runtime.packingWorkAdapter?.id);
+            const invalid =
+              counts.invalidSample +
+              counts.orphanSample +
+              counts.providerMismatchSample +
+              counts.workMismatchSample;
+            if (invalid > 0) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed, ${counts.orphanSample.toString()} orphan, ${counts.providerMismatchSample.toString()} provider-mismatched, and ${counts.workMismatchSample.toString()} work-mismatched packing status row(s) in bounded samples.`,
+              );
+            }
+            if (
+              counts.failed > 0 ||
+              counts.cancellationConflictSample > 0 ||
+              counts.sampleBoundReached
+            ) {
+              return npAdminStatus(
+                "warn",
+                `${counts.failed.toString()} failed evidence row(s), and ${counts.cancellationConflictSample.toString()} picking or packed evidence row(s) conflict with a durable packing cancellation; shipment completion remains explicit${counts.sampleBoundReached ? `; only the newest ${counts.sampleSize.toString()} rows in each state and receipt lane were inspected` : ""}.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.total.toString()} verified event receipt(s); ${counts.packed.toString()} work item(s) have packed evidence only, with no automatic shipment transition.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Packing status health check failed.",
+            );
+          }
+        },
+      },
+      recentPackingStatusEvents: {
+        kind: "table",
+        handler: async () => {
+          try {
+            const result = await npListRecentShopPackingStatusEvents();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
       finalizePackingWork: {
         kind: "action",
         handler: async (data, ctx) => {
@@ -7584,6 +7718,19 @@ export function createShop(options: NpShopOptions = {}) {
             },
           ]
         : []),
+      ...(packingStatusApiHandler
+        ? [
+            {
+              method: "POST" as const,
+              path: "/packing/status/webhook",
+              description:
+                "Verify one exact warehouse callback and idempotently advance separate PII-free packing evidence without completing shipment.",
+              auth: false,
+              bodyMode: "raw" as const,
+              handler: packingStatusApiHandler,
+            },
+          ]
+        : []),
       ...(returnTrackingApiHandler
         ? [
             {
@@ -8920,6 +9067,40 @@ export type {
   NpShopPackagingProposalTarget,
 } from "./packaging-contract.js";
 export {
+  NP_SHOP_PACKING_STATUS_EVENT_CONTRACT,
+  NP_SHOP_PACKING_STATUS_RECEIPT_CONTRACT,
+  NP_SHOP_PACKING_STATUS_STORAGE_CONTRACT,
+  NP_SHOP_PACKING_STATUS_WEBHOOK_IGNORED_CONTRACT,
+  NpShopPackingStatusConflictError,
+  NpShopPackingStatusContractError,
+  NpShopPackingStatusVerificationError,
+  npAnalyzeShopPackingStatusEvent,
+  npAnalyzeStoredShopPackingStatus,
+  npAnalyzeStoredShopPackingStatusReceipt,
+  npIsIgnoredPackingStatusWebhook,
+  npRequireFreshShopPackingStatusEvent,
+  npRequireShopPackingStatusProviderId,
+  npRequireStoredShopPackingStatus,
+  npRequireStoredShopPackingStatusReceipt,
+  npShopPackingEvidenceStatuses,
+  npShopPackingStatusEventDigest,
+  npShopPackingStatusLimits,
+  npShopPackingStatusReceiptOutcomes,
+  npShopPackingStatusReceiptStorageKey,
+  npShopPackingStatusStorageKey,
+} from "./packing-status-contract.js";
+export type {
+  NpShopIgnoredPackingStatusWebhook,
+  NpShopPackingEvidenceStatus,
+  NpShopPackingStatusReceiptOutcome,
+  NpShopPackingStatusTargetIdentity,
+  NpShopPackingStatusWebhookInput,
+  NpShopPackingStatusWebhookResult,
+  NpShopStoredPackingStatus,
+  NpShopStoredPackingStatusReceipt,
+  NpShopVerifiedPackingStatusEvent,
+} from "./packing-status-contract.js";
+export {
   NP_SHOP_PACKING_WORK_CANCEL_REQUEST_CONTRACT,
   NP_SHOP_PACKING_WORK_CANCEL_RESULT_CONTRACT,
   NP_SHOP_PACKING_WORK_CREATE_REQUEST_CONTRACT,
@@ -8954,6 +9135,7 @@ export {
 } from "./packing-contract.js";
 export type {
   NpShopPackingWorkAdapter,
+  NpShopPackingWorkCallbackAdapter,
   NpShopPackingWorkCancelRequest,
   NpShopPackingWorkCancelResult,
   NpShopPackingWorkCancelResultFor,

@@ -409,9 +409,13 @@ real product domain, not just blog/community. Ship as a plugin package
   source retention—including cancelled shipment attachments until exact
   carrier compensation or tracking-won completion—share the contract without
   extending private customer/shipping retention.
-  Physical completion evidence, picking/bin/worker coordination,
-  addresses/rates/labels, material inventory/reservation/purchase, and
-  provider-specific WMS callbacks or polling remain separate.
+  An optional exact raw callback on the same provider authenticates bounded
+  PII-free `accepted | picking | failed | packed` evidence into conflict-safe
+  receipts and monotonic status state. Packed evidence never completes a
+  shipment or consumes work. Authoritative physical completion policy,
+  picking/bin/worker coordination, addresses/rates/labels, material
+  inventory/reservation/purchase, and provider-specific WMS polling remain
+  separate.
 - **Provider-neutral carrier shipment booking (shipped)** — one optional
   server-only adapter receives an exact fulfillment revision, immutable order
   lines, selected delivery snapshot, and private destination outside database

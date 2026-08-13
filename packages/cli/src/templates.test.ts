@@ -450,8 +450,10 @@ describe("getProjectFiles", () => {
     expect(env).toContain("Private retention is unchanged");
     expect(env).toContain("Diagnostics stay visible after");
     expect(env).toContain("adapter removal");
-    expect(env).toContain("does not prove physical packing");
-    expect(env).toContain("provider-specific WMS callbacks/polling");
+    expect(env).toContain("authoritative completion policy");
+    expect(env).toContain("verifyPackingStatusWebhook authenticates exact raw WMS callbacks");
+    expect(env).toContain("accepted/picking/failed/packed evidence");
+    expect(env).toContain("Packed evidence never ships or consumes work");
     expect(env).toContain("verifyTrackingWebhook");
     expect(env).toContain("readTracking");
     expect(env).toContain("bookShipmentWithParcels");
@@ -523,6 +525,9 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("without the adapter");
     expect(readme).toContain("any remaining provider create, cancel, or reconciliation I/O");
     expect(readme).toContain("requires the original adapter");
+    expect(readme).toContain("`verifyPackingStatusWebhook`");
+    expect(readme).toContain("`accepted | picking | failed | packed`");
+    expect(readme).toContain("Packed evidence never ships or consumes work");
     expect(readme).toContain("Finalize an");
     expect(readme).toContain("exact confirmed state locally");
     expect(readme).toContain("provider reconciliation under its stable");
