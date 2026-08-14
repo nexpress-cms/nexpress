@@ -385,6 +385,11 @@ describe("getProjectFiles", () => {
     expect(env).toContain("# NP_TOSS_PAYMENTS_SECRET_KEY=");
     expect(env).not.toMatch(/^NP_TOSS_PAYMENTS_(?:CLIENT|SECRET)_KEY=/m);
     expect(readme).toContain("pnpm add @nexpress/shop-payment-toss");
+    expect(readme).toContain("pnpm add @nexpress/shop-payment-stripe");
+    expect(env).toContain("# NP_STRIPE_PUBLISHABLE_KEY=");
+    expect(env).toContain("# NP_STRIPE_SECRET_KEY=");
+    expect(env).toContain("# NP_STRIPE_WEBHOOK_SECRET=");
+    expect(env).not.toMatch(/^NP_STRIPE_(?:PUBLISHABLE_KEY|SECRET_KEY|WEBHOOK_SECRET)=/m);
     expect(readme).toContain("verified-purchase product review");
     expect(readme).toContain("follow graph at `/shop/wishlist`");
     expect(readme).toContain("one-shot member restock alerts");

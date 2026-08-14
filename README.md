@@ -112,7 +112,7 @@ Switch themes from Admin → Appearance or configure them in
 | Plugin authoring   | [docs/plugin-quickstart.md](./docs/plugin-quickstart.md)                                   |
 | Multi-board forum  | [docs/plugin-forum.md](./docs/plugin-forum.md)                                             |
 | Catalog and shop   | [docs/plugin-shop.md](./docs/plugin-shop.md) — wishlists, restock and price alerts, orders |
-| Toss Payments      | [Shop payment guide](./docs/plugin-shop.md#payment-initiation-and-toss-payments)           |
+| Stripe / Toss      | [Shop payment guide](./docs/plugin-shop.md#payment-initiation-and-provider-adapters)       |
 | Deployment         | [docs/deployment.md](./docs/deployment.md)                                                 |
 | Site customization | [docs/site-customization.md](./docs/site-customization.md)                                 |
 
