@@ -14,6 +14,7 @@ import { createStripePaymentsAdapter } from "./index.js";
 const orderId = "123e4567-e89b-42d3-a456-426614174000";
 const attemptId = "223e4567-e89b-42d3-a456-426614174000";
 const refundId = "323e4567-e89b-42d3-a456-426614174000";
+const returnId = "423e4567-e89b-42d3-a456-426614174000";
 const paymentIntentId = "pi_1234567890abcdefgh";
 const webhookSecret = "whsec_1234567890abcdefgh";
 const receivedAt = "2026-08-13T03:00:00.000Z";
@@ -43,6 +44,7 @@ function refund(
   id = "re_1234567890abcdefgh",
   amount = 2_500,
   created = signedSeconds - 10,
+  overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
   return {
     id,
@@ -52,6 +54,20 @@ function refund(
     created,
     payment_intent: paymentIntentId,
     status: "succeeded",
+    metadata: {},
+    ...overrides,
+  };
+}
+
+function partialRefundMetadata(
+  kind: "received-return" | "return-postage-settlement",
+  currentRefundId = refundId,
+) {
+  return {
+    nexpress_refund_id: currentRefundId,
+    nexpress_order_id: orderId,
+    nexpress_return_id: returnId,
+    nexpress_refund_kind: kind,
   };
 }
 
@@ -260,6 +276,240 @@ describe("Stripe Shop payment adapter", () => {
         requestedAt: receivedAt,
       }),
     ).rejects.toMatchObject({ code: "stripe_refund_mismatch", retryable: true });
+  });
+
+  it("creates one exact received-return partial refund with durable Stripe metadata", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response({ object: "list", has_more: false, data: [] }))
+      .mockResolvedValueOnce(
+        response(
+          refund(undefined, 1_000, undefined, {
+            metadata: partialRefundMetadata("received-return"),
+          }),
+        ),
+      );
+    const result = await adapter(fetcher).refundPaymentPartially({
+      refundId,
+      orderId,
+      returnId,
+      paymentReference: paymentIntentId,
+      currency: "USD",
+      amountMinor: 1_000,
+      allocation: {
+        lines: [{ lineKey: "line-1", quantity: 1, amountMinor: 900 }],
+        itemAmountMinor: 900,
+        shippingMinor: 50,
+        taxMinor: 50,
+      },
+      reason: "Received defective return",
+      requestedAt: receivedAt,
+    });
+    expect(result).toEqual({
+      contract: "np.shop-partial-refund-result.v1",
+      refundId,
+      orderId,
+      returnId,
+      paymentReference: paymentIntentId,
+      refundReference: "re_1234567890abcdefgh",
+      currency: "USD",
+      amountMinor: 1_000,
+      refundedAt: new Date((signedSeconds - 10) * 1_000).toISOString(),
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0]?.[0]).toContain(
+      `/v1/refunds?payment_intent=${paymentIntentId}&limit=100`,
+    );
+    const [url, init] = fetcher.mock.calls[1] as [string, RequestInit];
+    expect(url).toBe("https://api.stripe.com/v1/refunds");
+    expect(init.headers).toMatchObject({ "Idempotency-Key": refundId });
+    expect(Object.fromEntries(new URLSearchParams(init.body as string))).toEqual({
+      payment_intent: paymentIntentId,
+      amount: "1000",
+      reason: "requested_by_customer",
+      "metadata[nexpress_refund_id]": refundId,
+      "metadata[nexpress_order_id]": orderId,
+      "metadata[nexpress_return_id]": returnId,
+      "metadata[nexpress_refund_kind]": "received-return",
+    });
+  });
+
+  it("reconciles a durable partial refund without relying on Stripe's idempotency TTL", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      response({
+        object: "list",
+        has_more: false,
+        data: [
+          refund(undefined, 1_000, undefined, {
+            metadata: partialRefundMetadata("received-return"),
+          }),
+        ],
+      }),
+    );
+    await expect(
+      adapter(fetcher).refundPaymentPartially({
+        refundId,
+        orderId,
+        returnId,
+        paymentReference: paymentIntentId,
+        currency: "USD",
+        amountMinor: 1_000,
+        allocation: {
+          lines: [{ lineKey: "line-1", quantity: 1, amountMinor: 1_000 }],
+          itemAmountMinor: 1_000,
+          shippingMinor: 0,
+          taxMinor: 0,
+        },
+        reason: "Received defective return",
+        requestedAt: receivedAt,
+      }),
+    ).resolves.toMatchObject({ refundReference: "re_1234567890abcdefgh" });
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher.mock.calls[0]?.[1]).toMatchObject({ method: "GET" });
+  });
+
+  it("rejects a drifted received-return allocation before Stripe I/O", async () => {
+    const fetcher = vi.fn();
+    await expect(
+      adapter(fetcher).refundPaymentPartially({
+        refundId,
+        orderId,
+        returnId,
+        paymentReference: paymentIntentId,
+        currency: "USD",
+        amountMinor: 1_000,
+        allocation: {
+          lines: [{ lineKey: "line-1", quantity: 1, amountMinor: 999 }],
+          itemAmountMinor: 1_000,
+          shippingMinor: 0,
+          taxMinor: 0,
+        },
+        reason: "Received defective return",
+        requestedAt: receivedAt,
+      }),
+    ).rejects.toMatchObject({ code: "stripe_partial_refund_mismatch", retryable: false });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("refunds only the exact net amount for a quote-backed postage settlement", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response({ object: "list", has_more: false, data: [] }))
+      .mockResolvedValueOnce(
+        response(
+          refund(undefined, 1_000, undefined, {
+            metadata: partialRefundMetadata("return-postage-settlement"),
+          }),
+        ),
+      );
+    const input = {
+      refundId,
+      orderId,
+      returnId,
+      paymentReference: paymentIntentId,
+      currency: "USD" as const,
+      amountMinor: 1_000,
+      allocation: {
+        lines: [{ lineKey: "line-1", quantity: 1, amountMinor: 1_400 }],
+        itemAmountMinor: 1_400,
+        shippingMinor: 0,
+        taxMinor: 0,
+      },
+      postageSettlement: {
+        contract: "np.shop-return-postage-settlement.v1" as const,
+        responsibility: "customer" as const,
+        method: {
+          contract: "np.shop-return-postage-method.v1" as const,
+          providerId: "test-carrier",
+          quoteId: "523e4567-e89b-42d3-a456-426614174000",
+          methodId: "dropoff-standard",
+          label: "Standard return",
+          currency: "USD" as const,
+          amountMinor: 400,
+          estimatedTransit: null,
+          quotedAt: receivedAt,
+          quoteExpiresAt: "2026-08-13T04:00:00.000Z",
+        },
+        deductionMinor: 400,
+        designatedAt: receivedAt,
+      },
+      reason: "Received changed-mind return",
+      requestedAt: receivedAt,
+    };
+    await expect(adapter(fetcher).refundReturnSettlement(input)).resolves.toMatchObject({
+      amountMinor: 1_000,
+      returnId,
+    });
+    const [, init] = fetcher.mock.calls[1] as [string, RequestInit];
+    expect(Object.fromEntries(new URLSearchParams(init.body as string))).toMatchObject({
+      amount: "1000",
+      "metadata[nexpress_refund_kind]": "return-postage-settlement",
+    });
+
+    const rejectedFetcher = vi.fn();
+    await expect(
+      adapter(rejectedFetcher).refundReturnSettlement({
+        ...input,
+        postageSettlement: { ...input.postageSettlement, deductionMinor: 399 },
+      }),
+    ).rejects.toMatchObject({ code: "stripe_return_settlement_mismatch", retryable: false });
+    expect(rejectedFetcher).not.toHaveBeenCalled();
+  });
+
+  it("absorbs merchant-responsibility return postage without creating a separate charge", async () => {
+    const merchantRefundId = "623e4567-e89b-42d3-a456-426614174000";
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response({ object: "list", has_more: false, data: [] }))
+      .mockResolvedValueOnce(
+        response(
+          refund(undefined, 1_400, undefined, {
+            metadata: partialRefundMetadata("return-postage-settlement", merchantRefundId),
+          }),
+        ),
+      );
+    await expect(
+      adapter(fetcher).refundReturnSettlement({
+        refundId: merchantRefundId,
+        orderId,
+        returnId,
+        paymentReference: paymentIntentId,
+        currency: "USD",
+        amountMinor: 1_400,
+        allocation: {
+          lines: [{ lineKey: "line-1", quantity: 1, amountMinor: 1_400 }],
+          itemAmountMinor: 1_400,
+          shippingMinor: 0,
+          taxMinor: 0,
+        },
+        postageSettlement: {
+          contract: "np.shop-return-postage-settlement.v1",
+          responsibility: "merchant",
+          method: {
+            contract: "np.shop-return-postage-method.v1",
+            providerId: "test-carrier",
+            quoteId: "523e4567-e89b-42d3-a456-426614174000",
+            methodId: "dropoff-standard",
+            label: "Standard return",
+            currency: "USD",
+            amountMinor: 400,
+            estimatedTransit: null,
+            quotedAt: receivedAt,
+            quoteExpiresAt: "2026-08-13T04:00:00.000Z",
+          },
+          deductionMinor: 0,
+          designatedAt: receivedAt,
+        },
+        reason: "Received merchant-responsibility return",
+        requestedAt: receivedAt,
+      }),
+    ).resolves.toMatchObject({ amountMinor: 1_400 });
+    expect(fetcher.mock.calls[1]?.[0]).toBe("https://api.stripe.com/v1/refunds");
+    const [, init] = fetcher.mock.calls[1] as [string, RequestInit];
+    expect(Object.fromEntries(new URLSearchParams(init.body as string))).toMatchObject({
+      amount: "1400",
+      "metadata[nexpress_refund_kind]": "return-postage-settlement",
+    });
   });
 
   it("authenticates the exact raw webhook and emits the same success event id as confirmation", async () => {

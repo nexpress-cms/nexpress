@@ -4,18 +4,27 @@ import {
   NP_SHOP_PAYMENT_ADJUSTMENT_EVENT_CONTRACT,
   NP_SHOP_PAYMENT_EVENT_CONTRACT,
   NP_SHOP_PAYMENT_WEBHOOK_IGNORED_CONTRACT,
+  NP_SHOP_PARTIAL_REFUND_RESULT_CONTRACT,
   NP_SHOP_REFUND_RESULT_CONTRACT,
+  NP_SHOP_RETURN_POSTAGE_METHOD_CONTRACT,
+  NP_SHOP_RETURN_POSTAGE_SETTLEMENT_CONTRACT,
   NpShopPaymentProviderError,
+  npAnalyzeShopReturnPostageMethod,
   npShopCurrencies,
   type NpShopIgnoredPaymentWebhook,
   type NpShopPaymentConfirmAdapterInput,
   type NpShopPaymentInitiationAdapter,
   type NpShopPaymentLauncherProps,
+  type NpShopPaymentPartialRefundAdapter,
+  type NpShopPaymentPartialRefundInput,
+  type NpShopPaymentPartialRefundResult,
   type NpShopPaymentPrepareInput,
   type NpShopPaymentPrepareResult,
   type NpShopPaymentRefundAdapter,
   type NpShopPaymentRefundInput,
   type NpShopPaymentRefundResult,
+  type NpShopPaymentReturnSettlementAdapter,
+  type NpShopPaymentReturnSettlementRefundInput,
   type NpShopPaymentWebhookInput,
   type NpShopPaymentWebhookResult,
   type NpShopVerifiedPaymentAdjustmentEvent,
@@ -62,7 +71,13 @@ interface StripeRefund {
   currency: string;
   created: number;
   status: string;
+  shopRefundId: string | null;
+  shopOrderId: string | null;
+  shopReturnId: string | null;
+  shopRefundKind: string | null;
 }
+
+type StripeShopRefundKind = "full" | "received-return" | "return-postage-settlement";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -170,8 +185,21 @@ function requireRefund(value: unknown): StripeRefund {
   const paymentIntentId = boundedText(ownData(value, "payment_intent"));
   const currency = boundedText(ownData(value, "currency"), 3);
   const status = boundedText(ownData(value, "status"), 40);
+  const metadata = ownData(value, "metadata");
   const amount = ownData(value, "amount");
   const created = ownData(value, "created");
+  const shopRefundId = isRecord(metadata)
+    ? boundedText(ownData(metadata, "nexpress_refund_id"), 64)
+    : null;
+  const shopOrderId = isRecord(metadata)
+    ? boundedText(ownData(metadata, "nexpress_order_id"), 64)
+    : null;
+  const shopReturnId = isRecord(metadata)
+    ? boundedText(ownData(metadata, "nexpress_return_id"), 64)
+    : null;
+  const shopRefundKind = isRecord(metadata)
+    ? boundedText(ownData(metadata, "nexpress_refund_kind"), 40)
+    : null;
   if (
     !id ||
     !refundPattern.test(id) ||
@@ -183,7 +211,14 @@ function requireRefund(value: unknown): StripeRefund {
     !Number.isSafeInteger(amount) ||
     (amount as number) < 1 ||
     !Number.isSafeInteger(created) ||
-    (created as number) < 1
+    (created as number) < 1 ||
+    (shopRefundId !== null && !uuidPattern.test(shopRefundId)) ||
+    (shopOrderId !== null && !uuidPattern.test(shopOrderId)) ||
+    (shopReturnId !== null && !uuidPattern.test(shopReturnId)) ||
+    (shopRefundKind !== null &&
+      !(["full", "received-return", "return-postage-settlement"] as const).includes(
+        shopRefundKind as StripeShopRefundKind,
+      ))
   ) {
     throw new NpShopPaymentProviderError(
       "stripe_invalid_response",
@@ -197,6 +232,10 @@ function requireRefund(value: unknown): StripeRefund {
     currency,
     created: created as number,
     status,
+    shopRefundId,
+    shopOrderId,
+    shopReturnId,
+    shopRefundKind,
   };
 }
 
@@ -266,6 +305,104 @@ function constantTimeEqual(left: string, right: string): boolean {
   const a = Buffer.from(left);
   const b = Buffer.from(right);
   return a.length === b.length && timingSafeEqual(a, b);
+}
+
+function isCanonicalIso(value: string): boolean {
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
+}
+
+function requirePartialRefundInput(
+  input: NpShopPaymentPartialRefundInput,
+  requireGrossRefund: boolean,
+): number {
+  const lines = input.allocation.lines;
+  let lineAmountMinor = 0;
+  const lineKeys = new Set<string>();
+  const invalidLine =
+    !Array.isArray(lines) ||
+    lines.length < 1 ||
+    lines.length > 100 ||
+    lines.some((line) => {
+      if (
+        typeof line.lineKey !== "string" ||
+        line.lineKey.length < 1 ||
+        line.lineKey.length > 300 ||
+        line.lineKey.trim() !== line.lineKey ||
+        lineKeys.has(line.lineKey) ||
+        !Number.isSafeInteger(line.quantity) ||
+        line.quantity < 1 ||
+        !Number.isSafeInteger(line.amountMinor) ||
+        line.amountMinor < 0 ||
+        !Number.isSafeInteger(lineAmountMinor + line.amountMinor)
+      ) {
+        return true;
+      }
+      lineKeys.add(line.lineKey);
+      lineAmountMinor += line.amountMinor;
+      return false;
+    });
+  const allocationAmounts = [
+    input.allocation.itemAmountMinor,
+    input.allocation.shippingMinor,
+    input.allocation.taxMinor,
+  ];
+  const grossAmountMinor = allocationAmounts.reduce((total, amount) => total + amount, 0);
+  if (
+    !uuidPattern.test(input.refundId) ||
+    !uuidPattern.test(input.orderId) ||
+    !uuidPattern.test(input.returnId) ||
+    !paymentIntentPattern.test(input.paymentReference) ||
+    !(npShopCurrencies as readonly string[]).includes(input.currency) ||
+    !Number.isSafeInteger(input.amountMinor) ||
+    input.amountMinor < 1 ||
+    input.amountMinor > 99_999_999 ||
+    invalidLine ||
+    allocationAmounts.some((amount) => !Number.isSafeInteger(amount) || amount < 0) ||
+    !Number.isSafeInteger(grossAmountMinor) ||
+    grossAmountMinor < 1 ||
+    input.allocation.itemAmountMinor !== lineAmountMinor ||
+    (requireGrossRefund && input.amountMinor !== grossAmountMinor) ||
+    typeof input.reason !== "string" ||
+    input.reason.length < 1 ||
+    input.reason.length > 200 ||
+    input.reason.trim() !== input.reason ||
+    !isCanonicalIso(input.requestedAt)
+  ) {
+    throw new NpShopPaymentProviderError(
+      "stripe_partial_refund_mismatch",
+      "The Shop received-return refund is invalid.",
+      false,
+    );
+  }
+  return grossAmountMinor;
+}
+
+function requireReturnSettlementInput(input: NpShopPaymentReturnSettlementRefundInput): void {
+  const grossAmountMinor =
+    input.allocation.itemAmountMinor + input.allocation.shippingMinor + input.allocation.taxMinor;
+  const settlement = input.postageSettlement;
+  if (
+    settlement.contract !== NP_SHOP_RETURN_POSTAGE_SETTLEMENT_CONTRACT ||
+    settlement.method.contract !== NP_SHOP_RETURN_POSTAGE_METHOD_CONTRACT ||
+    npAnalyzeShopReturnPostageMethod(settlement.method).length > 0 ||
+    !["merchant", "customer"].includes(settlement.responsibility) ||
+    settlement.method.currency !== input.currency ||
+    settlement.designatedAt !== input.requestedAt ||
+    !Number.isSafeInteger(settlement.deductionMinor) ||
+    settlement.deductionMinor < 0 ||
+    settlement.deductionMinor >= grossAmountMinor ||
+    input.amountMinor !== grossAmountMinor - settlement.deductionMinor ||
+    (settlement.responsibility === "merchant" && settlement.deductionMinor !== 0) ||
+    (settlement.responsibility === "customer" &&
+      settlement.deductionMinor !== settlement.method.amountMinor)
+  ) {
+    throw new NpShopPaymentProviderError(
+      "stripe_return_settlement_mismatch",
+      "The Shop return-postage settlement does not match its exact refund amount.",
+      false,
+    );
+  }
 }
 
 function paymentEventId(paymentIntentId: string, status: string): string {
@@ -340,7 +477,10 @@ function verifyStripeSignature(
 
 export function createStripePaymentsAdapter(
   options: NpStripePaymentsOptions,
-): NpShopPaymentInitiationAdapter & NpShopPaymentRefundAdapter {
+): NpShopPaymentInitiationAdapter &
+  NpShopPaymentRefundAdapter &
+  NpShopPaymentPartialRefundAdapter &
+  NpShopPaymentReturnSettlementAdapter {
   const publishable = requireKey(options.publishableKey, "pk");
   const secret = requireKey(options.secretKey, "sk");
   if (publishable.mode !== secret.mode) {
@@ -391,6 +531,42 @@ export function createStripePaymentsAdapter(
       { method: "GET" },
     );
     return requirePaymentIntent(payload);
+  }
+
+  async function readPaymentIntentRefunds(paymentIntentId: string): Promise<StripeRefund[]> {
+    const payload = await stripeRequest(
+      `/v1/refunds?${form({ payment_intent: paymentIntentId, limit: 100 }).toString()}`,
+      { method: "GET" },
+    );
+    if (
+      !isRecord(payload) ||
+      ownData(payload, "object") !== "list" ||
+      !Array.isArray(ownData(payload, "data")) ||
+      ownData(payload, "has_more") !== false
+    ) {
+      throw new NpShopPaymentProviderError(
+        "stripe_adjustment_limit",
+        "Stripe returned an unbounded or malformed refund list.",
+        false,
+      );
+    }
+    const data = ownData(payload, "data") as unknown[];
+    if (data.length > 100) {
+      throw new NpShopPaymentProviderError(
+        "stripe_adjustment_limit",
+        "Stripe returned more refunds than the bounded Shop contract accepts.",
+        false,
+      );
+    }
+    const refunds = data.map(requireRefund);
+    if (refunds.some((refund) => refund.paymentIntentId !== paymentIntentId)) {
+      throw new NpShopPaymentProviderError(
+        "stripe_adjustment_mismatch",
+        "Stripe returned refunds from a different PaymentIntent.",
+        false,
+      );
+    }
+    return refunds;
   }
 
   async function preparePayment(
@@ -523,6 +699,7 @@ export function createStripePaymentsAdapter(
         reason: "requested_by_customer",
         "metadata[nexpress_refund_id]": input.refundId,
         "metadata[nexpress_order_id]": input.orderId,
+        "metadata[nexpress_refund_kind]": "full",
       }).toString(),
     });
     const refund = requireRefund(payload);
@@ -550,51 +727,107 @@ export function createStripePaymentsAdapter(
     };
   }
 
+  function requireExactPartialRefund(
+    refund: StripeRefund,
+    input: NpShopPaymentPartialRefundInput,
+    kind: StripeShopRefundKind,
+  ): NpShopPaymentPartialRefundResult {
+    if (
+      refund.paymentIntentId !== input.paymentReference ||
+      refund.amount !== input.amountMinor ||
+      refund.currency !== input.currency.toLowerCase() ||
+      refund.shopRefundId !== input.refundId ||
+      refund.shopOrderId !== input.orderId ||
+      refund.shopReturnId !== input.returnId ||
+      refund.shopRefundKind !== kind
+    ) {
+      throw new NpShopPaymentProviderError(
+        "stripe_partial_refund_mismatch",
+        "Stripe returned a refund that does not match the exact Shop received return.",
+        false,
+      );
+    }
+    if (refund.status !== "succeeded") {
+      throw new NpShopPaymentProviderError(
+        "stripe_partial_refund_pending",
+        "Stripe has not completed the exact Shop received-return refund.",
+        refund.status !== "failed" && refund.status !== "canceled",
+      );
+    }
+    return {
+      contract: NP_SHOP_PARTIAL_REFUND_RESULT_CONTRACT,
+      refundId: input.refundId,
+      orderId: input.orderId,
+      returnId: input.returnId,
+      paymentReference: refund.paymentIntentId,
+      refundReference: refund.id,
+      currency: input.currency,
+      amountMinor: refund.amount,
+      refundedAt: new Date(refund.created * 1_000).toISOString(),
+    };
+  }
+
+  async function createPartialRefund(
+    input: NpShopPaymentPartialRefundInput,
+    kind: Exclude<StripeShopRefundKind, "full">,
+  ): Promise<NpShopPaymentPartialRefundResult> {
+    requirePartialRefundInput(input, kind === "received-return");
+    if (kind === "return-postage-settlement") {
+      requireReturnSettlementInput(input as NpShopPaymentReturnSettlementRefundInput);
+    }
+
+    const existing = (await readPaymentIntentRefunds(input.paymentReference)).filter(
+      (refund) => refund.shopRefundId === input.refundId,
+    );
+    if (existing.length > 1) {
+      throw new NpShopPaymentProviderError(
+        "stripe_partial_refund_mismatch",
+        "Stripe returned duplicate refunds for one Shop refund UUID.",
+        false,
+      );
+    }
+    if (existing[0]) return requireExactPartialRefund(existing[0], input, kind);
+
+    const payload = await stripeRequest("/v1/refunds", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Idempotency-Key": input.refundId,
+      },
+      body: form({
+        payment_intent: input.paymentReference,
+        amount: input.amountMinor,
+        reason: "requested_by_customer",
+        "metadata[nexpress_refund_id]": input.refundId,
+        "metadata[nexpress_order_id]": input.orderId,
+        "metadata[nexpress_return_id]": input.returnId,
+        "metadata[nexpress_refund_kind]": kind,
+      }).toString(),
+    });
+    return requireExactPartialRefund(requireRefund(payload), input, kind);
+  }
+
+  async function refundPaymentPartially(
+    input: NpShopPaymentPartialRefundInput,
+  ): Promise<NpShopPaymentPartialRefundResult> {
+    return createPartialRefund(input, "received-return");
+  }
+
+  async function refundReturnSettlement(
+    input: NpShopPaymentReturnSettlementRefundInput,
+  ): Promise<NpShopPaymentPartialRefundResult> {
+    return createPartialRefund(input, "return-postage-settlement");
+  }
+
   async function adjustmentFromPaymentIntent(
     paymentIntentId: string,
     signedAt: string,
   ): Promise<NpShopVerifiedPaymentAdjustmentEvent | NpShopIgnoredPaymentWebhook> {
-    const [payment, listPayload] = await Promise.all([
+    const [payment, refunds] = await Promise.all([
       readPaymentIntent(paymentIntentId),
-      stripeRequest(
-        `/v1/refunds?${form({ payment_intent: paymentIntentId, limit: 100 }).toString()}`,
-        {
-          method: "GET",
-        },
-      ),
+      readPaymentIntentRefunds(paymentIntentId),
     ]);
-    if (
-      !isRecord(listPayload) ||
-      ownData(listPayload, "object") !== "list" ||
-      !Array.isArray(ownData(listPayload, "data"))
-    ) {
-      throw new NpShopPaymentProviderError(
-        "stripe_adjustment_mismatch",
-        "Stripe returned a malformed refund list.",
-        false,
-      );
-    }
-    if (ownData(listPayload, "has_more") !== false) {
-      throw new NpShopPaymentProviderError(
-        "stripe_adjustment_limit",
-        "Stripe returned more refunds than the bounded Shop adjustment contract accepts.",
-        false,
-      );
-    }
-    const refundData = ownData(listPayload, "data") as unknown[];
-    if (refundData.length > 100) {
-      throw new NpShopPaymentProviderError(
-        "stripe_adjustment_limit",
-        "Stripe returned more refunds than the bounded Shop adjustment contract accepts.",
-        false,
-      );
-    }
-    const refunds = refundData.map(requireRefund);
-    if (
-      refunds.some(
-        (refund) => refund.paymentIntentId !== payment.id || refund.currency !== payment.currency,
-      )
-    ) {
+    if (refunds.some((refund) => refund.currency !== payment.currency)) {
       throw new NpShopPaymentProviderError(
         "stripe_adjustment_mismatch",
         "Stripe returned refunds from a different payment.",
@@ -710,6 +943,8 @@ export function createStripePaymentsAdapter(
     confirmPayment,
     verifyWebhook,
     refundPayment,
+    refundPaymentPartially,
+    refundReturnSettlement,
     renderPaymentLauncher: (props: NpShopPaymentLauncherProps) => (
       <StripePaymentLauncher {...props} />
     ),
@@ -719,7 +954,10 @@ export function createStripePaymentsAdapter(
 export function stripePaymentsFromEnv(input: {
   siteUrl: string;
   fetch?: typeof fetch;
-}): NpShopPaymentInitiationAdapter & NpShopPaymentRefundAdapter {
+}): NpShopPaymentInitiationAdapter &
+  NpShopPaymentRefundAdapter &
+  NpShopPaymentPartialRefundAdapter &
+  NpShopPaymentReturnSettlementAdapter {
   const publishableKey = process.env.NP_STRIPE_PUBLISHABLE_KEY;
   const secretKey = process.env.NP_STRIPE_SECRET_KEY;
   const webhookSecret = process.env.NP_STRIPE_WEBHOOK_SECRET;

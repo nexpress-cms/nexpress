@@ -343,7 +343,8 @@ or automatic inventory restoration. The existing tracking callback and polling
 capabilities already serve completed replacement bookings without changing
 exchange commercial state.
 `@nexpress/shop-payment-stripe` is the bundled Stripe PaymentIntent initiation,
-signed-webhook, full-refund, and cumulative refund-reconciliation adapter.
+signed-webhook, full-refund, received-return partial-refund/return-postage
+settlement, and cumulative refund-reconciliation adapter.
 `@nexpress/shop-payment-toss` is the bundled Toss Payments v2 initiation,
 full-refund, received-return partial-refund/return-postage settlement, and
 query-verified cancellation reconciliation adapter. Customer/shipping PII exists only in the short-lived

@@ -389,6 +389,7 @@ describe("getProjectFiles", () => {
     expect(env).toContain("# NP_STRIPE_PUBLISHABLE_KEY=");
     expect(env).toContain("# NP_STRIPE_SECRET_KEY=");
     expect(env).toContain("# NP_STRIPE_WEBHOOK_SECRET=");
+    expect(env).toContain("full/received-return refunds");
     expect(env).not.toMatch(/^NP_STRIPE_(?:PUBLISHABLE_KEY|SECRET_KEY|WEBHOOK_SECRET)=/m);
     expect(readme).toContain("verified-purchase product review");
     expect(readme).toContain("follow graph at `/shop/wishlist`");
