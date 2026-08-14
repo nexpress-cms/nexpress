@@ -2323,7 +2323,7 @@ and provider-specific protocols remain outside Shop. The bundled Toss adapter
 maps the validated net amount to its existing partial-cancellation request and
 keeps the durable refund UUID as the idempotency key.
 
-## Payment initiation and Toss Payments
+## Payment initiation and provider adapters
 
 An adapter can add initiation without changing the verified-event contract by
 implementing all three optional methods together:
@@ -2349,6 +2349,61 @@ order pending with its inventory reservation held so the visitor can retry.
 After a provider success redirect, the launcher retains the exact return
 parameters until server confirmation succeeds and retries that same attempt;
 it does not prepare a second payment after an ambiguous confirmation failure.
+
+The bundled Stripe implementation uses PaymentIntents and the Payment Element:
+
+```bash
+pnpm add @nexpress/shop-payment-stripe
+```
+
+```ts
+import { defineConfig } from "@nexpress/core";
+import { defaultCollections, defaultPlugins } from "@nexpress/app/config-defaults";
+import { createShop } from "@nexpress/plugin-shop";
+import { stripePaymentsFromEnv } from "@nexpress/shop-payment-stripe";
+
+const shop = createShop({
+  payment: {
+    adapter: stripePaymentsFromEnv({
+      siteUrl: process.env.SITE_URL ?? "http://localhost:3000",
+    }),
+  },
+});
+
+export default defineConfig({
+  collections: [
+    ...defaultCollections.filter(
+      (collection) => !shop.collections.some((item) => item.slug === collection.slug),
+    ),
+    ...shop.collections,
+  ],
+  plugins: [...defaultPlugins.filter((plugin) => plugin.manifest.id !== "shop"), shop.plugin],
+});
+```
+
+Set `NP_STRIPE_PUBLISHABLE_KEY`, `NP_STRIPE_SECRET_KEY`, and
+`NP_STRIPE_WEBHOOK_SECRET`, using matching test/live API keys. Register
+`/api/plugins/shop/payments/webhook` in Stripe and preserve its raw request
+body. Subscribe to `payment_intent.succeeded`, `payment_intent.canceled`,
+`refund.created`, `refund.updated`, and `charge.refunded`. The adapter verifies
+the exact `Stripe-Signature` bytes and timestamp before reading an event. A
+successful browser return sends only the PaymentIntent id to Shop; the adapter
+retrieves it with the secret key and compares its status, metadata, amount,
+received amount, and currency to the durable 15-minute attempt. Neither the
+return URL nor a parsed webhook body is trusted by itself.
+
+PaymentIntent creation uses the attempt UUID as Stripe's `Idempotency-Key`,
+automatic payment methods, and PII-free Shop order/attempt metadata. Only the
+publishable key and PaymentIntent client token enter the bounded browser
+handoff. Full refund uses the durable Shop refund UUID as `Idempotency-Key` and
+requires an exact `succeeded` Refund object. Signed refund events trigger fresh
+PaymentIntent and bounded refund-list reads; unique successful refunds must
+canonically sum to the original amount minus the remaining amount before the
+adapter emits a cumulative adjustment snapshot. Pending refunds remain
+retryable. More than 100 refunds, malformed totals, or mixed payment references
+fail closed. The Stripe v1 adapter does not initiate partial refunds, disputes,
+subscriptions, invoices, Connect transfers, or provider-specific tax and
+shipping behavior.
 
 The bundled Korean provider implementation uses Toss Payments v2:
 

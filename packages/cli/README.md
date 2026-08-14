@@ -36,8 +36,9 @@ atomic reservation consumption or release, and optional audited full refunds
 with safe inventory compensation. Shipped orders also expose owner-scoped
 item-level return intake and audited receipt inventory without implying a
 payment refund or carrier booking. The bundled
-`@nexpress/shop-payment-toss` adapter supplies a Toss Payments v2 browser/server
-flow plus exact full cancellation when explicitly installed and configured. Order
+`@nexpress/shop-payment-stripe` supplies a Stripe PaymentIntent/Payment Element,
+signed-webhook, and exact full-refund flow; `@nexpress/shop-payment-toss` supplies
+the equivalent Toss Payments v2 browser/server integration when explicitly installed. Order
 customer/shipping values live in a separate private sidecar and are physically
 deleted on cancellation or the 24-hour deadline; commercial snapshots are
 normally purged after 365 days. Non-terminal packing work is the narrow

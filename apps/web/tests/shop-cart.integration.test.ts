@@ -39,6 +39,7 @@ import {
   type NpShopReturnTrackingPollRequest,
   type NpShopTrackingPollRequest,
 } from "@nexpress/plugin-shop";
+import { createStripePaymentsAdapter } from "@nexpress/shop-payment-stripe";
 import { and, eq, like, sql } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6150,6 +6151,117 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         paymentShop.plugin.actions?.paymentAttemptHealth?.handler(undefined, {} as never),
       ),
     ).toMatchObject({ ok: true, data: { level: "error" } });
+  });
+
+  it("persists and confirms one exact Stripe PaymentIntent through the real adapter", async () => {
+    const ids = {
+      intentId: "0f4e4567-e89b-42d3-a456-426614174000",
+      draftId: "1f4e4567-e89b-42d3-a456-426614174000",
+      orderId: "2f4e4567-e89b-42d3-a456-426614174000",
+      attemptId: "3f4e4567-e89b-42d3-a456-426614174000",
+    };
+    const owner = await createPendingOrder(ids, "stripe-attempt-private@example.com");
+    const paymentIntentId = "pi_1234567890stripepg";
+    const paymentIntent = (status: "requires_payment_method" | "succeeded") => ({
+      id: paymentIntentId,
+      object: "payment_intent",
+      amount: 25_000,
+      amount_received: status === "succeeded" ? 25_000 : 0,
+      currency: "krw",
+      status,
+      client_secret: `${paymentIntentId}_secret_1234567890abcdef`,
+      metadata: {
+        nexpress_order_id: ids.orderId,
+        nexpress_attempt_id: ids.attemptId,
+      },
+    });
+    const stripeFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(paymentIntent("requires_payment_method")), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(paymentIntent("succeeded")), { status: 200 }),
+      );
+    const stripeShop = createShop({
+      payment: {
+        adapter: createStripePaymentsAdapter({
+          publishableKey: "pk_test_1234567890abcdefgh",
+          secretKey: "sk_test_1234567890abcdefgh",
+          webhookSecret: "whsec_1234567890abcdefgh",
+          siteUrl: "https://shop.example",
+          fetch: stripeFetch,
+        }),
+      },
+    });
+    const handler = stripeShop.plugin.routes?.find(
+      (candidate) => candidate.path === "/payments/attempts",
+    )?.handler;
+    expect(handler).toBeDefined();
+    async function attemptCall(method: "POST" | "PATCH", body: unknown) {
+      return withCurrentSite("default", () =>
+        handler?.(
+          {
+            method,
+            path: "/payments/attempts",
+            params: { pluginId: "shop" },
+            query: {},
+            body,
+            headers: {
+              cookie: owner.cookie ?? "",
+              "x-csrf-token": owner.csrf,
+            },
+          },
+          {} as never,
+        ),
+      );
+    }
+
+    const prepared = await attemptCall("POST", {
+      orderId: ids.orderId,
+      idempotencyKey: ids.attemptId,
+    });
+    expect(prepared).toMatchObject({
+      status: 200,
+      body: {
+        attempt: {
+          id: ids.attemptId,
+          providerId: "stripe",
+          status: "prepared",
+          handoff: {
+            kind: "client",
+            data: {
+              paymentIntentId,
+              amountMinor: 25_000,
+              currency: "KRW",
+            },
+          },
+        },
+      },
+    });
+    expect(JSON.stringify(prepared)).not.toContain("sk_test_");
+    expect(JSON.stringify(prepared)).not.toContain("whsec_");
+    expect(JSON.stringify(prepared)).not.toContain("stripe-attempt-private@example.com");
+    const confirmed = await attemptCall("PATCH", {
+      attemptId: ids.attemptId,
+      orderId: ids.orderId,
+      confirmation: { paymentIntentId },
+    });
+    expect(confirmed).toMatchObject({
+      status: 200,
+      body: {
+        duplicate: false,
+        attempt: { status: "confirmed", paymentReference: paymentIntentId },
+        order: { status: "paid", inventoryReservationStatus: "consumed" },
+      },
+    });
+    expect(stripeFetch).toHaveBeenCalledTimes(2);
+    const [prepareUrl, prepareInit] = stripeFetch.mock.calls[0] as [string, RequestInit];
+    expect(prepareUrl).toBe("https://api.stripe.com/v1/payment_intents");
+    expect(prepareInit.headers).toMatchObject({ "Idempotency-Key": ids.attemptId });
+    expect(stripeFetch.mock.calls[1]?.[0]).toBe(
+      `https://api.stripe.com/v1/payment_intents/${paymentIntentId}`,
+    );
   });
 
   it("runs owner-scoped item returns through audited receipt and atomic inventory restoration", async () => {

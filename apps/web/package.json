@@ -71,6 +71,7 @@
     "@nexpress/plugin-reading-time": "workspace:*",
     "@nexpress/plugin-sdk": "workspace:*",
     "@nexpress/plugin-seo-audit": "workspace:*",
+    "@nexpress/shop-payment-stripe": "workspace:*",
     "@nexpress/theme": "workspace:*",
     "@nexpress/theme-community": "workspace:*",
     "@nexpress/theme-default": "workspace:*",

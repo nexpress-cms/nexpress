@@ -1,0 +1,66 @@
+{
+  "name": "@nexpress/shop-payment-stripe",
+  "version": "0.4.2",
+  "description": "Stripe PaymentIntent initiation, signed webhook, full-refund, and cancellation-reconciliation adapter for @nexpress/plugin-shop.",
+  "license": "MIT",
+  "author": "Nexpress",
+  "homepage": "https://github.com/nexpress-cms/nexpress#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nexpress-cms/nexpress.git",
+    "directory": "packages/plugins/shop-payment-stripe"
+  },
+  "bugs": {
+    "url": "https://github.com/nexpress-cms/nexpress/issues"
+  },
+  "keywords": [
+    "nexpress",
+    "shop",
+    "payment",
+    "stripe",
+    "payment-intents"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js",
+      "default": "./dist/client.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "@nexpress/plugin-shop": "workspace:*",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@nexpress/plugin-shop": "workspace:*",
+    "@types/node": "^26.0.1",
+    "@types/react": "^19.2.17",
+    "react": "^19.2.7",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.10"
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsup",
+    "dev": "tsup --watch --no-clean",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint",
+    "test": "vitest run"
+  }
+}
