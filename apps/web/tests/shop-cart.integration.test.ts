@@ -6274,36 +6274,45 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       variantSku: null,
       quantity: 2,
     });
-    const refundPaymentPartially = vi.fn(
-      (input: {
-        refundId: string;
-        orderId: string;
-        returnId: string;
-        paymentReference: string;
-        currency: "KRW";
-        amountMinor: number;
-      }) => ({
-        contract: "np.shop-partial-refund-result.v1" as const,
-        refundId: input.refundId,
-        orderId: input.orderId,
-        returnId: input.returnId,
-        paymentReference: input.paymentReference,
-        refundReference: "partial_refund_return_1",
-        currency: input.currency,
-        amountMinor: input.amountMinor,
-        refundedAt: new Date().toISOString(),
-      }),
-    );
-    const refundPayment = vi.fn(() => {
-      throw new Error("full refund must remain blocked after a partial refund");
+    const partialPaymentIntentId = "pi_1234567890returnpg";
+    const stripePartialFetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("/v1/refunds?")) {
+        return new Response(JSON.stringify({ object: "list", has_more: false, data: [] }), {
+          status: 200,
+        });
+      }
+      const body = new URLSearchParams(init?.body as string);
+      return new Response(
+        JSON.stringify({
+          id: "re_1234567890returnpg",
+          object: "refund",
+          amount: Number(body.get("amount")),
+          currency: "krw",
+          created: Math.floor(Date.now() / 1_000),
+          payment_intent: body.get("payment_intent"),
+          status: "succeeded",
+          metadata: {
+            nexpress_refund_id: body.get("metadata[nexpress_refund_id]"),
+            nexpress_order_id: body.get("metadata[nexpress_order_id]"),
+            nexpress_return_id: body.get("metadata[nexpress_return_id]"),
+            nexpress_refund_kind: body.get("metadata[nexpress_refund_kind]"),
+          },
+        }),
+        { status: 200 },
+      );
+    });
+    const stripePartialAdapter = createStripePaymentsAdapter({
+      publishableKey: "pk_test_1234567890abcdefgh",
+      secretKey: "sk_test_1234567890abcdefgh",
+      webhookSecret: "whsec_1234567890abcdefgh",
+      siteUrl: "https://shop.example",
+      fetch: stripePartialFetch,
     });
     const paymentShop = createShop({
       payment: {
         adapter: {
-          id: "test-pay",
+          ...stripePartialAdapter,
           verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
-          refundPayment,
-          refundPaymentPartially,
         },
       },
     });
@@ -6311,7 +6320,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       await payPendingOrder(paymentShop, {
         orderId: ids.orderId,
         eventId: "evt_return_success",
-        paymentReference: "pay_return_success",
+        paymentReference: partialPaymentIntentId,
         amountMinor: 50_000,
       }),
     ).toMatchObject({ status: 200, body: { receipt: { outcome: "paid" } } });
@@ -6469,22 +6478,16 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
       ok: true,
       data: expect.stringContaining("KRW 25000"),
     });
-    expect(refundPaymentPartially).toHaveBeenCalledOnce();
-    expect(refundPaymentPartially).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderId: ids.orderId,
-        returnId: receivedOrder.returnRequest.id,
-        paymentReference: "pay_return_success",
-        currency: "KRW",
-        amountMinor: 25_000,
-        allocation: {
-          lines: [{ lineKey: shippedOrder.lines[0]!.key, quantity: 1, amountMinor: 25_000 }],
-          itemAmountMinor: 25_000,
-          shippingMinor: 0,
-          taxMinor: 0,
-        },
-      }),
-    );
+    expect(stripePartialFetch).toHaveBeenCalledTimes(2);
+    const [, stripePartialInit] = stripePartialFetch.mock.calls[1] as [string, RequestInit];
+    const stripePartialBody = new URLSearchParams(stripePartialInit.body as string);
+    expect(Object.fromEntries(stripePartialBody)).toMatchObject({
+      payment_intent: partialPaymentIntentId,
+      amount: "25000",
+      "metadata[nexpress_order_id]": ids.orderId,
+      "metadata[nexpress_return_id]": receivedOrder.returnRequest.id,
+      "metadata[nexpress_refund_kind]": "received-return",
+    });
     expect(await orderCall("GET", { ...owner, orderId: ids.orderId })).toMatchObject({
       body: {
         order: {
@@ -6509,7 +6512,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         ),
       ),
     ).toMatchObject({ ok: true, data: expect.stringContaining("already reconciled") });
-    expect(refundPaymentPartially).toHaveBeenCalledOnce();
+    expect(stripePartialFetch).toHaveBeenCalledTimes(2);
     expect(
       await withCurrentSite("default", () =>
         paymentShop.plugin.actions?.refundOrder?.handler(
@@ -6521,7 +6524,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         ),
       ),
     ).toMatchObject({ ok: false });
-    expect(refundPayment).not.toHaveBeenCalled();
+    expect(stripePartialFetch).toHaveBeenCalledTimes(2);
     const db = await getTestDb();
     expect(
       await db
@@ -7013,32 +7016,45 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         };
       },
     );
-    const refundReturnSettlement = vi.fn(
-      (input: {
-        refundId: string;
-        orderId: string;
-        returnId: string;
-        paymentReference: string;
-        currency: "KRW";
-        amountMinor: number;
-      }) => ({
-        contract: "np.shop-partial-refund-result.v1" as const,
-        refundId: input.refundId,
-        orderId: input.orderId,
-        returnId: input.returnId,
-        paymentReference: input.paymentReference,
-        refundReference: "return_postage_settlement_1",
-        currency: input.currency,
-        amountMinor: input.amountMinor,
-        refundedAt: new Date().toISOString(),
-      }),
-    );
+    const settlementPaymentIntentId = "pi_1234567890postagepg";
+    const stripeSettlementFetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes("/v1/refunds?")) {
+        return new Response(JSON.stringify({ object: "list", has_more: false, data: [] }), {
+          status: 200,
+        });
+      }
+      const body = new URLSearchParams(init?.body as string);
+      return new Response(
+        JSON.stringify({
+          id: "re_1234567890postagepg",
+          object: "refund",
+          amount: Number(body.get("amount")),
+          currency: "krw",
+          created: Math.floor(Date.now() / 1_000),
+          payment_intent: body.get("payment_intent"),
+          status: "succeeded",
+          metadata: {
+            nexpress_refund_id: body.get("metadata[nexpress_refund_id]"),
+            nexpress_order_id: body.get("metadata[nexpress_order_id]"),
+            nexpress_return_id: body.get("metadata[nexpress_return_id]"),
+            nexpress_refund_kind: body.get("metadata[nexpress_refund_kind]"),
+          },
+        }),
+        { status: 200 },
+      );
+    });
+    const stripeSettlementAdapter = createStripePaymentsAdapter({
+      publishableKey: "pk_test_1234567890abcdefgh",
+      secretKey: "sk_test_1234567890abcdefgh",
+      webhookSecret: "whsec_1234567890abcdefgh",
+      siteUrl: "https://shop.example",
+      fetch: stripeSettlementFetch,
+    });
     const returnShop = createShop({
       payment: {
         adapter: {
-          id: "test-pay",
+          ...stripeSettlementAdapter,
           verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
-          refundReturnSettlement,
         },
       },
       carrier: {
@@ -7064,7 +7080,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     await payPendingOrder(returnShop, {
       orderId: ids.orderId,
       eventId: "evt_return_postage",
-      paymentReference: "pay_return_postage",
+      paymentReference: settlementPaymentIntentId,
     });
     const staff = await seedUser({ email: "return-postage-operator@example.com" });
     const actionContext = {
@@ -7234,18 +7250,17 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         ),
       ),
     ).toMatchObject({ ok: true, data: expect.stringContaining("KRW 21000 net") });
-    expect(refundReturnSettlement).toHaveBeenCalledWith(
-      expect.objectContaining({
-        orderId: ids.orderId,
-        returnId,
-        amountMinor: 21_000,
-        postageSettlement: expect.objectContaining({
-          responsibility: "customer",
-          deductionMinor: 4_000,
-          method: expect.objectContaining({ amountMinor: 4_000, methodId: "dropoff-standard" }),
-        }),
-      }),
-    );
+    expect(stripeSettlementFetch).toHaveBeenCalledTimes(2);
+    const [, stripeSettlementInit] = stripeSettlementFetch.mock.calls[1] as [string, RequestInit];
+    expect(
+      Object.fromEntries(new URLSearchParams(stripeSettlementInit.body as string)),
+    ).toMatchObject({
+      payment_intent: settlementPaymentIntentId,
+      amount: "21000",
+      "metadata[nexpress_order_id]": ids.orderId,
+      "metadata[nexpress_return_id]": returnId,
+      "metadata[nexpress_refund_kind]": "return-postage-settlement",
+    });
     expect(
       await configuredShopCall(returnShop, "GET", "/orders", { ...owner, id: ids.orderId }),
     ).toMatchObject({

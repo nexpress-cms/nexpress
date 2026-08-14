@@ -2395,15 +2395,23 @@ return URL nor a parsed webhook body is trusted by itself.
 PaymentIntent creation uses the attempt UUID as Stripe's `Idempotency-Key`,
 automatic payment methods, and PII-free Shop order/attempt metadata. Only the
 publishable key and PaymentIntent client token enter the bounded browser
-handoff. Full refund uses the durable Shop refund UUID as `Idempotency-Key` and
-requires an exact `succeeded` Refund object. Signed refund events trigger fresh
-PaymentIntent and bounded refund-list reads; unique successful refunds must
-canonically sum to the original amount minus the remaining amount before the
-adapter emits a cumulative adjustment snapshot. Pending refunds remain
-retryable. More than 100 refunds, malformed totals, or mixed payment references
-fail closed. The Stripe v1 adapter does not initiate partial refunds, disputes,
-subscriptions, invoices, Connect transfers, or provider-specific tax and
-shipping behavior.
+handoff. Full and received-return refunds use the durable Shop refund UUID as
+`Idempotency-Key` and require an exact `succeeded` Refund object. The partial
+path validates Shop's immutable item/shipping/tax allocation and sends only the
+exact amount plus PII-free refund/order/return/capability metadata. A
+quote-backed postage settlement refunds the exact positive net amount: merchant
+responsibility absorbs the immutable quote, while customer responsibility
+deducts it without a separate charge. A bounded PaymentIntent refund-list
+preflight reconciles the stable partial-refund UUID before POST, so recovery
+does not depend on Stripe retaining an idempotency record indefinitely.
+
+Signed refund events trigger fresh PaymentIntent and bounded refund-list reads;
+unique successful refunds must canonically sum to the original amount minus the
+remaining amount before the adapter emits a cumulative adjustment snapshot.
+Pending refunds remain retryable. More than 100 refunds, malformed totals, or
+mixed payment references fail closed. The Stripe adapter does not initiate
+repeated or non-return partial refunds, disputes, subscriptions, invoices,
+Connect transfers, or provider-specific tax and shipping behavior.
 
 The bundled Korean provider implementation uses Toss Payments v2:
 

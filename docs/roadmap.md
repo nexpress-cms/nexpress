@@ -360,9 +360,12 @@ real product domain, not just blog/community. Ship as a plugin package
 - **Stripe PaymentIntent adapter (shipped)** —
   `@nexpress/shop-payment-stripe` owns a Payment Element handoff, exact
   secret-key PaymentIntent confirmation, raw-body `Stripe-Signature`
-  verification, durable-idempotency full refunds, and bounded cumulative
-  successful-refund reconciliation. Partial refunds, disputes, subscriptions,
-  Connect, and KG Inicis packages remain future work.
+  verification, durable-idempotency full refunds, exact received-return partial
+  refunds, quote-backed merchant/customer return-postage settlement, and
+  bounded cumulative successful-refund reconciliation. Stable PII-free refund
+  metadata and a bounded preflight preserve late partial-refund recovery beyond
+  Stripe's finite idempotency window. Arbitrary partial refunds, disputes,
+  subscriptions, Connect, and KG Inicis packages remain future work.
 - **Order fulfillment Admin (shipped)** — paid orders atomically create an
   independent awaiting/processing/shipped record. Revision-safe row actions,
   bounded PII-free notes and tracking, audited direct-staff private reads,

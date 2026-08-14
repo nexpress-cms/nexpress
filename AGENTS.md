@@ -2,14 +2,18 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-13 (The bundled Stripe payment adapter now adds an
+**Last refreshed:** 2026-08-14 (The bundled Stripe payment adapter now adds an
 exact PaymentIntent and Payment Element flow, server-authenticated confirmation,
 raw-body `Stripe-Signature` verification, stable full-refund idempotency, and
 bounded cumulative successful-refund reconciliation over the existing
-provider-neutral Shop payment contracts. Publishable client handoff data stays
-separate from the server secret and webhook endpoint secret; partial refunds,
-disputes, subscriptions, Connect, tax, shipping, and carrier behavior remain
-outside this adapter.)
+provider-neutral Shop payment contracts. It also implements the exact
+received-return partial-refund and quote-backed merchant/customer
+return-postage settlement capabilities, using the durable Shop refund UUID,
+PII-free Stripe metadata, and a bounded refund-list preflight so reconciliation
+does not depend on Stripe's finite idempotency-key lifetime. Publishable client
+handoff data stays separate from the server secret and webhook endpoint secret;
+arbitrary partial refunds, disputes, subscriptions, Connect, tax, shipping, and
+carrier behavior remain outside this adapter.)
 
 **Earlier:** 2026-08-13 (Shop may now register one independent paired
 packing-work adapter for outbound processing fulfillments and awaiting

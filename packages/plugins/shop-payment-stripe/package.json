@@ -1,7 +1,7 @@
 {
   "name": "@nexpress/shop-payment-stripe",
   "version": "0.4.2",
-  "description": "Stripe PaymentIntent initiation, signed webhook, full-refund, and cancellation-reconciliation adapter for @nexpress/plugin-shop.",
+  "description": "Stripe PaymentIntent, signed webhook, full and received-return refund, and reconciliation adapter for @nexpress/plugin-shop.",
   "license": "MIT",
   "author": "Nexpress",
   "homepage": "https://github.com/nexpress-cms/nexpress#readme",

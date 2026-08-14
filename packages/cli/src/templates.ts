@@ -805,7 +805,7 @@ function envExampleTemplate(config: TemplateConfig): string {
     "# NP_TOSS_PAYMENTS_CLIENT_KEY=",
     "# NP_TOSS_PAYMENTS_SECRET_KEY=",
     "",
-    "# Optional Stripe PaymentIntent initiation, signed webhooks, full refunds, and reconciliation for Shop.",
+    "# Optional Stripe PaymentIntent, signed webhooks, full/received-return refunds, and reconciliation for Shop.",
     "# Install @nexpress/shop-payment-stripe and replace the default Shop instance",
     "# with one createShop({ payment: { adapter } }) factory before uncommenting.",
     "# NP_STRIPE_PUBLISHABLE_KEY=",

@@ -4,8 +4,9 @@ Stripe PaymentIntent integration for `@nexpress/plugin-shop`. This package is a
 Shop payment adapter, not a standalone NexPress plugin. Shop continues to own
 orders, inventory, payment attempts, refunds, Admin, and Doctor; this package
 owns the Stripe Payment Element handoff, server-authenticated PaymentIntent
-confirmation, raw-body webhook signature verification, idempotent full refund,
-and authoritative cumulative successful-refund snapshots.
+confirmation, raw-body webhook signature verification, idempotent full and
+received-return refunds, quote-backed return-postage settlement, and
+authoritative cumulative successful-refund snapshots.
 
 ```ts
 import { createShop } from "@nexpress/plugin-shop";
@@ -44,15 +45,24 @@ status, metadata, amount, received amount, and currency against the durable
 attempt.
 
 Full refunds post the exact Shop amount to `/v1/refunds` with the durable
-refund UUID as `Idempotency-Key`. Only a matching `succeeded` refund becomes a
-Shop provider confirmation. Pending provider refunds remain retryable, while
-closed or malformed responses fail closed. Signed refund deliveries cause a
-fresh PaymentIntent read and a bounded `limit=100` refund-list query. Unique
-successful refunds are sorted canonically and must sum to the original amount
-minus the remaining amount before Shop receives a cumulative adjustment
-snapshot.
+refund UUID as `Idempotency-Key`. Received-return partial refunds use the same
+endpoint and stable UUID after validating Shop's exact item, shipping, and tax
+allocation. `refundReturnSettlement` refunds only the positive net amount: a
+merchant absorbs the immutable quoted postage, while customer responsibility
+deducts exactly that same-currency quote without creating a separate charge.
+The partial-refund UUID, order, return, and capability kind are stored as
+PII-free Stripe metadata. Before a partial-refund POST, the adapter performs a
+bounded `limit=100` PaymentIntent refund read and reconciles an exact matching
+UUID, so a late retry remains safe even after Stripe may prune an idempotency
+record.
 
-The v1 adapter intentionally does not initiate arbitrary partial refunds,
-received-return partial refunds, disputes, subscriptions, invoices, Connect
-transfers, tax, shipping, or carrier work. Those remain separate Shop or
-provider-specific contracts.
+Only a matching `succeeded` refund becomes a Shop provider confirmation.
+Pending provider refunds remain retryable, while closed or malformed responses
+fail closed. Signed refund deliveries cause a fresh PaymentIntent read and the
+same bounded refund-list query. Unique successful refunds are sorted
+canonically and must sum to the original amount minus the remaining amount
+before Shop receives a cumulative adjustment snapshot.
+
+The adapter intentionally does not initiate repeated or non-return partial
+refunds, disputes, subscriptions, invoices, Connect transfers, tax, shipping,
+or carrier work. Those remain separate Shop or provider-specific contracts.
