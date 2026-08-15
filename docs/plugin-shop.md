@@ -11,7 +11,7 @@ fulfillment operations, optional provider-neutral carrier booking,
 revision-safe PII-free fulfillment parcel snapshots,
 optional read-only outbound and replacement packaging proposals,
 optional durable outbound and replacement packing-work intents,
-durable provider-neutral shipping-label purchase/regeneration with transient retrieval,
+durable provider-neutral shipping-label purchase/regeneration/voiding with transient retrieval,
 provider-neutral carrier pickup scheduling and cancellation,
 verified or reconciled carrier tracking events and owner-visible delivery state,
 provider-neutral full refunds with safe inventory
@@ -1051,6 +1051,7 @@ import {
   NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
   NP_SHOP_CARRIER_LABEL_ACQUISITION_RESULT_CONTRACT,
   NP_SHOP_CARRIER_LABEL_RESULT_CONTRACT,
+  NP_SHOP_CARRIER_LABEL_VOID_RESULT_CONTRACT,
   NP_SHOP_CARRIER_PICKUP_AVAILABILITY_RESULT_CONTRACT,
   NP_SHOP_CARRIER_PICKUP_CANCEL_RESULT_CONTRACT,
   NP_SHOP_CARRIER_PICKUP_RESULT_CONTRACT,
@@ -1164,6 +1165,25 @@ const carrier: NpShopCarrierAdapter = {
       operation: request.operation,
       labelReference: label.reference,
       acquiredAt: new Date().toISOString(),
+    };
+  },
+  async voidShippingLabel(request) {
+    // voidId is stable across retries and binds one exact acquired generation.
+    // Keep the shipment booking intact and return no bytes, URL, or address.
+    await voidProviderShippingLabel({
+      idempotencyKey: request.voidId,
+      bookingReference: request.bookingReference,
+      labelReference: request.labelReference,
+    });
+    return {
+      contract: NP_SHOP_CARRIER_LABEL_VOID_RESULT_CONTRACT,
+      voidId: request.voidId,
+      acquisitionId: request.acquisitionId,
+      shipmentId: request.shipmentId,
+      orderId: request.orderId,
+      generation: request.generation,
+      labelReference: request.labelReference,
+      voidedAt: new Date().toISOString(),
     };
   },
   async schedulePickup(request) {
@@ -1695,12 +1715,33 @@ acquisition and rechecks the same generation, revision, and opaque reference
 after provider I/O before delivering bytes. Read-only adapters retain their
 existing completed-booking behavior.
 
-Admin exposes a metric, health status, newest-50 acquisition table, actions on
-both booking surfaces, and an independent reconciliation action on the
-acquisition table. Doctor uses the same declarative inventory and checks
-malformed/orphan/provider/booking mismatches even after the adapter is removed.
-Commercial order cleanup deletes label acquisition state. Provider billing,
-paper size/layout, label rendering, void/refund policy, and provider-specific
+`voidShippingLabel` is an additive capability over that complete acquisition
+and transient-read pair. Direct staff may void only the exact completed current
+generation before verified tracking starts. Shop persists a separate
+shipment-keyed `np.shop-carrier-label-void-storage.v1` row with a stable void
+UUID before provider I/O. The PII-free request binds the acquisition, shipment,
+order, generation, booking reference, opaque label reference, and request time;
+the exact result repeats that identity with `voidedAt`. Retryable ambiguity
+keeps the same `pending` UUID, provider confirmation is durable before local
+`completed`, and a stored `provider-confirmed` result finishes locally even if
+the void method or carrier adapter is later removed. A closed rejection or
+malformed/conflicting result is retained for manual review.
+
+Once the current generation enters void reconciliation, transient label reads
+and concurrent regeneration are blocked. Completion invalidates only that
+label generation: the carrier booking, tracking number, pickup, and commercial
+shipment remain unchanged, while a later explicit regeneration may create
+generation N+1. Starting a new void after verified tracking is forbidden.
+Replacement shipment cancellation also waits for any current void to finish so
+two provider compensation effects cannot race.
+
+Admin exposes metrics, health statuses, newest-50 acquisition and void tables,
+actions on both booking surfaces, and independent reconciliation actions.
+Those Admin health handlers check malformed/orphan/provider/booking/acquisition
+mismatches even after the adapter is removed; Doctor verifies the declarative
+metric/status/table/action inventory. Commercial order cleanup deletes label
+acquisition and void state. Provider billing or refunds, paper size/layout,
+label rendering, and provider-specific
 protocols remain outside this contract; binary delivery still uses the
 independent bounded read route above.
 
@@ -2350,6 +2391,36 @@ After a provider success redirect, the launcher retains the exact return
 parameters until server confirmation succeeds and retries that same attempt;
 it does not prepare a second payment after an ambiguous confirmation failure.
 
+### Payment dispute evidence
+
+After authenticating an exact callback or performing an authoritative provider
+read, a payment adapter may return one
+`np.shop-payment-dispute-event.v1`. The event contains only a stable provider
+event id, stable dispute and captured-payment references, Shop order id,
+currency, positive disputed amount, one status/reason-code pair from a closed vocabulary, and
+provider occurrence/authentication timestamps. The reason is a bounded
+PII-free slug, not free text or evidence. Shop freshness-checks the
+authenticated timestamp, serializes each provider event, binds each dispute to
+the exact captured payment, and retains at most 20 disputes per order. Event
+receipts and the latest monotonic dispute state are deleted with the commercial
+order.
+
+`warning-needs-response`, `warning-under-review`, `needs-response`,
+`under-review`, and `lost` require provider reconciliation. While any exact
+retained dispute has one of those statuses, Shop blocks new fulfillment,
+full/return refund, same-item exchange, label-purchase, and pickup-scheduling
+effects. Stable label or pickup work that already reached provider I/O may still
+reconcile; verified tracking evidence remains independent. `won`,
+`warning-closed`, and `prevented` close the gate. Equal-timestamp status changes
+must advance within the same warning or ordinary lifecycle, stale updates are
+ignored, and terminal outcomes cannot reopen.
+
+This contract is diagnostic only. It never accepts liability, uploads evidence,
+refunds a charge, changes order/fulfillment state, restores inventory, or
+allocates a provider loss automatically. Admin exposes only bounded PII-free
+receipts and health; malformed, orphan, over-limit, or payment-mismatched rows
+fail closed.
+
 The bundled Stripe implementation uses PaymentIntents and the Payment Element:
 
 ```bash
@@ -2385,7 +2456,9 @@ Set `NP_STRIPE_PUBLISHABLE_KEY`, `NP_STRIPE_SECRET_KEY`, and
 `NP_STRIPE_WEBHOOK_SECRET`, using matching test/live API keys. Register
 `/api/plugins/shop/payments/webhook` in Stripe and preserve its raw request
 body. Subscribe to `payment_intent.succeeded`, `payment_intent.canceled`,
-`refund.created`, `refund.updated`, and `charge.refunded`. The adapter verifies
+`refund.created`, `refund.updated`, `charge.refunded`,
+`charge.dispute.created`, `charge.dispute.updated`, and
+`charge.dispute.closed`. The adapter verifies
 the exact `Stripe-Signature` bytes and timestamp before reading an event. A
 successful browser return sends only the PaymentIntent id to Shop; the adapter
 retrieves it with the secret key and compares its status, metadata, amount,
@@ -2410,8 +2483,9 @@ unique successful refunds must canonically sum to the original amount minus the
 remaining amount before the adapter emits a cumulative adjustment snapshot.
 Pending refunds remain retryable. More than 100 refunds, malformed totals, or
 mixed payment references fail closed. The Stripe adapter does not initiate
-repeated or non-return partial refunds, disputes, subscriptions, invoices,
-Connect transfers, or provider-specific tax and shipping behavior.
+repeated or non-return partial refunds, submit dispute evidence, accept
+liability, automate chargeback compensation, or implement subscriptions,
+invoices, Connect transfers, or provider-specific tax and shipping behavior.
 
 The bundled Korean provider implementation uses Toss Payments v2:
 
@@ -2727,8 +2801,9 @@ Existing `classic` and `storefront-full` ids cannot be replaced.
 Future transaction work should remain separable from this foundation:
 
 1. additional provider packages for Stripe or KG Inicis;
-2. authorization/capture, settlement corrections, disputes/chargebacks, and
-   initiating repeated or non-return partial-refund contracts;
+2. authorization/capture, settlement corrections, dispute evidence submission,
+   liability/chargeback automation, and initiating repeated or non-return
+   partial-refund contracts;
 3. recurring pickup, provider-specific tracking packages,
    replacement-address/carrier automation, different-item exchanges, and
    customer-service policy;

@@ -2,7 +2,32 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-14 (The bundled Stripe payment adapter now adds an
+**Last refreshed:** 2026-08-15 (Shop carrier adapters may now add one
+provider-neutral shipping-label void method on top of the existing transient
+read and durable acquisition pair. An exact current generation, stable void
+UUID, provider I/O outside transactions, durable confirmation before local
+completion, adapter-free confirmed recovery, tracking-start closure, transient
+read invalidation, replacement-cancellation ordering, Admin/Doctor diagnostics,
+commercial cleanup, scaffolds, and PostgreSQL coverage share the PII-free
+contract. Voiding never cancels the shipment or pickup, refunds carrier fees,
+or defines provider-specific label policy; a completed void only permits a new
+atomic regeneration generation.)
+
+**Earlier:** 2026-08-15 (Shop payment adapters may now return one
+authenticated, provider-neutral, PII-free payment-dispute evidence event.
+Stable provider event and dispute identities, exact captured-payment matching,
+bounded monotonic status, durable receipts/state, order-lifetime cleanup,
+Admin/Doctor diagnostics, and fail-closed fulfillment/refund/exchange provider
+effects share the contract without changing order, payment, fulfillment, or
+inventory state automatically. Won, warning-closed, or prevented evidence
+reopens those actions; needs-response, under-review, their warning forms, and
+lost evidence remain diagnostic and blocking. The bundled Stripe adapter normalizes signed
+`charge.dispute.created`, `updated`, and `closed` events only after an
+authoritative PaymentIntent read. Evidence submission, liability acceptance,
+automatic refunds or compensation, and provider-specific dispute workflows
+remain outside Shop.)
+
+**Earlier:** 2026-08-14 (The bundled Stripe payment adapter now adds an
 exact PaymentIntent and Payment Element flow, server-authenticated confirmation,
 raw-body `Stripe-Signature` verification, stable full-refund idempotency, and
 bounded cumulative successful-refund reconciliation over the existing

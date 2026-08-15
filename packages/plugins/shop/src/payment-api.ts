@@ -14,7 +14,18 @@ import {
   npIsShopPaymentAdjustmentEvent,
   npRequireFreshShopPaymentAdjustmentEvent,
 } from "./payment-adjustment-contract.js";
-import { npApplyShopPaymentAdjustmentEvent, npApplyShopPaymentEvent } from "./order-service.js";
+import {
+  NpShopPaymentDisputeConflictError,
+  NpShopPaymentDisputeContractError,
+  NpShopPaymentDisputeVerificationError,
+  npIsShopPaymentDisputeEvent,
+  npRequireFreshShopPaymentDisputeEvent,
+} from "./payment-dispute-contract.js";
+import {
+  npApplyShopPaymentAdjustmentEvent,
+  npApplyShopPaymentDisputeEvent,
+  npApplyShopPaymentEvent,
+} from "./order-service.js";
 import type { NpShopRuntime } from "./runtime.js";
 
 const noStoreHeaders = { "Cache-Control": "private, no-store" } as const;
@@ -68,6 +79,27 @@ export function createShopPaymentApiHandler(runtime: NpShopRuntime) {
           headers: noStoreHeaders,
         };
       }
+      if (npIsShopPaymentDisputeEvent(verified)) {
+        const event = npRequireFreshShopPaymentDisputeEvent(verified, receivedAt);
+        const result = await npApplyShopPaymentDisputeEvent(adapter.id, event, receivedAt);
+        return {
+          status: 200,
+          body: {
+            dispute: {
+              providerId: result.receipt.providerId,
+              eventId: result.receipt.event.eventId,
+              disputeReference: result.receipt.event.disputeReference,
+              status: result.receipt.event.status,
+              outcome: result.receipt.outcome,
+              orderStatus: result.receipt.orderStatus,
+              orderRevision: result.receipt.orderRevision,
+              processedAt: result.receipt.processedAt,
+            },
+            duplicate: result.duplicate,
+          },
+          headers: noStoreHeaders,
+        };
+      }
       const event = npRequireFreshShopPaymentEvent(verified, receivedAt);
       const result = await npApplyShopPaymentEvent(runtime, adapter.id, event, receivedAt);
       return {
@@ -100,6 +132,13 @@ export function createShopPaymentApiHandler(runtime: NpShopRuntime) {
           headers: noStoreHeaders,
         };
       }
+      if (error instanceof NpShopPaymentDisputeVerificationError) {
+        return {
+          status: 401,
+          body: { error: "payment_dispute_verification_failed", message: error.message },
+          headers: noStoreHeaders,
+        };
+      }
       if (error instanceof NpShopPaymentConflictError) {
         return {
           status: 409,
@@ -114,10 +153,24 @@ export function createShopPaymentApiHandler(runtime: NpShopRuntime) {
           headers: noStoreHeaders,
         };
       }
+      if (error instanceof NpShopPaymentDisputeConflictError) {
+        return {
+          status: 409,
+          body: { error: error.code, message: error.message },
+          headers: noStoreHeaders,
+        };
+      }
       if (error instanceof NpShopPaymentAdjustmentContractError) {
         return {
           status: 400,
           body: { error: "invalid_payment_adjustment", message: error.issues.join(" ") },
+          headers: noStoreHeaders,
+        };
+      }
+      if (error instanceof NpShopPaymentDisputeContractError) {
+        return {
+          status: 400,
+          body: { error: "invalid_payment_dispute", message: error.issues.join(" ") },
           headers: noStoreHeaders,
         };
       }

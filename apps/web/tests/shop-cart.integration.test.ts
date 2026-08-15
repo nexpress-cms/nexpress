@@ -27,6 +27,7 @@ import {
   type NpShopExchangeCarrierCancelRequest,
   type NpShopCarrierLabelAcquisitionRequest,
   type NpShopCarrierLabelRequest,
+  type NpShopCarrierLabelVoidRequest,
   type NpShopCarrierParcelBookingRequest,
   type NpShopCarrierPickupAvailabilityRequest,
   type NpShopCarrierPickupCancelRequest,
@@ -3762,6 +3763,246 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     });
   });
 
+  it("deduplicates payment dispute evidence and blocks commercial actions until provider resolution", async () => {
+    const ids = {
+      intentId: "1d3e4567-e89b-42d3-a456-426614174000",
+      draftId: "2d3e4567-e89b-42d3-a456-426614174000",
+      orderId: "3d3e4567-e89b-42d3-a456-426614174000",
+    };
+    await createPendingOrder(ids, "dispute-private@example.com");
+    const refundPayment = vi.fn((input) => ({
+      contract: "np.shop-refund-result.v1" as const,
+      refundId: input.refundId,
+      orderId: input.orderId,
+      paymentReference: input.paymentReference,
+      refundReference: "refund_must_not_run_during_dispute",
+      currency: input.currency,
+      amountMinor: input.amountMinor,
+      refundedAt: new Date().toISOString(),
+    }));
+    const disputeShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+          refundPayment,
+        },
+      },
+    });
+    await expect(
+      payPendingOrder(disputeShop, {
+        orderId: ids.orderId,
+        eventId: "evt_dispute_paid_1",
+        paymentReference: "pay_dispute_1",
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    const openedAt = new Date(Date.now() + 10).toISOString();
+    const opened = {
+      contract: "np.shop-payment-dispute-event.v1",
+      eventId: "evt_dispute_opened_1",
+      disputeReference: "dp_dispute_1",
+      orderId: ids.orderId,
+      paymentReference: "pay_dispute_1",
+      currency: "KRW",
+      amountMinor: 10_000,
+      status: "needs-response",
+      reasonCode: "fraudulent",
+      occurredAt: openedAt,
+      signedAt: openedAt,
+    } as const;
+    const send = (value: unknown) =>
+      configuredShopCall(disputeShop, "POST", "/payments/webhook", {
+        rawBody: new TextEncoder().encode(JSON.stringify(value)),
+      });
+
+    await expect(send(opened)).resolves.toMatchObject({
+      status: 200,
+      body: {
+        duplicate: false,
+        dispute: {
+          disputeReference: "dp_dispute_1",
+          status: "needs-response",
+          outcome: "opened",
+        },
+      },
+    });
+    await expect(send(opened)).resolves.toMatchObject({
+      status: 200,
+      body: { duplicate: true, dispute: { outcome: "opened" } },
+    });
+    await expect(send({ ...opened, amountMinor: 10_001 })).resolves.toMatchObject({
+      status: 409,
+      body: { error: "payment_dispute_conflict" },
+    });
+
+    const staff = await seedUser({ email: "dispute-operator@example.com" });
+    const context = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    const db = await getTestDb();
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.processFulfillment?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 1 },
+            values: { operatorNote: "blocked by dispute" },
+          },
+          context,
+        ),
+      ),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("dispute") });
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.refundOrder?.handler(
+          {
+            row: { id: ids.orderId, revision: 2 },
+            values: { reason: "blocked by dispute" },
+          },
+          context,
+        ),
+      ),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("dispute") });
+    expect(refundPayment).not.toHaveBeenCalled();
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.paymentDisputeHealth?.handler(undefined, {} as never),
+      ),
+    ).resolves.toMatchObject({ ok: true, data: { level: "warn" } });
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.recentPaymentDisputes?.handler(undefined, {} as never),
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      data: {
+        rows: [
+          {
+            provider: "test-pay",
+            orderId: ids.orderId,
+            status: "needs-response",
+            reason: "fraudulent",
+          },
+        ],
+      },
+    });
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.recentOrders?.handler(undefined, {} as never),
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { rows: [{ id: ids.orderId, refundEligible: false }] },
+    });
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.recentFulfillments?.handler(undefined, {} as never),
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { rows: [{ id: ids.orderId, processEligible: false }] },
+    });
+
+    const [storedDisputeRow] = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          like(npPluginStorage.key, "payment-dispute:test-pay:%"),
+        ),
+      );
+    expect(storedDisputeRow).toBeDefined();
+    await db
+      .update(npPluginStorage)
+      .set({
+        value: {
+          ...(storedDisputeRow?.value as Record<string, unknown>),
+          paymentReference: "pay_wrong_but_well_formed",
+        },
+      })
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          eq(npPluginStorage.key, storedDisputeRow?.key ?? "missing"),
+        ),
+      );
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.paymentDisputeHealth?.handler(undefined, {} as never),
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { level: "error", message: expect.stringContaining("source-mismatched") },
+    });
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.recentOrders?.handler(undefined, {} as never),
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { rows: [{ id: ids.orderId, refundEligible: false }] },
+    });
+    await db
+      .update(npPluginStorage)
+      .set({ value: storedDisputeRow?.value })
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          eq(npPluginStorage.key, storedDisputeRow?.key ?? "missing"),
+        ),
+      );
+
+    await expect(
+      send({
+        ...opened,
+        eventId: "evt_dispute_won_1",
+        status: "won",
+      }),
+    ).resolves.toMatchObject({
+      status: 200,
+      body: { duplicate: false, dispute: { status: "won", outcome: "updated" } },
+    });
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.paymentDisputeHealth?.handler(undefined, {} as never),
+      ),
+    ).resolves.toMatchObject({ ok: true, data: { level: "ok" } });
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.processFulfillment?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 1 },
+            values: { operatorNote: "provider dispute won" },
+          },
+          context,
+        ),
+      ),
+    ).resolves.toMatchObject({ ok: true, data: expect.stringContaining("revision 2") });
+
+    const disputeRows = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          sql`${npPluginStorage.key} like 'payment-dispute%'`,
+        ),
+      );
+    expect(disputeRows).toHaveLength(3);
+    expect(JSON.stringify(disputeRows)).not.toContain("dispute-private@example.com");
+    expect(
+      disputeRows.find((row) => row.key.startsWith("payment-dispute:test-pay:"))?.value,
+    ).toMatchObject({
+      status: "won",
+      latestEventId: "evt_dispute_won_1",
+    });
+  });
+
   it("books one idempotent carrier shipment and atomically redacts its private destination", async () => {
     const ids = {
       intentId: "a13e4567-e89b-42d3-a456-426614174000",
@@ -3871,6 +4112,35 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         acquiredAt: new Date().toISOString(),
       };
       acquiredLabelResults.set(request.acquisitionId, result);
+      return result;
+    });
+    const voidedLabelResults = new Map<
+      string,
+      {
+        contract: "np.shop-carrier-label-void-result.v1";
+        voidId: string;
+        acquisitionId: string;
+        shipmentId: string;
+        orderId: string;
+        generation: number;
+        labelReference: string;
+        voidedAt: string;
+      }
+    >();
+    const voidShippingLabel = vi.fn((request: NpShopCarrierLabelVoidRequest) => {
+      const existing = voidedLabelResults.get(request.voidId);
+      if (existing) return existing;
+      const result = {
+        contract: "np.shop-carrier-label-void-result.v1" as const,
+        voidId: request.voidId,
+        acquisitionId: request.acquisitionId,
+        shipmentId: request.shipmentId,
+        orderId: request.orderId,
+        generation: request.generation,
+        labelReference: request.labelReference,
+        voidedAt: request.requestedAt,
+      };
+      voidedLabelResults.set(request.voidId, result);
       return result;
     });
     let pickupProviderAttempts = 0;
@@ -3986,6 +4256,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
           bookShipment: () => Promise.reject(new Error("legacy booking must not be called")),
           bookShipmentWithParcels,
           acquireShippingLabel,
+          voidShippingLabel,
           readShippingLabel,
           readTracking,
           listPickupWindows,
@@ -4415,6 +4686,213 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(JSON.stringify(readShippingLabel.mock.calls[0]?.[0])).not.toContain(
       "carrier-private@example.com",
     );
+    const regeneratedLabelState = regeneratedLabel?.value as
+      { id?: unknown; revision?: unknown; generation?: unknown } | undefined;
+    if (
+      typeof regeneratedLabelState?.id !== "string" ||
+      typeof regeneratedLabelState.revision !== "number" ||
+      typeof regeneratedLabelState.generation !== "number"
+    ) {
+      throw new Error("Missing regenerated carrier label state.");
+    }
+    const voidAction = (
+      acquisitionId: string,
+      generation: number,
+      expectedAcquisitionRevision: number,
+      expectedVoidRevision: number,
+    ) => ({
+      row: {
+        id: ids.orderId,
+        shipmentId,
+        target: "outbound",
+        exchangeId: null,
+        acquisitionId,
+        generation,
+        expectedAcquisitionRevision,
+        expectedVoidRevision,
+      },
+      values: {},
+    });
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.voidCarrierShippingLabel?.handler(
+          voidAction(
+            regeneratedLabelState.id,
+            regeneratedLabelState.generation,
+            regeneratedLabelState.revision,
+            0,
+          ),
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("generation 2") });
+    expect(voidShippingLabel).toHaveBeenCalledTimes(1);
+    expect(voidShippingLabel.mock.calls[0]?.[0]).toMatchObject({
+      contract: "np.shop-carrier-label-void-request.v1",
+      voidId: expect.any(String),
+      acquisitionId: regeneratedLabelState.id,
+      shipmentId,
+      orderId: ids.orderId,
+      generation: 2,
+      bookingReference: "booking_transaction_1",
+      labelReference: "label_2",
+      requestedAt: expect.any(String),
+    });
+    expect(JSON.stringify(voidShippingLabel.mock.calls[0]?.[0])).not.toContain(
+      "carrier-private@example.com",
+    );
+    const readLabelVoid = async () =>
+      (
+        await db
+          .select({ value: npPluginStorage.value })
+          .from(npPluginStorage)
+          .where(eq(npPluginStorage.key, `carrier-label-void:${shipmentId}`))
+      )[0]?.value as
+        | {
+            id: string;
+            acquisitionId: string;
+            status: string;
+            revision: number;
+            generation: number;
+            labelReference: string;
+          }
+        | undefined;
+    expect(await readLabelVoid()).toMatchObject({
+      acquisitionId: regeneratedLabelState.id,
+      status: "completed",
+      revision: 3,
+      generation: 2,
+      labelReference: "label_2",
+    });
+    await expect(
+      configuredShopCall(carrierShop, "GET", "/carrier/shipping-label", {
+        query: { orderId: ids.orderId, shipmentId },
+        user: {
+          id: staff.userId,
+          email: "carrier-operator@example.com",
+          role: "admin",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      statusCode: 409,
+      details: { code: "carrier_label_not_available" },
+    });
+    expect(readShippingLabel).toHaveBeenCalledTimes(1);
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.acquireCarrierShippingLabel?.handler(
+          {
+            ...initialLabelAction,
+            row: { ...initialLabelAction.row, expectedRevision: 6 },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("generation 3") });
+    expect(acquireShippingLabel).toHaveBeenCalledTimes(5);
+    const [generationThreeLabel] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `carrier-label-acquisition:${shipmentId}`));
+    expect(generationThreeLabel?.value).toMatchObject({
+      status: "completed",
+      revision: 9,
+      generation: 3,
+      replacesLabelReference: "label_2",
+      labelReference: "label_3",
+    });
+    const generationThree = generationThreeLabel?.value as
+      { id?: unknown; revision?: unknown; generation?: unknown } | undefined;
+    if (
+      typeof generationThree?.id !== "string" ||
+      typeof generationThree.revision !== "number" ||
+      typeof generationThree.generation !== "number"
+    ) {
+      throw new Error("Missing third carrier label generation.");
+    }
+    const triggerName = "np_test_fail_label_void_complete_audit";
+    const functionName = "np_test_fail_label_void_complete_audit_fn";
+    await db.execute(sql.raw(`drop trigger if exists ${triggerName} on np_audit_events`));
+    await db.execute(sql.raw(`drop function if exists ${functionName}()`));
+    await db.execute(
+      sql.raw(`
+        create function ${functionName}() returns trigger language plpgsql as $$
+        begin
+          if new.action = 'shop.carrier.label.void.complete' then
+            raise exception 'transient label void completion audit failure';
+          end if;
+          return new;
+        end
+        $$
+      `),
+    );
+    await db.execute(
+      sql.raw(`
+        create trigger ${triggerName}
+        before insert on np_audit_events
+        for each row execute function ${functionName}()
+      `),
+    );
+    try {
+      expect(
+        await withCurrentSite("default", () =>
+          carrierShop.plugin.actions?.voidCarrierShippingLabel?.handler(
+            voidAction(generationThree.id, generationThree.generation, generationThree.revision, 3),
+            actionContext,
+          ),
+        ),
+      ).toMatchObject({ ok: false });
+    } finally {
+      await db.execute(sql.raw(`drop trigger if exists ${triggerName} on np_audit_events`));
+      await db.execute(sql.raw(`drop function if exists ${functionName}()`));
+    }
+    expect(voidShippingLabel).toHaveBeenCalledTimes(2);
+    expect(await readLabelVoid()).toMatchObject({
+      acquisitionId: generationThree.id,
+      status: "provider-confirmed",
+      revision: 5,
+      generation: 3,
+      labelReference: "label_3",
+    });
+    const localOnlyCarrierShop = createShop({
+      carrier: {
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          readShippingLabel,
+          acquireShippingLabel,
+        },
+      },
+    });
+    expect(localOnlyCarrierShop.runtime.carrierLabelVoidAdapter).toBeNull();
+    expect(
+      await withCurrentSite("default", () =>
+        localOnlyCarrierShop.plugin.actions?.voidCarrierShippingLabel?.handler(
+          voidAction(generationThree.id, generationThree.generation, generationThree.revision, 5),
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("generation 3") });
+    expect(voidShippingLabel).toHaveBeenCalledTimes(2);
+    expect(await readLabelVoid()).toMatchObject({ status: "completed", revision: 6 });
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.acquireCarrierShippingLabel?.handler(
+          {
+            ...initialLabelAction,
+            row: { ...initialLabelAction.row, expectedRevision: 9 },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("generation 4") });
+    expect(acquireShippingLabel).toHaveBeenCalledTimes(6);
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.carrierLabelVoidHealth?.handler(undefined, {} as never),
+      ),
+    ).toMatchObject({ ok: true, data: { level: "ok" } });
     const pickupAvailabilityAction = {
       row: {
         id: ids.orderId,
@@ -4728,13 +5206,35 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
         carrierShop.plugin.actions?.acquireCarrierShippingLabel?.handler(
           {
             ...initialLabelAction,
-            row: { ...initialLabelAction.row, expectedRevision: 6 },
+            row: { ...initialLabelAction.row, expectedRevision: 12 },
           },
           actionContext,
         ),
       ),
     ).toMatchObject({ ok: false, error: expect.stringContaining("tracking state blocks") });
-    expect(acquireShippingLabel).toHaveBeenCalledTimes(4);
+    expect(acquireShippingLabel).toHaveBeenCalledTimes(6);
+    const [generationFourLabel] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `carrier-label-acquisition:${shipmentId}`));
+    const generationFour = generationFourLabel?.value as
+      { id?: unknown; revision?: unknown; generation?: unknown } | undefined;
+    if (
+      typeof generationFour?.id !== "string" ||
+      typeof generationFour.revision !== "number" ||
+      typeof generationFour.generation !== "number"
+    ) {
+      throw new Error("Missing fourth carrier label generation.");
+    }
+    expect(
+      await withCurrentSite("default", () =>
+        carrierShop.plugin.actions?.voidCarrierShippingLabel?.handler(
+          voidAction(generationFour.id, generationFour.generation, generationFour.revision, 6),
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("tracking state blocks") });
+    expect(voidShippingLabel).toHaveBeenCalledTimes(2);
     await withCurrentSite("default", async () => {
       await carrierShop.plugin.scheduled
         ?.find((task) => task.id === "reconcile-carrier-tracking")
@@ -7694,6 +8194,7 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     const replacementPickupRequests: NpShopCarrierPickupRequest[] = [];
     const replacementPickupCancellationRequests: NpShopCarrierPickupCancelRequest[] = [];
     const replacementLabelAcquisitionRequests: NpShopCarrierLabelAcquisitionRequest[] = [];
+    const replacementLabelVoidRequests: NpShopCarrierLabelVoidRequest[] = [];
     const readExchangeTracking = vi.fn((request: NpShopTrackingPollRequest) => ({
       contract: "np.shop-tracking-poll-result.v1" as const,
       shipmentId: request.shipmentId,
@@ -7794,6 +8295,26 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
               operation: request.operation,
               labelReference: "replacement_label_1",
               acquiredAt: request.requestedAt,
+            };
+          },
+          voidShippingLabel: (request) => {
+            replacementLabelVoidRequests.push(request);
+            if (replacementLabelVoidRequests.length === 1) {
+              throw new NpShopCarrierProviderError(
+                "replacement-label-void-timeout",
+                "private replacement label void detail",
+                { retryable: true },
+              );
+            }
+            return {
+              contract: "np.shop-carrier-label-void-result.v1",
+              voidId: request.voidId,
+              acquisitionId: request.acquisitionId,
+              shipmentId: request.shipmentId,
+              orderId: request.orderId,
+              generation: request.generation,
+              labelReference: request.labelReference,
+              voidedAt: request.requestedAt,
             };
           },
           readShippingLabel: readExchangeShippingLabel,
@@ -8492,6 +9013,96 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     expect(JSON.stringify(readExchangeShippingLabel.mock.calls[0]?.[0])).not.toContain(
       replacementDestination.addressLine1,
     );
+    const replacementLabelState = replacementLabelAcquisition?.value as
+      { id?: unknown; revision?: unknown; generation?: unknown } | undefined;
+    if (
+      typeof replacementLabelState?.id !== "string" ||
+      typeof replacementLabelState.revision !== "number" ||
+      typeof replacementLabelState.generation !== "number"
+    ) {
+      throw new Error("Missing replacement carrier label state.");
+    }
+    const replacementVoidAction = {
+      row: {
+        id: ids.orderId,
+        shipmentId: exchangeBookingRow.bookingId,
+        target: "replacement" as const,
+        exchangeId: processingOrder.exchange.id,
+        acquisitionId: replacementLabelState.id,
+        generation: replacementLabelState.generation,
+        expectedAcquisitionRevision: replacementLabelState.revision,
+        expectedVoidRevision: 0,
+      },
+      values: {},
+    };
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.voidCarrierShippingLabel?.handler(
+          replacementVoidAction,
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("temporarily unavailable") });
+    expect(replacementLabelVoidRequests).toHaveLength(1);
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.cancelExchangeCarrier?.handler(
+          {
+            row: {
+              id: ids.orderId,
+              exchangeId: processingOrder.exchange.id,
+              exchangeRevision: processingOrder.exchange.revision,
+              orderRevision: processingOrder.revision,
+              bookingId: exchangeBookingRow.bookingId,
+              bookingRevision: exchangeBookingRow.bookingRevision,
+            },
+            values: { operatorNote: "Blocked by ambiguous label void" },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: false, error: expect.stringContaining("label void") });
+    expect(exchangeCancellationRequests).toHaveLength(0);
+    expect(
+      await withCurrentSite("default", () =>
+        exchangeCarrierShop.plugin.actions?.voidCarrierShippingLabel?.handler(
+          {
+            ...replacementVoidAction,
+            row: { ...replacementVoidAction.row, expectedVoidRevision: 1 },
+          },
+          actionContext,
+        ),
+      ),
+    ).toMatchObject({ ok: true, data: expect.stringContaining("generation 1") });
+    expect(replacementLabelVoidRequests).toHaveLength(2);
+    expect(replacementLabelVoidRequests[0]).toEqual(replacementLabelVoidRequests[1]);
+    const [replacementLabelVoid] = await db
+      .select({ value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(eq(npPluginStorage.key, `carrier-label-void:${exchangeBookingRow.bookingId}`));
+    expect(replacementLabelVoid?.value).toMatchObject({
+      target: "replacement",
+      exchangeId: processingOrder.exchange.id,
+      status: "completed",
+      revision: 3,
+      generation: 1,
+      labelReference: "replacement_label_1",
+    });
+    await expect(
+      configuredShopCall(exchangeCarrierShop, "GET", "/carrier/shipping-label", {
+        query: { orderId: ids.orderId, shipmentId: exchangeBookingRow.bookingId },
+        user: {
+          id: staff.userId,
+          email: "exchange-operator@example.com",
+          role: "admin",
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CONFLICT",
+      statusCode: 409,
+      details: { code: "carrier_label_not_available" },
+    });
+    expect(readExchangeShippingLabel).toHaveBeenCalledTimes(1);
     const replacementReadyAt = new Date(Date.now() + 60 * 60 * 1_000);
     replacementReadyAt.setMilliseconds(0);
     const replacementCloseAt = new Date(replacementReadyAt.getTime() + 3 * 60 * 60 * 1_000);

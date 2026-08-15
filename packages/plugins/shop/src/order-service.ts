@@ -132,6 +132,27 @@ import {
   npReadStoredShopPaymentAdjustmentReceipt,
 } from "./payment-adjustment-service.js";
 import {
+  NP_SHOP_PAYMENT_DISPUTE_RECEIPT_CONTRACT,
+  NP_SHOP_PAYMENT_DISPUTE_STORAGE_CONTRACT,
+  NpShopPaymentDisputeConflictError,
+  npShopPaymentDisputeEventDigest,
+  npShopPaymentDisputeLimits,
+  type NpShopStoredPaymentDispute,
+  type NpShopStoredPaymentDisputeReceipt,
+  type NpShopPaymentDisputeStatus,
+  type NpShopVerifiedPaymentDisputeEvent,
+} from "./payment-dispute-contract.js";
+import {
+  npPersistShopPaymentDispute,
+  npPersistShopPaymentDisputeReceipt,
+  npReadStoredShopPaymentDispute,
+  npReadStoredShopPaymentDisputeReceipt,
+  npReadStoredShopPaymentDisputesForOrder,
+  npShopPaymentDisputeAllowsAdminActions,
+  npShopPaymentDisputesMatchOrder,
+  npShopPaymentDisputesRequireReview,
+} from "./payment-dispute-service.js";
+import {
   NP_SHOP_ORDER_CONTRACT,
   NP_SHOP_ORDER_FULFILLMENT_PRIVATE_CONTRACT,
   NP_SHOP_ORDER_PRIVATE_CONTRACT,
@@ -240,6 +261,13 @@ import {
   npShopCarrierLabelAcquisitionStorageKey,
 } from "./label-acquisition-service.js";
 import type { NpShopStoredCarrierLabelAcquisition } from "./label-acquisition-contract.js";
+import {
+  npReadStoredShopCarrierLabelVoid,
+  npRequireStoredShopCarrierLabelVoidAtKey,
+  npShopCarrierLabelVoidIsCompletedPredecessor,
+  npShopCarrierLabelVoidStorageKey,
+  npShopCarrierLabelVoidMatchesAcquisition,
+} from "./label-void-storage.js";
 import {
   npReadShopReturnLogisticsForOrder,
   npShopReturnLogisticsStorageKey,
@@ -463,6 +491,11 @@ export interface NpShopPaymentApplyResult {
 
 export interface NpShopPaymentAdjustmentApplyResult {
   receipt: NpShopStoredPaymentAdjustmentReceipt;
+  duplicate: boolean;
+}
+
+export interface NpShopPaymentDisputeApplyResult {
+  receipt: NpShopStoredPaymentDisputeReceipt;
   duplicate: boolean;
 }
 
@@ -1195,6 +1228,17 @@ async function lockPaymentAdjustmentEvent(
 ): Promise<void> {
   await tx.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-payment-adjustment:${siteId}:${providerId}:${createHash("sha256").update(eventId).digest("hex")}`}, 0))`,
+  );
+}
+
+async function lockPaymentDisputeEvent(
+  tx: NpShopTransaction,
+  siteId: string,
+  providerId: string,
+  eventId: string,
+): Promise<void> {
+  await tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`np:shop-payment-dispute:${siteId}:${providerId}:${createHash("sha256").update(eventId).digest("hex")}`}, 0))`,
   );
 }
 
@@ -2702,6 +2746,12 @@ export async function npApplyShopPaymentAdjustmentEvent(
       carrierBooking,
       adjustmentParcels,
     );
+    const paymentDisputeUnsafe = await paymentDisputeRequiresReviewForOrder(
+      tx,
+      siteId,
+      order,
+      true,
+    );
     const matchesFullRefund =
       fullRefund !== null &&
       fullRefund.status !== "manual-review" &&
@@ -2733,6 +2783,7 @@ export async function npApplyShopPaymentAdjustmentEvent(
       fullRefund !== null ||
       partialRefund !== null ||
       exchange !== null ||
+      paymentDisputeUnsafe ||
       !packingWorkSafeForAdjustment ||
       (carrierBooking !== null && carrierBooking.status !== "completed") ||
       (event.remainingAmountMinor === 0 && event.cancellations.length !== 1)
@@ -2930,6 +2981,234 @@ export async function npApplyShopPaymentAdjustmentEvent(
   });
 }
 
+export async function npApplyShopPaymentDisputeEvent(
+  providerId: string,
+  event: NpShopVerifiedPaymentDisputeEvent,
+  receivedAt: Date,
+): Promise<NpShopPaymentDisputeApplyResult> {
+  npRequireShopPaymentProviderId(providerId);
+  const siteId = await requireSiteId();
+  const eventDigest = npShopPaymentDisputeEventDigest(event);
+  return getDb().transaction(async (tx) => {
+    await lockPaymentDisputeEvent(tx, siteId, providerId, event.eventId);
+    const existingReceipt = await npReadStoredShopPaymentDisputeReceipt(
+      tx,
+      siteId,
+      providerId,
+      event.eventId,
+    );
+    if (existingReceipt) {
+      if (existingReceipt.eventDigest !== eventDigest) {
+        throw new NpShopPaymentDisputeConflictError(
+          "payment_dispute_conflict",
+          "The provider dispute event id was already used for different evidence.",
+        );
+      }
+      return { receipt: existingReceipt, duplicate: true };
+    }
+
+    await lockOrderLookup(tx, siteId, event.orderId);
+    const lookup = await readOrderLookupForUpdate(tx, siteId, event.orderId);
+    if (!lookup) {
+      throw new NpShopPaymentDisputeConflictError(
+        "payment_dispute_order_not_found",
+        "The verified dispute references no Shop order in this site.",
+      );
+    }
+    await lockOrder(tx, siteId, lookup.ownerSegment, event.orderId);
+    const order = await readStoredOrderForUpdate(tx, siteId, lookup.ownerSegment, event.orderId);
+    if (!order) {
+      throw new NpShopPaymentDisputeConflictError(
+        "payment_dispute_order_not_found",
+        "The verified dispute references a missing Shop order.",
+      );
+    }
+    if (new Date(order.purgeAt) <= receivedAt) {
+      throw new NpShopPaymentDisputeConflictError(
+        "payment_dispute_order_expired",
+        "The verified dispute references an expired Shop order.",
+      );
+    }
+    if (
+      (order.status !== "paid" && order.status !== "refunded") ||
+      order.paymentProvider !== providerId ||
+      order.paymentReference !== event.paymentReference ||
+      order.currency !== event.currency ||
+      event.amountMinor > order.totalMinor ||
+      order.paymentResolvedAt === null ||
+      new Date(event.occurredAt) >= new Date(order.purgeAt)
+    ) {
+      throw new NpShopPaymentDisputeConflictError(
+        "payment_dispute_payment_mismatch",
+        "The dispute does not match one captured Shop payment and its immutable amount.",
+      );
+    }
+
+    const disputes = await npReadStoredShopPaymentDisputesForOrder(tx, siteId, order.id, true);
+    if (!npShopPaymentDisputesMatchOrder(disputes, order)) {
+      throw new NpShopPaymentDisputeConflictError(
+        "payment_dispute_conflict",
+        "Stored dispute evidence no longer matches the immutable Shop payment.",
+      );
+    }
+    const current = await npReadStoredShopPaymentDispute(
+      tx,
+      siteId,
+      providerId,
+      event.disputeReference,
+      true,
+    );
+    if (!current && disputes.length >= npShopPaymentDisputeLimits.maximumPerOrder) {
+      throw new NpShopPaymentDisputeConflictError(
+        "payment_dispute_limit",
+        "This order already retains the maximum bounded dispute evidence.",
+      );
+    }
+    if (
+      current &&
+      (current.orderId !== event.orderId ||
+        current.paymentReference !== event.paymentReference ||
+        current.currency !== event.currency ||
+        current.amountMinor !== event.amountMinor ||
+        current.purgeAt !== order.purgeAt)
+    ) {
+      throw new NpShopPaymentDisputeConflictError(
+        "payment_dispute_conflict",
+        "The provider dispute reference changed its immutable payment identity.",
+      );
+    }
+
+    let outcome: NpShopStoredPaymentDisputeReceipt["outcome"];
+    let nextState: NpShopStoredPaymentDispute | null = current;
+    if (!current) {
+      outcome = "opened";
+      nextState = {
+        contract: NP_SHOP_PAYMENT_DISPUTE_STORAGE_CONTRACT,
+        providerId,
+        disputeReference: event.disputeReference,
+        orderId: event.orderId,
+        paymentReference: event.paymentReference,
+        currency: event.currency,
+        amountMinor: event.amountMinor,
+        status: event.status,
+        reasonCode: event.reasonCode,
+        latestEventId: event.eventId,
+        openedAt: event.occurredAt,
+        updatedAt: event.occurredAt,
+        purgeAt: order.purgeAt,
+      };
+    } else {
+      const eventTime = new Date(event.occurredAt).getTime();
+      const currentTime = new Date(current.updatedAt).getTime();
+      const currentTerminal = ["won", "lost", "warning-closed", "prevented"].includes(
+        current.status,
+      );
+      const statusRank = (status: NpShopPaymentDisputeStatus): number => {
+        if (status === "needs-response" || status === "warning-needs-response") return 0;
+        if (status === "under-review" || status === "warning-under-review") return 1;
+        return 2;
+      };
+      const statusFamily = (status: NpShopPaymentDisputeStatus): "warning" | "standard" =>
+        status.startsWith("warning-") ? "warning" : "standard";
+      if (eventTime < currentTime) {
+        outcome = "ignored-stale";
+      } else if (eventTime === currentTime) {
+        if (current.status === event.status && current.reasonCode === event.reasonCode) {
+          outcome = currentTerminal ? "ignored-terminal" : "ignored-stale";
+        } else if (
+          !currentTerminal &&
+          statusFamily(current.status) === statusFamily(event.status) &&
+          statusRank(event.status) > statusRank(current.status)
+        ) {
+          outcome = "updated";
+          nextState = {
+            ...current,
+            status: event.status,
+            reasonCode: event.reasonCode,
+            latestEventId: event.eventId,
+          };
+        } else if (
+          !currentTerminal &&
+          statusFamily(current.status) === statusFamily(event.status) &&
+          statusRank(event.status) < statusRank(current.status)
+        ) {
+          outcome = "ignored-stale";
+        } else {
+          throw new NpShopPaymentDisputeConflictError(
+            "payment_dispute_conflict",
+            "Two dispute states share one provider timestamp but disagree.",
+          );
+        }
+      } else if (currentTerminal) {
+        if (current.status !== event.status || current.reasonCode !== event.reasonCode) {
+          throw new NpShopPaymentDisputeConflictError(
+            "payment_dispute_conflict",
+            "A terminal dispute cannot reopen or change its provider outcome.",
+          );
+        }
+        outcome = "ignored-terminal";
+      } else {
+        outcome = "updated";
+        nextState = {
+          ...current,
+          status: event.status,
+          reasonCode: event.reasonCode,
+          latestEventId: event.eventId,
+          updatedAt: event.occurredAt,
+        };
+      }
+    }
+
+    if (nextState !== current && nextState !== null) {
+      await npPersistShopPaymentDispute(tx, siteId, nextState);
+      await tx.insert(npAuditEvents).values({
+        actorKind: "system",
+        actorUserId: null,
+        actorMemberId: null,
+        action: "shop.payment-dispute.record",
+        targetType: "shop-order",
+        targetId: order.id,
+        payload: {
+          providerId,
+          disputeReference: event.disputeReference,
+          status: event.status,
+          reasonCode: event.reasonCode,
+          amountMinor: event.amountMinor,
+        },
+        siteId,
+      });
+    }
+    const receipt: NpShopStoredPaymentDisputeReceipt = {
+      contract: NP_SHOP_PAYMENT_DISPUTE_RECEIPT_CONTRACT,
+      providerId,
+      event,
+      eventDigest,
+      outcome,
+      orderStatus: order.status,
+      orderRevision: order.revision,
+      processedAt: receivedAt.toISOString(),
+      purgeAt: order.purgeAt,
+    };
+    await npPersistShopPaymentDisputeReceipt(tx, siteId, receipt);
+    return { receipt, duplicate: false };
+  });
+}
+
+async function paymentDisputeRequiresReviewForOrder(
+  db: ReturnType<typeof getDb> | NpShopTransaction,
+  siteId: string,
+  order: NpShopStoredOrder,
+  forUpdate = false,
+): Promise<boolean> {
+  const disputes = await npReadStoredShopPaymentDisputesForOrder(db, siteId, order.id, forUpdate);
+  if (!npShopPaymentDisputesMatchOrder(disputes, order)) {
+    throw new NpShopOrderContractError("Shop payment dispute does not match its order", [
+      "Dispute provider, payment, amount, and retention must match the commercial order.",
+    ]);
+  }
+  return npShopPaymentDisputesRequireReview(disputes);
+}
+
 function isPackingPurgeSourceContractError(error: unknown): boolean {
   return (
     error instanceof NpShopPackingWorkContractError ||
@@ -3094,6 +3373,16 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "carrier-label-void:%"),
+        sql`${npPluginStorage.value}->>'orderId' = ${order.id}`,
+      ),
+    );
+  await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, "carrier-pickup-availability:%"),
         sql`${npPluginStorage.value}->>'orderId' = ${order.id}`,
       ),
@@ -3168,6 +3457,26 @@ async function purgeOrder(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, "payment-adjustment-event:%"),
+        sql`${npPluginStorage.value}->'event'->>'orderId' = ${order.id}`,
+      ),
+    );
+  await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "payment-dispute:%"),
+        sql`${npPluginStorage.value}->>'orderId' = ${order.id}`,
+      ),
+    );
+  await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "payment-dispute-event:%"),
         sql`${npPluginStorage.value}->'event'->>'orderId' = ${order.id}`,
       ),
     );
@@ -4215,6 +4524,7 @@ export async function npListRecentShopOrders(): Promise<{
         const carrierBooking = await readStoredCarrierBooking(db, siteId, order.id);
         const parcelSnapshot = await readStoredFulfillmentParcels(db, siteId, order.id);
         const packingWork = await readAdminPackingWork(db, siteId, "outbound", order.id);
+        const paymentDisputeSafe = await npShopPaymentDisputeAllowsAdminActions(db, siteId, order);
         return {
           id: order.id,
           revision: order.revision,
@@ -4228,6 +4538,7 @@ export async function npListRecentShopOrders(): Promise<{
           refund: refund?.status ?? "not-requested",
           refundEligible:
             order.status === "paid" &&
+            paymentDisputeSafe &&
             packingWork !== "invalid" &&
             (refund !== null ||
               ((carrierBooking === null || carrierBooking.status === "completed") &&
@@ -4470,11 +4781,15 @@ export async function npReadShopCarrierShippingLabel(
   requestedAt.setMilliseconds(0);
   const prepared = await getDb().transaction(async (tx) => {
     const source = await npReadShopCarrierLabelSource(tx, siteId, input, adapter.id, true);
-    const acquisition = runtime.carrierLabelAcquisitionAdapter
-      ? await npReadStoredShopCarrierLabelAcquisition(tx, siteId, source.shipmentId, true)
-      : null;
+    const acquisition = await npReadStoredShopCarrierLabelAcquisition(
+      tx,
+      siteId,
+      source.shipmentId,
+      true,
+    );
+    const labelVoid = await npReadStoredShopCarrierLabelVoid(tx, siteId, source.shipmentId, true);
     if (
-      runtime.carrierLabelAcquisitionAdapter &&
+      (runtime.carrierLabelAcquisitionAdapter || acquisition) &&
       (!acquisition ||
         acquisition.status !== "completed" ||
         !npShopCarrierLabelAcquisitionMatchesSource(acquisition, source))
@@ -4483,6 +4798,26 @@ export async function npReadShopCarrierShippingLabel(
         "carrier_label_not_available",
         "A completed durable label acquisition is required before label retrieval.",
       );
+    }
+    if (labelVoid) {
+      if (!acquisition) {
+        throw new NpShopCarrierConflictError(
+          "carrier_label_not_available",
+          "The durable label void no longer has its exact acquisition source.",
+        );
+      }
+      if (npShopCarrierLabelVoidMatchesAcquisition(labelVoid, acquisition)) {
+        throw new NpShopCarrierConflictError(
+          "carrier_label_not_available",
+          "The current label generation has entered durable void reconciliation.",
+        );
+      }
+      if (!npShopCarrierLabelVoidIsCompletedPredecessor(labelVoid, acquisition)) {
+        throw new NpShopCarrierConflictError(
+          "carrier_label_not_available",
+          "The durable label void does not match the current acquisition history.",
+        );
+      }
     }
     const prepared = npRequireShopCarrierLabelRequest({
       contract: NP_SHOP_CARRIER_LABEL_REQUEST_CONTRACT,
@@ -4563,6 +4898,26 @@ export async function npReadShopCarrierShippingLabel(
           "The current label generation changed before its bytes could be delivered.",
         );
       }
+      const currentVoid = await npReadStoredShopCarrierLabelVoid(
+        tx,
+        siteId,
+        current.shipmentId,
+        true,
+      );
+      if (currentVoid) {
+        if (npShopCarrierLabelVoidMatchesAcquisition(currentVoid, currentAcquisition)) {
+          throw new NpShopCarrierConflictError(
+            "carrier_label_not_available",
+            "The current label generation changed to void reconciliation before delivery.",
+          );
+        }
+        if (!npShopCarrierLabelVoidIsCompletedPredecessor(currentVoid, currentAcquisition)) {
+          throw new NpShopCarrierConflictError(
+            "carrier_label_not_available",
+            "The durable label void changed to an invalid acquisition relationship.",
+          );
+        }
+      }
     }
     await recordRequiredShopFulfillmentAudit(
       tx,
@@ -4620,6 +4975,12 @@ export async function npRefundShopOrder(
       throw new NpShopRefundConflictError(
         "refund_manual_review",
         "A provider-initiated payment adjustment requires reconciliation before a refund can start or resume.",
+      );
+    }
+    if (await paymentDisputeRequiresReviewForOrder(tx, siteId, order, true)) {
+      throw new NpShopRefundConflictError(
+        "refund_manual_review",
+        "A payment dispute requires provider reconciliation before a refund can start or resume.",
       );
     }
     if (existing?.status === "manual-review") {
@@ -4898,6 +5259,12 @@ export async function npRefundShopOrder(
         "The provider refunded the payment but the local order changed; manual reconciliation is required.",
       );
     }
+    if (await paymentDisputeRequiresReviewForOrder(tx, siteId, order, true)) {
+      throw new NpShopRefundConflictError(
+        "refund_manual_review",
+        "The provider refund is confirmed, but a payment dispute must be reconciled before local compensation can resume.",
+      );
+    }
     const carrierBooking = await readStoredCarrierBooking(tx, siteId, order.id, true);
     const fulfillment = await readStoredFulfillment(tx, siteId, order.id, true);
     const parcelSnapshot = await readStoredFulfillmentParcels(tx, siteId, order.id, true);
@@ -5034,6 +5401,12 @@ async function readFulfillmentForAction(
     throw new NpShopOrderContractError("Fulfillment order is invalid", [
       "A fulfillment must match one paid order and its payment, retention, and private-data state.",
     ]);
+  }
+  if (await paymentDisputeRequiresReviewForOrder(tx, siteId, order, true)) {
+    throw new NpShopFulfillmentConflictError(
+      "fulfillment_terminal",
+      "Fulfillment cannot change while a payment dispute requires provider reconciliation.",
+    );
   }
   return { fulfillment: locked, order };
 }
@@ -6053,6 +6426,9 @@ export async function npListRecentShopFulfillments(
         const packingWork = await readAdminPackingWork(db, siteId, "outbound", fulfillment.orderId);
         const exactPackingWork = packingWork === "invalid" ? null : packingWork;
         const carrierBooking = await readStoredCarrierBooking(db, siteId, fulfillment.orderId);
+        const paymentDisputeSafe = order
+          ? await npShopPaymentDisputeAllowsAdminActions(db, siteId, order)
+          : false;
         const exactUnlockedParcelSnapshot = Boolean(
           parcelSnapshot &&
           parcelSnapshot.orderId === fulfillment.orderId &&
@@ -6121,6 +6497,7 @@ export async function npListRecentShopFulfillments(
           packingWorkRevision: exactPackingWork?.revision ?? null,
           packingWorkAction:
             fulfillment.status === "processing" &&
+            paymentDisputeSafe &&
             commercialSourceValid &&
             carrierBooking === null &&
             exactUnlockedParcelSnapshot &&
@@ -6129,6 +6506,7 @@ export async function npListRecentShopFulfillments(
               : "—",
           processEligible:
             fulfillment.status === "awaiting" &&
+            paymentDisputeSafe &&
             carrierBooking === null &&
             commercialSourceValid &&
             packingWork !== "invalid" &&
@@ -6141,6 +6519,7 @@ export async function npListRecentShopFulfillments(
               })),
           parcelMutationEligible:
             fulfillment.status === "processing" &&
+            paymentDisputeSafe &&
             commercialSourceValid &&
             carrierBooking === null &&
             (parcelSnapshot?.lockedShipmentId ?? null) === null &&
@@ -6153,6 +6532,7 @@ export async function npListRecentShopFulfillments(
             }),
           manualShipmentEligible:
             (fulfillment.status === "awaiting" || fulfillment.status === "processing") &&
+            paymentDisputeSafe &&
             carrierBooking === null &&
             packingSourceValid &&
             packingWorkAllowsManualShipment(exactPackingWork, {
@@ -6163,6 +6543,7 @@ export async function npListRecentShopFulfillments(
             }),
           carrierShipmentEligible:
             fulfillment.status === "processing" &&
+            paymentDisputeSafe &&
             (carrierBooking === null
               ? carrierProviderId !== undefined &&
                 privateSourceAvailable &&
@@ -6586,6 +6967,39 @@ export async function npListRecentShopCarrierBookings(
       return [acquisition.shipmentId, acquisition] as const;
     }),
   );
+  const labelVoidRows = rows.length
+    ? await db
+        .select({
+          key: npPluginStorage.key,
+          value: npPluginStorage.value,
+          expiresAt: npPluginStorage.expiresAt,
+        })
+        .from(npPluginStorage)
+        .where(
+          and(
+            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+            eq(npPluginStorage.siteId, siteId),
+            inArray(
+              npPluginStorage.key,
+              rows.map((row) => {
+                const booking = requireStoredCarrierBookingAtKey(row.value, row.expiresAt, row.key);
+                return npShopCarrierLabelVoidStorageKey(booking.id);
+              }),
+            ),
+          ),
+        )
+    : [];
+  const labelVoids = new Map(
+    labelVoidRows.map((row) => {
+      const state = npRequireStoredShopCarrierLabelVoidAtKey(row.value, row.expiresAt, row.key);
+      if (state.target !== "outbound" || state.exchangeId !== null) {
+        throw new NpShopCarrierContractError("Invalid outbound label void metadata", [
+          "outbound label void target must not identify an exchange.",
+        ]);
+      }
+      return [state.shipmentId, state] as const;
+    }),
+  );
   const trackingRows = rows.length
     ? await db
         .select({
@@ -6629,6 +7043,7 @@ export async function npListRecentShopCarrierBookings(
         const booking = requireStoredCarrierBookingAtKey(row.value, row.expiresAt, row.key);
         const pickup = pickups.get(booking.id);
         const labelAcquisition = labelAcquisitions.get(booking.id);
+        const labelVoid = labelVoids.get(booking.id);
         const parcelSnapshot = await readStoredFulfillmentParcels(db, siteId, booking.orderId);
         const fulfillment = await readStoredFulfillment(db, siteId, booking.orderId);
         const order = fulfillment
@@ -6681,8 +7096,22 @@ export async function npListRecentShopCarrierBookings(
         const labelRelationshipValid = Boolean(
           labelAcquisition && outboundLabelAcquisitionMatchesBooking(labelAcquisition, booking),
         );
+        const currentLabelVoid = Boolean(
+          labelAcquisition &&
+          labelVoid &&
+          npShopCarrierLabelVoidMatchesAcquisition(labelVoid, labelAcquisition),
+        );
+        const labelVoidRelationshipValid = Boolean(
+          !labelVoid ||
+          (labelAcquisition &&
+            (currentLabelVoid ||
+              npShopCarrierLabelVoidIsCompletedPredecessor(labelVoid, labelAcquisition))),
+        );
         const labelAction =
-          booking.status !== "completed" || trackedShipments.has(booking.id)
+          booking.status !== "completed" ||
+          trackedShipments.has(booking.id) ||
+          !labelVoidRelationshipValid ||
+          (currentLabelVoid && labelVoid?.status !== "completed")
             ? "—"
             : labelAcquisition?.status === "pending" ||
                 labelAcquisition?.status === "provider-confirmed"
@@ -6731,6 +7160,8 @@ export async function npListRecentShopCarrierBookings(
           labelDownloadEligible: Boolean(
             labelAcquisition?.status === "completed" &&
             labelRelationshipValid &&
+            labelVoidRelationshipValid &&
+            !currentLabelVoid &&
             booking.providerId === carrierProviderId,
           ),
           expectedRevision: labelAcquisition?.revision ?? 0,
@@ -7352,6 +7783,12 @@ async function readExchangeForAction(
       "The same-item exchange or its exact received return is missing.",
     );
   }
+  if (await paymentDisputeRequiresReviewForOrder(tx, siteId, order, true)) {
+    throw new NpShopExchangeConflictError(
+      "exchange_payment_conflict",
+      "This exchange cannot change while a payment dispute requires provider reconciliation.",
+    );
+  }
   return { order, returnRequest, exchange };
 }
 
@@ -7692,6 +8129,12 @@ export async function npCreateShopExchange(
       throw new NpShopExchangeConflictError(
         "exchange_payment_conflict",
         "A refund or unresolved payment adjustment prevents this exchange.",
+      );
+    }
+    if (await paymentDisputeRequiresReviewForOrder(tx, siteId, order, true)) {
+      throw new NpShopExchangeConflictError(
+        "exchange_payment_conflict",
+        "An unresolved or lost payment dispute prevents this exchange.",
       );
     }
     const allLines = exchangeInventoryLines(order, returnRequest);
@@ -11022,6 +11465,20 @@ export async function npCancelShopExchangeCarrierShipment(
         "The replacement label acquisition must complete or be manually reconciled before its shipment can be provider-cancelled or restocked.",
       );
     }
+    const labelVoid = await npReadStoredShopCarrierLabelVoid(tx, siteId, current.id, true);
+    if (
+      labelVoid &&
+      (!labelAcquisition ||
+        (!npShopCarrierLabelVoidMatchesAcquisition(labelVoid, labelAcquisition) &&
+          !npShopCarrierLabelVoidIsCompletedPredecessor(labelVoid, labelAcquisition)) ||
+        (npShopCarrierLabelVoidMatchesAcquisition(labelVoid, labelAcquisition) &&
+          labelVoid.status !== "completed"))
+    ) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_state_conflict",
+        "The current label void must complete or be reconciled before cancelling the replacement shipment.",
+      );
+    }
     const parcelSnapshot = await readStoredExchangeParcels(tx, siteId, input.orderId, true);
     const packingWork = await npReadStoredShopPackingWork(
       tx,
@@ -11817,6 +12274,9 @@ export async function npListRecentShopExchanges(
         const labelAcquisition = carrierBooking
           ? await npReadStoredShopCarrierLabelAcquisition(db, siteId, carrierBooking.id)
           : null;
+        const labelVoid = carrierBooking
+          ? await npReadStoredShopCarrierLabelVoid(db, siteId, carrierBooking.id)
+          : null;
         if (
           pickup &&
           (pickup.orderId !== exchange.orderId ||
@@ -11857,8 +12317,12 @@ export async function npListRecentShopExchanges(
           carrierBooking?.status === "completed" && exchange.status === "shipped"
             ? "shipped"
             : (carrierBooking?.status ?? "none");
+        const paymentDisputeSafe = order
+          ? await npShopPaymentDisputeAllowsAdminActions(db, siteId, order)
+          : false;
         const commercialSourceValid = Boolean(
           order &&
+          paymentDisputeSafe &&
           returnRequest &&
           returnMatchesOrder(returnRequest, order) &&
           exchangeMatchesOrder(exchange, order, returnRequest),
@@ -11907,8 +12371,22 @@ export async function npListRecentShopExchanges(
           carrierBooking &&
           replacementLabelAcquisitionMatchesBooking(labelAcquisition, carrierBooking, exchange),
         );
+        const currentLabelVoid = Boolean(
+          labelAcquisition &&
+          labelVoid &&
+          npShopCarrierLabelVoidMatchesAcquisition(labelVoid, labelAcquisition),
+        );
+        const labelVoidRelationshipValid = Boolean(
+          !labelVoid ||
+          (labelAcquisition &&
+            (currentLabelVoid ||
+              npShopCarrierLabelVoidIsCompletedPredecessor(labelVoid, labelAcquisition))),
+        );
         const labelAction =
-          carrierBooking?.status !== "completed" || tracking
+          carrierBooking?.status !== "completed" ||
+          tracking ||
+          !labelVoidRelationshipValid ||
+          (currentLabelVoid && labelVoid?.status !== "completed")
             ? "—"
             : labelAcquisition?.status === "pending" ||
                 labelAcquisition?.status === "provider-confirmed"
@@ -12015,6 +12493,8 @@ export async function npListRecentShopExchanges(
           labelDownloadEligible: Boolean(
             labelAcquisition?.status === "completed" &&
             labelRelationshipValid &&
+            labelVoidRelationshipValid &&
+            !currentLabelVoid &&
             carrierBooking?.providerId === carrierProviderId,
           ),
           expectedRevision: labelAcquisition?.revision ?? 0,

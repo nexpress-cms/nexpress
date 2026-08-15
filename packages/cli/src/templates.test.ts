@@ -389,12 +389,14 @@ describe("getProjectFiles", () => {
     expect(env).toContain("# NP_STRIPE_PUBLISHABLE_KEY=");
     expect(env).toContain("# NP_STRIPE_SECRET_KEY=");
     expect(env).toContain("# NP_STRIPE_WEBHOOK_SECRET=");
-    expect(env).toContain("full/received-return refunds");
+    expect(env).toContain("signed webhooks, dispute evidence, refunds");
     expect(env).not.toMatch(/^NP_STRIPE_(?:PUBLISHABLE_KEY|SECRET_KEY|WEBHOOK_SECRET)=/m);
     expect(readme).toContain("verified-purchase product review");
     expect(readme).toContain("follow graph at `/shop/wishlist`");
     expect(readme).toContain("one-shot member restock alerts");
     expect(readme).toContain("catalog price-drop alerts");
+    expect(readme).toContain("Authenticated PII-free payment-dispute evidence");
+    expect(readme).toContain("dispute evidence submission/liability");
     expect(readme).toContain("PII-free order-update timeline/outbox");
     expect(readme).toContain("Checkout intents and private drafts retain the cart");
     expect(readme).toContain("first durable pending-order commit atomically consumes");
@@ -565,6 +567,8 @@ describe("getProjectFiles", () => {
     expect(env).toContain("readShippingLabel capability serves completed outbound");
     expect(env).toContain("acquireShippingLabel adds durable purchase/regeneration");
     expect(env).toContain("acquisitionId as the provider idempotency key");
+    expect(env).toContain("voidShippingLabel uses voidId for the exact current generation");
+    expect(env).toContain("keeps booking intact");
     expect(env).toContain("never persist or log those bytes");
     expect(env).toContain("Cancel the pickup");
     expect(env).toContain("verifyTrackingWebhook and readTracking methods also serve exact");
@@ -572,7 +576,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("completed outbound and replacement labels");
     expect(readme).toContain("durable first-label purchase and atomic regeneration");
     expect(readme).toContain(
-      "Verified tracking blocks label acquisition, pickup, and shipment cancellation",
+      "Verified tracking blocks label acquisition, new label void intent, pickup, and shipment cancellation",
     );
     expect(readme).toContain("Verified provider cancellation snapshots reconcile known refunds");
     expect(env).toContain("provider-cancellation reconciliation for Shop");

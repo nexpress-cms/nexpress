@@ -59,6 +59,22 @@ function refund(
   };
 }
 
+function dispute(
+  status = "needs_response",
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    id: "dp_1234567890abcdefgh",
+    object: "dispute",
+    amount: 1_250,
+    currency: "usd",
+    payment_intent: paymentIntentId,
+    status,
+    reason: "fraudulent",
+    ...overrides,
+  };
+}
+
 function partialRefundMetadata(
   kind: "received-return" | "return-postage-settlement",
   currentRefundId = refundId,
@@ -121,7 +137,13 @@ function signedWebhook(
   timestamp = signedSeconds,
 ): NpShopPaymentWebhookInput {
   const rawBody = new TextEncoder().encode(
-    JSON.stringify({ id: "evt_1234567890abcdefgh", object: "event", type, data: { object } }),
+    JSON.stringify({
+      id: "evt_1234567890abcdefgh",
+      object: "event",
+      created: timestamp,
+      type,
+      data: { object },
+    }),
   );
   const signature = createHmac("sha256", webhookSecret)
     .update(String(timestamp))
@@ -569,6 +591,48 @@ describe("Stripe Shop payment adapter", () => {
       expect.stringContaining(`/v1/refunds?payment_intent=${paymentIntentId}&limit=100`),
       expect.objectContaining({ method: "GET" }),
     );
+  });
+
+  it("normalizes authenticated Stripe disputes against the authoritative PaymentIntent", async () => {
+    const fetcher = vi.fn().mockResolvedValue(response(paymentIntent()));
+    const result = await adapter(fetcher).verifyWebhook(
+      signedWebhook("charge.dispute.created", dispute()),
+    );
+    expect(result).toEqual({
+      contract: "np.shop-payment-dispute-event.v1",
+      eventId: "evt_1234567890abcdefgh",
+      disputeReference: "dp_1234567890abcdefgh",
+      orderId,
+      paymentReference: paymentIntentId,
+      currency: "USD",
+      amountMinor: 1_250,
+      status: "needs-response",
+      reasonCode: "fraudulent",
+      occurredAt: new Date(signedSeconds * 1_000).toISOString(),
+      signedAt: new Date(signedSeconds * 1_000).toISOString(),
+    });
+    expect(fetcher).toHaveBeenCalledWith(
+      `https://api.stripe.com/v1/payment_intents/${paymentIntentId}`,
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("accepts only terminal closed disputes and fails closed on payment mismatches", async () => {
+    await expect(
+      adapter().verifyWebhook(signedWebhook("charge.dispute.closed", dispute())),
+    ).resolves.toBeNull();
+
+    const closedFetcher = vi.fn().mockResolvedValue(response(paymentIntent()));
+    await expect(
+      adapter(closedFetcher).verifyWebhook(signedWebhook("charge.dispute.closed", dispute("lost"))),
+    ).resolves.toMatchObject({ status: "lost", reasonCode: "fraudulent" });
+
+    const mismatchFetcher = vi.fn().mockResolvedValue(response(paymentIntent()));
+    await expect(
+      adapter(mismatchFetcher).verifyWebhook(
+        signedWebhook("charge.dispute.updated", dispute("under_review", { amount: 2_501 })),
+      ),
+    ).rejects.toMatchObject({ code: "stripe_dispute_mismatch", retryable: false });
   });
 
   it("fails closed when the authoritative refund snapshot exceeds the bounded contract", async () => {

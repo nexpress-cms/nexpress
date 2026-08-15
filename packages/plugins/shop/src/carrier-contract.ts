@@ -49,6 +49,10 @@ import type {
   NpShopCarrierLabelAcquisitionRequest,
   NpShopCarrierLabelAcquisitionResult,
 } from "./label-acquisition-contract.js";
+import type {
+  NpShopCarrierLabelVoidRequest,
+  NpShopCarrierLabelVoidResult,
+} from "./label-void-contract.js";
 
 export const NP_SHOP_CARRIER_BOOKING_REQUEST_CONTRACT =
   "np.shop-carrier-booking-request.v1" as const;
@@ -199,6 +203,13 @@ export interface NpShopCarrierAdapter {
     input: NpShopCarrierLabelAcquisitionRequest,
   ): NpShopCarrierLabelAcquisitionResult | Promise<NpShopCarrierLabelAcquisitionResult>;
   /**
+   * Void the exact current acquired label generation. Implementations must use
+   * voidId as the provider idempotency key and return only PII-free evidence.
+   */
+  voidShippingLabel?(
+    input: NpShopCarrierLabelVoidRequest,
+  ): NpShopCarrierLabelVoidResult | Promise<NpShopCarrierLabelVoidResult>;
+  /**
    * Schedule one pickup from a locked PII-free parcel snapshot and a
    * provider-owned location reference. Implementations must use pickupId as
    * the provider idempotency key.
@@ -288,6 +299,9 @@ export type NpShopCarrierLabelAdapter = NpShopCarrierAdapter &
 
 export type NpShopCarrierLabelAcquisitionAdapter = NpShopCarrierLabelAdapter &
   Required<Pick<NpShopCarrierAdapter, "acquireShippingLabel">>;
+
+export type NpShopCarrierLabelVoidAdapter = NpShopCarrierLabelAcquisitionAdapter &
+  Required<Pick<NpShopCarrierAdapter, "voidShippingLabel">>;
 
 export type NpShopCarrierPickupAdapter = NpShopCarrierAdapter &
   Required<Pick<NpShopCarrierAdapter, "schedulePickup" | "cancelPickup">>;

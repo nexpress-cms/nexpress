@@ -26,6 +26,11 @@ import {
 import { npRequireStoredShopOrder, type NpShopStoredOrder } from "./order-contract.js";
 import { NP_SHOP_PLUGIN_ID, type NpShopTransaction } from "./order-draft-service.js";
 import {
+  npReadStoredShopPaymentDisputesForOrder,
+  npShopPaymentDisputesMatchOrder,
+  npShopPaymentDisputesRequireReview,
+} from "./payment-dispute-service.js";
+import {
   npReadStoredShopPackingWork,
   npShopPackingWorkAllowsShipmentEffectForSource,
 } from "./packing-work-storage.js";
@@ -742,6 +747,24 @@ async function requireScheduleEligibility(
       "pickup_booking_not_found",
       "Outbound pickup requires its exact shipped fulfillment and retained order.",
     );
+  }
+  const commercialOrder = target === "replacement" ? replacementOrder : outboundOrder;
+  if (!expectedPickup && commercialOrder) {
+    const disputes = await npReadStoredShopPaymentDisputesForOrder(
+      db,
+      siteId,
+      commercialOrder.id,
+      forUpdate,
+    );
+    if (
+      !npShopPaymentDisputesMatchOrder(disputes, commercialOrder) ||
+      npShopPaymentDisputesRequireReview(disputes)
+    ) {
+      throw new NpShopCarrierPickupConflictError(
+        "pickup_state_conflict",
+        "A payment dispute requires provider reconciliation before scheduling a carrier pickup.",
+      );
+    }
   }
   const parcels =
     target === "replacement"

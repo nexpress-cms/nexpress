@@ -90,7 +90,10 @@ It provides:
   atomic reservation consumption or release; authenticated provider
   cancellation snapshots reconcile exact Shop refunds, safely compensate one
   previously unknown full reversal, and block fulfillment/refunds for
-  ambiguous partial or cumulative adjustments;
+  ambiguous partial or cumulative adjustments; authenticated provider dispute
+  events add bounded PII-free evidence and block new fulfillment, refund,
+  exchange, label, and pickup effects until a won, warning-closed, or prevented
+  outcome, without automatic commercial compensation;
 - independent revision-safe `awaiting` / `processing` / `shipped` fulfillment,
   audited direct-staff shipping-data access, owner-visible tracking, and
   shipment-or-30-day private-data deletion;
@@ -123,10 +126,12 @@ It provides:
 - optional transient shipping-label retrieval for completed carrier bookings,
   with a PII-free provider request, direct-staff audit, bounded PDF/PNG/ZPL
   bytes, authenticated Admin download, and no durable label storage;
-- optional durable shipping-label purchase and atomic regeneration for outbound
+- optional durable shipping-label purchase, atomic regeneration, and exact current-generation
+  voiding for outbound
   and provider-booked same-item replacements, with one shipment-keyed generation,
   stable provider idempotency, an opaque PII-free current-label reference,
-  tracking-start closure, Admin/Doctor reconciliation, and transient bytes only;
+  durable two-stage void confirmation, tracking-start closure, Admin/Doctor
+  reconciliation, and transient bytes only while the carrier booking remains intact;
 - optional provider-neutral pickup scheduling for parcel-aware completed
   outbound and same-item replacement bookings, with shipment-keyed independent
   state, a server-only opaque origin reference, exact PII-free package
@@ -180,10 +185,11 @@ It provides:
 - featured-product and category-grid blocks.
 
 Provider-specific browser/server protocols, signature algorithms, credentials
-and rotation, initiating repeated or non-return partial refunds, disputes and
-chargebacks, different-item or price-difference exchanges,
+and rotation, initiating repeated or non-return partial refunds, submitting
+dispute evidence, accepting liability, automatic chargeback compensation,
+different-item or price-difference exchanges,
 separate return-postage charges, automatic or
-jurisdictional responsibility policy, carrier label billing/void policy,
+jurisdictional responsibility policy, carrier label billing/refund policy,
 recurring pickup,
 provider-specific tracking protocols,
 tax remittance/filing, invoices, exemptions, customs, and carrier-owned dynamic
@@ -304,7 +310,11 @@ authenticate tracking callbacks or reconcile tracking through bounded
 server-only reads, and may retrieve an already-booked outbound or replacement
 label through `readShippingLabel`. It may add `acquireShippingLabel` only with
 that read capability; Shop then owns stable purchase/regeneration generations
-and the adapter atomically replaces the opaque current label reference. A
+and the adapter atomically replaces the opaque current label reference. It may
+add `voidShippingLabel` only with that pair; Shop then binds one stable void UUID
+to the exact current generation, blocks new void intent after tracking, keeps
+the shipment booking intact, and permits regeneration only after durable void
+completion. A
 parcel-aware adapter may additionally implement both
 `schedulePickup` and `cancelPickup`; `createShop()` then requires at least one
 outbound or replacement parcel-booking capability and one opaque
@@ -344,7 +354,7 @@ capabilities already serve completed replacement bookings without changing
 exchange commercial state.
 `@nexpress/shop-payment-stripe` is the bundled Stripe PaymentIntent initiation,
 signed-webhook, full-refund, received-return partial-refund/return-postage
-settlement, and cumulative refund-reconciliation adapter.
+settlement, cumulative refund-reconciliation, and authenticated dispute-evidence adapter.
 `@nexpress/shop-payment-toss` is the bundled Toss Payments v2 initiation,
 full-refund, received-return partial-refund/return-postage settlement, and
 query-verified cancellation reconciliation adapter. Customer/shipping PII exists only in the short-lived
@@ -355,7 +365,7 @@ still does not imply that a visitor paid for a product.
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
 for the exact price, SKU, inventory, wishlist, restock-alert, price-alert, review, Forum-backed inquiry, cart,
 promotion, checkout-intent, private-draft, shipping-quote, tax-quote,
-pending-order, payment-attempt/event/adjustment, fulfillment, parcel, carrier,
+pending-order, payment-attempt/event/adjustment/dispute, fulfillment, parcel, carrier,
 packaging-proposal, packing-work, label acquisition/read, pickup,
 tracking/polling, full-refund, return-linked partial-refund, return,
 same-item exchange, return-logistics, return-postage, return-postage settlement, skin, block, and

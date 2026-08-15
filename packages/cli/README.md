@@ -37,8 +37,9 @@ with safe inventory compensation. Shipped orders also expose owner-scoped
 item-level return intake and audited receipt inventory without implying a
 payment refund or carrier booking. The bundled
 `@nexpress/shop-payment-stripe` supplies a Stripe PaymentIntent/Payment Element,
-signed-webhook, exact full-refund, and received-return partial-refund/postage
-settlement flow; `@nexpress/shop-payment-toss` supplies
+signed-webhook, authenticated dispute-evidence, exact full-refund, and
+received-return partial-refund/postage settlement flow;
+`@nexpress/shop-payment-toss` supplies
 the equivalent Toss Payments v2 browser/server integration when explicitly installed. Order
 customer/shipping values live in a separate private sidecar and are physically
 deleted on cancellation or the 24-hour deadline; commercial snapshots are

@@ -185,6 +185,10 @@ describe("shop factory", () => {
       { id: "countCarrierLabelAcquisitions", kind: "metric" },
       { id: "carrierLabelAcquisitionHealth", kind: "status" },
       { id: "recentCarrierLabelAcquisitions", kind: "table" },
+      { id: "countCarrierLabelVoids", kind: "metric" },
+      { id: "carrierLabelVoidHealth", kind: "status" },
+      { id: "recentCarrierLabelVoids", kind: "table" },
+      { id: "voidCarrierShippingLabel", kind: "action" },
       { id: "countCarrierPickupAvailability", kind: "metric" },
       { id: "carrierPickupAvailabilityHealth", kind: "status" },
       { id: "recentCarrierPickupAvailability", kind: "table" },
@@ -210,6 +214,9 @@ describe("shop factory", () => {
       { id: "countPaymentAdjustments", kind: "metric" },
       { id: "paymentAdjustmentHealth", kind: "status" },
       { id: "recentPaymentAdjustments", kind: "table" },
+      { id: "countPaymentDisputes", kind: "metric" },
+      { id: "paymentDisputeHealth", kind: "status" },
+      { id: "recentPaymentDisputes", kind: "table" },
       { id: "maintainOrders", kind: "action" },
     ]);
     const exchangeTable = shopPlugin.admin?.tables?.find((table) => table.id === "shop-exchanges");
@@ -1713,6 +1720,46 @@ describe("shop factory", () => {
         },
       }),
     ).toThrow(/requires acquireShippingLabel and readShippingLabel together/u);
+  });
+
+  it("adds exact label voiding only to the paired acquisition capability", () => {
+    const withVoid = createShop({
+      carrier: {
+        adapter: {
+          id: "test-carrier",
+          bookShipment: () => Promise.reject(new Error("not called")),
+          readShippingLabel: () => Promise.reject(new Error("not called")),
+          acquireShippingLabel: () => Promise.reject(new Error("not called")),
+          voidShippingLabel: () => Promise.reject(new Error("not called")),
+        },
+      },
+    });
+
+    expect(withVoid.runtime.carrierLabelVoidAdapter?.id).toBe("test-carrier");
+    expect(withVoid.plugin.actions?.voidCarrierShippingLabel?.kind).toBe("action");
+    expect(
+      withVoid.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-carrier-label-acquisitions")
+        ?.rowActions?.find((action) => action.id === "void-carrier-label"),
+    ).toMatchObject({ visibleWhen: { field: "voidEligible", oneOf: [true] } });
+    expect(
+      withVoid.plugin.admin?.tables
+        ?.find((table) => table.id === "shop-carrier-label-voids")
+        ?.rowActions?.find((action) => action.id === "resume-carrier-label-void"),
+    ).toMatchObject({ visibleWhen: { field: "resumeEligible", oneOf: [true] } });
+
+    expect(() =>
+      createShop({
+        carrier: {
+          adapter: {
+            id: "test-carrier",
+            bookShipment: () => Promise.reject(new Error("not called")),
+            readShippingLabel: () => Promise.reject(new Error("not called")),
+            voidShippingLabel: () => Promise.reject(new Error("not called")),
+          },
+        },
+      }),
+    ).toThrow(/requires voidShippingLabel with paired acquisition and retrieval methods/u);
   });
 
   it("adds owner-scoped attempt routes and diagnostics only for a complete initiation adapter", () => {
