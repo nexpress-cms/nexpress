@@ -1,5 +1,25 @@
 # @nexpress/admin
 
+## 0.4.3
+
+### Patch Changes
+
+- 5560f00: Add exact Admin table row actions and trusted action invocation context, then use them for revision-safe Shop fulfillment, audited staff-only shipping-data access, shipment/30-day private-data deletion, owner tracking status, diagnostics, scaffolds, and documentation.
+- d39f368: Add bounded binary plugin API responses and authenticated declarative Admin
+  downloads, then let Shop carrier adapters retrieve already-booked PDF, PNG, or
+  ZPL shipping labels through a PII-free, staff-audited, transient byte contract.
+- Updated dependencies [5560f00]
+- Updated dependencies [1b34745]
+- Updated dependencies [33d4c85]
+- Updated dependencies [772f58b]
+- Updated dependencies [6b8cd26]
+- Updated dependencies [bd52dc5]
+- Updated dependencies [d39f368]
+- Updated dependencies [cc2bc2c]
+  - @nexpress/core@0.4.3
+  - @nexpress/blocks@0.4.3
+  - @nexpress/editor@0.4.3
+
 ## 0.4.2
 
 ### Patch Changes

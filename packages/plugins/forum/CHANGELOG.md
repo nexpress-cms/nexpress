@@ -1,5 +1,28 @@
 # @nexpress/plugin-forum
 
+## 0.4.3
+
+### Patch Changes
+
+- b867ddc: Reuse one ordinary Forum board for optional Shop product inquiries. The
+  independent packages now share a structural build-time bridge with signed live
+  product context, existing Forum audience/moderation/attachment policy,
+  staff-owned rich-text answers, author notifications, bounded Admin health,
+  complete skin fallbacks, Storefront hooks, generated schema, and scaffold
+  guidance without adding a parallel inquiry collection.
+- Updated dependencies [5560f00]
+- Updated dependencies [1b34745]
+- Updated dependencies [33d4c85]
+- Updated dependencies [772f58b]
+- Updated dependencies [6b8cd26]
+- Updated dependencies [bd52dc5]
+- Updated dependencies [d39f368]
+- Updated dependencies [cc2bc2c]
+  - @nexpress/core@0.4.3
+  - @nexpress/plugin-sdk@0.4.3
+  - @nexpress/editor@0.4.3
+  - @nexpress/next@0.4.3
+
 ## 0.4.2
 
 ### Patch Changes

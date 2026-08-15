@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/shop-payment-stripe",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "Stripe PaymentIntent, signed webhook, dispute evidence, refund, and reconciliation adapter for @nexpress/plugin-shop.",
   "license": "MIT",
   "author": "Nexpress",
