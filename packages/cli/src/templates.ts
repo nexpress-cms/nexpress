@@ -805,7 +805,7 @@ function envExampleTemplate(config: TemplateConfig): string {
     "# NP_TOSS_PAYMENTS_CLIENT_KEY=",
     "# NP_TOSS_PAYMENTS_SECRET_KEY=",
     "",
-    "# Optional Stripe PaymentIntent, signed webhooks, full/received-return refunds, and reconciliation for Shop.",
+    "# Optional Stripe PaymentIntent, signed webhooks, dispute evidence, refunds, and reconciliation for Shop.",
     "# Install @nexpress/shop-payment-stripe and replace the default Shop instance",
     "# with one createShop({ payment: { adapter } }) factory before uncommenting.",
     "# NP_STRIPE_PUBLISHABLE_KEY=",
@@ -1152,7 +1152,10 @@ pnpm db:migrate
 pnpm run seed:admin     # create first admin interactively
 pnpm dev
 \`\`\`
-`;
+`.replace(
+    "Verified provider cancellation snapshots reconcile known refunds, safely compensate one unknown full reversal, and block ambiguous partial adjustments. Recurring pickup, provider-specific protocols, disputes, different-item or price-difference exchanges, and initiating repeated or non-return partial refunds remain separate.",
+    "Verified provider cancellation snapshots reconcile known refunds, safely compensate one unknown full reversal, and block ambiguous partial adjustments. Authenticated PII-free payment-dispute evidence blocks new fulfillment/refund/exchange effects until won, warning-closed, or prevented without automatic compensation. Recurring pickup, provider-specific protocols, dispute evidence submission/liability, different-item or price-difference exchanges, and initiating repeated or non-return partial refunds remain separate.",
+  );
 }
 
 function opsGuideTemplate(): string {

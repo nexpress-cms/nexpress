@@ -364,7 +364,9 @@ real product domain, not just blog/community. Ship as a plugin package
   refunds, quote-backed merchant/customer return-postage settlement, and
   bounded cumulative successful-refund reconciliation. Stable PII-free refund
   metadata and a bounded preflight preserve late partial-refund recovery beyond
-  Stripe's finite idempotency window. Arbitrary partial refunds, disputes,
+  Stripe's finite idempotency window. Signed dispute created/updated/closed
+  events also become provider-neutral evidence after an authoritative
+  PaymentIntent read. Arbitrary partial refunds, dispute evidence submission,
   subscriptions, Connect, and KG Inicis packages remain future work.
 - **Order fulfillment Admin (shipped)** — paid orders atomically create an
   independent awaiting/processing/shipped record. Revision-safe row actions,
@@ -505,8 +507,18 @@ real product domain, not just blog/community. Ship as a plugin package
   inventory restoration; unknown partial or multi-cancellation histories enter
   manual review and block fulfillment and further refunds. Admin/Doctor,
   scaffold guidance, Toss, cleanup, and PostgreSQL coverage share the contract.
-  Disputes, chargebacks, settlement corrections, and automatic allocation of
-  arbitrary partial reversals remain separate.
+  Settlement corrections and automatic allocation of arbitrary partial
+  reversals remain separate.
+- **Provider-neutral payment dispute evidence (shipped)** — authenticated
+  adapters may project one bounded PII-free dispute snapshot over an exact
+  captured payment. Stable event/dispute identity, monotonic provider status,
+  durable order-lifetime receipts/state, Admin/Doctor health, cleanup, and
+  fail-closed fulfillment/refund/exchange provider effects share the contract.
+  Won, warning-closed, or prevented evidence resolves the gate; open, review,
+  and lost evidence remains diagnostic. Stripe supports signed dispute
+  created/updated/closed events after an authoritative PaymentIntent read.
+  Evidence submission, liability acceptance, automatic compensation, and
+  provider-specific dispute workflows remain separate.
 - **Provider-neutral approved-return logistics (shipped)** — carrier adapters
   may add one paired return-shipment create/cancel capability over an approved
   owner-scoped item return and completed outbound booking. Drop-off or bounded

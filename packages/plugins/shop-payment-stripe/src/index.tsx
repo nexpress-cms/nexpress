@@ -2,6 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 import {
   NP_SHOP_PAYMENT_ADJUSTMENT_EVENT_CONTRACT,
+  NP_SHOP_PAYMENT_DISPUTE_EVENT_CONTRACT,
   NP_SHOP_PAYMENT_EVENT_CONTRACT,
   NP_SHOP_PAYMENT_WEBHOOK_IGNORED_CONTRACT,
   NP_SHOP_PARTIAL_REFUND_RESULT_CONTRACT,
@@ -28,6 +29,7 @@ import {
   type NpShopPaymentWebhookInput,
   type NpShopPaymentWebhookResult,
   type NpShopVerifiedPaymentAdjustmentEvent,
+  type NpShopVerifiedPaymentDisputeEvent,
   type NpShopVerifiedPaymentEvent,
 } from "@nexpress/plugin-shop";
 import { StripePaymentLauncher } from "@nexpress/shop-payment-stripe/client";
@@ -40,6 +42,7 @@ const webhookSecretPattern = /^whsec_[A-Za-z0-9]{8,220}$/u;
 const paymentIntentPattern = /^pi_[A-Za-z0-9]{8,200}$/u;
 const refundPattern = /^re_[A-Za-z0-9]{8,200}$/u;
 const chargePattern = /^ch_[A-Za-z0-9]{8,200}$/u;
+const disputePattern = /^dp_[A-Za-z0-9]{8,200}$/u;
 const stripeEventPattern = /^evt_[A-Za-z0-9]{8,200}$/u;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const currencyPattern = /^[a-z]{3}$/u;
@@ -75,6 +78,28 @@ interface StripeRefund {
   shopOrderId: string | null;
   shopReturnId: string | null;
   shopRefundKind: string | null;
+}
+
+const stripeDisputeStatuses = [
+  "warning_needs_response",
+  "warning_under_review",
+  "warning_closed",
+  "needs_response",
+  "under_review",
+  "won",
+  "lost",
+  "prevented",
+] as const;
+
+type StripeDisputeStatus = (typeof stripeDisputeStatuses)[number];
+
+interface StripeDispute {
+  id: string;
+  paymentIntentId: string;
+  currency: string;
+  amount: number;
+  status: StripeDisputeStatus;
+  reason: string;
 }
 
 type StripeShopRefundKind = "full" | "received-return" | "return-postage-settlement";
@@ -236,6 +261,40 @@ function requireRefund(value: unknown): StripeRefund {
     shopOrderId,
     shopReturnId,
     shopRefundKind,
+  };
+}
+
+function requireDispute(value: unknown): StripeDispute | null {
+  if (!isRecord(value) || ownData(value, "object") !== "dispute") return null;
+  const id = boundedText(ownData(value, "id"));
+  const paymentIntentId = boundedText(ownData(value, "payment_intent"));
+  const currency = boundedText(ownData(value, "currency"), 3);
+  const status = boundedText(ownData(value, "status"), 40);
+  const reason = boundedText(ownData(value, "reason"), 80);
+  const amount = ownData(value, "amount");
+  if (
+    !id ||
+    !disputePattern.test(id) ||
+    !paymentIntentId ||
+    !paymentIntentPattern.test(paymentIntentId) ||
+    !currency ||
+    !currencyPattern.test(currency) ||
+    !status ||
+    !(stripeDisputeStatuses as readonly string[]).includes(status) ||
+    !reason ||
+    !/^[a-z][a-z0-9_]{0,79}$/u.test(reason) ||
+    !Number.isSafeInteger(amount) ||
+    (amount as number) < 1
+  ) {
+    return null;
+  }
+  return {
+    id,
+    paymentIntentId,
+    currency,
+    amount: amount as number,
+    status: status as StripeDisputeStatus,
+    reason,
   };
 }
 
@@ -891,10 +950,60 @@ export function createStripePaymentsAdapter(
     if (ownData(verified.payload, "object") !== "event") return null;
     const eventId = boundedText(ownData(verified.payload, "id"));
     const eventType = boundedText(ownData(verified.payload, "type"), 80);
+    const eventCreated = ownData(verified.payload, "created");
     const data = ownData(verified.payload, "data");
     const object = isRecord(data) ? ownData(data, "object") : null;
     if (!eventId || !stripeEventPattern.test(eventId) || !eventType || !isRecord(object))
       return null;
+
+    if (
+      eventType === "charge.dispute.created" ||
+      eventType === "charge.dispute.updated" ||
+      eventType === "charge.dispute.closed"
+    ) {
+      const dispute = requireDispute(object);
+      if (
+        !dispute ||
+        !Number.isSafeInteger(eventCreated) ||
+        (eventCreated as number) < 1 ||
+        (eventType === "charge.dispute.closed" &&
+          !(["warning_closed", "won", "lost", "prevented"] as readonly string[]).includes(
+            dispute.status,
+          ))
+      ) {
+        return null;
+      }
+      const occurredAt = new Date((eventCreated as number) * 1_000).toISOString();
+      if (new Date(occurredAt).getTime() > new Date(verified.signedAt).getTime() + 30_000) {
+        return null;
+      }
+      const payment = await readPaymentIntent(dispute.paymentIntentId);
+      if (
+        payment.status !== "succeeded" ||
+        payment.amountReceived !== payment.amount ||
+        payment.currency !== dispute.currency ||
+        dispute.amount > payment.amount
+      ) {
+        throw new NpShopPaymentProviderError(
+          "stripe_dispute_mismatch",
+          "Stripe dispute evidence does not match the authoritative PaymentIntent.",
+          false,
+        );
+      }
+      return {
+        contract: NP_SHOP_PAYMENT_DISPUTE_EVENT_CONTRACT,
+        eventId,
+        disputeReference: dispute.id,
+        orderId: payment.orderId,
+        paymentReference: payment.id,
+        currency: payment.currency.toUpperCase() as NpShopVerifiedPaymentDisputeEvent["currency"],
+        amountMinor: dispute.amount,
+        status: dispute.status.replaceAll("_", "-") as NpShopVerifiedPaymentDisputeEvent["status"],
+        reasonCode: dispute.reason,
+        occurredAt,
+        signedAt: verified.signedAt,
+      };
+    }
 
     if (eventType === "payment_intent.succeeded" || eventType === "payment_intent.canceled") {
       const payment = requirePaymentIntent(object);

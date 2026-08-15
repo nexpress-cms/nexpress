@@ -6,7 +6,8 @@ orders, inventory, payment attempts, refunds, Admin, and Doctor; this package
 owns the Stripe Payment Element handoff, server-authenticated PaymentIntent
 confirmation, raw-body webhook signature verification, idempotent full and
 received-return refunds, quote-backed return-postage settlement, and
-authoritative cumulative successful-refund snapshots.
+authoritative cumulative successful-refund snapshots, plus authenticated
+PII-free dispute evidence over an authoritative PaymentIntent read.
 
 ```ts
 import { createShop } from "@nexpress/plugin-shop";
@@ -30,7 +31,8 @@ server-only.
 Register `/api/plugins/shop/payments/webhook` as a Stripe webhook endpoint and
 send the unmodified request body. Subscribe to `payment_intent.succeeded`,
 `payment_intent.canceled`, `refund.created`, `refund.updated`, and
-`charge.refunded`. The adapter verifies every `Stripe-Signature` against the
+`charge.refunded`, plus `charge.dispute.created`, `charge.dispute.updated`, and
+`charge.dispute.closed`. The adapter verifies every `Stripe-Signature` against the
 exact bytes with the five-minute Shop replay window. Unsupported authenticated
 events are acknowledged without changing Shop state; invalid, stale, or
 mismatched events fail closed.
@@ -63,6 +65,17 @@ same bounded refund-list query. Unique successful refunds are sorted
 canonically and must sum to the original amount minus the remaining amount
 before Shop receives a cumulative adjustment snapshot.
 
+Signed dispute deliveries are accepted only for Stripe's bounded dispute
+statuses and are checked against a secret-key PaymentIntent read for the exact
+Shop order, payment reference, currency, captured amount, and disputed amount.
+Shop stores only provider/event/dispute references, amount, status, reason code,
+and timestamps. Needs-response, under-review, warning-needs-response,
+warning-under-review, and lost evidence
+block new fulfillment/refund/exchange effects; won, warning-closed, or
+prevented evidence closes that diagnostic gate. No dispute event changes the
+order, fulfillment, refund, or inventory automatically.
+
 The adapter intentionally does not initiate repeated or non-return partial
-refunds, disputes, subscriptions, invoices, Connect transfers, tax, shipping,
-or carrier work. Those remain separate Shop or provider-specific contracts.
+refunds, submit dispute evidence, accept liability, automate chargeback
+compensation, or implement subscriptions, invoices, Connect transfers, tax,
+shipping, or carrier work. Those remain separate Shop or provider-specific contracts.

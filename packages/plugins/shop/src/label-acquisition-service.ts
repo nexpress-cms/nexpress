@@ -41,6 +41,11 @@ import {
 import { NP_SHOP_PLUGIN_ID, type NpShopTransaction } from "./order-draft-service.js";
 import { npRequireStoredShopOrder, type NpShopStoredOrder } from "./order-contract.js";
 import {
+  npReadStoredShopPaymentDisputesForOrder,
+  npShopPaymentDisputesMatchOrder,
+  npShopPaymentDisputesRequireReview,
+} from "./payment-dispute-service.js";
+import {
   npReadStoredShopPackingWork,
   npShopPackingWorkAllowsShipmentEffectForSource,
   npShopPackingWorkMatchesUnattachedTombstone,
@@ -69,6 +74,7 @@ export interface NpShopCarrierLabelSource {
   sourceRevision: number;
   packingSourceRevision: number;
   purgeAt: string;
+  paymentDisputeSafe: boolean;
 }
 
 export interface NpShopAdminCarrierLabelAcquisitionRow {
@@ -594,7 +600,7 @@ export async function npReadShopCarrierLabelSource(
       );
     }
   }
-  const sources: NpShopCarrierLabelSource[] = [];
+  const sources: Omit<NpShopCarrierLabelSource, "paymentDisputeSafe">[] = [];
   // Cross-domain transitions lock the exchange before either booking.
   const exchange = await readExchange(tx, siteId, input.orderId, forUpdate);
   const outbound = await readBooking(tx, siteId, input.orderId, forUpdate);
@@ -658,7 +664,19 @@ export async function npReadShopCarrierLabelSource(
       "One exact completed outbound or replacement booking is required for label acquisition.",
     );
   }
-  return sources[0];
+  if (!order) {
+    throw new NpShopCarrierConflictError(
+      "carrier_label_not_available",
+      "The carrier label source is missing its exact commercial order.",
+    );
+  }
+  const disputes = await npReadStoredShopPaymentDisputesForOrder(tx, siteId, order.id, forUpdate);
+  return {
+    ...sources[0],
+    paymentDisputeSafe:
+      npShopPaymentDisputesMatchOrder(disputes, order) &&
+      !npShopPaymentDisputesRequireReview(disputes),
+  };
 }
 
 async function requireNoTracking(
@@ -859,6 +877,12 @@ export async function npAcquireShopCarrierShippingLabel(
     );
     if (existing?.status === "pending" || existing?.status === "provider-confirmed") {
       return { acquisition: existing };
+    }
+    if (!source.paymentDisputeSafe) {
+      throw new NpShopCarrierLabelAcquisitionConflictError(
+        "label_acquisition_state_conflict",
+        "A payment dispute requires provider reconciliation before purchasing another shipping label.",
+      );
     }
     const packingSource =
       packingWork &&

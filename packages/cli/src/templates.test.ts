@@ -389,12 +389,14 @@ describe("getProjectFiles", () => {
     expect(env).toContain("# NP_STRIPE_PUBLISHABLE_KEY=");
     expect(env).toContain("# NP_STRIPE_SECRET_KEY=");
     expect(env).toContain("# NP_STRIPE_WEBHOOK_SECRET=");
-    expect(env).toContain("full/received-return refunds");
+    expect(env).toContain("signed webhooks, dispute evidence, refunds");
     expect(env).not.toMatch(/^NP_STRIPE_(?:PUBLISHABLE_KEY|SECRET_KEY|WEBHOOK_SECRET)=/m);
     expect(readme).toContain("verified-purchase product review");
     expect(readme).toContain("follow graph at `/shop/wishlist`");
     expect(readme).toContain("one-shot member restock alerts");
     expect(readme).toContain("catalog price-drop alerts");
+    expect(readme).toContain("Authenticated PII-free payment-dispute evidence");
+    expect(readme).toContain("dispute evidence submission/liability");
     expect(readme).toContain("PII-free order-update timeline/outbox");
     expect(readme).toContain("Checkout intents and private drafts retain the cart");
     expect(readme).toContain("first durable pending-order commit atomically consumes");

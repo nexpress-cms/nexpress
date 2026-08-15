@@ -90,7 +90,10 @@ It provides:
   atomic reservation consumption or release; authenticated provider
   cancellation snapshots reconcile exact Shop refunds, safely compensate one
   previously unknown full reversal, and block fulfillment/refunds for
-  ambiguous partial or cumulative adjustments;
+  ambiguous partial or cumulative adjustments; authenticated provider dispute
+  events add bounded PII-free evidence and block new fulfillment, refund,
+  exchange, label, and pickup effects until a won, warning-closed, or prevented
+  outcome, without automatic commercial compensation;
 - independent revision-safe `awaiting` / `processing` / `shipped` fulfillment,
   audited direct-staff shipping-data access, owner-visible tracking, and
   shipment-or-30-day private-data deletion;
@@ -180,8 +183,9 @@ It provides:
 - featured-product and category-grid blocks.
 
 Provider-specific browser/server protocols, signature algorithms, credentials
-and rotation, initiating repeated or non-return partial refunds, disputes and
-chargebacks, different-item or price-difference exchanges,
+and rotation, initiating repeated or non-return partial refunds, submitting
+dispute evidence, accepting liability, automatic chargeback compensation,
+different-item or price-difference exchanges,
 separate return-postage charges, automatic or
 jurisdictional responsibility policy, carrier label billing/void policy,
 recurring pickup,
@@ -344,7 +348,7 @@ capabilities already serve completed replacement bookings without changing
 exchange commercial state.
 `@nexpress/shop-payment-stripe` is the bundled Stripe PaymentIntent initiation,
 signed-webhook, full-refund, received-return partial-refund/return-postage
-settlement, and cumulative refund-reconciliation adapter.
+settlement, cumulative refund-reconciliation, and authenticated dispute-evidence adapter.
 `@nexpress/shop-payment-toss` is the bundled Toss Payments v2 initiation,
 full-refund, received-return partial-refund/return-postage settlement, and
 query-verified cancellation reconciliation adapter. Customer/shipping PII exists only in the short-lived
@@ -355,7 +359,7 @@ still does not imply that a visitor paid for a product.
 See the [live Shop guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/plugin-shop.md)
 for the exact price, SKU, inventory, wishlist, restock-alert, price-alert, review, Forum-backed inquiry, cart,
 promotion, checkout-intent, private-draft, shipping-quote, tax-quote,
-pending-order, payment-attempt/event/adjustment, fulfillment, parcel, carrier,
+pending-order, payment-attempt/event/adjustment/dispute, fulfillment, parcel, carrier,
 packaging-proposal, packing-work, label acquisition/read, pickup,
 tracking/polling, full-refund, return-linked partial-refund, return,
 same-item exchange, return-logistics, return-postage, return-postage settlement, skin, block, and

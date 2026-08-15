@@ -210,6 +210,9 @@ describe("shop factory", () => {
       { id: "countPaymentAdjustments", kind: "metric" },
       { id: "paymentAdjustmentHealth", kind: "status" },
       { id: "recentPaymentAdjustments", kind: "table" },
+      { id: "countPaymentDisputes", kind: "metric" },
+      { id: "paymentDisputeHealth", kind: "status" },
+      { id: "recentPaymentDisputes", kind: "table" },
       { id: "maintainOrders", kind: "action" },
     ]);
     const exchangeTable = shopPlugin.admin?.tables?.find((table) => table.id === "shop-exchanges");

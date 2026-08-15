@@ -3762,6 +3762,246 @@ describe.skipIf(skipIfNoTestDb())("shop cart persistence", () => {
     });
   });
 
+  it("deduplicates payment dispute evidence and blocks commercial actions until provider resolution", async () => {
+    const ids = {
+      intentId: "1d3e4567-e89b-42d3-a456-426614174000",
+      draftId: "2d3e4567-e89b-42d3-a456-426614174000",
+      orderId: "3d3e4567-e89b-42d3-a456-426614174000",
+    };
+    await createPendingOrder(ids, "dispute-private@example.com");
+    const refundPayment = vi.fn((input) => ({
+      contract: "np.shop-refund-result.v1" as const,
+      refundId: input.refundId,
+      orderId: input.orderId,
+      paymentReference: input.paymentReference,
+      refundReference: "refund_must_not_run_during_dispute",
+      currency: input.currency,
+      amountMinor: input.amountMinor,
+      refundedAt: new Date().toISOString(),
+    }));
+    const disputeShop = createShop({
+      payment: {
+        adapter: {
+          id: "test-pay",
+          verifyWebhook: ({ rawBody }) => JSON.parse(new TextDecoder().decode(rawBody)) as never,
+          refundPayment,
+        },
+      },
+    });
+    await expect(
+      payPendingOrder(disputeShop, {
+        orderId: ids.orderId,
+        eventId: "evt_dispute_paid_1",
+        paymentReference: "pay_dispute_1",
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    const openedAt = new Date(Date.now() + 10).toISOString();
+    const opened = {
+      contract: "np.shop-payment-dispute-event.v1",
+      eventId: "evt_dispute_opened_1",
+      disputeReference: "dp_dispute_1",
+      orderId: ids.orderId,
+      paymentReference: "pay_dispute_1",
+      currency: "KRW",
+      amountMinor: 10_000,
+      status: "needs-response",
+      reasonCode: "fraudulent",
+      occurredAt: openedAt,
+      signedAt: openedAt,
+    } as const;
+    const send = (value: unknown) =>
+      configuredShopCall(disputeShop, "POST", "/payments/webhook", {
+        rawBody: new TextEncoder().encode(JSON.stringify(value)),
+      });
+
+    await expect(send(opened)).resolves.toMatchObject({
+      status: 200,
+      body: {
+        duplicate: false,
+        dispute: {
+          disputeReference: "dp_dispute_1",
+          status: "needs-response",
+          outcome: "opened",
+        },
+      },
+    });
+    await expect(send(opened)).resolves.toMatchObject({
+      status: 200,
+      body: { duplicate: true, dispute: { outcome: "opened" } },
+    });
+    await expect(send({ ...opened, amountMinor: 10_001 })).resolves.toMatchObject({
+      status: 409,
+      body: { error: "payment_dispute_conflict" },
+    });
+
+    const staff = await seedUser({ email: "dispute-operator@example.com" });
+    const context = {
+      actionInvocation: { kind: "staff" as const, userId: staff.userId },
+    } as never;
+    const db = await getTestDb();
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.processFulfillment?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 1 },
+            values: { operatorNote: "blocked by dispute" },
+          },
+          context,
+        ),
+      ),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("dispute") });
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.refundOrder?.handler(
+          {
+            row: { id: ids.orderId, revision: 2 },
+            values: { reason: "blocked by dispute" },
+          },
+          context,
+        ),
+      ),
+    ).resolves.toMatchObject({ ok: false, error: expect.stringContaining("dispute") });
+    expect(refundPayment).not.toHaveBeenCalled();
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.paymentDisputeHealth?.handler(undefined, {} as never),
+      ),
+    ).resolves.toMatchObject({ ok: true, data: { level: "warn" } });
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.recentPaymentDisputes?.handler(undefined, {} as never),
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      data: {
+        rows: [
+          {
+            provider: "test-pay",
+            orderId: ids.orderId,
+            status: "needs-response",
+            reason: "fraudulent",
+          },
+        ],
+      },
+    });
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.recentOrders?.handler(undefined, {} as never),
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { rows: [{ id: ids.orderId, refundEligible: false }] },
+    });
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.recentFulfillments?.handler(undefined, {} as never),
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { rows: [{ id: ids.orderId, processEligible: false }] },
+    });
+
+    const [storedDisputeRow] = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          like(npPluginStorage.key, "payment-dispute:test-pay:%"),
+        ),
+      );
+    expect(storedDisputeRow).toBeDefined();
+    await db
+      .update(npPluginStorage)
+      .set({
+        value: {
+          ...(storedDisputeRow?.value as Record<string, unknown>),
+          paymentReference: "pay_wrong_but_well_formed",
+        },
+      })
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          eq(npPluginStorage.key, storedDisputeRow?.key ?? "missing"),
+        ),
+      );
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.paymentDisputeHealth?.handler(undefined, {} as never),
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { level: "error", message: expect.stringContaining("source-mismatched") },
+    });
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.recentOrders?.handler(undefined, {} as never),
+      ),
+    ).resolves.toMatchObject({
+      ok: true,
+      data: { rows: [{ id: ids.orderId, refundEligible: false }] },
+    });
+    await db
+      .update(npPluginStorage)
+      .set({ value: storedDisputeRow?.value })
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          eq(npPluginStorage.key, storedDisputeRow?.key ?? "missing"),
+        ),
+      );
+
+    await expect(
+      send({
+        ...opened,
+        eventId: "evt_dispute_won_1",
+        status: "won",
+      }),
+    ).resolves.toMatchObject({
+      status: 200,
+      body: { duplicate: false, dispute: { status: "won", outcome: "updated" } },
+    });
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.paymentDisputeHealth?.handler(undefined, {} as never),
+      ),
+    ).resolves.toMatchObject({ ok: true, data: { level: "ok" } });
+    await expect(
+      withCurrentSite("default", () =>
+        disputeShop.plugin.actions?.processFulfillment?.handler(
+          {
+            row: { id: ids.orderId, fulfillmentRevision: 1 },
+            values: { operatorNote: "provider dispute won" },
+          },
+          context,
+        ),
+      ),
+    ).resolves.toMatchObject({ ok: true, data: expect.stringContaining("revision 2") });
+
+    const disputeRows = await db
+      .select({ key: npPluginStorage.key, value: npPluginStorage.value })
+      .from(npPluginStorage)
+      .where(
+        and(
+          eq(npPluginStorage.pluginId, "shop"),
+          eq(npPluginStorage.siteId, "default"),
+          sql`${npPluginStorage.key} like 'payment-dispute%'`,
+        ),
+      );
+    expect(disputeRows).toHaveLength(3);
+    expect(JSON.stringify(disputeRows)).not.toContain("dispute-private@example.com");
+    expect(
+      disputeRows.find((row) => row.key.startsWith("payment-dispute:test-pay:"))?.value,
+    ).toMatchObject({
+      status: "won",
+      latestEventId: "evt_dispute_won_1",
+    });
+  });
+
   it("books one idempotent carrier shipment and atomically redacts its private destination", async () => {
     const ids = {
       intentId: "a13e4567-e89b-42d3-a456-426614174000",

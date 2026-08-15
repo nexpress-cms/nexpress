@@ -2350,6 +2350,36 @@ After a provider success redirect, the launcher retains the exact return
 parameters until server confirmation succeeds and retries that same attempt;
 it does not prepare a second payment after an ambiguous confirmation failure.
 
+### Payment dispute evidence
+
+After authenticating an exact callback or performing an authoritative provider
+read, a payment adapter may return one
+`np.shop-payment-dispute-event.v1`. The event contains only a stable provider
+event id, stable dispute and captured-payment references, Shop order id,
+currency, positive disputed amount, one status/reason-code pair from a closed vocabulary, and
+provider occurrence/authentication timestamps. The reason is a bounded
+PII-free slug, not free text or evidence. Shop freshness-checks the
+authenticated timestamp, serializes each provider event, binds each dispute to
+the exact captured payment, and retains at most 20 disputes per order. Event
+receipts and the latest monotonic dispute state are deleted with the commercial
+order.
+
+`warning-needs-response`, `warning-under-review`, `needs-response`,
+`under-review`, and `lost` require provider reconciliation. While any exact
+retained dispute has one of those statuses, Shop blocks new fulfillment,
+full/return refund, same-item exchange, label-purchase, and pickup-scheduling
+effects. Stable label or pickup work that already reached provider I/O may still
+reconcile; verified tracking evidence remains independent. `won`,
+`warning-closed`, and `prevented` close the gate. Equal-timestamp status changes
+must advance within the same warning or ordinary lifecycle, stale updates are
+ignored, and terminal outcomes cannot reopen.
+
+This contract is diagnostic only. It never accepts liability, uploads evidence,
+refunds a charge, changes order/fulfillment state, restores inventory, or
+allocates a provider loss automatically. Admin exposes only bounded PII-free
+receipts and health; malformed, orphan, over-limit, or payment-mismatched rows
+fail closed.
+
 The bundled Stripe implementation uses PaymentIntents and the Payment Element:
 
 ```bash
@@ -2385,7 +2415,9 @@ Set `NP_STRIPE_PUBLISHABLE_KEY`, `NP_STRIPE_SECRET_KEY`, and
 `NP_STRIPE_WEBHOOK_SECRET`, using matching test/live API keys. Register
 `/api/plugins/shop/payments/webhook` in Stripe and preserve its raw request
 body. Subscribe to `payment_intent.succeeded`, `payment_intent.canceled`,
-`refund.created`, `refund.updated`, and `charge.refunded`. The adapter verifies
+`refund.created`, `refund.updated`, `charge.refunded`,
+`charge.dispute.created`, `charge.dispute.updated`, and
+`charge.dispute.closed`. The adapter verifies
 the exact `Stripe-Signature` bytes and timestamp before reading an event. A
 successful browser return sends only the PaymentIntent id to Shop; the adapter
 retrieves it with the secret key and compares its status, metadata, amount,
@@ -2410,8 +2442,9 @@ unique successful refunds must canonically sum to the original amount minus the
 remaining amount before the adapter emits a cumulative adjustment snapshot.
 Pending refunds remain retryable. More than 100 refunds, malformed totals, or
 mixed payment references fail closed. The Stripe adapter does not initiate
-repeated or non-return partial refunds, disputes, subscriptions, invoices,
-Connect transfers, or provider-specific tax and shipping behavior.
+repeated or non-return partial refunds, submit dispute evidence, accept
+liability, automate chargeback compensation, or implement subscriptions,
+invoices, Connect transfers, or provider-specific tax and shipping behavior.
 
 The bundled Korean provider implementation uses Toss Payments v2:
 
@@ -2727,8 +2760,9 @@ Existing `classic` and `storefront-full` ids cannot be replaced.
 Future transaction work should remain separable from this foundation:
 
 1. additional provider packages for Stripe or KG Inicis;
-2. authorization/capture, settlement corrections, disputes/chargebacks, and
-   initiating repeated or non-return partial-refund contracts;
+2. authorization/capture, settlement corrections, dispute evidence submission,
+   liability/chargeback automation, and initiating repeated or non-return
+   partial-refund contracts;
 3. recurring pickup, provider-specific tracking packages,
    replacement-address/carrier automation, different-item exchanges, and
    customer-service policy;

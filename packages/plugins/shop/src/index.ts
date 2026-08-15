@@ -222,6 +222,10 @@ import {
   npCountShopPaymentAdjustments,
   npListRecentShopPaymentAdjustments,
 } from "./payment-adjustment-service.js";
+import {
+  npCountShopPaymentDisputes,
+  npListRecentShopPaymentDisputes,
+} from "./payment-dispute-service.js";
 import { createShopTrackingApiHandler } from "./tracking-api.js";
 import {
   npCountShopTrackingEvents,
@@ -2196,6 +2200,15 @@ export function createShop(options: NpShopOptions = {}) {
           priority: 41,
         },
         {
+          id: "shop-payment-disputes-total",
+          label: "Payment disputes",
+          kind: "metric",
+          actionId: "countPaymentDisputes",
+          description:
+            "Authenticated PII-free dispute and chargeback evidence without automatic commercial compensation.",
+          priority: 48,
+        },
+        {
           id: "shop-refunds-total",
           label: "Refunds",
           kind: "metric",
@@ -2448,6 +2461,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Payment adjustment contract",
           kind: "status",
           actionId: "paymentAdjustmentHealth",
+        },
+        {
+          id: "shop-payment-dispute-health",
+          label: "Payment dispute evidence",
+          kind: "status",
+          actionId: "paymentDisputeHealth",
         },
         {
           id: "shop-refund-health",
@@ -3357,6 +3376,24 @@ export function createShop(options: NpShopOptions = {}) {
           ],
           rowsActionId: "recentPaymentAdjustments",
           emptyMessage: "No provider-initiated Shop payment adjustment exists for this site.",
+        },
+        {
+          id: "shop-payment-disputes",
+          label: "Recent payment dispute evidence (PII withheld)",
+          columns: [
+            { name: "provider", label: "Provider" },
+            { name: "eventId", label: "Event" },
+            { name: "dispute", label: "Dispute" },
+            { name: "orderId", label: "Order" },
+            { name: "amount", label: "Amount" },
+            { name: "status", label: "Status" },
+            { name: "reason", label: "Reason" },
+            { name: "outcome", label: "Outcome" },
+            { name: "occurredAt", label: "Occurred" },
+            { name: "processedAt", label: "Processed" },
+          ],
+          rowsActionId: "recentPaymentDisputes",
+          emptyMessage: "No authenticated Shop payment dispute evidence exists for this site.",
         },
         {
           id: "shop-refunds",
@@ -7550,6 +7587,68 @@ export function createShop(options: NpShopOptions = {}) {
           }
         },
       },
+      countPaymentDisputes: {
+        kind: "metric",
+        handler: async () => {
+          try {
+            const counts = await npCountShopPaymentDisputes();
+            return {
+              ok: true,
+              data: {
+                value: counts.total,
+                delta: `${counts.requiringReview.toString()} requiring provider reconciliation`,
+              },
+            };
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
+      paymentDisputeHealth: {
+        kind: "status",
+        handler: async () => {
+          try {
+            const counts = await npCountShopPaymentDisputes();
+            if (
+              counts.invalidSample > 0 ||
+              counts.orphanSample > 0 ||
+              counts.sourceMismatchSample > 0 ||
+              counts.sampleBoundReached
+            ) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed, ${counts.orphanSample.toString()} orphan, and ${counts.sourceMismatchSample.toString()} source-mismatched payment dispute row(s) in the newest bounded sample${counts.sampleBoundReached ? "; the diagnostic sample bound was reached" : ""}.`,
+              );
+            }
+            if (counts.requiringReview > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.requiringReview.toString()} dispute(s) block fulfillment, refunds, and exchanges pending provider reconciliation.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.total.toString()} authenticated dispute record(s) are resolved or prevented.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Payment dispute health check failed.",
+            );
+          }
+        },
+      },
+      recentPaymentDisputes: {
+        kind: "table",
+        handler: async () => {
+          try {
+            const result = await npListRecentShopPaymentDisputes();
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : "Unknown error" };
+          }
+        },
+      },
       ...(paymentAttemptApiHandler
         ? {
             countPaymentAttempts: {
@@ -8219,6 +8318,34 @@ export type {
   NpShopStoredPaymentAdjustmentReceipt,
   NpShopVerifiedPaymentAdjustmentEvent,
 } from "./payment-adjustment-contract.js";
+export {
+  NP_SHOP_PAYMENT_DISPUTE_EVENT_CONTRACT,
+  NP_SHOP_PAYMENT_DISPUTE_RECEIPT_CONTRACT,
+  NP_SHOP_PAYMENT_DISPUTE_STORAGE_CONTRACT,
+  NpShopPaymentDisputeConflictError,
+  NpShopPaymentDisputeContractError,
+  NpShopPaymentDisputeVerificationError,
+  npAnalyzeShopPaymentDisputeEvent,
+  npIsShopPaymentDisputeEvent,
+  npRequireFreshShopPaymentDisputeEvent,
+  npRequireShopPaymentDisputeEvent,
+  npRequireStoredShopPaymentDispute,
+  npRequireStoredShopPaymentDisputeReceipt,
+  npShopPaymentDisputeEventDigest,
+  npShopPaymentDisputeLimits,
+  npShopPaymentDisputeReceiptOutcomes,
+  npShopPaymentDisputeReceiptStorageKey,
+  npShopPaymentDisputeRequiresReview,
+  npShopPaymentDisputeStatuses,
+  npShopPaymentDisputeStorageKey,
+} from "./payment-dispute-contract.js";
+export type {
+  NpShopPaymentDisputeReceiptOutcome,
+  NpShopPaymentDisputeStatus,
+  NpShopStoredPaymentDispute,
+  NpShopStoredPaymentDisputeReceipt,
+  NpShopVerifiedPaymentDisputeEvent,
+} from "./payment-dispute-contract.js";
 export {
   NP_SHOP_REFUND_CONTRACT,
   NP_SHOP_REFUND_RESULT_CONTRACT,

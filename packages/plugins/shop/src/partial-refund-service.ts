@@ -19,6 +19,11 @@ import { NpShopPaymentProviderError } from "./payment-attempt-contract.js";
 import { npShopPaymentLimits } from "./payment-contract.js";
 import { npReadStoredShopPaymentAdjustment } from "./payment-adjustment-service.js";
 import {
+  npReadStoredShopPaymentDisputesForOrder,
+  npShopPaymentDisputesMatchOrder,
+  npShopPaymentDisputesRequireReview,
+} from "./payment-dispute-service.js";
+import {
   NP_SHOP_PARTIAL_REFUND_RESULT_CONTRACT,
   NP_SHOP_PARTIAL_REFUND_STORAGE_CONTRACT,
   NP_SHOP_RETURN_POSTAGE_SETTLEMENT_CONTRACT,
@@ -692,6 +697,23 @@ async function refundShopReturn(
         "A provider-initiated payment adjustment requires reconciliation before a partial refund can start or resume.",
       );
     }
+    const paymentDisputes = await npReadStoredShopPaymentDisputesForOrder(
+      tx,
+      siteId,
+      input.orderId,
+      true,
+    );
+    if (!npShopPaymentDisputesMatchOrder(paymentDisputes, order)) {
+      throw new NpShopOrderContractError("Shop payment dispute does not match its order", [
+        "Dispute provider, payment, amount, and retention must match the commercial order.",
+      ]);
+    }
+    if (npShopPaymentDisputesRequireReview(paymentDisputes)) {
+      throw new NpShopPartialRefundConflictError(
+        "partial_refund_manual_review",
+        "A payment dispute requires provider reconciliation before a partial refund can start or resume.",
+      );
+    }
     if (existing?.status === "manual-review") {
       throw new NpShopPartialRefundConflictError(
         "partial_refund_manual_review",
@@ -1041,6 +1063,16 @@ async function refundShopReturn(
       throw new NpShopPartialRefundConflictError(
         "partial_refund_revision_conflict",
         "The provider refunded the payment but local order state changed; manual reconciliation is required.",
+      );
+    }
+    const finalDisputes = await npReadStoredShopPaymentDisputesForOrder(tx, siteId, order.id, true);
+    if (
+      !npShopPaymentDisputesMatchOrder(finalDisputes, order) ||
+      npShopPaymentDisputesRequireReview(finalDisputes)
+    ) {
+      throw new NpShopPartialRefundConflictError(
+        "partial_refund_manual_review",
+        "The provider refund is confirmed, but payment dispute evidence must be reconciled before local completion.",
       );
     }
     const now = new Date(

@@ -2,7 +2,21 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-14 (The bundled Stripe payment adapter now adds an
+**Last refreshed:** 2026-08-15 (Shop payment adapters may now return one
+authenticated, provider-neutral, PII-free payment-dispute evidence event.
+Stable provider event and dispute identities, exact captured-payment matching,
+bounded monotonic status, durable receipts/state, order-lifetime cleanup,
+Admin/Doctor diagnostics, and fail-closed fulfillment/refund/exchange provider
+effects share the contract without changing order, payment, fulfillment, or
+inventory state automatically. Won, warning-closed, or prevented evidence
+reopens those actions; needs-response, under-review, their warning forms, and
+lost evidence remain diagnostic and blocking. The bundled Stripe adapter normalizes signed
+`charge.dispute.created`, `updated`, and `closed` events only after an
+authoritative PaymentIntent read. Evidence submission, liability acceptance,
+automatic refunds or compensation, and provider-specific dispute workflows
+remain outside Shop.)
+
+**Earlier:** 2026-08-14 (The bundled Stripe payment adapter now adds an
 exact PaymentIntent and Payment Element flow, server-authenticated confirmation,
 raw-body `Stripe-Signature` verification, stable full-refund idempotency, and
 bounded cumulative successful-refund reconciliation over the existing
