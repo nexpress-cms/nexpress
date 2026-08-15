@@ -11,7 +11,7 @@ fulfillment operations, optional provider-neutral carrier booking,
 revision-safe PII-free fulfillment parcel snapshots,
 optional read-only outbound and replacement packaging proposals,
 optional durable outbound and replacement packing-work intents,
-durable provider-neutral shipping-label purchase/regeneration with transient retrieval,
+durable provider-neutral shipping-label purchase/regeneration/voiding with transient retrieval,
 provider-neutral carrier pickup scheduling and cancellation,
 verified or reconciled carrier tracking events and owner-visible delivery state,
 provider-neutral full refunds with safe inventory
@@ -1051,6 +1051,7 @@ import {
   NP_SHOP_CARRIER_BOOKING_RESULT_CONTRACT,
   NP_SHOP_CARRIER_LABEL_ACQUISITION_RESULT_CONTRACT,
   NP_SHOP_CARRIER_LABEL_RESULT_CONTRACT,
+  NP_SHOP_CARRIER_LABEL_VOID_RESULT_CONTRACT,
   NP_SHOP_CARRIER_PICKUP_AVAILABILITY_RESULT_CONTRACT,
   NP_SHOP_CARRIER_PICKUP_CANCEL_RESULT_CONTRACT,
   NP_SHOP_CARRIER_PICKUP_RESULT_CONTRACT,
@@ -1164,6 +1165,25 @@ const carrier: NpShopCarrierAdapter = {
       operation: request.operation,
       labelReference: label.reference,
       acquiredAt: new Date().toISOString(),
+    };
+  },
+  async voidShippingLabel(request) {
+    // voidId is stable across retries and binds one exact acquired generation.
+    // Keep the shipment booking intact and return no bytes, URL, or address.
+    await voidProviderShippingLabel({
+      idempotencyKey: request.voidId,
+      bookingReference: request.bookingReference,
+      labelReference: request.labelReference,
+    });
+    return {
+      contract: NP_SHOP_CARRIER_LABEL_VOID_RESULT_CONTRACT,
+      voidId: request.voidId,
+      acquisitionId: request.acquisitionId,
+      shipmentId: request.shipmentId,
+      orderId: request.orderId,
+      generation: request.generation,
+      labelReference: request.labelReference,
+      voidedAt: new Date().toISOString(),
     };
   },
   async schedulePickup(request) {
@@ -1695,12 +1715,33 @@ acquisition and rechecks the same generation, revision, and opaque reference
 after provider I/O before delivering bytes. Read-only adapters retain their
 existing completed-booking behavior.
 
-Admin exposes a metric, health status, newest-50 acquisition table, actions on
-both booking surfaces, and an independent reconciliation action on the
-acquisition table. Doctor uses the same declarative inventory and checks
-malformed/orphan/provider/booking mismatches even after the adapter is removed.
-Commercial order cleanup deletes label acquisition state. Provider billing,
-paper size/layout, label rendering, void/refund policy, and provider-specific
+`voidShippingLabel` is an additive capability over that complete acquisition
+and transient-read pair. Direct staff may void only the exact completed current
+generation before verified tracking starts. Shop persists a separate
+shipment-keyed `np.shop-carrier-label-void-storage.v1` row with a stable void
+UUID before provider I/O. The PII-free request binds the acquisition, shipment,
+order, generation, booking reference, opaque label reference, and request time;
+the exact result repeats that identity with `voidedAt`. Retryable ambiguity
+keeps the same `pending` UUID, provider confirmation is durable before local
+`completed`, and a stored `provider-confirmed` result finishes locally even if
+the void method or carrier adapter is later removed. A closed rejection or
+malformed/conflicting result is retained for manual review.
+
+Once the current generation enters void reconciliation, transient label reads
+and concurrent regeneration are blocked. Completion invalidates only that
+label generation: the carrier booking, tracking number, pickup, and commercial
+shipment remain unchanged, while a later explicit regeneration may create
+generation N+1. Starting a new void after verified tracking is forbidden.
+Replacement shipment cancellation also waits for any current void to finish so
+two provider compensation effects cannot race.
+
+Admin exposes metrics, health statuses, newest-50 acquisition and void tables,
+actions on both booking surfaces, and independent reconciliation actions.
+Those Admin health handlers check malformed/orphan/provider/booking/acquisition
+mismatches even after the adapter is removed; Doctor verifies the declarative
+metric/status/table/action inventory. Commercial order cleanup deletes label
+acquisition and void state. Provider billing or refunds, paper size/layout,
+label rendering, and provider-specific
 protocols remain outside this contract; binary delivery still uses the
 independent bounded read route above.
 

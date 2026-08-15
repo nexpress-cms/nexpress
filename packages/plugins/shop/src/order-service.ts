@@ -262,6 +262,13 @@ import {
 } from "./label-acquisition-service.js";
 import type { NpShopStoredCarrierLabelAcquisition } from "./label-acquisition-contract.js";
 import {
+  npReadStoredShopCarrierLabelVoid,
+  npRequireStoredShopCarrierLabelVoidAtKey,
+  npShopCarrierLabelVoidIsCompletedPredecessor,
+  npShopCarrierLabelVoidStorageKey,
+  npShopCarrierLabelVoidMatchesAcquisition,
+} from "./label-void-storage.js";
+import {
   npReadShopReturnLogisticsForOrder,
   npShopReturnLogisticsStorageKey,
 } from "./return-logistics-service.js";
@@ -3366,6 +3373,16 @@ async function purgeOrder(
       and(
         eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
         eq(npPluginStorage.siteId, siteId),
+        like(npPluginStorage.key, "carrier-label-void:%"),
+        sql`${npPluginStorage.value}->>'orderId' = ${order.id}`,
+      ),
+    );
+  await tx
+    .delete(npPluginStorage)
+    .where(
+      and(
+        eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+        eq(npPluginStorage.siteId, siteId),
         like(npPluginStorage.key, "carrier-pickup-availability:%"),
         sql`${npPluginStorage.value}->>'orderId' = ${order.id}`,
       ),
@@ -4764,11 +4781,15 @@ export async function npReadShopCarrierShippingLabel(
   requestedAt.setMilliseconds(0);
   const prepared = await getDb().transaction(async (tx) => {
     const source = await npReadShopCarrierLabelSource(tx, siteId, input, adapter.id, true);
-    const acquisition = runtime.carrierLabelAcquisitionAdapter
-      ? await npReadStoredShopCarrierLabelAcquisition(tx, siteId, source.shipmentId, true)
-      : null;
+    const acquisition = await npReadStoredShopCarrierLabelAcquisition(
+      tx,
+      siteId,
+      source.shipmentId,
+      true,
+    );
+    const labelVoid = await npReadStoredShopCarrierLabelVoid(tx, siteId, source.shipmentId, true);
     if (
-      runtime.carrierLabelAcquisitionAdapter &&
+      (runtime.carrierLabelAcquisitionAdapter || acquisition) &&
       (!acquisition ||
         acquisition.status !== "completed" ||
         !npShopCarrierLabelAcquisitionMatchesSource(acquisition, source))
@@ -4777,6 +4798,26 @@ export async function npReadShopCarrierShippingLabel(
         "carrier_label_not_available",
         "A completed durable label acquisition is required before label retrieval.",
       );
+    }
+    if (labelVoid) {
+      if (!acquisition) {
+        throw new NpShopCarrierConflictError(
+          "carrier_label_not_available",
+          "The durable label void no longer has its exact acquisition source.",
+        );
+      }
+      if (npShopCarrierLabelVoidMatchesAcquisition(labelVoid, acquisition)) {
+        throw new NpShopCarrierConflictError(
+          "carrier_label_not_available",
+          "The current label generation has entered durable void reconciliation.",
+        );
+      }
+      if (!npShopCarrierLabelVoidIsCompletedPredecessor(labelVoid, acquisition)) {
+        throw new NpShopCarrierConflictError(
+          "carrier_label_not_available",
+          "The durable label void does not match the current acquisition history.",
+        );
+      }
     }
     const prepared = npRequireShopCarrierLabelRequest({
       contract: NP_SHOP_CARRIER_LABEL_REQUEST_CONTRACT,
@@ -4856,6 +4897,26 @@ export async function npReadShopCarrierShippingLabel(
           "carrier_label_not_available",
           "The current label generation changed before its bytes could be delivered.",
         );
+      }
+      const currentVoid = await npReadStoredShopCarrierLabelVoid(
+        tx,
+        siteId,
+        current.shipmentId,
+        true,
+      );
+      if (currentVoid) {
+        if (npShopCarrierLabelVoidMatchesAcquisition(currentVoid, currentAcquisition)) {
+          throw new NpShopCarrierConflictError(
+            "carrier_label_not_available",
+            "The current label generation changed to void reconciliation before delivery.",
+          );
+        }
+        if (!npShopCarrierLabelVoidIsCompletedPredecessor(currentVoid, currentAcquisition)) {
+          throw new NpShopCarrierConflictError(
+            "carrier_label_not_available",
+            "The durable label void changed to an invalid acquisition relationship.",
+          );
+        }
       }
     }
     await recordRequiredShopFulfillmentAudit(
@@ -6906,6 +6967,39 @@ export async function npListRecentShopCarrierBookings(
       return [acquisition.shipmentId, acquisition] as const;
     }),
   );
+  const labelVoidRows = rows.length
+    ? await db
+        .select({
+          key: npPluginStorage.key,
+          value: npPluginStorage.value,
+          expiresAt: npPluginStorage.expiresAt,
+        })
+        .from(npPluginStorage)
+        .where(
+          and(
+            eq(npPluginStorage.pluginId, NP_SHOP_PLUGIN_ID),
+            eq(npPluginStorage.siteId, siteId),
+            inArray(
+              npPluginStorage.key,
+              rows.map((row) => {
+                const booking = requireStoredCarrierBookingAtKey(row.value, row.expiresAt, row.key);
+                return npShopCarrierLabelVoidStorageKey(booking.id);
+              }),
+            ),
+          ),
+        )
+    : [];
+  const labelVoids = new Map(
+    labelVoidRows.map((row) => {
+      const state = npRequireStoredShopCarrierLabelVoidAtKey(row.value, row.expiresAt, row.key);
+      if (state.target !== "outbound" || state.exchangeId !== null) {
+        throw new NpShopCarrierContractError("Invalid outbound label void metadata", [
+          "outbound label void target must not identify an exchange.",
+        ]);
+      }
+      return [state.shipmentId, state] as const;
+    }),
+  );
   const trackingRows = rows.length
     ? await db
         .select({
@@ -6949,6 +7043,7 @@ export async function npListRecentShopCarrierBookings(
         const booking = requireStoredCarrierBookingAtKey(row.value, row.expiresAt, row.key);
         const pickup = pickups.get(booking.id);
         const labelAcquisition = labelAcquisitions.get(booking.id);
+        const labelVoid = labelVoids.get(booking.id);
         const parcelSnapshot = await readStoredFulfillmentParcels(db, siteId, booking.orderId);
         const fulfillment = await readStoredFulfillment(db, siteId, booking.orderId);
         const order = fulfillment
@@ -7001,8 +7096,22 @@ export async function npListRecentShopCarrierBookings(
         const labelRelationshipValid = Boolean(
           labelAcquisition && outboundLabelAcquisitionMatchesBooking(labelAcquisition, booking),
         );
+        const currentLabelVoid = Boolean(
+          labelAcquisition &&
+          labelVoid &&
+          npShopCarrierLabelVoidMatchesAcquisition(labelVoid, labelAcquisition),
+        );
+        const labelVoidRelationshipValid = Boolean(
+          !labelVoid ||
+          (labelAcquisition &&
+            (currentLabelVoid ||
+              npShopCarrierLabelVoidIsCompletedPredecessor(labelVoid, labelAcquisition))),
+        );
         const labelAction =
-          booking.status !== "completed" || trackedShipments.has(booking.id)
+          booking.status !== "completed" ||
+          trackedShipments.has(booking.id) ||
+          !labelVoidRelationshipValid ||
+          (currentLabelVoid && labelVoid?.status !== "completed")
             ? "—"
             : labelAcquisition?.status === "pending" ||
                 labelAcquisition?.status === "provider-confirmed"
@@ -7051,6 +7160,8 @@ export async function npListRecentShopCarrierBookings(
           labelDownloadEligible: Boolean(
             labelAcquisition?.status === "completed" &&
             labelRelationshipValid &&
+            labelVoidRelationshipValid &&
+            !currentLabelVoid &&
             booking.providerId === carrierProviderId,
           ),
           expectedRevision: labelAcquisition?.revision ?? 0,
@@ -11354,6 +11465,20 @@ export async function npCancelShopExchangeCarrierShipment(
         "The replacement label acquisition must complete or be manually reconciled before its shipment can be provider-cancelled or restocked.",
       );
     }
+    const labelVoid = await npReadStoredShopCarrierLabelVoid(tx, siteId, current.id, true);
+    if (
+      labelVoid &&
+      (!labelAcquisition ||
+        (!npShopCarrierLabelVoidMatchesAcquisition(labelVoid, labelAcquisition) &&
+          !npShopCarrierLabelVoidIsCompletedPredecessor(labelVoid, labelAcquisition)) ||
+        (npShopCarrierLabelVoidMatchesAcquisition(labelVoid, labelAcquisition) &&
+          labelVoid.status !== "completed"))
+    ) {
+      throw new NpShopExchangeCarrierConflictError(
+        "exchange_carrier_state_conflict",
+        "The current label void must complete or be reconciled before cancelling the replacement shipment.",
+      );
+    }
     const parcelSnapshot = await readStoredExchangeParcels(tx, siteId, input.orderId, true);
     const packingWork = await npReadStoredShopPackingWork(
       tx,
@@ -12149,6 +12274,9 @@ export async function npListRecentShopExchanges(
         const labelAcquisition = carrierBooking
           ? await npReadStoredShopCarrierLabelAcquisition(db, siteId, carrierBooking.id)
           : null;
+        const labelVoid = carrierBooking
+          ? await npReadStoredShopCarrierLabelVoid(db, siteId, carrierBooking.id)
+          : null;
         if (
           pickup &&
           (pickup.orderId !== exchange.orderId ||
@@ -12243,8 +12371,22 @@ export async function npListRecentShopExchanges(
           carrierBooking &&
           replacementLabelAcquisitionMatchesBooking(labelAcquisition, carrierBooking, exchange),
         );
+        const currentLabelVoid = Boolean(
+          labelAcquisition &&
+          labelVoid &&
+          npShopCarrierLabelVoidMatchesAcquisition(labelVoid, labelAcquisition),
+        );
+        const labelVoidRelationshipValid = Boolean(
+          !labelVoid ||
+          (labelAcquisition &&
+            (currentLabelVoid ||
+              npShopCarrierLabelVoidIsCompletedPredecessor(labelVoid, labelAcquisition))),
+        );
         const labelAction =
-          carrierBooking?.status !== "completed" || tracking
+          carrierBooking?.status !== "completed" ||
+          tracking ||
+          !labelVoidRelationshipValid ||
+          (currentLabelVoid && labelVoid?.status !== "completed")
             ? "—"
             : labelAcquisition?.status === "pending" ||
                 labelAcquisition?.status === "provider-confirmed"
@@ -12351,6 +12493,8 @@ export async function npListRecentShopExchanges(
           labelDownloadEligible: Boolean(
             labelAcquisition?.status === "completed" &&
             labelRelationshipValid &&
+            labelVoidRelationshipValid &&
+            !currentLabelVoid &&
             carrierBooking?.providerId === carrierProviderId,
           ),
           expectedRevision: labelAcquisition?.revision ?? 0,

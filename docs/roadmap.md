@@ -536,8 +536,17 @@ real product domain, not just blog/community. Ship as a plugin package
   transactions, durable two-stage confirmation, atomic opaque-reference
   replacement, verified-tracking closure, Admin/Doctor, cleanup, scaffolds, and
   PostgreSQL coverage for both outbound and provider-booked same-item replacement
-  shipments. Label bytes and URLs remain transient. Provider billing, paper
-  layout, void/refund policy, and provider protocols remain separate.
+  shipments. Label bytes and URLs remain transient. Provider billing/refunds,
+  paper layout, and provider protocols remain separate.
+- **Provider-neutral current shipping-label void (shipped)** — carrier adapters
+  may add `voidShippingLabel` only beside the transient read and durable
+  acquisition pair. Shop binds a stable void UUID to one exact current label
+  generation, performs provider I/O outside transactions, durably confirms the
+  result before local completion, supports adapter-free confirmed recovery,
+  blocks new intent after verified tracking, invalidates transient reads, orders
+  replacement cancellation, and exposes Admin/Doctor, cleanup, scaffold, and
+  PostgreSQL coverage without cancelling the shipment or pickup. Provider fee
+  refunds and provider-specific void policy remain external.
 - **Provider-neutral return-postage quote and selection (shipped)** — carrier
   adapters may add paired quote/create-v2 methods over approved-return
   logistics. One exact bounded same-currency method list, revision-safe owner

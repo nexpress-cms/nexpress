@@ -45,6 +45,7 @@ import {
   type NpShopCarrierExchangeParcelAdapter,
   type NpShopCarrierLabelAcquisitionAdapter,
   type NpShopCarrierLabelAdapter,
+  type NpShopCarrierLabelVoidAdapter,
   type NpShopCarrierParcelAdapter,
   type NpShopCarrierPickupAvailabilityAdapter,
   type NpShopCarrierPickupAdapter,
@@ -62,6 +63,12 @@ import {
   npListRecentShopCarrierLabelAcquisitions,
 } from "./label-acquisition-service.js";
 import { npRequireShopCarrierLabelAcquisitionActionInput } from "./label-acquisition-contract.js";
+import {
+  npCountShopCarrierLabelVoids,
+  npListRecentShopCarrierLabelVoids,
+  npVoidShopCarrierShippingLabel,
+} from "./label-void-service.js";
+import { npRequireShopCarrierLabelVoidActionInput } from "./label-void-contract.js";
 import {
   npBookShopCarrierShipment,
   npCancelShopPackingWork,
@@ -606,6 +613,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
   let carrierExchangeAdapter: NpShopCarrierExchangeAdapter | null = null;
   let carrierExchangeParcelAdapter: NpShopCarrierExchangeParcelAdapter | null = null;
   let carrierLabelAcquisitionAdapter: NpShopCarrierLabelAcquisitionAdapter | null = null;
+  let carrierLabelVoidAdapter: NpShopCarrierLabelVoidAdapter | null = null;
   let carrierLabelAdapter: NpShopCarrierLabelAdapter | null = null;
   let carrierParcelAdapter: NpShopCarrierParcelAdapter | null = null;
   let carrierPickupAdapter: NpShopCarrierPickupAdapter | null = null;
@@ -629,6 +637,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     const hasParcelBooking = configuredCarrierAdapter.bookShipmentWithParcels !== undefined;
     const hasShippingLabel = configuredCarrierAdapter.readShippingLabel !== undefined;
     const hasLabelAcquisition = configuredCarrierAdapter.acquireShippingLabel !== undefined;
+    const hasLabelVoid = configuredCarrierAdapter.voidShippingLabel !== undefined;
     const hasPickupSchedule = configuredCarrierAdapter.schedulePickup !== undefined;
     const hasPickupCancel = configuredCarrierAdapter.cancelPickup !== undefined;
     const hasPickupAvailability = configuredCarrierAdapter.listPickupWindows !== undefined;
@@ -672,6 +681,14 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     ) {
       throw new Error(
         "Shop carrier label acquisition requires acquireShippingLabel and readShippingLabel together.",
+      );
+    }
+    if (
+      hasLabelVoid &&
+      (!hasLabelAcquisition || typeof configuredCarrierAdapter.voidShippingLabel !== "function")
+    ) {
+      throw new Error(
+        "Shop carrier label voiding requires voidShippingLabel with paired acquisition and retrieval methods.",
       );
     }
     if (hasPickupSchedule !== hasPickupCancel) {
@@ -816,6 +833,12 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
               configuredCarrierAdapter.acquireShippingLabel.bind(configuredCarrierAdapter),
           }
         : {}),
+      ...(configuredCarrierAdapter.voidShippingLabel
+        ? {
+            voidShippingLabel:
+              configuredCarrierAdapter.voidShippingLabel.bind(configuredCarrierAdapter),
+          }
+        : {}),
       ...(configuredCarrierAdapter.schedulePickup && configuredCarrierAdapter.cancelPickup
         ? {
             schedulePickup: configuredCarrierAdapter.schedulePickup.bind(configuredCarrierAdapter),
@@ -897,6 +920,9 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     if (carrierLabelAdapter?.acquireShippingLabel) {
       carrierLabelAcquisitionAdapter = carrierLabelAdapter as NpShopCarrierLabelAcquisitionAdapter;
     }
+    if (carrierLabelAcquisitionAdapter?.voidShippingLabel) {
+      carrierLabelVoidAdapter = carrierLabelAcquisitionAdapter as NpShopCarrierLabelVoidAdapter;
+    }
     if (carrierAdapter.schedulePickup && carrierAdapter.cancelPickup) {
       carrierPickupAdapter = carrierAdapter as NpShopCarrierPickupAdapter;
     }
@@ -952,6 +978,7 @@ function createRuntime(options: NpShopOptions): NpShopRuntime {
     carrierExchangeAdapter,
     carrierExchangeParcelAdapter,
     carrierLabelAcquisitionAdapter,
+    carrierLabelVoidAdapter,
     carrierLabelAdapter,
     carrierParcelAdapter,
     carrierPickupAdapter,
@@ -1768,6 +1795,10 @@ export function createShop(options: NpShopOptions = {}) {
           ...(runtime.carrierLabelAcquisitionAdapter
             ? ["action:shop-carrier-label-acquisition"]
             : []),
+          "dashboard:shop-carrier-label-voids",
+          "widget:shop-carrier-label-void-health",
+          "table:shop-carrier-label-voids",
+          "action:shop-carrier-label-void",
           "dashboard:shop-return-logistics",
           "widget:shop-return-logistics-health",
           "table:shop-return-logistics",
@@ -2150,6 +2181,14 @@ export function createShop(options: NpShopOptions = {}) {
           priority: 44,
         },
         {
+          id: "shop-carrier-label-voids-total",
+          label: "Carrier label voids",
+          kind: "metric",
+          actionId: "countCarrierLabelVoids",
+          description: "PII-free durable label-void attempts for exact acquired generations.",
+          priority: 49,
+        },
+        {
           id: "shop-carrier-pickup-availability-total",
           label: "Pickup windows",
           kind: "metric",
@@ -2419,6 +2458,12 @@ export function createShop(options: NpShopOptions = {}) {
           label: "Carrier label acquisition contract",
           kind: "status",
           actionId: "carrierLabelAcquisitionHealth",
+        },
+        {
+          id: "shop-carrier-label-void-health",
+          label: "Carrier label void contract",
+          kind: "status",
+          actionId: "carrierLabelVoidHealth",
         },
         {
           id: "shop-carrier-pickup-health",
@@ -3117,24 +3162,85 @@ export function createShop(options: NpShopOptions = {}) {
             { name: "operation", label: "Operation" },
             { name: "generation", label: "Generation" },
             { name: "labelReference", label: "Opaque label reference" },
+            { name: "voidStatus", label: "Void status" },
             { name: "providerError", label: "Closed error" },
             { name: "updatedAt", label: "Updated" },
           ],
           rowsActionId: "recentCarrierLabelAcquisitions",
-          rowActions: runtime.carrierLabelAcquisitionAdapter
-            ? [
-                {
-                  id: "resume-carrier-label-acquisition",
-                  label: "Resume acquisition",
-                  actionId: "acquireCarrierShippingLabel",
-                  rowFields: ["id", "shipmentId", "target", "exchangeId", "expectedRevision"],
-                  visibleWhen: { field: "resumeEligible", oneOf: [true] },
-                  confirm:
-                    "Resume this stable label acquisition? Provider-confirmed rows perform only local completion.",
-                },
-              ]
-            : [],
+          rowActions: [
+            ...(runtime.carrierLabelAcquisitionAdapter
+              ? [
+                  {
+                    id: "resume-carrier-label-acquisition",
+                    label: "Resume acquisition",
+                    actionId: "acquireCarrierShippingLabel",
+                    rowFields: ["id", "shipmentId", "target", "exchangeId", "expectedRevision"],
+                    visibleWhen: { field: "resumeEligible", oneOf: [true] },
+                    confirm:
+                      "Resume this stable label acquisition? Provider-confirmed rows perform only local completion.",
+                  },
+                ]
+              : []),
+            {
+              id: "void-carrier-label",
+              label: "Void label",
+              actionId: "voidCarrierShippingLabel",
+              rowFields: [
+                "id",
+                "shipmentId",
+                "target",
+                "exchangeId",
+                "acquisitionId",
+                "generation",
+                "expectedAcquisitionRevision",
+                "expectedVoidRevision",
+              ],
+              visibleWhen: { field: "voidEligible", oneOf: [true] },
+              confirm:
+                "Void this exact current label generation? The shipment booking remains intact.",
+            },
+          ],
           emptyMessage: "No durable carrier label acquisition exists for this site.",
+        },
+        {
+          id: "shop-carrier-label-voids",
+          label: "Carrier label voids (PII withheld)",
+          columns: [
+            { name: "id", label: "Order" },
+            { name: "voidId", label: "Void" },
+            { name: "acquisitionId", label: "Acquisition" },
+            { name: "shipmentId", label: "Shipment" },
+            { name: "target", label: "Shipment kind" },
+            { name: "exchangeId", label: "Exchange" },
+            { name: "provider", label: "Provider" },
+            { name: "status", label: "Status" },
+            { name: "generation", label: "Generation" },
+            { name: "labelReference", label: "Opaque label reference" },
+            { name: "providerError", label: "Closed error" },
+            { name: "updatedAt", label: "Updated" },
+          ],
+          rowsActionId: "recentCarrierLabelVoids",
+          rowActions: [
+            {
+              id: "resume-carrier-label-void",
+              label: "Resume label void",
+              actionId: "voidCarrierShippingLabel",
+              rowFields: [
+                "id",
+                "shipmentId",
+                "target",
+                "exchangeId",
+                "acquisitionId",
+                "generation",
+                "expectedAcquisitionRevision",
+                "expectedVoidRevision",
+              ],
+              visibleWhen: { field: "resumeEligible", oneOf: [true] },
+              confirm:
+                "Resume this stable label void? Provider-confirmed rows perform only local completion.",
+            },
+          ],
+          emptyMessage: "No durable carrier label void exists for this site.",
         },
         {
           id: "shop-carrier-pickup-availability",
@@ -6663,6 +6769,7 @@ export function createShop(options: NpShopOptions = {}) {
           try {
             const result = await npListRecentShopCarrierLabelAcquisitions(
               runtime.carrierLabelAcquisitionAdapter?.id,
+              runtime.carrierLabelVoidAdapter?.id,
             );
             return npAdminTable(result.rows, result.total);
           } catch (error) {
@@ -6704,6 +6811,109 @@ export function createShop(options: NpShopOptions = {}) {
             },
           }
         : {}),
+      countCarrierLabelVoids: {
+        kind: "metric" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopCarrierLabelVoids(runtime.carrierLabelVoidAdapter?.id);
+            return {
+              ok: true as const,
+              data: {
+                value: counts.total,
+                delta: `${counts.completed.toString()} completed, ${(counts.pending + counts.providerConfirmed).toString()} pending reconciliation`,
+              },
+            };
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      carrierLabelVoidHealth: {
+        kind: "status" as const,
+        handler: async () => {
+          try {
+            const counts = await npCountShopCarrierLabelVoids(runtime.carrierLabelVoidAdapter?.id);
+            if (!runtime.carrierLabelVoidAdapter && counts.pending > 0) {
+              return npAdminStatus(
+                "error",
+                `${counts.pending.toString()} pending label void(s) require their original carrier adapter; ${counts.providerConfirmed.toString()} provider-confirmed row(s) can finish locally.`,
+              );
+            }
+            if (
+              counts.invalidSample > 0 ||
+              counts.orphanSample > 0 ||
+              counts.acquisitionMismatchSample > 0 ||
+              counts.providerMismatchSample > 0
+            ) {
+              return npAdminStatus(
+                "error",
+                `${counts.invalidSample.toString()} malformed, ${counts.orphanSample.toString()} orphan, ${counts.acquisitionMismatchSample.toString()} acquisition-mismatched, and ${counts.providerMismatchSample.toString()} provider-mismatched label void row(s) in bounded samples.`,
+              );
+            }
+            if (counts.pending > 0 || counts.providerConfirmed > 0 || counts.manualReview > 0) {
+              return npAdminStatus(
+                "warn",
+                `${counts.pending.toString()} provider-pending, ${counts.providerConfirmed.toString()} provider-confirmed awaiting local completion, and ${counts.manualReview.toString()} label void(s) requiring reconciliation.`,
+              );
+            }
+            return npAdminStatus(
+              "ok",
+              `${counts.completed.toString()} completed label void(s); ${runtime.carrierLabelVoidAdapter ? `provider "${runtime.carrierLabelVoidAdapter.id}" is enabled` : "new label voids are disabled"}.`,
+            );
+          } catch (error) {
+            return npAdminStatus(
+              "error",
+              error instanceof Error ? error.message : "Carrier label void health failed.",
+            );
+          }
+        },
+      },
+      recentCarrierLabelVoids: {
+        kind: "table" as const,
+        handler: async () => {
+          try {
+            const result = await npListRecentShopCarrierLabelVoids(
+              runtime.carrierLabelVoidAdapter?.id,
+            );
+            return npAdminTable(result.rows, result.total);
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
+      voidCarrierShippingLabel: {
+        kind: "action" as const,
+        handler: async (data: unknown, ctx: NpPluginContext) => {
+          try {
+            if (ctx.actionInvocation?.kind !== "staff") {
+              return {
+                ok: false as const,
+                error: "Carrier label voiding requires a direct staff action.",
+              };
+            }
+            const result = await npVoidShopCarrierShippingLabel(
+              runtime,
+              npRequireShopCarrierLabelVoidActionInput(data),
+              ctx.actionInvocation.userId,
+            );
+            return {
+              ok: true as const,
+              data: `Carrier label void ${result.duplicate ? "already reconciled" : "completed"} at generation ${result.state.generation.toString()} and revision ${result.state.revision.toString()}.`,
+            };
+          } catch (error) {
+            return {
+              ok: false as const,
+              error: error instanceof Error ? error.message : "Unknown error",
+            };
+          }
+        },
+      },
       countCarrierPickupAvailability: {
         kind: "metric" as const,
         handler: async () => {
@@ -8904,6 +9114,7 @@ export type {
   NpShopCarrierExchangeParcelAdapter,
   NpShopCarrierLabelAcquisitionAdapter,
   NpShopCarrierLabelAdapter,
+  NpShopCarrierLabelVoidAdapter,
   NpShopCarrierLabelFormat,
   NpShopCarrierLabelReadInput,
   NpShopCarrierLabelRequest,
@@ -8944,6 +9155,32 @@ export {
   npShopCarrierLabelAcquisitionStatuses,
   npShopCarrierLabelAcquisitionTargets,
 } from "./label-acquisition-contract.js";
+export {
+  NP_SHOP_CARRIER_LABEL_VOID_REQUEST_CONTRACT,
+  NP_SHOP_CARRIER_LABEL_VOID_RESULT_CONTRACT,
+  NP_SHOP_CARRIER_LABEL_VOID_STORAGE_CONTRACT,
+  NpShopCarrierLabelVoidConflictError,
+  NpShopCarrierLabelVoidContractError,
+  npAnalyzeShopCarrierLabelVoidRequest,
+  npAnalyzeShopCarrierLabelVoidResult,
+  npAnalyzeStoredShopCarrierLabelVoid,
+  npRequireShopCarrierLabelVoidActionInput,
+  npRequireShopCarrierLabelVoidRequest,
+  npRequireShopCarrierLabelVoidResult,
+  npRequireStoredShopCarrierLabelVoid,
+  npShopCarrierLabelVoidLimits,
+  npShopCarrierLabelVoidStatuses,
+  npShopCarrierLabelVoidTargets,
+} from "./label-void-contract.js";
+export type {
+  NpShopCarrierLabelVoidActionInput,
+  NpShopCarrierLabelVoidRequest,
+  NpShopCarrierLabelVoidResult,
+  NpShopCarrierLabelVoidStatus,
+  NpShopCarrierLabelVoidTarget,
+  NpShopStoredCarrierLabelVoid,
+} from "./label-void-contract.js";
+export { npShopCarrierLabelVoidStorageKey } from "./label-void-storage.js";
 export type {
   NpShopCarrierLabelAcquisitionActionInput,
   NpShopCarrierLabelAcquisitionOperation,

@@ -126,10 +126,12 @@ It provides:
 - optional transient shipping-label retrieval for completed carrier bookings,
   with a PII-free provider request, direct-staff audit, bounded PDF/PNG/ZPL
   bytes, authenticated Admin download, and no durable label storage;
-- optional durable shipping-label purchase and atomic regeneration for outbound
+- optional durable shipping-label purchase, atomic regeneration, and exact current-generation
+  voiding for outbound
   and provider-booked same-item replacements, with one shipment-keyed generation,
   stable provider idempotency, an opaque PII-free current-label reference,
-  tracking-start closure, Admin/Doctor reconciliation, and transient bytes only;
+  durable two-stage void confirmation, tracking-start closure, Admin/Doctor
+  reconciliation, and transient bytes only while the carrier booking remains intact;
 - optional provider-neutral pickup scheduling for parcel-aware completed
   outbound and same-item replacement bookings, with shipment-keyed independent
   state, a server-only opaque origin reference, exact PII-free package
@@ -187,7 +189,7 @@ and rotation, initiating repeated or non-return partial refunds, submitting
 dispute evidence, accepting liability, automatic chargeback compensation,
 different-item or price-difference exchanges,
 separate return-postage charges, automatic or
-jurisdictional responsibility policy, carrier label billing/void policy,
+jurisdictional responsibility policy, carrier label billing/refund policy,
 recurring pickup,
 provider-specific tracking protocols,
 tax remittance/filing, invoices, exemptions, customs, and carrier-owned dynamic
@@ -308,7 +310,11 @@ authenticate tracking callbacks or reconcile tracking through bounded
 server-only reads, and may retrieve an already-booked outbound or replacement
 label through `readShippingLabel`. It may add `acquireShippingLabel` only with
 that read capability; Shop then owns stable purchase/regeneration generations
-and the adapter atomically replaces the opaque current label reference. A
+and the adapter atomically replaces the opaque current label reference. It may
+add `voidShippingLabel` only with that pair; Shop then binds one stable void UUID
+to the exact current generation, blocks new void intent after tracking, keeps
+the shipment booking intact, and permits regeneration only after durable void
+completion. A
 parcel-aware adapter may additionally implement both
 `schedulePickup` and `cancelPickup`; `createShop()` then requires at least one
 outbound or replacement parcel-booking capability and one opaque

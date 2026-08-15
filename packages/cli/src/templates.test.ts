@@ -567,6 +567,8 @@ describe("getProjectFiles", () => {
     expect(env).toContain("readShippingLabel capability serves completed outbound");
     expect(env).toContain("acquireShippingLabel adds durable purchase/regeneration");
     expect(env).toContain("acquisitionId as the provider idempotency key");
+    expect(env).toContain("voidShippingLabel uses voidId for the exact current generation");
+    expect(env).toContain("keeps booking intact");
     expect(env).toContain("never persist or log those bytes");
     expect(env).toContain("Cancel the pickup");
     expect(env).toContain("verifyTrackingWebhook and readTracking methods also serve exact");
@@ -574,7 +576,7 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("completed outbound and replacement labels");
     expect(readme).toContain("durable first-label purchase and atomic regeneration");
     expect(readme).toContain(
-      "Verified tracking blocks label acquisition, pickup, and shipment cancellation",
+      "Verified tracking blocks label acquisition, new label void intent, pickup, and shipment cancellation",
     );
     expect(readme).toContain("Verified provider cancellation snapshots reconcile known refunds");
     expect(env).toContain("provider-cancellation reconciliation for Shop");

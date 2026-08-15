@@ -46,6 +46,11 @@ import {
   npShopPaymentDisputesRequireReview,
 } from "./payment-dispute-service.js";
 import {
+  npReadStoredShopCarrierLabelVoid,
+  npShopCarrierLabelVoidIsCompletedPredecessor,
+  npShopCarrierLabelVoidMatchesAcquisition,
+} from "./label-void-storage.js";
+import {
   npReadStoredShopPackingWork,
   npShopPackingWorkAllowsShipmentEffectForSource,
   npShopPackingWorkMatchesUnattachedTombstone,
@@ -92,6 +97,10 @@ export interface NpShopAdminCarrierLabelAcquisitionRow {
   labelReference: string;
   providerError: string;
   resumeEligible: boolean;
+  voidStatus: string;
+  voidEligible: boolean;
+  expectedAcquisitionRevision: number;
+  expectedVoidRevision: number;
   updatedAt: string;
 }
 
@@ -850,6 +859,7 @@ export async function npAcquireShopCarrierShippingLabel(
       source.shipmentId,
       true,
     );
+    const labelVoid = await npReadStoredShopCarrierLabelVoid(tx, siteId, source.shipmentId, true);
     if (existing && !npShopCarrierLabelAcquisitionMatchesSource(existing, source)) {
       throw new NpShopCarrierLabelAcquisitionConflictError(
         "label_acquisition_state_conflict",
@@ -867,6 +877,33 @@ export async function npAcquireShopCarrierShippingLabel(
         "label_acquisition_manual_review",
         "The current label acquisition requires manual reconciliation.",
       );
+    }
+    if (labelVoid && !existing) {
+      throw new NpShopCarrierLabelAcquisitionConflictError(
+        "label_acquisition_state_conflict",
+        "An orphan durable label void blocks a new label acquisition.",
+      );
+    }
+    if (labelVoid && existing) {
+      const matchesCurrent = npShopCarrierLabelVoidMatchesAcquisition(labelVoid, existing);
+      const completedPreviousGeneration = npShopCarrierLabelVoidIsCompletedPredecessor(
+        labelVoid,
+        existing,
+      );
+      if (!matchesCurrent && !completedPreviousGeneration) {
+        throw new NpShopCarrierLabelAcquisitionConflictError(
+          "label_acquisition_state_conflict",
+          "The durable label void no longer matches the current label generation.",
+        );
+      }
+      if (matchesCurrent && labelVoid.status !== "completed") {
+        throw new NpShopCarrierLabelAcquisitionConflictError(
+          labelVoid.status === "manual-review"
+            ? "label_acquisition_manual_review"
+            : "label_acquisition_state_conflict",
+          "Complete or reconcile the current label void before acquiring another generation.",
+        );
+      }
     }
     const packingWork = await npReadStoredShopPackingWork(
       tx,
@@ -1140,6 +1177,7 @@ export async function npAcquireShopCarrierShippingLabel(
 
 export async function npListRecentShopCarrierLabelAcquisitions(
   expectedProviderId?: string,
+  voidProviderId?: string,
 ): Promise<{
   rows: NpShopAdminCarrierLabelAcquisitionRow[];
   total: number;
@@ -1174,24 +1212,52 @@ export async function npListRecentShopCarrierLabelAcquisitions(
           row.key,
         );
         let resumeEligible = false;
-        if (
-          expectedProviderId !== undefined &&
+        let voidEligible = false;
+        const labelVoid = await npReadStoredShopCarrierLabelVoid(
+          db,
+          siteId,
+          acquisition.shipmentId,
+        );
+        const voidMatchesCurrent = Boolean(
+          labelVoid && npShopCarrierLabelVoidMatchesAcquisition(labelVoid, acquisition),
+        );
+        const voidRelationshipValid = Boolean(
+          !labelVoid ||
+          voidMatchesCurrent ||
+          npShopCarrierLabelVoidIsCompletedPredecessor(labelVoid, acquisition),
+        );
+        const acquisitionResumeCandidate =
+          voidRelationshipValid &&
           acquisition.providerId === expectedProviderId &&
-          (acquisition.status === "pending" || acquisition.status === "provider-confirmed")
-        ) {
+          (acquisition.status === "pending" || acquisition.status === "provider-confirmed");
+        const voidCandidate =
+          voidRelationshipValid &&
+          acquisition.providerId === voidProviderId &&
+          acquisition.status === "completed" &&
+          acquisition.labelReference !== null &&
+          (!labelVoid ||
+            (!voidMatchesCurrent &&
+              npShopCarrierLabelVoidIsCompletedPredecessor(labelVoid, acquisition)));
+        if (acquisitionResumeCandidate || voidCandidate) {
           try {
             const source = await npReadShopCarrierLabelSource(
               db,
               siteId,
               { orderId: acquisition.orderId, shipmentId: acquisition.shipmentId },
-              expectedProviderId,
+              acquisition.providerId,
               false,
             );
             await npReadStoredShopPackingWork(db, siteId, acquisition.target, acquisition.orderId);
             await requireNoTracking(db, siteId, source, false);
-            resumeEligible = npShopCarrierLabelAcquisitionMatchesSource(acquisition, source);
+            const relationshipValid = npShopCarrierLabelAcquisitionMatchesSource(
+              acquisition,
+              source,
+            );
+            resumeEligible = acquisitionResumeCandidate && relationshipValid;
+            voidEligible = voidCandidate && relationshipValid;
           } catch {
             resumeEligible = false;
+            voidEligible = false;
           }
         }
         return {
@@ -1208,6 +1274,10 @@ export async function npListRecentShopCarrierLabelAcquisitions(
           labelReference: acquisition.labelReference ?? "—",
           providerError: acquisition.providerErrorCode ?? "—",
           resumeEligible,
+          voidStatus: voidMatchesCurrent ? (labelVoid?.status ?? "none") : "none",
+          voidEligible,
+          expectedAcquisitionRevision: acquisition.revision,
+          expectedVoidRevision: labelVoid?.revision ?? 0,
           updatedAt: acquisition.updatedAt,
         };
       }),
