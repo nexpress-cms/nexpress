@@ -1,5 +1,20 @@
 # @nexpress/xliff
 
+## 0.4.3
+
+### Patch Changes
+
+- Updated dependencies [5560f00]
+- Updated dependencies [1b34745]
+- Updated dependencies [33d4c85]
+- Updated dependencies [772f58b]
+- Updated dependencies [6b8cd26]
+- Updated dependencies [bd52dc5]
+- Updated dependencies [d39f368]
+- Updated dependencies [cc2bc2c]
+  - @nexpress/core@0.4.3
+  - @nexpress/translation@0.4.3
+
 ## 0.4.2
 
 ### Patch Changes

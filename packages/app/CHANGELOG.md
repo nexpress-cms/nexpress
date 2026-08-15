@@ -1,5 +1,130 @@
 # @nexpress/app
 
+## 0.4.3
+
+### Patch Changes
+
+- 5560f00: Add exact Admin table row actions and trusted action invocation context, then use them for revision-safe Shop fulfillment, audited staff-only shipping-data access, shipment/30-day private-data deletion, owner tracking status, diagnostics, scaffolds, and documentation.
+- b867ddc: Reuse one ordinary Forum board for optional Shop product inquiries. The
+  independent packages now share a structural build-time bridge with signed live
+  product context, existing Forum audience/moderation/attachment policy,
+  staff-owned rich-text answers, author notifications, bounded Admin health,
+  complete skin fallbacks, Storefront hooks, generated schema, and scaffold
+  guidance without adding a parallel inquiry collection.
+- 1b34745: Add bounded site-owned Shop carts for guests and members, including signed
+  guest identity, revision-safe mutations, live product/variant quotes, cart
+  skins, Admin health and cleanup, an hourly expiry task, and member identity on
+  plugin API route requests. Checkout, payment, orders, and inventory reservation
+  remain explicitly outside the contract.
+- 559fb31: Add a durable PII-free Shop order-update timeline and bounded transactional
+  member-inbox/email outbox across order, payment, fulfillment, delivery, return,
+  and refund transitions. Recipient email stays in a maximum-24-hour private
+  sidecar, Admin and Doctor expose only closed delivery health, and generated
+  project guidance documents the at-least-once email boundary.
+- ef03370: Add independent one-shot member alerts when an exact Shop product or enabled
+  variant catalog price falls below its captured same-currency baseline. Product
+  hooks and bounded reconciliation share stable inbox dedupe, Admin and Doctor
+  diagnostics, both Shop skins, Storefront hooks, and generated-project guidance.
+- 6b8cd26: Add the first-party Shop catalog and independent Storefront theme, including
+  bounded product/category collections, exact integer-money and inventory
+  contracts, public routes, skins, blocks, Admin metrics, scaffold defaults, and
+  generated migrations. Text fields marked `unique` now receive a site-scoped
+  database unique index, making product SKU uniqueness race-safe.
+- 4943aa2: Add exact owner-scoped Shop checkout intents with a fixed 15-minute lifetime,
+  idempotent and capacity-bounded creation, live cart revalidation, cancellation,
+  Admin health and cleanup, complete skin fallbacks, independent Storefront
+  styling hooks, integration coverage, and scaffold guidance. Payment, orders,
+  customer PII, and inventory reservation remain explicitly outside the contract.
+- 190bd9c: Add independent member-owned one-shot Shop restock alerts with bounded reconciliation, preference-aware inbox delivery, Admin and Doctor diagnostics, complete skin/theme hooks, and scaffold guidance.
+- bd52dc5: Add an opt-in, one-MiB exact raw-body contract for signed plugin API callbacks, including early route validation, runtime and discovery metadata, OpenAPI projection, bounded dispatch, and a safe CLI scaffold example.
+- 909c42f: Flush large release-plan JSON output before the operator command exits, and keep the fresh-scaffold journey capture explicitly bounded with actionable process errors.
+- d39f368: Add bounded binary plugin API responses and authenticated declarative Admin
+  downloads, then let Shop carrier adapters retrieve already-booked PDF, PNG, or
+  ZPL shipping labels through a PII-free, staff-audited, transient byte contract.
+- Updated dependencies [ae2cd03]
+- Updated dependencies [5560f00]
+- Updated dependencies [ecfc274]
+- Updated dependencies [b2121ee]
+- Updated dependencies [5e01252]
+- Updated dependencies [9c0fc98]
+- Updated dependencies [1ceb0bf]
+- Updated dependencies [ae21784]
+- Updated dependencies [b867ddc]
+- Updated dependencies [5197814]
+- Updated dependencies [1b34745]
+- Updated dependencies [e116046]
+- Updated dependencies [9cb5a22]
+- Updated dependencies [0756a3b]
+- Updated dependencies [559fb31]
+- Updated dependencies [99a523b]
+- Updated dependencies [79d8f1d]
+- Updated dependencies [824d6e9]
+- Updated dependencies [36efdb0]
+- Updated dependencies [493ae13]
+- Updated dependencies [a487b2f]
+- Updated dependencies [25f8112]
+- Updated dependencies [33d4c85]
+- Updated dependencies [6857add]
+- Updated dependencies [ebd0422]
+- Updated dependencies [44cb5e7]
+- Updated dependencies [772f58b]
+- Updated dependencies [d5ebd9b]
+- Updated dependencies [ef03370]
+- Updated dependencies [9470eee]
+- Updated dependencies [b0b6c91]
+- Updated dependencies [6b8cd26]
+- Updated dependencies [089f584]
+- Updated dependencies [e2b1197]
+- Updated dependencies [7088ce6]
+- Updated dependencies [4943aa2]
+- Updated dependencies [c7fbd4c]
+- Updated dependencies [8250b4b]
+- Updated dependencies [d963646]
+- Updated dependencies [9414257]
+- Updated dependencies [f40a639]
+- Updated dependencies [a1a57a0]
+- Updated dependencies [909c42f]
+- Updated dependencies [2a700c3]
+- Updated dependencies [d38d7d0]
+- Updated dependencies [190bd9c]
+- Updated dependencies [471fa8a]
+- Updated dependencies [e5489bb]
+- Updated dependencies [bd52dc5]
+- Updated dependencies [d39f368]
+- Updated dependencies [cc2bc2c]
+- Updated dependencies [e116046]
+- Updated dependencies [9e23204]
+  - @nexpress/plugin-shop@0.4.3
+  - @nexpress/admin@0.4.3
+  - @nexpress/core@0.4.3
+  - @nexpress/plugin-sdk@0.4.3
+  - @nexpress/theme-storefront@0.4.3
+  - @nexpress/plugin-forum@0.4.3
+  - @nexpress/wp-import@0.4.3
+  - @nexpress/auth-pages@0.4.3
+  - @nexpress/blocks@0.4.3
+  - @nexpress/editor@0.4.3
+  - @nexpress/gettext@0.4.3
+  - @nexpress/next@0.4.3
+  - @nexpress/plugin-oauth-github@0.4.3
+  - @nexpress/plugin-oauth-google@0.4.3
+  - @nexpress/plugin-reading-time@0.4.3
+  - @nexpress/plugin-seo-audit@0.4.3
+  - @nexpress/theme@0.4.3
+  - @nexpress/theme-community@0.4.3
+  - @nexpress/theme-default@0.4.3
+  - @nexpress/theme-docs@0.4.3
+  - @nexpress/theme-magazine@0.4.3
+  - @nexpress/theme-portfolio@0.4.3
+  - @nexpress/translation@0.4.3
+  - @nexpress/xliff@0.4.3
+  - @nexpress/plugin-block-callout@0.4.3
+  - @nexpress/plugin-block-embed@0.4.3
+  - @nexpress/plugin-block-latest-posts@0.4.3
+  - @nexpress/plugin-block-newsletter@0.4.3
+  - @nexpress/plugin-block-pricing@0.4.3
+  - @nexpress/plugin-block-stats@0.4.3
+
 ## 0.4.2
 
 ### Patch Changes

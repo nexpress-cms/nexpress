@@ -1,5 +1,20 @@
 # @nexpress/wp-import
 
+## 0.4.3
+
+### Patch Changes
+
+- d963646: Keep WordPress media downloads compatible with Node 20 by moving to the patched Undici line, correcting pinned DNS agent behavior, and releasing one-shot connections on every terminal path. Refresh vulnerable build-time parser and globbing resolutions.
+- Updated dependencies [5560f00]
+- Updated dependencies [1b34745]
+- Updated dependencies [33d4c85]
+- Updated dependencies [772f58b]
+- Updated dependencies [6b8cd26]
+- Updated dependencies [bd52dc5]
+- Updated dependencies [d39f368]
+- Updated dependencies [cc2bc2c]
+  - @nexpress/core@0.4.3
+
 ## 0.4.2
 
 ### Patch Changes
