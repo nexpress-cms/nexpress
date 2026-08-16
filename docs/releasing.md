@@ -291,20 +291,33 @@ orphan before trying to publish again.
 ## Hosted demo update
 
 After npm publishes, update the public demo repo before starting the next large
-feature batch:
+feature batch. In `nexpress-cms/nexpress-hosted-demo`, run the **Update
+NexPress** manual GitHub Actions workflow with the exact published version. It
+verifies every installed package manifest and provenance record, synchronizes
+the exact package family, generates migrations, runs the demo gates, and opens
+an automation-owned draft PR. Review generated SQL and the Vercel preview
+before marking that PR ready; the workflow never merges its own update.
+
+The Vercel `Production` deployment status triggers the demo repository's
+**Production smoke** workflow, which verifies the live readiness endpoint and
+homepage against that deployment. A failed deployment remains failed rather
+than accidentally probing an older production alias.
+
+For a local fallback from a clean demo checkout:
 
 ```bash
 cd ../nexpress-hosted-demo
-pnpm up '@nexpress/*@<version>' '@nexpress/cli@<version>' --save-exact
-pnpm install
-pnpm typecheck
+pnpm run update:nexpress -- <version>
+pnpm run typecheck
+pnpm test
 pnpm build
 pnpm db:check
 ```
 
-If `pnpm db:check` reports schema drift, run `pnpm db:generate`, review and
-commit the generated migration, then apply it to the managed demo database
-before merging the demo PR. Once the demo PR merges, verify production:
+`update:nexpress` generates schema migrations before the validation pass and
+refuses unrelated file changes. Review and commit those migrations with the
+demo PR. The production Vercel build applies them before promoting the new app.
+The following probes remain the manual fallback for the automated smoke:
 
 ```bash
 curl -I -L https://nexpress-hosted-demo.vercel.app/api/health/ready
