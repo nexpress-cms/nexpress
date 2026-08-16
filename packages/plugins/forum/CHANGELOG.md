@@ -1,5 +1,14 @@
 # @nexpress/plugin-forum
 
+## 0.4.4
+
+### Patch Changes
+
+- @nexpress/core@0.4.4
+- @nexpress/editor@0.4.4
+- @nexpress/next@0.4.4
+- @nexpress/plugin-sdk@0.4.4
+
 ## 0.4.3
 
 ### Patch Changes

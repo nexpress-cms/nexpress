@@ -1,5 +1,15 @@
 # @nexpress/theme-community
 
+## 0.4.4
+
+### Patch Changes
+
+- @nexpress/blocks@0.4.4
+- @nexpress/core@0.4.4
+- @nexpress/editor@0.4.4
+- @nexpress/next@0.4.4
+- @nexpress/theme@0.4.4
+
 ## 0.4.3
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/translation",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Format-neutral content translation contracts for NexPress.",
   "license": "MIT",
   "author": "Nexpress",

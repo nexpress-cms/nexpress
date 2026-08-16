@@ -1,5 +1,12 @@
 # @nexpress/cli
 
+## 0.4.4
+
+### Patch Changes
+
+- 83423e2: Add a local-only `nexpress feedback` support report that exposes only installed NexPress versions, bounded runtime identifiers, and Doctor check IDs/states, then connect fresh scaffolds and the public feedback form to that redacted handoff.
+  - @nexpress/core@0.4.4
+
 ## 0.4.3
 
 ### Patch Changes
