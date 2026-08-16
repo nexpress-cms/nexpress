@@ -6,7 +6,11 @@ import {
   findUnpublishedWorkspacePackages,
   readPublishableWorkspacePackages,
   verifyPublishedWorkspacePackages,
+  verifyWorkspacePackageRegistryVisibility,
+  type NpPublishedWorkspacePackage,
 } from "./published-release-contract.mjs";
+
+const maxBootstrapPackageCount = 50;
 
 function run(command: string, args: string[], repoRoot: string): void {
   execFileSync(command, args, { cwd: repoRoot, stdio: "inherit" });
@@ -26,23 +30,150 @@ async function withNodeAuthToken<T>(token: string, callback: () => T | Promise<T
   }
 }
 
-export async function release(repoRoot: string): Promise<void> {
-  const packages = readPublishableWorkspacePackages(repoRoot);
-  const unpublished = await findUnpublishedWorkspacePackages(packages);
-  const bootstrapPackageName = process.env.NP_NPM_BOOTSTRAP_PACKAGE;
-  const bootstrapToken = process.env.NODE_AUTH_TOKEN;
-  delete process.env.NODE_AUTH_TOKEN;
+export function parseNpmBootstrapPackageNames(value: string | undefined): string[] {
+  if (value === undefined || value.trim().length === 0) return [];
+  if (value.length > 4_096) {
+    throw new Error("NPM_BOOTSTRAP_PACKAGES must not exceed 4096 characters.");
+  }
 
-  if (bootstrapPackageName && !bootstrapToken) {
+  const names = value
+    .split(/[\n,]/)
+    .map((name) => name.trim())
+    .filter((name) => name.length > 0);
+  if (names.length > maxBootstrapPackageCount) {
     throw new Error(
-      `First publish of ${bootstrapPackageName} requires the temporary NPM_BOOTSTRAP_TOKEN secret.`,
+      `NPM_BOOTSTRAP_PACKAGES must contain at most ${maxBootstrapPackageCount} package names.`,
     );
   }
-  if (bootstrapPackageName && !packages.some((pkg) => pkg.name === bootstrapPackageName)) {
-    throw new Error(`Bootstrap package ${bootstrapPackageName} is not a publishable workspace.`);
+  const duplicate = names.find((name, index) => names.indexOf(name) !== index);
+  if (duplicate) {
+    throw new Error(`NPM_BOOTSTRAP_PACKAGES contains duplicate ${duplicate}.`);
+  }
+  return names;
+}
+
+export function selectNpmBootstrapPackages(
+  packages: NpPublishedWorkspacePackage[],
+  packageNames: string[],
+): NpPublishedWorkspacePackage[] {
+  const packagesByName = new Map(packages.map((pkg) => [pkg.name, pkg]));
+  return packageNames.map((name) => {
+    const pkg = packagesByName.get(name);
+    if (!pkg) throw new Error(`Bootstrap package ${name} is not a publishable workspace.`);
+    return pkg;
+  });
+}
+
+export function npmTrustedPublisherAccessUrl(packageName: string): string {
+  return `https://www.npmjs.com/package/${packageName
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")}/access`;
+}
+
+interface BootstrapNpmPackagesOptions {
+  packages: NpPublishedWorkspacePackage[];
+  unpublished: NpPublishedWorkspacePackage[];
+  token: string;
+  publishPackage?: (pkg: NpPublishedWorkspacePackage) => void | Promise<void>;
+  verifyPublished?: (packages: NpPublishedWorkspacePackage[]) => Promise<void>;
+  verifyVisibility?: (packages: NpPublishedWorkspacePackage[]) => Promise<void>;
+}
+
+export async function bootstrapNpmPackages({
+  packages,
+  unpublished,
+  token,
+  publishPackage = (pkg) =>
+    run("pnpm", ["publish", "--access", "public", "--no-git-checks"], pkg.directory),
+  verifyPublished = verifyPublishedWorkspacePackages,
+  verifyVisibility = verifyWorkspacePackageRegistryVisibility,
+}: BootstrapNpmPackagesOptions): Promise<void> {
+  if (packages.length === 0) return;
+
+  const unpublishedNames = new Set(unpublished.map((pkg) => pkg.name));
+  const publishErrors: unknown[] = [];
+  for (const bootstrapPackage of packages) {
+    if (!unpublishedNames.has(bootstrapPackage.name)) {
+      console.log(
+        `[release] ${bootstrapPackage.name}@${bootstrapPackage.version} is already published; skipping bootstrap publish.`,
+      );
+      continue;
+    }
+
+    console.log(`[release] bootstrapping new npm package ${bootstrapPackage.name}.`);
+    try {
+      await withNodeAuthToken(token, () => publishPackage(bootstrapPackage));
+    } catch (error) {
+      publishErrors.push(
+        new Error(`${bootstrapPackage.name}: bootstrap publish command failed`, { cause: error }),
+      );
+    }
   }
 
+  try {
+    await verifyPublished(packages);
+    await verifyVisibility(packages);
+  } catch (verificationError) {
+    if (publishErrors.length > 0) {
+      throw new AggregateError(
+        [...publishErrors, verificationError],
+        "One or more npm bootstrap publishes failed and the registry did not converge.",
+      );
+    }
+    throw verificationError;
+  }
+  if (publishErrors.length > 0) {
+    console.warn(
+      `[release] ${publishErrors.length} bootstrap publish command(s) exited non-zero, but every explicitly authorized package converged in npm; continuing.`,
+    );
+  }
+}
+
+function printTrustedPublisherChecklist(packages: NpPublishedWorkspacePackage[]): void {
+  if (packages.length === 0) return;
+  console.log("[release] first-publish follow-up — register this workflow as Trusted Publisher:");
+  console.log(
+    "  GitHub Actions · nexpress-cms/nexpress · release.yml · environment name left blank",
+  );
+  for (const pkg of packages) {
+    console.log(`  - ${pkg.name}: ${npmTrustedPublisherAccessUrl(pkg.name)}`);
+  }
+  console.log(
+    "[release] then delete NPM_BOOTSTRAP_TOKEN and NPM_BOOTSTRAP_PACKAGES and revoke the temporary npm token.",
+  );
+}
+
+export async function release(repoRoot: string): Promise<void> {
+  const bootstrapToken = process.env.NODE_AUTH_TOKEN?.trim() || undefined;
+  delete process.env.NODE_AUTH_TOKEN;
+  const bootstrapPackageNames = parseNpmBootstrapPackageNames(
+    process.env.NP_NPM_BOOTSTRAP_PACKAGES,
+  );
+  if (bootstrapPackageNames.length > 0 && !bootstrapToken) {
+    throw new Error(
+      "First publish requires the temporary NPM_BOOTSTRAP_TOKEN secret when NPM_BOOTSTRAP_PACKAGES is set.",
+    );
+  }
+  if (bootstrapToken && bootstrapPackageNames.length === 0) {
+    throw new Error(
+      "NPM_BOOTSTRAP_TOKEN is set without an explicit NPM_BOOTSTRAP_PACKAGES allowlist.",
+    );
+  }
+
+  const packages = readPublishableWorkspacePackages(repoRoot);
+  const unpublished = await findUnpublishedWorkspacePackages(packages);
+  const bootstrapPackages = selectNpmBootstrapPackages(packages, bootstrapPackageNames);
+
   if (unpublished.length === 0) {
+    if (bootstrapToken) {
+      await bootstrapNpmPackages({
+        packages: bootstrapPackages,
+        unpublished,
+        token: bootstrapToken,
+      });
+      printTrustedPublisherChecklist(bootstrapPackages);
+    }
     console.log("[release] every workspace version is already published; nothing to do.");
     return;
   }
@@ -56,19 +187,13 @@ export async function release(repoRoot: string): Promise<void> {
   run("pnpm", ["build"], repoRoot);
   run("pnpm", ["typecheck"], repoRoot);
 
-  if (bootstrapPackageName && bootstrapToken) {
-    const bootstrapPackage = unpublished.find((pkg) => pkg.name === bootstrapPackageName);
-    if (bootstrapPackage) {
-      console.log(`[release] bootstrapping new npm package ${bootstrapPackage.name}.`);
-      await withNodeAuthToken(bootstrapToken, () =>
-        run(
-          "pnpm",
-          ["publish", "--access", "public", "--no-git-checks"],
-          bootstrapPackage.directory,
-        ),
-      );
-      await verifyPublishedWorkspacePackages([bootstrapPackage]);
-    }
+  if (bootstrapToken) {
+    await bootstrapNpmPackages({
+      packages: bootstrapPackages,
+      unpublished,
+      token: bootstrapToken,
+    });
+    printTrustedPublisherChecklist(bootstrapPackages);
   }
 
   let publishError: unknown;

@@ -7,6 +7,7 @@ import {
   findUnpublishedWorkspacePackages,
   readPublishableWorkspacePackages,
   verifyPublishedWorkspacePackages,
+  verifyWorkspacePackageRegistryVisibility,
   type NpPublishedWorkspacePackage,
 } from "./published-release-contract.mjs";
 
@@ -90,6 +91,33 @@ test("the post-publish gate fails closed when a version never reaches the regist
     }),
     /@nexpress\/core@0\.4\.1: not published/,
   );
+});
+
+test("waits for root package metadata to expose a bootstrapped exact version", async () => {
+  let attempts = 0;
+  const fetchImpl: typeof fetch = async (_input, init) => {
+    attempts += 1;
+    assert.equal(new Headers(init?.headers).get("accept"), "application/vnd.npm.install-v1+json");
+    if (attempts === 1) return new Response("not found", { status: 404 });
+    if (attempts === 2) {
+      return new Response(JSON.stringify({ name: expected.name, versions: {} }), { status: 200 });
+    }
+    return new Response(
+      JSON.stringify({
+        name: expected.name,
+        versions: { [expected.version]: metadata() },
+      }),
+      { status: 200 },
+    );
+  };
+
+  await verifyWorkspacePackageRegistryVisibility([expected], {
+    fetchImpl,
+    intervalMs: 0,
+    maxIntervalMs: 0,
+    timeoutMs: 1_000,
+  });
+  assert.equal(attempts, 3);
 });
 
 test("the repository inventory includes every public package and excludes private workspaces", () => {

@@ -30,6 +30,7 @@ interface RegistryOptions {
 
 interface VerifyOptions extends RegistryOptions {
   intervalMs?: number;
+  maxIntervalMs?: number;
   timeoutMs?: number;
 }
 
@@ -142,6 +143,13 @@ function registryMetadataUrl(
   return `${registryBaseUrl.replace(/\/$/, "")}/${encodedName}/${encodeURIComponent(version)}`;
 }
 
+function registryPackumentUrl(packageName: string, registryBaseUrl: string): string {
+  const encodedName = packageName.startsWith("@")
+    ? packageName.replace("/", "%2f")
+    : encodeURIComponent(packageName);
+  return `${registryBaseUrl.replace(/\/$/, "")}/${encodedName}`;
+}
+
 async function inspectRegistryPackages(
   packages: NpPublishedWorkspacePackage[],
   options: RegistryOptions = {},
@@ -207,7 +215,9 @@ export async function verifyPublishedWorkspacePackages(
 ): Promise<void> {
   const timeoutMs = options.timeoutMs ?? 120_000;
   const intervalMs = options.intervalMs ?? 5_000;
+  const maxIntervalMs = Math.max(intervalMs, options.maxIntervalMs ?? 20_000);
   const deadline = Date.now() + timeoutMs;
+  let nextIntervalMs = intervalMs;
   let lastProblems: string[] = [];
 
   while (true) {
@@ -222,8 +232,65 @@ export async function verifyPublishedWorkspacePackages(
     }
 
     console.warn(
-      `[release] registry is not ready (${lastProblems.length} issue(s)); retrying in ${intervalMs}ms.`,
+      `[release] registry is not ready (${lastProblems.length} issue(s)); retrying in ${nextIntervalMs}ms.`,
     );
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, intervalMs));
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, nextIntervalMs));
+    nextIntervalMs = Math.min(maxIntervalMs, Math.max(nextIntervalMs * 2, intervalMs));
+  }
+}
+
+export async function verifyWorkspacePackageRegistryVisibility(
+  packages: NpPublishedWorkspacePackage[],
+  options: VerifyOptions = {},
+): Promise<void> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const registryBaseUrl = options.registryBaseUrl ?? "https://registry.npmjs.org";
+  const timeoutMs = options.timeoutMs ?? 120_000;
+  const intervalMs = options.intervalMs ?? 5_000;
+  const maxIntervalMs = Math.max(intervalMs, options.maxIntervalMs ?? 20_000);
+  const deadline = Date.now() + timeoutMs;
+  let nextIntervalMs = intervalMs;
+  let lastProblems: string[] = [];
+
+  while (true) {
+    const results = await Promise.all(
+      packages.map(async (pkg) => {
+        try {
+          const response = await fetchImpl(registryPackumentUrl(pkg.name, registryBaseUrl), {
+            headers: { accept: "application/vnd.npm.install-v1+json" },
+            signal: AbortSignal.timeout(15_000),
+          });
+          if (response.status === 404) {
+            return `${pkg.name}@${pkg.version}: package metadata is not visible`;
+          }
+          if (!response.ok) {
+            return `${pkg.name}@${pkg.version}: package metadata returned HTTP ${response.status}`;
+          }
+          const packument = asRecord((await response.json()) as unknown);
+          const versions = asRecord(packument?.versions);
+          if (packument?.name !== pkg.name || !asRecord(versions?.[pkg.version])) {
+            return `${pkg.name}@${pkg.version}: package metadata does not include the exact version`;
+          }
+          return null;
+        } catch (error) {
+          return `${pkg.name}@${pkg.version}: package metadata request failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`;
+        }
+      }),
+    );
+    lastProblems = results.filter((problem): problem is string => problem !== null);
+    if (lastProblems.length === 0) return;
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `Package metadata visibility verification timed out:\n${lastProblems.join("\n")}`,
+      );
+    }
+
+    console.warn(
+      `[release] package metadata is not ready (${lastProblems.length} issue(s)); retrying in ${nextIntervalMs}ms.`,
+    );
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, nextIntervalMs));
+    nextIntervalMs = Math.min(maxIntervalMs, Math.max(nextIntervalMs * 2, intervalMs));
   }
 }

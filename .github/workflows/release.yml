@@ -26,15 +26,15 @@ name: Release
 # Trusted Publisher config on npmjs.com (which pins this exact repo +
 # workflow). Sigstore provenance attaches automatically via
 # `NPM_CONFIG_PROVENANCE: "true"`. `NPM_BOOTSTRAP_TOKEN` and
-# `NPM_BOOTSTRAP_PACKAGE` are optional, short-lived repository settings used
-# only for the first publish of a new package name; remove both immediately
-# afterwards.
+# `NPM_BOOTSTRAP_PACKAGES` are optional, short-lived repository settings used
+# only for the first publish of explicitly listed new package names; remove
+# both immediately afterwards.
 #
 # **First-publish prerequisite.** A package must either (a)
 # already exist on npm with Trusted Publishers configured for
 # this workflow, OR (b) be published once by this workflow with a
-# short-lived `NPM_BOOTSTRAP_TOKEN` plus the exact
-# `NPM_BOOTSTRAP_PACKAGE`, then have its TP config added on npmjs.com
+# short-lived `NPM_BOOTSTRAP_TOKEN` plus the exact comma/newline-separated
+# `NPM_BOOTSTRAP_PACKAGES` allowlist, then have each TP config added on npmjs.com
 # afterwards. See
 # `docs/releasing.md` § "Trusted Publisher setup" for the
 # step-by-step. Never replace that bootstrap command with direct
@@ -157,10 +157,11 @@ jobs:
           # temporarily set this repository secret to a granular token with
           # publish access and 2FA bypass. Keeping the publish in GitHub
           # Actions preserves the provenance attestation required by the
-          # post-publish gate. Pair it with the NPM_BOOTSTRAP_PACKAGE Actions
-          # variable and delete both immediately after bootstrap.
+          # post-publish gate. Pair it with the NPM_BOOTSTRAP_PACKAGES Actions
+          # variable (an exact comma/newline-separated allowlist) and delete
+          # both immediately after bootstrap.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_BOOTSTRAP_TOKEN }}
-          NP_NPM_BOOTSTRAP_PACKAGE: ${{ vars.NPM_BOOTSTRAP_PACKAGE }}
+          NP_NPM_BOOTSTRAP_PACKAGES: ${{ vars.NPM_BOOTSTRAP_PACKAGES }}
           NPM_CONFIG_PROVENANCE: "true"
 
       # `changesets/action` uses `GITHUB_TOKEN`, and GitHub suppresses
