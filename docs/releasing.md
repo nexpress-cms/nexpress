@@ -1,7 +1,7 @@
 # Releasing
 
-**Current published baseline:** NexPress `0.4.3` and `create-nexpress 0.1.39`
-(tag `v0.4.3`). The Version Packages PR remains the only supported path for
+**Current published baseline:** NexPress `0.4.4` and `create-nexpress 0.1.40`
+(tag `v0.4.4`). The Version Packages PR remains the only supported path for
 normal package version bumps; merge it only after its generated changelogs,
 package versions, local verification, and required CI have been reviewed.
 

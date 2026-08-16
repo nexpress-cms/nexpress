@@ -1,5 +1,12 @@
 # @nexpress/xliff
 
+## 0.4.4
+
+### Patch Changes
+
+- @nexpress/core@0.4.4
+- @nexpress/translation@0.4.4
+
 ## 0.4.3
 
 ### Patch Changes
