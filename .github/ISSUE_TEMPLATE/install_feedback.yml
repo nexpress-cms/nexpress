@@ -1,0 +1,79 @@
+name: Install / first-run feedback
+description: Tell us where scaffolding, setup, deployment, or an upgrade caused friction.
+labels: ["feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping us improve the first NexPress journey. Concrete commands and sanitized output are especially useful.
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Where did you hit friction?
+      options:
+        - "Scaffold"
+        - "Dependency install"
+        - "Database / setup"
+        - "First development run"
+        - "Deploy / preflight"
+        - "Upgrade"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: friction
+    attributes:
+      label: What slowed you down or stopped you?
+      description: Describe the point where the expected path became unclear or failed.
+      placeholder: I was trying to ... and got stuck when ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Command and result
+      description: Include the exact command, the relevant sanitized output, and the last successful step. Strip secrets and personal data.
+      placeholder: |
+        Command: `pnpm run setup`
+        Result: ...
+        Last successful step: ...
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: false
+
+  - type: input
+    id: nexpress-version
+    attributes:
+      label: NexPress version
+      description: The installed version from `pnpm list @nexpress/core --depth 0` or your package.json.
+      placeholder: "0.4.3"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Node and pnpm versions, OS, database, and deployment target when applicable.
+      placeholder: "Node 22.x, pnpm 10.x, macOS, local Postgres"
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Additional diagnostics
+      description: Add sanitized `pnpm run doctor -- --brief --no-color` output or links to a minimal reproduction.
+      render: text
+    validations:
+      required: false

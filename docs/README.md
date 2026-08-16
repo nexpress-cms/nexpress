@@ -66,6 +66,7 @@ behavior they describe changes.
 | [theme-authoring.md](theme-authoring.md)               | Authoring a theme                                                       |
 | [theme-quickstart.md](theme-quickstart.md)             | Author your first theme                                                 |
 | [theme-tokens.md](theme-tokens.md)                     | Canonical theme token inventory, validation, and merge boundaries       |
+| [triage.md](triage.md)                                 | Public issue intake, priority, and maintainer cadence                   |
 | [troubleshooting.md](troubleshooting.md)               | First-boot and scaffold troubleshooting                                 |
 | [wordpress-import-guide.md](wordpress-import-guide.md) | Running the WP importer                                                 |
 
