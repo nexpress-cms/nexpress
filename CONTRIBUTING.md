@@ -4,6 +4,8 @@ Thanks for your interest. The repo conventions live in
 [`AGENTS.md`](./AGENTS.md) (architecture overview, file map, anti-patterns)
 and the per-subsystem guides under [`docs/`](./docs/). This file covers
 the contribution mechanics: setup, branching, versioning, and releases.
+Issue intake, priorities, and the weekly maintainer cadence are documented in
+[`docs/triage.md`](./docs/triage.md).
 
 ## Setup
 
@@ -118,3 +120,4 @@ Version Packages flow.
   "where to look" map
 - [docs/](./docs/) — live guides per subsystem
 - [docs/operations.md](./docs/operations.md) — incident recipes
+- [docs/triage.md](./docs/triage.md) — issue intake, priority, and release linkage

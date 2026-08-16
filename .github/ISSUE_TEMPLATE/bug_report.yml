@@ -7,6 +7,22 @@ body:
       value: |
         Thanks for taking the time to file a report. The more concrete you can be, the faster we can act.
 
+  - type: dropdown
+    id: affected-surface
+    attributes:
+      label: Affected surface
+      description: Choose the closest user-facing area.
+      options:
+        - "Scaffold / install"
+        - "Setup / Admin"
+        - "Content / themes"
+        - "Plugins / SDK"
+        - "Operations / deploy"
+        - "Shop / commerce"
+        - "Other"
+    validations:
+      required: true
+
   - type: textarea
     id: what-happened
     attributes:
@@ -39,8 +55,8 @@ body:
     id: nexpress-version
     attributes:
       label: NexPress version
-      description: Output of `npm view @nexpress/core version` in your install.
-      placeholder: "0.1.0"
+      description: The installed version from `pnpm list @nexpress/core --depth 0` or your package.json.
+      placeholder: "0.4.3"
     validations:
       required: true
 
@@ -57,7 +73,7 @@ body:
     id: logs
     attributes:
       label: Relevant logs / stack trace
-      description: Paste verbatim. Strip secrets.
+      description: Paste sanitized output, including `pnpm run doctor -- --brief --no-color` when relevant. Strip secrets and personal data.
       render: text
     validations:
       required: false

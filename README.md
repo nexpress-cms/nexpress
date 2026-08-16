@@ -8,6 +8,7 @@ No black-box backend. The app stays yours.
 [Live demo](https://nexpress-hosted-demo.vercel.app) ·
 [Get started](#quick-start) ·
 [Deploy](#deploy-bridge) ·
+[Feedback](https://github.com/nexpress-cms/nexpress/issues/new/choose) ·
 [Docs](#docs)
 
 > **Status — pre-1.0 (`v0.4.x`).** Public APIs follow the
@@ -170,9 +171,13 @@ apps/web            private reference app
 - [Operations](./docs/operations.md)
 - [Deployment](./docs/deployment.md)
 - [Troubleshooting](./docs/troubleshooting.md)
+- [Issue intake and triage](./docs/triage.md)
 - [All docs](./docs/README.md)
 
-Security issues should be reported privately. See [SECURITY.md](./SECURITY.md).
+Found a problem? File a [bug report](https://github.com/nexpress-cms/nexpress/issues/new?template=bug_report.yml),
+share [install / first-run feedback](https://github.com/nexpress-cms/nexpress/issues/new?template=install_feedback.yml),
+or propose a [feature](https://github.com/nexpress-cms/nexpress/issues/new?template=feature_request.yml).
+Security issues should be reported privately; see [SECURITY.md](./SECURITY.md).
 
 ## License
 
