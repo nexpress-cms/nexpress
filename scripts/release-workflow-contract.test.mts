@@ -40,8 +40,13 @@ test("the Release workflow delegates conditional verification to the release scr
   );
   assert.match(
     workflow,
-    /NP_NPM_BOOTSTRAP_PACKAGE:\s*\${{\s*vars\.NPM_BOOTSTRAP_PACKAGE\s*}}/,
-    "the exact first-publish package must be an explicitly temporary Actions variable",
+    /NP_NPM_BOOTSTRAP_PACKAGES:\s*\${{\s*vars\.NPM_BOOTSTRAP_PACKAGES\s*}}/,
+    "the exact first-publish package allowlist must be an explicitly temporary Actions variable",
+  );
+  assert.doesNotMatch(
+    workflow,
+    /NPM_BOOTSTRAP_PACKAGE(?!S)/,
+    "the obsolete single-package bootstrap setting must not remain",
   );
   assert.doesNotMatch(
     workflow,
@@ -50,18 +55,23 @@ test("the Release workflow delegates conditional verification to the release scr
   );
   assert.ok(
     releaseScript.indexOf("delete process.env.NODE_AUTH_TOKEN") <
-      releaseScript.indexOf('run("pnpm", ["test:repo"]'),
-    "the temporary token must be removed before repository code executes",
+      releaseScript.indexOf("const packages = readPublishableWorkspacePackages"),
+    "the temporary token must be removed before workspace commands execute",
   );
   assert.ok(
     releaseScript.indexOf('run("pnpm", ["typecheck"]') <
-      releaseScript.indexOf("[release] bootstrapping new npm package"),
+      releaseScript.lastIndexOf("await bootstrapNpmPackages"),
     "the package must build and pass its gates before its first publish",
   );
   assert.ok(
-    releaseScript.indexOf("[release] bootstrapping new npm package") <
+    releaseScript.lastIndexOf("await bootstrapNpmPackages") <
       releaseScript.indexOf('run("pnpm", ["exec", "changeset", "publish"'),
-    "the new package name must be claimed before OIDC publishes the existing packages",
+    "the new package names must be claimed before OIDC publishes the existing packages",
+  );
+  assert.ok(
+    releaseScript.indexOf("await verifyVisibility(packages)") <
+      releaseScript.indexOf('run("pnpm", ["exec", "changeset", "publish"'),
+    "new package root metadata must converge before Changesets reads it",
   );
   assert.equal(rootManifest.scripts?.release, "tsx scripts/release.mts");
 });

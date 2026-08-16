@@ -68,9 +68,11 @@ permission that signs Sigstore provenance also lets npm verify
 the workflow run's identity and grant publish access.
 
 The optional `NPM_BOOTSTRAP_TOKEN` repository secret and exact
-`NPM_BOOTSTRAP_PACKAGE` repository variable are reserved for the first publish
-of a brand-new package name. They must be short-lived, narrowly scoped, and
-deleted immediately after that publish succeeds.
+`NPM_BOOTSTRAP_PACKAGES` repository variable are reserved for the first publish
+of brand-new package names. The variable is a comma- or newline-separated
+allowlist of at most 50 exact workspace package names. Both settings must be
+short-lived, narrowly scoped, and deleted immediately after the publish
+succeeds.
 
 [tp-docs]: https://docs.npmjs.com/trusted-publishers
 
@@ -94,8 +96,11 @@ clicking once for every package in the fixed Changesets group:
    create a granular npm access token with read/write package permission and
    2FA bypass, scoped as narrowly as npm allows. Add it to the GitHub
    repository as `NPM_BOOTSTRAP_TOKEN`, set the repository Actions variable
-   `NPM_BOOTSTRAP_PACKAGE` to the exact new package name, then rerun the
-   Release workflow.
+   `NPM_BOOTSTRAP_PACKAGES` to every exact new package name (comma- or
+   newline-separated), then rerun the Release workflow once. The release job
+   publishes those names sequentially, tolerates a safe rerun when an exact
+   version already exists, and waits for both the exact version manifest and
+   the npm package metadata to converge before Changesets continues.
    Keeping the first publish in GitHub Actions preserves the provenance
    attestation required by the post-publish gate. Do not publish locally:
    local publishes cannot carry this workflow's provenance.
@@ -110,7 +115,7 @@ clicking once for every package in the fixed Changesets group:
    > release path.
 
 2. **Delete the `NPM_BOOTSTRAP_TOKEN` repository secret and
-   `NPM_BOOTSTRAP_PACKAGE` repository variable, then revoke the npm token** as
+   `NPM_BOOTSTRAP_PACKAGES` repository variable, then revoke the npm token** as
    soon as the first CI publish succeeds.
 3. **Go to the package settings page on npmjs.com:**
    `https://www.npmjs.com/package/@nexpress/<name>/access`
@@ -122,9 +127,9 @@ clicking once for every package in the fixed Changesets group:
    - Workflow filename: `release.yml`
    - Environment name: leave blank (no GH environment used)
 6. **Repeat for every published package.** Including `@nexpress/*`
-   scoped + the unscoped `create-nexpress`. The post-publish
-   verification step below lists what was published — use it
-   as the worklist.
+   scoped + the unscoped `create-nexpress`. The release log prints one exact
+   npm access URL per bootstrapped package; use that closed list as the
+   Trusted Publisher worklist.
 
 After the configs are in place, subsequent CI publishes work
 silently — no token, no prompts, no rotation.
