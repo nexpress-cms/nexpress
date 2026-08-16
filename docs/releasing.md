@@ -47,8 +47,9 @@ workflow (`.github/workflows/release.yml`) runs on every push to
 3. **Version PR merged** → `pnpm release` runs repository invariants, builds
    and typechecks publishable packages, publishes through Changesets, verifies
    every exact npm manifest and provenance attestation, and only then creates
-   the release tag. A main push whose workspace versions are already published
-   exits before those expensive gates.
+   the release tag. A fixed-family version advance then dispatches the hosted
+   demo updater with the exact version and release commit SHA. A main push whose
+   workspace versions are already published exits before those expensive gates.
 
 The root `release` script lives in `package.json`. Changesets reads
 `.changeset/config.json`, where `access: "public"` makes scoped
@@ -290,18 +291,51 @@ orphan before trying to publish again.
 
 ## Hosted demo update
 
-After npm publishes, update the public demo repo before starting the next large
-feature batch. In `nexpress-cms/nexpress-hosted-demo`, run the **Update
-NexPress** manual GitHub Actions workflow with the exact published version. It
-verifies every installed package manifest and provenance record, synchronizes
-the exact package family, generates migrations, runs the demo gates, and opens
-an automation-owned draft PR. Review generated SQL and the Vercel preview
-before marking that PR ready; the workflow never merges its own update.
+After a fixed-family npm publish and provenance verification, the Release
+workflow obtains a short-lived GitHub App installation token and dispatches the
+public demo repository's **Update NexPress** workflow with the exact version and
+release commit SHA. `create-nexpress`-only releases, ordinary main pushes, and
+manual Release runs do not dispatch it. The exact downstream Actions run URL is
+written to the Release summary.
+
+The demo workflow verifies every installed package manifest and provenance
+record, synchronizes the exact package family, generates migrations, runs the
+demo gates, and opens an automation-owned draft PR. Review generated SQL and
+the Vercel preview before marking that PR ready; neither workflow merges its own
+update. A duplicate release dispatch is safe because an already synchronized
+exact version exits without changing the lockfile or opening a PR.
 
 The Vercel `Production` deployment status triggers the demo repository's
 **Production smoke** workflow, which verifies the live readiness endpoint and
 homepage against that deployment. A failed deployment remains failed rather
 than accidentally probing an older production alias.
+
+### Hosted demo GitHub App setup (one-time)
+
+The main repository's `GITHUB_TOKEN` cannot dispatch a workflow in another
+repository. Create a private GitHub App for this bridge instead of a standing
+personal access token:
+
+1. Give the App only **Actions: read and write** repository permission; leave
+   webhooks disabled.
+2. Install it only on `nexpress-cms/nexpress-hosted-demo`.
+3. Store its Client ID as the `HOSTED_DEMO_UPDATE_APP_CLIENT_ID` Actions
+   repository variable on `nexpress-cms/nexpress`.
+4. Generate one App private key and store the PEM as the
+   `HOSTED_DEMO_UPDATE_APP_PRIVATE_KEY` Actions repository secret on
+   `nexpress-cms/nexpress`.
+
+`actions/create-github-app-token@v3` exchanges that key for a repository-scoped
+installation token and revokes the token after the Release job. The App does
+not need Contents or Pull Requests permission: the dispatched demo workflow
+uses its own repository `GITHUB_TOKEN` for its draft branch and PR. Rotate the
+App private key through the normal repository-secret process.
+
+If App authentication or dispatch fails after npm publish, the packages remain
+published and verified. Correct the App installation/credential, rerun the
+failed Release job on the same Version Packages commit, or manually run the
+demo **Update NexPress** workflow with the exact version. The updater's
+idempotency makes each recovery path safe.
 
 For a local fallback from a clean demo checkout:
 
