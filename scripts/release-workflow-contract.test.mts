@@ -86,3 +86,20 @@ test("Version PR generation synchronizes and rechecks public release docs", asyn
     "pnpm test:repo && changeset version && tsx scripts/sync-release-docs.mts && pnpm test:repo",
   );
 });
+
+test("a verified family release dispatches the hosted demo with short-lived app authority", async () => {
+  const workflow = await readFile(resolve(repoRoot, ".github/workflows/release.yml"), "utf8");
+
+  assert.match(workflow, /node scripts\/dispatch-hosted-demo-update\.mjs plan/);
+  assert.match(workflow, /steps\.hosted-demo\.outputs\.should_dispatch == 'true'/);
+  assert.match(workflow, /uses: actions\/create-github-app-token@v3/);
+  assert.match(workflow, /client-id:\s*\${{\s*vars\.HOSTED_DEMO_UPDATE_APP_CLIENT_ID\s*}}/);
+  assert.match(workflow, /private-key:\s*\${{\s*secrets\.HOSTED_DEMO_UPDATE_APP_PRIVATE_KEY\s*}}/);
+  assert.match(workflow, /repositories: nexpress-hosted-demo/);
+  assert.match(workflow, /node scripts\/dispatch-hosted-demo-update\.mjs dispatch/);
+  assert.ok(
+    workflow.indexOf("Fail when Version PR merge left an orphan changeset") <
+      workflow.indexOf("Plan hosted demo update"),
+    "the demo handoff must happen only after release race detection",
+  );
+});

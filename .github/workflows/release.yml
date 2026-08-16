@@ -230,3 +230,36 @@ jobs:
           echo "Recovery: either merge the freshly-rebased Version PR that just opened,"
           echo "or pull the orphan changeset into a follow-up PR and merge that Version PR."
           exit 1
+
+      # A real fixed-family Version Packages merge reaches this point only
+      # after npm manifests/provenance have converged and the orphan race guard
+      # has passed. Plan before minting cross-repository authority so ordinary
+      # main pushes, manual runs, and create-nexpress-only releases never need
+      # the hosted-demo GitHub App credentials.
+      - name: Plan hosted demo update
+        id: hosted-demo
+        if: |
+          github.event_name == 'push' &&
+          startsWith(github.event.head_commit.message, 'chore(release): version packages')
+        env:
+          NP_RELEASE_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: node scripts/dispatch-hosted-demo-update.mjs plan
+
+      - name: Create hosted demo dispatch token
+        id: hosted-demo-token
+        if: steps.hosted-demo.outputs.should_dispatch == 'true'
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.HOSTED_DEMO_UPDATE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.HOSTED_DEMO_UPDATE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: nexpress-hosted-demo
+
+      - name: Dispatch hosted demo update
+        if: steps.hosted-demo.outputs.should_dispatch == 'true'
+        env:
+          GH_TOKEN: ${{ steps.hosted-demo-token.outputs.token }}
+          NP_HOSTED_DEMO_REPOSITORY: nexpress-cms/nexpress-hosted-demo
+          NP_HOSTED_DEMO_SOURCE_SHA: ${{ steps.hosted-demo.outputs.source_sha }}
+          NP_HOSTED_DEMO_VERSION: ${{ steps.hosted-demo.outputs.version }}
+        run: node scripts/dispatch-hosted-demo-update.mjs dispatch
