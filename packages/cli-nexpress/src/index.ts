@@ -25,6 +25,11 @@ import type { ScaffoldKind, ScaffoldResult } from "./scaffold-utils.js";
 import { packageNameFromThemeSlug, scaffoldTheme } from "./scaffold-theme.js";
 import { buildRunScriptArgs, resolveOpsScriptInvocation } from "./ops-command.js";
 import {
+  buildFeedbackReport,
+  renderFeedbackReportMarkdown,
+  type NpFeedbackReport,
+} from "./feedback-report.js";
+import {
   formatPluginManualConfigGuidance,
   formatPluginManualRemoveGuidance,
   formatPluginPostInstallGuidance,
@@ -57,6 +62,7 @@ Usage:
   nexpress theme remove <package> --with-collections  Also delete collection FILES that match the theme's spec exactly
   nexpress theme remove <package> --apply             Same, but auto-chain db:migrate after generate (DROP COLUMN runs)
   nexpress deploy plan --target <host> [--json]       Print a deployment bridge plan
+  nexpress feedback [--json]                          Print a local PII-free support report and issue link
   nexpress ops status [--json|--brief|--no-color]     Print read-only runtime status for operators and agents
   nexpress ops contracts [--json|--brief]             Print the shipped local ops contract registry
   nexpress ops doctor [--prod|--json|--fix-plan]      Run the project doctor through the ops namespace
@@ -206,6 +212,10 @@ export interface CliRuntime {
   cwd?: string;
   runPackageManager?: PackageManagerRunner;
   runProjectScript?: ProjectScriptRunner;
+  buildFeedbackReport?: (args: {
+    cwd: string;
+    packageManager: NpPackageManager;
+  }) => Promise<NpFeedbackReport>;
   themeExportProbe?: (
     themePackage: string,
     identifier: string,
@@ -424,6 +434,34 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
 
   if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
     process.stdout.write(HELP_TEXT);
+    return 0;
+  }
+
+  if (args[0] === "feedback") {
+    if (args.includes("--help") || args.includes("-h")) {
+      process.stdout.write(
+        "Usage: nexpress feedback [--json]\n\nGenerates a local, PII-free support report. Nothing is uploaded automatically.\n",
+      );
+      return 0;
+    }
+    const flags = args.slice(1);
+    if (
+      flags.some((flag) => flag !== "--json") ||
+      flags.filter((flag) => flag === "--json").length > 1
+    ) {
+      process.stderr.write(
+        `Unknown or repeated feedback flag. Usage: nexpress feedback [--json]\n`,
+      );
+      return 2;
+    }
+    const packageManager = detectPackageManager(cwd);
+    const report = await (runtime.buildFeedbackReport ?? buildFeedbackReport)({
+      cwd,
+      packageManager,
+    });
+    process.stdout.write(
+      `${flags.includes("--json") ? JSON.stringify(report, null, 2) : renderFeedbackReportMarkdown(report)}\n`,
+    );
     return 0;
   }
 

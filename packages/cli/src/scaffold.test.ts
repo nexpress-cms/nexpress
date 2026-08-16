@@ -16,6 +16,8 @@ describe("buildSuccessLines", () => {
     expect(output).toContain("Useful checks:");
     expect(output).toContain("pnpm run ops:status -- --brief --no-color");
     expect(output).toContain("pnpm run doctor");
+    expect(output).toContain("pnpm run feedback");
+    expect(output).toContain("local-only support report + feedback form");
     expect(output).toContain("Deploy bridge:");
     expect(output).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
     expect(output).toContain("pnpm db:migrate");

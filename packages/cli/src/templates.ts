@@ -159,6 +159,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "deploy:plan": "tsx scripts/deploy-plan.ts",
         doctor: "tsx scripts/doctor.ts",
         "doctor:prod": "tsx scripts/doctor.ts --prod",
+        feedback: "nexpress feedback",
         gettext: "tsx scripts/gettext.ts",
         "ops:backup": "tsx scripts/ops-backup.ts",
         "ops:contracts": "tsx scripts/ops-contracts.ts",
@@ -1087,11 +1088,11 @@ pnpm dev
 \`\`\`bash
 pnpm run ops:status -- --brief --no-color
 pnpm run doctor
+pnpm run feedback
 \`\`\`
 
-\`ops:status\` is the compact "what needs attention?" command. \`doctor\` explains
-setup/runtime problems. \`pnpm typecheck\` and \`pnpm build\` regenerate ignored
-collection code first. The full reference lives in [docs/ops.md](docs/ops.md).
+\`ops:status\` is the compact "what needs attention?" command. \`doctor\` explains setup/runtime problems.
+\`feedback\` prints a local-only support report with installed NexPress versions and Doctor check IDs/states; it excludes raw environment-variable values and logs, never uploads, and should be reviewed before sharing. \`pnpm typecheck\` and \`pnpm build\` regenerate ignored collection code first. The full reference lives in [docs/ops.md](docs/ops.md).
 
 ## Headless / SSH / CI
 
@@ -1200,6 +1201,7 @@ post-deploy probe against the live URL.
 pnpm --silent run ops:status -- --json
 pnpm --silent run ops:contracts -- --json
 pnpm run ops:status -- --brief --no-color
+pnpm run feedback
 pnpm --silent run ops:preflight -- --target vercel --json
 pnpm run ops:health -- --url http://localhost:3000 --brief --no-color
 \`\`\`
@@ -1210,6 +1212,9 @@ pnpm run ops:health -- --url http://localhost:3000 --brief --no-color
 \`ops:contracts\` emits \`schemaVersion: "np.ops-contracts.v1"\` with the shipped
 local ops commands, artifact behavior, approval requirements, and mutation
 safety boundaries.
+\`feedback\` emits Markdown by default or the bounded
+\`np.feedback-report.v1\` envelope with \`--json\`. It runs the existing read-only
+Doctor locally but retains only check IDs/states; it never uploads a report.
 \`ops:preflight\` combines \`deploy:plan\`, the production doctor, and
 \`ops:migrate plan\` into a single deployment gate. \`ops:health\` checks
 \`/api/health/ready\` for a running local or hosted site.

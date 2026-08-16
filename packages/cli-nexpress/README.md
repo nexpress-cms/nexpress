@@ -1,7 +1,8 @@
 # @nexpress/cli
 
-Project-side `nexpress` CLI for plugins, themes, deployment planning,
-operations, release handoffs, runbooks, and extension scaffolding.
+Project-side `nexpress` CLI for plugins, themes, local feedback reports,
+deployment planning, operations, release handoffs, runbooks, and extension
+scaffolding.
 
 Projects created by `create-nexpress` install this package automatically.
 Custom hosts can add it directly:
@@ -16,6 +17,7 @@ pnpm exec nexpress --help
 - `nexpress plugin add|remove`
 - `nexpress theme add|remove`
 - `nexpress deploy plan`
+- `nexpress feedback [--json]`
 - `nexpress ops status|contracts|doctor|preflight|health`
 - `nexpress ops backup|jobs|migrate|storage|plugins`
 - `nexpress release check|plan|apply|verify`
@@ -24,6 +26,13 @@ pnpm exec nexpress --help
 
 Mutation commands expose dry-run or explicit approval gates where applicable.
 Machine-facing workflows support stable `--json` and compact `--brief` output.
+
+`nexpress feedback` runs the existing read-only Doctor locally and emits only
+installed public NexPress package names/versions, bounded runtime identifiers,
+and Doctor check IDs/states. Raw environment-variable values, filesystem paths,
+database URLs, labels, details, hints, and logs are discarded. The report is
+never uploaded; review the Markdown or `np.feedback-report.v1` JSON before
+sharing it through the printed issue-form URL.
 
 ## Links
 

@@ -13,6 +13,8 @@ as described in [`SECURITY.md`](../SECURITY.md).
   for reproducible incorrect behavior.
 - [Install / first-run feedback](https://github.com/nexpress-cms/nexpress/issues/new?template=install_feedback.yml)
   for scaffold, setup, first development run, deploy, and upgrade friction.
+  In a generated project, `pnpm run feedback` prints a local-only redacted
+  report and this form URL; it never uploads the report automatically.
 - [Feature request](https://github.com/nexpress-cms/nexpress/issues/new?template=feature_request.yml)
   for a concrete problem and a proposed product improvement.
 - [GitHub Discussions](https://github.com/nexpress-cms/nexpress/discussions)

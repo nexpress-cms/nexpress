@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { test } from "node:test";
 import { resolve } from "node:path";
 
@@ -15,6 +15,43 @@ function formField(source: string, id: string) {
   assert.notEqual(start, -1, `missing issue-form field ${id}`);
   const next = source.indexOf("\n  - type:", start);
   return source.slice(start, next === -1 ? source.length : next);
+}
+
+async function publicNexpressPackages() {
+  const roots = [resolve(repoRoot, "packages")];
+  for (const group of ["plugins", "themes"]) {
+    roots.push(
+      ...(await readdir(resolve(repoRoot, "packages", group), { withFileTypes: true }))
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => resolve(repoRoot, "packages", group, entry.name)),
+    );
+  }
+  const topLevel = await readdir(resolve(repoRoot, "packages"), { withFileTypes: true });
+  roots.push(
+    ...topLevel
+      .filter((entry) => entry.isDirectory() && entry.name !== "plugins" && entry.name !== "themes")
+      .map((entry) => resolve(repoRoot, "packages", entry.name)),
+  );
+
+  const names = new Set<string>();
+  for (const root of roots) {
+    try {
+      const manifest = JSON.parse(await readFile(resolve(root, "package.json"), "utf8")) as {
+        name?: unknown;
+        private?: unknown;
+      };
+      if (
+        typeof manifest.name === "string" &&
+        manifest.name.startsWith("@nexpress/") &&
+        manifest.private !== true
+      ) {
+        names.add(manifest.name);
+      }
+    } catch {
+      // Group roots and non-package directories intentionally have no manifest.
+    }
+  }
+  return [...names].sort();
 }
 
 test("bug intake asks for a reproducible installed environment", async () => {
@@ -37,6 +74,8 @@ test("first-run feedback captures the failing journey without secrets", async ()
     assert.match(formField(form, id), /required: true/);
   }
   assert.match(formField(form, "reproduce"), /Strip secrets and personal data/);
+  assert.match(formField(form, "diagnostics"), /pnpm run feedback/);
+  assert.match(formField(form, "diagnostics"), /Nothing is uploaded automatically/);
 });
 
 test("the chooser routes security and discussion away from public issue forms", async () => {
@@ -68,4 +107,13 @@ test("public docs expose intake routes and a bounded triage policy", async () =>
   assert.match(triage, /priority: low/);
   assert.match(triage, /Security vulnerabilities must be reported privately/);
   assert.match(triage, /Consumer-visible[\s\S]*require a changeset/);
+  assert.match(readme, /pnpm run feedback/);
+  assert.match(readme, /never uploads anything automatically/);
+});
+
+test("the local report allowlist covers every public NexPress package", async () => {
+  const implementation = await read("packages/cli-nexpress/src/feedback-report.ts");
+  for (const name of await publicNexpressPackages()) {
+    assert.match(implementation, new RegExp(`"${name.replaceAll("/", "\\/")}"`));
+  }
 });
