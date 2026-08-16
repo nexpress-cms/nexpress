@@ -177,6 +177,8 @@ apps/web            private reference app
 Found a problem? File a [bug report](https://github.com/nexpress-cms/nexpress/issues/new?template=bug_report.yml),
 share [install / first-run feedback](https://github.com/nexpress-cms/nexpress/issues/new?template=install_feedback.yml),
 or propose a [feature](https://github.com/nexpress-cms/nexpress/issues/new?template=feature_request.yml).
+Generated projects can run `pnpm run feedback` for a local-only redacted report
+and the correct form URL; the command never uploads anything automatically.
 Security issues should be reported privately; see [SECURITY.md](./SECURITY.md).
 
 ## License

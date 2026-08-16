@@ -72,8 +72,8 @@ body:
   - type: textarea
     id: diagnostics
     attributes:
-      label: Additional diagnostics
-      description: Add sanitized `pnpm run doctor -- --brief --no-color` output or links to a minimal reproduction.
+      label: Local feedback report
+      description: If your project provides it, run `pnpm run feedback`, review the local-only report, and paste it here. Otherwise paste sanitized Doctor output. Nothing is uploaded automatically. You may also link a minimal reproduction.
       render: text
     validations:
       required: false

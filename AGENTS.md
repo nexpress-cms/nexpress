@@ -2,7 +2,15 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-15 (Shop carrier adapters may now add one
+**Last refreshed:** 2026-08-16 (The project-side CLI now emits one local-only,
+bounded `np.feedback-report.v1` support handoff with installed NexPress
+package versions, coarse runtime identifiers, and Doctor check IDs/states.
+Raw environment-variable values, filesystem paths, database URLs, Doctor prose,
+logs, and personal data are structurally excluded; reports are never uploaded.
+Fresh scaffolds, the public first-run issue form, docs, and tests share the
+same review-before-sharing contract.)
+
+**Earlier:** 2026-08-15 (Shop carrier adapters may now add one
 provider-neutral shipping-label void method on top of the existing transient
 read and durable acquisition pair. An exact current generation, stable void
 UUID, provider I/O outside transactions, durable confirmation before local

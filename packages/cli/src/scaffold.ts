@@ -98,6 +98,7 @@ export function buildSuccessLines(
     "Useful checks:",
     "  pnpm run ops:status -- --brief --no-color",
     "  pnpm run doctor",
+    "  pnpm run feedback    # local-only support report + feedback form",
     "",
     "Deploy bridge:",
     "  pnpm run deploy:plan -- --target vercel --brief --no-color",

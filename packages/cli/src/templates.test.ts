@@ -766,6 +766,14 @@ describe("getProjectFiles", () => {
     expect(files["scripts/deploy-plan.ts"]).toMatch(/@nexpress\/app\/scripts\/deploy-plan/);
   });
 
+  it("package.json exposes the local feedback report through the project CLI", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const pkg = JSON.parse(files["package.json"]) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts.feedback).toBe("nexpress feedback");
+  });
+
   it("package.json runs manual migrations through the shared error-rich runner", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const pkg = JSON.parse(files["package.json"]) as {
@@ -786,6 +794,8 @@ describe("getProjectFiles", () => {
     expect(readme).toContain("[docs/ops.md](docs/ops.md)");
     expect(readme).toContain("pnpm run ops:status -- --brief --no-color");
     expect(readme).toContain("pnpm run doctor");
+    expect(readme).toContain("pnpm run feedback");
+    expect(readme).toContain("local-only support report");
     expect(readme).toContain("registerJobHandler(name, handler, { parsePayload })");
     expect(readme).toContain("NP_ENABLE_JOBS` accepts only");
     expect(readme).toContain("## Deploy Bridge");
@@ -806,6 +816,8 @@ describe("getProjectFiles", () => {
     expect(readme.split(/\r?\n/).length).toBeLessThanOrEqual(100);
 
     expect(ops).toContain("## Deploy Bridge");
+    expect(ops).toContain("`np.feedback-report.v1` envelope with `--json`");
+    expect(ops).toContain("it never uploads a report");
     expect(ops).toContain("pnpm run deploy:plan -- --target vercel --brief --no-color");
     expect(ops).toContain("`Start here` in the plan gives the first host-specific launch action");
     expect(ops).toContain("Vercel import URL");
