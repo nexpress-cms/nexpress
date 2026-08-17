@@ -1,7 +1,12 @@
 const TRANSIENT_STATUS_CODES = new Set([502, 503, 504]);
 
-export async function retryGitHubStatusWrite(
-  write,
+export function isTransientGitHubError(error) {
+  const status = error instanceof Error ? error.status : undefined;
+  return TRANSIENT_STATUS_CODES.has(status);
+}
+
+export async function retryGitHubRequest(
+  request,
   {
     attempts = 6,
     baseDelayMs = 1_000,
@@ -12,10 +17,10 @@ export async function retryGitHubStatusWrite(
 ) {
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      return await write();
+      return await request();
     } catch (error) {
       const status = error instanceof Error ? error.status : undefined;
-      if (!TRANSIENT_STATUS_CODES.has(status) || attempt === attempts) {
+      if (!isTransientGitHubError(error) || attempt === attempts) {
         throw error;
       }
 
@@ -25,7 +30,11 @@ export async function retryGitHubStatusWrite(
     }
   }
 
-  throw new Error("GitHub status retry exhausted unexpectedly.");
+  throw new Error("GitHub request retry exhausted unexpectedly.");
+}
+
+export async function retryGitHubStatusWrite(write, options) {
+  return retryGitHubRequest(write, options);
 }
 
 function defaultSleep(ms) {
