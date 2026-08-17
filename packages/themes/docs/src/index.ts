@@ -198,7 +198,7 @@ const QUICKSTART_BODY = lexicalDoc([
     "A NexPress plugin is a single function that returns a manifest. The framework loads it during boot, validates its declared shape, and wires the hooks and routes into the request pipeline. There's no plugin loader to learn — if you can write a TypeScript module, you can write a plugin.",
   ),
   paragraph(
-    "Prerequisites: a running NexPress site (see Install & bootstrap) and Node 20+. The plugin lives inside your app — no separate workspace required to start.",
+    "Prerequisites: a running NexPress site (see Install & bootstrap) and Node 20.19.0+. The plugin lives inside your app — no separate workspace required to start.",
   ),
   heading("h2", "Scaffold the plugin"),
   paragraph(

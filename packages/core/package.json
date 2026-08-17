@@ -193,7 +193,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=20.19.0"
   },
   "peerDependencies": {
     "nodemailer": "^8.0.9 || ^9.0.0"

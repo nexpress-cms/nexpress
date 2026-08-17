@@ -116,7 +116,7 @@ export async function scaffoldBlockPlugin(options: ScaffoldOptions): Promise<Sca
         types: "./dist/index.d.ts",
         exports: exportsBlock,
         files: ["dist"],
-        engines: { node: ">=20" },
+        engines: { node: ">=20.19.0" },
         peerDependencies: {
           react: "^19.0.0",
         },

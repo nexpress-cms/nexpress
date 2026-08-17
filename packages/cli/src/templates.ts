@@ -147,6 +147,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
       version: "0.1.0",
       private: true,
       type: "module",
+      engines: { node: ">=20.19.0" },
       packageManager: "pnpm@10.33.0",
       scripts: {
         predev: "tsx scripts/dev-notice.ts",

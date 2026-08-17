@@ -60,6 +60,22 @@ describe("htmlToLexical", () => {
     expect(link?.children?.[0]).toMatchObject({ type: "text", text: "site" });
   });
 
+  it("decodes named and numeric HTML entities without changing imported text", () => {
+    const out = htmlToLexical("<p>A &amp; B&nbsp;&#x1F642;&copy;</p>");
+    expect(out.document.root.children[0]?.children?.[0]).toMatchObject({
+      type: "text",
+      text: "A & B\u00a0🙂©",
+    });
+  });
+
+  it("decodes link entities while preserving consecutive attribute backslashes", () => {
+    const out = htmlToLexical(
+      String.raw`<p><a href="https://example.com/files\\2026\\\\post?q=a&amp;b=c">link</a></p>`,
+    );
+    const link = out.document.root.children[0]?.children?.find((c) => c.type === "link");
+    expect(link?.url).toBe(String.raw`https://example.com/files\\2026\\\\post?q=a&b=c`);
+  });
+
   it("converts <ul>/<ol> to list blocks with the right listType", () => {
     const out = htmlToLexical("<ul><li>a</li><li>b</li></ul><ol><li>1</li></ol>");
     expect(blockTypes(out)).toEqual(["list", "list"]);

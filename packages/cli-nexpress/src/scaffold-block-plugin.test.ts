@@ -89,7 +89,7 @@ describe("scaffoldBlockPlugin", () => {
     };
 
     expect(pkg.files).toEqual(["dist"]);
-    expect(pkg.engines.node).toBe(">=20");
+    expect(pkg.engines.node).toBe(">=20.19.0");
     expect(pkg.exports["."]).toEqual({
       types: "./dist/index.d.ts",
       import: "./dist/index.js",

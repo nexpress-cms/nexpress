@@ -8,6 +8,11 @@ import { toProjectCommand } from "./ops-command-format.js";
 import { messageForConnectionError } from "./setup-server-errors.js";
 import type { CheckResult } from "./doctor-readiness.js";
 import {
+  NP_MINIMUM_NODE_ENGINE,
+  NP_MINIMUM_NODE_VERSION,
+  npIsSupportedNodeVersion,
+} from "./node-version.js";
+import {
   buildMigrationStatus,
   readAppliedMigrations,
   readLocalMigrationEntries,
@@ -160,17 +165,21 @@ export async function collectOpsStatusChecks(env: OpsEnv = process.env): Promise
 }
 
 function checkNodeVersion(): CheckResult {
-  const major = Number.parseInt(process.versions.node.split(".")[0] ?? "0", 10);
-  if (Number.isNaN(major) || major < 20) {
+  if (!npIsSupportedNodeVersion(process.versions.node)) {
     return {
       id: "runtime.node",
       state: "error",
-      label: "Node.js >= 20",
+      label: `Node.js ${NP_MINIMUM_NODE_ENGINE}`,
       detail: `running ${process.versions.node}`,
-      hint: "NexPress requires Node 20+.",
+      hint: `NexPress requires Node ${NP_MINIMUM_NODE_VERSION} or newer.`,
     };
   }
-  return { id: "runtime.node", state: "ok", label: "Node.js >= 20", detail: process.versions.node };
+  return {
+    id: "runtime.node",
+    state: "ok",
+    label: `Node.js ${NP_MINIMUM_NODE_ENGINE}`,
+    detail: process.versions.node,
+  };
 }
 
 async function checkEnvFile(): Promise<CheckResult> {
