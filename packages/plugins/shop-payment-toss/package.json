@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/shop-payment-toss",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Toss Payments v2 initiation, confirmation, verified webhook, full-refund, and received-return partial-refund adapter for @nexpress/plugin-shop.",
   "license": "MIT",
   "author": "Nexpress",

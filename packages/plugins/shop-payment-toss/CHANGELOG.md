@@ -1,5 +1,11 @@
 # @nexpress/shop-payment-toss
 
+## 0.4.5
+
+### Patch Changes
+
+- @nexpress/plugin-shop@0.4.5
+
 ## 0.4.4
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/plugin-analytics-lite",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "First-party lightweight analytics plugin for NexPress.",
   "license": "MIT",
   "author": "Nexpress",
