@@ -1,5 +1,11 @@
 # create-nexpress
 
+## 0.1.41
+
+### Patch Changes
+
+- 307c4c1: Require Node.js 20.19.0 or newer across published packages and generated projects, align setup and diagnostics with that floor, and upgrade the WordPress HTML parser to its current entity decoder and dual-module package. Migration: upgrade the application runtime to Node.js 20.19.0 or newer before installing this NexPress release.
+
 ## 0.1.40
 
 ### Patch Changes

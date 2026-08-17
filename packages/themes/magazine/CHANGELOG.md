@@ -1,5 +1,16 @@
 # @nexpress/theme-magazine
 
+## 0.4.5
+
+### Patch Changes
+
+- Updated dependencies [307c4c1]
+  - @nexpress/core@0.4.5
+  - @nexpress/blocks@0.4.5
+  - @nexpress/editor@0.4.5
+  - @nexpress/next@0.4.5
+  - @nexpress/theme@0.4.5
+
 ## 0.4.4
 
 ### Patch Changes
