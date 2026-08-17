@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { retryGitHubStatusWrite } from "./github-status-retry.mjs";
+
 /**
  * Bridge CI results onto the Changesets Version PR head commit.
  *
@@ -33,6 +35,14 @@ const versionPrBase = process.env.VERSION_PR_BASE || "main";
 const versionPrNumber = normalized(process.env.VERSION_PR_NUMBER);
 const lookupTimeoutSeconds = Number(process.env.BRIDGE_RUN_LOOKUP_SECONDS || "120");
 const ciTimeoutSeconds = Number(process.env.BRIDGE_CI_TIMEOUT_SECONDS || "900");
+
+class GitHubRequestError extends Error {
+  constructor(method, path, status, body) {
+    super(`${method} ${path} failed (${status}): ${body}`);
+    this.name = "GitHubRequestError";
+    this.status = status;
+  }
+}
 
 if (!token) {
   throw new Error("GITHUB_TOKEN or GH_TOKEN is required.");
@@ -270,15 +280,17 @@ function statusStateForJob(job) {
 }
 
 async function setAllStatuses(state, description, targetUrl) {
-  await Promise.all(
-    MIRRORED_CONTEXTS.map((context) =>
-      setStatus(currentHeadSha, context, state, description, targetUrl),
-    ),
-  );
+  // Commit-status writes are deliberately sequential. GitHub has occasionally
+  // returned a transient 502/503 when the three contexts were created in a
+  // burst, leaving the draft Version PR with permanently pending checks.
+  for (const context of MIRRORED_CONTEXTS) {
+    await setStatus(currentHeadSha, context, state, description, targetUrl);
+  }
 }
 
 async function setStatus(sha, context, state, description, targetUrl) {
-  await request(`/statuses/${sha}`, {
+  const path = `/statuses/${sha}`;
+  const init = {
     method: "POST",
     body: JSON.stringify({
       state,
@@ -286,7 +298,18 @@ async function setStatus(sha, context, state, description, targetUrl) {
       description: description.slice(0, 140),
       target_url: targetUrl,
     }),
+  };
+
+  await retryGitHubStatusWrite(() => request(path, init), {
+    onRetry: ({ attempt, attempts, delayMs, status }) => {
+      console.warn(
+        `[version-pr-ci] ${context}: transient GitHub ${status}; ` +
+          `retrying status write in ${delayMs}ms ` +
+          `(${attempt}/${attempts})`,
+      );
+    },
   });
+
   console.log(`[version-pr-ci] ${context}: ${state}`);
 }
 
@@ -308,7 +331,7 @@ async function request(path, init = {}) {
 
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`${init.method || "GET"} ${path} failed (${response.status}): ${text}`);
+    throw new GitHubRequestError(init.method || "GET", path, response.status, text);
   }
 
   return text ? JSON.parse(text) : null;

@@ -17,6 +17,8 @@ test("the Version PR bridge keeps releases draft and gates on scaffold smoke", a
   assert.match(bridge, /scaffold smoke \(fresh scaffold journey\)/);
   assert.match(bridge, /convertPullRequestToDraft/);
   assert.match(bridge, /completedRun\.conclusion !== "success"/);
+  assert.match(bridge, /retryGitHubStatusWrite/);
+  assert.match(bridge, /for \(const context of MIRRORED_CONTEXTS\)/);
   assert.ok(
     bridge.indexOf("currentHeadSha = branchHeadSha || prHeadSha") <
       bridge.indexOf("await ensureVersionPrDraft(versionPr)"),
