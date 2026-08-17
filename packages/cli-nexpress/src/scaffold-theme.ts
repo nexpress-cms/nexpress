@@ -108,7 +108,7 @@ function packageJson(
           },
         },
         files: ["dist"],
-        engines: { node: ">=20" },
+        engines: { node: ">=20.19.0" },
         peerDependencies: {
           next: "^16.0.0",
           react: "^19.0.0",

@@ -9,7 +9,7 @@ import {
 import type { CheckResult } from "./doctor-readiness.js";
 
 const checks: CheckResult[] = [
-  { id: "runtime.node", state: "ok", label: "Node.js >= 20", detail: "24.11.1" },
+  { id: "runtime.node", state: "ok", label: "Node.js >= 20.19.0", detail: "24.11.1" },
   {
     id: "jobs.enabled",
     state: "warn",
@@ -47,7 +47,7 @@ describe("ops status core", () => {
 
   it("omits nextCommand when the site is ready", () => {
     expect(
-      buildOpsStatusJson([{ id: "runtime.node", state: "ok", label: "Node.js >= 20" }]),
+      buildOpsStatusJson([{ id: "runtime.node", state: "ok", label: "Node.js >= 20.19.0" }]),
     ).toEqual(
       expect.objectContaining({
         ok: true,
@@ -106,7 +106,7 @@ describe("ops status core", () => {
       [
         "NexPress ops status",
         "blocked: 1 errors, 1 warnings.",
-        "[ok] runtime.node Node.js >= 20 - 24.11.1",
+        "[ok] runtime.node Node.js >= 20.19.0 - 24.11.1",
         "[warn] jobs.enabled Jobs enabled - NP_ENABLE_JOBS not set",
         "[error] env.database_url DATABASE_URL - not set",
         "Next: pnpm run doctor -- --fix-plan",

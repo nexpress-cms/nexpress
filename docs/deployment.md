@@ -1,7 +1,7 @@
 # Deployment
 
 NexPress is a standard Next.js 16 app with a Postgres dependency. Any host
-that runs Node.js 20+ with a managed Postgres works. This guide covers
+that runs Node.js 20.19.0+ with a managed Postgres works. This guide covers
 three concrete paths plus the env-var surface you need on all of them.
 
 ---

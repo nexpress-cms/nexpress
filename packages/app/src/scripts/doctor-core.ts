@@ -65,6 +65,11 @@ import {
 import { inferDeployTargetFromEnv, type DeployTarget } from "./deploy-targets.js";
 import { buildDoctorJson, type DoctorJsonOutput } from "./doctor-output.js";
 import {
+  NP_MINIMUM_NODE_ENGINE,
+  NP_MINIMUM_NODE_VERSION,
+  npIsSupportedNodeVersion,
+} from "./node-version.js";
+import {
   npIsCanonicalCollectionMainTableName,
   npIsCollectionMainTableName,
 } from "./doctor-collection-contract.js";
@@ -620,17 +625,21 @@ export async function collectDoctorReport(
 }
 
 function checkNodeVersion(version: string): CheckResult {
-  const major = Number.parseInt(version.split(".")[0] ?? "0", 10);
-  if (Number.isNaN(major) || major < 20) {
+  if (!npIsSupportedNodeVersion(version)) {
     return {
       id: "node.version",
       state: "error",
-      label: "Node.js >= 20",
+      label: `Node.js ${NP_MINIMUM_NODE_ENGINE}`,
       detail: `running ${version}`,
-      hint: "NexPress requires Node 20+. Use nvm/asdf/fnm to upgrade.",
+      hint: `NexPress requires Node ${NP_MINIMUM_NODE_VERSION} or newer. Use nvm/asdf/fnm to upgrade.`,
     };
   }
-  return { id: "node.version", state: "ok", label: "Node.js >= 20", detail: version };
+  return {
+    id: "node.version",
+    state: "ok",
+    label: `Node.js ${NP_MINIMUM_NODE_ENGINE}`,
+    detail: version,
+  };
 }
 
 function checkPnpmVersion(env: DoctorEnv): CheckResult {

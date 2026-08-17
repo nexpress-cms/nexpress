@@ -47,7 +47,7 @@ It cannot:
 
 ## Prerequisites
 
-- Node ≥ 20, pnpm 10.33.
+- Node ≥ 20.19.0, pnpm 10.33.
 - A working NexPress install. Either:
   - **The monorepo** — `git clone` and `pnpm install`, then build
     once with `pnpm build`. Your plugin lives under

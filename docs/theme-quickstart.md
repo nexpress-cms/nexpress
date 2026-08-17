@@ -9,7 +9,7 @@ This page is the shortest working path.
 ## Prerequisites
 
 - A working NexPress project from `create-nexpress`.
-- Node 20+, pnpm 10.33.
+- Node 20.19.0+, pnpm 10.33.
 - The project has installed dependencies (`pnpm install`) and a working
   `src/nexpress.config.ts` with the theme marker comments from the scaffold.
 

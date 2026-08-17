@@ -117,6 +117,7 @@ describe("getProjectFiles", () => {
   it("typechecks the generated project and refreshes ignored codegen before build", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     const pkg = JSON.parse(files["package.json"]) as {
+      engines: { node: string };
       scripts: Record<string, string>;
     };
     const tsconfig = JSON.parse(files["tsconfig.json"]) as {
@@ -125,6 +126,7 @@ describe("getProjectFiles", () => {
       compilerOptions?: { paths?: Record<string, string[]> };
     };
 
+    expect(pkg.engines.node).toBe(">=20.19.0");
     expect(pkg.scripts.prebuild).toBe("pnpm schema:gen");
     expect(pkg.scripts.pretypecheck).toBe("pnpm schema:gen");
     expect(pkg.scripts.build).toBe("tsx scripts/build.ts");

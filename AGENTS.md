@@ -2,7 +2,13 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-16 (The project-side CLI now emits one local-only,
+**Last refreshed:** 2026-08-17 (NexPress now requires Node.js 20.19.0 or newer
+across every published package, generated project and extension, setup and
+diagnostic surface, and live installation guide. This deliberate floor keeps
+the supported runtime contract aligned with current transitive dependencies;
+CI and container examples continue to use Node 22.)
+
+**Earlier:** 2026-08-16 (The project-side CLI now emits one local-only,
 bounded `np.feedback-report.v1` support handoff with installed NexPress
 package versions, coarse runtime identifiers, and Doctor check IDs/states.
 Raw environment-variable values, filesystem paths, database URLs, Doctor prose,
@@ -811,7 +817,7 @@ and docs already name them; do not introduce new public `nx` identifiers.
 
 ## Commands
 
-Package manager is pnpm (v10.33, required). Node >=20.
+Package manager is pnpm (v10.33, required). Node >=20.19.0.
 
 ```bash
 pnpm install

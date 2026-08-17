@@ -39,7 +39,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=20.19.0"
   },
   "peerDependencies": {
     "next": "^15.0.0 || ^16.0.0",

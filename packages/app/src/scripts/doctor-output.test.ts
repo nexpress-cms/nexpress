@@ -16,7 +16,7 @@ import type { CheckResult } from "./doctor-readiness.js";
 const ANSI_ESCAPE_RE = new RegExp(String.raw`\x1b\[`);
 
 const checks: CheckResult[] = [
-  { id: "node.version", state: "ok", label: "Node.js >= 20", detail: "24.11.1" },
+  { id: "node.version", state: "ok", label: "Node.js >= 20.19.0", detail: "24.11.1" },
   {
     id: "prod.scheduler_token",
     state: "warn",
@@ -118,7 +118,7 @@ describe("doctor output", () => {
       buildDoctorJson({
         prodMode: false,
         target: null,
-        checks: [{ id: "node.version", state: "ok", label: "Node.js >= 20" }],
+        checks: [{ id: "node.version", state: "ok", label: "Node.js >= 20.19.0" }],
       }).nextCommand,
     ).toBeNull();
   });
@@ -249,7 +249,7 @@ describe("doctor output", () => {
       [
         "NexPress doctor: prod for vercel",
         "1 error, 1 warning.",
-        "[ok] node.version Node.js >= 20 - 24.11.1",
+        "[ok] node.version Node.js >= 20.19.0 - 24.11.1",
         "[warn] prod.scheduler_token NP_SCHEDULER_TOKEN - not set",
         "[error] env.database_url DATABASE_URL - not set",
       ].join("\n"),

@@ -39,6 +39,7 @@ import {
   renderMigrationStatus,
   type MigrationStatus,
 } from "./migration-status.js";
+import { NP_MINIMUM_NODE_ENGINE, npIsSupportedNodeVersion } from "./node-version.js";
 import { npReadCommunityRealtimeCapacityConfig } from "../lib/community-realtime-capacity.js";
 
 /**
@@ -656,13 +657,12 @@ async function getSystemChecks(): Promise<SetupSystemCheck[]> {
     probeCommand("git", ["--version"]),
     resolveInstalledPackageVersion("pg"),
   ]);
-  const nodeMajor = Number(process.versions.node.split(".")[0] ?? "0");
   return [
     {
       name: "Node.js",
-      required: ">=20.0",
+      required: NP_MINIMUM_NODE_ENGINE,
       version: `v${process.versions.node}`,
-      tone: nodeMajor >= 20 ? "ok" : "err",
+      tone: npIsSupportedNodeVersion(process.versions.node) ? "ok" : "err",
     },
     {
       name: "pnpm",

@@ -74,11 +74,13 @@ function fixForCheck(result: CheckResult, target: DeployTarget | null): FixPlanT
     case "node.version":
       return {
         id: "runtime.install_node_20",
-        title: "Install Node.js 20 or newer",
+        title: "Install Node.js 20.19.0 or newer",
         risk: "low",
         requiresApproval: false,
         commands: ["node --version"],
-        notes: ["Use nvm, asdf, fnm, or your system package manager to install Node.js 20+."],
+        notes: [
+          "Use nvm, asdf, fnm, or your system package manager to install Node.js 20.19.0 or newer.",
+        ],
       };
     case "pnpm.version":
       return {
