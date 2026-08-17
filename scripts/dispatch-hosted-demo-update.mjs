@@ -5,6 +5,8 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { isTransientGitHubError, retryGitHubRequest } from "./github-status-retry.mjs";
+
 const exactVersionPattern =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
 const commitShaPattern = /^[0-9a-f]{40}$/;
@@ -58,6 +60,16 @@ export async function dispatchHostedDemoUpdate({
   fetchImpl = fetch,
   sleepImpl = sleep,
   lookupTimeoutMs = 60_000,
+  dispatchAttempts = 6,
+  retryBaseDelayMs = 1_000,
+  retryMaxDelayMs = 30_000,
+  ambiguityLookupAttempts = 6,
+  ambiguityLookupDelayMs = 2_000,
+  onRetry = ({ attempt, attempts, delayMs, status, phase }) => {
+    console.warn(
+      `[hosted-demo] ${phase} received GitHub ${status}; retry ${attempt}/${attempts} in ${delayMs}ms.`,
+    );
+  },
 }) {
   if (!token) throw new Error("GH_TOKEN is required for hosted demo dispatch.");
   if (!exactVersionPattern.test(version)) {
@@ -70,42 +82,134 @@ export async function dispatchHostedDemoUpdate({
     throw new Error(`Invalid hosted demo repository: ${repository}`);
   }
 
-  const startedAt = Date.now();
   const workflowPath = encodeURIComponent(workflowFile);
-  await githubRequest({
-    apiUrl,
-    repository,
-    path: `/actions/workflows/${workflowPath}/dispatches`,
-    token,
-    fetchImpl,
-    init: {
-      method: "POST",
-      body: JSON.stringify({ ref, inputs: { version, source_sha: sourceSha } }),
-    },
-  });
-
   const expectedTitle = hostedDemoRunName(version, sourceSha);
-  while (Date.now() - startedAt < lookupTimeoutMs) {
-    const params = new URLSearchParams({ branch: ref, event: "workflow_dispatch", per_page: "20" });
-    const result = await githubRequest({
+  const lookupRun = () =>
+    lookupHostedDemoRun({
       apiUrl,
       repository,
-      path: `/actions/workflows/${workflowPath}/runs?${params.toString()}`,
+      workflowPath,
+      ref,
+      expectedTitle,
       token,
       fetchImpl,
     });
-    const run = result.workflow_runs
-      ?.filter(
-        (candidate) =>
-          candidate.display_title === expectedTitle &&
-          Date.parse(candidate.created_at) >= startedAt - 30_000,
-      )
-      .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0];
-    if (run?.html_url) return run;
+  const existingRun = await retryGitHubRequest(lookupRun, {
+    attempts: dispatchAttempts,
+    baseDelayMs: retryBaseDelayMs,
+    maxDelayMs: retryMaxDelayMs,
+    sleep: sleepImpl,
+    onRetry: (retry) => onRetry({ ...retry, phase: "run lookup" }),
+  });
+  if (existingRun) return existingRun;
+
+  const startedAt = Date.now();
+  let dispatched = false;
+  for (let attempt = 1; attempt <= dispatchAttempts; attempt += 1) {
+    try {
+      await githubRequest({
+        apiUrl,
+        repository,
+        path: `/actions/workflows/${workflowPath}/dispatches`,
+        token,
+        fetchImpl,
+        init: {
+          method: "POST",
+          body: JSON.stringify({ ref, inputs: { version, source_sha: sourceSha } }),
+        },
+      });
+      dispatched = true;
+      break;
+    } catch (error) {
+      if (!isTransientGitHubError(error)) throw error;
+
+      const reconciled = await reconcileAmbiguousDispatch({
+        lookupRun,
+        attempts: ambiguityLookupAttempts,
+        delayMs: ambiguityLookupDelayMs,
+        sleepImpl,
+        onRetry,
+      });
+      if (reconciled.run) return reconciled.run;
+      if (!reconciled.observedSuccessfulLookup || attempt === dispatchAttempts) throw error;
+
+      const delayMs = Math.min(retryMaxDelayMs, retryBaseDelayMs * 2 ** (attempt - 1));
+      onRetry({
+        attempt,
+        attempts: dispatchAttempts,
+        delayMs,
+        status: error.status,
+        phase: "workflow dispatch",
+      });
+      await sleepImpl(delayMs);
+    }
+  }
+  if (!dispatched) throw new Error("Hosted demo dispatch retry exhausted unexpectedly.");
+
+  while (Date.now() - startedAt < lookupTimeoutMs) {
+    try {
+      const run = await lookupRun();
+      if (run) return run;
+    } catch (error) {
+      if (!isTransientGitHubError(error)) throw error;
+      onRetry({
+        attempt: 1,
+        attempts: 1,
+        delayMs: 5_000,
+        status: error.status,
+        phase: "dispatched run lookup",
+      });
+    }
     await sleepImpl(5_000);
   }
 
   throw new Error(`Timed out waiting for hosted demo workflow run ${expectedTitle}.`);
+}
+
+async function lookupHostedDemoRun({
+  apiUrl,
+  repository,
+  workflowPath,
+  ref,
+  expectedTitle,
+  token,
+  fetchImpl,
+}) {
+  const params = new URLSearchParams({ branch: ref, event: "workflow_dispatch", per_page: "100" });
+  const result = await githubRequest({
+    apiUrl,
+    repository,
+    path: `/actions/workflows/${workflowPath}/runs?${params.toString()}`,
+    token,
+    fetchImpl,
+  });
+  return (
+    result.workflow_runs
+      ?.filter((candidate) => candidate.display_title === expectedTitle && candidate.html_url)
+      .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0] ?? null
+  );
+}
+
+async function reconcileAmbiguousDispatch({ lookupRun, attempts, delayMs, sleepImpl, onRetry }) {
+  let observedSuccessfulLookup = false;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    await sleepImpl(delayMs);
+    try {
+      const run = await lookupRun();
+      observedSuccessfulLookup = true;
+      if (run) return { run, observedSuccessfulLookup };
+    } catch (error) {
+      if (!isTransientGitHubError(error)) throw error;
+      onRetry({
+        attempt,
+        attempts,
+        delayMs,
+        status: error.status,
+        phase: "ambiguous dispatch reconciliation",
+      });
+    }
+  }
+  return { run: null, observedSuccessfulLookup };
 }
 
 function readPackageVersion(repoRoot) {
@@ -144,7 +248,9 @@ async function githubRequest({ apiUrl, repository, path, token, fetchImpl, init 
   if (response.status === 204) return null;
   const body = await response.text();
   if (!response.ok) {
-    throw new Error(`${init.method || "GET"} ${path} failed (${response.status}): ${body}`);
+    const error = new Error(`${init.method || "GET"} ${path} failed (${response.status}): ${body}`);
+    error.status = response.status;
+    throw error;
   }
   return body ? JSON.parse(body) : null;
 }
