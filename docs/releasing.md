@@ -185,6 +185,55 @@ different family version.
 If both pre-merge commands pass, the PR is safe to merge — the next push to
 `main` will publish.
 
+## Dependabot merge gate
+
+Dependabot PRs are the exception to this repository's normal squash-merge
+convention. A squash commit remains authored by `dependabot[bot]`; GitHub then
+treats workflows for that default-branch commit as Dependabot-triggered, with
+restricted token and secret access. That is incompatible with the Release
+workflow's repository writes, npm Trusted Publishing identity, and hosted-demo
+handoff. GitHub's own troubleshooting guidance recommends a merge commit for
+this case: <https://docs.github.com/en/code-security/code-scanning/troubleshooting-code-scanning/resource-not-accessible>.
+
+The repository therefore keeps merge commits enabled in both repository
+settings and the active `main branch protection` ruleset specifically for this
+operator path. Ordinary feature PRs and Version Packages PRs still use squash.
+Never use `gh pr merge --squash` or `@dependabot squash and merge` for a
+Dependabot-authored PR.
+
+Use the approval-gated helper from a clean checkout instead:
+
+```bash
+# Read-only plan. This verifies the author, main base, exact head SHA,
+# mergeability, freshness, and all four CI jobs.
+pnpm merge:dependabot -- <pr-number> --json
+
+# Copy the exact approvalToken returned by the plan.
+pnpm merge:dependabot -- <pr-number> \
+  --execute --approve 'dependabot-merge:<pr-number>:<40-char-head-sha>'
+```
+
+Execution uses `gh pr merge --merge --match-head-commit`, verifies that GitHub
+created a two-parent merge commit, finds the exact merge SHA's `push` runs, and
+waits for both CI and Release to succeed. It refuses non-Dependabot authors,
+draft/stale/conflicted PRs, missing or failed checks, disabled repository merge
+commits, and stale approval tokens.
+
+If GitHub does not register both push runs within the bounded lookup window,
+the command fails after the merge instead of claiming success. First confirm
+that `main` still points to the reported merge SHA, then use the existing
+manual escape hatches and inspect their results:
+
+```bash
+gh workflow run ci.yml --ref main
+gh workflow run release.yml --ref main
+gh run list --branch main --limit 10
+```
+
+Do not use a manual dispatch as the normal path. The two-parent merge commit is
+the normal authority boundary; dispatch exists only to recover a missing GitHub
+event after the exact merged state has already passed PR CI.
+
 ### Version PR merge gate
 
 Version PRs still need explicit maintainer approval before merge. Do not merge

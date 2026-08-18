@@ -1307,6 +1307,13 @@ It's not a roadmap. It says what's pinned today, not what 1.0 will look like. Th
   (OIDC, `id-token: write`, `NPM_CONFIG_PROVENANCE=true`), not `NPM_TOKEN`.
   The workflow also dispatches CI for GITHUB_TOKEN-created Version PRs and
   mirrors required job conclusions onto the Version PR commit.
+- **Dependabot merges** — Dependabot-authored PRs are the only merge-strategy
+  exception: plan and execute them with `pnpm merge:dependabot -- <pr>` after
+  all four PR checks pass. The helper requires the current exact head and a
+  copied approval token, uses a two-parent `--merge` commit, then waits for the
+  merge SHA's CI and Release push runs. Never squash a Dependabot PR; a
+  bot-authored squash commit can lose the normal post-merge workflow authority.
+  Ordinary and Version Packages PRs remain squash merges.
 - **No pre-commit hooks** — no husky or lint-staged configured.
 - **`@nexpress/next` package name** — not the framework. It's NexPress's Next.js integration helpers (`createBootstrap`, `createAuthHelpers`, `createCollectionHelpers`).
 - **LocalStorageAdapter** is not multi-node safe. Use S3 for production deployments with multiple instances.
