@@ -13,7 +13,11 @@ import {
 const maxBootstrapPackageCount = 50;
 
 function run(command: string, args: string[], repoRoot: string): void {
-  execFileSync(command, args, { cwd: repoRoot, stdio: "inherit" });
+  // Keep the caller environment explicit: changesets/action v2 injects
+  // CHANGESETS_OUTPUT into the custom publish script and Changesets CLI v3
+  // consumes it when invoked below. Other release credentials are narrowed
+  // separately before this helper runs.
+  execFileSync(command, args, { cwd: repoRoot, env: process.env, stdio: "inherit" });
 }
 
 async function withNodeAuthToken<T>(token: string, callback: () => T | Promise<T>): Promise<T> {
