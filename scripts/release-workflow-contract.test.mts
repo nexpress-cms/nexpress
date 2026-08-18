@@ -153,3 +153,20 @@ test("a verified family release dispatches the hosted demo with short-lived app 
     "the demo handoff must happen only after release race detection",
   );
 });
+
+test("Dependabot merges preserve normal post-merge CI and Release authority", async () => {
+  const rootManifest = JSON.parse(await readFile(resolve(repoRoot, "package.json"), "utf8")) as {
+    scripts?: Record<string, string>;
+  };
+  const helper = await readFile(resolve(repoRoot, "scripts/merge-dependabot.mjs"), "utf8");
+  const guide = await readFile(resolve(repoRoot, "docs/releasing.md"), "utf8");
+
+  assert.equal(rootManifest.scripts?.["merge:dependabot"], "node scripts/merge-dependabot.mjs");
+  assert.match(helper, /"--merge"/);
+  assert.match(helper, /"--match-head-commit"/);
+  assert.doesNotMatch(helper, /"--squash"/);
+  assert.match(helper, /expectedPostMergeWorkflows = \["CI", "Release"\]/);
+  assert.match(helper, /rulesetAllowsMergeCommit/);
+  assert.match(guide, /Never use `gh pr merge --squash`/);
+  assert.match(guide, /two-parent merge commit/);
+});

@@ -27,6 +27,7 @@
     "doctor": "pnpm --filter @nexpress/web run doctor",
     "ops:release": "pnpm --filter @nexpress/web run release",
     "ops:runbook": "pnpm --filter @nexpress/web run runbook",
+    "merge:dependabot": "node scripts/merge-dependabot.mjs",
     "seed:admin": "pnpm --filter @nexpress/web seed:admin",
     "seed:content": "pnpm --filter @nexpress/web seed:content",
     "ux-audit": "tsx scripts/ux-audit.mts",
