@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, test } from "node:test";
 
 import type { NpPublishedWorkspacePackage } from "./published-release-contract.mjs";
 import {
   bootstrapNpmPackages,
+  initializeChangesetsOutputFile,
   npmTrustedPublisherAccessUrl,
   parseNpmBootstrapPackageNames,
   selectNpmBootstrapPackages,
@@ -21,6 +25,18 @@ const packages: NpPublishedWorkspacePackage[] = [
   { name: "@nexpress/theme-storefront", version: "0.4.3", directory: "/storefront" },
   { name: "create-nexpress", version: "0.1.39", directory: "/cli" },
 ];
+
+test("initializes an empty Changesets v2 output file for verified no-op releases", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "nexpress-changesets-output-"));
+  const outputPath = join(directory, "publish.ndjson");
+  try {
+    await writeFile(outputPath, '{"type":"stale"}\n', "utf8");
+    initializeChangesetsOutputFile(outputPath);
+    assert.equal(await readFile(outputPath, "utf8"), "");
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
+});
 
 test("parses an explicit bounded comma or newline separated bootstrap allowlist", () => {
   assert.deepEqual(
