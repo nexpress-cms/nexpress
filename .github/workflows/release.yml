@@ -110,8 +110,13 @@ jobs:
 
       - name: Create Release Pull Request or Publish
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
+          # v2 no longer treats checkout credentials or a GITHUB_TOKEN
+          # environment variable as action authentication. Keep the authority
+          # explicit and let the action use its default GitHub API push mode.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          push-with-git-cli: false
           # `pnpm run version` invokes the `version` script in
           # root package.json (= repository release-invariant tests,
           # `changeset version`, public release-doc synchronization, then a
@@ -125,7 +130,7 @@ jobs:
           # erroring "No commits between main and
           # changeset-release/main". Same applies to `pnpm run
           # release` below.
-          version: pnpm run version
+          version-script: pnpm run version
           # `pnpm run release` first checks whether any workspace version is
           # unpublished. A no-op main push exits quickly; a real release runs
           # repository tests, build, typecheck, publish, registry verification,
@@ -138,9 +143,14 @@ jobs:
           # package's TP config on npmjs.com (nexpress-cms/nexpress +
           # release.yml). `NPM_CONFIG_PROVENANCE: "true"` attaches a
           # Sigstore provenance attestation to every tarball.
-          publish: pnpm run release
-          commit: "chore(release): version packages"
-          title: "chore(release): version packages"
+          publish-script: pnpm run release
+          commit-message: "chore(release): version packages"
+          pr-title: "chore(release): version packages"
+          # Version PRs are rolling release accumulators. v2 can enforce their
+          # draft state directly, including when it updates an existing PR;
+          # the bridge below keeps the same invariant as a second check.
+          pr-draft: always
+          pr-base-branch: main
           # GitHub Releases generate ~30 entries per Version PR merge
           # (one per package in the `fixed` group) — the Releases page
           # becomes incomprehensible noise for a repo where every
@@ -148,10 +158,13 @@ jobs:
           # CHANGELOG.md per package + the Version PR's body already
           # carry the per-package narrative; the GitHub Releases page
           # was duplicating that without adding signal. Disable
-          # release creation while keeping tags + npm publish intact.
-          createGithubReleases: false
+          # release creation. The verified release wrapper deliberately runs
+          # `changeset publish --no-git-tag` and creates one repository-level
+          # tag only after registry verification, so v2 must not recreate the
+          # per-package tag fanout either.
+          create-github-releases: false
+          push-git-tags: false
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Empty during normal releases, so npm uses OIDC Trusted
           # Publishing. For a brand-new package name only, an operator may
           # temporarily set this repository secret to a granular token with
@@ -174,7 +187,7 @@ jobs:
       - name: Bridge Version PR CI into required checks
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION_PR_NUMBER: ${{ steps.changesets.outputs.pullRequestNumber }}
+          VERSION_PR_NUMBER: ${{ steps.changesets.outputs.pr-number }}
           VERSION_PR_BRANCH: changeset-release/main
           VERSION_PR_BASE: main
           CI_WORKFLOW_FILE: ci.yml

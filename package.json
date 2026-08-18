@@ -36,7 +36,7 @@
     "release": "tsx scripts/release.mts"
   },
   "devDependencies": {
-    "@changesets/cli": "^2.31.0",
+    "@changesets/cli": "^3.0.0",
     "@eslint/js": "^10.0.1",
     "@types/node": "^26.0.1",
     "eslint": "^10.7.0",
@@ -72,9 +72,6 @@
       "ignoreMissing": [
         "@playwright/test"
       ]
-    },
-    "patchedDependencies": {
-      "read-yaml-file@1.1.0": "patches/read-yaml-file@1.1.0.patch"
     }
   }
 }
