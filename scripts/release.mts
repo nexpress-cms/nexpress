@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -11,6 +12,15 @@ import {
 } from "./published-release-contract.mjs";
 
 const maxBootstrapPackageCount = 50;
+
+export function initializeChangesetsOutputFile(outputPath = process.env.CHANGESETS_OUTPUT): void {
+  if (!outputPath) return;
+  // changesets/action v2 always reads this NDJSON file after a custom publish
+  // script returns. Our verified wrapper can legitimately short-circuit before
+  // invoking Changesets CLI when every workspace version is already public;
+  // an empty file records that no packages were published without a warning.
+  writeFileSync(outputPath, "", { encoding: "utf8", mode: 0o600 });
+}
 
 function run(command: string, args: string[], repoRoot: string): void {
   // Keep the caller environment explicit: changesets/action v2 injects
@@ -149,6 +159,7 @@ function printTrustedPublisherChecklist(packages: NpPublishedWorkspacePackage[])
 }
 
 export async function release(repoRoot: string): Promise<void> {
+  initializeChangesetsOutputFile();
   const bootstrapToken = process.env.NODE_AUTH_TOKEN?.trim() || undefined;
   delete process.env.NODE_AUTH_TOKEN;
   const bootstrapPackageNames = parseNpmBootstrapPackageNames(
