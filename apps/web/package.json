@@ -85,15 +85,15 @@
     "next": "^16.2.11",
     "nodemailer": "^9.0.5",
     "pg": "^8.23.0",
-    "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/pg": "^8.23.1",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.0.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "concurrently": "^10.0.5",
     "dotenv": "^17.2.4",
     "drizzle-kit": "^0.31.10",
