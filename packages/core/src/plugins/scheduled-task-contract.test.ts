@@ -20,6 +20,7 @@ describe("plugin scheduled task contract", () => {
   it("accepts the supported five-field cron and definition shape", () => {
     expect(npValidatePluginScheduledTaskDefinition(validTask())).toEqual({ ok: true });
     expect(npValidatePluginCronExpression("H/15 0-6 * jan mon-fri")).toEqual({ ok: true });
+    expect(npValidatePluginCronExpression("0 0 * * 1#2")).toEqual({ ok: true });
     expect(npValidatePluginScheduledTaskId("daily.Rollup_2")).toEqual({ ok: true });
   });
 
@@ -30,6 +31,8 @@ describe("plugin scheduled task contract", () => {
     [validTask({ cron: "0 0 * *" }), /exactly five fields/],
     [validTask({ cron: "0  0 * * *" }), /single spaces/],
     [validTask({ cron: "61 0 * * *" }), /cron is invalid/],
+    [validTask({ cron: "0 0 * * L" }), /cron is invalid/],
+    [validTask({ cron: "0 0 31 2 *" }), /cron is invalid/],
     [validTask({ handler: "./handler.js" }), /handler must be a function/],
     [validTask({ description: "" }), /description must be a non-empty string/],
   ])("rejects malformed definitions %#", (definition, message) => {

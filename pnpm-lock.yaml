@@ -612,8 +612,8 @@ importers:
         specifier: ^2.1.0
         version: 2.1.0
       cron-parser:
-        specifier: ^5.6.2
-        version: 5.6.2
+        specifier: ^5.10.0
+        version: 5.10.0
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
@@ -4005,10 +4005,6 @@ packages:
 
   cron-parser@5.10.0:
     resolution: {integrity: sha512-izNAxJyRWUP8ljBoDSub5WyrVOUlT4SLGShswE7eoRBpp6QUsSycYxLBMJlbshgPBMcPT/nrfgjNY2918ayv2A==}
-    engines: {node: '>=18'}
-
-  cron-parser@5.6.2:
-    resolution: {integrity: sha512-yJ/G1LVir6CnlkLI40CsampPLKl1SprGGlUagWtGJxewytRVYezv5xVyzzbT+Pvzx+VIRvZVF7/a0eEMTxdnTA==}
     engines: {node: '>=18'}
 
   cross-spawn@7.0.6:
@@ -7577,10 +7573,6 @@ snapshots:
       luxon: 3.7.2
 
   cron-parser@5.10.0:
-    dependencies:
-      luxon: 3.7.2
-
-  cron-parser@5.6.2:
     dependencies:
       luxon: 3.7.2
 
