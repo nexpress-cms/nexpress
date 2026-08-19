@@ -2,7 +2,8 @@
 
 Framework-shipped OAuth provider factories for Google, GitHub, and Discord.
 They normalize provider profiles into the NexPress OAuth contract without
-requiring a plugin wrapper.
+requiring a plugin wrapper or generic OAuth runtime dependency. Each bundled
+provider uses S256 PKCE and validates token responses before reading a profile.
 
 ## Install
 

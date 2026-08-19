@@ -4,8 +4,7 @@ import type { ZodTypeAny } from "zod";
 import { githubOAuthPlugin, type GitHubOAuthConfig } from "./index.js";
 
 // `registerOAuthProvider` from @nexpress/core/auth is the side effect we
-// want to assert. Stub just that one export and forward the rest
-// (oauth-providers' factories transitively need `fromArctic` etc.).
+// want to assert. Stub just that one export and forward the rest.
 vi.mock(import("@nexpress/core/auth"), async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -181,9 +180,8 @@ describe("setup credential resolution", () => {
     });
     runSetup(ctx);
     expect(registeredProvider()).toEqual(expect.objectContaining({ id: "github" }));
-    // The provider object can't easily be inspected for the
-    // exact secret value (it's wrapped in arctic), so we assert
-    // via the log source tag.
+    // The provider object intentionally closes over the exact secret value,
+    // so we assert the chosen credential source via the log source tag.
   });
 
   it("REFUSES to register when env has clientId but no clientSecret (atomic source rule)", () => {

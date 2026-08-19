@@ -206,7 +206,6 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1106.0",
     "@node-rs/argon2": "^2.0.2",
-    "arctic": "^3.7.0",
     "cron-parser": "^5.6.2",
     "drizzle-orm": "^0.45.2",
     "intl-messageformat": "^11.2.12",

@@ -39,12 +39,59 @@ describe("createGitHubOAuthProvider (factory guards)", () => {
     expect(provider.id).toBe("github");
     expect(provider.label).toBe("GitHub");
   });
+
+  it("uses GitHub's current PKCE web flow and exchanges through the injected fetch", async () => {
+    const verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+    const responses = new Map<string, Response | (() => Response)>([
+      [
+        "https://github.com/login/oauth/access_token",
+        () => jsonResponse({ access_token: "github-token" }),
+      ],
+      [
+        "https://api.github.com/user",
+        () => jsonResponse({ id: 42, login: "octo", email: "octo@example.com" }),
+      ],
+    ]);
+    const { fetch: stubFetch, calls } = makeFetch(responses);
+    const provider = createGitHubOAuthProvider({
+      clientId: "github-client",
+      clientSecret: "github-secret",
+      fetch: stubFetch,
+    });
+
+    const authorizationUrl = new URL(
+      await provider.authorize({
+        state: "state",
+        redirectUri: "https://cms.example.test/github/callback",
+        codeVerifier: verifier,
+      }),
+    );
+    expect(authorizationUrl.origin + authorizationUrl.pathname).toBe(
+      "https://github.com/login/oauth/authorize",
+    );
+    expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(authorizationUrl.searchParams.get("code_challenge")).toBe(
+      "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
+    );
+
+    await expect(
+      provider.exchange({
+        code: "github-code",
+        state: "state",
+        redirectUri: "https://cms.example.test/github/callback",
+        codeVerifier: verifier,
+      }),
+    ).resolves.toMatchObject({ providerUserId: "42", email: "octo@example.com" });
+
+    const tokenCall = calls.find((call) => call.url.includes("/login/oauth/access_token"));
+    expect(tokenCall?.init?.body).toBeInstanceOf(URLSearchParams);
+    const body = tokenCall?.init?.body as URLSearchParams;
+    expect(body.get("client_id")).toBe("github-client");
+    expect(body.get("client_secret")).toBe("github-secret");
+    expect(body.get("code_verifier")).toBe(verifier);
+  });
 });
 
-// Profile fetching is the GitHub-specific logic worth covering here.
-// The token exchange + URL building live in `arctic` and are exercised
-// by arctic's own test suite; mocking arctic's internal fetch would
-// duplicate that without adding signal.
 describe("fetchGitHubProfile", () => {
   it("returns a normalized profile when /user.email is set", async () => {
     const responses = new Map<string, Response | (() => Response)>([

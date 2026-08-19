@@ -10,14 +10,16 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function makeFetch(responses: Map<string, Response | (() => Response)>) {
-  const fn: typeof fetch = (input) => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const fn: typeof fetch = (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    calls.push({ url, init: init ?? undefined });
     const matcher = [...responses.entries()].find(([prefix]) => url.startsWith(prefix));
     if (!matcher) throw new Error(`unexpected fetch ${url}`);
     const value = matcher[1];
     return Promise.resolve(typeof value === "function" ? value() : value);
   };
-  return { fetch: fn };
+  return { fetch: fn, calls };
 }
 
 describe("createGoogleOAuthProvider (factory guards)", () => {
@@ -34,6 +36,50 @@ describe("createGoogleOAuthProvider (factory guards)", () => {
     });
     expect(provider.id).toBe("google");
     expect(provider.label).toBe("Google");
+  });
+
+  it("uses Google's PKCE endpoints and request-body client authentication", async () => {
+    const verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+    const responses = new Map<string, Response | (() => Response)>([
+      ["https://oauth2.googleapis.com/token", () => jsonResponse({ access_token: "google-token" })],
+      [
+        "https://openidconnect.googleapis.com/v1/userinfo",
+        () => jsonResponse({ sub: "google-user", email: "g@example.com", email_verified: true }),
+      ],
+    ]);
+    const { fetch: stubFetch, calls } = makeFetch(responses);
+    const provider = createGoogleOAuthProvider({
+      clientId: "google-client",
+      clientSecret: "google-secret",
+      fetch: stubFetch,
+    });
+
+    const authorizationUrl = new URL(
+      await provider.authorize({
+        state: "state",
+        redirectUri: "https://cms.example.test/google/callback",
+        codeVerifier: verifier,
+      }),
+    );
+    expect(authorizationUrl.origin + authorizationUrl.pathname).toBe(
+      "https://accounts.google.com/o/oauth2/v2/auth",
+    );
+    expect(authorizationUrl.searchParams.get("scope")).toBe("openid email profile");
+    expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe("S256");
+
+    await expect(
+      provider.exchange({
+        code: "google-code",
+        state: "state",
+        redirectUri: "https://cms.example.test/google/callback",
+        codeVerifier: verifier,
+      }),
+    ).resolves.toMatchObject({ providerUserId: "google-user", email: "g@example.com" });
+    const tokenCall = calls.find((call) => call.url === "https://oauth2.googleapis.com/token");
+    expect(tokenCall?.init?.body).toBeInstanceOf(URLSearchParams);
+    const body = tokenCall?.init?.body as URLSearchParams;
+    expect(body.get("client_id")).toBe("google-client");
+    expect(body.get("client_secret")).toBe("google-secret");
   });
 });
 

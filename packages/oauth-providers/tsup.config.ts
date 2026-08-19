@@ -8,5 +8,5 @@ export default defineConfig({
   dts: !fast,
   clean: true,
   sourcemap: !fast,
-  external: ["@nexpress/core", "arctic"],
+  external: ["@nexpress/core"],
 });

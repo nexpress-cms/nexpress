@@ -10,14 +10,16 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function makeFetch(responses: Map<string, Response | (() => Response)>) {
-  const fn: typeof fetch = (input) => {
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  const fn: typeof fetch = (input, init) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    calls.push({ url, init: init ?? undefined });
     const matcher = [...responses.entries()].find(([prefix]) => url.startsWith(prefix));
     if (!matcher) throw new Error(`unexpected fetch ${url}`);
     const value = matcher[1];
     return Promise.resolve(typeof value === "function" ? value() : value);
   };
-  return { fetch: fn };
+  return { fetch: fn, calls };
 }
 
 describe("createDiscordOAuthProvider (factory guards)", () => {
@@ -34,6 +36,55 @@ describe("createDiscordOAuthProvider (factory guards)", () => {
     });
     expect(provider.id).toBe("discord");
     expect(provider.label).toBe("Discord");
+  });
+
+  it("uses Discord's PKCE endpoints and HTTP Basic client authentication", async () => {
+    const verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+    const responses = new Map<string, Response | (() => Response)>([
+      [
+        "https://discord.com/api/oauth2/token",
+        () => jsonResponse({ access_token: "discord-token" }),
+      ],
+      [
+        "https://discord.com/api/users/@me",
+        () => jsonResponse({ id: "discord-user", username: "d", verified: true }),
+      ],
+    ]);
+    const { fetch: stubFetch, calls } = makeFetch(responses);
+    const provider = createDiscordOAuthProvider({
+      clientId: "discord-client",
+      clientSecret: "discord-secret",
+      fetch: stubFetch,
+    });
+
+    const authorizationUrl = new URL(
+      await provider.authorize({
+        state: "state",
+        redirectUri: "https://cms.example.test/discord/callback",
+        codeVerifier: verifier,
+      }),
+    );
+    expect(authorizationUrl.origin + authorizationUrl.pathname).toBe(
+      "https://discord.com/oauth2/authorize",
+    );
+    expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe("S256");
+
+    await expect(
+      provider.exchange({
+        code: "discord-code",
+        state: "state",
+        redirectUri: "https://cms.example.test/discord/callback",
+        codeVerifier: verifier,
+      }),
+    ).resolves.toMatchObject({ providerUserId: "discord-user" });
+    const tokenCall = calls.find((call) => call.url === "https://discord.com/api/oauth2/token");
+    expect(new Headers(tokenCall?.init?.headers).get("authorization")).toBe(
+      "Basic ZGlzY29yZC1jbGllbnQ6ZGlzY29yZC1zZWNyZXQ=",
+    );
+    expect(tokenCall?.init?.body).toBeInstanceOf(URLSearchParams);
+    const body = tokenCall?.init?.body as URLSearchParams;
+    expect(body.has("client_secret")).toBe(false);
+    expect(body.get("code_verifier")).toBe(verifier);
   });
 });
 

@@ -605,6 +605,11 @@ if (process.env.NP_OAUTH_GOOGLE_CLIENT_ID && process.env.NP_OAUTH_GOOGLE_CLIENT_
 }
 ```
 
+The bundled factories implement each provider's authorization-code flow
+directly, use S256 PKCE, validate token responses before profile reads, and do
+not pull a generic OAuth library into the runtime. Custom integrations should
+implement the structural `OAuthProvider` contract directly.
+
 Each provider strictly honors `email_verified` (Google, Discord)
 or falls back to `/user/emails` for verified primary (GitHub).
 **Unverified emails never reach the framework's email-match
