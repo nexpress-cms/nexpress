@@ -48,8 +48,8 @@ many independent moving parts. Sites pick what they need:
 - **Moderation** (Phase 9.5 / 9.5a / 9.5b) — contextual reports queue,
   closed resolution actions, declarative thread/category scopes, scoped bans,
   audit log, and target-aware role-grant UI.
-- **SSO** (Phase 9.6a–e) — pluggable OAuth providers via
-  `arctic`. GitHub + Google plugins ship in-tree.
+- **SSO** (Phase 9.6a–e) — pluggable OAuth providers with built-in,
+  provider-specific GitHub + Google implementations.
 - **Adapters** (Phase 9.6f–g) — `setSpamAdapter`,
   `setProfanityAdapter`, `setReputationAdapter`. Sites bring
   their own engine.
@@ -170,10 +170,11 @@ provider plugins ship in-tree:
 - `@nexpress/plugin-oauth-github`
 - `@nexpress/plugin-oauth-google`
 
-Both wrap [`arctic`](https://arcticjs.dev) so the
-authorization-code dance is maintained externally rather than
-bespoke. They are already included in `defaultPlugins`; leave them
-installed and configure credentials from one source.
+Both use small provider-specific authorization-code implementations with S256
+PKCE, exact token-response validation, and the framework-owned state cookie.
+They do not depend on the deprecated `arctic` package. They are already
+included in `defaultPlugins`; leave them installed and configure credentials
+from one source.
 
 Production env path:
 

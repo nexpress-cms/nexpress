@@ -2,7 +2,14 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-17 (NexPress now requires Node.js 20.19.0 or newer
+**Last refreshed:** 2026-08-19 (The bundled GitHub, Google, and Discord OAuth
+providers now own small provider-specific authorization-code implementations
+with S256 PKCE, bounded token-response validation, and injected network seams.
+The deprecated Arctic package is no longer a runtime dependency; the
+structural `fromArctic` adapter remains deprecated-but-compatible for existing
+custom integrations.)
+
+**Earlier:** 2026-08-17 (NexPress now requires Node.js 20.19.0 or newer
 across every published package, generated project and extension, setup and
 diagnostic surface, and live installation guide. This deliberate floor keeps
 the supported runtime contract aligned with current transitive dependencies;

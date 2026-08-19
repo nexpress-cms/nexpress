@@ -45,9 +45,8 @@ export interface OAuthAuthorizeParams {
   /**
    * PKCE code verifier (32+ char URL-safe random). The framework
    * generates one for every login and threads it through the state
-   * cookie. Providers that don't support PKCE (e.g. GitHub) ignore it;
-   * providers that require it (e.g. Google) hash it into the
-   * `code_challenge` query param.
+   * cookie. Bundled providers hash it into an S256 `code_challenge`;
+   * custom providers that cannot use PKCE may ignore it.
    */
   codeVerifier: string;
 }

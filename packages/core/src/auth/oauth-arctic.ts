@@ -1,16 +1,16 @@
 import type { OAuthProfile, OAuthProvider } from "./oauth-providers.js";
 
 /**
- * Adapter that bridges any [arctic](https://arctic.js.org/) provider
+ * Compatibility adapter that bridges an [Arctic](https://github.com/pilcrowonpaper/arctic)
+ * provider
  * (`new GitHub(...)`, `new Google(...)`, `new Apple(...)`, etc.) to
  * NexPress's `OAuthProvider` interface.
  *
- * Why this exists: arctic ships ~25 maintained providers and handles
- * the OAuth dance — token exchange, PKCE hashing, refresh-token
- * support — so plugin authors only have to write the **profile fetch**
- * (the part that varies most by provider). Our framework still owns
- * state cookies, identity ↔ user resolution, and session minting; this
- * adapter just lets users skip the boilerplate token POST.
+ * Arctic was deprecated upstream in July 2026. This structural adapter stays
+ * available so existing custom providers do not break, but NexPress no longer
+ * installs Arctic or uses it for bundled providers. New integrations should
+ * implement `OAuthProvider` directly and follow their provider's current
+ * authorization-code and PKCE documentation.
  *
  * Usage from a plugin:
  *
@@ -36,20 +36,25 @@ import type { OAuthProfile, OAuthProvider } from "./oauth-providers.js";
  */
 
 /**
- * Minimal slice of arctic's provider classes that the adapter actually
- * needs. Both `GitHub` (no PKCE) and `Google` (PKCE-required) match
- * this — the third positional arg is "second positional" for
- * non-PKCE providers (just unused) and "code verifier" for PKCE ones.
+ * Minimal slice of Arctic's provider classes that the adapter actually
+ * needs. Arctic 3.7's legacy `GitHub` class (no PKCE) and `Google`
+ * (PKCE-required) both match this — the third positional arg is "second
+ * positional" for non-PKCE providers (just unused) and "code verifier" for
+ * PKCE ones.
  *
  * Declared structurally so we don't drag arctic into the public type
  * graph of `@nexpress/core`. Plugins that import a real arctic class
  * pass it directly; the structural match keeps the signature lined up.
+ *
+ * @deprecated Arctic is no longer maintained. Implement `OAuthProvider`
+ * directly for new integrations.
  */
 export interface ArcticLikeProvider {
   createAuthorizationURL(state: string, ...rest: never[]): URL;
   validateAuthorizationCode(code: string, ...rest: never[]): Promise<ArcticLikeTokens>;
 }
 
+/** @deprecated Arctic is no longer maintained. */
 export interface ArcticLikeTokens {
   accessToken(): string;
   hasRefreshToken?(): boolean;
@@ -57,6 +62,7 @@ export interface ArcticLikeTokens {
   idToken?(): string;
 }
 
+/** @deprecated Arctic is no longer maintained. */
 export interface FromArcticOptions {
   /** Provider id used in route paths and `np_user_oauth_identities.provider`. */
   id: string;
@@ -69,7 +75,8 @@ export interface FromArcticOptions {
    * Whether the underlying arctic provider expects a PKCE code verifier
    * as the second arg to `createAuthorizationURL` and
    * `validateAuthorizationCode`. Default `true` (Google, Apple, etc.).
-   * Set `false` for non-PKCE providers like GitHub.
+   * Set `false` for legacy non-PKCE provider classes such as Arctic 3.7's
+   * GitHub implementation.
    */
   pkce?: boolean;
   /**
@@ -83,16 +90,15 @@ export interface FromArcticOptions {
 }
 
 /**
- * Wraps an arctic provider into the framework's `OAuthProvider`
+ * Wraps an Arctic provider into the framework's `OAuthProvider`
  * shape. The framework calls `authorize` and `exchange`; this adapter
  * builds a fresh arctic instance per request via `factory(redirectUri)`
  * so the redirect URI always matches what the framework computed for
  * THIS request — critical in dev where Next.js may fall back to a
  * non-3000 port and a setup-time-frozen redirectUri would diverge.
  *
- * Arctic provider classes are cheap to construct (just hold the three
- * credential strings), so the per-request factory call has no
- * meaningful cost.
+ * @deprecated Arctic is no longer maintained. Keep this only for existing
+ * integrations and implement new providers against `OAuthProvider` directly.
  */
 export function fromArctic(
   factory: (redirectUri: string) => ArcticLikeProvider,

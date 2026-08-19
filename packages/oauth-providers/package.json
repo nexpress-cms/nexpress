@@ -38,8 +38,7 @@
     "node": ">=20.19.0"
   },
   "dependencies": {
-    "@nexpress/core": "workspace:*",
-    "arctic": "^3.7.0"
+    "@nexpress/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",

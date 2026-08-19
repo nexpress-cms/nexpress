@@ -1,10 +1,11 @@
-import { fromArctic, type OAuthProfile, type OAuthProvider } from "@nexpress/core";
-import { Google } from "arctic";
+import type { OAuthProfile, OAuthProvider } from "@nexpress/core";
+
+import { createAuthorizationCodeProvider } from "./oauth2.js";
 
 /**
- * Google OAuth provider factory. Wraps `arctic`'s `Google` class
- * (token endpoint, PKCE, refresh) and resolves the user's
- * profile via Google's OIDC userinfo endpoint.
+ * Google OAuth provider factory. Implements Google's authorization-code
+ * flow with S256 PKCE and resolves the user's profile via the OIDC userinfo
+ * endpoint.
  *
  * **Strictly honors `email_verified`** — if Google's userinfo
  * response sets `email_verified !== true`, the email is dropped
@@ -20,6 +21,8 @@ import { Google } from "arctic";
  */
 
 const USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
+const AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/v2/auth";
+const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const DEFAULT_SCOPES = ["openid", "email", "profile"];
 
 export interface GoogleOAuthOptions {
@@ -44,7 +47,7 @@ interface GoogleUserInfo {
 /**
  * Hits the Google OIDC userinfo endpoint and normalizes the
  * response. Exported so tests can exercise the email-verification
- * logic without going through arctic's token exchange.
+ * logic independently from the token exchange.
  */
 export async function fetchGoogleProfile(
   accessToken: string,
@@ -91,14 +94,17 @@ export function createGoogleOAuthProvider(options: GoogleOAuthOptions): OAuthPro
   }
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
-  return fromArctic(
-    (redirectUri) => new Google(options.clientId, options.clientSecret, redirectUri),
-    {
-      id: "google",
-      label: "Google",
-      pkce: true,
-      scopes: options.scopes ?? DEFAULT_SCOPES,
-      fetchProfile: (accessToken) => fetchGoogleProfile(accessToken, fetchImpl),
-    },
-  );
+  return createAuthorizationCodeProvider({
+    id: "google",
+    label: "Google",
+    clientId: options.clientId,
+    clientSecret: options.clientSecret,
+    authorizationEndpoint: AUTHORIZATION_URL,
+    tokenEndpoint: TOKEN_URL,
+    clientAuthentication: "request-body",
+    scopes: options.scopes ?? DEFAULT_SCOPES,
+    pkce: true,
+    fetch: fetchImpl,
+    fetchProfile: fetchGoogleProfile,
+  });
 }

@@ -1,21 +1,25 @@
-import { fromArctic, type OAuthProfile, type OAuthProvider } from "@nexpress/core";
-import { GitHub } from "arctic";
+import type { OAuthProfile, OAuthProvider } from "@nexpress/core";
+
+import { createAuthorizationCodeProvider } from "./oauth2.js";
 
 /**
- * GitHub OAuth provider factory. Wraps `arctic`'s `GitHub` class
- * (token endpoint, error parsing) and resolves the user's profile
- * via the GitHub REST API.
+ * GitHub OAuth provider factory. Implements GitHub's authorization-code
+ * flow with S256 PKCE and resolves the user's profile via the GitHub REST API.
  *
  * `/user.email` is `null` when the user keeps their primary
  * address private; this provider falls back to `/user/emails` and
  * picks the verified primary, or any verified address. Missing
  * email is acceptable — the framework synthesizes a placeholder.
  *
- * GitHub's OAuth doesn't support PKCE, hence `pkce: false`.
+ * Token exchange responses are validated before the access token reaches the
+ * profile request. Provider descriptions and raw error payloads are never
+ * included in thrown errors.
  */
 
 const USER_URL = "https://api.github.com/user";
 const EMAILS_URL = "https://api.github.com/user/emails";
+const AUTHORIZATION_URL = "https://github.com/login/oauth/authorize";
+const TOKEN_URL = "https://github.com/login/oauth/access_token";
 const DEFAULT_SCOPES = ["read:user", "user:email"];
 
 export interface GitHubOAuthOptions {
@@ -43,9 +47,7 @@ interface GitHubEmail {
 
 /**
  * Hits `/user` (and `/user/emails` when needed) and normalizes the
- * response into an `OAuthProfile`. Exported so tests can exercise
- * the GitHub-specific logic without going through arctic's token
- * exchange layer.
+ * response into an `OAuthProfile`.
  */
 export async function fetchGitHubProfile(
   accessToken: string,
@@ -107,14 +109,17 @@ export function createGitHubOAuthProvider(options: GitHubOAuthOptions): OAuthPro
   }
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
-  return fromArctic(
-    (redirectUri) => new GitHub(options.clientId, options.clientSecret, redirectUri),
-    {
-      id: "github",
-      label: "GitHub",
-      pkce: false,
-      scopes: options.scopes ?? DEFAULT_SCOPES,
-      fetchProfile: (accessToken) => fetchGitHubProfile(accessToken, fetchImpl),
-    },
-  );
+  return createAuthorizationCodeProvider({
+    id: "github",
+    label: "GitHub",
+    clientId: options.clientId,
+    clientSecret: options.clientSecret,
+    authorizationEndpoint: AUTHORIZATION_URL,
+    tokenEndpoint: TOKEN_URL,
+    clientAuthentication: "request-body",
+    scopes: options.scopes ?? DEFAULT_SCOPES,
+    pkce: true,
+    fetch: fetchImpl,
+    fetchProfile: fetchGitHubProfile,
+  });
 }

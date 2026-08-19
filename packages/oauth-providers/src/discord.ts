@@ -1,10 +1,10 @@
-import { fromArctic, type OAuthProfile, type OAuthProvider } from "@nexpress/core";
-import { Discord } from "arctic";
+import type { OAuthProfile, OAuthProvider } from "@nexpress/core";
+
+import { createAuthorizationCodeProvider } from "./oauth2.js";
 
 /**
- * Discord OAuth provider factory. Wraps `arctic`'s `Discord`
- * class and resolves the user's profile via the Discord REST API
- * (`/users/@me`).
+ * Discord OAuth provider factory. Implements Discord's authorization-code
+ * flow with S256 PKCE and resolves the user's profile via `/users/@me`.
  *
  * Like Google, Discord exposes an `email_verified` claim — this
  * provider strictly requires it (`=== true`) before passing the
@@ -20,6 +20,8 @@ import { Discord } from "arctic";
  */
 
 const USERS_ME_URL = "https://discord.com/api/users/@me";
+const AUTHORIZATION_URL = "https://discord.com/oauth2/authorize";
+const TOKEN_URL = "https://discord.com/api/oauth2/token";
 const DEFAULT_SCOPES = ["identify", "email"];
 const AVATAR_BASE = "https://cdn.discordapp.com/avatars";
 
@@ -42,9 +44,9 @@ interface DiscordUser {
 }
 
 /**
- * Hits Discord's `/users/@me` and normalizes the response. Exported
- * so tests can exercise the email-verification logic without going
- * through arctic's token exchange.
+ * Hits Discord's `/users/@me` and normalizes the response. Exported so tests
+ * can exercise the email-verification logic independently from the token
+ * exchange.
  */
 export async function fetchDiscordProfile(
   accessToken: string,
@@ -91,19 +93,17 @@ export function createDiscordOAuthProvider(options: DiscordOAuthOptions): OAuthP
   }
   const fetchImpl = options.fetch ?? globalThis.fetch;
 
-  return fromArctic(
-    (redirectUri) => new Discord(options.clientId, options.clientSecret, redirectUri),
-    {
-      id: "discord",
-      label: "Discord",
-      // arctic's `Discord.createAuthorizationURL` signature is
-      // `(state, codeVerifier, scopes)` — PKCE-only. Setting
-      // `pkce: false` would dispatch through the non-PKCE branch
-      // in `fromArctic`, which passes `(state, scopes)` and ends
-      // up with the scopes array in the codeVerifier slot.
-      pkce: true,
-      scopes: options.scopes ?? DEFAULT_SCOPES,
-      fetchProfile: (accessToken) => fetchDiscordProfile(accessToken, fetchImpl),
-    },
-  );
+  return createAuthorizationCodeProvider({
+    id: "discord",
+    label: "Discord",
+    clientId: options.clientId,
+    clientSecret: options.clientSecret,
+    authorizationEndpoint: AUTHORIZATION_URL,
+    tokenEndpoint: TOKEN_URL,
+    clientAuthentication: "basic",
+    scopes: options.scopes ?? DEFAULT_SCOPES,
+    pkce: true,
+    fetch: fetchImpl,
+    fetchProfile: fetchDiscordProfile,
+  });
 }
