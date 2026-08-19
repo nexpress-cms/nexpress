@@ -1,5 +1,16 @@
 # @nexpress/oauth-providers
 
+## 0.4.6
+
+### Patch Changes
+
+- b0ee8a7: Remove the deprecated Arctic runtime dependency. The bundled GitHub, Google,
+  and Discord factories now use provider-specific authorization-code flows with
+  S256 PKCE and bounded token-response validation, while the structural
+  `fromArctic` adapter remains available as a deprecated compatibility surface.
+- Updated dependencies [b0ee8a7]
+  - @nexpress/core@0.4.6
+
 ## 0.4.5
 
 ### Patch Changes

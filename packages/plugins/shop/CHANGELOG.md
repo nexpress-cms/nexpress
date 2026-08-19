@@ -1,5 +1,15 @@
 # @nexpress/plugin-shop
 
+## 0.4.6
+
+### Patch Changes
+
+- Updated dependencies [b0ee8a7]
+  - @nexpress/core@0.4.6
+  - @nexpress/editor@0.4.6
+  - @nexpress/next@0.4.6
+  - @nexpress/plugin-sdk@0.4.6
+
 ## 0.4.5
 
 ### Patch Changes

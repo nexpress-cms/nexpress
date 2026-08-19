@@ -1,5 +1,11 @@
 # @nexpress/shop-payment-stripe
 
+## 0.4.6
+
+### Patch Changes
+
+- @nexpress/plugin-shop@0.4.6
+
 ## 0.4.5
 
 ### Patch Changes

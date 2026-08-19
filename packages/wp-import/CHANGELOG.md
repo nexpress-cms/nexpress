@@ -1,5 +1,12 @@
 # @nexpress/wp-import
 
+## 0.4.6
+
+### Patch Changes
+
+- Updated dependencies [b0ee8a7]
+  - @nexpress/core@0.4.6
+
 ## 0.4.5
 
 ### Patch Changes
