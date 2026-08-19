@@ -9,8 +9,8 @@ overrides:
   brace-expansion: 5.0.9
   esbuild: 0.28.1
   js-yaml: 4.3.1
-  nanoid: 3.3.17
-  postcss: 8.5.23
+  nanoid: 3.3.18
+  postcss: 8.5.26
   sharp: 0.35.3
   shell-quote: 1.9.0
   vite: 7.3.5
@@ -162,16 +162,16 @@ importers:
         version: link:../../packages/xliff
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@types/pg@8.20.0)(pg@8.22.0)
+        version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
       next:
         specifier: ^16.2.11
         version: 16.2.12(@babel/core@7.29.7)(@playwright/test@1.62.1)(@types/node@26.0.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       nodemailer:
-        specifier: ^9.0.3
-        version: 9.0.3
+        specifier: ^9.0.5
+        version: 9.0.5
       pg:
-        specifier: ^8.22.0
-        version: 8.22.0
+        specifier: ^8.23.0
+        version: 8.23.0
       react:
         specifier: ^19.2.7
         version: 19.2.7
@@ -186,8 +186,8 @@ importers:
         specifier: ^4.3.3
         version: 4.3.3
       '@types/pg':
-        specifier: ^8.15.5
-        version: 8.20.0
+        specifier: ^8.23.1
+        version: 8.23.1
       '@types/react':
         specifier: ^19.2.17
         version: 19.2.17
@@ -204,8 +204,8 @@ importers:
         specifier: ^0.31.10
         version: 0.31.10
       postcss:
-        specifier: 8.5.23
-        version: 8.5.23
+        specifier: 8.5.26
+        version: 8.5.26
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
@@ -308,7 +308,7 @@ importers:
         version: 19.2.7(react@19.2.7)
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -410,7 +410,7 @@ importers:
         version: 17.4.2
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@types/pg@8.20.0)(pg@8.22.0)
+        version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
       pg-boss:
         specifier: ^10.0.0
         version: 10.4.2
@@ -419,8 +419,8 @@ importers:
         specifier: ^26.0.1
         version: 26.0.1
       '@types/pg':
-        specifier: ^8.15.5
-        version: 8.20.0
+        specifier: ^8.23.1
+        version: 8.23.1
       '@types/react':
         specifier: ^19.2.17
         version: 19.2.17
@@ -434,8 +434,8 @@ importers:
         specifier: ^16.2.11
         version: 16.2.12(@babel/core@7.29.7)(@playwright/test@1.62.1)(@types/node@26.0.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       pg:
-        specifier: ^8.22.0
-        version: 8.22.0
+        specifier: ^8.23.0
+        version: 8.23.0
       react:
         specifier: ^19.2.7
         version: 19.2.7
@@ -444,7 +444,7 @@ importers:
         version: 19.2.7(react@19.2.7)
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -459,7 +459,7 @@ importers:
         version: link:../next
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@types/pg@8.20.0)(pg@8.22.0)
+        version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
       react-dom:
         specifier: ^19.0.0
         version: 19.2.7(react@19.2.7)
@@ -478,7 +478,7 @@ importers:
         version: 19.2.7
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -506,7 +506,7 @@ importers:
         version: 19.2.7(react@19.2.7)
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -542,8 +542,8 @@ importers:
         specifier: ^26.0.1
         version: 26.0.1
       '@types/pg':
-        specifier: ^8.15.5
-        version: 8.20.0
+        specifier: ^8.23.1
+        version: 8.23.1
       '@types/prompts':
         specifier: ^2.4.9
         version: 2.4.9
@@ -558,13 +558,13 @@ importers:
         version: 17.4.2
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@types/pg@8.20.0)(pg@8.22.0)
+        version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
       next:
         specifier: ^16.2.11
         version: 16.2.12(@babel/core@7.29.7)(@playwright/test@1.62.1)(@types/node@26.0.1)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
       pg:
-        specifier: ^8.22.0
-        version: 8.22.0
+        specifier: ^8.23.0
+        version: 8.23.0
       react:
         specifier: ^19.2.7
         version: 19.2.7
@@ -573,7 +573,7 @@ importers:
         version: 19.2.7(react@19.2.7)
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -595,7 +595,7 @@ importers:
         version: 26.0.1
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -606,8 +606,8 @@ importers:
   packages/core:
     dependencies:
       '@aws-sdk/client-s3':
-        specifier: ^3.1106.0
-        version: 3.1106.0
+        specifier: ^3.1113.0
+        version: 3.1113.0
       '@node-rs/argon2':
         specifier: ^2.0.2
         version: 2.0.2
@@ -616,19 +616,19 @@ importers:
         version: 5.6.2
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@types/pg@8.20.0)(pg@8.22.0)
+        version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
       intl-messageformat:
         specifier: ^11.2.12
         version: 11.2.12
       jose:
-        specifier: ^6.2.3
-        version: 6.2.3
+        specifier: ^6.2.9
+        version: 6.2.9
       nodemailer:
         specifier: ^8.0.9 || ^9.0.0
         version: 9.0.1
       pg:
-        specifier: ^8.22.0
-        version: 8.22.0
+        specifier: ^8.23.0
+        version: 8.23.0
       pg-boss:
         specifier: ^12.27.0
         version: 12.27.0
@@ -640,14 +640,14 @@ importers:
         version: 4.4.3
     devDependencies:
       '@types/pg':
-        specifier: ^8.20.0
-        version: 8.20.0
+        specifier: ^8.23.1
+        version: 8.23.1
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -699,7 +699,7 @@ importers:
         version: 19.2.7(react@19.2.7)
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -724,7 +724,7 @@ importers:
         version: 9.0.0
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -758,7 +758,7 @@ importers:
         version: 19.2.7
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -774,7 +774,7 @@ importers:
         version: 26.0.1
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -796,7 +796,7 @@ importers:
     devDependencies:
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -815,7 +815,7 @@ importers:
         version: 26.0.1
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -843,7 +843,7 @@ importers:
         version: 19.2.17
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -868,7 +868,7 @@ importers:
         version: 19.2.17
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -893,7 +893,7 @@ importers:
         version: 19.2.17
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -918,7 +918,7 @@ importers:
         version: 19.2.17
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -943,7 +943,7 @@ importers:
         version: 19.2.17
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -968,7 +968,7 @@ importers:
         version: 19.2.17
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1008,7 +1008,7 @@ importers:
         version: 19.2.7(react@19.2.7)
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1036,7 +1036,7 @@ importers:
         version: 26.0.1
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1064,7 +1064,7 @@ importers:
         version: 26.0.1
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1089,7 +1089,7 @@ importers:
         version: 26.0.1
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1114,7 +1114,7 @@ importers:
         version: 26.0.1
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1138,7 +1138,7 @@ importers:
         version: link:../../plugin-sdk
       drizzle-orm:
         specifier: ^0.45.1
-        version: 0.45.2(@types/pg@8.20.0)(pg@8.22.0)
+        version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
     devDependencies:
       '@types/node':
         specifier: ^26.0.1
@@ -1160,7 +1160,7 @@ importers:
         version: 19.2.7(react@19.2.7)
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1184,7 +1184,7 @@ importers:
         version: 19.2.7
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1208,7 +1208,7 @@ importers:
         version: 19.2.7
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1230,7 +1230,7 @@ importers:
         version: 26.0.1
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1252,7 +1252,7 @@ importers:
         version: 26.0.1
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1286,7 +1286,7 @@ importers:
         version: 19.2.7(react@19.2.7)
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1335,7 +1335,7 @@ importers:
         version: 19.2.7(react@19.2.7)
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1362,7 +1362,7 @@ importers:
         version: link:../../theme
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@types/pg@8.20.0)(pg@8.22.0)
+        version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
     devDependencies:
       '@types/react':
         specifier: ^19.2.17
@@ -1381,7 +1381,7 @@ importers:
         version: 19.2.7(react@19.2.7)
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1424,7 +1424,7 @@ importers:
         version: 19.2.7(react@19.2.7)
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1467,7 +1467,7 @@ importers:
         version: 19.2.7(react@19.2.7)
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1507,7 +1507,7 @@ importers:
         version: 19.2.7(react@19.2.7)
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1550,7 +1550,7 @@ importers:
         version: 19.2.7(react@19.2.7)
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1569,7 +1569,7 @@ importers:
     devDependencies:
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1583,8 +1583,8 @@ importers:
         specifier: workspace:*
         version: link:../core
       fast-xml-parser:
-        specifier: ^5.10.1
-        version: 5.10.1
+        specifier: ^5.11.0
+        version: 5.11.0
       node-html-parser:
         specifier: ^9.0.1
         version: 9.0.1
@@ -1594,7 +1594,7 @@ importers:
     devDependencies:
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1611,12 +1611,12 @@ importers:
         specifier: workspace:*
         version: link:../translation
       fast-xml-parser:
-        specifier: ^5.10.1
-        version: 5.10.1
+        specifier: ^5.11.0
+        version: 5.11.0
     devDependencies:
       tsup:
         specifier: ^8.5.0
-        version: 8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0)
       typescript:
         specifier: ^5.8.0
         version: 5.9.3
@@ -1634,8 +1634,8 @@ packages:
     resolution: {integrity: sha512-VCpnmyHQ1IH49ni3LXnQj7DPr7rmcJmzYeiCkYdCcfgNtkvOj38cdcL9lapBWoItZWFACJPFJlymqC7/gem3Gw==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-s3@3.1106.0':
-    resolution: {integrity: sha512-hUTlnyRRGlVdfvJLL3hCEnMm7CmunSzc/lxFVRX8g1fjJTMUVbyQCfhfMhp7dZ7JBftLU6OYresu3Hje4nvkJw==}
+  '@aws-sdk/client-s3@3.1113.0':
+    resolution: {integrity: sha512-NRqdtohoMRyWkEeeznfG1KPN08dclCbl+HFuLPB2v8qPcgoNmTFlLKl9ELiR6hsGXQ4Ur3qvRnoJVEk8ND74pg==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/core@3.977.8':
@@ -3626,14 +3626,11 @@ packages:
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
-  '@types/node@22.19.17':
-    resolution: {integrity: sha512-wGdMcf+vPYM6jikpS/qhg6WiqSV/OhG+jeeHT/KlVqxYfD40iYJf9/AE1uQxVWFvU7MipKRkRv8NSHiCGgPr8Q==}
-
   '@types/node@26.0.1':
     resolution: {integrity: sha512-fc3KiUoBt6kie0N9bIW3E47vZsuaMf0PM2AaUpLCLT0s/LvX1nxAim6Fc049cNxODPpGm6qRAuUOB86SkRuPQw==}
 
-  '@types/pg@8.20.0':
-    resolution: {integrity: sha512-bEPFOaMAHTEP1EzpvHTbmwR8UsFyHSKsRisLIHVMXnpNefSbGA1bD6CVy+qKjGSqmZqNqBDV2azOBo8TgkcVow==}
+  '@types/pg@8.23.1':
+    resolution: {integrity: sha512-fKVHpikPdg4GKks3JuLEhvwSyvwzF23hnabPy6DD8ljVbC7+6J5dQzdv4arV6jqq57djnMgs1HKBxX4P8aBI3A==}
 
   '@types/prompts@2.4.9':
     resolution: {integrity: sha512-qTxFi6Buiu8+50/+3DGIWLHM6QuWsEKugJnnP6iv2Mc4ncxE4A/OJkjuVOA+5X0X1S/nq5VJRa8Lu+nwcvbrKA==}
@@ -4316,8 +4313,8 @@ packages:
   fast-xml-builder@1.2.0:
     resolution: {integrity: sha512-00aAWieqff+ZJhsXA4g1g7M8k+7AYoMUUHF+/zFb5U6Uv/P0Vl4QZo84/IcufzYalLuEj9928bXN9PbbFzMF0Q==}
 
-  fast-xml-parser@5.10.1:
-    resolution: {integrity: sha512-IEMIf7298kXuZSRFoGfMYrl7is8LpavODgbNz1cwIudv7KwVFnuU+UsMporfq6PD6aXSlawZlARiA3UywCTfMw==}
+  fast-xml-parser@5.11.0:
+    resolution: {integrity: sha512-9IGxMqvqLOnqP+Egi1nqDHKv5k8aZ7r9n558enxcucmyVGEBNPAU+MOg/8jPIS7rO7sSq4gFm1/nHtiaubMruw==}
     hasBin: true
 
   fdir@6.5.0:
@@ -4454,8 +4451,8 @@ packages:
   jju@1.4.0:
     resolution: {integrity: sha512-8wb9Yw966OSxApiCt0K3yNJL8pnNeIv+OEq2YMidz4FKP6nonSRoOXc80iXY4JaN2FC11B9qsNmDsm+ZOfMROA==}
 
-  jose@6.2.3:
-    resolution: {integrity: sha512-YYVDInQKFJfR/xa3ojUTl8c2KoTwiL1R5Wg9YCydwH0x0B9grbzlg5HC7mMjCtUJjbQ/YnGEZIhI5tCgfTb4Hw==}
+  jose@6.2.9:
+    resolution: {integrity: sha512-XrchZOFZUl/T3vTwRe8XK+cJrGtMF4th1ARnDfwbBXFKThGhlsxEE4Zu03AD/bjJSt/9jT/mxrOCkJWOg77aPA==}
 
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
@@ -4634,8 +4631,8 @@ packages:
   mz@2.7.0:
     resolution: {integrity: sha512-z81GNO7nnYMEhrGh9LeymoE4+Yr0Wn5McHIZMK5cfQCl+NDX08sCZgUc9/6MHni9IWuFLm1Z3HTCXu2z9fN62Q==}
 
-  nanoid@3.3.17:
-    resolution: {integrity: sha512-xQLf0A3HOMlgHq0n247/LRuAOYmB7dXJ/DvAxGvsSBij45XtBSmQycu+F8ODbHwns/XyFZagyL1+J0Offw1E0g==}
+  nanoid@3.3.18:
+    resolution: {integrity: sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
@@ -4678,8 +4675,8 @@ packages:
     resolution: {integrity: sha512-Gwv8SQewT616ZM/URn0H54b8PWo/Wum7md3EW2aWy1lO27+WZCX+Xyak3J+NlmHUjDh5ME+uesJUDRbR3Ye8Bw==}
     engines: {node: '>=6.0.0'}
 
-  nodemailer@9.0.3:
-    resolution: {integrity: sha512-n+YP+NKwR5zRWa60k3GiQ6Q3B4KXCoAw40dAKeCtYn020iNN74aWK2liXIC3ZEATeGql7we3tE3t8QwhY0eskw==}
+  nodemailer@9.0.5:
+    resolution: {integrity: sha512-wvjiKvjczmsN7U/8006JOdXubgBk2XFAbioDMbT+sM7cPs0QrhJTa6KBRX7P5REGGkDcLUz/EarWidb8G8C1jQ==}
     engines: {node: '>=6.0.0'}
 
   non-error@0.1.0:
@@ -4742,9 +4739,6 @@ packages:
   pg-cloudflare@1.4.0:
     resolution: {integrity: sha512-Vo7z/6rrQYxpNRylp4Tlob2elzbh+N/MOQbxFVWCxS7oEx6jF53GTJFxK2WWpKuBRkmiin4Mt+xofFDjx09R0A==}
 
-  pg-connection-string@2.13.0:
-    resolution: {integrity: sha512-EMnU9E2fSULdsbErBbMaXJvFeD9B4+nPcM3f+4lsiCR0BHLPrLVjv3DbyM2hgQQviKJaTWIRRTjKjWlHg3p2ig==}
-
   pg-connection-string@2.14.0:
     resolution: {integrity: sha512-XwWDGcLRGCXAR8F/AM5bG7Q+A3Wm2s6QeEjlOKZLlH3UYcguiqCWKyWXVag5TLTIjR7oOJUY8kcADaZgWPyLeg==}
 
@@ -4757,30 +4751,18 @@ packages:
     peerDependencies:
       pg: '>=8.0'
 
-  pg-protocol@1.13.0:
-    resolution: {integrity: sha512-zzdvXfS6v89r6v7OcFCHfHlyG/wvry1ALxZo4LqgUoy7W9xhBDMaqOuMiF3qEV45VqsN6rdlcehHrfDtlCPc8w==}
-
-  pg-protocol@1.14.0:
-    resolution: {integrity: sha512-n5taZ1kO3s9ngDTVxsEznOqCyToTgz0FLuPq0B33COy5pPpuWJpY3/2oRBVETuOgzdqRXfWpM9HIhp2LBBT1BA==}
-
   pg-protocol@1.15.0:
     resolution: {integrity: sha512-cq9sECI5s0+uPUXjbz8ioyPJni6RzsRib0US67i5IoTZKw8fNeYlVE7u8F4dG7vEJJtc5wdD1K189lCCUwqWTQ==}
+
+  pg-protocol@1.16.0:
+    resolution: {integrity: sha512-sILXutLVjCLjcDuOmvhX5e2Z4cS5qG/6Bu3VkpFwdf/633ElGLpEh9bgmuI5I4sqKqkifQiGyiCcx1HdtrK7tg==}
 
   pg-types@2.2.0:
     resolution: {integrity: sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==}
     engines: {node: '>=4'}
 
-  pg@8.21.0:
-    resolution: {integrity: sha512-AUP1EYJuHraQGsVoCQVIcM7TEJVGtDzxWtGFZd8rds9d+CCXlU5Js1rYgfLNvxy9iJrpHjGrRjoi/3BT9fRyiA==}
-    engines: {node: '>= 16.0.0'}
-    peerDependencies:
-      pg-native: '>=3.0.1'
-    peerDependenciesMeta:
-      pg-native:
-        optional: true
-
-  pg@8.22.0:
-    resolution: {integrity: sha512-8wih1vVIBMxoUM2oB4soJsD9tDnDpLv4OXBJ+EJzFsvycD+lfyIreC2gGHq78f8jbLLt+bvlPTFdFZfJkOuzAA==}
+  pg@8.23.0:
+    resolution: {integrity: sha512-Ip2EQCngowJLGOfCwkFhPXU7/ljlhn6Rxlmy4XYfL2Y+vyRM59+8uR2xqRWKdYmbXmxCFOAmKxBuSUCdF34qLg==}
     engines: {node: '>= 16.0.0'}
     peerDependencies:
       pg-native: '>=3.0.1'
@@ -4824,7 +4806,7 @@ packages:
     engines: {node: '>= 18'}
     peerDependencies:
       jiti: '>=1.21.0'
-      postcss: 8.5.23
+      postcss: 8.5.26
       tsx: ^4.8.1
       yaml: ^2.4.2
     peerDependenciesMeta:
@@ -4837,8 +4819,8 @@ packages:
       yaml:
         optional: true
 
-  postcss@8.5.23:
-    resolution: {integrity: sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg==}
+  postcss@8.5.26:
+    resolution: {integrity: sha512-u82N74LFzG8ca+dD8puPnplTXoGH4fTPpVGuIbt36G3qvNlkvfD0lEAZSxaly3KX8TS/L1A1gsCEmvKmBcVbkQ==}
     engines: {node: ^10 || ^12 || >=14}
 
   postgres-array@2.0.0:
@@ -5049,8 +5031,8 @@ packages:
     resolution: {integrity: sha512-yDPMNjp4WyfYBkHnjIRLfca1i6KMyGCtsVgoKe/z1+6vukgaENdgGBZt+ZmKPc4gavvEZ5OgHfHdrazhgNyG7w==}
     engines: {node: '>=12'}
 
-  strnum@2.4.1:
-    resolution: {integrity: sha512-M9eUSMT2dCB2cTNPG7UYj6KuK7RJR2SN2+yCV/fTW3xzTCS6EaGZ5pSMgDIjB7r8zSfTGk+dvvn9rTjpVS9Mwg==}
+  strnum@2.4.2:
+    resolution: {integrity: sha512-rDG3Ah4TV0k1hWvLSzkZtMmLN9+eS+h3knq4MP6A42Y3Yh5qGNnOUs1jJkoSr8FG5dsL28c7KgkIBzSEykqtuw==}
 
   styled-jsx@5.1.6:
     resolution: {integrity: sha512-qSVyDTeMotdvQYoHWLNGwRFJHC+i+ZvdBRYosOFgC+Wg1vx4frN2/RG/NA7SYqqvKNLf39P2LSRA2pu6n0XYZA==}
@@ -5150,7 +5132,7 @@ packages:
     peerDependencies:
       '@microsoft/api-extractor': ^7.36.0
       '@swc/core': ^1
-      postcss: 8.5.23
+      postcss: 8.5.26
       typescript: '>=4.5.0'
     peerDependenciesMeta:
       '@microsoft/api-extractor':
@@ -5197,9 +5179,6 @@ packages:
 
   ufo@1.6.3:
     resolution: {integrity: sha512-yDJTmhydvl5lJzBmy/hyOAA0d+aqCBuwl818haVdYCRrWV84o7YyeVm4QlVHStqNrrJSTb6jKuFAVqAFsr+K3Q==}
-
-  undici-types@6.21.0:
-    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
@@ -5400,7 +5379,7 @@ snapshots:
       '@smithy/types': 4.17.2
       tslib: 2.8.1
 
-  '@aws-sdk/client-s3@3.1106.0':
+  '@aws-sdk/client-s3@3.1113.0':
     dependencies:
       '@aws-sdk/checksums': 3.1000.28
       '@aws-sdk/core': 3.977.8
@@ -7224,7 +7203,7 @@ snapshots:
       '@alloc/quick-lru': 5.2.0
       '@tailwindcss/node': 4.3.3
       '@tailwindcss/oxide': 4.3.3
-      postcss: 8.5.23
+      postcss: 8.5.26
       tailwindcss: 4.3.3
 
   '@ts-morph/common@0.29.0':
@@ -7280,18 +7259,14 @@ snapshots:
 
   '@types/json-schema@7.0.15': {}
 
-  '@types/node@22.19.17':
-    dependencies:
-      undici-types: 6.21.0
-
   '@types/node@26.0.1':
     dependencies:
       undici-types: 8.3.0
 
-  '@types/pg@8.20.0':
+  '@types/pg@8.23.1':
     dependencies:
-      '@types/node': 22.19.17
-      pg-protocol: 1.13.0
+      '@types/node': 26.0.1
+      pg-protocol: 1.15.0
       pg-types: 2.2.0
 
   '@types/prompts@2.4.9':
@@ -7695,10 +7670,10 @@ snapshots:
       esbuild: 0.28.1
       tsx: 4.23.1
 
-  drizzle-orm@0.45.2(@types/pg@8.20.0)(pg@8.22.0):
+  drizzle-orm@0.45.2(@types/pg@8.23.1)(pg@8.23.0):
     optionalDependencies:
-      '@types/pg': 8.20.0
-      pg: 8.22.0
+      '@types/pg': 8.23.1
+      pg: 8.23.0
 
   electron-to-chromium@1.5.340: {}
 
@@ -7884,13 +7859,13 @@ snapshots:
       path-expression-matcher: 1.6.2
       xml-naming: 0.1.0
 
-  fast-xml-parser@5.10.1:
+  fast-xml-parser@5.11.0:
     dependencies:
       '@nodable/entities': 3.0.0
       fast-xml-builder: 1.2.0
       is-unsafe: 2.0.0
       path-expression-matcher: 1.6.2
-      strnum: 2.4.1
+      strnum: 2.4.2
       xml-naming: 0.3.0
 
   fdir@6.5.0(picomatch@4.0.4):
@@ -8011,7 +7986,7 @@ snapshots:
 
   jju@1.4.0: {}
 
-  jose@6.2.3: {}
+  jose@6.2.9: {}
 
   joycon@3.1.1: {}
 
@@ -8151,7 +8126,7 @@ snapshots:
       object-assign: 4.1.1
       thenify-all: 1.6.0
 
-  nanoid@3.3.17: {}
+  nanoid@3.3.18: {}
 
   napi-postinstall@0.3.4: {}
 
@@ -8163,7 +8138,7 @@ snapshots:
       '@swc/helpers': 0.5.15
       baseline-browser-mapping: 2.10.42
       caniuse-lite: 1.0.30001802
-      postcss: 8.5.23
+      postcss: 8.5.26
       react: 19.2.7
       react-dom: 19.2.7(react@19.2.7)
       styled-jsx: 5.1.6(@babel/core@7.29.7)(react@19.2.7)
@@ -8192,7 +8167,7 @@ snapshots:
 
   nodemailer@9.0.1: {}
 
-  nodemailer@9.0.3: {}
+  nodemailer@9.0.5: {}
 
   non-error@0.1.0: {}
 
@@ -8236,7 +8211,7 @@ snapshots:
   pg-boss@10.4.2:
     dependencies:
       cron-parser: 4.9.0
-      pg: 8.21.0
+      pg: 8.23.0
       serialize-error: 8.1.0
     transitivePeerDependencies:
       - pg-native
@@ -8244,7 +8219,7 @@ snapshots:
   pg-boss@12.27.0:
     dependencies:
       cron-parser: 5.10.0
-      pg: 8.22.0
+      pg: 8.23.0
       serialize-error: 13.0.1
     transitivePeerDependencies:
       - pg-native
@@ -8252,25 +8227,17 @@ snapshots:
   pg-cloudflare@1.4.0:
     optional: true
 
-  pg-connection-string@2.13.0: {}
-
   pg-connection-string@2.14.0: {}
 
   pg-int8@1.0.1: {}
 
-  pg-pool@3.14.0(pg@8.21.0):
+  pg-pool@3.14.0(pg@8.23.0):
     dependencies:
-      pg: 8.21.0
-
-  pg-pool@3.14.0(pg@8.22.0):
-    dependencies:
-      pg: 8.22.0
-
-  pg-protocol@1.13.0: {}
-
-  pg-protocol@1.14.0: {}
+      pg: 8.23.0
 
   pg-protocol@1.15.0: {}
+
+  pg-protocol@1.16.0: {}
 
   pg-types@2.2.0:
     dependencies:
@@ -8280,21 +8247,11 @@ snapshots:
       postgres-date: 1.0.7
       postgres-interval: 1.2.0
 
-  pg@8.21.0:
-    dependencies:
-      pg-connection-string: 2.13.0
-      pg-pool: 3.14.0(pg@8.21.0)
-      pg-protocol: 1.14.0
-      pg-types: 2.2.0
-      pgpass: 1.0.5
-    optionalDependencies:
-      pg-cloudflare: 1.4.0
-
-  pg@8.22.0:
+  pg@8.23.0:
     dependencies:
       pg-connection-string: 2.14.0
-      pg-pool: 3.14.0(pg@8.22.0)
-      pg-protocol: 1.15.0
+      pg-pool: 3.14.0(pg@8.23.0)
+      pg-protocol: 1.16.0
       pg-types: 2.2.0
       pgpass: 1.0.5
     optionalDependencies:
@@ -8326,18 +8283,18 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.2
 
-  postcss-load-config@6.0.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(yaml@2.9.0):
+  postcss-load-config@6.0.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(yaml@2.9.0):
     dependencies:
       lilconfig: 3.1.3
     optionalDependencies:
       jiti: 2.7.0
-      postcss: 8.5.23
+      postcss: 8.5.26
       tsx: 4.23.1
       yaml: 2.9.0
 
-  postcss@8.5.23:
+  postcss@8.5.26:
     dependencies:
-      nanoid: 3.3.17
+      nanoid: 3.3.18
       picocolors: 1.1.1
       source-map-js: 1.2.1
 
@@ -8576,7 +8533,7 @@ snapshots:
     dependencies:
       ansi-regex: 6.3.0
 
-  strnum@2.4.1:
+  strnum@2.4.2:
     dependencies:
       anynum: 1.0.1
 
@@ -8652,7 +8609,7 @@ snapshots:
 
   tslib@2.8.1: {}
 
-  tsup@8.5.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0):
+  tsup@8.5.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(typescript@5.9.3)(yaml@2.9.0):
     dependencies:
       bundle-require: 5.1.0(esbuild@0.28.1)
       cac: 6.7.14
@@ -8663,7 +8620,7 @@ snapshots:
       fix-dts-default-cjs-exports: 1.0.1
       joycon: 3.1.1
       picocolors: 1.1.1
-      postcss-load-config: 6.0.1(jiti@2.7.0)(postcss@8.5.23)(tsx@4.23.1)(yaml@2.9.0)
+      postcss-load-config: 6.0.1(jiti@2.7.0)(postcss@8.5.26)(tsx@4.23.1)(yaml@2.9.0)
       resolve-from: 5.0.0
       rollup: 4.60.2
       source-map: 0.7.6
@@ -8672,7 +8629,7 @@ snapshots:
       tinyglobby: 0.2.16
       tree-kill: 1.2.2
     optionalDependencies:
-      postcss: 8.5.23
+      postcss: 8.5.26
       typescript: 5.9.3
     transitivePeerDependencies:
       - jiti
@@ -8719,8 +8676,6 @@ snapshots:
   typescript@5.9.3: {}
 
   ufo@1.6.3: {}
-
-  undici-types@6.21.0: {}
 
   undici-types@8.3.0: {}
 
@@ -8783,7 +8738,7 @@ snapshots:
       esbuild: 0.28.1
       fdir: 6.5.0(picomatch@4.0.5)
       picomatch: 4.0.5
-      postcss: 8.5.23
+      postcss: 8.5.26
       rollup: 4.62.4
       tinyglobby: 0.2.17
     optionalDependencies:
