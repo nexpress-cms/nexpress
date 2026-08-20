@@ -48,11 +48,12 @@
   },
   "devDependencies": {
     "@nexpress/plugin-shop": "workspace:*",
-    "@types/node": "^26.0.1",
+    "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",
     "react": "^19.2.8",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.11"
   },
   "scripts": {

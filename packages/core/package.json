@@ -204,7 +204,7 @@
     }
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1113.0",
+    "@aws-sdk/client-s3": "^3.1114.0",
     "@node-rs/argon2": "^2.1.0",
     "cron-parser": "^5.10.0",
     "drizzle-orm": "^0.45.2",
@@ -219,7 +219,8 @@
     "@types/pg": "^8.23.1",
     "drizzle-kit": "^0.31.10",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.0"
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "scripts": {
     "build": "tsup",

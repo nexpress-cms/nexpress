@@ -39,11 +39,12 @@
     "@nexpress/core": "workspace:*",
     "fast-xml-parser": "^5.11.0",
     "node-html-parser": "^9.0.1",
-    "undici": "^6.28.0"
+    "undici": "^7.29.0"
   },
   "devDependencies": {
     "tsup": "^8.5.0",
-    "typescript": "^5.8.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.11"
   },
   "scripts": {

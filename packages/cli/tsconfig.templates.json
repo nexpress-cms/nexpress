@@ -17,7 +17,6 @@
     "jsx": "preserve",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["node"],
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./templates/_typecheck/*", "./templates/*"]
     }

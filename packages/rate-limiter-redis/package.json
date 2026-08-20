@@ -37,12 +37,13 @@
   },
   "dependencies": {
     "@nexpress/core": "workspace:*",
-    "ioredis": "^5.11.1"
+    "ioredis": "^6.0.0"
   },
   "devDependencies": {
-    "@types/node": "^26.0.1",
+    "@types/node": "^26.2.0",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
     "vitest": "^4.1.11"
   },
   "scripts": {
