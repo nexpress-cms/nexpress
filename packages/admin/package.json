@@ -63,7 +63,7 @@
     "@radix-ui/react-tooltip": "^1.2.16",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^1.24.0",
+    "lucide-react": "^1.33.0",
     "react-hook-form": "^7.85.0",
     "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3"
@@ -74,7 +74,8 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.0"
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "scripts": {
     "build": "tsup",

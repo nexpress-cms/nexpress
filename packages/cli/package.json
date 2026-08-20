@@ -40,19 +40,20 @@
     "@nexpress/core": "workspace:*",
     "@nexpress/next": "workspace:*",
     "@nexpress/theme": "workspace:*",
-    "@types/node": "^26.0.1",
+    "@types/node": "^26.2.0",
     "@types/pg": "^8.23.1",
     "@types/prompts": "^2.4.9",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "dotenv": "^17.2.4",
     "drizzle-orm": "^0.45.2",
-    "next": "^16.2.11",
+    "next": "^16.3.1",
     "pg": "^8.23.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "tsup": "^8.5.0",
-    "typescript": "^5.8.0"
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "scripts": {
     "build": "tsup",

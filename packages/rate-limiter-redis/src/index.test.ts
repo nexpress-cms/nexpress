@@ -94,6 +94,22 @@ describe("RedisRateLimiter", () => {
     expect(quitStub).not.toHaveBeenCalled();
   });
 
+  it("preserves RESP2 for internally-created clients after the ioredis 6 upgrade", () => {
+    const limiter = new RedisRateLimiter({ lazyConnect: true });
+    const client = (limiter as unknown as { client: Redis }).client;
+
+    expect(client.options.protocol).toBe(2);
+    client.disconnect();
+  });
+
+  it("respects an explicit RESP3 opt-in for internally-created clients", () => {
+    const limiter = new RedisRateLimiter({ lazyConnect: true, protocol: 3 });
+    const client = (limiter as unknown as { client: Redis }).client;
+
+    expect(client.options.protocol).toBe(3);
+    client.disconnect();
+  });
+
   it("validates direct request arguments before calling Redis", async () => {
     const evalStub = vi.fn().mockResolvedValue([1, 60_000]);
     const limiter = new RedisRateLimiter({ client: fakeClient(evalStub) });

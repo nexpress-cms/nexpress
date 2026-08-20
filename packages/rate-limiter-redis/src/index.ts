@@ -211,7 +211,15 @@ export class RedisRateLimiter implements NpRateLimiterAdapter {
     if (redisOpts.db !== undefined && (!Number.isSafeInteger(redisOpts.db) || redisOpts.db < 0)) {
       contractError("rateLimit.redis.db", "must be a non-negative safe integer.");
     }
-    this.client = redisUrl ? new Redis(redisUrl, redisOpts) : new Redis(redisOpts);
+    // ioredis 6 defaults new clients to RESP3. Keep the adapter's existing
+    // RESP2 wire behavior unless the caller explicitly opts into RESP3.
+    const compatibleRedisOpts: RedisOptions = {
+      protocol: 2,
+      ...redisOpts,
+    };
+    this.client = redisUrl
+      ? new Redis(redisUrl, compatibleRedisOpts)
+      : new Redis(compatibleRedisOpts);
     this.ownsClient = true;
   }
 
