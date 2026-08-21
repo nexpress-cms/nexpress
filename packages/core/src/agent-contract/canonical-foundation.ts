@@ -3,6 +3,7 @@ import {
   npAgentCanonicalBodyMaxBytesV1,
   npAgentCanonicalPurposes,
   type NpAgentCanonicalPurposeV1,
+  type NpAgentCanonicalBodyBytesV1,
   type NpAgentContractIssue,
   type NpAgentContractResult,
   type NpAgentJsonObject,
@@ -20,13 +21,6 @@ const FOUNDATION_MAXIMUM_STRING_CODE_UNITS = FOUNDATION_MAXIMUM_BODY_BYTES;
 interface CanonicalInspectionState {
   seen: WeakSet<object>;
   nodes: number;
-}
-
-export interface AgentCanonicalFoundationBytesV1<P extends NpAgentCanonicalPurposeV1> {
-  purpose: P;
-  body: NpAgentJsonObject;
-  canonicalJsonUtf8: Uint8Array;
-  domainSeparatedUtf8: Uint8Array;
 }
 
 function fail(code: NpAgentContractIssue["code"], path: string, message: string): never {
@@ -244,7 +238,7 @@ export function serializeAgentCanonicalJson(value: unknown): string {
 export function buildAgentCanonicalFoundationBytes<P extends NpAgentCanonicalPurposeV1>(
   purpose: P,
   value: unknown,
-): AgentCanonicalFoundationBytesV1<P> {
+): NpAgentCanonicalBodyBytesV1<P, NpAgentJsonObject> {
   if (typeof purpose !== "string" || !CANONICAL_PURPOSES.has(purpose)) {
     fail("invalid-field", "agent.canonical.purpose", "must select one canonical v1 purpose");
   }
