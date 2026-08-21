@@ -57,6 +57,7 @@ export type {
   NpSaveResult,
   NpDocumentStatus,
 } from "./config/types.js";
+export * from "./agent-contract/index.js";
 export {
   NpDiscoveryContractError,
   npAnalyzeBlockDiscoveryResponse,

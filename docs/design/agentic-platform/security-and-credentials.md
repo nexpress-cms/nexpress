@@ -129,13 +129,23 @@ nonces, encrypted DEKs, token hashes, or OAuth refresh tokens.
 This is authorization **to NexPress**. It covers remote MCP and agent-oriented
 HTTP capabilities.
 
+Local stdio is the default MCP shape and opens no socket. Remote MCP is a
+separately enabled path on the existing canonical HTTPS origin, never a
+dedicated port or standalone public listener. When its deployment or site
+ceiling is `disabled`, the endpoint and related authorization discovery return
+the same `404`. Private ingress, VPN, mTLS, or IP allowlisting may narrow
+network reachability but never replaces the controls below.
+
 Remote interactive clients use NexPress's built-in OAuth 2.1 authorization
 server and authorization code flow with PKCE. NexPress owns the issuer,
 Agent Gateway audience, site/scoped grant, consent, token rotation/revocation,
 and audit. Its consent screen is authenticated by the existing staff session,
 requires CSRF plus the staff capabilities needed to grant the requested site
 scopes, and displays the exact site, client, scopes, expiration, and high-risk
-exclusions.
+exclusions plus the requested `read`, `propose`, or `approved-execute`
+exposure ceiling. The NexPress-owned OAuth parameter is exactly
+`nexpress_gateway_mode`; absence means `read`, unknown/duplicate values fail,
+and a broader value requires a fresh consent transaction.
 The staff login behind that session may itself use a deployment-installed OIDC
 identity provider, but the provider does not issue Agent Gateway access or
 refresh tokens. An authorized staff identity or arbitrary upstream token claim
@@ -155,7 +165,8 @@ Required controls:
 - MCP access tokens are audience-bound to the canonical site MCP resource URI
   `https://<site-host>/api/mcp` and contain the canonical NexPress issuer,
   exact client id, delegated principal subject, canonical site id, explicit
-  scope set, grant version, issued/expiry times, and token id;
+  scope set, immutable exposure ceiling, grant version, issued/expiry times,
+  and token id;
 - the authorization request's exact Agent Gateway resource indicator becomes
   the token audience; a missing, foreign, or multiple unsupported resource is
   rejected;
@@ -165,8 +176,8 @@ Required controls:
   for an explicitly registered loopback HTTP URI, with no wildcard,
   prefix-match, fragment, or userinfo;
 - state and authorization codes are random, short-lived, single-use, and bound
-  to the staff session, client, redirect URI, site, scopes, resource, and PKCE
-  challenge;
+  to the staff session, client, redirect URI, site, scopes, exposure mode,
+  resource, and PKCE challenge;
 - Dynamic Client Registration and Client ID Metadata Document fetching are not
   implemented in v1;
 - v1 registers only public OAuth clients with PKCE; NexPress does not issue or
@@ -193,6 +204,7 @@ interface NpAgentGatewayAccessTokenClaimsV1 {
   client_id: string;
   site_id: string;
   scope: string;
+  gateway_mode: "read" | "propose" | "approved-execute";
   grant_id: string;
   grant_version: number;
   principal_version: number;
@@ -219,6 +231,17 @@ expire within ten minutes, while urgent revocation increments or revokes the
 authoritative grant/principal version and invalidates every token issued under
 it. Unknown/missing/wrong-type header or claim fields, multi-audience, extra
 claims, and non-compact/unencrypted JWT forms fail closed.
+
+`gateway_mode` must equal the current grant snapshot and must be no broader than
+both deployment and site ceilings at every request. Raising either outer
+ceiling never changes an existing token; lowering one blocks newly hidden
+lists, reads, and invocations immediately. `approved-execute` only admits
+effecting capability families to normal authorization—it is not an approval
+claim and cannot reduce capability risk or approval requirements.
+For a mixed proposal/execution tool, admission resolves the exact server-owned
+effect profile from parsed input: a `propose` token may create the plan or
+approval request, but an effecting branch requires `approved-execute` before
+approval lookup/consumption or handler work.
 
 HTTP authentication accepts exactly one `Authorization` header using the
 case-insensitive `Bearer` scheme and one ASCII credential with no comma or
@@ -286,11 +309,14 @@ Local stdio, CI, and unattended machine clients may use a service credential
 created explicitly in Agent Studio. It is a random value with a public key id
 prefix and at least 256 bits of entropy. The full value is displayed once;
 NexPress stores only a versioned keyed hash, metadata, scopes, site, expiry,
-transport/audience binding, and revocation state. HTTP clients send it only in
+transport/audience/exposure binding, and revocation state. HTTP clients send it only in
 the authorization header. A stdio host reads an explicitly stdio-bound value
 from its environment and resolves the same principal internally; that
 credential cannot be replayed over HTTP. Both paths have the same capability
-and policy checks as OAuth.
+and policy checks as OAuth. Service-token creation defaults its immutable
+exposure ceiling to `read`; choosing a broader profile is a separate explicit
+Admin field and changing it requires a new credential family rather than
+rotation.
 
 Service credentials always expire: the deployment-capped maximum is 90 days
 in production/hosted mode and 365 days in development. Rotation may use only a
@@ -1862,8 +1888,9 @@ measured from its last issuance; removing it earlier is an audited emergency
 revocation of every still-valid token signed by that key. Every token
 has a validated `kid`; unknown, revoked, wrong-algorithm, issuer, or audience
 values fail closed. Emergency signing-key compromise revokes the key id and
-affected grant/token versions, pauses remote Gateway mutation, rotates the
-key, and requires clients to obtain new access tokens. Doctor reports key age,
+affected grant/token versions, pauses remote Gateway `approved-execute`
+admission, rotates the key, and requires clients to obtain new access tokens.
+Doctor reports key age,
 active/next readiness, and overlap without exposing private material.
 
 `security.revokeSessions` operates on existing NexPress staff/member browser
@@ -2049,7 +2076,11 @@ No server-side agent mutation ships until all applicable gates pass.
 - OpenAPI/MCP expose only redacted exact contracts;
 - Agent Studio contains emergency pause, revoke, rotate, approval, incident,
   spend, and audit workflows;
-- create-nexpress scaffold defaults server-side agents and remote mutations off;
+- create-nexpress scaffold defaults server-side agents and every Gateway
+  transport to disabled;
+- no generated config opens an MCP port; remote MCP/Agent HTTP settings are
+  absent/`disabled`, and newly issued local stdio credentials default to
+  `read`;
 - live guides include key compromise, prompt injection, cross-tenant,
   denial-of-wallet, KMS outage, and rollback runbooks;
 - package changesets and a threat-model review are required before release.
@@ -2058,7 +2089,8 @@ No server-side agent mutation ships until all applicable gates pass.
 
 A newly generated site starts with:
 
-- remote Agent Gateway mutation disabled;
+- every Agent Gateway transport disabled until explicit deployment and site
+  intent; when enabled, credential/grant exposure still defaults to `read`;
 - no provider connection and vault mode `disabled`;
 - no enabled server-side agent triggers;
 - role templates in preview/read-only mode;

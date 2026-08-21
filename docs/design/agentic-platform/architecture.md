@@ -150,15 +150,28 @@ It consists of:
 - thin route re-exports in `apps/web`;
 - staff-session Admin APIs and bearer-authenticated machine surfaces.
 
+MCP is local-first: stdio opens no network listener. Optional remote MCP is
+mounted only as `/api/mcp` on the existing canonical HTTPS application origin;
+NexPress has no MCP port setting, standalone public MCP listener, hosted relay,
+or automatic tunnel. `disabled`, `read`, `propose`, and `approved-execute`
+form ordered narrowing ceilings at deployment, site, and immutable
+credential/grant layers. The highest explicit mode retains the complete
+bounded Gateway inventory; none of the modes grants scopes or approval. A
+mixed proposal/execution tool is listed from its least exposed effect profile,
+then invocation resolves the exact input-selected profile and requires its
+higher ceiling before approval consumption or execution.
+
 Its responsibilities end after:
 
 1. validating protocol/request syntax;
 2. resolving an authenticated `NpAgentPrincipal`;
 3. choosing the current site from that principal;
-4. calling either the shared invocation facade for capability/run operations
+4. resolving the effective transport exposure and projecting only capabilities
+   admitted by that mode, transport, principal scopes, and current site policy;
+5. calling either the shared invocation facade for capability/run operations
    or the shared `NpAgentPreviewArtifactResourceService.read()` for the one
    registered preview-artifact resource;
-5. translating that exact result/stream to MCP or REST.
+6. translating that exact result/stream to MCP or REST.
 
 The artifact service is also used by Admin and performs current site/scope or
 staff-capability, every-target visibility, preview state/expiry, and
@@ -171,14 +184,19 @@ The machine REST projection is exactly
 `GET /api/agent/v1/previews/{previewId}/artifacts/{artifactId}`. It accepts only an `agent-http`
 service credential bound to the canonical
 `https://<site-host>/api/agent/v1` resource audience; the host is the
-deployment's normalized external site host. MCP OAuth, MCP-bound service
-credentials, provider credentials, staff cookies, and caller-supplied site ids
-fail before either shared service.
+deployment's normalized external site host. Agent HTTP uses the same
+intersection under its own `agent-http` transport ceiling and cannot bypass a
+capability or effect profile hidden from that effective projection by calling
+the generic invocation route. A separately broader Agent HTTP site setting is
+explicit, not inherited from MCP. MCP OAuth, MCP-bound service credentials,
+provider credentials, staff cookies, and caller-supplied site ids fail before
+either shared service.
 An external OIDC provider may authenticate the staff user during the consent
 flow, but it never issues Agent Gateway access/refresh tokens or agent scopes.
 Non-interactive callers use a separately issued hash-only NexPress service
-credential. Both relationships are distinct from model-provider and downstream
-integration credentials.
+credential. OAuth grants and service tokens freeze their maximum exposure mode
+alongside scopes and audience. Both relationships are distinct from
+model-provider and downstream integration credentials.
 
 ### 3.4 Agent Runtime
 
@@ -1226,6 +1244,7 @@ Client
   → POST /api/mcp with audience-bound bearer token
   → Agent Gateway validates HTTP, OAuth, protocol, and request
   → resolve principal + exact site
+  → intersect deployment/site/grant exposure + scopes + policy
   → ensureFor("plugins")
   → registry resolves capability descriptor
   → scope + current membership + site policy + quota checks
@@ -1301,24 +1320,24 @@ It does not call a runtime “change schema” capability.
 Agent features are optional to serving a NexPress site. Enabling them must not
 turn a model provider into a site-rendering dependency.
 
-| Failure                                      | Required behavior                                                                                                            |
-| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Agent platform disabled                      | normal site/Admin behavior remains; agent routes return a deliberate disabled/not-found response and Doctor reports disabled |
-| Database unavailable                         | existing bootstrap fails; no capability executes                                                                             |
-| Audit persistence unavailable                | capability execution fails closed; no unaudited mutation is allowed                                                          |
-| Jobs disabled                                | deterministic inline reads work; durable preview/apply/runtime calls return `SERVICE_UNAVAILABLE` before claiming acceptance |
-| Worker absent/stale                          | queued work remains durable; Agent Studio and health report stale worker; no synchronous web fallback executes it            |
-| Provider unavailable/timeout                 | bounded retry according to run policy; no unvalidated proposal or action                                                     |
-| Provider credential unavailable              | only that connection/agent is blocked; deterministic external MCP capabilities continue                                      |
-| Vault/KMS unavailable                        | secret-free reads may continue; every secret-requiring provider/integration action fails closed                              |
-| Agent OAuth keyring unavailable              | interactive token issue/rotation and unverifiable bearer calls fail closed; staff/site traffic remains independent           |
-| Approval integrity keyring unavailable       | approval decision/consumption and dependent mutation fail closed; read-only inspection and normal CMS traffic continue       |
-| Preview renderer unavailable                 | ChangeSet stays unapprovable when policy requires preview                                                                    |
-| Integration adapter malformed                | reject result, record diagnostic, and do not execute a compensating guess                                                    |
-| Plugin discovery/host contribution malformed | preserve the existing fail-closed plugin diagnostics; v1 never converts it into an agent tool                                |
-| MCP transport unavailable                    | site, Admin, worker, and internal Runtime continue                                                                           |
-| Notification adapter unavailable             | action outcome remains persisted; notification retries independently and cannot change action status                         |
-| Verification fails after apply               | state is `verification_failed`; surface rollback plan and never report success                                               |
+| Failure                                      | Required behavior                                                                                                                                                  |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Agent platform or remote transport disabled  | normal site/Admin behavior remains; remote Gateway route and authorization discovery return the same deliberate `404`; Doctor reports the internal disabled reason |
+| Database unavailable                         | existing bootstrap fails; no capability executes                                                                                                                   |
+| Audit persistence unavailable                | capability execution fails closed; no unaudited mutation is allowed                                                                                                |
+| Jobs disabled                                | deterministic inline reads work; durable preview/apply/runtime calls return `SERVICE_UNAVAILABLE` before claiming acceptance                                       |
+| Worker absent/stale                          | queued work remains durable; Agent Studio and health report stale worker; no synchronous web fallback executes it                                                  |
+| Provider unavailable/timeout                 | bounded retry according to run policy; no unvalidated proposal or action                                                                                           |
+| Provider credential unavailable              | only that connection/agent is blocked; deterministic external MCP capabilities continue                                                                            |
+| Vault/KMS unavailable                        | secret-free reads may continue; every secret-requiring provider/integration action fails closed                                                                    |
+| Agent OAuth keyring unavailable              | interactive token issue/rotation and unverifiable bearer calls fail closed; staff/site traffic remains independent                                                 |
+| Approval integrity keyring unavailable       | approval decision/consumption and dependent mutation fail closed; read-only inspection and normal CMS traffic continue                                             |
+| Preview renderer unavailable                 | ChangeSet stays unapprovable when policy requires preview                                                                                                          |
+| Integration adapter malformed                | reject result, record diagnostic, and do not execute a compensating guess                                                                                          |
+| Plugin discovery/host contribution malformed | preserve the existing fail-closed plugin diagnostics; v1 never converts it into an agent tool                                                                      |
+| MCP transport unavailable                    | site, Admin, worker, and internal Runtime continue                                                                                                                 |
+| Notification adapter unavailable             | action outcome remains persisted; notification retries independently and cannot change action status                                                               |
+| Verification fails after apply               | state is `verification_failed`; surface rollback plan and never report success                                                                                     |
 
 Rate limiting remains a separate proxy lifecycle. Agent Gateway admission also
 enforces per-principal, per-site, per-capability, token, cost, and concurrency
@@ -1347,6 +1366,8 @@ pnpm agent:mcp              # optional local stdio adapter
 
 The stdio adapter initializes the same project bootstrap and capability
 facade. Credentials come from its environment, never command-line arguments.
+It does not bind a TCP port. Its credential carries an explicit exposure
+ceiling and defaults to `read` when created.
 
 ### 12.2 Single host
 
@@ -1366,7 +1387,9 @@ M worker replicas┘
 
 All capability state, idempotency, approvals, tasks, and runs are durable.
 Workers scale through pg-boss claims. Remote MCP v1 is stateless/pollable and
-requires no sticky sessions. Process-global registries are rebuilt identically
+requires no sticky sessions. When explicitly enabled it shares the web
+replicas' existing HTTPS listener and edge policy; it is not another container
+port or public service. Process-global registries are rebuilt identically
 from deployed code; site activation is resolved at call time.
 
 ### 12.4 Serverless web

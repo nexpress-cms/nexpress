@@ -71,7 +71,8 @@ Work:
 - confirm every locked choice in this design set in client-safe contract
   fixtures;
 - freeze `NpAgentScope`, risk/autonomy/state inventories, bounds, capability
-  ids, error-code additions, and JSON schema versions;
+  ids, error-code additions, Gateway transport/exposure inventories and
+  descriptor/effect-profile projection rules, and JSON schema versions;
 - freeze the built-in NexPress OAuth issuer/audience/site-consent profile for
   remote MCP and its dedicated signing-key contract;
 - freeze the production custom-vault requirement, disabled default, and
@@ -101,7 +102,7 @@ Suggested work packages:
 | ID     | Scope                                                                                                                                                                                         |
 | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | AP-101 | Add `agent-contract` limits, identities, scopes, budgets, connection, run/action, and common wire analyzers                                                                                   |
-| AP-102 | Add principal, service-token, OAuth, connection, vault, and shared Admin invocation/idempotency schema plus reviewed migration; update exports                                                |
+| AP-102 | Add principal, exposure-bound service-token/OAuth, connection, vault, Gateway settings, and shared Admin invocation/idempotency schema plus reviewed migration; update exports                |
 | AP-103 | Add initial site deletion inventory/order and require every later agent-schema PR to extend its exact graph                                                                                   |
 | AP-104 | Implement principal/service-token lifecycle through shared Admin invocation admission, transport/audience binding, and scope narrowing                                                        |
 | AP-105 | Define vault adapter, explicit opt-in local-envelope development adapter, crash-safe operation journal/inspection, deterministic-CBOR envelope, rotation/revocation, and redaction            |
@@ -120,21 +121,22 @@ Gate:
 
 ### R2 — Capability registry and read-only Agent Gateway
 
-Outcome: internal code, local MCP, and remote MCP call the same read-only
-capabilities.
+Outcome: internal code, local stdio MCP, and explicitly enabled same-origin
+remote MCP call the same read-only capabilities without opening a dedicated
+MCP port.
 
-| ID     | Scope                                                                                                                                                                               |
-| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AP-201 | Implement capability registry/definition validation and derived required scopes                                                                                                     |
-| AP-202 | Add `site.inspect`, `schema.get`, and `content.query` with exact bounded results                                                                                                    |
-| AP-203 | Extend shared invocation admission to capabilities; migrate the generalized `origin=gateway` task/run and action rows, audit correlation, and usage counters without provider calls |
-| AP-204 | Implement local stdio MCP with service-token/environment credential                                                                                                                 |
-| AP-205 | Implement remote Streamable HTTP MCP plus the built-in OAuth 2.1 Authorization Server, durable one-time consent requests, signing/JWKS, rotation, and resource-server validation    |
-| AP-206 | Project bounded resources, tools, exact negotiated MCP tasks/results/caps/TTL reconciliation, annotations, and protocol errors                                                      |
-| AP-207 | Add official Codex/Claude-compatible skill/instructions and connection command                                                                                                      |
-| AP-208 | Enforce the closed core capability inventory and diagnose/reject plugin-defined Agent Gateway capability ids in v1                                                                  |
-| AP-209 | Add Admin Activity views for principals, runs, actions, and revocation                                                                                                              |
-| AP-210 | Add the four machine Agent HTTP routes, full-origin `agent-http` audience-bound authentication, shared invocation/artifact facades, OpenAPI projection, and thin scaffold wrappers  |
+| ID     | Scope                                                                                                                                                                                                                                                      |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AP-201 | Implement capability registry/definition validation and derived required scopes                                                                                                                                                                            |
+| AP-202 | Add `site.inspect`, `schema.get`, and `content.query` with exact bounded results                                                                                                                                                                           |
+| AP-203 | Extend shared invocation admission to capabilities; migrate the generalized `origin=gateway` task/run and action rows, audit correlation, and usage counters without provider calls                                                                        |
+| AP-204 | Implement port-free local stdio MCP with exposure-bound service-token/environment credential                                                                                                                                                               |
+| AP-205 | Implement optional same-origin remote Streamable HTTP MCP plus the built-in OAuth 2.1 Authorization Server, exposure-bound durable one-time consent requests, signing/JWKS, rotation, and resource-server validation; disabled means route/discovery `404` |
+| AP-206 | Project bounded resources, prompts, and tools through the exact deployment/site/credential/scope/policy intersection; add negotiated MCP tasks/results/caps/TTL reconciliation, annotations, and protocol errors                                           |
+| AP-207 | Add official Codex/Claude-compatible skill/instructions and connection command                                                                                                                                                                             |
+| AP-208 | Enforce the closed core capability inventory and diagnose/reject plugin-defined Agent Gateway capability ids in v1                                                                                                                                         |
+| AP-209 | Add Admin Activity views for principals, runs, actions, and revocation                                                                                                                                                                                     |
+| AP-210 | Add the four machine Agent HTTP routes, full-origin `agent-http` audience-bound authentication, shared invocation/artifact facades, OpenAPI projection, and thin scaffold wrappers                                                                         |
 
 Through R4, capability policy evaluation uses the immutable framework hard
 rules plus the exact disabled-by-default deployment/site feature settings.
@@ -148,6 +150,9 @@ Gate:
 - read-only calls never create content/revisions/settings/navigation/media refs;
 - service token, OAuth audience, issuer, site, and scope negative tests pass;
 - one tenant cannot infer another tenant's resources or counts;
+- maximum-profile fixtures preserve every currently shipped master-inventory
+  tool while lower profiles expose only their exact subsets;
+- no generated or runtime configuration starts a dedicated MCP listener;
 - protocol conformance and tool-schema snapshots pass;
 - no raw OpenAPI operation is automatically exposed as a tool.
 
@@ -165,7 +170,7 @@ Outcome: agents can prepare production-realistic plans but cannot apply them.
 | AP-306 | Add dedicated cross-site preview origin with one-time launch exchange/per-preview cookie, exact render ticket/session binding, route/audience bounds, atomic full-set artifact reservation, terminal adapter-operation inspection/fencing, row-first upload journal/private deletion facade, multipart report/header contracts, and screenshot option |
 | AP-307 | Add link/SEO/accessibility checks and structured validation evidence                                                                                                                                                                                                                                                                                  |
 | AP-308 | Add ChangeSet list/detail/diff/preview Admin views                                                                                                                                                                                                                                                                                                    |
-| AP-309 | Expose `changeset.create/get/list/validate/preview` through MCP/API                                                                                                                                                                                                                                                                                   |
+| AP-309 | Expose `changeset.create/get/list/validate/preview` through MCP/API at the `propose` profile without widening existing grants                                                                                                                                                                                                                         |
 
 Gate:
 
@@ -187,7 +192,7 @@ through the full control loop.
 | AP-403 | Implement exact cancel plus apply/schedule/verify jobs, execution reservations, and crash recovery                                                                                                                        |
 | AP-404 | Implement post-commit cache/search/media/hook convergence evidence                                                                                                                                                        |
 | AP-405 | Implement forward-compensation rollback with current-state conflict checks                                                                                                                                                |
-| AP-406 | Add schedule/apply/rollback capabilities and long-running MCP task projection                                                                                                                                             |
+| AP-406 | Add schedule/apply/rollback capabilities and long-running MCP task projection at `approved-execute`; exposure never substitutes for the required approval                                                                 |
 | AP-407 | Add request-approval/cancel, approval queue, execution timeline, verification, and rollback Admin flows                                                                                                                   |
 | AP-408 | Extend Doctor/Health/runbook and release checks for stuck/failed ChangeSets                                                                                                                                               |
 
@@ -199,7 +204,9 @@ Gate:
 - DB mutations, revisions, audit, approval consumption, and state commit
   atomically;
 - rollback never overwrites later work;
-- remote mutations remain disabled unless exact deployment intent enables them.
+- remote mutations remain unavailable unless deployment, site, and immutable
+  credential/grant ceilings all admit `approved-execute`; every underlying
+  capability approval remains independently required.
 
 ### R5 — Durable provider-backed Agent Runtime
 
@@ -304,8 +311,8 @@ Gate:
 
 The first schema deployment uses a dark launch:
 
-1. release code that understands the new exact settings and tables but treats a
-   missing `agents.runtime` setting as disabled;
+1. release code that understands the new exact settings and tables but treats
+   missing `agents.gateway` and `agents.runtime` settings as fully disabled;
 2. ship reviewed migrations and update scaffold/reference migrations;
 3. run migration status/plan, verified backup, apply, Doctor, and readiness;
 4. verify no agent jobs, endpoints, schedules, or provider calls are active;
@@ -323,9 +330,14 @@ forward-fix migration; never delete agent history to downgrade.
 ## 5. Configuration defaults
 
 - Agent Runtime: disabled when setting is absent.
-- Remote MCP: disabled until explicit deployment intent and the built-in OAuth
-  origin, signing key/JWKS, consent, and audience configuration are valid.
-- Local stdio MCP: opt-in command, read-only recommended token.
+- Agent Gateway transport ceilings: absent means all `disabled`; a site and
+  credential/grant may only narrow deployment `read`, `propose`, or
+  `approved-execute` ceilings.
+- Remote MCP: no dedicated port and `404` until explicit deployment/site intent
+  plus built-in OAuth origin, signing key/JWKS, consent, and audience
+  configuration are valid.
+- Local stdio MCP: opt-in port-free command; newly issued credentials default
+  to `read`, while an explicit maximum profile preserves the full tool set.
 - Provider calls: impossible without a ready connection and budget.
 - Agent triggers: disabled on creation until explicitly activated.
 - Agent autonomy: `observe`.

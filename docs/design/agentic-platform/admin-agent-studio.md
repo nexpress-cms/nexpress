@@ -241,10 +241,17 @@ as a configurable or ready v1 row.
 This tab displays external Agent Gateway principals, not
 `np_agent_connections` rows:
 
+- deployment and site ceilings for `stdio`, `mcp-http`, and `agent-http`, with
+  an explicit statement that NexPress opens no dedicated MCP port;
+- whether the optional `/api/mcp` path is absent or enabled on the existing
+  canonical HTTPS origin; a site operator may only narrow the deployment
+  ceiling;
+
 - principal name and kind;
 - external OAuth client/grant or service-token kind; the Agent Gateway
   issuer is always NexPress in v1;
 - exact site and sorted `NpAgentScope` list;
+- immutable credential/grant exposure mode and current effective mode;
 - active, suspended, or revoked status;
 - token/grant expiry, last-used time, and safe client metadata;
 - bounded recent use and policy denials; and
@@ -259,6 +266,11 @@ Editing scopes shows the current principal set separately from every immutable
 OAuth grant/service-token snapshot. Any scope change increments
 `tokenVersion`; narrowing is immediately effective, while widening never
 widens an existing credential and offers a fresh-consent/new-token next step.
+The same rule applies to exposure: lowering a deployment/site ceiling is
+immediate, while raising it never widens an existing grant or token. A broader
+credential requires fresh consent or a new service-token family. The UI shows
+the exact effective tool subset and confirms that `approved-execute` retains
+all shipped master-inventory tools but grants neither scopes nor approval.
 Resume is available only for `suspended`, revalidates same-site authority,
 a current scope set containing `site:read`, and at least one live
 credential/grant, and never restores revoked material. `revoked` is terminal.
@@ -303,10 +315,12 @@ For an interactive remote MCP client:
    Gateway resource.
 2. NexPress authenticates the staff browser (which may itself use an installed
    upstream OIDC login), resolves the selected site, and shows client identity,
-   redirect host, requested scopes, expiry, and excluded high-risk authority.
+   redirect host, requested scopes, requested exposure mode, the resulting
+   tool inventory, expiry, and excluded high-risk authority.
 3. The server checks that the staff actor may grant every requested scope. The
-   operator may narrow the set but cannot widen it beyond the request or their
-   current staff capability.
+   operator may narrow the scope set and exposure mode but cannot widen either
+   beyond the request, deployment/site ceilings, or their current staff
+   capability.
 4. Consent creates a site-scoped principal and grant, then returns a one-time
    authorization code. NexPress remains the access/refresh-token issuer.
 5. The new grant appears in this tab with revoke, suspend, usage, and expiry
@@ -317,7 +331,9 @@ redirect URI set. The form rejects wildcards/prefix matching and visually
 warns when an explicitly allowed loopback HTTP callback is the only redirect;
 other redirects require HTTPS. Dynamic client registration is disabled by
 default. Local stdio, CI, or other non-interactive use creates a separate,
-expiring site-scoped service credential and shows it once. The UI never offers a
+expiring site-scoped service credential, defaults its exposure to `read`, and
+shows it once. `propose` or `approved-execute` must be selected explicitly and
+the review step lists every newly exposed tool. The UI never offers a
 “connect my ChatGPT/Claude account” shortcut unless a provider adapter ships an
 official server-side API authorization flow under the separate provider tab.
 
@@ -958,33 +974,34 @@ server-authorized.
 
 ### 15.1 Read dependencies
 
-| Method and proposed path                                                            | Schema family                    | Used by                                                      |
-| ----------------------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------------------ |
-| `GET /api/admin/agents/overview`                                                    | `np.agent-overview.v1`           | Overview cards and authorized attention counts               |
-| `GET /api/admin/agents/connections`                                                 | `np.agent-connection.v1` list    | Connection list                                              |
-| `GET /api/admin/agents/connections/{id}`                                            | `np.agent-connection.v1`         | Connection detail/dependencies                               |
-| `GET /api/admin/agents/adapters`                                                    | `np.agent-adapter.v1`            | Connection wizard provider/auth/model/config inventory       |
-| `GET /api/admin/agents/gateway/oauth-clients`                                       | `np.agent-oauth-client.v1` list  | Pre-registered client metadata and redirect inventory        |
-| `GET /api/admin/agents/gateway/principals`                                          | `np.agent-principal.v1` list     | Gateway access tab                                           |
-| `GET /api/admin/agents/gateway/principals/{id}`                                     | `np.agent-principal.v1`          | Principal/grant/token detail                                 |
-| `GET /api/admin/agents/configurations`                                              | `np.agent-configuration.v1` list | Agent list                                                   |
-| `GET /api/admin/agents/configurations/{id}`                                         | `np.agent-configuration.v1`      | Agent editor/detail                                          |
-| `GET /api/admin/agents/configurations/{id}/effective`                               | `np.agent-effective-config.v1`   | Server review/blockers before activation                     |
-| `GET /api/admin/agents/capabilities`                                                | `np.agent-capability-catalog.v1` | Exact scope/risk/approval/reversibility inventory            |
-| `GET /api/admin/agents/policies`                                                    | `np.agent-policy.v1` list        | Policy list                                                  |
-| `GET /api/admin/agents/policies/{id}`                                               | `np.agent-policy.v1`             | Policy detail/version diff                                   |
-| `GET /api/admin/agents/activity`                                                    | `np.agent-run.v1` list           | Run list                                                     |
-| `GET /api/admin/agents/activity/{id}`                                               | `np.agent-run-detail.v1`         | Run header/timeline/action pages                             |
-| `GET /api/admin/agents/approvals`                                                   | `np.agent-approval.v1` list      | Approval queue/history                                       |
-| `GET /api/admin/agents/approvals/{id}`                                              | `np.agent-approval-detail.v1`    | Decision facts and current actor permissions                 |
-| `GET /api/admin/agents/changesets`                                                  | `np.agent-changeset.v1` list     | Authorized ChangeSet history/filtering                       |
-| `GET /api/admin/agents/changesets/{id}`                                             | `np.agent-changeset.v1`          | ChangeSet stages/diff/results                                |
-| `GET /api/admin/agents/changesets/{id}/preview`                                     | `np.agent-preview.v1`            | Authorized artifact metadata; not unrestricted draft content |
-| `GET /api/admin/agents/changesets/{id}/previews/{previewId}/artifacts/{artifactId}` | private artifact bytes           | Reauthorize site/target/digest/expiry then no-store stream   |
-| `GET /api/admin/agents/incidents`                                                   | `np.agent-incident.v1` list      | Incident queue                                               |
-| `GET /api/admin/agents/incidents/{id}`                                              | `np.agent-incident-detail.v1`    | Incident evidence/timeline/actions                           |
-| `GET /api/admin/agents/budgets`                                                     | `np.agent-budget.v1`             | Site and Agent ceilings/usage                                |
-| `GET /api/admin/agents/runtime-status`                                              | `np.agent-runtime-status.v1`     | Worker, emergency pause, quota, vault, adapter posture       |
+| Method and proposed path                                                            | Schema family                    | Used by                                                          |
+| ----------------------------------------------------------------------------------- | -------------------------------- | ---------------------------------------------------------------- |
+| `GET /api/admin/agents/overview`                                                    | `np.agent-overview.v1`           | Overview cards and authorized attention counts                   |
+| `GET /api/admin/agents/connections`                                                 | `np.agent-connection.v1` list    | Connection list                                                  |
+| `GET /api/admin/agents/connections/{id}`                                            | `np.agent-connection.v1`         | Connection detail/dependencies                                   |
+| `GET /api/admin/agents/adapters`                                                    | `np.agent-adapter.v1`            | Connection wizard provider/auth/model/config inventory           |
+| `GET /api/admin/agents/gateway/settings`                                            | `np.agent-gateway-settings.v1`   | Deployment ceiling, site ceiling, effective modes, route posture |
+| `GET /api/admin/agents/gateway/oauth-clients`                                       | `np.agent-oauth-client.v1` list  | Pre-registered client metadata and redirect inventory            |
+| `GET /api/admin/agents/gateway/principals`                                          | `np.agent-principal.v1` list     | Gateway access tab                                               |
+| `GET /api/admin/agents/gateway/principals/{id}`                                     | `np.agent-principal.v1`          | Principal/grant/token detail                                     |
+| `GET /api/admin/agents/configurations`                                              | `np.agent-configuration.v1` list | Agent list                                                       |
+| `GET /api/admin/agents/configurations/{id}`                                         | `np.agent-configuration.v1`      | Agent editor/detail                                              |
+| `GET /api/admin/agents/configurations/{id}/effective`                               | `np.agent-effective-config.v1`   | Server review/blockers before activation                         |
+| `GET /api/admin/agents/capabilities`                                                | `np.agent-capability-catalog.v1` | Exact scope/risk/approval/reversibility inventory                |
+| `GET /api/admin/agents/policies`                                                    | `np.agent-policy.v1` list        | Policy list                                                      |
+| `GET /api/admin/agents/policies/{id}`                                               | `np.agent-policy.v1`             | Policy detail/version diff                                       |
+| `GET /api/admin/agents/activity`                                                    | `np.agent-run.v1` list           | Run list                                                         |
+| `GET /api/admin/agents/activity/{id}`                                               | `np.agent-run-detail.v1`         | Run header/timeline/action pages                                 |
+| `GET /api/admin/agents/approvals`                                                   | `np.agent-approval.v1` list      | Approval queue/history                                           |
+| `GET /api/admin/agents/approvals/{id}`                                              | `np.agent-approval-detail.v1`    | Decision facts and current actor permissions                     |
+| `GET /api/admin/agents/changesets`                                                  | `np.agent-changeset.v1` list     | Authorized ChangeSet history/filtering                           |
+| `GET /api/admin/agents/changesets/{id}`                                             | `np.agent-changeset.v1`          | ChangeSet stages/diff/results                                    |
+| `GET /api/admin/agents/changesets/{id}/preview`                                     | `np.agent-preview.v1`            | Authorized artifact metadata; not unrestricted draft content     |
+| `GET /api/admin/agents/changesets/{id}/previews/{previewId}/artifacts/{artifactId}` | private artifact bytes           | Reauthorize site/target/digest/expiry then no-store stream       |
+| `GET /api/admin/agents/incidents`                                                   | `np.agent-incident.v1` list      | Incident queue                                                   |
+| `GET /api/admin/agents/incidents/{id}`                                              | `np.agent-incident-detail.v1`    | Incident evidence/timeline/actions                               |
+| `GET /api/admin/agents/budgets`                                                     | `np.agent-budget.v1`             | Site and Agent ceilings/usage                                    |
+| `GET /api/admin/agents/runtime-status`                                              | `np.agent-runtime-status.v1`     | Worker, emergency pause, quota, vault, adapter posture           |
 
 The artifact GET is a safe read, not AP-001 mutation admission: it requires a
 current staff session/site/capability, every ChangeSet target still visible,
@@ -1033,62 +1050,63 @@ action; it cannot replay the secret/challenge. Token recovery is rotate/revoke
 with a new key. Challenge recovery issues a new generation with a new key and
 invalidates the old verifier.
 
-| Method and proposed path                                                                  | Purpose                                                                                              |
-| ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `POST /api/admin/agents/connections`                                                      | Create write-only connection metadata/secret                                                         |
-| `PATCH /api/admin/agents/connections/{id}`                                                | Validate and stage/activate exact non-secret config with version/hash precondition                   |
-| `POST /api/admin/agents/connections/{id}/oauth/start`                                     | Create state/PKCE-bound provider authorization and return its trusted URL                            |
-| `POST /api/admin/agents/connections/{id}/test`                                            | Run bounded adapter probe                                                                            |
-| `POST /api/admin/agents/connections/{id}/rotate`                                          | Verify and activate replacement secret                                                               |
-| `POST /api/admin/agents/connections/{id}/disable`                                         | Prevent new use                                                                                      |
-| `POST /api/admin/agents/connections/{id}/enable`                                          | Revalidate dependencies/probe and return disabled connection to ready                                |
-| `POST /api/admin/agents/connections/{id}/revoke`                                          | Pause dependencies and revoke/erase future credential use                                            |
-| `POST /api/admin/agents/gateway/oauth-clients`                                            | Register exact public-client metadata and redirect set                                               |
-| `POST /api/admin/agents/gateway/oauth-clients/{id}/revoke`                                | Revoke client plus its unconsumed codes and active grants                                            |
-| `POST /api/admin/agents/gateway/principals`                                               | Create service/deployment principal metadata and maximum scopes; no OAuth grant/token                |
-| `PATCH /api/admin/agents/gateway/principals/{id}`                                         | Edit bounded metadata and exact external-principal scopes                                            |
-| `POST /api/admin/agents/gateway/principals/{id}/tokens`                                   | Issue one-time transport/audience-bound service credential                                           |
-| `POST /api/admin/agents/gateway/principals/{id}/tokens/{tokenId}/rotate`                  | Issue one replacement and start exact bounded overlap                                                |
-| `POST /api/admin/agents/gateway/principals/{id}/tokens/{tokenId}/revoke`                  | Immediately revoke only the selected credential                                                      |
-| `POST /api/admin/agents/gateway/principals/{id}/suspend`                                  | Suspend inbound use                                                                                  |
-| `POST /api/admin/agents/gateway/principals/{id}/resume`                                   | Revalidate authority/scopes/live credentials and resume                                              |
-| `POST /api/admin/agents/gateway/principals/{id}/revoke`                                   | Revoke inbound principal/grants/tokens                                                               |
-| `POST /api/admin/agents/configurations`                                                   | Create draft Agent                                                                                   |
-| `PATCH /api/admin/agents/configurations/{id}`                                             | Edit draft-safe fields with version precondition                                                     |
-| `POST /api/admin/agents/configurations/{id}/activate`                                     | Activate exact effective version                                                                     |
-| `POST /api/admin/agents/configurations/{id}/pause`                                        | Stop new admission/model calls                                                                       |
-| `POST /api/admin/agents/configurations/{id}/resume`                                       | Revalidate paused version/dependencies before new admission                                          |
-| `POST /api/admin/agents/configurations/{id}/runs`                                         | Admit one bounded registered manual-trigger run                                                      |
-| `POST /api/admin/agents/configurations/{id}/archive`                                      | Disable triggers and preserve history                                                                |
-| `POST /api/admin/agents/policies`                                                         | Create draft policy/version                                                                          |
-| `PATCH /api/admin/agents/policies/{id}`                                                   | Edit draft with version/hash precondition                                                            |
-| `POST /api/admin/agents/policies/{id}/validate`                                           | Deterministic validation; no activation                                                              |
-| `POST /api/admin/agents/policies/{id}/simulate`                                           | Bounded non-authorizing simulation                                                                   |
-| `POST /api/admin/agents/policies/{id}/activate`                                           | Activate exact content hash                                                                          |
-| `POST /api/admin/agents/activity/{id}/cancel`                                             | Request bounded cancellation                                                                         |
-| `POST /api/admin/agents/activity/{id}/retry-plan`                                         | Produce safe linked retry plan, not blind replay                                                     |
-| `POST /api/admin/agents/approvals/{id}/decision-challenge`                                | Issue one purpose/session/version-bound five-minute challenge                                        |
-| `POST /api/admin/agents/approvals/{id}/approve`                                           | Canonically approve any exact ChangeSet/rollback/action statement                                    |
-| `POST /api/admin/agents/approvals/{id}/reject`                                            | Canonically reject any exact pending statement                                                       |
-| `POST /api/admin/agents/approvals/{id}/revoke`                                            | Canonically revoke any approved unconsumed statement                                                 |
-| `POST /api/admin/agents/changesets`                                                       | Create a draft ChangeSet                                                                             |
-| `PATCH /api/admin/agents/changesets/{id}`                                                 | Edit only a `draft` or `invalid` ChangeSet                                                           |
-| `POST /api/admin/agents/changesets/{id}/validate`                                         | Validate and seal/currently diagnose                                                                 |
-| `POST /api/admin/agents/changesets/{id}/preview`                                          | Generate bounded preview artifacts                                                                   |
-| `POST /api/admin/agents/changesets/{id}/previews/{previewId}/launch`                      | Issue one 30-second no-store bridge exchange to the isolated preview origin after live authorization |
-| `POST /api/admin/agents/changesets/{id}/request-approval`                                 | Create/reuse one exact pending approval for schedule/apply                                           |
-| `POST /api/admin/agents/changesets/{id}/cancel`                                           | Cancel an eligible non-executing plan and revoke approval                                            |
-| `POST /api/admin/agents/changesets/{id}/schedule`                                         | Bind canonical UTC schedule to an authorized plan                                                    |
-| `POST /api/admin/agents/changesets/{id}/apply`                                            | Admit execution only with a valid approved plan                                                      |
-| `POST /api/admin/agents/changesets/{id}/rollback-plans`                                   | Prepare one exact forward-compensation generation                                                    |
-| `POST /api/admin/agents/changesets/{id}/rollback-plans/{rollbackPlanId}/request-approval` | Request approval for exact rollback id/hash                                                          |
-| `POST /api/admin/agents/changesets/{id}/rollback-plans/{rollbackPlanId}/execute`          | Execute only the exact approved rollback plan                                                        |
-| `POST /api/admin/agents/incidents/{id}/transitions`                                       | Authorized exact state transition and human note                                                     |
-| `POST /api/admin/agents/incidents/{id}/response-plan`                                     | Create deterministic response plan/approval                                                          |
-| `POST /api/admin/agents/incidents/{id}/restore`                                           | Restore exact reversible containment                                                                 |
-| `PATCH /api/admin/agents/budgets`                                                         | Update site/per-Agent ceilings with expected version                                                 |
-| `POST /api/admin/agents/runtime/pause`                                                    | Emergency stop for new runtime admission                                                             |
-| `POST /api/admin/agents/runtime/resume`                                                   | Revalidate and resume runtime admission                                                              |
+| Method and proposed path                                                                  | Purpose                                                                                               |
+| ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `POST /api/admin/agents/connections`                                                      | Create write-only connection metadata/secret                                                          |
+| `PATCH /api/admin/agents/connections/{id}`                                                | Validate and stage/activate exact non-secret config with version/hash precondition                    |
+| `POST /api/admin/agents/connections/{id}/oauth/start`                                     | Create state/PKCE-bound provider authorization and return its trusted URL                             |
+| `POST /api/admin/agents/connections/{id}/test`                                            | Run bounded adapter probe                                                                             |
+| `POST /api/admin/agents/connections/{id}/rotate`                                          | Verify and activate replacement secret                                                                |
+| `POST /api/admin/agents/connections/{id}/disable`                                         | Prevent new use                                                                                       |
+| `POST /api/admin/agents/connections/{id}/enable`                                          | Revalidate dependencies/probe and return disabled connection to ready                                 |
+| `POST /api/admin/agents/connections/{id}/revoke`                                          | Pause dependencies and revoke/erase future credential use                                             |
+| `PATCH /api/admin/agents/gateway/settings`                                                | Narrow or explicitly enable site transport ceilings within deployment limits; never configures a port |
+| `POST /api/admin/agents/gateway/oauth-clients`                                            | Register exact public-client metadata and redirect set                                                |
+| `POST /api/admin/agents/gateway/oauth-clients/{id}/revoke`                                | Revoke client plus its unconsumed codes and active grants                                             |
+| `POST /api/admin/agents/gateway/principals`                                               | Create service/deployment principal metadata and maximum scopes; no OAuth grant/token                 |
+| `PATCH /api/admin/agents/gateway/principals/{id}`                                         | Edit bounded metadata and exact external-principal scopes                                             |
+| `POST /api/admin/agents/gateway/principals/{id}/tokens`                                   | Issue one-time transport/audience/exposure-bound service credential                                   |
+| `POST /api/admin/agents/gateway/principals/{id}/tokens/{tokenId}/rotate`                  | Issue one replacement and start exact bounded overlap                                                 |
+| `POST /api/admin/agents/gateway/principals/{id}/tokens/{tokenId}/revoke`                  | Immediately revoke only the selected credential                                                       |
+| `POST /api/admin/agents/gateway/principals/{id}/suspend`                                  | Suspend inbound use                                                                                   |
+| `POST /api/admin/agents/gateway/principals/{id}/resume`                                   | Revalidate authority/scopes/live credentials and resume                                               |
+| `POST /api/admin/agents/gateway/principals/{id}/revoke`                                   | Revoke inbound principal/grants/tokens                                                                |
+| `POST /api/admin/agents/configurations`                                                   | Create draft Agent                                                                                    |
+| `PATCH /api/admin/agents/configurations/{id}`                                             | Edit draft-safe fields with version precondition                                                      |
+| `POST /api/admin/agents/configurations/{id}/activate`                                     | Activate exact effective version                                                                      |
+| `POST /api/admin/agents/configurations/{id}/pause`                                        | Stop new admission/model calls                                                                        |
+| `POST /api/admin/agents/configurations/{id}/resume`                                       | Revalidate paused version/dependencies before new admission                                           |
+| `POST /api/admin/agents/configurations/{id}/runs`                                         | Admit one bounded registered manual-trigger run                                                       |
+| `POST /api/admin/agents/configurations/{id}/archive`                                      | Disable triggers and preserve history                                                                 |
+| `POST /api/admin/agents/policies`                                                         | Create draft policy/version                                                                           |
+| `PATCH /api/admin/agents/policies/{id}`                                                   | Edit draft with version/hash precondition                                                             |
+| `POST /api/admin/agents/policies/{id}/validate`                                           | Deterministic validation; no activation                                                               |
+| `POST /api/admin/agents/policies/{id}/simulate`                                           | Bounded non-authorizing simulation                                                                    |
+| `POST /api/admin/agents/policies/{id}/activate`                                           | Activate exact content hash                                                                           |
+| `POST /api/admin/agents/activity/{id}/cancel`                                             | Request bounded cancellation                                                                          |
+| `POST /api/admin/agents/activity/{id}/retry-plan`                                         | Produce safe linked retry plan, not blind replay                                                      |
+| `POST /api/admin/agents/approvals/{id}/decision-challenge`                                | Issue one purpose/session/version-bound five-minute challenge                                         |
+| `POST /api/admin/agents/approvals/{id}/approve`                                           | Canonically approve any exact ChangeSet/rollback/action statement                                     |
+| `POST /api/admin/agents/approvals/{id}/reject`                                            | Canonically reject any exact pending statement                                                        |
+| `POST /api/admin/agents/approvals/{id}/revoke`                                            | Canonically revoke any approved unconsumed statement                                                  |
+| `POST /api/admin/agents/changesets`                                                       | Create a draft ChangeSet                                                                              |
+| `PATCH /api/admin/agents/changesets/{id}`                                                 | Edit only a `draft` or `invalid` ChangeSet                                                            |
+| `POST /api/admin/agents/changesets/{id}/validate`                                         | Validate and seal/currently diagnose                                                                  |
+| `POST /api/admin/agents/changesets/{id}/preview`                                          | Generate bounded preview artifacts                                                                    |
+| `POST /api/admin/agents/changesets/{id}/previews/{previewId}/launch`                      | Issue one 30-second no-store bridge exchange to the isolated preview origin after live authorization  |
+| `POST /api/admin/agents/changesets/{id}/request-approval`                                 | Create/reuse one exact pending approval for schedule/apply                                            |
+| `POST /api/admin/agents/changesets/{id}/cancel`                                           | Cancel an eligible non-executing plan and revoke approval                                             |
+| `POST /api/admin/agents/changesets/{id}/schedule`                                         | Bind canonical UTC schedule to an authorized plan                                                     |
+| `POST /api/admin/agents/changesets/{id}/apply`                                            | Admit execution only with a valid approved plan                                                       |
+| `POST /api/admin/agents/changesets/{id}/rollback-plans`                                   | Prepare one exact forward-compensation generation                                                     |
+| `POST /api/admin/agents/changesets/{id}/rollback-plans/{rollbackPlanId}/request-approval` | Request approval for exact rollback id/hash                                                           |
+| `POST /api/admin/agents/changesets/{id}/rollback-plans/{rollbackPlanId}/execute`          | Execute only the exact approved rollback plan                                                         |
+| `POST /api/admin/agents/incidents/{id}/transitions`                                       | Authorized exact state transition and human note                                                      |
+| `POST /api/admin/agents/incidents/{id}/response-plan`                                     | Create deterministic response plan/approval                                                           |
+| `POST /api/admin/agents/incidents/{id}/restore`                                           | Restore exact reversible containment                                                                  |
+| `PATCH /api/admin/agents/budgets`                                                         | Update site/per-Agent ceilings with expected version                                                  |
+| `POST /api/admin/agents/runtime/pause`                                                    | Emergency stop for new runtime admission                                                              |
+| `POST /api/admin/agents/runtime/resume`                                                   | Revalidate and resume runtime admission                                                               |
 
 Secret inputs should use request bodies only, with no persistence in URLs,
 client caches, analytics, or error details. `npFetch` remains the browser

@@ -287,6 +287,7 @@ interface NpAgentAuthorizationContextCanonicalV1 {
         actorFingerprint: string;
       };
   transport: "mcp-oauth" | "mcp-service" | "stdio" | "agent-api" | "runtime" | "admin";
+  gatewayExposure: "read" | "propose" | "approved-execute" | null;
   authorityRef: NpAgentInvocationAuthorityRefV1;
 }
 
@@ -345,6 +346,7 @@ interface NpAgentEffectProfileCanonicalV1 {
   profileId: string;
   kind: "read" | "mutation";
   reversibility: "none" | "compensatable";
+  minimumGatewayExposure: "read" | "propose" | "approved-execute" | null;
   effectContractVersion: number;
   verifierId: string | null;
   compensatorId: string | null;
@@ -388,9 +390,11 @@ interface NpAgentRecipeRegistryCanonicalV1 {
 
 The authorization actor branch must agree with `authorityRef`; a staff actor
 uses only `staff-session`, while principal actors use the matching service,
-OAuth, or Runtime branch. Budget source refs sort by
-`(kind,id-or-empty,version,digest)` and are unique. The recipe is null for
-Gateway/deterministic admission without a recipe.
+OAuth, or Runtime branch. `gatewayExposure` is non-null exactly for an admitted
+service/OAuth Gateway authority and null for Runtime/Admin; its value is the
+already narrowed effective ceiling, never a caller request. Budget source refs
+sort by `(kind,id-or-empty,version,digest)` and are unique. The recipe is null
+for Gateway/deterministic admission without a recipe.
 
 Capabilities sort by descriptor id. `projection:"definition"` requires
 exactly one capability and produces that definition's
@@ -400,7 +404,11 @@ non-empty installed set and produces `registryFingerprint`. Their
 Effect profiles sort by `profileId`. A read profile is
 `kind:"read",reversibility:"none",verifierId:null,compensatorId:null`; a
 mutation requires a verifier, and only a compensatable mutation has a
-non-null compensator.
+non-null compensator. A descriptor `gateway:null` requires every effect's
+`minimumGatewayExposure:null`; a projected descriptor has a sorted unique
+non-empty transport set and at least one effect with a non-null exposure.
+Changing an effect's exposure changes both its effect fingerprint and the
+enclosing capability fingerprint.
 
 Recipes sort by `(id,version)`. `projection:"definition"` requires exactly one
 recipe and produces its definition `fingerprint`; `projection:"registry"`
@@ -1336,6 +1344,7 @@ export const npAgentCanonicalPurposeIncludedKeysV1 = {
     "siteId",
     "actor",
     "transport",
+    "gatewayExposure",
     "authorityRef",
   ],
   "np.agent-budget-snapshot.v1": [
@@ -1424,6 +1433,7 @@ export const npAgentCanonicalPurposeIncludedKeysV1 = {
     "profileId",
     "kind",
     "reversibility",
+    "minimumGatewayExposure",
     "effectContractVersion",
     "verifierId",
     "compensatorId",
@@ -2630,7 +2640,7 @@ element has passed its exact analyzer; no locale collation is allowed.
 | `np.agent-approval-revocation.v1`      | none                                                                                                 | prior `decisionHash` may be null; non-human reason must be null                                                                                   |
 | `np.agent-approval-statement.v1`       | scopes, capabilities, predicates, and policy hashes sorted unique                                    | preview id/digest are both non-null iff live preview is required; action run/agent ids may independently be null as frozen                        |
 | `np.agent-artifact.v1`                 | artifacts by unique positive ordinal; report parts contiguous                                        | screenshot locator/viewport non-null and report parts null; report locator/viewport null and both part fields non-null                            |
-| `np.agent-authorization-context.v1`    | scopes inside referenced authority contracts retain their owner ordering                             | staff actor ↔ staff-session only; principal actor ↔ service/OAuth/Runtime only                                                                    |
+| `np.agent-authorization-context.v1`    | scopes inside referenced authority contracts retain their owner ordering                             | staff actor ↔ staff-session and Runtime principal require null exposure; service/OAuth principal requires non-null effective exposure             |
 | `np.agent-budget-snapshot.v1`          | source refs by `(kind,id-or-empty,version,digest)` unique                                            | Agent/recipe both null for Gateway; recipe may be non-null with Agent only                                                                        |
 | `np.agent-capability-registry.v1`      | capabilities by id; effects by profile id; descriptor sets sorted unique                             | analyzer: definition exactly one, registry non-empty, effect matrix exact; domain builder: registry equals complete installed set                 |
 | `np.agent-changeset-plan.v1`           | branch operations by unique ordinal; rollback original ordinals unique; all set arrays sorted unique | `planKind` selects the exact body; initial owns a sealed duration and no rollback ids; rollback owns compensation ids/absolute expiry             |
@@ -2639,7 +2649,7 @@ element has passed its exact analyzer; no locale collation is allowed.
 | `np.agent-connection-config.v1`        | pricing catalog by `(modelId,effectiveFrom,pricingId,version)` unique                                | pricing `effectiveUntil` may be null; no active secret/account/destination fields                                                                 |
 | `np.agent-connection-destination.v1`   | descriptor-owned arrays use adapter schema ordering                                                  | no nullable top-level field; descriptor cannot contain a secret                                                                                   |
 | `np.agent-connection-operation.v1`     | secret ids unique in semantic-purpose order                                                          | expected secret/version pair; refresh generation only refresh; mutable deadline is excluded                                                       |
-| `np.agent-effect-profile.v1`           | none                                                                                                 | read has both ids null; mutation verifier required; compensator only compensatable                                                                |
+| `np.agent-effect-profile.v1`           | none                                                                                                 | read has both ids null; mutation verifier required; compensator only compensatable; Gateway mutation exposure is null or at least `propose`       |
 | `np.agent-event.v1`                    | payload branch owns ordering                                                                         | subject, actor, causation, correlation, and dedup key are explicit null when absent; kind equals payload kind                                     |
 | `np.agent-idempotency-request.v1`      | normalized input owns ordering                                                                       | capability requires effect profile; Admin requires null                                                                                           |
 | `np.agent-mcp-task-result.v1`          | underlying validated MCP result owns ordering                                                        | exactly one of result/error; error `data` may be omitted and must not be synthesized                                                              |
@@ -3042,8 +3052,10 @@ Purpose-specific vectors additionally prove:
   and `resourceUri` exclusion;
 - ChangeSet proposal/plan/snapshot hashes are distinct and cannot substitute
   for `beforeHash`;
-- service-family token rotation that preserves authority produces the same
-  authorization-context fingerprint, while another family/version does not;
+- service-family token rotation under the same effective deployment/site
+  ceiling that preserves scopes, transport, exposure, audience, and authority
+  produces the same authorization-context fingerprint, while another
+  family/version or effective exposure does not;
 - MCP related-task metadata and request ids do not affect the stored terminal
   result;
 - provider dispatch-state/outcome mismatches fail;
