@@ -11,6 +11,16 @@ export type NpAgentCanonicalUtcV1 = string;
 export type NpAgentCanonicalDigestV1 = string;
 export type NpAgentCanonicalIdV1 = string;
 
+export interface NpAgentCanonicalBodyBytesV1<
+  P extends NpAgentCanonicalPurposeV1,
+  B extends object,
+> {
+  purpose: P;
+  body: B;
+  canonicalJsonUtf8: Uint8Array;
+  domainSeparatedUtf8: Uint8Array;
+}
+
 export const npAgentCanonicalPurposes = [
   "np.agent-action.v1",
   "np.agent-approval-decision.v1",
@@ -64,6 +74,71 @@ export const npAgentCanonicalHmacOwnersV1 = {
 export type NpAgentCanonicalHmacPurposeV1 = keyof typeof npAgentCanonicalHmacOwnersV1;
 export type NpAgentCanonicalHmacOwnerV1 =
   (typeof npAgentCanonicalHmacOwnersV1)[NpAgentCanonicalHmacPurposeV1];
+
+export type NpAgentConnectionKind = "model" | "notification";
+export type NpAgentConnectionSecretPurpose =
+  "connection-credential" | "provider-oauth-pkce" | "provider-oauth-code";
+export type NpAgentVaultAlgorithm = "AES-256-GCM" | `custom:${string}`;
+
+export interface NpAgentEffectProfileCanonicalV1 {
+  schemaVersion: "np.agent-effect-profile.v1";
+  capabilityId: NpAgentCapabilityId;
+  capabilityContractVersion: number;
+  implementationVersion: number;
+  profileId: string;
+  kind: "read" | "mutation";
+  reversibility: "none" | "compensatable";
+  minimumGatewayExposure: NpAgentEnabledGatewayExposureMode | null;
+  effectContractVersion: number;
+  verifierId: string | null;
+  compensatorId: string | null;
+}
+
+export interface NpAgentRunLimitsV1 {
+  schemaVersion: "np.agent-run-limits.v1";
+  maxAttempts: number;
+  maxProviderCalls: number;
+  maxCapabilityCalls: number;
+  maxInputTokens: number;
+  maxOutputTokens: number;
+  maxCostMicros: number;
+  maxWallClockSeconds: number;
+}
+
+export type NpAgentRunLimitsCanonicalV1 = NpAgentRunLimitsV1;
+
+export interface NpAgentStaffSiteAuthorizationCanonicalV1 {
+  schemaVersion: "np.agent-staff-site-authorization.v1";
+  siteId: string;
+  userId: string;
+  userTokenVersion: number;
+  authority:
+    | {
+        kind: "super-admin";
+        capabilities: NpCapability[];
+      }
+    | {
+        kind: "site-role";
+        source: "membership" | "default-site-fallback";
+        role: string;
+        capabilities: NpCapability[];
+      };
+}
+
+export interface NpAgentVaultAadCanonicalV1 {
+  schemaVersion: "np.agent-vault-aad.v1";
+  siteId: string;
+  connectionId: string;
+  connectionKind: NpAgentConnectionKind;
+  purpose: NpAgentConnectionSecretPurpose;
+  secretVersionId: string;
+  secretVersion: number;
+  vaultAdapterId: string;
+  vaultAdapterContractVersion: number;
+  vaultAdapterFingerprint: string;
+  credentialEnvelopeVersion: 1;
+  algorithm: NpAgentVaultAlgorithm;
+}
 
 export const npAgentCanonicalBodyMaxBytesV1 = {
   "np.agent-action.v1": 4 * 1024 * 1024,
