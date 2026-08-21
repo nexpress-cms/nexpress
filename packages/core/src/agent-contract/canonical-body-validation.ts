@@ -108,17 +108,28 @@ export function canonicalBodyArray(
     failCanonicalBody("shape", path, "must be an ordinary dense array");
   }
   claimContainer(value, path, state);
-  if (value.length > maximum) {
+  const lengthDescriptor = Object.getOwnPropertyDescriptor(value, "length");
+  if (
+    !lengthDescriptor ||
+    !("value" in lengthDescriptor) ||
+    typeof lengthDescriptor.value !== "number" ||
+    !Number.isSafeInteger(lengthDescriptor.value) ||
+    lengthDescriptor.value < 0
+  ) {
+    failCanonicalBody("shape", path, "must have an ordinary array length");
+  }
+  const length = lengthDescriptor.value;
+  if (length > maximum) {
     failCanonicalBody("limit", path, `may contain at most ${maximum.toString()} entries`);
   }
-  const indices = new Set(Array.from({ length: value.length }, (_, index) => index.toString()));
+  const indices = new Set(Array.from({ length }, (_, index) => index.toString()));
   for (const key of Reflect.ownKeys(value)) {
     if (key === "length" || (typeof key === "string" && indices.has(key))) continue;
     failCanonicalBody("shape", path, "must not contain non-index array properties");
   }
 
   const result: unknown[] = [];
-  for (let index = 0; index < value.length; index += 1) {
+  for (let index = 0; index < length; index += 1) {
     const descriptor = Object.getOwnPropertyDescriptor(value, index.toString());
     if (!descriptor?.enumerable || !("value" in descriptor)) {
       failCanonicalBody(

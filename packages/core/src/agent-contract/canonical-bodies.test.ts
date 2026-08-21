@@ -340,6 +340,20 @@ describe("Agent exact canonical leaf bodies", () => {
     });
     expect(npAnalyzeAgentVaultAadCanonical(proxy).ok).toBe(true);
     expect(reads).toBe(0);
+
+    const capabilityProxy = new Proxy(["admin.manage", "site.access"] as const, {
+      get() {
+        reads += 1;
+        throw new Error("secret array get trap");
+      },
+    });
+    expect(
+      npAnalyzeAgentStaffSiteAuthorizationCanonical({
+        ...staffSiteAuthorization,
+        authority: { ...staffSiteAuthorization.authority, capabilities: capabilityProxy },
+      }).ok,
+    ).toBe(true);
+    expect(reads).toBe(0);
   });
 
   it("emits independent canonical-byte and SHA-256 golden vectors", async () => {
