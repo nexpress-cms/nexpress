@@ -5,11 +5,108 @@ export type NpAgentJsonValue =
   NpAgentJsonPrimitive | NpAgentJsonValue[] | { [key: string]: NpAgentJsonValue };
 export type NpAgentJsonObject = { [key: string]: NpAgentJsonValue };
 
+export type NpAgentCanonicalJsonValueV1 = NpAgentJsonValue;
+export type NpAgentCanonicalJsonObjectV1 = NpAgentJsonObject;
+export type NpAgentCanonicalUtcV1 = string;
+export type NpAgentCanonicalDigestV1 = string;
+export type NpAgentCanonicalIdV1 = string;
+
+export const npAgentCanonicalPurposes = [
+  "np.agent-action.v1",
+  "np.agent-approval-decision.v1",
+  "np.agent-approval-revocation.v1",
+  "np.agent-approval-statement.v1",
+  "np.agent-artifact.v1",
+  "np.agent-authorization-context.v1",
+  "np.agent-budget-snapshot.v1",
+  "np.agent-capability-registry.v1",
+  "np.agent-changeset-plan.v1",
+  "np.agent-changeset-proposal.v1",
+  "np.agent-changeset-snapshot.v1",
+  "np.agent-connection-config.v1",
+  "np.agent-connection-destination.v1",
+  "np.agent-connection-operation.v1",
+  "np.agent-effect-profile.v1",
+  "np.agent-event.v1",
+  "np.agent-idempotency-request.v1",
+  "np.agent-mcp-task-result.v1",
+  "np.agent-notification-delivery.v1",
+  "np.agent-policy.v1",
+  "np.agent-preview-contract.v1",
+  "np.agent-preview-routes.v1",
+  "np.agent-provider-request.v1",
+  "np.agent-provider-response.v1",
+  "np.agent-recipe-registry.v1",
+  "np.agent-restriction.v1",
+  "np.agent-run-admission.v1",
+  "np.agent-run-limits.v1",
+  "np.agent-signal-evidence.v1",
+  "np.agent-site-deletion-plan.v1",
+  "np.agent-staff-site-authorization.v1",
+  "np.agent-vault-aad.v1",
+] as const;
+
+export type NpAgentCanonicalPurposeV1 = (typeof npAgentCanonicalPurposes)[number];
+export type NpAgentCanonicalShaPurposeV1 = Exclude<
+  NpAgentCanonicalPurposeV1,
+  "np.agent-connection-destination.v1"
+>;
+
+export const npAgentCanonicalHmacOwnersV1 = {
+  "np.agent-approval-statement.v1": "approval-integrity",
+  "np.agent-approval-decision.v1": "approval-integrity",
+  "np.agent-approval-revocation.v1": "approval-integrity",
+  "np.agent-connection-destination.v1": "connection-destination",
+} as const satisfies Partial<
+  Record<NpAgentCanonicalPurposeV1, "approval-integrity" | "connection-destination">
+>;
+
+export type NpAgentCanonicalHmacPurposeV1 = keyof typeof npAgentCanonicalHmacOwnersV1;
+export type NpAgentCanonicalHmacOwnerV1 =
+  (typeof npAgentCanonicalHmacOwnersV1)[NpAgentCanonicalHmacPurposeV1];
+
+export const npAgentCanonicalBodyMaxBytesV1 = {
+  "np.agent-action.v1": 4 * 1024 * 1024,
+  "np.agent-approval-decision.v1": 64 * 1024,
+  "np.agent-approval-revocation.v1": 64 * 1024,
+  "np.agent-approval-statement.v1": 256 * 1024,
+  "np.agent-artifact.v1": 256 * 1024,
+  "np.agent-authorization-context.v1": 64 * 1024,
+  "np.agent-budget-snapshot.v1": 256 * 1024,
+  "np.agent-capability-registry.v1": 16 * 1024 * 1024,
+  "np.agent-changeset-plan.v1": 4 * 1024 * 1024,
+  "np.agent-changeset-proposal.v1": 4 * 1024 * 1024,
+  "np.agent-changeset-snapshot.v1": 256 * 1024,
+  "np.agent-connection-config.v1": 512 * 1024,
+  "np.agent-connection-destination.v1": 32 * 1024,
+  "np.agent-connection-operation.v1": 64 * 1024,
+  "np.agent-effect-profile.v1": 16 * 1024,
+  "np.agent-event.v1": 16 * 1024,
+  "np.agent-idempotency-request.v1": 4 * 1024 * 1024,
+  "np.agent-mcp-task-result.v1": 4 * 1024 * 1024,
+  "np.agent-notification-delivery.v1": 256 * 1024,
+  "np.agent-policy.v1": 1024 * 1024,
+  "np.agent-preview-contract.v1": 64 * 1024,
+  "np.agent-preview-routes.v1": 256 * 1024,
+  "np.agent-provider-request.v1": 4 * 1024 * 1024,
+  "np.agent-provider-response.v1": 4 * 1024 * 1024,
+  "np.agent-recipe-registry.v1": 8 * 1024 * 1024,
+  "np.agent-restriction.v1": 64 * 1024,
+  "np.agent-run-admission.v1": 512 * 1024,
+  "np.agent-run-limits.v1": 16 * 1024,
+  "np.agent-signal-evidence.v1": 512 * 1024,
+  "np.agent-site-deletion-plan.v1": 16 * 1024 * 1024,
+  "np.agent-staff-site-authorization.v1": 64 * 1024,
+  "np.agent-vault-aad.v1": 16 * 1024,
+} as const satisfies Record<NpAgentCanonicalPurposeV1, number>;
+
 export type NpAgentJsonSchema = NpAgentJsonObject & {
   $schema: "https://json-schema.org/draft/2020-12/schema";
   type: "object";
   additionalProperties: false;
 };
+
+export type NpAgentCanonicalJsonSchemaV1 = NpAgentJsonSchema;
 
 export const npAgentScopes = [
   "site:read",

@@ -247,6 +247,13 @@ describe("Agent contract foundation", () => {
         additionalProperties: true,
       }),
     ).toMatchObject({ ok: false, issues: [{ path: "agent.schema.additionalProperties" }] });
+
+    expect(
+      npAnalyzeAgentJsonSchema({
+        ...schema(),
+        description: "\ud800",
+      }),
+    ).toMatchObject({ ok: false, issues: [{ code: "unsafe-value" }] });
   });
 
   it("does not execute accessors or hostile reflection traps", () => {
