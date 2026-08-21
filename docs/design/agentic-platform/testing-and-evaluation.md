@@ -151,8 +151,8 @@ tested cell-for-cell plus commutativity, associativity, and idempotence;
   and cuts the old token off no later than both its expiry and the configured
   maximum; zero overlap is immediate;
 - rotating a token without changing family authority lets the live replacement
-  poll/cancel its predecessor's MCP tasks; changing scope/transport/audience
-  requires a new family/version, and an independent family is denied even for
+  poll/cancel its predecessor's MCP tasks; changing scope/transport/exposure/
+  audience requires a new family/version, and an independent family is denied even for
   the same principal;
 - concurrent rotate-versus-rotate and rotate-versus-revoke produce exactly one
   winner, no sibling replacement, and no plaintext from the conflict loser;
@@ -188,7 +188,10 @@ tested cell-for-cell plus commutativity, associativity, and idempotence;
 - Protected Resource Metadata and authorization metadata are exact;
 - authorization code plus PKCE succeeds once;
 - missing/wrong PKCE, redirect URI, resource, audience, issuer, client, site,
-  subject, token-id shape, state, or scope fails;
+  subject, token-id shape, state, scope, or exposure mode fails;
+- absent `nexpress_gateway_mode` resolves to `read`; exact broader values need
+  fresh consent, while duplicate/unknown/over-ceiling values fail before grant
+  creation;
 - exact 10-minute consent, 5-minute code, 10-minute access, 7-day refresh-idle,
   30-day refresh-family, and 60-second clock-skew boundaries have before/at/after
   tests;
@@ -207,6 +210,10 @@ tested cell-for-cell plus commutativity, associativity, and idempotence;
   code in one transaction, while expired/revoked grants remain historical and
   a fresh consent creates the next generation without reviving them;
 - refresh rotation atomically replaces the family;
+- consent, code, refresh family, access-token claim, and authorization-context
+  fingerprint bind the same exposure ceiling; outer-ceiling narrowing is
+  immediate, outer widening does not widen an existing grant, and a broader
+  profile requires fresh consent;
 - step-up scope challenge requests only the missing minimal scope;
 - the dedicated NexPress Agent Gateway signing/JWKS keys rotate with the
   configured overlap while an upstream OIDC issuer can authenticate staff but
@@ -214,10 +221,10 @@ tested cell-for-cell plus commutativity, associativity, and idempotence;
 - only `ES256` with a known active/retiring `kid` is accepted; `none`,
   symmetric, substituted-algorithm, and unknown-key tokens fail;
 - exact `at+jwt` header and claims use singleton string audience, sorted
-  space-delimited scope, canonical issuer/site/resource, positive current
-  grant/principal versions, integer NumericDates, and one random bounded
-  non-empty `jti`; v1 stores no access-token id and revokes through
-  grant/principal versions;
+  space-delimited scope, canonical exposure, canonical issuer/site/resource,
+  positive current grant/principal versions, integer NumericDates, and one
+  random bounded non-empty `jti`; v1 stores no access-token id and revokes
+  through grant/principal versions;
 - initial principal/grant creation starts both authority versions at `1`, the
   first mint verifies with `1`, and zero/negative or stale increment vectors
   fail DB/analyzer/resource-server checks;
@@ -412,6 +419,11 @@ For every built-in capability:
   risk/approval, and mutation receipt must match the server-owned descriptor;
   a handler cannot claim a lower profile or return a mutation through a
   read/no-effect result branch;
+- every Gateway-projected effect profile has the exact locked minimum
+  exposure. A mixed proposal/execution tool is listed at its least projected
+  profile, its proposal/approval-request branch succeeds at `propose`, and its
+  effecting branch fails before approval consumption or handler work until
+  `approved-execute` is effective;
 - delayed direct-action execution reconstructs the proposal from exact
   canonical input/scopes/targets/same-order target-version facts plus frozen
   attribution/registry columns and reproduces `proposalHash`; target drift
@@ -427,7 +439,18 @@ For every built-in capability:
 
 MCP-specific coverage:
 
-- tools/list/resources/list/prompts/list are sorted and bounded;
+- tools/list/resources/list/prompts/list are sorted and bounded; the matrix of
+  deployment, site, credential/grant, principal scope, and policy ceilings
+  produces the exact deterministic intersection for `disabled`, `read`,
+  `propose`, and `approved-execute`;
+- a maximum-profile principal with all required scopes sees every shipped
+  member of the 18-tool master inventory, proving that lower secure defaults
+  narrow exposure without deleting functionality;
+- guessing a transport/mode/policy-hidden tool is the same non-oracular
+  unavailable result as an unknown tool; a mode-admitted tool hidden only by a
+  missing scope returns the exact OAuth step-up challenge for OAuth or the
+  bounded forbidden result for a service credential, without handler
+  admission; lowering any outer ceiling between list and call blocks it;
 - initialize snapshot matrix covers protocol `2025-11-25` versus older and
   deployment task enabled versus disabled. Only the enabled/current branch
   advertises the exact task capability object; client receive-capabilities do
@@ -465,9 +488,13 @@ MCP-specific coverage:
   explicit cancel, TTL expiry, site deletion, and missing-parent fixtures each
   assert the one exact status/id-less error pair from the total map;
 - a non-core or plugin-contributed capability id is rejected and diagnosed
-  without changing the valid v1 tool inventory;
-- local stdio and remote HTTP produce semantically identical structured
-  results for the same principal/site;
+  without changing the valid v1 master inventory;
+- local stdio, remote MCP, and Agent HTTP produce semantically identical
+  structured results for every capability present in their overlapping
+  effective projections; their inventories need not be identical;
+- disabled remote MCP returns the same `404` for the endpoint, protected
+  resource metadata, and authorization discovery, and no scaffold/config/
+  process test observes a dedicated MCP listener or port;
 - remote HTTP rejects `Origin:null`, foreign/suffix/wildcard/multiple origins,
   Host/resource mismatches, DNS-rebinding variants, and unauthenticated
   originless requests; an originless request succeeds only with valid
@@ -485,6 +512,9 @@ Machine Agent HTTP coverage runs the same capability fixtures through exactly
 `GET /api/agent/v1/previews/{previewId}/artifacts/{artifactId}`. Only an
 `agent-http` service credential with
 the exact canonical `https://<site-host>/api/agent/v1` audience succeeds;
+its capability list and invocation admission also use the same deployment/
+site/credential/scope/policy exposure intersection under its own transport
+ceiling, so it cannot bypass that effective projection;
 scheme/host/default-port/path normalization and wrong-origin substitution have
 golden cases. MCP OAuth/tokens, stdio or MCP-bound service credentials,
 provider credentials, staff cookies, forged site ids, and unknown routes fail

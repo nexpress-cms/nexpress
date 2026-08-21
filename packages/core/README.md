@@ -32,6 +32,7 @@ Domain-bounded entries — prefer these over the catch-all root:
 
 ```ts
 import { can } from "@nexpress/core/auth";
+import { npRequireAgentCapabilityDescriptor } from "@nexpress/core/agent-contract";
 import { npIsApiError } from "@nexpress/core/api-contract";
 import { npRequireContentTransferEnvelope } from "@nexpress/core/content-transfer";
 import { enqueueJob } from "@nexpress/core/jobs";
@@ -44,9 +45,10 @@ import { t } from "@nexpress/core/i18n";
 Server/domain subpaths include `auth`, `cache`, `collections`, `community`,
 `db`, `email`, `i18n`, `jobs`, `media`, `observability`, `rate-limit`, `routes`,
 `search`, `seo`, `sites`, and `storage`. Client-safe contract subpaths include
-`api-contract`, `auth-contract`, `collection-contract`, `community-contract`,
-`content-transfer`, `discovery`, `fields`, `i18n-contract`, `jobs-contract`,
-`media-contract`, `navigation`, `revisions`, `settings`, and `theme`.
+`agent-contract`, `api-contract`, `auth-contract`, `collection-contract`,
+`community-contract`, `content-transfer`, `discovery`, `fields`,
+`i18n-contract`, `jobs-contract`, `media-contract`, `navigation`, `revisions`,
+`settings`, and `theme`.
 
 The root entry remains a broad server-only convenience surface, but it does
 not expose raw bootstrap mutation. Framework hosts use the explicitly

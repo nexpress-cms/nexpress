@@ -241,6 +241,24 @@ export type NpAgentCapabilityRisk = (typeof npAgentCapabilityRisks)[number];
 export const npAgentApprovalModes = ["none", "policy", "human"] as const;
 export type NpAgentApprovalMode = (typeof npAgentApprovalModes)[number];
 
+export const npAgentGatewayExposureModes = [
+  "disabled",
+  "read",
+  "propose",
+  "approved-execute",
+] as const;
+export type NpAgentGatewayExposureMode = (typeof npAgentGatewayExposureModes)[number];
+
+export const npAgentGatewayTransports = ["stdio", "mcp-http", "agent-http"] as const;
+export type NpAgentGatewayTransport = (typeof npAgentGatewayTransports)[number];
+
+export const npAgentGatewayExposureRank: Record<NpAgentGatewayExposureMode, number> = {
+  disabled: 0,
+  read: 1,
+  propose: 2,
+  "approved-execute": 3,
+};
+
 export const npAgentRiskRank: Record<NpAgentCapabilityRisk, number> = {
   read: 0,
   reversible: 1,
@@ -278,6 +296,7 @@ export interface NpAgentEffectProfileDescriptor {
   id: string;
   kind: "read" | "mutation";
   reversibility: "none" | "compensatable";
+  minimumGatewayExposure: Exclude<NpAgentGatewayExposureMode, "disabled"> | null;
   verifierId: string | null;
   compensatorId: string | null;
 }
@@ -297,6 +316,9 @@ export interface NpAgentCapabilityDescriptor {
   bootstrapIntent: "plugins" | "write";
   execution: NpAgentExecutionMode;
   idempotency: NpAgentIdempotencyMode;
+  gateway: {
+    transports: NpAgentGatewayTransport[];
+  } | null;
   inputSchema: NpAgentJsonSchema;
   outputSchema: NpAgentJsonSchema;
 }
@@ -307,6 +329,16 @@ Capability inputs and outputs have object roots and
 `additionalProperties: false`. `$ref` may target only definitions in the same
 validated schema bundle; remote references, executable formats, custom
 keywords, and recursive graphs above the contract limits are rejected.
+
+`gateway` is a closed projection rule, not authority. `null` makes an internal
+capability unavailable to every external Gateway transport. A non-null value
+names the exact transports that may project it. Each effect profile declares
+its own non-null minimum exposure or remains internal with `null`; this lets a
+single tool admit a proposal/approval-request branch without admitting its
+effecting branch. Transport admission still intersects the deployment ceiling,
+site setting, immutable credential/grant ceiling, principal scopes, current
+policy, resource authorization, quotas, risk, and approval. A mode can narrow
+this intersection but cannot grant a scope or lower an approval floor.
 
 The descriptor is metadata, not enforcement. The registry stores a server-only
 definition:
@@ -543,6 +575,7 @@ export type NpAgentPrincipal =
       subjectUserId: string;
       oauthGrantId: string;
       clientId: string;
+      gatewayExposureCeiling: Exclude<NpAgentGatewayExposureMode, "disabled">;
       scopes: readonly NpAgentScope[];
     }
   | {
@@ -551,6 +584,7 @@ export type NpAgentPrincipal =
       siteId: string;
       credentialId: string;
       authority: { kind: "user"; userId: string } | { kind: "deployment"; policyId: string };
+      gatewayExposureCeiling: Exclude<NpAgentGatewayExposureMode, "disabled">;
       scopes: readonly NpAgentScope[];
     }
   | {
@@ -568,10 +602,12 @@ export type NpAgentPrincipal =
 
 This is a server context type. Public wires expose stable actor references, not
 credential/token identifiers that are unnecessary for the caller. External
-OAuth/service principals intentionally have no autonomy field; scope, hard
-rules, site feature settings, resource authorization, and capability approval
-decide their calls. Runtime autonomy/modes come only from the immutable active
-Agent version frozen on its run.
+OAuth/service principals intentionally have no autonomy field;
+`gatewayExposureCeiling` is the immutable credential/grant value, while the
+invocation context below carries the effective outer-narrowed value. Scope,
+hard rules, site feature settings, resource authorization, and capability
+approval decide their calls. Runtime autonomy/modes come only from the
+immutable active Agent version frozen on its run.
 
 ### 4.2 Invocation request and result
 
@@ -585,6 +621,7 @@ export interface NpAgentNormalizedCapabilityInvocationRequest {
 
 export interface NpAgentInvocationAuthContext {
   transport: "mcp-oauth" | "mcp-service" | "stdio" | "agent-api" | "runtime";
+  effectiveGatewayExposure: Exclude<NpAgentGatewayExposureMode, "disabled"> | null;
   requestId: string;
   principal: NpAgentPrincipal;
 }
@@ -628,6 +665,11 @@ export interface NpAgentCapabilityInvoker {
   ): Promise<NpAgentCapabilityInvocationResult<NpAgentJsonObject>>;
 }
 ```
+
+`effectiveGatewayExposure` is non-null for admitted `mcp-oauth`,
+`mcp-service`, `stdio`, and `agent-api` calls and null for `runtime`. The
+invocation/audit authorization snapshot freezes that value so a later
+deployment or site widening cannot reinterpret an earlier request.
 
 `NpAgentActorBucketRefV1` is the shared exact
 purpose/projection-version/projection-fingerprint/key-id/bucket contract from
@@ -1404,10 +1446,16 @@ Registration rules:
 7. Reject a `compensatable` profile without typed undo derivation and a
    matching compensator, or a `none` profile that declares either.
 8. Reject `approval: "none"` for sensitive/destructive effects.
-9. Same source + same definition fingerprint may register again for HMR.
-10. Same id + a different fingerprint is a startup error. There is no
+9. Require every non-null Gateway projection to have a sorted unique non-empty
+   transport set and at least one effect profile with a valid non-disabled
+   minimum exposure. A null Gateway requires every effect profile exposure to
+   be null. A Gateway-projected mutation profile cannot have `read` as its
+   minimum. Require every MCP master-tool mapping and each input-selected
+   profile minimum to match the locked table above.
+10. Same source + same definition fingerprint may register again for HMR.
+11. Same id + a different fingerprint is a startup error. There is no
     last-write-wins behavior for security contracts.
-11. Registry listing returns immutable, sorted descriptor copies.
+12. Registry listing returns immutable, sorted descriptor copies.
 
 Framework definitions register after the existing plugin host is ready, so
 their schema/discovery dependencies see the resolved runtime. Plugins do not
@@ -1422,6 +1470,7 @@ parse request envelope
   → resolve definition
   → parse exact input
   → resolve principal and explicit site
+  → intersect transport/deployment/site/credential exposure
   → check static scopes and current staff authority
   → derive target/scopes/risk/approval
   → authorize every resource
@@ -1456,39 +1505,71 @@ roots, or arbitrary elicitation.
 MCP annotations are usability hints only. NexPress authorization and policy
 never trust a client confirmation or a tool's `destructiveHint`.
 
-### 7.1 Bounded tool inventory
+### 7.1 Bounded tool inventory and exposure profiles
 
 Tool names are stable snake_case strings. A core capability addition does not
 automatically add a tool.
 
-| MCP tool                  | Capability dispatch        | Notes                                            |
-| ------------------------- | -------------------------- | ------------------------------------------------ |
-| `inspect_site`            | `site.inspect`             | safe site summary plus resource links            |
-| `query_content`           | `content.query`            | exact collection, filters, fields, opaque cursor |
-| `create_changeset`        | `changeset.create`         | no direct production write                       |
-| `validate_changeset`      | `changeset.validate`       | immutable version/hash required                  |
-| `preview_changeset`       | `changeset.preview`        | returns/queues preview artifacts                 |
-| `schedule_changeset`      | `changeset.schedule`       | approval must already be valid when required     |
-| `apply_changeset`         | `changeset.apply`          | does not grant approval                          |
-| `rollback_changeset`      | `changeset.rollback`       | creates an audited forward rollback              |
-| `query_changesets`        | `changeset.get` or `.list` | exact discriminated `by_id` / `list` selector    |
-| `run_site_audit`          | `audit.run`                | bounded check families; durable by default       |
-| `get_ops_status`          | `ops.status`               | reuses shipped exact ops evidence                |
-| `plan_ops_action`         | `ops.plan`                 | allowlisted site action only                     |
-| `execute_approved_action` | `ops.execute`              | exact plan/hash/approval; never shell text       |
-| `query_incidents`         | `incident.get` or `.list`  | exact discriminated selector                     |
-| `quarantine_content`      | `moderation.quarantine`    | reversible target state                          |
-| `restore_content`         | `moderation.restore`       | restores exact quarantine action                 |
-| `temporarily_limit_actor` | `security.limitActor`      | TTL required and capped by policy                |
-| `revoke_sessions`         | `security.revokeSessions`  | exact session-family semantics                   |
+The full v1 master inventory remains 18 tools. Exposure profiles do not remove
+functionality: an explicitly enabled `approved-execute` transport with the
+required principal scopes can discover and call all 18 tools, subject to the
+same policy, resource, idempotency, and approval checks as every other caller.
+Lower profiles deliberately project a subset. When one tool has proposal and
+effecting input branches, `tools/list` uses the least exposure of its externally
+projectable effect profiles, while invocation reparses the input, resolves its
+exact effect profile, and requires that profile's higher ceiling before any
+approval consumption or handler execution:
+
+| MCP tool                  | Capability dispatch        | Listed from        | Notes                                            |
+| ------------------------- | -------------------------- | ------------------ | ------------------------------------------------ |
+| `inspect_site`            | `site.inspect`             | `read`             | safe site summary plus resource links            |
+| `query_content`           | `content.query`            | `read`             | exact collection, filters, fields, opaque cursor |
+| `create_changeset`        | `changeset.create`         | `propose`          | no direct production write                       |
+| `validate_changeset`      | `changeset.validate`       | `propose`          | immutable version/hash required                  |
+| `preview_changeset`       | `changeset.preview`        | `propose`          | returns/queues preview artifacts                 |
+| `schedule_changeset`      | `changeset.schedule`       | `propose`          | approval request at propose; effect at execute   |
+| `apply_changeset`         | `changeset.apply`          | `propose`          | approval request at propose; does not approve    |
+| `rollback_changeset`      | `changeset.rollback`       | `propose`          | prepare/request at propose; effect at execute    |
+| `query_changesets`        | `changeset.get` or `.list` | `read`             | exact discriminated `by_id` / `list` selector    |
+| `run_site_audit`          | `audit.run`                | `read`             | bounded check families; durable by default       |
+| `get_ops_status`          | `ops.status`               | `read`             | reuses shipped exact ops evidence                |
+| `plan_ops_action`         | `ops.plan`                 | `propose`          | allowlisted site action only                     |
+| `execute_approved_action` | `ops.execute`              | `approved-execute` | exact plan/hash/approval; never shell text       |
+| `query_incidents`         | `incident.get` or `.list`  | `read`             | exact discriminated selector                     |
+| `quarantine_content`      | `moderation.quarantine`    | `propose`          | proposal first; reversible effect at execute     |
+| `restore_content`         | `moderation.restore`       | `propose`          | proposal first; restore effect at execute        |
+| `temporarily_limit_actor` | `security.limitActor`      | `propose`          | proposal first; capped TTL effect at execute     |
+| `revoke_sessions`         | `security.revokeSessions`  | `propose`          | proposal first; exact effect at execute          |
 
 `schema.get` is projected through MCP resources instead of another tool.
 
-After base authentication, `tools/list` returns this stable 18-tool inventory
-for every site. Listing a name grants nothing: a call without its scopes
-receives the exact OAuth step-up challenge, and a policy-disabled capability
-still fails before execution. The capability catalog resource publishes the
-required scopes, risk, approval, and idempotency metadata.
+After base authentication, `tools/list` returns the deterministic sorted
+intersection of:
+
+```text
+shipped master inventory
+  ∩ capability transport allowlist
+  ∩ deployment exposure ceiling
+  ∩ site exposure ceiling
+  ∩ credential/grant exposure ceiling
+  ∩ principal granted scopes
+  ∩ currently enabled site capability policy
+```
+
+Target-specific authorization is still repeated on every call. A hidden tool
+cannot be invoked by guessing its name. Transport/mode/policy exclusion is the
+same non-oracular unavailable result as an unknown tool; when the transport and
+mode admit the tool and only an OAuth principal scope is missing, a direct
+known call may return the exact insufficient-scope challenge without executing
+the handler. Service credentials receive the bounded forbidden result. A
+listed tool's higher effect branch returns a stable exposure-policy denial when
+its resolved profile exceeds the credential ceiling; it never turns listing
+into execution authority. A tool that loses scope or mode between listing and
+invocation fails closed. The capability catalog resource publishes only the
+same effective projection with required scopes, risk, approval, and
+idempotency metadata.
+Admin consent and principal-management UI, not an overbroad MCP list, are where
+an operator reviews grantable authority.
 
 All inputs have exact object schemas using the shared
 `{ input, idempotencyKey }` projection above. Every mutation and durable or
@@ -1549,6 +1630,9 @@ nexpress://site/{siteId}/runs/{runId}
 
 Rules:
 
+- list/read requires an effective exposure of at least `read`; catalogs omit
+  entries whose backing capability or required scope is outside the current
+  transport projection;
 - `{siteId}` must equal the authenticated principal's site.
 - Catalog metadata reuses exact discovery contracts and omits handlers,
   access callbacks, config secrets, credentials, hidden policy rules, and raw
@@ -1623,7 +1707,8 @@ Prompts are optional, user-selected workflow starters:
 | `nexpress_security_incident_review` | summarize one incident and propose reversible response           |
 
 Prompt arguments are short identifiers and bounded goals, not raw log/content
-dumps. Prompt messages:
+dumps. `prompts/list` includes a starter only when its required read/propose/
+execute tools are in the current effective projection. Prompt messages:
 
 - identify public content/log fields as untrusted evidence;
 - instruct the client to use resources and tools;
@@ -1645,6 +1730,9 @@ MCP client
   → project bootstrap + shared capability invoker
 ```
 
+This is the local-first MCP shape. It opens no TCP listener or MCP port; the
+client owns the child process and exchanges frames only through stdin/stdout.
+
 Requirements:
 
 - credentials are read from environment, consistent with the MCP stdio
@@ -1659,6 +1747,11 @@ Requirements:
 - local transport does not bypass scope, policy, idempotency, audit, approval,
   or quota because it is on the same machine.
 
+The stdio credential also freezes a `read`, `propose`, or
+`approved-execute` ceiling and defaults to `read`. An operator may explicitly
+issue a broader stdio credential, so the local transport retains the full
+18-tool feature set without making that authority implicit.
+
 The stdio adapter does not proxy a client token to a remote NexPress server.
 Use the remote OAuth flow for a remote site.
 
@@ -1669,6 +1762,23 @@ The proposed endpoint is:
 ```text
 POST /api/mcp
 ```
+
+NexPress does not define or accept a dedicated MCP port. When enabled, this
+path is mounted on the existing canonical HTTPS site origin and therefore uses
+the deployment's normal TLS listener, reverse proxy, WAF, request limits, and
+observability. It never starts a standalone public listener or binds an MCP
+server to `0.0.0.0`. A deployment may additionally restrict the path through a
+private ingress, VPN, mTLS gateway, or IP allowlist, but those controls never
+replace NexPress authentication and authorization.
+
+Remote MCP is absent by default. Unless deployment intent, the site's selected
+exposure mode, canonical origin, OAuth signing/JWKS, consent, and audience
+configuration are all valid, `/api/mcp`, its protected-resource metadata, and
+Agent Gateway authorization discovery return the same deliberate `404` and do
+not reveal a partially configured surface. V1 does not add a NexPress-hosted
+relay or automatic tunnel. The supported profiles are `read`, `propose`, and
+`approved-execute`; the last preserves the full bounded tool inventory but
+does not itself satisfy any capability approval requirement.
 
 It runs in the Node.js runtime. Initial v1 is stateless and polling-oriented:
 
@@ -1739,6 +1849,8 @@ The built-in server implements the current MCP authorization profile:
 - access-token audience equal to the canonical site MCP URI
   `https://<site-host>/api/mcp`;
 - short-lived access tokens and rotating refresh tokens;
+- an immutable grant exposure ceiling included in consent, authorization code,
+  refresh family, and access-token claims;
 - bearer token in the `Authorization` header on every request, never query
   string, cookie, or MCP arguments;
 - `401` for missing/invalid/expired/wrong-audience tokens;
@@ -1796,16 +1908,24 @@ only from the resolved site's trusted canonical origin:
 
 This array is generated from the complete exact `npAgentScopes` inventory.
 Initial authorization requests challenge only for the currently needed
-minimum—normally `site:read`—and later insufficient-scope responses request an
-exact narrow step-up subset. Advertising a scope does not grant it.
+minimum—normally `site:read`—and default the NexPress-owned
+`nexpress_gateway_mode` authorization parameter to `read`. The parameter may
+be exactly `read`, `propose`, or `approved-execute` and cannot exceed the
+deployment/site ceiling. Later insufficient-scope responses request an exact
+narrow scope step-up subset within the already granted mode. Advertising a
+scope or mode does not grant it.
 
 Authorization Server metadata publishes the fixed endpoints above,
 `response_types_supported: ["code"]`,
 `grant_types_supported: ["authorization_code", "refresh_token"]`, and
 `code_challenge_methods_supported: ["S256"]`, and
-`token_endpoint_auth_methods_supported: ["none"]`. Access tokens are
-audience-bound, short-lived NexPress tokens signed by the Agent OAuth keyring;
-JWKS exposes only active/retiring public keys with stable `kid` values.
+`token_endpoint_auth_methods_supported: ["none"]`. It also publishes the
+namespaced extension
+`nexpress_gateway_modes_supported: ["read", "propose", "approved-execute"]`;
+generic OAuth clients may ignore it and use the default `read`. Access tokens
+are audience-bound, short-lived NexPress tokens signed by the Agent OAuth
+keyring; JWKS exposes only active/retiring public keys with stable `kid`
+values.
 Authorization codes are one-time and short-lived. Refresh token bodies are
 shown only to the client, stored hash-only, rotated on every use, and revoked
 as one grant family.
@@ -1813,14 +1933,17 @@ as one grant family.
 The authorize GET validates the request and renders/redirects to NexPress's
 staff-authenticated consent UI; it never grants on GET. The authorize POST
 requires that staff session, CSRF, the original one-time consent challenge, and
-an exact selected site/scope set before issuing a code. Token and revocation
-requests use OAuth form encoding and never accept browser session authority as
-a substitute for the code, refresh token, or service credential.
+an exact selected site/scope/exposure set before issuing a code. Token and
+revocation requests use OAuth form encoding and never accept browser session
+authority as a substitute for the code, refresh token, or service credential.
 
-The initial challenge requests only `site:read`. A client receives exact
-step-up challenges for additional tool scopes. The built-in Authorization
-Server confirms the consenting user's current site membership and the
-`npAgentScopeStaffCapability` ceiling before issuing each grant.
+The initial challenge requests only `site:read` and `read`. A client receives
+exact step-up challenges for additional tool scopes within that exposure.
+Widening exposure requires a fresh authorization request and consent; it is not
+encoded as an OAuth scope or inferred from a tool call. The built-in
+Authorization Server confirms the consenting user's current site membership,
+deployment/site exposure ceiling, and `npAgentScopeStaffCapability` ceiling
+before issuing each grant.
 
 V1 supports only registered public OAuth clients:
 
@@ -2286,6 +2409,13 @@ cannot be replayed on these routes. The credential resolves the same
 `NpAgentPrincipal` and calls the invocation or artifact facade selected by the
 route. A future interactive Agent API OAuth audience would be a separate
 metadata/grant contract.
+
+The capabilities GET and invocation POST use the same descriptor transport
+allowlist and deployment/site/credential/scope/policy exposure intersection as
+MCP. Agent HTTP cannot be used to invoke a capability hidden from its effective
+Gateway profile. Conversely, an explicitly enabled `approved-execute`
+Agent HTTP credential retains the complete shipped capability inventory; this
+projection rule narrows default exposure without deleting functionality.
 
 The artifact GET accepts only the same `agent-http` audience and logical
 preview/artifact ids returned by an authorized ChangeSet preview. The server

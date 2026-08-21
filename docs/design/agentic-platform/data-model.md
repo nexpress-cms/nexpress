@@ -129,38 +129,39 @@ Constraints:
 Local automation and non-OAuth machine clients may use opaque service tokens.
 Only their hashes are stored.
 
-| Column                     | Type                 | Rules                                                                |
-| -------------------------- | -------------------- | -------------------------------------------------------------------- |
-| `id`                       | uuid PK              | Generated                                                            |
-| `site_id`                  | text                 | Must match the principal                                             |
-| `principal_id`             | uuid                 | Required                                                             |
-| `name`                     | text                 | Operator label                                                       |
-| `prefix`                   | text                 | Exact derived `npst1_<lowercase-canonical-id>`; unique display id    |
-| `token_hash`               | text                 | Unique versioned HMAC-SHA-256 verifier                               |
-| `hash_key_id`              | text                 | Non-secret id in the dedicated token-hash keyring                    |
-| `rotation_family_id`       | uuid                 | Stable family for replacement lineage                                |
-| `family_authority_version` | integer              | Positive immutable authority/scope generation for the family         |
-| `family_generation`        | integer              | Positive monotonic generation; unique per family                     |
-| `replaces_token_id`        | uuid nullable unique | Prior same-site/principal/family token                               |
-| `row_version`              | integer              | Positive optimistic-lock version                                     |
-| `status`                   | text                 | `active_head`, `overlap`, `revoked`, or `expired`                    |
-| `scopes`                   | text[]               | Sorted exact narrowing subset containing `site:read`; never implicit |
-| `transport`                | text                 | `stdio`, `mcp-http`, or `agent-http`                                 |
-| `audience`                 | text                 | Exact transport-bound audience                                       |
-| `expires_at`               | timestamptz          | Required; bounded maximum lifetime                                   |
-| `last_used_at`             | timestamptz nullable | Never used as authorization state                                    |
-| `created_by`               | uuid nullable        | Staff creator                                                        |
-| `created_at`               | timestamptz          | Required                                                             |
-| `overlap_expires_at`       | timestamptz nullable | Old-token cutoff set when a replacement activates                    |
-| `revoked_at`               | timestamptz nullable | Null while active                                                    |
+| Column                     | Type                 | Rules                                                                 |
+| -------------------------- | -------------------- | --------------------------------------------------------------------- |
+| `id`                       | uuid PK              | Generated                                                             |
+| `site_id`                  | text                 | Must match the principal                                              |
+| `principal_id`             | uuid                 | Required                                                              |
+| `name`                     | text                 | Operator label                                                        |
+| `prefix`                   | text                 | Exact derived `npst1_<lowercase-canonical-id>`; unique display id     |
+| `token_hash`               | text                 | Unique versioned HMAC-SHA-256 verifier                                |
+| `hash_key_id`              | text                 | Non-secret id in the dedicated token-hash keyring                     |
+| `rotation_family_id`       | uuid                 | Stable family for replacement lineage                                 |
+| `family_authority_version` | integer              | Positive immutable authority/scope/exposure generation for the family |
+| `family_generation`        | integer              | Positive monotonic generation; unique per family                      |
+| `replaces_token_id`        | uuid nullable unique | Prior same-site/principal/family token                                |
+| `row_version`              | integer              | Positive optimistic-lock version                                      |
+| `status`                   | text                 | `active_head`, `overlap`, `revoked`, or `expired`                     |
+| `scopes`                   | text[]               | Sorted exact narrowing subset containing `site:read`; never implicit  |
+| `transport`                | text                 | `stdio`, `mcp-http`, or `agent-http`                                  |
+| `exposure_mode`            | text                 | Immutable `read`, `propose`, or `approved-execute` ceiling            |
+| `audience`                 | text                 | Exact transport-bound audience                                        |
+| `expires_at`               | timestamptz          | Required; bounded maximum lifetime                                    |
+| `last_used_at`             | timestamptz nullable | Never used as authorization state                                     |
+| `created_by`               | uuid nullable        | Staff creator                                                         |
+| `created_at`               | timestamptz          | Required                                                              |
+| `overlap_expires_at`       | timestamptz nullable | Old-token cutoff set when a replacement activates                     |
+| `revoked_at`               | timestamptz nullable | Null while active                                                     |
 
 The plaintext wire is exactly `npst1_<lowercase-canonical-id>_<secret>`.
 Parsing the middle UUID selects the row; `prefix` is a checked generated
 projection of `id`, never random or independently writable. The plaintext
 token is returned once. Listing returns only id, name, prefix,
-effective scopes, timestamps, and status. Remote MCP OAuth must not be
-implemented by accepting one of these tokens as an upstream or downstream
-provider token. The valid audience is
+effective scopes, exposure mode, timestamps, and status. Remote MCP OAuth must
+not be implemented by accepting one of these tokens as an upstream or
+downstream provider token. The valid audience is
 `urn:nexpress:agent-gateway:stdio` for `stdio`, the canonical
 `https://<site-host>/api/mcp` resource for `mcp-http`, or the canonical
 `https://<site-host>/api/agent/v1` resource for `agent-http`; a token is never
@@ -175,9 +176,9 @@ replacements. Rotate-versus-rotate and rotate-versus-revoke therefore have one
 winner; the loser returns a version conflict and no plaintext token.
 
 A pure credential rotation copies the same
-`family_authority_version`, principal, scopes, transport, and audience.
-Changing any authority field is not rotation: it revokes the old family and
-creates a new family/authority version with fresh one-time material.
+`family_authority_version`, principal, scopes, transport, exposure mode, and
+audience. Changing any authority field is not rotation: it revokes the old
+family and creates a new family/authority version with fresh one-time material.
 
 Rotation returns its replacement plaintext once,
 and sets the old row's `overlap_expires_at` from the shared
@@ -207,10 +208,12 @@ The built-in server adds:
   state; v1 does not issue a client secret;
 - `np_agent_oauth_requests` — one pending authorization/consent transaction
   with site, client, staff-session reference, exact redirect URI, bounded
-  client `state`, requested scopes/resource, PKCE `S256` challenge, one-time
+  client `state`, requested scopes/resource and exact
+  `nexpress_gateway_mode`, PKCE `S256` challenge, one-time
   consent-challenge verifier, status, and 10-minute expiry;
 - `np_agent_oauth_grants` — client, staff resource owner, principal, site,
-  approved scope subset containing `site:read`, exact resource/audience, token
+  approved scope subset containing `site:read`, approved immutable exposure
+  ceiling, exact resource/audience, token
   version, positive consent generation, expiry, and revocation state;
 - `np_agent_oauth_refresh_tokens` — grant/family id, current and parent token
   ids, versioned HMAC verifier plus hash-key id, status, expiry, consumed time,
@@ -218,7 +221,7 @@ The built-in server adds:
   revocation are durable;
 - `np_agent_oauth_codes` — short-lived one-time authorization-code hash plus
   authorization-request id, grant, staff session, client, redirect URI, site,
-  scope, resource, and PKCE `S256` challenge binding; the code hash also
+  scope, exposure mode, resource, and PKCE `S256` challenge binding; the code hash also
   records its hash-key id.
 
 The relational contract is:
@@ -230,10 +233,10 @@ The relational contract is:
   status-consistent `authorized_at`/`denied_at`/`consumed_at`/`expired_at`,
   and are unique by that verifier;
 - at most one `active` grant exists for one
-  `(site_id, client_id, staff_user_id, resource, scope_hash)` tuple; grant
-  status is `active`, `revoked`, or `expired`, its positive consent generation
-  is unique/monotonic for that tuple, and its authority version starts at `1`
-  and increments monotonically;
+  `(site_id, client_id, staff_user_id, resource, scope_hash, exposure_mode)`
+  tuple; grant status is `active`, `revoked`, or `expired`, its positive
+  consent generation is unique/monotonic for that tuple, and its authority
+  version starts at `1` and increments monotonically;
 - refresh rows have status `active`, `consumed`, `revoked`, or `expired`;
   `token_id` is a globally unique canonical lowercase UUID embedded as the
   `nprt1` public id, each verifier is unique, and exactly one active leaf may
@@ -253,6 +256,10 @@ purpose/site/id-bound `ov1` contract in
 bare random token or a reusable hash from another material kind.
 
 Access tokens are short-lived, audience-bound signed tokens and are not stored.
+Their claims freeze the grant exposure ceiling alongside site, client, scope,
+resource, grant, and authority versions. A later deployment/site widening does
+not widen an existing grant or token; a broader profile requires fresh consent
+or a new service-token family.
 The dedicated Agent Gateway signing key and published verification-key adapter
 are deployment secrets, not database rows and not the staff/member
 `NP_SECRET`. Expired codes and refresh-token verifier rows are pruned in
@@ -264,7 +271,7 @@ used as authority, and echoed only to the already validated redirect URI.
 Authorize POST consumes the consent challenge with compare-and-swap and moves
 the request to `authorized` or `denied`; an authorized request creates the
 grant/code in the same transaction. Replay, expiry, staff-session mismatch, or
-any changed client/redirect/resource/scope/PKCE field fails closed.
+any changed client/redirect/resource/scope/exposure/PKCE field fails closed.
 
 The request state machine is exact:
 `pending→authorized|denied|expired`, `authorized→consumed|expired`, and no
@@ -1799,6 +1806,7 @@ type NpAgentInvocationAuthorityRefV1 =
       rotationFamilyId: string;
       familyAuthorityVersion: number;
       principalTokenVersion: number;
+      exposureMode: "read" | "propose" | "approved-execute";
       audience: string;
     }
   | {
@@ -1808,6 +1816,7 @@ type NpAgentInvocationAuthorityRefV1 =
       grantId: string;
       grantVersion: number;
       principalTokenVersion: number;
+      exposureMode: "read" | "propose" | "approved-execute";
       audience: string;
     }
   | {
@@ -1822,8 +1831,8 @@ type NpAgentInvocationAuthorityRefV1 =
 Its canonical digest is `authorization_context_fingerprint`. Current
 authorization resolves the referenced session/family/grant/run plus
 principal/user, site membership, versions, expiry, audience, and effective
-scope/capability/resource visibility; the stored values are comparison facts,
-not authority by themselves.
+scope/exposure/capability/resource visibility; the stored values are comparison
+facts, not authority by themselves.
 
 One-time plaintext or short-lived browser attenuator operations are the
 explicit exception to result replay. Service-token create/rotate and approval
@@ -2974,6 +2983,29 @@ queries remain site-scoped, and raw notes are not sent to a provider.
 
 ## 8. Settings, budgets, and quotas
 
+Site-wide Agent Gateway intent is a separate exact `np_settings` key,
+`agents.gateway`:
+
+```ts
+interface NpAgentGatewaySettingsV1 {
+  schemaVersion: "np.agent-gateway-settings.v1";
+  stdio: NpAgentGatewayExposureMode;
+  mcpHttp: NpAgentGatewayExposureMode;
+  agentHttp: NpAgentGatewayExposureMode;
+}
+```
+
+An absent key means all three transports are `disabled`. Deployment config
+provides the same per-transport hard ceilings; a site setting may only narrow
+them. A service token or OAuth grant freezes another non-disabled ceiling no
+broader than both. Increasing a deployment or site value never widens an
+existing credential/grant, and lowering either takes effect on the next list,
+read, or invocation. `approved-execute` preserves the complete bounded
+Gateway feature set but still grants no scope and satisfies no capability
+approval. Mixed proposal/effect tools resolve the exact input-selected effect
+profile, so `propose` can prepare/request approval without admitting the
+effecting branch. The setting contains no host, port, relay, token, or secret.
+
 Site-wide runtime intent is a new exact `np_settings` key,
 `agents.runtime`. It includes:
 
@@ -3298,8 +3330,9 @@ contract.
 
 ## 11. Transfer, backup, and migration
 
-- Content transfer excludes every table in this document, the `agents.runtime`
-  setting, secrets, policies, signals, incidents, and history.
+- Content transfer excludes every table in this document, the `agents.gateway`
+  and `agents.runtime` settings, secrets, policies, signals, incidents, and
+  history.
 - Physical database/media backup includes them naturally. Restore validation
   checks that vault master-key configuration can decrypt or intentionally
   revoke restored credential rows before enabling Agent Runtime.
@@ -3340,3 +3373,9 @@ The first schema PR must implement these decisions rather than reopen them:
    10 minutes, refresh inactivity 7 days, and a refresh family at most 30 days,
    with 60 seconds maximum verification clock skew. Deployment policy may only
    shorten those bounds.
+7. Gateway exposure is the ordered `disabled`, `read`, `propose`,
+   `approved-execute` inventory at deployment, site, and immutable
+   credential/grant layers. Remote MCP uses only the canonical application's
+   HTTPS listener and is absent by default; no schema stores an MCP port,
+   relay, or tunnel. The maximum explicit mode preserves the complete bounded
+   tool/capability inventory without granting scopes or approval.

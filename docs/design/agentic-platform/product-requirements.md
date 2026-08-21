@@ -184,9 +184,11 @@ agent credential to finish build work.
 **Trigger:** a user asks an MCP-capable client to work on one existing site.
 
 1. The pre-registered client starts NexPress Authorization Code + PKCE for the
-   exact `/api/mcp` resource, site, redirect URI, and requested scopes.
-2. NexPress authenticates the staff browser, shows client/site/scope/expiry
-   facts, and lets an authorized operator narrow or deny the request.
+   exact `/api/mcp` resource, site, redirect URI, requested scopes, and
+   requested exposure mode.
+2. NexPress authenticates the staff browser, shows
+   client/site/scope/exposure/expiry facts, and lets an authorized operator
+   narrow or deny the request.
 3. Consent creates the site-scoped principal/grant and one-time code; the
    client exchanges it for short-lived NexPress tokens. No staff cookie,
    provider key, or upstream identity token is passed through.
@@ -302,7 +304,7 @@ model spend.
    artifact used by the shipped CLI contract.
 4. NexPress displays the exact command/action allowlist entry, plan ID,
    evidence, preconditions, expected mutation, required staff capability, and
-   whether remote mutations are enabled.
+   the effective Gateway exposure mode and whether it admits remote mutation.
 5. A permitted reader can inspect the plan. Execution still requires the
    existing feature gate, `admin.manage`, and the task-specific hash-bound
    approval.
@@ -367,17 +369,19 @@ semantic replacement requires a new ID and an explicit supersession note.
 
 ### 9.2 Shared capabilities and Agent Gateway
 
-| ID           | Requirement                                                                                                                                                                                                    |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PR-GWY-001` | External MCP clients and internal Agent Runtime jobs must call the same capability registry and execution facade.                                                                                              |
-| `PR-GWY-002` | Every registered capability must declare exact input/output schemas, required scopes, risk, approval policy, reversibility, idempotency behavior, resource limits, and server-owned executor.                  |
-| `PR-GWY-003` | The public tool inventory must remain bounded and purpose-oriented; OpenAPI operations may inform schemas but must not automatically become one tool each.                                                     |
-| `PR-GWY-004` | MCP resources must project only bounded client-safe OpenAPI and public discovery metadata; server functions, access callbacks, persisted plugin config, credentials, and executable values must remain absent. |
-| `PR-GWY-005` | Remote MCP authorization must bind audience, site, client, scopes, expiry, and revocation. Local credentials must receive equivalent scope and audit enforcement.                                              |
-| `PR-GWY-006` | Every mutation must require a caller-stable idempotency key and return the previously recorded compatible outcome on a valid retry.                                                                            |
-| `PR-GWY-007` | Capability errors must use the shipped bounded API error envelope with stable safe codes; provider or internal errors must be normalized and may not leak secrets.                                             |
-| `PR-GWY-008` | Capability calls must be rate-limited and quota-limited by site, agent, credential, capability, and provider budget as applicable.                                                                             |
-| `PR-GWY-009` | Read-only public discovery must not imply agent authorization, and an MCP client must be unable to exchange a discovery response for mutation authority.                                                       |
+| ID           | Requirement                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PR-GWY-001` | External MCP clients and internal Agent Runtime jobs must call the same capability registry and execution facade.                                                                                                                                                                                                                                                                                                                       |
+| `PR-GWY-002` | Every registered capability must declare exact input/output schemas, required scopes, risk, approval policy, reversibility, idempotency behavior, resource limits, and server-owned executor.                                                                                                                                                                                                                                           |
+| `PR-GWY-003` | The 18-tool v1 master inventory must remain bounded, purpose-oriented, and complete at the maximum explicit exposure; each client list is the deterministic intersection of transport, deployment, site, immutable credential/grant, scope, and policy ceilings. OpenAPI operations may inform schemas but must not automatically become one tool each.                                                                                 |
+| `PR-GWY-004` | MCP resources must project only bounded client-safe OpenAPI and public discovery metadata; server functions, access callbacks, persisted plugin config, credentials, and executable values must remain absent.                                                                                                                                                                                                                          |
+| `PR-GWY-005` | Remote MCP authorization must bind audience, site, client, scopes, exposure mode, expiry, and revocation. Local credentials must receive equivalent scope, exposure, and audit enforcement.                                                                                                                                                                                                                                             |
+| `PR-GWY-006` | Every mutation must require a caller-stable idempotency key and return the previously recorded compatible outcome on a valid retry.                                                                                                                                                                                                                                                                                                     |
+| `PR-GWY-007` | Capability errors must use the shipped bounded API error envelope with stable safe codes; provider or internal errors must be normalized and may not leak secrets.                                                                                                                                                                                                                                                                      |
+| `PR-GWY-008` | Capability calls must be rate-limited and quota-limited by site, agent, credential, capability, and provider budget as applicable.                                                                                                                                                                                                                                                                                                      |
+| `PR-GWY-009` | Read-only public discovery must not imply agent authorization, and an MCP client must be unable to exchange a discovery response for mutation authority.                                                                                                                                                                                                                                                                                |
+| `PR-GWY-010` | Local MCP must use stdio without a network listener. Remote MCP must be absent by default and, when explicitly enabled, mount only on the existing canonical HTTPS origin; NexPress must not require a dedicated MCP port, standalone public listener, hosted relay, or automatic tunnel.                                                                                                                                               |
+| `PR-GWY-011` | Gateway exposure modes must be the closed ordered inventory `disabled`, `read`, `propose`, and `approved-execute`. They may only narrow authority, never grant scopes or lower approval floors; admission checks the exact input-selected effect profile, so proposal/approval-request branches remain usable without admitting their higher effecting branch, and the maximum mode preserves every shipped bounded Gateway capability. |
 
 ### 9.3 Agent ChangeSets and approvals
 
@@ -534,18 +538,23 @@ Acceptance:
 
 ### Phase 2 — Agent Gateway and ChangeSets
 
-**Scope:** local/remote MCP, bounded resources and tools, external agent
-authorization, content read/draft capabilities, ChangeSet validation, preview,
-approval, apply, verification, and rollback.
+**Scope:** local-first stdio MCP, optional same-origin remote MCP, bounded
+resources and tools, external agent authorization, content read/draft
+capabilities, ChangeSet validation, preview, approval, apply, verification,
+and rollback. Exposure profiles stage authority without deleting any master
+inventory capability.
 
 Acceptance:
 
-- `PR-GWY-001` through `PR-GWY-009` and `PR-CHG-001` through `PR-CHG-012`
+- `PR-GWY-001` through `PR-GWY-011` and `PR-CHG-001` through `PR-CHG-012`
   pass contract, transport, replay, stale-write, cross-site, and integration
   tests.
 - A newly authorized external client can discover the bounded tool set, query
   one permitted collection, create a multi-document draft ChangeSet, and
   render a preview without receiving a staff password.
+- A maximum-profile test principal with every required scope sees all shipped
+  members of the 18-tool master inventory, while every lower profile and
+  narrowed grant exposes only its exact deterministic subset.
 - The approval page displays only server-derived target/diff/risk/check/policy
   facts, binds approval to the proposal hash, and rejects expiry, replay,
   modified payloads, and changed target versions.

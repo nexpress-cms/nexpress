@@ -96,7 +96,11 @@ The plan uses five product terms consistently:
 
 - **Agent Studio** — Admin surfaces for connections, agents, policies,
   activity, approvals, incidents, and budgets.
-- **Agent Gateway** — local and remote MCP plus agent-oriented HTTP resources.
+- **Agent Gateway** — local-first stdio MCP, explicitly enabled same-origin
+  remote MCP, and agent-oriented HTTP resources over one capability registry.
+  NexPress opens no dedicated MCP port; ordered exposure ceilings narrow which
+  tools each transport/principal sees while the maximum explicit mode retains
+  the complete bounded feature inventory.
 - **Agent Runtime** — durable triggers, runs, provider calls, and verification
   performed by the site worker.
 - **Agent ChangeSet** — a versioned editable draft whose validated plan
@@ -104,6 +108,15 @@ The plan uses five product terms consistently:
   execution, verification, and rollback records.
 - **Guardian** — application-level moderation and security-signal correlation;
   it complements rather than replaces a WAF, IDS, malware scanner, or SIEM.
+
+Gateway modes change exposure, not the shipped feature set:
+
+| Mode               | Effective surface                                                                              |
+| ------------------ | ---------------------------------------------------------------------------------------------- |
+| `disabled`         | No tools, resources, prompts, or remote discovery for that transport                           |
+| `read`             | Bounded site/content/ChangeSet/audit/ops/incident inspection                                   |
+| `propose`          | All lower access plus ChangeSets, previews, plans, and approval requests; no effects           |
+| `approved-execute` | The full 18-tool inventory; effecting branches still require normal scopes and policy/approval |
 
 ## Current foundation
 
@@ -140,6 +153,13 @@ direction is fixed:
 @nexpress/mcp                     optional stdio/remote protocol adapter;
                                   calls the same app/core capability facade
 ```
+
+The adapter is never the authority source. Core descriptors and effect profiles
+declare exact transport projection and minimum exposure; deployment intent,
+site setting, credential/grant ceiling, scopes, policy, resource authorization,
+quota, and approval are intersected at every list/read/call. Therefore
+disabling remote MCP removes only that ingress surface and never disables
+Agent Studio, internal Runtime, or local stdio when separately enabled.
 
 Core must not import Next.js, Admin, or MCP transport code. The Admin package
 may import only client-safe `agent-contract` validators. Every site-owned
