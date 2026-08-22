@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NpAgentContractError } from "./contract.js";
 import {
   analyzeAgentCanonicalJsonValue,
+  analyzeAgentCanonicalJsonValueWithLimits,
   buildAgentCanonicalFoundationBytes,
   serializeAgentCanonicalJson,
 } from "./canonical-foundation.js";
@@ -113,6 +114,30 @@ describe("Agent canonical JSON foundation", () => {
         x: "a".repeat(maximum - 7),
       }),
     ).toThrow(NpAgentContractError);
+  });
+
+  it("enforces injected canonical UTF-8 byte limits before serialization", () => {
+    const source = { "\n": "😀", value: "é" };
+    const bytes = new TextEncoder().encode(serializeAgentCanonicalJson(source)).byteLength;
+    const limits = {
+      maximumDepth: 8,
+      maximumNodes: 32,
+      maximumArrayItems: 8,
+      maximumObjectProperties: 8,
+      maximumStringCharacters: 32,
+      maximumCanonicalBytes: bytes,
+    };
+
+    expect(analyzeAgentCanonicalJsonValueWithLimits(source, "fixture", limits)).toMatchObject({
+      ok: true,
+      value: source,
+    });
+    expect(
+      analyzeAgentCanonicalJsonValueWithLimits(source, "fixture", {
+        ...limits,
+        maximumCanonicalBytes: bytes - 1,
+      }),
+    ).toMatchObject({ ok: false, issues: [{ code: "limit" }] });
   });
 
   it("rejects cycles, shared references, sparse arrays, and non-data properties", () => {
