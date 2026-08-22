@@ -11,6 +11,8 @@ export interface CanonicalBodyInspectionState {
 
 const UUID_PATTERN = new RegExp(npAuthUuidPattern, "u");
 const IDENTIFIER_PATTERN = /^[a-z][a-z0-9_-]{0,39}(?:\.[a-z][a-z0-9_-]{0,39})*$/u;
+const SHA_256_DIGEST_PATTERN = /^cj1:sha256:[A-Za-z0-9_-]{43}$/u;
+const CANONICAL_UTC_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u;
 const CAPABILITY_IDS = new Set<string>(npAgentCapabilityIds);
 const USER_ROLES = new Set<string>(npUserRoles);
 const CAPABILITY_INVENTORY = {
@@ -202,6 +204,24 @@ export function canonicalBodyAscii(value: unknown, path: string, maximum: number
 export function canonicalBodyUuid(value: unknown, path: string): string {
   if (typeof value !== "string" || !UUID_PATTERN.test(value)) {
     failCanonicalBody("invalid-field", path, "must be a canonical lowercase UUID");
+  }
+  return value;
+}
+
+export function canonicalBodySha256Digest(value: unknown, path: string): string {
+  if (typeof value !== "string" || !SHA_256_DIGEST_PATTERN.test(value)) {
+    failCanonicalBody("invalid-field", path, "must be a canonical Agent SHA-256 digest");
+  }
+  return value;
+}
+
+export function canonicalBodyUtc(value: unknown, path: string): string {
+  if (typeof value !== "string" || !CANONICAL_UTC_PATTERN.test(value)) {
+    failCanonicalBody("invalid-field", path, "must be a canonical UTC ISO timestamp");
+  }
+  const milliseconds = Date.parse(value);
+  if (!Number.isFinite(milliseconds) || new Date(milliseconds).toISOString() !== value) {
+    failCanonicalBody("invalid-field", path, "must be a canonical UTC ISO timestamp");
   }
   return value;
 }

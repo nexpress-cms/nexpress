@@ -388,11 +388,20 @@ interface NpAgentRecipeRegistryCanonicalV1 {
 }
 ```
 
-The authorization actor branch must agree with `authorityRef`; a staff actor
-uses only `staff-session`, while principal actors use the matching service,
-OAuth, or Runtime branch. `gatewayExposure` is non-null exactly for an admitted
-service/OAuth Gateway authority and null for Runtime/Admin; its value is the
-already narrowed effective ceiling, never a caller request. Budget source refs
+The authorization actor id and branch must byte-equal `authorityRef`. A staff
+actor uses only `staff-session`, `transport:"admin"`, and null exposure. A
+principal `service-family` uses the audience-selected transport:
+`urn:nexpress:agent-gateway:stdio` selects `stdio`, canonical queryless HTTPS
+`/api/mcp` selects `mcp-service`, and canonical queryless HTTPS
+`/api/agent/v1` selects `agent-api`. A principal `oauth-grant` uses only
+`transport:"mcp-oauth"` and a canonical queryless HTTPS `/api/mcp` audience. A
+principal `runtime-run` uses only `transport:"runtime"` and null exposure.
+Service/OAuth `gatewayExposure` is non-null and byte-equal to the authority's
+`exposureMode`; it is the already narrowed effective ceiling, never a caller
+request. Actor fingerprints, OAuth client ids, and audiences are bounded
+visible ASCII. Authority ids are canonical lowercase UUIDs, authority versions
+are positive integers except that the staff user token version may be zero,
+and the Runtime deadline is canonical millisecond UTC. Budget source refs
 sort by `(kind,id-or-empty,version,digest)` and are unique. The recipe is null
 for Gateway/deterministic admission without a recipe.
 
@@ -2252,6 +2261,39 @@ export const npAgentCanonicalBranchIncludedKeysV1 = {
   ],
   "np.agent-authorization-context.v1.actor.principal": ["kind", "principalId", "actorFingerprint"],
   "np.agent-authorization-context.v1.actor.staff": ["kind", "userId", "actorFingerprint"],
+  "np.agent-authorization-context.v1.authorityRef.staff-session": [
+    "kind",
+    "userId",
+    "sessionId",
+    "userTokenVersion",
+    "siteAuthorizationDigest",
+  ],
+  "np.agent-authorization-context.v1.authorityRef.service-family": [
+    "kind",
+    "principalId",
+    "rotationFamilyId",
+    "familyAuthorityVersion",
+    "principalTokenVersion",
+    "exposureMode",
+    "audience",
+  ],
+  "np.agent-authorization-context.v1.authorityRef.oauth-grant": [
+    "kind",
+    "principalId",
+    "clientId",
+    "grantId",
+    "grantVersion",
+    "principalTokenVersion",
+    "exposureMode",
+    "audience",
+  ],
+  "np.agent-authorization-context.v1.authorityRef.runtime-run": [
+    "kind",
+    "principalId",
+    "runId",
+    "agentVersionId",
+    "deadlineAt",
+  ],
   "np.agent-capability-registry.v1.projection.definition": [
     "schemaVersion",
     "projection",
@@ -2415,6 +2457,22 @@ export const npAgentCanonicalDiscriminatorCasesV1: Partial<
     {
       caseId: "np.agent-authorization-context.v1.actor.staff",
       selector: { jsonPointerPattern: "/actor/kind", acceptedValues: ["staff"] },
+    },
+    {
+      caseId: "np.agent-authorization-context.v1.authorityRef.staff-session",
+      selector: { jsonPointerPattern: "/authorityRef/kind", acceptedValues: ["staff-session"] },
+    },
+    {
+      caseId: "np.agent-authorization-context.v1.authorityRef.service-family",
+      selector: { jsonPointerPattern: "/authorityRef/kind", acceptedValues: ["service-family"] },
+    },
+    {
+      caseId: "np.agent-authorization-context.v1.authorityRef.oauth-grant",
+      selector: { jsonPointerPattern: "/authorityRef/kind", acceptedValues: ["oauth-grant"] },
+    },
+    {
+      caseId: "np.agent-authorization-context.v1.authorityRef.runtime-run",
+      selector: { jsonPointerPattern: "/authorityRef/kind", acceptedValues: ["runtime-run"] },
     },
   ],
   "np.agent-capability-registry.v1": [
@@ -2640,7 +2698,7 @@ element has passed its exact analyzer; no locale collation is allowed.
 | `np.agent-approval-revocation.v1`      | none                                                                                                 | prior `decisionHash` may be null; non-human reason must be null                                                                                   |
 | `np.agent-approval-statement.v1`       | scopes, capabilities, predicates, and policy hashes sorted unique                                    | preview id/digest are both non-null iff live preview is required; action run/agent ids may independently be null as frozen                        |
 | `np.agent-artifact.v1`                 | artifacts by unique positive ordinal; report parts contiguous                                        | screenshot locator/viewport non-null and report parts null; report locator/viewport null and both part fields non-null                            |
-| `np.agent-authorization-context.v1`    | scopes inside referenced authority contracts retain their owner ordering                             | staff actor ↔ staff-session and Runtime principal require null exposure; service/OAuth principal requires non-null effective exposure             |
+| `np.agent-authorization-context.v1`    | no arrays                                                                                            | actor id/branch, transport, audience, and exposure follow the exact staff/service/OAuth/Runtime matrix; staff/Runtime exposure is null            |
 | `np.agent-budget-snapshot.v1`          | source refs by `(kind,id-or-empty,version,digest)` unique                                            | Agent/recipe both null for Gateway; recipe may be non-null with Agent only                                                                        |
 | `np.agent-capability-registry.v1`      | capabilities by id; effects by profile id; descriptor sets sorted unique                             | analyzer: definition exactly one, registry non-empty, effect matrix exact; domain builder: registry equals complete installed set                 |
 | `np.agent-changeset-plan.v1`           | branch operations by unique ordinal; rollback original ordinals unique; all set arrays sorted unique | `planKind` selects the exact body; initial owns a sealed duration and no rollback ids; rollback owns compensation ids/absolute expiry             |

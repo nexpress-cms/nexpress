@@ -2,3 +2,4 @@
 export * from "./types.js";
 export * from "./contract.js";
 export * from "./canonical-bodies.js";
+export * from "./canonical-authorization-context.js";
