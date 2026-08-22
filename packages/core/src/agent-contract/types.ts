@@ -21,6 +21,60 @@ export interface NpAgentCanonicalBodyBytesV1<
   domainSeparatedUtf8: Uint8Array;
 }
 
+export type NpAgentInvocationAuthorityRefV1 =
+  | {
+      kind: "staff-session";
+      userId: string;
+      sessionId: string;
+      userTokenVersion: number;
+      siteAuthorizationDigest: string;
+    }
+  | {
+      kind: "service-family";
+      principalId: string;
+      rotationFamilyId: string;
+      familyAuthorityVersion: number;
+      principalTokenVersion: number;
+      exposureMode: NpAgentEnabledGatewayExposureMode;
+      audience: string;
+    }
+  | {
+      kind: "oauth-grant";
+      principalId: string;
+      clientId: string;
+      grantId: string;
+      grantVersion: number;
+      principalTokenVersion: number;
+      exposureMode: NpAgentEnabledGatewayExposureMode;
+      audience: string;
+    }
+  | {
+      kind: "runtime-run";
+      principalId: string;
+      runId: string;
+      agentVersionId: string;
+      deadlineAt: string;
+    };
+
+export interface NpAgentAuthorizationContextCanonicalV1 {
+  schemaVersion: "np.agent-authorization-context.v1";
+  siteId: string;
+  actor:
+    | {
+        kind: "principal";
+        principalId: string;
+        actorFingerprint: string;
+      }
+    | {
+        kind: "staff";
+        userId: string;
+        actorFingerprint: string;
+      };
+  transport: "mcp-oauth" | "mcp-service" | "stdio" | "agent-api" | "runtime" | "admin";
+  gatewayExposure: NpAgentEnabledGatewayExposureMode | null;
+  authorityRef: NpAgentInvocationAuthorityRefV1;
+}
+
 export const npAgentCanonicalPurposes = [
   "np.agent-action.v1",
   "np.agent-approval-decision.v1",
