@@ -318,6 +318,32 @@ export const npAgentCapabilityIds = [
 export type NpCoreAgentCapabilityId = (typeof npAgentCapabilityIds)[number];
 export type NpAgentCapabilityId = NpCoreAgentCapabilityId;
 
+interface NpAgentInvocationRequestCanonicalCommonV1 {
+  schemaVersion: "np.agent-idempotency-request.v1";
+  siteId: string;
+  actorKind: "principal" | "staff";
+  actorFingerprint: string;
+  authorizationContextFingerprint: string;
+  contractVersion: number;
+  contractFingerprint: string;
+  input: NpAgentJsonObject;
+}
+
+export type NpAgentInvocationRequestCanonicalV1 =
+  | (NpAgentInvocationRequestCanonicalCommonV1 & {
+      operationKind: "capability";
+      operationId: NpAgentCapabilityId;
+      effectProfile: {
+        id: string;
+        contractVersion: number;
+      };
+    })
+  | (NpAgentInvocationRequestCanonicalCommonV1 & {
+      operationKind: "admin";
+      operationId: string;
+      effectProfile: null;
+    });
+
 export const npAgentCapabilityRisks = ["read", "reversible", "sensitive", "destructive"] as const;
 export type NpAgentCapabilityRisk = (typeof npAgentCapabilityRisks)[number];
 

@@ -694,22 +694,31 @@ do not alter the immutable evidence digest.
 ### 2.7 Invocation idempotency and MCP task result
 
 ```ts
-interface NpAgentInvocationRequestCanonicalV1 {
+interface NpAgentInvocationRequestCanonicalCommonV1 {
   schemaVersion: "np.agent-idempotency-request.v1";
   siteId: string;
   actorKind: "principal" | "staff";
   actorFingerprint: string;
   authorizationContextFingerprint: string;
-  operationKind: "capability" | "admin";
-  operationId: string;
   contractVersion: number;
   contractFingerprint: string;
-  effectProfile: {
-    id: string;
-    contractVersion: number;
-  } | null;
   input: NpAgentJsonObject;
 }
+
+type NpAgentInvocationRequestCanonicalV1 =
+  | (NpAgentInvocationRequestCanonicalCommonV1 & {
+      operationKind: "capability";
+      operationId: NpAgentCapabilityId;
+      effectProfile: {
+        id: string;
+        contractVersion: number;
+      };
+    })
+  | (NpAgentInvocationRequestCanonicalCommonV1 & {
+      operationKind: "admin";
+      operationId: string;
+      effectProfile: null;
+    });
 
 type NpAgentMcpStoredTerminalResultV1 =
   | {
@@ -729,9 +738,20 @@ type NpAgentMcpStoredTerminalResultV1 =
 ```
 
 Capability/Admin input is reparsed by the frozen operation analyzer before
-the idempotency body is built. Capability operations require the effect
-profile; Admin operations require null. For a schema-declared write-only Admin
-secret, the route-owned builder replaces the raw leaf with the exact
+the idempotency body is built. The context-free canonical analyzer then
+descriptor-safely copies one object-root I-JSON input with the invocation
+limits: depth 32, 20,000 nodes, 5,000 array items, 512 object properties,
+262,144 UTF-16 code units per string, and 4 MiB canonical input/body bytes. It rejects accessors,
+cycles, shared references, sparse or exotic arrays, exotic objects, lone
+surrogates, and non-finite numbers without coercion. Capability operations
+require one closed core `NpAgentCapabilityId` and a non-null effect profile;
+the domain builder binds that profile to the frozen registry. Admin operations
+require a canonical Agent identifier plus `null`, and the domain builder binds
+that identifier, version, and fingerprint to the closed route-operation
+registry. Every present contract version is a positive signed 32-bit integer. Actor fingerprints
+are non-empty visible ASCII of at most 256 characters; authorization and
+contract fingerprints are exact `cj1:sha256:` digests. For a schema-declared
+write-only Admin secret, the route-owned builder replaces the raw leaf with the exact
 non-secret vault commitment
 `{kind:"vault-request",vaultOperationId,secretVersionId,requestDigest}` before
 assigning `input`; the dedicated vault request HMAC binds the secret bytes.
@@ -2182,6 +2202,7 @@ Security- and plan-sensitive nested inclusions are literal too:
 ```ts
 export const npAgentCanonicalNestedIncludedKeysV1 = {
   "np.agent-action.v1.targetVersionFacts[]": ["targetRef", "versionDigest"],
+  "np.agent-idempotency-request.v1.effectProfile": ["id", "contractVersion"],
   "np.agent-changeset-plan.v1.body.changeset.operations[]": [
     "ordinal",
     "operation",
@@ -2293,6 +2314,32 @@ export const npAgentCanonicalBranchIncludedKeysV1 = {
     "runId",
     "agentVersionId",
     "deadlineAt",
+  ],
+  "np.agent-idempotency-request.v1.operation.capability": [
+    "schemaVersion",
+    "siteId",
+    "actorKind",
+    "actorFingerprint",
+    "authorizationContextFingerprint",
+    "operationKind",
+    "operationId",
+    "contractVersion",
+    "contractFingerprint",
+    "effectProfile",
+    "input",
+  ],
+  "np.agent-idempotency-request.v1.operation.admin": [
+    "schemaVersion",
+    "siteId",
+    "actorKind",
+    "actorFingerprint",
+    "authorizationContextFingerprint",
+    "operationKind",
+    "operationId",
+    "contractVersion",
+    "contractFingerprint",
+    "effectProfile",
+    "input",
   ],
   "np.agent-capability-registry.v1.projection.definition": [
     "schemaVersion",
@@ -2473,6 +2520,16 @@ export const npAgentCanonicalDiscriminatorCasesV1: Partial<
     {
       caseId: "np.agent-authorization-context.v1.authorityRef.runtime-run",
       selector: { jsonPointerPattern: "/authorityRef/kind", acceptedValues: ["runtime-run"] },
+    },
+  ],
+  "np.agent-idempotency-request.v1": [
+    {
+      caseId: "np.agent-idempotency-request.v1.operation.capability",
+      selector: { jsonPointerPattern: "/operationKind", acceptedValues: ["capability"] },
+    },
+    {
+      caseId: "np.agent-idempotency-request.v1.operation.admin",
+      selector: { jsonPointerPattern: "/operationKind", acceptedValues: ["admin"] },
     },
   ],
   "np.agent-capability-registry.v1": [
@@ -2709,7 +2766,7 @@ element has passed its exact analyzer; no locale collation is allowed.
 | `np.agent-connection-operation.v1`     | secret ids unique in semantic-purpose order                                                          | expected secret/version pair; refresh generation only refresh; mutable deadline is excluded                                                       |
 | `np.agent-effect-profile.v1`           | none                                                                                                 | read has both ids null; mutation verifier required; compensator only compensatable; Gateway mutation exposure is null or at least `propose`       |
 | `np.agent-event.v1`                    | payload branch owns ordering                                                                         | subject, actor, causation, correlation, and dedup key are explicit null when absent; kind equals payload kind                                     |
-| `np.agent-idempotency-request.v1`      | normalized input owns ordering                                                                       | capability requires effect profile; Admin requires null                                                                                           |
+| `np.agent-idempotency-request.v1`      | frozen operation analyzer normalizes input; canonical JSON preserves array order                     | capability requires a closed capability id plus effect profile; Admin requires a closed route-operation id plus null                              |
 | `np.agent-mcp-task-result.v1`          | underlying validated MCP result owns ordering                                                        | exactly one of result/error; error `data` may be omitted and must not be synthesized                                                              |
 | `np.agent-notification-delivery.v1`    | payload analyzer owns ordering                                                                       | at least one source id; Admin omits adapter/connection; external requires both; provider receipt absent from body                                 |
 | `np.agent-policy.v1`                   | every policy set follows `NpAgentPolicyRulesV1`; quiet hours use normalized start/end order          | no null outer member; site/agent association is not content-hash input                                                                            |
