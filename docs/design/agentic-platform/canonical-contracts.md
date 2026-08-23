@@ -590,6 +590,17 @@ paired with named `npRequire*`, `npBuild*CanonicalBytes`, and
 `npDigest*Canonical` functions. The builders enforce the 4 MiB proposal and
 256 KiB snapshot ceilings before domain separation; proposal operations are
 not reordered on the caller's behalf.
+`npAnalyzeAgentChangeSetPlanCanonical()` provides the same context-free exact
+boundary for both discriminated plan branches, paired with
+`npRequireAgentChangeSetPlanCanonical()`,
+`npBuildAgentChangeSetPlanCanonicalBytes()`, and
+`npDigestAgentChangeSetPlanCanonical()`. It reparses every embedded operation
+and canonical resource key through the owner analyzers, enforces the exact
+branch/nested inventories, sorted set arrays, create-only null before hash,
+rollback source-ordinal uniqueness, residual-risk floor, sealed rollback
+duration, and the 4 MiB body ceiling. Neither plan operation array is reordered
+on the caller's behalf, and the resulting SHA-256 digest is the owning
+`planHash`.
 
 Both plan branches sort scope/capability/predicate/policy/residual-code arrays
 unique. In the initial branch, `beforeHash:null` is permitted only for a
