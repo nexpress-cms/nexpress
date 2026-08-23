@@ -103,6 +103,16 @@ inventories against
 local body, missing, duplicate, or reassigned purpose/body/self-exclusion
 fails AP-000 and blocks all later milestones.
 
+The capability-registry purpose has four checked golden projections: one
+singleton definition, its singleton registry sibling, one definition drawn
+from a multi-capability installed snapshot, and that complete sorted registry.
+Pure contract tests separate context-free cardinality from contextual
+completeness, require distinct domain-separated digests, cross-check every
+descriptor/effect/version binding, and reject incomplete retagging with
+`AGENT_CANONICAL_INCOMPLETE_REGISTRY`. Unknown runtime fields, accessor/proxy/
+cycle/shared/sparse inputs, invalid I-JSON, order/duplicate drift, integer
+boundaries, and the 16 MiB whole-body ceiling are hostile fixtures.
+
 A separate closed digest-kind test covers values deliberately outside the
 canonical-JSON registry: `ac1` raw artifact content, `aur1` artifact-upload
 requests, `aus1` artifact-upload sets, `auo1` terminal upload-operation
