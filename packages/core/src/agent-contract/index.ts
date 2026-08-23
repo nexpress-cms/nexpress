@@ -7,3 +7,5 @@ export * from "./canonical-idempotency-request.js";
 export * from "./canonical-mcp-task-result.js";
 export * from "./canonical-capability-registry.js";
 export * from "./canonical-recipe-registry.js";
+export * from "./changeset-contract.js";
+export * from "./canonical-changeset.js";
