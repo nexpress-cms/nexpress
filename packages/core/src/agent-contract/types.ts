@@ -344,6 +344,22 @@ export type NpAgentInvocationRequestCanonicalV1 =
       effectProfile: null;
     });
 
+export type NpAgentMcpStoredTerminalResultV1 =
+  | {
+      schemaVersion: "np.agent-mcp-stored-task-result.v1";
+      kind: "tool_result";
+      result: NpAgentJsonObject;
+    }
+  | {
+      schemaVersion: "np.agent-mcp-stored-task-result.v1";
+      kind: "jsonrpc_error";
+      error: {
+        code: number;
+        message: string;
+        data?: NpAgentJsonValue;
+      };
+    };
+
 export const npAgentCapabilityRisks = ["read", "reversible", "sensitive", "destructive"] as const;
 export type NpAgentCapabilityRisk = (typeof npAgentCapabilityRisks)[number];
 
