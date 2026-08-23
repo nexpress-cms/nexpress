@@ -572,6 +572,17 @@ In addition to the ten acceptance scenarios in
 - allowlisted versus protected/malformed settings;
 - active, deleted, processing, missing, and cross-site media.
 
+Core contract tests separately cover every ChangeSet operation branch and all
+five canonical resource-key kinds, including create-time reserved UUID
+matching; existing navigation/theme/SEO owner-analyzer rejection; exact
+base/input and snapshot presence matrices; 500/501-operation and 64/65-
+collection boundaries; 4 MiB proposal and 256 KiB snapshot byte edges;
+unknown/excluded fields; accessors, hostile proxies, sparse arrays,
+cycles/shared references, and non-I-JSON values; and independent proposal plus
+present/absent snapshot canonical-byte and digest golden vectors. These tests
+do not substitute for integration coverage that resolves the selected live
+collection schema and persists the reserved create identity.
+
 ### 6.2 Transaction and concurrency
 
 - all operations commit or none do;

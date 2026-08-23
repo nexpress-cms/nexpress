@@ -288,6 +288,16 @@ ChangeSet. Navigation, token, and media-reference branches reuse the current
 client-safe domain contracts shown above; there is no parallel owner-kind
 vocabulary.
 
+The shared Core contract publishes exact analyzers/requirers for operation
+input, version base, and canonical resource keys. It also publishes exact
+proposal/snapshot analyzers plus named canonical-byte and SHA-256 digest
+builders. These context-free functions reject unknown keys, accessors,
+non-plain or shared/cyclic JSON graphs, invalid branch/base/input matrices,
+unsorted or duplicate proposal ordinals, resource-key mismatches, and values
+over the normative byte ceilings. They do not replace draft admission's
+selected live collection-schema check, authorization, current-base read, UUID
+reservation persistence, or any plan/runtime/database transition.
+
 The response types are also exact:
 
 ```ts

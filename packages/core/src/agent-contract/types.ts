@@ -1,4 +1,6 @@
 import type { NpCapability } from "../auth/capabilities.js";
+import type { NpNavigationItems } from "../navigation/types.js";
+import type { NpThemeTokensOverlay } from "../theme/types.js";
 
 export type NpAgentJsonPrimitive = string | number | boolean | null;
 export type NpAgentJsonValue =
@@ -185,6 +187,132 @@ export interface NpAgentRecipeRegistryCanonicalV1 {
   schemaVersion: "np.agent-recipe-registry.v1";
   projection: "definition" | "registry";
   recipes: NpAgentRecipeDefinitionCanonicalV1[];
+}
+
+export interface NpAgentVersionBaseV1 {
+  version: string;
+  digest: string;
+}
+
+export interface NpAgentChangeSetOperationCommonV1 {
+  clientOperationId: string;
+  reason: string | null;
+}
+
+export type NpAgentChangeSetOperationInput =
+  | (NpAgentChangeSetOperationCommonV1 & {
+      kind: "document";
+      operation: "create";
+      resource: { collection: string; documentId: null };
+      base: null;
+      input: {
+        document: NpAgentJsonObject;
+        targetStatus: "draft" | "published";
+      };
+    })
+  | (NpAgentChangeSetOperationCommonV1 & {
+      kind: "document";
+      operation: "update";
+      resource: { collection: string; documentId: string };
+      base: NpAgentVersionBaseV1;
+      input: {
+        patch: NpAgentJsonObject;
+        targetStatus: "draft" | "published" | null;
+      };
+    })
+  | (NpAgentChangeSetOperationCommonV1 & {
+      kind: "document";
+      operation: "publish" | "archive";
+      resource: { collection: string; documentId: string };
+      base: NpAgentVersionBaseV1;
+      input: Record<string, never>;
+    })
+  | (NpAgentChangeSetOperationCommonV1 & {
+      kind: "document";
+      operation: "schedule";
+      resource: { collection: string; documentId: string };
+      base: NpAgentVersionBaseV1;
+      input: { publishAt: string };
+    })
+  | (NpAgentChangeSetOperationCommonV1 & {
+      kind: "navigation";
+      operation: "replace";
+      resource: { location: string };
+      base: NpAgentVersionBaseV1;
+      input: { items: NpNavigationItems };
+    })
+  | (NpAgentChangeSetOperationCommonV1 & {
+      kind: "theme_tokens";
+      operation: "replace";
+      resource: { themeId: string };
+      base: NpAgentVersionBaseV1;
+      input: { tokens: NpThemeTokensOverlay };
+    })
+  | (NpAgentChangeSetOperationCommonV1 & {
+      kind: "setting";
+      operation: "replace";
+      resource: { key: NpAgentMutableSettingKey };
+      base: NpAgentVersionBaseV1 | null;
+      input: { value: NpAgentJsonValue };
+    })
+  | (NpAgentChangeSetOperationCommonV1 & {
+      kind: "setting";
+      operation: "remove";
+      resource: { key: NpAgentMutableSettingKey };
+      base: NpAgentVersionBaseV1;
+      input: Record<string, never>;
+    })
+  | (NpAgentChangeSetOperationCommonV1 & {
+      kind: "media_ref";
+      operation: "attach" | "detach";
+      resource: {
+        mediaId: string;
+        collection: string;
+        documentId: string;
+        field: string;
+      };
+      base: NpAgentVersionBaseV1;
+      input: Record<string, never>;
+    });
+
+export type NpAgentChangeSetResourceKeyV1 =
+  | { kind: "document"; collection: string; documentId: string }
+  | { kind: "navigation"; location: string }
+  | { kind: "theme_tokens"; themeId: string }
+  | { kind: "setting"; key: NpAgentMutableSettingKey }
+  | {
+      kind: "media_ref";
+      mediaId: string;
+      collection: string;
+      documentId: string;
+      field: string;
+    };
+
+export interface NpAgentChangeSetProposalOperationCanonicalV1 {
+  ordinal: number;
+  operation: NpAgentChangeSetOperationInput;
+  canonicalResourceKey: NpAgentChangeSetResourceKeyV1;
+}
+
+export interface NpAgentChangeSetProposalCanonicalV1 {
+  schemaVersion: "np.agent-changeset-proposal.v1";
+  siteId: string;
+  changeSetId: string;
+  draftVersion: number;
+  title: string;
+  summary: string | null;
+  operations: NpAgentChangeSetProposalOperationCanonicalV1[];
+}
+
+export interface NpAgentChangeSetSnapshotCanonicalV1 {
+  schemaVersion: "np.agent-changeset-snapshot.v1";
+  siteId: string;
+  changeSetId: string;
+  operationOrdinal: number;
+  canonicalResourceKey: NpAgentChangeSetResourceKeyV1;
+  presence: "present" | "absent";
+  base: NpAgentVersionBaseV1 | null;
+  value: NpAgentJsonValue | null;
 }
 
 export interface NpAgentRunLimitsV1 {
@@ -387,6 +515,30 @@ export type NpAgentRecipeProviderMode = (typeof npAgentRecipeProviderModes)[numb
 
 export const npAgentRecipeTriggerKinds = ["manual", "event", "schedule"] as const;
 export type NpAgentRecipeTriggerKind = (typeof npAgentRecipeTriggerKinds)[number];
+
+export const npAgentChangeSetResourceKinds = [
+  "document",
+  "navigation",
+  "theme_tokens",
+  "setting",
+  "media_ref",
+] as const;
+export type NpAgentChangeSetResourceKind = (typeof npAgentChangeSetResourceKinds)[number];
+
+export const npAgentMutableSettingKeys = ["seo"] as const;
+export type NpAgentMutableSettingKey = (typeof npAgentMutableSettingKeys)[number];
+
+export const npAgentDocumentChangeSetOperations = [
+  "create",
+  "update",
+  "publish",
+  "schedule",
+  "archive",
+] as const;
+export type NpAgentDocumentChangeSetOperation = (typeof npAgentDocumentChangeSetOperations)[number];
+
+export const npAgentChangeSetSnapshotPresences = ["present", "absent"] as const;
+export type NpAgentChangeSetSnapshotPresence = (typeof npAgentChangeSetSnapshotPresences)[number];
 
 interface NpAgentInvocationRequestCanonicalCommonV1 {
   schemaVersion: "np.agent-idempotency-request.v1";

@@ -575,6 +575,22 @@ is a separate execution projection and cannot reorder either array.
 `presence:"present"` requires both non-null. Proposal `summary` is explicitly
 null when absent.
 
+Core exposes the context-free boundary as
+`npAnalyzeAgentChangeSetOperationInput()`/
+`npRequireAgentChangeSetOperationInput()` and
+`npAnalyzeAgentChangeSetResourceKey()`/
+`npRequireAgentChangeSetResourceKey()`. The operation analyzer owns the closed
+nine shape groups and five tagged resource kinds, reuses the existing
+client-safe navigation, theme-token-overlay, and SEO setting analyzers, and
+accepts document JSON only as the already-canonical bounded transport value;
+draft admission still reparses it against the selected live collection
+schema. `npAnalyzeAgentChangeSetProposalCanonical()` and
+`npAnalyzeAgentChangeSetSnapshotCanonical()` provide the exact body boundary,
+paired with named `npRequire*`, `npBuild*CanonicalBytes`, and
+`npDigest*Canonical` functions. The builders enforce the 4 MiB proposal and
+256 KiB snapshot ceilings before domain separation; proposal operations are
+not reordered on the caller's behalf.
+
 Both plan branches sort scope/capability/predicate/policy/residual-code arrays
 unique. In the initial branch, `beforeHash:null` is permitted only for a
 server-reserved create target. `snapshotHash`/`originalSnapshotHash` owns or
