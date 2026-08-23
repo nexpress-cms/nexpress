@@ -315,6 +315,84 @@ export interface NpAgentChangeSetSnapshotCanonicalV1 {
   value: NpAgentJsonValue | null;
 }
 
+export interface NpAgentRiskSummary {
+  level: "low" | "medium" | "high" | "critical";
+  reasonCodes: NpAgentRiskReasonCode[];
+  approvalMode: "human";
+  reversible: boolean;
+}
+
+export interface NpAgentInitialChangeSetPlanOperationCanonicalV1 {
+  ordinal: number;
+  operation: NpAgentChangeSetOperationInput;
+  canonicalResourceKey: NpAgentChangeSetResourceKeyV1;
+  beforeHash: string | null;
+  proposedAfterHash: string;
+  snapshotHash: string;
+  rollbackClass: NpAgentChangeSetRollbackClass;
+  residualCodes: string[];
+}
+
+export interface NpAgentInitialChangeSetPlanBodyV1 {
+  draftVersion: number;
+  draftHash: string;
+  validationGeneration: number;
+  baseFingerprint: string;
+  operations: NpAgentInitialChangeSetPlanOperationCanonicalV1[];
+  risk: NpAgentRiskSummary;
+  requiredScopes: NpAgentScope[];
+  requiredHumanCapabilities: NpCapability[];
+  requiredHumanPredicates: NpAgentHumanPredicate[];
+  policyHashes: string[];
+  expiresAt: string;
+  rollbackWindowSeconds: number;
+}
+
+export interface NpAgentRollbackChangeSetPlanOperationCanonicalV1 {
+  ordinal: number;
+  originalOperationOrdinal: number;
+  canonicalResourceKey: NpAgentChangeSetResourceKeyV1;
+  originalSnapshotHash: string;
+  expectedCurrentHash: string;
+  expectedCurrentVersion: string;
+  compensationOperation: NpAgentChangeSetOperationInput;
+  proposedAfterHash: string;
+  rollbackClass: NpAgentChangeSetRollbackClass;
+  residualCodes: string[];
+}
+
+export interface NpAgentRollbackChangeSetPlanBodyV1 {
+  rollbackPlanId: string;
+  generation: number;
+  compensatesExecutionId: string;
+  originalPlanHash: string;
+  appliedResultDigest: string;
+  baseFingerprint: string;
+  operations: NpAgentRollbackChangeSetPlanOperationCanonicalV1[];
+  risk: NpAgentRiskSummary;
+  requiredScopes: NpAgentScope[];
+  requiredHumanCapabilities: NpCapability[];
+  requiredHumanPredicates: NpAgentHumanPredicate[];
+  policyHashes: string[];
+  expiresAt: string;
+}
+
+export type NpAgentChangeSetPlanCanonicalV1 =
+  | {
+      schemaVersion: "np.agent-changeset-plan.v1";
+      planKind: "changeset";
+      siteId: string;
+      changeSetId: string;
+      body: NpAgentInitialChangeSetPlanBodyV1;
+    }
+  | {
+      schemaVersion: "np.agent-changeset-plan.v1";
+      planKind: "rollback";
+      siteId: string;
+      changeSetId: string;
+      body: NpAgentRollbackChangeSetPlanBodyV1;
+    };
+
 export interface NpAgentRunLimitsV1 {
   schemaVersion: "np.agent-run-limits.v1";
   maxAttempts: number;
@@ -539,6 +617,32 @@ export type NpAgentDocumentChangeSetOperation = (typeof npAgentDocumentChangeSet
 
 export const npAgentChangeSetSnapshotPresences = ["present", "absent"] as const;
 export type NpAgentChangeSetSnapshotPresence = (typeof npAgentChangeSetSnapshotPresences)[number];
+
+export const npAgentChangeSetPlanKinds = ["changeset", "rollback"] as const;
+export type NpAgentChangeSetPlanKind = (typeof npAgentChangeSetPlanKinds)[number];
+
+export const npAgentChangeSetRollbackClasses = ["full", "residual"] as const;
+export type NpAgentChangeSetRollbackClass = (typeof npAgentChangeSetRollbackClasses)[number];
+
+export const npAgentRiskLevels = ["low", "medium", "high", "critical"] as const;
+export type NpAgentRiskLevel = (typeof npAgentRiskLevels)[number];
+
+export const npAgentRiskReasonCodes = [
+  "PUBLIC_WRITE",
+  "ARCHIVE",
+  "PROTECTED_RESOURCE",
+  "MULTI_RESOURCE",
+  "OPERATION_VOLUME",
+  "NAVIGATION_WRITE",
+  "THEME_WRITE",
+  "SETTING_WRITE",
+  "NON_ATOMIC_SIDE_EFFECT",
+  "ROLLBACK_PARTIAL",
+] as const;
+export type NpAgentRiskReasonCode = (typeof npAgentRiskReasonCodes)[number];
+
+export const npAgentHumanPredicates = ["is-super-admin"] as const;
+export type NpAgentHumanPredicate = (typeof npAgentHumanPredicates)[number];
 
 interface NpAgentInvocationRequestCanonicalCommonV1 {
   schemaVersion: "np.agent-idempotency-request.v1";

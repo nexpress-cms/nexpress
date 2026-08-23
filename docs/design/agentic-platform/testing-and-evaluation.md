@@ -583,6 +583,16 @@ present/absent snapshot canonical-byte and digest golden vectors. These tests
 do not substitute for integration coverage that resolves the selected live
 collection schema and persists the reserved create identity.
 
+The paired plan contract tests cover exact initial/rollback branch
+substitution, every included/excluded and nested operation inventory, embedded
+operation/resource identity, digest/version/timestamp fields, create-only null
+before hashes, residual-risk consistency, sorted unique set arrays and
+operation/source ordinals, the `60..7_776_000` duration boundary, 500/501
+operations, 64/65 collections, hostile values, the exact 4 MiB ceiling, and
+independent initial/rollback domain-separated digest vectors. Persistence tests
+remain responsible for byte-equal `sealed_plan_body` rehydration and column
+agreement.
+
 ### 6.2 Transaction and concurrency
 
 - all operations commit or none do;
