@@ -160,6 +160,33 @@ export interface NpAgentCapabilityRegistryCanonicalV1 {
   capabilities: NpAgentCapabilityRegistryEntryCanonicalV1[];
 }
 
+export interface NpAgentRecipeInstructionCanonicalV1 {
+  templateId: string;
+  templateVersion: number;
+  digest: string;
+  text: string;
+}
+
+export interface NpAgentRecipeDefinitionCanonicalV1 {
+  id: NpAgentRecipeId;
+  version: 1;
+  allowedTemplates: NpAgentRecipeTemplate[];
+  task: NpAgentRecipeTask;
+  providerMode: NpAgentRecipeProviderMode;
+  triggerKinds: NpAgentRecipeTriggerKind[];
+  capabilityIds: NpAgentCapabilityId[];
+  settingsSchema: NpAgentJsonSchema;
+  manualInputSchema: NpAgentJsonSchema | null;
+  responseSchema: NpAgentJsonSchema;
+  instruction: NpAgentRecipeInstructionCanonicalV1 | null;
+}
+
+export interface NpAgentRecipeRegistryCanonicalV1 {
+  schemaVersion: "np.agent-recipe-registry.v1";
+  projection: "definition" | "registry";
+  recipes: NpAgentRecipeDefinitionCanonicalV1[];
+}
+
 export interface NpAgentRunLimitsV1 {
   schemaVersion: "np.agent-run-limits.v1";
   maxAttempts: number;
@@ -329,6 +356,37 @@ export const npAgentCapabilityIds = [
 
 export type NpCoreAgentCapabilityId = (typeof npAgentCapabilityIds)[number];
 export type NpAgentCapabilityId = NpCoreAgentCapabilityId;
+
+export const npAgentRecipeIds = [
+  "publisher.stale-content",
+  "moderator.repeated-link-spam",
+  "operator.worker-not-draining",
+  "guardian.credential-stuffing",
+  "guardian.agent-abuse",
+] as const;
+export type NpAgentRecipeId = (typeof npAgentRecipeIds)[number];
+
+export const npAgentRecipeTemplates = [
+  "publisher",
+  "moderator",
+  "operator",
+  "guardian",
+  "custom",
+] as const;
+export type NpAgentRecipeTemplate = (typeof npAgentRecipeTemplates)[number];
+
+export const npAgentRecipeTasks = [
+  "interactive-capability",
+  "moderation-classification",
+  "guardian-assessment",
+] as const;
+export type NpAgentRecipeTask = (typeof npAgentRecipeTasks)[number];
+
+export const npAgentRecipeProviderModes = ["required", "optional", "forbidden"] as const;
+export type NpAgentRecipeProviderMode = (typeof npAgentRecipeProviderModes)[number];
+
+export const npAgentRecipeTriggerKinds = ["manual", "event", "schedule"] as const;
+export type NpAgentRecipeTriggerKind = (typeof npAgentRecipeTriggerKinds)[number];
 
 interface NpAgentInvocationRequestCanonicalCommonV1 {
   schemaVersion: "np.agent-idempotency-request.v1";

@@ -18,9 +18,9 @@ import { digestAgentCanonicalSha256 } from "./canonical-digest.js";
 import {
   analyzeAgentCanonicalJsonValueWithLimits,
   buildAgentCanonicalFoundationBytes,
-  serializeAgentCanonicalJson,
   type AgentCanonicalJsonInspectionLimits,
 } from "./canonical-foundation.js";
+import { requireAgentCanonicalRegistryCompleteness } from "./canonical-registry-completeness.js";
 import type {
   NpAgentCanonicalBodyBytesV1,
   NpAgentCapabilityDescriptor,
@@ -126,18 +126,10 @@ export const npAgentCapabilityRegistryCanonicalProjectionFixtureV1 = {
   expectedIncompleteRegistryErrorCode: "AGENT_CANONICAL_INCOMPLETE_REGISTRY",
 } as const;
 
-export const npAgentCanonicalIncompleteRegistryErrorCode =
-  "AGENT_CANONICAL_INCOMPLETE_REGISTRY" as const;
-
-export class NpAgentCanonicalIncompleteRegistryError extends Error {
-  readonly code = npAgentCanonicalIncompleteRegistryErrorCode;
-  readonly purpose = PURPOSE;
-
-  constructor(message: string) {
-    super(message);
-    this.name = "NpAgentCanonicalIncompleteRegistryError";
-  }
-}
+export {
+  NpAgentCanonicalIncompleteRegistryError,
+  npAgentCanonicalIncompleteRegistryErrorCode,
+} from "./canonical-registry-completeness.js";
 
 function remapIssues(
   issues: readonly NpAgentContractIssue[],
@@ -399,32 +391,20 @@ function parseInstalledCapabilities(
   });
 }
 
-function sameCanonicalValue(left: unknown, right: unknown): boolean {
-  return serializeAgentCanonicalJson(left) === serializeAgentCanonicalJson(right);
-}
-
 export function npRequireAgentCapabilityRegistryCanonicalForInstalledCapabilities(
   value: unknown,
   installedCapabilities: unknown,
 ): NpAgentCapabilityRegistryCanonicalV1 {
   const body = parseCapabilityRegistryCanonical(value);
   const installedRegistry = parseInstalledCapabilities(installedCapabilities);
-  const isComplete =
-    body.projection === "registry"
-      ? sameCanonicalValue(body.capabilities, installedRegistry.capabilities)
-      : installedRegistry.capabilities.some(
-          (installedCapability) =>
-            installedCapability.descriptor.id === body.capabilities[0]?.descriptor.id &&
-            sameCanonicalValue(installedCapability, body.capabilities[0]),
-        );
-
-  if (!isComplete) {
-    throw new NpAgentCanonicalIncompleteRegistryError(
-      body.projection === "registry"
-        ? "Registry projection does not exactly match the installed capability snapshot"
-        : "Definition projection is not an exact member of the installed capability snapshot",
-    );
-  }
+  requireAgentCanonicalRegistryCompleteness({
+    purpose: PURPOSE,
+    projection: body.projection,
+    entries: body.capabilities,
+    installedEntries: installedRegistry.capabilities,
+    entryId: (capability) => capability.descriptor.id,
+    entryLabel: "capability",
+  });
   return body;
 }
 
