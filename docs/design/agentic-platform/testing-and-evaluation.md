@@ -475,7 +475,11 @@ MCP-specific coverage:
 - `tasks/result` persists/recomputes the exact `np.agent-mcp-task-result.v1`
   digest, strips related-task metadata before storage, reinjects it only in
   the live response, and wraps id-less stored JSON-RPC errors with the current
-  request id. Status/result/digest mismatches are Doctor-blocking;
+  request id. Its pure contract fixtures cover every MCP content-block branch,
+  safe extension preservation, envelope rejection, 5/4/3 MiB raw/body/
+  structured bounds, omitted versus null error data, hostile descriptors, and
+  independent golden vectors. Status/result/digest mismatches are
+  Doctor-blocking;
 - fake-clock/admission tests enforce 60-second/1-hour/24-hour TTL bounds,
   1/2/10-second poll hints, 32 active tasks per authorization context, 1,000
   per site, and 120 task operations per rolling minute with non-oracular

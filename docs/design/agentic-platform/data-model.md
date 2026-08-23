@@ -1884,12 +1884,19 @@ export type NpAgentMcpStoredTerminalResultV1 =
     };
 ```
 
-The tool-result branch is an exactly validated MCP `CallToolResult` with any
-`io.modelcontextprotocol/related-task` member removed before persistence. The
-error branch is id-less: it contains no `jsonrpc` or request id. Code is a
-safe integer; message/data use the bounded safe error contract. The
-`terminal_result_digest` is `cj1:sha256` over the complete discriminated union
-with purpose `np.agent-mcp-task-result.v1`.
+The tool-result branch descriptor-safely validates an MCP `2025-11-25`
+`CallToolResult` and removes only its top-level
+`_meta["io.modelcontextprotocol/related-task"]` member before persistence. An
+empty `_meta` is then omitted; other safe protocol extension metadata remains
+byte-significant, and byte-bearing fields use canonical padded RFC 4648
+base64. The retained result uses the invocation structural limits,
+the raw result is bounded by the 5 MiB MCP frame, the structured result is at
+most 3 MiB, and the complete canonical body is at most 4 MiB. The error branch
+is id-less: it contains no `jsonrpc` or request id. Code is a safe integer;
+message/data use the bounded shared API error contract, and omitted `data`
+stays distinct from explicit null. The `terminal_result_digest` is
+`cj1:sha256` over the complete discriminated union with purpose
+`np.agent-mcp-task-result.v1`.
 
 | Column                              | Type                 | Rules                                                                    |
 | ----------------------------------- | -------------------- | ------------------------------------------------------------------------ |

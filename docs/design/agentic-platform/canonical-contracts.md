@@ -762,10 +762,27 @@ deliberately not duplicated in the body. MCP execution mode, requested task
 TTL, JSON-RPC id, transport request id, and task id are also outside the
 domain request hash.
 
-The MCP tool-result branch is a validated `CallToolResult` with related-task
-metadata removed. In a JSON-RPC error, an omitted `data` key and an explicit
-`data:null` are distinct valid canonical objects. The analyzer never adds one
-form for the other.
+The MCP tool-result branch descriptor-safely validates the MCP `2025-11-25`
+`CallToolResult`: `content` is required; `structuredContent`, `isError`, and
+`_meta` are optional; and text, image, audio, resource-link, and embedded-
+resource content blocks retain their protocol-defined fields and safe I-JSON
+extensions. Byte-bearing fields use canonical padded RFC 4648 base64. JSON-RPC
+envelope/request members are forbidden inside the result.
+The raw result is bounded by the 5 MiB MCP frame ceiling; the retained result
+uses the invocation depth/node/container/string limits, the complete canonical
+body is at most 4 MiB, and `structuredContent` is independently at most 3 MiB.
+Before persistence, the analyzer removes only
+`_meta["io.modelcontextprotocol/related-task"]`; if that leaves `_meta` empty,
+it removes `_meta` too. Other safe MCP extension metadata remains byte-
+significant. Consequently transport task identity never changes the retained
+digest.
+
+The id-less JSON-RPC error uses one safe-integer code and a non-empty, trimmed
+safe message of at most 2,000 characters. Optional `data` uses the shared API
+error-detail bounds (depth 8, 1,000 nodes, 200 array entries, 200 object keys,
+128 characters per key, and 8,000 characters per string). An omitted `data`
+key and explicit `data:null` are distinct valid canonical objects; the analyzer
+never adds one form for the other.
 
 ### 2.8 Notification delivery and policy
 
@@ -2203,6 +2220,7 @@ Security- and plan-sensitive nested inclusions are literal too:
 export const npAgentCanonicalNestedIncludedKeysV1 = {
   "np.agent-action.v1.targetVersionFacts[]": ["targetRef", "versionDigest"],
   "np.agent-idempotency-request.v1.effectProfile": ["id", "contractVersion"],
+  "np.agent-mcp-task-result.v1.error": ["code", "message", "data"],
   "np.agent-changeset-plan.v1.body.changeset.operations[]": [
     "ordinal",
     "operation",
