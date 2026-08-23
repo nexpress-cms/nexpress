@@ -1009,6 +1009,21 @@ The complete non-empty installed set uses the same purpose with
 Neither projection accepts or includes either derived fingerprint, and a
 definition digest cannot stand in for the registry digest.
 
+Core implements that boundary with the context-free
+`npAnalyzeAgentRecipeRegistryCanonical()` and
+`npRequireAgentRecipeRegistryCanonical()` pair. The analyzer validates exact
+shape, projection cardinality, `(id,version)` ordering, sorted-unique closed
+sets, owned JSON Schemas, and the instruction null matrix, but does not claim
+that a registry is complete for a running installation. The contextual
+`npRequireAgentRecipeRegistryCanonicalForInstalledRecipes()` reparses the
+code-owned installed array as a complete snapshot. The named
+`npBuildAgentRecipeRegistryCanonicalBytes()` and
+`npDigestAgentRecipeRegistryCanonical()` require that snapshot, reject a
+definition that is not its exact canonical member and a registry that is not
+the whole snapshot with `AGENT_CANONICAL_INCOMPLETE_REGISTRY`, and enforce the
+8 MiB purpose ceiling. Runtime parsers, executors, registration timestamps,
+and derived fingerprints remain outside both canonical projections.
+
 An Agent version stores 1–8 sorted `NpAgentRecipeSettingsV1` branches and the
 registry fingerprint. Activation resolves every branch to its exact current
 definition, rejects a missing/version-changed/incompatible recipe, and hashes

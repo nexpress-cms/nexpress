@@ -113,6 +113,20 @@ descriptor/effect/version binding, and reject incomplete retagging with
 cycle/shared/sparse inputs, invalid I-JSON, order/duplicate drift, integer
 boundaries, and the 16 MiB whole-body ceiling are hostile fixtures.
 
+The recipe-registry purpose has the same four checked projection shapes over
+its own five-id inventory: singleton definition and registry siblings, a
+definition drawn from a multi-recipe installed snapshot, and that complete
+sorted registry. Tests exhaust the recipe/template/task/provider/trigger
+inventories, version-1 and five-definition ceilings, sorted-unique set rules,
+three nested JSON Schema analyzers, and the provider-mode/instruction null
+matrix. They separately prove context-free cardinality and contextual
+completeness, preserve exact source-key-order independence and distinct
+domain-separated digests, reject excluded runtime/derived fields and hostile
+object graphs, and exercise the 8 MiB body boundary. Capability and recipe
+fixtures also prove that both contextual builders report the shared
+`AGENT_CANONICAL_INCOMPLETE_REGISTRY` contract without converting malformed
+installed snapshots into completeness errors.
+
 A separate closed digest-kind test covers values deliberately outside the
 canonical-JSON registry: `ac1` raw artifact content, `aur1` artifact-upload
 requests, `aus1` artifact-upload sets, `auo1` terminal upload-operation

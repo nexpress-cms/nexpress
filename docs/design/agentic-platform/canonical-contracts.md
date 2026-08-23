@@ -452,6 +452,23 @@ contract failures. Descriptor and canonical-effect versions/exposure/verifier/
 compensator facts are cross-checked, while function references, timestamps,
 and derived fingerprints never enter the body.
 
+The recipe purpose exposes the paired boundary through
+`npAnalyzeAgentRecipeRegistryCanonical()` and
+`npRequireAgentRecipeRegistryCanonical()`. It accepts only the five closed
+recipe ids at version 1, validates the closed template/task/provider/trigger
+inventories, reparses all three JSON Schemas with their owner analyzer, and
+enforces the provider-mode/instruction null matrix. Definition and registry
+entries retain only their canonical data fields; parser and executor
+functions, registration time, and both derived fingerprint fields are
+excluded. The contextual
+`npRequireAgentRecipeRegistryCanonicalForInstalledRecipes()` reparses the
+installed array as a complete registry snapshot, and the named byte/digest
+builders require the same snapshot before producing output. Both registry
+purposes share `NpAgentCanonicalIncompleteRegistryError` and exact canonical
+member/whole-snapshot comparison. The recipe body has an 8 MiB ceiling;
+instruction text remains an exact I-JSON string under that ceiling and is not
+trimmed, normalized, or assigned a narrower undocumented bound.
+
 ### 2.4 ChangeSet proposal, plan, and snapshot
 
 ```ts

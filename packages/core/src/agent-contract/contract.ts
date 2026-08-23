@@ -34,6 +34,7 @@ import {
 
 export const npAgentContractLimits = {
   coreCapabilityDescriptors: 21,
+  coreRecipeDefinitions: 5,
   mcpTools: 18,
   mcpResourceTemplates: 11,
   mcpPrompts: 4,
