@@ -352,14 +352,16 @@ interface NpAgentEffectProfileCanonicalV1 {
   compensatorId: string | null;
 }
 
+interface NpAgentCapabilityRegistryEntryCanonicalV1 {
+  descriptor: NpAgentCapabilityDescriptor;
+  implementationVersion: number;
+  effectProfiles: NpAgentEffectProfileCanonicalV1[];
+}
+
 interface NpAgentCapabilityRegistryCanonicalV1 {
   schemaVersion: "np.agent-capability-registry.v1";
   projection: "definition" | "registry";
-  capabilities: Array<{
-    descriptor: NpAgentCapabilityDescriptor;
-    implementationVersion: number;
-    effectProfiles: NpAgentEffectProfileCanonicalV1[];
-  }>;
+  capabilities: NpAgentCapabilityRegistryEntryCanonicalV1[];
 }
 
 interface NpAgentRecipeDefinitionCanonicalV1 {
@@ -433,6 +435,22 @@ named capability/recipe domain builder, which compares the candidate to its
 validated bootstrap snapshot before hashing. A one-item installed set is a
 valid registry; a one-item projection drawn from a larger installed set is
 not.
+
+The capability purpose exposes this boundary literally. The context-free
+`npAnalyzeAgentCapabilityRegistryCanonical()` and
+`npRequireAgentCapabilityRegistryCanonical()` validate exact bodies without
+claiming installation completeness. The contextual
+`npRequireAgentCapabilityRegistryCanonicalForInstalledCapabilities()` reparses
+the supplied installed-capability array as a complete registry snapshot. It
+requires a definition to be one byte-exact member and a registry to equal the
+whole sorted snapshot. `npBuildAgentCapabilityRegistryCanonicalBytes()` and
+`npDigestAgentCapabilityRegistryCanonical()` always require that snapshot and
+perform the same comparison before producing bytes. A structurally valid but
+incomplete candidate fails with
+`AGENT_CANONICAL_INCOMPLETE_REGISTRY`; malformed snapshots remain ordinary
+contract failures. Descriptor and canonical-effect versions/exposure/verifier/
+compensator facts are cross-checked, while function references, timestamps,
+and derived fingerprints never enter the body.
 
 ### 2.4 ChangeSet proposal, plan, and snapshot
 

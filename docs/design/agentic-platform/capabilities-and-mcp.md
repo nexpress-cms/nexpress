@@ -528,15 +528,20 @@ method, or approval-grant method.
 
 Registration computes each canonical capability fingerprint with purpose
 `np.agent-capability-registry.v1` and
-`projection:"definition"` over exactly one complete descriptor, exact
-input/output schema digests, `implementationVersion`, and sorted declared
-effect profiles plus each profile's kind, reversibility, version, verifier,
-and compensator ids. The complete non-empty installed set uses the same
-purpose with `projection:"registry"` to produce only
+`projection:"definition"` over exactly one entry: its complete descriptor
+(including the exact bounded input/output schemas), `implementationVersion`,
+and sorted canonical effect profiles with each profile's capability,
+implementation, effect-contract, exposure, reversibility, verifier, and
+compensator facts. Registration rejects any mismatch between the descriptor's
+effect declarations and those canonical effect profiles. The complete
+non-empty installed set uses the same purpose with `projection:"registry"` to
+produce only
 `registryFingerprint`. Definition and registry projections cannot substitute
-for one another. Function source text is never fingerprint input. Invocations
-and actions persist both the capability fingerprint and resolved effect
-profile; approvals additionally bind them. Any contract or
+for one another: the named byte/digest builder validates definitions as exact
+members of the installed snapshot and registries as the whole sorted snapshot.
+Function source text and executable callbacks are never fingerprint input.
+Invocations and actions persist both the capability fingerprint and resolved
+effect profile; approvals additionally bind them. Any contract or
 execution-semantics change that changes this fingerprint invalidates an
 unconsumed approval and requires an explicit implementation-version bump
 rather than silently reusing the old statement.

@@ -148,6 +148,18 @@ export interface NpAgentEffectProfileCanonicalV1 {
   compensatorId: string | null;
 }
 
+export interface NpAgentCapabilityRegistryEntryCanonicalV1 {
+  descriptor: NpAgentCapabilityDescriptor;
+  implementationVersion: number;
+  effectProfiles: NpAgentEffectProfileCanonicalV1[];
+}
+
+export interface NpAgentCapabilityRegistryCanonicalV1 {
+  schemaVersion: "np.agent-capability-registry.v1";
+  projection: "definition" | "registry";
+  capabilities: NpAgentCapabilityRegistryEntryCanonicalV1[];
+}
+
 export interface NpAgentRunLimitsV1 {
   schemaVersion: "np.agent-run-limits.v1";
   maxAttempts: number;
