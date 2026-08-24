@@ -285,6 +285,19 @@ fields. Report rows require null route/locale/viewport, JSON MIME, and
 positive contiguous part numbers with one byte-equal total no greater than
 four.
 
+`@nexpress/core/agent-contract` implements this body through the named
+`npAnalyzeAgentPreviewArtifactManifestCanonical()` and
+`npRequireAgentPreviewArtifactManifestCanonical()` surfaces. The analyzer
+rebuilds an independent exact manifest, validates canonical site/UUID/digest
+and route/locale values, enforces the `20` screenshot, `4` report, and `24`
+total limits plus the `2 MiB`/`512 KiB` branch byte ceilings, and requires all
+rows for the same preview to carry one byte-equal expiry after their creation
+times. Report parts are contiguous in artifact order and their common total
+equals the complete report-row count. The named byte/digest helpers use the
+`np.agent-artifact.v1` domain and 256 KiB canonical-body ceiling. They validate
+but never synthesize the independent raw-byte `ac1:*` content digest; raw
+content framing and storage verification remain owned by the preview service.
+
 ### 2.3 Authorization, budget, and registries
 
 ```ts
