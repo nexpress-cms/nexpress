@@ -619,6 +619,19 @@ and storage tests remain responsible for byte-equal preview expiry, raw-byte
 rehashing, URI derivation, row-first upload state, object cleanup, and adapter
 receipts.
 
+Preview contract and allowed-route canonical tests lock both exact top-level
+inventories and exclusions, the nested route inventory, independent-copy
+rebuilding, every positive version and adapter-triple branch, bounded
+identifier/fingerprint values, canonical queryless HTTPS origins, explicit
+public audience and nullable canonical locale, Unicode-code-point tuple order,
+unknown/accessor/sparse/shared-reference rejection, and the 64 KiB/256 KiB
+ceilings. Independent fixed SHA-256 vectors prove the
+`np.agent-preview-contract.v1` and `np.agent-preview-routes.v1` domains. The
+existing artifact vectors run beside them to prove that the shared route
+parser does not drift. AP-306 integration tests remain responsible for
+installed implementation lookup, live public-audience derivation, retained
+fingerprint agreement, token/session binding, and route revocation.
+
 ### 6.2 Transaction and concurrency
 
 - all operations commit or none do;

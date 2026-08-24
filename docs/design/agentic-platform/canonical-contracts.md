@@ -1014,6 +1014,22 @@ canonical queryless HTTPS origins, sorted unique. Routes sort by
 shipped `NpCapability` string. A route is an absolute site-relative path with
 no origin, query, fragment, or dot segment.
 
+`@nexpress/core/agent-contract` implements the two preview bodies through the
+named `npAnalyzeAgentPreviewContractCanonical()` and
+`npAnalyzeAgentPreviewRoutesCanonical()` surfaces, paired require, byte, and
+digest helpers. The contract analyzer rebuilds an independent exact body,
+requires positive implementation versions and bounded canonical identifiers
+and fingerprints, enforces the all-null/all-non-null screenshot-adapter
+triple, sorts no caller data, and accepts only already sorted unique canonical
+queryless HTTPS origins under the 64 KiB body ceiling. The routes analyzer
+validates canonical site/UUID/generation/plan identity, explicit public route
+tuples, canonical locale values, and Unicode-code-point tuple order under the
+256 KiB ceiling. Its route/locale parser is the same implementation used by
+the preview-artifact manifest. Installed renderer/adapter/registry lookup,
+route-audience derivation, token/session issuance, and retained fingerprint
+checks remain contextual AP-306 service responsibilities rather than generic
+canonical-body behavior.
+
 ### 2.10 Provider request and response
 
 The request body extends the provider adapter's logical request with the

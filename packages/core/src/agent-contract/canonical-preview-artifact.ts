@@ -1,4 +1,3 @@
-import { npI18nContractLimits, npRequireLocale } from "../i18n-contract/index.js";
 import { npRequireAgentContractResult } from "./contract.js";
 import {
   analyzeCanonicalBody,
@@ -15,6 +14,10 @@ import {
 } from "./canonical-body-validation.js";
 import { digestAgentCanonicalSha256 } from "./canonical-digest.js";
 import { buildAgentCanonicalFoundationBytes } from "./canonical-foundation.js";
+import {
+  canonicalBodyPreviewLocale,
+  canonicalBodyPreviewRoute,
+} from "./canonical-preview-values.js";
 import {
   npAgentPreviewArtifactKinds,
   npAgentPreviewArtifactMimes,
@@ -133,70 +136,6 @@ export const npAgentPreviewArtifactCanonicalDiscriminatorCasesV1 = [
   },
 ] as const;
 
-function hasUnsafeRouteCharacter(value: string): boolean {
-  for (const character of value) {
-    const code = character.codePointAt(0);
-    if (
-      code === undefined ||
-      code <= 0x20 ||
-      code === 0x7f ||
-      character === "\\" ||
-      character === "?" ||
-      character === "#"
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function canonicalBodyPreviewRoute(value: unknown, path: string): string {
-  if (
-    typeof value !== "string" ||
-    value.length === 0 ||
-    value.length > npI18nContractLimits.pathnameLength ||
-    !value.startsWith("/") ||
-    value.startsWith("//") ||
-    hasUnsafeRouteCharacter(value)
-  ) {
-    failCanonicalBody(
-      "invalid-field",
-      path,
-      "must be one bounded absolute site-relative path without origin, query, or fragment",
-    );
-  }
-  if (value !== "/" && (value.endsWith("/") || value.includes("//"))) {
-    failCanonicalBody("invalid-field", path, "must not contain empty or trailing path segments");
-  }
-  const segments = value === "/" ? [] : value.slice(1).split("/");
-  for (const segment of segments) {
-    let decoded: string;
-    try {
-      decoded = decodeURIComponent(segment);
-    } catch {
-      failCanonicalBody("invalid-field", path, "must contain valid path encoding");
-    }
-    if (
-      decoded.length === 0 ||
-      decoded === "." ||
-      decoded === ".." ||
-      decoded.includes("/") ||
-      decoded.includes("\\")
-    ) {
-      failCanonicalBody("invalid-field", path, "must not contain empty or dot path segments");
-    }
-  }
-  return value;
-}
-
-function canonicalBodyLocale(value: unknown, path: string): string {
-  try {
-    return npRequireLocale(value, path);
-  } catch {
-    failCanonicalBody("invalid-field", path, "must be a canonical BCP 47 locale");
-  }
-}
-
 function canonicalBodyContentDigest(value: unknown, path: string): string {
   if (typeof value !== "string" || !CONTENT_DIGEST_PATTERN.test(value)) {
     failCanonicalBody(
@@ -261,7 +200,7 @@ function parseArtifact(
   const route =
     record.route === null ? null : canonicalBodyPreviewRoute(record.route, `${path}.route`);
   const locale =
-    record.locale === null ? null : canonicalBodyLocale(record.locale, `${path}.locale`);
+    record.locale === null ? null : canonicalBodyPreviewLocale(record.locale, `${path}.locale`);
   const viewport =
     record.viewport === null ? null : parseViewport(record.viewport, `${path}.viewport`, state);
   const reportPart =

@@ -235,6 +235,42 @@ export interface NpAgentPreviewArtifactManifestV1 {
   artifacts: NpAgentPreviewArtifactManifestEntryV1[];
 }
 
+export interface NpAgentPreviewContractCanonicalV1 {
+  schemaVersion: "np.agent-preview-contract.v1";
+  overlayResolverVersion: number;
+  rendererId: string;
+  rendererVersion: number;
+  rendererFingerprint: string;
+  screenshotAdapterId: string | null;
+  screenshotAdapterVersion: number | null;
+  screenshotAdapterFingerprint: string | null;
+  routeParserVersion: number;
+  checkRegistryVersion: number;
+  linkAllowlistVersion: number;
+  linkAllowlistOrigins: string[];
+  networkPolicyVersion: number;
+  artifactLimitsVersion: number;
+  reportSchemaVersion: number;
+  responseHeaderBuilderVersion: number;
+  cspBuilderVersion: number;
+}
+
+export interface NpAgentPreviewRouteCanonicalV1 {
+  route: string;
+  locale: string | null;
+  audience: "public";
+}
+
+export interface NpAgentPreviewRoutesCanonicalV1 {
+  schemaVersion: "np.agent-preview-routes.v1";
+  siteId: string;
+  changeSetId: string;
+  previewId: string;
+  generation: number;
+  planHash: string;
+  routes: NpAgentPreviewRouteCanonicalV1[];
+}
+
 export const npAgentCanonicalPurposes = [
   "np.agent-action.v1",
   "np.agent-approval-decision.v1",
