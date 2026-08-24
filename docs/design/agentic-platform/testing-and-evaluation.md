@@ -127,6 +127,17 @@ fixtures also prove that both contextual builders report the shared
 `AGENT_CANONICAL_INCOMPLETE_REGISTRY` contract without converting malformed
 installed snapshots into completeness errors.
 
+The budget-snapshot purpose locks its exact top-level, recipe, source-ref,
+counter, window, reservation, and exclusion inventories. Contract tests cover
+Gateway nulls, Agent-only and Agent-plus-recipe snapshots, canonical UUID/site/
+digest/time/day/month values, shared run-limit parsing, sorted-unique
+`(kind,id-or-empty,version,digest)` refs, signed 32-bit count/token units,
+safe-integer cost micros, independent-copy rebuilding, hostile object graphs,
+the exact 256 KiB boundary, source-key-order independence, and one fixed
+`np.agent-budget-snapshot.v1` SHA-256 vector. AP-504 integration tests remain
+responsible for locked measurement, inheritance, reservation reconciliation,
+and byte-equal retained snapshot/hash agreement.
+
 A separate closed digest-kind test covers values deliberately outside the
 canonical-JSON registry: `ac1` raw artifact content, `aur1` artifact-upload
 requests, `aus1` artifact-upload sets, `auo1` terminal upload-operation
