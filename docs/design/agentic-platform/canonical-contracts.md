@@ -227,6 +227,22 @@ V1 forbids parallel undefined subset digests for either branch. Non-human revoca
 `decisionHash` is non-null only when a prior immutable approve/reject decision
 exists.
 
+`@nexpress/core/agent-contract` implements these three bodies through the named
+`npAnalyzeAgentApproval*Canonical()` and `npRequireAgentApproval*Canonical()`
+surfaces. Statement bytes can be built directly after exact analysis. Decision
+builders additionally accept one statement body/hash/generation binding and
+recompute the statement hash before checking site, approval, generation,
+capability, lifetime, and reauthentication facts. Revocation builders perform
+the same statement check and, when `decisionHash` is non-null, reparse and
+rehash the exact prior decision. Their named digest and approval-integrity MAC
+helpers therefore cannot silently bind structurally valid bodies from another
+approval. MAC verification uses Web Crypto HMAC verification over the same
+domain-separated bytes; the bounded key id remains output metadata and is not
+inserted into any body. The analyzers enforce the 256 KiB statement and 64 KiB
+decision/revocation ceilings. Persistence, challenge issuance, key rotation,
+and approval state transitions remain the AP-401 service layer rather than
+canonical-body behavior.
+
 ### 2.2 Preview artifact
 
 This is the complete manifest already owned by the preview contract:

@@ -77,6 +77,124 @@ export interface NpAgentAuthorizationContextCanonicalV1 {
   authorityRef: NpAgentInvocationAuthorityRefV1;
 }
 
+export const npAgentApprovalRisks = ["reversible", "sensitive", "destructive"] as const;
+export type NpAgentApprovalRisk = (typeof npAgentApprovalRisks)[number];
+
+export const npAgentApprovalDecisions = ["approve", "reject"] as const;
+export type NpAgentApprovalDecision = (typeof npAgentApprovalDecisions)[number];
+
+export const npAgentApprovalRevocationKinds = [
+  "human",
+  "authority_loss",
+  "site_deleting",
+  "integrity_key_retired",
+  "target_invalidated",
+] as const;
+export type NpAgentApprovalRevocationKind = (typeof npAgentApprovalRevocationKinds)[number];
+
+export type NpAgentApprovalRequesterV1 =
+  | { kind: "principal"; principalId: string; fingerprint: string }
+  | { kind: "staff"; userId: string | null; fingerprint: string };
+
+export type NpAgentApprovalTargetV1 =
+  | { kind: "changeset"; changeSetId: string; planHash: string }
+  | {
+      kind: "changeset_rollback";
+      changeSetId: string;
+      rollbackPlanId: string;
+      planHash: string;
+    }
+  | {
+      kind: "action";
+      actionId: string;
+      runId: string | null;
+      agentId: string | null;
+      proposalHash: string;
+    };
+
+export type NpAgentApprovalReauthenticationRequirementV1 =
+  { mode: "none" } | { mode: "recent"; maxAgeSeconds: number; assurance: "staff-primary" };
+
+export interface NpAgentApprovalStatementCanonicalV1 {
+  version: "np.agent-approval-statement.v1";
+  siteId: string;
+  approvalId: string;
+  requester: NpAgentApprovalRequesterV1;
+  target: NpAgentApprovalTargetV1;
+  capabilityId: NpAgentCapabilityId;
+  capabilityContractVersion: number;
+  capabilityFingerprint: string;
+  requiredScopes: NpAgentScope[];
+  requiredHumanCapabilities: NpCapability[];
+  requiredHumanPredicates: NpAgentHumanPredicate[];
+  policyHashes: string[];
+  requiresLivePreview: boolean;
+  previewId: string | null;
+  previewDigest: string | null;
+  risk: NpAgentApprovalRisk;
+  reauthentication: NpAgentApprovalReauthenticationRequirementV1;
+  createdAt: string;
+  expiresAt: string;
+}
+
+/** Public approval projection and canonical integrity body are byte-identical in v1. */
+export type NpAgentApprovalStatementV1 = NpAgentApprovalStatementCanonicalV1;
+
+export type NpAgentApprovalDecisionReauthenticationV1 =
+  | { mode: "none" }
+  | {
+      mode: "recent";
+      assurance: "staff-primary";
+      maxAgeSeconds: number;
+      reauthenticatedAt: string;
+      sessionFactFingerprint: string;
+    };
+
+export interface NpAgentApprovalDecisionCanonicalV1 {
+  schemaVersion: "np.agent-approval-decision.v1";
+  siteId: string;
+  approvalId: string;
+  approvalGeneration: number;
+  statementHash: string;
+  decision: NpAgentApprovalDecision;
+  deciderFingerprint: string;
+  currentHumanCapabilities: NpCapability[];
+  reason: string | null;
+  reauthentication: NpAgentApprovalDecisionReauthenticationV1;
+  decidedAt: string;
+}
+
+export interface NpAgentApprovalRevocationCanonicalV1 {
+  schemaVersion: "np.agent-approval-revocation.v1";
+  siteId: string;
+  approvalId: string;
+  approvalGeneration: number;
+  statementHash: string;
+  decisionHash: string | null;
+  revocationKind: NpAgentApprovalRevocationKind;
+  revokerFingerprint: string;
+  revocationCode: string;
+  revocationReason: string | null;
+  revokedAt: string;
+}
+
+export interface NpAgentApprovalStatementBindingV1 {
+  statement: NpAgentApprovalStatementCanonicalV1;
+  statementHash: string;
+  approvalGeneration: number;
+}
+
+export interface NpAgentApprovalDecisionBindingV1 {
+  decision: NpAgentApprovalDecisionCanonicalV1;
+  decisionHash: string;
+}
+
+export interface NpAgentApprovalIntegrityKeyV1 {
+  owner: "approval-integrity";
+  id: string;
+  bytes: Uint8Array;
+}
+
 export const npAgentCanonicalPurposes = [
   "np.agent-action.v1",
   "np.agent-approval-decision.v1",

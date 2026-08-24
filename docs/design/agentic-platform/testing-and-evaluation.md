@@ -593,6 +593,19 @@ independent initial/rollback domain-separated digest vectors. Persistence tests
 remain responsible for byte-equal `sealed_plan_body` rehydration and column
 agreement.
 
+Approval canonical contract tests cover the exact statement, decision, and
+revocation top-level/excluded inventories; every requester, target, and
+reauthentication branch; sorted unique scope/capability/predicate/policy sets;
+preview null equivalence; sensitive/destructive reauthentication floors;
+`1..300` recent-auth bounds; statement lifetime and decision-time facts; and
+human versus automatic revocation reasons. Contextual vectors recompute and
+bind the original statement plus optional prior decision before emitting later
+bytes. Three fixed SHA-256 and approval-integrity HMAC vectors, changed-body,
+wrong-key-id/material, unknown-field, accessor, text, and canonical-byte limit
+cases lock fail-closed behavior. AP-401 persistence tests remain responsible
+for keyring rotation, denormalized-column agreement, challenges, compare-and-
+swap state, expiry, and single-use consumption.
+
 ### 6.2 Transaction and concurrency
 
 - all operations commit or none do;
