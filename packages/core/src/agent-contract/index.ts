@@ -11,3 +11,4 @@ export * from "./changeset-contract.js";
 export * from "./canonical-changeset.js";
 export * from "./canonical-approval.js";
 export * from "./canonical-preview-artifact.js";
+export * from "./canonical-preview.js";
