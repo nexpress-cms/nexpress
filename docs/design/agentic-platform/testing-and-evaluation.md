@@ -606,6 +606,19 @@ cases lock fail-closed behavior. AP-401 persistence tests remain responsible
 for keyring rotation, denormalized-column agreement, challenges, compare-and-
 swap state, expiry, and single-use consumption.
 
+Preview artifact canonical contract tests cover the exact manifest, nested
+artifact, viewport, branch, excluded-field, and discriminator fixtures;
+canonical site/UUID/generation/digest values; screenshot/report null and MIME
+matrices; canonical route/locale values; viewport bounds; unique ordered
+ordinals and artifact identities; common expiry; contiguous multipart report
+metadata; and the `20`/`4`/`24`, `2 MiB`/`512 KiB`, and 256 KiB ceilings. A
+fixed `np.agent-artifact.v1` SHA-256 vector plus changed-manifest, unknown
+field, accessor, sparse-array, and branch-substitution cases keep manifest
+integrity separate from `ac1:*` raw-content verification. AP-306 persistence
+and storage tests remain responsible for byte-equal preview expiry, raw-byte
+rehashing, URI derivation, row-first upload state, object cleanup, and adapter
+receipts.
+
 ### 6.2 Transaction and concurrency
 
 - all operations commit or none do;

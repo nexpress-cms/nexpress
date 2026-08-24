@@ -195,6 +195,46 @@ export interface NpAgentApprovalIntegrityKeyV1 {
   bytes: Uint8Array;
 }
 
+export const npAgentPreviewArtifactKinds = ["screenshot", "report"] as const;
+export type NpAgentPreviewArtifactKind = (typeof npAgentPreviewArtifactKinds)[number];
+
+export const npAgentPreviewArtifactMimes = ["image/png", "image/webp", "application/json"] as const;
+export type NpAgentPreviewArtifactMime = (typeof npAgentPreviewArtifactMimes)[number];
+
+export interface NpAgentPreviewArtifactViewportV1 {
+  name: "desktop" | "mobile";
+  width: number;
+  height: number;
+  deviceScaleFactor: 1 | 2;
+}
+
+export interface NpAgentPreviewArtifactManifestEntryV1 {
+  ordinal: number;
+  artifactId: string;
+  kind: NpAgentPreviewArtifactKind;
+  route: string | null;
+  locale: string | null;
+  viewport: NpAgentPreviewArtifactViewportV1 | null;
+  reportPart: number | null;
+  reportTotalParts: number | null;
+  contentDigest: string;
+  mime: NpAgentPreviewArtifactMime;
+  bytes: number;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface NpAgentPreviewArtifactManifestV1 {
+  schemaVersion: "np.agent-preview-artifact-manifest.v1";
+  siteId: string;
+  changeSetId: string;
+  previewId: string;
+  generation: number;
+  planHash: string;
+  previewContractFingerprint: string;
+  artifacts: NpAgentPreviewArtifactManifestEntryV1[];
+}
+
 export const npAgentCanonicalPurposes = [
   "np.agent-action.v1",
   "np.agent-approval-decision.v1",
