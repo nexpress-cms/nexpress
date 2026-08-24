@@ -587,6 +587,72 @@ export type NpAgentChangeSetPlanCanonicalV1 =
       body: NpAgentRollbackChangeSetPlanBodyV1;
     };
 
+export const npAgentBudgetSourceKinds = [
+  "agent",
+  "deployment",
+  "policy",
+  "recipe",
+  "site",
+] as const;
+export type NpAgentBudgetSourceKind = (typeof npAgentBudgetSourceKinds)[number];
+
+export interface NpAgentBudgetSnapshotRecipeV1 {
+  id: NpAgentRecipeId;
+  version: number;
+  fingerprint: string;
+}
+
+export interface NpAgentBudgetSnapshotSourceRefV1 {
+  kind: NpAgentBudgetSourceKind;
+  id: string | null;
+  version: number;
+  digest: string;
+}
+
+export interface NpAgentBudgetSnapshotCountersV1 {
+  concurrentRuns: number;
+  concurrentProviderCalls: number;
+  runsRollingHour: number;
+  providerCallsRollingHour: number;
+  inputTokensUtcDay: number;
+  outputTokensUtcDay: number;
+  inputTokensUtcMonth: number;
+  outputTokensUtcMonth: number;
+  costMicrosUtcDay: number;
+  costMicrosUtcMonth: number;
+  incidentAnalysesFingerprintUtcDay: number;
+  directActionsRollingHour: number;
+  directActionsSubjectRollingHour: number;
+}
+
+export interface NpAgentBudgetSnapshotWindowsV1 {
+  rollingHourStartedAt: string;
+  utcDay: string;
+  utcMonth: string;
+}
+
+export interface NpAgentBudgetSnapshotReservationV1 {
+  runs: number;
+  providerCalls: number;
+  inputTokens: number;
+  outputTokens: number;
+  costMicros: number;
+}
+
+export interface NpAgentBudgetSnapshotCanonicalV1 {
+  schemaVersion: "np.agent-budget-snapshot.v1";
+  siteId: string;
+  principalId: string;
+  agentId: string | null;
+  recipe: NpAgentBudgetSnapshotRecipeV1 | null;
+  capturedAt: string;
+  sourceRefs: NpAgentBudgetSnapshotSourceRefV1[];
+  limits: NpAgentRunLimitsV1;
+  counters: NpAgentBudgetSnapshotCountersV1;
+  windows: NpAgentBudgetSnapshotWindowsV1;
+  reservation: NpAgentBudgetSnapshotReservationV1;
+}
+
 export interface NpAgentRunLimitsV1 {
   schemaVersion: "np.agent-run-limits.v1";
   maxAttempts: number;

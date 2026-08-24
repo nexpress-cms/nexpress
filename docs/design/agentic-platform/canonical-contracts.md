@@ -436,6 +436,20 @@ and the Runtime deadline is canonical millisecond UTC. Budget source refs
 sort by `(kind,id-or-empty,version,digest)` and are unique. The recipe is null
 for Gateway/deterministic admission without a recipe.
 
+`@nexpress/core/agent-contract` implements the budget body through the named
+`npAnalyzeAgentBudgetSnapshotCanonical()` and
+`npRequireAgentBudgetSnapshotCanonical()` surfaces. The analyzer rebuilds an
+independent exact snapshot, validates canonical site/principal/Agent/recipe
+identities and source digests, reuses the one exact run-limits parser, and
+checks rolling-hour UTC instants plus canonical UTC day/month labels. Counts,
+tokens, and reservations are non-negative signed 32-bit integers; cost micros
+are non-negative safe integers. A recipe is accepted only with a non-null
+Agent, source refs remain sorted unique, and the named byte/digest helpers
+enforce the 256 KiB body ceiling under the
+`np.agent-budget-snapshot.v1` domain. Effective inheritance, transactional
+counter measurement, reservation admission, and retained-row agreement remain
+the owning Runtime service and persistence responsibilities.
+
 Capabilities sort by descriptor id. `projection:"definition"` requires
 exactly one capability and produces that definition's
 `capabilityFingerprint`; `projection:"registry"` requires the complete

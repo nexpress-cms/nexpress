@@ -16,6 +16,7 @@ import {
 } from "./canonical-body-validation.js";
 import { digestAgentCanonicalSha256 } from "./canonical-digest.js";
 import { buildAgentCanonicalFoundationBytes } from "./canonical-foundation.js";
+import { parseAgentRunLimitsCanonical } from "./canonical-run-limits-values.js";
 import type {
   NpAgentCanonicalBodyBytesV1,
   NpAgentCanonicalPurposeV1,
@@ -30,9 +31,7 @@ import type {
   NpAgentVaultAlgorithm,
 } from "./types.js";
 
-const SAFE_INTEGER_MAXIMUM = Number.MAX_SAFE_INTEGER;
 const SIGNED_32_BIT_MAXIMUM = 2_147_483_647;
-const RUN_WALL_CLOCK_MAXIMUM_SECONDS = 86_400;
 const EFFECT_KINDS = new Set<string>(["read", "mutation"]);
 const REVERSIBILITIES = new Set<string>(["none", "compensatable"]);
 const EFFECT_EXPOSURES = new Set<string>(["read", "propose", "approved-execute"]);
@@ -70,23 +69,10 @@ export const npAgentEffectProfileCanonicalExcludedKeysV1 = [
   "compensate",
 ] as const;
 
-export const npAgentRunLimitsCanonicalIncludedKeysV1 = [
-  "schemaVersion",
-  "maxAttempts",
-  "maxProviderCalls",
-  "maxCapabilityCalls",
-  "maxInputTokens",
-  "maxOutputTokens",
-  "maxCostMicros",
-  "maxWallClockSeconds",
-] as const satisfies readonly (keyof NpAgentRunLimitsCanonicalV1)[];
-
-export const npAgentRunLimitsCanonicalExcludedKeysV1 = [
-  "limitsHash",
-  "runLimitsHash",
-  "resolvedAt",
-  "sourceRefs",
-] as const;
+export {
+  npAgentRunLimitsCanonicalExcludedKeysV1,
+  npAgentRunLimitsCanonicalIncludedKeysV1,
+} from "./canonical-run-limits-values.js";
 
 export const npAgentStaffSiteAuthorizationCanonicalIncludedKeysV1 = [
   "schemaVersion",
@@ -262,65 +248,6 @@ function parseEffectProfileCanonical(value: unknown): NpAgentEffectProfileCanoni
   };
 }
 
-function parseRunLimitsCanonical(value: unknown): NpAgentRunLimitsCanonicalV1 {
-  const path = "agent.canonical.runLimits";
-  const record = canonicalBodyRecord(
-    value,
-    path,
-    npAgentRunLimitsCanonicalIncludedKeysV1,
-    npAgentRunLimitsCanonicalIncludedKeysV1,
-    { seen: new WeakSet<object>() },
-  );
-  if (record.schemaVersion !== "np.agent-run-limits.v1") {
-    failCanonicalBody("invalid-field", `${path}.schemaVersion`, "must be np.agent-run-limits.v1");
-  }
-  return {
-    schemaVersion: "np.agent-run-limits.v1",
-    maxAttempts: canonicalBodyInteger(
-      record.maxAttempts,
-      `${path}.maxAttempts`,
-      1,
-      SIGNED_32_BIT_MAXIMUM,
-    ),
-    maxProviderCalls: canonicalBodyInteger(
-      record.maxProviderCalls,
-      `${path}.maxProviderCalls`,
-      1,
-      SIGNED_32_BIT_MAXIMUM,
-    ),
-    maxCapabilityCalls: canonicalBodyInteger(
-      record.maxCapabilityCalls,
-      `${path}.maxCapabilityCalls`,
-      1,
-      SIGNED_32_BIT_MAXIMUM,
-    ),
-    maxInputTokens: canonicalBodyInteger(
-      record.maxInputTokens,
-      `${path}.maxInputTokens`,
-      0,
-      SIGNED_32_BIT_MAXIMUM,
-    ),
-    maxOutputTokens: canonicalBodyInteger(
-      record.maxOutputTokens,
-      `${path}.maxOutputTokens`,
-      0,
-      SIGNED_32_BIT_MAXIMUM,
-    ),
-    maxCostMicros: canonicalBodyInteger(
-      record.maxCostMicros,
-      `${path}.maxCostMicros`,
-      0,
-      SAFE_INTEGER_MAXIMUM,
-    ),
-    maxWallClockSeconds: canonicalBodyInteger(
-      record.maxWallClockSeconds,
-      `${path}.maxWallClockSeconds`,
-      1,
-      RUN_WALL_CLOCK_MAXIMUM_SECONDS,
-    ),
-  };
-}
-
 function parseStaffAuthority(
   value: unknown,
   path: string,
@@ -478,7 +405,11 @@ export function npRequireAgentEffectProfileCanonical(
 export function npAnalyzeAgentRunLimitsCanonical(
   value: unknown,
 ): NpAgentContractResult<NpAgentRunLimitsCanonicalV1> {
-  return analyzeCanonicalBody("agent.canonical.runLimits", () => parseRunLimitsCanonical(value));
+  return analyzeCanonicalBody("agent.canonical.runLimits", () =>
+    parseAgentRunLimitsCanonical(value, "agent.canonical.runLimits", {
+      seen: new WeakSet<object>(),
+    }),
+  );
 }
 
 export function npRequireAgentRunLimitsCanonical(value: unknown): NpAgentRunLimitsCanonicalV1 {
