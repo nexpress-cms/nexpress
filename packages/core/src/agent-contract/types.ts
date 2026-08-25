@@ -653,6 +653,62 @@ export interface NpAgentBudgetSnapshotCanonicalV1 {
   reservation: NpAgentBudgetSnapshotReservationV1;
 }
 
+export const npAgentActorBucketPurposesV1 = ["login-identifier", "network-address"] as const;
+export type NpAgentActorBucketPurposeV1 = (typeof npAgentActorBucketPurposesV1)[number];
+
+export const npAgentActorRestrictionScopes = [
+  "auth.staff",
+  "auth.member",
+  "agent.gateway",
+  "community.write",
+  "content.write",
+] as const;
+export type NpAgentActorRestrictionScope = (typeof npAgentActorRestrictionScopes)[number];
+
+export const NP_AGENT_ACTOR_RESTRICTION_TTL_MIN_SECONDS = 60;
+export const NP_AGENT_ACTOR_RESTRICTION_TTL_DEFAULT_SECONDS = 900;
+export const NP_AGENT_ACTOR_RESTRICTION_TTL_MAX_SECONDS = 3_600;
+
+export interface NpAgentActorBucketRefV1 {
+  purpose: NpAgentActorBucketPurposeV1;
+  projectionVersion: number;
+  projectionFingerprint: string;
+  keyId: string;
+  bucket: string;
+}
+
+export type NpAgentStableCode = string;
+
+export const npAgentRestrictionPrincipalKinds = ["agent-gateway", "member", "staff"] as const;
+export type NpAgentRestrictionPrincipalKind = (typeof npAgentRestrictionPrincipalKinds)[number];
+
+export interface NpAgentRestrictionAuthenticatedPrincipalSubjectV1 {
+  kind: "authenticated_principal";
+  principalKind: NpAgentRestrictionPrincipalKind;
+  principalId: string;
+}
+
+export interface NpAgentRestrictionOpaqueActorBucketSubjectV1 extends NpAgentActorBucketRefV1 {
+  kind: "opaque_actor_bucket";
+}
+
+export type NpAgentRestrictionSubjectV1 =
+  NpAgentRestrictionAuthenticatedPrincipalSubjectV1 | NpAgentRestrictionOpaqueActorBucketSubjectV1;
+
+export interface NpAgentRestrictionCanonicalV1 {
+  schemaVersion: "np.agent-restriction.v1";
+  restrictionId: string;
+  siteId: string;
+  subject: NpAgentRestrictionSubjectV1;
+  actionScopes: NpAgentActorRestrictionScope[];
+  startsAt: string;
+  expiresAt: string;
+  reasonCode: NpAgentStableCode;
+  targetVersionDigest: string;
+}
+
+export type NpAgentRestrictionDescriptorV1 = NpAgentRestrictionCanonicalV1;
+
 export const npAgentProviderDataClasses = [
   "public-only",
   "internal-redacted",
