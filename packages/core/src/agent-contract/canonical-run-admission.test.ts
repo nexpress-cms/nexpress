@@ -21,7 +21,6 @@ import {
   npRequireAgentRunAdmissionCanonical,
   type NpAgentContractResult,
   type NpAgentRunAdmissionCanonicalV1,
-  type NpAgentRunAdmissionPolicyRefV1,
 } from "./index.js";
 
 const encoder = new TextEncoder();
@@ -144,57 +143,16 @@ function expectIssue(result: NpAgentContractResult<unknown>, code: string, path:
   if (!result.ok) expect(result.issues).toContainEqual(expect.objectContaining({ code, path }));
 }
 
-function boundaryPolicyRef(id: string): NpAgentRunAdmissionPolicyRefV1 {
-  return { kind: "site-policy", id, version: 1, digest: digestA };
-}
-
 function canonicalByteLength(body: NpAgentRunAdmissionCanonicalV1): number {
   return encoder.encode(serializeAgentCanonicalJson(body)).byteLength;
 }
 
 function exactBoundaryAdmission(): NpAgentRunAdmissionCanonicalV1 {
   const maximum = npAgentCanonicalBodyMaxBytesV1["np.agent-run-admission.v1"];
-  const baseBody = gatewayAdmission({ policyRefs: [] });
-  const tailIds = ["x", "y", "z"];
-  const withRefs = (count: number, pads: readonly number[]) =>
-    gatewayAdmission({
-      policyRefs: [
-        ...Array.from({ length: count }, (_, index) =>
-          boundaryPolicyRef(`a${index.toString().padStart(6, "0")}`),
-        ),
-        ...tailIds.map((prefix, index) =>
-          boundaryPolicyRef(`${prefix}${prefix.repeat(pads[index] ?? 0)}`),
-        ),
-      ],
-    });
-
-  const emptyBytes = canonicalByteLength(baseBody);
-  const oneEntryBytes = canonicalByteLength(
-    gatewayAdmission({ policyRefs: [boundaryPolicyRef("a000000")] }),
-  );
-  const perEntryBytes = oneEntryBytes - emptyBytes;
-  let count = Math.max(0, Math.floor((maximum - emptyBytes) / perEntryBytes) - tailIds.length);
-  let candidate = withRefs(count, [0, 0, 0]);
-  let remaining = maximum - canonicalByteLength(candidate);
-  while (remaining < 0) {
-    count -= 1;
-    candidate = withRefs(count, [0, 0, 0]);
-    remaining = maximum - canonicalByteLength(candidate);
-  }
-  while (remaining > tailIds.length * 127) {
-    count += 1;
-    candidate = withRefs(count, [0, 0, 0]);
-    remaining = maximum - canonicalByteLength(candidate);
-  }
-
-  const pads = [0, 0, 0];
-  for (let index = 0; index < pads.length; index += 1) {
-    const next = Math.min(127, remaining);
-    pads[index] = next;
-    remaining -= next;
-  }
-  expect(remaining).toBe(0);
-  return withRefs(count, pads);
+  const baseBody = runAdmission({ eventRef: { padding: "" } });
+  const paddingCharacters = maximum - canonicalByteLength(baseBody);
+  expect(paddingCharacters).toBeGreaterThan(0);
+  return runAdmission({ eventRef: { padding: "x".repeat(paddingCharacters) } });
 }
 
 describe("Agent run-admission canonical body", () => {
@@ -463,12 +421,15 @@ describe("Agent run-admission canonical body", () => {
     const built = npBuildAgentRunAdmissionCanonicalBytes(exact);
     expect(built.canonicalJsonUtf8).toHaveLength(maximum);
 
-    const policyRefs = exact.policyRefs.map((entry) => ({ ...entry }));
-    const expandableIndex = policyRefs.findIndex((entry) => (entry.id?.length ?? 128) < 128);
-    expect(expandableIndex).toBeGreaterThanOrEqual(0);
-    const expandable = policyRefs[expandableIndex];
-    policyRefs[expandableIndex] = { ...expandable, id: `${expandable.id}q` };
-    expect(npAnalyzeAgentRunAdmissionCanonical({ ...exact, policyRefs }).ok).toBe(false);
+    const padding = exact.eventRef?.padding;
+    expect(typeof padding).toBe("string");
+    if (typeof padding !== "string") throw new TypeError("expected boundary padding");
+    expect(
+      npAnalyzeAgentRunAdmissionCanonical({
+        ...exact,
+        eventRef: { padding: `${padding}x` },
+      }).ok,
+    ).toBe(false);
   });
 
   it("locks source-key independence, domain separation, and the golden digest", async () => {
