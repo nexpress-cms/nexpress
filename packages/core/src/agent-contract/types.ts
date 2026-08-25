@@ -653,6 +653,96 @@ export interface NpAgentBudgetSnapshotCanonicalV1 {
   reservation: NpAgentBudgetSnapshotReservationV1;
 }
 
+export const npAgentProviderDataClasses = [
+  "public-only",
+  "internal-redacted",
+  "sensitive-approved",
+] as const;
+export type NpAgentProviderDataClass = (typeof npAgentProviderDataClasses)[number];
+export const npAgentProviderDataClassRank = {
+  "public-only": 0,
+  "internal-redacted": 1,
+  "sensitive-approved": 2,
+} as const satisfies Record<NpAgentProviderDataClass, number>;
+
+export const npAgentRunAdmissionOrigins = ["gateway", "runtime"] as const;
+export type NpAgentRunAdmissionOrigin = (typeof npAgentRunAdmissionOrigins)[number];
+
+export const npAgentRunAdmissionPolicyKinds = [
+  "agent-policy",
+  "feature-setting",
+  "framework",
+  "site-policy",
+] as const;
+export type NpAgentRunAdmissionPolicyKind = (typeof npAgentRunAdmissionPolicyKinds)[number];
+
+export const npAgentCausalDepthMaximumV1 = 4;
+
+export interface NpAgentRunAdmissionAgentV1 {
+  id: string;
+  versionId: string;
+  configHash: string;
+}
+
+export interface NpAgentRunAdmissionLineageV1 {
+  rootRunId: string;
+  parentRunId: string | null;
+  causalDepth: number;
+  causalEventId: string | null;
+  causalActionId: string | null;
+}
+
+export interface NpAgentRunAdmissionRecipeV1 {
+  id: NpAgentRecipeId;
+  version: number;
+  fingerprint: string;
+  instructionTemplateId: string | null;
+  instructionTemplateVersion: number | null;
+  instructionDigest: string | null;
+  responseSchemaDigest: string;
+  manualInputSchemaDigest: string | null;
+}
+
+export interface NpAgentRunAdmissionPolicyRefV1 {
+  kind: NpAgentRunAdmissionPolicyKind;
+  id: string | null;
+  version: number;
+  digest: string;
+}
+
+export interface NpAgentRunAdmissionConnectionV1 {
+  id: string;
+  configSnapshotId: string;
+  configVersion: number;
+  configHash: string;
+  dataClassCeiling: NpAgentProviderDataClass;
+  pricingId: string;
+  pricingVersion: number;
+  pricingFingerprint: string;
+  pricingEffectiveAt: string;
+}
+
+export interface NpAgentRunAdmissionCanonicalV1 {
+  schemaVersion: "np.agent-run-admission.v1";
+  siteId: string;
+  origin: NpAgentRunAdmissionOrigin;
+  principalId: string;
+  invocationId: string | null;
+  triggerId: string | null;
+  agent: NpAgentRunAdmissionAgentV1 | null;
+  lineage: NpAgentRunAdmissionLineageV1;
+  recipe: NpAgentRunAdmissionRecipeV1 | null;
+  goal: string;
+  eventRef: NpAgentJsonObject | null;
+  policyRefs: NpAgentRunAdmissionPolicyRefV1[];
+  runLimitsHash: string;
+  budgetSnapshotHash: string;
+  idempotencyKey: string;
+  connection: NpAgentRunAdmissionConnectionV1 | null;
+  admittedAt: string;
+  deadlineAt: string;
+}
+
 export interface NpAgentRunLimitsV1 {
   schemaVersion: "np.agent-run-limits.v1";
   maxAttempts: number;
