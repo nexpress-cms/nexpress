@@ -138,6 +138,19 @@ the exact 256 KiB boundary, source-key-order independence, and one fixed
 responsible for locked measurement, inheritance, reservation reconciliation,
 and byte-equal retained snapshot/hash agreement.
 
+The run-admission purpose locks its top-level, Agent, lineage, recipe,
+policy-ref, connection, and exclusion inventories plus the closed origin,
+policy-kind, provider-data-class, and causal-depth constants. Contract tests
+cover Gateway, provider-backed Runtime, and deterministic Runtime branches;
+root/child and causal-pair rules; the recipe instruction triple; complete
+connection/pricing evidence; policy tuple ordering; bounded safe `eventRef`
+I-JSON; independent-copy and hostile-object handling; the exact 512 KiB
+boundary; source-key independence; and one fixed
+`np.agent-run-admission.v1` SHA-256 vector. AP-503/AP-504 integration tests
+remain responsible for same-site lineage, recipe-specific event-reference
+parsing, policy completeness, persisted run-limit/budget hash equality,
+transactional admission, and byte-equal retained body/fingerprint agreement.
+
 A separate closed digest-kind test covers values deliberately outside the
 canonical-JSON registry: `ac1` raw artifact content, `aur1` artifact-upload
 requests, `aus1` artifact-upload sets, `auo1` terminal upload-operation

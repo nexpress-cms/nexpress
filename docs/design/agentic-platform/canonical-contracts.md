@@ -1243,8 +1243,11 @@ Gateway admission requires null trigger/agent/recipe/connection. Runtime
 admission requires a non-null Agent and recipe; a deterministic recipe has
 null connection. Instruction fields are all null only for a provider-forbidden
 recipe and otherwise all non-null. Policy refs sort by
-`(kind,id-or-empty,version,digest)`. `eventRef`, when non-null, is reparsed by
-the recipe's exact event-reference analyzer.
+`(kind,id-or-empty,version,digest)`. The context-free canonical analyzer
+rebuilds `eventRef`, when non-null, as one bounded independent I-JSON object;
+before AP-503 constructs that body, the owning Runtime service additionally
+reparses it through the selected recipe's exact event-reference analyzer and
+passes only that normalized result.
 `admittedAt` is always the canonical ISO projection of the owning run's
 immutable `queued_at`, and `deadlineAt` is the projection of its
 `deadline_at`; rehydration may not select `created_at`, `started_at`, or the
@@ -1255,6 +1258,20 @@ The `runLimitsHash` is computed independently from the exact
 body owns `admission_fingerprint`; neither body contains the other's derived
 digest. Root lineage uses a server-reserved run id before hashing; a root has
 that id as `rootRunId`, null parent/causal ids, and depth zero.
+
+`@nexpress/core/agent-contract` implements the context-free body through
+`npAnalyzeAgentRunAdmissionCanonical()` and
+`npRequireAgentRunAdmissionCanonical()`. It rebuilds an independent exact
+body, applies the Gateway/Runtime null matrix, bounds lineage to causal depth
+four, pairs causal event/action ids and the recipe instruction triple, checks
+the closed provider data-class and policy-kind inventories, and validates the
+complete immutable connection/pricing tuple. Goals and caller-stable
+idempotency keys are bounded, admission/deadline instants are canonical and at
+most 24 hours apart, and named byte/digest helpers enforce the 512 KiB purpose
+ceiling. Same-site parent/event/action lookup, root-id equality, selected
+recipe/event-reference agreement, policy completeness, stored run-limit and
+budget hash agreement, exact queued/deadline column projection, and connection
+catalog selection remain AP-503/AP-504 service and persistence checks.
 
 ### 2.12 Site deletion plan and vault AAD
 
