@@ -799,6 +799,80 @@ export interface NpAgentRunAdmissionCanonicalV1 {
   deadlineAt: string;
 }
 
+export const npAgentSiteDeletionExternalTargetKinds = [
+  "restriction",
+  "vault-operation",
+  "connection-operation",
+  "preview-artifact-upload",
+  "preview-artifact-delete",
+] as const;
+export type NpAgentSiteDeletionExternalTargetKind =
+  (typeof npAgentSiteDeletionExternalTargetKinds)[number];
+
+export interface NpAgentSiteDeletionRowInventoryCanonicalV1 {
+  table: string;
+  count: number;
+  identityDigest: string;
+}
+
+export type NpAgentSiteDeletionExternalTargetCanonicalV1 =
+  | {
+      kind: "restriction";
+      targetId: string;
+      requestDigest: string;
+      adapterId: string;
+      adapterContractVersion: number;
+      adapterFingerprint: string;
+      idempotencyKey: string;
+    }
+  | {
+      kind: "vault-operation";
+      targetId: string;
+      requestDigest: string;
+      adapterId: string;
+      adapterContractVersion: number;
+      adapterFingerprint: string;
+      idempotencyKey: string;
+    }
+  | {
+      kind: "connection-operation";
+      targetId: string;
+      requestDigest: string;
+      adapterId: string;
+      adapterContractVersion: number;
+      adapterFingerprint: string;
+      idempotencyKey: string;
+    }
+  | {
+      kind: "preview-artifact-upload";
+      targetId: string;
+      requestDigest: string;
+      adapterId: string;
+      adapterContractVersion: number;
+      adapterFingerprint: string;
+      idempotencyKey: string;
+    }
+  | {
+      kind: "preview-artifact-delete";
+      targetId: string;
+      requestDigest: string;
+      adapterId: string;
+      adapterContractVersion: number;
+      adapterFingerprint: string;
+      idempotencyKey: string;
+    };
+
+export interface NpAgentSiteDeletionPlanCanonicalV1 {
+  schemaVersion: "np.agent-site-deletion-plan.v1";
+  inventoryVersion: 1;
+  sagaId: string;
+  siteId: string;
+  siteVersionDigest: string;
+  preparedAt: string;
+  rowInventory: NpAgentSiteDeletionRowInventoryCanonicalV1[];
+  externalTargets: NpAgentSiteDeletionExternalTargetCanonicalV1[];
+}
+
 export interface NpAgentRunLimitsV1 {
   schemaVersion: "np.agent-run-limits.v1";
   maxAttempts: number;

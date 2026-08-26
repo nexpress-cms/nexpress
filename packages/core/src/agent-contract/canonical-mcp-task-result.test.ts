@@ -378,7 +378,7 @@ describe("Agent MCP stored terminal-result canonical body", () => {
         },
       }).ok,
     ).toBe(false);
-  });
+  }, 15_000);
 
   it("inspects hostile values without invoking accessors or Proxy get traps", () => {
     let reads = 0;

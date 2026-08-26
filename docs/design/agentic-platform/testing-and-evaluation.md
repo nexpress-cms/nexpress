@@ -163,6 +163,19 @@ remain responsible for same-site lineage, recipe-specific event-reference
 parsing, policy completeness, persisted run-limit/budget hash equality,
 transactional admission, and byte-equal retained body/fingerprint agreement.
 
+The site-deletion-plan purpose locks its exact top-level, row-inventory,
+external-target, and exclusion inventories plus the five closed target kinds.
+Contract tests cover canonical UUID/site/time facts, exact `sdsv1`/`sdri1`
+syntax, nonnegative safe row counts, rows sorted unique by table, targets sorted
+unique by `(kind,targetId)`, every target branch, bounded adapter/request/
+idempotency evidence, independent-copy rebuilding, hostile object graphs, the
+exact 16 MiB purpose ceiling, source-key independence, and one fixed
+`np.agent-site-deletion-plan.v1` SHA-256 vector. AP-103 integration tests remain
+responsible for the complete table inventory excluding the marker, frozen
+counts and streamed identity digests, target-source reparsing, site-version
+recomputation, marker/body/hash column equality, the deletion fence, and final
+convergence.
+
 A separate closed digest-kind test covers values deliberately outside the
 canonical-JSON registry: `ac1` raw artifact content, `aur1` artifact-upload
 requests, `aus1` artifact-upload sets, `auo1` terminal upload-operation
