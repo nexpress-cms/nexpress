@@ -1,4 +1,7 @@
 import {
+  NP_AGENT_ACTOR_RESTRICTION_TTL_DEFAULT_SECONDS,
+  NP_AGENT_ACTOR_RESTRICTION_TTL_MAX_SECONDS,
+  NP_AGENT_ACTOR_RESTRICTION_TTL_MIN_SECONDS,
   npAgentApprovalModes,
   npAgentCapabilityIds,
   npAgentCapabilityRisks,
@@ -78,9 +81,9 @@ export const npAgentContractLimits = {
   taskAvailabilityMaximumSeconds: 24 * 60 * 60,
   directMutationPrimaryTargets: 1,
   actionEvidenceReferences: 100,
-  actorRestrictionTtlMinimumSeconds: 60,
-  actorRestrictionTtlDefaultSeconds: 15 * 60,
-  actorRestrictionTtlMaximumSeconds: 60 * 60,
+  actorRestrictionTtlMinimumSeconds: NP_AGENT_ACTOR_RESTRICTION_TTL_MIN_SECONDS,
+  actorRestrictionTtlDefaultSeconds: NP_AGENT_ACTOR_RESTRICTION_TTL_DEFAULT_SECONDS,
+  actorRestrictionTtlMaximumSeconds: NP_AGENT_ACTOR_RESTRICTION_TTL_MAX_SECONDS,
 } as const;
 
 export const npAgentMcpToolDefinitionsV1: readonly NpAgentMcpToolDefinitionV1[] = [

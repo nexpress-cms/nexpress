@@ -138,6 +138,18 @@ the exact 256 KiB boundary, source-key-order independence, and one fixed
 responsible for locked measurement, inheritance, reservation reconciliation,
 and byte-equal retained snapshot/hash agreement.
 
+The restriction purpose locks its top-level, authenticated-principal,
+opaque-actor-bucket, and exclusion inventories plus the closed bucket-purpose,
+principal-kind, restriction-scope, and TTL constants. Contract tests cover
+both exact subject branches; independent-copy and hostile-object behavior;
+canonical ids, bucket HMAC evidence, projection facts, reason and target
+digests; sorted unique non-empty scopes; the inclusive 60–3,600 second TTL;
+the exact 64 KiB purpose ceiling; source-key independence; and one fixed
+`np.agent-restriction.v1` SHA-256 vector. R7 integration tests remain
+responsible for registered projection/key agreement, trusted raw-subject
+derivation, same-site source bindings, row/body/hash rehydration, adapter
+confirmation and compensation, expiry, and proxy enforcement convergence.
+
 The run-admission purpose locks its top-level, Agent, lineage, recipe,
 policy-ref, connection, and exclusion inventories plus the closed origin,
 policy-kind, provider-data-class, and causal-depth constants. Contract tests

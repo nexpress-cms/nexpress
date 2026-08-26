@@ -1234,6 +1234,25 @@ interface NpAgentRunAdmissionCanonicalV1 {
 type NpAgentRunLimitsCanonicalV1 = NpAgentRunLimitsV1;
 ```
 
+`@nexpress/core/agent-contract` implements the restriction body through
+`npAnalyzeAgentRestrictionCanonical()` and
+`npRequireAgentRestrictionCanonical()`, with
+`NpAgentRestrictionDescriptorV1` as an alias of the canonical type. The
+public contract owns the closed actor-bucket purpose, principal-kind, and
+restriction-scope inventories plus the 60/900/3,600-second TTL constants.
+The analyzer requires exactly one authenticated-principal or opaque-bucket
+subject branch, a canonical UUID principal or an exact 43-character
+base64url HMAC bucket, a positive projection version, a visible-ASCII
+projection fingerprint of at most 256 characters, a canonical key id, and a
+sorted unique non-empty scope set. Start/expiry instants are canonical UTC and
+must be 60–3,600 seconds apart; the reason is an exact 1–64 character uppercase
+`NpAgentStableCode` and `targetVersionDigest` is an exact canonical SHA-256
+digest. Named byte/digest helpers enforce the 64 KiB purpose ceiling.
+Projection registration/fingerprint agreement, key retention, raw-subject
+normalization and bucket derivation, same-site source action/incident lookup,
+and exact adapter install/verify/remove confirmation remain R7 service,
+persistence, and adapter checks.
+
 Restriction scopes are sorted unique and non-empty. The subject is exactly one
 branch. AP-000 adds `np_agent_actor_restrictions.restriction_hash`; it must not
 reuse `target_version_digest`, which names the protected target version and
