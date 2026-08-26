@@ -1411,6 +1411,19 @@ and cleanup outcomes. The final transaction recomputes the frozen inventory
 under the deletion lock, applies the exact one-marker-row check above, and
 rejects an unknown or changed identity.
 
+`@nexpress/core/agent-contract` implements the context-free plan body through
+`npAnalyzeAgentSiteDeletionPlanCanonical()` and
+`npRequireAgentSiteDeletionPlanCanonical()`. It rebuilds an independent exact
+body, fixes `inventoryVersion` to one, validates the canonical saga/site/time
+facts and exact `sdsv1`/`sdri1` digest syntax, excludes the marker table, and
+requires rows by table and external targets by `(kind,targetId)` to be sorted
+unique. The five target branches always carry a canonical UUID, bounded request
+digest, adapter id/version/fingerprint, and idempotency key; named byte/digest
+helpers enforce the 16 MiB purpose ceiling. Complete table inventory, frozen
+row counts and streamed identities, target-source reparsing, site-version
+recomputation, marker/body/hash equality, the deletion fence, and final
+convergence remain AP-103 service and persistence checks.
+
 The vault AAD body is byte-identical to `NpAgentVaultAadV1`; no second
 credential AAD vocabulary exists.
 
