@@ -2,7 +2,14 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-19 (The bundled GitHub, Google, and Discord OAuth
+**Last refreshed:** 2026-08-26 (The client-safe Agent canonical contract now
+owns exact body types and context-free analyzers for all 32 v1 purposes. One
+exhaustive purpose/body/analyzer/included/excluded/size registry dispatches
+typed canonical bytes and SHA digests; the destination purpose remains on its
+dedicated HMAC-only path. This contract-only gate adds no runtime tables,
+migrations, or provider calls.)
+
+**Earlier:** 2026-08-19 (The bundled GitHub, Google, and Discord OAuth
 providers now own small provider-specific authorization-code implementations
 with S256 PKCE, bounded token-response validation, and injected network seams.
 The deprecated Arctic package is no longer a runtime dependency; the

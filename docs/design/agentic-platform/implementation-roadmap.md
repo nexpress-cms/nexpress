@@ -55,6 +55,14 @@ requirements instead of editing them concurrently.
 
 Outcome: issue-ready contracts with no runtime behavior.
 
+Implementation status (2026-08-26): the AP-000 client-safe canonical analyzer
+gate now covers all 32 v1 purposes. The final bundled slice adds action,
+connection config/destination/operation, event, signal evidence, notification
+delivery, policy, and provider request/response bodies together with one
+exhaustive purpose/body/analyzer/included/excluded/size dispatch. Runtime,
+persistence, migrations, and the remaining threat-review/sign-off work stay
+outside this contract-only milestone.
+
 Work:
 
 - `AP-000`: implement the normative

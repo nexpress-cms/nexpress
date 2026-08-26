@@ -1,10 +1,14 @@
 # Agent canonical contract appendix
 
-> Status: proposed normative R0/AP-000 contract.
+> Status: normative R0/AP-000 contract; the client-safe exact analyzer gate is
+> implemented for all 32 v1 purposes.
 > Baseline: `9b1c04e8927e195b8e8e23c7b1261756067ee25f` (2026-07-24).
 
-This document specifies implementation targets; it does not claim that the
-corresponding runtime, tables, migrations, or exports already exist.
+This document specifies the complete contract. The exact body types,
+context-free analyzers, field-membership inventories, size registry, and typed
+canonical-byte/SHA dispatch are exported by `@nexpress/core/agent-contract`.
+It does not claim that the corresponding runtime, tables, or migrations
+already exist.
 
 This appendix closes the 32-purpose registry in
 [architecture.md](architecture.md#41-canonical-bytes-digests-and-macs). It is
@@ -3027,6 +3031,15 @@ checked before the outer byte ceiling, so the larger outer bound does not
 weaken those domain limits.
 
 ## 8. Required builder and analyzer surface
+
+Implementation status (2026-08-26): the purpose/body, analyzer,
+included-field, excluded-field, and size registries are byte-equal exhaustive
+over all 32 v1 purposes. The shared dispatch reparses the selected exact body
+before producing canonical bytes or a SHA digest; the destination purpose is
+excluded from that SHA surface and continues to use its dedicated
+connection-destination HMAC builder and verifier. Capability-, adapter-,
+collection-, setting-, and recipe-specific JSON remains subject to its named
+domain builder as described below.
 
 R0 exports only typed purpose selection:
 

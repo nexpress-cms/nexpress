@@ -304,9 +304,9 @@ export const npAgentCanonicalPurposes = [
   "np.agent-site-deletion-plan.v1",
   "np.agent-staff-site-authorization.v1",
   "np.agent-vault-aad.v1",
-] as const;
+] as const satisfies readonly (keyof NpAgentCanonicalPurposeBodyMapV1)[];
 
-export type NpAgentCanonicalPurposeV1 = (typeof npAgentCanonicalPurposes)[number];
+export type NpAgentCanonicalPurposeV1 = keyof NpAgentCanonicalPurposeBodyMapV1;
 export type NpAgentCanonicalShaPurposeV1 = Exclude<
   NpAgentCanonicalPurposeV1,
   "np.agent-connection-destination.v1"
@@ -799,6 +799,733 @@ export interface NpAgentRunAdmissionCanonicalV1 {
   deadlineAt: string;
 }
 
+export const npAgentExecutableOpsActionIds = [
+  "cache.revalidate",
+  "agent.run.retry",
+  "agent.run.cancel",
+] as const;
+export type NpAgentExecutableOpsActionId = (typeof npAgentExecutableOpsActionIds)[number];
+
+export const npAgentPlanOnlyOpsActionIds = [
+  "migration.plan",
+  "restore.plan",
+  "storage.migration.plan",
+  "plugin.change.plan",
+  "queue.global.plan",
+] as const;
+export type NpAgentPlanOnlyOpsActionId = (typeof npAgentPlanOnlyOpsActionIds)[number];
+export type NpAgentOpsPlanActionId = NpAgentExecutableOpsActionId | NpAgentPlanOnlyOpsActionId;
+
+export type NpAgentActorSubjectV1 =
+  | {
+      kind: "principal";
+      principalKind: "staff" | "member" | "agent-gateway";
+      principalId: string;
+    }
+  | ({ kind: "actor-bucket" } & NpAgentActorBucketRefV1);
+
+export type NpAgentTargetRef =
+  | { kind: "document"; collection: string; documentId: string }
+  | { kind: "media"; mediaId: string }
+  | { kind: "navigation"; location: string }
+  | { kind: "theme_tokens"; themeId: string }
+  | { kind: "setting"; key: string }
+  | { kind: "actor"; subject: NpAgentActorSubjectV1 }
+  | { kind: "incident"; incidentId: string }
+  | { kind: "ops"; action: NpAgentOpsPlanActionId };
+
+export interface NpAgentActionTargetVersionFactV1 {
+  targetRef: NpAgentTargetRef;
+  versionDigest: string;
+}
+
+export interface NpAgentActionCanonicalV1 {
+  schemaVersion: "np.agent-action.v1";
+  siteId: string;
+  actionId: string;
+  invocationFingerprint: string;
+  runFingerprint: string | null;
+  sequence: number;
+  capabilityId: NpAgentCapabilityId;
+  capabilityContractVersion: number;
+  capabilityFingerprint: string;
+  effectProfile: { id: string; contractVersion: number };
+  risk: NpAgentCapabilityRisk;
+  requiredScopes: NpAgentScope[];
+  targetRefs: NpAgentTargetRef[];
+  targetVersionFacts: NpAgentActionTargetVersionFactV1[];
+  input: NpAgentJsonObject;
+}
+
+export interface NpAgentModelPricingV1 {
+  schemaVersion: "np.agent-model-pricing.v1";
+  pricingId: string;
+  version: number;
+  fingerprint: string;
+  modelId: string;
+  currency: "USD";
+  unitTokens: 1_000_000;
+  inputMicrosPerUnit: number;
+  cachedInputMicrosPerUnit: number;
+  outputMicrosPerUnit: number;
+  minimumRequestMicros: number;
+  rounding: "ceil-each-component";
+  effectiveFrom: string;
+  effectiveUntil: string | null;
+}
+
+export interface NpAgentConnectionConfigCanonicalV1 {
+  schemaVersion: "np.agent-connection-config.v1";
+  siteId: string;
+  connectionId: string;
+  kind: NpAgentConnectionKind;
+  provider: string;
+  adapterId: string;
+  adapterContractVersion: number;
+  adapterFingerprint: string;
+  authKind: "api_key" | "oauth";
+  configVersion: number;
+  config: NpAgentJsonObject;
+  pricingCatalog: NpAgentModelPricingV1[];
+  dataProcessingCeiling: NpAgentProviderDataClass;
+}
+
+export interface NpAgentConnectionDestinationDescriptorV1 {
+  schemaVersion: "np.agent-connection-destination-descriptor.v1";
+  kind: "notification";
+  adapterId: string;
+  descriptor: NpAgentJsonObject;
+}
+
+export interface NpAgentConnectionDestinationCanonicalV1 {
+  schemaVersion: "np.agent-connection-destination.v1";
+  siteId: string;
+  connectionId: string;
+  adapterId: string;
+  adapterContractVersion: number;
+  adapterFingerprint: string;
+  accountSubjectKeyId: string;
+  accountSubjectDigest: string;
+  destinationDescriptor: NpAgentConnectionDestinationDescriptorV1;
+}
+
+export interface NpAgentConnectionDestinationKeyV1 {
+  owner: "connection-destination";
+  id: string;
+  bytes: Uint8Array;
+}
+
+export type NpAgentConnectionOperationAuthorityCanonicalV1 =
+  | { kind: "admin-invocation"; invocationId: string }
+  | { kind: "oauth-setup"; authRequestId: string }
+  | { kind: "runtime-refresh"; runId: string };
+
+export const npAgentConnectionOperationKinds = [
+  "probe",
+  "activate-secret",
+  "activate-config",
+  "oauth-exchange",
+  "oauth-refresh",
+  "destroy-secret",
+] as const;
+export type NpAgentConnectionOperationKind = (typeof npAgentConnectionOperationKinds)[number];
+
+export interface NpAgentConnectionOperationRequestCanonicalV1 {
+  schemaVersion: "np.agent-connection-operation.v1";
+  siteId: string;
+  operationId: string;
+  connectionId: string;
+  authority: NpAgentConnectionOperationAuthorityCanonicalV1;
+  kind: NpAgentConnectionOperationKind;
+  expectedConfigVersion: number;
+  expectedConfigHash: string;
+  configSnapshotId: string;
+  adapterContractVersion: number;
+  adapterFingerprint: string;
+  inputSecretVersionIds: string[];
+  expectedSecretVersionId: string | null;
+  expectedCredentialVersion: number | null;
+  expectedRefreshGeneration: number | null;
+  idempotencyKey: string;
+}
+
+export type NpAgentSubject =
+  | { kind: "document"; collection: string; documentId: string }
+  | { kind: "comment"; commentId: string; collection: string; documentId: string }
+  | { kind: "member"; memberId: string }
+  | { kind: "staff"; userId: string }
+  | { kind: "session"; actorKind: "staff" | "member"; sessionFamilyId: string }
+  | ({ kind: "actor-bucket" } & NpAgentActorBucketRefV1)
+  | { kind: "job"; jobName: string; jobId: string }
+  | { kind: "plugin"; pluginId: string }
+  | { kind: "connection"; connectionId: string }
+  | { kind: "agent"; agentId: string; agentVersionId: string | null }
+  | { kind: "site"; siteId: string };
+
+export type NpAgentActorProjection =
+  | { kind: "staff"; userId: string }
+  | { kind: "member"; memberId: string }
+  | { kind: "agent-principal"; principalId: string }
+  | { kind: "system"; component: string }
+  | ({ kind: "anonymous" } & NpAgentActorBucketRefV1);
+
+export interface NpAgentEventCausationV1 {
+  rootRunId: string;
+  sourceRunId: string;
+  sourceActionId: string;
+  depth: number;
+}
+
+export const npAgentRunStates = [
+  "queued",
+  "running",
+  "waiting_approval",
+  "waiting_retry",
+  "verifying",
+  "succeeded",
+  "failed",
+  "cancelled",
+  "policy_blocked",
+  "budget_blocked",
+] as const;
+export type NpAgentRunState = (typeof npAgentRunStates)[number];
+
+export const npAgentActionStates = [
+  "proposed",
+  "policy_blocked",
+  "approval_pending",
+  "approved",
+  "executing",
+  "succeeded",
+  "failed",
+  "compensated",
+] as const;
+export type NpAgentActionState = (typeof npAgentActionStates)[number];
+
+export const npAgentIncidentCategories = [
+  "spam",
+  "abuse",
+  "authentication",
+  "authorization",
+  "traffic",
+  "integrity",
+  "availability",
+  "cost",
+  "agent-abuse",
+] as const;
+export type NpAgentIncidentCategory = (typeof npAgentIncidentCategories)[number];
+
+export const npAgentIncidentSeverities = ["info", "low", "medium", "high", "critical"] as const;
+export type NpAgentIncidentSeverity = (typeof npAgentIncidentSeverities)[number];
+export const npAgentIncidentSeverityRank = {
+  info: 0,
+  low: 1,
+  medium: 2,
+  high: 3,
+  critical: 4,
+} as const satisfies Record<NpAgentIncidentSeverity, number>;
+
+export type NpAgentEventPayload =
+  | {
+      kind: "auth.login.failed";
+      audience: "staff" | "member";
+      outcome: "failed";
+      reasonCode: NpAgentStableCode;
+      sessionFamilyId: string | null;
+      ipBucket: NpAgentActorBucketRefV1 & { purpose: "network-address" };
+      userAgentFamily: string | null;
+    }
+  | {
+      kind: "auth.login.succeeded";
+      audience: "staff" | "member";
+      outcome: "succeeded";
+      reasonCode: NpAgentStableCode;
+      sessionFamilyId: string;
+      ipBucket: NpAgentActorBucketRefV1 & { purpose: "network-address" };
+      userAgentFamily: string | null;
+    }
+  | {
+      kind: "auth.session.revoked";
+      audience: "staff" | "member";
+      sessionFamilyId: string;
+      reasonCode: NpAgentStableCode;
+    }
+  | {
+      kind: "authz.denied";
+      capabilityCode: string;
+      resourceKind: string;
+      reasonCode: NpAgentStableCode;
+    }
+  | {
+      kind: "authz.role.changed";
+      actorKind: "staff" | "member";
+      actorId: string;
+      previousRole: string;
+      currentRole: string;
+    }
+  | {
+      kind:
+        "community.content.created" | "community.content.reported" | "community.content.moderated";
+      targetKind: "comment" | "document";
+      targetId: string;
+      collection: string;
+      authorMemberId: string | null;
+      verdictCode: NpAgentStableCode | null;
+      status: "visible" | "quarantined" | "hidden" | "deleted";
+    }
+  | {
+      kind: "content.document.changed" | "content.document.published";
+      collection: string;
+      documentId: string;
+      transition: NpAgentStableCode;
+      revisionId: string;
+    }
+  | {
+      kind: "jobs.handler.failed";
+      handlerName: string;
+      jobId: string;
+      reasonCode: NpAgentStableCode;
+    }
+  | { kind: "jobs.worker.stale"; workerId: string; lastHeartbeatAt: string }
+  | { kind: "jobs.backlog.threshold"; handlerName: string; countBucket: number; threshold: number }
+  | {
+      kind: "ops.check.changed";
+      checkId: string;
+      previousStatus: "pass" | "warn" | "fail" | "unknown";
+      currentStatus: "pass" | "warn" | "fail" | "unknown";
+    }
+  | {
+      kind: "ops.backup.failed" | "ops.backup.stale";
+      artifactId: string | null;
+      reasonCode: NpAgentStableCode;
+    }
+  | {
+      kind: "security.edge.signal" | "security.error.signal";
+      adapterId: string;
+      externalSignalId: string;
+      category: NpAgentIncidentCategory;
+      severity: NpAgentIncidentSeverity;
+      count: number;
+    }
+  | {
+      kind: "agent.run.changed";
+      agentId: string | null;
+      runId: string;
+      previousState: NpAgentRunState | null;
+      currentState: NpAgentRunState;
+      reasonCode: NpAgentStableCode | null;
+    }
+  | {
+      kind: "agent.action.changed";
+      runId: string | null;
+      actionId: string;
+      previousState: NpAgentActionState | null;
+      currentState: NpAgentActionState;
+      reasonCode: NpAgentStableCode | null;
+    }
+  | {
+      kind: "agent.policy.blocked";
+      agentId: string | null;
+      runId: string | null;
+      capabilityId: NpAgentCapabilityId | null;
+      reasonCode: NpAgentStableCode;
+    };
+
+export type NpAgentEventKind = NpAgentEventPayload["kind"];
+export const npAgentEventKinds = [
+  "agent.action.changed",
+  "agent.policy.blocked",
+  "agent.run.changed",
+  "auth.login.failed",
+  "auth.login.succeeded",
+  "auth.session.revoked",
+  "authz.denied",
+  "authz.role.changed",
+  "community.content.created",
+  "community.content.moderated",
+  "community.content.reported",
+  "content.document.changed",
+  "content.document.published",
+  "jobs.backlog.threshold",
+  "jobs.handler.failed",
+  "jobs.worker.stale",
+  "ops.backup.failed",
+  "ops.backup.stale",
+  "ops.check.changed",
+  "security.edge.signal",
+  "security.error.signal",
+] as const satisfies readonly NpAgentEventKind[];
+
+export interface NpAgentEventCanonicalV1 {
+  version: "np.agent-event.v1";
+  siteId: string;
+  kind: NpAgentEventKind;
+  occurredAt: string;
+  source: {
+    kind:
+      | "auth"
+      | "api"
+      | "community"
+      | "content"
+      | "jobs"
+      | "ops"
+      | "storage"
+      | "plugin"
+      | "integration"
+      | "agent";
+    component: string;
+  };
+  subject: NpAgentSubject | null;
+  actor: NpAgentActorProjection | null;
+  causation: NpAgentEventCausationV1 | null;
+  correlationId: string | null;
+  deduplicationKey: string | null;
+  privacy: "public" | "internal" | "sensitive";
+  payload: NpAgentEventPayload;
+}
+
+export type NpAgentEvidenceRef = {
+  observedAt: string;
+  digest: string;
+  excerpt: string | null;
+} & (
+  | { kind: "event"; eventId: string; eventKind: NpAgentEventKind }
+  | { kind: "revision"; collection: string; documentId: string; revisionId: string }
+  | { kind: "job"; jobName: string; jobId: string }
+  | { kind: "ops-check"; checkId: string }
+  | { kind: "external-signal"; adapterId: string; externalSignalId: string }
+);
+
+export interface NpAgentSignalEvidenceCanonicalV1 {
+  schemaVersion: "np.agent-signal-evidence.v1";
+  siteId: string;
+  detectorId: string;
+  detectorVersion: number;
+  category: NpAgentIncidentCategory;
+  window: { startedAt: string; endedAt: string };
+  subject: NpAgentSubject | null;
+  evidence: NpAgentEvidenceRef[];
+}
+
+export type NpAgentNotificationChannel = "admin" | "email" | "slack" | "webhook" | "siem";
+export interface NpAgentNotificationSourceV1 {
+  incidentId: string | null;
+  runId: string | null;
+  actionId: string | null;
+  transitionVersion: number;
+}
+
+export type NpAgentNotificationDeliveryCanonicalV1 =
+  | {
+      schemaVersion: "np.agent-notification-delivery.v1";
+      siteId: string;
+      notificationId: string;
+      channel: "admin";
+      source: NpAgentNotificationSourceV1;
+      deduplicationKey: string;
+      payloadRedacted: NpAgentJsonObject;
+      attempt: 0;
+      result: { state: "confirmed_local" };
+      observedAt: string;
+    }
+  | {
+      schemaVersion: "np.agent-notification-delivery.v1";
+      siteId: string;
+      notificationId: string;
+      channel: Exclude<NpAgentNotificationChannel, "admin">;
+      source: NpAgentNotificationSourceV1;
+      deduplicationKey: string;
+      payloadRedacted: NpAgentJsonObject;
+      attempt: number;
+      adapter: {
+        id: string;
+        contractVersion: number;
+        fingerprint: string;
+        idempotency: "enforced" | "none";
+      };
+      connection: {
+        id: string;
+        configSnapshotId: string;
+        configVersion: number;
+        configHash: string;
+        accountSubjectKeyId: string;
+        accountSubjectDigest: string;
+        destinationKeyId: string;
+        destinationFingerprint: string;
+      };
+      result:
+        | { state: "confirmed" }
+        | { state: "retryable_not_sent"; errorCode: string }
+        | { state: "permanent_failure"; errorCode: string }
+        | { state: "ambiguous"; errorCode: string };
+      observedAt: string;
+    };
+
+export const npAgentAutonomyModes = ["observe", "advise", "guarded", "approved"] as const;
+export type NpAgentAutonomyMode = (typeof npAgentAutonomyModes)[number];
+export interface NpAgentCapabilityModeV1 {
+  capabilityId: NpAgentCapabilityId;
+  mode: NpAgentAutonomyMode;
+}
+
+export interface NpAgentPolicyRulesV1 {
+  schemaVersion: "np.agent-policy-rules.v1";
+  capabilityModes: NpAgentCapabilityModeV1[];
+  resources: {
+    collections: string[] | null;
+    navigationLocations: string[] | null;
+    themeIds: string[] | null;
+    settingKeys: string[] | null;
+    incidentCategories: NpAgentIncidentCategory[] | null;
+    actorRestrictionScopes: NpAgentActorRestrictionScope[] | null;
+  };
+  risk: {
+    automaticActionMaximum: "read" | "reversible";
+    requirePreviewAtOrAbove: "reversible" | "sensitive" | "destructive" | null;
+    requireRecentAuthAtOrAbove: "reversible" | "sensitive" | "destructive" | null;
+  };
+  providerDataMaximum: NpAgentProviderDataClass;
+  automation: {
+    quietHoursUtc: Array<{ startMinute: number; endMinute: number }>;
+    moderationAutoQuarantineMinBasisPoints: number | null;
+    moderationTargetsPerRun: number;
+    guardianLimitActorMinSeverity: "high" | "critical" | null;
+    guardianRestrictionTtlSeconds: number;
+  };
+  escalation: {
+    minimumSeverity: NpAgentIncidentSeverity;
+    channels: NpAgentNotificationChannel[];
+  };
+  retentionDays: {
+    events: number;
+    signals: number;
+    runDetails: number;
+    incidentsAndActions: number;
+  };
+}
+
+export interface NpAgentPolicyCanonicalV1 {
+  schemaVersion: "np.agent-policy.v1";
+  instructions: string;
+  rules: NpAgentPolicyRulesV1;
+}
+
+export interface NpAgentProviderContextClassificationV1 {
+  dataClass: NpAgentProviderDataClass;
+  classifierId: string;
+  classifierVersion: number;
+  sourceDigest: string;
+}
+
+export interface NpAgentProviderUsageV1 {
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  tokenSource: "provider" | "adapter-estimate";
+  costMicros: number;
+  costSource: "provider" | "adapter-estimate";
+}
+
+export type NpAgentProviderInvokeOutcomeV1 =
+  | {
+      schemaVersion: "np.agent-provider-invoke-outcome.v1";
+      status: "succeeded";
+      provider: string;
+      model: string;
+      providerRequestId: string | null;
+      output: NpAgentJsonValue;
+      usage: NpAgentProviderUsageV1;
+      finishReason: "stop" | "length" | "tool";
+      latencyMs: number;
+    }
+  | {
+      schemaVersion: "np.agent-provider-invoke-outcome.v1";
+      status: "failed";
+      provider: string;
+      model: string;
+      providerRequestId: string | null;
+      output: null;
+      errorClass:
+        | "authentication"
+        | "rate-limited"
+        | "transient"
+        | "timeout"
+        | "invalid-request"
+        | "invalid-output"
+        | "content-policy"
+        | "cancelled"
+        | "unknown";
+      safeCode: string;
+      retryable: boolean;
+      dispatchState: "not-dispatched" | "dispatched";
+      usage: NpAgentProviderUsageV1 | null;
+      finishReason: "content-filter" | "cancelled" | null;
+      latencyMs: number;
+    }
+  | {
+      schemaVersion: "np.agent-provider-invoke-outcome.v1";
+      status: "ambiguous";
+      provider: string;
+      model: string;
+      providerRequestId: string | null;
+      output: null;
+      errorClass: "timeout" | "unknown";
+      safeCode: string;
+      retryable: false;
+      dispatchState: "unknown";
+      usage: null;
+      finishReason: null;
+      latencyMs: number;
+    };
+
+export type NpAgentEvidenceRequest =
+  | {
+      kind: "document";
+      collection: string;
+      documentId: string;
+      projection: "metadata" | "bounded-text" | "schema";
+    }
+  | {
+      kind: "incident";
+      incidentId: string;
+      projection: "signals" | "timeline" | "subject-state";
+    }
+  | { kind: "run"; runId: string; projection: "summary" | "actions" | "checks" }
+  | { kind: "ops-check"; checkId: string };
+
+export type NpAgentInteractiveDecisionV1 =
+  | { kind: "complete"; summary: string }
+  | {
+      kind: "propose-capability";
+      capabilityId: NpAgentCapabilityId;
+      arguments: NpAgentJsonObject;
+      rationale: string;
+    }
+  | { kind: "request-evidence"; resource: NpAgentEvidenceRequest };
+
+export const npAgentModerationReasonCodes = [
+  "duplicate-link-burst",
+  "repeated-template",
+  "malicious-destination",
+  "account-velocity",
+  "coordinated-pattern",
+  "abusive-language",
+  "policy-evasion",
+  "insufficient-evidence",
+] as const;
+export type NpAgentModerationReasonCode = (typeof npAgentModerationReasonCodes)[number];
+
+export type NpAgentModerationDecisionV1 =
+  | { kind: "request-evidence"; resource: NpAgentEvidenceRequest }
+  | {
+      kind: "classification";
+      label: "spam" | "abuse" | "benign" | "uncertain";
+      confidenceBasisPoints: number;
+      reasonCodes: NpAgentModerationReasonCode[];
+      evidenceDigests: string[];
+      summary: string;
+    };
+
+export const npAgentGuardianAssessmentCodes = [
+  "credential-stuffing-pattern",
+  "authorization-probing",
+  "traffic-anomaly",
+  "content-integrity-anomaly",
+  "availability-degradation",
+  "agent-policy-abuse",
+  "inconclusive",
+] as const;
+export type NpAgentGuardianAssessmentCode = (typeof npAgentGuardianAssessmentCodes)[number];
+
+export type NpAgentGuardianDecisionV1 =
+  | { kind: "request-evidence"; resource: NpAgentEvidenceRequest }
+  | {
+      kind: "assessment";
+      disposition: "consistent" | "inconclusive" | "unlikely";
+      confidenceBasisPoints: number;
+      assessmentCodes: NpAgentGuardianAssessmentCode[];
+      evidenceDigests: string[];
+      summary: string;
+    };
+
+export type NpAgentProviderTaskOutputV1 =
+  | { task: "interactive-capability"; decision: NpAgentInteractiveDecisionV1 }
+  | { task: "moderation-classification"; decision: NpAgentModerationDecisionV1 }
+  | { task: "guardian-assessment"; decision: NpAgentGuardianDecisionV1 };
+
+export interface NpAgentProviderRequestCanonicalV1 {
+  schemaVersion: "np.agent-provider-request.v1";
+  siteId: string;
+  providerCallId: string;
+  runId: string;
+  sequence: number;
+  retryOfId: string | null;
+  idempotencyKey: string;
+  connection: {
+    id: string;
+    configSnapshotId: string;
+    configVersion: number;
+    configHash: string;
+    secretVersionId: string;
+    credentialVersion: number;
+    adapterId: string;
+    adapterContractVersion: number;
+    adapterFingerprint: string;
+  };
+  provider: string;
+  model: string;
+  recipe: { id: NpAgentRecipeId; version: number; fingerprint: string };
+  task: NpAgentRecipeTask;
+  instruction: {
+    templateId: string;
+    templateVersion: number;
+    digest: string;
+    classification: NpAgentProviderContextClassificationV1;
+    text: string;
+  };
+  trustedContext: Array<{
+    id: string;
+    kind: "policy" | "schema" | "capability" | "server-fact";
+    digest: string;
+    classification: NpAgentProviderContextClassificationV1;
+    text: string;
+  }>;
+  untrustedEvidence: Array<{
+    id: string;
+    kind: "content" | "event" | "signal" | "incident" | "ops-check";
+    digest: string;
+    observedAt: string;
+    classification: NpAgentProviderContextClassificationV1;
+    text: string;
+  }>;
+  classificationManifestDigest: string;
+  responseSchema: NpAgentJsonSchema;
+  responseSchemaDigest: string;
+  responseSchemaClassification: NpAgentProviderContextClassificationV1;
+  tools: Array<{
+    capabilityId: NpAgentCapabilityId;
+    descriptorFingerprint: string;
+    classification: NpAgentProviderContextClassificationV1;
+    inputSchema: NpAgentJsonSchema;
+  }>;
+  limits: { maxInputTokens: number; maxOutputTokens: number; timeoutSeconds: number };
+  pricing: NpAgentModelPricingV1;
+  dataClass: NpAgentProviderDataClass;
+  dataClassCeiling: NpAgentProviderDataClass;
+}
+
+export interface NpAgentProviderResponseCanonicalV1 {
+  schemaVersion: "np.agent-provider-response.v1";
+  siteId: string;
+  providerCallId: string;
+  runId: string;
+  requestDigest: string;
+  dispatchState: "not-dispatched" | "dispatched" | "unknown";
+  outcome: NpAgentProviderInvokeOutcomeV1;
+  decision: NpAgentProviderTaskOutputV1 | null;
+  observedAt: string;
+}
+
 export const npAgentSiteDeletionExternalTargetKinds = [
   "restriction",
   "vault-operation",
@@ -917,6 +1644,41 @@ export interface NpAgentVaultAadCanonicalV1 {
   vaultAdapterFingerprint: string;
   credentialEnvelopeVersion: 1;
   algorithm: NpAgentVaultAlgorithm;
+}
+
+export interface NpAgentCanonicalPurposeBodyMapV1 {
+  "np.agent-action.v1": NpAgentActionCanonicalV1;
+  "np.agent-approval-decision.v1": NpAgentApprovalDecisionCanonicalV1;
+  "np.agent-approval-revocation.v1": NpAgentApprovalRevocationCanonicalV1;
+  "np.agent-approval-statement.v1": NpAgentApprovalStatementCanonicalV1;
+  "np.agent-artifact.v1": NpAgentPreviewArtifactManifestV1;
+  "np.agent-authorization-context.v1": NpAgentAuthorizationContextCanonicalV1;
+  "np.agent-budget-snapshot.v1": NpAgentBudgetSnapshotCanonicalV1;
+  "np.agent-capability-registry.v1": NpAgentCapabilityRegistryCanonicalV1;
+  "np.agent-changeset-plan.v1": NpAgentChangeSetPlanCanonicalV1;
+  "np.agent-changeset-proposal.v1": NpAgentChangeSetProposalCanonicalV1;
+  "np.agent-changeset-snapshot.v1": NpAgentChangeSetSnapshotCanonicalV1;
+  "np.agent-connection-config.v1": NpAgentConnectionConfigCanonicalV1;
+  "np.agent-connection-destination.v1": NpAgentConnectionDestinationCanonicalV1;
+  "np.agent-connection-operation.v1": NpAgentConnectionOperationRequestCanonicalV1;
+  "np.agent-effect-profile.v1": NpAgentEffectProfileCanonicalV1;
+  "np.agent-event.v1": NpAgentEventCanonicalV1;
+  "np.agent-idempotency-request.v1": NpAgentInvocationRequestCanonicalV1;
+  "np.agent-mcp-task-result.v1": NpAgentMcpStoredTerminalResultV1;
+  "np.agent-notification-delivery.v1": NpAgentNotificationDeliveryCanonicalV1;
+  "np.agent-policy.v1": NpAgentPolicyCanonicalV1;
+  "np.agent-preview-contract.v1": NpAgentPreviewContractCanonicalV1;
+  "np.agent-preview-routes.v1": NpAgentPreviewRoutesCanonicalV1;
+  "np.agent-provider-request.v1": NpAgentProviderRequestCanonicalV1;
+  "np.agent-provider-response.v1": NpAgentProviderResponseCanonicalV1;
+  "np.agent-recipe-registry.v1": NpAgentRecipeRegistryCanonicalV1;
+  "np.agent-restriction.v1": NpAgentRestrictionCanonicalV1;
+  "np.agent-run-admission.v1": NpAgentRunAdmissionCanonicalV1;
+  "np.agent-run-limits.v1": NpAgentRunLimitsCanonicalV1;
+  "np.agent-signal-evidence.v1": NpAgentSignalEvidenceCanonicalV1;
+  "np.agent-site-deletion-plan.v1": NpAgentSiteDeletionPlanCanonicalV1;
+  "np.agent-staff-site-authorization.v1": NpAgentStaffSiteAuthorizationCanonicalV1;
+  "np.agent-vault-aad.v1": NpAgentVaultAadCanonicalV1;
 }
 
 export const npAgentCanonicalBodyMaxBytesV1 = {
