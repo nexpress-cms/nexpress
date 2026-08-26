@@ -127,6 +127,21 @@ fixtures also prove that both contextual builders report the shared
 `AGENT_CANONICAL_INCOMPLETE_REGISTRY` contract without converting malformed
 installed snapshots into completeness errors.
 
+The final AP-000 analyzer bundle closes the remaining ten purpose families:
+action; connection config, destination, and operation; event and signal
+evidence; notification delivery and policy; and provider request and response.
+Pure contract tests cover their exact included/excluded fixtures, ordering and
+null matrices, body ceilings, hostile object graphs, fixed SHA/HMAC vectors,
+all 21 event payload branches, both notification branches, provider outcome
+and decision branches, classification/source bindings, and destination-secret
+key rejection. Boundary coverage also locks the shared 20,000-node preflight,
+the independent 256 KiB config and 16 KiB destination-descriptor ceilings,
+the provider 64-item/2 MiB context budget, recipe/task binding, and the exact
+failure/retry matrix. A shared registry test proves that the purpose/body,
+analyzer, included, excluded, and size keys are the same sorted 32-member
+inventory and that generic analysis/byte/SHA dispatch reaches the selected
+exact analyzer.
+
 The budget-snapshot purpose locks its exact top-level, recipe, source-ref,
 counter, window, reservation, and exclusion inventories. Contract tests cover
 Gateway nulls, Agent-only and Agent-plus-recipe snapshots, canonical UUID/site/
