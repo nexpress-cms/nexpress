@@ -236,6 +236,22 @@ idempotency/precondition schema fields, hostile prototypes/accessors, and
 unknown canonical Admin invocation ids fail closed. Per-operation and
 aggregate registry SHA fingerprints are fixed golden vectors.
 
+The AP-101 wire suite separately locks the ordered seven-schema client-safe
+registry and proves the dispatcher reuses the existing Gateway-settings and
+canonical run-limit analyzers. It table-tests sorted unique scopes, closed
+run/action states, active/revoked principal invariants, runtime/external
+identity discriminants, inheritable versus concrete budget bounds, the
+connection credential/status/probe matrix, run origin/state/time/error rules,
+action state/time/target ordering, and a maximum-100-item/2,048-byte opaque
+cursor page with nested issue remapping. Exclusion fixtures reject principal
+credential/grant/token locators, connection vault/secret/subject/destination
+fields and recursively hidden credential keys, and action canonical input,
+undo, or raw evidence. Hostile prototypes, accessors, symbols, cycles, shared
+references, unknown schema ids/fields, oversize values, and missing contracts
+fail closed. Principal/connection body fingerprints and the aggregate registry
+fingerprint are fixed golden vectors; no route, persistence, provider, or
+runtime behavior is claimed by this evidence.
+
 ## 4. Identity, OAuth, and vault tests
 
 ### 4.1 Principal and service token

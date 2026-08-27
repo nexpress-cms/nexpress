@@ -1119,6 +1119,13 @@ unusable for provider-backed runs and fails admission regardless of which
 narrower budget fields are set; v1 performs no undeclared exchange conversion
 or token/call-only exception.
 
+AP-101 implements this exact `NpAgentBudgetV1` in the client-safe contract.
+The default analyzer permits `null` for site/Agent inheritance, while its
+`requireConcrete` option rejects every `null` for the deployment projection;
+both paths share the published count, cost, cooldown, and warning bounds.
+Persistence, layer composition, counters, reservations, and Admin mutation
+remain AP-102 and later work rather than being inferred by this wire parser.
+
 `NpAgentRunLimitsV1` is the concrete non-null minimum resolved at admission
 from deployment/site/Agent budgets and recipe hard bounds. Counts/tokens/cost
 use the same integer maxima; attempts/calls are at least 1 for an admitted

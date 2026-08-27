@@ -2,7 +2,18 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-27 (The client-safe Agent Admin contract now owns
+**Last refreshed:** 2026-08-27 (The first R1 Agent wire foundation now exports
+one closed client-safe registry for Gateway settings, principals, budgets,
+connections, run limits, runs, and action activity projections. Exact
+context-free analyzers reuse the existing Gateway and canonical run-limit
+contracts, add sorted scope/state and bounded cursor-page helpers, enforce
+principal/connection/run/action state matrices, and structurally exclude
+credential, grant, vault, canonical input, and recovery evidence. Aggregate
+and per-body fingerprints plus hostile-input/golden fixtures lock the surface.
+This AP-101 slice adds no routes, tables, migrations, Admin UI, provider calls,
+or package-version changes.)
+
+**Earlier:** 2026-08-27 (The client-safe Agent Admin contract now owns
 all 55 proposed mutation rows in one exhaustive operation registry. Stable
 method/path/id/version, named exact schemas, existing staff capability,
 body-idempotency and version/hash preconditions, shared effect profiles,

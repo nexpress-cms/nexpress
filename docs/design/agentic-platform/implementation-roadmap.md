@@ -134,6 +134,17 @@ Suggested work packages:
 | AP-108 | Add Agent Studio Connections/Principals read/create/revoke minimum UI                                                                                                                         |
 | AP-109 | Propagate disabled-by-default config and migration through scaffold                                                                                                                           |
 
+AP-101 is implemented as a contract-only foundation in
+`@nexpress/core/agent-contract`. Its closed seven-schema registry covers
+Gateway settings, browser-safe principals, inheritable/concrete budgets,
+redacted connections, the existing canonical run limits, safe run rows, and
+redacted action activity. Sorted scopes, closed run/action states, a bounded
+generic cursor page, per-body fingerprints, and one aggregate registry
+fingerprint share the same context-free boundary. It deliberately adds no
+schema, migration, route, Admin component, provider call, or package-version
+change; AP-102 and later packages remain responsible for persistence and
+runtime consumers.
+
 Gate:
 
 - a site with no agent settings behaves byte-for-byte/API-equivalently where

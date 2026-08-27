@@ -122,6 +122,40 @@ Dedicated worker process
 The Admin client, OpenAPI generator, `@nexpress/mcp`, and provider-independent
 tests may import this subpath.
 
+The AP-101 foundation currently registers these exact client-safe schemas:
+
+```ts
+export const npAgentWireContractSchemaVersionsV1 = [
+  "np.agent-gateway-settings.v1",
+  "np.agent-principal.v1",
+  "np.agent-budget.v1",
+  "np.agent-connection.v1",
+  "np.agent-run-limits.v1",
+  "np.agent-run.v1",
+  "np.agent-action-projection.v1",
+] as const;
+```
+
+`npAnalyzeAgentWireContractV1()` is the exhaustive dispatcher. It reuses the
+existing Gateway-settings analyzer and the existing canonical run-limit
+analyzer rather than defining parallel validators. The dedicated principal,
+budget, connection, run, and action analyzers plus sorted scope/state helpers
+and `npAnalyzeAgentCursorPageV1()` reject unknown fields, hostile object
+graphs, out-of-order values, unsafe integers, noncanonical time/identity
+values, and over-limit bodies without ambient DB or request context.
+
+Public principal rows expose authority actor references but never credential,
+grant, client, service-token, token-hash, or refresh-family ids. Public
+connection rows expose only a stored/absent credential fact and safe adapter
+configuration; secret-version/config-snapshot locators, account/destination
+HMACs, vault locators, and credential bytes are absent. Action activity uses a
+separate `np.agent-action-projection.v1` schema so it cannot be confused with
+the server-rehydration `np.agent-action.v1` canonical body; canonical input,
+capability-definition storage, undo references, and raw verification or
+compensation evidence are not members. Per-body and aggregate registry SHA
+fingerprints bind these boundaries without fingerprinting analyzer function
+source.
+
 ### 3.2 `agents`
 
 `@nexpress/core/agents` is server-only. It owns:

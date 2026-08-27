@@ -972,6 +972,15 @@ appropriate, use canonical UTC ISO timestamps, and return the shipped exact
 error envelope. List endpoints are site-scoped, paginated, bounded, and
 server-authorized.
 
+AP-101 now fixes the shared read primitives for the rows used here:
+`np.agent-principal.v1`, `np.agent-connection.v1`, `np.agent-budget.v1`,
+`np.agent-run.v1`, and nested `np.agent-action-projection.v1`, plus the exact
+bounded cursor-page analyzer. The principal wire contains no credential/grant
+locator, the connection wire contains only stored/absent credential state,
+and the action projection contains redacted input/output rather than canonical
+execution input or undo/evidence material. These are response contracts only;
+they do not make any proposed route in the following tables live.
+
 ### 15.1 Read dependencies
 
 | Method and proposed path                                                            | Schema family                    | Used by                                                          |
