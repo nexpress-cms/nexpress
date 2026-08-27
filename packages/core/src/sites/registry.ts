@@ -1,6 +1,11 @@
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
+import {
+  npCountAgentSiteDeletionMarkers,
+  npCountAgentSiteRows,
+  npDeleteAgentSiteRows,
+} from "../agent/site-deletion.js";
 import { getAllCollectionSlugs, getCollectionTable } from "../collections/registry.js";
 import { getDb } from "../db/runtime.js";
 import {
@@ -461,11 +466,22 @@ export async function deleteSite(id: string, options?: NpDeleteSiteOptions): Pro
     }
 
     const usage = await getSiteUsageSummaryWithDb(tx, id, collectionTables);
-    if (usage.total > 0 && !options?.cascade) {
+    const agentDeletionMarkers = await npCountAgentSiteDeletionMarkers(tx, id);
+    if (agentDeletionMarkers !== 0) {
+      throw new NpValidationError("Invalid input", [
+        {
+          field: "id",
+          message: `Site "${id}" already has an Agent deletion saga and cannot use legacy deletion.`,
+        },
+      ]);
+    }
+    const agentRows = await npCountAgentSiteRows(tx, id);
+    const totalRows = usage.total + agentRows;
+    if (totalRows > 0 && !options?.cascade) {
       throw new NpValidationError("Invalid input", [
         {
           field: "cascade",
-          message: `Site "${id}" has ${usage.total} attached row(s). Pass cascade=true to delete them, or clear them manually first.`,
+          message: `Site "${id}" has ${totalRows} attached row(s). Pass cascade=true to delete them, or clear them manually first.`,
         },
       ]);
     }
@@ -502,6 +518,12 @@ export async function deleteSite(id: string, options?: NpDeleteSiteOptions): Pro
           );
         await tx.delete(table).where(eq(siteIdColumn, id));
       }
+      // AP-103 — every ordinary Agent row is removed through its single
+      // dependency-ordered registry before shared audit/users/session rows.
+      // A durable saga marker is intentionally rejected above and belongs to
+      // the later saga final-commit path rather than this legacy transaction.
+      await npDeleteAgentSiteRows(tx, id);
+
       // Issue #220 — community rows. Order:
       //   reactions/follows/mutes/notifications/reports/audit/bans/
       //   member_roles → comments → string_overrides/navigation/

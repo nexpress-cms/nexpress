@@ -74,7 +74,7 @@ describe("content transfer envelope contract", () => {
     ).toMatchObject({ partial: true, collectionsExported: ["posts"] });
   });
 
-  it("keeps deployment-owned site quotas out of portable settings", () => {
+  it("keeps deployment-owned quotas and Agent Gateway intent out of portable settings", () => {
     expect(
       npAnalyzeContentTransferEnvelope({
         ...fullTransfer(),
@@ -84,6 +84,20 @@ describe("content transfer envelope contract", () => {
             storageBytes: 1_000,
             documents: 10,
             jobEnqueuesPerHour: 20,
+          },
+        },
+      }).ok,
+    ).toBe(false);
+    expect(
+      npAnalyzeContentTransferEnvelope({
+        ...fullTransfer(),
+        settings: {
+          activeTheme: "default",
+          "agents.gateway": {
+            schemaVersion: "np.agent-gateway-settings.v1",
+            stdio: "disabled",
+            mcpHttp: "disabled",
+            agentHttp: "disabled",
           },
         },
       }).ok,

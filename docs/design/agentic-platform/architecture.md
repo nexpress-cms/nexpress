@@ -172,6 +172,14 @@ It imports existing Core domains through relative domain paths. It does not
 import `@nexpress/next`, `@nexpress/app`, `@nexpress/admin`, React, or an MCP
 transport.
 
+The AP-102/AP-103 foundation intentionally precedes that service package. Its
+Drizzle tables live in `core/src/db/schema/agent.ts`; the only current Agent
+server helper is the internal exact site-deletion inventory/digest/order used
+by the existing site registry. Cyclic connection/config and secret/vault
+pointers are same-site deferred foreign keys, while every non-cyclic parent
+link remains immediate and restrictive. No persistence helper authenticates a
+principal, opens a vault, calls a provider, or starts Gateway/Runtime work.
+
 ### 3.3 Agent Gateway
 
 The Gateway is a transport boundary, not another authorization implementation.

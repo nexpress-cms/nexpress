@@ -18,7 +18,7 @@ import type {
   NpSiteWireRecord,
   NpUpdateSiteInput,
 } from "./types.js";
-import { npSiteQuotaMetrics } from "./types.js";
+import { NP_AGENT_GATEWAY_SETTING_KEY, npSiteQuotaMetrics } from "./types.js";
 import {
   npIsUserRole as npIsAuthUserRole,
   npUserRoles,
@@ -27,6 +27,7 @@ import {
 import { npAnalyzeThemeTokensOverlay } from "../theme/contract.js";
 import { npValidateBlockContent } from "../fields/block-content.js";
 import { npAnalyzeJobsPauseState } from "../jobs-contract/contract.js";
+import { npAnalyzeAgentGatewaySettings } from "../agent-contract/contract.js";
 import { NP_DEFAULT_SITE_ID, npIsCanonicalSiteId } from "../sites/id-contract.js";
 
 export { NP_DEFAULT_SITE_ID, npIsCanonicalSiteId, npSiteIdPattern } from "../sites/id-contract.js";
@@ -1041,6 +1042,7 @@ export function npAssertSiteQuotaSnapshot(value: unknown): asserts value is NpSi
 }
 
 export function npClassifySettingKey(key: unknown): NpSettingContractKind | null {
+  if (key === NP_AGENT_GATEWAY_SETTING_KEY) return "agents-gateway";
   if (key === "seo") return "seo";
   if (key === "site.quotas") return "site-quotas";
   if (key === "theme") return "theme-tokens";
@@ -1265,6 +1267,18 @@ export function npAnalyzeSettingValue(key: unknown, value: unknown): NpSettingCo
       : [validation.issue];
   }
   switch (kind) {
+    case "agents-gateway": {
+      const result = npAnalyzeAgentGatewaySettings(value);
+      return result.ok
+        ? []
+        : result.issues.map((entry) =>
+            issue(
+              entry.code === "unknown-field" ? "unknown-field" : "invalid-field",
+              entry.path.replace(/^agent\.gatewaySettings/u, "settings.agents.gateway"),
+              entry.message,
+            ),
+          );
+    }
     case "seo":
       return npAnalyzeSeoSettings(value);
     case "site-quotas":
