@@ -63,6 +63,21 @@ exhaustive purpose/body/analyzer/included/excluded/size dispatch. Runtime,
 persistence, migrations, and the remaining threat-review/sign-off work stay
 outside this contract-only milestone.
 
+Implementation status (2026-08-27): AP-001 now exports and self-validates all
+55 Agent Studio mutation rows from one client-safe
+`NpAgentAdminOperationContractV1` registry. It reuses the existing exact JSON
+Schema analyzer, `NpCapability`, capability effect-profile validator, API error
+code/status inventory, plugin route-path validator, canonical JSON serializer,
+SHA digest helper, and invocation-request body. Each row binds stable route and
+schema names, body idempotency, row/config/plan preconditions, one-time and
+write-only handling, effect verification/compensation, approval and
+reauthentication floors, audit redaction, OpenAPI metadata, and error pairs.
+The same closed id inventory now rejects unknown Admin operation ids in
+`np.agent-idempotency-request.v1`; aggregate and per-operation golden
+fingerprints make drift explicit. Routes, persistence, Admin UI, Doctor
+runtime checks, provider calls, migrations, and package-version changes remain
+outside this contract-only slice.
+
 Work:
 
 - `AP-000`: implement the normative

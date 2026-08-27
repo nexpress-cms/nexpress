@@ -222,6 +222,20 @@ maximum where that contract says "stricter". The 4×4 autonomy meet table is
 tested cell-for-cell plus commutativity, associativity, and idempotence;
 `guarded ∧ approved = advise` is a named regression case.
 
+The AP-001 Admin operation suite independently locks the ordered 55-row
+inventory, unique method/path and OpenAPI ids, named exact input/output/error
+schemas, body idempotency and declared precondition membership, existing human
+capabilities, shared effect-profile verifier/compensator invariants,
+sensitive/destructive approval plus recent-staff-primary floors, safe audit
+fields/redaction, and the exact two write-only request bodies. It table-tests
+the four one-time outputs—service-token create/rotate, approval challenge, and
+preview launch—against `ONE_TIME_VALUE_ALREADY_ISSUED`, safe recovery ids,
+output redaction, and OpenAPI metadata. Missing/reordered rows, routes outside
+the Agent Admin prefix, lowered approval, replayable one-time output, missing
+idempotency/precondition schema fields, hostile prototypes/accessors, and
+unknown canonical Admin invocation ids fail closed. Per-operation and
+aggregate registry SHA fingerprints are fixed golden vectors.
+
 ## 4. Identity, OAuth, and vault tests
 
 ### 4.1 Principal and service token

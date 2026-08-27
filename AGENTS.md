@@ -2,7 +2,16 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-26 (The client-safe Agent canonical contract now
+**Last refreshed:** 2026-08-27 (The client-safe Agent Admin contract now owns
+all 55 proposed mutation rows in one exhaustive operation registry. Stable
+method/path/id/version, named exact schemas, existing staff capability,
+body-idempotency and version/hash preconditions, shared effect profiles,
+approval/reauthentication floors, one-time/secret handling, audit redaction,
+OpenAPI metadata, canonical fingerprints, and closed Admin invocation ids are
+validated together. This AP-001 slice adds no routes, tables, migrations,
+Admin UI, provider calls, or package-version changes.)
+
+**Earlier:** 2026-08-26 (The client-safe Agent canonical contract now
 owns exact body types and context-free analyzers for all 32 v1 purposes. One
 exhaustive purpose/body/analyzer/included/excluded/size registry dispatches
 typed canonical bytes and SHA digests; the destination purpose remains on its

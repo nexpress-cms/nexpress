@@ -634,6 +634,28 @@ function parseEffectProfile(
   };
 }
 
+/**
+ * Validates the shared effect-profile shape independently of a capability.
+ * Admin operation, capability-registry, OpenAPI, and Doctor projections use
+ * this same parser so verifier/compensator invariants cannot drift.
+ */
+export function npAnalyzeAgentEffectProfileDescriptor(
+  value: unknown,
+): NpAgentContractResult<NpAgentEffectProfileDescriptor> {
+  return analyze("agent.effectProfile", () =>
+    parseEffectProfile(value, "agent.effectProfile", { seen: new WeakSet<object>() }),
+  );
+}
+
+export function npRequireAgentEffectProfileDescriptor(
+  value: unknown,
+): NpAgentEffectProfileDescriptor {
+  return npRequireAgentContractResult(
+    npAnalyzeAgentEffectProfileDescriptor(value),
+    "Invalid Agent effect profile descriptor",
+  );
+}
+
 function parseDescriptor(value: unknown): NpAgentCapabilityDescriptor {
   const inspection: InspectionState = { seen: new WeakSet<object>() };
   const path = "agent.capability";

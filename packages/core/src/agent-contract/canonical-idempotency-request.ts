@@ -1,4 +1,4 @@
-import { npAgentContractLimits, npRequireAgentContractResult } from "./contract.js";
+import { npAgentAdminOperationIdsV1 } from "./admin-operation-registry.js";
 import {
   analyzeCanonicalBody,
   canonicalBodyAscii,
@@ -17,6 +17,7 @@ import {
   analyzeAgentCanonicalJsonValueWithLimits,
   buildAgentCanonicalFoundationBytes,
 } from "./canonical-foundation.js";
+import { npAgentContractLimits, npRequireAgentContractResult } from "./contract.js";
 import type {
   NpAgentCanonicalBodyBytesV1,
   NpAgentContractResult,
@@ -27,6 +28,7 @@ import type {
 const SIGNED_32_BIT_MAXIMUM = 2_147_483_647;
 const ACTOR_KINDS = new Set<string>(["principal", "staff"]);
 const OPERATION_KINDS = new Set<string>(["capability", "admin"]);
+const ADMIN_OPERATION_IDS = new Set<string>(npAgentAdminOperationIdsV1);
 const INPUT_LIMITS = {
   maximumDepth: npAgentContractLimits.invocationDepth,
   maximumNodes: npAgentContractLimits.invocationNodes,
@@ -163,20 +165,30 @@ function parseInvocationRequestCanonical(value: unknown): NpAgentInvocationReque
     OPERATION_KINDS,
   );
 
-  const result: NpAgentInvocationRequestCanonicalV1 =
-    operationKind === "capability"
-      ? {
-          ...common,
-          operationKind,
-          operationId: canonicalBodyCapabilityId(record.operationId, `${path}.operationId`),
-          effectProfile: parseEffectProfile(record.effectProfile, `${path}.effectProfile`, state),
-        }
-      : {
-          ...common,
-          operationKind,
-          operationId: canonicalBodyIdentifier(record.operationId, `${path}.operationId`),
-          effectProfile: null,
-        };
+  let result: NpAgentInvocationRequestCanonicalV1;
+  if (operationKind === "capability") {
+    result = {
+      ...common,
+      operationKind,
+      operationId: canonicalBodyCapabilityId(record.operationId, `${path}.operationId`),
+      effectProfile: parseEffectProfile(record.effectProfile, `${path}.effectProfile`, state),
+    };
+  } else {
+    const operationId = canonicalBodyIdentifier(record.operationId, `${path}.operationId`);
+    if (!ADMIN_OPERATION_IDS.has(operationId)) {
+      failCanonicalBody(
+        "invalid-field",
+        `${path}.operationId`,
+        "must select one registered Admin operation id",
+      );
+    }
+    result = {
+      ...common,
+      operationKind,
+      operationId,
+      effectProfile: null,
+    };
+  }
 
   if (operationKind === "admin" && record.effectProfile !== null) {
     failCanonicalBody(
