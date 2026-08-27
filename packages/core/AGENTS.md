@@ -2,7 +2,7 @@
 
 Server-only CMS engine: config, DB, auth, collections pipeline, media, jobs, plugins, storage, cache, theme.
 
-**Refreshed:** 2026-07-15
+**Refreshed:** 2026-08-27
 
 ## STRUCTURE
 
@@ -16,6 +16,7 @@ src/
 ├── collections/  # Registry, content pipeline (1043 lines), Zod validation, search vectors
 ├── community/    # Server services, adapter registries, moderation dispatch, diagnostics
 ├── community-contract/ # Client-safe exact requests, rows, settings, adapters, and wire parsers
+├── agent-contract/ # Pure client-safe Agent canonical/admin/wire registries and analyzers
 ├── content/      # Thin helpers: getTheme, getNavigation, getPageBySlug, findPosts
 ├── media/        # Upload/process lifecycle, media DB singleton, sharp processing
 ├── storage/      # Exact runtime/object contract, adapters, registry, operations, lifecycle
@@ -109,6 +110,11 @@ No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugi
 ## CONVENTIONS
 
 - Public build entries are declared in `tsup.config.ts`; client-safe contracts such as `jobs-contract` and `community-contract` must not import server dependencies. Apps reference the `db-schema` entry in `drizzle.config.ts`.
+- `agent-contract/` is likewise pure: browser-safe wires may reuse its exact
+  canonical primitives, but must not import DB, vault, provider, transport, or
+  framework runtime code. Public principal/connection/action projections omit
+  credential/grant locators, secret material, canonical action input, and
+  recovery evidence by construction.
 - `pipeline.ts` is the single largest file (1043 lines). Changes here affect every document write. Read the full flow before modifying.
 - Content helpers in `content/helpers.ts` are thin wrappers over `getDb()` + direct SQL queries — they bypass the pipeline (no hooks/validation). Use `saveDocument`/`findDocuments` from collections for pipeline-protected writes.
 

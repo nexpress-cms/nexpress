@@ -605,8 +605,12 @@ export type NpAgentPrincipal =
     };
 ```
 
-This is a server context type. Public wires expose stable actor references, not
-credential/token identifiers that are unnecessary for the caller. External
+This is a server context type and is not the public
+`NpAgentPrincipalV1` exported by `agent-contract`. Server implementation should
+name the resolved form `NpAgentResolvedPrincipal` (or keep it private) to avoid
+using the browser schema as invocation authority. Public wires expose stable
+actor references, not credential/token identifiers that are unnecessary for
+the caller. External
 OAuth/service principals intentionally have no autonomy field;
 `gatewayExposureCeiling` is the immutable credential/grant value, while the
 invocation context below carries the effective outer-narrowed value. Scope,
