@@ -855,9 +855,9 @@ cycles, shared references, sparse or exotic arrays, exotic objects, lone
 surrogates, and non-finite numbers without coercion. Capability operations
 require one closed core `NpAgentCapabilityId` and a non-null effect profile;
 the domain builder binds that profile to the frozen registry. Admin operations
-require a canonical Agent identifier plus `null`, and the domain builder binds
-that identifier, version, and fingerprint to the closed route-operation
-registry. Every present contract version is a positive signed 32-bit integer. Actor fingerprints
+require one id from the exhaustive AP-001 route-operation inventory plus
+`null`; the operation descriptor and route-owned builder bind its version and
+fingerprint. Every present contract version is a positive signed 32-bit integer. Actor fingerprints
 are non-empty visible ASCII of at most 256 characters; authorization and
 contract fingerprints are exact `cj1:sha256:` digests. For a schema-declared
 write-only Admin secret, the route-owned builder replaces the raw leaf with the exact

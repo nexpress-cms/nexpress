@@ -1028,6 +1028,14 @@ floor; and audit/redaction policy. Route registration, OpenAPI, Admin client,
 invocation admission, Doctor, and tests consume that map. An unmapped row is a
 startup/build error and must not be implemented ad hoc.
 
+`@nexpress/core/agent-contract` now implements that AP-001 boundary for all 55
+rows. The registry composes existing JSON Schema, human capability, effect
+profile, API error, route-path, canonical JSON/digest, and invocation-request
+primitives instead of defining parallel versions. Its exhaustive analyzer,
+per-operation lookup, method/path and OpenAPI uniqueness checks, named schema
+bindings, and aggregate golden fingerprint are the source future route,
+OpenAPI, Admin client, admission, and Doctor work must consume.
+
 Each route registers a closed server-owned operation id, contract version, and
 input/output/effect fingerprint. Admission persists the staff actor and
 idempotency tuple in `np_agent_invocations` with `operation_kind=admin`; it
@@ -1041,14 +1049,15 @@ rule; sensitive/destructive approval always resolves to the recent mode with
 one statement-bound safe integer maximum age in `1..300`, and no route can
 lower it. Typed challenges and ordinary session age never satisfy this field.
 
-The operation registry marks service-token create/rotate and approval
-decision-challenge issuance as `oneTimeOutput:true`. Their plaintext is
-returned only by the first successful response and is never stored in the
-invocation result. Retrying the same idempotency key returns
+The operation registry marks service-token create/rotate, approval
+decision-challenge issuance, and isolated preview launch as the four explicit
+`oneTimeOutput:true` operations. Their plaintext authority is returned only by
+the first successful response and is never stored in the invocation result.
+Retrying the same idempotency key returns
 `ONE_TIME_VALUE_ALREADY_ISSUED` plus the safe created resource id and recovery
-action; it cannot replay the secret/challenge. Token recovery is rotate/revoke
-with a new key. Challenge recovery issues a new generation with a new key and
-invalidates the old verifier.
+action; it cannot replay the token, challenge, or launch exchange. Token
+recovery is rotate/revoke with a new key. Challenge and preview recovery issue
+a new generation with a new key and invalidate or supersede the old verifier.
 
 | Method and proposed path                                                                  | Purpose                                                                                               |
 | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
