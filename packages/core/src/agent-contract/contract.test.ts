@@ -5,6 +5,7 @@ import {
   npAgentCapabilityIds,
   npAgentCapabilityScopeDerivations,
   npAgentContractLimits,
+  npAgentDisabledGatewaySettingsV1,
   npAgentGatewayExposureAtLeast,
   npAgentGatewayTransports,
   npAgentMcpToolDefinitionsV1,
@@ -313,6 +314,13 @@ describe("Agent contract foundation", () => {
   });
 
   it("validates exact Gateway settings and deterministic ceiling intersection", () => {
+    expect(npAgentDisabledGatewaySettingsV1).toEqual({
+      schemaVersion: "np.agent-gateway-settings.v1",
+      stdio: "disabled",
+      mcpHttp: "disabled",
+      agentHttp: "disabled",
+    });
+    expect(Object.isFrozen(npAgentDisabledGatewaySettingsV1)).toBe(true);
     expect(
       npRequireAgentGatewaySettings({
         schemaVersion: "np.agent-gateway-settings.v1",

@@ -214,6 +214,7 @@ describe("framework settings contract", () => {
   });
 
   it("classifies only owned static and dynamic setting keys", () => {
+    expect(npClassifySettingKey("agents.gateway")).toBe("agents-gateway");
     expect(npClassifySettingKey("seo")).toBe("seo");
     expect(npClassifySettingKey("site.quotas")).toBe("site-quotas");
     expect(npClassifySettingKey("theme.settings:portfolio")).toBe("theme-settings");
@@ -225,6 +226,23 @@ describe("framework settings contract", () => {
   });
 
   it("validates every persisted registry family fail-closed", () => {
+    expect(
+      npAnalyzeSettingValue("agents.gateway", {
+        schemaVersion: "np.agent-gateway-settings.v1",
+        stdio: "disabled",
+        mcpHttp: "disabled",
+        agentHttp: "disabled",
+      }),
+    ).toEqual([]);
+    expect(
+      npAnalyzeSettingValue("agents.gateway", {
+        schemaVersion: "np.agent-gateway-settings.v1",
+        stdio: "disabled",
+        mcpHttp: "disabled",
+        agentHttp: "disabled",
+        port: 3001,
+      })[0],
+    ).toMatchObject({ code: "unknown-field", path: "settings.agents.gateway.port" });
     expect(npAnalyzeSettingValue("seo", DEFAULT_SEO_SETTINGS)).toEqual([]);
     expect(npAnalyzeSettingValue("site.quotas", DEFAULT_SITE_QUOTAS)).toEqual([]);
     expect(

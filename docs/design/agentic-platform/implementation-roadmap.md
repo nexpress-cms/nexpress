@@ -145,6 +145,20 @@ schema, migration, route, Admin component, provider call, or package-version
 change; AP-102 and later packages remain responsible for persistence and
 runtime consumers.
 
+AP-102 and AP-103 are implemented as the first server-side persistence gate.
+Core now exports the closed initial Drizzle schema for principals,
+exposure-bound service tokens and OAuth, connections and immutable config,
+shared Admin/capability invocations, provider-auth operations, credential
+versions, vault journals/local envelopes, and the durable site-deletion marker.
+Migration `0032_lyrical_maverick.sql` installs the same-site constraints and
+deferred lifecycle links. The exact 15-table ordinary-row inventory, sorted
+`sdri1` digest input, marker exclusion, and dependency-safe delete order are
+owned by one registry reused by legacy site deletion and integration cleanup.
+Gateway site intent uses the existing `np_settings` row at `agents.gateway`,
+is absent/disabled by default, and has no port field. This gate adds no routes,
+Admin UI, provider calls, runtime worker, or package-version change; AP-104 and
+later packages add behavior on these frozen contracts.
+
 Gate:
 
 - a site with no agent settings behaves byte-for-byte/API-equivalently where

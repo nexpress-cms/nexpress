@@ -6,6 +6,10 @@ import path from "node:path";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import pg from "pg";
 
+import {
+  NP_AGENT_SITE_DELETION_MARKER_TABLE,
+  npAgentSiteDeletionOrderV1,
+} from "../agent/site-deletion.js";
 import { setDb } from "../db/runtime.js";
 import { splitMigrationStatements } from "./migration-split.js";
 
@@ -246,6 +250,11 @@ export async function truncateAll(): Promise<void> {
   await getTestDb();
   if (!pool) throw new Error("Pool not initialised.");
   const tables = [
+    // AP-103 — reuse the single dependency graph so new Agent persistence
+    // cannot silently leak between integration cases. TRUNCATE CASCADE also
+    // handles the deliberately deferred connection/vault lifecycle cycles.
+    NP_AGENT_SITE_DELETION_MARKER_TABLE,
+    ...npAgentSiteDeletionOrderV1,
     "np_sessions",
     "np_revisions",
     "np_plugin_storage",

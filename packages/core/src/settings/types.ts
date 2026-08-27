@@ -1,5 +1,7 @@
 import type { NpUserRole } from "../auth-contract/types.js";
 
+export const NP_AGENT_GATEWAY_SETTING_KEY = "agents.gateway" as const;
+
 export interface NpSiteRuntimeSettings {
   siteUrl: string | null;
   defaultLocale: string | null;
@@ -131,6 +133,7 @@ export interface NpAdminSettingsSnapshot {
 }
 
 export type NpSettingContractKind =
+  | "agents-gateway"
   | "seo"
   | "site-quotas"
   | "theme-tokens"

@@ -766,7 +766,11 @@ and AAD digest must be byte-equal; an external adapter receives the same body
 bytes/digest and cannot substitute its own projection.
 
 `seal_operation_id` and `np_agent_vault_operations.secret_version_id` are
-same-site `DEFERRABLE INITIALLY DEFERRED ON DELETE RESTRICT` foreign keys.
+same-site `DEFERRABLE INITIALLY DEFERRED ON DELETE NO ACTION` foreign keys.
+PostgreSQL's `RESTRICT` action fires immediately even on a deferrable
+constraint, so `NO ACTION` is required to preserve restrict-by-default
+semantics while allowing the complete lifecycle component to be removed in
+one verified transaction.
 They deliberately form one lifecycle component: after destruction and both
 retention deadlines, cleanup locks a destroyed secret plus every terminal
 seal/rewrap/destroy operation that references it and deletes the complete
@@ -1717,6 +1721,9 @@ Agent capabilities and authenticated Agent Studio mutations:
 | `result_id`                         | uuid nullable        | Same-site result matching the kind                                               |
 | `output_redacted`                   | jsonb nullable       | Exact bounded completed result                                                   |
 | `output_hash`                       | text nullable        | Canonical result digest                                                          |
+| `one_time_value_issued`             | boolean              | Required; true only after emitting a one-time output                             |
+| `one_time_resource_id`              | uuid nullable        | Safe resource id retained for one-time replay conflict                           |
+| `one_time_recovery_operation_id`    | text nullable        | Closed recovery operation retained with the resource id                          |
 | `audit_event_id`                    | uuid                 | Normal audit correlation                                                         |
 | `error_code`                        | text nullable        | Stable safe code                                                                 |
 | `requested_at`                      | timestamptz          | Required                                                                         |

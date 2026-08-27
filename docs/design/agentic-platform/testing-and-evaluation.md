@@ -185,11 +185,15 @@ syntax, nonnegative safe row counts, rows sorted unique by table, targets sorted
 unique by `(kind,targetId)`, every target branch, bounded adapter/request/
 idempotency evidence, independent-copy rebuilding, hostile object graphs, the
 exact 16 MiB purpose ceiling, source-key independence, and one fixed
-`np.agent-site-deletion-plan.v1` SHA-256 vector. AP-103 integration tests remain
-responsible for the complete table inventory excluding the marker, frozen
-counts and streamed identity digests, target-source reparsing, site-version
-recomputation, marker/body/hash column equality, the deletion fence, and final
-convergence.
+`np.agent-site-deletion-plan.v1` SHA-256 vector. The AP-103 foundation now
+locks the exact sorted initial 15-table inventory excluding the marker,
+independent empty/populated `sdri1` vectors, streamed persisted ids, a
+dependency-safe cyclic-graph delete, multi-site isolation, marker fencing, and
+fresh full-migration replay in PostgreSQL. Later saga packages remain
+responsible for external-target reparsing, site-version recomputation,
+marker/body/hash equality, the post-prepare admission fence, and final
+external/database convergence; each later Agent table must extend the same
+registry and fixtures in its own schema PR.
 
 A separate closed digest-kind test covers values deliberately outside the
 canonical-JSON registry: `ac1` raw artifact content, `aur1` artifact-upload

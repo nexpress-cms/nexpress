@@ -2,7 +2,20 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-27 (The first R1 Agent wire foundation now exports
+**Last refreshed:** 2026-08-28 (The first R1 Agent persistence foundation now
+owns same-site principal, service-token, OAuth, connection/config, shared
+invocation, provider-auth operation, secret-version, vault-operation/local
+envelope, and site-deletion marker tables plus one reviewed migration. Closed
+status/timestamp and credential/projection matrices, exposure-bound immutable
+credentials, exact Gateway site settings with no port, deferred lifecycle
+foreign keys, and hostile/multi-site PostgreSQL fixtures fail closed. AP-103
+adds one exact sorted 15-table row inventory, streamed `sdri1` identity
+digests, a dependency-safe deletion order, marker exclusion, and legacy
+deletion fencing. Empty sites preserve existing behavior; this AP-102/AP-103
+slice adds no routes, Admin UI, provider calls, runtime workers, or
+package-version changes.)
+
+**Earlier:** 2026-08-27 (The first R1 Agent wire foundation now exports
 one closed client-safe registry for Gateway settings, principals, budgets,
 connections, run limits, runs, and action activity projections. Exact
 context-free analyzers reuse the existing Gateway and canonical run-limit

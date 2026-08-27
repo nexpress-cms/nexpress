@@ -2035,6 +2035,14 @@ export interface NpAgentGatewaySettingsV1 {
   agentHttp: NpAgentGatewayExposureMode;
 }
 
+/** Missing site intent resolves to this dark-launch posture. */
+export const npAgentDisabledGatewaySettingsV1: NpAgentGatewaySettingsV1 = Object.freeze({
+  schemaVersion: "np.agent-gateway-settings.v1",
+  stdio: "disabled",
+  mcpHttp: "disabled",
+  agentHttp: "disabled",
+});
+
 export const npAgentMcpToolNames = [
   "inspect_site",
   "query_content",
