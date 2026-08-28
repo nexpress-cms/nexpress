@@ -2,7 +2,18 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-28 (The first R1 Agent persistence foundation now
+**Last refreshed:** 2026-08-28 (The first R1 Agent service slice now owns one
+shared staff-session/site-capability/reauthentication Admin admission path and
+external principal plus opaque service-token lifecycle. Exact row-version CAS,
+principal token-version invalidation snapshots, 256-bit `npst1` HMACs,
+server-derived transport audiences, deployment/site exposure intersection,
+bounded expiry/rotation overlap, one-time replay fencing, safe projections,
+audited invocation transactions, and PostgreSQL lifecycle fixtures fail
+closed. Migration 0033 backfills existing service-token authority snapshots.
+This AP-104 slice adds no HTTP/Admin UI, MCP listener, OAuth/provider/vault
+call, runtime worker, or package-version change.)
+
+**Earlier:** 2026-08-28 (The first R1 Agent persistence foundation now
 owns same-site principal, service-token, OAuth, connection/config, shared
 invocation, provider-auth operation, secret-version, vault-operation/local
 envelope, and site-deletion marker tables plus one reviewed migration. Closed

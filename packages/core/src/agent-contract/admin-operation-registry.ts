@@ -28,6 +28,7 @@ import {
 import {
   npAgentApprovalModes,
   npAgentCapabilityRisks,
+  npAgentScopes,
   type NpAgentApprovalMode,
   type NpAgentCapabilityRisk,
   type NpAgentContractResult,
@@ -78,11 +79,13 @@ export const npAgentAdminOperationInputKindsV1 = [
   "launch",
   "manual-run",
   "oauth-client",
-  "principal",
+  "principal-create",
+  "principal-update",
   "reason",
   "schedule",
   "simulation",
-  "token",
+  "service-token-create",
+  "service-token-rotate",
 ] as const;
 export type NpAgentAdminOperationInputKindV1 = (typeof npAgentAdminOperationInputKindsV1)[number];
 
@@ -297,20 +300,22 @@ export const npAgentAdminOperationRouteInventoryV1 = deepFreeze([
     { inputKind: "reason", preconditions: ROW, ...DESTRUCTIVE },
   ),
   operation("agents.gateway.principals.create", "POST", "/api/admin/agents/gateway/principals", {
-    inputKind: "principal",
+    contractVersion: 2,
+    inputKind: "principal-create",
   }),
   operation(
     "agents.gateway.principals.update",
     "PATCH",
     "/api/admin/agents/gateway/principals/{id}",
-    { inputKind: "principal", preconditions: ROW },
+    { contractVersion: 2, inputKind: "principal-update", preconditions: ROW },
   ),
   operation(
     "agents.gateway.principal_tokens.create",
     "POST",
     "/api/admin/agents/gateway/principals/{id}/tokens",
     {
-      inputKind: "token",
+      contractVersion: 2,
+      inputKind: "service-token-create",
       outputKind: "one-time",
       preconditions: ROW,
       oneTimeRecovery: "agents.gateway.principal_tokens.rotate",
@@ -322,7 +327,8 @@ export const npAgentAdminOperationRouteInventoryV1 = deepFreeze([
     "POST",
     "/api/admin/agents/gateway/principals/{id}/tokens/{tokenId}/rotate",
     {
-      inputKind: "token",
+      contractVersion: 2,
+      inputKind: "service-token-rotate",
       outputKind: "one-time",
       preconditions: ROW,
       oneTimeRecovery: "agents.gateway.principal_tokens.rotate",
@@ -722,13 +728,23 @@ function commandShape(kind: NpAgentAdminOperationInputKindV1): {
         },
         required: ["name", "redirectUris", "transports"],
       };
-    case "principal":
+    case "principal-create":
+    case "principal-update":
       return {
         properties: {
+          description: {
+            anyOf: [stringSchema(4_096), { type: "null" }],
+          },
           name: stringSchema(120),
-          scopes: stringArraySchema(23),
+          scopes: {
+            type: "array",
+            minItems: 1,
+            maxItems: npAgentScopes.length,
+            uniqueItems: true,
+            items: { enum: npAgentScopes },
+          },
         },
-        required: ["name", "scopes"],
+        required: ["description", "name", "scopes"],
       };
     case "reason":
       return {
@@ -752,14 +768,33 @@ function commandShape(kind: NpAgentAdminOperationInputKindV1): {
         },
         required: ["fixtureJson", "fixtureHash"],
       };
-    case "token":
+    case "service-token-create":
       return {
         properties: {
-          audience: stringSchema(2_048),
           expiresAt: stringSchema(32),
           exposure: { enum: ["read", "propose", "approved-execute"] },
+          name: stringSchema(120),
+          scopes: {
+            type: "array",
+            minItems: 1,
+            maxItems: npAgentScopes.length,
+            uniqueItems: true,
+            items: { enum: npAgentScopes },
+          },
+          transport: { enum: ["stdio", "mcp-http", "agent-http"] },
         },
-        required: ["audience", "expiresAt", "exposure"],
+        required: ["expiresAt", "exposure", "name", "scopes", "transport"],
+      };
+    case "service-token-rotate":
+      return {
+        properties: {
+          overlapSeconds: {
+            type: "integer",
+            minimum: 0,
+            maximum: 3_600,
+          },
+        },
+        required: ["overlapSeconds"],
       };
   }
 }

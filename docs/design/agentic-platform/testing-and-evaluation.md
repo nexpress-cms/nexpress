@@ -195,6 +195,15 @@ marker/body/hash equality, the post-prepare admission fence, and final
 external/database convergence; each later Agent table must extend the same
 registry and fixtures in its own schema PR.
 
+The AP-104 identity gate adds context-free hostile-input coverage for the
+eight exact Gateway Admin bodies and client-safe service-token projection,
+opaque-verifier grammar/HMAC/domain/keyring tests, and PostgreSQL lifecycle
+coverage for staff admission, one-time idempotency replay, create/rotate
+overlap, transport/audience/exposure authentication, scope-version authority
+loss, suspend/resume, terminal revocation, and plaintext exclusion from audit
+and invocation evidence. The migration fixture also preserves existing token
+rows by backfilling their captured principal token version.
+
 A separate closed digest-kind test covers values deliberately outside the
 canonical-JSON registry: `ac1` raw artifact content, `aur1` artifact-upload
 requests, `aus1` artifact-upload sets, `auo1` terminal upload-operation

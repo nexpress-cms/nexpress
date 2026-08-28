@@ -62,6 +62,7 @@ export const npAgentPrincipals = pgTable(
     authorityPolicyId: text("authority_policy_id"),
     authorityFingerprint: text("authority_fingerprint").notNull(),
     authorityDeletedAt: timestamp("authority_deleted_at", { withTimezone: true, mode: "date" }),
+    rowVersion: integer("row_version").default(1).notNull(),
     tokenVersion: integer("token_version").default(1).notNull(),
     ownerUserId: uuid("owner_user_id").references(() => npUsers.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
@@ -81,7 +82,10 @@ export const npAgentPrincipals = pgTable(
       "np_agent_principals_authority_kind_check",
       sql`${table.authorityKind} in ('user', 'deployment')`,
     ),
-    check("np_agent_principals_token_version_check", sql`${table.tokenVersion} > 0`),
+    check(
+      "np_agent_principals_versions_check",
+      sql`${table.rowVersion} > 0 and ${table.tokenVersion} > 0`,
+    ),
     check(
       "np_agent_principals_name_check",
       sql`char_length(${table.name}) between 1 and 120 and ${table.name} = btrim(${table.name})`,
@@ -135,6 +139,7 @@ export const npAgentServiceTokens = pgTable(
     rotationFamilyId: uuid("rotation_family_id").notNull(),
     familyAuthorityVersion: integer("family_authority_version").default(1).notNull(),
     familyGeneration: integer("family_generation").default(1).notNull(),
+    principalTokenVersion: integer("principal_token_version").notNull(),
     replacesTokenId: uuid("replaces_token_id"),
     rowVersion: integer("row_version").default(1).notNull(),
     status: text("status").notNull(),
@@ -188,7 +193,7 @@ export const npAgentServiceTokens = pgTable(
     ),
     check(
       "np_agent_service_tokens_versions_check",
-      sql`${table.familyAuthorityVersion} > 0 and ${table.familyGeneration} > 0 and ${table.rowVersion} > 0`,
+      sql`${table.familyAuthorityVersion} > 0 and ${table.familyGeneration} > 0 and ${table.principalTokenVersion} > 0 and ${table.rowVersion} > 0`,
     ),
     check(
       "np_agent_service_tokens_prefix_check",
