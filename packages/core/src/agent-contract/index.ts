@@ -23,4 +23,5 @@ export * from "./canonical-approval.js";
 export * from "./canonical-preview-artifact.js";
 export * from "./canonical-preview.js";
 export * from "./admin-operation-registry.js";
+export * from "./gateway-admin-contract.js";
 export * from "./wire-contract.js";

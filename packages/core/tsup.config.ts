@@ -30,6 +30,8 @@ export default defineConfig({
     // exporting everything for back-compat. New consumer code
     // should reach in through these.
     auth: "src/auth/index.ts",
+    // Server-only Agent principal, credential, Admin admission, and deletion services.
+    agents: "src/agent/index.ts",
     // Pure, client-safe Agent scopes, capabilities, Gateway exposure, and descriptor contracts.
     "agent-contract": "src/agent-contract/index.ts",
     // Pure, client-safe REST error envelope, code/status, and detail contract.

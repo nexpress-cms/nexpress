@@ -63,6 +63,8 @@ const ACTION_TARGET_MAXIMUM = 100;
 const ENABLED_EXPOSURES = new Set<string>(["read", "propose", "approved-execute"]);
 const PRINCIPAL_KINDS = new Set<string>(["runtime", "external"]);
 const PRINCIPAL_STATUSES = new Set<string>(["active", "suspended", "revoked"]);
+const SERVICE_TOKEN_STATUSES = new Set<string>(["active_head", "overlap", "revoked", "expired"]);
+const SERVICE_TOKEN_TRANSPORTS = new Set<string>(["stdio", "mcp-http", "agent-http"]);
 const CONNECTION_KINDS = new Set<string>(["model", "notification"]);
 const CONNECTION_AUTH_KINDS = new Set<string>(["api_key", "oauth"]);
 const CONNECTION_STATUSES = new Set<string>(["pending", "ready", "error", "disabled", "revoked"]);
@@ -117,6 +119,7 @@ export interface NpAgentPrincipalV1 {
   status: NpAgentPrincipalStatusV1;
   scopes: NpAgentScope[];
   authority: NpAgentPrincipalAuthorityV1;
+  rowVersion: number;
   tokenVersion: number;
   autonomy: NpAgentAutonomyMode | null;
   gatewayExposureCeiling: NpAgentEnabledGatewayExposureMode | null;
@@ -132,6 +135,46 @@ export const npAgentPrincipalWireExcludedKeysV1 = [
   "serviceTokenId",
   "tokenHash",
   "refreshFamilyId",
+] as const;
+
+export const npAgentServiceTokenStatusesV1 = [
+  "active_head",
+  "overlap",
+  "revoked",
+  "expired",
+] as const;
+export type NpAgentServiceTokenStatusV1 = (typeof npAgentServiceTokenStatusesV1)[number];
+
+/** Browser-safe service-token projection. Plaintext and verifier lineage are deliberately absent. */
+export interface NpAgentServiceTokenV1 {
+  schemaVersion: "np.agent-service-token.v1";
+  id: string;
+  siteId: string;
+  principalId: string;
+  name: string;
+  prefix: string;
+  status: NpAgentServiceTokenStatusV1;
+  scopes: NpAgentScope[];
+  transport: "stdio" | "mcp-http" | "agent-http";
+  exposureMode: NpAgentEnabledGatewayExposureMode;
+  audience: string;
+  rowVersion: number;
+  expiresAt: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+  overlapExpiresAt: string | null;
+  revokedAt: string | null;
+}
+
+export const npAgentServiceTokenWireExcludedKeysV1 = [
+  "tokenHash",
+  "hashKeyId",
+  "rotationFamilyId",
+  "familyAuthorityVersion",
+  "familyGeneration",
+  "replacesTokenId",
+  "principalTokenVersion",
+  "createdBy",
 ] as const;
 
 export interface NpAgentBudgetV1 {
@@ -408,6 +451,7 @@ function parsePrincipal(value: unknown): NpAgentPrincipalV1 {
       "status",
       "scopes",
       "authority",
+      "rowVersion",
       "tokenVersion",
       "autonomy",
       "gatewayExposureCeiling",
@@ -425,6 +469,7 @@ function parsePrincipal(value: unknown): NpAgentPrincipalV1 {
       "status",
       "scopes",
       "authority",
+      "rowVersion",
       "tokenVersion",
       "autonomy",
       "gatewayExposureCeiling",
@@ -468,12 +513,8 @@ function parsePrincipal(value: unknown): NpAgentPrincipalV1 {
       "runtime principals require autonomy and forbid an external gateway ceiling",
     );
   }
-  if (kind === "external" && (autonomy !== null || gatewayExposureCeiling === null)) {
-    failCanonicalBody(
-      "invalid-field",
-      path,
-      "external principals require a gateway ceiling and forbid runtime autonomy",
-    );
+  if (kind === "external" && autonomy !== null) {
+    failCanonicalBody("invalid-field", path, "external principals forbid runtime autonomy");
   }
   if (status === "active" && !scopes.includes("site:read")) {
     failCanonicalBody("invalid-field", `${path}.scopes`, "active principals require site:read");
@@ -516,12 +557,18 @@ function parsePrincipal(value: unknown): NpAgentPrincipalV1 {
     description:
       record.description === null
         ? null
-        : canonicalRuntimeText(record.description, `${path}.description`, 2_000, {
+        : canonicalRuntimeText(record.description, `${path}.description`, 4_096, {
             requireTrimmed: true,
           }),
     status,
     scopes,
     authority,
+    rowVersion: canonicalBodyInteger(
+      record.rowVersion,
+      `${path}.rowVersion`,
+      1,
+      SIGNED_32_BIT_MAXIMUM,
+    ),
     tokenVersion: canonicalBodyInteger(
       record.tokenVersion,
       `${path}.tokenVersion`,
@@ -534,6 +581,141 @@ function parsePrincipal(value: unknown): NpAgentPrincipalV1 {
     updatedAt,
     revokedAt,
   };
+}
+
+function parseServiceToken(value: unknown): NpAgentServiceTokenV1 {
+  const path = "agent.wire.serviceToken";
+  const state: CanonicalBodyInspectionState = { seen: new WeakSet<object>() };
+  const keys = [
+    "schemaVersion",
+    "id",
+    "siteId",
+    "principalId",
+    "name",
+    "prefix",
+    "status",
+    "scopes",
+    "transport",
+    "exposureMode",
+    "audience",
+    "rowVersion",
+    "expiresAt",
+    "lastUsedAt",
+    "createdAt",
+    "overlapExpiresAt",
+    "revokedAt",
+  ] as const satisfies readonly (keyof NpAgentServiceTokenV1)[];
+  const record = canonicalBodyRecord(
+    cloneCanonicalRuntimeInput(value, path, SMALL_WIRE_BODY_MAXIMUM_BYTES, { maximumDepth: 6 }),
+    path,
+    keys,
+    keys,
+    state,
+  );
+  if (record.schemaVersion !== "np.agent-service-token.v1") {
+    failCanonicalBody(
+      "invalid-field",
+      `${path}.schemaVersion`,
+      "must be np.agent-service-token.v1",
+    );
+  }
+  const id = parseCanonicalUuid(record.id, `${path}.id`);
+  const status = canonicalBodyEnum<NpAgentServiceTokenStatusV1>(
+    record.status,
+    `${path}.status`,
+    SERVICE_TOKEN_STATUSES,
+  );
+  const createdAt = parseCanonicalUtc(record.createdAt, `${path}.createdAt`);
+  const expiresAt = parseCanonicalUtc(record.expiresAt, `${path}.expiresAt`);
+  const lastUsedAt =
+    record.lastUsedAt === null ? null : parseCanonicalUtc(record.lastUsedAt, `${path}.lastUsedAt`);
+  const overlapExpiresAt =
+    record.overlapExpiresAt === null
+      ? null
+      : parseCanonicalUtc(record.overlapExpiresAt, `${path}.overlapExpiresAt`);
+  const revokedAt =
+    record.revokedAt === null ? null : parseCanonicalUtc(record.revokedAt, `${path}.revokedAt`);
+  if (status === "active_head" && (overlapExpiresAt !== null || revokedAt !== null)) {
+    failCanonicalBody("invalid-field", path, "active heads forbid overlap and revocation times");
+  }
+  if (status === "overlap" && (overlapExpiresAt === null || revokedAt !== null)) {
+    failCanonicalBody("invalid-field", path, "overlap tokens require only an overlap cutoff");
+  }
+  if ((status === "revoked" || status === "expired") && revokedAt === null) {
+    failCanonicalBody("invalid-field", `${path}.revokedAt`, "closed tokens require a closure time");
+  }
+  if (
+    compareUtc(expiresAt, createdAt) <= 0 ||
+    (lastUsedAt !== null && compareUtc(lastUsedAt, createdAt) < 0) ||
+    (overlapExpiresAt !== null &&
+      (compareUtc(overlapExpiresAt, createdAt) < 0 ||
+        compareUtc(overlapExpiresAt, expiresAt) > 0)) ||
+    (revokedAt !== null && compareUtc(revokedAt, createdAt) < 0)
+  ) {
+    failCanonicalBody("invalid-field", path, "timestamps must follow token creation");
+  }
+  return {
+    schemaVersion: "np.agent-service-token.v1",
+    id,
+    siteId: parseCanonicalSiteId(record.siteId, `${path}.siteId`),
+    principalId: parseCanonicalUuid(record.principalId, `${path}.principalId`),
+    name: canonicalRuntimeText(record.name, `${path}.name`, 120, { requireTrimmed: true }),
+    prefix: canonicalBodyAscii(record.prefix, `${path}.prefix`, 64),
+    status,
+    scopes: parseSortedScopes(record.scopes, `${path}.scopes`, state),
+    transport: canonicalBodyEnum<NpAgentServiceTokenV1["transport"]>(
+      record.transport,
+      `${path}.transport`,
+      SERVICE_TOKEN_TRANSPORTS,
+    ),
+    exposureMode: canonicalBodyEnum<NpAgentEnabledGatewayExposureMode>(
+      record.exposureMode,
+      `${path}.exposureMode`,
+      ENABLED_EXPOSURES,
+    ),
+    audience: canonicalBodyAscii(record.audience, `${path}.audience`, 2_048),
+    rowVersion: canonicalBodyInteger(
+      record.rowVersion,
+      `${path}.rowVersion`,
+      1,
+      SIGNED_32_BIT_MAXIMUM,
+    ),
+    expiresAt,
+    lastUsedAt,
+    createdAt,
+    overlapExpiresAt,
+    revokedAt,
+  };
+}
+
+export function npAnalyzeAgentServiceTokenV1(
+  value: unknown,
+): NpAgentContractResult<NpAgentServiceTokenV1> {
+  return analyzeCanonicalBody("agent.wire.serviceToken", () => {
+    const token = parseServiceToken(value);
+    if (token.prefix !== `npst1_${token.id}`) {
+      failCanonicalBody(
+        "invalid-field",
+        "agent.wire.serviceToken.prefix",
+        "must be derived from the token id",
+      );
+    }
+    if (!token.scopes.includes("site:read")) {
+      failCanonicalBody(
+        "invalid-field",
+        "agent.wire.serviceToken.scopes",
+        "must contain site:read",
+      );
+    }
+    return token;
+  });
+}
+
+export function npRequireAgentServiceTokenV1(value: unknown): NpAgentServiceTokenV1 {
+  return npRequireAgentContractResult(
+    npAnalyzeAgentServiceTokenV1(value),
+    "Invalid Agent service token wire",
+  );
 }
 
 const BUDGET_KEYS = [
@@ -1467,6 +1649,7 @@ export function npRequireAgentCursorPageV1<T, S extends string>(
 export const npAgentWireContractSchemaVersionsV1 = Object.freeze([
   "np.agent-gateway-settings.v1",
   "np.agent-principal.v1",
+  "np.agent-service-token.v1",
   "np.agent-budget.v1",
   "np.agent-connection.v1",
   "np.agent-run-limits.v1",
@@ -1479,6 +1662,7 @@ export type NpAgentWireContractSchemaVersionV1 =
 export interface NpAgentWireContractBodyMapV1 {
   "np.agent-gateway-settings.v1": NpAgentGatewaySettingsV1;
   "np.agent-principal.v1": NpAgentPrincipalV1;
+  "np.agent-service-token.v1": NpAgentServiceTokenV1;
   "np.agent-budget.v1": NpAgentBudgetV1;
   "np.agent-connection.v1": NpAgentConnectionV1;
   "np.agent-run-limits.v1": NpAgentRunLimitsV1;
@@ -1488,7 +1672,7 @@ export interface NpAgentWireContractBodyMapV1 {
 
 export interface NpAgentWireContractDescriptorV1 {
   schemaVersion: NpAgentWireContractSchemaVersionV1;
-  domain: "gateway" | "identity" | "budget" | "connection" | "run" | "action";
+  domain: "gateway" | "identity" | "credential" | "budget" | "connection" | "run" | "action";
   maximumBytes: number;
   sensitivity: "client-safe";
   canonicalPurpose: "np.agent-run-limits.v1" | null;
@@ -1512,6 +1696,13 @@ export const npAgentWireContractRegistryV1 = deepFreeze([
   {
     schemaVersion: "np.agent-principal.v1",
     domain: "identity",
+    maximumBytes: SMALL_WIRE_BODY_MAXIMUM_BYTES,
+    sensitivity: "client-safe",
+    canonicalPurpose: null,
+  },
+  {
+    schemaVersion: "np.agent-service-token.v1",
+    domain: "credential",
     maximumBytes: SMALL_WIRE_BODY_MAXIMUM_BYTES,
     sensitivity: "client-safe",
     canonicalPurpose: null,
@@ -1570,6 +1761,9 @@ export function npAnalyzeAgentWireContractV1<K extends NpAgentWireContractSchema
       break;
     case "np.agent-principal.v1":
       result = npAnalyzeAgentPrincipalV1(value);
+      break;
+    case "np.agent-service-token.v1":
+      result = npAnalyzeAgentServiceTokenV1(value);
       break;
     case "np.agent-budget.v1":
       result = npAnalyzeAgentBudgetV1(value);

@@ -78,6 +78,7 @@ an external client.
 | `authority_policy_id`   | text nullable        | Required only for deployment authority                      |
 | `authority_fingerprint` | text                 | Immutable non-PII authority attribution                     |
 | `authority_deleted_at`  | timestamptz nullable | Set when user authority is tombstoned                       |
+| `row_version`           | integer              | Positive optimistic-lock version                            |
 | `token_version`         | integer              | Positive; initialized at 1 and monotonically incremented    |
 | `owner_user_id`         | uuid nullable        | Staff owner; `SET NULL` on user deletion                    |
 | `created_at`            | timestamptz          | Required                                                    |
@@ -87,7 +88,10 @@ an external client.
 Constraints:
 
 - `(site_id, id)` is the canonical tenant identity;
-- `token_version` starts at `1`; zero/negative values fail DB/analyzer/Doctor;
+- `row_version` and `token_version` start at `1`; zero/negative values fail
+  DB/analyzer/Doctor. Every Admin compare-and-swap mutation increments
+  `row_version`, while only authority/scope invalidation increments
+  `token_version`;
 - `revoked_at` is null unless status is `revoked`;
 - one principal never changes `site_id` or `kind`;
 - at creation and while active, exactly one authority reference matches
@@ -141,6 +145,7 @@ Only their hashes are stored.
 | `rotation_family_id`       | uuid                 | Stable family for replacement lineage                                 |
 | `family_authority_version` | integer              | Positive immutable authority/scope/exposure generation for the family |
 | `family_generation`        | integer              | Positive monotonic generation; unique per family                      |
+| `principal_token_version`  | integer              | Immutable principal invalidation version captured at creation         |
 | `replaces_token_id`        | uuid nullable unique | Prior same-site/principal/family token                                |
 | `row_version`              | integer              | Positive optimistic-lock version                                      |
 | `status`                   | text                 | `active_head`, `overlap`, `revoked`, or `expired`                     |

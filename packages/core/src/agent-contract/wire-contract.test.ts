@@ -4,6 +4,7 @@ import {
   npAgentActionProjectionExcludedKeysV1,
   npAgentConnectionWireExcludedKeysV1,
   npAgentPrincipalWireExcludedKeysV1,
+  npAgentServiceTokenWireExcludedKeysV1,
   npAgentWireContractRegistryV1,
   npAgentWireContractSchemaVersionsV1,
   npAgentWireContractsV1,
@@ -14,6 +15,7 @@ import {
   npAnalyzeAgentCursorPageV1,
   npAnalyzeAgentGatewaySettings,
   npAnalyzeAgentPrincipalV1,
+  npAnalyzeAgentServiceTokenV1,
   npAnalyzeAgentRunLimitsCanonical,
   npAnalyzeAgentRunStateV1,
   npAnalyzeAgentRunV1,
@@ -26,12 +28,14 @@ import {
   npRequireAgentConnectionV1,
   npRequireAgentCursorPageV1,
   npRequireAgentPrincipalV1,
+  npRequireAgentServiceTokenV1,
   npRequireAgentRunV1,
   type NpAgentActionProjectionV1,
   type NpAgentBudgetV1,
   type NpAgentConnectionV1,
   type NpAgentGatewaySettingsV1,
   type NpAgentPrincipalV1,
+  type NpAgentServiceTokenV1,
   type NpAgentRunLimitsV1,
   type NpAgentRunV1,
   type NpAgentWireContractBodyMapV1,
@@ -63,11 +67,34 @@ function principal(): NpAgentPrincipalV1 {
       fingerprint: DIGEST_A,
       deletedAt: null,
     },
+    rowVersion: 1,
     tokenVersion: 1,
     autonomy: null,
     gatewayExposureCeiling: "propose",
     createdAt: "2026-08-27T00:00:00.000Z",
     updatedAt: "2026-08-27T00:01:00.000Z",
+    revokedAt: null,
+  };
+}
+
+function serviceToken(): NpAgentServiceTokenV1 {
+  return {
+    schemaVersion: "np.agent-service-token.v1",
+    id: UUID_5,
+    siteId: "docs-site",
+    principalId: UUID_1,
+    name: "Editorial CLI",
+    prefix: `npst1_${UUID_5}`,
+    status: "active_head",
+    scopes: ["content:read", "site:read"],
+    transport: "stdio",
+    exposureMode: "read",
+    audience: "urn:nexpress:agent-gateway:stdio",
+    rowVersion: 1,
+    expiresAt: "2026-09-27T00:00:00.000Z",
+    lastUsedAt: null,
+    createdAt: "2026-08-27T00:00:00.000Z",
+    overlapExpiresAt: null,
     revokedAt: null,
   };
 }
@@ -214,6 +241,7 @@ const gateway: NpAgentGatewaySettingsV1 = {
 const fixtures: { [K in NpAgentWireContractSchemaVersionV1]: NpAgentWireContractBodyMapV1[K] } = {
   "np.agent-gateway-settings.v1": gateway,
   "np.agent-principal.v1": principal(),
+  "np.agent-service-token.v1": serviceToken(),
   "np.agent-budget.v1": budget(),
   "np.agent-connection.v1": connection(),
   "np.agent-run-limits.v1": runLimits(),
@@ -226,6 +254,7 @@ describe("Agent client-safe wire contract v1", () => {
     expect(npAgentWireContractSchemaVersionsV1).toEqual([
       "np.agent-gateway-settings.v1",
       "np.agent-principal.v1",
+      "np.agent-service-token.v1",
       "np.agent-budget.v1",
       "np.agent-connection.v1",
       "np.agent-run-limits.v1",
@@ -344,6 +373,28 @@ describe("Agent client-safe wire contract v1", () => {
         },
       }),
     ).toMatchObject({ ok: false, issues: [{ path: "agent.wire.principal.authority.userId" }] });
+  });
+
+  it("returns service-token metadata without verifier or rotation lineage", () => {
+    expect(npRequireAgentServiceTokenV1(serviceToken())).toEqual(serviceToken());
+    for (const key of npAgentServiceTokenWireExcludedKeysV1) {
+      expect(npAnalyzeAgentServiceTokenV1({ ...serviceToken(), [key]: "forbidden" })).toMatchObject(
+        {
+          ok: false,
+          issues: [{ code: "unknown-field", path: `agent.wire.serviceToken.${key}` }],
+        },
+      );
+    }
+    expect(
+      npAnalyzeAgentServiceTokenV1({ ...serviceToken(), prefix: `npst1_${UUID_4}` }),
+    ).toMatchObject({ ok: false, issues: [{ path: "agent.wire.serviceToken.prefix" }] });
+    expect(
+      npAnalyzeAgentServiceTokenV1({
+        ...serviceToken(),
+        status: "overlap",
+        overlapExpiresAt: null,
+      }),
+    ).toMatchObject({ ok: false });
   });
 
   it("implements inheritable and concrete budget bounds without treating null as unlimited", () => {
@@ -602,13 +653,13 @@ describe("Agent client-safe wire contract v1", () => {
 
   it("binds per-body and aggregate registry golden fingerprints", async () => {
     await expect(npDigestAgentWireContractV1("np.agent-principal.v1", principal())).resolves.toBe(
-      "cj1:sha256:HtnYtWJJxppT0tbdmWS0V2qRXDXs27a3WM-IMmTvZ7Y",
+      "cj1:sha256:sZAIDeEqc9pyNmGhhHRQbViem9Mp1l4jpzm1Sl6peTA",
     );
     await expect(npDigestAgentWireContractV1("np.agent-connection.v1", connection())).resolves.toBe(
       "cj1:sha256:iW184AUouf0KtJsonVSmfzJ1x3AQZffdd8XLdP7UweE",
     );
     await expect(npDigestAgentWireContractRegistryV1()).resolves.toBe(
-      "cj1:sha256:YWulPK49j8R0N-RWHG1B4TesfrPM9ZdUALUem6ACUmY",
+      "cj1:sha256:P7QR7hbwpBwmjBYUX-SLAuUkilUmiEpDNwBKfKfg3UQ",
     );
   });
 });

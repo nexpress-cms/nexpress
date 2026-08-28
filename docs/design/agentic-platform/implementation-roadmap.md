@@ -159,6 +159,22 @@ is absent/disabled by default, and has no port field. This gate adds no routes,
 Admin UI, provider calls, runtime worker, or package-version change; AP-104 and
 later packages add behavior on these frozen contracts.
 
+AP-104 is implemented as the first server-only service slice at
+`@nexpress/core/agents`. One shared Admin admission path revalidates the live
+staff session and site capability, enforces the operation registry's recent
+staff-primary floor, binds exact request/authorization fingerprints, and
+commits audit, idempotency evidence, and mutation together. External principal
+create/update/suspend/resume/revoke and service-token create/rotate/revoke use
+row-version compare-and-swap. Scope changes advance the independent principal
+token version; service credentials capture it and fail immediately after
+authority loss. Tokens use the exact `npst1` 256-bit opaque-verifier HMAC,
+server-derived transport audiences, deployment∩site exposure ceilings,
+bounded expiry/rotation overlap, and one-time output replay fencing. Safe
+principal/token reads exclude verifiers and lineage. Migration
+`0033_past_colonel_america.sql` backfills the new invalidation snapshot before
+making it required. This slice still adds no HTTP/Admin UI, MCP listener,
+OAuth/provider/vault call, runtime worker, or package-version change.
+
 Gate:
 
 - a site with no agent settings behaves byte-for-byte/API-equivalently where

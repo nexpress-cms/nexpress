@@ -50,6 +50,7 @@ function serviceToken(siteId: string, principalId: string, id = randomUUID()) {
     tokenHash: `ov1:hmac-sha256:${randomUUID()}`,
     hashKeyId: "agent-token-hash-v1",
     rotationFamilyId: randomUUID(),
+    principalTokenVersion: 1,
     status: "active_head",
     scopes: ["site:read"],
     transport: "stdio",
