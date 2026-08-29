@@ -2,7 +2,24 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-29 (The R1 Agent vault slice now owns one exact
+**Last refreshed:** 2026-08-30 (The R1 Agent provider-connection slice now
+owns one hardened server-only adapter registry, deterministic config and
+pricing snapshots, account-subject and destination HMAC projections, and a
+bundled fake adapter. API-key activation/rotation, safe probes,
+disable/enable/revoke, candidate config activation, and OAuth
+authorize/callback/exchange/refresh share exact Admin inputs, immutable
+adapter/config evidence, bounded provider calls, Vault-backed credentials,
+and crash-safe operation journals. Write-only Admin credentials are replaced
+by a separately keyed request HMAC before invocation/audit persistence, and
+exchange/refresh/probe remain worker-only. OAuth state, PKCE, and code are
+single-use/expiring; callback consumption, code-seal evidence, and queued
+exchange admission are atomic, while ambiguous results never replay provider
+input. PostgreSQL API-key and OAuth lifecycle fixtures fail closed and browser
+projections exclude credentials, locators, raw subjects, and keyed digests.
+This AP-106 slice adds no HTTP/Admin UI, scheduled runtime worker,
+scaffold/config propagation, migration, or package-version change.)
+
+**Earlier:** 2026-08-29 (The R1 Agent vault slice now owns one exact
 server-only adapter contract, deterministic RFC 8949 CBOR credential envelope,
 request-HMAC journal, inspection-before-retry recovery, expiring single-use
 plaintext leases, and explicit development-only local AES-256-GCM envelope

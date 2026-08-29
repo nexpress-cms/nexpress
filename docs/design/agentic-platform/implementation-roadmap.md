@@ -194,6 +194,28 @@ projections exclude locators, request/result digests, AAD, and credentials.
 This slice adds no HTTP/Admin UI, provider integration, runtime worker,
 scaffold/config propagation, or package-version change.
 
+AP-106 is implemented as the server-only provider-connection lifecycle at
+`@nexpress/core/agents`. A hardened registry freezes provider adapter identity,
+contract fingerprint, permissions, schemas, origins, configuration parsing,
+and destination derivation; repeated host evaluation rejects nondeterministic
+metadata. Exact canonical config and effective pricing snapshots stay
+credential-free, while separately keyed HMAC projections bind raw provider
+subjects and destinations to one site and connection context. The bundled fake
+adapter exercises API-key and OAuth flows without external network access.
+API-key activation and rotation admit their durable operation in the shared
+Admin transaction before Vault sealing and provider I/O; a failed replacement
+never displaces the known-good credential. Raw Admin credentials become a
+separately keyed request HMAC before invocation/audit persistence, and only
+the worker executes probe, exchange, or refresh adapter calls. Safe probe, disable/enable/revoke,
+and candidate-config activation use exact config/credential compare-and-swap.
+OAuth uses bounded S256 PKCE, keyed single-use state, exact redirect and origin
+checks, an atomic callback-consumption/code-seal/exchange journal, expiring
+temporary leases, refresh-generation fencing, and no blind replay after an
+ambiguous provider result. Browser-safe projections exclude credentials,
+Vault locators, raw account subjects, and keyed digests. This slice adds no
+HTTP/Admin UI, scheduled runtime worker, scaffold/config propagation,
+migration, or package-version change.
+
 Gate:
 
 - a site with no agent settings behaves byte-for-byte/API-equivalently where

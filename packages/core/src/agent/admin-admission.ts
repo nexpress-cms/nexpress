@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 
 import { and, eq, gt } from "drizzle-orm";
 
@@ -7,11 +7,15 @@ import {
   npDigestAgentInvocationRequestCanonical,
   npDigestAgentStaffSiteAuthorizationCanonical,
   npGetAgentAdminOperationV1,
+  npAgentConnectionAdminOperationIdsV1,
   npRequireAgentAuthorizationContextCanonical,
   npRequireAgentGatewayAdminInputV1,
+  npRequireAgentConnectionAdminInputV1,
   npRequireAgentInvocationRequestCanonical,
   npRequireAgentStaffSiteAuthorizationCanonical,
   npResolveAgentAdminOperationFingerprintsV1,
+  type NpAgentConnectionAdminInputMapV1,
+  type NpAgentConnectionAdminOperationIdV1,
   type NpAgentGatewayAdminInputMapV1,
   type NpAgentGatewayAdminOperationIdV1,
   type NpAgentJsonObject,
@@ -27,6 +31,28 @@ import { npSessions, npSiteMemberships, npSites, npUsers } from "../db/schema/sy
 import { NP_DEFAULT_SITE_ID } from "../sites/id-contract.js";
 
 type NpAgentDb = ReturnType<typeof getDb>;
+
+export type NpAgentAdmittedAdminOperationIdV1 =
+  NpAgentGatewayAdminOperationIdV1 | NpAgentConnectionAdminOperationIdV1;
+
+export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
+  NpAgentConnectionAdminInputMapV1;
+
+const CONNECTION_ADMIN_OPERATION_IDS = new Set<string>(npAgentConnectionAdminOperationIdsV1);
+
+function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
+  operationId: I,
+  value: unknown,
+): NpAgentAdmittedAdminInputMapV1[I] {
+  return (
+    CONNECTION_ADMIN_OPERATION_IDS.has(operationId)
+      ? npRequireAgentConnectionAdminInputV1(
+          operationId as NpAgentConnectionAdminOperationIdV1,
+          value,
+        )
+      : npRequireAgentGatewayAdminInputV1(operationId as NpAgentGatewayAdminOperationIdV1, value)
+  ) as NpAgentAdmittedAdminInputMapV1[I];
+}
 
 export class NpAgentGatewayError extends Error {
   constructor(
@@ -50,7 +76,7 @@ export interface NpAgentStaffPrimaryReauthenticationVerifierV1 {
     siteId: string;
     userId: string;
     sessionId: string;
-    operationId: NpAgentGatewayAdminOperationIdV1;
+    operationId: NpAgentAdmittedAdminOperationIdV1;
     maximumAgeSeconds: number;
     now: Date;
   }): boolean | Promise<boolean>;
@@ -60,6 +86,8 @@ export interface NpAgentAdminMutationResultV1<T extends NpAgentJsonObject> {
   resourceId: string;
   output: T;
   oneTimeValue?: string;
+  /** Runs only after the serializable admission transaction commits. */
+  afterCommit?: () => void | Promise<void>;
 }
 
 export interface NpAgentAdminExecutionResultV1<T extends NpAgentJsonObject> {
@@ -71,6 +99,7 @@ export interface NpAgentAdminExecutionResultV1<T extends NpAgentJsonObject> {
 
 export interface NpAgentAdminAdmissionOptionsV1 {
   reauthentication?: NpAgentStaffPrimaryReauthenticationVerifierV1;
+  secretRequestDigestKey?: { id: string; key: Uint8Array };
   now?: () => Date;
   idempotencyLifetimeSeconds?: number;
 }
@@ -88,6 +117,57 @@ function sha256Canonical(domain: string, value: unknown): `cj1:sha256:${string}`
   hash.update(`${domain}\0`, "utf8");
   hash.update(serializeAgentCanonicalJson(value), "utf8");
   return `cj1:sha256:${hash.digest("base64url")}`;
+}
+
+function cloneSecretRequestDigestKey(
+  value: NpAgentAdminAdmissionOptionsV1["secretRequestDigestKey"],
+): { id: string; key: Uint8Array } | null {
+  if (value === undefined) return null;
+  if (
+    !/^[a-z0-9][a-z0-9._-]{0,127}$/u.test(value.id) ||
+    !(value.key instanceof Uint8Array) ||
+    value.key.byteLength < 32
+  ) {
+    throw new NpAgentGatewayError(
+      "ADMIN_SECRET_DIGEST_KEY_INVALID",
+      500,
+      "The Admin secret-request digest key is invalid.",
+    );
+  }
+  return { id: value.id, key: new Uint8Array(value.key) };
+}
+
+function redactedInvocationInput(
+  operationId: NpAgentAdmittedAdminOperationIdV1,
+  secretBody: "none" | "write-only",
+  command: NpAgentJsonObject,
+  key: { id: string; key: Uint8Array } | null,
+): NpAgentJsonObject {
+  if (secretBody === "none") return command;
+  if (!key) {
+    throw new NpAgentGatewayError(
+      "ADMIN_SECRET_DIGEST_KEY_UNAVAILABLE",
+      503,
+      "The Admin secret-request digest key is unavailable.",
+    );
+  }
+  const credential = command.credential;
+  if (typeof credential !== "string") {
+    throw new NpAgentGatewayError(
+      "ADMIN_SECRET_BODY_INVALID",
+      400,
+      "The write-only Admin credential is invalid.",
+    );
+  }
+  const { credential: _credential, ...safe } = command;
+  const digest = createHmac("sha256", key.key)
+    .update("np-agent-admin-secret-request/v1\0", "utf8")
+    .update(serializeAgentCanonicalJson({ operationId, credential }), "utf8")
+    .digest("base64url");
+  return {
+    ...safe,
+    credentialDigest: `cj1:hmac-sha256:${key.id}:${digest}`,
+  };
 }
 
 async function resolveStaffAuthorization(
@@ -203,9 +283,10 @@ function replayResult<T extends NpAgentJsonObject>(
 export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOptionsV1 = {}) {
   const nowFn = options.now ?? (() => new Date());
   const idempotencyLifetimeSeconds = options.idempotencyLifetimeSeconds ?? 24 * 60 * 60;
+  const secretRequestDigestKey = cloneSecretRequestDigestKey(options.secretRequestDigestKey);
 
   return async function execute<
-    I extends NpAgentGatewayAdminOperationIdV1,
+    I extends NpAgentAdmittedAdminOperationIdV1,
     T extends NpAgentJsonObject,
   >(input: {
     siteId: string;
@@ -217,12 +298,19 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
     mutate: (context: {
       db: NpAgentDb;
       now: Date;
-      command: NpAgentGatewayAdminInputMapV1[I];
+      invocationId: string;
+      command: NpAgentAdmittedAdminInputMapV1[I];
     }) => Promise<NpAgentAdminMutationResultV1<T>>;
   }): Promise<NpAgentAdminExecutionResultV1<T>> {
     const now = nowFn();
-    const command = npRequireAgentGatewayAdminInputV1(input.operationId, input.command);
+    const command = requireAdmittedAdminInput(input.operationId, input.command);
     const operation = npGetAgentAdminOperationV1(input.operationId);
+    const invocationInput = redactedInvocationInput(
+      input.operationId,
+      operation.secretBody,
+      command as unknown as NpAgentJsonObject,
+      secretRequestDigestKey,
+    );
     const fingerprints = await npResolveAgentAdminOperationFingerprintsV1(operation);
     const db = getDb();
     const authorization = await resolveStaffAuthorization(db, input.siteId, input.actor, now);
@@ -280,7 +368,7 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
       contractFingerprint: fingerprints.contract,
       effectProfile: null,
       input: {
-        ...(command as unknown as NpAgentJsonObject),
+        ...invocationInput,
         parentTargetId: input.parentTargetId ?? null,
         targetId: input.targetId,
       },
@@ -309,8 +397,12 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
     const existing = await findReplay();
     if (existing) return replayResult<T>(existing, requestHash);
 
+    let committed: {
+      execution: NpAgentAdminExecutionResultV1<T>;
+      afterCommit: (() => void | Promise<void>) | undefined;
+    };
     try {
-      return await db.transaction(
+      committed = await db.transaction(
         async (rawTx) => {
           const tx = rawTx as NpAgentDb;
           const currentAuthorization = await resolveStaffAuthorization(
@@ -335,9 +427,11 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
               actorKind: "staff",
               actorUserId: input.actor.user.id,
               action: operation.audit.eventId,
-              targetType: input.operationId.includes("principal_tokens")
-                ? "agent-service-token"
-                : "agent-principal",
+              targetType: input.operationId.startsWith("agents.connections.")
+                ? "agent-connection"
+                : input.operationId.includes("principal_tokens")
+                  ? "agent-service-token"
+                  : "agent-principal",
               targetId: input.targetId,
               siteId: input.siteId,
               payload: {
@@ -379,7 +473,12 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
             .returning({ id: npAgentInvocations.id });
           if (!invocation) throw new Error("Failed to create Agent Admin invocation.");
 
-          const result = await input.mutate({ db: tx, now, command });
+          const result = await input.mutate({
+            db: tx,
+            now,
+            invocationId: invocation.id,
+            command,
+          });
           const oneTimeValueIssued = result.oneTimeValue !== undefined;
           if (oneTimeValueIssued !== operation.idempotency.oneTimeOutput) {
             throw new Error("Agent Admin mutation output does not match its one-time contract.");
@@ -415,7 +514,15 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
           if (updatedInvocations.length !== 1) {
             throw new Error("Failed to finalize Agent Admin invocation.");
           }
-          return { ...result, replayed: false };
+          return {
+            execution: {
+              resourceId: result.resourceId,
+              output: result.output,
+              ...(result.oneTimeValue === undefined ? {} : { oneTimeValue: result.oneTimeValue }),
+              replayed: false,
+            },
+            afterCommit: result.afterCommit,
+          };
         },
         { isolationLevel: "serializable" },
       );
@@ -424,5 +531,7 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
       if (raced) return replayResult<T>(raced, requestHash);
       throw error;
     }
+    await committed.afterCommit?.();
+    return committed.execution;
   };
 }
