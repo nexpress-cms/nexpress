@@ -2,7 +2,20 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-28 (The first R1 Agent service slice now owns one
+**Last refreshed:** 2026-08-29 (The R1 Agent vault slice now owns one exact
+server-only adapter contract, deterministic RFC 8949 CBOR credential envelope,
+request-HMAC journal, inspection-before-retry recovery, expiring single-use
+plaintext leases, and explicit development-only local AES-256-GCM envelope
+adapter. Adapter identity/fingerprint and AAD remain frozen through
+seal/open/rewrap/destroy; ambiguous results reconcile without inventing or
+replaying plaintext, terminal input loss revokes or destroys the unsealed row,
+and safe projections exclude locators, digests, and credentials. Migration
+0034 aligns never-activated terminal credential constraints. PostgreSQL,
+hostile-codec, golden-digest, tamper, tenant-isolation, and lifecycle fixtures
+fail closed. This AP-105 slice adds no HTTP/Admin UI, provider integration,
+runtime worker, scaffold/config propagation, or package-version change.)
+
+**Earlier:** 2026-08-28 (The first R1 Agent service slice now owns one
 shared staff-session/site-capability/reauthentication Admin admission path and
 external principal plus opaque service-token lifecycle. Exact row-version CAS,
 principal token-version invalidation snapshots, 256-bit `npst1` HMACs,

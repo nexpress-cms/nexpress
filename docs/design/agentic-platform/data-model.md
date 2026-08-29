@@ -748,7 +748,7 @@ destroyed locators survive process restarts:
 | `refresh_generation`             | integer nullable     | Positive for OAuth credential material; increments on every refresh  |
 | `permission_digest`              | text nullable        | Canonical granted-permission digest for OAuth                        |
 | `account_subject_key_id`         | text nullable        | Paired frozen server projection-key id                               |
-| `account_subject_digest`         | text nullable        | Required for each connection credential; probe-derived HMAC          |
+| `account_subject_digest`         | text nullable        | Required once activated; null for never-activated terminal material  |
 | `created_at`                     | timestamptz          | Required                                                             |
 | `activated_at`                   | timestamptz nullable | Required after a connection credential first enters active           |
 | `retired_at`                     | timestamptz nullable | Required for retiring/revoked/destroyed credentials that were active |
@@ -832,9 +832,11 @@ lease, rewrap, inspection, and deletion completes. An orphan, mismatched
 triple, uninspectable operation, or successful receipt without a linked secret
 row blocks readiness/Doctor/site deletion.
 
-Every `connection-credential` row requires the
+Every activated `connection-credential` row requires the
 `account_subject_key_id`/`account_subject_digest` pair, including API-key
-material; temporary code/PKCE rows keep both null. OAuth connection
+material. An unverified pending row and a never-activated row terminalized as
+revoked or destroyed after seal failure keep both null; temporary code/PKCE
+rows also keep both null. OAuth connection
 credentials additionally require access expiry, `refresh_token_present`,
 positive refresh generation, and permission digest; refresh expiry is null
 when no refresh token exists and may also be null when a refresh-bearing

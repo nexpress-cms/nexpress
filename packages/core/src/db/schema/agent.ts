@@ -1237,7 +1237,8 @@ export const npAgentConnectionSecretVersions = pgTable(
       "np_agent_connection_secret_versions_subject_check",
       sql`(
         ${table.purpose} = 'connection-credential' and
-          ((${table.accountSubjectKeyId} is null and ${table.accountSubjectDigest} is null and ${table.status} = 'pending') or
+          ((${table.accountSubjectKeyId} is null and ${table.accountSubjectDigest} is null and
+             ${table.status} in ('pending', 'revoked', 'destroyed') and ${table.activatedAt} is null) or
            (${table.accountSubjectKeyId} is not null and ${table.accountSubjectDigest} is not null))
       ) or (
         ${table.purpose} <> 'connection-credential' and ${table.accountSubjectKeyId} is null and ${table.accountSubjectDigest} is null
@@ -1257,7 +1258,8 @@ export const npAgentConnectionSecretVersions = pgTable(
     check(
       "np_agent_connection_secret_versions_locator_check",
       sql`(${table.status} = 'destroyed' and ${table.secretRef} is null) or
-        (${table.status} <> 'destroyed' and (${table.secretRef} is not null or ${table.status} = 'pending'))`,
+        (${table.status} <> 'destroyed' and
+          (${table.secretRef} is not null or ${table.status} in ('pending', 'revoked')))`,
     ),
     check(
       "np_agent_connection_secret_versions_state_time_check",

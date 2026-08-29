@@ -2,7 +2,7 @@
 
 Server-only CMS engine: config, DB, auth, collections pipeline, media, jobs, plugins, storage, cache, theme.
 
-**Refreshed:** 2026-08-28
+**Refreshed:** 2026-08-29
 
 ## STRUCTURE
 
@@ -17,7 +17,7 @@ src/
 ├── community/    # Server services, adapter registries, moderation dispatch, diagnostics
 ├── community-contract/ # Client-safe exact requests, rows, settings, adapters, and wire parsers
 ├── agent-contract/ # Pure client-safe Agent canonical/admin/wire registries and analyzers
-├── agent/        # Server-only Agent Admin admission, principal/token auth lifecycle, deletion graph
+├── agent/        # Server-only Agent Admin admission, principal/token auth, vault runtime/journal, deletion graph
 ├── content/      # Thin helpers: getTheme, getNavigation, getPageBySlug, findPosts
 ├── media/        # Upload/process lifecycle, media DB singleton, sharp processing
 ├── storage/      # Exact runtime/object contract, adapters, registry, operations, lifecycle
