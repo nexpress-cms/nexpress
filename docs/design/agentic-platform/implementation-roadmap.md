@@ -175,6 +175,25 @@ principal/token reads exclude verifiers and lineage. Migration
 making it required. This slice still adds no HTTP/Admin UI, MCP listener,
 OAuth/provider/vault call, runtime worker, or package-version change.
 
+AP-105 is implemented as the server-only vault boundary at
+`@nexpress/core/agents`. One closed adapter registry freezes id, contract
+version, fingerprint, algorithm, and development intent; production and hosted
+profiles reject the built-in local-envelope adapter. Deterministic RFC 8949
+CBOR covers the five exact credential-envelope branches, while a separately
+keyed, length-framed HMAC binds operation kind, adapter identity, AAD,
+idempotency, and either plaintext bytes or locator/key metadata. Seal, open,
+rewrap, destroy, and total inspection use bounded host deadlines and expiring,
+single-use, zeroizing leases. The durable journal records intent before
+adapter I/O, adopts receipts transactionally, inspects ambiguous results before
+redispatch, and never reconstructs or replays lost seal plaintext. The explicit
+development-only local adapter uses per-secret AES-256-GCM data keys with a
+separately wrapped data key and exact row-version CAS. Migration
+`0034_gigantic_caretaker.sql` permits a never-activated failed seal to end
+revoked or destroyed without a locator or account subject. Safe operation
+projections exclude locators, request/result digests, AAD, and credentials.
+This slice adds no HTTP/Admin UI, provider integration, runtime worker,
+scaffold/config propagation, or package-version change.
+
 Gate:
 
 - a site with no agent settings behaves byte-for-byte/API-equivalently where
