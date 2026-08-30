@@ -14,6 +14,8 @@ import { npAuthUuidPattern } from "../auth-contract/contract.js";
 import { getDb } from "../db/runtime.js";
 import {
   npAgentConnectionConfigVersions,
+  npAgentConnectionAuthRequests,
+  npAgentConnectionOperations,
   npAgentConnections,
   npAgentConnectionSecretVersions,
   npAgentVaultOperations,
@@ -102,12 +104,33 @@ export interface NpAgentVaultSealSecretInputV1 {
   envelope: NpAgentVaultPlaintextEnvelopeV1;
   temporaryExpiresAt?: Date | null;
   oauthRefreshGeneration?: number;
+  /**
+   * Runs inside the same transaction after the exact secret and seal journals exist.
+   * Connection/OAuth services use this narrow seam to attach their own authority row
+   * before any plaintext is dispatched to the vault adapter.
+   */
+  onJournaled?: (context: {
+    db: NpAgentDb;
+    now: Date;
+    secret: SecretRow;
+    operation: OperationRow;
+  }) => Promise<void>;
 }
 
 export interface NpAgentVaultMutateSecretInputV1 {
   operationId: string;
   siteId: string;
   secretVersionId: string;
+}
+
+export interface NpAgentVaultDestroySecretInputV1 extends NpAgentVaultMutateSecretInputV1 {
+  /** Runs in the exact destroy journal transaction before adapter dispatch. */
+  onJournaled?: (context: {
+    db: NpAgentDb;
+    now: Date;
+    secret: SecretRow;
+    operation: OperationRow;
+  }) => Promise<void>;
 }
 
 function fail(code: string, message: string, retryable = false): never {
@@ -507,6 +530,34 @@ export function createAgentVaultServiceV1(options: NpAgentVaultServiceOptionsV1)
           )
           .returning({ id: npAgentConnectionSecretVersions.id });
         if (!closed) fail("VAULT_OPERATION_STALE", "The unsealed secret close CAS was lost.");
+        if (secret.purpose === "provider-oauth-code") {
+          const [authRequest] = await tx
+            .select({ connectionOperationId: npAgentConnectionAuthRequests.connectionOperationId })
+            .from(npAgentConnectionAuthRequests)
+            .where(eq(npAgentConnectionAuthRequests.codeVaultOperationId, operation.id))
+            .limit(1);
+          if (authRequest?.connectionOperationId) {
+            const failedOperations = await tx
+              .update(npAgentConnectionOperations)
+              .set({
+                state: "failed",
+                lastErrorCode: "VAULT_SEAL_INPUT_LOST",
+                leaseUntil: null,
+                finishedAt: failedAt,
+              })
+              .where(
+                and(
+                  eq(npAgentConnectionOperations.siteId, operation.siteId),
+                  eq(npAgentConnectionOperations.id, authRequest.connectionOperationId),
+                  eq(npAgentConnectionOperations.state, "awaiting_secret"),
+                ),
+              )
+              .returning({ id: npAgentConnectionOperations.id });
+            if (failedOperations.length !== 1) {
+              fail("VAULT_OPERATION_STALE", "The linked OAuth exchange failure CAS was lost.");
+            }
+          }
+        }
       }
       return projection(updated);
     });
@@ -566,6 +617,55 @@ export function createAgentVaultServiceV1(options: NpAgentVaultServiceOptionsV1)
         )
         .returning();
       if (!updatedSecret) fail("VAULT_OPERATION_STALE", "The vault secret locator CAS was lost.");
+      if (operation.kind === "seal" && secret.purpose === "provider-oauth-code") {
+        const [authRequest] = await tx
+          .select({
+            id: npAgentConnectionAuthRequests.id,
+            status: npAgentConnectionAuthRequests.status,
+            expiresAt: npAgentConnectionAuthRequests.expiresAt,
+            connectionOperationId: npAgentConnectionAuthRequests.connectionOperationId,
+          })
+          .from(npAgentConnectionAuthRequests)
+          .where(eq(npAgentConnectionAuthRequests.codeVaultOperationId, operation.id))
+          .limit(1);
+        if (!authRequest) {
+          fail("VAULT_OPERATION_MISMATCH", "The provider OAuth code has no callback journal.");
+        }
+        if (
+          authRequest.status !== "consumed" ||
+          !authRequest.connectionOperationId ||
+          !secret.expiresAt
+        ) {
+          fail("VAULT_OPERATION_MISMATCH", "The linked OAuth callback journal is invalid.");
+        }
+        {
+          const queuedAt = now();
+          const deadlineAt = new Date(
+            Math.min(
+              queuedAt.getTime() + 60 * 1_000,
+              authRequest.expiresAt.getTime(),
+              secret.expiresAt.getTime(),
+            ),
+          );
+          if (deadlineAt <= queuedAt) {
+            fail("VAULT_OPERATION_MISMATCH", "The linked OAuth exchange deadline elapsed.");
+          }
+          const queuedOperations = await tx
+            .update(npAgentConnectionOperations)
+            .set({ state: "queued", deadlineAt })
+            .where(
+              and(
+                eq(npAgentConnectionOperations.siteId, operation.siteId),
+                eq(npAgentConnectionOperations.id, authRequest.connectionOperationId),
+                eq(npAgentConnectionOperations.state, "awaiting_secret"),
+              ),
+            )
+            .returning({ id: npAgentConnectionOperations.id });
+          if (queuedOperations.length !== 1) {
+            fail("VAULT_OPERATION_STALE", "The linked OAuth exchange queue CAS was lost.");
+          }
+        }
+      }
       return projection(updatedOperation);
     });
   }
@@ -764,6 +864,7 @@ export function createAgentVaultServiceV1(options: NpAgentVaultServiceOptionsV1)
     kind: "rewrap" | "destroy";
     targetKeyId?: string;
     targetKeyVersion?: string;
+    onJournaled?: NpAgentVaultDestroySecretInputV1["onJournaled"];
   }): Promise<{
     operation: OperationRow;
     secret: SecretRow;
@@ -853,6 +954,7 @@ export function createAgentVaultServiceV1(options: NpAgentVaultServiceOptionsV1)
         ) {
           fail("VAULT_IDEMPOTENCY_CONFLICT", "The vault operation identity is already bound.");
         }
+        await input.onJournaled?.({ db: tx, now: now(), secret, operation: existing });
         return { operation: existing, secret, aad };
       }
       const [created] = await tx
@@ -878,6 +980,7 @@ export function createAgentVaultServiceV1(options: NpAgentVaultServiceOptionsV1)
         })
         .returning();
       if (!created) fail("VAULT_PERSISTENCE_FAILED", "The vault operation was not persisted.");
+      await input.onJournaled?.({ db: tx, now: created.createdAt, secret, operation: created });
       return { operation: created, secret, aad };
     });
   }
@@ -1029,6 +1132,12 @@ export function createAgentVaultServiceV1(options: NpAgentVaultServiceOptionsV1)
               .limit(1);
             if (!secret) fail("VAULT_SECRET_NOT_FOUND", "The linked Agent vault secret is absent.");
             requireOperationMatchesSecret(existingOperation, secret);
+            await input.onJournaled?.({
+              db: tx,
+              now: now(),
+              secret,
+              operation: existingOperation,
+            });
             return { operation: existingOperation, secret, existing: true };
           }
           const createdAt = now();
@@ -1123,6 +1232,7 @@ export function createAgentVaultServiceV1(options: NpAgentVaultServiceOptionsV1)
             .returning();
           if (!operation)
             fail("VAULT_PERSISTENCE_FAILED", "The vault seal journal was not persisted.");
+          await input.onJournaled?.({ db: tx, now: createdAt, secret, operation });
           return { operation, secret, existing: false };
         });
         if (
@@ -1201,7 +1311,7 @@ export function createAgentVaultServiceV1(options: NpAgentVaultServiceOptionsV1)
     },
 
     async destroySecret(
-      input: NpAgentVaultMutateSecretInputV1,
+      input: NpAgentVaultDestroySecretInputV1,
     ): Promise<NpAgentVaultOperationProjectionV1> {
       requireIdentity(input);
       const admitted = await admitOperation({
@@ -1209,6 +1319,7 @@ export function createAgentVaultServiceV1(options: NpAgentVaultServiceOptionsV1)
         siteId: input.siteId,
         secretVersionId: input.secretVersionId,
         kind: "destroy",
+        onJournaled: input.onJournaled,
       });
       if (admitted.operation.state !== "queued") return projection(admitted.operation);
       const claimed = await claimQueued(admitted.operation);
