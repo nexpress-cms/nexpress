@@ -43,7 +43,7 @@
     "worker": "tsx scripts/worker.ts",
     "wp-import": "tsx scripts/wp-import.ts",
     "xliff": "tsx scripts/xliff.ts",
-    "db:generate": "pnpm schema:gen && drizzle-kit generate",
+    "db:generate": "pnpm schema:gen && tsx scripts/generate-migrations.ts",
     "db:migrate": "tsx scripts/run-migrations.ts",
     "db:push": "pnpm schema:gen && drizzle-kit push",
     "db:studio": "drizzle-kit studio"

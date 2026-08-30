@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { npAnalyzeAgentGatewaySettings } from "../agent-contract/contract.js";
 import { npAnalyzeStorageRuntimeConfig } from "../storage/contract.js";
 import type { NpConfig } from "./types.js";
 
@@ -165,6 +166,23 @@ const storageRuntimeSchema = z
     }
   });
 
+const agentGatewaySettingsSchema = z
+  .custom<NonNullable<NonNullable<NpConfig["agents"]>["gateway"]>>()
+  .superRefine((value, context) => {
+    const result = npAnalyzeAgentGatewaySettings(value);
+    if (result.ok) return;
+    for (const entry of result.issues) {
+      context.addIssue({
+        code: "custom",
+        path: entry.path
+          .replace(/^agent\.gatewaySettings\.?/u, "")
+          .split(".")
+          .filter(Boolean),
+        message: entry.message,
+      });
+    }
+  });
+
 export const npConfigShapeSchema = z.strictObject({
   site: z.strictObject({
     name: z.string().min(1),
@@ -183,6 +201,11 @@ export const npConfigShapeSchema = z.strictObject({
     })
     .optional(),
   plugins: z.array(pluginEntrySchema).optional(),
+  agents: z
+    .strictObject({
+      gateway: agentGatewaySettingsSchema.optional(),
+    })
+    .optional(),
   themes: z.array(z.unknown()).optional(),
   i18n: z
     .strictObject({

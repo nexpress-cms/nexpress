@@ -64,6 +64,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "scripts/dev-notice.ts": utf8(devNoticeScriptTemplate()),
     "scripts/doctor.ts": utf8(doctorScriptTemplate()),
     "scripts/generate-schema.ts": utf8(generateSchemaScriptTemplate()),
+    "scripts/generate-migrations.ts": utf8(generateMigrationsScriptTemplate()),
     "scripts/gettext.ts": utf8(translationCliScriptTemplate("gettext")),
     "scripts/ops-backup.ts": utf8(opsBackupScriptTemplate()),
     "scripts/ops-contracts.ts": utf8(opsContractsScriptTemplate()),
@@ -182,7 +183,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         setup: "tsx scripts/setup-server.ts",
         worker: "tsx scripts/worker.ts",
         xliff: "tsx scripts/xliff.ts",
-        "db:generate": "pnpm schema:gen && drizzle-kit generate",
+        "db:generate": "pnpm schema:gen && tsx scripts/generate-migrations.ts",
         "db:migrate": "tsx scripts/run-migrations.ts",
         "db:push": "pnpm schema:gen && drizzle-kit push",
         "db:studio": "drizzle-kit studio",
@@ -347,7 +348,7 @@ function nexpressConfigTemplate(config: TemplateConfig): string {
   const pluginsList = `  plugins: ${plugins},`;
 
   return (
-    `import { defineConfig } from "@nexpress/core";\n` +
+    `import { defineConfig, npAgentDisabledProjectConfigV1 } from "@nexpress/core";\n` +
     defaultsImports +
     `\n` +
     importsBlock +
@@ -360,6 +361,7 @@ function nexpressConfigTemplate(config: TemplateConfig): string {
     `    connectionString: process.env.DATABASE_URL!,\n` +
     `  },\n` +
     `  storage: storageFromEnv(),\n` +
+    `  agents: npAgentDisabledProjectConfigV1,\n` +
     `  collections: ${collections},\n` +
     `  themes: ${themes},\n` +
     `  i18n: defaultI18n,\n` +
@@ -391,6 +393,10 @@ function generateSchemaScriptTemplate(): string {
     `import { generateSchema } from "@nexpress/app/scripts/generate-schema";\n\n` +
     `generateSchema({ config: nexpressConfig });\n`
   );
+}
+
+function generateMigrationsScriptTemplate(): string {
+  return `import "@nexpress/app/scripts/generate-migrations";\n`;
 }
 
 function buildScriptTemplate(): string {

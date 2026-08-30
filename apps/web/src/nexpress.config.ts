@@ -1,4 +1,4 @@
-import { defineConfig } from "@nexpress/core";
+import { defineConfig, npAgentDisabledProjectConfigV1 } from "@nexpress/core";
 import {
   defaultCollections,
   defaultForumPlugin,
@@ -31,6 +31,7 @@ export default defineConfig({
     connectionString: process.env.DATABASE_URL ?? "",
   },
   storage: storageFromEnv(),
+  agents: npAgentDisabledProjectConfigV1,
   collections: [...defaultCollections],
   // Phase 12.1 — i18n config. Required when any collection
   // sets `i18n: true`. `pagesCollection` opts in: each row

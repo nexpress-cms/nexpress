@@ -243,7 +243,22 @@ jobs:
   scaffold-smoke:
     name: scaffold smoke (fresh scaffold journey)
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: nexpress
+          POSTGRES_PASSWORD: nexpress
+          POSTGRES_DB: nexpress_build
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nexpress"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     env:
       DATABASE_URL: postgres://nexpress:nexpress@localhost:5432/nexpress_build
@@ -319,6 +334,14 @@ jobs:
           pnpm typecheck
           pnpm exec tsc --showConfig \
             | jq -e '.files | any(. == "./src/nexpress.config.ts")' >/dev/null
+
+      - name: Generate + apply fresh scaffold Agent foundation
+        run: |
+          cd "$RUNNER_TEMP/scaffold/smoke-app"
+          pnpm db:generate
+          pnpm db:migrate
+          node "$GITHUB_WORKSPACE/.github/scripts/check-scaffold-agent-foundation.mjs" \
+            "$RUNNER_TEMP/scaffold/smoke-app"
 
       - name: Build generated scaffold
         run: |
