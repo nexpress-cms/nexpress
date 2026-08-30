@@ -25,6 +25,7 @@ import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundat
 import type { NpCapability } from "../auth/capabilities.js";
 import type { NpAuthUser, NpUserRole } from "../config/types.js";
 import { getDb } from "../db/runtime.js";
+import { NpError } from "../errors.js";
 import { npAgentInvocations } from "../db/schema/agent.js";
 import { npAuditEvents } from "../db/schema/community.js";
 import { npSessions, npSiteMemberships, npSites, npUsers } from "../db/schema/system.js";
@@ -54,14 +55,14 @@ function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
   ) as NpAgentAdmittedAdminInputMapV1[I];
 }
 
-export class NpAgentGatewayError extends Error {
+export class NpAgentGatewayError extends NpError {
   constructor(
-    public readonly code: string,
+    code: string,
     public readonly status: number,
     message: string,
-    public readonly details: Readonly<Record<string, unknown>> = {},
+    details: NpAgentJsonObject = {},
   ) {
-    super(message);
+    super(message, code, status, details);
     this.name = "NpAgentGatewayError";
   }
 }

@@ -48,3 +48,7 @@ export {
 export { registerThemes, resetThemes } from "../themes/registry.js";
 export { resetI18nConfig, setI18nConfig } from "../i18n/registry.js";
 export { resetCurrentSiteResolver, setCurrentSiteResolver } from "../sites/context.js";
+export {
+  resetAgentStudioServerRuntimeV1,
+  setAgentStudioServerRuntimeV1,
+} from "../agent/studio-runtime.js";

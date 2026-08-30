@@ -21,6 +21,7 @@ import {
   NpAgentConnectionAuthAdapterRegistryV1,
   NpAgentVaultAdapterRegistryV1,
   createAgentAdminAdmissionV1,
+  createAgentConnectionAdminServiceV1,
   createAgentConnectionServiceV1,
   createAgentFakeProviderAdapterV1,
   createAgentVaultServiceV1,
@@ -28,6 +29,11 @@ import {
   type NpAgentAdminActorV1,
   type NpAgentConnectionOperationProjectionV1,
 } from "../../../packages/core/src/agent/index.js";
+// eslint-disable-next-line import-x/no-relative-packages
+import {
+  npDigestAgentStudioConnectionDefinitionV1,
+  npSerializeAgentStudioConnectionDefinitionV1,
+} from "../../../packages/core/src/agent-contract/index.js";
 import {
   closeTestDb,
   ensureMigrated,
@@ -141,6 +147,88 @@ describe.skipIf(skipIfNoTestDb())("Agent provider connection lifecycle", () => {
 
   afterAll(async () => {
     await closeTestDb();
+  });
+
+  it("admits create and revoke with one audited transaction and no retained plaintext", async () => {
+    const { actor } = await actorFixture();
+    const fixture = await serviceFixture();
+    const admin = createAgentConnectionAdminServiceV1({
+      connections: fixture.service,
+      reauthentication: { verify: () => true },
+      secretRequestDigestKey: {
+        id: "admin-secret-request-v1",
+        key: new Uint8Array(32).fill(71),
+      },
+    });
+    const definition = {
+      schemaVersion: "np.agent-studio-connection-definition.v1" as const,
+      name: "Atomic fake model",
+      kind: "model" as const,
+      provider: fixture.provider.id,
+      adapterId: fixture.provider.id,
+      adapterContractVersion: fixture.provider.contractVersion,
+      adapterFingerprint: fixture.provider.fingerprint,
+      authKind: "api_key" as const,
+      config: {
+        accountId: "atomic-account",
+        connectionKind: "model",
+        destination: null,
+        modelId: "fake-model",
+      },
+      dataProcessingCeiling: "public-only" as const,
+    };
+    const definitionJson = npSerializeAgentStudioConnectionDefinitionV1(definition);
+    const created = await admin.executeAdmin({
+      siteId,
+      actor,
+      operationId: "agents.connections.create",
+      targetId: null,
+      command: {
+        idempotencyKey: "connection:atomic:create",
+        credential: "fake-api-key",
+        definitionJson,
+        definitionHash: await npDigestAgentStudioConnectionDefinitionV1(definition),
+        vaultOperationId: randomUUID(),
+      },
+    });
+    expect(created).toMatchObject({ replayed: false, output: { status: "pending" } });
+    const [operation] = await fixture.db
+      .select()
+      .from(npAgentConnectionOperations)
+      .where(eq(npAgentConnectionOperations.connectionId, created.resourceId))
+      .limit(1);
+    expect(operation).toMatchObject({ state: "queued", kind: "activate-secret" });
+    await fixture.service.processOperation({ siteId, operationId: operation!.id });
+    expect(
+      await fixture.service.getConnection({ siteId, connectionId: created.resourceId }),
+    ).toMatchObject({ status: "ready", credential: { state: "stored", version: 1 } });
+    expect(await fixture.service.listConnections(siteId)).toHaveLength(1);
+
+    const [invocation] = await fixture.db
+      .select({ requestBody: npAgentInvocations.requestBody })
+      .from(npAgentInvocations)
+      .where(eq(npAgentInvocations.operationId, "agents.connections.create"))
+      .limit(1);
+    expect(JSON.stringify(invocation?.requestBody)).not.toContain("fake-api-key");
+    expect(invocation?.requestBody.input).toMatchObject({
+      credentialDigest: expect.stringMatching(
+        /^cj1:hmac-sha256:admin-secret-request-v1:[A-Za-z0-9_-]{43}$/u,
+      ),
+    });
+
+    const revoked = await admin.executeAdmin({
+      siteId,
+      actor,
+      operationId: "agents.connections.revoke",
+      targetId: created.resourceId,
+      command: {
+        idempotencyKey: "connection:atomic:revoke",
+        expectedVersion: 1,
+        reason: "fixture cleanup",
+      },
+    });
+    expect(revoked.output).toMatchObject({ status: "revoked", credential: { state: "absent" } });
+    await fixture.dispose();
   });
 
   it("activates and rotates API keys without replacing a known-good credential on failed probe", async () => {

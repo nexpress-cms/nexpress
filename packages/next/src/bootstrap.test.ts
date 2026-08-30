@@ -28,12 +28,14 @@ vi.mock("@nexpress/core/bootstrap", () => ({
   resetCacheInvalidationAdapter: vi.fn(),
   resetCollections: vi.fn(),
   resetCurrentSiteResolver: vi.fn(),
+  resetAgentStudioServerRuntimeV1: vi.fn(),
   resetDb: vi.fn(),
   resetI18nConfig: vi.fn(),
   resetPlugins: vi.fn(),
   resetSearchAdapter: vi.fn(),
   resetThemes: vi.fn(),
   setCurrentSiteResolver: vi.fn(),
+  setAgentStudioServerRuntimeV1: vi.fn(),
   setCacheInvalidationAdapter: vi.fn(),
   setDb: vi.fn(),
   setI18nConfig: vi.fn(),
@@ -116,6 +118,21 @@ describe("createBootstrap", () => {
     expect(host.resetCacheInvalidationAdapter).toHaveBeenCalledOnce();
     expect(shutdown).toHaveBeenCalledOnce();
     expect(cdn.getCdnPurgeAdapter()).toBeNull();
+  });
+
+  it("installs and detaches only its injected Agent Studio runtime", async () => {
+    const agentStudioRuntime = { marker: "agent-studio" } as never;
+    const bootstrap = createBootstrap({
+      config: buildConfig(),
+      generatedSchema: {},
+      agentStudioRuntime,
+    });
+
+    await bootstrap.ensureFor("read");
+    expect(host.setAgentStudioServerRuntimeV1).toHaveBeenCalledWith(agentStudioRuntime);
+
+    await bootstrap.shutdown();
+    expect(host.resetAgentStudioServerRuntimeV1).toHaveBeenCalledWith(agentStudioRuntime);
   });
 
   it("installs and closes an injected search adapter with read lifecycle ownership", async () => {

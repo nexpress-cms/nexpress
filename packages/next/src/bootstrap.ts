@@ -21,6 +21,7 @@ import {
   resetCacheInvalidationAdapter,
   resetCollections,
   resetCurrentSiteResolver,
+  resetAgentStudioServerRuntimeV1,
   resetDb,
   resetI18nConfig,
   resetPlugins,
@@ -28,6 +29,7 @@ import {
   resetThemes,
   setCurrentSiteResolver,
   setCacheInvalidationAdapter,
+  setAgentStudioServerRuntimeV1,
   setDb,
   setI18nConfig,
   setSearchAdapter,
@@ -39,6 +41,7 @@ import {
   type NpDb,
   type NpSearchAdapter,
 } from "@nexpress/core/bootstrap";
+import type { NpAgentStudioServerRuntimeV1 } from "@nexpress/core/agents";
 import {
   configureEmailRuntime,
   npReadEmailRuntimeConfig,
@@ -186,6 +189,11 @@ export interface NpBootstrapOptions {
   cdnPurgeAdapter?: NpCdnPurgeAdapter;
   /** Optional external search adapter, installed for reads and closed on terminal shutdown. */
   searchAdapter?: NpSearchAdapter;
+  /**
+   * Optional server-only Agent Studio control-plane runtime. Keys, Vaults, and provider
+   * callbacks remain host-owned; omitting this keeps Agent Studio safely unavailable.
+   */
+  agentStudioRuntime?: NpAgentStudioServerRuntimeV1;
 }
 
 /**
@@ -369,6 +377,7 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
   let cacheConfigured = false;
   let cdnPurgeConfigured = false;
   let ownedSearchAdapter: NpSearchAdapter | null = null;
+  let installedAgentStudioRuntime: NpAgentStudioServerRuntimeV1 | null = null;
   let readReady = false;
   let readStartingPromise: Promise<void> | null = null;
   let emailRuntimeConfig: NpEmailRuntimeConfig | null = null;
@@ -423,6 +432,10 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
       cdnPurgeConfigured = true;
     }
     if (searchAdapter) ownedSearchAdapter = setSearchAdapter(searchAdapter);
+    if (options.agentStudioRuntime) {
+      setAgentStudioServerRuntimeV1(options.agentStudioRuntime);
+      installedAgentStudioRuntime = options.agentStudioRuntime;
+    }
     const storageConfig = config.storage ?? {
       adapter: "local" as const,
       local: { directory: "./public/media", baseUrl: "/media" },
@@ -565,6 +578,10 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
   async function rollbackRead(startupError: unknown): Promise<never> {
     const failures: unknown[] = [startupError];
     resetCurrentSiteResolver();
+    if (installedAgentStudioRuntime) {
+      resetAgentStudioServerRuntimeV1(installedAgentStudioRuntime);
+      installedAgentStudioRuntime = null;
+    }
     resetI18nConfig();
     resetThemes();
     resetCollections();
@@ -1004,6 +1021,10 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
       resetSharedPatternRegistry();
       pluginsLoaded = false;
       resetCurrentSiteResolver();
+      if (installedAgentStudioRuntime) {
+        resetAgentStudioServerRuntimeV1(installedAgentStudioRuntime);
+        installedAgentStudioRuntime = null;
+      }
       resetI18nConfig();
       resetThemes();
       resetCollections();

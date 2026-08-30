@@ -2,7 +2,24 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-30 (The R1 Agent diagnostics slice now owns one
+**Last refreshed:** 2026-08-30 (The first R1 Agent Studio control-plane slice
+now owns strict client-safe adapter/runtime/overview, canonical connection
+definition, principal-detail, and one-time service-token projections. A
+host-injected server runtime stays honestly unavailable until the existing
+Connection and Gateway services are installed. Current-site Admin routes and
+surfaces reuse shared staff-session, capability, reauthentication, audit, and
+idempotency admission for Connection create/revoke and Gateway
+principal/service-token lifecycle. Write-only API keys are HMAC-projected
+before persistence and zeroized around Vault admission; token plaintext is
+returned once with `no-store`. Outbound provider connections remain visually
+and contractually separate from inbound Gateway authority, and no dedicated
+MCP port is introduced. OAuth connections may remain pending for the existing
+AP-106 lifecycle; this AP-108 minimum UI adds no alternate callback contract,
+provider call, scheduled worker, runtime configuration/default propagation,
+migration, or package-version change. The generated scaffold snapshot mirrors
+only the new shared page and route wrappers.)
+
+**Earlier:** 2026-08-30 (The R1 Agent diagnostics slice now owns one
 strict client-safe `np.agent-health-summary.v1` projection and one server-only
 aggregate collector shared by Doctor and read-only Admin Health. Exact R1
 table/constraint inventory, state and age counts, same-site references,
