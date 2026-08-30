@@ -234,6 +234,28 @@ PostgreSQL fixtures share the same collector. This slice adds no Agent Studio
 mutation UI, provider call, runtime worker, scaffold/config propagation,
 migration, or package-version change.
 
+AP-108 is implemented as the first Agent Studio control plane across the
+client-safe `@nexpress/core/agent-contract`, host-injected server runtime,
+shared application routes, and Admin surfaces. One strict overview projects
+only installed adapter metadata, disabled-by-default Gateway settings,
+redacted connections, principals, and stable runtime issue codes. Connection
+definitions are canonicalized and digested in the browser, while API-key
+plaintext remains write-only, is replaced by the existing keyed request HMAC
+before invocation persistence, and is zeroized around the existing Vault
+admission. Connection create/revoke and Gateway principal/service-token
+lifecycle reuse the AP-001 shared staff-session, site-capability,
+reauthentication, audit, and idempotency boundary. Service-token plaintext is
+shown once from a `no-store` response; detail and list projections never
+recover it. The Admin UI keeps outbound provider connections distinct from
+inbound Gateway authority, explains that no dedicated MCP port is introduced,
+and fails closed when the host has not installed either runtime. OAuth
+connections may be created in the existing pending state, but this minimum UI
+does not add a second OAuth start/callback contract around the AP-106 server
+lifecycle. The scaffold snapshot mirrors the same thin page and route wrappers,
+but this slice adds no provider call, scheduled worker, disabled-by-default
+runtime configuration/default propagation, migration, or package-version
+change.
+
 Gate:
 
 - a site with no agent settings behaves byte-for-byte/API-equivalently where

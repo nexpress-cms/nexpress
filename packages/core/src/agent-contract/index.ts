@@ -26,4 +26,5 @@ export * from "./admin-operation-registry.js";
 export * from "./connection-admin-contract.js";
 export * from "./gateway-admin-contract.js";
 export * from "./health-contract.js";
+export * from "./studio-contract.js";
 export * from "./wire-contract.js";

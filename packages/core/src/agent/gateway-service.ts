@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { and, asc, eq, gt, inArray, or, sql } from "drizzle-orm";
 
 import {
+  npAgentDisabledGatewaySettingsV1,
   npRequireAgentGatewaySettings,
   npAgentServiceTokenLimits,
   npDigestAgentAuthorizationContextCanonical,
@@ -45,12 +46,6 @@ type NpAgentDb = ReturnType<typeof getDb>;
 type PrincipalRow = typeof npAgentPrincipals.$inferSelect;
 type ServiceTokenRow = typeof npAgentServiceTokens.$inferSelect;
 
-const DISABLED_GATEWAY_SETTINGS: NpAgentGatewaySettingsV1 = Object.freeze({
-  schemaVersion: "np.agent-gateway-settings.v1",
-  stdio: "disabled",
-  mcpHttp: "disabled",
-  agentHttp: "disabled",
-});
 const EXPOSURE_RANK = { disabled: 0, read: 1, propose: 2, "approved-execute": 3 } as const;
 const UUID_PATTERN = new RegExp(npAuthUuidPattern, "u");
 
@@ -232,7 +227,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
     ),
   };
   const deployment = npRequireAgentGatewaySettings(
-    options.deploymentGatewaySettings ?? DISABLED_GATEWAY_SETTINGS,
+    options.deploymentGatewaySettings ?? npAgentDisabledGatewaySettingsV1,
   );
   const environment = options.environment ?? "production";
   const admit = createAgentAdminAdmissionV1({
@@ -242,7 +237,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
 
   const siteSettings = async (siteId: string) =>
     npRequireAgentGatewaySettings(
-      (await options.resolveSiteGatewaySettings?.(siteId)) ?? DISABLED_GATEWAY_SETTINGS,
+      (await options.resolveSiteGatewaySettings?.(siteId)) ?? npAgentDisabledGatewaySettingsV1,
     );
 
   const effectiveCeiling = async (siteId: string, transport: NpAgentServiceTokenTransportV1) =>
@@ -250,6 +245,19 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
       transportSetting(deployment, transport),
       transportSetting(await siteSettings(siteId), transport),
     );
+
+  async function getEffectiveGatewaySettings(siteId: string): Promise<NpAgentGatewaySettingsV1> {
+    if (!npIsCanonicalSiteId(siteId)) {
+      throw new NpAgentGatewayError("INVALID_SITE", 400, "Site id is not canonical.");
+    }
+    const settings = await siteSettings(siteId);
+    return npRequireAgentGatewaySettings({
+      schemaVersion: "np.agent-gateway-settings.v1",
+      stdio: minimumExposure(deployment.stdio, settings.stdio),
+      mcpHttp: minimumExposure(deployment.mcpHttp, settings.mcpHttp),
+      agentHttp: minimumExposure(deployment.agentHttp, settings.agentHttp),
+    });
+  }
 
   const audienceFor = async (siteId: string, transport: NpAgentServiceTokenTransportV1) => {
     if (transport === "stdio") return "urn:nexpress:agent-gateway:stdio";
@@ -1075,6 +1083,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
 
   return Object.freeze({
     executeAdmin,
+    getEffectiveGatewaySettings,
     listPrincipals,
     getPrincipal,
     listServiceTokens,

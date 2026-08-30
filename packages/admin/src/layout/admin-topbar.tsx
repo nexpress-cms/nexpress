@@ -34,6 +34,7 @@ const SECTION_LABELS: Record<string, string> = {
   pending: "Pending",
   reports: "Reports",
   audit: "Audit log",
+  agents: "System",
   plugins: "System",
   ops: "System",
   readiness: "System",
@@ -60,6 +61,7 @@ const LEAF_LABELS: Record<string, string> = {
   pending: "Pending review",
   audit: "Audit log",
   community: "Community",
+  agents: "Agent Studio",
 };
 
 function deriveCrumbs(pathname: string): string[] {
@@ -95,6 +97,14 @@ function deriveCrumbs(pathname: string): string[] {
   if (head === "sites" && rest[1]) {
     if (rest[1] && rest[2] === "members") return [section, "Sites", "Members"];
     return [section, "Sites", "Detail"];
+  }
+
+  if (head === "agents" && rest[1]) {
+    if (rest[1] === "connections" && rest[2] === "new") {
+      return [section, "Agent Studio", "New connection"];
+    }
+    if (rest[1] === "connections") return [section, "Agent Studio", "Connections"];
+    if (rest[1] === "gateway") return [section, "Agent Studio", "Gateway principal"];
   }
 
   const leaf = LEAF_LABELS[head] ?? head.charAt(0).toUpperCase() + head.slice(1);

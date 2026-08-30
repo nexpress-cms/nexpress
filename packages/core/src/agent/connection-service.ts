@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 
-import { and, desc, eq, gt, inArray, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lte, or } from "drizzle-orm";
 
 import {
   npDigestAgentConnectionOperationCanonical,
@@ -144,6 +144,35 @@ export interface NpAgentConnectionApiKeyAdmissionInputV1 extends NpAgentConnecti
 export interface NpAgentConnectionApiKeyAdmissionV1 {
   operation: NpAgentConnectionOperationProjectionV1;
   afterCommit: () => Promise<NpAgentConnectionOperationProjectionV1>;
+}
+
+export interface NpAgentConnectionCreateAdmissionInputV1 extends NpAgentConnectionCreateInputV1 {
+  /** The shared Admin admission transaction. */
+  db: NpAgentDb;
+  admittedAt: Date;
+  invocationId: string;
+  idempotencyKey: string;
+  vaultOperationId: string;
+  apiKey: Uint8Array | null;
+}
+
+export interface NpAgentConnectionCreateAdmissionV1 {
+  connection: NpAgentConnectionV1;
+  operation: NpAgentConnectionOperationProjectionV1 | null;
+  afterCommit?: () => Promise<NpAgentConnectionOperationProjectionV1>;
+}
+
+export interface NpAgentConnectionRevokeAdmissionInputV1 {
+  siteId: string;
+  connectionId: string;
+  expectedConfigVersion: number;
+  db: NpAgentDb;
+  admittedAt: Date;
+}
+
+export interface NpAgentConnectionRevokeAdmissionV1 {
+  connection: NpAgentConnectionV1;
+  afterCommit: () => Promise<void>;
 }
 
 export interface NpAgentConnectionOAuthStartInputV1 {
@@ -463,6 +492,43 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
       .limit(1);
     if (!config) fail("CONNECTION_CONFIG_NOT_FOUND", "The connection config snapshot is absent.");
     return { connection, config };
+  }
+
+  function connectionProjection(connection: ConnectionRow, config: ConfigRow): NpAgentConnectionV1 {
+    return npRequireAgentConnectionV1({
+      schemaVersion: "np.agent-connection.v1",
+      id: connection.id,
+      siteId: connection.siteId,
+      kind: connection.kind,
+      provider: connection.provider,
+      adapterId: config.adapterId,
+      adapterContractVersion: config.adapterContractVersion,
+      adapterFingerprint: config.adapterFingerprint,
+      name: connection.name,
+      authKind: connection.authKind,
+      safeConfig: connection.config,
+      configVersion: connection.configVersion,
+      configHash: connection.configHash,
+      pricingCatalogFingerprint: connection.pricingCatalogFingerprint,
+      dataProcessingCeiling: connection.dataProcessingCeiling,
+      status: connection.status,
+      credential: connection.activeSecretVersionId
+        ? { state: "stored", version: connection.credentialVersion }
+        : { state: "absent" },
+      verification: connection.lastVerifiedAt
+        ? {
+            verifiedAt: connection.lastVerifiedAt.toISOString(),
+            configVersion: connection.lastVerifiedConfigVersion,
+            credentialVersion: connection.lastVerifiedCredentialVersion,
+            resultDigest: connection.lastProbeResultDigest,
+          }
+        : null,
+      lastErrorCode: connection.lastErrorCode,
+      dependentAgentCount: 0,
+      createdBy: connection.createdBy,
+      createdAt: connection.createdAt.toISOString(),
+      updatedAt: connection.updatedAt.toISOString(),
+    });
   }
 
   async function callProvider<T>(
@@ -2270,7 +2336,224 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
     return (latest?.version ?? 0) + 1;
   }
 
+  async function prepareCreateAdmission(
+    input: NpAgentConnectionCreateAdmissionInputV1,
+  ): Promise<NpAgentConnectionCreateAdmissionV1> {
+    const id = input.id ?? randomUuid();
+    requireIdentity(input.siteId, id);
+    requireUuid(input.invocationId, "agent.connection.invocationId");
+    requireUuid(input.vaultOperationId, "agent.connection.vaultOperationId");
+    if (!(input.admittedAt instanceof Date) || !Number.isFinite(input.admittedAt.getTime())) {
+      fail("CONNECTION_TIME_INVALID", "The connection admission timestamp is invalid.");
+    }
+    if (
+      typeof input.name !== "string" ||
+      input.name.trim() !== input.name ||
+      input.name.length < 1 ||
+      input.name.length > 120
+    ) {
+      fail("CONNECTION_NAME_INVALID", "The connection name is invalid.");
+    }
+    if (
+      (input.authKind === "api_key" &&
+        (!(input.apiKey instanceof Uint8Array) || input.apiKey.byteLength === 0)) ||
+      (input.authKind === "oauth" && input.apiKey !== null)
+    ) {
+      fail("PROVIDER_CREDENTIAL_KIND_INVALID", "The credential does not match the auth kind.");
+    }
+    const adapter = options.providerRegistry.resolve({
+      id: input.adapterId,
+      contractVersion: input.adapterContractVersion,
+      fingerprint: input.adapterFingerprint,
+    });
+    if (
+      input.provider !== adapter.id ||
+      !adapter.supportedConnectionKinds.includes(input.kind) ||
+      !adapter.supportedAuthKinds.includes(input.authKind)
+    ) {
+      fail(
+        "PROVIDER_CONFIG_RESULT_MISMATCH",
+        "The connection definition disagrees with its adapter.",
+      );
+    }
+    const parsed = await npParseAgentProviderConnectionConfigV1({
+      adapter,
+      siteId: input.siteId,
+      connectionId: id,
+      kind: input.kind,
+      provider: input.provider,
+      authKind: input.authKind,
+      configVersion: 1,
+      config: input.config,
+      dataProcessingCeiling: input.dataProcessingCeiling,
+      effectiveAt: input.admittedAt,
+    });
+    const configId = randomUuid();
+    const [connection] = await input.db
+      .insert(npAgentConnections)
+      .values({
+        id,
+        siteId: input.siteId,
+        kind: input.kind,
+        provider: input.provider,
+        adapterContractVersion: adapter.contractVersion,
+        name: input.name,
+        authKind: input.authKind,
+        activeConfigSnapshotId: configId,
+        config: parsed.config,
+        configVersion: 1,
+        configHash: parsed.configHash,
+        pricingCatalogFingerprint: parsed.pricingCatalogFingerprint,
+        dataProcessingCeiling: input.dataProcessingCeiling,
+        status: "pending",
+        createdBy: input.createdBy ?? null,
+        createdAt: input.admittedAt,
+        updatedAt: input.admittedAt,
+      })
+      .returning();
+    const [config] = await input.db
+      .insert(npAgentConnectionConfigVersions)
+      .values({
+        id: configId,
+        siteId: input.siteId,
+        connectionId: id,
+        version: 1,
+        adapterId: adapter.id,
+        adapterContractVersion: adapter.contractVersion,
+        adapterFingerprint: adapter.fingerprint,
+        config: parsed.config,
+        configHash: parsed.configHash,
+        pricingCatalog: parsed.pricingCatalog,
+        pricingCatalogFingerprint: parsed.pricingCatalogFingerprint,
+        dataProcessingCeiling: input.dataProcessingCeiling,
+        state: "active",
+        createdAt: input.admittedAt,
+        activatedAt: input.admittedAt,
+      })
+      .returning();
+    if (!connection || !config) {
+      fail("CONNECTION_PERSISTENCE_FAILED", "The connection definition was not persisted.");
+    }
+    if (input.authKind === "oauth") {
+      return { connection: connectionProjection(connection, config), operation: null };
+    }
+    const admitted = await prepareApiKeyAdmission(
+      {
+        siteId: input.siteId,
+        connectionId: id,
+        invocationId: input.invocationId,
+        idempotencyKey: input.idempotencyKey,
+        expectedConfigVersion: 1,
+        expectedConfigHash: parsed.configHash,
+        vaultOperationId: input.vaultOperationId,
+        apiKey: input.apiKey!,
+        createdByUserId: input.createdBy ?? null,
+      },
+      input.db,
+      input.admittedAt,
+    );
+    return {
+      connection: connectionProjection(connection, config),
+      operation: operationProjection(admitted.operation),
+      afterCommit: admitted.afterCommit,
+    };
+  }
+
+  async function prepareRevokeAdmission(
+    input: NpAgentConnectionRevokeAdmissionInputV1,
+  ): Promise<NpAgentConnectionRevokeAdmissionV1> {
+    requireIdentity(input.siteId, input.connectionId);
+    if (!(input.admittedAt instanceof Date) || !Number.isFinite(input.admittedAt.getTime())) {
+      fail("CONNECTION_TIME_INVALID", "The connection admission timestamp is invalid.");
+    }
+    const { connection, config } = await loadConnectionConfig(
+      input.db,
+      input.siteId,
+      input.connectionId,
+    );
+    if (
+      connection.configVersion !== input.expectedConfigVersion ||
+      connection.status === "revoked"
+    ) {
+      fail("CONNECTION_VERSION_CONFLICT", "The connection changed before revoke.");
+    }
+    const secretId = connection.activeSecretVersionId;
+    const oauthTemporarySecretIds = await revokePendingOAuthRequests(
+      input.db,
+      input.siteId,
+      input.connectionId,
+      "CONNECTION_REVOKED",
+    );
+    if (secretId) {
+      const revokedSecrets = await input.db
+        .update(npAgentConnectionSecretVersions)
+        .set({ status: "revoked", retiredAt: input.admittedAt })
+        .where(
+          and(
+            eq(npAgentConnectionSecretVersions.id, secretId),
+            eq(npAgentConnectionSecretVersions.status, "active"),
+          ),
+        )
+        .returning({ id: npAgentConnectionSecretVersions.id });
+      if (revokedSecrets.length !== 1) {
+        fail("CONNECTION_CREDENTIAL_CONFLICT", "The active credential changed before revoke.");
+      }
+    }
+    const [updated] = await input.db
+      .update(npAgentConnections)
+      .set({
+        status: "revoked",
+        activeSecretVersionId: null,
+        credentialVersion: null,
+        activeAccountSubjectKeyId: null,
+        activeAccountSubjectDigest: null,
+        activeDestinationKeyId: null,
+        activeDestinationDescriptor: null,
+        activeDestinationFingerprint: null,
+        lastErrorCode: null,
+        updatedAt: input.admittedAt,
+      })
+      .where(
+        and(
+          eq(npAgentConnections.siteId, connection.siteId),
+          eq(npAgentConnections.id, connection.id),
+          eq(npAgentConnections.configVersion, connection.configVersion),
+          eq(npAgentConnections.status, connection.status),
+        ),
+      )
+      .returning();
+    if (!updated) {
+      fail("CONNECTION_VERSION_CONFLICT", "The connection changed before revoke.");
+    }
+    let dispatched = false;
+    return {
+      connection: connectionProjection(updated, config),
+      afterCommit: async () => {
+        if (dispatched) return;
+        dispatched = true;
+        if (secretId) {
+          try {
+            await options.vault.destroySecret({
+              operationId: randomUuid(),
+              siteId: input.siteId,
+              secretVersionId: secretId,
+            });
+          } catch {
+            // Runtime authority is already removed; the Vault journal owns cleanup.
+          }
+        }
+        await destroyTemporary(input.siteId, oauthTemporarySecretIds);
+      },
+    };
+  }
+
   return {
+    async admitCreateConnection(
+      input: NpAgentConnectionCreateAdmissionInputV1,
+    ): Promise<NpAgentConnectionCreateAdmissionV1> {
+      return prepareCreateAdmission(input);
+    },
+
     async createConnection(input: NpAgentConnectionCreateInputV1): Promise<NpAgentConnectionV1> {
       const id = input.id ?? randomUuid();
       requireIdentity(input.siteId, id);
@@ -3222,81 +3505,21 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
       connectionId: string;
       expectedConfigVersion: number;
     }): Promise<NpAgentConnectionV1> {
-      const revokedAt = now();
-      let secretId: string | null = null;
-      const oauthTemporarySecretIds: string[] = [];
-      await resolveDb().transaction(async (rawTx) => {
-        const tx = rawTx as NpAgentDb;
-        const [connection] = await tx
-          .select()
-          .from(npAgentConnections)
-          .where(
-            and(
-              eq(npAgentConnections.siteId, input.siteId),
-              eq(npAgentConnections.id, input.connectionId),
-            ),
-          )
-          .for("update")
-          .limit(1);
-        if (
-          !connection ||
-          connection.configVersion !== input.expectedConfigVersion ||
-          connection.status === "revoked"
-        )
-          fail("CONNECTION_VERSION_CONFLICT", "The connection changed before revoke.");
-        secretId = connection.activeSecretVersionId;
-        oauthTemporarySecretIds.push(
-          ...(await revokePendingOAuthRequests(
-            tx,
-            input.siteId,
-            input.connectionId,
-            "CONNECTION_REVOKED",
-          )),
-        );
-        if (secretId)
-          await tx
-            .update(npAgentConnectionSecretVersions)
-            .set({ status: "revoked", retiredAt: revokedAt })
-            .where(
-              and(
-                eq(npAgentConnectionSecretVersions.id, secretId),
-                eq(npAgentConnectionSecretVersions.status, "active"),
-              ),
-            );
-        await tx
-          .update(npAgentConnections)
-          .set({
-            status: "revoked",
-            activeSecretVersionId: null,
-            credentialVersion: null,
-            activeAccountSubjectKeyId: null,
-            activeAccountSubjectDigest: null,
-            activeDestinationKeyId: null,
-            activeDestinationDescriptor: null,
-            activeDestinationFingerprint: null,
-            lastErrorCode: null,
-            updatedAt: revokedAt,
-          })
-          .where(
-            and(
-              eq(npAgentConnections.id, connection.id),
-              eq(npAgentConnections.configVersion, connection.configVersion),
-            ),
-          );
-      });
-      if (secretId) {
-        try {
-          await options.vault.destroySecret({
-            operationId: randomUuid(),
-            siteId: input.siteId,
-            secretVersionId: secretId,
-          });
-        } catch {
-          // Revocation already removed runtime authority; the Vault journal owns cleanup.
-        }
-      }
-      await destroyTemporary(input.siteId, oauthTemporarySecretIds);
-      return this.getConnection(input);
+      const admitted = await resolveDb().transaction(async (rawTx) =>
+        prepareRevokeAdmission({
+          ...input,
+          db: rawTx,
+          admittedAt: now(),
+        }),
+      );
+      await admitted.afterCommit();
+      return admitted.connection;
+    },
+
+    async admitRevokeConnection(
+      input: NpAgentConnectionRevokeAdmissionInputV1,
+    ): Promise<NpAgentConnectionRevokeAdmissionV1> {
+      return prepareRevokeAdmission(input);
     },
 
     async processOperation(input: {
@@ -3403,40 +3626,25 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
         connection.configVersion !== input.expectedConfigVersion
       )
         fail("CONNECTION_VERSION_CONFLICT", "The connection version changed.");
-      return npRequireAgentConnectionV1({
-        schemaVersion: "np.agent-connection.v1",
-        id: connection.id,
-        siteId: connection.siteId,
-        kind: connection.kind,
-        provider: connection.provider,
-        adapterId: config.adapterId,
-        adapterContractVersion: config.adapterContractVersion,
-        adapterFingerprint: config.adapterFingerprint,
-        name: connection.name,
-        authKind: connection.authKind,
-        safeConfig: connection.config,
-        configVersion: connection.configVersion,
-        configHash: connection.configHash,
-        pricingCatalogFingerprint: connection.pricingCatalogFingerprint,
-        dataProcessingCeiling: connection.dataProcessingCeiling,
-        status: connection.status,
-        credential: connection.activeSecretVersionId
-          ? { state: "stored", version: connection.credentialVersion }
-          : { state: "absent" },
-        verification: connection.lastVerifiedAt
-          ? {
-              verifiedAt: connection.lastVerifiedAt.toISOString(),
-              configVersion: connection.lastVerifiedConfigVersion,
-              credentialVersion: connection.lastVerifiedCredentialVersion,
-              resultDigest: connection.lastProbeResultDigest,
-            }
-          : null,
-        lastErrorCode: connection.lastErrorCode,
-        dependentAgentCount: 0,
-        createdBy: connection.createdBy,
-        createdAt: connection.createdAt.toISOString(),
-        updatedAt: connection.updatedAt.toISOString(),
-      });
+      return connectionProjection(connection, config);
+    },
+
+    async listConnections(siteId: string, limit = 100): Promise<NpAgentConnectionV1[]> {
+      if (!npIsCanonicalSiteId(siteId) || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+        fail("CONNECTION_LIST_INVALID", "The connection list request is invalid.");
+      }
+      const rows = await resolveDb()
+        .select({ id: npAgentConnections.id })
+        .from(npAgentConnections)
+        .where(eq(npAgentConnections.siteId, siteId))
+        .orderBy(asc(npAgentConnections.createdAt), asc(npAgentConnections.id))
+        .limit(limit);
+      return Promise.all(
+        rows.map(async ({ id }) => {
+          const { connection, config } = await loadConnectionConfig(resolveDb(), siteId, id);
+          return connectionProjection(connection, config);
+        }),
+      );
     },
 
     dispose(): void {

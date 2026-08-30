@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  Bot,
   FileStack,
   FileText,
   Flag,
@@ -322,6 +323,7 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
 
     const systemItems: NavItem[] = [{ href: "/admin/plugins", label: "Plugins", icon: Puzzle }];
     if (caps.canManageAdmin) {
+      systemItems.push({ href: "/admin/agents", label: "Agent Studio", icon: Bot });
       systemItems.push({ href: "/admin/ops", label: "Ops", icon: Gauge });
       systemItems.push({ href: "/admin/readiness", label: "Readiness", icon: ShieldCheck });
       systemItems.push({ href: "/admin/jobs", label: "Jobs", icon: Timer });
