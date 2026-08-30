@@ -6,6 +6,7 @@ import { npReadEmailRuntimeConfig } from "@nexpress/core/email";
 import { npReadRateLimitRuntimeConfig } from "@nexpress/core/rate-limit";
 import { npReadObservabilityRuntimeConfig } from "@nexpress/core/observability";
 import { npReadStorageRuntimeConfig, type NpStorageRuntimeConfig } from "@nexpress/core/storage";
+import { npCollectAgentHealthSummaryV1 } from "@nexpress/core/agents";
 import {
   npAnalyzeCustomRouteDefinitions,
   npGetCustomRouteKind,
@@ -196,6 +197,7 @@ export async function collectDoctorChecks(
   checks.push(await checkCollectionContracts(env));
   checks.push(await checkCommunityContracts(env));
   checks.push(await checkCommunityRealtimeRetention(env));
+  checks.push(await checkAgentContracts(env));
   checks.push(await checkRevisionContracts(env));
   checks.push(await checkJobContracts(env));
   checks.push(await checkMigrationsApplied({ prodMode, env, cwd }));
@@ -216,6 +218,77 @@ export async function collectDoctorChecks(
   }
 
   return checks;
+}
+
+async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult> {
+  const url = env.DATABASE_URL;
+  if (!url) {
+    return {
+      id: "agents.contract",
+      state: "warn",
+      label: "Agent persistence contracts",
+      detail: "skipped (no DATABASE_URL)",
+    };
+  }
+  let pg: PgModuleLike;
+  try {
+    pg = (await loadPg()) as PgModuleLike;
+  } catch {
+    return {
+      id: "agents.contract",
+      state: "warn",
+      label: "Agent persistence contracts",
+      detail: "skipped (no `pg`)",
+    };
+  }
+  const client = new pg.default.Client({ connectionString: url, connectionTimeoutMillis: 5_000 });
+  try {
+    await client.connect();
+    const summary = await npCollectAgentHealthSummaryV1({
+      client: {
+        query: <T extends Record<string, unknown>>(text: string, values?: unknown[]) =>
+          client.query<T>(text, values),
+      },
+    });
+    if (summary.issueCount === 0) {
+      const rows = summary.states.reduce((total, current) => total + current.count, 0);
+      const runtimeReadiness = `providers ${summary.readiness.providers.state} · vault ${summary.readiness.vault.state}`;
+      return {
+        id: "agents.contract",
+        state: summary.state,
+        label: "Agent persistence contracts",
+        detail: `${rows.toString()} rows · exact state, tenant, pointer, expiry, and journal invariants valid · ${runtimeReadiness}`,
+        ...(summary.state === "warn"
+          ? {
+              hint: "Persisted Agent state is valid, but this Doctor runtime cannot confirm one or more frozen provider or Vault adapters.",
+            }
+          : {}),
+      };
+    }
+    return {
+      id: "agents.contract",
+      state: "error",
+      label: "Agent persistence contracts",
+      detail: `${summary.issueCount.toString()} blocking issue(s) · ${summary.issues
+        .map((current) => `${current.code}:${current.count.toString()}`)
+        .join(", ")}`,
+      hint: "Resolve the stable Agent issue codes before enabling Agent access. Doctor intentionally omits row ids, credentials, locators, and keyed digests.",
+    };
+  } catch {
+    return {
+      id: "agents.contract",
+      state: "error",
+      label: "Agent persistence contracts",
+      detail: "AGENT_SCHEMA_UNAVAILABLE",
+      hint: "Apply the reviewed Agent migrations and confirm the database is reachable.",
+    };
+  } finally {
+    try {
+      await client.end();
+    } catch {
+      // The diagnostic result remains aggregate-only even if client cleanup fails.
+    }
+  }
 }
 
 async function checkMediaContracts(env: DoctorEnv): Promise<CheckResult> {

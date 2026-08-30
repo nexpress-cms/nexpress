@@ -70,8 +70,8 @@ export default async function AdminHealthPage() {
             <StateBadge state={state} />
           </div>
           <p className="max-w-[72ch] break-words text-[13.5px] text-neutral-500 dark:text-neutral-400">
-            Live runtime diagnostics for database, migrations, storage, workers, plugins, and
-            production safety settings. Generated {summary.generatedAt}.
+            Live runtime diagnostics for database, migrations, storage, workers, plugins, Agent
+            contracts, and production safety settings. Generated {summary.generatedAt}.
           </p>
         </div>
         <div className="flex min-w-0 flex-wrap gap-1.5 lg:justify-end">

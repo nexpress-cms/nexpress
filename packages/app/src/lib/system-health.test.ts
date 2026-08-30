@@ -272,9 +272,35 @@ const {
   checkCommunityRealtimeOutbox,
   checkCommunityRuntime,
   checkCollectionRuntime,
+  checkAgentContract,
   checkSearchAdapter,
   checkStorageAdapter,
 } = await import("./system-health.js");
+
+describe("live Agent contract health", () => {
+  it("renders only safe aggregate counts and stable issue codes", () => {
+    const check = checkAgentContract({
+      schemaVersion: "np.agent-health-summary.v1",
+      generatedAt: "2026-08-30T06:00:00.000Z",
+      state: "error",
+      issueCount: 2,
+      issues: [{ code: "AGENT_STALE_VAULT_OPERATION", count: 2, oldestAgeSeconds: 120 }],
+      states: [{ entity: "connection", state: "ready", count: 1, oldestAgeSeconds: 60 }],
+      readiness: {
+        providers: { state: "ready", requiredCount: 1, availableCount: 1 },
+        vault: { state: "ready", requiredCount: 1, availableCount: 1 },
+      },
+    });
+    expect(check).toEqual(
+      expect.objectContaining({
+        id: "agents.contract",
+        state: "error",
+        detail: "2 blocking issue(s) · AGENT_STALE_VAULT_OPERATION:2",
+      }),
+    );
+    expect(JSON.stringify(check)).not.toMatch(/secretRef|requestDigest|fingerprint/u);
+  });
+});
 
 afterEach(() => {
   vi.unstubAllEnvs();

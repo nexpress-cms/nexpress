@@ -56,6 +56,7 @@ describe.skipIf(skipIfNoTestDb())("system-health diagnostics (#F)", () => {
       "community.realtime_capacity",
       "community",
       "collections",
+      "agents.contract",
       "secret",
     ]);
   });

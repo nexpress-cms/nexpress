@@ -216,6 +216,24 @@ Vault locators, raw account subjects, and keyed digests. This slice adds no
 HTTP/Admin UI, scheduled runtime worker, scaffold/config propagation,
 migration, or package-version change.
 
+AP-107 is implemented as one aggregate `agents.contract` diagnostics boundary
+shared by Doctor and the existing read-only Admin Health surface. A strict
+client-safe `np.agent-health-summary.v1` projection exposes only stable issue
+codes, state counts, oldest age by state, and provider/Vault adapter readiness
+counts. The server collector verifies the exact 16-table R1 inventory and
+critical constraints, same-site references, active config/secret pointers,
+OAuth callback evidence, connection and Vault journals, local-envelope
+bindings, expiry backlog, stranded operations, and deletion-saga consistency.
+Missing schemas and hostile query failures collapse to one opaque
+`AGENT_SCHEMA_UNAVAILABLE` issue; row ids, sites, adapter identities,
+fingerprints, locators, keyed digests, canonical inputs, results, and
+credentials never cross the aggregate boundary. The disabled empty state is
+healthy, while frozen adapters that cannot be confirmed are reported as
+unknown rather than invented. Unit, hostile-value, multi-site, redaction, and
+PostgreSQL fixtures share the same collector. This slice adds no Agent Studio
+mutation UI, provider call, runtime worker, scaffold/config propagation,
+migration, or package-version change.
+
 Gate:
 
 - a site with no agent settings behaves byte-for-byte/API-equivalently where
