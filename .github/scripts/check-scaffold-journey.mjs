@@ -34,6 +34,7 @@ const REQUIRED_SCRIPTS = [
 ];
 
 const EXACT_SCRIPTS = {
+  "db:generate": "pnpm schema:gen && tsx scripts/generate-migrations.ts",
   "db:migrate": "tsx scripts/run-migrations.ts",
   "deploy:plan": "tsx scripts/deploy-plan.ts",
   "doctor:prod": "tsx scripts/doctor.ts --prod",

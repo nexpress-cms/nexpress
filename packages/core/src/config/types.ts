@@ -1,3 +1,4 @@
+import type { NpAgentGatewaySettingsV1 } from "../agent-contract/types.js";
 import type { NpMediaImageSize } from "../media-contract/types.js";
 import type { NpAuthUser } from "../auth-contract/types.js";
 import type { NpI18nConfig } from "../i18n-contract/types.js";
@@ -1108,6 +1109,15 @@ export interface NpRegisteredTheme {
   impl: unknown;
 }
 
+/**
+ * Deployment-owned Agent settings. This surface is deliberately limited to
+ * non-secret transport exposure ceilings; provider and Vault credentials stay
+ * in their existing server-only host seams.
+ */
+export interface NpAgentProjectConfigV1 {
+  gateway?: NpAgentGatewaySettingsV1;
+}
+
 export interface NpConfig {
   site: {
     name: string;
@@ -1160,6 +1170,8 @@ export interface NpConfig {
     secret: string;
   };
   plugins?: Array<NpPluginConfig | NpResolvedPluginLike>;
+  /** Missing Agent deployment intent resolves to the fully disabled posture. */
+  agents?: NpAgentProjectConfigV1;
   /**
    * Phase 23.5 — operational thresholds and policies for the job
    * queue. Currently only carries the stuck-job thresholds the

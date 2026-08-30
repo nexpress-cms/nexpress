@@ -2,7 +2,7 @@
 // `nexpressConfigTemplate(config)` and is project-specific. We just
 // need the default-exported shape to be a valid `NpConfig` so that
 // `templates/lib/bootstrap.ts` typechecks.
-import { defineConfig } from "@nexpress/core";
+import { defineConfig, npAgentDisabledProjectConfigV1 } from "@nexpress/core";
 
 export default defineConfig({
   site: { name: "stub", url: "http://localhost:3000" },
@@ -11,6 +11,7 @@ export default defineConfig({
     adapter: "local",
     local: { directory: "./public/media", baseUrl: "/media" },
   },
+  agents: npAgentDisabledProjectConfigV1,
   collections: [],
   auth: { secret: "stub-secret-32characters-min-aaaaaaaaaaaa" },
 });

@@ -75,6 +75,10 @@ const CASES = [
 
 const SKIPPED = new Map([
   [
+    "generate-migrations.ts",
+    "writes local migration files; covered by the packed-scaffold PostgreSQL smoke",
+  ],
+  [
     "generate-schema.ts",
     "writes generated schema files; covered by build/typecheck and scaffold smoke",
   ],

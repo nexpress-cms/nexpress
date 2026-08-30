@@ -36,6 +36,61 @@ describe("project config contract", () => {
     expect(npValidateProjectConfig(validConfig())).toEqual({ ok: true });
   });
 
+  it("accepts only the exact non-secret Agent deployment ceiling", () => {
+    const config = validConfig();
+    config.agents = {
+      gateway: {
+        schemaVersion: "np.agent-gateway-settings.v1",
+        stdio: "read",
+        mcpHttp: "propose",
+        agentHttp: "approved-execute",
+      },
+    };
+    expect(npValidateProjectConfig(config)).toEqual({ ok: true });
+
+    const forbiddenPort = validConfig() as NpConfig & {
+      agents: {
+        gateway: NonNullable<NonNullable<NpConfig["agents"]>["gateway"]> & { port: number };
+      };
+    };
+    forbiddenPort.agents = {
+      gateway: {
+        schemaVersion: "np.agent-gateway-settings.v1",
+        stdio: "disabled",
+        mcpHttp: "disabled",
+        agentHttp: "disabled",
+        port: 3100,
+      },
+    };
+    expect(npAnalyzeProjectConfig(forbiddenPort)[0]).toEqual(
+      expect.objectContaining({
+        code: "shape",
+        location: "agents.gateway.port",
+      }),
+    );
+
+    const forbiddenSecret = validConfig() as NpConfig & {
+      agents: {
+        gateway: NonNullable<NonNullable<NpConfig["agents"]>["gateway"]> & { token: string };
+      };
+    };
+    forbiddenSecret.agents = {
+      gateway: {
+        schemaVersion: "np.agent-gateway-settings.v1",
+        stdio: "disabled",
+        mcpHttp: "disabled",
+        agentHttp: "disabled",
+        token: "must-stay-server-only",
+      },
+    };
+    expect(npAnalyzeProjectConfig(forbiddenSecret)[0]).toEqual(
+      expect.objectContaining({
+        code: "shape",
+        location: "agents.gateway.token",
+      }),
+    );
+  });
+
   it("rejects unknown and retired top-level or nested properties", () => {
     const retired = { ...validConfig(), images: { format: "webp" } };
     expect(npAnalyzeProjectConfig(retired)[0]).toEqual(

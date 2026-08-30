@@ -107,6 +107,7 @@ describe("getProjectFiles", () => {
       "next.config.ts",
       "tsconfig.json",
       "drizzle.config.ts",
+      "scripts/generate-migrations.ts",
       "src/nexpress.config.ts",
       "src/app/layout.tsx",
     ]) {
@@ -783,6 +784,21 @@ describe("getProjectFiles", () => {
     };
     expect(pkg.scripts["db:migrate"]).toBe("tsx scripts/run-migrations.ts");
     expect(files["scripts/run-migrations.ts"]).toMatch(/@nexpress\/app\/scripts\/run-migrations/);
+  });
+
+  it("package.json completes generated Agent lifecycle constraints through the shared runner", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const pkg = JSON.parse(files["package.json"]) as {
+      scripts: Record<string, string>;
+    };
+    expect(pkg.scripts["db:generate"]).toBe(
+      "pnpm schema:gen && tsx scripts/generate-migrations.ts",
+    );
+    expect(files["scripts/generate-migrations.ts"]).toBe(
+      'import "@nexpress/app/scripts/generate-migrations";\n',
+    );
+    expect(files["src/nexpress.config.ts"]).toContain("npAgentDisabledProjectConfigV1");
+    expect(files["src/nexpress.config.ts"]).toContain("agents: npAgentDisabledProjectConfigV1");
   });
 
   it("scaffold README follows the current setup-first onboarding path", () => {

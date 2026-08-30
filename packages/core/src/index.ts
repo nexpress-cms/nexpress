@@ -41,6 +41,7 @@ export type {
   NpResolvedPluginLike,
   NpNavItem,
   NpConfig,
+  NpAgentProjectConfigV1,
   NpThemeManifest,
   NpAdminGroupMeta,
   NpThemeCollectionRequirement,
@@ -347,6 +348,10 @@ export type {
 
 // Role-rank authorization was retired in favour of named capabilities (#273).
 export { defineConfig } from "./config/define-config.js";
+export {
+  npAgentDisabledProjectConfigV1,
+  npResolveAgentDeploymentGatewaySettingsV1,
+} from "./config/agent-config.js";
 export {
   npAnalyzeProjectConfig,
   npAssertProjectConfig,

@@ -2,7 +2,24 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-30 (The first R1 Agent Studio control-plane slice
+**Last refreshed:** 2026-08-30 (The R1 disabled deployment/scaffold slice now
+adds one exact non-secret `NpConfig.agents.gateway` ceiling whose absence and
+exported reusable default both resolve to all transports disabled. Project
+validation rejects port, host, relay, provider, Vault, token, and other unknown
+fields; credentials and adapter selection remain server-only, and runtime
+services still require explicit host injection. The reference app and fresh
+scaffold reuse the same disabled constant. Their shared migration generator
+delegates to Drizzle and adds one dedicated reviewed custom migration only when
+all 16 Agent tables exist and all nine circular lifecycle foreign keys are
+absent; partial chains fail closed, complete chains are idempotent, and applied
+SQL hashes are never rewritten. The already-complete reference 0032–0034 chain
+therefore gains no migration. Packed-scaffold CI applies the fresh chain to
+PostgreSQL and proves the exact empty inventory, nine `NO ACTION DEFERRABLE
+INITIALLY DEFERRED` constraints, absent Agent settings/authority, and healthy
+not-required diagnostics. AP-109 adds no seed, provider call, worker, route,
+dedicated MCP port, automatic runtime factory, or package-version change.)
+
+**Earlier:** 2026-08-30 (The first R1 Agent Studio control-plane slice
 now owns strict client-safe adapter/runtime/overview, canonical connection
 definition, principal-detail, and one-time service-token projections. A
 host-injected server runtime stays honestly unavailable until the existing

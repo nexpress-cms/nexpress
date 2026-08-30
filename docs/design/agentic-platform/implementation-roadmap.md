@@ -256,6 +256,26 @@ but this slice adds no provider call, scheduled worker, disabled-by-default
 runtime configuration/default propagation, migration, or package-version
 change.
 
+AP-109 completes the disabled-by-default project and scaffold foundation.
+`NpConfig.agents.gateway` reuses the exact client-safe Gateway settings
+contract as a non-secret deployment ceiling; absence and the exported
+`npAgentDisabledProjectConfigV1` both resolve to all transports disabled, while
+unknown port, host, relay, token, Vault, and provider fields fail closed. Vault
+selection and credentials remain in the existing server-only host seams, and
+the host still has to inject the AP-108 runtime explicitly rather than receiving
+invented keys or adapters. The reference app and fresh scaffold declare the
+same reusable disabled constant. A shared migration generator first delegates
+to Drizzle, then adds one reviewed custom migration only when all 16 R1 tables
+exist and all nine circular lifecycle foreign keys are absent; partial
+inventories fail closed, complete chains are idempotent, and existing migration
+SQL is never rewritten. The reference 0032–0034 chain is already complete and
+therefore gains no new migration. Packed-scaffold CI now generates and applies
+the database to PostgreSQL, proves the exact empty table inventory, nine
+`NO ACTION DEFERRABLE INITIALLY DEFERRED` links, absent Agent settings/rows, and
+healthy `not-required` diagnostics. This slice adds no seed, provider call,
+worker, machine route, dedicated MCP port, automatic runtime factory, or
+package-version change.
+
 Gate:
 
 - a site with no agent settings behaves byte-for-byte/API-equivalently where
