@@ -109,6 +109,7 @@ describe("doctor core", () => {
         "collections.contract",
         "community.contract",
         "community.realtime_retention",
+        "agents.contract",
         "revisions.contract",
         "jobs.contract",
         "migrations.applied",

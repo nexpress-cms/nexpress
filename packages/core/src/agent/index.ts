@@ -1,5 +1,6 @@
 export * from "./admin-admission.js";
 export * from "./connection-service.js";
+export * from "./contract-diagnostics.js";
 export * from "./gateway-service.js";
 export * from "./opaque-verifier.js";
 export * from "./provider-auth-contract.js";

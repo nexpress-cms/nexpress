@@ -31,3 +31,19 @@ describe("community realtime admin ops routing", () => {
     ]);
   });
 });
+
+describe("Agent contract admin ops routing", () => {
+  it("routes aggregate contract failures to Doctor without exposing row details", () => {
+    expect(
+      commandForHealthCheck({
+        id: "agents.contract",
+        label: "Agent contracts",
+        state: "error",
+      }),
+    ).toBe("pnpm run doctor");
+    expect(relatedLinksForHealthCheck("agents.contract")).toEqual([
+      { label: "Health", href: "/admin/health" },
+      { label: "Readiness", href: "/admin/readiness" },
+    ]);
+  });
+});

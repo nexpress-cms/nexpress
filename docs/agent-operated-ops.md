@@ -253,6 +253,17 @@ Admin action-contract diagnostics. The local `nexpress ops plugins ...` CLI
 remains the static config and package-inspection surface; it validates
 definition-level actions without executing plugin setup code.
 
+The health and Doctor responses also share one aggregate `agents.contract`
+check for the R1 Agent persistence foundation. Admin Health includes the exact
+`np.agent-health-summary.v1` projection: stable issue codes, state counts,
+oldest age by state, and provider/Vault readiness counts only. It never returns
+site or row ids, adapter identities or fingerprints, Vault locators, keyed
+digests, operation bodies/results, provider subjects, or credential material.
+An install with no Agent rows remains healthy and disabled by default. A
+persisted frozen adapter that the current runtime cannot confirm is reported as
+`unknown`; malformed or stranded persistence is blocking and appears under the
+single Doctor id `agents.contract`.
+
 ### Admin mutation ops API
 
 Remote mutation is intentionally off unless the operator sets

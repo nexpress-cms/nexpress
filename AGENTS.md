@@ -2,7 +2,22 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-30 (The R1 Agent provider-connection slice now
+**Last refreshed:** 2026-08-30 (The R1 Agent diagnostics slice now owns one
+strict client-safe `np.agent-health-summary.v1` projection and one server-only
+aggregate collector shared by Doctor and read-only Admin Health. Exact R1
+table/constraint inventory, state and age counts, same-site references,
+connection/config/secret pointers, OAuth callback evidence, provider/Vault
+journals, local-envelope bindings, expiry backlog, stranded work, and deletion
+sagas fail closed under stable issue codes. Runtime adapter readiness remains
+honest when no registry can be confirmed, the disabled empty state stays
+healthy, and opaque schema/query failures never leak their input. Unit,
+hostile-value, multi-site, redaction, and PostgreSQL fixtures prove that row
+ids, sites, adapter identities/fingerprints, locators, keyed digests,
+operation bodies/results, and credentials stay outside the projection. This
+AP-107 slice adds no Agent Studio mutation UI, provider call, runtime worker,
+scaffold/config propagation, migration, or package-version change.)
+
+**Earlier:** 2026-08-30 (The R1 Agent provider-connection slice now
 owns one hardened server-only adapter registry, deterministic config and
 pricing snapshots, account-subject and destination HMAC projections, and a
 bundled fake adapter. API-key activation/rotation, safe probes,

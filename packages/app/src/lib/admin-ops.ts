@@ -87,6 +87,8 @@ export function commandForHealthCheck(check: Check): string | null {
       return "pnpm --silent run ops:status -- --json";
     case "plugins":
       return "pnpm --silent run ops:plugins -- doctor --json";
+    case "agents.contract":
+      return "pnpm run doctor";
     case "site_url":
     case "email":
     case "secret":
@@ -126,6 +128,11 @@ export function relatedLinksForHealthCheck(id: Check["id"]): AdminOpsLink[] {
       ];
     case "plugins":
       return [{ label: "Plugins", href: "/admin/plugins" }];
+    case "agents.contract":
+      return [
+        { label: "Health", href: "/admin/health" },
+        { label: "Readiness", href: "/admin/readiness" },
+      ];
     default:
       return [];
   }

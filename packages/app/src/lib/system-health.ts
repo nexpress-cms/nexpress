@@ -22,6 +22,8 @@ import {
 } from "@nexpress/core/observability";
 import { getSearchAdapterDiagnostics } from "@nexpress/core/search";
 import { getI18nRuntimeDiagnostics } from "@nexpress/core/i18n";
+import { npCollectAgentHealthSummaryV1 } from "@nexpress/core/agents";
+import type { NpAgentHealthSummaryV1 } from "@nexpress/core/agent-contract";
 import {
   getCommunityRuntimeDiagnostics,
   npGetCommunityRealtimeOutboxStats,
@@ -67,6 +69,7 @@ export interface HealthSummary {
   checks: Check[];
   errorCount: number;
   warnCount: number;
+  agents: NpAgentHealthSummaryV1;
 }
 
 const FRAMEWORK_TABLES = ["np_users", "np_settings", "np_navigation", "np_sites"] as const;
@@ -797,6 +800,7 @@ export function checkSecret(): Check {
 
 export async function gatherSystemHealth(): Promise<HealthSummary> {
   const checks: Check[] = [];
+  const agents = await npCollectAgentHealthSummaryV1();
   checks.push(await checkDatabase());
   checks.push(await checkMigrations());
   checks.push(await checkStorageAdapter());
@@ -812,11 +816,40 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
   checks.push(checkCommunityRealtimeCapacity());
   checks.push(checkCommunityRuntime());
   checks.push(checkCollectionRuntime());
+  checks.push(checkAgentContract(agents));
   checks.push(checkSecret());
   return {
     generatedAt: new Date().toISOString(),
     checks,
     errorCount: checks.filter((c) => c.state === "error").length,
     warnCount: checks.filter((c) => c.state === "warn").length,
+    agents,
+  };
+}
+
+export function checkAgentContract(summary: NpAgentHealthSummaryV1): Check {
+  const connectionCount = summary.states
+    .filter((row) => row.entity === "connection")
+    .reduce((total, row) => total + row.count, 0);
+  const detail =
+    summary.issueCount > 0
+      ? `${summary.issueCount.toString()} blocking issue(s) · ${summary.issues
+          .map((current) => `${current.code}:${current.count.toString()}`)
+          .join(", ")}`
+      : `${connectionCount.toString()} connection(s) · providers ${summary.readiness.providers.state} · vault ${summary.readiness.vault.state}`;
+  return {
+    id: "agents.contract",
+    label: "Agent contracts",
+    state: summary.state,
+    detail,
+    ...(summary.state === "error"
+      ? {
+          hint: "Agent persisted state is malformed or stale. Run `pnpm run doctor` and resolve the reported stable issue codes before enabling Agent access.",
+        }
+      : summary.state === "warn"
+        ? {
+            hint: "Persisted Agent state is valid, but one or more frozen provider or Vault adapters cannot be confirmed in this runtime.",
+          }
+        : {}),
   };
 }
