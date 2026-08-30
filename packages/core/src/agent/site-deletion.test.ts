@@ -8,6 +8,7 @@ import {
 } from "./site-deletion.js";
 
 const expectedTables = [
+  "np_agent_actions",
   "np_agent_connection_auth_requests",
   "np_agent_connection_config_versions",
   "np_agent_connection_operations",
@@ -20,6 +21,7 @@ const expectedTables = [
   "np_agent_oauth_refresh_tokens",
   "np_agent_oauth_requests",
   "np_agent_principals",
+  "np_agent_runs",
   "np_agent_service_tokens",
   "np_agent_vault_entries",
   "np_agent_vault_operations",
@@ -47,9 +49,9 @@ describe("Agent site deletion foundation", () => {
   });
 
   it("rejects unknown, unsorted, duplicate, and malformed identities", () => {
-    expect(() => npBuildAgentSiteDeletionRowIdentityDigest("np_agent_runs" as never, [])).toThrow(
-      "Unknown Agent site-owned table",
-    );
+    expect(() =>
+      npBuildAgentSiteDeletionRowIdentityDigest("np_agent_unknown" as never, []),
+    ).toThrow("Unknown Agent site-owned table");
     expect(() =>
       npBuildAgentSiteDeletionRowIdentityDigest("np_agent_principals", [
         "00000000-0000-4000-8000-000000000002",

@@ -303,6 +303,19 @@ MCP port.
 | AP-209 | Add Admin Activity views for principals, runs, actions, and revocation                                                                                                                                                                                     |
 | AP-210 | Add the four machine Agent HTTP routes, full-origin `agent-http` audience-bound authentication, shared invocation/artifact facades, OpenAPI projection, and thin scaffold wrappers                                                                         |
 
+AP-201 through AP-203 are implemented as the transport-neutral read kernel.
+Core now owns the locked three-definition registry and fingerprints, derived
+draft-read scope, exact bounded site/schema/content projections, and one common
+service-principal admission path with live authority, scope, effective Gateway
+setting, audit, invocation, and inline-action evidence. Migration 0035 adds the
+generalized run/action storage and usage snapshot columns needed by later
+durable Gateway work; these three capabilities are normatively inline and
+therefore create no run. Fresh scaffolds generate the same 18-table inventory
+and verify its critical constraints. AP-204 through AP-206 still own stdio,
+remote MCP, protocol tasks/resources/tools, and durable task/run dispatch; this
+slice adds no transport, route, provider call, worker, dedicated port, seed,
+automatic runtime factory, or package-version change.
+
 Through R4, capability policy evaluation uses the immutable framework hard
 rules plus the exact disabled-by-default deployment/site feature settings.
 There is no mutable Runtime Agent policy row to configure yet. R5 adds

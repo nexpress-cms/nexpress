@@ -16,6 +16,7 @@ import type { NpAgentConnectionAuthAdapterRegistryV1 } from "./provider-auth-con
 import type { NpAgentVaultAdapterRegistryV1 } from "./vault-runtime.js";
 
 const AGENT_TABLES = [
+  "np_agent_actions",
   "np_agent_connection_auth_requests",
   "np_agent_connection_config_versions",
   "np_agent_connection_operations",
@@ -28,6 +29,7 @@ const AGENT_TABLES = [
   "np_agent_oauth_refresh_tokens",
   "np_agent_oauth_requests",
   "np_agent_principals",
+  "np_agent_runs",
   "np_agent_service_tokens",
   "np_agent_site_deletion_sagas",
   "np_agent_vault_entries",
@@ -36,6 +38,11 @@ const AGENT_TABLES = [
 
 /** Critical state and same-site constraints whose absence weakens fail-closed diagnostics. */
 const AGENT_CONSTRAINTS = [
+  "np_agent_actions_invocation_fk",
+  "np_agent_actions_read_effect_check",
+  "np_agent_actions_run_fk",
+  "np_agent_actions_state_check",
+  "np_agent_actions_terminal_check",
   "np_agent_connection_auth_requests_callback_links_check",
   "np_agent_connection_auth_requests_config_fk",
   "np_agent_connection_auth_requests_connection_fk",
@@ -81,6 +88,10 @@ const AGENT_CONSTRAINTS = [
   "np_agent_oauth_requests_client_fk",
   "np_agent_oauth_requests_status_check",
   "np_agent_principals_status_check",
+  "np_agent_runs_invocation_fk",
+  "np_agent_runs_principal_fk",
+  "np_agent_runs_state_check",
+  "np_agent_runs_terminal_check",
   "np_agent_service_tokens_principal_fk",
   "np_agent_service_tokens_replaces_fk",
   "np_agent_service_tokens_status_check",
@@ -131,7 +142,9 @@ export interface NpAgentDiagnosticsOptionsV1 {
 
 const STATE_SUMMARY_SQL = `
   with state_rows(entity, state, occurred_at) as (
-    select 'principal', status, created_at from public.np_agent_principals
+    select 'action', state, created_at from public.np_agent_actions
+    union all select 'run', state, queued_at from public.np_agent_runs
+    union all select 'principal', status, created_at from public.np_agent_principals
     union all select 'service-token', status, created_at from public.np_agent_service_tokens
     union all select 'oauth-client', status, created_at from public.np_agent_oauth_clients
     union all select 'oauth-request', status, created_at from public.np_agent_oauth_requests
@@ -160,7 +173,11 @@ const STATE_SUMMARY_SQL = `
 
 const ISSUE_SUMMARY_SQL = `
   with violations(code, occurred_at) as (
-    select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_principals
+    select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_actions
+     where state not in ('proposed', 'policy_blocked', 'approval_pending', 'approved', 'executing', 'succeeded', 'failed', 'compensated')
+    union all select 'AGENT_ROW_STATE_INVALID', queued_at from public.np_agent_runs
+     where state not in ('queued', 'running', 'waiting_approval', 'waiting_retry', 'verifying', 'succeeded', 'failed', 'cancelled', 'policy_blocked', 'budget_blocked')
+    union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_principals
      where status not in ('active', 'suspended', 'revoked')
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_service_tokens
      where status not in ('active_head', 'overlap', 'revoked', 'expired')
@@ -283,7 +300,18 @@ const ISSUE_SUMMARY_SQL = `
 
     union all
       select 'AGENT_RELATION_ORPHANED', edge.occurred_at from (
-        select st.created_at as occurred_at from public.np_agent_service_tokens st
+        select a.created_at as occurred_at from public.np_agent_actions a
+          left join public.np_agent_invocations i on i.id = a.invocation_id
+          where a.invocation_id is not null and i.id is null
+        union all select a.created_at from public.np_agent_actions a
+          left join public.np_agent_runs r on r.id = a.run_id
+          where a.run_id is not null and r.id is null
+        union all select r.queued_at from public.np_agent_runs r
+          left join public.np_agent_principals p on p.id = r.principal_id where p.id is null
+        union all select r.queued_at from public.np_agent_runs r
+          left join public.np_agent_invocations i on i.id = r.invocation_id
+          where r.invocation_id is not null and i.id is null
+        union all select st.created_at as occurred_at from public.np_agent_service_tokens st
           left join public.np_agent_principals p on p.id = st.principal_id where p.id is null
         union all select req.created_at from public.np_agent_oauth_requests req
           left join public.np_agent_oauth_clients c on c.id = req.client_id where c.id is null
@@ -311,7 +339,16 @@ const ISSUE_SUMMARY_SQL = `
 
     union all
       select 'AGENT_RELATION_CROSS_SITE', edge.occurred_at from (
-        select st.created_at as occurred_at from public.np_agent_service_tokens st
+        select a.created_at as occurred_at from public.np_agent_actions a
+          join public.np_agent_invocations i on i.id = a.invocation_id
+          where i.site_id <> a.site_id
+        union all select a.created_at from public.np_agent_actions a
+          join public.np_agent_runs r on r.id = a.run_id where r.site_id <> a.site_id
+        union all select r.queued_at from public.np_agent_runs r
+          join public.np_agent_principals p on p.id = r.principal_id where p.site_id <> r.site_id
+        union all select r.queued_at from public.np_agent_runs r
+          join public.np_agent_invocations i on i.id = r.invocation_id where i.site_id <> r.site_id
+        union all select st.created_at as occurred_at from public.np_agent_service_tokens st
           join public.np_agent_principals p on p.id = st.principal_id where p.site_id <> st.site_id
         union all select req.created_at from public.np_agent_oauth_requests req
           join public.np_agent_oauth_clients c on c.id = req.client_id where c.site_id <> req.site_id

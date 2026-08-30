@@ -12,6 +12,7 @@ import {
   npAgentConnectionOperations,
   npAgentConnectionSecretVersions,
   npAgentConnections,
+  npAgentActions,
   npAgentInvocations,
   npAgentOauthClients,
   npAgentOauthCodes,
@@ -19,6 +20,7 @@ import {
   npAgentOauthRefreshTokens,
   npAgentOauthRequests,
   npAgentPrincipals,
+  npAgentRuns,
   npAgentServiceTokens,
   npAgentSiteDeletionSagas,
   npAgentVaultEntries,
@@ -35,6 +37,11 @@ interface NpAgentSiteOwnedTableDescriptor {
 }
 
 const descriptors = {
+  np_agent_actions: {
+    table: npAgentActions,
+    id: npAgentActions.id,
+    siteId: npAgentActions.siteId,
+  },
   np_agent_connection_auth_requests: {
     table: npAgentConnectionAuthRequests,
     id: npAgentConnectionAuthRequests.id,
@@ -95,6 +102,11 @@ const descriptors = {
     id: npAgentPrincipals.id,
     siteId: npAgentPrincipals.siteId,
   },
+  np_agent_runs: {
+    table: npAgentRuns,
+    id: npAgentRuns.id,
+    siteId: npAgentRuns.siteId,
+  },
   np_agent_service_tokens: {
     table: npAgentServiceTokens,
     id: npAgentServiceTokens.id,
@@ -124,6 +136,8 @@ export const npAgentSiteOwnedTableNamesV1 = Object.freeze(
  * from the frozen inventory and is handled only by the future saga commit.
  */
 export const npAgentSiteDeletionOrderV1 = Object.freeze([
+  "np_agent_actions",
+  "np_agent_runs",
   "np_agent_vault_entries",
   "np_agent_connection_operations",
   "np_agent_connection_auth_requests",

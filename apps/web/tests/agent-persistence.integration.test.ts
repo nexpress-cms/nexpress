@@ -156,6 +156,46 @@ describe.skipIf(skipIfNoTestDb())("Agent persistence and site deletion foundatio
     expect(result.rows.every((row) => row.deleteAction === "a")).toBe(true);
   });
 
+  it("installs the generalized run and action attribution constraints", async () => {
+    const db = await getTestDb();
+    const expected = [
+      "np_agent_actions_attribution_check",
+      "np_agent_actions_contract_check",
+      "np_agent_actions_invocation_fk",
+      "np_agent_actions_read_effect_check",
+      "np_agent_actions_run_fk",
+      "np_agent_actions_state_check",
+      "np_agent_actions_terminal_check",
+      "np_agent_runs_gateway_shape_check",
+      "np_agent_runs_invocation_fk",
+      "np_agent_runs_lineage_check",
+      "np_agent_runs_principal_fk",
+      "np_agent_runs_state_check",
+      "np_agent_runs_terminal_check",
+    ];
+    const result = await db.execute<{ conname: string }>(sql`
+      select conname
+        from pg_constraint
+       where conname in (
+         'np_agent_actions_attribution_check',
+         'np_agent_actions_contract_check',
+         'np_agent_actions_invocation_fk',
+         'np_agent_actions_read_effect_check',
+         'np_agent_actions_run_fk',
+         'np_agent_actions_state_check',
+         'np_agent_actions_terminal_check',
+         'np_agent_runs_gateway_shape_check',
+         'np_agent_runs_invocation_fk',
+         'np_agent_runs_lineage_check',
+         'np_agent_runs_principal_fk',
+         'np_agent_runs_state_check',
+         'np_agent_runs_terminal_check'
+       )
+       order by conname
+    `);
+    expect(result.rows.map((row) => row.conname)).toEqual(expected);
+  });
+
   it("fails closed on malformed authority and cross-site token references", async () => {
     const db = await getTestDb();
     await createSite({ id: "agent-a", name: "Agent A" });
@@ -187,7 +227,7 @@ describe.skipIf(skipIfNoTestDb())("Agent persistence and site deletion foundatio
     await seedPendingNotificationConnection("agent-a");
 
     const inventory = await npInspectAgentSiteDeletionRows(db, "agent-a");
-    expect(inventory).toHaveLength(15);
+    expect(inventory).toHaveLength(17);
     expect(inventory.map((row) => row.table)).toEqual(
       [...inventory.map((row) => row.table)].sort(),
     );
@@ -244,7 +284,7 @@ describe.skipIf(skipIfNoTestDb())("Agent persistence and site deletion foundatio
       requesterFingerprint: "staff:test",
     });
 
-    expect(await npInspectAgentSiteDeletionRows(db, "agent-saga")).toHaveLength(15);
+    expect(await npInspectAgentSiteDeletionRows(db, "agent-saga")).toHaveLength(17);
     await expect(deleteSite("agent-saga", { cascade: true })).rejects.toMatchObject({
       errors: [
         {
