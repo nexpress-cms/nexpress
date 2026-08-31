@@ -219,7 +219,7 @@
     "cron-parser": "^5.10.0",
     "drizzle-orm": "^0.45.2",
     "intl-messageformat": "^11.2.14",
-    "jose": "^6.2.9",
+    "jose": "^6.2.10",
     "pg": "^8.23.0",
     "pg-boss": "^12.27.0",
     "sharp": "^0.35.3",
