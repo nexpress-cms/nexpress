@@ -1,0 +1,62 @@
+{
+  "name": "@nexpress/mcp",
+  "version": "0.4.6",
+  "description": "Port-free Model Context Protocol transports for the NexPress Agent Gateway.",
+  "license": "MIT",
+  "author": "Nexpress",
+  "homepage": "https://github.com/nexpress-cms/nexpress#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nexpress-cms/nexpress.git",
+    "directory": "packages/mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/nexpress-cms/nexpress/issues"
+  },
+  "keywords": [
+    "nexpress",
+    "mcp",
+    "model-context-protocol",
+    "stdio"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./stdio": {
+      "types": "./dist/stdio.d.ts",
+      "import": "./dist/stdio.js",
+      "default": "./dist/stdio.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "tsup": "^8.5.0",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^4.1.11"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch --no-clean",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --cache --cache-location node_modules/.cache/eslint",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  }
+}

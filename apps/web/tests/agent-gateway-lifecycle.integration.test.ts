@@ -162,6 +162,17 @@ describe.skipIf(skipIfNoTestDb())("Agent Gateway principal and service-token lif
       scopes: ["content:read", "site:read"],
       authorizationContext: { transport: "stdio", gatewayExposure: "read" },
     });
+    await expect(
+      service.authenticateStdioServiceToken({ credential: token.oneTimeValue }),
+    ).resolves.toMatchObject({
+      principal: { siteId },
+      serviceToken: { siteId, transport: "stdio" },
+      authorizationContext: {
+        siteId,
+        transport: "stdio",
+        authorityRef: { audience: "urn:nexpress:agent-gateway:stdio" },
+      },
+    });
 
     const rotated = await service.executeAdmin({
       siteId,

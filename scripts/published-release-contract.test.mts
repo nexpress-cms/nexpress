@@ -122,8 +122,9 @@ test("waits for root package metadata to expose a bootstrapped exact version", a
 
 test("the repository inventory includes every public package and excludes private workspaces", () => {
   const packages = readPublishableWorkspacePackages(resolve(import.meta.dirname, ".."));
-  assert.equal(packages.length, 39);
+  assert.equal(packages.length, 40);
   assert.ok(packages.some((pkg) => pkg.name === "create-nexpress"));
   assert.ok(packages.some((pkg) => pkg.name === "@nexpress/core"));
+  assert.ok(packages.some((pkg) => pkg.name === "@nexpress/mcp"));
   assert.ok(!packages.some((pkg) => pkg.name === "@nexpress/web"));
 });

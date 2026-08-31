@@ -59,6 +59,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "src/collections/posts.ts": utf8(postsCollectionTemplate()),
     "src/collections/tags.ts": utf8(tagsCollectionTemplate()),
     "scripts/_load-env.ts": utf8(loadEnvScriptTemplate()),
+    "scripts/agent-mcp-stdio.ts": utf8(agentMcpStdioScriptTemplate()),
     "scripts/build.ts": utf8(buildScriptTemplate()),
     "scripts/deploy-plan.ts": utf8(deployPlanScriptTemplate()),
     "scripts/dev-notice.ts": utf8(devNoticeScriptTemplate()),
@@ -151,6 +152,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
       engines: { node: ">=20.19.0" },
       packageManager: "pnpm@10.33.0",
       scripts: {
+        "agent:mcp": "tsx scripts/agent-mcp-stdio.ts",
         predev: "tsx scripts/dev-notice.ts",
         dev: "next dev",
         prebuild: "pnpm schema:gen",
@@ -195,6 +197,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         "@nexpress/auth-pages": nexpressVersion,
         "@nexpress/editor": nexpressVersion,
         "@nexpress/gettext": nexpressVersion,
+        "@nexpress/mcp": nexpressVersion,
         "@nexpress/blocks": nexpressVersion,
         "@nexpress/theme": nexpressVersion,
         // Built-in theme packs — scaffold admin's Appearance → Themes
@@ -486,6 +489,23 @@ function workerScriptTemplate(): string {
     `    throw new AggregateError([error, shutdownError], "Worker startup and bootstrap shutdown both failed.", { cause: shutdownError });\n` +
     `  }\n` +
     `  throw error;\n` +
+    `}\n`
+  );
+}
+
+function agentMcpStdioScriptTemplate(): string {
+  return (
+    `import "./_load-env.js";\n\n` +
+    `import {\n` +
+    `  formatAgentMcpStdioFailureV1,\n` +
+    `  runAgentMcpStdioProcessV1,\n` +
+    `} from "@nexpress/app/scripts/agent-mcp-stdio";\n\n` +
+    `import { ensureFor, shutdownBootstrap } from "../src/lib/bootstrap.js";\n\n` +
+    `try {\n` +
+    `  await runAgentMcpStdioProcessV1({ ensureFor, shutdown: shutdownBootstrap });\n` +
+    `} catch (error) {\n` +
+    `  process.stderr.write(formatAgentMcpStdioFailureV1(error));\n` +
+    `  process.exitCode = 1;\n` +
     `}\n`
   );
 }
@@ -1250,6 +1270,19 @@ actions, produces restore drill plans, and can apply isolated restore drills
 against \`RESTORE_DATABASE_URL\` / \`RESTORE_STORAGE_DIR\`.
 Backup and restore reports also include \`plan.nextCommands\` so release plans
 and agent handoffs preserve the exact follow-up sequence.
+
+## Local Agent Gateway
+
+\`pnpm run agent:mcp\` starts the optional local MCP adapter over stdin/stdout
+and never opens a TCP port. It remains unavailable until the server host
+explicitly installs an Agent Studio Gateway runtime, \`agents.gateway.stdio\`
+is enabled, and Agent Studio has issued a \`stdio\` service credential. Supply
+the one-time value only through the child process's
+\`NP_AGENT_SERVICE_TOKEN\` environment; the credential selects the site and
+\`NP_AGENT_SITE_ID\` cannot override it. Do not put the token in this generated
+project, a command-line flag, or checked-in \`.env\`. The AP-204 transport
+negotiates MCP \`2025-11-25\`; tools/resources/prompts/tasks land in the later
+projection slice.
 
 ## Jobs
 

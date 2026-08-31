@@ -27,6 +27,7 @@ import { defineConfig } from "tsup";
  */
 const scriptEntries = {
   "scripts/_load-env": "src/scripts/_load-env.ts",
+  "scripts/agent-mcp-stdio": "src/scripts/agent-mcp-stdio.ts",
   "scripts/build": "src/scripts/build.ts",
   "scripts/build-core": "src/scripts/build-core.ts",
   "scripts/community-realtime-check": "src/scripts/community-realtime-check.ts",

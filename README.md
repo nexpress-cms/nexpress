@@ -142,6 +142,7 @@ Main packages:
 ```text
 packages/core       pipeline, auth, jobs, media, plugins
 packages/app        shared Next.js routes, scripts, config helpers
+packages/mcp        port-free Agent Gateway MCP transports
 packages/auth-pages member and staff auth route factories + headless hooks
 packages/admin      Admin UI
 packages/editor     Lexical editor and SSR renderer

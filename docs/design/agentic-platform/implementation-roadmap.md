@@ -303,7 +303,8 @@ MCP port.
 | AP-209 | Add Admin Activity views for principals, runs, actions, and revocation                                                                                                                                                                                     |
 | AP-210 | Add the four machine Agent HTTP routes, full-origin `agent-http` audience-bound authentication, shared invocation/artifact facades, OpenAPI projection, and thin scaffold wrappers                                                                         |
 
-AP-201 through AP-203 are implemented as the transport-neutral read kernel.
+AP-201 through AP-204 are implemented as the transport-neutral read kernel and
+port-free local transport.
 Core now owns the locked three-definition registry and fingerprints, derived
 draft-read scope, exact bounded site/schema/content projections, and one common
 service-principal admission path with live authority, scope, effective Gateway
@@ -311,9 +312,14 @@ setting, audit, invocation, and inline-action evidence. Migration 0035 adds the
 generalized run/action storage and usage snapshot columns needed by later
 durable Gateway work; these three capabilities are normatively inline and
 therefore create no run. Fresh scaffolds generate the same 18-table inventory
-and verify its critical constraints. AP-204 through AP-206 still own stdio,
-remote MCP, protocol tasks/resources/tools, and durable task/run dispatch; this
-slice adds no transport, route, provider call, worker, dedicated port, seed,
+and verify its critical constraints. AP-204 adds the dedicated `@nexpress/mcp`
+stdio process on the maintained v1 SDK, authenticates the environment-only
+`npst1` credential before reading stdin, derives the site from its persisted
+token row, caps complete inbound and outbound frames at 5 MiB, and reuses the
+host's explicit bootstrap/shutdown lifecycle. The transport honestly advertises
+no capabilities until AP-206. AP-205 and AP-206 still own remote MCP,
+resources/prompts/tools, protocol tasks, and durable task/run dispatch; AP-204
+adds no HTTP route, OAuth server, provider call, worker, dedicated port, seed,
 automatic runtime factory, or package-version change.
 
 Through R4, capability policy evaluation uses the immutable framework hard

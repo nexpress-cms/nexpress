@@ -22,6 +22,7 @@ const publicNexpressPackages = new Set([
   "@nexpress/core",
   "@nexpress/editor",
   "@nexpress/gettext",
+  "@nexpress/mcp",
   "@nexpress/next",
   "@nexpress/oauth-providers",
   "@nexpress/plugin-analytics-lite",

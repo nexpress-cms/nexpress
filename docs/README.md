@@ -11,6 +11,7 @@ behavior they describe changes.
 
 | File                                                   | Topic                                                                   |
 | ------------------------------------------------------ | ----------------------------------------------------------------------- |
+| [agent-gateway.md](agent-gateway.md)                   | Port-free local MCP transport, host wiring, and credential boundary     |
 | [agent-integration.md](agent-integration.md)           | Agent / LLM integration surface                                         |
 | [agent-operated-ops.md](agent-operated-ops.md)         | Shipped agent-operated ops CLI, mutation, and admin API contracts       |
 | [api-error-codes.md](api-error-codes.md)               | Stable `code` strings on error responses                                |

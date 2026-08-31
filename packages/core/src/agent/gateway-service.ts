@@ -993,6 +993,36 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
   }
 
   /**
+   * Stdio has no trusted request host or caller-supplied site selector. Resolve
+   * the globally unique public token id first, then run the normal
+   * site/audience/transport verifier. The second transaction repeats every
+   * live row and exposure check, so the lookup cannot grant authority or race
+   * a rotation/revocation.
+   */
+  async function authenticateStdioServiceToken(input: {
+    credential: unknown;
+  }): Promise<NpAgentAuthenticatedServicePrincipalV1> {
+    const parsed = npParseAgentOpaqueVerifierV1("service-token", input.credential);
+    if (!parsed) {
+      throw new NpAgentGatewayError("SERVICE_TOKEN_INVALID", 401, "Service credential is invalid.");
+    }
+    const [token] = await getDb()
+      .select({ siteId: npAgentServiceTokens.siteId })
+      .from(npAgentServiceTokens)
+      .where(eq(npAgentServiceTokens.id, parsed.publicId))
+      .limit(1);
+    if (!token) {
+      throw new NpAgentGatewayError("SERVICE_TOKEN_INVALID", 401, "Service credential is invalid.");
+    }
+    return authenticateServiceToken({
+      siteId: token.siteId,
+      credential: input.credential,
+      transport: "stdio",
+      audience: "urn:nexpress:agent-gateway:stdio",
+    });
+  }
+
+  /**
    * Contain a staff-authority deletion before the user row is removed. The
    * immutable fingerprint remains, while every affected principal and live
    * service credential loses authority in the same serializable transaction.
@@ -1089,6 +1119,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
     listServiceTokens,
     getServiceToken,
     authenticateServiceToken,
+    authenticateStdioServiceToken,
     containUserAuthorityLoss,
   });
 }
