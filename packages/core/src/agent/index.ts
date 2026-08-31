@@ -1,4 +1,7 @@
 export * from "./admin-admission.js";
+export * from "./capability-registry.js";
+export * from "./capability-admission.js";
+export * from "./read-capability-executors.js";
 export * from "./connection-service.js";
 export * from "./connection-admin-service.js";
 export * from "./contract-diagnostics.js";

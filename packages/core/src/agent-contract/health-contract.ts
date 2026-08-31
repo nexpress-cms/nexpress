@@ -16,7 +16,9 @@ const SIGNED_32_BIT_MAXIMUM = 2_147_483_647;
 const HEALTH_SUMMARY_MAXIMUM_BYTES = 128 * 1024;
 
 export const npAgentDiagnosticEntitiesV1 = [
+  "action",
   "principal",
+  "run",
   "service-token",
   "oauth-client",
   "oauth-request",
@@ -43,12 +45,16 @@ export const npAgentDiagnosticStatesV1 = [
   "active_head",
   "ambiguous",
   "approval_required",
+  "approval_pending",
+  "approved",
   "authorized",
   "awaiting_secret",
+  "budget_blocked",
   "candidate",
   "cancelled",
   "cleaning",
   "committing",
+  "compensated",
   "completed",
   "consumed",
   "denied",
@@ -56,10 +62,13 @@ export const npAgentDiagnosticStatesV1 = [
   "disabled",
   "error",
   "expired",
+  "executing",
   "failed",
   "overlap",
   "pending",
+  "policy_blocked",
   "prepared",
+  "proposed",
   "queued",
   "ready",
   "ready_to_commit",
@@ -72,6 +81,9 @@ export const npAgentDiagnosticStatesV1 = [
   "succeeded",
   "suspended",
   "waiting_inspection",
+  "waiting_approval",
+  "waiting_retry",
+  "verifying",
 ] as const;
 
 export type NpAgentDiagnosticStateV1 = (typeof npAgentDiagnosticStatesV1)[number];

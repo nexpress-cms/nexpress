@@ -2,7 +2,26 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-30 (The R1 disabled deployment/scaffold slice now
+**Last refreshed:** 2026-08-30 (The first R2 read-capability kernel now owns
+the locked `site.inspect`, `schema.get`, and `content.query` descriptors,
+exact input/output analyzers and schemas, registry/definition fingerprints,
+derived draft-read scope, and bounded cursor/result contracts. Existing site,
+collection, block, plugin, i18n, access, hydration, relationship, and read-hook
+paths remain authoritative; advanced selection is site/status/visibility
+bounded before those existing reads hydrate only selected ids. One common
+service-principal admission path rechecks the effective Gateway setting,
+presented token family, principal, live staff membership/capabilities, static
+and derived scopes, and immutable authorization digest before atomically
+persisting audit, invocation, and inline read-action evidence. Success/failure
+outputs and safe codes are correlated without credential or internal-error
+leakage. Migration 0035 adds generalized run/action storage; the three current
+reads are inline and create no run. Doctor, deletion, PostgreSQL fixtures, and
+packed-scaffold validation now cover the 18-table inventory and critical
+constraints. AP-201–203 add no MCP/HTTP transport, task dispatch, provider
+call, worker, dedicated port, seed, automatic runtime factory, or
+package-version change.)
+
+**Earlier:** 2026-08-30 (The R1 disabled deployment/scaffold slice now
 adds one exact non-secret `NpConfig.agents.gateway` ceiling whose absence and
 exported reusable default both resolve to all transports disabled. Project
 validation rejects port, host, relay, provider, Vault, token, and other unknown

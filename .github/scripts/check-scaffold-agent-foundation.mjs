@@ -49,7 +49,23 @@ try {
   );
   const actualTables = tableResult.rows.map((row) => row.tablename);
   if (JSON.stringify(actualTables) !== JSON.stringify([...expectedTables].sort())) {
-    fail("fresh scaffold does not contain the exact 16-table Agent inventory", actualTables);
+    fail(
+      `fresh scaffold does not contain the exact ${expectedTables.length.toString()}-table Agent inventory`,
+      actualTables,
+    );
+  }
+
+  const expectedConstraints = [...npAgentDiagnosticsSchemaInventoryV1.constraints].sort();
+  const criticalConstraintResult = await client.query(
+    `SELECT conname
+       FROM pg_constraint
+      WHERE conname = ANY($1::text[])
+      ORDER BY conname`,
+    [expectedConstraints],
+  );
+  const actualConstraints = criticalConstraintResult.rows.map((row) => row.conname);
+  if (JSON.stringify(actualConstraints) !== JSON.stringify(expectedConstraints)) {
+    fail("fresh scaffold is missing critical Agent constraints", actualConstraints);
   }
 
   const constraintResult = await client.query(
@@ -103,7 +119,7 @@ try {
   }
 
   console.log(
-    `✓ fresh scaffold Agent foundation: ${expectedTables.length.toString()} tables, ${DEFERRED_CONSTRAINTS.length.toString()} deferred constraints, disabled and healthy`,
+    `✓ fresh scaffold Agent foundation: ${expectedTables.length.toString()} tables, ${expectedConstraints.length.toString()} critical constraints, ${DEFERRED_CONSTRAINTS.length.toString()} deferred constraints, disabled and healthy`,
   );
 } finally {
   await client.end();

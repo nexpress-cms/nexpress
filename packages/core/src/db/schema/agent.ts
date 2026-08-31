@@ -18,9 +18,14 @@ import {
 
 import type {
   NpAgentAuthorizationContextCanonicalV1,
-  NpAgentCapabilityRegistryEntryCanonicalV1,
+  NpAgentCapabilityRegistryCanonicalV1,
+  NpAgentActionTargetVersionFactV1,
   NpAgentConnectionConfigCanonicalV1,
   NpAgentInvocationRequestCanonicalV1,
+  NpAgentJsonObject,
+  NpAgentRunLimitsV1,
+  NpAgentScope,
+  NpAgentTargetRef,
   NpAgentSiteDeletionPlanCanonicalV1,
   NpAgentVaultAadCanonicalV1,
 } from "../../agent-contract/types.js";
@@ -771,7 +776,7 @@ export const npAgentInvocations = pgTable(
     contractFingerprint: text("contract_fingerprint").notNull(),
     capabilityDefinitionBody: jsonb(
       "capability_definition_body",
-    ).$type<NpAgentCapabilityRegistryEntryCanonicalV1>(),
+    ).$type<NpAgentCapabilityRegistryCanonicalV1>(),
     effectProfileId: text("effect_profile_id"),
     effectContractVersion: integer("effect_contract_version"),
     transport: text("transport").notNull(),
@@ -894,6 +899,267 @@ export const npAgentInvocations = pgTable(
         or (${table.state} = 'completed' and ${table.completedAt} is not null and ${table.errorCode} is null)
         or (${table.state} = 'failed' and ${table.completedAt} is not null and ${table.errorCode} is not null)
       ) and ${table.expiresAt} > ${table.requestedAt}`,
+    ),
+  ],
+);
+
+/**
+ * Generalized execution attribution. AP-203 creates Gateway rows only; the
+ * nullable Runtime columns are reserved for the R5 migration that installs
+ * Agent/version/trigger/provider owners.
+ */
+export const npAgentRuns = pgTable(
+  "np_agent_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    origin: text("origin").notNull(),
+    agentId: uuid("agent_id"),
+    agentVersionId: uuid("agent_version_id"),
+    agentConfigHash: text("agent_config_hash"),
+    principalId: uuid("principal_id").notNull(),
+    invocationId: uuid("invocation_id"),
+    admissionFingerprint: text("admission_fingerprint").notNull(),
+    triggerId: uuid("trigger_id"),
+    rootRunId: uuid("root_run_id").notNull(),
+    parentRunId: uuid("parent_run_id"),
+    causalDepth: integer("causal_depth").notNull(),
+    causalEventId: uuid("causal_event_id"),
+    causalActionId: uuid("causal_action_id"),
+    recipeId: text("recipe_id"),
+    recipeVersion: integer("recipe_version"),
+    recipeFingerprint: text("recipe_fingerprint"),
+    instructionTemplateId: text("instruction_template_id"),
+    instructionTemplateVersion: integer("instruction_template_version"),
+    instructionDigest: text("instruction_digest"),
+    responseSchemaDigest: text("response_schema_digest"),
+    manualInputSchemaDigest: text("manual_input_schema_digest"),
+    state: text("state").notNull(),
+    goal: text("goal").notNull(),
+    eventRef: jsonb("event_ref").$type<NpAgentJsonObject>(),
+    policyRefs: jsonb("policy_refs").$type<NpAgentJsonObject[]>().notNull(),
+    runLimits: jsonb("run_limits").$type<NpAgentRunLimitsV1>().notNull(),
+    runLimitsHash: text("run_limits_hash").notNull(),
+    budgetSnapshot: jsonb("budget_snapshot").$type<NpAgentJsonObject>().notNull(),
+    budgetSnapshotHash: text("budget_snapshot_hash").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    attempt: integer("attempt").notNull(),
+    providerRequestId: text("provider_request_id"),
+    connectionId: uuid("connection_id"),
+    connectionConfigSnapshotId: uuid("connection_config_snapshot_id"),
+    connectionConfigVersion: integer("connection_config_version"),
+    connectionConfigHash: text("connection_config_hash"),
+    providerDataClassCeiling: text("provider_data_class_ceiling"),
+    pricingId: text("pricing_id"),
+    pricingVersion: integer("pricing_version"),
+    pricingFingerprint: text("pricing_fingerprint"),
+    pricingEffectiveAt: timestamp("pricing_effective_at", { withTimezone: true, mode: "date" }),
+    usage: jsonb("usage").$type<NpAgentJsonObject>().notNull(),
+    result: jsonb("result").$type<NpAgentJsonObject>(),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    queuedAt: timestamp("queued_at", { withTimezone: true, mode: "date" }).notNull(),
+    deadlineAt: timestamp("deadline_at", { withTimezone: true, mode: "date" }).notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }),
+    leaseUntil: timestamp("lease_until", { withTimezone: true, mode: "date" }),
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => [
+    unique("np_agent_runs_site_id_id_unique").on(table.siteId, table.id),
+    unique("np_agent_runs_invocation_unique").on(table.invocationId),
+    unique("np_agent_runs_admission_unique").on(
+      table.siteId,
+      table.origin,
+      table.principalId,
+      table.admissionFingerprint,
+    ),
+    index("np_agent_runs_site_state_idx").on(table.siteId, table.state, table.queuedAt),
+    index("np_agent_runs_principal_idx").on(table.siteId, table.principalId, table.queuedAt),
+    index("np_agent_runs_deadline_idx").on(table.siteId, table.deadlineAt),
+    foreignKey({
+      name: "np_agent_runs_principal_fk",
+      columns: [table.siteId, table.principalId],
+      foreignColumns: [npAgentPrincipals.siteId, npAgentPrincipals.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_runs_invocation_fk",
+      columns: [table.siteId, table.invocationId],
+      foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_runs_root_fk",
+      columns: [table.siteId, table.rootRunId],
+      foreignColumns: [table.siteId, table.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_runs_parent_fk",
+      columns: [table.siteId, table.parentRunId],
+      foreignColumns: [table.siteId, table.id],
+    }).onDelete("restrict"),
+    check("np_agent_runs_origin_check", sql`${table.origin} in ('gateway', 'runtime')`),
+    check(
+      "np_agent_runs_state_check",
+      sql`${table.state} in ('queued', 'running', 'waiting_approval', 'waiting_retry', 'verifying', 'succeeded', 'failed', 'cancelled', 'policy_blocked', 'budget_blocked')`,
+    ),
+    check(
+      "np_agent_runs_gateway_shape_check",
+      sql`${table.origin} <> 'gateway' or (
+        ${table.agentId} is null and ${table.agentVersionId} is null and ${table.agentConfigHash} is null and
+        ${table.invocationId} is not null and ${table.triggerId} is null and ${table.recipeId} is null and
+        ${table.recipeVersion} is null and ${table.recipeFingerprint} is null and
+        ${table.instructionTemplateId} is null and ${table.instructionTemplateVersion} is null and
+        ${table.instructionDigest} is null and ${table.responseSchemaDigest} is null and
+        ${table.manualInputSchemaDigest} is null and ${table.connectionId} is null and
+        ${table.connectionConfigSnapshotId} is null and ${table.connectionConfigVersion} is null and
+        ${table.connectionConfigHash} is null and ${table.providerDataClassCeiling} is null and
+        ${table.providerRequestId} is null and
+        ${table.pricingId} is null and ${table.pricingVersion} is null and
+        ${table.pricingFingerprint} is null and ${table.pricingEffectiveAt} is null
+      )`,
+    ),
+    check(
+      "np_agent_runs_lineage_check",
+      sql`(${table.parentRunId} is null and ${table.rootRunId} = ${table.id} and ${table.causalDepth} = 0 and ${table.causalActionId} is null)
+        or (${table.parentRunId} is not null and ${table.parentRunId} <> ${table.id} and ${table.rootRunId} <> ${table.id} and ${table.causalDepth} between 1 and 4)`,
+    ),
+    check("np_agent_runs_attempt_check", sql`${table.attempt} > 0`),
+    check("np_agent_runs_deadline_check", sql`${table.deadlineAt} > ${table.queuedAt}`),
+    check(
+      "np_agent_runs_terminal_check",
+      sql`((${table.state} in ('succeeded', 'failed', 'cancelled', 'policy_blocked', 'budget_blocked')) = (${table.finishedAt} is not null)) and
+        (${table.errorCode} is null) = (${table.errorMessage} is null)`,
+    ),
+  ],
+);
+
+/** One exact capability proposal/execution record. AP-203 writes read rows. */
+export const npAgentActions = pgTable(
+  "np_agent_actions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    runId: uuid("run_id"),
+    runFingerprint: text("run_fingerprint"),
+    invocationId: uuid("invocation_id"),
+    invocationFingerprint: text("invocation_fingerprint").notNull(),
+    executionInvocationId: uuid("execution_invocation_id"),
+    executionInvocationFingerprint: text("execution_invocation_fingerprint"),
+    sequence: integer("sequence").notNull(),
+    capabilityId: text("capability_id").notNull(),
+    capabilityContractVersion: integer("capability_contract_version").notNull(),
+    capabilityFingerprint: text("capability_fingerprint").notNull(),
+    capabilityDefinitionBody: jsonb("capability_definition_body")
+      .$type<NpAgentCapabilityRegistryCanonicalV1>()
+      .notNull(),
+    effectProfileId: text("effect_profile_id").notNull(),
+    effectContractVersion: integer("effect_contract_version").notNull(),
+    risk: text("risk").notNull(),
+    state: text("state").notNull(),
+    idempotencyKey: text("idempotency_key"),
+    inputRedacted: jsonb("input_redacted").$type<NpAgentJsonObject>().notNull(),
+    inputCanonical: jsonb("input_canonical").$type<NpAgentJsonObject>().notNull(),
+    requiredScopes: text("required_scopes").array().$type<NpAgentScope[]>().notNull(),
+    targetRefs: jsonb("target_refs").$type<NpAgentTargetRef[]>().notNull(),
+    targetVersionFacts: jsonb("target_version_facts")
+      .$type<NpAgentActionTargetVersionFactV1[]>()
+      .notNull(),
+    inputHash: text("input_hash").notNull(),
+    outputRedacted: jsonb("output_redacted").$type<NpAgentJsonObject>(),
+    outputHash: text("output_hash"),
+    effectDigest: text("effect_digest"),
+    targetVersionDigest: text("target_version_digest"),
+    verifierId: text("verifier_id"),
+    verificationState: text("verification_state"),
+    verificationResultDigest: text("verification_result_digest"),
+    verificationEvidence: jsonb("verification_evidence").$type<NpAgentJsonObject[]>(),
+    verifiedAt: timestamp("verified_at", { withTimezone: true, mode: "date" }),
+    undoRef: jsonb("undo_ref").$type<NpAgentJsonObject>(),
+    compensatorId: text("compensator_id"),
+    compensationResultDigest: text("compensation_result_digest"),
+    compensationEvidence: jsonb("compensation_evidence").$type<NpAgentJsonObject[]>(),
+    compensatedAt: timestamp("compensated_at", { withTimezone: true, mode: "date" }),
+    errorCode: text("error_code"),
+    approvalId: uuid("approval_id"),
+    containmentId: uuid("containment_id"),
+    enforcementAdapterId: text("enforcement_adapter_id"),
+    enforcementAdapterContractVersion: integer("enforcement_adapter_contract_version"),
+    enforcementAdapterFingerprint: text("enforcement_adapter_fingerprint"),
+    compensatesActionId: uuid("compensates_action_id"),
+    auditEventId: uuid("audit_event_id").references(() => npAuditEvents.id, {
+      onDelete: "restrict",
+    }),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }),
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (table) => [
+    unique("np_agent_actions_site_id_id_unique").on(table.siteId, table.id),
+    unique("np_agent_actions_invocation_sequence_unique").on(table.invocationId, table.sequence),
+    index("np_agent_actions_site_state_idx").on(table.siteId, table.state, table.createdAt),
+    index("np_agent_actions_run_idx").on(table.siteId, table.runId, table.sequence),
+    foreignKey({
+      name: "np_agent_actions_run_fk",
+      columns: [table.siteId, table.runId],
+      foreignColumns: [npAgentRuns.siteId, npAgentRuns.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_actions_invocation_fk",
+      columns: [table.siteId, table.invocationId],
+      foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_actions_execution_invocation_fk",
+      columns: [table.siteId, table.executionInvocationId],
+      foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_actions_compensates_fk",
+      columns: [table.siteId, table.compensatesActionId],
+      foreignColumns: [table.siteId, table.id],
+    }).onDelete("restrict"),
+    check("np_agent_actions_sequence_check", sql`${table.sequence} > 0`),
+    check(
+      "np_agent_actions_contract_check",
+      sql`${table.capabilityContractVersion} > 0 and ${table.effectContractVersion} > 0`,
+    ),
+    check(
+      "np_agent_actions_risk_check",
+      sql`${table.risk} in ('read', 'reversible', 'sensitive', 'destructive')`,
+    ),
+    check(
+      "np_agent_actions_state_check",
+      sql`${table.state} in ('proposed', 'policy_blocked', 'approval_pending', 'approved', 'executing', 'succeeded', 'failed', 'compensated')`,
+    ),
+    check(
+      "np_agent_actions_attribution_check",
+      sql`(${table.runId} is null) = (${table.runFingerprint} is null) and
+        (${table.executionInvocationId} is null) = (${table.executionInvocationFingerprint} is null)`,
+    ),
+    check(
+      "np_agent_actions_output_check",
+      sql`(${table.outputRedacted} is null) = (${table.outputHash} is null)`,
+    ),
+    check(
+      "np_agent_actions_read_effect_check",
+      sql`${table.effectProfileId} <> 'domain.read' or (
+        ${table.risk} = 'read' and ${table.verifierId} is null and ${table.verificationState} is null and
+        ${table.verificationResultDigest} is null and ${table.verificationEvidence} is null and
+        ${table.verifiedAt} is null and ${table.effectDigest} is null and ${table.targetVersionDigest} is null and
+        ${table.undoRef} is null and ${table.compensatorId} is null and
+        ${table.compensationResultDigest} is null and ${table.compensationEvidence} is null and
+        ${table.compensatedAt} is null and ${table.approvalId} is null and ${table.containmentId} is null and
+        ${table.enforcementAdapterId} is null and ${table.enforcementAdapterContractVersion} is null and
+        ${table.enforcementAdapterFingerprint} is null and ${table.compensatesActionId} is null
+      )`,
+    ),
+    check(
+      "np_agent_actions_terminal_check",
+      sql`((${table.state} in ('policy_blocked', 'succeeded', 'failed', 'compensated')) = (${table.finishedAt} is not null)) and
+        ((${table.state} in ('policy_blocked', 'failed')) = (${table.errorCode} is not null))`,
     ),
   ],
 );
