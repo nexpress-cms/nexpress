@@ -83,6 +83,23 @@ describe("getProjectFiles", () => {
     expect(worker).not.toMatch(/@\/lib\/init-core/);
   });
 
+  it("emits one port-free Agent MCP stdio wrapper without storing credentials or site input", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const script = files["scripts/agent-mcp-stdio.ts"];
+    const pkg = JSON.parse(files["package.json"]) as {
+      scripts: Record<string, string>;
+      dependencies: Record<string, string>;
+    };
+    expect(script).toContain("@nexpress/app/scripts/agent-mcp-stdio");
+    expect(script).toContain("ensureFor");
+    expect(script).toContain("shutdownBootstrap");
+    expect(script).not.toContain("NP_AGENT_SERVICE_TOKEN");
+    expect(script).not.toContain("NP_AGENT_SITE_ID");
+    expect(script).not.toMatch(/node:(net|http|https)/);
+    expect(pkg.scripts["agent:mcp"]).toBe("tsx scripts/agent-mcp-stdio.ts");
+    expect(pkg.dependencies["@nexpress/mcp"]).toBeDefined();
+  });
+
   it("emits the admin login + setup route files (now as @nexpress/app wrappers)", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     expect(files["src/app/(admin)/admin/login/page.tsx"]).toBeDefined();
@@ -223,6 +240,7 @@ describe("getProjectFiles", () => {
       "@nexpress/core",
       "@nexpress/editor",
       "@nexpress/gettext",
+      "@nexpress/mcp",
       "@nexpress/next",
       "@nexpress/plugin-sdk",
       "@nexpress/theme",

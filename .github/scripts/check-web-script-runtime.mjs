@@ -44,6 +44,7 @@ const COMMON_ENV = {
 };
 
 const CASES = [
+  { script: "agent-mcp-stdio.ts" },
   { script: "build.ts", args: ["--help"], timeoutMs: 20_000 },
   { script: "deploy-plan.ts", args: ["--help"] },
   { script: "dev-notice.ts" },

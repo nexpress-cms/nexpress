@@ -2,7 +2,22 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-30 (The first R2 read-capability kernel now owns
+**Last refreshed:** 2026-08-31 (The first R2 transport slice now owns one
+dedicated `@nexpress/mcp` local stdio process on exact maintained official v1
+SDK `1.30.0` and frozen MCP `2025-11-25` revision. An environment-only `npst1`
+credential is authenticated before stdin is read; its globally unique persisted token id
+selects the site before the existing authoritative Gateway admission rechecks
+transport audience, effective exposure, principal, live staff authority,
+scopes, and digest. Complete inbound and outbound frames are capped at 5 MiB,
+stdout stays protocol-only, diagnostics expose stable codes only, and every
+terminal path reuses explicit host bootstrap shutdown. Reference and generated
+wrappers share the same app runner and keep the runtime absent and all
+transports disabled by default. AP-204 advertises no tools, resources, prompts,
+or tasks until AP-206 and adds no HTTP/OAuth route, remote relay, provider call,
+worker, listener port, seed, automatic runtime factory, migration, or
+package-version change.)
+
+**Earlier:** 2026-08-30 (The first R2 read-capability kernel now owns
 the locked `site.inspect`, `schema.get`, and `content.query` descriptors,
 exact input/output analyzers and schemas, registry/definition fingerprints,
 derived draft-read scope, and bounded cursor/result contracts. Existing site,
@@ -1048,7 +1063,7 @@ core  ←  editor, theme, plugin-sdk, next, wp-import
 core, editor  ←  blocks
 core, blocks  ←  translation  ←  xliff, gettext
 core, editor, blocks  ←  admin
-all of the above  ←  apps/web
+all of the above, mcp  ←  app  ←  apps/web
 cli  (standalone scaffolder, no workspace deps)
 ```
 

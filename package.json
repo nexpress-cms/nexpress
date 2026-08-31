@@ -9,6 +9,7 @@
   },
   "packageManager": "pnpm@10.33.0",
   "scripts": {
+    "agent:mcp": "pnpm --filter @nexpress/web run agent:mcp",
     "build": "NP_DEV_FAST=0 node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run build",
     "dev": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run dev --filter=@nexpress/web --concurrency=10",
     "dev:full": "node --env-file-if-exists=.env ./node_modules/turbo/bin/turbo run dev --concurrency=50",

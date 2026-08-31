@@ -1507,6 +1507,13 @@ implementation starts, the team must recheck that page and the selected
 TypeScript SDK's supported versions; adopting a later current/draft revision
 is a separate compatibility task, not an implicit documentation update.
 
+The AP-204 implementation rechecked this on 2026-08-31. MCP `2026-07-28` and
+the stable v2 TypeScript SDK are now available, while the maintained v1 SDK
+still implements `2025-11-25` including the experimental task surface required
+by this R2 design. AP-204 therefore pins the v1 SDK line and retains
+`2025-11-25` with exact SDK release `1.30.0`; adopting the newer protocol era
+remains the separate compatibility task described above.
+
 The v1 server implements tools, resources, prompts, opaque pagination, and the
 negotiated experimental task utility. It does not request client sampling,
 roots, or arbitrary elicitation.
