@@ -69,6 +69,11 @@ export interface NpAgentAuthenticatedServicePrincipalV1 {
   authorizationContextFingerprint: string;
 }
 
+type NpAgentServiceGatewayAdminOperationIdV1 = Exclude<
+  NpAgentGatewayAdminOperationIdV1,
+  "agents.gateway.oauth_clients.create" | "agents.gateway.oauth_clients.revoke"
+>;
+
 function sha256Canonical(domain: string, value: unknown): `cj1:sha256:${string}` {
   const hash = createHash("sha256");
   hash.update(`${domain}\0`, "utf8");
@@ -287,7 +292,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
     }
   }
 
-  async function executeAdmin<I extends NpAgentGatewayAdminOperationIdV1>(input: {
+  async function executeAdmin<I extends NpAgentServiceGatewayAdminOperationIdV1>(input: {
     siteId: string;
     actor: NpAgentAdminActorV1;
     operationId: I;
@@ -1114,6 +1119,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
   return Object.freeze({
     executeAdmin,
     getEffectiveGatewaySettings,
+    getTransportAudience: audienceFor,
     listPrincipals,
     getPrincipal,
     listServiceTokens,

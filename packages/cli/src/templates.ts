@@ -1023,6 +1023,7 @@ function tsconfigTemplate(): string {
         },
         include: [
           "src",
+          "src/app/.well-known/**/*.ts",
           "scripts",
           "next-env.d.ts",
           ".next/types/**/*.ts",
@@ -1281,8 +1282,20 @@ the one-time value only through the child process's
 \`NP_AGENT_SERVICE_TOKEN\` environment; the credential selects the site and
 \`NP_AGENT_SITE_ID\` cannot override it. Do not put the token in this generated
 project, a command-line flag, or checked-in \`.env\`. The AP-204 transport
-negotiates MCP \`2025-11-25\`; tools/resources/prompts/tasks land in the later
-projection slice.
+negotiates MCP \`2025-11-25\`.
+
+## Remote Agent Gateway
+
+The generated \`/api/mcp\` and OAuth discovery wrappers reuse the application's
+canonical HTTPS origin and never open a dedicated MCP port. They remain a
+deliberate \`404\` until the server host explicitly installs both the Gateway and
+OAuth runtimes, supplies dedicated token-HMAC and ES256 P-256 signing keys,
+and enables \`agents.gateway.mcpHttp\` at both deployment and site levels.
+Interactive clients must be pre-registered in Agent Studio with exact HTTPS or
+explicit loopback HTTP redirect URIs and use Authorization Code + PKCE S256;
+v1 issues no client secret and supports no dynamic registration. Unattended
+automation needs an exact \`mcp-http\` service credential. AP-205 advertises no
+tools/resources/prompts/tasks; those land in AP-206.
 
 ## Jobs
 

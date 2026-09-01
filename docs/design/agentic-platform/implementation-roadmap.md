@@ -303,8 +303,8 @@ MCP port.
 | AP-209 | Add Admin Activity views for principals, runs, actions, and revocation                                                                                                                                                                                     |
 | AP-210 | Add the four machine Agent HTTP routes, full-origin `agent-http` audience-bound authentication, shared invocation/artifact facades, OpenAPI projection, and thin scaffold wrappers                                                                         |
 
-AP-201 through AP-204 are implemented as the transport-neutral read kernel and
-port-free local transport.
+AP-201 through AP-205 are implemented as the transport-neutral read kernel and
+port-free local and same-origin remote transports.
 Core now owns the locked three-definition registry and fingerprints, derived
 draft-read scope, exact bounded site/schema/content projections, and one common
 service-principal admission path with live authority, scope, effective Gateway
@@ -317,10 +317,16 @@ stdio process on the maintained v1 SDK, authenticates the environment-only
 `npst1` credential before reading stdin, derives the site from its persisted
 token row, caps complete inbound and outbound frames at 5 MiB, and reuses the
 host's explicit bootstrap/shutdown lifecycle. The transport honestly advertises
-no capabilities until AP-206. AP-205 and AP-206 still own remote MCP,
-resources/prompts/tools, protocol tasks, and durable task/run dispatch; AP-204
-adds no HTTP route, OAuth server, provider call, worker, dedicated port, seed,
-automatic runtime factory, or package-version change.
+no capabilities until AP-206. AP-205 adds the optional same-origin stateless
+Streamable HTTP route, built-in public-client OAuth 2.1 Authorization Server,
+durable one-time consent/code and rotating refresh families, exact ES256
+access-token/JWKS validation, service-token alternative, Agent Studio client
+registration, migration 0036 client row-version CAS, and thin reference and
+scaffold wrappers. Disabled or incomplete deployment/site/runtime/origin/key
+intent returns one deliberate `404`. AP-206 still owns bounded
+resources/prompts/tools, protocol tasks, and durable task/run dispatch; AP-205
+adds no provider call, worker, dedicated port, relay, seed, automatic runtime
+factory, or package-version change.
 
 Through R4, capability policy evaluation uses the immutable framework hard
 rules plus the exact disabled-by-default deployment/site feature settings.

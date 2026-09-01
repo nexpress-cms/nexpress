@@ -2,7 +2,26 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-08-31 (The first R2 transport slice now owns one
+**Last refreshed:** 2026-09-01 (The remote R2 transport slice now owns one
+optional same-origin, stateless JSON-response Streamable HTTP endpoint at the
+canonical `/api/mcp` resource without a dedicated port, listener, relay, or
+cookie authority. Deployment, site, runtime, canonical HTTPS origin, and
+dedicated key intent all fail closed to the same route/discovery `404`.
+Registered public clients use exact redirect URIs, staff-session and CSRF-bound
+one-time consent, PKCE S256 codes, exact audience/scopes/exposure, dedicated
+ES256 access tokens and active/retiring JWKS, rotating hash-only refresh
+families, and replay containment; no client secret or DCR is accepted.
+Audience-bound `mcp-http` service credentials share the same protected
+resource without token fallback. Complete frames are capped at 5 MiB; Origin,
+Host, content negotiation, and frozen MCP revision fail before protocol
+dispatch, and GET/DELETE remain disabled. Agent Studio owns client create and
+CAS revoke, migration 0036 adds its positive row version, and reference and
+generated wrappers reuse the shared routes while remaining disabled by
+default. AP-205 advertises no tools, resources, prompts, or tasks until AP-206
+and adds no provider call, worker, dedicated port, seed, automatic runtime
+factory, or package-version change.)
+
+**Earlier:** 2026-08-31 (The first R2 transport slice now owns one
 dedicated `@nexpress/mcp` local stdio process on exact maintained official v1
 SDK `1.30.0` and frozen MCP `2025-11-25` revision. An environment-only `npst1`
 credential is authenticated before stdin is read; its globally unique persisted token id

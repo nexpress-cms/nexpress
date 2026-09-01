@@ -74,6 +74,7 @@ const AGENT_CONSTRAINTS = [
   "np_agent_invocations_state_check",
   "np_agent_invocations_state_time_check",
   "np_agent_oauth_clients_status_check",
+  "np_agent_oauth_clients_version_check",
   "np_agent_oauth_codes_client_fk",
   "np_agent_oauth_codes_grant_fk",
   "np_agent_oauth_codes_request_fk",

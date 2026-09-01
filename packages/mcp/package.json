@@ -32,6 +32,11 @@
       "types": "./dist/stdio.d.ts",
       "import": "./dist/stdio.js",
       "default": "./dist/stdio.js"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "import": "./dist/http.js",
+      "default": "./dist/http.js"
     }
   },
   "files": [

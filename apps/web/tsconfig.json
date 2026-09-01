@@ -11,6 +11,13 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "scripts", "next-env.d.ts", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
+  "include": [
+    "src",
+    "src/app/.well-known/**/*.ts",
+    "scripts",
+    "next-env.d.ts",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
   "exclude": ["node_modules", "src/db/generated"]
 }

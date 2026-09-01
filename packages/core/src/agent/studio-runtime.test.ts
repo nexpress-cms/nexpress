@@ -6,6 +6,7 @@ import {
   npAgentStudioRuntimeStatusV1,
   requireAgentStudioConnectionRuntimeV1,
   requireAgentStudioGatewayRuntimeV1,
+  requireAgentStudioOauthRuntimeV1,
   resetAgentStudioServerRuntimeV1,
   setAgentStudioServerRuntimeV1,
 } from "./studio-runtime.js";
@@ -39,6 +40,9 @@ describe("Agent Studio host runtime", () => {
     expect(() => requireAgentStudioGatewayRuntimeV1()).toThrow(
       "Agent Studio Gateway runtime is unavailable.",
     );
+    expect(() => requireAgentStudioOauthRuntimeV1()).toThrow(
+      "Agent Studio OAuth runtime is unavailable.",
+    );
   });
 
   it("installs and detaches only the expected host runtime", () => {
@@ -56,6 +60,12 @@ describe("Agent Studio host runtime", () => {
   it("requires connection read and Admin services as one host-owned pair", () => {
     expect(() => createAgentStudioServerRuntimeV1({ connections: {} as never })).toThrow(
       "Agent Studio connection read and Admin services must be installed together.",
+    );
+  });
+
+  it("requires OAuth to reuse an installed Gateway service", () => {
+    expect(() => createAgentStudioServerRuntimeV1({ oauth: {} as never })).toThrow(
+      "Agent OAuth runtime requires the Agent Gateway service.",
     );
   });
 

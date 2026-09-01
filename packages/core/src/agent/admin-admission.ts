@@ -171,43 +171,32 @@ function redactedInvocationInput(
   };
 }
 
-async function resolveStaffAuthorization(
+export async function npResolveLiveAgentStaffAuthorizationV1(
   db: NpAgentDb,
   siteId: string,
-  actor: NpAgentAdminActorV1,
-  now: Date,
+  userId: string,
 ): Promise<NpAgentStaffSiteAuthorizationCanonicalV1> {
-  const [[user], [site], [session], [membership]] = await Promise.all([
-    db
-      .select({
-        id: npUsers.id,
-        role: npUsers.role,
-        tokenVersion: npUsers.tokenVersion,
-        isSuperAdmin: npUsers.isSuperAdmin,
-      })
-      .from(npUsers)
-      .where(eq(npUsers.id, actor.user.id))
-      .limit(1),
-    db.select({ id: npSites.id }).from(npSites).where(eq(npSites.id, siteId)).limit(1),
-    db
-      .select({ id: npSessions.id, userId: npSessions.userId })
-      .from(npSessions)
-      .where(
-        and(
-          eq(npSessions.id, actor.sessionId),
-          eq(npSessions.userId, actor.user.id),
-          gt(npSessions.accessExpiresAt, now),
-          gt(npSessions.refreshExpiresAt, now),
-        ),
-      )
-      .limit(1),
-    db
-      .select({ role: npSiteMemberships.role })
-      .from(npSiteMemberships)
-      .where(and(eq(npSiteMemberships.siteId, siteId), eq(npSiteMemberships.userId, actor.user.id)))
-      .limit(1),
-  ]);
-  if (!user || !site || !session || actor.user.tokenVersion !== user.tokenVersion) {
+  const [user] = await db
+    .select({
+      id: npUsers.id,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
+      isSuperAdmin: npUsers.isSuperAdmin,
+    })
+    .from(npUsers)
+    .where(eq(npUsers.id, userId))
+    .limit(1);
+  const [site] = await db
+    .select({ id: npSites.id })
+    .from(npSites)
+    .where(eq(npSites.id, siteId))
+    .limit(1);
+  const [membership] = await db
+    .select({ role: npSiteMemberships.role })
+    .from(npSiteMemberships)
+    .where(and(eq(npSiteMemberships.siteId, siteId), eq(npSiteMemberships.userId, userId)))
+    .limit(1);
+  if (!user || !site) {
     throw new NpAgentGatewayError("STAFF_AUTHORIZATION_REQUIRED", 401, "Staff session is invalid.");
   }
 
@@ -236,6 +225,33 @@ async function resolveStaffAuthorization(
     userTokenVersion: user.tokenVersion,
     authority: { kind: "site-role", source, role, capabilities: [...roleCapabilities[role]] },
   });
+}
+
+async function resolveStaffAuthorization(
+  db: NpAgentDb,
+  siteId: string,
+  actor: NpAgentAdminActorV1,
+  now: Date,
+): Promise<NpAgentStaffSiteAuthorizationCanonicalV1> {
+  const [authorization, [session]] = await Promise.all([
+    npResolveLiveAgentStaffAuthorizationV1(db, siteId, actor.user.id),
+    db
+      .select({ id: npSessions.id, userId: npSessions.userId })
+      .from(npSessions)
+      .where(
+        and(
+          eq(npSessions.id, actor.sessionId),
+          eq(npSessions.userId, actor.user.id),
+          gt(npSessions.accessExpiresAt, now),
+          gt(npSessions.refreshExpiresAt, now),
+        ),
+      )
+      .limit(1),
+  ]);
+  if (!session || actor.user.tokenVersion !== authorization.userTokenVersion) {
+    throw new NpAgentGatewayError("STAFF_AUTHORIZATION_REQUIRED", 401, "Staff session is invalid.");
+  }
+  return authorization;
 }
 
 function replayResult<T extends NpAgentJsonObject>(
@@ -430,9 +446,11 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
               action: operation.audit.eventId,
               targetType: input.operationId.startsWith("agents.connections.")
                 ? "agent-connection"
-                : input.operationId.includes("principal_tokens")
-                  ? "agent-service-token"
-                  : "agent-principal",
+                : input.operationId.includes("oauth_clients")
+                  ? "agent-oauth-client"
+                  : input.operationId.includes("principal_tokens")
+                    ? "agent-service-token"
+                    : "agent-principal",
               targetId: input.targetId,
               siteId: input.siteId,
               payload: {

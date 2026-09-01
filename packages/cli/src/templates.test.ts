@@ -152,6 +152,7 @@ describe("getProjectFiles", () => {
     expect(tsconfig.compilerOptions?.paths).toEqual({ "@/*": ["./src/*"] });
     expect(tsconfig.include).toEqual([
       "src",
+      "src/app/.well-known/**/*.ts",
       "scripts",
       "next-env.d.ts",
       ".next/types/**/*.ts",

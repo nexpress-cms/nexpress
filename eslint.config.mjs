@@ -13,6 +13,12 @@ export default tseslint.config(
       "**/.next/**",
       "**/.turbo/**",
       "**/.tsup/**",
+      // Next.js well-known route directories are hidden paths. TypeScript's
+      // project service does not consistently associate them with package
+      // projects, so keep the wrappers logic-free and typecheck them through
+      // explicit tsconfig includes; their shared implementation remains linted.
+      "packages/app/src/api/.well-known/**",
+      "apps/web/src/app/.well-known/**",
       "**/coverage/**",
       "**/tsup.config.ts",
       "**/vitest.config.ts",

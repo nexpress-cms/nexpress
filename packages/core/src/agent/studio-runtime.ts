@@ -10,6 +10,7 @@ import {
 import type { NpAgentConnectionAdminServiceV1 } from "./connection-admin-service.js";
 import type { NpAgentConnectionServiceV1 } from "./connection-service.js";
 import type { NpAgentGatewayServiceV1 } from "./gateway-service.js";
+import type { NpAgentOauthServiceV1 } from "./oauth-service.js";
 import type { NpAgentConnectionAuthAdapterRegistryV1 } from "./provider-auth-contract.js";
 import { NpServiceUnavailableError } from "../errors.js";
 
@@ -17,6 +18,7 @@ export interface NpAgentStudioServerRuntimeV1 {
   connections: NpAgentConnectionServiceV1 | null;
   connectionAdmin: NpAgentConnectionAdminServiceV1 | null;
   gateway: NpAgentGatewayServiceV1 | null;
+  oauth: NpAgentOauthServiceV1 | null;
   adapters: readonly NpAgentStudioAdapterV1[];
   resolveGatewaySettings: (siteId: string) => Promise<NpAgentGatewaySettingsV1>;
 }
@@ -25,6 +27,7 @@ export interface NpAgentStudioServerRuntimeOptionsV1 {
   connections?: NpAgentConnectionServiceV1;
   connectionAdmin?: NpAgentConnectionAdminServiceV1;
   gateway?: NpAgentGatewayServiceV1;
+  oauth?: NpAgentOauthServiceV1;
   providerRegistry?: NpAgentConnectionAuthAdapterRegistryV1;
 }
 
@@ -54,11 +57,15 @@ export function createAgentStudioServerRuntimeV1(
   if ((options.connections === undefined) !== (options.connectionAdmin === undefined)) {
     throw new Error("Agent Studio connection read and Admin services must be installed together.");
   }
+  if (options.oauth !== undefined && options.gateway === undefined) {
+    throw new Error("Agent OAuth runtime requires the Agent Gateway service.");
+  }
   const adapters = Object.freeze((options.providerRegistry?.list() ?? []).map(adapterProjection));
   return Object.freeze({
     connections: options.connections ?? null,
     connectionAdmin: options.connectionAdmin ?? null,
     gateway: options.gateway ?? null,
+    oauth: options.oauth ?? null,
     adapters,
     resolveGatewaySettings: async (siteId: string) =>
       npRequireAgentGatewaySettings(
@@ -124,4 +131,18 @@ export function requireAgentStudioGatewayRuntimeV1(): NpAgentStudioServerRuntime
     throw new NpServiceUnavailableError("Agent Studio Gateway runtime is unavailable.");
   }
   return runtime as NpAgentStudioServerRuntimeV1 & { gateway: NpAgentGatewayServiceV1 };
+}
+
+export function requireAgentStudioOauthRuntimeV1(): NpAgentStudioServerRuntimeV1 & {
+  gateway: NpAgentGatewayServiceV1;
+  oauth: NpAgentOauthServiceV1;
+} {
+  const runtime = installedRuntime;
+  if (!runtime?.gateway || !runtime.oauth) {
+    throw new NpServiceUnavailableError("Agent Studio OAuth runtime is unavailable.");
+  }
+  return runtime as NpAgentStudioServerRuntimeV1 & {
+    gateway: NpAgentGatewayServiceV1;
+    oauth: NpAgentOauthServiceV1;
+  };
 }

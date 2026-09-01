@@ -33,5 +33,5 @@
   //
   //   `_consumer-stubs/**` still typechecks strictly so the
   //   structural shape we promise consumers stays well-formed.
-  "include": ["src/**/*", "_consumer-stubs/**/*"]
+  "include": ["src/**/*", "src/api/.well-known/**/*.ts", "_consumer-stubs/**/*"]
 }

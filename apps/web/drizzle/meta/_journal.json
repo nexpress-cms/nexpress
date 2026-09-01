@@ -253,6 +253,13 @@
       "when": 1788096338358,
       "tag": "0035_lyrical_rocket_racer",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1788220177436,
+      "tag": "0036_superb_la_nuit",
+      "breakpoints": true
     }
   ]
 }
