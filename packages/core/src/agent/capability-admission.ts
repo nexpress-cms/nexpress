@@ -26,6 +26,8 @@ import {
   npAgentActions,
   npAgentInvocations,
   npAgentPrincipals,
+  npAgentOauthClients,
+  npAgentOauthGrants,
   npAgentServiceTokens,
 } from "../db/schema/agent.js";
 import { npAuditEvents } from "../db/schema/community.js";
@@ -40,8 +42,18 @@ import {
   type NpAgentResolvedGatewayPrincipalV1,
 } from "./capability-registry.js";
 import type { NpAgentAuthenticatedServicePrincipalV1 } from "./gateway-service.js";
+import type { NpAgentAuthenticatedOauthPrincipalV1 } from "./oauth-service.js";
 
 type Db = ReturnType<typeof getDb>;
+
+export type NpAgentCapabilityAuthenticationV1 =
+  NpAgentAuthenticatedServicePrincipalV1 | NpAgentAuthenticatedOauthPrincipalV1;
+
+function isOauthAuthentication(
+  authentication: NpAgentCapabilityAuthenticationV1,
+): authentication is NpAgentAuthenticatedOauthPrincipalV1 {
+  return "kind" in authentication && authentication.kind === "oauth";
+}
 
 export interface NpAgentCapabilityAdmissionOptionsV1 {
   registry: NpAgentReadCapabilityRegistryV1;
@@ -74,8 +86,27 @@ function asJsonObject(value: object): NpAgentJsonObject {
 }
 
 function resolvedPrincipal(
-  authentication: NpAgentAuthenticatedServicePrincipalV1,
+  authentication: NpAgentCapabilityAuthenticationV1,
 ): NpAgentResolvedGatewayPrincipalV1 {
+  if (isOauthAuthentication(authentication)) {
+    const authority = authentication.principal.authority;
+    if (authority.kind !== "user" || authority.userId === null) {
+      throw new NpAgentGatewayError(
+        "PRINCIPAL_AUTHORITY_UNAVAILABLE",
+        403,
+        "Principal authority is unavailable.",
+      );
+    }
+    return {
+      kind: "oauth-user",
+      principalId: authentication.principal.id,
+      siteId: authentication.principal.siteId,
+      authority: { kind: "user", userId: authority.userId },
+      credentialId: authentication.grantId,
+      gatewayExposureCeiling: authentication.authorizationContext.gatewayExposure!,
+      scopes: authentication.scopes,
+    };
+  }
   const authority = authentication.principal.authority;
   if (authority.kind === "user") {
     if (authority.userId === null) {
@@ -107,19 +138,21 @@ function resolvedPrincipal(
 }
 
 function transportSettingsKey(
-  transport: NpAgentAuthenticatedServicePrincipalV1["authorizationContext"]["transport"],
+  transport: NpAgentCapabilityAuthenticationV1["authorizationContext"]["transport"],
 ): "stdio" | "mcpHttp" | "agentHttp" {
   if (transport === "stdio") return "stdio";
   if (transport === "mcp-service") return "mcpHttp";
+  if (transport === "mcp-oauth") return "mcpHttp";
   if (transport === "agent-api") return "agentHttp";
   throw new NpAgentGatewayError("TRANSPORT_UNAVAILABLE", 404, "Capability is unavailable.");
 }
 
 function descriptorTransport(
-  transport: NpAgentAuthenticatedServicePrincipalV1["authorizationContext"]["transport"],
+  transport: NpAgentCapabilityAuthenticationV1["authorizationContext"]["transport"],
 ): "stdio" | "mcp-http" | "agent-http" {
   if (transport === "stdio") return "stdio";
   if (transport === "mcp-service") return "mcp-http";
+  if (transport === "mcp-oauth") return "mcp-http";
   if (transport === "agent-api") return "agent-http";
   throw new NpAgentGatewayError("TRANSPORT_UNAVAILABLE", 404, "Capability is unavailable.");
 }
@@ -289,6 +322,163 @@ async function assertCurrentServiceAuthority(
   }
 }
 
+async function assertCurrentOauthAuthority(
+  tx: Db,
+  authentication: NpAgentAuthenticatedOauthPrincipalV1,
+  requiredScopes: readonly NpAgentScope[],
+  now: Date,
+): Promise<void> {
+  const authorityRef = authentication.authorizationContext.authorityRef;
+  const projectedAuthority = authentication.principal.authority;
+  if (authorityRef.kind !== "oauth-grant") {
+    throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
+  }
+  // Keep the lock order deterministic across every OAuth authority recheck.
+  const [principal] = await tx
+    .select()
+    .from(npAgentPrincipals)
+    .where(
+      and(
+        eq(npAgentPrincipals.siteId, authentication.principal.siteId),
+        eq(npAgentPrincipals.id, authentication.principal.id),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  const [grant] = await tx
+    .select()
+    .from(npAgentOauthGrants)
+    .where(
+      and(
+        eq(npAgentOauthGrants.siteId, authentication.principal.siteId),
+        eq(npAgentOauthGrants.id, authentication.grantId),
+        eq(npAgentOauthGrants.principalId, authentication.principal.id),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  const [client] = await tx
+    .select()
+    .from(npAgentOauthClients)
+    .where(
+      and(
+        eq(npAgentOauthClients.siteId, authentication.principal.siteId),
+        eq(npAgentOauthClients.id, authentication.client.id),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  if (
+    !principal ||
+    !grant ||
+    !client ||
+    principal.status !== "active" ||
+    principal.authorityKind !== "user" ||
+    principal.authorityUserId === null ||
+    principal.authorityUserId !== grant.staffUserId ||
+    projectedAuthority.kind !== "user" ||
+    principal.authorityUserId !== projectedAuthority.userId ||
+    principal.authorityFingerprint !== projectedAuthority.fingerprint ||
+    principal.tokenVersion !== authorityRef.principalTokenVersion ||
+    principal.tokenVersion !== authentication.principal.tokenVersion ||
+    grant.status !== "active" ||
+    grant.expiresAt <= now ||
+    grant.clientId !== client.id ||
+    grant.authorityVersion !== authorityRef.grantVersion ||
+    grant.exposureMode !== authorityRef.exposureMode ||
+    grant.audience !== authorityRef.audience ||
+    grant.scopes.length !== authentication.scopes.length ||
+    grant.scopes.some((scope, index) => scope !== authentication.scopes[index]) ||
+    grant.scopes.some((scope) => !principal.scopes.includes(scope)) ||
+    client.status !== "active" ||
+    client.clientId !== authorityRef.clientId ||
+    client.clientId !== authentication.client.clientId ||
+    client.rowVersion !== authentication.client.rowVersion
+  ) {
+    throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
+  }
+  const expectedAuthorizationContext = npRequireAgentAuthorizationContextCanonical({
+    schemaVersion: "np.agent-authorization-context.v1",
+    siteId: principal.siteId,
+    actor: {
+      kind: "principal",
+      principalId: principal.id,
+      actorFingerprint: digest("np.agent-principal-actor.v1", {
+        siteId: principal.siteId,
+        principalId: principal.id,
+      }),
+    },
+    transport: "mcp-oauth",
+    gatewayExposure: grant.exposureMode,
+    authorityRef: {
+      kind: "oauth-grant",
+      principalId: principal.id,
+      clientId: client.clientId,
+      grantId: grant.id,
+      grantVersion: grant.authorityVersion,
+      principalTokenVersion: principal.tokenVersion,
+      exposureMode: grant.exposureMode,
+      audience: grant.audience,
+    },
+  });
+  if (
+    serializeAgentCanonicalJson(expectedAuthorizationContext) !==
+      serializeAgentCanonicalJson(authentication.authorizationContext) ||
+    (await npDigestAgentAuthorizationContextCanonical(expectedAuthorizationContext)) !==
+      authentication.authorizationContextFingerprint
+  ) {
+    throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
+  }
+  const [user] = await tx
+    .select({
+      id: npUsers.id,
+      email: npUsers.email,
+      name: npUsers.name,
+      role: npUsers.role,
+      tokenVersion: npUsers.tokenVersion,
+      isSuperAdmin: npUsers.isSuperAdmin,
+    })
+    .from(npUsers)
+    .where(eq(npUsers.id, principal.authorityUserId))
+    .for("update")
+    .limit(1);
+  const [membership] = await tx
+    .select({ role: npSiteMemberships.role })
+    .from(npSiteMemberships)
+    .where(
+      and(
+        eq(npSiteMemberships.siteId, principal.siteId),
+        eq(npSiteMemberships.userId, principal.authorityUserId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  const effectiveRole = user
+    ? user.isSuperAdmin
+      ? "admin"
+      : (membership?.role ?? (principal.siteId === NP_DEFAULT_SITE_ID ? user.role : null))
+    : null;
+  const effectiveUser = user && effectiveRole ? { ...user, role: effectiveRole } : null;
+  if (
+    !effectiveUser ||
+    requiredScopes.some((scope) => !can(effectiveUser, npAgentScopeStaffCapability[scope]))
+  ) {
+    throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
+  }
+}
+
+async function assertCurrentAuthentication(
+  tx: Db,
+  authentication: NpAgentCapabilityAuthenticationV1,
+  requiredScopes: readonly NpAgentScope[],
+  now: Date,
+): Promise<void> {
+  if (isOauthAuthentication(authentication)) {
+    return assertCurrentOauthAuthority(tx, authentication, requiredScopes, now);
+  }
+  return assertCurrentServiceAuthority(tx, authentication, requiredScopes, now);
+}
+
 export function createAgentCapabilityAdmissionServiceV1(
   options: NpAgentCapabilityAdmissionOptionsV1,
 ) {
@@ -303,8 +493,37 @@ export function createAgentCapabilityAdmissionServiceV1(
   }
 
   return {
+    async project(input: { authentication: NpAgentCapabilityAuthenticationV1 }) {
+      const authentication = input.authentication;
+      const principal = resolvedPrincipal(authentication);
+      const settings = npRequireAgentGatewaySettings(
+        await options.resolveGatewaySettings(principal.siteId),
+      );
+      const settingsKey = transportSettingsKey(authentication.authorizationContext.transport);
+      if (settings[settingsKey] === "disabled") {
+        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+      }
+      await getDb().transaction(async (rawTx) => {
+        await assertCurrentAuthentication(rawTx, authentication, authentication.scopes, nowFn());
+      });
+      const transport = descriptorTransport(authentication.authorizationContext.transport);
+      return {
+        principal,
+        settings,
+        registryFingerprint: options.registry.registryFingerprint,
+        entries: options.registry.ids
+          .map((id) => options.registry.get(id))
+          .filter(
+            (entry) =>
+              entry.definition.descriptor.gateway?.transports.includes(transport) === true &&
+              entry.definition.descriptor.requiredScopes.every((scope) =>
+                authentication.scopes.includes(scope),
+              ),
+          ),
+      };
+    },
     async invoke<C extends NpAgentReadCapabilityIdV1>(input: {
-      authentication: NpAgentAuthenticatedServicePrincipalV1;
+      authentication: NpAgentCapabilityAuthenticationV1;
       request: NpAgentReadCapabilityInvocationRequestV1 & { capabilityId: C };
       abortSignal?: AbortSignal;
     }): Promise<NpAgentReadCapabilityInvocationResultV1<C>> {
@@ -397,7 +616,7 @@ export function createAgentCapabilityAdmissionServiceV1(
       await db.transaction(
         async (rawTx) => {
           const tx = rawTx as Db;
-          await assertCurrentServiceAuthority(tx, authentication, requiredScopes, now);
+          await assertCurrentAuthentication(tx, authentication, requiredScopes, now);
           const [audit] = await tx
             .insert(npAuditEvents)
             .values({
@@ -437,7 +656,10 @@ export function createAgentCapabilityAdmissionServiceV1(
             effectContractVersion: 1,
             transport: authentication.authorizationContext.transport,
             mcpExecutionMode:
-              authentication.authorizationContext.transport === "mcp-service" ? "normal" : null,
+              authentication.authorizationContext.transport === "mcp-service" ||
+              authentication.authorizationContext.transport === "mcp-oauth"
+                ? "normal"
+                : null,
             idempotencyKey: null,
             requestBody,
             requestHash,

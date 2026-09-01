@@ -303,7 +303,7 @@ MCP port.
 | AP-209 | Add Admin Activity views for principals, runs, actions, and revocation                                                                                                                                                                                     |
 | AP-210 | Add the four machine Agent HTTP routes, full-origin `agent-http` audience-bound authentication, shared invocation/artifact facades, OpenAPI projection, and thin scaffold wrappers                                                                         |
 
-AP-201 through AP-205 are implemented as the transport-neutral read kernel and
+AP-201 through AP-206 are implemented as the transport-neutral read kernel and
 port-free local and same-origin remote transports.
 Core now owns the locked three-definition registry and fingerprints, derived
 draft-read scope, exact bounded site/schema/content projections, and one common
@@ -316,17 +316,23 @@ and verify its critical constraints. AP-204 adds the dedicated `@nexpress/mcp`
 stdio process on the maintained v1 SDK, authenticates the environment-only
 `npst1` credential before reading stdin, derives the site from its persisted
 token row, caps complete inbound and outbound frames at 5 MiB, and reuses the
-host's explicit bootstrap/shutdown lifecycle. The transport honestly advertises
-no capabilities until AP-206. AP-205 adds the optional same-origin stateless
+host's explicit bootstrap/shutdown lifecycle. AP-205 adds the optional same-origin stateless
 Streamable HTTP route, built-in public-client OAuth 2.1 Authorization Server,
 durable one-time consent/code and rotating refresh families, exact ES256
 access-token/JWKS validation, service-token alternative, Agent Studio client
 registration, migration 0036 client row-version CAS, and thin reference and
 scaffold wrappers. Disabled or incomplete deployment/site/runtime/origin/key
-intent returns one deliberate `404`. AP-206 still owns bounded
-resources/prompts/tools, protocol tasks, and durable task/run dispatch; AP-205
-adds no provider call, worker, dedicated port, relay, seed, automatic runtime
-factory, or package-version change.
+intent returns one deliberate `404`. AP-206 now projects the effective
+`site.inspect` and `content.query` tools and bounded site/capability/schema
+resources from the same admission service, with descriptor-derived schemas and
+annotations, authorization-bound cursors, SDK response validation, and safe
+protocol errors. The current reads remain inline and reject task augmentation.
+An optional host-injected task service adds exact task ids, TTL/poll/rate and
+active caps, immutable canonical terminal results, authorization-bound task
+operations, expiry reconciliation, Doctor/deletion coverage, and migration 0037. Prompts and task negotiation remain absent unless their actual future
+capabilities/runtime are installed. AP-206 adds no provider call, scheduled
+worker, dedicated port, relay, seed, automatic runtime factory, or
+package-version change.
 
 Through R4, capability policy evaluation uses the immutable framework hard
 rules plus the exact disabled-by-default deployment/site feature settings.

@@ -15,6 +15,7 @@ const expectedTables = [
   "np_agent_connection_secret_versions",
   "np_agent_connections",
   "np_agent_invocations",
+  "np_agent_mcp_tasks",
   "np_agent_oauth_clients",
   "np_agent_oauth_codes",
   "np_agent_oauth_grants",
@@ -57,15 +58,28 @@ describe("Agent site deletion foundation", () => {
         "00000000-0000-4000-8000-000000000002",
         "00000000-0000-4000-8000-000000000001",
       ]),
-    ).toThrow("canonical sorted UUIDs");
+    ).toThrow("canonical sorted identities");
     expect(() =>
       npBuildAgentSiteDeletionRowIdentityDigest("np_agent_principals", [
         "00000000-0000-4000-8000-000000000001",
         "00000000-0000-4000-8000-000000000001",
       ]),
-    ).toThrow("canonical sorted UUIDs");
+    ).toThrow("canonical sorted identities");
     expect(() =>
       npBuildAgentSiteDeletionRowIdentityDigest("np_agent_principals", ["NOT-A-UUID"]),
-    ).toThrow("canonical sorted UUIDs");
+    ).toThrow("canonical sorted identities");
+  });
+
+  it("accepts only canonical UUIDv7-prefixed MCP task identities", () => {
+    expect(
+      npBuildAgentSiteDeletionRowIdentityDigest("np_agent_mcp_tasks", [
+        "npt1_018f0f30-cd7b-7cc2-8b16-8c052c259bd2",
+      ]),
+    ).toMatch(/^sdri1:sha256:/u);
+    expect(() =>
+      npBuildAgentSiteDeletionRowIdentityDigest("np_agent_mcp_tasks", [
+        "018f0f30-cd7b-7cc2-8b16-8c052c259bd2",
+      ]),
+    ).toThrow("canonical sorted identities");
   });
 });

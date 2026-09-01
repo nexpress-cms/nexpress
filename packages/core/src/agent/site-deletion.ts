@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { and, asc, eq, gt, sql } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
+import { npAgentMcpTaskIdPatternV1 } from "../agent-contract/mcp-task-contract.js";
 import type { NpAgentSiteDeletionRowInventoryCanonicalV1 } from "../agent-contract/types.js";
 import { npAuthUuidPattern } from "../auth-contract/contract.js";
 import type { getDb } from "../db/runtime.js";
@@ -14,6 +15,7 @@ import {
   npAgentConnections,
   npAgentActions,
   npAgentInvocations,
+  npAgentMcpTasks,
   npAgentOauthClients,
   npAgentOauthCodes,
   npAgentOauthGrants,
@@ -71,6 +73,11 @@ const descriptors = {
     table: npAgentInvocations,
     id: npAgentInvocations.id,
     siteId: npAgentInvocations.siteId,
+  },
+  np_agent_mcp_tasks: {
+    table: npAgentMcpTasks,
+    id: npAgentMcpTasks.id,
+    siteId: npAgentMcpTasks.siteId,
   },
   np_agent_oauth_clients: {
     table: npAgentOauthClients,
@@ -136,6 +143,7 @@ export const npAgentSiteOwnedTableNamesV1 = Object.freeze(
  * from the frozen inventory and is handled only by the future saga commit.
  */
 export const npAgentSiteDeletionOrderV1 = Object.freeze([
+  "np_agent_mcp_tasks",
   "np_agent_actions",
   "np_agent_runs",
   "np_agent_vault_entries",
@@ -193,8 +201,12 @@ function appendRowIdentity(
   id: string,
   previous: string | null,
 ): string {
-  if (!uuidPattern.test(id) || (previous !== null && id <= previous)) {
-    throw new Error(`Agent site-deletion ids for ${tableName} must be canonical sorted UUIDs.`);
+  const validIdentity =
+    tableName === "np_agent_mcp_tasks" ? npAgentMcpTaskIdPatternV1.test(id) : uuidPattern.test(id);
+  if (!validIdentity || (previous !== null && id <= previous)) {
+    throw new Error(
+      `Agent site-deletion ids for ${tableName} must be canonical sorted identities.`,
+    );
   }
   const bytes = encoder.encode(id);
   hash.update(u32be(bytes.byteLength));
@@ -279,6 +291,14 @@ export async function npCountAgentSiteRows(db: NpAgentDb, siteId: string): Promi
 }
 
 export async function npDeleteAgentSiteRows(db: NpAgentDb, siteId: string): Promise<void> {
+  const [workingTask] = await db
+    .select({ id: npAgentMcpTasks.id })
+    .from(npAgentMcpTasks)
+    .where(and(eq(npAgentMcpTasks.siteId, siteId), eq(npAgentMcpTasks.status, "working")))
+    .limit(1);
+  if (workingTask) {
+    throw new Error("Agent site deletion requires every MCP task to be terminal.");
+  }
   for (const tableName of npAgentSiteDeletionOrderV1) {
     const item = descriptor(tableName);
     await db.delete(item.table).where(eq(item.siteId as never, siteId));

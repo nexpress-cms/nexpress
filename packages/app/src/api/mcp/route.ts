@@ -1,3 +1,4 @@
+import { getOptionalAgentStudioServerRuntimeV1 } from "@nexpress/core/agents";
 import { requireSiteId } from "@nexpress/core/sites";
 import { handleAgentMcpHttpV1 } from "@nexpress/mcp/http";
 import type { NextRequest } from "next/server";
@@ -12,6 +13,8 @@ import { ensureFor } from "../../lib/init-core";
 async function handle(request: NextRequest) {
   await ensureFor("read");
   const siteId = await requireSiteId();
+  const mcp = getOptionalAgentStudioServerRuntimeV1()?.mcp;
+  if (!mcp) return agentOauthNotFound();
   const surface = await getAgentOauthSurface(siteId);
   if (!surface) return agentOauthNotFound();
   let requestUrl: URL;
@@ -72,7 +75,9 @@ async function handle(request: NextRequest) {
   return handleAgentMcpHttpV1({
     request,
     canonicalOrigin: surface.origin,
-    authentication,
+    authentication:
+      authentication.kind === "service" ? authentication.authentication : authentication,
+    projection: mcp,
   });
 }
 

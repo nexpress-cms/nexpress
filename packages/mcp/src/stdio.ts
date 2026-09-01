@@ -9,6 +9,7 @@ import {
   NP_AGENT_MCP_MAX_FRAME_BYTES_V1,
   type NpConfigureAgentMcpServerV1,
 } from "./server.js";
+import type { NpAgentMcpProjectionProviderV1 } from "./projection.js";
 
 export const NP_AGENT_MCP_STDIO_AUDIENCE_V1 = "urn:nexpress:agent-gateway:stdio" as const;
 export const NP_AGENT_MCP_STDIO_CREDENTIAL_ENV_V1 = "NP_AGENT_SERVICE_TOKEN" as const;
@@ -44,6 +45,7 @@ export interface NpAgentMcpStdioHostV1<TAuthentication> {
     audience: typeof NP_AGENT_MCP_STDIO_AUDIENCE_V1;
   }) => Promise<TAuthentication>;
   configureServer?: NpConfigureAgentMcpServerV1<TAuthentication>;
+  projection?: NpAgentMcpProjectionProviderV1<TAuthentication>;
   shutdown: () => Promise<void>;
 }
 
@@ -160,6 +162,7 @@ export async function startAgentMcpStdioV1<TAuthentication>(
   try {
     server = await createAgentMcpServerV1({
       authentication,
+      projection: options.host.projection,
       configure: options.host.configureServer,
     });
   } catch {

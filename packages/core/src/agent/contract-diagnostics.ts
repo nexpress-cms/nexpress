@@ -23,6 +23,7 @@ const AGENT_TABLES = [
   "np_agent_connection_secret_versions",
   "np_agent_connections",
   "np_agent_invocations",
+  "np_agent_mcp_tasks",
   "np_agent_oauth_clients",
   "np_agent_oauth_codes",
   "np_agent_oauth_grants",
@@ -73,6 +74,13 @@ const AGENT_CONSTRAINTS = [
   "np_agent_invocations_principal_fk",
   "np_agent_invocations_state_check",
   "np_agent_invocations_state_time_check",
+  "np_agent_mcp_tasks_invocation_fk",
+  "np_agent_mcp_tasks_principal_fk",
+  "np_agent_mcp_tasks_result_check",
+  "np_agent_mcp_tasks_run_fk",
+  "np_agent_mcp_tasks_status_check",
+  "np_agent_mcp_tasks_time_check",
+  "np_agent_mcp_tasks_ttl_check",
   "np_agent_oauth_clients_status_check",
   "np_agent_oauth_clients_version_check",
   "np_agent_oauth_codes_client_fk",
@@ -155,6 +163,7 @@ const STATE_SUMMARY_SQL = `
     union all select 'connection', status, created_at from public.np_agent_connections
     union all select 'connection-config', state, created_at from public.np_agent_connection_config_versions
     union all select 'invocation', state, requested_at from public.np_agent_invocations
+    union all select 'mcp-task', status, created_at from public.np_agent_mcp_tasks
     union all select 'connection-auth-request', status, created_at from public.np_agent_connection_auth_requests
     union all select 'connection-operation', state, created_at from public.np_agent_connection_operations
     union all select 'connection-secret', status, created_at from public.np_agent_connection_secret_versions
@@ -198,6 +207,8 @@ const ISSUE_SUMMARY_SQL = `
      where state not in ('candidate', 'active', 'retired', 'rejected')
     union all select 'AGENT_ROW_STATE_INVALID', requested_at from public.np_agent_invocations
      where state not in ('started', 'accepted', 'approval_required', 'completed', 'failed')
+    union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_mcp_tasks
+     where status not in ('working', 'completed', 'failed', 'cancelled')
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_connection_auth_requests
      where status not in ('pending', 'consumed', 'denied', 'failed', 'expired', 'revoked')
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_connection_operations
@@ -300,6 +311,22 @@ const ISSUE_SUMMARY_SQL = `
           or (entry.destroyed_at is null) <> (sec.status <> 'destroyed')
 
     union all
+      select 'AGENT_MCP_TASK_DIVERGED', task.created_at
+        from public.np_agent_mcp_tasks task
+        left join public.np_agent_invocations invocation on invocation.id = task.invocation_id
+       where invocation.id is null or invocation.site_id <> task.site_id
+          or invocation.principal_id <> task.principal_id
+          or invocation.authorization_context_fingerprint <> task.authorization_context_fingerprint
+          or invocation.authorization_context_body <> task.authorization_context_body
+          or invocation.authority_ref <> task.authority_ref
+          or invocation.mcp_execution_mode <> 'task'
+          or invocation.mcp_requested_task_ttl_ms is distinct from
+             coalesce(task.requested_ttl_ms, 3600000)
+          or task.ttl_ms > coalesce(task.requested_ttl_ms, 3600000)
+          or ((task.status = 'working') <> (task.terminal_result is null))
+          or ((task.status = 'cancelled') <> (task.cancelled_at is not null))
+
+    union all
       select 'AGENT_RELATION_ORPHANED', edge.occurred_at from (
         select a.created_at as occurred_at from public.np_agent_actions a
           left join public.np_agent_invocations i on i.id = a.invocation_id
@@ -336,6 +363,15 @@ const ISSUE_SUMMARY_SQL = `
         union all select entry.created_at from public.np_agent_vault_entries entry
           left join public.np_agent_connection_secret_versions sec on sec.id = entry.secret_version_id
           where sec.id is null
+        union all select task.created_at from public.np_agent_mcp_tasks task
+          left join public.np_agent_invocations invocation on invocation.id = task.invocation_id
+          where invocation.id is null
+        union all select task.created_at from public.np_agent_mcp_tasks task
+          left join public.np_agent_principals principal on principal.id = task.principal_id
+          where principal.id is null
+        union all select task.created_at from public.np_agent_mcp_tasks task
+          left join public.np_agent_runs run on run.id = task.run_id
+          where task.run_id is not null and run.id is null
       ) edge
 
     union all
@@ -367,6 +403,15 @@ const ISSUE_SUMMARY_SQL = `
         union all select entry.created_at from public.np_agent_vault_entries entry
           join public.np_agent_connection_secret_versions sec on sec.id = entry.secret_version_id
           where sec.site_id <> entry.site_id
+        union all select task.created_at from public.np_agent_mcp_tasks task
+          join public.np_agent_invocations invocation on invocation.id = task.invocation_id
+          where invocation.site_id <> task.site_id
+        union all select task.created_at from public.np_agent_mcp_tasks task
+          join public.np_agent_principals principal on principal.id = task.principal_id
+          where principal.site_id <> task.site_id
+        union all select task.created_at from public.np_agent_mcp_tasks task
+          join public.np_agent_runs run on run.id = task.run_id
+          where run.site_id <> task.site_id
       ) edge
 
     union all select 'AGENT_EXPIRY_BACKLOG', created_at from public.np_agent_service_tokens
@@ -386,6 +431,11 @@ const ISSUE_SUMMARY_SQL = `
 
     union all select 'AGENT_STALE_INVOCATION', requested_at from public.np_agent_invocations
       where state in ('started', 'accepted', 'approval_required') and expires_at <= $1::timestamptz
+    union all select 'AGENT_STALE_MCP_TASK', created_at from public.np_agent_mcp_tasks
+      where status = 'working' and expires_at <= $1::timestamptz
+    union all select 'AGENT_MCP_TASK_DIVERGED', created_at from public.np_agent_mcp_tasks
+      where status <> 'working' and
+        (terminal_result is null or terminal_result_digest is null or last_updated_at > expires_at)
     union all select 'AGENT_STALE_CONNECTION_OPERATION', created_at
       from public.np_agent_connection_operations
      where (state = 'awaiting_secret' and created_at <= $1::timestamptz - interval '10 minutes')

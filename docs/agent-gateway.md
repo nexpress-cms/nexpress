@@ -21,9 +21,11 @@ following:
 
 1. `agents.gateway.stdio` is explicitly enabled in `nexpress.config.ts` for
    both the deployment and selected site.
-2. The server host constructs `createAgentGatewayServiceV1(...)`, installs it
-   through `createAgentStudioServerRuntimeV1({ gateway })`, and passes that
-   runtime to `createBootstrap({ agentStudioRuntime })`. Token HMAC keys and
+2. The server host constructs `createAgentGatewayServiceV1(...)`, the shared
+   `createAgentCapabilityAdmissionServiceV1(...)`, and
+   `createAgentMcpGatewayV1({ admission, cursorKey })`; installs them through
+   `createAgentStudioServerRuntimeV1({ gateway, mcp })`; and passes that runtime
+   to `createBootstrap({ agentStudioRuntime })`. Token and cursor HMAC keys and
    other server-only material stay in this host seam; NexPress does not invent
    them from client-safe config.
 3. An operator creates an external principal and a `stdio` service credential
@@ -42,8 +44,8 @@ Remote MCP additionally requires the host to:
 2. configure one canonical HTTPS site origin, never a separate port or relay;
 3. construct `createAgentOauthServiceV1(...)` with the existing Gateway,
    dedicated token-HMAC keys, and a dedicated ES256 P-256 signing key ring;
-4. install both services with
-   `createAgentStudioServerRuntimeV1({ gateway, oauth })`;
+4. install the services and shared projection with
+   `createAgentStudioServerRuntimeV1({ gateway, oauth, mcp })`;
 5. pre-register each public client and its exact HTTPS or explicit loopback
    HTTP redirect URIs in Agent Studio.
 
@@ -118,9 +120,31 @@ the same deliberate `404`.
 
 ## Current protocol surface
 
-AP-204 and AP-205 are the transport and authentication slices. They advertise
-an honest empty capability object today. AP-206 will project the bounded tools,
-resources, prompts, and negotiated durable tasks through the existing shared
-capability admission service. Local execution never bypasses live principal,
-staff authority, scope, exposure, policy, audit, idempotency, approval, or
-quota checks.
+The authenticated AP-206 projection advertises only capabilities that survive
+the deployment, site, credential, exposure, scope, live staff authority, and
+shared admission intersection:
+
+- `inspect_site` maps to `site.inspect`;
+- `query_content` maps to `content.query`;
+- bounded resources expose the site summary, effective capability catalog,
+  schema catalog, block schema, and collection-schema template.
+
+Tool schemas, descriptions, and read/idempotency/destructive annotations come
+from the locked capability descriptors. List cursors are HMAC-bound to the
+authorization context, every provider response is checked against the official
+SDK result schema, and internal failures are reduced to bounded protocol
+errors. No caller-supplied site selector is accepted.
+
+The current three read capabilities are strictly inline. Their tools advertise
+`taskSupport: forbidden`; when task support is negotiated, task-augmented calls
+fail instead of inventing a run. With task support disabled, the task capability
+is omitted and augmentation cannot switch a normal call into task mode. Prompts
+remain unadvertised because their required future capabilities are not
+installed. A host may inject `createAgentMcpTaskServiceV1(...)` into the MCP
+projection for durable future descriptors; only then are task list/result/
+cancel capabilities negotiated. Durable tasks use authorization-bound opaque
+pagination, exact 1 minute–24 hour TTL bounds, bounded poll intervals and active
+counts, immutable canonical terminal results, and expiry reconciliation.
+
+Local and remote execution never bypass live principal, staff authority,
+scope, exposure, policy, audit, idempotency, approval, or quota checks.

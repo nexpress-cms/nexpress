@@ -6,6 +6,7 @@ export * from "./canonical-authorization-context.js";
 export * from "./canonical-budget-snapshot.js";
 export * from "./canonical-idempotency-request.js";
 export * from "./canonical-mcp-task-result.js";
+export * from "./mcp-task-contract.js";
 export * from "./canonical-capability-registry.js";
 export * from "./canonical-recipe-registry.js";
 export * from "./canonical-restriction.js";

@@ -22,6 +22,7 @@ import type {
   NpAgentActionTargetVersionFactV1,
   NpAgentConnectionConfigCanonicalV1,
   NpAgentInvocationRequestCanonicalV1,
+  NpAgentMcpStoredTerminalResultV1,
   NpAgentJsonObject,
   NpAgentRunLimitsV1,
   NpAgentScope,
@@ -1162,6 +1163,100 @@ export const npAgentActions = pgTable(
       "np_agent_actions_terminal_check",
       sql`((${table.state} in ('policy_blocked', 'succeeded', 'failed', 'compensated')) = (${table.finishedAt} is not null)) and
         ((${table.state} in ('policy_blocked', 'failed')) = (${table.errorCode} is not null))`,
+    ),
+  ],
+);
+
+/** Durable MCP 2025-11-25 task projection of one admitted invocation. */
+export const npAgentMcpTasks = pgTable(
+  "np_agent_mcp_tasks",
+  {
+    id: text("id").primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    invocationId: uuid("invocation_id").notNull(),
+    runId: uuid("run_id"),
+    principalId: uuid("principal_id").notNull(),
+    authorizationContextBody: jsonb("authorization_context_body")
+      .$type<NpAgentAuthorizationContextCanonicalV1>()
+      .notNull(),
+    authorizationContextFingerprint: text("authorization_context_fingerprint").notNull(),
+    authorityRef: jsonb("authority_ref").$type<Record<string, unknown>>().notNull(),
+    status: text("status").notNull(),
+    requestedTtlMs: bigint("requested_ttl_ms", { mode: "number" }),
+    ttlMs: bigint("ttl_ms", { mode: "number" }).notNull(),
+    pollIntervalMs: integer("poll_interval_ms").notNull(),
+    terminalResult: jsonb("terminal_result").$type<NpAgentMcpStoredTerminalResultV1>(),
+    terminalResultDigest: text("terminal_result_digest"),
+    safeStatusCode: text("safe_status_code"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    lastUpdatedAt: timestamp("last_updated_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => [
+    unique("np_agent_mcp_tasks_site_id_id_unique").on(table.siteId, table.id),
+    unique("np_agent_mcp_tasks_invocation_unique").on(table.invocationId),
+    index("np_agent_mcp_tasks_site_status_idx").on(table.siteId, table.status, table.expiresAt),
+    index("np_agent_mcp_tasks_authorization_idx").on(
+      table.siteId,
+      table.principalId,
+      table.authorizationContextFingerprint,
+      table.createdAt,
+    ),
+    foreignKey({
+      name: "np_agent_mcp_tasks_invocation_fk",
+      columns: [table.siteId, table.invocationId],
+      foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_mcp_tasks_run_fk",
+      columns: [table.siteId, table.runId],
+      foreignColumns: [npAgentRuns.siteId, npAgentRuns.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_mcp_tasks_principal_fk",
+      columns: [table.siteId, table.principalId],
+      foreignColumns: [npAgentPrincipals.siteId, npAgentPrincipals.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_mcp_tasks_id_check",
+      sql`${table.id} ~ '^npt1_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'`,
+    ),
+    check(
+      "np_agent_mcp_tasks_status_check",
+      sql`${table.status} in ('working', 'completed', 'failed', 'cancelled')`,
+    ),
+    check(
+      "np_agent_mcp_tasks_ttl_check",
+      sql`${table.ttlMs} between 60000 and 86400000 and
+        (${table.requestedTtlMs} is null or ${table.requestedTtlMs} between 60000 and 86400000) and
+        ${table.ttlMs} <= coalesce(${table.requestedTtlMs}, 3600000) and
+        ${table.pollIntervalMs} between 1000 and 10000`,
+    ),
+    check(
+      "np_agent_mcp_tasks_result_check",
+      sql`(
+        ${table.status} = 'working' and ${table.terminalResult} is null and
+          ${table.terminalResultDigest} is null and ${table.safeStatusCode} is null and
+          ${table.cancelledAt} is null
+      ) or (
+        ${table.status} in ('completed', 'failed') and ${table.terminalResult} is not null and
+          ${table.terminalResultDigest} is not null and ${table.cancelledAt} is null
+      ) or (
+        ${table.status} = 'cancelled' and ${table.terminalResult} is not null and
+          ${table.terminalResultDigest} is not null and ${table.safeStatusCode} is not null and
+          ${table.cancelledAt} is not null
+      )`,
+    ),
+    check(
+      "np_agent_mcp_tasks_time_check",
+      sql`${table.lastUpdatedAt} >= ${table.createdAt} and
+        ${table.lastUpdatedAt} <= ${table.expiresAt} and
+        ${table.expiresAt} = ${table.createdAt} + (${table.ttlMs}::text || ' milliseconds')::interval`,
     ),
   ],
 );

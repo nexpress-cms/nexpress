@@ -3,8 +3,10 @@ import { type Readable, type Writable } from "node:stream";
 
 import {
   requireAgentStudioGatewayRuntimeV1,
+  requireAgentStudioMcpRuntimeV1,
   type NpAgentAuthenticatedServicePrincipalV1,
   type NpAgentGatewayServiceV1,
+  type NpAgentMcpGatewayV1,
 } from "@nexpress/core/agents";
 import {
   NpAgentMcpStdioError,
@@ -30,6 +32,7 @@ export interface NpRunAgentMcpStdioProcessOptionsV1 {
   ensureFor: (intent: "read") => Promise<void>;
   shutdown: () => Promise<void>;
   resolveGateway?: () => GatewayAuthenticator;
+  resolveMcp?: () => NpAgentMcpGatewayV1;
   env?: Readonly<Record<string, string | undefined>>;
   input?: Readable;
   output?: Writable;
@@ -49,6 +52,7 @@ export async function runAgentMcpStdioProcessV1(
 ): Promise<void> {
   const resolveGateway =
     options.resolveGateway ?? (() => requireAgentStudioGatewayRuntimeV1().gateway);
+  const resolveMcp = options.resolveMcp ?? (() => requireAgentStudioMcpRuntimeV1().mcp);
   await runAgentMcpStdioV1<NpAgentAuthenticatedServicePrincipalV1>({
     env: options.env,
     input: options.input,
@@ -63,6 +67,11 @@ export async function runAgentMcpStdioProcessV1(
       ensureFor: options.ensureFor,
       authenticateStdioServiceToken: ({ credential }) =>
         resolveGateway().authenticateStdioServiceToken({ credential }),
+      get projection() {
+        // Core bootstrap is established by ensureFor() before the transport
+        // reads this host-injected projection.
+        return resolveMcp();
+      },
       shutdown: options.shutdown,
     },
   });

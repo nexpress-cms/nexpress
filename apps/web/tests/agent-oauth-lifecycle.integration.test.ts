@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
   createSite,
   grantSiteMembership,
+  npAgentInvocations,
   npAgentOauthCodes,
   npAgentOauthRefreshTokens,
   npSessions,
@@ -14,8 +15,11 @@ import {
 
 // eslint-disable-next-line import-x/no-relative-packages
 import {
+  createAgentCapabilityAdmissionServiceV1,
   createAgentGatewayServiceV1,
   createAgentOauthServiceV1,
+  createAgentReadCapabilityRegistryV1,
+  type NpAgentReadCapabilityExecutorsV1,
 } from "../../../packages/core/src/agent/index.js";
 import {
   closeTestDb,
@@ -35,6 +39,37 @@ const gatewaySettings = {
   mcpHttp: "approved-execute" as const,
   agentHttp: "disabled" as const,
 };
+const schemaDigest = "cj1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+function executors(): NpAgentReadCapabilityExecutorsV1 {
+  return {
+    "site.inspect": async () => ({
+      schemaVersion: "np.agent-site-inspect.v1",
+      site: { id: siteId, name: "Agent OAuth", defaultLocale: "en", locales: ["en"] },
+      features: { remoteMcp: true, agentHttp: false, runtime: "ready" },
+      counts: { collections: 0, blocks: 0, activePlugins: 0 },
+      resourceUris: [],
+    }),
+    "schema.get": async (input) => ({
+      schemaVersion: "np.agent-schema-resource.v1",
+      selector: input,
+      digest: schemaDigest,
+      schema: {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        type: "object",
+        additionalProperties: false,
+        properties: {},
+        required: [],
+      },
+    }),
+    "content.query": async (input) => ({
+      schemaVersion: "np.agent-content-query.v1",
+      collection: input.collection,
+      items: [],
+      nextCursor: null,
+    }),
+  };
+}
 
 function decodeJwtPart(token: string, index: 0 | 1): Record<string, unknown> {
   const part = token.split(".")[index];
@@ -219,9 +254,11 @@ describe.skipIf(skipIfNoTestDb())("Agent Gateway OAuth authorization lifecycle",
         resource,
       }),
     ).rejects.toMatchObject({ code: "invalid_grant" });
-    await expect(
-      oauth.authenticateRemoteBearer({ siteId, authorization: `Bearer ${tokens.access_token}` }),
-    ).resolves.toMatchObject({
+    const remoteAuthentication = await oauth.authenticateRemoteBearer({
+      siteId,
+      authorization: `Bearer ${tokens.access_token}`,
+    });
+    expect(remoteAuthentication).toMatchObject({
       kind: "oauth",
       scopes: ["content:read", "site:read"],
       authorizationContext: {
@@ -229,6 +266,37 @@ describe.skipIf(skipIfNoTestDb())("Agent Gateway OAuth authorization lifecycle",
         authorityRef: { kind: "oauth-grant", clientId, grantVersion: 1 },
       },
     });
+    const registry = await createAgentReadCapabilityRegistryV1(executors());
+    const admission = createAgentCapabilityAdmissionServiceV1({
+      registry,
+      resolveGatewaySettings: () => gatewaySettings,
+    });
+    expect(
+      (await admission.project({ authentication: remoteAuthentication })).entries.map(
+        (entry) => entry.definition.descriptor.id,
+      ),
+    ).toEqual(["content.query", "site.inspect"]);
+    await expect(
+      admission.invoke({
+        authentication: remoteAuthentication,
+        request: {
+          schemaVersion: "np.agent-invocation-request.v1",
+          capabilityId: "site.inspect",
+          arguments: { input: {}, idempotencyKey: null },
+        },
+      }),
+    ).resolves.toMatchObject({ capabilityId: "site.inspect" });
+    await expect(
+      db
+        .select({
+          transport: npAgentInvocations.transport,
+          mode: npAgentInvocations.mcpExecutionMode,
+        })
+        .from(npAgentInvocations)
+        .where(
+          and(eq(npAgentInvocations.siteId, siteId), eq(npAgentInvocations.transport, "mcp-oauth")),
+        ),
+    ).resolves.toEqual([{ transport: "mcp-oauth", mode: "normal" }]);
     const claims = decodeJwtPart(tokens.access_token, 1);
     const futureIssuedAt = Math.floor(Date.now() / 1_000) + 3_600;
     await expect(
