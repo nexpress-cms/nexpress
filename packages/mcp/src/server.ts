@@ -1,6 +1,11 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 
+import {
+  configureAgentMcpProjectionV1,
+  type NpAgentMcpProjectionProviderV1,
+} from "./projection.js";
+
 /**
  * NexPress deliberately stays on the MCP revision frozen by the R2 design.
  * The v1 SDK currently names this as its latest protocol revision. Moving to
@@ -24,6 +29,7 @@ export type NpConfigureAgentMcpServerV1<TAuthentication> = (
 
 export async function createAgentMcpServerV1<TAuthentication>(input: {
   authentication: TAuthentication;
+  projection?: NpAgentMcpProjectionProviderV1<TAuthentication>;
   configure?: NpConfigureAgentMcpServerV1<TAuthentication>;
 }): Promise<Server> {
   const sdkProtocolVersion: string = LATEST_PROTOCOL_VERSION;
@@ -33,12 +39,16 @@ export async function createAgentMcpServerV1<TAuthentication>(input: {
   const server = new Server(
     { name: "nexpress-agent-gateway", version: "1" },
     {
-      // AP-206 owns the exact tools/resources/prompts/tasks projection. AP-204
-      // starts with an honest transport-only capability set and exposes one
-      // pre-connect configure seam for that later projection.
       capabilities: {},
     },
   );
+  if (input.projection) {
+    await configureAgentMcpProjectionV1({
+      server,
+      authentication: input.authentication,
+      provider: input.projection,
+    });
+  }
   await input.configure?.(server, {
     protocolVersion: NP_AGENT_MCP_PROTOCOL_VERSION_V1,
     authentication: input.authentication,

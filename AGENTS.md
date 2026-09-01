@@ -2,7 +2,26 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-09-01 (The remote R2 transport slice now owns one
+**Last refreshed:** 2026-09-01 (The R2 protocol-projection slice now exposes
+only the effective `site.inspect` and `content.query` tools plus bounded
+site/capability/schema resources through the existing deployment, site,
+credential, scope, exposure, live-authority, and admission intersection.
+Schemas and annotations are descriptor-derived, cursors are authorization-bound
+HMAC values, every SDK result is validated, and unknown failures collapse to
+safe MCP errors. The present three read capabilities remain strictly inline,
+so negotiated task augmentation is rejected and no run is invented. An optional
+host-injected durable task service adds UUIDv7 task ids, exact TTL/poll/rate and
+active caps, immutable canonical terminal results, authorization-bound
+get/list/result/cancel, expiry reconciliation, diagnostics, and deletion
+ordering. Migration 0037 adds the 19-column MCP task projection and its exact
+same-site constraints. Empty prompts and disabled task negotiation remain
+honest until their dependent future capabilities/runtime are installed.
+Reference and generated wrappers reuse the shared projection while keeping it
+absent and all transports disabled by default. AP-206 adds no provider call,
+scheduled worker, dedicated port, relay, seed, automatic runtime factory, or
+package-version change.)
+
+**Earlier:** 2026-09-01 (The remote R2 transport slice now owns one
 optional same-origin, stateless JSON-response Streamable HTTP endpoint at the
 canonical `/api/mcp` resource without a dedicated port, listener, relay, or
 cookie authority. Deployment, site, runtime, canonical HTTPS origin, and

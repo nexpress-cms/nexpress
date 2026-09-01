@@ -11,6 +11,7 @@ import type { NpAgentConnectionAdminServiceV1 } from "./connection-admin-service
 import type { NpAgentConnectionServiceV1 } from "./connection-service.js";
 import type { NpAgentGatewayServiceV1 } from "./gateway-service.js";
 import type { NpAgentOauthServiceV1 } from "./oauth-service.js";
+import type { NpAgentMcpGatewayV1 } from "./mcp-gateway.js";
 import type { NpAgentConnectionAuthAdapterRegistryV1 } from "./provider-auth-contract.js";
 import { NpServiceUnavailableError } from "../errors.js";
 
@@ -19,6 +20,7 @@ export interface NpAgentStudioServerRuntimeV1 {
   connectionAdmin: NpAgentConnectionAdminServiceV1 | null;
   gateway: NpAgentGatewayServiceV1 | null;
   oauth: NpAgentOauthServiceV1 | null;
+  mcp: NpAgentMcpGatewayV1 | null;
   adapters: readonly NpAgentStudioAdapterV1[];
   resolveGatewaySettings: (siteId: string) => Promise<NpAgentGatewaySettingsV1>;
 }
@@ -28,6 +30,7 @@ export interface NpAgentStudioServerRuntimeOptionsV1 {
   connectionAdmin?: NpAgentConnectionAdminServiceV1;
   gateway?: NpAgentGatewayServiceV1;
   oauth?: NpAgentOauthServiceV1;
+  mcp?: NpAgentMcpGatewayV1;
   providerRegistry?: NpAgentConnectionAuthAdapterRegistryV1;
 }
 
@@ -60,12 +63,16 @@ export function createAgentStudioServerRuntimeV1(
   if (options.oauth !== undefined && options.gateway === undefined) {
     throw new Error("Agent OAuth runtime requires the Agent Gateway service.");
   }
+  if (options.mcp !== undefined && options.gateway === undefined) {
+    throw new Error("Agent MCP runtime requires the Agent Gateway service.");
+  }
   const adapters = Object.freeze((options.providerRegistry?.list() ?? []).map(adapterProjection));
   return Object.freeze({
     connections: options.connections ?? null,
     connectionAdmin: options.connectionAdmin ?? null,
     gateway: options.gateway ?? null,
     oauth: options.oauth ?? null,
+    mcp: options.mcp ?? null,
     adapters,
     resolveGatewaySettings: async (siteId: string) =>
       npRequireAgentGatewaySettings(
@@ -144,5 +151,19 @@ export function requireAgentStudioOauthRuntimeV1(): NpAgentStudioServerRuntimeV1
   return runtime as NpAgentStudioServerRuntimeV1 & {
     gateway: NpAgentGatewayServiceV1;
     oauth: NpAgentOauthServiceV1;
+  };
+}
+
+export function requireAgentStudioMcpRuntimeV1(): NpAgentStudioServerRuntimeV1 & {
+  gateway: NpAgentGatewayServiceV1;
+  mcp: NpAgentMcpGatewayV1;
+} {
+  const runtime = installedRuntime;
+  if (!runtime?.gateway || !runtime.mcp) {
+    throw new NpServiceUnavailableError("Agent Studio MCP runtime is unavailable.");
+  }
+  return runtime as NpAgentStudioServerRuntimeV1 & {
+    gateway: NpAgentGatewayServiceV1;
+    mcp: NpAgentMcpGatewayV1;
   };
 }

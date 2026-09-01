@@ -6,6 +6,7 @@ import {
   NP_AGENT_MCP_PROTOCOL_VERSION_V1,
   type NpConfigureAgentMcpServerV1,
 } from "./server.js";
+import type { NpAgentMcpProjectionProviderV1 } from "./projection.js";
 
 export type NpAgentMcpHttpIssueCodeV1 =
   | "MCP_HTTP_CONFIGURATION_FAILED"
@@ -23,6 +24,7 @@ export interface NpAgentMcpHttpOptionsV1<TAuthentication> {
   request: Request;
   canonicalOrigin: string;
   authentication: TAuthentication;
+  projection?: NpAgentMcpProjectionProviderV1<TAuthentication>;
   configureServer?: NpConfigureAgentMcpServerV1<TAuthentication>;
   report?: (event: NpAgentMcpHttpEventV1) => void;
 }
@@ -221,6 +223,7 @@ export async function handleAgentMcpHttpV1<TAuthentication>(
   try {
     server = await createAgentMcpServerV1({
       authentication: options.authentication,
+      projection: options.projection,
       configure: options.configureServer,
     });
   } catch {

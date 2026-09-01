@@ -196,6 +196,37 @@ describe.skipIf(skipIfNoTestDb())("Agent persistence and site deletion foundatio
     expect(result.rows.map((row) => row.conname)).toEqual(expected);
   });
 
+  it("installs the durable MCP task authority, lifecycle, and bounded TTL constraints", async () => {
+    const db = await getTestDb();
+    const expected = [
+      "np_agent_mcp_tasks_invocation_fk",
+      "np_agent_mcp_tasks_principal_fk",
+      "np_agent_mcp_tasks_result_check",
+      "np_agent_mcp_tasks_run_fk",
+      "np_agent_mcp_tasks_status_check",
+      "np_agent_mcp_tasks_time_check",
+      "np_agent_mcp_tasks_ttl_check",
+    ];
+    const result = await db.execute<{ conname: string; definition: string }>(sql`
+      select conname, pg_get_constraintdef(oid) as definition
+        from pg_constraint
+       where conname in (
+         'np_agent_mcp_tasks_invocation_fk',
+         'np_agent_mcp_tasks_principal_fk',
+         'np_agent_mcp_tasks_result_check',
+         'np_agent_mcp_tasks_run_fk',
+         'np_agent_mcp_tasks_status_check',
+         'np_agent_mcp_tasks_time_check',
+         'np_agent_mcp_tasks_ttl_check'
+       )
+       order by conname
+    `);
+    expect(result.rows.map((row) => row.conname)).toEqual(expected);
+    expect(
+      result.rows.find((row) => row.conname === "np_agent_mcp_tasks_ttl_check")?.definition,
+    ).toContain("COALESCE(requested_ttl_ms, (3600000)::bigint)");
+  });
+
   it("fails closed on malformed authority and cross-site token references", async () => {
     const db = await getTestDb();
     await createSite({ id: "agent-a", name: "Agent A" });
@@ -227,7 +258,7 @@ describe.skipIf(skipIfNoTestDb())("Agent persistence and site deletion foundatio
     await seedPendingNotificationConnection("agent-a");
 
     const inventory = await npInspectAgentSiteDeletionRows(db, "agent-a");
-    expect(inventory).toHaveLength(17);
+    expect(inventory).toHaveLength(18);
     expect(inventory.map((row) => row.table)).toEqual(
       [...inventory.map((row) => row.table)].sort(),
     );
@@ -284,7 +315,7 @@ describe.skipIf(skipIfNoTestDb())("Agent persistence and site deletion foundatio
       requesterFingerprint: "staff:test",
     });
 
-    expect(await npInspectAgentSiteDeletionRows(db, "agent-saga")).toHaveLength(17);
+    expect(await npInspectAgentSiteDeletionRows(db, "agent-saga")).toHaveLength(18);
     await expect(deleteSite("agent-saga", { cascade: true })).rejects.toMatchObject({
       errors: [
         {
