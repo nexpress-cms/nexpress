@@ -63,7 +63,7 @@
     "@radix-ui/react-tooltip": "^1.2.16",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "lucide-react": "^1.33.0",
+    "lucide-react": "^1.35.0",
     "react-hook-form": "^7.85.0",
     "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3"
