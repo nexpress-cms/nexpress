@@ -1,0 +1,2 @@
+ALTER TABLE "np_agent_oauth_clients" ADD COLUMN "row_version" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE "np_agent_oauth_clients" ADD CONSTRAINT "np_agent_oauth_clients_version_check" CHECK ("np_agent_oauth_clients"."row_version" > 0);

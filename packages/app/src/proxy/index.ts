@@ -116,6 +116,9 @@ const CSRF_SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
  *     authentication. The CRUD + actions endpoints are NOT in
  *     this list — they go through the standard CSRF check.
  *   - `/api/openapi.json`: read-only, but listed for clarity.
+ *   - `/api/mcp` and Agent OAuth token/revoke: header/opaque-token
+ *     authenticated machine endpoints. They never accept browser cookies as
+ *     authority. The authorize POST deliberately remains CSRF-protected.
  */
 const CSRF_EXEMPT_PATTERNS: readonly RegExp[] = [
   /^\/api\/auth\/(login|logout|register|forgot-password|reset-password|verify|refresh)$/,
@@ -123,6 +126,8 @@ const CSRF_EXEMPT_PATTERNS: readonly RegExp[] = [
   /^\/api\/admin\/setup$/,
   /^\/api\/newsletter$/,
   /^\/api\/views$/,
+  /^\/api\/mcp$/,
+  /^\/api\/agent-oauth\/(token|revoke)$/,
   /^\/api\/internal\//,
   // plugins/<id>/<segment>/... where <segment> != "actions" — the
   // catch-all proxy. plugins/<id> (CRUD) and plugins/<id>/actions/<id>
@@ -135,6 +140,8 @@ function isCsrfExempt(pathname: string): boolean {
 }
 
 const RATE_LIMITS: Array<{ pattern: RegExp; limit: number; windowMs: number }> = [
+  { pattern: /^\/api\/mcp$/, limit: 120, windowMs: 60_000 },
+  { pattern: /^\/api\/agent-oauth\/(authorize|token|revoke)$/, limit: 30, windowMs: 60_000 },
   { pattern: /^\/api\/auth\//, limit: 10, windowMs: 60_000 },
   { pattern: /^\/api\/media\/upload/, limit: 20, windowMs: 60_000 },
   { pattern: /^\/api\/import/, limit: 5, windowMs: 60_000 },

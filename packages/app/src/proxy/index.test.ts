@@ -161,6 +161,34 @@ describe("shared application proxy rate limiting", () => {
     expect(check).toHaveBeenCalledWith(expect.any(String), 120, 60_000);
   });
 
+  it("exempts only MCP token endpoints while keeping OAuth consent CSRF-protected", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "memory");
+    const { proxyModule } = await loadModules();
+    const check = vi.fn().mockResolvedValue({ limited: false, retryAfterSeconds: 60 });
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: { kind: "memory", check },
+    });
+
+    for (const path of ["/api/mcp", "/api/agent-oauth/token", "/api/agent-oauth/revoke"]) {
+      const response = await handler(
+        new NextRequest(`http://localhost${path}`, {
+          method: "POST",
+          headers: { "x-forwarded-for": "203.0.113.8" },
+        }),
+      );
+      expect(response.status, path).toBe(200);
+    }
+
+    const consent = await handler(
+      new NextRequest("http://localhost/api/agent-oauth/authorize", {
+        method: "POST",
+        headers: { "x-forwarded-for": "203.0.113.8" },
+      }),
+    );
+    expect(consent.status).toBe(403);
+    expect(check).toHaveBeenCalledWith(expect.any(String), 30, 60_000);
+  });
+
   it("bounds community SSE connection starts without blocking read access", async () => {
     vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "memory");
     const { proxyModule } = await loadModules();

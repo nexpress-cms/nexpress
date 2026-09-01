@@ -5,13 +5,20 @@ import Link from "next/link";
 import { ArrowRight, Cable, KeyRound, Plus, RefreshCw, Shield } from "lucide-react";
 import {
   npAgentScopes,
+  npRequireAgentOauthClientV1,
   npRequireAgentPrincipalV1,
+  type NpAgentOauthClientTransportV1,
+  type NpAgentOauthClientV1,
   type NpAgentScope,
   type NpAgentStudioOverviewV1,
 } from "@nexpress/core/agent-contract";
 
 import { AgentStudioFrame, type AgentStudioSection } from "./agent-studio-frame.js";
-import { loadAgentStudioOverview, responseError } from "./agent-studio-api.js";
+import {
+  loadAgentOauthClients,
+  loadAgentStudioOverview,
+  responseError,
+} from "./agent-studio-api.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -216,6 +223,7 @@ function ConnectionsContent({
             Site-scoped authority for external MCP, Agent HTTP, or local stdio clients.
           </p>
         </div>
+        <OauthClientsPanel disabled={overview.runtime.gateway.state !== "ready"} />
         <PrincipalCreateForm
           disabled={overview.runtime.gateway.state !== "ready"}
           onCreated={onChanged}
@@ -243,6 +251,216 @@ function ConnectionsContent({
         )}
       </TabsContent>
     </Tabs>
+  );
+}
+
+function OauthClientsPanel({ disabled }: { disabled: boolean }) {
+  const [clients, setClients] = React.useState<NpAgentOauthClientV1[]>([]);
+  const [name, setName] = React.useState("");
+  const [redirects, setRedirects] = React.useState("http://127.0.0.1:3000/callback");
+  const [transports, setTransports] = React.useState<NpAgentOauthClientTransportV1[]>(["mcp-http"]);
+  const [open, setOpen] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+
+  const reload = React.useCallback(async () => {
+    try {
+      setClients(await loadAgentOauthClients());
+      setError(null);
+    } catch (caught) {
+      setClients([]);
+      setError(caught instanceof Error ? caught.message : "Could not load OAuth clients.");
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (disabled) return;
+    const timer = window.setTimeout(() => void reload(), 0);
+    return () => window.clearTimeout(timer);
+  }, [disabled, reload]);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const redirectUris = [
+        ...new Set(
+          redirects
+            .split("\n")
+            .map((value) => value.trim())
+            .filter(Boolean),
+        ),
+      ].sort();
+      const response = await npFetch("/api/admin/agents/gateway/oauth-clients", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          idempotencyKey: crypto.randomUUID(),
+          name,
+          redirectUris,
+          transports: [...transports].sort(),
+        }),
+      });
+      if (!response.ok) throw await responseError(response);
+      npRequireAgentOauthClientV1(await response.json());
+      setName("");
+      setOpen(false);
+      await reload();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not register OAuth client.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revoke = async (client: NpAgentOauthClientV1) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await npFetch(
+        `/api/admin/agents/gateway/oauth-clients/${encodeURIComponent(client.id)}/revoke`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            idempotencyKey: crypto.randomUUID(),
+            expectedVersion: client.rowVersion,
+            reason: "Revoked from Agent Studio",
+          }),
+        },
+      );
+      if (!response.ok) throw await responseError(response);
+      npRequireAgentOauthClientV1(await response.json());
+      await reload();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not revoke OAuth client.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between gap-3">
+        <div>
+          <CardTitle className="text-[14px]">Registered public OAuth clients</CardTitle>
+          <p className="mt-1 text-[12px] text-neutral-500">
+            Exact redirect URIs only. Client secrets are never issued.
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={disabled || busy}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <Plus className="size-3.5" /> Register client
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {error ? (
+          <p role="alert" className="text-[12px] text-red-700 dark:text-red-300">
+            {error}
+          </p>
+        ) : null}
+        {open ? (
+          <form
+            className="space-y-3 rounded-lg border p-3"
+            onSubmit={(event) => void submit(event)}
+          >
+            <div className="grid gap-2">
+              <Label htmlFor="oauth-name">Client name</Label>
+              <Input
+                id="oauth-name"
+                required
+                maxLength={120}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="oauth-redirects">Redirect URIs, one per line</Label>
+              <Textarea
+                id="oauth-redirects"
+                required
+                value={redirects}
+                onChange={(event) => setRedirects(event.target.value)}
+              />
+            </div>
+            <fieldset className="space-y-2">
+              <legend className="text-[12.5px] font-medium">Transports</legend>
+              {(["agent-http", "mcp-http"] as const).map((transport) => (
+                <label
+                  key={transport}
+                  className="mr-4 inline-flex items-center gap-2 text-[12.5px]"
+                >
+                  <input
+                    type="checkbox"
+                    checked={transports.includes(transport)}
+                    onChange={(event) =>
+                      setTransports((current) =>
+                        event.target.checked
+                          ? [...new Set([...current, transport])].sort()
+                          : current.filter((value) => value !== transport),
+                      )
+                    }
+                  />
+                  {transport}
+                </label>
+              ))}
+            </fieldset>
+            <Button type="submit" size="sm" disabled={busy || transports.length === 0}>
+              Register public client
+            </Button>
+          </form>
+        ) : null}
+        {clients.length === 0 ? (
+          <Empty>No registered OAuth clients for this site.</Empty>
+        ) : (
+          clients.map((client) => (
+            <div
+              key={client.id}
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2.5"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-[13px] font-medium">{client.name}</p>
+                <p className="truncate font-mono text-[11px] text-neutral-500">{client.clientId}</p>
+                <p className="text-[11px] text-neutral-500">
+                  {client.transports.join(", ")} · {client.redirectUris.length.toString()} redirect
+                  URI(s)
+                </p>
+                <ul className="mt-1 space-y-0.5">
+                  {client.redirectUris.map((redirectUri) => (
+                    <li
+                      key={redirectUri}
+                      className="break-all font-mono text-[10.5px] text-neutral-500"
+                    >
+                      {redirectUri}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant={stateTone(client.status)}>{client.status}</Badge>
+                {client.status === "active" ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void revoke(client)}
+                  >
+                    Revoke
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ))
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

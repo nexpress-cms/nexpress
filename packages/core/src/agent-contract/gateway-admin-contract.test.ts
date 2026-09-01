@@ -12,6 +12,8 @@ const IDEMPOTENCY_KEY = "gateway-admin:principal:1";
 describe("Agent Gateway Admin input contract v1", () => {
   it("owns the exact AP-104 operation set and shared token limits", () => {
     expect(npAgentGatewayAdminOperationIdsV1).toEqual([
+      "agents.gateway.oauth_clients.create",
+      "agents.gateway.oauth_clients.revoke",
       "agents.gateway.principals.create",
       "agents.gateway.principals.update",
       "agents.gateway.principal_tokens.create",
@@ -27,6 +29,30 @@ describe("Agent Gateway Admin input contract v1", () => {
       rotationOverlapDefaultSeconds: 900,
       rotationOverlapMaxSeconds: 3_600,
     });
+  });
+
+  it("validates exact registered public OAuth client inputs", () => {
+    const create = {
+      idempotencyKey: "gateway-admin:oauth-client:1",
+      name: "Desktop MCP",
+      redirectUris: ["http://127.0.0.1:43110/callback", "https://client.example/callback"],
+      transports: ["agent-http", "mcp-http"],
+    };
+    expect(
+      npRequireAgentGatewayAdminInputV1("agents.gateway.oauth_clients.create", create),
+    ).toEqual(create);
+    expect(
+      npAnalyzeAgentGatewayAdminInputV1("agents.gateway.oauth_clients.create", {
+        ...create,
+        redirectUris: ["https://client.example/callback", "http://127.0.0.1:43110/callback"],
+      }),
+    ).toMatchObject({ ok: false, issues: [{ path: expect.stringContaining("redirectUris") }] });
+    expect(
+      npAnalyzeAgentGatewayAdminInputV1("agents.gateway.oauth_clients.create", {
+        ...create,
+        redirectUris: ["http://attacker.example/callback"],
+      }),
+    ).toMatchObject({ ok: false, issues: [{ path: expect.stringContaining("redirectUris") }] });
   });
 
   it("validates principal creation and update as separate exact bodies", () => {

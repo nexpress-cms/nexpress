@@ -21,6 +21,18 @@ export async function requireAgentStudioAdmin(request: NextRequest) {
   };
 }
 
+export async function requireAgentOauthStaff(request: NextRequest) {
+  const user = await requireAuth(request);
+  const token = request.cookies.get("np-session")?.value;
+  if (!token) throw new NpAuthError();
+  const payload = await verifyToken(token, getAuthRuntimeConfig().secret, "access");
+  if (payload.sub !== user.id) throw new NpAuthError();
+  return {
+    siteId: await requireSiteId(),
+    actor: { user, sessionId: payload.sid },
+  };
+}
+
 /** Convert only stable Agent provider failures; opaque schema/provider bodies never reach HTTP. */
 export function normalizeAgentStudioError(error: unknown): Error {
   if (error instanceof NpError) return error;

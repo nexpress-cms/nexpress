@@ -236,6 +236,7 @@ export const npAgentOauthClients = pgTable(
     metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
     registrationSource: text("registration_source").notNull(),
     status: text("status").notNull(),
+    rowVersion: integer("row_version").default(1).notNull(),
     createdByUserId: uuid("created_by_user_id").references(() => npUsers.id, {
       onDelete: "set null",
     }),
@@ -248,6 +249,7 @@ export const npAgentOauthClients = pgTable(
     unique("np_agent_oauth_clients_site_client_id_unique").on(table.siteId, table.clientId),
     index("np_agent_oauth_clients_site_status_idx").on(table.siteId, table.status),
     check("np_agent_oauth_clients_status_check", sql`${table.status} in ('active', 'revoked')`),
+    check("np_agent_oauth_clients_version_check", sql`${table.rowVersion} > 0`),
     check(
       "np_agent_oauth_clients_source_check",
       sql`${table.registrationSource} in ('admin', 'dynamic')`,

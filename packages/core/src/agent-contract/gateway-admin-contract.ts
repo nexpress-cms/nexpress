@@ -1,5 +1,6 @@
 import {
   analyzeCanonicalBody,
+  canonicalBodyArray,
   canonicalBodyEnum,
   canonicalBodyInteger,
   canonicalBodyRecord,
@@ -20,6 +21,8 @@ import type {
 } from "./types.js";
 
 export const npAgentGatewayAdminOperationIdsV1 = [
+  "agents.gateway.oauth_clients.create",
+  "agents.gateway.oauth_clients.revoke",
   "agents.gateway.principals.create",
   "agents.gateway.principals.update",
   "agents.gateway.principal_tokens.create",
@@ -34,6 +37,9 @@ export type NpAgentGatewayAdminOperationIdV1 = (typeof npAgentGatewayAdminOperat
 
 export const npAgentServiceTokenTransportsV1 = ["stdio", "mcp-http", "agent-http"] as const;
 export type NpAgentServiceTokenTransportV1 = (typeof npAgentServiceTokenTransportsV1)[number];
+
+export const npAgentOauthClientTransportsV1 = ["agent-http", "mcp-http"] as const;
+export type NpAgentOauthClientTransportV1 = (typeof npAgentOauthClientTransportsV1)[number];
 
 export const npAgentServiceTokenLimits = {
   productionMaxLifetimeSeconds: 90 * 24 * 60 * 60,
@@ -54,6 +60,12 @@ export interface NpAgentPrincipalCreateAdminInputV1 extends NpAgentAdminIdempote
   name: string;
   description: string | null;
   scopes: NpAgentScope[];
+}
+
+export interface NpAgentOauthClientCreateAdminInputV1 extends NpAgentAdminIdempotentInputV1 {
+  name: string;
+  redirectUris: string[];
+  transports: NpAgentOauthClientTransportV1[];
 }
 
 export interface NpAgentPrincipalUpdateAdminInputV1 extends NpAgentAdminVersionedInputV1 {
@@ -79,6 +91,7 @@ export interface NpAgentReasonAdminInputV1 extends NpAgentAdminVersionedInputV1 
 }
 
 export type NpAgentGatewayAdminInputV1 =
+  | NpAgentOauthClientCreateAdminInputV1
   | NpAgentPrincipalCreateAdminInputV1
   | NpAgentPrincipalUpdateAdminInputV1
   | NpAgentServiceTokenCreateAdminInputV1
@@ -87,6 +100,8 @@ export type NpAgentGatewayAdminInputV1 =
   | NpAgentAdminVersionedInputV1;
 
 export interface NpAgentGatewayAdminInputMapV1 {
+  "agents.gateway.oauth_clients.create": NpAgentOauthClientCreateAdminInputV1;
+  "agents.gateway.oauth_clients.revoke": NpAgentReasonAdminInputV1;
   "agents.gateway.principals.create": NpAgentPrincipalCreateAdminInputV1;
   "agents.gateway.principals.update": NpAgentPrincipalUpdateAdminInputV1;
   "agents.gateway.principal_tokens.create": NpAgentServiceTokenCreateAdminInputV1;
@@ -99,6 +114,7 @@ export interface NpAgentGatewayAdminInputMapV1 {
 
 const OPERATION_IDS = new Set<string>(npAgentGatewayAdminOperationIdsV1);
 const TRANSPORTS = new Set<string>(npAgentServiceTokenTransportsV1);
+const OAUTH_CLIENT_TRANSPORTS = new Set<string>(npAgentOauthClientTransportsV1);
 const EXPOSURES = new Set<string>(["read", "propose", "approved-execute"]);
 const SIGNED_32_BIT_MAXIMUM = 2_147_483_647;
 
@@ -159,6 +175,86 @@ function parseReason(record: Record<string, unknown>, path: string): string {
   });
 }
 
+export function npCanonicalAgentOauthRedirectUriV1(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const parsed = new URL(value);
+    const loopback =
+      parsed.protocol === "http:" &&
+      (parsed.hostname === "127.0.0.1" ||
+        parsed.hostname === "[::1]" ||
+        parsed.hostname === "localhost");
+    if (
+      (parsed.protocol !== "https:" && !loopback) ||
+      parsed.username ||
+      parsed.password ||
+      parsed.hash ||
+      parsed.href !== value
+    ) {
+      return null;
+    }
+    return value;
+  } catch {
+    return null;
+  }
+}
+
+function parseRedirectUris(
+  record: Record<string, unknown>,
+  path: string,
+  state: CanonicalBodyInspectionState,
+): string[] {
+  const values = canonicalBodyArray(record.redirectUris, `${path}.redirectUris`, 16, state);
+  if (values.length === 0) {
+    failCanonicalBody("invalid-field", `${path}.redirectUris`, "must contain at least one URI");
+  }
+  const redirects = values.map((value, index) => {
+    const candidate = canonicalRuntimeText(value, `${path}.redirectUris[${index}]`, 2_048, {
+      requireTrimmed: true,
+    });
+    if (!npCanonicalAgentOauthRedirectUriV1(candidate)) {
+      failCanonicalBody(
+        "invalid-field",
+        `${path}.redirectUris[${index}]`,
+        "must be canonical HTTPS or an explicit loopback HTTP URI without userinfo or fragment",
+      );
+    }
+    return candidate;
+  });
+  if (
+    new Set(redirects).size !== redirects.length ||
+    redirects.some((value, index) => index > 0 && redirects[index - 1] >= value)
+  ) {
+    failCanonicalBody("invalid-field", `${path}.redirectUris`, "must be sorted and unique");
+  }
+  return redirects;
+}
+
+function parseOauthClientTransports(
+  record: Record<string, unknown>,
+  path: string,
+  state: CanonicalBodyInspectionState,
+): NpAgentOauthClientTransportV1[] {
+  const values = canonicalBodyArray(record.transports, `${path}.transports`, 2, state);
+  if (values.length === 0) {
+    failCanonicalBody("invalid-field", `${path}.transports`, "must contain at least one transport");
+  }
+  const transports = values.map((value, index) =>
+    canonicalBodyEnum<NpAgentOauthClientTransportV1>(
+      value,
+      `${path}.transports[${index}]`,
+      OAUTH_CLIENT_TRANSPORTS,
+    ),
+  );
+  if (
+    new Set(transports).size !== transports.length ||
+    transports.some((value, index) => index > 0 && transports[index - 1] >= value)
+  ) {
+    failCanonicalBody("invalid-field", `${path}.transports`, "must be sorted and unique");
+  }
+  return transports;
+}
+
 function parseGatewayAdminInput(
   operationId: NpAgentGatewayAdminOperationIdV1,
   value: unknown,
@@ -166,6 +262,20 @@ function parseGatewayAdminInput(
   const path = `agent.gatewayAdmin.${operationId}`;
   const state: CanonicalBodyInspectionState = { seen: new WeakSet<object>() };
   switch (operationId) {
+    case "agents.gateway.oauth_clients.create": {
+      const record = parseCommon(
+        value,
+        path,
+        ["idempotencyKey", "name", "redirectUris", "transports"],
+        state,
+      );
+      return {
+        idempotencyKey: parseIdempotency(record, path),
+        name: parseName(record, path),
+        redirectUris: parseRedirectUris(record, path, state),
+        transports: parseOauthClientTransports(record, path, state),
+      };
+    }
     case "agents.gateway.principals.create": {
       const record = parseCommon(
         value,
@@ -246,6 +356,7 @@ function parseGatewayAdminInput(
         ),
       };
     }
+    case "agents.gateway.oauth_clients.revoke":
     case "agents.gateway.principal_tokens.revoke":
     case "agents.gateway.principals.suspend":
     case "agents.gateway.principals.revoke": {

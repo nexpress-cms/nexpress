@@ -3,10 +3,11 @@
 Port-free Model Context Protocol transports for the
 [NexPress](https://github.com/nexpress-cms/nexpress) Agent Gateway.
 
-The first transport uses stdin/stdout and the maintained official TypeScript
-SDK v1 release `1.30.0`. It negotiates MCP `2025-11-25`, opens no TCP listener,
-authenticates an exposure-bound `npst1` service credential before reading
-input, and limits both inbound and outbound protocol frames to 5 MiB.
+The package uses the maintained official TypeScript SDK v1 release `1.30.0`
+and negotiates the frozen MCP `2025-11-25` revision. It provides local
+stdin/stdout and same-origin Streamable HTTP adapters without opening a TCP
+listener of its own. Both transports authenticate before protocol dispatch and
+limit complete inbound and outbound frames to 5 MiB.
 
 ## Install
 
@@ -29,8 +30,18 @@ one-time service credential to the child process through
 site selector. Keep credentials out of project files, command-line flags,
 checked-in `.env` files, logs, and shell history.
 
-AP-204 intentionally advertises no tools, resources, prompts, or tasks. The
-bounded capability projection is owned by the later AP-206 slice.
+Remote MCP reuses the application's canonical HTTPS origin at `/api/mcp`; it
+does not use a dedicated MCP port. It remains a deliberate `404`, along with
+OAuth discovery, until the host installs both the Gateway and OAuth services,
+provides a dedicated P-256 ES256 signing-key ring plus token-HMAC key ring, and
+enables `agents.gateway.mcpHttp`. Interactive clients use the built-in
+Authorization Code + PKCE S256 flow. Public clients and exact redirect URIs
+must be registered in Agent Studio; no client secret or dynamic client
+registration is supported. Unattended clients may instead use an exact
+`mcp-http` service credential.
+
+AP-205 intentionally advertises no tools, resources, prompts, or tasks. The
+bounded capability projection is owned by AP-206.
 
 See the [Agent Gateway guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/agent-gateway.md)
 for host wiring, credential handling, lifecycle, and compatibility details.
