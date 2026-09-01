@@ -44,7 +44,7 @@
     "@types/pg": "^8.23.1",
     "@types/prompts": "^2.4.9",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.4",
+    "@types/react-dom": "^19.2.5",
     "dotenv": "^17.2.4",
     "drizzle-orm": "^0.45.2",
     "next": "^16.3.1",
