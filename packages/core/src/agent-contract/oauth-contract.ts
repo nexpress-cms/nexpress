@@ -69,6 +69,7 @@ export interface NpAgentOauthAuthorizationServerMetadataV1 {
   response_types_supported: ["code"];
   grant_types_supported: ["authorization_code", "refresh_token"];
   code_challenge_methods_supported: ["S256"];
+  authorization_response_iss_parameter_supported: true;
   token_endpoint_auth_methods_supported: ["none"];
   revocation_endpoint_auth_methods_supported: ["none"];
   scopes_supported: typeof npAgentScopes;
@@ -136,6 +137,7 @@ export function npAgentOauthAuthorizationServerMetadataV1(
       "refresh_token",
     ],
     code_challenge_methods_supported: ["S256"] as ["S256"],
+    authorization_response_iss_parameter_supported: true,
     token_endpoint_auth_methods_supported: ["none"] as ["none"],
     revocation_endpoint_auth_methods_supported: ["none"] as ["none"],
     scopes_supported: npAgentScopes,

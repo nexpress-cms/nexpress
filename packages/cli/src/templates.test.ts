@@ -100,6 +100,19 @@ describe("getProjectFiles", () => {
     expect(pkg.dependencies["@nexpress/mcp"]).toBeDefined();
   });
 
+  it("documents the reviewed Codex and Claude connection flow without pre-authorizing clients", () => {
+    const files = textFiles(getProjectFiles(baseConfig));
+    const guide = files["docs/ops.md"];
+    expect(guide).toContain("nexpress agent connect --client codex --transport stdio");
+    expect(guide).toContain("nexpress agent connect --client claude --transport stdio --apply");
+    expect(guide).toContain("--client-id <public-client-id> --apply");
+    expect(guide).toMatch(/Plugins cannot\s+add Agent Gateway capability ids/u);
+    expect(files[".codex/config.toml"]).toBeUndefined();
+    expect(files[".mcp.json"]).toBeUndefined();
+    expect(files[".agents/skills/nexpress-agent-gateway/SKILL.md"]).toBeUndefined();
+    expect(files[".claude/skills/nexpress-agent-gateway/SKILL.md"]).toBeUndefined();
+  });
+
   it("emits the admin login + setup route files (now as @nexpress/app wrappers)", () => {
     const files = textFiles(getProjectFiles(baseConfig));
     expect(files["src/app/(admin)/admin/login/page.tsx"]).toBeDefined();

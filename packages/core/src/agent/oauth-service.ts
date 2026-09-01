@@ -758,6 +758,7 @@ export function createAgentOauthServiceV1(options: NpAgentOauthServiceOptionsV1)
           if (!denied) throw oauthFailure("invalid_request");
           return appendRedirect(request.redirectUri, {
             error: "access_denied",
+            iss: new URL(request.resource).origin,
             state: request.clientState,
           });
         }
@@ -931,6 +932,7 @@ export function createAgentOauthServiceV1(options: NpAgentOauthServiceOptionsV1)
         });
         return appendRedirect(request.redirectUri, {
           code: code.value,
+          iss: new URL(request.resource).origin,
           state: request.clientState,
         });
       },

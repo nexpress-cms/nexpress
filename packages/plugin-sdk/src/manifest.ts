@@ -17,6 +17,13 @@ const npPluginVersionSchema = z
 export const NP_PLUGIN_MANIFEST_API_VERSION = "1" as const;
 
 export const npPluginManifestSchema = z.object({
+  agentCapabilities: z.never().optional(),
+  agentCapabilityIds: z.never().optional(),
+  agentScopes: z.never().optional(),
+  mcpTools: z.never().optional(),
+  mcpResources: z.never().optional(),
+  mcpResourceTemplates: z.never().optional(),
+  mcpPrompts: z.never().optional(),
   apiVersion: z.literal("1").default("1"),
   id: z.string().max(npPluginIdMaxLength).regex(new RegExp(npPluginIdPattern, "u")),
   version: npPluginVersionSchema,
@@ -50,6 +57,13 @@ export const npPluginManifestSchema = z.object({
   requires: z.array(z.string()).default([]),
   provides: z
     .object({
+      agentCapabilities: z.never().optional(),
+      agentCapabilityIds: z.never().optional(),
+      agentScopes: z.never().optional(),
+      mcpTools: z.never().optional(),
+      mcpResources: z.never().optional(),
+      mcpResourceTemplates: z.never().optional(),
+      mcpPrompts: z.never().optional(),
       blocks: z.array(z.string()).default([]),
       patterns: z.array(z.string()).default([]),
       templates: z.array(z.string()).default([]),
@@ -82,6 +96,13 @@ export const npPluginManifestSchema = z.object({
   // `description` when `agent.description` is empty.
   agent: z
     .object({
+      agentCapabilities: z.never().optional(),
+      agentCapabilityIds: z.never().optional(),
+      agentScopes: z.never().optional(),
+      mcpTools: z.never().optional(),
+      mcpResources: z.never().optional(),
+      mcpResourceTemplates: z.never().optional(),
+      mcpPrompts: z.never().optional(),
       description: z.string().default(""),
       category: z.enum(npPluginAgentCategories).optional(),
       tags: z.array(z.string()).default([]),

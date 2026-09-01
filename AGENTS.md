@@ -2,7 +2,22 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-09-01 (The R2 protocol-projection slice now exposes
+**Last refreshed:** 2026-09-01 (The AP-207/AP-208 integration slice now adds
+one secret-free project connection planner for Codex and Claude Code across
+local stdio and same-origin HTTP. Reviewed apply writes only project-scoped
+client config plus one shared Agent Skills-standard skill; stdio credentials
+stay environment-only, and remote OAuth registration is an exact two-stage
+redirect/client-id flow with issuer-bound callbacks. MCP initialize guidance
+and the skill share the same untrusted-content and advertised-authority rules.
+The MCP adapter validates every SDK list against the complete closed framework
+v1 name/URI inventory, while Plugin SDK, runtime host, and capability-source
+validation reject plugin-defined Agent Gateway ids with stable bounded
+diagnostics. Fresh scaffolds document but do not pre-authorize either client.
+AP-207/AP-208 add no client launch, automatic trust/consent, provider call,
+route, dedicated port, migration, seed, runtime factory, default enablement, or
+package-version change.)
+
+**Earlier:** 2026-09-01 (The R2 protocol-projection slice now exposes
 only the effective `site.inspect` and `content.query` tools plus bounded
 site/capability/schema resources through the existing deployment, site,
 credential, scope, exposure, live-authority, and admission intersection.

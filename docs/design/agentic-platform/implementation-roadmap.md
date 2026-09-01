@@ -303,7 +303,7 @@ MCP port.
 | AP-209 | Add Admin Activity views for principals, runs, actions, and revocation                                                                                                                                                                                     |
 | AP-210 | Add the four machine Agent HTTP routes, full-origin `agent-http` audience-bound authentication, shared invocation/artifact facades, OpenAPI projection, and thin scaffold wrappers                                                                         |
 
-AP-201 through AP-206 are implemented as the transport-neutral read kernel and
+AP-201 through AP-208 are implemented as the transport-neutral read kernel and
 port-free local and same-origin remote transports.
 Core now owns the locked three-definition registry and fingerprints, derived
 draft-read scope, exact bounded site/schema/content projections, and one common
@@ -332,7 +332,17 @@ active caps, immutable canonical terminal results, authorization-bound task
 operations, expiry reconciliation, Doctor/deletion coverage, and migration 0037. Prompts and task negotiation remain absent unless their actual future
 capabilities/runtime are installed. AP-206 adds no provider call, scheduled
 worker, dedicated port, relay, seed, automatic runtime factory, or
-package-version change.
+package-version change. AP-207 adds one project-side connection planner for
+Codex and Claude Code. Its reviewed `--apply` path reuses a single
+Agent Skills-standard source, writes only project-scoped client configuration,
+keeps stdio credentials environment-only, and makes remote OAuth registration
+an exact two-stage redirect/client-id flow. MCP initialize instructions carry
+the same untrusted-content and advertised-authority rules, and OAuth callbacks
+are issuer-bound. AP-208 locks the complete framework v1 MCP name/URI inventory
+after SDK validation and rejects plugin-defined Agent Gateway ids at the
+authoring contract, runtime host, and descriptor-source boundaries. Neither
+slice launches a client, grants consent, adds a provider call or route, enables
+a transport by default, creates a migration, or changes a package version.
 
 Through R4, capability policy evaluation uses the immutable framework hard
 rules plus the exact disabled-by-default deployment/site feature settings.

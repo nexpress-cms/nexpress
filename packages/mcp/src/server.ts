@@ -5,6 +5,7 @@ import {
   configureAgentMcpProjectionV1,
   type NpAgentMcpProjectionProviderV1,
 } from "./projection.js";
+import { NP_AGENT_MCP_SERVER_INSTRUCTIONS_V1 } from "./client-connect.js";
 
 /**
  * NexPress deliberately stays on the MCP revision frozen by the R2 design.
@@ -40,6 +41,7 @@ export async function createAgentMcpServerV1<TAuthentication>(input: {
     { name: "nexpress-agent-gateway", version: "1" },
     {
       capabilities: {},
+      instructions: NP_AGENT_MCP_SERVER_INSTRUCTIONS_V1,
     },
   );
   if (input.projection) {

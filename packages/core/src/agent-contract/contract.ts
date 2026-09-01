@@ -710,6 +710,9 @@ function parseDescriptor(value: unknown): NpAgentCapabilityDescriptor {
   }
   const id = enumValue<NpAgentCapabilityId>(record.id, `${path}.id`, CAPABILITY_IDS);
   const source = text(record.source, `${path}.source`, 67, { trim: true });
+  if (source.startsWith("plugin:")) {
+    fail("invalid-field", `${path}.source`, "plugin-defined sources are not supported in v1");
+  }
   if (source !== "core" && !APP_SOURCE_PATTERN.test(source)) {
     fail("invalid-field", `${path}.source`, "must be core or one canonical app source");
   }

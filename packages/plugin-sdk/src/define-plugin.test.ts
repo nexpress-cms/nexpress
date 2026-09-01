@@ -44,6 +44,22 @@ describe("definePlugin — capability derivation", () => {
     expect(plugin.manifest.capabilities).toContain("api:route");
   });
 
+  it.each([
+    { agentCapabilities: ["plugin:publish"] },
+    { manifest: { ...baseManifest, agentCapabilities: ["plugin:publish"] } },
+    { manifest: { ...baseManifest, capabilities: ["agent:capability"] } },
+    { manifest: { ...baseManifest, agent: { mcpTools: [{ name: "publish" }] } } },
+    { manifest: { ...baseManifest, provides: { mcpPrompts: ["publish"] } } },
+  ])("rejects plugin-defined Agent Gateway surfaces before derivation", (extension) => {
+    const definition = {
+      manifest: { ...baseManifest },
+      ...extension,
+    } as unknown as NpPluginDefinition;
+    expect(() => definePlugin(definition)).toThrowError(
+      expect.objectContaining({ code: "AGENT_PLUGIN_EXTENSION_UNSUPPORTED" }),
+    );
+  });
+
   it("contextually types API route requests and accepts synchronous responses", () => {
     const plugin = definePlugin({
       manifest: { ...baseManifest },

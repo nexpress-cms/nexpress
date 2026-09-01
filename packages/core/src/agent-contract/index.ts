@@ -28,6 +28,7 @@ export * from "./connection-admin-contract.js";
 export * from "./gateway-admin-contract.js";
 export * from "./health-contract.js";
 export * from "./oauth-contract.js";
+export * from "./plugin-extension-contract.js";
 export * from "./read-capability-contract.js";
 export * from "./studio-contract.js";
 export * from "./wire-contract.js";
