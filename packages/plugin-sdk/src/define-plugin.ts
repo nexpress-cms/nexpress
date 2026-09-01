@@ -6,6 +6,7 @@ import {
   npPluginTranslationKeys,
   npValidatePluginPageRouteDefinition,
 } from "@nexpress/core";
+import { npRequireNoAgentPluginGatewayExtensionsV1 } from "@nexpress/core/agent-contract";
 import { npAnalyzeBlockDefinitions, npAnalyzePatternDefinitions } from "@nexpress/blocks/contracts";
 
 import { npAdminExtensionSchema, npPluginManifestSchema } from "./manifest.js";
@@ -534,6 +535,7 @@ function validateActionRegistry(
 export function definePlugin<TConfig = Record<string, unknown>>(
   definition: NpPluginDefinition<TConfig>,
 ): NpResolvedPlugin<TConfig> {
+  npRequireNoAgentPluginGatewayExtensionsV1(definition);
   validateBlockRegistry(definition.manifest.id, definition.blocks);
   validatePatternRegistry(definition.manifest.id, definition.patterns);
   validateTemplateRegistry(definition.manifest.id, definition.templates);

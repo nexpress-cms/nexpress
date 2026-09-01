@@ -23,6 +23,23 @@ reference app and fresh `create-nexpress` projects expose that wrapper as:
 pnpm run agent:mcp
 ```
 
+Generate an official Codex or Claude Code project connection plan with the
+project-side CLI, then review it before applying:
+
+```bash
+pnpm exec nexpress agent connect --client codex --transport stdio
+pnpm exec nexpress agent connect --client codex --transport stdio --apply
+
+pnpm exec nexpress agent connect --client claude --transport http \
+  --origin https://example.com
+```
+
+HTTP setup first prints the exact loopback redirect URI to register as a public
+client in Agent Studio. Rerun with `--client-id <id> --apply` after registration.
+The command writes only project-scoped client config and one shared
+Agent Skills-standard NexPress skill. It never stores a credential, launches a
+client, approves project trust, or grants OAuth consent.
+
 Local MCP remains unavailable until the host explicitly installs the Agent
 Studio Gateway runtime, enables `agents.gateway.stdio`, and supplies the
 one-time service credential to the child process through
@@ -49,6 +66,13 @@ augmentation. Prompts remain absent until their dependent capabilities exist;
 task methods are negotiated only when the host injects the durable task
 service. The transport package still owns no policy, database, credential, or
 automatic runtime factory.
+
+The server's initialize instructions and generated skill tell clients to treat
+content and plugin metadata as untrusted, inspect before querying, use only the
+advertised inventory, and never pass credentials or site ids as MCP arguments.
+The adapter independently enforces the closed framework v1 tool, resource,
+template, and prompt inventory after SDK validation. Plugin-defined Agent
+Gateway ids remain unsupported even when a plugin bypasses its SDK schema.
 
 See the [Agent Gateway guide](https://github.com/nexpress-cms/nexpress/blob/main/docs/agent-gateway.md)
 for host wiring, credential handling, lifecycle, and compatibility details.

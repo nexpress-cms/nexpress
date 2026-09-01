@@ -181,6 +181,22 @@ describe("Agent contract foundation", () => {
       ok: false,
       issues: [{ code: "invalid-field", path: "agent.capability.scopeDerivation" }],
     });
+
+    expect(
+      npAnalyzeAgentCapabilityDescriptor({
+        ...readDescriptor(),
+        source: "plugin:secret-extension",
+      }),
+    ).toMatchObject({
+      ok: false,
+      issues: [
+        {
+          code: "invalid-field",
+          path: "agent.capability.source",
+          message: "plugin-defined sources are not supported in v1",
+        },
+      ],
+    });
   });
 
   it("enforces effect, idempotency, and Gateway projection invariants", () => {

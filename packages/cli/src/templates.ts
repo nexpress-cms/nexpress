@@ -1284,6 +1284,19 @@ the one-time value only through the child process's
 project, a command-line flag, or checked-in \`.env\`. The AP-204 transport
 negotiates MCP \`2025-11-25\`.
 
+Generate a secret-free project connection plan for Codex or Claude Code, review
+it, and only then add \`--apply\`:
+
+\`\`\`bash
+pnpm exec nexpress agent connect --client codex --transport stdio
+pnpm exec nexpress agent connect --client codex --transport stdio --apply
+pnpm exec nexpress agent connect --client claude --transport stdio --apply
+\`\`\`
+
+The helper writes only project-scoped client configuration and the official
+NexPress Agent Skill. It never stores the token, launches a client, approves
+project trust, or grants consent.
+
 ## Remote Agent Gateway
 
 The generated \`/api/mcp\` and OAuth discovery wrappers reuse the application's
@@ -1294,8 +1307,18 @@ and enables \`agents.gateway.mcpHttp\` at both deployment and site levels.
 Interactive clients must be pre-registered in Agent Studio with exact HTTPS or
 explicit loopback HTTP redirect URIs and use Authorization Code + PKCE S256;
 v1 issues no client secret and supports no dynamic registration. Unattended
-automation needs an exact \`mcp-http\` service credential. AP-205 advertises no
-tools/resources/prompts/tasks; those land in AP-206.
+automation needs an exact \`mcp-http\` service credential. Print the exact
+resource and client-specific redirect URI before registration, then apply the
+resulting public client id:
+
+\`\`\`bash
+pnpm exec nexpress agent connect --client codex --transport http --origin https://example.com
+pnpm exec nexpress agent connect --client codex --transport http --origin https://example.com --client-id <public-client-id> --apply
+\`\`\`
+
+The effective AP-206 inventory remains server-authoritative. Plugins cannot
+add Agent Gateway capability ids, scopes, MCP tools, resources, templates, or
+prompts in v1.
 
 ## Jobs
 

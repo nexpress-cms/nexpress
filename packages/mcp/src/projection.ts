@@ -27,6 +27,13 @@ import {
 
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 
+import {
+  npIsAgentMcpPromptNameV1,
+  npIsAgentMcpResourceUriV1,
+  npIsAgentMcpToolNameV1,
+  npRequireAgentMcpListedInventoryV1,
+} from "./closed-inventory.js";
+
 export interface NpAgentMcpProjectionSnapshotV1 {
   tools: boolean;
   resources: boolean;
@@ -122,14 +129,19 @@ export async function configureAgentMcpProjectionV1<TAuthentication>(input: {
 
   if (snapshot.tools) {
     input.server.setRequestHandler(ListToolsRequestSchema, (request) =>
-      guarded(async () =>
-        ListToolsResultSchema.parse(
+      guarded(async () => {
+        const result = ListToolsResultSchema.parse(
           await input.provider.listTools(input.authentication, request.params?.cursor),
-        ),
-      ),
+        );
+        npRequireAgentMcpListedInventoryV1("tool", result.tools);
+        return result;
+      }),
     );
     input.server.setRequestHandler(CallToolRequestSchema, (request) =>
       guarded(async () => {
+        if (!npIsAgentMcpToolNameV1(request.params.name)) {
+          throw new McpError(ErrorCode.MethodNotFound, "Method not found");
+        }
         const result = await input.provider.callTool(input.authentication, {
           name: request.params.name,
           arguments: request.params.arguments ?? {},
@@ -151,46 +163,58 @@ export async function configureAgentMcpProjectionV1<TAuthentication>(input: {
   }
   if (snapshot.resources) {
     input.server.setRequestHandler(ListResourcesRequestSchema, (request) =>
-      guarded(async () =>
-        ListResourcesResultSchema.parse(
+      guarded(async () => {
+        const result = ListResourcesResultSchema.parse(
           await input.provider.listResources(input.authentication, request.params?.cursor),
-        ),
-      ),
+        );
+        npRequireAgentMcpListedInventoryV1("resource", result.resources);
+        return result;
+      }),
     );
     input.server.setRequestHandler(ReadResourceRequestSchema, (request) =>
-      guarded(async () =>
-        ReadResourceResultSchema.parse(
+      guarded(async () => {
+        if (!npIsAgentMcpResourceUriV1(request.params.uri)) {
+          throw new McpError(ErrorCode.InvalidParams, "Invalid params");
+        }
+        return ReadResourceResultSchema.parse(
           await input.provider.readResource(input.authentication, request.params.uri),
-        ),
-      ),
+        );
+      }),
     );
   }
   if (snapshot.resourceTemplates) {
     input.server.setRequestHandler(ListResourceTemplatesRequestSchema, (request) =>
-      guarded(async () =>
-        ListResourceTemplatesResultSchema.parse(
+      guarded(async () => {
+        const result = ListResourceTemplatesResultSchema.parse(
           await input.provider.listResourceTemplates(input.authentication, request.params?.cursor),
-        ),
-      ),
+        );
+        npRequireAgentMcpListedInventoryV1("resource-template", result.resourceTemplates);
+        return result;
+      }),
     );
   }
   if (snapshot.prompts) {
     input.server.setRequestHandler(ListPromptsRequestSchema, (request) =>
-      guarded(async () =>
-        ListPromptsResultSchema.parse(
+      guarded(async () => {
+        const result = ListPromptsResultSchema.parse(
           await input.provider.listPrompts(input.authentication, request.params?.cursor),
-        ),
-      ),
+        );
+        npRequireAgentMcpListedInventoryV1("prompt", result.prompts);
+        return result;
+      }),
     );
     input.server.setRequestHandler(GetPromptRequestSchema, (request) =>
-      guarded(async () =>
-        GetPromptResultSchema.parse(
+      guarded(async () => {
+        if (!npIsAgentMcpPromptNameV1(request.params.name)) {
+          throw new McpError(ErrorCode.MethodNotFound, "Method not found");
+        }
+        return GetPromptResultSchema.parse(
           await input.provider.getPrompt(input.authentication, {
             name: request.params.name,
             arguments: request.params.arguments ?? {},
           }),
-        ),
-      ),
+        );
+      }),
     );
   }
   if (snapshot.tasks) {

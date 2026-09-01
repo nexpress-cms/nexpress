@@ -1,5 +1,9 @@
 import type { NpFieldConfig, NpPluginConfig, NpPluginContext } from "../config/types.js";
 import {
+  npAnalyzeAgentPluginGatewayExtensionsV1,
+  npRequireNoAgentPluginGatewayExtensionsV1,
+} from "../agent-contract/plugin-extension-contract.js";
+import {
   resetPluginOAuthProviders,
   unregisterOAuthProvidersBySourcePlugin,
 } from "../auth/oauth-providers.js";
@@ -884,6 +888,7 @@ function assertPluginDiscoveryContract(registration: PluginRegistration): void {
 }
 
 async function loadResolvedPlugin(plugin: ResolvedPluginLike): Promise<void> {
+  npRequireNoAgentPluginGatewayExtensionsV1(plugin);
   const { manifest } = plugin;
 
   validateDefinitionContract(manifest.id, plugin);
@@ -1198,6 +1203,14 @@ export async function loadPlugins(
   // ships with eight plugins doesn't refuse to boot when one is stale.
   const filtered: Array<NpPluginConfig | ResolvedPluginLike> = [];
   for (const plugin of plugins) {
+    const gatewayIssue = npAnalyzeAgentPluginGatewayExtensionsV1(plugin)[0];
+    if (gatewayIssue) {
+      getLogger().error("Plugin Agent Gateway extension rejected", {
+        code: gatewayIssue.code,
+        path: gatewayIssue.path,
+      });
+      continue;
+    }
     if (isResolvedPlugin(plugin)) {
       const compat = checkNexpressCompat(plugin.manifest);
       if (!compat.compatible) {

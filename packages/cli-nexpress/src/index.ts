@@ -46,6 +46,7 @@ import {
 import { runThemeAdd } from "./theme-add/run.js";
 import { parseThemeRemoveArgs } from "./theme-remove/args.js";
 import { runThemeRemove } from "./theme-remove/run.js";
+import { AGENT_CONNECT_HELP, parseAgentConnectArgsV1, runAgentConnectV1 } from "./agent-connect.js";
 
 const HELP_TEXT = `nexpress — project-side CLI
 
@@ -63,6 +64,7 @@ Usage:
   nexpress theme remove <package> --apply             Same, but auto-chain db:migrate after generate (DROP COLUMN runs)
   nexpress deploy plan --target <host> [--json]       Print a deployment bridge plan
   nexpress feedback [--json]                          Print a local PII-free support report and issue link
+  nexpress agent connect --client <codex|claude> --transport <stdio|http>  Plan or apply a safe MCP connection
   nexpress ops status [--json|--brief|--no-color]     Print read-only runtime status for operators and agents
   nexpress ops contracts [--json|--brief]             Print the shipped local ops contract registry
   nexpress ops doctor [--prod|--json|--fix-plan]      Run the project doctor through the ops namespace
@@ -463,6 +465,29 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
       `${flags.includes("--json") ? JSON.stringify(report, null, 2) : renderFeedbackReportMarkdown(report)}\n`,
     );
     return 0;
+  }
+
+  if (args[0] === "agent") {
+    if (args[1] !== "connect") {
+      process.stderr.write(`Unknown subcommand: agent ${args[1] ?? ""}\n${AGENT_CONNECT_HELP}`);
+      return 2;
+    }
+    let parsed;
+    try {
+      parsed = parseAgentConnectArgsV1(args.slice(2));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      process.stderr.write(`nexpress agent connect: ${message}\n${AGENT_CONNECT_HELP}`);
+      return 2;
+    }
+    const result = await runAgentConnectV1({
+      args: parsed,
+      cwd,
+      packageManager: detectPackageManager(cwd),
+    });
+    if (result.stdout) process.stdout.write(result.stdout);
+    if (result.stderr) process.stderr.write(result.stderr);
+    return result.code;
   }
 
   if (args[0] === "theme") {

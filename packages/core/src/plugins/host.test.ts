@@ -167,6 +167,15 @@ describe("plugin host", () => {
   });
 
   describe("loadPlugins — resolved shape with manifest", () => {
+    it("rejects plugin Agent Gateway fields even when definePlugin was bypassed", async () => {
+      const plugin = resolvedPlugin("agent-bypass") as ReturnType<typeof resolvedPlugin> & {
+        agentCapabilities: string[];
+      };
+      plugin.agentCapabilities = ["plugin:publish"];
+      await loadPlugins([plugin]);
+      expect(getAllPluginIds()).not.toContain("agent-bypass");
+    });
+
     it("rejects unsupported hook names even when definePlugin was bypassed", async () => {
       await loadPlugins([
         resolvedPlugin("unknown-hook", {

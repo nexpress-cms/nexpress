@@ -209,6 +209,7 @@ describe.skipIf(skipIfNoTestDb())("Agent Gateway OAuth authorization lifecycle",
     const redirected = new URL(redirect.redirectUri);
     const code = redirected.searchParams.get("code");
     expect(code).toMatch(/^npac1_/u);
+    expect(redirected.searchParams.get("iss")).toBe(origin);
     expect(redirected.searchParams.get("state")).toBe("client-state-value");
 
     await expect(
