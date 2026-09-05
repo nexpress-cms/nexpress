@@ -507,6 +507,19 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
           }
           case "agents.gateway.principal_tokens.rotate": {
             const value = command as { expectedVersion: number; overlapSeconds: number };
+            // Match capability admission and principal lifecycle operations:
+            // always lock the principal before any of its service tokens.
+            const [principal] = await db
+              .select()
+              .from(npAgentPrincipals)
+              .where(
+                and(
+                  eq(npAgentPrincipals.siteId, input.siteId),
+                  eq(npAgentPrincipals.id, input.parentTargetId ?? ""),
+                ),
+              )
+              .for("update")
+              .limit(1);
             const [current] = await db
               .select()
               .from(npAgentServiceTokens)
@@ -529,17 +542,6 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
             if (current.rowVersion !== value.expectedVersion) {
               throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Token version changed.");
             }
-            const [principal] = await db
-              .select()
-              .from(npAgentPrincipals)
-              .where(
-                and(
-                  eq(npAgentPrincipals.siteId, current.siteId),
-                  eq(npAgentPrincipals.id, current.principalId),
-                ),
-              )
-              .for("update")
-              .limit(1);
             if (
               !principal ||
               principal.status !== "active" ||
@@ -878,9 +880,10 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
     const db = getDb();
     return db.transaction(async (rawTx) => {
       const tx = rawTx as NpAgentDb;
-      const now = nowFn();
-      const [token] = await tx
-        .select()
+      // This unlocked identity lookup grants no authority. Re-read the token
+      // under lock after its principal to preserve the shared lock hierarchy.
+      const [candidate] = await tx
+        .select({ principalId: npAgentServiceTokens.principalId })
         .from(npAgentServiceTokens)
         .where(
           and(
@@ -888,9 +891,8 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
             eq(npAgentServiceTokens.id, parsed.publicId),
           ),
         )
-        .for("update")
         .limit(1);
-      if (!token || !isActiveTokenAt(token, now)) {
+      if (!candidate) {
         throw new NpAgentGatewayError(
           "SERVICE_TOKEN_INVALID",
           401,
@@ -902,13 +904,32 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
         .from(npAgentPrincipals)
         .where(
           and(
-            eq(npAgentPrincipals.siteId, token.siteId),
-            eq(npAgentPrincipals.id, token.principalId),
+            eq(npAgentPrincipals.siteId, input.siteId),
+            eq(npAgentPrincipals.id, candidate.principalId),
             eq(npAgentPrincipals.kind, "external"),
           ),
         )
         .for("update")
         .limit(1);
+      const [token] = await tx
+        .select()
+        .from(npAgentServiceTokens)
+        .where(
+          and(
+            eq(npAgentServiceTokens.siteId, input.siteId),
+            eq(npAgentServiceTokens.id, parsed.publicId),
+            eq(npAgentServiceTokens.principalId, candidate.principalId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!token || !isActiveTokenAt(token, nowFn())) {
+        throw new NpAgentGatewayError(
+          "SERVICE_TOKEN_INVALID",
+          401,
+          "Service credential is invalid.",
+        );
+      }
       const verified = npVerifyAgentOpaqueVerifierV1({
         purpose: "service-token",
         siteId: input.siteId,
@@ -962,6 +983,9 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
       });
       const authorizationContextFingerprint =
         await npDigestAgentAuthorizationContextCanonical(authorizationContext);
+      // Lock waits and asynchronous audience/exposure checks can outlive the
+      // credential. Use a fresh deadline for the final conditional admission.
+      const now = nowFn();
       const [used] = await tx
         .update(npAgentServiceTokens)
         .set({ lastUsedAt: now })

@@ -5,6 +5,12 @@ discover, read, and write content without bespoke scraping. This guide
 covers the three entrypoints an agent needs: the **OpenAPI spec**, the
 **auth flow**, and the **plugin discovery API**.
 
+This page describes automation of the existing CMS REST API through staff
+sessions. For the dedicated, scope- and audience-bound MCP service credentials
+and OAuth flow, use [Agent Gateway](./agent-gateway.md). The four machine
+`/api/agent/v1` routes and their OpenAPI projection are still planned under
+AP-210; staff cookies are not credentials for that future surface.
+
 ---
 
 ## 1. Discover the API surface
@@ -55,7 +61,7 @@ All state-changing routes need a session cookie + CSRF header. Read-only
 routes (`GET /api/collections/{slug}`, `/api/search`) are public when the
 collection's `access.read` allows it.
 
-### Machine-to-machine (recommended for agents)
+### Existing CMS REST automation with a staff session
 
 1. `POST /api/auth/login` with `{ email, password }`.
 2. Server sets three cookies: `np-session`, `np-refresh`, `np-csrf`.

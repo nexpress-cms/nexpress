@@ -208,6 +208,136 @@ async function rejectSymlinkPath(cwd: string, relativePath: string): Promise<voi
   }
 }
 
+/** Inspect TOML key paths without rewriting the operator's formatting or values. */
+function codexHasUnmanagedEntry(
+  source: string,
+  serverName: string,
+  managed?: { start: number; end: number },
+): boolean {
+  let offset = 0;
+  let table: string[] = [];
+  let managedCommentFound = false;
+  const invalid = (): never => {
+    throw new Error("Existing Codex config has an unsupported or malformed TOML key/value.");
+  };
+  const whitespace = (): void => {
+    while (source[offset] === " " || source[offset] === "\t" || source[offset] === "\r") offset++;
+  };
+  const string = (key: boolean): string => {
+    const quote = source[offset];
+    const multiline = source.slice(offset, offset + 3) === quote.repeat(3);
+    if (key && multiline) invalid();
+    const delimiter = quote.repeat(multiline ? 3 : 1);
+    offset += delimiter.length;
+    const start = offset;
+    while (offset < source.length) {
+      if (source.startsWith(delimiter, offset)) {
+        const raw = source.slice(start, offset);
+        offset += delimiter.length;
+        if (multiline) {
+          // TOML permits one or two quote characters immediately before the delimiter.
+          for (let count = 0; count < 2 && source[offset] === quote; count++) offset++;
+        }
+        if (!key || quote === "'") return raw;
+        return raw.replace(/\\(U[\da-fA-F]{8}|u[\da-fA-F]{4}|[\s\S])/gu, (_, escape: string) => {
+          const simple: Record<string, string> = {
+            b: "\b",
+            t: "\t",
+            n: "\n",
+            f: "\f",
+            r: "\r",
+            '"': '"',
+            "\\": "\\",
+          };
+          if (Object.hasOwn(simple, escape)) return simple[escape];
+          if (escape.startsWith("u") || escape.startsWith("U")) {
+            const code = Number.parseInt(escape.slice(1), 16);
+            if (code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff)) {
+              return String.fromCodePoint(code);
+            }
+          }
+          return invalid();
+        });
+      }
+      if (!multiline && (source[offset] === "\n" || source[offset] === "\r")) invalid();
+      if (quote === '"' && source[offset] === "\\") offset++;
+      offset++;
+    }
+    return invalid();
+  };
+  const keyPath = (): string[] => {
+    const path: string[] = [];
+    while (true) {
+      whitespace();
+      if (source[offset] === '"' || source[offset] === "'") {
+        path.push(string(true));
+      } else {
+        const start = offset;
+        while (offset < source.length && /[A-Za-z0-9_-]/u.test(source[offset])) offset++;
+        if (start === offset) invalid();
+        path.push(source.slice(start, offset));
+      }
+      whitespace();
+      if (source[offset] !== ".") return path;
+      offset++;
+    }
+  };
+  const conflicts = (path: string[]): boolean =>
+    path[0] === "mcp_servers" && path[1] === serverName;
+  while (offset < source.length) {
+    whitespace();
+    if (source[offset] === "#") {
+      if (offset === managed?.start) managedCommentFound = true;
+      while (offset < source.length && source[offset] !== "\n") offset++;
+    }
+    if (source[offset] === "\n") {
+      offset++;
+      continue;
+    }
+    if (offset === source.length) break;
+    const isManaged = managed !== undefined && offset > managed.start && offset < managed.end;
+    if (source[offset] === "[") {
+      offset++;
+      const arrayTable = source[offset] === "[";
+      if (arrayTable) offset++;
+      table = keyPath();
+      if (source[offset++] !== "]" || (arrayTable && source[offset++] !== "]")) invalid();
+      if (!isManaged && (conflicts(table) || (arrayTable && table[0] === "mcp_servers")))
+        return true;
+      continue;
+    }
+    const path = [...table, ...keyPath()];
+    if (source[offset++] !== "=") invalid();
+    // An inline root table is sealed by TOML and cannot accept an appended subtable.
+    if (!isManaged && (conflicts(path) || (path.length === 1 && path[0] === "mcp_servers")))
+      return true;
+    const brackets: string[] = [];
+    while (offset < source.length) {
+      const character = source[offset];
+      if (character === '"' || character === "'") {
+        string(false);
+        continue;
+      }
+      if (character === "#") {
+        while (offset < source.length && source[offset] !== "\n") offset++;
+        continue;
+      }
+      if (character === "\n" && brackets.length === 0) {
+        offset++;
+        break;
+      }
+      if (character === "[" || character === "{") brackets.push(character);
+      if (character === "]" || character === "}") {
+        if (brackets.pop() !== (character === "]" ? "[" : "{")) invalid();
+      }
+      offset++;
+    }
+    if (brackets.length !== 0) invalid();
+  }
+  if (managed !== undefined && !managedCommentFound) invalid();
+  return false;
+}
+
 function codexNextContent(
   existing: string | null,
   configuration: Extract<NpAgentMcpConnectionConfigurationV1, { kind: "codex-toml" }>,
@@ -230,29 +360,17 @@ function codexNextContent(
   ) {
     throw new Error(`Managed Codex MCP block for ${serverName} is malformed.`);
   }
-  const escaped = serverName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const unmanagedTable = new RegExp(
-    `^\\s*\\[mcp_servers\\.(?:${escaped}|"${escaped}")(?:\\.|\\])`,
-    "mu",
-  );
-  const unmanagedDotted = new RegExp(
-    `^\\s*mcp_servers\\.(?:${escaped}|"${escaped}")(?:\\.|\\s*=)`,
-    "mu",
-  );
-  const hasUnmanagedEntry = (value: string): boolean =>
-    unmanagedTable.test(value) || unmanagedDotted.test(value);
   if (start !== -1) {
     const current = source.slice(start, end + configuration.markerEnd.length);
     if (current !== configuration.block) {
       throw new Error(`Managed Codex MCP server ${serverName} differs from the requested plan.`);
     }
-    const remainder = `${source.slice(0, start)}${source.slice(end + configuration.markerEnd.length)}`;
-    if (hasUnmanagedEntry(remainder)) {
+    if (codexHasUnmanagedEntry(source, serverName, { start, end })) {
       throw new Error(`Codex MCP server ${serverName} also exists outside the managed block.`);
     }
     return { content: source, changed: false };
   }
-  if (hasUnmanagedEntry(source)) {
+  if (codexHasUnmanagedEntry(source, serverName)) {
     throw new Error(`Codex MCP server ${serverName} already exists outside the managed block.`);
   }
   const prefix = source.length === 0 ? "" : source.endsWith("\n") ? "\n" : "\n\n";

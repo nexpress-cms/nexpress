@@ -1,10 +1,12 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
 import {
   createSite,
   grantSiteMembership,
   npAgentInvocations,
+  npAgentPrincipals,
+  npAgentServiceTokens,
   npAuditEvents,
   npSessions,
   npUsers,
@@ -41,6 +43,190 @@ describe.skipIf(skipIfNoTestDb())("Agent Gateway principal and service-token lif
   afterAll(async () => {
     await closeTestDb();
   });
+
+  it.each([
+    "authenticate",
+    "rotate",
+    "authenticate-after-revocation",
+    "authenticate-after-expiry",
+    "authenticate-after-overlap-expiry",
+    "authenticate-after-exposure-expiry",
+  ] as const)(
+    "serializes %s with a principal-first authority recheck without deadlocking",
+    async (operation) => {
+      const seeded = await seedUser({ role: "admin" });
+      await createSite({ id: siteId, name: "Agent locking" });
+      await grantSiteMembership(siteId, seeded.userId, "admin");
+      const db = await getTestDb();
+      const [[user], [session]] = await Promise.all([
+        db.select().from(npUsers).where(eq(npUsers.id, seeded.userId)).limit(1),
+        db.select().from(npSessions).where(eq(npSessions.userId, seeded.userId)).limit(1),
+      ]);
+      if (!user || !session) throw new Error("Missing staff fixture");
+      const actor = { user, sessionId: session.id };
+      let clock = new Date();
+      const expiresAt = new Date(clock.getTime() + 86_400_000);
+      let expireOnExposure = false;
+      const service = createAgentGatewayServiceV1({
+        tokenHashKeyring: {
+          active: { id: "agent-token-hash-v1", key: new Uint8Array(32).fill(9) },
+        },
+        environment: "production",
+        deploymentGatewaySettings: gatewaySettings,
+        resolveSiteGatewaySettings: () => {
+          if (expireOnExposure) clock = expiresAt;
+          return gatewaySettings;
+        },
+        reauthentication: { verify: () => true },
+        now: () => clock,
+      });
+      const principal = await service.executeAdmin({
+        siteId,
+        actor,
+        operationId: "agents.gateway.principals.create",
+        targetId: null,
+        command: {
+          idempotencyKey: "agent:locking:principal",
+          name: "Locking fixture",
+          description: null,
+          scopes: ["site:read"],
+        },
+      });
+      const token = await service.executeAdmin({
+        siteId,
+        actor,
+        operationId: "agents.gateway.principal_tokens.create",
+        targetId: principal.resourceId,
+        command: {
+          idempotencyKey: "agent:locking:token",
+          expectedVersion: 1,
+          name: "Locking token",
+          scopes: ["site:read"],
+          transport: "stdio",
+          exposure: "read",
+          expiresAt: expiresAt.toISOString(),
+        },
+      });
+      if (operation === "authenticate-after-overlap-expiry") {
+        await service.executeAdmin({
+          siteId,
+          actor,
+          operationId: "agents.gateway.principal_tokens.rotate",
+          parentTargetId: principal.resourceId,
+          targetId: token.resourceId,
+          command: {
+            idempotencyKey: "agent:locking:prepare-overlap",
+            expectedVersion: 1,
+            overlapSeconds: 900,
+          },
+        });
+      }
+      expireOnExposure = operation === "authenticate-after-exposure-expiry";
+
+      let markPrincipalLocked!: (pid: number) => void;
+      const principalLocked = new Promise<number>((resolve) => {
+        markPrincipalLocked = resolve;
+      });
+      let releasePrincipalHolder!: () => void;
+      const acquireToken = new Promise<void>((resolve) => {
+        releasePrincipalHolder = resolve;
+      });
+      const authorityRecheck = db.transaction(async (tx) => {
+        await tx.execute(sql`set local lock_timeout = '5s'`);
+        await tx
+          .select()
+          .from(npAgentPrincipals)
+          .where(eq(npAgentPrincipals.id, principal.resourceId))
+          .for("update");
+        const backend = await tx.execute<{ pid: number }>(sql`select pg_backend_pid() as pid`);
+        markPrincipalLocked(backend.rows[0]!.pid);
+        await acquireToken;
+        // Admission and principal revocation both acquire locks in this order.
+        await tx
+          .select()
+          .from(npAgentServiceTokens)
+          .where(eq(npAgentServiceTokens.id, token.resourceId))
+          .for("update");
+        if (operation === "authenticate-after-revocation") {
+          await tx
+            .update(npAgentServiceTokens)
+            .set({
+              status: "revoked",
+              revokedAt: new Date(),
+              rowVersion: sql`${npAgentServiceTokens.rowVersion} + 1`,
+            })
+            .where(eq(npAgentServiceTokens.id, token.resourceId));
+        }
+      });
+      void authorityRecheck.catch(() => markPrincipalLocked(-1));
+      const holderPid = await principalLocked;
+      expect(holderPid).toBeGreaterThan(0);
+      const concurrent =
+        operation !== "rotate"
+          ? service.authenticateServiceToken({
+              siteId,
+              credential: token.oneTimeValue,
+              transport: "stdio",
+              audience: "urn:nexpress:agent-gateway:stdio",
+            })
+          : service.executeAdmin({
+              siteId,
+              actor,
+              operationId: "agents.gateway.principal_tokens.rotate",
+              parentTargetId: principal.resourceId,
+              targetId: token.resourceId,
+              command: {
+                idempotencyKey: "agent:locking:rotate",
+                expectedVersion: 1,
+                overlapSeconds: 900,
+              },
+            });
+      const completion = Promise.allSettled([authorityRecheck, concurrent]);
+      try {
+        await expect
+          .poll(
+            async () => {
+              const blocked = await db.execute<{ waiting: boolean }>(sql`
+            select exists (
+              select 1 from pg_stat_activity
+              where ${holderPid} = any(pg_blocking_pids(pid))
+            ) as waiting
+          `);
+              return blocked.rows[0]?.waiting;
+            },
+            { timeout: 5_000 },
+          )
+          .toBe(true);
+        if (operation === "authenticate-after-expiry") clock = expiresAt;
+        if (operation === "authenticate-after-overlap-expiry") {
+          clock = new Date(clock.getTime() + 900_000);
+        }
+      } finally {
+        releasePrincipalHolder();
+        await completion;
+      }
+      expect(
+        (await completion).map((result) => {
+          if (result.status === "fulfilled") return "fulfilled";
+          const code = (result.reason as { cause?: { code?: string } }).cause?.code;
+          if ((result.reason as { code?: string }).code === "SERVICE_TOKEN_INVALID") {
+            return "invalid-credential";
+          }
+          return code === "40P01" ? "deadlock" : "rejected";
+        }),
+      ).toEqual([
+        "fulfilled",
+        operation.startsWith("authenticate-after-") ? "invalid-credential" : "fulfilled",
+      ]);
+      if (operation.startsWith("authenticate-after-")) {
+        const [unused] = await db
+          .select({ lastUsedAt: npAgentServiceTokens.lastUsedAt })
+          .from(npAgentServiceTokens)
+          .where(eq(npAgentServiceTokens.id, token.resourceId));
+        expect(unused?.lastUsedAt).toBeNull();
+      }
+    },
+  );
 
   it("keeps create, rotate, authenticate, authority loss, suspension, and revocation fail closed", async () => {
     const seeded = await seedUser({ role: "admin" });

@@ -36,8 +36,8 @@ control.
 | Layer                | Purpose                                                          | Expected location/command                                                         |
 | -------------------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | Pure contract        | Exact parsing, limits, canonicalization, state machines          | `packages/core/src/agent-contract/*.test.ts`; `pnpm --filter @nexpress/core test` |
-| Server unit          | Registry, policy, vault facade, provider facade, risk, redaction | `packages/core/src/agents/*.test.ts`                                              |
-| MCP unit/conformance | Tool/resource schemas, protocol, auth challenges, task lifecycle | proposed `packages/mcp/src/*.test.ts`                                             |
+| Server unit          | Registry, policy, vault facade, provider facade, risk, redaction | `packages/core/src/agent/*.test.ts`                                              |
+| MCP unit/conformance | Tool/resource schemas, protocol, auth challenges, task lifecycle | `packages/mcp/src/*.test.ts`, repository `scripts/agent-read-schema.test.mjs`        |
 | Admin component      | View states, escaped content, keyboard/accessibility behavior    | `packages/admin/src/agents/*.test.tsx`                                            |
 | Postgres integration | Transactions, locks, tenancy, deletion, retention, jobs          | `apps/web/tests/*.integration.test.ts`; `pnpm test:integration`                   |
 | Route/OpenAPI        | Auth, CSRF/OAuth/service token, exact API envelope, live schema  | `packages/app` route tests plus reference-app integration                         |

@@ -558,7 +558,15 @@ test.describe("admin mobile layout", () => {
     expect((await uploadResponse).status()).toBeGreaterThanOrEqual(200);
     await expect(page.getByRole("dialog")).toBeHidden({ timeout: 10_000 });
 
+    // The uploaded card is already visible before the search response arrives.
+    // Wait for the new result set before selecting: changing the result set
+    // deliberately clears the previous selection.
+    const filteredMedia = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/media" && url.searchParams.get("q") === filename;
+    });
     await page.getByPlaceholder("Search media").fill(filename);
+    await (await filteredMedia).finished();
     const gridCard = page.locator("[data-np-media-grid-card]").filter({ hasText: filename });
     await expect(gridCard).toBeVisible({ timeout: 10_000 });
     await expectNoHorizontalOverflow(page, "admin media grid after upload", {
@@ -748,6 +756,13 @@ test.describe("admin mobile layout", () => {
     await expectTouchTarget(page.getByRole("button", { name: /^Save Theme$/ }), "theme save");
 
     await activateSettingsTab(page, "Navigation", /^Navigation structure$/);
+    // The heading and toolbar mount before the initial navigation data.
+    await expect(
+      page.getByText(
+        "No navigation items in this location yet. Add your first link to get started.",
+        { exact: true },
+      ),
+    ).toBeVisible();
     await expectNoHorizontalOverflow(page, "admin settings navigation tab", {
       ignoreClosedSidebar: true,
     });

@@ -19,6 +19,8 @@ import { withCurrentSite } from "../sites/context.js";
 import { createSite } from "../sites/registry.js";
 import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./setup.js";
 import { postsTable, registerTestCollections } from "./fixtures.js";
+import { createAgentCoreReadCapabilityExecutorsV1 } from "../agent/read-capability-executors.js";
+import type { NpAgentContentFilterV1 } from "../agent-contract/index.js";
 
 describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () => {
   beforeAll(async () => {
@@ -63,6 +65,80 @@ describe.skipIf(skipIfNoTestDb())("saveDocument / revisions (integration)", () =
     title: "Hello",
     content: npCreateEmptyRichTextContent(),
   };
+
+  it("keeps Agent date-filtered reads behind the existing site/status/visibility pipeline", async () => {
+    const user = await seedUser();
+    await createSite({ id: "agent-read-other", name: "Other read site" });
+    const timestamp = "2026-09-01T00:00:00.000Z";
+    const db = await getTestDb();
+    let visibleId = "";
+    for (const [siteId, status, visibility] of [
+      ["default", "published", "public"],
+      ["default", "published", "private"],
+      ["default", "draft", "public"],
+      ["agent-read-other", "published", "public"],
+    ] as const) {
+      const result = await withCurrentSite(siteId, () =>
+        saveDocument(
+          "posts",
+          null,
+          { ...baseDoc, slug: `agent-${siteId}-${status}-${visibility}`, visibility },
+          user,
+          { status },
+        ),
+      );
+      const id = result.doc.id as string;
+      if (visibleId === "") visibleId = id;
+      await db
+        .update(postsTable)
+        .set({ updatedAt: new Date(timestamp) })
+        .where(eq(postsTable.id, id));
+    }
+    const installed = createAgentCoreReadCapabilityExecutorsV1({
+      cursorHmacKey: { id: "read-test", key: new Uint8Array(32).fill(17) },
+      resolveUser: () => user,
+      resolveBlockSchemas: () => [],
+    });
+    for (const filter of [
+      { op: "eq", field: "updatedAt", value: timestamp },
+      { op: "gte", field: "updatedAt", value: timestamp },
+      { op: "in", field: "updatedAt", values: [timestamp, null] },
+    ] satisfies NpAgentContentFilterV1[]) {
+      const output = await withCurrentSite("default", () =>
+        installed["content.query"](
+          {
+            collection: "posts",
+            filter,
+            fields: ["title"],
+            audience: "public",
+            status: "published",
+            sort: [{ field: "updatedAt", direction: "desc" }],
+            limit: 20,
+            cursor: null,
+          },
+          {
+            siteId: "default",
+            principal: {
+              kind: "service",
+              siteId: "default",
+              principalId: "01900000-0000-7000-8000-000000000010",
+              authority: { kind: "user", userId: user.id },
+              credentialId: "01900000-0000-7000-8000-000000000011",
+              gatewayExposureCeiling: "read",
+              scopes: ["content:read"],
+            },
+            requestedAt: timestamp,
+            invocationId: "01900000-0000-7000-8000-000000000012",
+            idempotencyKey: null,
+            abortSignal: new AbortController().signal,
+          },
+        ),
+      );
+      expect(output.items.map((item) => item.id)).toEqual([visibleId]);
+      expect(output.items[0]?.updatedAt).toBe(timestamp);
+      expect(output.nextCursor).toBeNull();
+    }
+  });
 
   it("persists the originating site in save and delete follow-up jobs", async () => {
     const user = await seedUser();

@@ -20,6 +20,7 @@ import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
 import {
   npAgentDisabledGatewaySettingsV1,
+  npAgentContractLimits,
   npRequireAgentGatewaySettings,
   npRequireAgentJsonSchema,
   type NpAgentContentFilterV1,
@@ -188,7 +189,7 @@ function fieldSchema(
       return {
         type: nullable ? ["string", ...nullable] : "string",
         maxLength: 1_024,
-        enum: values,
+        enum: nullable ? [...values, null] : values,
       };
     }
     case "upload":
@@ -225,7 +226,7 @@ function fieldSchema(
           { type: "number" },
           { type: "boolean" },
           { type: "null" },
-          { type: "array", maxItems: 10_000, items: {} },
+          { type: "array", maxItems: npAgentContractLimits.jsonSchemaMaxItems, items: {} },
           { type: "object", additionalProperties: false, patternProperties: { ".*": {} } },
         ],
       };
@@ -325,6 +326,9 @@ function blocksSchema(
     $schema: META,
     type: "object",
     additionalProperties: false,
+    // The selected closed branch owns the allowed properties. Without this,
+    // the outer object rejects every property before oneOf can validate it.
+    patternProperties: { ".*": {} },
     ...(blocks.length === 0 ? { not: {} } : { oneOf: blocks.map((entry) => entry.schema) }),
   });
 }
@@ -453,6 +457,16 @@ function compileFilter(
     ]);
   }
   const column = tableColumn(table, filter.field);
+  const driverValue = (value: string | number | boolean): string | number | boolean | Date => {
+    if (kind !== "date") return value;
+    const parsed = typeof value === "string" ? new Date(value) : null;
+    if (!parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString() !== value) {
+      throw new NpValidationError("Invalid Agent content query", [
+        { field: filter.field, message: "Date filters require a canonical UTC timestamp." },
+      ]);
+    }
+    return parsed;
+  };
   if (filter.op === "exists") return filter.value ? isNotNull(column) : isNull(column);
   if (filter.op === "in") {
     if (
@@ -471,7 +485,7 @@ function compileFilter(
     const includesNull = filter.values.includes(null);
     const values = filter.values.filter((value) => value !== null);
     if (values.length === 0) return isNull(column);
-    const included = inArray(column, values);
+    const included = inArray(column, values.map(driverValue));
     return includesNull ? (or(isNull(column), included) as SQL) : included;
   }
   if (filter.value === null) {
@@ -491,19 +505,20 @@ function compileFilter(
       { field: filter.field, message: "Filter operator or value does not match the field type." },
     ]);
   }
+  const value = driverValue(filter.value);
   switch (filter.op) {
     case "eq":
-      return eq(column, filter.value);
+      return eq(column, value);
     case "neq":
-      return ne(column, filter.value);
+      return ne(column, value);
     case "gt":
-      return gt(column, filter.value);
+      return gt(column, value);
     case "gte":
-      return gte(column, filter.value);
+      return gte(column, value);
     case "lt":
-      return lt(column, filter.value);
+      return lt(column, value);
     case "lte":
-      return lte(column, filter.value);
+      return lte(column, value);
   }
 }
 
@@ -572,6 +587,7 @@ function toJson(
   path: string,
   state: JsonProjectionState = { seen: new WeakSet<object>(), nodes: 0 },
   depth = 0,
+  fields?: readonly NpFieldConfig[],
 ): NpAgentJsonValue {
   state.nodes += 1;
   if (state.nodes > MAX_PROJECTED_NODES || depth > MAX_PROJECTED_DEPTH) {
@@ -597,7 +613,9 @@ function toJson(
       if (!descriptor || !("value" in descriptor)) {
         throw new Error(`Content field ${path} contains a sparse or computed array value.`);
       }
-      projected.push(toJson(descriptor.value, `${path}[${index.toString()}]`, state, depth + 1));
+      projected.push(
+        toJson(descriptor.value, `${path}[${index.toString()}]`, state, depth + 1, fields),
+      );
     }
     return projected;
   }
@@ -615,16 +633,33 @@ function toJson(
     }
     const projected: Record<string, NpAgentJsonValue> = {};
     const descriptors = Object.entries(Object.getOwnPropertyDescriptors(value));
+    const visible =
+      fields === undefined
+        ? null
+        : new Map(safeFieldEntries(fields).map((field) => [field.name, field]));
     if (descriptors.length > MAX_PROJECTED_OBJECT_PROPERTIES) {
       throw new Error(`Content field ${path} exceeds the bounded object shape.`);
     }
     for (const [key, descriptor] of descriptors) {
+      if (visible !== null && !visible.has(key)) continue;
       if (!descriptor.enumerable) continue;
       if (!("value" in descriptor)) {
         throw new Error(`Content field ${path}.${key} is computed and cannot be projected.`);
       }
       if (descriptor.value !== undefined) {
-        projected[key] = toJson(descriptor.value, `${path}.${key}`, state, depth + 1);
+        const field = visible?.get(key);
+        Object.defineProperty(projected, key, {
+          enumerable: true,
+          configurable: true,
+          writable: true,
+          value: toJson(
+            descriptor.value,
+            `${path}.${key}`,
+            state,
+            depth + 1,
+            field?.type === "group" || field?.type === "array" ? field.fields : undefined,
+          ),
+        });
       }
     }
     return projected;
@@ -670,7 +705,9 @@ async function queryContent(
   if (config.access?.read && !(await config.access.read({ user: user ?? null }))) {
     throw new NpForbiddenError(input.collection, "read");
   }
-  const projectionFields = new Set(safeFieldEntries(config.fields).map((field) => field.name));
+  const projectionFields = new Map(
+    safeFieldEntries(config.fields).map((field) => [field.name, field]),
+  );
   for (const field of input.fields) {
     if (!projectionFields.has(field)) {
       throw new NpValidationError("Invalid Agent content query", [
@@ -758,13 +795,30 @@ async function queryContent(
         if (!("value" in descriptor)) {
           throw new Error(`Content field content.${field} is computed and cannot be projected.`);
         }
+        const definition = projectionFields.get(field);
         return descriptor.value === undefined
           ? []
-          : [[field, toJson(descriptor.value, `content.${field}`)]];
+          : [
+              [
+                field,
+                toJson(
+                  descriptor.value,
+                  `content.${field}`,
+                  undefined,
+                  0,
+                  definition?.type === "group" || definition?.type === "array"
+                    ? definition.fields
+                    : undefined,
+                ),
+              ],
+            ];
       }),
     );
     const status = contentStatus(doc.status);
-    const updatedAt = dateIso(doc.updatedAt) ?? "1970-01-01T00:00:00.000Z";
+    const updatedAt = dateIso(doc.updatedAt);
+    if (updatedAt === null) {
+      throw new Error("Content query returned an invalid update timestamp.");
+    }
     const body = {
       id: String(doc.id),
       slug: typeof doc.slug === "string" ? doc.slug : null,

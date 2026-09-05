@@ -37,6 +37,11 @@ following:
 The checked-in reference app and a fresh scaffold keep every Gateway transport
 disabled and install no automatic runtime factory.
 
+AP-201–AP-208 are the current implementation boundary. Admin Activity and the
+four `/api/agent/v1` machine HTTP routes remain planned under AP-209/AP-210;
+the presence of their wire contracts or an `agentHttp` setting does not make
+those routes available.
+
 Remote MCP additionally requires the host to:
 
 1. enable `agents.gateway.mcpHttp` in deployment config and in the selected
@@ -195,9 +200,9 @@ SDK result schema, and internal failures are reduced to bounded protocol
 errors. No caller-supplied site selector is accepted.
 
 The current three read capabilities are strictly inline. Their tools advertise
-`taskSupport: forbidden`; when task support is negotiated, task-augmented calls
-fail instead of inventing a run. With task support disabled, the task capability
-is omitted and augmentation cannot switch a normal call into task mode. Prompts
+`taskSupport: forbidden`; task-augmented calls fail instead of inventing a run.
+With task support disabled, the task capability is omitted and the pinned SDK
+rejects augmentation before dispatch. Ordinary inline calls remain available. Prompts
 remain unadvertised because their required future capabilities are not
 installed. A host may inject `createAgentMcpTaskServiceV1(...)` into the MCP
 projection for durable future descriptors; only then are task list/result/

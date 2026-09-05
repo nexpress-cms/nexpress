@@ -471,7 +471,8 @@ function inspectSchemaNode(value: NpAgentJsonValue, path: string, definitions: S
     }
   }
 
-  if (record.type === "string") {
+  const types = Array.isArray(record.type) ? record.type : [record.type];
+  if (types.includes("string")) {
     const maximum = record.maxLength;
     if (
       typeof maximum !== "number" ||
@@ -482,7 +483,7 @@ function inspectSchemaNode(value: NpAgentJsonValue, path: string, definitions: S
       fail("invalid-field", `${path}.maxLength`, "must declare a bounded string maximum");
     }
   }
-  if (record.type === "array") {
+  if (types.includes("array")) {
     const maximum = record.maxItems;
     if (
       typeof maximum !== "number" ||
@@ -493,7 +494,7 @@ function inspectSchemaNode(value: NpAgentJsonValue, path: string, definitions: S
       fail("invalid-field", `${path}.maxItems`, "must declare a bounded array maximum");
     }
   }
-  if (record.type === "object" && record.additionalProperties !== false) {
+  if (types.includes("object") && record.additionalProperties !== false) {
     fail("invalid-field", `${path}.additionalProperties`, "must be false for object schemas");
   }
 

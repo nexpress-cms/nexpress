@@ -273,6 +273,39 @@ describe("Agent contract foundation", () => {
     ).toMatchObject({ ok: false, issues: [{ code: "unsafe-value" }] });
   });
 
+  it.each([
+    { type: ["string", "null"] },
+    {
+      type: ["string", "null"],
+      maxLength: npAgentContractLimits.jsonSchemaMaxStringCharacters + 1,
+    },
+    { type: ["array", "null"], items: {} },
+    { type: ["array", "null"], maxItems: npAgentContractLimits.jsonSchemaMaxItems + 1, items: {} },
+    { type: ["object", "null"], properties: {} },
+  ])("enforces bounds and closure on nullable schemas: %j", (value) => {
+    expect(npAnalyzeAgentJsonSchema({ ...schema(), properties: { value }, required: [] }).ok).toBe(
+      false,
+    );
+  });
+
+  it("accepts bounded closed nullable schemas", () => {
+    expect(
+      npAnalyzeAgentJsonSchema({
+        ...schema(),
+        properties: {
+          label: { type: ["string", "null"], maxLength: 100 },
+          rows: {
+            type: ["array", "null"],
+            maxItems: 100,
+            items: { type: "string", maxLength: 100 },
+          },
+          details: { type: ["object", "null"], additionalProperties: false, properties: {} },
+        },
+        required: [],
+      }).ok,
+    ).toBe(true);
+  });
+
   it("does not execute accessors or hostile reflection traps", () => {
     const getter = vi.fn(() => "Query content");
     const descriptor = readDescriptor();

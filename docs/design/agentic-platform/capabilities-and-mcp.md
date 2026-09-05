@@ -2218,6 +2218,13 @@ after the request-type capability above is active does a task attempt against
 `execution.taskSupport:"required"` tool. Initialize snapshots and
 conformance tests cover all four negotiation branches.
 
+Current AP-206 implementation exception: the pinned official v1 SDK checks
+task-handler support before invoking the projection. With tasks unadvertised,
+it rejects augmented calls rather than ignoring their task field. The three
+shipped reads stay inline and create no run in either case. Reaching the
+proposed ignore-augmentation behavior above requires a separately verified SDK
+compatibility change; it is not claimed by the current implementation.
+
 The exact public projection is:
 
 ```ts
