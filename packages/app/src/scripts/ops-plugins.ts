@@ -90,7 +90,8 @@ async function main(): Promise<void> {
     } else {
       console.log(renderBriefOpsPluginsMutation(mutationReport, { color: COLOR_MODE }));
     }
-    process.exit(mutationReport.ok ? 0 : 1);
+    process.exitCode = mutationReport.ok ? 0 : 1;
+    return;
   }
 
   if (COMMAND === "inspect") {
@@ -102,7 +103,8 @@ async function main(): Promise<void> {
     } else {
       console.log(renderBriefOpsPluginsStatus(inspectReport, "inspect", { color: COLOR_MODE }));
     }
-    process.exit(inspectReport.ok ? 0 : 1);
+    process.exitCode = inspectReport.ok ? 0 : 1;
+    return;
   }
 
   if (COMMAND === "upgrade-plan") {
@@ -113,7 +115,8 @@ async function main(): Promise<void> {
     } else {
       console.log(renderBriefOpsPluginsUpgradePlan(upgradePlan, { color: COLOR_MODE }));
     }
-    process.exit(upgradePlan.ok ? 0 : 1);
+    process.exitCode = upgradePlan.ok ? 0 : 1;
+    return;
   }
 
   if (COMMAND !== "list" && COMMAND !== "doctor") {
@@ -125,10 +128,11 @@ async function main(): Promise<void> {
   } else {
     console.log(renderBriefOpsPluginsStatus(report, COMMAND, { color: COLOR_MODE }));
   }
-  process.exit(report.ok ? 0 : 1);
+  // Let pending pipe writes drain before the process exits, including large inventories.
+  process.exitCode = report.ok ? 0 : 1;
 }
 
 main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
-  process.exit(2);
+  process.exitCode = 2;
 });

@@ -2,7 +2,22 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-09-01 (The AP-207/AP-208 integration slice now adds
+**Last refreshed:** 2026-09-05 (The pre-AP-209/AP-210 review hardens the
+existing R2 implementation: service-token authentication and rotation use the
+same principal-before-token lock order as admission and refresh expiry checks
+after waits; nested content fields
+respect the schema's hidden-field boundary; date filters reach PostgreSQL as
+validated timestamps; malformed update times fail closed; nullable schemas
+retain the shared bounds; and block/JSON/optional-choice schemas remain usable.
+MCP connection plans keep package-manager output out of stdout across npm,
+pnpm, and Yarn Classic/modern, while reviewed Codex config apply detects TOML
+key-path collisions without rewriting unrelated settings. Plugin Doctor lets
+large piped JSON output drain before exit, and browser fixtures wait for data
+loading before selection. This review adds no
+AP-209/AP-210 route/UI, migration, runtime factory, default enablement, package
+version, or changeset. See the pre-R2 operations review in the roadmap.)
+
+**Earlier:** 2026-09-01 (The AP-207/AP-208 integration slice now adds
 one secret-free project connection planner for Codex and Claude Code across
 local stdio and same-origin HTTP. Reviewed apply writes only project-scoped
 client config plus one shared Agent Skills-standard skill; stdio credentials

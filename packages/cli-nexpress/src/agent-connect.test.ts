@@ -158,6 +158,90 @@ describe("nexpress agent connect", () => {
     expect(Object.hasOwn(reservedConfig.mcpServers, "constructor")).toBe(true);
   });
 
+  it.each([
+    "[mcp_servers.'nexpress']\ncommand = 'other'\n",
+    '[ "mcp_servers" . nexpress ]\ncommand = "other"\n',
+    '["mcp_\\u0073ervers"."\\U0000006eexpress"]\ncommand = "other"\n',
+    '[mcp_servers]\nnexpress = { command = "other" }\n',
+    "[mcp_servers]\n'nexpress' . command = 'other'\n",
+    'mcp_servers = { nexpress = { command = "other" } }\n',
+    'mcp_servers = { other = { command = "other" } }\n',
+    '"mcp_servers" . "nexpress" . command = "other"\n',
+    '[mcp_servers.nexpress.oauth]\nclient_id = "other"\n',
+    '[[mcp_servers.nexpress]]\ncommand = "other"\n',
+  ])("preserves TOML when an existing key path prevents appending (%s)", async (source) => {
+    const cwd = await temporaryProject();
+    await mkdir(join(cwd, ".codex"));
+    const configPath = join(cwd, ".codex/config.toml");
+    await writeFile(configPath, source);
+    const plan = npBuildAgentMcpConnectionPlanV1({
+      client: "codex",
+      transport: "stdio",
+      packageManager: "pnpm",
+    });
+    await expect(applyAgentConnectPlanV1(plan, cwd)).rejects.toThrow(/already exists outside/u);
+    expect(await readFile(configPath, "utf8")).toBe(source);
+    await expect(readFile(join(cwd, plan.skill.relativePath))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("ignores key-looking comments and multiline values while preserving unrelated TOML", async () => {
+    const cwd = await temporaryProject();
+    await mkdir(join(cwd, ".codex"));
+    const source = [
+      "# [mcp_servers.nexpress]",
+      'instructions = """',
+      "[mcp_servers.nexpress]",
+      'command = "example"',
+      '"""',
+      "literal = '''",
+      "mcp_servers.nexpress = { command = 'example' }",
+      "'''",
+      "[mcp_servers.other]",
+      "args = [",
+      '  "[mcp_servers.nexpress]", # table-looking value',
+      '  "quoted \\" value",',
+      "]",
+      'env = { NOTE = "mcp_servers.nexpress" }',
+      "[profiles.example]",
+      'mcp_servers.nexpress.command = "unrelated nested key"',
+      "",
+    ].join("\n");
+    const configPath = join(cwd, ".codex/config.toml");
+    await writeFile(configPath, source);
+    const plan = npBuildAgentMcpConnectionPlanV1({
+      client: "codex",
+      transport: "stdio",
+      packageManager: "pnpm",
+    });
+    expect((await applyAgentConnectPlanV1(plan, cwd)).written).toContain(".codex/config.toml");
+    expect(await readFile(configPath, "utf8")).toBe(
+      `${source}\n${plan.configuration?.kind === "codex-toml" ? plan.configuration.block : ""}\n`,
+    );
+    expect((await applyAgentConnectPlanV1(plan, cwd)).written).toEqual([]);
+  });
+
+  it("rejects managed block lookalikes and unmanaged extensions of its current table", async () => {
+    const plan = npBuildAgentMcpConnectionPlanV1({
+      client: "codex",
+      transport: "stdio",
+      packageManager: "pnpm",
+    });
+    if (plan.configuration?.kind !== "codex-toml") throw new Error("Expected Codex plan");
+    for (const source of [
+      `instructions = '''\n${plan.configuration.block}\n'''\n`,
+      `${plan.configuration.block}\nargs = ["other"]\n`,
+    ]) {
+      const cwd = await temporaryProject();
+      await mkdir(join(cwd, ".codex"));
+      const configPath = join(cwd, ".codex/config.toml");
+      await writeFile(configPath, source);
+      await expect(applyAgentConnectPlanV1(plan, cwd)).rejects.toThrow();
+      expect(await readFile(configPath, "utf8")).toBe(source);
+    }
+  });
+
   it("fails closed on unmanaged collisions, changed skills, and symlinked destinations", async () => {
     const codexCollision = await temporaryProject();
     await mkdir(join(codexCollision, ".codex"), { recursive: true });

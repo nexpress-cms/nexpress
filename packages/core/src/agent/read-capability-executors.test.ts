@@ -1,11 +1,15 @@
-import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import type { SQL } from "drizzle-orm";
+import { PgDialect, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { NpFieldConfig } from "../config/types.js";
 
 const mocks = vi.hoisted(() => ({
   findDocuments: vi.fn(),
   queryRows: [] as Array<{ id: string }>,
   getSiteById: vi.fn(),
   listEnabledPluginIds: vi.fn(),
+  fields: [] as NpFieldConfig[],
+  queryParameters: [] as unknown[],
 }));
 
 const posts = pgTable("np_test_agent_posts", {
@@ -35,7 +39,7 @@ vi.mock("../collections/index.js", () => ({
   getAllCollectionSlugs: () => ["posts"],
   getCollectionConfig: (slug: string) => {
     if (slug !== "posts") throw new Error("missing collection");
-    return collection;
+    return { ...collection, fields: [...collection.fields, ...mocks.fields] };
   },
   getCollectionTable: () => posts,
 }));
@@ -44,11 +48,14 @@ vi.mock("../db/runtime.js", () => ({
   getDb: () => ({
     select: () => ({
       from: () => ({
-        where: () => ({
-          orderBy: () => ({
-            limit: () => ({ offset: () => Promise.resolve(mocks.queryRows) }),
-          }),
-        }),
+        where: (where: SQL) => {
+          mocks.queryParameters = new PgDialect().sqlToQuery(where).params;
+          return {
+            orderBy: () => ({
+              limit: () => ({ offset: () => Promise.resolve(mocks.queryRows) }),
+            }),
+          };
+        },
       }),
     }),
   }),
@@ -133,6 +140,8 @@ describe("Agent core read capability executors", () => {
     mocks.getSiteById.mockReset();
     mocks.listEnabledPluginIds.mockReset();
     mocks.queryRows = [];
+    mocks.fields = [];
+    mocks.queryParameters = [];
   });
 
   it("projects safe site and exact schema resources from existing registries", async () => {
@@ -219,6 +228,146 @@ describe("Agent core read capability executors", () => {
       }),
       undefined,
     );
+  });
+
+  it("excludes hidden and undeclared nested group/array fields without reading getters", async () => {
+    const nestedFields: NpFieldConfig[] = [
+      {
+        type: "row",
+        fields: [
+          { name: "label", type: "text" },
+          { name: "internalNote", type: "text", hidden: true },
+        ],
+      },
+      {
+        name: "children",
+        type: "array",
+        fields: [
+          { name: "label", type: "text" },
+          { name: "internalNote", type: "text", hidden: true },
+        ],
+      },
+    ];
+    mocks.fields = [
+      { name: "details", type: "group", fields: nestedFields },
+      { name: "entries", type: "array", fields: nestedFields },
+    ];
+    const hidden = vi.fn(() => "private nested evidence");
+    const nested = () =>
+      Object.defineProperty(
+        {
+          label: "Visible",
+          undeclared: "not in the definition",
+          children: [{ label: "Child", internalNote: "private nested evidence" }],
+        },
+        "internalNote",
+        { enumerable: true, get: hidden },
+      );
+    const id = "01900000-0000-7000-8000-000000000040";
+    mocks.queryRows = [{ id }];
+    mocks.findDocuments.mockResolvedValue({
+      docs: [
+        {
+          id,
+          slug: "nested",
+          status: "published",
+          updatedAt: new Date(requestedAt),
+          details: nested(),
+          entries: [nested()],
+        },
+      ],
+    });
+    const output = await executors()["content.query"](
+      {
+        collection: "posts",
+        filter: null,
+        fields: ["details", "entries"],
+        audience: "public",
+        status: "published",
+        sort: [],
+        limit: 1,
+        cursor: null,
+      },
+      context,
+    );
+    const visible = { label: "Visible", children: [{ label: "Child" }] };
+    expect(output.items[0]?.data).toEqual({ details: visible, entries: [visible] });
+    expect(hidden).not.toHaveBeenCalled();
+    expect(npRequireAgentContentQueryOutputV1(output)).toEqual(output);
+  });
+
+  it.each(["eq", "neq", "gt", "gte", "lt", "lte", "in"] as const)(
+    "compiles canonical date %s filters with the real PostgreSQL encoder",
+    async (op) => {
+      await executors()["content.query"](
+        {
+          collection: "posts",
+          filter:
+            op === "in"
+              ? { op, field: "updatedAt", values: [requestedAt, null] }
+              : { op, field: "updatedAt", value: requestedAt },
+          fields: [],
+          audience: "public",
+          status: "published",
+          sort: [],
+          limit: 1,
+          cursor: null,
+        },
+        context,
+      );
+      expect(mocks.queryParameters).toContain(requestedAt);
+    },
+  );
+
+  it("rejects invalid date filter values before PostgreSQL encoding", async () => {
+    for (const value of ["invalid-date", "2026-02-30T00:00:00.000Z"]) {
+      await expect(
+        executors()["content.query"](
+          {
+            collection: "posts",
+            filter: { op: "eq", field: "updatedAt", value },
+            fields: [],
+            audience: "public",
+            status: "published",
+            sort: [],
+            limit: 1,
+            cursor: null,
+          },
+          context,
+        ),
+      ).rejects.toThrow("Invalid Agent content query");
+    }
+  });
+
+  it("projects JSON field schemas within the shared schema bounds", async () => {
+    mocks.fields = [{ name: "metadata", type: "json" }];
+    const output = await executors()["schema.get"](
+      { selector: "collection", slug: "posts" },
+      context,
+    );
+    expect(npRequireAgentSchemaGetOutputV1(output)).toEqual(output);
+  });
+
+  it("retains null as a valid value for optional select and radio fields", async () => {
+    mocks.fields = ["select", "radio"].map((type) => ({
+      name: type,
+      type: type as "select" | "radio",
+      options: [{ label: "One", value: "one" }],
+    }));
+    const output = await executors()["schema.get"](
+      { selector: "collection", slug: "posts" },
+      context,
+    );
+    expect(output.schema).toMatchObject({
+      properties: {
+        data: {
+          properties: {
+            select: { type: ["string", "null"], enum: ["one", null] },
+            radio: { type: ["string", "null"], enum: ["one", null] },
+          },
+        },
+      },
+    });
   });
 
   it("rejects cursor tampering, hidden projection fields, and type-mismatched filters", async () => {
@@ -346,4 +495,30 @@ describe("Agent core read capability executors", () => {
       ),
     ).rejects.toThrow("cyclic");
   });
+
+  it.each([undefined, "invalid-date"])(
+    "does not invent timestamps for malformed rows: %s",
+    async (updatedAt) => {
+      const id = "01900000-0000-7000-8000-000000000022";
+      mocks.queryRows = [{ id }];
+      mocks.findDocuments.mockResolvedValue({
+        docs: [{ id, slug: "invalid", status: "published", updatedAt }],
+      });
+      await expect(
+        executors()["content.query"](
+          {
+            collection: "posts",
+            filter: null,
+            fields: [],
+            audience: "public",
+            status: "published",
+            sort: [],
+            limit: 1,
+            cursor: null,
+          },
+          context,
+        ),
+      ).rejects.toThrow("invalid update timestamp");
+    },
+  );
 });

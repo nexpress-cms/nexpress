@@ -344,6 +344,17 @@ authoring contract, runtime host, and descriptor-source boundaries. Neither
 slice launches a client, grants consent, adds a provider call or route, enables
 a transport by default, creates a migration, or changes a package version.
 
+Pre-R2 operations review (2026-09-05): the existing AP-201–AP-208 slice was
+rechecked before starting AP-209/AP-210. The review repairs principal/token
+lock-order inversion and stale expiry checks after waits, recursive hidden-field
+projection, date SQL encoding,
+fabricated update timestamps, nullable schema bounds, invalid block/JSON/choice
+schema projections, package-manager stdout contamination, and TOML connection
+entry collisions. Packed-scaffold checks also exposed truncated Plugin Doctor
+JSON output; its existing CLI now drains output before exit. Existing contracts and fixtures remain the owners; no new
+route, runtime, migration, package version, or changeset is introduced.
+Detailed scope and verification: [R2 readiness review](r2-readiness-review.md).
+
 Through R4, capability policy evaluation uses the immutable framework hard
 rules plus the exact disabled-by-default deployment/site feature settings.
 There is no mutable Runtime Agent policy row to configure yet. R5 adds

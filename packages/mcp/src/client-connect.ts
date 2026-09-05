@@ -101,6 +101,21 @@ export interface NpAgentMcpConnectionPlanV1 {
 const SERVER_NAME_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/u;
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9._~-]{1,256}$/u;
 
+// Classic prints lifecycle banners; modern Yarn is already quiet and rejects
+// Classic's --silent option and YARN_SILENT environment setting. Resolve the
+// project-selected Yarn version without letting that probe enter MCP stdout.
+const YARN_STDIO_LAUNCHER = [
+  'const {spawn,spawnSync}=require("node:child_process");',
+  'const shell=process.platform==="win32";',
+  'const version=spawnSync("yarn",["--version"],{encoding:"utf8",timeout:10000,maxBuffer:1024,shell});',
+  "if(version.status!==0||!/^\\d+\\.\\d+\\.\\d+/u.test(version.stdout.trim()))process.exit(1);",
+  'const args=version.stdout.trim().startsWith("1.")?["--silent","run","agent:mcp"]:["run","agent:mcp"];',
+  'const child=spawn("yarn",args,{stdio:"inherit",shell});',
+  'for(const signal of ["SIGINT","SIGTERM","SIGHUP"])process.on(signal,()=>child.kill(signal));',
+  'child.on("error",()=>process.exit(1));',
+  'child.on("exit",(code,signal)=>{if(signal){process.removeAllListeners(signal);process.kill(process.pid,signal);}else process.exit(code??1);});',
+].join("");
+
 function requireMember<T extends string>(value: unknown, values: readonly T[], label: string): T {
   if (typeof value !== "string" || !values.includes(value as T)) {
     throw new Error(`${label} must be one of ${values.join(", ")}.`);
@@ -134,8 +149,9 @@ function stdioCommand(packageManager: NpAgentMcpConnectionPackageManagerV1): {
   command: string;
   args: string[];
 } {
-  if (packageManager === "yarn") return { command: "yarn", args: ["agent:mcp"] };
-  return { command: packageManager, args: ["run", "agent:mcp"] };
+  // Package-manager lifecycle banners must not precede MCP JSON-RPC frames.
+  if (packageManager === "yarn") return { command: "node", args: ["-e", YARN_STDIO_LAUNCHER] };
+  return { command: packageManager, args: ["--silent", "run", "agent:mcp"] };
 }
 
 function codexConfiguration(input: {
