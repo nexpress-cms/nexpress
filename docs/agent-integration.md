@@ -8,8 +8,10 @@ covers the three entrypoints an agent needs: the **OpenAPI spec**, the
 This page describes automation of the existing CMS REST API through staff
 sessions. For the dedicated, scope- and audience-bound MCP service credentials
 and OAuth flow, use [Agent Gateway](./agent-gateway.md). The four machine
-`/api/agent/v1` routes and their OpenAPI projection are still planned under
-AP-210; staff cookies are not credentials for that future surface.
+`/api/agent/v1` routes and their OpenAPI projection are implemented under
+AP-210 and require explicit host injection and enablement. They accept only
+dedicated Agent HTTP service credentials; staff cookies are not credentials
+for that surface.
 
 ---
 

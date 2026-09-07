@@ -1,10 +1,34 @@
 import { NpAuthError, NpError, NpForbiddenError, NpValidationError, can } from "@nexpress/core";
 import { verifyToken } from "@nexpress/core/auth";
 import { NpAgentProviderError } from "@nexpress/core/agents";
+import {
+  npAnalyzeAgentActivityQueryV1,
+  type NpAgentActivityKindV1,
+} from "@nexpress/core/agent-contract";
 import { requireSiteId } from "@nexpress/core/sites";
 import type { NextRequest } from "next/server";
 
 import { getAuthRuntimeConfig, requireAuth } from "../auth-helpers";
+
+/** HTTP decoding only; the shared Activity contract owns the allowed keys and values. */
+export function readAgentActivityQuery(request: NextRequest, kind: NpAgentActivityKindV1) {
+  const invalid = () =>
+    new NpValidationError("Invalid Activity query", [
+      { field: "query", message: "Use one bounded value per supported Activity filter." },
+    ]);
+  if (request.nextUrl.search.length > 8192) throw invalid();
+  const values: Record<string, unknown> = {};
+  for (const [key, value] of request.nextUrl.searchParams) {
+    if (Object.hasOwn(values, key)) throw invalid();
+    if (key === "limit") {
+      if (!/^[1-9][0-9]{0,2}$/u.test(value)) throw invalid();
+      Object.defineProperty(values, key, { value: Number(value), enumerable: true });
+    } else Object.defineProperty(values, key, { value, enumerable: true });
+  }
+  const result = npAnalyzeAgentActivityQueryV1(kind, values);
+  if (!result.ok) throw invalid();
+  return result.value;
+}
 
 export async function requireAgentStudioAdmin(request: NextRequest) {
   const user = await requireAuth(request);

@@ -520,6 +520,23 @@ edit path.
 
 ## 9. Activity
 
+AP-209 implements `/admin/agents/activity`, its run details, and
+`/admin/agents/activity/actions` with standalone action details. Principals
+reuse the existing Gateway detail and lifecycle admission. The matching Admin
+API routes expose bounded cursor pages; filtering and item visibility happen
+in the service before any row reaches a browser. The current surface requires
+`admin.manage`; delegated domain-review surfaces remain future work.
+
+Only persisted run/action facts are shown. Read calls with no run remain in
+the Actions list, while run origins distinguish Gateway from Runtime. Stored
+free text and read payloads are never trusted as safe merely because a column
+is named `inputRedacted` or `outputRedacted`: the view exposes metadata,
+correlation identifiers and hashes, with explicit redacted/expired evidence.
+Runtime principal configuration cannot be projected from the current identity
+table alone; missing runtime metadata is unavailable rather than invented.
+Cancel/retry and provider timelines remain dependent on future execution
+services and are not presented as working controls.
+
 ### 9.1 Run list
 
 Filters include canonical time range, run origin (`gateway` or `runtime`),

@@ -2,7 +2,22 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-09-05 (The pre-AP-209/AP-210 review hardens the
+**Last refreshed:** 2026-09-07 (AP-209/AP-210 add bounded Admin Activity
+principal/run/action views and four same-origin Agent HTTP routes through
+existing staff admission, Gateway service credentials, read descriptors and
+invocation admission. Activity checks every current target and exposes only
+client-safe metadata with explicit redacted/expired evidence; inline reads
+still create actions without inventing runs. Agent HTTP selects the site from
+its dedicated service credential, rechecks canonical audience and live
+principal authority, and shares the Activity run facade. Preview artifacts
+remain unavailable without an explicitly injected shared artifact facade.
+OpenAPI projects the four HTTP routes with exact descriptor-derived invocation
+branches; it does not project MCP JSON-RPC or grant authority. Reference and
+scaffold wrappers share the implementation. This slice adds no migration,
+provider call, scheduled worker, port, automatic runtime factory, default
+enablement, package version, or changeset.)
+
+**Earlier:** 2026-09-05 (The pre-AP-209/AP-210 review hardens the
 existing R2 implementation: service-token authentication and rotation use the
 same principal-before-token lock order as admission and refresh expiry checks
 after waits; nested content fields

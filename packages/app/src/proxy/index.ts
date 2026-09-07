@@ -127,6 +127,7 @@ const CSRF_EXEMPT_PATTERNS: readonly RegExp[] = [
   /^\/api\/newsletter$/,
   /^\/api\/views$/,
   /^\/api\/mcp$/,
+  /^\/api\/agent\/v1\/invocations$/,
   /^\/api\/agent-oauth\/(token|revoke)$/,
   /^\/api\/internal\//,
   // plugins/<id>/<segment>/... where <segment> != "actions" — the

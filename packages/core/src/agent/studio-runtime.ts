@@ -11,6 +11,8 @@ import type { NpAgentConnectionAdminServiceV1 } from "./connection-admin-service
 import type { NpAgentConnectionServiceV1 } from "./connection-service.js";
 import type { NpAgentGatewayServiceV1 } from "./gateway-service.js";
 import type { NpAgentOauthServiceV1 } from "./oauth-service.js";
+import type { NpAgentActivityServiceV1 } from "./activity-service.js";
+import type { NpAgentHttpGatewayV1 } from "./agent-http-gateway.js";
 import type { NpAgentMcpGatewayV1 } from "./mcp-gateway.js";
 import type { NpAgentConnectionAuthAdapterRegistryV1 } from "./provider-auth-contract.js";
 import { NpServiceUnavailableError } from "../errors.js";
@@ -21,6 +23,8 @@ export interface NpAgentStudioServerRuntimeV1 {
   gateway: NpAgentGatewayServiceV1 | null;
   oauth: NpAgentOauthServiceV1 | null;
   mcp: NpAgentMcpGatewayV1 | null;
+  activity: NpAgentActivityServiceV1 | null;
+  agentHttp: NpAgentHttpGatewayV1 | null;
   adapters: readonly NpAgentStudioAdapterV1[];
   resolveGatewaySettings: (siteId: string) => Promise<NpAgentGatewaySettingsV1>;
 }
@@ -31,6 +35,8 @@ export interface NpAgentStudioServerRuntimeOptionsV1 {
   gateway?: NpAgentGatewayServiceV1;
   oauth?: NpAgentOauthServiceV1;
   mcp?: NpAgentMcpGatewayV1;
+  activity?: NpAgentActivityServiceV1;
+  agentHttp?: NpAgentHttpGatewayV1;
   providerRegistry?: NpAgentConnectionAuthAdapterRegistryV1;
 }
 
@@ -66,6 +72,9 @@ export function createAgentStudioServerRuntimeV1(
   if (options.mcp !== undefined && options.gateway === undefined) {
     throw new Error("Agent MCP runtime requires the Agent Gateway service.");
   }
+  if (options.agentHttp !== undefined && options.gateway === undefined) {
+    throw new Error("Agent HTTP runtime requires the Agent Gateway service.");
+  }
   const adapters = Object.freeze((options.providerRegistry?.list() ?? []).map(adapterProjection));
   return Object.freeze({
     connections: options.connections ?? null,
@@ -73,6 +82,8 @@ export function createAgentStudioServerRuntimeV1(
     gateway: options.gateway ?? null,
     oauth: options.oauth ?? null,
     mcp: options.mcp ?? null,
+    activity: options.activity ?? null,
+    agentHttp: options.agentHttp ?? null,
     adapters,
     resolveGatewaySettings: async (siteId: string) =>
       npRequireAgentGatewaySettings(
@@ -166,4 +177,14 @@ export function requireAgentStudioMcpRuntimeV1(): NpAgentStudioServerRuntimeV1 &
     gateway: NpAgentGatewayServiceV1;
     mcp: NpAgentMcpGatewayV1;
   };
+}
+
+export function requireAgentStudioActivityRuntimeV1(): NpAgentStudioServerRuntimeV1 & {
+  activity: NpAgentActivityServiceV1;
+} {
+  const runtime = installedRuntime;
+  if (!runtime?.activity) {
+    throw new NpServiceUnavailableError("Agent Studio Activity runtime is unavailable.");
+  }
+  return runtime as NpAgentStudioServerRuntimeV1 & { activity: NpAgentActivityServiceV1 };
 }

@@ -37,10 +37,9 @@ following:
 The checked-in reference app and a fresh scaffold keep every Gateway transport
 disabled and install no automatic runtime factory.
 
-AP-201–AP-208 are the current implementation boundary. Admin Activity and the
-four `/api/agent/v1` machine HTTP routes remain planned under AP-209/AP-210;
-the presence of their wire contracts or an `agentHttp` setting does not make
-those routes available.
+AP-209/AP-210 add Admin Activity and the four `/api/agent/v1` machine HTTP
+routes. A setting alone still does not make either surface ready: the host
+must explicitly install the corresponding shared services.
 
 Remote MCP additionally requires the host to:
 
@@ -58,6 +57,64 @@ The OAuth signing key is distinct from `NP_SECRET`, provider credentials, and
 Vault keys. Keep its private material server-only. Publish only the active and
 explicitly retiring public keys through the built-in JWKS endpoint. Client
 secrets and Dynamic Client Registration are not accepted in v1.
+
+## Admin Activity and Agent HTTP
+
+Activity uses `createAgentActivityServiceV1({ cursorHmacKey, admission })` and
+`createAgentStudioServerRuntimeV1({ gateway, activity, ... })`. The cursor key
+is server-only, at least 32 bytes, and must be stable across host instances.
+Activity requires a current staff session and `admin.manage`, then checks the
+current visibility of each action target. The Actions tab includes inline
+reads with no run. Run details distinguish persisted Gateway and Runtime
+metadata. Payloads remain redacted, and expired evidence is labelled rather
+than reconstructed. Principal suspend/resume/revoke use the existing Gateway
+Admin reauthentication, CSRF, idempotency, CAS and audit contracts.
+
+Agent HTTP additionally requires explicit deployment/site `agentHttp`
+enablement, a canonical HTTPS origin and
+`createAgentHttpGatewayV1({ gateway, admission, activity, artifacts? })` passed
+as `agentHttp` to the same Studio runtime. Reuse the admission instance used by
+MCP. The four routes are:
+
+```text
+GET  /api/agent/v1/capabilities
+POST /api/agent/v1/invocations
+GET  /api/agent/v1/runs/{runId}
+GET  /api/agent/v1/previews/{previewId}/artifacts/{artifactId}
+```
+
+Only a dedicated `agent-http` service credential in one Bearer header is
+accepted. Its audience is the full canonical
+`https://<site-host>/api/agent/v1` resource. The credential selects the site;
+MCP OAuth, MCP/stdio service tokens, staff cookies and supplied site ids do not
+provide authority. Principal state, token version, expiry, scopes, deployment
+and site exposure, and live staff authority are checked on each request.
+
+An invocation uses the existing exact request, for example:
+
+```json
+{
+  "schemaVersion": "np.agent-invocation-request.v1",
+  "capabilityId": "site.inspect",
+  "arguments": { "input": {}, "idempotencyKey": null }
+}
+```
+
+The current three read descriptors execute inline and return invocation and
+action ids; they do not create a run. A known but unexposed capability cannot
+be called directly. `/api/openapi.json` describes the four paths and exact
+capability-specific input/output branches; it grants no authority and does
+not model MCP JSON-RPC as REST.
+
+No preview store is included. Without an explicitly injected shared artifact
+facade, every artifact identifier returns the same safe 404. A future facade
+must recheck current preview/target visibility, expiry and byte integrity;
+transport adapters never accept a storage locator or signed URL. Missing and
+unauthorized run reads likewise share one safe not-found response.
+
+Doctor continues checking the existing 19-table persistence foundation. A
+healthy persistence result does not assert that the host installed Activity,
+Agent HTTP, an execution runtime or a preview facade.
 
 ## Run locally
 

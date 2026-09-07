@@ -89,7 +89,7 @@ function isCanonicalUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_PATTERN.test(value);
 }
 
-function principalProjection(row: PrincipalRow): NpAgentPrincipalV1 {
+export function npProjectAgentPrincipalV1(row: PrincipalRow): NpAgentPrincipalV1 {
   if (row.kind !== "external") {
     throw new NpAgentGatewayError(
       "PRINCIPAL_KIND_UNSUPPORTED",
@@ -351,7 +351,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
               })
               .returning();
             if (!row) throw new Error("Failed to create Agent principal.");
-            return { resourceId: row.id, output: toJsonObject(principalProjection(row)) };
+            return { resourceId: row.id, output: toJsonObject(npProjectAgentPrincipalV1(row)) };
           }
           case "agents.gateway.principals.update": {
             const value = command as {
@@ -405,7 +405,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
               .returning();
             if (!row)
               throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Principal version changed.");
-            return { resourceId: row.id, output: toJsonObject(principalProjection(row)) };
+            return { resourceId: row.id, output: toJsonObject(npProjectAgentPrincipalV1(row)) };
           }
           case "agents.gateway.principal_tokens.create": {
             const value = command as {
@@ -778,7 +778,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
                   ),
                 );
             }
-            return { resourceId: row.id, output: toJsonObject(principalProjection(row)) };
+            return { resourceId: row.id, output: toJsonObject(npProjectAgentPrincipalV1(row)) };
           }
         }
       },
@@ -795,7 +795,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
       .where(and(eq(npAgentPrincipals.siteId, siteId), eq(npAgentPrincipals.kind, "external")))
       .orderBy(asc(npAgentPrincipals.createdAt), asc(npAgentPrincipals.id))
       .limit(limit);
-    return rows.map(principalProjection);
+    return rows.map(npProjectAgentPrincipalV1);
   }
 
   async function getPrincipal(
@@ -816,7 +816,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
         ),
       )
       .limit(1);
-    return row ? principalProjection(row) : null;
+    return row ? npProjectAgentPrincipalV1(row) : null;
   }
 
   async function listServiceTokens(
@@ -1012,7 +1012,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
         );
       }
       return {
-        principal: principalProjection(principal),
+        principal: npProjectAgentPrincipalV1(principal),
         serviceToken: tokenProjection(used),
         scopes: token.scopes as NpAgentScope[],
         authorizationContext,
@@ -1022,14 +1022,15 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
   }
 
   /**
-   * Stdio has no trusted request host or caller-supplied site selector. Resolve
+   * Machine transports have no caller-supplied site selector. Resolve
    * the globally unique public token id first, then run the normal
    * site/audience/transport verifier. The second transaction repeats every
    * live row and exposure check, so the lookup cannot grant authority or race
    * a rotation/revocation.
    */
-  async function authenticateStdioServiceToken(input: {
+  async function authenticateTransportServiceToken(input: {
     credential: unknown;
+    transport: NpAgentServiceTokenV1["transport"];
   }): Promise<NpAgentAuthenticatedServicePrincipalV1> {
     const parsed = npParseAgentOpaqueVerifierV1("service-token", input.credential);
     if (!parsed) {
@@ -1046,9 +1047,13 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
     return authenticateServiceToken({
       siteId: token.siteId,
       credential: input.credential,
-      transport: "stdio",
-      audience: "urn:nexpress:agent-gateway:stdio",
+      transport: input.transport,
+      audience: await audienceFor(token.siteId, input.transport),
     });
+  }
+
+  async function authenticateStdioServiceToken(input: { credential: unknown }) {
+    return authenticateTransportServiceToken({ ...input, transport: "stdio" });
   }
 
   /**
@@ -1150,6 +1155,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
     getServiceToken,
     authenticateServiceToken,
     authenticateStdioServiceToken,
+    authenticateTransportServiceToken,
     containUserAuthorityLoss,
   });
 }

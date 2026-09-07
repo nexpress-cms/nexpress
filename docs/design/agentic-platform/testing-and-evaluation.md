@@ -518,6 +518,16 @@ runtime behavior is claimed by this evidence.
 
 ## 5. Capability and MCP tests
 
+AP-209/AP-210 add `agent-activity.integration.test.ts`,
+`agent-activity-admin.integration.test.ts`, and `agent-http.integration.test.ts`
+to the reference-app PostgreSQL suite. They exercise item visibility,
+authorization-bound cursors, redacted/expired evidence and machine
+site/audience/scope/currentness checks. Core Activity/Agent HTTP contract tests
+lock their closed projections, and the App OpenAPI tests validate exact
+capability branches and nested schema references. Repository wrapper tests
+compare the four reference/scaffold paths; Playwright covers Activity pages
+and principal controls without constructing a production runtime.
+
 For every built-in capability:
 
 - definition passes the same startup/Doctor validator;
