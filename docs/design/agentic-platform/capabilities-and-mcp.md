@@ -2412,7 +2412,7 @@ MCP JSON-RPC framing is documented as MCP, not falsely modeled as ordinary
 OpenAPI operations. The live OpenAPI 3.1 document still projects the same
 contracts for agent-oriented HTTP and Admin clients.
 
-Proposed machine HTTP surface:
+Machine HTTP surface implemented in AP-210:
 
 ```text
 GET  /api/agent/v1/capabilities
@@ -2420,6 +2420,14 @@ POST /api/agent/v1/invocations
 GET  /api/agent/v1/runs/{runId}
 GET  /api/agent/v1/previews/{previewId}/artifacts/{artifactId}
 ```
+
+The live projection has exact invocation request/output branches for the
+three currently shipped framework read descriptors (`site.inspect`,
+`schema.get`, `content.query`). Future capability ids do not receive placeholder
+input/output schemas. Both transport admission and descriptor validation remain
+authoritative; the OpenAPI document is discovery only. An artifact path exists,
+but no preview store is constructed: without the shared host artifact facade,
+it returns the same safe not-found envelope for every identifier.
 
 Proposed Agent Studio surfaces live under `/api/admin/agents/*` and use the
 normal staff session/CSRF contract.

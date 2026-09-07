@@ -355,6 +355,20 @@ JSON output; its existing CLI now drains output before exit. Existing contracts 
 route, runtime, migration, package version, or changeset is introduced.
 Detailed scope and verification: [R2 readiness review](r2-readiness-review.md).
 
+AP-209/AP-210 implementation (2026-09-07): Admin Activity now provides bounded
+principal, run and standalone action lists/details, with live staff/site and
+item visibility checks, explicit evidence redaction/expiry, and the existing
+Gateway suspend/resume/revoke admission. The four Agent HTTP routes reuse
+credential-selected site authority, full canonical resource audiences, shared
+capability admission and the Activity run facade. Their OpenAPI 3.1 projection
+contains exact branches for the three currently shipped read descriptors.
+Artifact storage and runtime execution remain future capabilities: a missing
+shared artifact facade returns the same safe 404, and inline reads create no
+run. Both surfaces require explicit host injection and remain disabled in the
+reference app and fresh scaffold. No migration, version or changeset is added.
+Implementation boundaries and self-review:
+[R2 operations review](r2-operations-review.md).
+
 Through R4, capability policy evaluation uses the immutable framework hard
 rules plus the exact disabled-by-default deployment/site feature settings.
 There is no mutable Runtime Agent policy row to configure yet. R5 adds

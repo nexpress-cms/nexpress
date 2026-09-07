@@ -1320,6 +1320,15 @@ request-body capture must exclude these routes and known secret field names.
 
 ## Tenant isolation
 
+AP-210 implements the four Agent HTTP paths using only credential-selected
+site authority and the canonical full Agent API resource audience. It reuses
+Gateway token authentication and capability admission, rejects cookie and
+MCP/OAuth credential reuse, and binds the authenticated operation to the
+credential site context. AP-209 Activity reuses live staff session/site
+admission and target visibility; metadata projection does not trust stored
+payload column names as a guarantee of redaction. Neither surface adds an
+automatic runtime or preview store.
+
 Tenant safety is enforced at every layer:
 
 - every `np_agent_*` row has canonical `site_id`; unique keys and relationships

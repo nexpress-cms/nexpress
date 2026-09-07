@@ -7,6 +7,17 @@ import { getAuthRuntimeConfig } from "../auth-helpers";
 import { getDb } from "../db";
 import { ensureFor } from "../init-core";
 
+export function agentActivitySearchString(
+  values: Record<string, string | string[] | undefined>,
+): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) {
+    if (Array.isArray(value)) value.forEach((item) => query.append(key, item));
+    else if (value !== undefined) query.set(key, value);
+  }
+  return query.toString();
+}
+
 export async function requireAgentStudioPageAccess(): Promise<void> {
   await ensureFor("read");
   const token = (await cookies()).get("np-session")?.value;

@@ -1,10 +1,10 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Bot, Cable, KeyRound } from "lucide-react";
+import { Activity, Bot, Cable, KeyRound } from "lucide-react";
 
 import { cn } from "../ui/utils.js";
 
-export type AgentStudioSection = "overview" | "connections";
+export type AgentStudioSection = "overview" | "connections" | "activity";
 
 export function AgentStudioFrame({
   active,
@@ -21,8 +21,7 @@ export function AgentStudioFrame({
           <h1 className="text-[22px] font-semibold tracking-[-0.02em]">Agent Studio</h1>
         </div>
         <p className="max-w-[72ch] text-[13.5px] text-neutral-500 dark:text-neutral-400">
-          Configure outbound provider connections and inbound Agent Gateway authority without
-          exposing a dedicated MCP port.
+          Configure provider connections and Gateway authority, and review authorized site activity.
         </p>
       </header>
       <nav
@@ -36,6 +35,12 @@ export function AgentStudioFrame({
             href: "/admin/agents/connections",
             label: "Connections",
             icon: Cable,
+          },
+          {
+            id: "activity" as const,
+            href: "/admin/agents/activity",
+            label: "Activity",
+            icon: Activity,
           },
         ].map(({ id, href, label, icon: Icon }) => (
           <Link

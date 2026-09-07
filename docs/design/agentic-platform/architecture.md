@@ -283,6 +283,14 @@ path remains idempotent, audited, validated, and verification-bound.
 
 ### 3.6 Agent Studio
 
+AP-209/AP-210 install Activity and Agent HTTP only through explicit options on
+the existing Studio server runtime. `createAgentActivityServiceV1` owns shared
+staff and machine run visibility; `createAgentHttpGatewayV1` delegates to the
+same Gateway credential service and capability admission used by MCP. App
+routes are transport adapters and reference/scaffold files remain thin
+wrappers. No host service is created automatically. Missing artifact/runtime
+services remain honestly unavailable.
+
 Agent Studio is split at the existing server/client boundary:
 
 - `@nexpress/app` server components resolve staff authorization and fetch

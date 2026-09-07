@@ -50,6 +50,11 @@ export { AgentStudioView } from "./agents/agent-studio-view.js";
 export { AgentConnectionCreateView } from "./agents/agent-connection-create-view.js";
 export { AgentConnectionDetailView } from "./agents/agent-connection-detail-view.js";
 export { AgentPrincipalDetailView } from "./agents/agent-principal-detail-view.js";
+export {
+  AgentActivityView,
+  AgentActivityRunDetailView,
+  AgentActivityActionDetailView,
+} from "./agents/agent-activity-view.js";
 export { WordPressImportView } from "./import/wordpress-import-view.js";
 export { ThemeCleanupView } from "./themes/cleanup-view.js";
 export { SitesView } from "./sites/sites-view.js";

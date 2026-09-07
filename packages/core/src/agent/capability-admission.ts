@@ -16,7 +16,6 @@ import {
   type NpAgentJsonObject,
   type NpAgentReadCapabilityIdV1,
   type NpAgentReadCapabilityInvocationRequestV1,
-  type NpAgentReadCapabilityOutputMapV1,
   type NpAgentScope,
 } from "../agent-contract/index.js";
 import { can } from "../auth/capabilities.js";
@@ -64,15 +63,8 @@ export interface NpAgentCapabilityAdmissionOptionsV1 {
   invocationRetentionSeconds?: number;
 }
 
-export interface NpAgentReadCapabilityInvocationResultV1<
-  C extends NpAgentReadCapabilityIdV1 = NpAgentReadCapabilityIdV1,
-> {
-  schemaVersion: "np.agent-read-invocation-result.v1";
-  invocationId: string;
-  actionId: string;
-  capabilityId: C;
-  output: NpAgentReadCapabilityOutputMapV1[C];
-}
+export type { NpAgentReadCapabilityInvocationResultV1 } from "../agent-contract/agent-http-contract.js";
+import type { NpAgentReadCapabilityInvocationResultV1 } from "../agent-contract/agent-http-contract.js";
 
 function digest(domain: string, value: unknown): `cj1:sha256:${string}` {
   const hash = createHash("sha256");
@@ -191,7 +183,7 @@ async function assertCurrentServiceAuthority(
   tx: Db,
   authentication: NpAgentAuthenticatedServicePrincipalV1,
   requiredScopes: readonly NpAgentScope[],
-  now: Date,
+  nowFn: () => Date,
 ): Promise<void> {
   const authorityRef = authentication.authorizationContext.authorityRef;
   if (authorityRef.kind !== "service-family") {
@@ -220,6 +212,7 @@ async function assertCurrentServiceAuthority(
     )
     .for("update")
     .limit(1);
+  const now = nowFn();
   const activeToken =
     token !== undefined &&
     token.expiresAt > now &&
@@ -316,6 +309,9 @@ async function assertCurrentServiceAuthority(
   const effectiveUser = user && effectiveRole ? { ...user, role: effectiveRole } : null;
   if (
     !effectiveUser ||
+    token.expiresAt <= nowFn() ||
+    (token.status === "overlap" &&
+      (!token.overlapExpiresAt || token.overlapExpiresAt <= nowFn())) ||
     requiredScopes.some((scope) => !can(effectiveUser, npAgentScopeStaffCapability[scope]))
   ) {
     throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
@@ -326,7 +322,7 @@ async function assertCurrentOauthAuthority(
   tx: Db,
   authentication: NpAgentAuthenticatedOauthPrincipalV1,
   requiredScopes: readonly NpAgentScope[],
-  now: Date,
+  nowFn: () => Date,
 ): Promise<void> {
   const authorityRef = authentication.authorizationContext.authorityRef;
   const projectedAuthority = authentication.principal.authority;
@@ -382,7 +378,7 @@ async function assertCurrentOauthAuthority(
     principal.tokenVersion !== authorityRef.principalTokenVersion ||
     principal.tokenVersion !== authentication.principal.tokenVersion ||
     grant.status !== "active" ||
-    grant.expiresAt <= now ||
+    grant.expiresAt <= nowFn() ||
     grant.clientId !== client.id ||
     grant.authorityVersion !== authorityRef.grantVersion ||
     grant.exposureMode !== authorityRef.exposureMode ||
@@ -461,6 +457,7 @@ async function assertCurrentOauthAuthority(
   const effectiveUser = user && effectiveRole ? { ...user, role: effectiveRole } : null;
   if (
     !effectiveUser ||
+    grant.expiresAt <= nowFn() ||
     requiredScopes.some((scope) => !can(effectiveUser, npAgentScopeStaffCapability[scope]))
   ) {
     throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
@@ -471,12 +468,12 @@ async function assertCurrentAuthentication(
   tx: Db,
   authentication: NpAgentCapabilityAuthenticationV1,
   requiredScopes: readonly NpAgentScope[],
-  now: Date,
+  nowFn: () => Date,
 ): Promise<void> {
   if (isOauthAuthentication(authentication)) {
-    return assertCurrentOauthAuthority(tx, authentication, requiredScopes, now);
+    return assertCurrentOauthAuthority(tx, authentication, requiredScopes, nowFn);
   }
-  return assertCurrentServiceAuthority(tx, authentication, requiredScopes, now);
+  return assertCurrentServiceAuthority(tx, authentication, requiredScopes, nowFn);
 }
 
 export function createAgentCapabilityAdmissionServiceV1(
@@ -504,7 +501,7 @@ export function createAgentCapabilityAdmissionServiceV1(
         throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
       }
       await getDb().transaction(async (rawTx) => {
-        await assertCurrentAuthentication(rawTx, authentication, authentication.scopes, nowFn());
+        await assertCurrentAuthentication(rawTx, authentication, authentication.scopes, nowFn);
       });
       const transport = descriptorTransport(authentication.authorizationContext.transport);
       return {
@@ -616,7 +613,7 @@ export function createAgentCapabilityAdmissionServiceV1(
       await db.transaction(
         async (rawTx) => {
           const tx = rawTx as Db;
-          await assertCurrentAuthentication(tx, authentication, requiredScopes, now);
+          await assertCurrentAuthentication(tx, authentication, requiredScopes, nowFn);
           const [audit] = await tx
             .insert(npAuditEvents)
             .values({

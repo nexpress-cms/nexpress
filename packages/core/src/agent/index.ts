@@ -20,3 +20,5 @@ export * from "./vault-local-envelope.js";
 export * from "./vault-operation-digest.js";
 export * from "./vault-runtime.js";
 export * from "./vault-service.js";
+export * from "./activity-service.js";
+export * from "./agent-http-gateway.js";

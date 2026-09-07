@@ -189,6 +189,28 @@ describe("shared application proxy rate limiting", () => {
     expect(check).toHaveBeenCalledWith(expect.any(String), 30, 60_000);
   });
 
+  it("exempts the exact Agent invocation path without opening adjacent Admin or Agent paths", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "memory");
+    const { proxyModule } = await loadModules();
+    const handler = proxyModule.npCreateProxy({
+      rateLimiter: {
+        kind: "memory",
+        check: vi.fn().mockResolvedValue({ limited: false, retryAfterSeconds: 60 }),
+      },
+    });
+    for (const [path, status] of [
+      ["/api/agent/v1/invocations", 200],
+      ["/api/agent/v1/invocations/extra", 403],
+      ["/api/agent/v1/capabilities", 403],
+      ["/api/admin/agents/gateway/principals", 403],
+    ] as const) {
+      expect(
+        (await handler(new NextRequest(`http://localhost${path}`, { method: "POST" }))).status,
+        path,
+      ).toBe(status);
+    }
+  });
+
   it("bounds community SSE connection starts without blocking read access", async () => {
     vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "memory");
     const { proxyModule } = await loadModules();

@@ -1,3 +1,4 @@
+import { buildAgentHttpOpenApiV1 } from "../../lib/openapi-agent";
 import {
   getAllCollectionSlugs,
   getCollectionConfig,
@@ -6071,6 +6072,9 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
     };
   }
 
+  const agentHttp = buildAgentHttpOpenApiV1();
+  Object.assign(schemas, agentHttp.schemas);
+  Object.assign(paths, agentHttp.paths);
   return {
     openapi: "3.1.0",
     info: {
@@ -6084,6 +6088,7 @@ export function buildSpec(activePluginIds?: ReadonlySet<string>): OpenApiSchema 
       schemas,
       responses: npApiErrorOpenApiResponses,
       securitySchemes: {
+        ...agentHttp.securitySchemes,
         sessionCookie: { type: "apiKey", in: "cookie", name: "np-session" },
         csrfHeader: { type: "apiKey", in: "header", name: "X-CSRF-Token" },
         memberSessionCookie: { type: "apiKey", in: "cookie", name: "np-mb-session" },

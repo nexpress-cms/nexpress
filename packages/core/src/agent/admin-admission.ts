@@ -227,7 +227,7 @@ export async function npResolveLiveAgentStaffAuthorizationV1(
   });
 }
 
-async function resolveStaffAuthorization(
+export async function npResolveAgentStaffSessionAuthorizationV1(
   db: NpAgentDb,
   siteId: string,
   actor: NpAgentAdminActorV1,
@@ -330,7 +330,12 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
     );
     const fingerprints = await npResolveAgentAdminOperationFingerprintsV1(operation);
     const db = getDb();
-    const authorization = await resolveStaffAuthorization(db, input.siteId, input.actor, now);
+    const authorization = await npResolveAgentStaffSessionAuthorizationV1(
+      db,
+      input.siteId,
+      input.actor,
+      now,
+    );
     if (!authorization.authority.capabilities.includes(operation.requiredCapability)) {
       throw new NpAgentGatewayError("SITE_ACCESS_DENIED", 403, "Required capability is absent.");
     }
@@ -422,7 +427,7 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
       committed = await db.transaction(
         async (rawTx) => {
           const tx = rawTx as NpAgentDb;
-          const currentAuthorization = await resolveStaffAuthorization(
+          const currentAuthorization = await npResolveAgentStaffSessionAuthorizationV1(
             tx,
             input.siteId,
             input.actor,

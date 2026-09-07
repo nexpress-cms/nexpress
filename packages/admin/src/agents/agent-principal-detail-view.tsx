@@ -2,9 +2,9 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   npAgentGatewayExposureRank,
-  npRequireAgentPrincipalV1,
   npRequireAgentServiceTokenV1,
   npRequireAgentStudioOneTimeTokenV1,
   npRequireAgentStudioPrincipalDetailV1,
@@ -19,7 +19,8 @@ import {
 import { Copy, KeyRound } from "lucide-react";
 
 import { AgentStudioFrame } from "./agent-studio-frame.js";
-import { loadAgentStudioOverview, responseError } from "./agent-studio-api.js";
+import { AgentStudioApiError, loadAgentStudioOverview, responseError } from "./agent-studio-api.js";
+import { AgentPrincipalControls } from "./agent-principal-controls.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
@@ -92,6 +93,11 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
           : ["site:read"],
       );
     } catch (caught) {
+      if (caught instanceof AgentStudioApiError && [401, 403, 404].includes(caught.status)) {
+        setDetail(null);
+        setGatewaySettings(null);
+        setOneTime(null);
+      }
       setError(caught instanceof Error ? caught.message : "Could not load principal.");
     }
   }, [principalId]);
@@ -139,33 +145,6 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
       await load();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not create token.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const revokePrincipal = async () => {
-    if (!detail || !window.confirm(`Revoke ${detail.principal.name} and all live tokens?`)) return;
-    setSubmitting(true);
-    setError(null);
-    try {
-      const response = await npFetch(
-        `/api/admin/agents/gateway/principals/${encodeURIComponent(principalId)}/revoke`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            idempotencyKey: crypto.randomUUID(),
-            expectedVersion: detail.principal.rowVersion,
-            reason: "Revoked in Agent Studio",
-          }),
-        },
-      );
-      if (!response.ok) throw await responseError(response);
-      const principal = npRequireAgentPrincipalV1(await response.json());
-      setDetail({ ...detail, principal });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not revoke principal.");
     } finally {
       setSubmitting(false);
     }
@@ -219,18 +198,26 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
                 </Badge>
               </div>
               <p className="mt-1 text-[12.5px] text-neutral-500">
-                {detail.principal.description || "External Gateway principal"}
+                {detail.principal.description ||
+                  (detail.principal.kind === "external"
+                    ? "External Gateway principal"
+                    : "Runtime principal")}
               </p>
             </div>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              disabled={submitting || detail.principal.status === "revoked"}
-              onClick={() => void revokePrincipal()}
-            >
-              Revoke principal
-            </Button>
+            <AgentPrincipalControls
+              principal={detail.principal}
+              disabled={submitting || error !== null}
+              onChanged={async () => {
+                setOneTime(null);
+                await load();
+              }}
+              onAccessLost={(message) => {
+                setDetail(null);
+                setOneTime(null);
+                setGatewaySettings(null);
+                setError(message);
+              }}
+            />
           </div>
           <Card>
             <CardHeader>
@@ -276,7 +263,9 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
               </CardContent>
             </Card>
           ) : null}
-          {detail.principal.status === "active" && enabledTransports.length > 0 ? (
+          {detail.principal.kind === "external" &&
+          detail.principal.status === "active" &&
+          enabledTransports.length > 0 ? (
             <Card>
               <CardHeader>
                 <CardTitle className="text-[14px]">Create expiring service token</CardTitle>
@@ -378,7 +367,7 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
                 </form>
               </CardContent>
             </Card>
-          ) : detail.principal.status === "active" ? (
+          ) : detail.principal.kind === "external" && detail.principal.status === "active" ? (
             <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 text-[12.5px] text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100">
               All Gateway transports are disabled by the effective deployment and site ceiling. No
               service token can be issued.
@@ -426,6 +415,13 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
               )}
             </CardContent>
           </Card>
+          <Button asChild variant="outline" size="sm">
+            <Link
+              href={`/admin/agents/activity/actions?principalId=${encodeURIComponent(detail.principal.id)}`}
+            >
+              View principal activity
+            </Link>
+          </Button>
           <Button
             type="button"
             variant="ghost"
@@ -434,9 +430,9 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
             Back to connections
           </Button>
         </div>
-      ) : (
+      ) : !error ? (
         <p className="text-[13px] text-neutral-500">Loading Gateway principal…</p>
-      )}
+      ) : null}
     </AgentStudioFrame>
   );
 }

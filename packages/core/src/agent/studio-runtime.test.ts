@@ -5,6 +5,7 @@ import {
   getOptionalAgentStudioServerRuntimeV1,
   npAgentStudioRuntimeStatusV1,
   requireAgentStudioConnectionRuntimeV1,
+  requireAgentStudioActivityRuntimeV1,
   requireAgentStudioGatewayRuntimeV1,
   requireAgentStudioMcpRuntimeV1,
   requireAgentStudioOauthRuntimeV1,
@@ -45,6 +46,11 @@ describe("Agent Studio host runtime", () => {
       "Agent Studio OAuth runtime is unavailable.",
     );
     expect(runtime.mcp).toBeNull();
+    expect(runtime.activity).toBeNull();
+    expect(runtime.agentHttp).toBeNull();
+    expect(() => requireAgentStudioActivityRuntimeV1()).toThrow(
+      "Agent Studio Activity runtime is unavailable.",
+    );
     expect(() => requireAgentStudioMcpRuntimeV1()).toThrow(
       "Agent Studio MCP runtime is unavailable.",
     );
@@ -77,6 +83,12 @@ describe("Agent Studio host runtime", () => {
   it("requires MCP projection to reuse an installed Gateway service", () => {
     expect(() => createAgentStudioServerRuntimeV1({ mcp: {} as never })).toThrow(
       "Agent MCP runtime requires the Agent Gateway service.",
+    );
+  });
+
+  it("requires Agent HTTP to reuse an installed Gateway service", () => {
+    expect(() => createAgentStudioServerRuntimeV1({ agentHttp: {} as never })).toThrow(
+      "Agent HTTP runtime requires the Agent Gateway service.",
     );
   });
 

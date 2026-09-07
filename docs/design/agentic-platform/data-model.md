@@ -1226,6 +1226,13 @@ reference.
 
 ## 5. Execution tables
 
+AP-209/AP-210 reuse the existing run/action/invocation/principal tables without
+a migration. Activity is a bounded read projection, not a new evidence store.
+Invocation expiry determines expired evidence; even unexpired read payloads are
+redacted at this boundary. Gateway machine run reads bind the persisted
+invocation to the same site, principal and Agent HTTP audience and recheck
+current scopes and item visibility. Preview persistence remains an R3 concern.
+
 ### 5.1 `np_agent_runs`
 
 One durable attempt to complete a bounded Agent Gateway capability or Runtime
