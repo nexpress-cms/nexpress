@@ -391,6 +391,18 @@ Gate:
 
 Outcome: agents can prepare production-realistic plans but cannot apply them.
 
+AP-301/AP-302 implementation (2026-09-08): the first R3 slice adds exact
+ChangeSet, operation and approval wire contracts and three persistence tables.
+The explicitly constructed draft service reuses staff admission and current
+Gateway authority, reserves stable document-create ids, canonicalizes all five
+resource kinds through existing domain checks, and persists idempotent,
+versioned drafts without changing content. Get/list repeat item visibility;
+a host-invoked bounded method reconciles expired editable drafts. Migration
+0038 and Doctor/deletion inventories include the new foundation. Validation,
+sealed-plan production, preview, approval decisions, execution and transport/UI
+exposure remain assigned to the later rows below. No package version or
+changeset is changed. Details: [R3 draft foundation review](r3-draft-foundation-review.md).
+
 | ID     | Scope                                                                                                                                                                                                                                                                                                                                                 |
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | AP-301 | Add ChangeSet/operation/approval client-safe contracts and persistence, including retained discriminated sealed plan bodies, frozen rollback duration, and exact before-snapshot `snapshot_hash`                                                                                                                                                      |

@@ -34,3 +34,4 @@ export * from "./studio-contract.js";
 export * from "./wire-contract.js";
 export * from "./activity-contract.js";
 export * from "./agent-http-contract.js";
+export * from "./changeset-wire-contract.js";

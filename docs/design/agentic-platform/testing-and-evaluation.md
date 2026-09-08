@@ -518,6 +518,18 @@ runtime behavior is claimed by this evidence.
 
 ## 5. Capability and MCP tests
 
+AP-301/AP-302 add PostgreSQL fixtures for ChangeSet persistence, resource
+canonicalization and the draft service. They cover the three-table integrity
+matrix, stable reserved ids, staff-session replay, CAS and concurrent requests,
+current item visibility, write-only principal creation, revocation, expiry
+while waiting on a row lock and bounded expiry reconciliation. Resource tests
+prove that protected schema defaults remain in the existing document write
+path while editable proposals exclude them. Contract/page/cursor tests cover
+closed shapes, deep valid JSON, definition validation and opaque cursor
+isolation. Full pipeline and Gateway regressions remain required because the
+shared ACL and admission functions are reused. AP-308/AP-309 will add draft UI
+and transport end-to-end tests when those surfaces are installed.
+
 AP-209/AP-210 add `agent-activity.integration.test.ts`,
 `agent-activity-admin.integration.test.ts`, and `agent-http.integration.test.ts`
 to the reference-app PostgreSQL suite. They exercise item visibility,

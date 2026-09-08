@@ -24,7 +24,13 @@ import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundat
 import { npAuthUuidPattern } from "../auth-contract/contract.js";
 import type { NpAuthUser } from "../config/types.js";
 import { getDb } from "../db/runtime.js";
-import { npAgentPrincipals, npAgentServiceTokens } from "../db/schema/agent.js";
+import {
+  npAgentPrincipals,
+  npAgentServiceTokens,
+  npAgentChangesets,
+  npAgentApprovals,
+  npAgentInvocations,
+} from "../db/schema/agent.js";
 import { npAuditEvents } from "../db/schema/community.js";
 import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 
@@ -1139,6 +1145,32 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
             createdAt: now,
           });
         }
+        await tx
+          .update(npAgentChangesets)
+          .set({ createdByUserId: null, actorDeletedAt: now, updatedAt: now })
+          .where(eq(npAgentChangesets.createdByUserId, userId));
+        await tx
+          .update(npAgentInvocations)
+          .set({ staffUserId: null, actorDeletedAt: now })
+          .where(
+            and(
+              eq(npAgentInvocations.actorKind, "staff"),
+              eq(npAgentInvocations.staffUserId, userId),
+            ),
+          );
+        await tx
+          .update(npAgentApprovals)
+          .set({
+            challengePurpose: null,
+            challengeHash: null,
+            challengeHashKeyId: null,
+            challengeIssuedToUserId: null,
+            challengeSessionFingerprint: null,
+            challengeExpiresAt: null,
+            challengeConsumedAt: null,
+            version: sql`${npAgentApprovals.version}+1`,
+          })
+          .where(eq(npAgentApprovals.challengeIssuedToUserId, userId));
         return { principalIds: principals.map(({ id }) => id) };
       },
       { isolationLevel: "serializable" },

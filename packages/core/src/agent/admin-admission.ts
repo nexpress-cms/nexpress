@@ -30,14 +30,24 @@ import { npAgentInvocations } from "../db/schema/agent.js";
 import { npAuditEvents } from "../db/schema/community.js";
 import { npSessions, npSiteMemberships, npSites, npUsers } from "../db/schema/system.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/id-contract.js";
+import {
+  npRequireAgentChangeSetAdminInputV1,
+  type NpAgentChangeSetAdminInputV1,
+} from "../agent-contract/changeset-wire-contract.js";
 
 type NpAgentDb = ReturnType<typeof getDb>;
 
 export type NpAgentAdmittedAdminOperationIdV1 =
-  NpAgentGatewayAdminOperationIdV1 | NpAgentConnectionAdminOperationIdV1;
+  | NpAgentGatewayAdminOperationIdV1
+  | NpAgentConnectionAdminOperationIdV1
+  | "agents.changesets.create"
+  | "agents.changesets.update";
 
 export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
-  NpAgentConnectionAdminInputMapV1;
+  NpAgentConnectionAdminInputMapV1 & {
+    "agents.changesets.create": NpAgentChangeSetAdminInputV1<"create">;
+    "agents.changesets.update": NpAgentChangeSetAdminInputV1<"update">;
+  };
 
 const CONNECTION_ADMIN_OPERATION_IDS = new Set<string>(npAgentConnectionAdminOperationIdsV1);
 
@@ -45,6 +55,12 @@ function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
   operationId: I,
   value: unknown,
 ): NpAgentAdmittedAdminInputMapV1[I] {
+  if (operationId === "agents.changesets.create" || operationId === "agents.changesets.update") {
+    return npRequireAgentChangeSetAdminInputV1(
+      operationId === "agents.changesets.create" ? "create" : "update",
+      value,
+    ) as NpAgentAdmittedAdminInputMapV1[I];
+  }
   return (
     CONNECTION_ADMIN_OPERATION_IDS.has(operationId)
       ? npRequireAgentConnectionAdminInputV1(
@@ -449,13 +465,15 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
               actorKind: "staff",
               actorUserId: input.actor.user.id,
               action: operation.audit.eventId,
-              targetType: input.operationId.startsWith("agents.connections.")
-                ? "agent-connection"
-                : input.operationId.includes("oauth_clients")
-                  ? "agent-oauth-client"
-                  : input.operationId.includes("principal_tokens")
-                    ? "agent-service-token"
-                    : "agent-principal",
+              targetType: input.operationId.startsWith("agents.changesets.")
+                ? "agent-changeset"
+                : input.operationId.startsWith("agents.connections.")
+                  ? "agent-connection"
+                  : input.operationId.includes("oauth_clients")
+                    ? "agent-oauth-client"
+                    : input.operationId.includes("principal_tokens")
+                      ? "agent-service-token"
+                      : "agent-principal",
               targetId: input.targetId,
               siteId: input.siteId,
               payload: {

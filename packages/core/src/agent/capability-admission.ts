@@ -490,6 +490,47 @@ export function createAgentCapabilityAdmissionServiceV1(
   }
 
   return {
+    /** Server-only domain transaction seam; installing it does not advertise a capability. */
+    async withCurrentAuthority<T>(input: {
+      authentication: NpAgentCapabilityAuthenticationV1;
+      requiredScopes: readonly NpAgentScope[];
+      minimumExposure: "read" | "propose";
+      mutate: (db: Db, now: Date) => Promise<T>;
+    }): Promise<T> {
+      const authentication = input.authentication;
+      const siteId = resolvedPrincipal(authentication).siteId;
+      const key = transportSettingsKey(authentication.authorizationContext.transport);
+      const exposure = { disabled: 0, read: 1, propose: 2, "approved-execute": 3 } as const;
+      const assertExposure = async () => {
+        const settings = npRequireAgentGatewaySettings(
+          await options.resolveGatewaySettings(siteId),
+        );
+        const ceiling = authentication.authorizationContext.gatewayExposure;
+        if (
+          ceiling === null ||
+          exposure[ceiling] < exposure[input.minimumExposure] ||
+          exposure[settings[key]] < exposure[input.minimumExposure] ||
+          input.requiredScopes.some((scope) => !authentication.scopes.includes(scope))
+        ) {
+          throw new NpAgentGatewayError(
+            "CAPABILITY_UNAVAILABLE",
+            404,
+            "Capability is unavailable.",
+          );
+        }
+      };
+      await assertExposure();
+      return getDb().transaction(
+        async (tx) => {
+          await assertCurrentAuthentication(tx, authentication, input.requiredScopes, nowFn);
+          const result = await input.mutate(tx, nowFn());
+          await assertExposure();
+          await assertCurrentAuthentication(tx, authentication, input.requiredScopes, nowFn);
+          return result;
+        },
+        { isolationLevel: "serializable" },
+      );
+    },
     async project(input: { authentication: NpAgentCapabilityAuthenticationV1 }) {
       const authentication = input.authentication;
       const principal = resolvedPrincipal(authentication);

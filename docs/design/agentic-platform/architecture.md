@@ -281,6 +281,17 @@ within exact bounds. Session revocation is the closed non-reversible exception
 and is never unattended. V1 has no “other direct-safe” extension point; every
 path remains idempotent, audited, validated, and verification-bound.
 
+AP-301/AP-302 add the explicit server-only
+`createAgentChangeSetServiceV1` factory under `@nexpress/core/agents`. Staff
+create/update reuse Admin admission; principal creation uses the shared
+current-authority transaction boundary. Its persisted capability definition
+is not installed in the advertised read registry. AP-309 owns Gateway
+projection. Resource preparation reuses collection ACL/schema/reference
+checks and existing navigation, theme, SEO and media contracts; it never
+calls content write hooks or applies the proposal. Draft get/list return
+checked editable input, excluding server-owned hidden/read-only defaults,
+sealed plans, before snapshots and approval integrity material.
+
 ### 3.6 Agent Studio
 
 AP-209/AP-210 install Activity and Agent HTTP only through explicit options on

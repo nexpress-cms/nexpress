@@ -347,6 +347,7 @@ export interface NpAgentCursorPageAnalyzerOptionsV1<T, S extends string> {
   itemIssueRoot: string;
   maximumItems?: number;
   maximumBytes?: number;
+  maximumDepth?: number;
 }
 
 function parseNullableInteger(
@@ -1598,7 +1599,7 @@ export function npAnalyzeAgentCursorPageV1<T, S extends string>(
     const state: CanonicalBodyInspectionState = { seen: new WeakSet<object>() };
     const record = canonicalBodyRecord(
       cloneCanonicalRuntimeInput(value, path, options.maximumBytes ?? WIRE_BODY_MAXIMUM_BYTES, {
-        maximumDepth: 32,
+        maximumDepth: Math.min(options.maximumDepth ?? 32, 64),
       }),
       path,
       ["schemaVersion", "items", "nextCursor"],

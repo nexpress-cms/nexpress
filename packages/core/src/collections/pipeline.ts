@@ -2545,12 +2545,7 @@ export async function getDocumentById<T extends object = Record<string, unknown>
     throw new NpForbiddenError(collection, "cross-site");
   }
 
-  if (config.access?.read) {
-    const allowed = await config.access.read({ user: user ?? null, doc });
-    if (!allowed) {
-      throw new NpForbiddenError(collection, "read");
-    }
-  }
+  await npAssertCollectionReadAccess(config, collection, user ?? null, doc);
 
   return (await runReadHooks(config, doc, user ?? null)) as unknown as T;
 }
@@ -2664,6 +2659,21 @@ async function assertReadAccess(
     throw new NpForbiddenError(collection, "read");
   }
 }
+
+/** Internal domain admission shared by persisted proposal reads and document reads. */
+export async function npAssertCollectionReadAccess(
+  config: NpCollectionConfig,
+  collection: string,
+  user: NpAuthUser | null,
+  doc: Record<string, unknown>,
+): Promise<void> {
+  if (config.access?.read && !(await config.access.read({ user, doc }))) {
+    throw new NpForbiddenError(collection, "read");
+  }
+}
+
+export { assertWriteAccess as npAssertCollectionWriteAccess };
+export { assertReadAccess as npAssertCollectionReadScope };
 
 async function runHooks(
   hooks: NpCollectionHook[] | undefined,

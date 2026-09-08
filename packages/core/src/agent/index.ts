@@ -22,3 +22,4 @@ export * from "./vault-runtime.js";
 export * from "./vault-service.js";
 export * from "./activity-service.js";
 export * from "./agent-http-gateway.js";
+export * from "./changeset-service.js";
