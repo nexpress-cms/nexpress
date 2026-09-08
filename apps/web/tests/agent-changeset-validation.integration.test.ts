@@ -334,7 +334,11 @@ const validationCommand = () => ({ idempotencyKey: randomUUID(), expectedVersion
 const digest = "cj1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 describe.skipIf(skipIfNoTestDb())("ChangeSet validation lifecycle", () => {
   beforeAll(ensureMigrated);
-  beforeEach(registerTestCollections);
+  beforeEach(async () => {
+    // Forks reuse the test database across files; prior suites may clean only before cases.
+    await truncateAll();
+    registerTestCollections();
+  });
   afterEach(async () => {
     await truncateAll();
     registerTestCollections();

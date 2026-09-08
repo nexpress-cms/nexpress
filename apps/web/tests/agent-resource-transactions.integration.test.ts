@@ -71,7 +71,9 @@ const content = () => ({ title: "Atomic content", content: npCreateEmptyRichText
 
 describe.skipIf(skipIfNoTestDb())("existing resource transaction boundaries", () => {
   beforeAll(ensureMigrated);
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Files share a worker database; prior suites may leave unrelated resource rows behind.
+    await truncateAll();
     effects.length = 0;
     registerTestCollections();
     const registration = getCollectionRegistration("posts");

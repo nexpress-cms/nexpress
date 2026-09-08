@@ -174,7 +174,8 @@ async function addMedia(siteId = "default") {
 }
 describe.skipIf(skipIfNoTestDb())("ChangeSet consistent-transaction resource validation", () => {
   beforeAll(ensureMigrated);
-  beforeEach(() => {
+  beforeEach(async () => {
+    await truncateAll();
     registerTestCollections();
     registerThemes([defaultTheme]);
   });

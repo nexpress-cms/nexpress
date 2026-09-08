@@ -111,7 +111,10 @@ async function fixture() {
 }
 describe.skipIf(skipIfNoTestDb())("ChangeSet validation attempt persistence", () => {
   beforeAll(ensureMigrated);
-  beforeEach(registerTestCollections);
+  beforeEach(async () => {
+    await truncateAll();
+    registerTestCollections();
+  });
   afterEach(async () => {
     await truncateAll();
     registerTestCollections();

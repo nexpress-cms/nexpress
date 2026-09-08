@@ -109,6 +109,17 @@ build-script and type-only changes; versions and dependencies are unchanged.
 The focused inventory/canonical unit suite (12), PostgreSQL persistence
 regression (19), service factory suite (3), Core typecheck and ESLint passed.
 
+The third CI run passed build/typecheck/unit, Playwright and fresh scaffold but
+exposed two PostgreSQL fixture-isolation failures. Reused workers inherited
+rows from prior test files because the new suites cleaned only after tests.
+All four new AP-303/AP-304 suites now call the existing `truncateAll` before
+each test as well, retaining the original zero-write/rollback assertions.
+No production behavior changed in this correction. Running the preceding Forum
+suite and validation in one worker passed 33 tests; the other validation resource
+and persistence suites passed 13. An injected leftover post reproduced the exact
+rollback assertion failure before the fix and passed all 7 transaction tests
+after it; the temporary reproduction fixture was then removed.
+
 Skipped: three live Redis tests because `TEST_REDIS_URL` is absent, and five
 existing synchronous theme-render tests disabled after the async server-component
 transition. Redis is unchanged; theme behavior is covered by the active route,
