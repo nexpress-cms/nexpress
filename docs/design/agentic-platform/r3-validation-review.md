@@ -72,8 +72,8 @@ stored plan/snapshot chain and return only the existing client-safe wire.
 - Runtime smoke: 25 script wrappers loaded; the three write-producing
   generation/setup wrappers are covered by their dedicated scaffold/setup tests.
 - `pnpm lint`: all 41 tasks passed after refreshing the stale route lint cache.
-- Changed-file formatting and `git diff --check` passed; package manifests,
-  lockfile and changesets are unchanged.
+- Changed-file formatting and `git diff --check` passed; package versions,
+  dependency lockfile and changesets are unchanged.
 - Playwright: all 47 Chromium/Admin flows passed against an isolated database
   (2.3 minutes). The generated upload was removed only after exact fixture-byte
   comparison; the isolated database was torn down.
@@ -93,6 +93,18 @@ run was serialized and passed. A new test-only union narrowing error found by
 typecheck was fixed before that final run. Build output regeneration also
 invalidated cached typed lint results; the route lint cache is refreshed after
 the stable build.
+
+PR CI exposed a separate Core declaration-worker heap limit in all four jobs.
+Both 2 GiB and 3 GiB local reproductions confirmed the limit. The deletion inventory now derives
+its name union from the existing order tuple and types descriptor values using
+the existing common contract, avoiding repeated full Drizzle declarations.
+The Core build script also defaults to a bounded 4 GiB heap while preserving
+explicit `NODE_OPTIONS`. The complete Core ESM/declaration build passed at
+4 GiB. Total declaration output fell from 2,070,970 to 1,583,104 bytes (23.6%);
+the public inventory and runtime behavior are unchanged. This is a build-script
+and type-only change; versions and
+dependencies are unchanged. The focused inventory/canonical unit suite (12),
+PostgreSQL persistence regression (19), Core typecheck and ESLint passed.
 
 Skipped: three live Redis tests because `TEST_REDIS_URL` is absent, and five
 existing synchronous theme-render tests disabled after the async server-component

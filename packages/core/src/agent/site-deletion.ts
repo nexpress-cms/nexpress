@@ -42,7 +42,41 @@ interface NpAgentSiteOwnedTableDescriptor {
   readonly siteId: AnyPgColumn;
 }
 
-const descriptors = {
+/**
+ * Dependency-safe ordinary-row deletion order. The saga marker is excluded
+ * from the frozen inventory and is handled only by the future saga commit.
+ */
+export const npAgentSiteDeletionOrderV1 = Object.freeze([
+  "np_agent_approvals",
+  "np_agent_changeset_validation_attempts",
+  "np_agent_changeset_operations",
+  "np_agent_changesets",
+  "np_agent_mcp_tasks",
+  "np_agent_actions",
+  "np_agent_runs",
+  "np_agent_vault_entries",
+  "np_agent_connection_operations",
+  "np_agent_connection_auth_requests",
+  "np_agent_vault_operations",
+  "np_agent_connection_secret_versions",
+  "np_agent_connection_config_versions",
+  "np_agent_connections",
+  "np_agent_oauth_codes",
+  "np_agent_oauth_refresh_tokens",
+  "np_agent_oauth_grants",
+  "np_agent_oauth_requests",
+  "np_agent_oauth_clients",
+  "np_agent_service_tokens",
+  "np_agent_invocations",
+  "np_agent_principals",
+] as const);
+
+export type NpAgentSiteOwnedTableName = (typeof npAgentSiteDeletionOrderV1)[number];
+
+const descriptors: Record<
+  NpAgentSiteOwnedTableName,
+  Omit<NpAgentSiteOwnedTableDescriptor, "tableName">
+> = {
   np_agent_actions: {
     table: npAgentActions,
     id: npAgentActions.id,
@@ -155,41 +189,10 @@ const descriptors = {
   },
 } as const;
 
-export type NpAgentSiteOwnedTableName = keyof typeof descriptors;
-
 /** Canonical row-inventory order required by np.agent-site-deletion-plan.v1. */
 export const npAgentSiteOwnedTableNamesV1 = Object.freeze(
   Object.keys(descriptors).sort() as NpAgentSiteOwnedTableName[],
 );
-
-/**
- * Dependency-safe ordinary-row deletion order. The saga marker is excluded
- * from the frozen inventory and is handled only by the future saga commit.
- */
-export const npAgentSiteDeletionOrderV1 = Object.freeze([
-  "np_agent_approvals",
-  "np_agent_changeset_validation_attempts",
-  "np_agent_changeset_operations",
-  "np_agent_changesets",
-  "np_agent_mcp_tasks",
-  "np_agent_actions",
-  "np_agent_runs",
-  "np_agent_vault_entries",
-  "np_agent_connection_operations",
-  "np_agent_connection_auth_requests",
-  "np_agent_vault_operations",
-  "np_agent_connection_secret_versions",
-  "np_agent_connection_config_versions",
-  "np_agent_connections",
-  "np_agent_oauth_codes",
-  "np_agent_oauth_refresh_tokens",
-  "np_agent_oauth_grants",
-  "np_agent_oauth_requests",
-  "np_agent_oauth_clients",
-  "np_agent_service_tokens",
-  "np_agent_invocations",
-  "np_agent_principals",
-] as const satisfies readonly NpAgentSiteOwnedTableName[]);
 
 export const NP_AGENT_SITE_DELETION_MARKER_TABLE = "np_agent_site_deletion_sagas" as const;
 
