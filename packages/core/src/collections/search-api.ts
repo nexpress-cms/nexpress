@@ -1,3 +1,7 @@
+import {
+  npAssertAgentPreviewEffectsAllowed,
+  npIsAgentChangeSetPreview,
+} from "../agent/changeset-preview-overlay.js";
 import { asc, eq, gt } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
@@ -187,7 +191,7 @@ export async function searchCollections(opts: NpSearchRequestInput): Promise<NpS
   // The exact adapter context identifies every audience-aware collection and
   // requires those result documents to carry the matching canonical audience.
   // The adapter can deliberately return null when its index is unavailable.
-  const adapter = getSearchAdapter();
+  const adapter = npIsAgentChangeSetPreview() ? null : getSearchAdapter();
   if (adapter) {
     try {
       const adapterResult = await adapter.search(context);
@@ -417,6 +421,7 @@ export async function npReindexCollectionWithProgress(
   slug: string,
   onProgress?: SearchReindexProgressHandler,
 ): Promise<NpSearchReindexResult> {
+  npAssertAgentPreviewEffectsAllowed();
   const startedAt = new Date().toISOString();
   const collection = npRequireSearchCollectionSlug(slug, "search.reindex.collection");
   let config: NpCollectionConfig;

@@ -1,3 +1,4 @@
+import { npAgentPreviewReadTransaction } from "@nexpress/core/agents";
 import {
   findDocuments,
   listEnabledPluginIds,
@@ -78,7 +79,7 @@ export function createDefaultBlockRenderContext(): NpBlockRenderContext {
           applyPublishedDefault({
             where: { id },
             limit: 1,
-          }) as NpFindOptions,
+          }),
         );
         return result.docs[0] ?? null;
       },
@@ -105,7 +106,9 @@ export function createDefaultBlockRenderContext(): NpBlockRenderContext {
 export async function createSiteScopedBlockRenderContext(): Promise<NpBlockRenderContext> {
   const [themeId, pluginIds] = await Promise.all([
     getCachedActiveThemeId(),
-    listEnabledPluginIds(getDb()),
+    npAgentPreviewReadTransaction().then((tx) =>
+      listEnabledPluginIds((tx ?? getDb()) as ReturnType<typeof getDb>),
+    ),
   ]);
   const base = createDefaultBlockRenderContext();
   return {

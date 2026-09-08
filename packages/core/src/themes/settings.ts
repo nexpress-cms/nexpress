@@ -1,3 +1,7 @@
+import {
+  npAssertAgentPreviewEffectsAllowed,
+  npAgentPreviewReadTransaction,
+} from "../agent/changeset-preview-overlay.js";
 import type { NpTransaction } from "../collections/pipeline.js";
 import { and, eq } from "drizzle-orm";
 import type { ZodTypeAny } from "zod";
@@ -78,6 +82,7 @@ export function applyMigration(
   if (fromVersion >= target) return rawValue;
   const migrate = manifest.settingsMigrate;
   if (typeof migrate !== "function") return rawValue;
+  npAssertAgentPreviewEffectsAllowed();
   return migrate(rawValue, fromVersion);
 }
 
@@ -155,7 +160,9 @@ export async function getThemeSettingsWithStatus(
   }
   const schema = theme.manifest.settingsSchema as ZodTypeAny | undefined;
 
-  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
+  const db = ((await npAgentPreviewReadTransaction(options?.tx)) ?? getDb()) as ReturnType<
+    typeof getDb
+  >;
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
   const rows = (await db
     .select()
@@ -237,6 +244,7 @@ export async function setThemeSettings(
   updatedBy: string | null = null,
   options?: { tx?: NpTransaction },
 ): Promise<unknown> {
+  npAssertAgentPreviewEffectsAllowed();
   const theme = getThemeById(themeId);
   if (!theme) {
     throw new NpValidationError("Invalid input", [
@@ -277,7 +285,9 @@ export async function setThemeSettings(
   };
   npAssertSettingValue(settingsKey(themeId), wrapped);
 
-  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
+  const db = ((await npAgentPreviewReadTransaction(options?.tx)) ?? getDb()) as ReturnType<
+    typeof getDb
+  >;
   const now = new Date();
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
   await db

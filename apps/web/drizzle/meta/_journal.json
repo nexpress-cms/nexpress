@@ -281,6 +281,13 @@
       "when": 1788832243678,
       "tag": "0039_third_lorna_dane",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1788872064801,
+      "tag": "0040_outstanding_scarlet_witch",
+      "breakpoints": true
     }
   ]
 }

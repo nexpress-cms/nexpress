@@ -33,6 +33,10 @@ import { NP_DEFAULT_SITE_ID } from "../sites/id-contract.js";
 import {
   npRequireAgentChangeSetAdminInputV1,
   npRequireAgentChangeSetValidateRequestV1,
+  npRequireAgentChangeSetPreviewRequestV1,
+  npRequireAgentChangeSetPreviewLaunchRequestV1,
+  type NpAgentChangeSetPreviewRequestV1,
+  type NpAgentChangeSetPreviewLaunchRequestV1,
   type NpAgentChangeSetValidateRequestV1,
   type NpAgentChangeSetAdminInputV1,
 } from "../agent-contract/changeset-wire-contract.js";
@@ -44,13 +48,17 @@ export type NpAgentAdmittedAdminOperationIdV1 =
   | NpAgentConnectionAdminOperationIdV1
   | "agents.changesets.create"
   | "agents.changesets.update"
-  | "agents.changesets.validate";
+  | "agents.changesets.validate"
+  | "agents.changesets.preview"
+  | "agents.changesets.preview_launch";
 
 export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
   NpAgentConnectionAdminInputMapV1 & {
     "agents.changesets.create": NpAgentChangeSetAdminInputV1<"create">;
     "agents.changesets.update": NpAgentChangeSetAdminInputV1<"update">;
     "agents.changesets.validate": NpAgentChangeSetValidateRequestV1;
+    "agents.changesets.preview": NpAgentChangeSetPreviewRequestV1;
+    "agents.changesets.preview_launch": NpAgentChangeSetPreviewLaunchRequestV1;
   };
 
 const CONNECTION_ADMIN_OPERATION_IDS = new Set<string>(npAgentConnectionAdminOperationIdsV1);
@@ -59,6 +67,12 @@ function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
   operationId: I,
   value: unknown,
 ): NpAgentAdmittedAdminInputMapV1[I] {
+  if (operationId === "agents.changesets.preview")
+    return npRequireAgentChangeSetPreviewRequestV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.changesets.preview_launch")
+    return npRequireAgentChangeSetPreviewLaunchRequestV1(
+      value,
+    ) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.changesets.validate")
     return npRequireAgentChangeSetValidateRequestV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.changesets.create" || operationId === "agents.changesets.update") {

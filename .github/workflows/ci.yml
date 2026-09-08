@@ -209,6 +209,12 @@ jobs:
           pnpm --filter @nexpress/web db:generate
           pnpm --filter @nexpress/web db:migrate
 
+      - name: Isolated preview browser security
+        env:
+          TEST_DATABASE_URL: ${{ env.DATABASE_URL }}
+          NP_TEST_PREVIEW_BROWSER: "1"
+        run: pnpm --filter @nexpress/web exec vitest run tests/agent-preview-browser.integration.test.ts
+
       - name: E2E tests
         run: pnpm --filter @nexpress/web test:e2e
 

@@ -77,6 +77,7 @@ const scriptEntries = {
 };
 
 const libEntries = {
+  "lib/agents/preview-http": "src/lib/agents/preview-http.ts",
   "lib/api-response": "src/lib/api-response.ts",
   "lib/active-theme-state": "src/lib/active-theme-state.ts",
   "lib/admin-ops": "src/lib/admin-ops.ts",

@@ -150,7 +150,7 @@ describe("ChangeSet validation resource recipes", () => {
         "after": "cj1:sha256:JJUXh-TH7ByJEPz5QFpBtsB7uua1GHLpLGr42D2bjJ4",
         "bases": "cj1:sha256:ujrYHTkfJywoDLYXa99OaL-4jbucB4OV5r4M1-SWgVM",
         "policy": [
-          "cj1:sha256:Cc7C1hecN3kJ9nUl-F_oPOzqRNk-zHr9Oxbjmb6hVy4",
+          "cj1:sha256:DoH8fb-OXyKr4BdVS-qbxvN8sHHuSNjUXXSzddWqSMk",
         ],
         "snapshot": "cj1:sha256:gumwV9VmrKLlIze13oyViG69qvEbrMInfu8qYAoo3I8",
       }

@@ -1,3 +1,8 @@
+import {
+  npAssertAgentPreviewEffectsAllowed,
+  npAgentPreviewReadTransaction,
+  npGetAgentChangeSetPreviewContext,
+} from "../agent/changeset-preview-overlay.js";
 import type { NpTransaction } from "../collections/pipeline.js";
 import { and, asc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
@@ -62,6 +67,7 @@ export async function syncMediaRefs(
   documentId: string,
   refs: Array<{ mediaId: string; field: string }>,
 ): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
   const resolvedSiteId = await requireSiteId();
   const uniqueRefs = dedupeRefs(refs);
 
@@ -130,7 +136,9 @@ export async function listMediaReferences(
     throw new Error("Media reference field must be non-empty trimmed text.");
   }
   const { getDb } = await import("../db/runtime.js");
-  const db = (options.tx ?? getDb()) as ReturnType<typeof getDb>;
+  const db = ((await npAgentPreviewReadTransaction(options.tx)) ?? getDb()) as ReturnType<
+    typeof getDb
+  >;
   const condition = options.field
     ? and(
         eq(npMediaRefs.siteId, siteId),
@@ -138,7 +146,15 @@ export async function listMediaReferences(
         eq(npMediaRefs.field, options.field),
       )
     : and(eq(npMediaRefs.siteId, siteId), eq(npMediaRefs.mediaId, mediaId));
-  const rows = await db
+  const operations =
+    npGetAgentChangeSetPreviewContext()?.plan.body.operations.flatMap(({ operation }) =>
+      operation.kind === "media_ref" &&
+      operation.resource.mediaId === mediaId &&
+      (!options.field || operation.resource.field === options.field)
+        ? [operation]
+        : [],
+    ) ?? [];
+  const query = db
     .select({
       siteId: npMediaRefs.siteId,
       mediaId: npMediaRefs.mediaId,
@@ -147,16 +163,32 @@ export async function listMediaReferences(
       field: npMediaRefs.field,
     })
     .from(npMediaRefs)
-    .where(condition)
-    .limit(limit);
+    .where(condition);
+  const rows = operations.length
+    ? await query
+        .orderBy(asc(npMediaRefs.collection), asc(npMediaRefs.documentId), asc(npMediaRefs.field))
+        .limit(limit + operations.length)
+    : await query.limit(limit);
+  if (!operations.length) return rows;
 
-  return rows.map((row) => ({
-    siteId: row.siteId,
-    mediaId: row.mediaId,
-    collection: row.collection,
-    documentId: row.documentId,
-    field: row.field,
-  }));
+  const key = (row: NpMediaReference): string =>
+    JSON.stringify([row.collection, row.documentId, row.field]);
+  const projected = new Map(rows.map((row) => [key(row), row]));
+  for (const operation of operations) {
+    const row = { siteId, ...operation.resource };
+    if (operation.operation === "detach") projected.delete(key(row));
+    else projected.set(key(row), row);
+  }
+  return [...projected.values()]
+    .sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0))
+    .slice(0, limit)
+    .map((row) => ({
+      siteId: row.siteId,
+      mediaId: row.mediaId,
+      collection: row.collection,
+      documentId: row.documentId,
+      field: row.field,
+    }));
 }
 
 function collectMediaIds(

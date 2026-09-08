@@ -1,3 +1,4 @@
+import { npAssertAgentPreviewEffectsAllowed } from "../agent/changeset-preview-overlay.js";
 import {
   type NpJobData,
   type NpJobPayload,
@@ -247,6 +248,7 @@ export async function enqueueJob<TType extends NpJobType>(
   type: TType,
   data: NpJobPayload<TType>,
 ): Promise<string> {
+  npAssertAgentPreviewEffectsAllowed();
   const normalized = normalizeRegisteredJobPayload(type, data);
   const quotaSiteId = resolveRegisteredJobQuotaSiteId(type, normalized);
   return enqueueNormalizedJob(type, normalized, quotaSiteId);
@@ -257,6 +259,7 @@ export async function enqueueJobWithResult<TType extends NpJobType>(
   type: TType,
   data: NpJobPayload<TType>,
 ): Promise<NpEnqueuedJob<TType>> {
+  npAssertAgentPreviewEffectsAllowed();
   let normalized: NpJobPayload<TType> & NpJobData;
   let quotaSiteId: string | null;
   try {

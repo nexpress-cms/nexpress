@@ -130,3 +130,5 @@ export { getSiteMember } from "./site-member.js";
 export { JsonLd } from "./json-ld.js";
 
 export { fetchFrontListPosts, type FetchFrontListPostsOptions } from "./list-front-posts.js";
+
+export { withAgentChangeSetPreviewRender } from "./agent-preview-render.js";

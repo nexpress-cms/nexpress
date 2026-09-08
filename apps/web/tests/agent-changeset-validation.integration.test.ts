@@ -1,53 +1,24 @@
-import { createHash, randomUUID } from "node:crypto";
-// eslint-disable-next-line import-x/no-relative-packages
+/* eslint-disable import-x/no-relative-packages */
+import { randomUUID } from "node:crypto";
 import {
   npDigestAgentChangeSetPlanCanonical,
   npDigestAgentChangeSetSnapshotCanonical,
 } from "../../../packages/core/src/agent-contract/canonical-changeset.js";
-// eslint-disable-next-line import-x/no-relative-packages
 import { withCurrentSite } from "../../../packages/core/src/sites/context.js";
-// eslint-disable-next-line import-x/no-relative-packages
 import { saveDocument } from "../../../packages/core/src/collections/pipeline.js";
-// eslint-disable-next-line import-x/no-relative-packages
 import { createAgentChangeSetValidationResourceServiceV1 } from "../../../packages/core/src/agent/changeset-validation-resources.js";
-// eslint-disable-next-line import-x/no-relative-packages
 import type { NpAgentChangeSetOperationInput } from "../../../packages/core/src/agent-contract/types.js";
-// eslint-disable-next-line import-x/no-relative-packages
-import { npCreateEmptyRichTextContent } from "../../../packages/core/src/fields/rich-text.js";
+import { grantSiteMembership, npRevisions, npSessions, npUsers } from "@nexpress/core";
 import { eq } from "drizzle-orm";
-import { beforeAll, beforeEach, afterEach, afterAll, describe, expect, it } from "vitest";
-import { createSite, grantSiteMembership, npUsers, npSessions, npRevisions } from "@nexpress/core";
-// eslint-disable-next-line import-x/no-relative-packages
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { npCreateEmptyRichTextContent } from "../../../packages/core/src/fields/rich-text.js";
 import {
-  createAgentChangeSetServiceV1,
-  type NpAgentChangeSetActorV1,
-  type NpAgentChangeSetServiceOptionsV1,
-} from "../../../packages/core/src/agent/changeset-service.js";
-// eslint-disable-next-line import-x/no-relative-packages
-import {
-  npBuildAgentChangeSetDraftInputJsonV1,
-  npDigestAgentChangeSetDraftInputV1,
-  type NpAgentChangeSetDraftInputV1,
-} from "../../../packages/core/src/agent-contract/changeset-wire-contract.js";
-// eslint-disable-next-line import-x/no-relative-packages
-import {
-  npAgentChangesets,
-  npAgentChangesetOperations,
   npAgentActions,
-  npAgentChangesetValidationAttempts,
   npAgentApprovals,
+  npAgentChangesetOperations,
+  npAgentChangesets,
+  npAgentChangesetValidationAttempts,
 } from "../../../packages/core/src/db/schema/agent.js";
-// eslint-disable-next-line import-x/no-relative-packages
-import { createAgentGatewayServiceV1 } from "../../../packages/core/src/agent/gateway-service.js";
-// eslint-disable-next-line import-x/no-relative-packages
-import { createAgentOauthServiceV1 } from "../../../packages/core/src/agent/oauth-service.js";
-// eslint-disable-next-line import-x/no-relative-packages
-import { createAgentCapabilityAdmissionServiceV1 } from "../../../packages/core/src/agent/capability-admission.js";
-// eslint-disable-next-line import-x/no-relative-packages
-import { createAgentReadCapabilityRegistryV1 } from "../../../packages/core/src/agent/capability-registry.js";
-// eslint-disable-next-line import-x/no-relative-packages
-import { createAgentCoreReadCapabilityExecutorsV1 } from "../../../packages/core/src/agent/read-capability-executors.js";
-// eslint-disable-next-line import-x/no-relative-packages
 import {
   getCollectionConfig,
   getCollectionTable,
@@ -55,266 +26,20 @@ import {
 } from "../../../packages/core/src/collections/registry.js";
 import { postsTable } from "../src/db/generated/collections.js";
 import {
-  ensureMigrated,
+  command,
+  fixture,
+  oauthFixture,
+  principalFixture,
+  siteId,
+} from "./agent-changeset-fixture.js";
+import {
   closeTestDb,
-  getTestDb,
+  ensureMigrated,
+  registerTestCollections,
   seedUser,
   skipIfNoTestDb,
   truncateAll,
-  registerTestCollections,
 } from "./harness.js";
-const siteId = "changeset-validation";
-const settings = {
-  schemaVersion: "np.agent-gateway-settings.v1" as const,
-  stdio: "propose" as const,
-  mcpHttp: "disabled" as const,
-  agentHttp: "disabled" as const,
-};
-function draft(title = "Proposed content"): NpAgentChangeSetDraftInputV1 {
-  return {
-    title,
-    summary: null,
-    operations: [
-      {
-        kind: "document",
-        operation: "create",
-        clientOperationId: "create-post",
-        reason: null,
-        resource: { collection: "posts", documentId: null },
-        base: null,
-        input: {
-          document: {
-            title: "Proposed post",
-            content: npCreateEmptyRichTextContent(),
-          },
-          targetStatus: "draft",
-        },
-      },
-    ],
-  };
-}
-async function command(value = draft(), idempotencyKey = randomUUID(), expectedVersion?: number) {
-  return {
-    idempotencyKey,
-    proposalJson: npBuildAgentChangeSetDraftInputJsonV1(value),
-    proposalHash: await npDigestAgentChangeSetDraftInputV1(value),
-    ...(expectedVersion === undefined ? {} : { expectedVersion }),
-  };
-}
-async function fixture(options: Partial<NpAgentChangeSetServiceOptionsV1> = {}) {
-  const db = await getTestDb();
-  const seeded = await seedUser({ role: "admin" });
-  await createSite({ id: siteId, name: "Draft site" });
-  await createSite({ id: "draft-other", name: "Other" });
-  await grantSiteMembership(siteId, seeded.userId, "admin");
-  await grantSiteMembership("draft-other", seeded.userId, "admin");
-  const [user] = await db.select().from(npUsers).where(eq(npUsers.id, seeded.userId));
-  const [session] = await db.select().from(npSessions).where(eq(npSessions.userId, seeded.userId));
-  const actor: Extract<NpAgentChangeSetActorV1, { kind: "staff" }> = {
-    kind: "staff",
-    siteId,
-    actor: {
-      user: {
-        id: user!.id,
-        email: user!.email,
-        name: user!.name,
-        role: user!.role,
-        tokenVersion: user!.tokenVersion,
-      },
-      sessionId: session!.id,
-    },
-  };
-  return {
-    db,
-    actor,
-    service: createAgentChangeSetServiceV1({
-      cursorKey: new Uint8Array(32).fill(44),
-      reauthentication: { verify: () => true },
-      ...options,
-    }),
-  };
-}
-async function principalFixture(
-  f: Awaited<ReturnType<typeof fixture>>,
-  writeOnly = false,
-  options: Partial<NpAgentChangeSetServiceOptionsV1> = {},
-) {
-  const gateway = createAgentGatewayServiceV1({
-    tokenHashKeyring: { active: { id: "draft-key", key: new Uint8Array(32).fill(25) } },
-    environment: "production",
-    deploymentGatewaySettings: settings,
-    resolveSiteGatewaySettings: () => settings,
-    reauthentication: { verify: () => true },
-  });
-  const scopes = writeOnly
-    ? ["changeset:write", "content:draft", "site:read"]
-    : ["changeset:read", "changeset:write", "content:draft", "content:read", "site:read"];
-  const principal = await gateway.executeAdmin({
-    siteId,
-    actor: f.actor.actor,
-    operationId: "agents.gateway.principals.create",
-    targetId: null,
-    command: {
-      idempotencyKey: randomUUID(),
-      name: "Draft client",
-      description: null,
-      scopes: [...scopes],
-    },
-  });
-  const token = await gateway.executeAdmin({
-    siteId,
-    actor: f.actor.actor,
-    operationId: "agents.gateway.principal_tokens.create",
-    targetId: principal.resourceId,
-    command: {
-      idempotencyKey: randomUUID(),
-      expectedVersion: 1,
-      name: "Draft token",
-      scopes: [...scopes],
-      transport: "stdio",
-      exposure: "propose",
-      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
-    },
-  });
-  const authentication = await gateway.authenticateServiceToken({
-    siteId,
-    credential: token.oneTimeValue,
-    transport: "stdio",
-    audience: "urn:nexpress:agent-gateway:stdio",
-  });
-  const executors = createAgentCoreReadCapabilityExecutorsV1({
-    cursorHmacKey: { id: "draft-read-key", key: new Uint8Array(32).fill(26) },
-    resolveBlockSchemas: () => [],
-    resolveUser: () => f.actor.actor.user,
-  });
-  const registry = await createAgentReadCapabilityRegistryV1(executors);
-  const admission = createAgentCapabilityAdmissionServiceV1({
-    registry,
-    resolveGatewaySettings: () => settings,
-  });
-  return {
-    gateway,
-    principal,
-    authentication,
-    token,
-    service: createAgentChangeSetServiceV1({
-      cursorKey: new Uint8Array(32).fill(44),
-      admission,
-      gateway,
-      ...options,
-      reauthentication: { verify: () => true },
-    }),
-    actor: { kind: "principal" as const, authentication },
-  };
-}
-
-async function oauthFixture(f: Awaited<ReturnType<typeof fixture>>) {
-  const origin = "https://validation.example";
-  const resource = `${origin}/api/mcp`;
-  const gatewaySettings = { ...settings, mcpHttp: "propose" as const };
-  const tokenHashKeyring = { active: { id: "oauth-validation", key: new Uint8Array(32).fill(39) } };
-  const gateway = createAgentGatewayServiceV1({
-    tokenHashKeyring,
-    deploymentGatewaySettings: gatewaySettings,
-    resolveSiteGatewaySettings: () => gatewaySettings,
-    resolveCanonicalSiteOrigin: () => origin,
-    reauthentication: { verify: () => true },
-  });
-  const keys = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
-    "sign",
-    "verify",
-  ]);
-  const oauth = createAgentOauthServiceV1({
-    gateway,
-    tokenHashKeyring,
-    signingKeyring: {
-      active: { kid: "oauth-validation", privateKey: keys.privateKey, publicKey: keys.publicKey },
-    },
-    reauthentication: { verify: () => true },
-  });
-  const registered = await oauth.executeAdmin({
-    siteId,
-    actor: f.actor.actor,
-    operationId: "agents.gateway.oauth_clients.create",
-    targetId: null,
-    command: {
-      idempotencyKey: randomUUID(),
-      name: "Validation client",
-      redirectUris: ["http://127.0.0.1:43110/callback"],
-      transports: ["mcp-http"],
-    },
-  });
-  const clientId = String(registered.output.clientId);
-  const scopes = [
-    "changeset:read",
-    "changeset:write",
-    "content:draft",
-    "content:read",
-    "site:read",
-  ] as const;
-  const verifier = "v".repeat(43);
-  const started = await oauth.startAuthorization({
-    siteId,
-    actor: f.actor.actor,
-    request: {
-      responseType: "code",
-      clientId,
-      redirectUri: "http://127.0.0.1:43110/callback",
-      state: "validation-client-state",
-      scope: scopes.join(" "),
-      resource,
-      codeChallenge: createHash("sha256").update(verifier, "ascii").digest("base64url"),
-      codeChallengeMethod: "S256",
-      gatewayMode: "propose",
-    },
-  });
-  const accepted = await oauth.decideAuthorization({
-    siteId,
-    actor: f.actor.actor,
-    consentChallenge: started.consentChallenge,
-    approve: true,
-    scopes: [...scopes],
-    gatewayMode: "propose",
-  });
-  const tokens = await oauth.exchangeAuthorizationCode({
-    siteId,
-    clientId,
-    code: new URL(accepted.redirectUri).searchParams.get("code"),
-    redirectUri: "http://127.0.0.1:43110/callback",
-    codeVerifier: verifier,
-    resource,
-  });
-  const authentication = await oauth.authenticateRemoteBearer({
-    siteId,
-    authorization: `Bearer ${tokens.access_token}`,
-  });
-  expect(authentication.authorizationContext.authorityRef.kind).toBe("oauth-grant");
-  const registry = await createAgentReadCapabilityRegistryV1(
-    createAgentCoreReadCapabilityExecutorsV1({
-      cursorHmacKey: { id: "oauth-validation", key: new Uint8Array(32).fill(40) },
-      resolveBlockSchemas: () => [],
-      resolveUser: () => f.actor.actor.user,
-    }),
-  );
-  const admission = createAgentCapabilityAdmissionServiceV1({
-    registry,
-    resolveGatewaySettings: () => gatewaySettings,
-  });
-  const service = createAgentChangeSetServiceV1({
-    cursorKey: new Uint8Array(32).fill(41),
-    gateway,
-    admission,
-    inlineValidationOperationLimit: 0,
-    reauthentication: { verify: () => true },
-  });
-  return {
-    oauth,
-    clientId,
-    tokens,
-    service,
-    actor: { kind: "principal" as const, authentication },
-  };
-}
 async function requester(f: Awaited<ReturnType<typeof fixture>>) {
   const seeded = await seedUser({ role: "admin" });
   await grantSiteMembership(siteId, seeded.userId, "admin");

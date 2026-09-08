@@ -417,6 +417,20 @@ attempt table; Doctor covers 23 tables and 101 critical constraints. Preview,
 approval decisions, apply and transport/UI exposure remain later work.
 Details: [R3 validation review](r3-validation-review.md).
 
+AP-305/AP-306 implementation (2026-09-08): the normal content renderer now
+uses a bounded read-only overlay of the sealed plan and frozen resource bases.
+Explicit host services own queued generation, dedicated cross-site viewer
+launch, render-ticket consumption and private artifact lifecycle. One-time
+exchange, per-preview Strict cookies, current staff/item authority and exact
+route/contract checks guard every view. The complete spool and atomic artifact
+reservation precede a sole PUT; recovery inspects durable operation identities.
+Migration 0040 adds five tables; Doctor covers 28 tables and 133 critical
+constraints. Thin reference/scaffold routes remain unavailable without host
+injection. No automatic worker, listener, screenshot process, provider call,
+default enablement, version bump or changeset is added. Actual check execution,
+full Admin views and MCP/API capability exposure remain AP-307–309.
+Details: [R3 preview review](r3-preview-review.md).
+
 | ID     | Scope                                                                                                                                                                                                                                                                                                                                                 |
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | AP-301 | Add ChangeSet/operation/approval client-safe contracts and persistence, including retained discriminated sealed plan bodies, frozen rollback duration, and exact before-snapshot `snapshot_hash`                                                                                                                                                      |

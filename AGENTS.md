@@ -2,7 +2,22 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-09-08 (AP-303/AP-304 extend the existing transaction
+**Last refreshed:** 2026-09-08 (AP-305/AP-306 add generation-bound preview
+admission and an explicit host processor to the existing ChangeSet service.
+A read-only overlay reuses document, navigation, theme, SEO and media-reference
+contracts, while the preview context blocks framework effects. Current requester
+and viewer authority remain separate. Five preview/storage/launch/render tables
+in generated migration 0040 bring Doctor to 28 tables and 133 critical constraints,
+and ordinary site deletion to 27 dependency-ordered tables. Private mode-0700
+spools precede atomic whole-set artifact reservation; one PUT per upload, bounded
+inspection, exact content/receipt digests and confirmed deletion prevent partial
+readiness or blind replay. Never-dispatched source loss is cancelled only after
+the derived 5,850-second dispatch window; pending/unknown effects stay fenced.
+Viewer/render surfaces, safe report projection and all runtime/storage adapters
+remain explicitly injected. No approval decision, apply, automatic worker,
+provider call, seed, default enablement, package version or changeset is added.)
+
+**Earlier:** 2026-09-08 (AP-303/AP-304 extend the existing transaction
 seams through resource reads and navigation/theme writes, defer nested hooks
 until the outer commit, and close navigation CAS races. ChangeSet validation
 uses current requester authority and one durable generation-bound attempt;

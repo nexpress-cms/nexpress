@@ -1,7 +1,26 @@
+import {
+  npAssertAgentPreviewEffectsAllowed,
+  npGetAgentChangeSetPreviewContext,
+  npIsAgentChangeSetPreview,
+  npAgentPreviewReadTransaction,
+  npAgentPreviewMemo,
+} from "../agent/changeset-preview-overlay.js";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
-import { asc, count, desc, eq, inArray, isNull, max, sql, type SQL } from "drizzle-orm";
+import {
+  asc,
+  count,
+  desc,
+  eq,
+  getTableColumns,
+  getTableName,
+  inArray,
+  isNull,
+  max,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 import type {
   CommunityCapability,
@@ -13,6 +32,7 @@ import { can } from "../auth/capabilities.js";
 import {
   NpCollectionContractError,
   npCollectionDocumentToWriteInput,
+  npParseCollectionDocumentWire,
   npHydrateCollectionDocument,
   npRequireCollectionDocument,
   npRequireCollectionFindOptions,
@@ -116,7 +136,7 @@ interface DrizzleTransactionLike {
     where(condition: QueryCondition): Promise<unknown>;
   };
   select(selection?: Record<string, unknown>): {
-    from(table: PgTable): SelectQuery;
+    from(table: PgTable | SQL): SelectQuery;
   };
 }
 
@@ -298,6 +318,7 @@ export async function runPostCommit(
   context: { collection: string; documentId: string; operation?: string },
   fn: () => Promise<unknown>,
 ): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
   const queue = deferredPostCommitStore.getStore();
   if (queue) {
     queue.push({ label, context, fn });
@@ -325,6 +346,7 @@ export async function saveDocument(
   user: NpAuthUser,
   options?: NpSaveOptions,
 ): Promise<NpSaveResult> {
+  npAssertAgentPreviewEffectsAllowed();
   return saveDocumentImpl(collection, docId, data, { kind: "staff", user }, options);
 }
 
@@ -421,6 +443,7 @@ export async function updateMemberDocument(
   memberId: string,
   options?: NpSaveOptions,
 ): Promise<NpSaveResult> {
+  npAssertAgentPreviewEffectsAllowed();
   const memberOptions: NpSaveOptions = { ...(options ?? {}) };
   delete memberOptions.status;
 
@@ -570,6 +593,7 @@ export async function createMemberDocument(
   memberId: string,
   options?: NpSaveOptions,
 ): Promise<NpSaveResult> {
+  npAssertAgentPreviewEffectsAllowed();
   // Members can't author drafts / archive / schedule — those status
   // transitions are admin-side affordances. The status that
   // member-authored creates land in is governed by:
@@ -1541,6 +1565,7 @@ export async function autosaveRevision(
   createdAt: Date;
   reused: boolean;
 }> {
+  npAssertAgentPreviewEffectsAllowed();
   const config = getCollectionConfig(collection);
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
@@ -1690,6 +1715,7 @@ export async function deleteDocument(
   user: NpAuthUser,
   options?: { tx?: NpTransaction },
 ): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
   return deleteDocumentImpl(collection, docId, { kind: "staff", user }, options);
 }
 
@@ -1710,6 +1736,7 @@ export async function deleteMemberDocument(
   docId: string,
   memberId: string,
 ): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
   // Read the current status BEFORE delete so we know whether a
   // `document.created` credit was ever granted. `deleteDocumentImpl`
   // also looks the row up internally, so this is a small redundant
@@ -1800,6 +1827,7 @@ export async function promoteMemberDocument(
   docId: string,
   staffUserId: string,
 ): Promise<NpSaveResult> {
+  npAssertAgentPreviewEffectsAllowed();
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
   const db = getDb() as unknown as DrizzleDatabaseLike;
@@ -1942,6 +1970,7 @@ export async function unpublishDocumentForModeration(
   staffUser: NpAuthUser,
   reason: string,
 ): Promise<NpSaveResult> {
+  npAssertAgentPreviewEffectsAllowed();
   if (!can(staffUser, "community.moderate")) {
     throw new NpForbiddenError(collection, "moderate");
   }
@@ -2017,6 +2046,7 @@ export interface NpApplyMemberThreadModerationInput {
 export async function npApplyMemberThreadModeration(
   input: NpApplyMemberThreadModerationInput,
 ): Promise<NpSaveResult> {
+  npAssertAgentPreviewEffectsAllowed();
   const config = getCollectionConfig(input.collection);
   const moderation = config.community?.moderation;
   if (!moderation) {
@@ -2405,6 +2435,116 @@ async function deleteDocumentImpl(
   );
 }
 
+interface PreviewDocument {
+  document: Record<string, unknown>;
+  storage: Record<string, unknown>;
+}
+
+function previewDocuments(config: NpCollectionConfig): Map<string, PreviewDocument> {
+  const scope = npGetAgentChangeSetPreviewContext();
+  if (!scope) return new Map();
+  return npAgentPreviewMemo(`collection:${config.slug}`, () => {
+    const result = new Map<string, PreviewDocument>();
+    for (const [index, entry] of scope.plan.body.operations.entries()) {
+      const operation = entry.operation;
+      if (operation.kind !== "document" || operation.resource.collection !== config.slug) continue;
+      if (entry.canonicalResourceKey.kind !== "document")
+        throw new NpForbiddenError("preview", "resource");
+      const id = entry.canonicalResourceKey.documentId;
+      const snapshot = scope.snapshots[index];
+      const original =
+        snapshot.presence === "present"
+          ? npParseCollectionDocumentWire(snapshot.value, config)
+          : null;
+      let candidate = original ? npCollectionDocumentToWriteInput(original, config) : {};
+      if (operation.operation === "create")
+        candidate = { ...candidate, ...operation.input.document };
+      if (operation.operation === "update") candidate = { ...candidate, ...operation.input.patch };
+      candidate = getCollectionZodSchema(config, candidate).parse(candidate) as Record<
+        string,
+        unknown
+      >;
+      applySlugField(config, candidate, original);
+      if (config.i18n) {
+        candidate.locale ??= getI18nConfig()?.defaultLocale;
+        candidate.translationGroupId ??= id;
+      }
+      let status = original?.status ?? "draft";
+      if (operation.operation === "create") status = operation.input.targetStatus;
+      if (operation.operation === "update" && operation.input.targetStatus !== null)
+        status = operation.input.targetStatus;
+      if (operation.operation === "publish") status = "published";
+      if (operation.operation === "archive") status = "archived";
+      if (operation.operation === "schedule") {
+        status = "scheduled";
+        candidate.publishedAt = new Date(operation.input.publishAt);
+      }
+
+      const prepared = prepareDocumentData(config.fields, candidate);
+      const storage: Record<string, unknown> = {
+        ...prepared.mainData,
+        id,
+        siteId: scope.siteId,
+        status,
+        visibility: candidate.visibility ?? "public",
+        createdBy: original?.createdBy ?? null,
+        updatedBy: null,
+        searchVector: null,
+        ...(config.timestamps === false
+          ? {}
+          : {
+              createdAt: original?.createdAt ?? new Date(scope.createdAt),
+              updatedAt: new Date(scope.createdAt),
+            }),
+        ...(hasFrameworkPublishedAt(config) ? { publishedAt: candidate.publishedAt ?? null } : {}),
+      };
+      const arrays = Object.fromEntries(
+        Object.entries(prepared.childRows).map(([field, rows]) => [
+          field,
+          rows.map((row, rowIndex) => {
+            const hash = createHash("sha256")
+              .update(`${scope.planHash}:${id}:${field}:${rowIndex.toString()}`)
+              .digest("hex");
+            return {
+              ...row,
+              id: `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`,
+              parentId: id,
+              order: rowIndex,
+            };
+          }),
+        ]),
+      );
+      const document = npHydrateCollectionDocument(config, storage, {
+        arrays,
+        hasMany: prepared.joinRows,
+      });
+      result.set(id, { storage, document });
+    }
+    return result;
+  });
+}
+
+/** A read-only SQL relation preserves the existing equality/IN/FTS/sort/count semantics. */
+function previewCollectionSource(
+  table: PgTable,
+  config: NpCollectionConfig,
+  overlays: Map<string, PreviewDocument>,
+): PgTable | SQL {
+  if (overlays.size === 0) return table;
+  const columns = getTableColumns(table);
+  const projected = [...overlays.values()].map(({ storage, document }) => {
+    const raw = Object.fromEntries(
+      Object.entries(columns).map(([property, column]) => [column.name, storage[property] ?? null]),
+    );
+    const vector = buildWeightedSearchVectorSql(config, document);
+    return sql`select (jsonb_populate_record(null::${sql.identifier(getTableName(table))}, ${JSON.stringify(raw)}::jsonb || jsonb_build_object('search_vector', (${vector})::text))).*`;
+  });
+  return sql`(select * from ${table} where ${getTableColumn(table, "id")} not in (${sql.join(
+    [...overlays.keys()].map((id) => sql`${id}`),
+    sql`, `,
+  )}) union all ${sql.join(projected, sql` union all `)}) as ${sql.identifier(getTableName(table))}`;
+}
+
 export async function findDocuments<T extends object = Record<string, unknown>>(
   collection: string,
   options: NpFindOptions<NoInfer<T>>,
@@ -2414,7 +2554,10 @@ export async function findDocuments<T extends object = Record<string, unknown>>(
   const config = getCollectionConfig(collection);
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
-  const db = (execution?.tx ?? getDb()) as DrizzleTransactionLike;
+  const db = ((await npAgentPreviewReadTransaction(execution?.tx)) ??
+    getDb()) as DrizzleTransactionLike;
+  const overlays = previewDocuments(config);
+  const source = previewCollectionSource(table, config, overlays);
   const normalizedOptions = npRequireCollectionFindOptions(options, config, {
     maximumLimit: 10_000,
     allowSystemWildcards: true,
@@ -2473,7 +2616,12 @@ export async function findDocuments<T extends object = Record<string, unknown>>(
     effectiveWhere = rest;
   }
 
-  effectiveWhere = await resolveHasManyWhere(db, registration, effectiveWhere);
+  if (
+    npIsAgentChangeSetPreview() &&
+    effectiveWhere.siteId !== npGetAgentChangeSetPreviewContext()?.siteId
+  )
+    throw new NpForbiddenError(collection, "cross-site");
+  effectiveWhere = await resolveHasManyWhere(db, registration, effectiveWhere, overlays);
 
   const effectiveOptions: NpFindOptions = {
     ...normalizedOptions,
@@ -2489,15 +2637,31 @@ export async function findDocuments<T extends object = Record<string, unknown>>(
     whereClause,
     limit,
     offset,
+    source,
   );
-  const hydratedDocs = await hydratePersistedDocuments(db, registration, storageRows, "read");
+  const persisted = await hydratePersistedDocuments(
+    db,
+    registration,
+    storageRows.filter((row) => !overlays.has(String(row.id))),
+    "read",
+  );
+  const byId = new Map(persisted.map((row) => [String(row.id), row]));
+  const hydratedDocs =
+    overlays.size === 0
+      ? persisted
+      : storageRows.map((row) => {
+          const overlay = overlays.get(String(row.id));
+          return overlay ? structuredClone(overlay.document) : byId.get(String(row.id))!;
+        });
   const docs: Record<string, unknown>[] = [];
   for (const document of hydratedDocs) {
+    if (npIsAgentChangeSetPreview())
+      await npAssertCollectionReadAccess(config, collection, user ?? null, document);
     docs.push(await runReadHooks(config, document, user ?? null));
   }
   const totalResult = (await (whereClause
-    ? db.select({ total: count() }).from(table).where(whereClause)
-    : db.select({ total: count() }).from(table).limit(1))) as Array<{ total: number | string }>;
+    ? db.select({ total: count() }).from(source).where(whereClause)
+    : db.select({ total: count() }).from(source).limit(1))) as Array<{ total: number | string }>;
   const totalDocs = Number(totalResult[0]?.total ?? 0);
   if (!Number.isSafeInteger(totalDocs) || totalDocs < 0) {
     throw new NpCollectionContractError("Invalid collection count result", [
@@ -2531,9 +2695,13 @@ export async function getDocumentById<T extends object = Record<string, unknown>
   options?: { tx?: NpTransaction },
 ): Promise<T | null> {
   const config = getCollectionConfig(collection);
-  const db = (options?.tx ?? getDb()) as DrizzleTransactionLike;
+  const db = ((await npAgentPreviewReadTransaction(options?.tx)) ??
+    getDb()) as DrizzleTransactionLike;
   const registration = getCollectionRegistration(collection);
-  const doc = await getDocumentByIdOptional(db, registration, id);
+  const overlay = previewDocuments(config).get(id);
+  const doc = overlay
+    ? structuredClone(overlay.document)
+    : await getDocumentByIdOptional(db, registration, id);
 
   if (!doc) {
     return null;
@@ -2564,14 +2732,21 @@ export async function npGetPersistedCollectionDocumentById(
   siteId: string,
   options?: { tx?: NpTransaction },
 ): Promise<Record<string, unknown> | null> {
+  const previewScope = npGetAgentChangeSetPreviewContext();
+  if (previewScope && previewScope.siteId !== siteId)
+    throw new NpForbiddenError(collection, "cross-site");
   if (!npIsCanonicalSiteId(siteId)) {
     throw new NpValidationError("Invalid collection document site", [
       { field: "siteId", message: "Must be a canonical site id" },
     ]);
   }
   const registration = getCollectionRegistration(collection);
-  const db = (options?.tx ?? getDb()) as DrizzleTransactionLike;
-  const document = await getDocumentByIdOptional(db, registration, id, "write-result");
+  const db = ((await npAgentPreviewReadTransaction(options?.tx)) ??
+    getDb()) as DrizzleTransactionLike;
+  const overlay = previewDocuments(registration.config).get(id);
+  const document = overlay
+    ? structuredClone(overlay.document)
+    : await getDocumentByIdOptional(db, registration, id, "write-result");
   if (document && document.siteId !== siteId) {
     throw new NpForbiddenError(collection, "cross-site");
   }
@@ -2585,6 +2760,9 @@ export async function npGetPersistedCollectionDocumentIds(
   siteId: string,
   options?: { tx?: NpTransaction },
 ): Promise<string[]> {
+  const previewScope = npGetAgentChangeSetPreviewContext();
+  if (previewScope && previewScope.siteId !== siteId)
+    throw new NpForbiddenError(collection, "cross-site");
   if (!npIsCanonicalSiteId(siteId)) {
     throw new NpValidationError("Invalid collection document site", [
       { field: "siteId", message: "Must be a canonical site id" },
@@ -2612,13 +2790,20 @@ export async function npGetPersistedCollectionDocumentIds(
   if (ids.length === 0) return [];
 
   const table = getCollectionTable(collection) as PgTable;
-  const db = (options?.tx ?? getDb()) as DrizzleTransactionLike;
+  const db = ((await npAgentPreviewReadTransaction(options?.tx)) ??
+    getDb()) as DrizzleTransactionLike;
   const rows = (await db
     .select({
-      id: getTableColumn(table, "id"),
-      siteId: getTableColumn(table, "siteId"),
+      id: sql`${getTableColumn(table, "id")}`,
+      siteId: sql`${getTableColumn(table, "siteId")}`,
     })
-    .from(table)
+    .from(
+      previewCollectionSource(
+        table,
+        getCollectionConfig(collection),
+        previewDocuments(getCollectionConfig(collection)),
+      ),
+    )
     .where(inArray(getTableColumn(table, "id"), [...ids]))) as Array<{
     id: unknown;
     siteId: unknown;
@@ -2724,6 +2909,7 @@ async function runReadHooks(
   document: Record<string, unknown>,
   user: NpAuthUser | null,
 ): Promise<Record<string, unknown>> {
+  if (npIsAgentChangeSetPreview()) return npRequireCollectionDocument(document, config);
   const principal: NpHookPrincipal | null = user ? { kind: "staff", user } : null;
   const before = await npRunCollectionDocumentResultHooks(
     config,
@@ -2999,6 +3185,7 @@ async function resolveHasManyWhere(
   db: DrizzleTransactionLike,
   registration: ReturnType<typeof getCollectionRegistration>,
   where: Record<string, unknown>,
+  overlays: Map<string, PreviewDocument> = new Map(),
 ): Promise<Record<string, unknown>> {
   const resolved = { ...where };
   let matchingIds: string[] | null = null;
@@ -3029,7 +3216,19 @@ async function resolveHasManyWhere(
       .select({ id: getTableColumn(table, parentColumnName) })
       .from(table)
       .where(inArray(getTableColumn(table, "targetId"), targets))) as Array<{ id: unknown }>;
-    const ids = [...new Set(rows.flatMap((row) => (typeof row.id === "string" ? [row.id] : [])))];
+    const ids = [
+      ...new Set([
+        ...rows.flatMap((row) =>
+          typeof row.id === "string" && !overlays.has(row.id) ? [row.id] : [],
+        ),
+        ...[...overlays.entries()].flatMap(([id, row]) => {
+          const values = row.document[field];
+          return Array.isArray(values) && values.some((value) => targets.includes(String(value)))
+            ? [id]
+            : [];
+        }),
+      ]),
+    ];
     if (matchingIds === null) {
       matchingIds = ids;
     } else {
@@ -3095,12 +3294,22 @@ async function executeFindQuery(
   whereClause: ReturnType<typeof sql> | undefined,
   limit: number,
   offset: number,
+  source: PgTable | SQL = table,
 ): Promise<Record<string, unknown>[]> {
+  const selection =
+    source === table
+      ? undefined
+      : Object.fromEntries(
+          Object.entries(getTableColumns(table)).map(([key, column]) => [
+            key,
+            sql`${column}`.mapWith(column),
+          ]),
+        );
   if (options.search) {
     const query = whereClause
       ? db
-          .select()
-          .from(table)
+          .select(selection)
+          .from(source)
           .where(whereClause)
           .orderBy(
             sql`ts_rank(${getTableColumn(table, "searchVector")}, plainto_tsquery('english', ${options.search})) DESC`,
@@ -3108,8 +3317,8 @@ async function executeFindQuery(
           .limit(limit)
           .offset(offset)
       : db
-          .select()
-          .from(table)
+          .select(selection)
+          .from(source)
           .orderBy(
             sql`ts_rank(${getTableColumn(table, "searchVector")}, plainto_tsquery('english', ${options.search})) DESC`,
           )
@@ -3123,8 +3332,8 @@ async function executeFindQuery(
 
   if (whereClause && orderClause) {
     return (await db
-      .select()
-      .from(table)
+      .select(selection)
+      .from(source)
       .where(whereClause)
       .orderBy(orderClause)
       .limit(limit)
@@ -3132,22 +3341,27 @@ async function executeFindQuery(
   }
 
   if (whereClause) {
-    return (await db.select().from(table).where(whereClause).limit(limit).offset(offset)) as Record<
-      string,
-      unknown
-    >[];
+    return (await db
+      .select(selection)
+      .from(source)
+      .where(whereClause)
+      .limit(limit)
+      .offset(offset)) as Record<string, unknown>[];
   }
 
   if (orderClause) {
     return (await db
-      .select()
-      .from(table)
+      .select(selection)
+      .from(source)
       .orderBy(orderClause)
       .limit(limit)
       .offset(offset)) as Record<string, unknown>[];
   }
 
-  return (await db.select().from(table).limit(limit).offset(offset)) as Record<string, unknown>[];
+  return (await db.select(selection).from(source).limit(limit).offset(offset)) as Record<
+    string,
+    unknown
+  >[];
 }
 
 function getSortOrderClause(

@@ -1595,3 +1595,29 @@ answer. It is verified only when:
 - post-commit verification reached a terminal exact result;
 - failures are diagnosable and recoverable without secrets or cross-site data;
 - applicable adversarial, evaluation, and recovery gates passed.
+
+### AP-305/AP-306 executable coverage
+
+The shared ChangeSet fixture supplies staff, service-principal and OAuth
+requester authority to validation and preview tests. PostgreSQL suites cover
+readonly overlay resource reads, actual request-generation admission, viewer
+exchange/CAS/session revocation, ordinal render-ticket consumption, atomic
+artifact reservation and inspection-only crash recovery. Hostile unit suites
+freeze preview/report shapes, canonical signing/HMAC and artifact digests,
+PSL origin separation, HTML limits, strict headers and absent runtime behavior.
+
+`agent-preview-browser.integration.test.ts` runs Chromium against two test-only
+HTTPS origins using an ephemeral private certificate directory and a pinned
+SPKI. Set `NP_TEST_PREVIEW_BROWSER=1` and `TEST_DATABASE_URL` after installing
+Chromium. CI's E2E job runs this fixture explicitly; the ordinary PostgreSQL
+job skips that one browser case. The browser must prove exact Origin, absence
+of production cookies on the isolated host, cross-site exchange followed by
+same-origin Strict-cookie activation, and one-time replay rejection. The
+trusted production launch bridge's origin-only referrer exception is tested;
+activation/view/artifact responses retain no-referrer.
+
+Reference and packed scaffold wrappers reuse the same factories and retain
+an absent runtime by default. Fresh migration smoke checks the exported full
+Doctor table/constraint inventory rather than a duplicated preview count.
+No AP-307 check runner, AP-308 full UI or AP-309 advertised capability is
+claimed by these tests.

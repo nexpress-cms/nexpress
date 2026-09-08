@@ -1,3 +1,7 @@
+import {
+  npAssertAgentPreviewEffectsAllowed,
+  npAgentPreviewReadTransaction,
+} from "../agent/changeset-preview-overlay.js";
 import type { NpTransaction } from "../collections/pipeline.js";
 import { and, eq } from "drizzle-orm";
 
@@ -105,7 +109,9 @@ export function resetThemes(): void {
  * version.
  */
 export async function getActiveThemeId(options?: { tx?: NpTransaction }): Promise<string | null> {
-  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
+  const db = ((await npAgentPreviewReadTransaction(options?.tx)) ?? getDb()) as ReturnType<
+    typeof getDb
+  >;
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
   const rows = (await db
     .select()
@@ -171,6 +177,7 @@ export async function setActiveThemeId(
   updatedBy: string | null = null,
   options: { tx?: unknown } = {},
 ): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
   if (!registry.has(id)) {
     throw new NpValidationError("Invalid input", [
       {
@@ -224,7 +231,11 @@ export async function getThemeTemplateSummaries(
   // depend on plugins at type-import time).
   const { getPluginTemplatesForCollection } = await import("../plugins/templates.js");
   const { listEnabledPluginIds } = await import("../plugins/persistence.js");
-  const activePluginIds = new Set(await listEnabledPluginIds(getDb()));
+  const activePluginIds = new Set(
+    await listEnabledPluginIds(
+      ((await npAgentPreviewReadTransaction()) ?? getDb()) as ReturnType<typeof getDb>,
+    ),
+  );
   for (const [id, value] of getPluginTemplatesForCollection(collectionSlug, activePluginIds)) {
     const def = value as { label?: unknown; description?: unknown };
     summaries.set(id, {
@@ -276,7 +287,11 @@ export async function resolveTemplateComponent(
 
   const { getPluginTemplatesForCollection } = await import("../plugins/templates.js");
   const { listEnabledPluginIds } = await import("../plugins/persistence.js");
-  const activePluginIds = new Set(await listEnabledPluginIds(getDb()));
+  const activePluginIds = new Set(
+    await listEnabledPluginIds(
+      ((await npAgentPreviewReadTransaction()) ?? getDb()) as ReturnType<typeof getDb>,
+    ),
+  );
   const pluginEntry = getPluginTemplatesForCollection(collectionSlug, activePluginIds).get(
     templateId,
   );

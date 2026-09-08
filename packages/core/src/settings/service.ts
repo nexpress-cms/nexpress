@@ -1,9 +1,15 @@
+import {
+  npAssertAgentPreviewEffectsAllowed,
+  npAgentPreviewReadTransaction,
+  npGetAgentChangeSetPreviewContext,
+  npAgentPreviewSettingOverride,
+} from "../agent/changeset-preview-overlay.js";
 import type { NpTransaction } from "../collections/pipeline.js";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/runtime.js";
 import { npSettings } from "../db/schema/system.js";
-import { NpNotFoundError, NpValidationError } from "../errors.js";
+import { NpNotFoundError, NpValidationError, NpForbiddenError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { getSiteById, NP_DEFAULT_SITE_ID, updateSite } from "../sites/registry.js";
 import {
@@ -15,19 +21,24 @@ import {
 import type { NpAdminSettingsSnapshot, NpSeoSettings, NpSiteGeneralSettings } from "./types.js";
 
 async function resolveSiteId(siteId?: string): Promise<string> {
-  return siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+  const resolved = siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+  const scope = npGetAgentChangeSetPreviewContext();
+  if (scope && scope.siteId !== resolved) throw new NpForbiddenError("preview", "cross-site");
+  return resolved;
 }
 
 async function requireSettingsSite(
   siteId: string,
   options?: { tx?: NpTransaction },
 ): Promise<void> {
-  if (!(await getSiteById(siteId, options))) throw new NpNotFoundError("site", siteId);
+  if (!(await getSiteById(siteId, { tx: await npAgentPreviewReadTransaction(options?.tx) })))
+    throw new NpNotFoundError("site", siteId);
 }
 
 export async function getSiteGeneralSettings(siteId?: string): Promise<NpSiteGeneralSettings> {
   const resolved = await resolveSiteId(siteId);
-  const site = await getSiteById(resolved);
+  const tx = await npAgentPreviewReadTransaction();
+  const site = await getSiteById(resolved, { tx });
   if (!site) throw new NpNotFoundError("site", resolved);
   return npNormalizeSiteGeneralSettings({
     name: site.name,
@@ -42,6 +53,7 @@ export async function setSiteGeneralSettings(
   value: unknown,
   siteId?: string,
 ): Promise<NpSiteGeneralSettings> {
+  npAssertAgentPreviewEffectsAllowed();
   let normalized: NpSiteGeneralSettings;
   try {
     normalized = npNormalizeSiteGeneralSettings(value);
@@ -68,15 +80,24 @@ export async function getSeoSettings(
   options?: { tx?: NpTransaction },
 ): Promise<NpSeoSettings> {
   const resolved = await resolveSiteId(siteId);
+  if (
+    npGetAgentChangeSetPreviewContext() &&
+    resolved !== npGetAgentChangeSetPreviewContext()?.siteId
+  )
+    throw new NpForbiddenError("preview", "cross-site");
   await requireSettingsSite(resolved, options);
-  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
+  const db = ((await npAgentPreviewReadTransaction(options?.tx)) ?? getDb()) as ReturnType<
+    typeof getDb
+  >;
   const [row] = await db
     .select({ value: npSettings.value })
     .from(npSettings)
     .where(and(eq(npSettings.siteId, resolved), eq(npSettings.key, "seo")))
     .limit(1);
-  if (!row) return { ...DEFAULT_SEO_SETTINGS };
-  const issue = npAnalyzeSeoSettings(row.value)[0];
+  const preview = npAgentPreviewSettingOverride("seo");
+  const value = preview ? preview.value : row?.value;
+  if (value === null || value === undefined) return { ...DEFAULT_SEO_SETTINGS };
+  const issue = npAnalyzeSeoSettings(value)[0];
   if (issue) {
     throw new NpValidationError("Invalid persisted SEO settings", [
       {
@@ -85,7 +106,7 @@ export async function getSeoSettings(
       },
     ]);
   }
-  return row.value as NpSeoSettings;
+  return value as NpSeoSettings;
 }
 
 export async function setSeoSettings(
@@ -94,6 +115,7 @@ export async function setSeoSettings(
   siteId?: string,
   options?: { tx?: NpTransaction },
 ): Promise<NpSeoSettings> {
+  npAssertAgentPreviewEffectsAllowed();
   let normalized: NpSeoSettings;
   try {
     normalized = npNormalizeSeoSettings(value);
@@ -104,7 +126,9 @@ export async function setSeoSettings(
   }
   const resolved = await resolveSiteId(siteId);
   await requireSettingsSite(resolved, options);
-  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
+  const db = ((await npAgentPreviewReadTransaction(options?.tx)) ?? getDb()) as ReturnType<
+    typeof getDb
+  >;
   const updatedAt = new Date();
   await db
     .insert(npSettings)

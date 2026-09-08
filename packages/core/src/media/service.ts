@@ -1,3 +1,7 @@
+import {
+  npAssertAgentPreviewEffectsAllowed,
+  npAgentPreviewReadTransaction,
+} from "../agent/changeset-preview-overlay.js";
 import { createHash, randomUUID } from "node:crypto";
 import { extname } from "node:path";
 import { buffer as consumeBuffer } from "node:stream/consumers";
@@ -118,6 +122,7 @@ export async function uploadMedia(
   uploader: NpMediaUploader | string,
   folderId?: string,
 ): Promise<{ id: string; status: NpMediaStatus }> {
+  npAssertAgentPreviewEffectsAllowed();
   // Backwards-compat: the original signature was
   // `uploadMedia(file, userId: string | null, folderId?)`. Existing
   // callers (plugin context, admin bulk uploads, etc.) pass a bare
@@ -327,6 +332,7 @@ export async function processMediaImage(
   mediaId: string,
   config: NpMediaProcessingOptions,
 ): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
   const siteId = await requireSiteId();
   const configValidation = npValidateMediaProcessingOptions(config);
   if (!configValidation.ok) {
@@ -334,7 +340,7 @@ export async function processMediaImage(
       `Invalid media processing options at ${configValidation.issue.path}: ${configValidation.issue.message}`,
     );
   }
-  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const db = ((await npAgentPreviewReadTransaction()) ?? getDb()) as unknown as DrizzleDatabaseLike;
   const adapter = getStorageAdapter();
   const media = await getMediaRecordById(mediaId, siteId);
 
@@ -452,7 +458,7 @@ export async function processMediaImage(
 
 export async function getMediaById(id: string): Promise<NpMediaRecord | null> {
   const siteId = await resolveMediaReadSiteId();
-  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const db = ((await npAgentPreviewReadTransaction()) ?? getDb()) as unknown as DrizzleDatabaseLike;
   const [media] = await db
     .select()
     .from(npMedia)
@@ -465,8 +471,9 @@ export async function getMediaById(id: string): Promise<NpMediaRecord | null> {
 export async function deleteMedia(
   id: string,
 ): Promise<{ deleted: boolean; references?: unknown[] }> {
+  npAssertAgentPreviewEffectsAllowed();
   const siteId = await requireSiteId();
-  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const db = ((await npAgentPreviewReadTransaction()) ?? getDb()) as unknown as DrizzleDatabaseLike;
   return db.transaction(async (tx) => {
     // Reference writers lock the same media row before inserting np_media_refs.
     // Taking the lock first makes the zero-ref check and soft-delete atomic
@@ -541,7 +548,7 @@ export async function listMedia(options: {
   q?: string;
 }): Promise<NpFindResult<NpMediaListItem>> {
   const siteId = await resolveMediaReadSiteId();
-  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const db = ((await npAgentPreviewReadTransaction()) ?? getDb()) as unknown as DrizzleDatabaseLike;
   const page = normalizePage(options.page);
   const limit = normalizeLimit(options.limit);
   const offset = (page - 1) * limit;
@@ -660,7 +667,8 @@ export async function listMedia(options: {
 }
 
 export async function cleanupDeletedMedia(olderThanDays: number): Promise<number> {
-  const db = getDb() as unknown as DrizzleDatabaseLike;
+  npAssertAgentPreviewEffectsAllowed();
+  const db = ((await npAgentPreviewReadTransaction()) ?? getDb()) as unknown as DrizzleDatabaseLike;
   const adapter = getStorageAdapter();
   const threshold = new Date(Date.now() - olderThanDays * 24 * 60 * 60 * 1000);
   const rows = await db
@@ -706,7 +714,7 @@ export async function cleanupDeletedMedia(olderThanDays: number): Promise<number
 }
 
 async function getMediaRecordById(id: string, siteId: string): Promise<NpMediaRecord | null> {
-  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const db = ((await npAgentPreviewReadTransaction()) ?? getDb()) as unknown as DrizzleDatabaseLike;
   const [media] = await db
     .select()
     .from(npMedia)

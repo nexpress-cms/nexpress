@@ -2331,6 +2331,17 @@ expires or is revoked; no terminal approval row is reopened.
 
 ### 6.6 Preview and artifact rows
 
+**Implemented AP-305/AP-306 boundary:** generated migration 0040 adds exactly
+`np_agent_changeset_previews`, `np_agent_preview_artifacts`,
+`np_agent_preview_artifact_uploads`, `np_agent_preview_viewer_launches` and
+`np_agent_preview_render_sessions`. Doctor checks 28 tables and 133 critical
+constraints; ordinary site deletion covers 27 tables. Same-site parent,
+invocation, artifact and render-reservation foreign keys are physical. The
+future approval-preview relationship remains a logical UUID until the approval
+lifecycle supplies its complete dependency order; optional job ids are correlation,
+not a fabricated job or execution table. Runtime services and storage facets
+are explicitly host-injected and add no automatic worker or default enablement.
+
 `np_agent_changeset_previews` stores one bounded generation attempt for a
 sealed plan:
 
@@ -2352,7 +2363,11 @@ sealed plan:
   host-allocated render-session id, issued/expiry/consumed timestamps, all
   state-consistent;
 - optional run/job correlation plus safe error code;
-- `created_at`, nullable `completed_at`, and nullable `expires_at`.
+- `created_at`, nullable `rendering_started_at`, nullable `completed_at`, and
+  nullable `expires_at`. `rendering_started_at` is null while queued and set on
+  the first rendering claim; rendering and ready require it. It is not inferred
+  from creation time, since queue wait is unbounded. Failed/expired rows retain
+  it if rendering began.
 
 For a successful generation, `expires_at` is exactly the earlier of the
 ChangeSet execution-eligibility deadline and `completed_at + 7 days`. `ready`
@@ -2363,6 +2378,17 @@ paths enforce the same boundary synchronously.
 non-null together in the atomic `ready` finalization, and remain immutable
 thereafter. A generation that fails before readiness has `completed_at` but
 no object-validity deadline; its uploads go directly to cleanup.
+Before a storage dispatch, the host completes its bounded private mode-0700
+spool with mode-0600 files and commits the entire upload set, including the empty
+set, in one transaction. No partial artifact set becomes ready. A queued upload
+whose only source bytes were lost remains recoverable without inventing bytes:
+its 5,850-second dispatch window is `24 × 4 × 60 seconds + 90 seconds`, derived
+from the maximum serial PUT/resolution/stat/read calls and lease grace. After
+that window, a parent-before-upload CAS cancels a still-never-dispatched row with
+zero attempts and no effect and fails only a queued/rendering parent. Dispatch
+claims enforce the same deadline. Already-dispatched pending/unknown uploads
+continue the existing inspection path and never gain no-effect status from time.
+
 Every preview/render/artifact persistence read reparses the retained
 `NpAgentPreviewContractCanonicalV1` body, reproduces its fingerprint, and
 requires child repeated fingerprints to match. Deployment registry upgrades
@@ -3459,3 +3485,24 @@ binding and denormalized plan fields before projecting the existing wire.
 intent. Operation `after_hash` and execution results stay empty until actual
 application; no production document, navigation, setting, theme overlay, or
 media-reference row is changed by validation.
+
+### AP-305/AP-306 preview persistence boundary
+
+The preview service retains the exact sealed plan and contract identities and
+uses the existing requester session/family/grant authority on each admitted
+transition. `rendering_started_at` records the actual claim. Artifact rows begin
+absent with no object expiry, even after individual upload verification; only a
+complete verified upload set finalizes all objects and the preview atomically.
+Ready expiry is the earlier of parent eligibility and completion plus seven days.
+Terminal evidence timestamps, manifest digest and object deadlines are preserved
+through expiry. Artifact and upload evidence retention is raised together.
+
+The private artifact facet validates request/set and terminal operation/deletion
+receipts from their retained fields on reuse. Reads require current viewer
+admission, storage metadata preflight, exact bounded bytes/MIME and the framed
+content digest, followed by another live-authority check. Unconfirmed writes or
+deletes block cleanup and site deletion. Viewer/render expiry plus sixty-second
+skew is respected before object removal. The existing site deletion path remains
+valid for sites without Agent rows and rejects unresolved preview effects rather
+than dropping their evidence. Approval decisions, execution, rollback and default
+background processing remain outside this slice.

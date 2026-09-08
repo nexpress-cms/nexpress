@@ -1,3 +1,4 @@
+import { npAssertAgentPreviewEffectsAllowed } from "../agent/changeset-preview-overlay.js";
 import { NoopEmailAdapter } from "./noop.js";
 import { NpEmailContractError, npRequireEmailAdapter, npRequireEmailMessage } from "./contract.js";
 import type { NpEmailAdapter } from "./types.js";
@@ -20,6 +21,7 @@ export function resetEmailAdapter(): void {
 
 /** Validate and dispatch one message through the registered adapter. */
 export async function sendEmail(message: NpEmailMessage): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
   const validated = npRequireEmailMessage(message);
   const result: unknown = await adapter.send(validated);
   if (result !== undefined) {

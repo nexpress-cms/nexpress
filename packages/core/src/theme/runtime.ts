@@ -1,3 +1,8 @@
+import {
+  npAssertAgentPreviewEffectsAllowed,
+  npAgentPreviewReadTransaction,
+  npAgentPreviewSettingOverride,
+} from "../agent/changeset-preview-overlay.js";
 import type { NpTransaction } from "../collections/pipeline.js";
 import type { NpAuthUser } from "../config/types.js";
 import { can } from "../auth/capabilities.js";
@@ -36,7 +41,9 @@ function validatedOverlay(value: unknown, field: string): NpThemeTokensOverlay |
 
 /** Resolve the effective, fully populated token tree for the current site. */
 export async function getTheme(options?: { tx?: NpTransaction }): Promise<NpThemeTokens> {
-  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
+  const db = ((await npAgentPreviewReadTransaction(options?.tx)) ?? getDb()) as ReturnType<
+    typeof getDb
+  >;
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const rows = await db
     .select()
@@ -49,7 +56,11 @@ export async function getTheme(options?: { tx?: NpTransaction }): Promise<NpThem
     (active?.impl as { tokens?: unknown } | null | undefined)?.tokens,
     "activeTheme.impl.tokens",
   );
-  const storedOverlay = validatedOverlay(rows[0]?.value, "settings.theme");
+  const preview = npAgentPreviewSettingOverride("theme");
+  const storedOverlay = validatedOverlay(
+    preview ? preview.value : rows[0]?.value,
+    "settings.theme",
+  );
 
   return npMergeThemeTokens(DEFAULT_THEME, themeOverlay, storedOverlay);
 }
@@ -65,6 +76,7 @@ export async function setTheme(
   user: NpAuthUser,
   options?: { tx?: NpTransaction },
 ): Promise<NpThemeTokens> {
+  npAssertAgentPreviewEffectsAllowed();
   if (!can(user, "admin.manage")) throw new NpForbiddenError("settings/theme", "update");
   const issues = npAnalyzeThemeTokens(value);
   if (issues.length > 0) {
@@ -74,7 +86,9 @@ export async function setTheme(
     );
   }
   npAssertSettingValue("theme", value);
-  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
+  const db = ((await npAgentPreviewReadTransaction(options?.tx)) ?? getDb()) as ReturnType<
+    typeof getDb
+  >;
   const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
   const now = new Date();
   await db

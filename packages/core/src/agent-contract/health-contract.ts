@@ -20,6 +20,11 @@ export const npAgentDiagnosticEntitiesV1 = [
   "changeset",
   "changeset-operation",
   "changeset-validation-attempt",
+  "changeset-preview",
+  "preview-artifact",
+  "preview-upload",
+  "preview-viewer-launch",
+  "preview-render-session",
   "approval",
   "principal",
   "run",
@@ -44,6 +49,10 @@ export const npAgentDiagnosticEntitiesV1 = [
 export type NpAgentDiagnosticEntityV1 = (typeof npAgentDiagnosticEntitiesV1)[number];
 
 export const npAgentDiagnosticStatesV1 = [
+  "rendering",
+  "delete_pending",
+  "exchange_pending",
+  "superseded",
   "draft",
   "valid",
   "validating",

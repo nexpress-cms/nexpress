@@ -1,3 +1,4 @@
+import { npIsAgentChangeSetPreview } from "@nexpress/core/agents";
 import {
   NP_DEFAULT_SITE_ID,
   getActiveThemeId,
@@ -137,6 +138,7 @@ export function siteCacheTag(siteId: string): string {
  * theme-local default in that case.
  */
 export async function getCachedSite(): Promise<NpSite | null> {
+  if (npIsAgentChangeSetPreview()) return getSiteById(await resolveSiteId());
   const siteId = await resolveSiteId();
   const cached = unstable_cache(() => getSiteById(siteId), ["np:site", siteId], {
     tags: [siteCacheTag(siteId)],
@@ -151,6 +153,7 @@ export async function getCachedSite(): Promise<NpSite | null> {
 }
 
 export async function getCachedTheme(): Promise<NpThemeTokens> {
+  if (npIsAgentChangeSetPreview()) return getTheme();
   const siteId = await resolveSiteId();
   const cached = unstable_cache(() => getTheme(), ["nx:theme", siteId], {
     tags: [themeCacheTag(siteId)],
@@ -165,6 +168,7 @@ export async function getCachedTheme(): Promise<NpThemeTokens> {
 }
 
 export async function getCachedActiveThemeId(): Promise<string | null> {
+  if (npIsAgentChangeSetPreview()) return getActiveThemeId();
   const siteId = await resolveSiteId();
   const cached = unstable_cache(() => getActiveThemeId(), ["nx:theme:active-id", siteId], {
     tags: [themeCacheTag(siteId)],
@@ -188,6 +192,7 @@ export async function getCachedActiveThemeId(): Promise<string | null> {
  * cached separately within the same site.
  */
 export async function getCachedThemeSettings(themeId?: string): Promise<unknown> {
+  if (npIsAgentChangeSetPreview()) return getThemeSettings(themeId);
   const siteId = await resolveSiteId();
   const cached = unstable_cache(
     () => getThemeSettings(themeId),
@@ -216,6 +221,7 @@ export async function getCachedThemeSettings(themeId?: string): Promise<unknown>
  * cache entries shouldn't cross.
  */
 export async function getCachedPluginConfig(pluginId: string): Promise<unknown> {
+  if (npIsAgentChangeSetPreview()) return getPluginConfig(requirePluginId(pluginId));
   const validatedPluginId = requirePluginId(pluginId);
   const siteId = await resolveSiteId();
   const cached = unstable_cache(
@@ -357,6 +363,7 @@ export async function cachedThemeFetch<T>(
     [themeCacheTag(siteId), ...validatedOptions.extraTags],
     "cachedThemeFetch.tags",
   );
+  if (npIsAgentChangeSetPreview()) return fetcher();
   const cached = unstable_cache(fetcher, ["nx:theme-fetch", siteId, ...validatedKeyParts], {
     tags,
     revalidate: validatedOptions.revalidate,
@@ -452,6 +459,7 @@ export async function cachedPluginFetch<T>(
     [pluginConfigCacheTag(validatedPluginId), ...validatedOptions.extraTags],
     "cachedPluginFetch.tags",
   );
+  if (npIsAgentChangeSetPreview()) return fetcher();
   const cached = unstable_cache(
     fetcher,
     ["np:plugin-fetch", siteId, validatedPluginId, ...validatedKeyParts],
@@ -496,6 +504,7 @@ export async function getCachedNavigation(
   location: string = "header",
 ): Promise<NpResolvedNavItem[]> {
   const siteId = await resolveSiteId();
+  if (npIsAgentChangeSetPreview()) return getNavigation(location);
   const cached = unstable_cache(() => getNavigation(location), ["nx:nav", siteId, location], {
     tags: [navCacheTag(siteId, location)],
     revalidate: REVALIDATE_SECONDS,

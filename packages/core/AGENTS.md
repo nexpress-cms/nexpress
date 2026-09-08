@@ -118,7 +118,8 @@ No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugi
   use `saveDocument` to reserve draft ids. Exact ChangeSet wires exclude sealed
   plans, snapshots and approval integrity fields. Draft service installation
   does not advertise new MCP/HTTP capabilities or install a worker. Doctor,
-  deletion and fresh migrations share the 23-table/101-constraint inventory.
+  deletion and fresh migrations share the current 28-table/133-constraint inventory
+  after AP-305/AP-306.
 
 - AP-303/AP-304 validation extends that same service with generation-bound
   durable attempts, inline validation and explicitly invoked queue recovery.
@@ -130,6 +131,31 @@ No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugi
   remain a later responsibility. Transaction callers wrap the outer transaction
   in `withDeferredPostCommit`; nested queues join the parent and rollback drops
   callbacks. Navigation CAS belongs in the atomic write, not a prior read.
+
+- AP-305/AP-306 preview extends the existing ChangeSet service, not a second
+  execution engine. Reuse the read-only document/navigation/theme/SEO/media-ref
+  overlay and async-local effect guard. A renderer may not write content, emit
+  jobs/email/cache effects, mutate plugin/runtime registries or bypass existing
+  item access. Requester authority protects generation work; current viewer
+  authority independently protects retained reads. Never hold authority/parent
+  locks across artifact storage I/O or acquire principal authority after parent
+  locks through a second connection.
+- Preview storage uses the private `preview-artifact-contract.ts` facet and
+  `preview-artifact-service.ts`, with explicit frozen adapter identity. Complete
+  mode-0700 spools (mode-0600 files) precede the full 0..24 reservation. Preserve
+  `aur1`/`aus1`/`auo1`/`adr1`, the domain-and-length-framed `ac1` raw digest,
+  ordinal order, and immutable contract/manifest evidence. A PUT is dispatched
+  once; recovery inspects it, never recreates source bytes. The 5,850-second
+  queued-source window derives from 24 serial artifacts, four 60-second calls
+  each, and 90-second lease grace; its deadline also fences dispatch claims.
+  Unknown operations remain blocked, even after deadline or a missing object.
+- Migration 0040 adds exactly five preview tables. Keep the 28-table/133-critical-
+  constraint Doctor inventory, 27-table deletion order, live launch/render plus
+  expiry/skew fence and confirmed storage deletion aligned. Approval preview ids
+  remain logical until their later lifecycle is implemented; do not invent an
+  execution/job/provider FK or install an automatic runtime/worker. All adapters
+  and processors require explicit host injection; default Agent exposure stays
+  disabled.
 
 - Core declaration generation exceeds the 2 GiB heap available on constrained
   runners. The build script defaults to a 5 GiB Node heap and preserves explicit

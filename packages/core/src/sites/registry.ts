@@ -1,3 +1,8 @@
+import {
+  npAssertAgentPreviewEffectsAllowed,
+  npAgentPreviewReadTransaction,
+  npGetAgentChangeSetPreviewContext,
+} from "../agent/changeset-preview-overlay.js";
 import type { NpTransaction } from "../collections/pipeline.js";
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
@@ -84,6 +89,7 @@ function rowToSite(row: typeof npSites.$inferSelect): NpSite {
  * `np_sites` between cases re-trigger it.
  */
 export async function ensureDefaultSite(): Promise<NpSite> {
+  npAssertAgentPreviewEffectsAllowed();
   const db = getDb();
   const existingDefault = await db
     .select()
@@ -134,7 +140,11 @@ export async function getSiteById(
       { field: "id", message: "Site id must be a canonical lowercase id" },
     ]);
   }
-  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
+  const scope = npGetAgentChangeSetPreviewContext();
+  if (scope && id !== scope.siteId) return null;
+  const db = ((await npAgentPreviewReadTransaction(options?.tx)) ?? getDb()) as ReturnType<
+    typeof getDb
+  >;
   const [row] = await db.select().from(npSites).where(eq(npSites.id, id)).limit(1);
   return row ? rowToSite(row) : null;
 }
@@ -184,6 +194,7 @@ export async function resolveSiteForHostname(
 }
 
 export async function createSite(input: NpCreateSiteInput): Promise<NpSite> {
+  npAssertAgentPreviewEffectsAllowed();
   let normalized: NpCreateSiteInput;
   try {
     normalized = npNormalizeCreateSiteInput(input);
@@ -213,6 +224,7 @@ export async function createSite(input: NpCreateSiteInput): Promise<NpSite> {
 }
 
 export async function updateSite(id: string, patch: NpUpdateSiteInput): Promise<NpSite> {
+  npAssertAgentPreviewEffectsAllowed();
   if (!npIsCanonicalSiteId(id)) {
     throw new NpValidationError("Invalid input", [
       { field: "id", message: "Site id must be a canonical lowercase id" },
@@ -432,6 +444,7 @@ export interface NpDeleteSiteOptions {
  * sees what cascade would touch.
  */
 export async function deleteSite(id: string, options?: NpDeleteSiteOptions): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
   if (!npIsCanonicalSiteId(id)) {
     throw new NpValidationError("Invalid input", [
       { field: "id", message: "Site id must be a canonical lowercase id" },
