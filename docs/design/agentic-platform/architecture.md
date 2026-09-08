@@ -292,6 +292,29 @@ calls content write hooks or applies the proposal. Draft get/list return
 checked editable input, excluding server-owned hidden/read-only defaults,
 sealed plans, before snapshots and approval integrity material.
 
+AP-303/AP-304 extend this same factory with explicit validation admission,
+processing, and bounded queued-attempt reconciliation. The admitting
+invocation freezes the actual requester authority; processing rechecks that
+authority and the current draft generation before reading resources. The
+optional host enqueue callback carries durable attempt identity. A host may
+also invoke reconciliation after an unavailable producer; the factory does
+not register a job or start a worker.
+
+The resource validator receives an explicit transaction and reuses the
+existing domain read seams, collection ACL/schema/reference checks, and
+projected quota check. Current bases and bounded full before snapshots feed
+the existing canonical plan/snapshot contracts. Deterministic rule
+fingerprints and the mandatory human approval floor are sealed without
+introducing an R5 policy-row dependency. Get/list verify stored integrity and
+return only client-safe draft, validation, and ready projections.
+
+The proposed after hash represents normalized intent; database defaults,
+attribution, execution clocks and hook outputs are not predicted. Actual
+application and after-hash verification remain AP-402/AP-404 work, including
+atomic handling when document and media-reference operations share an owner.
+This slice adds no preview renderer, provider call, public ChangeSet route,
+Admin UI, advertised Gateway capability, or automatic runtime installation.
+
 ### 3.6 Agent Studio
 
 AP-209/AP-210 install Activity and Agent HTTP only through explicit options on

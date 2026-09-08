@@ -289,7 +289,7 @@ function clientMetadata(row: OauthClientRow): { transports: NpAgentOauthClientTr
   return { transports: transports as NpAgentOauthClientTransportV1[] };
 }
 
-function clientProjection(row: OauthClientRow): NpAgentOauthClientV1 {
+export function npProjectAgentOauthClientV1(row: OauthClientRow): NpAgentOauthClientV1 {
   return npRequireAgentOauthClientV1({
     schemaVersion: "np.agent-oauth-client.v1",
     id: row.id,
@@ -485,7 +485,7 @@ export function createAgentOauthServiceV1(options: NpAgentOauthServiceOptionsV1)
             })
             .returning();
           if (!row) throw new Error("Failed to create Agent OAuth client.");
-          return { resourceId: row.id, output: asJsonObject(clientProjection(row)) };
+          return { resourceId: row.id, output: asJsonObject(npProjectAgentOauthClientV1(row)) };
         }
         const value = command as { expectedVersion: number };
         const [current] = await db
@@ -570,7 +570,7 @@ export function createAgentOauthServiceV1(options: NpAgentOauthServiceOptionsV1)
             })
             .where(inArray(npAgentPrincipals.id, principalIds));
         }
-        return { resourceId: row.id, output: asJsonObject(clientProjection(row)) };
+        return { resourceId: row.id, output: asJsonObject(npProjectAgentOauthClientV1(row)) };
       },
     });
   }
@@ -585,7 +585,7 @@ export function createAgentOauthServiceV1(options: NpAgentOauthServiceOptionsV1)
       .where(eq(npAgentOauthClients.siteId, siteId))
       .orderBy(asc(npAgentOauthClients.createdAt), asc(npAgentOauthClients.id))
       .limit(limit);
-    return rows.map(clientProjection);
+    return rows.map(npProjectAgentOauthClientV1);
   }
 
   async function startAuthorization(input: {
@@ -673,7 +673,7 @@ export function createAgentOauthServiceV1(options: NpAgentOauthServiceOptionsV1)
       requestId: id,
       consentChallenge: consent.value,
       siteId: input.siteId,
-      client: clientProjection(client),
+      client: npProjectAgentOauthClientV1(client),
       redirectUri,
       redirectHost: new URL(redirectUri).host,
       requestedScopes: scopes,
@@ -1509,7 +1509,7 @@ export function createAgentOauthServiceV1(options: NpAgentOauthServiceOptionsV1)
     return {
       kind: "oauth",
       principal: principalProjection(principal),
-      client: clientProjection(client),
+      client: npProjectAgentOauthClientV1(client),
       grantId: grant.id,
       scopes: grant.scopes as NpAgentScope[],
       authorizationContext,

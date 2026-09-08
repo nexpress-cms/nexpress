@@ -3430,3 +3430,32 @@ draft creation leaves their evidence absent. Rollback approval targets remain
 storage-ineligible until their actual target table exists. Staff containment
 preserves tombstones before user deletion. No preview, execution or validation
 attempt table is introduced in this slice.
+
+### AP-303/AP-304 validation persistence boundary
+
+Migration 0039 adds `np_agent_changeset_validation_attempts` to the existing
+ChangeSet graph. Its same-site parent/invocation keys, unique generation and
+admitting invocation, single active generation, exact requester/authority
+binding, bounded result fields, and timestamp/state matrices are enforced in
+PostgreSQL. Site deletion removes attempts before their parent and admitting
+invocation; shared diagnostics inspect the same declared inventory.
+
+Admission persists a queued attempt before any optional enqueue callback.
+The explicit processing service re-resolves the stored requester authority,
+checks the immutable invocation and current draft identity, and seals only
+that generation. Host-invoked reconciliation can revisit queued attempts;
+there is no automatically registered worker. Current terminal outcomes are
+`ready`, `invalid`, and `failed`; failed authority produces a stable code and
+leaves no plan. Draft edits retain historical attempts while invalidating
+current validation and plan evidence.
+
+Successful validation populates the existing operation `before_snapshot`,
+`snapshot_hash`, and `before_hash`, and the parent sealed plan, plan hash,
+base fingerprint, risk, and rollback window. These snapshots are server-only
+full persisted evidence with explicit presence/absence and existing size
+caps. Public reads verify their canonical digests, parent/draft/generation
+binding and denormalized plan fields before projecting the existing wire.
+`proposedAfterHash` remains inside the sealed plan as pre-apply semantic
+intent. Operation `after_hash` and execution results stay empty until actual
+application; no production document, navigation, setting, theme overlay, or
+media-reference row is changed by validation.

@@ -28,6 +28,7 @@ import {
   npAgentPrincipals,
   npAgentServiceTokens,
   npAgentChangesets,
+  npAgentChangesetValidationAttempts,
   npAgentApprovals,
   npAgentInvocations,
 } from "../db/schema/agent.js";
@@ -136,7 +137,7 @@ export function npProjectAgentPrincipalV1(row: PrincipalRow): NpAgentPrincipalV1
   });
 }
 
-function tokenProjection(row: ServiceTokenRow): NpAgentServiceTokenV1 {
+export function npProjectAgentServiceTokenV1(row: ServiceTokenRow): NpAgentServiceTokenV1 {
   return npRequireAgentServiceTokenV1({
     schemaVersion: "np.agent-service-token.v1",
     id: row.id,
@@ -507,7 +508,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
             }
             return {
               resourceId: row.id,
-              output: toJsonObject(tokenProjection(row)),
+              output: toJsonObject(npProjectAgentServiceTokenV1(row)),
               oneTimeValue: minted.value,
             };
           }
@@ -625,7 +626,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
             if (!replacement) throw new Error("Failed to rotate Agent service token.");
             return {
               resourceId: replacement.id,
-              output: toJsonObject(tokenProjection(replacement)),
+              output: toJsonObject(npProjectAgentServiceTokenV1(replacement)),
               oneTimeValue: minted.value,
             };
           }
@@ -667,7 +668,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
               .returning();
             if (!row)
               throw new NpAgentGatewayError("VERSION_CONFLICT", 409, "Token version changed.");
-            return { resourceId: row.id, output: toJsonObject(tokenProjection(row)) };
+            return { resourceId: row.id, output: toJsonObject(npProjectAgentServiceTokenV1(row)) };
           }
           case "agents.gateway.principals.suspend":
           case "agents.gateway.principals.resume":
@@ -844,7 +845,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
       )
       .orderBy(asc(npAgentServiceTokens.createdAt), asc(npAgentServiceTokens.id))
       .limit(limit);
-    return rows.map(tokenProjection);
+    return rows.map(npProjectAgentServiceTokenV1);
   }
 
   async function getServiceToken(
@@ -870,7 +871,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
         ),
       )
       .limit(1);
-    return row ? tokenProjection(row) : null;
+    return row ? npProjectAgentServiceTokenV1(row) : null;
   }
 
   async function authenticateServiceToken(input: {
@@ -1019,7 +1020,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
       }
       return {
         principal: npProjectAgentPrincipalV1(principal),
-        serviceToken: tokenProjection(used),
+        serviceToken: npProjectAgentServiceTokenV1(used),
         scopes: token.scopes as NpAgentScope[],
         authorizationContext,
         authorizationContextFingerprint,
@@ -1144,6 +1145,76 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
             },
             createdAt: now,
           });
+        }
+        const pendingAttempts = await tx
+          .select()
+          .from(npAgentChangesetValidationAttempts)
+          .where(
+            and(
+              inArray(npAgentChangesetValidationAttempts.state, ["queued", "validating"]),
+              or(
+                and(
+                  eq(npAgentChangesetValidationAttempts.requesterKind, "staff"),
+                  eq(npAgentChangesetValidationAttempts.requesterId, userId),
+                ),
+                principals.length
+                  ? and(
+                      eq(npAgentChangesetValidationAttempts.requesterKind, "principal"),
+                      inArray(
+                        npAgentChangesetValidationAttempts.requesterId,
+                        principals.map((row) => row.id),
+                      ),
+                    )
+                  : sql`false`,
+              ),
+            ),
+          )
+          .orderBy(
+            asc(npAgentChangesetValidationAttempts.siteId),
+            asc(npAgentChangesetValidationAttempts.changesetId),
+          );
+        for (const attempt of pendingAttempts) {
+          // Match worker lock order: principal/token above, then parent, then attempt.
+          const [parent] = await tx
+            .select()
+            .from(npAgentChangesets)
+            .where(
+              and(
+                eq(npAgentChangesets.siteId, attempt.siteId),
+                eq(npAgentChangesets.id, attempt.changesetId),
+              ),
+            )
+            .for("update");
+          const containedAt = nowFn();
+          const [failed] = await tx
+            .update(npAgentChangesetValidationAttempts)
+            .set({
+              state: "failed",
+              finishedAt: containedAt,
+              errorCode: "AUTHORITY_REVOKED",
+              resultDigest: null,
+              riskSummary: null,
+              issues: [],
+            })
+            .where(
+              and(
+                eq(npAgentChangesetValidationAttempts.id, attempt.id),
+                inArray(npAgentChangesetValidationAttempts.state, ["queued", "validating"]),
+              ),
+            )
+            .returning({ id: npAgentChangesetValidationAttempts.id });
+          if (
+            failed &&
+            parent?.state === "validating" &&
+            parent.validationGeneration === attempt.generation &&
+            parent.draftVersion === attempt.draftVersion &&
+            parent.draftHash === attempt.draftHash
+          ) {
+            await tx
+              .update(npAgentChangesets)
+              .set({ state: "invalid", updatedAt: containedAt })
+              .where(eq(npAgentChangesets.id, parent.id));
+          }
         }
         await tx
           .update(npAgentChangesets)

@@ -111,6 +111,7 @@ describe("ChangeSet resource acceptance", () => {
       "articles",
       id,
       "default",
+      undefined,
     );
   });
   it("keeps protected defaults in ACL validation but outside editable create and update bodies", async () => {

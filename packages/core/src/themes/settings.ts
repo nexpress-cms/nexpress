@@ -1,3 +1,4 @@
+import type { NpTransaction } from "../collections/pipeline.js";
 import { and, eq } from "drizzle-orm";
 import type { ZodTypeAny } from "zod";
 
@@ -119,8 +120,11 @@ function defaultsFrom(fields: NpThemeSettingsField[]): Record<string, unknown> {
  *   // a theme component
  *   const settings = (await getThemeSettings()) as MagazineSettings;
  */
-export async function getThemeSettings(themeId?: string): Promise<unknown> {
-  const result = await getThemeSettingsWithStatus(themeId);
+export async function getThemeSettings(
+  themeId?: string,
+  options?: { tx?: NpTransaction },
+): Promise<unknown> {
+  const result = await getThemeSettingsWithStatus(themeId, options);
   return result.value;
 }
 
@@ -133,8 +137,11 @@ export interface NpThemeSettingsResult {
   hasPersisted: boolean;
 }
 
-export async function getThemeSettingsWithStatus(themeId?: string): Promise<NpThemeSettingsResult> {
-  const theme = themeId ? getThemeById(themeId) : await getActiveTheme();
+export async function getThemeSettingsWithStatus(
+  themeId?: string,
+  options?: { tx?: NpTransaction },
+): Promise<NpThemeSettingsResult> {
+  const theme = themeId ? getThemeById(themeId) : await getActiveTheme(options);
   if (themeId && !theme) {
     throw new NpValidationError("Invalid input", [
       {
@@ -148,7 +155,7 @@ export async function getThemeSettingsWithStatus(themeId?: string): Promise<NpTh
   }
   const schema = theme.manifest.settingsSchema as ZodTypeAny | undefined;
 
-  const db = getDb();
+  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
   const rows = (await db
     .select()
@@ -228,6 +235,7 @@ export async function setThemeSettings(
   themeId: string,
   value: unknown,
   updatedBy: string | null = null,
+  options?: { tx?: NpTransaction },
 ): Promise<unknown> {
   const theme = getThemeById(themeId);
   if (!theme) {
@@ -269,7 +277,7 @@ export async function setThemeSettings(
   };
   npAssertSettingValue(settingsKey(themeId), wrapped);
 
-  const db = getDb();
+  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
   const now = new Date();
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
   await db

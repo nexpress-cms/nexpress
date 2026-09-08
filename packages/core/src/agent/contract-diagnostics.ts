@@ -19,6 +19,7 @@ const AGENT_TABLES = [
   "np_agent_actions",
   "np_agent_approvals",
   "np_agent_changeset_operations",
+  "np_agent_changeset_validation_attempts",
   "np_agent_changesets",
   "np_agent_connection_auth_requests",
   "np_agent_connection_config_versions",
@@ -47,6 +48,15 @@ const AGENT_CONSTRAINTS = [
   "np_agent_actions_run_fk",
   "np_agent_actions_state_check",
   "np_agent_actions_terminal_check",
+  "np_agent_changeset_validation_attempts_changeset_fk",
+  "np_agent_changeset_validation_attempts_invocation_fk",
+  "np_agent_changeset_validation_attempts_version_check",
+  "np_agent_changeset_validation_attempts_state_check",
+  "np_agent_changeset_validation_attempts_hash_check",
+  "np_agent_changeset_validation_attempts_authority_check",
+  "np_agent_changeset_validation_attempts_result_check",
+  "np_agent_changeset_validation_attempts_time_check",
+  "np_agent_changeset_validation_attempts_terminal_check",
   "np_agent_changesets_principal_fk",
   "np_agent_changesets_run_fk",
   "np_agent_changesets_invocation_fk",
@@ -177,6 +187,7 @@ const STATE_SUMMARY_SQL = `
   with state_rows(entity, state, occurred_at) as (
     select 'action', state, created_at from public.np_agent_actions
     union all select 'run', state, queued_at from public.np_agent_runs
+    union all select 'changeset-validation-attempt', state, created_at from public.np_agent_changeset_validation_attempts
     union all select 'changeset', state, created_at from public.np_agent_changesets
     union all select 'changeset-operation', state, created_at from public.np_agent_changeset_operations
     union all select 'approval', state, requested_at from public.np_agent_approvals
@@ -250,6 +261,27 @@ const ISSUE_SUMMARY_SQL = `
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_site_deletion_sagas
      where state not in ('prepared', 'cleaning', 'ready_to_commit', 'failed', 'committing')
 
+    union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_changeset_validation_attempts
+     where state not in ('queued','validating','ready','invalid','failed') or generation<1 or draft_version<1
+       or (state in ('queued','validating') and (finished_at is not null or result_digest is not null or error_code is not null))
+       or (state in ('ready','invalid','failed') and finished_at is null)
+       or (state='queued' and started_at is not null) or (state in ('validating','ready','invalid') and started_at is null)
+       or (state in ('ready','invalid') and result_digest is null) or (state='ready' and risk_summary is null)
+       or (state='failed' and error_code is null)
+    union all select 'AGENT_RELATION_CROSS_SITE', attempt.created_at from public.np_agent_changeset_validation_attempts attempt
+      left join public.np_agent_changesets parent on parent.id=attempt.changeset_id
+      left join public.np_agent_invocations invocation on invocation.id=attempt.admitting_invocation_id
+     where parent.id is null or parent.site_id<>attempt.site_id or invocation.id is null or invocation.site_id<>attempt.site_id
+    union all select 'AGENT_ROW_STATE_INVALID', attempt.created_at from public.np_agent_changeset_validation_attempts attempt
+      join public.np_agent_invocations invocation on invocation.id=attempt.admitting_invocation_id and invocation.site_id=attempt.site_id
+     where attempt.authorization_context_body is distinct from invocation.authorization_context_body
+       or attempt.authorization_context_fingerprint is distinct from invocation.authorization_context_fingerprint
+       or attempt.authority_ref is distinct from invocation.authority_ref
+       or attempt.requester_kind is distinct from invocation.actor_kind
+       or attempt.requester_fingerprint is distinct from invocation.actor_fingerprint
+       or attempt.requester_id::text is distinct from coalesce(invocation.authorization_context_body->'actor'->>'userId',invocation.authorization_context_body->'actor'->>'principalId')
+    union all select 'AGENT_EXPIRY_BACKLOG', expires_at from public.np_agent_changeset_validation_attempts
+     where state in ('queued','validating') and expires_at <= $1::timestamptz
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_changesets
      where draft_version < 1 or validation_generation < 0 or (sealed_plan_body is null) <> (plan_hash is null) or (sealed_plan_body is null) <> (rollback_window_seconds is null)
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_changeset_operations

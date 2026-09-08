@@ -19,6 +19,7 @@ export const npAgentDiagnosticEntitiesV1 = [
   "action",
   "changeset",
   "changeset-operation",
+  "changeset-validation-attempt",
   "approval",
   "principal",
   "run",

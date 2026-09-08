@@ -2,7 +2,18 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-09-08 (AP-301/AP-302 add exact ChangeSet,
+**Last refreshed:** 2026-09-08 (AP-303/AP-304 extend the existing transaction
+seams through resource reads and navigation/theme writes, defer nested hooks
+until the outer commit, and close navigation CAS races. ChangeSet validation
+uses current requester authority and one durable generation-bound attempt;
+small plans run inline and explicit host processors recover queued work.
+Exact read-only validation freezes bounded before snapshots, deterministic
+risk, base fingerprint, plan hash and rollback duration without applying content.
+Migration 0039 brings Doctor to 23 tables and 101 critical constraints.
+Preview, approval decisions, apply and transport/UI exposure remain later work.
+No automatic worker, provider call, seed, package version or changeset is added.)
+
+**Earlier:** 2026-09-08 (AP-301/AP-302 add exact ChangeSet,
 operation and approval contracts, three persistence tables and an explicitly
 constructed draft service. Existing staff admission, current Gateway authority,
 resource schemas and item ACLs own create/update/read behavior. Drafts reserve

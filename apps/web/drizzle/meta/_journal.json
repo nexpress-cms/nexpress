@@ -274,6 +274,13 @@
       "when": 1788793872332,
       "tag": "0038_lumpy_johnny_blaze",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1788832243678,
+      "tag": "0039_third_lorna_dane",
+      "breakpoints": true
     }
   ]
 }

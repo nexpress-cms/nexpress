@@ -764,6 +764,56 @@ schedule/apply, the service creates an approval request and moves it to
 `approval_pending`; policy may require stronger human checks but cannot remove
 this floor.
 
+### AP-303/AP-304 implemented validation boundary
+
+The explicit `createAgentChangeSetServiceV1` now owns `validate`,
+`processValidation`, and bounded `reconcileValidations` in addition to draft
+creation and reads. Validation admission uses the existing Admin or stored
+principal authority path, freezes the admitting invocation and requester,
+checks the draft CAS, and persists one positive generation before dispatch.
+Small plans can finish inline; larger plans remain durably queued for an
+explicit host enqueue callback or host-invoked reconciliation. Enqueue failure
+leaves recoverable queued evidence. No worker, listener, runtime factory, or
+transport exposure is installed automatically.
+
+`createAgentChangeSetValidationResourceServiceV1` reads all five resource
+kinds through an explicit caller transaction. The collection, relationship,
+media, navigation, theme, SEO, and quota reads share that transaction; the
+service never substitutes an ambient database handle. Existing item ACL,
+current hidden/read-only field boundaries, schema/default/slug/i18n
+canonicalization, same-site references, schedule checks, and aggregate
+projected document quota remain authoritative. Existing optional schema
+values and opaque block properties do not gain invented validation rules.
+Checks requiring a rendered preview remain with the preview phases below.
+
+Validation records the current non-autosave document revision head/update
+evidence, navigation and
+setting timestamps, media owner/path state, and explicit absence. The
+server-only `readBase` method uses the same authorization and hash recipes.
+Resource hashes use the internal `np.agent-changeset-resource.v1` domain;
+`np.agent-changeset-bases.v1` binds the ordered exact bases and snapshot hashes.
+Full persisted before snapshots retain bounded restoration evidence, including
+server-owned fields, while public get/list expose only the existing safe wire.
+The 256 KiB per-operation and 2 MiB aggregate snapshot limits fail validation;
+there is no overflow storage fallback.
+
+`proposedAfterHash` identifies normalized proposed semantic intent. It does
+not predict database-generated defaults, attribution, execution timestamps, or
+write-hook results. Actual applied hashes and their verification belong to
+AP-402/AP-404. A document operation and a `media_ref` operation may still
+share an owner document; AP-402 must validate their overlapping effects inside
+its atomic apply boundary. Validation performs no content or media-reference
+mutation and does not run content write hooks.
+
+Successful generations seal the existing exact plan body, deterministic
+risk/mandatory human approval floor, apply scopes, rule fingerprints, and
+rollback duration. Public projection verifies the stored parent, draft,
+generation, operation and snapshot integrity before returning ready or
+validation summaries. Invalid and authority-failed generations produce
+bounded safe evidence and no sealed plan. Approval, preview, scheduling,
+apply, verification, rollback, Admin UI, and Gateway discovery remain owned by
+their later implementation phases.
+
 ## 9. Preview
 
 `changeset.preview` operates only on a sealed plan hash. It produces:

@@ -686,6 +686,40 @@ must not be forced through capability idempotency fixtures.
 In addition to the ten acceptance scenarios in
 [changesets-and-approvals.md](changesets-and-approvals.md), cover:
 
+### AP-303/AP-304 implemented verification scope
+
+The validation resource unit suite locks the semantic proposal, explicit
+absence, snapshot, aggregate base, and rule fingerprints through golden
+values and the existing sealed-plan analyzer. It checks safe opaque failures,
+create collisions, projected batch quotas, and both per-operation and total
+snapshot bounds. The shared preparation suite also checks that stored proposals become
+unavailable when their fields become hidden/read-only after draft creation,
+including media-reference targets.
+
+`agent-changeset-validation-resources.integration.test.ts` runs resource
+validation in read-only repeatable-read PostgreSQL transactions. It covers
+all five resource kinds, absent SEO/theme overrides, current owner/path media
+state, same-site checks, full before evidence without storage locators,
+metadata-only base changes, and concurrent document writes that advance the
+revision head. The same transaction must keep its original row/head snapshot;
+a subsequent transaction must detect the changed base. Explicit absence and
+relation changes and aggregate create quotas have negative fixtures.
+
+The validation persistence and lifecycle suites cover generation/active-row
+constraints, exact stored authority and invocation linkage, inline and queued
+processing, CAS/idempotency, requester revocation and expiry, invalid resource
+results, and bounded reconciliation. Public projection must reject corrupted
+sealed bodies, digests, parent/draft/generation bindings, operation bases, and
+snapshots with the same unavailable response and omit them from lists. These
+checks reuse the existing staff and Gateway fixtures and run without content
+write hooks or provider calls.
+
+No preview, approval, apply, actual-after-hash, or browser execution result is
+claimed by these fixtures. `proposedAfterHash` is tested as normalized intent;
+AP-402/AP-404 must test actual application and verification, including
+operations that share a document owner. The remaining matrix below continues
+to define those later-phase acceptance requirements.
+
 ### 6.1 Per resource
 
 - create/update/publish/schedule/archive document;

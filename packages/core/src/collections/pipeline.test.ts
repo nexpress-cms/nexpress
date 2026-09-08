@@ -6,7 +6,67 @@ import {
   getCollectionRuntimeDiagnostics,
   resetCollectionRuntimeDiagnostics,
 } from "./diagnostics.js";
-import { npRunCollectionDocumentResultHooks, runPostCommit } from "./pipeline.js";
+import {
+  npRunCollectionDocumentResultHooks,
+  runPostCommit,
+  withDeferredPostCommit,
+} from "./pipeline.js";
+
+describe("nested post-commit scopes", () => {
+  const context = { collection: "posts", documentId: "document" };
+
+  it("waits for the outer commit and preserves nested FIFO order", async () => {
+    const effects: string[] = [];
+    await withDeferredPostCommit(async () => {
+      await runPostCommit("before", context, () => {
+        effects.push("before");
+        return Promise.resolve();
+      });
+      await withDeferredPostCommit(async () => {
+        await runPostCommit("nested", context, () => {
+          effects.push("nested");
+          return Promise.resolve();
+        });
+      });
+      expect(effects).toEqual([]);
+      await runPostCommit("after", context, () => {
+        effects.push("after");
+        return Promise.resolve();
+      });
+    });
+    expect(effects).toEqual(["before", "nested", "after"]);
+  });
+
+  it("discards successful inner scopes when the outer transaction rolls back", async () => {
+    const effect = vi.fn(async () => {});
+    await expect(
+      withDeferredPostCommit(async () => {
+        await withDeferredPostCommit(async () => {
+          await runPostCommit("nested", context, effect);
+        });
+        throw new Error("rollback");
+      }),
+    ).rejects.toThrow("rollback");
+    expect(effect).not.toHaveBeenCalled();
+  });
+
+  it("discards a failed inner savepoint while retaining successful outer work", async () => {
+    const discarded = vi.fn(async () => {});
+    const committed = vi.fn(async () => {});
+    await withDeferredPostCommit(async () => {
+      await expect(
+        withDeferredPostCommit(async () => {
+          await runPostCommit("discarded", context, discarded);
+          throw new Error("savepoint rollback");
+        }),
+      ).rejects.toThrow("savepoint rollback");
+      await runPostCommit("committed", context, committed);
+      expect(committed).not.toHaveBeenCalled();
+    });
+    expect(discarded).not.toHaveBeenCalled();
+    expect(committed).toHaveBeenCalledOnce();
+  });
+});
 
 /**
  * Covers the swallow + log contract for `runPostCommit` (the

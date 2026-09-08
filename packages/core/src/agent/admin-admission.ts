@@ -32,6 +32,8 @@ import { npSessions, npSiteMemberships, npSites, npUsers } from "../db/schema/sy
 import { NP_DEFAULT_SITE_ID } from "../sites/id-contract.js";
 import {
   npRequireAgentChangeSetAdminInputV1,
+  npRequireAgentChangeSetValidateRequestV1,
+  type NpAgentChangeSetValidateRequestV1,
   type NpAgentChangeSetAdminInputV1,
 } from "../agent-contract/changeset-wire-contract.js";
 
@@ -41,12 +43,14 @@ export type NpAgentAdmittedAdminOperationIdV1 =
   | NpAgentGatewayAdminOperationIdV1
   | NpAgentConnectionAdminOperationIdV1
   | "agents.changesets.create"
-  | "agents.changesets.update";
+  | "agents.changesets.update"
+  | "agents.changesets.validate";
 
 export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
   NpAgentConnectionAdminInputMapV1 & {
     "agents.changesets.create": NpAgentChangeSetAdminInputV1<"create">;
     "agents.changesets.update": NpAgentChangeSetAdminInputV1<"update">;
+    "agents.changesets.validate": NpAgentChangeSetValidateRequestV1;
   };
 
 const CONNECTION_ADMIN_OPERATION_IDS = new Set<string>(npAgentConnectionAdminOperationIdsV1);
@@ -55,6 +59,8 @@ function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
   operationId: I,
   value: unknown,
 ): NpAgentAdmittedAdminInputMapV1[I] {
+  if (operationId === "agents.changesets.validate")
+    return npRequireAgentChangeSetValidateRequestV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.changesets.create" || operationId === "agents.changesets.update") {
     return npRequireAgentChangeSetAdminInputV1(
       operationId === "agents.changesets.create" ? "create" : "update",

@@ -1,3 +1,4 @@
+import type { NpTransaction } from "../collections/pipeline.js";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/runtime.js";
@@ -103,8 +104,8 @@ export function resetThemes(): void {
  * the lookup behaves identically to the pre-15.4 global
  * version.
  */
-export async function getActiveThemeId(): Promise<string | null> {
-  const db = getDb();
+export async function getActiveThemeId(options?: { tx?: NpTransaction }): Promise<string | null> {
+  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
   const siteId = (await getCurrentSiteId()) ?? DEFAULT_SITE;
   const rows = (await db
     .select()
@@ -133,8 +134,10 @@ export async function getActiveThemeId(): Promise<string | null> {
  * so configuration drift is operator-visible. Returns `null` only
  * when the registry is completely empty.
  */
-export async function getActiveTheme(): Promise<NpRegisteredTheme | null> {
-  const id = await getActiveThemeId();
+export async function getActiveTheme(options?: {
+  tx?: NpTransaction;
+}): Promise<NpRegisteredTheme | null> {
+  const id = await getActiveThemeId(options);
   if (id) {
     const theme = registry.get(id);
     if (theme) return theme;

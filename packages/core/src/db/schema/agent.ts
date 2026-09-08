@@ -18,6 +18,7 @@ import {
 
 import type {
   NpAgentAuthorizationContextCanonicalV1,
+  NpAgentInvocationAuthorityRefV1,
   NpAgentChangeSetPlanCanonicalV1,
   NpAgentChangeSetOperationInput,
   NpAgentChangeSetResourceKeyV1,
@@ -2157,6 +2158,100 @@ export const npAgentApprovals = pgTable(
     check(
       "np_agent_approvals_hash_check",
       sql`(${t.planHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.capabilityFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.statementHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.requesterFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and char_length(${t.statementMac}) between 1 and 256 and char_length(${t.integrityKeyId}) between 1 and 128) is true`,
+    ),
+  ],
+);
+
+/** Durable requester-bound validation generations; no execution or preview authority. */
+export const npAgentChangesetValidationAttempts = pgTable(
+  "np_agent_changeset_validation_attempts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    changesetId: uuid("changeset_id").notNull(),
+    generation: integer("generation").notNull(),
+    draftVersion: integer("draft_version").notNull(),
+    draftHash: text("draft_hash").notNull(),
+    admittingInvocationId: uuid("admitting_invocation_id").notNull(),
+    authorizationContextBody: jsonb("authorization_context_body")
+      .$type<NpAgentAuthorizationContextCanonicalV1>()
+      .notNull(),
+    authorizationContextFingerprint: text("authorization_context_fingerprint").notNull(),
+    authorityRef: jsonb("authority_ref").$type<NpAgentInvocationAuthorityRefV1>().notNull(),
+    requesterKind: text("requester_kind").notNull(),
+    // Immutable attribution survives user/session deletion; current authority is re-resolved.
+    requesterId: uuid("requester_id").notNull(),
+    requesterFingerprint: text("requester_fingerprint").notNull(),
+    state: text("state").notNull().default("queued"),
+    issues: jsonb("issues").$type<NpAgentJsonObject[]>().notNull().default([]),
+    riskSummary: jsonb("risk_summary").$type<NpAgentRiskSummary>(),
+    resultDigest: text("result_digest"),
+    errorCode: text("error_code"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }),
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    unique("np_agent_changeset_validation_attempts_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_changeset_validation_attempts_generation_unique").on(
+      t.siteId,
+      t.changesetId,
+      t.generation,
+    ),
+    unique("np_agent_changeset_validation_attempts_invocation_unique").on(
+      t.siteId,
+      t.admittingInvocationId,
+    ),
+    uniqueIndex("np_agent_changeset_validation_attempts_active_unique")
+      .on(t.siteId, t.changesetId)
+      .where(sql`${t.state} in ('queued','validating')`),
+    index("np_agent_changeset_validation_attempts_expiry_idx").on(t.siteId, t.state, t.expiresAt),
+    foreignKey({
+      name: "np_agent_changeset_validation_attempts_changeset_fk",
+      columns: [t.siteId, t.changesetId],
+      foreignColumns: [npAgentChangesets.siteId, npAgentChangesets.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_changeset_validation_attempts_invocation_fk",
+      columns: [t.siteId, t.admittingInvocationId],
+      foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_changeset_validation_attempts_version_check",
+      sql`${t.generation}>0 and ${t.draftVersion}>0`,
+    ),
+    check(
+      "np_agent_changeset_validation_attempts_state_check",
+      sql`${t.state} in ('queued','validating','ready','invalid','failed')`,
+    ),
+    check(
+      "np_agent_changeset_validation_attempts_hash_check",
+      sql`${t.draftHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.authorizationContextFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.requesterFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and (${t.resultDigest} is null or ${t.resultDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$')`,
+    ),
+    check(
+      "np_agent_changeset_validation_attempts_authority_check",
+      sql`(jsonb_typeof(${t.authorizationContextBody})='object' and ${t.authorizationContextBody}->>'schemaVersion'='np.agent-authorization-context.v1' and ${t.authorizationContextBody}->>'siteId'=${t.siteId} and ${t.authorizationContextBody}->'authorityRef'=${t.authorityRef} and ${t.authorizationContextBody}->'actor'->>'kind'=${t.requesterKind} and ${t.authorizationContextBody}->'actor'->>'actorFingerprint'=${t.requesterFingerprint} and ((${t.requesterKind}='staff' and ${t.authorizationContextBody}->'actor'->>'userId'=${t.requesterId}::text and ${t.authorityRef}->>'kind'='staff-session' and ${t.authorityRef}->>'userId'=${t.requesterId}::text) or (${t.requesterKind}='principal' and ${t.authorizationContextBody}->'actor'->>'principalId'=${t.requesterId}::text and ${t.authorityRef}->>'kind' in ('service-family','oauth-grant','runtime-run') and ${t.authorityRef}->>'principalId'=${t.requesterId}::text))) is true`,
+    ),
+    check(
+      "np_agent_changeset_validation_attempts_result_check",
+      sql`(jsonb_typeof(${t.issues})='array' and jsonb_array_length(${t.issues})<=1000 and octet_length(${t.issues}::text)<=262144 and (${t.riskSummary} is null or (jsonb_typeof(${t.riskSummary})='object' and octet_length(${t.riskSummary}::text)<=65536)) and (${t.errorCode} is null or ${t.errorCode} ~ '^[A-Z][A-Z0-9_]{0,63}$')) is true`,
+    ),
+    check(
+      "np_agent_changeset_validation_attempts_time_check",
+      sql`${t.expiresAt}>=${t.createdAt}+interval '60 seconds' and ${t.expiresAt}<=${t.createdAt}+interval '24 hours' and (${t.startedAt} is null or ${t.startedAt}>=${t.createdAt}) and (${t.finishedAt} is null or (${t.finishedAt}>=${t.createdAt} and (${t.startedAt} is null or ${t.finishedAt}>=${t.startedAt})))`,
+    ),
+    check(
+      "np_agent_changeset_validation_attempts_terminal_check",
+      sql`(
+      (${t.state}='queued' and ${t.startedAt} is null and ${t.finishedAt} is null and ${t.resultDigest} is null and ${t.riskSummary} is null and ${t.errorCode} is null and ${t.issues}='[]'::jsonb) or
+      (${t.state}='validating' and ${t.startedAt} is not null and ${t.finishedAt} is null and ${t.resultDigest} is null and ${t.riskSummary} is null and ${t.errorCode} is null and ${t.issues}='[]'::jsonb) or
+      (${t.state}='ready' and ${t.startedAt} is not null and ${t.finishedAt} is not null and ${t.resultDigest} is not null and ${t.riskSummary} is not null and ${t.errorCode} is null) or
+      (${t.state}='invalid' and ${t.startedAt} is not null and ${t.finishedAt} is not null and ${t.resultDigest} is not null and ${t.errorCode} is null) or
+      (${t.state}='failed' and ${t.finishedAt} is not null and ${t.errorCode} is not null and ${t.riskSummary} is null)
+    )`,
     ),
   ],
 );

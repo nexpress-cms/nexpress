@@ -1,3 +1,4 @@
+import type { NpTransaction } from "../collections/pipeline.js";
 import { and, eq } from "drizzle-orm";
 
 import { getDb } from "../db/runtime.js";
@@ -17,8 +18,11 @@ async function resolveSiteId(siteId?: string): Promise<string> {
   return siteId ?? (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 }
 
-async function requireSettingsSite(siteId: string): Promise<void> {
-  if (!(await getSiteById(siteId))) throw new NpNotFoundError("site", siteId);
+async function requireSettingsSite(
+  siteId: string,
+  options?: { tx?: NpTransaction },
+): Promise<void> {
+  if (!(await getSiteById(siteId, options))) throw new NpNotFoundError("site", siteId);
 }
 
 export async function getSiteGeneralSettings(siteId?: string): Promise<NpSiteGeneralSettings> {
@@ -59,10 +63,13 @@ export async function setSiteGeneralSettings(
   return normalized;
 }
 
-export async function getSeoSettings(siteId?: string): Promise<NpSeoSettings> {
+export async function getSeoSettings(
+  siteId?: string,
+  options?: { tx?: NpTransaction },
+): Promise<NpSeoSettings> {
   const resolved = await resolveSiteId(siteId);
-  await requireSettingsSite(resolved);
-  const db = getDb();
+  await requireSettingsSite(resolved, options);
+  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
   const [row] = await db
     .select({ value: npSettings.value })
     .from(npSettings)
@@ -85,6 +92,7 @@ export async function setSeoSettings(
   value: unknown,
   updatedBy: string | null,
   siteId?: string,
+  options?: { tx?: NpTransaction },
 ): Promise<NpSeoSettings> {
   let normalized: NpSeoSettings;
   try {
@@ -95,8 +103,8 @@ export async function setSeoSettings(
     ]);
   }
   const resolved = await resolveSiteId(siteId);
-  await requireSettingsSite(resolved);
-  const db = getDb();
+  await requireSettingsSite(resolved, options);
+  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
   const updatedAt = new Date();
   await db
     .insert(npSettings)

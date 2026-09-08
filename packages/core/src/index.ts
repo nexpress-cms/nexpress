@@ -552,7 +552,9 @@ export type {
 
 export {
   getTheme,
+  setTheme,
   getNavigation,
+  setNavigation,
   getPageBySlug,
   getPostBySlug,
   findPosts,

@@ -1,20 +1,16 @@
 import {
   NP_DEFAULT_SITE_ID,
   NpForbiddenError,
-  NpValidationError,
   getCurrentSiteId,
   getTheme,
-  npAssertSettingValue,
-  npSettings,
+  setTheme,
   can,
 } from "@nexpress/core";
-import { npAnalyzeThemeTokens } from "@nexpress/core/theme";
 import { bustThemeCache, readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
 import { requireAuth } from "../../../lib/auth-helpers";
 import { npErrorResponse, npSuccessResponse } from "../../../lib/api-response";
-import { getDb } from "../../../lib/db";
 
 export async function GET(_request: NextRequest) {
   try {
@@ -34,32 +30,8 @@ export async function PUT(request: NextRequest) {
 
     const theme = await readJsonBody(request);
 
-    const tokenIssues = npAnalyzeThemeTokens(theme);
-    if (tokenIssues.length > 0) {
-      throw new NpValidationError(
-        "Invalid input",
-        tokenIssues.map((issue) => ({ field: issue.path, message: issue.message })),
-      );
-    }
-    npAssertSettingValue("theme", theme);
-
-    const db = getDb();
-    const now = new Date();
     const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-
-    await db
-      .insert(npSettings)
-      .values({
-        siteId,
-        key: "theme",
-        value: theme,
-        updatedAt: now,
-        updatedBy: user.id,
-      })
-      .onConflictDoUpdate({
-        target: [npSettings.siteId, npSettings.key],
-        set: { value: theme, updatedAt: now, updatedBy: user.id },
-      });
+    await setTheme(theme, user);
 
     // Phase 14.3 — site-scoped tag matches the cache helpers in
     // `@nexpress/next`. `bustThemeCache` also forwards the same

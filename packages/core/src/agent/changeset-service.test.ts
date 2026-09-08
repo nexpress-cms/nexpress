@@ -21,8 +21,11 @@ describe("ChangeSet service factory contract boundary", () => {
         "create",
         "get",
         "list",
+        "processValidation",
         "reconcileExpired",
+        "reconcileValidations",
         "update",
+        "validate",
       ]);
       expect(getDb).not.toHaveBeenCalled();
       const invocation = validateDefinition.mock.calls.find(
@@ -48,6 +51,23 @@ describe("ChangeSet service factory contract boundary", () => {
         },
       });
       expect(definition.capabilities[0]?.effectProfiles).toHaveLength(1);
+      const validationCall = validateDefinition.mock.calls.find(
+        ([body]) =>
+          (body as { capabilities?: { descriptor: { id: string } }[] }).capabilities?.[0]
+            ?.descriptor.id === "changeset.validate",
+      );
+      expect(validationCall).toBeDefined();
+      const validation = definitionContract.npRequireAgentCapabilityRegistryCanonical(
+        validationCall![0],
+      );
+      expect(validation.capabilities[0]?.descriptor).toMatchObject({
+        id: "changeset.validate",
+        requiredScopes: ["changeset:read"],
+        inputSchema: {
+          additionalProperties: false,
+          required: ["idempotencyKey", "expectedVersion", "changeSetId"],
+        },
+      });
     } finally {
       validateDefinition.mockRestore();
       getDb.mockRestore();
@@ -75,6 +95,16 @@ describe("ChangeSet service factory contract boundary", () => {
       expect(() =>
         createAgentChangeSetServiceV1({ cursorKey: new Uint8Array(32), eligibilitySeconds }),
       ).toThrow();
+    for (const value of [-1, Infinity, NaN, 1.5]) {
+      for (const field of [
+        "validationLifetimeSeconds",
+        "inlineValidationOperationLimit",
+        "rollbackWindowSeconds",
+      ])
+        expect(() =>
+          createAgentChangeSetServiceV1({ cursorKey: new Uint8Array(32), [field]: value }),
+        ).toThrow();
+    }
     for (const eligibilitySeconds of [60, 7776000])
       expect(() =>
         createAgentChangeSetServiceV1({ cursorKey: new Uint8Array(32), eligibilitySeconds }),

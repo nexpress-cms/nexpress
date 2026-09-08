@@ -7,11 +7,12 @@ import {
   npAssertCollectionWriteAccess,
   npAssertCollectionReadAccess,
   npAssertCollectionReadScope,
+  type NpTransaction,
 } from "../collections/pipeline.js";
 import { getCollectionConfig } from "../collections/registry.js";
 import { applySlugField } from "../collections/slug.js";
 import { getCollectionZodSchema } from "../collections/validation.js";
-import type { NpAuthUser, NpFieldConfig } from "../config/types.js";
+import type { NpAuthUser, NpFieldConfig, NpCollectionConfig } from "../config/types.js";
 import {
   npCollectContentTransferMediaReferences,
   npCollectContentTransferRelationshipReferences,
@@ -41,6 +42,7 @@ import type {
 import { NpAgentGatewayError } from "./admin-admission.js";
 
 interface ResourceContext {
+  tx?: NpTransaction;
   siteId: string;
   /** Already resolved from current staff admission or the principal's live backing authority. */
   user: NpAuthUser;
@@ -55,6 +57,13 @@ export interface NpAgentChangeSetPreparedResourceV1 {
   operation: NpAgentChangeSetOperationInput;
   canonicalResourceKey: NpAgentChangeSetResourceKeyV1;
   requiredScopes: NpAgentScope[];
+}
+interface InspectedResource extends NpAgentChangeSetPreparedResourceV1 {
+  document: {
+    config: NpCollectionConfig;
+    original: Record<string, unknown> | null;
+    candidate: Record<string, unknown>;
+  } | null;
 }
 const invalid = () =>
   new NpAgentGatewayError("CHANGESET_SCHEMA_INVALID", 400, "ChangeSet resource input is invalid.");
@@ -139,11 +148,22 @@ function collection(slug: string) {
     throw missing();
   }
 }
-async function persisted(siteId: string, user: NpAuthUser, slug: string, id: string) {
+async function persisted(
+  siteId: string,
+  user: NpAuthUser,
+  slug: string,
+  id: string,
+  tx?: NpTransaction,
+) {
   const config = collection(slug);
   let document: Record<string, unknown> | null;
   try {
-    document = await npGetPersistedCollectionDocumentById(slug, id, siteId);
+    document = await npGetPersistedCollectionDocumentById(
+      slug,
+      id,
+      siteId,
+      tx ? { tx } : undefined,
+    );
   } catch {
     throw missing();
   }
@@ -232,12 +252,12 @@ function editableDocument(
 
 /** Read-only resource acceptance. UUID allocation and draft persistence belong to the draft service. */
 export function createAgentChangeSetResourceServiceV1() {
-  async function media(siteId: string, user: NpAuthUser, id: string) {
+  async function media(siteId: string, user: NpAuthUser, id: string, tx?: NpTransaction) {
     requireScopes(user, ["media:read"]);
-    const [row] = await getDb()
+    const [row] = await (tx ?? getDb())
       .select({ id: npMedia.id })
       .from(npMedia)
-      .where(and(eq(npMedia.siteId, siteId), eq(npMedia.id, id), isNull(npMedia.deletedAt)))
+      .where(and(eq(npMedia.siteId, siteId), eq(npMedia.id, id), isNull(npMedia.deletedAt))!)
       .limit(1);
     if (!row) throw reference();
   }
@@ -248,6 +268,7 @@ export function createAgentChangeSetResourceServiceV1() {
     value: Record<string, unknown>,
     reserved: ReadonlySet<string>,
     scopes: Set<NpAgentScope>,
+    tx?: NpTransaction,
   ) {
     const relationships = npCollectContentTransferRelationshipReferences(fields, value);
     if (relationships.length) scopes.add("content:read");
@@ -258,7 +279,13 @@ export function createAgentChangeSetResourceServiceV1() {
       seenRelationships.add(key);
       if (reserved.has(target.documentId)) throw reference();
       try {
-        const targetDocument = await persisted(siteId, user, target.collection, target.documentId);
+        const targetDocument = await persisted(
+          siteId,
+          user,
+          target.collection,
+          target.documentId,
+          tx,
+        );
         if (
           targetDocument.document.status !== undefined &&
           targetDocument.document.status !== "published"
@@ -271,7 +298,7 @@ export function createAgentChangeSetResourceServiceV1() {
     const mediaReferences = npCollectContentTransferMediaReferences(fields, value);
     if (mediaReferences.length) scopes.add("media:read");
     for (const id of new Set(mediaReferences.map((target) => target.mediaId)))
-      await media(siteId, user, id);
+      await media(siteId, user, id, tx);
   }
   async function navigation(
     siteId: string,
@@ -279,6 +306,7 @@ export function createAgentChangeSetResourceServiceV1() {
     items: NpNavItem[],
     reserved: ReadonlySet<string>,
     scopes: Set<NpAgentScope>,
+    tx?: NpTransaction,
   ) {
     for (const item of items) {
       if (item.type === "page") {
@@ -290,6 +318,7 @@ export function createAgentChangeSetResourceServiceV1() {
             user,
             item.collectionSlug ?? "pages",
             item.pageId,
+            tx,
           );
           if (
             targetDocument.document.status !== undefined &&
@@ -306,14 +335,14 @@ export function createAgentChangeSetResourceServiceV1() {
           throw reference();
         }
       }
-      if (item.children) await navigation(siteId, user, item.children, reserved, scopes);
+      if (item.children) await navigation(siteId, user, item.children, reserved, scopes, tx);
     }
   }
   async function resolve(
     input: ResourceContext,
     writable: boolean,
     reserved: ReadonlySet<string>,
-  ): Promise<NpAgentChangeSetPreparedResourceV1> {
+  ): Promise<InspectedResource> {
     if (!npIsCanonicalSiteId(input.siteId)) throw invalid();
     let operation: NpAgentChangeSetOperationInput;
     let canonicalResourceKey: NpAgentChangeSetResourceKeyV1;
@@ -330,6 +359,7 @@ export function createAgentChangeSetResourceServiceV1() {
     ]);
     requireScopes(input.user, scopes);
     return withCurrentSite(input.siteId, async () => {
+      let document: InspectedResource["document"] = null;
       if (operation.kind === "document") {
         const config = collection(operation.resource.collection);
         const creating = operation.operation === "create";
@@ -342,6 +372,7 @@ export function createAgentChangeSetResourceServiceV1() {
                 input.user,
                 operation.resource.collection,
                 canonicalResourceKey.documentId,
+                input.tx,
               )
             ).document;
         if (original && original.status !== undefined && original.status !== "published")
@@ -353,6 +384,7 @@ export function createAgentChangeSetResourceServiceV1() {
               operation.resource.collection,
               canonicalResourceKey.documentId,
               input.siteId,
+              input.tx ? { tx: input.tx } : undefined,
             );
           } catch {
             throw reference();
@@ -414,7 +446,16 @@ export function createAgentChangeSetResourceServiceV1() {
             throw missing();
           }
         }
-        await references(input.siteId, input.user, config.fields, candidate, reserved, scopes);
+        await references(
+          input.siteId,
+          input.user,
+          config.fields,
+          candidate,
+          reserved,
+          scopes,
+          input.tx,
+        );
+        document = { config, original, candidate };
         const editable = editableDocument(config.fields, candidate);
         if (operation.operation === "create")
           operation = {
@@ -434,28 +475,35 @@ export function createAgentChangeSetResourceServiceV1() {
             },
           };
       } else if (operation.kind === "navigation") {
-        const [row] = await getDb()
+        const [row] = await (input.tx ?? getDb())
           .select({ location: npNavigation.location })
           .from(npNavigation)
           .where(
             and(
               eq(npNavigation.siteId, input.siteId),
               eq(npNavigation.location, operation.resource.location),
-            ),
+            )!,
           )
           .limit(1);
         if (!row) throw missing();
-        await navigation(input.siteId, input.user, operation.input.items, reserved, scopes);
+        await navigation(
+          input.siteId,
+          input.user,
+          operation.input.items,
+          reserved,
+          scopes,
+          input.tx,
+        );
       } else if (operation.kind === "theme_tokens") {
-        const active = await getActiveTheme();
+        const active = await getActiveTheme(input.tx ? { tx: input.tx } : undefined);
         if (!active || active.manifest.id !== operation.resource.themeId) throw missing();
       } else if (operation.kind === "setting") {
         if (operation.operation === "remove" || operation.base !== null) {
-          const [row] = await getDb()
+          const [row] = await (input.tx ?? getDb())
             .select({ key: npSettings.key })
             .from(npSettings)
             .where(
-              and(eq(npSettings.siteId, input.siteId), eq(npSettings.key, operation.resource.key)),
+              and(eq(npSettings.siteId, input.siteId), eq(npSettings.key, operation.resource.key))!,
             )
             .limit(1);
           if (!row) throw missing();
@@ -476,13 +524,14 @@ export function createAgentChangeSetResourceServiceV1() {
           input.user,
           operation.resource.collection,
           operation.resource.documentId,
+          input.tx,
         );
         if (owner.document.status !== undefined && owner.document.status !== "published")
           scopes.add("content:draft");
         const field = fieldNamed(owner.config.fields, operation.resource.field);
         if (!field || !["upload", "richText"].includes(field.type)) throw reference();
         rejectProtectedFields(owner.config.fields, { [operation.resource.field]: null });
-        await media(input.siteId, input.user, operation.resource.mediaId);
+        await media(input.siteId, input.user, operation.resource.mediaId, input.tx);
         if (writable) {
           try {
             await npAssertCollectionWriteAccess(
@@ -503,12 +552,24 @@ export function createAgentChangeSetResourceServiceV1() {
         operation: npRequireAgentChangeSetOperationInput(operation),
         canonicalResourceKey,
         requiredScopes: [...scopes].sort(),
+        document,
       };
     });
   }
   return {
-    prepare: (input: NpAgentChangeSetPrepareResourceInputV1) =>
-      resolve(input, true, new Set(input.reservedCreateDocumentIds)),
+    prepare: async (
+      input: NpAgentChangeSetPrepareResourceInputV1,
+    ): Promise<NpAgentChangeSetPreparedResourceV1> => {
+      const result = await resolve(input, true, new Set(input.reservedCreateDocumentIds));
+      return {
+        operation: result.operation,
+        canonicalResourceKey: result.canonicalResourceKey,
+        requiredScopes: result.requiredScopes,
+      };
+    },
+    inspectForValidation: (
+      input: ResourceContext & { tx: NpTransaction; reservedCreateDocumentIds: readonly string[] },
+    ) => resolve(input, false, new Set(input.reservedCreateDocumentIds)),
     assertVisible: async (input: ResourceContext): Promise<NpAgentScope[]> =>
       (await resolve(input, false, new Set())).requiredScopes,
   };
