@@ -3414,3 +3414,19 @@ The first schema PR must implement these decisions rather than reopen them:
    HTTPS listener and is absent by default; no schema stores an MCP port,
    relay, or tunnel. The maximum explicit mode preserves the complete bounded
    tool/capability inventory without granting scopes or approval.
+
+### AP-301/AP-302 persistence boundary
+
+Migration 0038 adds only `np_agent_changesets`,
+`np_agent_changeset_operations` and `np_agent_approvals`. The shared diagnostic
+inventory now contains 22 tables and 92 critical constraints; site deletion
+orders approvals and operations before their ChangeSet parent. One
+`draft_version` is the editable CAS version. A durable actor/operation/source
+idempotency fingerprint preserves create identity across invocation retention
+and staff-session changes. Canonical document UUIDs live in operation resource
+keys; no content row is inserted during drafting. Sealed plan, rollback duration
+and exact snapshot-hash columns preserve the later validation contract, but
+draft creation leaves their evidence absent. Rollback approval targets remain
+storage-ineligible until their actual target table exists. Staff containment
+preserves tombstones before user deletion. No preview, execution or validation
+attempt table is introduced in this slice.

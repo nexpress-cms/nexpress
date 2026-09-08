@@ -2,7 +2,18 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-09-07 (AP-209/AP-210 add bounded Admin Activity
+**Last refreshed:** 2026-09-08 (AP-301/AP-302 add exact ChangeSet,
+operation and approval contracts, three persistence tables and an explicitly
+constructed draft service. Existing staff admission, current Gateway authority,
+resource schemas and item ACLs own create/update/read behavior. Drafts reserve
+stable document ids without content writes; opaque bounded lists, source
+idempotency, draftVersion CAS and host-invoked expiry maintenance fail closed.
+Doctor covers 22 tables and 92 critical constraints. Validation, preview,
+approval decisions, transport/UI exposure and execution remain later work.
+No provider call, automatic runtime/worker, seed, package version or changeset
+is added.)
+
+**Earlier:** 2026-09-07 (AP-209/AP-210 add bounded Admin Activity
 principal/run/action views and four same-origin Agent HTTP routes through
 existing staff admission, Gateway service credentials, read descriptors and
 invocation admission. Activity checks every current target and exposes only

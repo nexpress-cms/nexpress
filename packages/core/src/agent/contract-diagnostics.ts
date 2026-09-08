@@ -17,6 +17,9 @@ import type { NpAgentVaultAdapterRegistryV1 } from "./vault-runtime.js";
 
 const AGENT_TABLES = [
   "np_agent_actions",
+  "np_agent_approvals",
+  "np_agent_changeset_operations",
+  "np_agent_changesets",
   "np_agent_connection_auth_requests",
   "np_agent_connection_config_versions",
   "np_agent_connection_operations",
@@ -44,6 +47,27 @@ const AGENT_CONSTRAINTS = [
   "np_agent_actions_run_fk",
   "np_agent_actions_state_check",
   "np_agent_actions_terminal_check",
+  "np_agent_changesets_principal_fk",
+  "np_agent_changesets_run_fk",
+  "np_agent_changesets_invocation_fk",
+  "np_agent_changesets_state_check",
+  "np_agent_changesets_version_check",
+  "np_agent_changesets_actor_check",
+  "np_agent_changesets_sealed_check",
+  "np_agent_changesets_time_check",
+  "np_agent_changeset_operations_changeset_fk",
+  "np_agent_changeset_operations_kind_check",
+  "np_agent_changeset_operations_body_check",
+  "np_agent_changeset_operations_snapshot_check",
+  "np_agent_approvals_changeset_fk",
+  "np_agent_approvals_action_fk",
+  "np_agent_approvals_requester_fk",
+  "np_agent_approvals_target_check",
+  "np_agent_approvals_state_check",
+  "np_agent_approvals_version_check",
+  "np_agent_approvals_statement_check",
+  "np_agent_approvals_decision_check",
+  "np_agent_approvals_revocation_check",
   "np_agent_connection_auth_requests_callback_links_check",
   "np_agent_connection_auth_requests_config_fk",
   "np_agent_connection_auth_requests_connection_fk",
@@ -153,6 +177,9 @@ const STATE_SUMMARY_SQL = `
   with state_rows(entity, state, occurred_at) as (
     select 'action', state, created_at from public.np_agent_actions
     union all select 'run', state, queued_at from public.np_agent_runs
+    union all select 'changeset', state, created_at from public.np_agent_changesets
+    union all select 'changeset-operation', state, created_at from public.np_agent_changeset_operations
+    union all select 'approval', state, requested_at from public.np_agent_approvals
     union all select 'principal', status, created_at from public.np_agent_principals
     union all select 'service-token', status, created_at from public.np_agent_service_tokens
     union all select 'oauth-client', status, created_at from public.np_agent_oauth_clients
@@ -201,6 +228,9 @@ const ISSUE_SUMMARY_SQL = `
      where status not in ('active', 'consumed', 'revoked', 'expired')
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_oauth_codes
      where status not in ('active', 'consumed', 'revoked', 'expired')
+    union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_changesets where state not in ('draft','validating','invalid','ready','approval_pending','approved','scheduled','applying','applied','verifying','verified','rejected','cancelled','apply_failed','verification_failed','rolling_back','rolled_back','rollback_failed')
+    union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_changeset_operations where state not in ('draft','valid','invalid','applied','verified','failed')
+    union all select 'AGENT_ROW_STATE_INVALID', requested_at from public.np_agent_approvals where state not in ('pending','approved','rejected','expired','consumed','revoked')
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_connections
      where status not in ('pending', 'ready', 'error', 'disabled', 'revoked')
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_connection_config_versions
@@ -219,6 +249,26 @@ const ISSUE_SUMMARY_SQL = `
      where state not in ('queued', 'running', 'waiting_inspection', 'succeeded', 'failed')
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_site_deletion_sagas
      where state not in ('prepared', 'cleaning', 'ready_to_commit', 'failed', 'committing')
+
+    union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_changesets
+     where draft_version < 1 or validation_generation < 0 or (sealed_plan_body is null) <> (plan_hash is null) or (sealed_plan_body is null) <> (rollback_window_seconds is null)
+    union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_changeset_operations
+     where ordinal not between 1 and 500 or (before_snapshot is null) <> (snapshot_hash is null)
+    union all select 'AGENT_ROW_STATE_INVALID', requested_at from public.np_agent_approvals
+     where generation < 1 or version < 1 or (state = 'consumed') <> (consumed_at is not null)
+    union all select 'AGENT_RELATION_CROSS_SITE', operation.created_at from public.np_agent_changeset_operations operation
+      left join public.np_agent_changesets target on target.id=operation.changeset_id
+     where target.id is null or target.site_id<>operation.site_id
+    union all select 'AGENT_RELATION_CROSS_SITE', approval.requested_at from public.np_agent_approvals approval
+      left join public.np_agent_changesets target on target.id=approval.target_changeset_id
+     where approval.target_kind='changeset' and (target.id is null or target.site_id<>approval.site_id)
+    union all select 'AGENT_RELATION_CROSS_SITE', approval.requested_at from public.np_agent_approvals approval
+      left join public.np_agent_actions target on target.id=approval.target_action_id
+     where approval.target_kind='action' and (target.id is null or target.site_id<>approval.site_id)
+    union all select 'AGENT_EXPIRY_BACKLOG', expires_at from public.np_agent_changesets
+     where state in ('draft','invalid','ready','approval_pending','approved','scheduled') and expires_at <= $1::timestamptz
+    union all select 'AGENT_EXPIRY_BACKLOG', expires_at from public.np_agent_approvals
+     where state in ('pending','approved') and expires_at <= $1::timestamptz
 
     union all
       select 'AGENT_CONNECTION_POINTER_DIVERGED', c.created_at

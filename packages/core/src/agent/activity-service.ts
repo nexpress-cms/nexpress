@@ -1,10 +1,4 @@
-import {
-  createHmac,
-  timingSafeEqual,
-  createCipheriv,
-  createDecipheriv,
-  randomBytes,
-} from "node:crypto";
+import { createAgentCursorCodecV1 } from "./cursor.js";
 import { and, eq, desc, gt, lt, lte, gte, or, type SQL } from "drizzle-orm";
 import { npUsers } from "../db/schema/system.js";
 import { npResolveLiveAgentStaffAuthorizationV1 } from "./admin-admission.js";
@@ -75,16 +69,9 @@ const iso = (v: Date | null) => v?.toISOString() ?? null;
 export function createAgentActivityServiceV1(options: NpAgentActivityServiceOptionsV1) {
   if (!(options.cursorHmacKey instanceof Uint8Array) || options.cursorHmacKey.byteLength < 32)
     throw new Error("Activity cursor key requires at least 32 bytes.");
-  const key = Buffer.from(options.cursorHmacKey);
-  const cursorEncryptionKey = createHmac("sha256", key)
-    .update("np.agent-activity.cursor.encryption.v1")
-    .digest();
+  const cursorCodec = createAgentCursorCodecV1(options.cursorHmacKey, "np.agent-activity.cursor");
   const now = options.now ?? (() => new Date());
-  const mac = (value: string) =>
-    createHmac("sha256", key)
-      .update("np.agent-activity.cursor.v1\0")
-      .update(value)
-      .digest("base64url");
+  const mac = cursorCodec.mac;
   async function staff(input: Staff) {
     const auth = await npResolveAgentStaffSessionAuthorizationV1(
       getDb(),
@@ -362,25 +349,7 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     let position: Position | null = null;
     if (cursor) {
       try {
-        const [body, signature, ...extra] = cursor.split(".");
-        if (
-          !body ||
-          !signature ||
-          extra.length ||
-          signature.length !== 43 ||
-          !timingSafeEqual(Buffer.from(signature), Buffer.from(mac(body)))
-        )
-          throw invalidCursor();
-        const sealed = Buffer.from(body, "base64url");
-        if (sealed.length < 29) throw invalidCursor();
-        const decipher = createDecipheriv(
-          "aes-256-gcm",
-          cursorEncryptionKey,
-          sealed.subarray(0, 12),
-        );
-        decipher.setAuthTag(sealed.subarray(12, 28));
-        const plaintext = Buffer.concat([decipher.update(sealed.subarray(28)), decipher.final()]);
-        const data = JSON.parse(plaintext.toString("utf8")) as {
+        const data = cursorCodec.open(cursor) as {
           binding: string;
           expires: number;
           position: Position;
@@ -486,20 +455,13 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       if (items.length === limit || !more) break;
     }
     await assertSameStaff(input, auth);
-    const nonce = randomBytes(12);
-    const cipher = createCipheriv("aes-256-gcm", cursorEncryptionKey, nonce);
-    const encrypted = Buffer.concat([
-      cipher.update(
-        JSON.stringify({ binding, expires: now().getTime() + 900_000, position }),
-        "utf8",
-      ),
-      cipher.final(),
-    ]);
-    const body = Buffer.concat([nonce, cipher.getAuthTag(), encrypted]).toString("base64url");
+    const nextCursor = more
+      ? cursorCodec.seal({ binding, expires: now().getTime() + 900_000, position })
+      : null;
     return {
       schemaVersion: `np.agent-activity-${kind}.v1`,
       items,
-      nextCursor: more ? `${body}.${mac(body)}` : null,
+      nextCursor,
     };
   }
   return {

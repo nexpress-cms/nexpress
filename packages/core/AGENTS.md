@@ -2,7 +2,7 @@
 
 Server-only CMS engine: config, DB, auth, collections pipeline, media, jobs, plugins, storage, cache, theme.
 
-**Refreshed:** 2026-08-29
+**Refreshed:** 2026-09-08
 
 ## STRUCTURE
 
@@ -111,6 +111,14 @@ jobs/handlers ──→ sites/context (optional payload-derived async-local disp
 No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugins/host`, `configureBuiltinJobContext` indirection in `jobs/builtin-handlers`, and per-subsystem singletons.
 
 ## CONVENTIONS
+
+- AP-301/AP-302 draft services use the existing staff admission and current
+  Gateway-authority transaction seam. Resource preparation shares collection
+  ACL/schema helpers and existing navigation/theme/SEO/media contracts; never
+  use `saveDocument` to reserve draft ids. Exact ChangeSet wires exclude sealed
+  plans, snapshots and approval integrity fields. Draft service installation
+  does not advertise new MCP/HTTP capabilities or install a worker. Doctor,
+  deletion and fresh migrations share the 22-table/92-constraint inventory.
 
 - Public build entries are declared in `tsup.config.ts`; client-safe contracts such as `jobs-contract` and `community-contract` must not import server dependencies. Apps reference the `db-schema` entry in `drizzle.config.ts`.
 - `agent-contract/` is likewise pure: browser-safe wires may reuse its exact

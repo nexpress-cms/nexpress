@@ -18,6 +18,15 @@ import {
 
 import type {
   NpAgentAuthorizationContextCanonicalV1,
+  NpAgentChangeSetPlanCanonicalV1,
+  NpAgentChangeSetOperationInput,
+  NpAgentChangeSetResourceKeyV1,
+  NpAgentChangeSetSnapshotCanonicalV1,
+  NpAgentVersionBaseV1,
+  NpAgentRiskSummary,
+  NpAgentApprovalStatementCanonicalV1,
+  NpAgentApprovalDecisionCanonicalV1,
+  NpAgentApprovalRevocationCanonicalV1,
   NpAgentCapabilityRegistryCanonicalV1,
   NpAgentActionTargetVersionFactV1,
   NpAgentConnectionConfigCanonicalV1,
@@ -1781,6 +1790,373 @@ export const npAgentSiteDeletionSagas = pgTable(
     check(
       "np_agent_site_deletion_sagas_completion_check",
       sql`(${table.state} in ('ready_to_commit', 'committing')) = (${table.cleanupCompletedAt} is not null)`,
+    ),
+  ],
+);
+
+/** AP-301/302 durable drafts. Validation/execution/preview storage is installed separately. */
+export const npAgentChangesets = pgTable(
+  "np_agent_changesets",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    creatorKind: text("creator_kind").notNull(),
+    principalId: uuid("principal_id"),
+    createdByUserId: uuid("created_by_user_id").references(() => npUsers.id, {
+      onDelete: "set null",
+    }),
+    actorDeletedAt: timestamp("actor_deleted_at", { withTimezone: true, mode: "date" }),
+    actorFingerprint: text("actor_fingerprint").notNull(),
+    sourceOperationId: text("source_operation_id").notNull(),
+    sourceInputHash: text("source_input_hash").notNull(),
+    sourceIdempotencyFingerprint: text("source_idempotency_fingerprint").notNull(),
+    agentId: uuid("agent_id"),
+    agentVersionId: uuid("agent_version_id"),
+    agentConfigHash: text("agent_config_hash"),
+    runId: uuid("run_id"),
+    runFingerprint: text("run_fingerprint"),
+    invocationId: uuid("invocation_id"),
+    invocationFingerprint: text("invocation_fingerprint"),
+    title: text("title").notNull(),
+    summary: text("summary"),
+    state: text("state").notNull().default("draft"),
+    draftVersion: integer("draft_version").notNull().default(1),
+    draftHash: text("draft_hash").notNull(),
+    validationGeneration: integer("validation_generation").notNull().default(0),
+    baseFingerprint: text("base_fingerprint"),
+    planHash: text("plan_hash"),
+    sealedPlanBody: jsonb("sealed_plan_body").$type<NpAgentChangeSetPlanCanonicalV1>(),
+    riskSummary: jsonb("risk_summary").$type<NpAgentRiskSummary>(),
+    policyRefs: jsonb("policy_refs").$type<NpAgentJsonObject[]>().notNull().default([]),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true, mode: "date" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    rollbackWindowSeconds: integer("rollback_window_seconds"),
+    rollbackEligibleUntil: timestamp("rollback_eligible_until", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    cancellationCode: text("cancellation_code"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    appliedAt: timestamp("applied_at", { withTimezone: true, mode: "date" }),
+    verifiedAt: timestamp("verified_at", { withTimezone: true, mode: "date" }),
+    rolledBackAt: timestamp("rolled_back_at", { withTimezone: true, mode: "date" }),
+  },
+  (t) => [
+    unique("np_agent_changesets_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_changesets_source_unique").on(
+      t.siteId,
+      t.actorFingerprint,
+      t.sourceOperationId,
+      t.sourceIdempotencyFingerprint,
+    ),
+    index("np_agent_changesets_site_state_idx").on(t.siteId, t.state, t.createdAt),
+    index("np_agent_changesets_principal_idx").on(t.siteId, t.principalId, t.createdAt),
+    index("np_agent_changesets_expiry_idx").on(t.siteId, t.state, t.expiresAt),
+    foreignKey({
+      name: "np_agent_changesets_principal_fk",
+      columns: [t.siteId, t.principalId],
+      foreignColumns: [npAgentPrincipals.siteId, npAgentPrincipals.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_changesets_run_fk",
+      columns: [t.siteId, t.runId],
+      foreignColumns: [npAgentRuns.siteId, npAgentRuns.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_changesets_invocation_fk",
+      columns: [t.siteId, t.invocationId],
+      foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_changesets_state_check",
+      sql`(${t.state} in ('draft','validating','invalid','ready','approval_pending','approved','scheduled','applying','applied','verifying','verified','rejected','cancelled','apply_failed','verification_failed','rolling_back','rolled_back','rollback_failed')) is true`,
+    ),
+    check(
+      "np_agent_changesets_version_check",
+      sql`(${t.draftVersion}>0 and ${t.validationGeneration}>=0) is true`,
+    ),
+    check(
+      "np_agent_changesets_actor_check",
+      sql`((
+ (${t.creatorKind}='staff' and ${t.principalId} is null and ((${t.createdByUserId} is not null and ${t.actorDeletedAt} is null) or (${t.createdByUserId} is null and ${t.actorDeletedAt} is not null))) or
+ (${t.creatorKind} in ('external','runtime') and ${t.principalId} is not null and ${t.createdByUserId} is null and ${t.actorDeletedAt} is null)) and
+ ((${t.creatorKind}='runtime' and ${t.agentId} is not null and ${t.agentVersionId} is not null and ${t.agentConfigHash} is not null) or
+ (${t.creatorKind}<>'runtime' and ${t.agentId} is null and ${t.agentVersionId} is null and ${t.agentConfigHash} is null))) is true`,
+    ),
+    check(
+      "np_agent_changesets_attribution_check",
+      sql`((${t.runId} is null or ${t.runFingerprint} is not null) and (${t.invocationId} is null or ${t.invocationFingerprint} is not null)) is true`,
+    ),
+    check(
+      "np_agent_changesets_text_check",
+      sql`(char_length(${t.title}) between 1 and 4000 and ${t.title}=btrim(${t.title}) and (${t.summary} is null or char_length(${t.summary})<=4000) and char_length(${t.sourceOperationId}) between 1 and 128) is true`,
+    ),
+    check(
+      "np_agent_changesets_hash_check",
+      sql`(${t.actorFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.sourceInputHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.sourceIdempotencyFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.draftHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and (${t.planHash} is null or ${t.planHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$')) is true`,
+    ),
+    check(
+      "np_agent_changesets_sealed_check",
+      sql`((
+ (${t.sealedPlanBody} is null and ${t.planHash} is null and ${t.rollbackWindowSeconds} is null) or
+ (${t.sealedPlanBody} is not null and ${t.planHash} is not null and ${t.rollbackWindowSeconds} between 60 and 7776000 and ${t.validationGeneration}>0 and
+ jsonb_typeof(${t.sealedPlanBody})='object' and ${t.sealedPlanBody}->>'schemaVersion'='np.agent-changeset-plan.v1' and ${t.sealedPlanBody}->>'planKind'='changeset' and
+ ${t.sealedPlanBody}->>'siteId'=${t.siteId} and ${t.sealedPlanBody}->>'changeSetId'=${t.id}::text and
+ ${t.sealedPlanBody}->'body'->>'rollbackWindowSeconds'=${t.rollbackWindowSeconds}::text)) and
+ (${t.state} not in ('draft','validating','invalid') or ${t.sealedPlanBody} is null) and
+ (${t.state} in ('draft','validating','invalid','cancelled','rejected') or ${t.sealedPlanBody} is not null)) is true`,
+    ),
+    check(
+      "np_agent_changesets_time_check",
+      sql`(${t.updatedAt}>=${t.createdAt} and ${t.expiresAt}>${t.createdAt} and ${t.expiresAt}<=${t.createdAt}+interval '90 days' and
+ (${t.scheduledFor} is null or (${t.scheduledFor}>=${t.createdAt} and ${t.scheduledFor}<${t.expiresAt})) and
+ (${t.appliedAt} is null or ${t.appliedAt}>=${t.createdAt}) and (${t.verifiedAt} is null or (${t.appliedAt} is not null and ${t.verifiedAt}>=${t.appliedAt})) and
+ (${t.rolledBackAt} is null or (${t.appliedAt} is not null and ${t.rolledBackAt}>=${t.appliedAt})) and
+ ((${t.rollbackEligibleUntil} is null and ${t.appliedAt} is null) or (${t.appliedAt} is not null and ${t.rollbackWindowSeconds} is not null and ${t.rollbackEligibleUntil}=${t.appliedAt}+make_interval(secs=>${t.rollbackWindowSeconds})))) is true`,
+    ),
+    check(
+      "np_agent_changesets_cancel_check",
+      sql`((${t.state}='cancelled')=(${t.cancellationCode} is not null)) is true`,
+    ),
+  ],
+);
+
+export const npAgentChangesetOperations = pgTable(
+  "np_agent_changeset_operations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    changesetId: uuid("changeset_id").notNull(),
+    ordinal: integer("ordinal").notNull(),
+    clientOperationId: text("client_operation_id").notNull(),
+    resourceKind: text("resource_kind").notNull(),
+    resourceKey: jsonb("resource_key").$type<NpAgentChangeSetResourceKeyV1>().notNull(),
+    operation: text("operation").notNull(),
+    input: jsonb("input").$type<NpAgentChangeSetOperationInput>().notNull(),
+    baseVersion: jsonb("base_version").$type<NpAgentVersionBaseV1>(),
+    beforeHash: text("before_hash"),
+    beforeSnapshot: jsonb("before_snapshot").$type<NpAgentChangeSetSnapshotCanonicalV1>(),
+    snapshotHash: text("snapshot_hash"),
+    afterHash: text("after_hash"),
+    state: text("state").notNull().default("draft"),
+    issues: jsonb("issues").$type<NpAgentJsonObject[]>().notNull().default([]),
+    resultDigest: text("result_digest"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("np_agent_changeset_operations_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_changeset_operations_ordinal_unique").on(t.siteId, t.changesetId, t.ordinal),
+    unique("np_agent_changeset_operations_client_id_unique").on(
+      t.siteId,
+      t.changesetId,
+      t.clientOperationId,
+    ),
+    foreignKey({
+      name: "np_agent_changeset_operations_changeset_fk",
+      columns: [t.siteId, t.changesetId],
+      foreignColumns: [npAgentChangesets.siteId, npAgentChangesets.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_changeset_operations_ordinal_check",
+      sql`(${t.ordinal} between 1 and 500 and char_length(${t.clientOperationId}) between 1 and 128) is true`,
+    ),
+    check(
+      "np_agent_changeset_operations_kind_check",
+      sql`((${t.resourceKind}='document' and ${t.operation} in ('create','update','publish','schedule','archive')) or (${t.resourceKind} in ('navigation','theme_tokens') and ${t.operation}='replace') or (${t.resourceKind}='setting' and ${t.operation} in ('replace','remove')) or (${t.resourceKind}='media_ref' and ${t.operation} in ('attach','detach'))) is true`,
+    ),
+    check(
+      "np_agent_changeset_operations_body_check",
+      sql`(jsonb_typeof(${t.resourceKey})='object' and ${t.resourceKey}->>'kind'=${t.resourceKind} and jsonb_typeof(${t.input})='object' and ${t.input}->>'kind'=${t.resourceKind} and ${t.input}->>'operation'=${t.operation} and ${t.input}->>'clientOperationId'=${t.clientOperationId}) is true`,
+    ),
+    check(
+      "np_agent_changeset_operations_state_check",
+      sql`(${t.state} in ('draft','valid','invalid','applied','verified','failed')) is true`,
+    ),
+    check(
+      "np_agent_changeset_operations_snapshot_check",
+      sql`((${t.beforeSnapshot} is null and ${t.snapshotHash} is null) or (${t.beforeSnapshot} is not null and ${t.snapshotHash} is not null and ${t.snapshotHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and jsonb_typeof(${t.beforeSnapshot})='object' and ${t.beforeSnapshot}->>'schemaVersion'='np.agent-changeset-snapshot.v1' and ${t.beforeSnapshot}->>'siteId'=${t.siteId} and ${t.beforeSnapshot}->>'changeSetId'=${t.changesetId}::text and ${t.beforeSnapshot}->>'operationOrdinal'=${t.ordinal}::text and ${t.beforeSnapshot}->'canonicalResourceKey'=${t.resourceKey})) is true`,
+    ),
+    check(
+      "np_agent_changeset_operations_time_check",
+      sql`(${t.updatedAt}>=${t.createdAt}) is true`,
+    ),
+  ],
+);
+
+/** Integrity evidence only in AP-301. No challenge, decision or execution API is installed. */
+export const npAgentApprovals = pgTable(
+  "np_agent_approvals",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    targetKind: text("target_kind").notNull(),
+    targetId: uuid("target_id").notNull(),
+    targetChangesetId: uuid("target_changeset_id"),
+    targetActionId: uuid("target_action_id"),
+    generation: integer("generation").notNull(),
+    version: integer("version").notNull().default(1),
+    planHash: text("plan_hash").notNull(),
+    capabilityId: text("capability_id").notNull(),
+    capabilityContractVersion: integer("capability_contract_version").notNull(),
+    capabilityFingerprint: text("capability_fingerprint").notNull(),
+    requiredScopes: text("required_scopes").array().$type<NpAgentScope[]>().notNull(),
+    requiredHumanCapabilities: text("required_human_capabilities").array().notNull(),
+    requiredHumanPredicates: text("required_human_predicates").array().notNull(),
+    policyHashes: text("policy_hashes").array().notNull(),
+    requiresLivePreview: boolean("requires_live_preview").notNull(),
+    previewId: uuid("preview_id"),
+    previewDigest: text("preview_digest"),
+    requiredReauthMode: text("required_reauth_mode").notNull(),
+    requiredReauthMaxAgeSeconds: integer("required_reauth_max_age_seconds"),
+    statementBody: jsonb("statement_body").$type<NpAgentApprovalStatementCanonicalV1>().notNull(),
+    statementHash: text("statement_hash").notNull(),
+    statementMac: text("statement_mac").notNull(),
+    integrityKeyId: text("integrity_key_id").notNull(),
+    challengeGeneration: integer("challenge_generation").notNull().default(0),
+    challengePurpose: text("challenge_purpose"),
+    challengeHash: text("challenge_hash"),
+    challengeHashKeyId: text("challenge_hash_key_id"),
+    challengeIssuedToUserId: uuid("challenge_issued_to_user_id").references(() => npUsers.id, {
+      onDelete: "restrict",
+    }),
+    challengeSessionFingerprint: text("challenge_session_fingerprint"),
+    challengeExpiresAt: timestamp("challenge_expires_at", { withTimezone: true, mode: "date" }),
+    challengeConsumedAt: timestamp("challenge_consumed_at", { withTimezone: true, mode: "date" }),
+    state: text("state").notNull().default("pending"),
+    risk: text("risk").notNull(),
+    requesterKind: text("requester_kind").notNull(),
+    requestedByPrincipalId: uuid("requested_by_principal_id"),
+    requestedByUserId: uuid("requested_by_user_id").references(() => npUsers.id, {
+      onDelete: "set null",
+    }),
+    requesterFingerprint: text("requester_fingerprint").notNull(),
+    requestedAt: timestamp("requested_at", { withTimezone: true, mode: "date" }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    decidedByUserId: uuid("decided_by_user_id").references(() => npUsers.id, {
+      onDelete: "set null",
+    }),
+    deciderFingerprint: text("decider_fingerprint"),
+    decisionBody: jsonb("decision_body").$type<NpAgentApprovalDecisionCanonicalV1>(),
+    decisionHash: text("decision_hash"),
+    decisionMac: text("decision_mac"),
+    decisionReauthFingerprint: text("decision_reauth_fingerprint"),
+    decisionReauthenticatedAt: timestamp("decision_reauthenticated_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    decidedAt: timestamp("decided_at", { withTimezone: true, mode: "date" }),
+    reason: text("reason"),
+    revocationKind: text("revocation_kind"),
+    revokedByUserId: uuid("revoked_by_user_id").references(() => npUsers.id, {
+      onDelete: "set null",
+    }),
+    revokerFingerprint: text("revoker_fingerprint"),
+    revocationCode: text("revocation_code"),
+    revocationReason: text("revocation_reason"),
+    revocationBody: jsonb("revocation_body").$type<NpAgentApprovalRevocationCanonicalV1>(),
+    revocationHash: text("revocation_hash"),
+    revocationMac: text("revocation_mac"),
+    revocationIntegrityKeyId: text("revocation_integrity_key_id"),
+    revokedAt: timestamp("revoked_at", { withTimezone: true, mode: "date" }),
+    consumedAt: timestamp("consumed_at", { withTimezone: true, mode: "date" }),
+  },
+  (t) => [
+    unique("np_agent_approvals_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_approvals_generation_unique").on(
+      t.siteId,
+      t.targetKind,
+      t.targetId,
+      t.planHash,
+      t.generation,
+    ),
+    uniqueIndex("np_agent_approvals_live_statement_uidx")
+      .on(t.siteId, t.targetKind, t.targetId, t.planHash)
+      .where(sql`${t.state} in ('pending','approved')`),
+    index("np_agent_approvals_expiry_idx").on(t.siteId, t.state, t.expiresAt),
+    foreignKey({
+      name: "np_agent_approvals_changeset_fk",
+      columns: [t.siteId, t.targetChangesetId],
+      foreignColumns: [npAgentChangesets.siteId, npAgentChangesets.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_approvals_action_fk",
+      columns: [t.siteId, t.targetActionId],
+      foreignColumns: [npAgentActions.siteId, npAgentActions.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_approvals_requester_fk",
+      columns: [t.siteId, t.requestedByPrincipalId],
+      foreignColumns: [npAgentPrincipals.siteId, npAgentPrincipals.id],
+    }).onDelete("restrict"),
+    // Rollback targets remain rejected until their actual storage and same-site FK exist.
+    check(
+      "np_agent_approvals_target_check",
+      sql`((${t.targetKind}='changeset' and ${t.targetChangesetId}=${t.targetId} and ${t.targetActionId} is null) or (${t.targetKind}='action' and ${t.targetActionId}=${t.targetId} and ${t.targetChangesetId} is null)) is true`,
+    ),
+    check(
+      "np_agent_approvals_version_check",
+      sql`(${t.generation}>0 and ${t.version}>0 and ${t.capabilityContractVersion}>0 and ${t.challengeGeneration}>=0) is true`,
+    ),
+    check(
+      "np_agent_approvals_state_check",
+      sql`(${t.state} in ('pending','approved','rejected','expired','consumed','revoked') and ${t.risk} in ('reversible','sensitive','destructive')) is true`,
+    ),
+    check(
+      "np_agent_approvals_requester_check",
+      sql`((${t.requesterKind}='staff' and ${t.requestedByPrincipalId} is null) or (${t.requesterKind}='principal' and ${t.requestedByPrincipalId} is not null and ${t.requestedByUserId} is null)) is true`,
+    ),
+    check(
+      "np_agent_approvals_scope_check",
+      sql`(cardinality(${t.requiredScopes}) between 1 and 64 and array_position(${t.requiredScopes},null) is null and cardinality(${t.requiredHumanCapabilities}) between 1 and 5 and ${t.requiredHumanCapabilities}<@array['site.access','content.author','content.publish','community.moderate','admin.manage']::text[] and array_position(${t.requiredHumanCapabilities},null) is null and ${t.requiredHumanPredicates}<@array['is-super-admin']::text[] and array_position(${t.requiredHumanPredicates},null) is null) is true`,
+    ),
+    check(
+      "np_agent_approvals_preview_check",
+      sql`((${t.requiresLivePreview} and ${t.previewId} is not null and ${t.previewDigest} is not null) or (not ${t.requiresLivePreview} and ${t.previewId} is null and ${t.previewDigest} is null)) is true`,
+    ),
+    check(
+      "np_agent_approvals_reauth_check",
+      sql`((${t.requiredReauthMode}='none' and ${t.requiredReauthMaxAgeSeconds} is null) or (${t.requiredReauthMode}='recent-staff-primary' and ${t.requiredReauthMaxAgeSeconds} between 1 and 300)) is true`,
+    ),
+    check(
+      "np_agent_approvals_statement_check",
+      sql`(jsonb_typeof(${t.statementBody})='object' and ${t.statementBody}->>'version'='np.agent-approval-statement.v1' and ${t.statementBody}->>'siteId'=${t.siteId} and ${t.statementBody}->>'approvalId'=${t.id}::text and ${t.statementBody}->>'capabilityId'=${t.capabilityId} and ${t.statementBody}->>'capabilityContractVersion'=${t.capabilityContractVersion}::text and ${t.statementBody}->>'capabilityFingerprint'=${t.capabilityFingerprint} and ${t.statementBody}->'target'->>'kind'=${t.targetKind} and
+ ((${t.targetKind}='changeset' and ${t.statementBody}->'target'->>'changeSetId'=${t.targetId}::text and ${t.statementBody}->'target'->>'planHash'=${t.planHash}) or (${t.targetKind}='action' and ${t.statementBody}->'target'->>'actionId'=${t.targetId}::text and ${t.statementBody}->'target'->>'proposalHash'=${t.planHash}))) is true`,
+    ),
+    check(
+      "np_agent_approvals_challenge_check",
+      sql`((${t.challengeHash} is null and ${t.challengePurpose} is null and ${t.challengeHashKeyId} is null and ${t.challengeIssuedToUserId} is null and ${t.challengeSessionFingerprint} is null and ${t.challengeExpiresAt} is null) or
+ (${t.challengeGeneration}>0 and ${t.challengeHash} is not null and ${t.challengePurpose} in ('approve','reject','revoke') and ${t.challengeHashKeyId} is not null and ${t.challengeIssuedToUserId} is not null and ${t.challengeSessionFingerprint} is not null and ${t.challengeExpiresAt} is not null and ${t.challengeExpiresAt}<=${t.expiresAt})) is true`,
+    ),
+    check(
+      "np_agent_approvals_decision_check",
+      sql`((
+ (${t.decisionBody} is null and ${t.decisionHash} is null and ${t.decisionMac} is null and ${t.deciderFingerprint} is null and ${t.decidedByUserId} is null and ${t.decidedAt} is null and ${t.decisionReauthFingerprint} is null and ${t.decisionReauthenticatedAt} is null) or
+ (${t.decisionBody} is not null and ${t.decisionHash} is not null and ${t.decisionMac} is not null and ${t.deciderFingerprint} is not null and ${t.decidedAt} is not null and
+ ${t.decisionBody}->>'schemaVersion'='np.agent-approval-decision.v1' and ${t.decisionBody}->>'siteId'=${t.siteId} and ${t.decisionBody}->>'approvalId'=${t.id}::text and ${t.decisionBody}->>'approvalGeneration'=${t.generation}::text and ${t.decisionBody}->>'statementHash'=${t.statementHash} and
+ ((${t.requiredReauthMode}='none' and ${t.decisionReauthFingerprint} is null and ${t.decisionReauthenticatedAt} is null) or (${t.requiredReauthMode}='recent-staff-primary' and ${t.decisionReauthFingerprint} is not null and ${t.decisionReauthenticatedAt} is not null)))) and
+ (${t.state} not in ('approved','rejected','consumed') or ${t.decisionBody} is not null) and (${t.state}<>'pending' or ${t.decisionBody} is null) and
+ (${t.state} not in ('approved','consumed') or ${t.decisionBody}->>'decision'='approve') and (${t.state}<>'rejected' or ${t.decisionBody}->>'decision'='reject')) is true`,
+    ),
+    check(
+      "np_agent_approvals_revocation_check",
+      sql`((${t.state}='revoked' and ${t.revocationKind} in ('human','authority_loss','site_deleting','integrity_key_retired','target_invalidated') and ${t.revokerFingerprint} is not null and ${t.revocationCode} is not null and ${t.revocationBody} is not null and ${t.revocationHash} is not null and ${t.revocationMac} is not null and ${t.revocationIntegrityKeyId} is not null and ${t.revokedAt} is not null and ${t.revocationBody}->>'schemaVersion'='np.agent-approval-revocation.v1' and ${t.revocationBody}->>'siteId'=${t.siteId} and ${t.revocationBody}->>'approvalId'=${t.id}::text and ${t.revocationBody}->>'approvalGeneration'=${t.generation}::text and ${t.revocationBody}->>'statementHash'=${t.statementHash} and (${t.revocationKind}='human' or (${t.revokedByUserId} is null and ${t.revocationReason} is null))) or
+ (${t.state}<>'revoked' and ${t.revocationKind} is null and ${t.revokedByUserId} is null and ${t.revokerFingerprint} is null and ${t.revocationCode} is null and ${t.revocationReason} is null and ${t.revocationBody} is null and ${t.revocationHash} is null and ${t.revocationMac} is null and ${t.revocationIntegrityKeyId} is null and ${t.revokedAt} is null)) is true`,
+    ),
+    check(
+      "np_agent_approvals_time_check",
+      sql`(${t.expiresAt}>${t.requestedAt} and ${t.expiresAt}<=${t.requestedAt}+interval '7 days' and (${t.decidedAt} is null or (${t.decidedAt}>=${t.requestedAt} and ${t.decidedAt}<${t.expiresAt})) and (${t.revokedAt} is null or ${t.revokedAt}>=${t.requestedAt}) and ((${t.state}='consumed')=(${t.consumedAt} is not null)) and (${t.consumedAt} is null or (${t.consumedAt}>=${t.decidedAt} and ${t.consumedAt}<${t.expiresAt})) and (${t.reason} is null or char_length(${t.reason})<=4000) and (${t.revocationReason} is null or char_length(${t.revocationReason})<=4000)) is true`,
+    ),
+    check(
+      "np_agent_approvals_hash_check",
+      sql`(${t.planHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.capabilityFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.statementHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.requesterFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and char_length(${t.statementMac}) between 1 and 256 and char_length(${t.integrityKeyId}) between 1 and 128) is true`,
     ),
   ],
 );

@@ -17,6 +17,9 @@ const HEALTH_SUMMARY_MAXIMUM_BYTES = 128 * 1024;
 
 export const npAgentDiagnosticEntitiesV1 = [
   "action",
+  "changeset",
+  "changeset-operation",
+  "approval",
   "principal",
   "run",
   "service-token",
@@ -40,6 +43,19 @@ export const npAgentDiagnosticEntitiesV1 = [
 export type NpAgentDiagnosticEntityV1 = (typeof npAgentDiagnosticEntitiesV1)[number];
 
 export const npAgentDiagnosticStatesV1 = [
+  "draft",
+  "valid",
+  "validating",
+  "invalid",
+  "scheduled",
+  "applying",
+  "applied",
+  "verified",
+  "apply_failed",
+  "verification_failed",
+  "rolling_back",
+  "rolled_back",
+  "rollback_failed",
   "accepted",
   "absent",
   "active",

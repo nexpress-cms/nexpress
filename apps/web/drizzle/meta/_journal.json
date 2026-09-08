@@ -267,6 +267,13 @@
       "when": 1788228407398,
       "tag": "0037_harsh_kingpin",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1788793872332,
+      "tag": "0038_lumpy_johnny_blaze",
+      "breakpoints": true
     }
   ]
 }
