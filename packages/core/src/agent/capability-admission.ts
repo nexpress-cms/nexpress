@@ -9,6 +9,7 @@ import {
   npDigestAgentInvocationRequestCanonical,
   npRequireAgentAuthorizationContextCanonical,
   npRequireAgentGatewaySettings,
+  npRequireAgentScopesV1,
   npRequireAgentActionCanonical,
   npRequireAgentInvocationRequestCanonical,
   npRequireAgentReadCapabilityInvocationRequestV1,
@@ -17,6 +18,7 @@ import {
   type NpAgentReadCapabilityIdV1,
   type NpAgentReadCapabilityInvocationRequestV1,
   type NpAgentScope,
+  type NpAgentAuthorizationContextCanonicalV1,
 } from "../agent-contract/index.js";
 import { can } from "../auth/capabilities.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
@@ -40,8 +42,16 @@ import {
   type NpAgentReadCapabilityRegistryV1,
   type NpAgentResolvedGatewayPrincipalV1,
 } from "./capability-registry.js";
-import type { NpAgentAuthenticatedServicePrincipalV1 } from "./gateway-service.js";
-import type { NpAgentAuthenticatedOauthPrincipalV1 } from "./oauth-service.js";
+import {
+  npProjectAgentPrincipalV1,
+  npProjectAgentServiceTokenV1,
+  type NpAgentGatewayServiceV1,
+  type NpAgentAuthenticatedServicePrincipalV1,
+} from "./gateway-service.js";
+import {
+  npProjectAgentOauthClientV1,
+  type NpAgentAuthenticatedOauthPrincipalV1,
+} from "./oauth-service.js";
 
 type Db = ReturnType<typeof getDb>;
 
@@ -489,7 +499,121 @@ export function createAgentCapabilityAdmissionServiceV1(
     throw new Error("Agent invocation retention must be 60..86400 seconds.");
   }
 
-  return {
+  const service = {
+    /** Resume an admitted server job from persisted authority; never accepts a presented credential. */
+    async withStoredAuthority<T>(input: {
+      authorizationContext: NpAgentAuthorizationContextCanonicalV1;
+      authorizationContextFingerprint: string;
+      requiredScopes: readonly NpAgentScope[];
+      minimumExposure: "read" | "propose";
+      resolveTransportAudience: NpAgentGatewayServiceV1["getTransportAudience"];
+      mutate: (db: Db, now: Date, authentication: NpAgentCapabilityAuthenticationV1) => Promise<T>;
+    }): Promise<T> {
+      const context = npRequireAgentAuthorizationContextCanonical(input.authorizationContext);
+      const ref = context.authorityRef;
+      if (
+        context.actor.kind !== "principal" ||
+        !["service-family", "oauth-grant"].includes(ref.kind) ||
+        (await npDigestAgentAuthorizationContextCanonical(context)) !==
+          input.authorizationContextFingerprint
+      )
+        throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
+      const [principal] = await getDb()
+        .select()
+        .from(npAgentPrincipals)
+        .where(
+          and(
+            eq(npAgentPrincipals.siteId, context.siteId),
+            eq(npAgentPrincipals.id, context.actor.principalId),
+          ),
+        )
+        .limit(1);
+      if (!principal)
+        throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
+      let authentication: NpAgentCapabilityAuthenticationV1;
+      if (ref.kind === "service-family") {
+        const [token] = await getDb()
+          .select()
+          .from(npAgentServiceTokens)
+          .where(
+            and(
+              eq(npAgentServiceTokens.siteId, context.siteId),
+              eq(npAgentServiceTokens.principalId, principal.id),
+              eq(npAgentServiceTokens.rotationFamilyId, ref.rotationFamilyId),
+              eq(npAgentServiceTokens.status, "active_head"),
+            ),
+          )
+          .limit(1);
+        const projectedToken = token ? npProjectAgentServiceTokenV1(token) : null;
+        if (
+          !projectedToken ||
+          (await input.resolveTransportAudience(context.siteId, projectedToken.transport)) !==
+            ref.audience
+        )
+          throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
+        authentication = {
+          principal: npProjectAgentPrincipalV1(principal),
+          serviceToken: projectedToken,
+          scopes: projectedToken.scopes,
+          authorizationContext: context,
+          authorizationContextFingerprint: input.authorizationContextFingerprint,
+        };
+      } else if (ref.kind === "oauth-grant") {
+        const [grant] = await getDb()
+          .select()
+          .from(npAgentOauthGrants)
+          .where(
+            and(
+              eq(npAgentOauthGrants.siteId, context.siteId),
+              eq(npAgentOauthGrants.id, ref.grantId),
+            ),
+          )
+          .limit(1);
+        const [client] = grant
+          ? await getDb()
+              .select()
+              .from(npAgentOauthClients)
+              .where(
+                and(
+                  eq(npAgentOauthClients.siteId, context.siteId),
+                  eq(npAgentOauthClients.id, grant.clientId),
+                ),
+              )
+              .limit(1)
+          : [];
+        if (
+          !grant ||
+          !client ||
+          (await input.resolveTransportAudience(context.siteId, "mcp-http")) !== ref.audience
+        )
+          throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
+        authentication = {
+          kind: "oauth",
+          principal: npProjectAgentPrincipalV1(principal),
+          client: npProjectAgentOauthClientV1(client),
+          grantId: grant.id,
+          scopes: npRequireAgentScopesV1(grant.scopes),
+          authorizationContext: context,
+          authorizationContextFingerprint: input.authorizationContextFingerprint,
+        };
+      } else throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
+      return service.withCurrentAuthority({
+        authentication,
+        requiredScopes: input.requiredScopes,
+        minimumExposure: input.minimumExposure,
+        mutate: async (db, time) => {
+          const result = await input.mutate(db, time, authentication);
+          if (
+            (await input.resolveTransportAudience(
+              context.siteId,
+              descriptorTransport(context.transport),
+            )) !== ref.audience
+          )
+            throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
+          return result;
+        },
+      });
+    },
     /** Server-only domain transaction seam; installing it does not advertise a capability. */
     async withCurrentAuthority<T>(input: {
       authentication: NpAgentCapabilityAuthenticationV1;
@@ -866,6 +990,7 @@ export function createAgentCapabilityAdmissionServiceV1(
       }
     },
   };
+  return service;
 }
 
 export type NpAgentCapabilityAdmissionServiceV1 = ReturnType<

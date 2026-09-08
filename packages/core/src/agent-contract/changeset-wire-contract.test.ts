@@ -13,6 +13,7 @@ import {
   npAgentChangeSetWireContractV1,
   npDigestAgentChangeSetWireContractV1,
   npAgentChangeSetLimits,
+  npRequireAgentChangeSetValidateRequestV1,
 } from "./changeset-wire-contract.js";
 import { npRequireAgentChangeSetOperationInput } from "./changeset-contract.js";
 const id = "11111111-1111-4111-8111-111111111111";
@@ -299,5 +300,31 @@ describe("ChangeSet draft and client-safe wire contract", () => {
         decidedAt: "2026-09-08T01:00:00.000Z",
       }).ok,
     ).toBe(true);
+  });
+});
+
+describe("ChangeSet validation admission envelope", () => {
+  it("reuses the exact Admin CAS and idempotency input without a second draft hash contract", () => {
+    const request = { idempotencyKey: "validate:one", expectedVersion: 1 };
+    expect(npRequireAgentChangeSetValidateRequestV1(request)).toEqual(request);
+    for (const extra of [
+      { draftHash: hash },
+      { siteId: id },
+      { changeSetId: id },
+      { force: true },
+      { provider: "x" },
+    ])
+      expect(() => npRequireAgentChangeSetValidateRequestV1({ ...request, ...extra })).toThrow();
+    for (const expectedVersion of [0, -1, 1.5, Infinity, "1", null])
+      expect(() =>
+        npRequireAgentChangeSetValidateRequestV1({ ...request, expectedVersion }),
+      ).toThrow();
+    for (const idempotencyKey of ["", " ", "x".repeat(257), null])
+      expect(() =>
+        npRequireAgentChangeSetValidateRequestV1({ ...request, idempotencyKey }),
+      ).toThrow();
+    expect(() =>
+      npRequireAgentChangeSetValidateRequestV1({ idempotencyKey: request.idempotencyKey }),
+    ).toThrow();
   });
 });

@@ -1,4 +1,7 @@
-import { and, desc, eq } from "drizzle-orm";
+import { can } from "../auth/capabilities.js";
+import { NpConflictError, NpForbiddenError } from "../errors.js";
+import type { NpTransaction } from "../collections/pipeline.js";
+import { and, desc, eq, sql } from "drizzle-orm";
 
 import { npSettings } from "../db/schema/system.js";
 import { npNavigation, npSlugHistory } from "../db/schema/system.js";
@@ -27,7 +30,10 @@ async function resolveSiteId(): Promise<string> {
   return (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
 }
 
-export async function getNavigation(location: string = "header"): Promise<NpResolvedNavItem[]> {
+export async function getNavigation(
+  location: string = "header",
+  options?: { tx?: NpTransaction },
+): Promise<NpResolvedNavItem[]> {
   const locationIssues = npAnalyzeNavigationLocation(location);
   if (locationIssues.length > 0) {
     throw new NpValidationError(
@@ -35,7 +41,7 @@ export async function getNavigation(location: string = "header"): Promise<NpReso
       locationIssues.map((entry) => ({ field: entry.path, message: entry.message })),
     );
   }
-  const db = getDb();
+  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
   const siteId = await resolveSiteId();
   const rows = await db
     .select()
@@ -58,7 +64,7 @@ export async function getNavigation(location: string = "header"): Promise<NpReso
     );
   }
 
-  return resolveNavItemUrls(rows[0].items);
+  return resolveNavItemUrls(rows[0].items, options);
 }
 
 /**
@@ -84,7 +90,10 @@ export async function getNavigation(location: string = "header"): Promise<NpReso
  * stable across status flips — dropping the item would invalidate
  * the cache shape every time.
  */
-async function resolveNavItemUrls(items: NpNavItem[]): Promise<NpResolvedNavItem[]> {
+async function resolveNavItemUrls(
+  items: NpNavItem[],
+  options?: { tx?: NpTransaction },
+): Promise<NpResolvedNavItem[]> {
   // Group page-typed refs by source collection so we issue one
   // batch of lookups per collection. Items missing `collectionSlug`
   // default to `"pages"` so existing nav rows keep resolving
@@ -101,10 +110,15 @@ async function resolveNavItemUrls(items: NpNavItem[]): Promise<NpResolvedNavItem
       try {
         await Promise.all(
           ids.map(async (id) => {
-            const result = await findDocuments(collection, {
-              where: { id, status: "published" },
-              limit: 1,
-            });
+            const result = await findDocuments(
+              collection,
+              {
+                where: { id, status: "published" },
+                limit: 1,
+              },
+              undefined,
+              options,
+            );
             const doc = result.docs[0];
             if (doc) docByKey.set(`${collection}\0${id}`, doc);
           }),
@@ -311,14 +325,17 @@ export async function findSlugRedirect(
   return resolved;
 }
 
-export async function getSetting<T = unknown>(key: string): Promise<T | null> {
+export async function getSetting<T = unknown>(
+  key: string,
+  options?: { tx?: NpTransaction },
+): Promise<T | null> {
   const keyValidation = npValidateSettingKey(key);
   if (!keyValidation.ok) {
     throw new NpValidationError("Invalid setting key", [
       { field: keyValidation.issue.path, message: keyValidation.issue.message },
     ]);
   }
-  const db = getDb();
+  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
   const siteId = await resolveSiteId();
   const rows = await db
     .select()
@@ -332,4 +349,68 @@ export async function getSetting<T = unknown>(key: string): Promise<T | null> {
 
   npAssertSettingValue(key, rows[0].value);
   return rows[0].value as T;
+}
+
+/** Save the existing navigation tree through the same ACL and canonical validators as Admin. */
+export async function setNavigation(
+  location: string,
+  items: unknown,
+  user: NpAuthUser,
+  options?: { tx?: NpTransaction; expectedUpdatedAt?: string },
+): Promise<{ location: string; items: NpNavItem[]; updatedAt: string }> {
+  if (!can(user, "admin.manage")) throw new NpForbiddenError("navigation", "update");
+  const issues = [...npAnalyzeNavigationLocation(location), ...npAnalyzeNavigationItems(items)];
+  if (issues.length > 0) {
+    throw new NpValidationError(
+      "Invalid input",
+      issues.map((issue) => ({
+        field: issue.path.replace(/^navigation\./u, ""),
+        message: issue.message,
+      })),
+    );
+  }
+  const expected = options?.expectedUpdatedAt;
+  if (expected !== undefined) {
+    const timestamp = Date.parse(expected);
+    if (!Number.isFinite(timestamp) || new Date(timestamp).toISOString() !== expected) {
+      throw new NpValidationError("Invalid input", [
+        {
+          field: "expectedUpdatedAt",
+          message: "expectedUpdatedAt must be the canonical UTC date-time returned by this API",
+        },
+      ]);
+    }
+  }
+  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
+  const siteId = await resolveSiteId();
+  const now = new Date();
+  const [result] = await db
+    .insert(npNavigation)
+    .values({ siteId, location, items: items as NpNavItem[], updatedAt: now, updatedBy: user.id })
+    .onConflictDoUpdate({
+      target: [npNavigation.siteId, npNavigation.location],
+      set: {
+        items: items as NpNavItem[],
+        // API timestamps have millisecond precision. Always change the CAS token,
+        // including rapid writes and a stored clock ahead of the current host.
+        updatedAt: sql`greatest(${now.toISOString()}::timestamptz, date_trunc('milliseconds', ${npNavigation.updatedAt}) + interval '1 millisecond')`,
+        updatedBy: user.id,
+      },
+      ...(expected !== undefined
+        ? {
+            setWhere: sql`date_trunc('milliseconds', ${npNavigation.updatedAt}) = ${expected}::timestamptz`,
+          }
+        : {}),
+    })
+    .returning();
+  if (!result) {
+    throw new NpConflictError(
+      "Navigation was changed by another writer. Reload to see the latest version.",
+    );
+  }
+  return {
+    location: result.location,
+    items: result.items,
+    updatedAt: result.updatedAt.toISOString(),
+  };
 }

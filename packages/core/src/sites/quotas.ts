@@ -245,11 +245,18 @@ export async function npAssertSiteStorageQuotaDelta(
 export async function npAssertSiteDocumentCreateQuota(
   db: NpSiteQuotaDb,
   siteId: string,
+  additionalDocuments = 1,
 ): Promise<void> {
+  if (!Number.isSafeInteger(additionalDocuments) || additionalDocuments < 0) {
+    throw new Error("Site document quota delta must be a non-negative safe integer.");
+  }
   const quotas = await getSiteQuotasWithDb(db, siteId);
   if (quotas.documents === null) return;
   const used = await countSiteDocuments(db, siteId);
-  if (used >= quotas.documents) {
+  if (
+    !Number.isSafeInteger(used + additionalDocuments) ||
+    used + additionalDocuments > quotas.documents
+  ) {
     throw new NpRateLimitError(
       `Site document quota exceeded — ${used.toString()} of ${quotas.documents.toString()} documents are in use.`,
     );

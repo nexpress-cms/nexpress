@@ -6,13 +6,13 @@ import {
   NpValidationError,
   getCurrentSiteId,
   npNavigation,
+  setNavigation,
   can,
 } from "@nexpress/core";
 import {
   npAnalyzeNavigationItems,
   npAnalyzeNavigationLocation,
   type NpNavigationContractIssue,
-  type NpNavItem,
 } from "@nexpress/core/navigation";
 import { invalidateCacheTargets, navCacheTag, readJsonBody } from "@nexpress/next";
 import { and, eq } from "drizzle-orm";
@@ -148,51 +148,17 @@ export async function PUT(request: NextRequest) {
     throwNavigationIssues(npAnalyzeNavigationItems(items));
     const location = rawLocation as string;
 
-    const db = getDb();
-    const now = new Date();
     const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-
-    if (expectedUpdatedAt !== null) {
-      const [existing] = await db
-        .select({ updatedAt: npNavigation.updatedAt })
-        .from(npNavigation)
-        .where(and(eq(npNavigation.siteId, siteId), eq(npNavigation.location, location)))
-        .limit(1);
-      // Row missing: legitimate first save — let the upsert below
-      // create it. Row present but stale token: another writer
-      // landed in between, surface the conflict.
-      if (existing && existing.updatedAt.toISOString() !== expectedUpdatedAt) {
-        throw new NpConflictError(
-          "Navigation was changed by another writer. Reload to see the latest version.",
-        );
-      }
-    }
-
-    const [result] = await db
-      .insert(npNavigation)
-      .values({
-        siteId,
-        location,
-        items: items as NpNavItem[],
-        updatedAt: now,
-        updatedBy: user.id,
-      })
-      .onConflictDoUpdate({
-        target: [npNavigation.siteId, npNavigation.location],
-        set: { items: items as NpNavItem[], updatedAt: now, updatedBy: user.id },
-      })
-      .returning();
+    const result = await setNavigation(location, items, user, {
+      ...(expectedUpdatedAt !== null ? { expectedUpdatedAt } : {}),
+    });
 
     // Phase 14.3 — bust the per-(site, location) cache key set
     // up by `getCachedNavigation` so theme headers/footers
     // pick up the edit on the next render.
     await bustNavCache(siteId, location);
 
-    return npSuccessResponse({
-      location: result.location,
-      items: result.items,
-      updatedAt: result.updatedAt.toISOString(),
-    });
+    return npSuccessResponse(result);
   } catch (error) {
     return npErrorResponse(error instanceof Error ? error : new Error("Unknown error"));
   }

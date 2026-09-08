@@ -128,9 +128,8 @@ interface DrizzleDatabaseLike extends DrizzleTransactionLike {
  * Opaque transaction handle that external callers can thread into
  * pipeline write functions to make a sequence of writes atomic.
  *
- * Today only `deleteDocument` accepts a `{ tx }` option (used by
- * `wipeSeededContent` so a multi-row wipe rolls back as a unit on
- * failure). Callers obtain a handle by wrapping their batch in
+ * Reads and writes accept a `{ tx }` option so a batch sees its own
+ * writes and rolls back as a unit. Callers obtain a handle by wrapping their batch in
  * Drizzle's `db.transaction(async (tx) => { … })`; the `tx` value
  * passed to the callback IS the handle to thread on through.
  *
@@ -233,13 +232,19 @@ const deferredPostCommitStore = new AsyncLocalStorage<DeferredPostCommitHook[]>(
  * state. With deferral the queue drains only after commit and
  * vanishes on rollback.
  *
- * Re-entrant: nested calls run their inner queue independently;
- * the inner queue drains when the inner callback resolves, before
- * control returns to the outer.
+ * Re-entrant: successful nested scopes append their queue to the parent.
+ * Only the outermost successful scope drains; a failed nested scope discards
+ * its own queue even when the outer callback catches that failure. Wrap the
+ * actual outer transaction promise, not only its transaction callback.
  */
 export async function withDeferredPostCommit<T>(callback: () => Promise<T>): Promise<T> {
+  const parent = deferredPostCommitStore.getStore();
   const queue: DeferredPostCommitHook[] = [];
   const result = await deferredPostCommitStore.run(queue, callback);
+  if (parent) {
+    parent.push(...queue);
+    return result;
+  }
   // Drain on success. Each hook is independently isolated — one
   // failure logs and moves on, mirroring the eager `runPostCommit`
   // shape. We re-import the logger lazily to avoid a top-of-file
@@ -877,7 +882,7 @@ async function initSaveContext(
   const config = getCollectionConfig(collection);
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
-  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const db = (options?.tx ?? getDb()) as DrizzleDatabaseLike;
   // Caller can hand us a transaction (e.g. the seed loop batches
   // every theme's seedAll inside one outer tx). Cast from the
   // `unknown`-typed slot on NpSaveOptions; the structural shape
@@ -2404,11 +2409,12 @@ export async function findDocuments<T extends object = Record<string, unknown>>(
   collection: string,
   options: NpFindOptions<NoInfer<T>>,
   user?: NpAuthUser,
+  execution?: { tx?: NpTransaction },
 ): Promise<NpFindResult<T>> {
   const config = getCollectionConfig(collection);
   const registration = getCollectionRegistration(collection);
   const table = getCollectionTable(collection) as PgTable;
-  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const db = (execution?.tx ?? getDb()) as DrizzleTransactionLike;
   const normalizedOptions = npRequireCollectionFindOptions(options, config, {
     maximumLimit: 10_000,
     allowSystemWildcards: true,
@@ -2522,9 +2528,10 @@ export async function getDocumentById<T extends object = Record<string, unknown>
   collection: string,
   id: string,
   user?: NpAuthUser,
+  options?: { tx?: NpTransaction },
 ): Promise<T | null> {
   const config = getCollectionConfig(collection);
-  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const db = (options?.tx ?? getDb()) as DrizzleTransactionLike;
   const registration = getCollectionRegistration(collection);
   const doc = await getDocumentByIdOptional(db, registration, id);
 
@@ -2555,6 +2562,7 @@ export async function npGetPersistedCollectionDocumentById(
   collection: string,
   id: string,
   siteId: string,
+  options?: { tx?: NpTransaction },
 ): Promise<Record<string, unknown> | null> {
   if (!npIsCanonicalSiteId(siteId)) {
     throw new NpValidationError("Invalid collection document site", [
@@ -2562,7 +2570,7 @@ export async function npGetPersistedCollectionDocumentById(
     ]);
   }
   const registration = getCollectionRegistration(collection);
-  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const db = (options?.tx ?? getDb()) as DrizzleTransactionLike;
   const document = await getDocumentByIdOptional(db, registration, id, "write-result");
   if (document && document.siteId !== siteId) {
     throw new NpForbiddenError(collection, "cross-site");
@@ -2575,6 +2583,7 @@ export async function npGetPersistedCollectionDocumentIds(
   collection: string,
   ids: readonly string[],
   siteId: string,
+  options?: { tx?: NpTransaction },
 ): Promise<string[]> {
   if (!npIsCanonicalSiteId(siteId)) {
     throw new NpValidationError("Invalid collection document site", [
@@ -2603,7 +2612,7 @@ export async function npGetPersistedCollectionDocumentIds(
   if (ids.length === 0) return [];
 
   const table = getCollectionTable(collection) as PgTable;
-  const db = getDb() as unknown as DrizzleDatabaseLike;
+  const db = (options?.tx ?? getDb()) as DrizzleTransactionLike;
   const rows = (await db
     .select({
       id: getTableColumn(table, "id"),
@@ -3080,7 +3089,7 @@ function buildQueryConditions(table: PgTable, options: NpFindOptions): QueryCond
 }
 
 async function executeFindQuery(
-  db: DrizzleDatabaseLike,
+  db: DrizzleTransactionLike,
   table: PgTable,
   options: NpFindOptions,
   whereClause: ReturnType<typeof sql> | undefined,

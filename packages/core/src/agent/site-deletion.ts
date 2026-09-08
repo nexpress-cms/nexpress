@@ -15,6 +15,7 @@ import {
   npAgentConnections,
   npAgentActions,
   npAgentChangesets,
+  npAgentChangesetValidationAttempts,
   npAgentChangesetOperations,
   npAgentApprovals,
   npAgentInvocations,
@@ -56,6 +57,11 @@ const descriptors = {
     table: npAgentChangesetOperations,
     id: npAgentChangesetOperations.id,
     siteId: npAgentChangesetOperations.siteId,
+  },
+  np_agent_changeset_validation_attempts: {
+    table: npAgentChangesetValidationAttempts,
+    id: npAgentChangesetValidationAttempts.id,
+    siteId: npAgentChangesetValidationAttempts.siteId,
   },
   np_agent_changesets: {
     table: npAgentChangesets,
@@ -162,6 +168,7 @@ export const npAgentSiteOwnedTableNamesV1 = Object.freeze(
  */
 export const npAgentSiteDeletionOrderV1 = Object.freeze([
   "np_agent_approvals",
+  "np_agent_changeset_validation_attempts",
   "np_agent_changeset_operations",
   "np_agent_changesets",
   "np_agent_mcp_tasks",

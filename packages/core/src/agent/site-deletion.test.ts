@@ -11,6 +11,7 @@ const expectedTables = [
   "np_agent_actions",
   "np_agent_approvals",
   "np_agent_changeset_operations",
+  "np_agent_changeset_validation_attempts",
   "np_agent_changesets",
   "np_agent_connection_auth_requests",
   "np_agent_connection_config_versions",

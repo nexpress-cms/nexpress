@@ -1334,9 +1334,11 @@ export interface NpSaveOptions {
    * Pre-write hooks still fire OUTSIDE the tx (they shouldn't see
    * pending state). Post-commit work (collection after-hooks,
    * `content:afterSave` jobs, and plugin lifecycle hooks) fires
-   * after the inner persist block but before the caller's outer
-   * tx commits — their side effects can diverge from final DB
-   * state on rollback. Same trade-off as `deleteDocument({ tx })`.
+   * after the inner persist block. Wrap caller-owned transactions in
+   * `withDeferredPostCommit(() => db.transaction(...))` to flush only
+   * after the outer commit and discard follow-ups on rollback. Nested
+   * deferred scopes join the parent queue. The same rule applies to
+   * `deleteDocument({ tx })`.
    */
   tx?: unknown;
 }

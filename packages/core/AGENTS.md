@@ -118,7 +118,18 @@ No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugi
   use `saveDocument` to reserve draft ids. Exact ChangeSet wires exclude sealed
   plans, snapshots and approval integrity fields. Draft service installation
   does not advertise new MCP/HTTP capabilities or install a worker. Doctor,
-  deletion and fresh migrations share the 22-table/92-constraint inventory.
+  deletion and fresh migrations share the 23-table/101-constraint inventory.
+
+- AP-303/AP-304 validation extends that same service with generation-bound
+  durable attempts, inline validation and explicitly invoked queue recovery.
+  Stored requester session/family/grant authority must be current before and
+  after protected reads. Reuse explicit `NpTransaction` reads and the existing
+  resource validation/base reader; never manufacture preview or apply results.
+  Sealed plan/snapshot hashes are verified on projection and never exposed as
+  raw bodies. `proposedAfterHash` commits normalized intent; actual apply hashes
+  remain a later responsibility. Transaction callers wrap the outer transaction
+  in `withDeferredPostCommit`; nested queues join the parent and rollback drops
+  callbacks. Navigation CAS belongs in the atomic write, not a prior read.
 
 - Public build entries are declared in `tsup.config.ts`; client-safe contracts such as `jobs-contract` and `community-contract` must not import server dependencies. Apps reference the `db-schema` entry in `drizzle.config.ts`.
 - `agent-contract/` is likewise pure: browser-safe wires may reuse its exact

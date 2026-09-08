@@ -403,6 +403,20 @@ sealed-plan production, preview, approval decisions, execution and transport/UI
 exposure remain assigned to the later rows below. No package version or
 changeset is changed. Details: [R3 draft foundation review](r3-draft-foundation-review.md).
 
+AP-303/AP-304 implementation (2026-09-08): existing resource services now
+accept the caller transaction through document, navigation, SEO, theme and
+media-reference reads. Nested post-commit callbacks wait for the outer commit;
+navigation writes use atomic version CAS. The ChangeSet service admits one
+durable validation generation under draftVersion CAS and reconstructs the
+requester's current authority before protected reads. Bounded snapshots,
+resource bases, conflict checks and deterministic risk produce an immutable
+ready plan and frozen rollback window without applying content. Small plans
+validate inline; host-injected enqueue and explicit bounded recovery handle
+larger plans without installing a worker. Migration 0039 adds the validation
+attempt table; Doctor covers 23 tables and 101 critical constraints. Preview,
+approval decisions, apply and transport/UI exposure remain later work.
+Details: [R3 validation review](r3-validation-review.md).
+
 | ID     | Scope                                                                                                                                                                                                                                                                                                                                                 |
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | AP-301 | Add ChangeSet/operation/approval client-safe contracts and persistence, including retained discriminated sealed plan bodies, frozen rollback duration, and exact before-snapshot `snapshot_hash`                                                                                                                                                      |

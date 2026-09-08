@@ -1,3 +1,4 @@
+import type { NpTransaction } from "../collections/pipeline.js";
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { AnyPgColumn, PgTable } from "drizzle-orm/pg-core";
 
@@ -124,13 +125,16 @@ export async function listSites(): Promise<NpSite[]> {
   return rows.map(rowToSite);
 }
 
-export async function getSiteById(id: string): Promise<NpSite | null> {
+export async function getSiteById(
+  id: string,
+  options?: { tx?: NpTransaction },
+): Promise<NpSite | null> {
   if (!npIsCanonicalSiteId(id)) {
     throw new NpValidationError("Invalid input", [
       { field: "id", message: "Site id must be a canonical lowercase id" },
     ]);
   }
-  const db = getDb();
+  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
   const [row] = await db.select().from(npSites).where(eq(npSites.id, id)).limit(1);
   return row ? rowToSite(row) : null;
 }

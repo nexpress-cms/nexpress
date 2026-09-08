@@ -1,6 +1,7 @@
 export {
   getTheme,
   getNavigation,
+  setNavigation,
   getPageBySlug,
   getPostBySlug,
   findPosts,
@@ -8,3 +9,4 @@ export {
   getAllPageSlugs,
   getSetting,
 } from "./helpers.js";
+export { setTheme } from "../theme/runtime.js";

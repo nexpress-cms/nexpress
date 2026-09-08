@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, desc, eq, lt, lte, inArray, or, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, lt, lte, inArray, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
 import {
   npAgentChangesets,
@@ -7,10 +7,12 @@ import {
   npAgentInvocations,
   npAgentPrincipals,
   npAgentApprovals,
+  npAgentChangesetValidationAttempts,
 } from "../db/schema/agent.js";
-import { npUsers } from "../db/schema/system.js";
+import { npUsers, npSessions, npSiteMemberships } from "../db/schema/system.js";
 import { npAuditEvents } from "../db/schema/community.js";
 import { can } from "../auth/capabilities.js";
+import type { NpTransaction } from "../collections/pipeline.js";
 import type { NpAuthUser } from "../config/types.js";
 import {
   npRequireAgentChangeSetWire,
@@ -18,6 +20,9 @@ import {
   npVerifyAgentChangeSetAdminProposalV1,
   npDigestAgentChangeSetDraftInputV1,
   npAgentChangeSetLimits,
+  npRequireAgentChangeSetValidateRequestV1,
+  type NpAgentChangeSetValidateRequestV1,
+  type NpAgentValidationIssueWire,
   type NpAgentChangeSetDraftInputV1,
   type NpAgentChangeSetWire,
   type NpAgentChangeSetAdminInputV1,
@@ -25,6 +30,9 @@ import {
 import {
   npDigestAgentChangeSetProposalCanonical,
   npRequireAgentChangeSetProposalCanonical,
+  npRequireAgentChangeSetPlanCanonical,
+  npDigestAgentChangeSetPlanCanonical,
+  npDigestAgentChangeSetSnapshotCanonical,
 } from "../agent-contract/canonical-changeset.js";
 import { npGetAgentAdminOperationV1 } from "../agent-contract/admin-operation-registry.js";
 import {
@@ -35,7 +43,10 @@ import {
   npDigestAgentInvocationRequestCanonical,
   npRequireAgentInvocationRequestCanonical,
 } from "../agent-contract/canonical-idempotency-request.js";
-import { npDigestAgentAuthorizationContextCanonical } from "../agent-contract/canonical-authorization-context.js";
+import {
+  npRequireAgentAuthorizationContextCanonical,
+  npDigestAgentAuthorizationContextCanonical,
+} from "../agent-contract/canonical-authorization-context.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import { npAnalyzeAgentCursorPageV1 } from "../agent-contract/wire-contract.js";
 import { npRequireAgentContractResult } from "../agent-contract/contract.js";
@@ -44,6 +55,7 @@ import {
   type NpAgentJsonObject,
   type NpAgentChangeSetProposalOperationCanonicalV1,
   type NpAgentScope,
+  type NpAgentAuthorizationContextCanonicalV1,
 } from "../agent-contract/types.js";
 import {
   createAgentAdminAdmissionV1,
@@ -58,6 +70,12 @@ import type {
   NpAgentCapabilityAuthenticationV1,
 } from "./capability-admission.js";
 import { createAgentChangeSetResourceServiceV1 } from "./changeset-resources.js";
+import type { NpAgentGatewayServiceV1 } from "./gateway-service.js";
+import { npDigestAgentStaffSiteAuthorizationCanonical } from "../agent-contract/canonical-bodies.js";
+import {
+  createAgentChangeSetValidationResourceServiceV1,
+  NpAgentChangeSetValidationResourceErrorV1,
+} from "./changeset-validation-resources.js";
 import { createAgentCursorCodecV1 } from "./cursor.js";
 
 type Db = ReturnType<typeof getDb>;
@@ -70,6 +88,19 @@ export interface NpAgentChangeSetServiceOptionsV1 extends NpAgentAdminAdmissionO
   cursorKey: Uint8Array;
   admission?: NpAgentCapabilityAdmissionServiceV1;
   eligibilitySeconds?: number;
+  gateway?: Pick<NpAgentGatewayServiceV1, "getTransportAudience">;
+  validationLifetimeSeconds?: number;
+  inlineValidationOperationLimit?: number;
+  rollbackWindowSeconds?: number;
+  /** Explicit host producer. Failure leaves a durable queued attempt for reconciliation. */
+  enqueueValidation?: (job: {
+    siteId: string;
+    attemptId: string;
+    changeSetId: string;
+    generation: number;
+    draftVersion: number;
+    draftHash: string;
+  }) => Promise<void>;
 }
 const hash = (domain: string, value: unknown): `cj1:sha256:${string}` =>
   `cj1:sha256:${createHash("sha256").update(`${domain}\0`).update(serializeAgentCanonicalJson(value)).digest("base64url")}`;
@@ -103,6 +134,23 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
   const cursor = createAgentCursorCodecV1(options.cursorKey, "np.agent-changeset.cursor");
   const admin = createAgentAdminAdmissionV1(options);
   const resources = createAgentChangeSetResourceServiceV1();
+  const validationResources = createAgentChangeSetValidationResourceServiceV1();
+  const validationLifetime = options.validationLifetimeSeconds ?? 3600;
+  const inlineLimit = options.inlineValidationOperationLimit ?? 25;
+  const rollbackWindow =
+    options.rollbackWindowSeconds ?? npAgentChangeSetLimits.rollbackDefaultSeconds;
+  if (
+    !Number.isSafeInteger(validationLifetime) ||
+    validationLifetime < 60 ||
+    validationLifetime > 86400 ||
+    !Number.isSafeInteger(inlineLimit) ||
+    inlineLimit < 0 ||
+    inlineLimit > 500 ||
+    !Number.isSafeInteger(rollbackWindow) ||
+    rollbackWindow < 60 ||
+    rollbackWindow > npAgentChangeSetLimits.rollbackMaximumSeconds
+  )
+    throw new Error("Invalid ChangeSet validation limits.");
   async function resolve(input: NpAgentChangeSetActorV1, write: boolean): Promise<Actor> {
     const scope: NpAgentScope = write ? "changeset:write" : "changeset:read";
     if (input.kind === "staff") {
@@ -227,13 +275,244 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
     });
     if ((await npDigestAgentChangeSetProposalCanonical(proposal)) !== row.draftHash)
       throw missing();
-    // Later phases install the validation/execution owners; this draft service does not invent their evidence.
-    if (
-      !["draft", "invalid", "cancelled"].includes(row.state) ||
-      row.planHash !== null ||
-      row.sealedPlanBody !== null
-    )
+    if (!["draft", "validating", "invalid", "ready", "cancelled"].includes(row.state))
       throw missing();
+    let validation: NpAgentChangeSetWire["validation"] = null;
+    let attempt: typeof npAgentChangesetValidationAttempts.$inferSelect | undefined;
+    if (row.state !== "draft" && row.validationGeneration > 0) {
+      [attempt] = await getDb()
+        .select()
+        .from(npAgentChangesetValidationAttempts)
+        .where(
+          and(
+            eq(npAgentChangesetValidationAttempts.siteId, row.siteId),
+            eq(npAgentChangesetValidationAttempts.changesetId, row.id),
+            eq(npAgentChangesetValidationAttempts.generation, row.validationGeneration),
+            eq(npAgentChangesetValidationAttempts.draftVersion, row.draftVersion),
+            eq(npAgentChangesetValidationAttempts.draftHash, row.draftHash),
+          ),
+        )
+        .limit(1);
+    }
+    if (["validating", "invalid", "ready"].includes(row.state) && !attempt) throw missing();
+    if (attempt) {
+      const context = npRequireAgentAuthorizationContextCanonical(attempt.authorizationContextBody);
+      if (
+        context.siteId !== row.siteId ||
+        (await npDigestAgentAuthorizationContextCanonical(context)) !==
+          attempt.authorizationContextFingerprint ||
+        serializeAgentCanonicalJson(context.authorityRef) !==
+          serializeAgentCanonicalJson(attempt.authorityRef) ||
+        context.actor.kind !== attempt.requesterKind ||
+        context.actor.actorFingerprint !== attempt.requesterFingerprint ||
+        (context.actor.kind === "staff" ? context.actor.userId : context.actor.principalId) !==
+          attempt.requesterId
+      )
+        throw missing();
+      const [invocation] = await getDb()
+        .select()
+        .from(npAgentInvocations)
+        .where(
+          and(
+            eq(npAgentInvocations.siteId, row.siteId),
+            eq(npAgentInvocations.id, attempt.admittingInvocationId),
+          ),
+        )
+        .limit(1);
+      if (
+        !invocation ||
+        invocation.state !== "completed" ||
+        !["agents.changesets.validate", "changeset.validate"].includes(invocation.operationId) ||
+        invocation.resultId !== row.id ||
+        invocation.outputRedacted?.attemptId !== attempt.id ||
+        invocation.authorizationContextFingerprint !== attempt.authorizationContextFingerprint ||
+        serializeAgentCanonicalJson(invocation.authorizationContextBody) !==
+          serializeAgentCanonicalJson(context) ||
+        (await npDigestAgentInvocationRequestCanonical(invocation.requestBody)) !==
+          invocation.requestHash
+      )
+        throw missing();
+      if (
+        (row.state === "validating" && !["queued", "validating"].includes(attempt.state)) ||
+        (row.state === "invalid" && !["invalid", "failed"].includes(attempt.state)) ||
+        (row.state === "ready" && attempt.state !== "ready")
+      )
+        throw missing();
+      validation = {
+        state:
+          attempt.state === "ready"
+            ? "valid"
+            : attempt.state === "validating"
+              ? "running"
+              : (attempt.state as "queued" | "invalid" | "failed"),
+        generation: attempt.generation,
+        issueCount: attempt.issues.length,
+        digest: attempt.resultDigest,
+        completedAt: attempt.finishedAt?.toISOString() ?? null,
+      };
+      if (attempt.state === "invalid") {
+        if (
+          attempt.resultDigest !==
+          hash("np.agent-changeset-validation-result.v1", {
+            generation: attempt.generation,
+            draftHash: attempt.draftHash,
+            issues: attempt.issues,
+          })
+        )
+          throw missing();
+        for (const op of ops) {
+          const relevant = attempt.issues.filter(
+            (issue) => issue.operationOrdinal === null || issue.operationOrdinal === op.ordinal,
+          );
+          if (
+            serializeAgentCanonicalJson(op.issues) !== serializeAgentCanonicalJson(relevant) ||
+            op.state !== (relevant.length ? "invalid" : "draft")
+          )
+            throw missing();
+        }
+      }
+    }
+    if (row.sealedPlanBody !== null) {
+      const sealed = npRequireAgentChangeSetPlanCanonical(row.sealedPlanBody);
+      if (
+        sealed.planKind !== "changeset" ||
+        sealed.siteId !== row.siteId ||
+        sealed.changeSetId !== row.id ||
+        !attempt ||
+        attempt.state !== "ready" ||
+        !["ready", "cancelled"].includes(row.state)
+      )
+        throw missing();
+      const body = sealed.body;
+      if (
+        (await npDigestAgentChangeSetPlanCanonical(sealed)) !== row.planHash ||
+        body.draftVersion !== row.draftVersion ||
+        body.draftHash !== row.draftHash ||
+        body.validationGeneration !== row.validationGeneration ||
+        body.baseFingerprint !== row.baseFingerprint ||
+        body.expiresAt !== row.expiresAt.toISOString() ||
+        body.rollbackWindowSeconds !== row.rollbackWindowSeconds ||
+        body.operations.length !== ops.length ||
+        serializeAgentCanonicalJson(body.risk) !== serializeAgentCanonicalJson(row.riskSummary) ||
+        serializeAgentCanonicalJson(body.risk) !==
+          serializeAgentCanonicalJson(attempt.riskSummary) ||
+        attempt.issues.length !== 0 ||
+        attempt.resultDigest !==
+          hash("np.agent-changeset-validation-result.v1", {
+            generation: attempt.generation,
+            draftHash: attempt.draftHash,
+            planHash: row.planHash,
+            issues: [],
+          })
+      )
+        throw missing();
+      let bytes = 0;
+      const bases = [];
+      for (let index = 0; index < ops.length; index++) {
+        const op = ops[index];
+        const planned = body.operations[index];
+        const snapshot = op.beforeSnapshot;
+        if (
+          op.state !== "valid" ||
+          op.issues.length !== 0 ||
+          op.afterHash !== null ||
+          op.resultDigest !== null ||
+          planned.ordinal !== op.ordinal ||
+          serializeAgentCanonicalJson(planned.operation) !==
+            serializeAgentCanonicalJson(op.input) ||
+          serializeAgentCanonicalJson(planned.canonicalResourceKey) !==
+            serializeAgentCanonicalJson(op.resourceKey) ||
+          serializeAgentCanonicalJson(op.baseVersion) !==
+            serializeAgentCanonicalJson(op.input.base) ||
+          op.beforeHash !== planned.beforeHash ||
+          op.snapshotHash !== planned.snapshotHash ||
+          !snapshot ||
+          snapshot.siteId !== row.siteId ||
+          snapshot.changeSetId !== row.id ||
+          snapshot.operationOrdinal !== op.ordinal ||
+          serializeAgentCanonicalJson(snapshot.canonicalResourceKey) !==
+            serializeAgentCanonicalJson(op.resourceKey) ||
+          (await npDigestAgentChangeSetSnapshotCanonical(snapshot)) !== planned.snapshotHash
+        )
+          throw missing();
+        bytes += Buffer.byteLength(serializeAgentCanonicalJson(snapshot));
+        if (bytes > npAgentChangeSetLimits.aggregateSnapshotBytes) throw missing();
+        const absentCreate =
+          planned.operation.kind === "document" && planned.operation.operation === "create";
+        if (
+          snapshot.presence === "present" &&
+          serializeAgentCanonicalJson(snapshot.base) !==
+            serializeAgentCanonicalJson(planned.operation.base)
+        )
+          throw missing();
+        if (
+          snapshot.presence === "absent" &&
+          !absentCreate &&
+          !(
+            planned.operation.kind === "setting" &&
+            planned.operation.operation === "replace" &&
+            planned.operation.base === null
+          ) &&
+          !(
+            planned.operation.kind === "theme_tokens" &&
+            planned.operation.base?.version === "absent" &&
+            planned.operation.base.digest === planned.beforeHash
+          )
+        )
+          throw missing();
+        if (
+          snapshot.presence === "present"
+            ? snapshot.base?.digest !== planned.beforeHash
+            : absentCreate
+              ? planned.beforeHash !== null
+              : planned.beforeHash !==
+                hash("np.agent-changeset-resource.v1", {
+                  siteId: row.siteId,
+                  canonicalResourceKey: op.resourceKey,
+                  presence: "absent",
+                  value: null,
+                })
+        )
+          throw missing();
+        bases.push({
+          ordinal: op.ordinal,
+          canonicalResourceKey: op.resourceKey,
+          presence: snapshot.presence,
+          base: snapshot.base,
+          snapshotHash: op.snapshotHash,
+        });
+      }
+      if (
+        body.baseFingerprint !== hash("np.agent-changeset-bases.v1", { siteId: row.siteId, bases })
+      )
+        throw missing();
+    } else {
+      if (
+        row.planHash !== null ||
+        row.baseFingerprint !== null ||
+        row.riskSummary !== null ||
+        row.rollbackWindowSeconds !== null ||
+        row.state === "ready" ||
+        attempt?.state === "ready"
+      )
+        throw missing();
+      if (
+        ops.some(
+          (op) =>
+            op.beforeSnapshot !== null ||
+            op.snapshotHash !== null ||
+            op.beforeHash !== null ||
+            op.afterHash !== null ||
+            op.resultDigest !== null,
+        )
+      )
+        throw missing();
+      if (
+        ["draft", "validating"].includes(row.state) &&
+        ops.some((op) => op.state !== "draft" || op.issues.length !== 0)
+      )
+        throw missing();
+    }
     let name = "Deleted staff";
     const actorId = row.principalId ?? row.createdByUserId ?? row.actorFingerprint;
     if (row.principalId) {
@@ -267,11 +546,11 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
       agentVersionId: row.agentVersionId,
       agentConfigHash: row.agentConfigHash,
       runId: row.runId,
-      planHash: null,
-      baseFingerprint: null,
+      planHash: row.planHash,
+      baseFingerprint: row.baseFingerprint,
       draftVersion: row.draftVersion,
       draftHash: row.draftHash,
-      risk: null,
+      risk: row.riskSummary,
       operations: ops.map((op) => ({
         ordinal: op.ordinal,
         operation: op.input,
@@ -282,7 +561,7 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
         issues: op.issues,
         resultDigest: op.resultDigest,
       })),
-      validation: null,
+      validation,
       preview: null,
       approval: null,
       schedule: null,
@@ -522,72 +801,106 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
     if (current && current.expiresAt <= now()) throw conflict();
     return changeSetId;
   }
-  const definitionBody = npRequireAgentCapabilityRegistryCanonical({
-    schemaVersion: "np.agent-capability-registry.v1",
-    projection: "definition",
-    capabilities: [
-      {
-        descriptor: {
-          schemaVersion: "np.agent-capability.v1",
-          id: "changeset.create",
-          contractVersion: 1,
-          source: "core",
-          title: "Create ChangeSet draft",
-          description: "Persist a canonical draft without applying content changes.",
-          requiredScopes: ["changeset:write"],
-          scopeDerivation: "changeset-resources",
-          risk: "reversible",
-          approval: "none",
+  function definition(operation: "create" | "validate") {
+    const validating = operation === "validate";
+    const sourceSchema = npGetAgentAdminOperationV1(
+      validating ? "agents.changesets.validate" : "agents.changesets.create",
+    ).schemas.input.schema;
+    const inputSchema = validating
+      ? {
+          ...sourceSchema,
+          properties: {
+            ...(sourceSchema.properties as object),
+            changeSetId: { type: "string", format: "uuid", maxLength: 36 },
+          },
+          required: [...(sourceSchema.required as string[]), "changeSetId"],
+        }
+      : sourceSchema;
+    return npRequireAgentCapabilityRegistryCanonical({
+      schemaVersion: "np.agent-capability-registry.v1",
+      projection: "definition",
+      capabilities: [
+        {
+          descriptor: {
+            schemaVersion: "np.agent-capability.v1",
+            id: validating ? "changeset.validate" : "changeset.create",
+            contractVersion: 1,
+            source: "core",
+            title: validating ? "Validate ChangeSet draft" : "Create ChangeSet draft",
+            description: validating
+              ? "Validate and seal the current draft without applying content changes."
+              : "Persist a canonical draft without applying content changes.",
+            requiredScopes: [validating ? "changeset:read" : "changeset:write"],
+            scopeDerivation: "changeset-resources",
+            risk: "reversible",
+            approval: "none",
+            effectProfiles: [
+              {
+                id: validating ? "changeset.validation" : "changeset.draft-create",
+                kind: "mutation",
+                reversibility: "none",
+                minimumGatewayExposure: "propose",
+                verifierId: validating ? "changeset.validation.verify" : "changeset.draft.verify",
+                compensatorId: null,
+              },
+            ],
+            bootstrapIntent: "write",
+            execution: "inline",
+            idempotency: "required",
+            gateway: { transports: ["agent-http", "mcp-http", "stdio"] },
+            inputSchema,
+            outputSchema: {
+              $schema: "https://json-schema.org/draft/2020-12/schema",
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                changeSetId: { type: "string", format: "uuid", maxLength: 36 },
+                ...(validating
+                  ? { attemptId: { type: "string", format: "uuid", maxLength: 36 } }
+                  : {}),
+              },
+              required: validating ? ["changeSetId", "attemptId"] : ["changeSetId"],
+            },
+          },
+          implementationVersion: 1,
           effectProfiles: [
             {
-              id: "changeset.draft-create",
+              schemaVersion: "np.agent-effect-profile.v1",
+              capabilityId: validating ? "changeset.validate" : "changeset.create",
+              capabilityContractVersion: 1,
+              implementationVersion: 1,
+              profileId: validating ? "changeset.validation" : "changeset.draft-create",
               kind: "mutation",
               reversibility: "none",
               minimumGatewayExposure: "propose",
-              verifierId: "changeset.draft.verify",
+              effectContractVersion: 1,
+              verifierId: validating ? "changeset.validation.verify" : "changeset.draft.verify",
               compensatorId: null,
             },
           ],
-          bootstrapIntent: "write",
-          execution: "inline",
-          idempotency: "required",
-          gateway: { transports: ["agent-http", "mcp-http", "stdio"] },
-          inputSchema: npGetAgentAdminOperationV1("agents.changesets.create").schemas.input.schema,
-          outputSchema: {
-            $schema: "https://json-schema.org/draft/2020-12/schema",
-            type: "object",
-            additionalProperties: false,
-            properties: { changeSetId: { type: "string", format: "uuid", maxLength: 36 } },
-            required: ["changeSetId"],
-          },
         },
-        implementationVersion: 1,
-        effectProfiles: [
-          {
-            schemaVersion: "np.agent-effect-profile.v1",
-            capabilityId: "changeset.create",
-            capabilityContractVersion: 1,
-            implementationVersion: 1,
-            profileId: "changeset.draft-create",
-            kind: "mutation",
-            reversibility: "none",
-            minimumGatewayExposure: "propose",
-            effectContractVersion: 1,
-            verifierId: "changeset.draft.verify",
-            compensatorId: null,
-          },
-        ],
-      },
-    ],
-  });
-  async function createForPrincipal(
+      ],
+    });
+  }
+  const createDefinition = definition("create");
+  const validateDefinition = definition("validate");
+  async function invokePrincipal(
     input: Extract<NpAgentChangeSetActorV1, { kind: "principal" }>,
     actor: Actor,
-    request: NpAgentChangeSetAdminInputV1<"create">,
-    draft: NpAgentChangeSetDraftInputV1,
+    request: NpAgentChangeSetAdminInputV1<"create"> | NpAgentChangeSetValidateRequestV1,
+    kind: "create" | "validate",
+    persist: (
+      db: Db,
+      time: Date,
+      invocationId: string,
+    ) => Promise<{ changeSetId: string; attemptId?: string }>,
+    targetId?: string,
   ) {
     if (!options.admission) throw missing();
     const authentication = input.authentication;
+    const operationId = kind === "create" ? "changeset.create" : "changeset.validate";
+    const profileId = kind === "create" ? "changeset.draft-create" : "changeset.validation";
+    const definitionBody = kind === "create" ? createDefinition : validateDefinition;
     const fingerprint = await npDigestAgentCapabilityRegistryCanonical(
       definitionBody,
       definitionBody.capabilities,
@@ -602,11 +915,11 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
       actorFingerprint: actor.fingerprint,
       authorizationContextFingerprint: authorizationFingerprint,
       operationKind: "capability",
-      operationId: "changeset.create",
+      operationId,
       contractVersion: 1,
       contractFingerprint: fingerprint,
-      effectProfile: { id: "changeset.draft-create", contractVersion: 1 },
-      input: json(request),
+      effectProfile: { id: profileId, contractVersion: 1 },
+      input: json(kind === "validate" ? { ...request, changeSetId: targetId } : request),
     });
     const requestHash = await npDigestAgentInvocationRequestCanonical(body);
     return options.admission.withCurrentAuthority({
@@ -623,7 +936,7 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
               eq(npAgentInvocations.actorFingerprint, actor.fingerprint),
               eq(npAgentInvocations.authorizationContextFingerprint, authorizationFingerprint),
               eq(npAgentInvocations.operationKind, "capability"),
-              eq(npAgentInvocations.operationId, "changeset.create"),
+              eq(npAgentInvocations.operationId, operationId),
               eq(npAgentInvocations.idempotencyKey, request.idempotencyKey),
             ),
           )
@@ -635,17 +948,28 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
             !previous.resultId
           )
             throw conflict();
-          return previous.resultId;
+          const output = previous.outputRedacted;
+          if (
+            !output ||
+            output.changeSetId !== previous.resultId ||
+            (kind === "validate" &&
+              (typeof output.attemptId !== "string" || !uuid.test(output.attemptId)))
+          )
+            throw conflict();
+          return {
+            changeSetId: previous.resultId,
+            ...(kind === "validate" ? { attemptId: output.attemptId as string } : {}),
+          };
         }
         const [audit] = await db
           .insert(npAuditEvents)
           .values({
             siteId: actor.siteId,
             actorKind: "agent-principal",
-            action: "agents.changesets.create",
+            action: kind === "create" ? "agents.changesets.create" : "agents.changesets.validate",
             targetType: "agent-changeset",
             targetId: null,
-            payload: { requestHash, operationId: "changeset.create", outcome: "completed" },
+            payload: { requestHash, operationId, outcome: "completed" },
             createdAt: time,
           })
           .returning({ id: npAuditEvents.id });
@@ -661,11 +985,11 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
           authorizationContextFingerprint: authorizationFingerprint,
           authorityRef: authentication.authorizationContext.authorityRef,
           operationKind: "capability",
-          operationId: "changeset.create",
+          operationId,
           contractVersion: 1,
           contractFingerprint: fingerprint,
           capabilityDefinitionBody: definitionBody,
-          effectProfileId: "changeset.draft-create",
+          effectProfileId: profileId,
           effectContractVersion: 1,
           transport: authentication.authorizationContext.transport,
           mcpExecutionMode: ["mcp-service", "mcp-oauth"].includes(
@@ -681,7 +1005,8 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
           requestedAt: time,
           expiresAt: new Date(time.getTime() + 86400_000),
         });
-        const id = await mutate(db, time, actor, draft, request, null, invocationId);
+        const output = await persist(db, time, invocationId);
+        const id = output.changeSetId;
         await db.update(npAuditEvents).set({ targetId: id }).where(eq(npAuditEvents.id, audit.id));
         await db
           .update(npAgentInvocations)
@@ -689,12 +1014,12 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
             state: "completed",
             resultKind: "changeset",
             resultId: id,
-            outputRedacted: { changeSetId: id },
-            outputHash: hash("np.agent-changeset-result.v1", { changeSetId: id }),
+            outputRedacted: output,
+            outputHash: hash("np.agent-changeset-result.v1", output),
             completedAt: time,
           })
           .where(eq(npAgentInvocations.id, invocationId));
-        return id;
+        return output;
       },
     });
   }
@@ -731,7 +1056,18 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
             },
           });
           id = result.resourceId;
-        } else id = await createForPrincipal(input.actor, actor, request, draft);
+        } else
+          id = (
+            await invokePrincipal(
+              input.actor,
+              actor,
+              request,
+              "create",
+              async (db, time, invocationId) => ({
+                changeSetId: await mutate(db, time, actor, draft, request, null, invocationId),
+              }),
+            )
+          ).changeSetId;
         break;
       } catch (error) {
         const cause = error as { code?: string; cause?: { code?: string } };
@@ -860,7 +1196,730 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
       ),
     );
   }
-  /** Host-invoked, bounded draft expiry maintenance. No worker is registered. */
+  const validationFailure = (
+    code: "ACCESS_DENIED" | "VALIDATION_FAILED" = "VALIDATION_FAILED",
+  ): NpAgentValidationIssueWire => ({
+    code,
+    severity: "error",
+    operationOrdinal: null,
+    path: "validation",
+    message:
+      code === "ACCESS_DENIED"
+        ? "Validation authority is unavailable."
+        : "Validation could not be completed.",
+    evidenceRefs: [],
+  });
+  async function admitValidation(
+    db: Db,
+    actor: Actor,
+    id: string,
+    request: NpAgentChangeSetValidateRequestV1,
+    invocationId: string,
+  ) {
+    const [row] = await db
+      .select()
+      .from(npAgentChangesets)
+      .where(and(eq(npAgentChangesets.siteId, actor.siteId), eq(npAgentChangesets.id, id)))
+      .for("update")
+      .limit(1);
+    const time = now();
+    if (!row) throw missing();
+    if (
+      row.draftVersion !== request.expectedVersion ||
+      !["draft", "invalid"].includes(row.state) ||
+      row.expiresAt.getTime() - time.getTime() < 60000
+    )
+      throw conflict();
+    const ops = await operations(db, row);
+    for (const op of ops)
+      requireScopes(
+        actor,
+        await resources.assertVisible({
+          siteId: row.siteId,
+          user: actor.user,
+          operation: op.input,
+          canonicalResourceKey: op.resourceKey,
+          tx: db as unknown as NpTransaction,
+        }),
+      );
+    const proposal = {
+      schemaVersion: "np.agent-changeset-proposal.v1",
+      siteId: row.siteId,
+      changeSetId: row.id,
+      draftVersion: row.draftVersion,
+      title: row.title,
+      summary: row.summary,
+      operations: ops.map((op) => ({
+        ordinal: op.ordinal,
+        operation: op.input,
+        canonicalResourceKey: op.resourceKey,
+      })),
+    };
+    if ((await npDigestAgentChangeSetProposalCanonical(proposal)) !== row.draftHash)
+      throw conflict();
+    const [invocation] = await db
+      .select()
+      .from(npAgentInvocations)
+      .where(
+        and(eq(npAgentInvocations.siteId, row.siteId), eq(npAgentInvocations.id, invocationId)),
+      )
+      .limit(1);
+    if (!invocation) throw missing();
+    const context = npRequireAgentAuthorizationContextCanonical(
+      invocation.authorizationContextBody,
+    );
+    const generation = row.validationGeneration + 1;
+    const attemptId = randomUUID();
+    await db.insert(npAgentChangesetValidationAttempts).values({
+      id: attemptId,
+      siteId: row.siteId,
+      changesetId: row.id,
+      generation,
+      draftVersion: row.draftVersion,
+      draftHash: row.draftHash,
+      admittingInvocationId: invocationId,
+      authorizationContextBody: context,
+      authorizationContextFingerprint: invocation.authorizationContextFingerprint,
+      authorityRef: context.authorityRef,
+      requesterKind: context.actor.kind,
+      requesterId:
+        context.actor.kind === "staff" ? context.actor.userId : context.actor.principalId,
+      requesterFingerprint: context.actor.actorFingerprint,
+      createdAt: time,
+      expiresAt: new Date(
+        Math.min(row.expiresAt.getTime(), time.getTime() + validationLifetime * 1000),
+      ),
+    });
+    await db
+      .update(npAgentChangesets)
+      .set({
+        state: "validating",
+        validationGeneration: generation,
+        planHash: null,
+        sealedPlanBody: null,
+        baseFingerprint: null,
+        riskSummary: null,
+        policyRefs: [],
+        rollbackWindowSeconds: null,
+        updatedAt: time,
+      })
+      .where(eq(npAgentChangesets.id, id));
+    await db
+      .update(npAgentChangesetOperations)
+      .set({
+        state: "draft",
+        beforeHash: null,
+        beforeSnapshot: null,
+        snapshotHash: null,
+        afterHash: null,
+        issues: [],
+        resultDigest: null,
+        updatedAt: time,
+      })
+      .where(
+        and(
+          eq(npAgentChangesetOperations.siteId, row.siteId),
+          eq(npAgentChangesetOperations.changesetId, id),
+        ),
+      );
+    return { changeSetId: id, attemptId };
+  }
+  async function storedStaff(
+    db: Db,
+    context: NpAgentAuthorizationContextCanonicalV1,
+    fingerprint: string,
+  ): Promise<Actor> {
+    const checked = npRequireAgentAuthorizationContextCanonical(context);
+    const ref = checked.authorityRef;
+    if (
+      ref.kind !== "staff-session" ||
+      checked.actor.kind !== "staff" ||
+      (await npDigestAgentAuthorizationContextCanonical(checked)) !== fingerprint
+    )
+      throw denied();
+    const [user] = await db
+      .select()
+      .from(npUsers)
+      .where(eq(npUsers.id, ref.userId))
+      .for("update")
+      .limit(1);
+    await db
+      .select({ id: npSessions.id })
+      .from(npSessions)
+      .where(eq(npSessions.id, ref.sessionId))
+      .for("update");
+    await db
+      .select({ role: npSiteMemberships.role })
+      .from(npSiteMemberships)
+      .where(
+        and(eq(npSiteMemberships.siteId, checked.siteId), eq(npSiteMemberships.userId, ref.userId)),
+      )
+      .for("update");
+    if (!user || user.tokenVersion !== ref.userTokenVersion) throw denied();
+    const authority = await npResolveAgentStaffSessionAuthorizationV1(
+      db,
+      checked.siteId,
+      { user, sessionId: ref.sessionId },
+      now(),
+    );
+    if (
+      (await npDigestAgentStaffSiteAuthorizationCanonical(authority)) !==
+      ref.siteAuthorizationDigest
+    )
+      throw denied();
+    const effectiveUser = {
+      ...user,
+      role:
+        authority.authority.kind === "super-admin"
+          ? ("admin" as const)
+          : (authority.authority.role as NpAuthUser["role"]),
+    };
+    if (!can(effectiveUser, "site.access")) throw denied();
+    return {
+      siteId: checked.siteId,
+      user: effectiveUser,
+      scopes: null,
+      principalId: null,
+      fingerprint: checked.actor.actorFingerprint,
+      authorization: serializeAgentCanonicalJson(authority),
+    };
+  }
+  async function performValidation(
+    db: Db,
+    actor: Actor,
+    seed: typeof npAgentChangesetValidationAttempts.$inferSelect,
+  ) {
+    await db.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`np.agent-changeset:${seed.siteId}`}, 0))`,
+    );
+    const [row] = await db
+      .select()
+      .from(npAgentChangesets)
+      .where(
+        and(eq(npAgentChangesets.siteId, seed.siteId), eq(npAgentChangesets.id, seed.changesetId)),
+      )
+      .for("update")
+      .limit(1);
+    const [attempt] = await db
+      .select()
+      .from(npAgentChangesetValidationAttempts)
+      .where(
+        and(
+          eq(npAgentChangesetValidationAttempts.siteId, seed.siteId),
+          eq(npAgentChangesetValidationAttempts.id, seed.id),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!row || !attempt) return { state: "stale" as const };
+    if (!["queued", "validating"].includes(attempt.state)) return { state: attempt.state };
+    if (
+      row.validationGeneration !== attempt.generation ||
+      row.draftVersion !== attempt.draftVersion ||
+      row.draftHash !== attempt.draftHash ||
+      row.state !== "validating"
+    )
+      return { state: "stale" as const };
+    if (attempt.expiresAt <= now() || row.expiresAt <= now())
+      throw new NpAgentGatewayError("VALIDATION_EXPIRED", 409, "Validation expired.");
+    if (
+      serializeAgentCanonicalJson(attempt.authorizationContextBody) !==
+        serializeAgentCanonicalJson(seed.authorizationContextBody) ||
+      attempt.authorizationContextFingerprint !== seed.authorizationContextFingerprint ||
+      actor.fingerprint !== attempt.requesterFingerprint ||
+      actor.siteId !== attempt.siteId
+    )
+      throw denied();
+    const [invocation] = await db
+      .select()
+      .from(npAgentInvocations)
+      .where(
+        and(
+          eq(npAgentInvocations.siteId, row.siteId),
+          eq(npAgentInvocations.id, attempt.admittingInvocationId),
+        ),
+      )
+      .limit(1);
+    if (
+      !invocation ||
+      invocation.state !== "completed" ||
+      !["agents.changesets.validate", "changeset.validate"].includes(invocation.operationId) ||
+      invocation.resultId !== row.id ||
+      invocation.outputRedacted?.attemptId !== attempt.id ||
+      invocation.authorizationContextFingerprint !== attempt.authorizationContextFingerprint ||
+      serializeAgentCanonicalJson(invocation.authorizationContextBody) !==
+        serializeAgentCanonicalJson(attempt.authorizationContextBody) ||
+      serializeAgentCanonicalJson(invocation.authorityRef) !==
+        serializeAgentCanonicalJson(attempt.authorityRef) ||
+      (await npDigestAgentInvocationRequestCanonical(invocation.requestBody)) !==
+        invocation.requestHash
+    )
+      throw missing();
+    const ops = await operations(db, row);
+    const proposal = npRequireAgentChangeSetProposalCanonical({
+      schemaVersion: "np.agent-changeset-proposal.v1",
+      siteId: row.siteId,
+      changeSetId: row.id,
+      draftVersion: row.draftVersion,
+      title: row.title,
+      summary: row.summary,
+      operations: ops.map((op) => ({
+        ordinal: op.ordinal,
+        operation: op.input,
+        canonicalResourceKey: op.resourceKey,
+      })),
+    });
+    if ((await npDigestAgentChangeSetProposalCanonical(proposal)) !== attempt.draftHash)
+      throw missing();
+    for (const op of ops) {
+      try {
+        requireScopes(
+          actor,
+          await resources.assertVisible({
+            siteId: row.siteId,
+            user: actor.user,
+            operation: op.input,
+            canonicalResourceKey: op.resourceKey,
+            tx: db as unknown as NpTransaction,
+          }),
+        );
+      } catch (error) {
+        if (error instanceof NpAgentGatewayError) throw denied();
+        throw error;
+      }
+    }
+    await db
+      .update(npAgentChangesetValidationAttempts)
+      .set({ state: "validating", startedAt: now() })
+      .where(eq(npAgentChangesetValidationAttempts.id, attempt.id));
+    let checked: Awaited<ReturnType<typeof validationResources.validate>>;
+    try {
+      checked = await validationResources.validate({
+        tx: db as unknown as NpTransaction,
+        siteId: row.siteId,
+        user: actor.user,
+        changeSetId: row.id,
+        operations: proposal.operations,
+        now: now(),
+      });
+      requireScopes(actor, checked.requiredScopes);
+    } catch (error) {
+      if (!(error instanceof NpAgentChangeSetValidationResourceErrorV1)) throw error;
+      if (attempt.expiresAt <= now() || row.expiresAt <= now())
+        throw new NpAgentGatewayError("VALIDATION_EXPIRED", 409, "Validation expired.");
+      const issues = error.issues;
+      const resultDigest = hash("np.agent-changeset-validation-result.v1", {
+        generation: attempt.generation,
+        draftHash: attempt.draftHash,
+        issues,
+      });
+      await db
+        .update(npAgentChangesetValidationAttempts)
+        .set({ state: "invalid", issues: issues.map(json), resultDigest, finishedAt: now() })
+        .where(eq(npAgentChangesetValidationAttempts.id, attempt.id));
+      await db
+        .update(npAgentChangesets)
+        .set({ state: "invalid", updatedAt: now() })
+        .where(eq(npAgentChangesets.id, row.id));
+      for (const op of ops) {
+        const relevant = issues.filter(
+          (issue) => issue.operationOrdinal === null || issue.operationOrdinal === op.ordinal,
+        );
+        await db
+          .update(npAgentChangesetOperations)
+          .set({
+            state: relevant.length ? "invalid" : "draft",
+            issues: relevant.map(json),
+            updatedAt: now(),
+          })
+          .where(eq(npAgentChangesetOperations.id, op.id));
+      }
+      await db.insert(npAuditEvents).values({
+        siteId: row.siteId,
+        actorKind: "system",
+        action: "agents.changesets.validation_finished",
+        targetType: "agent-changeset",
+        targetId: row.id,
+        payload: {
+          generation: attempt.generation,
+          outcome: "invalid",
+          issueCount: issues.length,
+        },
+        createdAt: now(),
+      });
+      return { state: "invalid" as const };
+    }
+    if (attempt.expiresAt <= now() || row.expiresAt <= now())
+      throw new NpAgentGatewayError("VALIDATION_EXPIRED", 409, "Validation expired.");
+    const requiredApplyScopes: NpAgentScope[] = [
+      ...new Set<NpAgentScope>(["changeset:apply", ...checked.requiredApplyScopes]),
+    ].sort();
+    const plan = npRequireAgentChangeSetPlanCanonical({
+      schemaVersion: "np.agent-changeset-plan.v1",
+      planKind: "changeset",
+      siteId: row.siteId,
+      changeSetId: row.id,
+      body: {
+        draftVersion: row.draftVersion,
+        draftHash: row.draftHash,
+        validationGeneration: attempt.generation,
+        baseFingerprint: checked.baseFingerprint,
+        operations: checked.operations,
+        risk: checked.risk,
+        requiredScopes: requiredApplyScopes,
+        requiredHumanCapabilities: [
+          ...new Set(requiredApplyScopes.map((scope) => npAgentScopeStaffCapability[scope])),
+        ].sort(),
+        requiredHumanPredicates: [],
+        policyHashes: checked.policyHashes,
+        expiresAt: row.expiresAt.toISOString(),
+        rollbackWindowSeconds: rollbackWindow,
+      },
+    });
+    const planHash = await npDigestAgentChangeSetPlanCanonical(plan);
+    const resultDigest = hash("np.agent-changeset-validation-result.v1", {
+      generation: attempt.generation,
+      draftHash: attempt.draftHash,
+      planHash,
+      issues: [],
+    });
+    for (const op of checked.operations) {
+      const snapshot = checked.snapshots.find(
+        (snapshot) => snapshot.operationOrdinal === op.ordinal,
+      );
+      if (
+        !snapshot ||
+        (await npDigestAgentChangeSetSnapshotCanonical(snapshot)) !== op.snapshotHash
+      )
+        throw missing();
+      await db
+        .update(npAgentChangesetOperations)
+        .set({
+          state: "valid",
+          beforeHash: op.beforeHash,
+          beforeSnapshot: snapshot,
+          snapshotHash: op.snapshotHash,
+          issues: [],
+          updatedAt: now(),
+        })
+        .where(
+          and(
+            eq(npAgentChangesetOperations.siteId, row.siteId),
+            eq(npAgentChangesetOperations.changesetId, row.id),
+            eq(npAgentChangesetOperations.ordinal, op.ordinal),
+          ),
+        );
+    }
+    await db
+      .update(npAgentChangesets)
+      .set({
+        state: "ready",
+        planHash,
+        sealedPlanBody: plan,
+        baseFingerprint: checked.baseFingerprint,
+        riskSummary: checked.risk,
+        rollbackWindowSeconds: rollbackWindow,
+        updatedAt: now(),
+      })
+      .where(eq(npAgentChangesets.id, row.id));
+    await db
+      .update(npAgentChangesetValidationAttempts)
+      .set({ state: "ready", riskSummary: checked.risk, resultDigest, finishedAt: now() })
+      .where(eq(npAgentChangesetValidationAttempts.id, attempt.id));
+    await db.insert(npAuditEvents).values({
+      siteId: row.siteId,
+      actorKind: "system",
+      action: "agents.changesets.validation_finished",
+      targetType: "agent-changeset",
+      targetId: row.id,
+      payload: { generation: attempt.generation, outcome: "ready" },
+      createdAt: now(),
+    });
+    return { state: "ready" as const };
+  }
+  async function failValidation(
+    seed: typeof npAgentChangesetValidationAttempts.$inferSelect,
+    code: string,
+  ) {
+    return getDb().transaction(async (db) => {
+      const [row] = await db
+        .select()
+        .from(npAgentChangesets)
+        .where(
+          and(
+            eq(npAgentChangesets.siteId, seed.siteId),
+            eq(npAgentChangesets.id, seed.changesetId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      const [attempt] = await db
+        .select()
+        .from(npAgentChangesetValidationAttempts)
+        .where(
+          and(
+            eq(npAgentChangesetValidationAttempts.siteId, seed.siteId),
+            eq(npAgentChangesetValidationAttempts.id, seed.id),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!row || !attempt || !["queued", "validating"].includes(attempt.state))
+        return { state: attempt?.state ?? "stale" };
+      if (
+        row.validationGeneration !== attempt.generation ||
+        row.draftVersion !== attempt.draftVersion ||
+        row.draftHash !== attempt.draftHash ||
+        row.state !== "validating"
+      )
+        return { state: "stale" };
+      await db
+        .update(npAgentChangesetValidationAttempts)
+        .set({
+          state: "failed",
+          errorCode: code,
+          issues: [
+            json(
+              validationFailure(
+                code === "AUTHORITY_REVOKED" ? "ACCESS_DENIED" : "VALIDATION_FAILED",
+              ),
+            ),
+          ],
+          finishedAt: now(),
+        })
+        .where(eq(npAgentChangesetValidationAttempts.id, attempt.id));
+      await db
+        .update(npAgentChangesets)
+        .set({ state: "invalid", updatedAt: now() })
+        .where(eq(npAgentChangesets.id, row.id));
+      await db.insert(npAuditEvents).values({
+        siteId: row.siteId,
+        actorKind: "system",
+        action: "agents.changesets.validation_finished",
+        targetType: "agent-changeset",
+        targetId: row.id,
+        payload: { generation: attempt.generation, outcome: "failed", code },
+        createdAt: now(),
+      });
+      return { state: "failed" };
+    });
+  }
+  async function processValidationOnce(input: { siteId: string; attemptId: string }) {
+    if (!uuid.test(input.attemptId)) throw missing();
+    const [attempt] = await getDb()
+      .select()
+      .from(npAgentChangesetValidationAttempts)
+      .where(
+        and(
+          eq(npAgentChangesetValidationAttempts.siteId, input.siteId),
+          eq(npAgentChangesetValidationAttempts.id, input.attemptId),
+        ),
+      )
+      .limit(1);
+    if (!attempt) throw missing();
+    if (!["queued", "validating"].includes(attempt.state)) return { state: attempt.state };
+    let admitted = false;
+    try {
+      if (attempt.authorityRef.kind === "staff-session")
+        return await getDb().transaction(
+          async (db) => {
+            const actor = await storedStaff(
+              db,
+              attempt.authorizationContextBody,
+              attempt.authorizationContextFingerprint,
+            );
+            admitted = true;
+            const result = await performValidation(db, actor, attempt);
+            await storedStaff(
+              db,
+              attempt.authorizationContextBody,
+              attempt.authorizationContextFingerprint,
+            );
+            return result;
+          },
+          { isolationLevel: "serializable" },
+        );
+      if (!options.admission || !options.gateway) throw denied();
+      return await options.admission.withStoredAuthority({
+        authorizationContext: attempt.authorizationContextBody,
+        authorizationContextFingerprint: attempt.authorizationContextFingerprint,
+        requiredScopes: ["changeset:read"],
+        minimumExposure: "propose",
+        resolveTransportAudience: options.gateway.getTransportAudience,
+        mutate: async (db, _time, authentication) => {
+          const userId =
+            authentication.principal.authority.kind === "user"
+              ? authentication.principal.authority.userId
+              : null;
+          if (!userId) throw denied();
+          const authority = await npResolveLiveAgentStaffAuthorizationV1(
+            db,
+            attempt.siteId,
+            userId,
+          );
+          const [user] = await db.select().from(npUsers).where(eq(npUsers.id, userId)).limit(1);
+          if (!user) throw denied();
+          const actor: Actor = {
+            siteId: attempt.siteId,
+            user: {
+              ...user,
+              role:
+                authority.authority.kind === "super-admin"
+                  ? "admin"
+                  : (authority.authority.role as NpAuthUser["role"]),
+            },
+            fingerprint: attempt.requesterFingerprint,
+            scopes: authentication.scopes,
+            principalId: authentication.principal.id,
+            authorization: serializeAgentCanonicalJson(authority),
+          };
+          admitted = true;
+          return performValidation(db, actor, attempt);
+        },
+      });
+    } catch (error) {
+      const dbError = error as { code?: string; cause?: { code?: string } };
+      if (["40001", "40P01"].includes(dbError.cause?.code ?? dbError.code ?? "")) throw conflict();
+      const code =
+        error instanceof NpAgentGatewayError && error.code === "VALIDATION_EXPIRED"
+          ? "VALIDATION_EXPIRED"
+          : !admitted ||
+              (error instanceof NpAgentGatewayError &&
+                [
+                  "AUTHORIZATION_CHANGED",
+                  "CHANGESET_ACCESS_DENIED",
+                  "STAFF_AUTHORIZATION_REQUIRED",
+                  "SITE_ACCESS_DENIED",
+                  "CAPABILITY_UNAVAILABLE",
+                ].includes(error.code))
+            ? "AUTHORITY_REVOKED"
+            : "VALIDATION_FAILED";
+      return failValidation(attempt, code);
+    }
+  }
+  async function processValidation(input: { siteId: string; attemptId: string }) {
+    for (let retry = 0; ; retry++) {
+      try {
+        return await processValidationOnce(input);
+      } catch (error) {
+        if (
+          retry >= 2 ||
+          !(error instanceof NpAgentGatewayError) ||
+          error.code !== "CHANGESET_CONFLICT"
+        )
+          throw error;
+      }
+    }
+  }
+  async function validate(input: { actor: NpAgentChangeSetActorV1; id: string; command: unknown }) {
+    if (!uuid.test(input.id)) throw missing();
+    const command = npRequireAgentChangeSetValidateRequestV1(input.command);
+    const actor = await resolve(input.actor, false);
+    let result: { changeSetId: string; attemptId?: string } | undefined;
+    for (let retry = 0; retry < 3; retry++) {
+      try {
+        if (input.actor.kind === "staff") {
+          const admission = await admin({
+            siteId: actor.siteId,
+            actor: input.actor.actor,
+            operationId: "agents.changesets.validate",
+            targetId: input.id,
+            command,
+            mutate: async ({ db, invocationId }) => {
+              const output = await admitValidation(db, actor, input.id, command, invocationId);
+              await same(input.actor, actor);
+              return { resourceId: input.id, output };
+            },
+          });
+          result = { changeSetId: admission.resourceId, attemptId: admission.output.attemptId };
+        } else
+          result = await invokePrincipal(
+            input.actor,
+            actor,
+            command,
+            "validate",
+            (db, _time, invocationId) =>
+              admitValidation(db, actor, input.id, command, invocationId),
+            input.id,
+          );
+        break;
+      } catch (error) {
+        const cause = error as { code?: string; cause?: { code?: string } };
+        if (retry === 2 || !["40001", "23505"].includes(cause.cause?.code ?? cause.code ?? ""))
+          throw error;
+        await same(input.actor, actor);
+      }
+    }
+    if (!result?.attemptId) throw conflict();
+    const [attempt] = await getDb()
+      .select()
+      .from(npAgentChangesetValidationAttempts)
+      .where(
+        and(
+          eq(npAgentChangesetValidationAttempts.siteId, actor.siteId),
+          eq(npAgentChangesetValidationAttempts.id, result.attemptId),
+        ),
+      )
+      .limit(1);
+    if (!attempt) throw missing();
+    if (attempt.state === "queued") {
+      const [row] = await getDb()
+        .select()
+        .from(npAgentChangesets)
+        .where(eq(npAgentChangesets.id, attempt.changesetId))
+        .limit(1);
+      if (!row) throw missing();
+      if ((await operations(getDb(), row)).length <= inlineLimit)
+        await processValidation({ siteId: actor.siteId, attemptId: attempt.id });
+      else if (options.enqueueValidation) {
+        try {
+          await options.enqueueValidation({
+            siteId: actor.siteId,
+            attemptId: attempt.id,
+            changeSetId: row.id,
+            generation: attempt.generation,
+            draftVersion: attempt.draftVersion,
+            draftHash: attempt.draftHash,
+          });
+        } catch {
+          /* Durable queued admission is retried by the explicit host processor. */
+        }
+      }
+    }
+    return get({ actor: input.actor, id: result.changeSetId });
+  }
+  /** Host-invoked recovery for queued admissions, including failed enqueue notifications. */
+  async function reconcileValidations(input: { siteId: string; limit?: number }) {
+    const limit = input.limit ?? 25;
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+      throw new Error("Validation reconciliation limit must be 1..100.");
+    const attempts = await getDb()
+      .select({ id: npAgentChangesetValidationAttempts.id })
+      .from(npAgentChangesetValidationAttempts)
+      .where(
+        and(
+          eq(npAgentChangesetValidationAttempts.siteId, input.siteId),
+          eq(npAgentChangesetValidationAttempts.state, "queued"),
+        ),
+      )
+      .orderBy(
+        asc(npAgentChangesetValidationAttempts.createdAt),
+        asc(npAgentChangesetValidationAttempts.id),
+      )
+      .limit(limit);
+    let completed = 0;
+    for (const attempt of attempts) {
+      try {
+        const result = await processValidation({ siteId: input.siteId, attemptId: attempt.id });
+        if (["ready", "invalid", "failed"].includes(result.state)) completed++;
+      } catch (error) {
+        if (!(error instanceof NpAgentGatewayError) || error.code !== "CHANGESET_CONFLICT")
+          throw error;
+      }
+    }
+    return { examined: attempts.length, completed };
+  }
+  /** Host-invoked, bounded pre-execution expiry maintenance. No worker is registered. */
   async function reconcileExpired(input: { siteId: string; limit?: number }) {
     const limit = input.limit ?? 100;
     if (!Number.isInteger(limit) || limit < 1 || limit > 100)
@@ -873,7 +1932,7 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
         .where(
           and(
             eq(npAgentChangesets.siteId, input.siteId),
-            inArray(npAgentChangesets.state, ["draft", "invalid"]),
+            inArray(npAgentChangesets.state, ["draft", "invalid", "ready"]),
             lte(npAgentChangesets.expiresAt, time),
           ),
         )
@@ -924,6 +1983,9 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
     get,
     list,
     reconcileExpired,
+    validate,
+    processValidation,
+    reconcileValidations,
   };
 }
 export type NpAgentChangeSetServiceV1 = ReturnType<typeof createAgentChangeSetServiceV1>;

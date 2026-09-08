@@ -1,3 +1,4 @@
+import type { NpTransaction } from "../collections/pipeline.js";
 import { and, asc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 
@@ -27,6 +28,7 @@ export interface NpMediaReference {
 }
 
 export interface NpListMediaReferencesOptions {
+  tx?: NpTransaction;
   field?: string;
   limit?: number;
 }
@@ -128,7 +130,7 @@ export async function listMediaReferences(
     throw new Error("Media reference field must be non-empty trimmed text.");
   }
   const { getDb } = await import("../db/runtime.js");
-  const db = getDb();
+  const db = (options.tx ?? getDb()) as ReturnType<typeof getDb>;
   const condition = options.field
     ? and(
         eq(npMediaRefs.siteId, siteId),

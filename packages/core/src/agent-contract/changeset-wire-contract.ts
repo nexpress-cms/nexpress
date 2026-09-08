@@ -453,6 +453,28 @@ export function npRequireAgentChangeSetAdminInputV1<M extends "create" | "update
     "Invalid ChangeSet Admin input",
   );
 }
+export interface NpAgentChangeSetValidateRequestV1 {
+  idempotencyKey: string;
+  expectedVersion: number;
+}
+export function npRequireAgentChangeSetValidateRequestV1(
+  value: unknown,
+): NpAgentChangeSetValidateRequestV1 {
+  return npRequireAgentContractResult(
+    analyzeCanonicalBody("agent.changeset.validate", () =>
+      object(clone(value, "agent.changeset.validate"), "agent.changeset.validate", {
+        idempotencyKey: (v, p) => {
+          const key = canonicalRuntimeText(v, p, 256);
+          if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(key))
+            failCanonicalBody("invalid-field", p, "must be an idempotency key");
+          return key;
+        },
+        expectedVersion: positive,
+      }),
+    ),
+    "Invalid ChangeSet validation request",
+  );
+}
 export async function npVerifyAgentChangeSetAdminProposalV1<M extends "create" | "update">(
   mode: M,
   value: unknown,
