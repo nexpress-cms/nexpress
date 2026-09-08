@@ -1,3 +1,4 @@
+import { npAssertAgentPreviewEffectsAllowed } from "../agent/changeset-preview-overlay.js";
 import {
   npNormalizeCacheInvalidationRequest,
   npRequireCacheInvalidationAdapter,
@@ -55,6 +56,7 @@ export async function npRunCacheInvalidation(
   candidate: NpCacheInvalidationAdapter,
   request: NpCacheInvalidationRequest,
 ): Promise<NpCacheInvalidationResult> {
+  npAssertAgentPreviewEffectsAllowed();
   const normalized = npNormalizeCacheInvalidationRequest(request);
   const current = npRequireCacheInvalidationAdapter(candidate);
   let rawResult: unknown;
@@ -81,6 +83,7 @@ export async function npRunCacheInvalidation(
 export async function npInvalidateCache(
   request: NpCacheInvalidationRequest,
 ): Promise<NpCacheInvalidationResult> {
+  npAssertAgentPreviewEffectsAllowed();
   const normalized = npNormalizeCacheInvalidationRequest(request);
   const current = adapter;
   if (!current) {

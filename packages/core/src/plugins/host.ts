@@ -1,3 +1,7 @@
+import {
+  npAssertAgentPreviewEffectsAllowed,
+  npIsAgentChangeSetPreview,
+} from "../agent/changeset-preview-overlay.js";
 import type { NpFieldConfig, NpPluginConfig, NpPluginContext } from "../config/types.js";
 import {
   npAnalyzeAgentPluginGatewayExtensionsV1,
@@ -1364,6 +1368,7 @@ export async function runHook<TName extends NpPluginLifecycleHookName>(
   hookName: TName,
   data: NpPluginHookDataMap[TName],
 ): Promise<void> {
+  if (npIsAgentChangeSetPreview()) return;
   const validation = npValidatePluginHookData(hookName, data);
   if (!validation.ok) {
     throw new Error(`Invalid plugin hook dispatch for "${hookName}": ${validation.message}`);
@@ -1406,6 +1411,7 @@ export async function runHookAndCollect<T>(
   data: NpRenderHookData,
   options?: NpHookCollectOptions,
 ): Promise<T[]> {
+  if (npIsAgentChangeSetPreview()) return [];
   const dataValidation = npValidatePluginHookData(hookName, data);
   if (!dataValidation.ok) {
     throw new Error(`Invalid plugin hook dispatch for "${hookName}": ${dataValidation.message}`);
@@ -1630,6 +1636,7 @@ export async function dispatchPluginAction(
   data?: unknown,
   invocation?: NpPluginActionInvocation,
 ): Promise<{ ok: boolean; data?: unknown; error?: string }> {
+  npAssertAgentPreviewEffectsAllowed();
   const registration = pluginRegistry.get(pluginId);
   if (!registration) {
     return { ok: false, error: `Plugin "${pluginId}" is not registered` };
@@ -1645,6 +1652,7 @@ export async function dispatchPluginAction(
 }
 
 export async function schedulePluginTask(pluginId: string, taskId: string): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
   const { enqueueJob } = await import("../jobs/queue.js");
   const { requireSiteId } = await import("../sites/context.js");
   const siteId = await requireSiteId();
@@ -1676,6 +1684,7 @@ export function getRegisteredPluginSchedules(): PluginScheduleHandler[] {
  * worker's retry policy surfaces the misconfiguration.
  */
 export async function runPluginScheduledTask(pluginId: string, taskId: string): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
   const registration = pluginRegistry.get(pluginId);
   if (!registration) {
     throw new Error(`Plugin "${pluginId}" is not registered`);

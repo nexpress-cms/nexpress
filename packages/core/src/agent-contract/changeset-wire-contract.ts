@@ -1,3 +1,8 @@
+import {
+  canonicalBodyPreviewRoute,
+  canonicalBodyPreviewLocale,
+  canonicalBodyQuerylessHttpsOrigin,
+} from "./canonical-preview-values.js";
 import { npRequireAgentPreviewArtifactManifestCanonical } from "./canonical-preview-artifact.js";
 import type { NpCapability } from "../auth/capabilities.js";
 import { npCollectionContractLimits } from "../collection-contract/contract.js";
@@ -40,6 +45,7 @@ import {
   type NpAgentChangeSetOperationInput,
   type NpAgentChangeSetResourceKeyV1,
   type NpAgentRiskSummary,
+  type NpAgentJsonObject,
   type NpAgentContractResult,
 } from "./types.js";
 
@@ -226,6 +232,71 @@ export interface NpAgentPreviewSummary {
   expiresAt: string | null;
 }
 
+export type NpAgentPreviewDetailWireV1 = Omit<NpAgentPreviewSummary, "schemaVersion"> & {
+  schemaVersion: "np.agent-preview.v1";
+  changeSetId: string;
+  allowedRoutes: Array<{ route: string; locale: string | null; audience: "public" }>;
+  diffSummary: NpAgentJsonObject;
+  checkSummary: NpAgentJsonObject;
+  riskSummary: NpAgentRiskSummary;
+  createdAt: string;
+  completedAt: string | null;
+  safeErrorCode: string | null;
+};
+export const npAgentPreviewCheckIdsV1 = [
+  "broken-links",
+  "metadata",
+  "structured-data",
+  "accessibility",
+  "route-collision",
+] as const;
+export const npAgentPreviewIssueMessagesV1 = Object.freeze({
+  ROUTE_NOT_FOUND: "The route is unavailable.",
+  EXTERNAL_UNVERIFIED: "The external destination was not checked.",
+  EXTERNAL_UNREACHABLE: "The external destination could not be reached.",
+  METADATA_MISSING: "Required metadata is missing.",
+  METADATA_INVALID: "Metadata is invalid.",
+  STRUCTURED_DATA_INVALID: "Structured data is invalid.",
+  ACCESSIBILITY_VIOLATION: "An accessibility check failed.",
+  ROUTE_COLLISION: "The route conflicts with another route.",
+  CHECK_TIMEOUT: "The check did not complete in time.",
+});
+export type NpAgentPreviewCheckIdV1 = (typeof npAgentPreviewCheckIdsV1)[number];
+export type NpAgentPreviewIssueCodeV1 = keyof typeof npAgentPreviewIssueMessagesV1;
+export interface NpAgentPreviewReportV1 {
+  schemaVersion: "np.agent-preview-report.v1";
+  siteId: string;
+  changeSetId: string;
+  previewId: string;
+  generation: number;
+  planHash: string;
+  previewContractFingerprint: string;
+  part: number;
+  totalParts: number;
+  results: Array<{
+    id: string;
+    checkId: NpAgentPreviewCheckIdV1;
+    status: "pass" | "warning" | "fail";
+    route: { route: string; locale: string | null; audience: "public" } | null;
+    issueIds: string[];
+  }>;
+  issues: Array<{
+    id: string;
+    resultId: string;
+    severity: "warning" | "error";
+    code: NpAgentPreviewIssueCodeV1;
+    safeMessage: string;
+    target:
+      | { kind: "route"; route: string }
+      | { kind: "selector"; selectorDigest: string }
+      | { kind: "external-origin"; origin: string }
+      | { kind: "operation"; ordinal: number }
+      | null;
+    evidenceRefs: Array<{ kind: "artifact" | "operation"; id: string }>;
+  }>;
+  generatedAt: string;
+}
+
 export interface NpAgentExecutionSummary {
   executionId: string;
   state: "reserved" | "committed" | "verifying" | "succeeded" | "failed" | "ambiguous";
@@ -264,6 +335,7 @@ export const npAgentChangeSetLimits = Object.freeze({
   explanatoryCharacters: npAgentContractLimits.changeSetExplanatoryCharacters,
   validationIssues: 1000,
   previewScreenshots: 20,
+  previewHtmlBytes: 5 * 1024 * 1024,
   previewArtifacts: 24,
   previewReports: 4,
   screenshotBytes: 2 * 1024 * 1024,
@@ -1141,3 +1213,376 @@ export async function npDigestAgentChangeSetWireContractV1(): Promise<`cj1:sha25
 
 export type NpAgentChangeSetCreateRequestV1 = NpAgentChangeSetAdminInputV1<"create">;
 export type NpAgentChangeSetUpdateRequestV1 = NpAgentChangeSetAdminInputV1<"update">;
+
+export interface NpAgentChangeSetPreviewRequestV1 extends NpAgentChangeSetValidateRequestV1 {
+  expectedPlanHash: string;
+}
+export interface NpAgentChangeSetPreviewLaunchRequestV1 extends NpAgentChangeSetPreviewRequestV1 {
+  route: string;
+}
+export function npRequireAgentChangeSetPreviewRequestV1(
+  value: unknown,
+): NpAgentChangeSetPreviewRequestV1 {
+  return npRequireAgentContractResult(
+    analyzeCanonicalBody("agent.preview.request", () => {
+      const r = object(clone(value, "agent.preview.request"), "agent.preview.request", {
+        idempotencyKey: (v, p) => canonicalRuntimeText(v, p, 256),
+        expectedVersion: positive,
+        expectedPlanHash: digest,
+      });
+      npRequireAgentChangeSetValidateRequestV1({
+        idempotencyKey: r.idempotencyKey,
+        expectedVersion: r.expectedVersion,
+      });
+      return r;
+    }),
+    "Invalid preview request",
+  );
+}
+export function npRequireAgentChangeSetPreviewLaunchRequestV1(
+  value: unknown,
+): NpAgentChangeSetPreviewLaunchRequestV1 {
+  return npRequireAgentContractResult(
+    analyzeCanonicalBody("agent.preview.launch", () => {
+      const r = object(clone(value, "agent.preview.launch"), "agent.preview.launch", {
+        idempotencyKey: (v, p) => canonicalRuntimeText(v, p, 256),
+        expectedVersion: positive,
+        expectedPlanHash: digest,
+        route: canonicalBodyPreviewRoute,
+      });
+      const { route: _route, ...request } = r;
+      npRequireAgentChangeSetPreviewRequestV1(request);
+      return r;
+    }),
+    "Invalid preview launch request",
+  );
+}
+const previewRoute: Parser<{ route: string; locale: string | null; audience: "public" }> = (v, p) =>
+  object(v, p, {
+    route: canonicalBodyPreviewRoute,
+    locale: nullable(canonicalBodyPreviewLocale),
+    audience: literal("public"),
+  });
+const previewEvidenceId: Parser<string> = (v, p) => {
+  const id = canonicalRuntimeText(v, p, 80);
+  if (!/^[a-z][a-z0-9._-]{0,79}$/u.test(id))
+    failCanonicalBody("invalid-field", p, "must be a framework evidence identifier");
+  return id;
+};
+function parsePreviewReport(value: unknown): NpAgentPreviewReportV1 {
+  const path = "agent.preview.report";
+  const report = object(clone(value, path, npAgentChangeSetLimits.reportBytes), path, {
+    schemaVersion: literal("np.agent-preview-report.v1"),
+    siteId: canonicalBodySiteId,
+    changeSetId: uuid,
+    previewId: uuid,
+    generation: positive,
+    planHash: digest,
+    previewContractFingerprint: digest,
+    part: (v, p) => canonicalBodyInteger(v, p, 1, npAgentChangeSetLimits.previewReports),
+    totalParts: (v, p) => canonicalBodyInteger(v, p, 1, npAgentChangeSetLimits.previewReports),
+    results: list(
+      (v, p) =>
+        object(v, p, {
+          id: previewEvidenceId,
+          checkId: enumeration(npAgentPreviewCheckIdsV1),
+          status: enumeration(["pass", "warning", "fail"]),
+          route: nullable(previewRoute),
+          issueIds: list(previewEvidenceId, 1000),
+        }),
+      1000,
+    ),
+    issues: list((v, p) => {
+      const issue = object(v, p, {
+        id: previewEvidenceId,
+        resultId: previewEvidenceId,
+        severity: enumeration(["warning", "error"]),
+        code: enumeration(
+          Object.keys(npAgentPreviewIssueMessagesV1) as NpAgentPreviewIssueCodeV1[],
+        ),
+        safeMessage: (v, p) => canonicalRuntimeText(v, p, 500),
+        target: nullable((v, p) => {
+          const tag = canonicalBodyRecord(
+            v,
+            p,
+            ["kind", "route", "selectorDigest", "origin", "ordinal"],
+            ["kind"],
+            state(),
+          );
+          switch (tag.kind) {
+            case "route":
+              return object(v, p, { kind: literal("route"), route: canonicalBodyPreviewRoute });
+            case "selector":
+              return object(v, p, { kind: literal("selector"), selectorDigest: digest });
+            case "external-origin":
+              return object(v, p, {
+                kind: literal("external-origin"),
+                origin: canonicalBodyQuerylessHttpsOrigin,
+              });
+            case "operation":
+              return object(v, p, {
+                kind: literal("operation"),
+                ordinal: (v, p) => canonicalBodyInteger(v, p, 1, npAgentChangeSetLimits.operations),
+              });
+            default:
+              failCanonicalBody("invalid-field", p, "must be a closed evidence target");
+          }
+        }),
+        evidenceRefs: list((v, p) => {
+          const ref = object(v, p, {
+            kind: enumeration(["artifact", "operation"]),
+            id: (v, p) => canonicalRuntimeText(v, p, 36),
+          });
+          if (ref.kind === "artifact") uuid(ref.id, `${p}.id`);
+          else if (
+            !/^[1-9][0-9]{0,2}$/u.test(ref.id) ||
+            Number(ref.id) > npAgentChangeSetLimits.operations
+          )
+            failCanonicalBody("invalid-field", p, "must name an operation ordinal");
+          return ref;
+        }, 8),
+      });
+      if (issue.safeMessage !== npAgentPreviewIssueMessagesV1[issue.code])
+        failCanonicalBody("invalid-field", p, "must use the framework safe message");
+      return issue;
+    }, 1000),
+    generatedAt: utc,
+  });
+  if (report.part > report.totalParts)
+    failCanonicalBody("invalid-field", path, "part exceeds total");
+  return report;
+}
+export function npRequireAgentPreviewReportV1(value: unknown): NpAgentPreviewReportV1 {
+  return npRequireAgentContractResult(
+    analyzeCanonicalBody("agent.preview.report", () => parsePreviewReport(value)),
+    "Invalid preview report",
+  );
+}
+/** Validates the complete multipart set, including cross-part ownership and bounds. */
+export function npRequireAgentPreviewReportPartsV1(value: unknown): NpAgentPreviewReportV1[] {
+  return npRequireAgentContractResult(
+    analyzeCanonicalBody("agent.preview.reports", () => {
+      const reports = canonicalBodyArray(value, "agent.preview.reports", 4, state()).map(
+        npRequireAgentPreviewReportV1,
+      );
+      if (reports.length === 0) return reports;
+      const identity = (r: NpAgentPreviewReportV1) =>
+        serializeAgentCanonicalJson({
+          siteId: r.siteId,
+          changeSetId: r.changeSetId,
+          previewId: r.previewId,
+          generation: r.generation,
+          planHash: r.planHash,
+          previewContractFingerprint: r.previewContractFingerprint,
+          totalParts: r.totalParts,
+          generatedAt: r.generatedAt,
+        });
+      if (
+        reports.some(
+          (r, i) =>
+            r.part !== i + 1 ||
+            r.totalParts !== reports.length ||
+            identity(r) !== identity(reports[0]),
+        )
+      )
+        failCanonicalBody(
+          "invalid-field",
+          "agent.preview.reports",
+          "must be the complete contiguous identity-bound set",
+        );
+      const results = reports.flatMap((r) => r.results),
+        issues = reports.flatMap((r) => r.issues);
+      if (results.length > 1000 || issues.length > 1000)
+        failCanonicalBody(
+          "invalid-field",
+          "agent.preview.reports",
+          "aggregate report bound exceeded",
+        );
+      const resultIds = new Set(results.map((r) => r.id)),
+        issueIds = new Set(issues.map((i) => i.id));
+      if (resultIds.size !== results.length || issueIds.size !== issues.length)
+        failCanonicalBody("duplicate", "agent.preview.reports", "evidence ids must be unique");
+      const orderKey = (r: NpAgentPreviewReportV1["results"][number]) =>
+        `${r.checkId}\0${r.route?.route ?? ""}\0${r.route?.locale ?? ""}\0${r.id}`;
+      if (results.some((r, i) => i > 0 && orderKey(results[i - 1]) >= orderKey(r)))
+        failCanonicalBody("order", "agent.preview.reports", "results must be canonically sorted");
+      const owners = new Map<string, string>();
+      for (const r of results)
+        for (const id of r.issueIds) {
+          if (owners.has(id) || !issueIds.has(id))
+            failCanonicalBody(
+              "invalid-field",
+              "agent.preview.reports",
+              "issue must resolve exactly once",
+            );
+          owners.set(id, r.id);
+        }
+      if (issues.some((i) => owners.get(i.id) !== i.resultId || !resultIds.has(i.resultId)))
+        failCanonicalBody("invalid-field", "agent.preview.reports", "issue owner mismatch");
+      return reports;
+    }),
+    "Invalid preview report set",
+  );
+}
+export function npRequireAgentPreviewSummaryV1(
+  value: unknown,
+  context: { siteId: string; changeSetId: string },
+): NpAgentPreviewSummary {
+  return npRequireAgentContractResult(
+    analyzeCanonicalBody("agent.preview.summary", () =>
+      parsePreview(clone(value, "agent.preview.summary"), "agent.preview.summary", context),
+    ),
+    "Invalid preview summary",
+  );
+}
+
+export function npRequireAgentPreviewDetailWireV1(
+  value: unknown,
+  siteId: string,
+): NpAgentPreviewDetailWireV1 {
+  return npRequireAgentContractResult(
+    analyzeCanonicalBody("agent.preview.detail", () => {
+      const p = "agent.preview.detail";
+      const fields = [
+        "schemaVersion",
+        "previewId",
+        "state",
+        "generation",
+        "planHash",
+        "previewContractFingerprint",
+        "digest",
+        "artifactCount",
+        "artifactRefs",
+        "interactiveLaunch",
+        "expiresAt",
+        "changeSetId",
+        "allowedRoutes",
+        "diffSummary",
+        "checkSummary",
+        "riskSummary",
+        "createdAt",
+        "completedAt",
+        "safeErrorCode",
+      ];
+      const r = canonicalBodyRecord(clone(value, p), p, fields, fields, state());
+      literal("np.agent-preview.v1")(r.schemaVersion, `${p}.schemaVersion`);
+      const changeSetId = uuid(r.changeSetId, `${p}.changeSetId`);
+      const {
+        changeSetId: _id,
+        allowedRoutes: _routes,
+        diffSummary: _diff,
+        checkSummary: _checks,
+        riskSummary: _risk,
+        createdAt: _created,
+        completedAt: _completed,
+        safeErrorCode: _code,
+        ...summary
+      } = r;
+      const checked = npRequireAgentPreviewSummaryV1(
+        { ...summary, schemaVersion: "np.agent-preview-summary.v1" },
+        { siteId, changeSetId },
+      );
+      const routes = list(previewRoute, 256)(r.allowedRoutes, `${p}.allowedRoutes`);
+      const keys = routes.map((route) => `${route.route}\0${route.locale ?? ""}`);
+      if (keys.some((key, i) => i > 0 && keys[i - 1] >= key))
+        failCanonicalBody("order", p, "routes must be sorted unique");
+      const diffSummary = object(r.diffSummary, `${p}.diffSummary`, {
+        operationCount: (v, p) => canonicalBodyInteger(v, p, 0, 500),
+      });
+      const checkSummary = object(r.checkSummary, `${p}.checkSummary`, {
+        checksRun: (v, p) => canonicalBodyInteger(v, p, 0, 1000),
+        screenshots: (v, p) => canonicalBodyInteger(v, p, 0, 20),
+        warningCodes: list(enumeration(["SCREENSHOTS_UNAVAILABLE", "CHECKS_NOT_RUN"]), 2),
+      });
+      if (new Set(checkSummary.warningCodes).size !== checkSummary.warningCodes.length)
+        failCanonicalBody("duplicate", p, "warning codes must be unique");
+      const createdAt = utc(r.createdAt, `${p}.createdAt`),
+        completedAt = nullable(utc)(r.completedAt, `${p}.completedAt`);
+      if (completedAt !== null) order(createdAt, completedAt, p);
+      if (["queued", "rendering"].includes(checked.state) !== (completedAt === null))
+        failCanonicalBody("invalid-field", p, "completion must match preview state");
+      const safeErrorCode = nullable(
+        enumeration([
+          "AUTHORITY_REVOKED",
+          "PREVIEW_FAILED",
+          "PREVIEW_EXPIRED",
+          "CONTRACT_CHANGED",
+          "ARTIFACT_INTEGRITY_FAILED",
+          "DEPENDENCY_UNAVAILABLE",
+        ]),
+      )(r.safeErrorCode, `${p}.safeErrorCode`);
+      if ((checked.state === "failed") !== (safeErrorCode !== null && checked.state !== "expired"))
+        failCanonicalBody("invalid-field", p, "safe error must match preview state");
+      return {
+        ...checked,
+        schemaVersion: "np.agent-preview.v1",
+        changeSetId,
+        allowedRoutes: routes,
+        diffSummary,
+        checkSummary,
+        riskSummary: parseRisk(r.riskSummary, `${p}.riskSummary`),
+        createdAt,
+        completedAt,
+        safeErrorCode,
+      };
+    }),
+    "Invalid preview detail",
+  );
+}
+export const npAgentPreviewWireContractV1 = Object.freeze({
+  schemaVersion: "np.agent-preview-wire-contract.v1",
+  checkIds: npAgentPreviewCheckIdsV1,
+  issueMessages: npAgentPreviewIssueMessagesV1,
+  detailKeys: [
+    "schemaVersion",
+    "previewId",
+    "state",
+    "generation",
+    "planHash",
+    "previewContractFingerprint",
+    "digest",
+    "artifactCount",
+    "artifactRefs",
+    "interactiveLaunch",
+    "expiresAt",
+    "changeSetId",
+    "allowedRoutes",
+    "diffSummary",
+    "checkSummary",
+    "riskSummary",
+    "createdAt",
+    "completedAt",
+    "safeErrorCode",
+  ],
+  reportKeys: [
+    "schemaVersion",
+    "siteId",
+    "changeSetId",
+    "previewId",
+    "generation",
+    "planHash",
+    "previewContractFingerprint",
+    "part",
+    "totalParts",
+    "results",
+    "issues",
+    "generatedAt",
+  ],
+  resultKeys: ["id", "checkId", "status", "route", "issueIds"],
+  issueKeys: ["id", "resultId", "severity", "code", "safeMessage", "target", "evidenceRefs"],
+  limits: {
+    reports: npAgentChangeSetLimits.previewReports,
+    reportBytes: npAgentChangeSetLimits.reportBytes,
+    results: 1000,
+    issues: 1000,
+    evidenceRefs: 8,
+    safeMessage: 500,
+  },
+});
+export async function npDigestAgentPreviewWireContractV1(): Promise<`cj1:sha256:${string}`> {
+  return digestAgentCanonicalSha256(
+    new TextEncoder().encode(
+      `np.agent-preview-wire-contract.v1\0${serializeAgentCanonicalJson(npAgentPreviewWireContractV1)}`,
+    ),
+  );
+}

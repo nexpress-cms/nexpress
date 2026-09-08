@@ -110,6 +110,7 @@ describe("Agent HTTP bounded route handler", () => {
     mocks.readArtifact.mockResolvedValue({
       bytes: new TextEncoder().encode("{}"),
       mime: "application/json",
+      contentDigest: `ac1:sha256:${"A".repeat(43)}`,
     });
     const id = "00000000-0000-4000-8000-000000000001";
     const artifact = await handleAgentHttpRequest(
@@ -119,10 +120,12 @@ describe("Agent HTTP bounded route handler", () => {
     );
     expect(artifact.status).toBe(200);
     expect(artifact.headers.get("content-disposition")).toBe(
-      'attachment; filename="artifact.json"',
+      `attachment; filename="np-preview-${id}.json"`,
     );
     expect(artifact.headers.get("referrer-policy")).toBe("no-referrer");
-    expect(artifact.headers.get("content-security-policy")).toBe("default-src 'none'; sandbox");
+    expect(artifact.headers.get("content-security-policy")).toMatch(
+      /^default-src 'none'; script-src 'nonce-/u,
+    );
   });
   it("normalizes missing and forbidden resources and hides internal failures", async () => {
     const id = "00000000-0000-4000-8000-000000000001";

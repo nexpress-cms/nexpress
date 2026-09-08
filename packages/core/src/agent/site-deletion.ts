@@ -14,6 +14,11 @@ import {
   npAgentConnectionSecretVersions,
   npAgentConnections,
   npAgentActions,
+  npAgentPreviewViewerLaunches,
+  npAgentPreviewRenderSessions,
+  npAgentPreviewArtifactUploads,
+  npAgentPreviewArtifacts,
+  npAgentChangesetPreviews,
   npAgentChangesets,
   npAgentChangesetValidationAttempts,
   npAgentChangesetOperations,
@@ -47,6 +52,11 @@ interface NpAgentSiteOwnedTableDescriptor {
  * from the frozen inventory and is handled only by the future saga commit.
  */
 export const npAgentSiteDeletionOrderV1 = Object.freeze([
+  "np_agent_preview_viewer_launches",
+  "np_agent_preview_render_sessions",
+  "np_agent_preview_artifact_uploads",
+  "np_agent_preview_artifacts",
+  "np_agent_changeset_previews",
   "np_agent_approvals",
   "np_agent_changeset_validation_attempts",
   "np_agent_changeset_operations",
@@ -77,6 +87,31 @@ const descriptors: Record<
   NpAgentSiteOwnedTableName,
   Omit<NpAgentSiteOwnedTableDescriptor, "tableName">
 > = {
+  np_agent_preview_viewer_launches: {
+    table: npAgentPreviewViewerLaunches,
+    id: npAgentPreviewViewerLaunches.id,
+    siteId: npAgentPreviewViewerLaunches.siteId,
+  },
+  np_agent_preview_render_sessions: {
+    table: npAgentPreviewRenderSessions,
+    id: npAgentPreviewRenderSessions.id,
+    siteId: npAgentPreviewRenderSessions.siteId,
+  },
+  np_agent_preview_artifact_uploads: {
+    table: npAgentPreviewArtifactUploads,
+    id: npAgentPreviewArtifactUploads.id,
+    siteId: npAgentPreviewArtifactUploads.siteId,
+  },
+  np_agent_preview_artifacts: {
+    table: npAgentPreviewArtifacts,
+    id: npAgentPreviewArtifacts.id,
+    siteId: npAgentPreviewArtifacts.siteId,
+  },
+  np_agent_changeset_previews: {
+    table: npAgentChangesetPreviews,
+    id: npAgentChangesetPreviews.id,
+    siteId: npAgentChangesetPreviews.siteId,
+  },
   np_agent_actions: {
     table: npAgentActions,
     id: npAgentActions.id,
@@ -330,6 +365,16 @@ export async function npDeleteAgentSiteRows(db: NpAgentDb, siteId: string): Prom
   if (workingTask) {
     throw new Error("Agent site deletion requires every MCP task to be terminal.");
   }
+  const unsafePreview = await db.execute(sql`
+    select 1 from public.np_agent_changeset_previews where site_id=${siteId} and state in ('queued','rendering','ready')
+    union all select 1 from public.np_agent_preview_viewer_launches where site_id=${siteId} and (state in ('exchange_pending','active') or to_timestamp(exp)+interval '60 seconds'>now())
+    union all select 1 from public.np_agent_preview_render_sessions where site_id=${siteId} and (state='active' or expires_at+interval '60 seconds'>now())
+    union all select 1 from public.np_agent_preview_artifact_uploads u where u.site_id=${siteId} and (u.state not in ('succeeded','failed','cancelled') or u.adapter_operation_status in ('pending','unknown') or (u.adapter_operation_status='not_dispatched' and u.state<>'cancelled'))
+    union all select 1 from public.np_agent_preview_artifacts a join public.np_agent_preview_artifact_uploads u on u.site_id=a.site_id and u.artifact_id=a.id where a.site_id=${siteId} and (a.object_state<>'absent' or ((u.ever_observed_present or u.adapter_operation_status='committed') and a.delete_receipt_digest is null))
+    limit 1
+  `);
+  if (unsafePreview.rows.length)
+    throw new Error("Agent site deletion requires confirmed preview cleanup.");
   for (const tableName of npAgentSiteDeletionOrderV1) {
     const item = descriptor(tableName);
     await db.delete(item.table).where(eq(item.siteId as never, siteId));

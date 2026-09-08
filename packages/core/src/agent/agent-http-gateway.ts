@@ -1,5 +1,5 @@
 import { NpAgentGatewayError } from "./admin-admission.js";
-import { createHash } from "node:crypto";
+import { npDigestAgentPreviewArtifactContentV1 } from "./preview-artifact-contract.js";
 import {
   npRequireAgentHttpCapabilitiesV1,
   npRequireAgentReadCapabilityInvocationResultV1,
@@ -198,14 +198,11 @@ export function createAgentHttpGatewayV1(options: NpAgentHttpGatewayOptionsV1) {
       const bytes = new Uint8Array(outcome.bytes);
       const mime = outcome.mime;
       const expiresAt = Date.parse(outcome.expiresAt);
-      if (
-        outcome.contentDigest !==
-        `ac1:sha256:${createHash("sha256").update(bytes).digest("base64url")}`
-      )
+      if (outcome.contentDigest !== npDigestAgentPreviewArtifactContentV1(bytes))
         throw new NpAgentHttpErrorV1(500);
       await current(authentication);
       if (expiresAt <= now().getTime()) throw new NpAgentHttpErrorV1(404);
-      return { bytes, mime };
+      return { bytes, mime, contentDigest: outcome.contentDigest };
     },
   };
 }

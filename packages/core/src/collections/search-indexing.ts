@@ -1,3 +1,4 @@
+import { npAssertAgentPreviewEffectsAllowed } from "../agent/changeset-preview-overlay.js";
 import { npRequireSearchIndexMutation } from "../search/contract.js";
 import type {
   NpSearchIndexFailure,
@@ -68,6 +69,7 @@ export async function npSyncSearchIndexDocument(
   documentId: string,
   siteId: string,
 ): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
   const adapter = getSearchAdapter();
   const indexing = adapter?.indexing;
   if (!adapter || !indexing) return;
@@ -92,6 +94,7 @@ export async function npReplaceSearchCollectionIndex(
   refs: SearchIndexDocumentRefSource,
   startedAt: string,
 ): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
   const adapter = getSearchAdapter();
   const indexing = adapter?.indexing;
   if (!adapter || !indexing) return;

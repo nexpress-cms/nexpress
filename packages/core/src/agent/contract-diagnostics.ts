@@ -19,6 +19,7 @@ const AGENT_TABLES = [
   "np_agent_actions",
   "np_agent_approvals",
   "np_agent_changeset_operations",
+  "np_agent_changeset_previews",
   "np_agent_changeset_validation_attempts",
   "np_agent_changesets",
   "np_agent_connection_auth_requests",
@@ -33,6 +34,10 @@ const AGENT_TABLES = [
   "np_agent_oauth_grants",
   "np_agent_oauth_refresh_tokens",
   "np_agent_oauth_requests",
+  "np_agent_preview_artifact_uploads",
+  "np_agent_preview_artifacts",
+  "np_agent_preview_render_sessions",
+  "np_agent_preview_viewer_launches",
   "np_agent_principals",
   "np_agent_runs",
   "np_agent_service_tokens",
@@ -43,6 +48,39 @@ const AGENT_TABLES = [
 
 /** Critical state and same-site constraints whose absence weakens fail-closed diagnostics. */
 const AGENT_CONSTRAINTS = [
+  "np_agent_changeset_previews_started_check",
+  "np_agent_changeset_previews_changeset_fk",
+  "np_agent_changeset_previews_invocation_fk",
+  "np_agent_changeset_previews_run_fk",
+  "np_agent_changeset_previews_state_check",
+  "np_agent_changeset_previews_hash_check",
+  "np_agent_changeset_previews_authority_check",
+  "np_agent_changeset_previews_contract_check",
+  "np_agent_changeset_previews_reservation_check",
+  "np_agent_changeset_previews_bootstrap_check",
+  "np_agent_changeset_previews_terminal_check",
+  "np_agent_preview_artifacts_preview_fk",
+  "np_agent_preview_artifacts_metadata_check",
+  "np_agent_preview_artifacts_kind_check",
+  "np_agent_preview_artifacts_state_check",
+  "np_agent_preview_artifacts_delete_check",
+  "np_agent_preview_artifacts_retention_check",
+  "np_agent_preview_artifact_uploads_preview_fk",
+  "np_agent_preview_artifact_uploads_artifact_fk",
+  "np_agent_preview_artifact_uploads_bounds_check",
+  "np_agent_preview_artifact_uploads_state_check",
+  "np_agent_preview_artifact_uploads_receipt_check",
+  "np_agent_preview_artifact_uploads_lifecycle_check",
+  "np_agent_preview_artifact_uploads_time_check",
+  "np_agent_preview_viewer_launches_preview_fk",
+  "np_agent_preview_viewer_launches_invocation_fk",
+  "np_agent_preview_viewer_launches_claims_check",
+  "np_agent_preview_viewer_launches_state_check",
+  "np_agent_preview_render_sessions_preview_fk",
+  "np_agent_preview_render_sessions_reservation_fk",
+  "np_agent_preview_render_sessions_claims_check",
+  "np_agent_preview_render_sessions_state_check",
+
   "np_agent_actions_invocation_fk",
   "np_agent_actions_read_effect_check",
   "np_agent_actions_run_fk",
@@ -188,6 +226,11 @@ const STATE_SUMMARY_SQL = `
     select 'action', state, created_at from public.np_agent_actions
     union all select 'run', state, queued_at from public.np_agent_runs
     union all select 'changeset-validation-attempt', state, created_at from public.np_agent_changeset_validation_attempts
+    union all select 'changeset-preview', state, created_at from public.np_agent_changeset_previews
+    union all select 'preview-artifact', object_state, created_at from public.np_agent_preview_artifacts
+    union all select 'preview-upload', state, created_at from public.np_agent_preview_artifact_uploads
+    union all select 'preview-viewer-launch', state, created_at from public.np_agent_preview_viewer_launches
+    union all select 'preview-render-session', state, issued_at from public.np_agent_preview_render_sessions
     union all select 'changeset', state, created_at from public.np_agent_changesets
     union all select 'changeset-operation', state, created_at from public.np_agent_changeset_operations
     union all select 'approval', state, requested_at from public.np_agent_approvals
@@ -223,6 +266,16 @@ const ISSUE_SUMMARY_SQL = `
   with violations(code, occurred_at) as (
     select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_actions
      where state not in ('proposed', 'policy_blocked', 'approval_pending', 'approved', 'executing', 'succeeded', 'failed', 'compensated')
+    union all select 'AGENT_ROW_STATE_INVALID', p.created_at from public.np_agent_changeset_previews p
+     where p.state not in ('queued','rendering','ready','failed','expired') or (p.state='ready' and (p.digest is null or p.completed_at is null or p.expires_at is null or p.expected_artifact_count is distinct from (select count(*)::int from public.np_agent_preview_artifacts a where a.site_id=p.site_id and a.preview_id=p.id) or exists(select 1 from public.np_agent_preview_artifacts a where a.site_id=p.site_id and a.preview_id=p.id and (a.object_state<>'ready' or a.object_expires_at is distinct from p.expires_at))))
+    union all select 'AGENT_RELATION_CROSS_SITE', a.created_at from public.np_agent_preview_artifacts a
+     where not exists(select 1 from public.np_agent_changeset_previews p where p.site_id=a.site_id and p.id=a.preview_id and p.preview_contract_fingerprint=a.preview_contract_fingerprint)
+    union all select 'AGENT_ROW_STATE_INVALID', u.created_at from public.np_agent_preview_artifact_uploads u
+     where not exists(select 1 from public.np_agent_changeset_previews p where p.site_id=u.site_id and p.id=u.preview_id and p.upload_set_digest=u.upload_set_digest) or not exists(select 1 from public.np_agent_preview_artifacts a where a.site_id=u.site_id and a.preview_id=u.preview_id and a.id=u.artifact_id)
+    union all select 'AGENT_EXPIRY_BACKLOG', expires_at from public.np_agent_changeset_previews where state='ready' and expires_at<=$1::timestamptz
+    union all select 'AGENT_EXPIRY_BACKLOG', exchange_expires_at from public.np_agent_preview_viewer_launches l where (state='exchange_pending' and exchange_expires_at<=$1::timestamptz) or (state='active' and to_timestamp(exp)<=$1::timestamptz)
+    union all select 'AGENT_ROW_STATE_INVALID', l.created_at from public.np_agent_preview_viewer_launches l where state in ('exchange_pending','active') and not exists(select 1 from public.np_sessions s join public.np_users u on u.id=s.user_id where s.id=l.staff_session_id and u.id=l.staff_user_id and s.access_expires_at>$1::timestamptz and s.refresh_expires_at>$1::timestamptz)
+    union all select 'AGENT_EXPIRY_BACKLOG', expires_at from public.np_agent_preview_render_sessions where state='active' and expires_at<=$1::timestamptz
     union all select 'AGENT_ROW_STATE_INVALID', queued_at from public.np_agent_runs
      where state not in ('queued', 'running', 'waiting_approval', 'waiting_retry', 'verifying', 'succeeded', 'failed', 'cancelled', 'policy_blocked', 'budget_blocked')
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_principals

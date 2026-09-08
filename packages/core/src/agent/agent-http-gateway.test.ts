@@ -1,6 +1,6 @@
 import { NpAgentGatewayError } from "./admin-admission.js";
 import type { NpAgentAuthenticatedServicePrincipalV1 } from "./gateway-service.js";
-import { createHash } from "node:crypto";
+import { npDigestAgentPreviewArtifactContentV1 } from "./preview-artifact-contract.js";
 import { describe, expect, it, vi } from "vitest";
 import {
   createAgentHttpGatewayV1,
@@ -121,13 +121,14 @@ describe("Agent HTTP shared gateway", () => {
       kind: "ok",
       bytes,
       mime: "application/json",
-      contentDigest: `ac1:sha256:${createHash("sha256").update(bytes).digest("base64url")}`,
+      contentDigest: npDigestAgentPreviewArtifactContentV1(bytes),
       expiresAt: "2099-01-01T00:00:00.000Z",
     });
     const http = createAgentHttpGatewayV1({ ...f.options, artifacts: { readArtifact } });
     await expect(http.readArtifact(f.authentication, id, id)).resolves.toEqual({
       bytes,
       mime: "application/json",
+      contentDigest: npDigestAgentPreviewArtifactContentV1(bytes),
     });
     expect(f.admission.project).toHaveBeenCalledTimes(2);
     f.admission.project

@@ -7,7 +7,12 @@ import {
   npRequireAgentReadCapabilityInvocationResultV1,
   npRequireAgentActivityRunDetailV1,
 } from "@nexpress/core/agent-contract";
-import { getOptionalAgentStudioServerRuntimeV1, NpAgentHttpErrorV1 } from "@nexpress/core/agents";
+import {
+  getOptionalAgentStudioServerRuntimeV1,
+  NpAgentHttpErrorV1,
+  npAgentPreviewArtifactHeaders,
+  npAgentPreviewNonce,
+} from "@nexpress/core/agents";
 import { ensureFor } from "../init-core";
 
 const errors = {
@@ -147,15 +152,13 @@ export async function handleAgentHttpRequest(
         )
           throw new NpAgentHttpErrorV1(500);
         return new Response(artifact.bytes as BodyInit, {
-          headers: {
-            "content-type": artifact.mime,
-            "referrer-policy": "no-referrer",
-            "content-security-policy": "default-src 'none'; sandbox",
-            "content-length": String(artifact.bytes.byteLength),
-            "content-disposition": `attachment; filename="artifact.${artifact.mime === "image/png" ? "png" : artifact.mime === "image/webp" ? "webp" : "json"}"`,
-            "cache-control": "no-store",
-            "x-content-type-options": "nosniff",
-          },
+          headers: npAgentPreviewArtifactHeaders({
+            artifactId: ids.artifactId!,
+            mime: artifact.mime,
+            size: artifact.bytes.byteLength,
+            contentDigest: artifact.contentDigest,
+            nonce: npAgentPreviewNonce(),
+          }),
         });
       }
       const result =

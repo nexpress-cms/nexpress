@@ -583,6 +583,34 @@ separately cover JSON manifests and empty/binary/PNG/WebP/JSON raw content; no
 implementation may call a generic SHA-256 helper without the raw-content
 domain and length frame.
 
+The AP-305/AP-306 implementation owns this server-private storage facet in
+`agent/preview-artifact-contract.ts` and `agent/preview-artifact-service.ts`.
+The existing ChangeSet service injects its current-requester transaction callback
+for reservation, dispatch claims and finalization; storage calls execute only
+after those transactions finish. Current-viewer authorization before and after
+reads is independent of the original requester. The facet is not an MCP tool,
+public wire body, global storage fallback or automatic runtime factory.
+
+The host completes a bounded mode-0700 temporary spool with mode-0600 files,
+then reserves every artifact/upload row and the exact `aus1` set in one transaction.
+Only that in-memory/private-spool source may feed the initial PUT; reconciliation
+never recovers plaintext by manufacturing input or retrying a PUT. A still-queued
+upload loses dispatch eligibility after 5,850 seconds from full-set reservation:
+24 serial artifacts × four 60-second PUT/resolution/stat/read calls, plus the
+90-second lease grace. Cancellation after that bound is CAS-protected against a
+concurrent claim and applies only to never-dispatched rows. Pending/unknown
+operations remain unresolved irrespective of elapsed time or object absence.
+Empty sets use the same reserve/finalize path without requiring a storage adapter.
+
+The adapter facet consists of `put`, authoritative `resolveOperation`, `stat`,
+bounded `read`, and idempotent `delete`, each receiving an abort signal. Adapter
+id, contract version and fingerprint are frozen on every artifact. Automatic
+inspection stops at five recorded attempts; explicit operator inspection remains
+bounded at 255. Complete verified sets become ready together. Storage metadata,
+raw content, upload receipts and deletion receipts are revalidated before reuse;
+opaque keys and operation refs never enter client projections. Stable deletion
+keys commit site/preview/artifact/content identity and the frozen adapter triple.
+
 Artifact upload admission has one exact private request body:
 
 ```ts

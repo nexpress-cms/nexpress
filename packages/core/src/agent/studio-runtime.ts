@@ -1,3 +1,6 @@
+import type { NpAgentChangeSetServiceV1 } from "./changeset-service.js";
+import type { NpAgentPreviewAccessServiceV1 } from "./preview-access-service.js";
+import type { NpAgentChangeSetPreviewContextV1 } from "./changeset-preview-overlay.js";
 import {
   npAgentDisabledGatewaySettingsV1,
   npRequireAgentGatewaySettings,
@@ -18,6 +21,11 @@ import type { NpAgentConnectionAuthAdapterRegistryV1 } from "./provider-auth-con
 import { NpServiceUnavailableError } from "../errors.js";
 
 export interface NpAgentStudioServerRuntimeV1 {
+  changesets: NpAgentChangeSetServiceV1 | null;
+  previewAccess: NpAgentPreviewAccessServiceV1 | null;
+  previewRenderer:
+    | ((context: NpAgentChangeSetPreviewContextV1, input: { nonce: string }) => Promise<Response>)
+    | null;
   connections: NpAgentConnectionServiceV1 | null;
   connectionAdmin: NpAgentConnectionAdminServiceV1 | null;
   gateway: NpAgentGatewayServiceV1 | null;
@@ -30,6 +38,12 @@ export interface NpAgentStudioServerRuntimeV1 {
 }
 
 export interface NpAgentStudioServerRuntimeOptionsV1 {
+  changesets?: NpAgentChangeSetServiceV1;
+  previewAccess?: NpAgentPreviewAccessServiceV1;
+  previewRenderer?: (
+    context: NpAgentChangeSetPreviewContextV1,
+    input: { nonce: string },
+  ) => Promise<Response>;
   connections?: NpAgentConnectionServiceV1;
   connectionAdmin?: NpAgentConnectionAdminServiceV1;
   gateway?: NpAgentGatewayServiceV1;
@@ -75,8 +89,13 @@ export function createAgentStudioServerRuntimeV1(
   if (options.agentHttp !== undefined && options.gateway === undefined) {
     throw new Error("Agent HTTP runtime requires the Agent Gateway service.");
   }
+  if ((options.previewAccess || options.previewRenderer) && !options.changesets)
+    throw new Error("Agent preview runtime requires the ChangeSet service.");
   const adapters = Object.freeze((options.providerRegistry?.list() ?? []).map(adapterProjection));
   return Object.freeze({
+    changesets: options.changesets ?? null,
+    previewAccess: options.previewAccess ?? null,
+    previewRenderer: options.previewRenderer ?? null,
     connections: options.connections ?? null,
     connectionAdmin: options.connectionAdmin ?? null,
     gateway: options.gateway ?? null,

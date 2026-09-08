@@ -18,6 +18,10 @@ import {
 
 import type {
   NpAgentAuthorizationContextCanonicalV1,
+  NpAgentPreviewContractCanonicalV1,
+  NpAgentPreviewRouteCanonicalV1,
+  NpAgentPreviewArtifactViewportV1,
+  NpAgentStaffSiteAuthorizationCanonicalV1,
   NpAgentInvocationAuthorityRefV1,
   NpAgentChangeSetPlanCanonicalV1,
   NpAgentChangeSetOperationInput,
@@ -2252,6 +2256,435 @@ export const npAgentChangesetValidationAttempts = pgTable(
       (${t.state}='invalid' and ${t.startedAt} is not null and ${t.finishedAt} is not null and ${t.resultDigest} is not null and ${t.errorCode} is null) or
       (${t.state}='failed' and ${t.finishedAt} is not null and ${t.errorCode} is not null and ${t.riskSummary} is null)
     )`,
+    ),
+  ],
+);
+
+export const npAgentChangesetPreviews = pgTable(
+  "np_agent_changeset_previews",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    changesetId: uuid("changeset_id").notNull(),
+    planHash: text("plan_hash").notNull(),
+    generation: integer("generation").notNull(),
+    previewContractBody: jsonb("preview_contract_body")
+      .$type<NpAgentPreviewContractCanonicalV1>()
+      .notNull(),
+    previewContractFingerprint: text("preview_contract_fingerprint").notNull(),
+    admittingInvocationId: uuid("admitting_invocation_id").notNull(),
+    authorizationContextBody: jsonb("authorization_context_body")
+      .$type<NpAgentAuthorizationContextCanonicalV1>()
+      .notNull(),
+    authorizationContextFingerprint: text("authorization_context_fingerprint").notNull(),
+    authorityRef: jsonb("authority_ref").$type<NpAgentInvocationAuthorityRefV1>().notNull(),
+    requesterKind: text("requester_kind").notNull(),
+    requesterId: uuid("requester_id").notNull(),
+    requesterFingerprint: text("requester_fingerprint").notNull(),
+    state: text("state").notNull().default("queued"),
+    diffSummary: jsonb("diff_summary").$type<NpAgentJsonObject>(),
+    checkSummary: jsonb("check_summary").$type<NpAgentJsonObject>(),
+    riskSummary: jsonb("risk_summary").$type<NpAgentRiskSummary>(),
+    allowedRoutes: jsonb("allowed_routes").$type<NpAgentPreviewRouteCanonicalV1[]>().notNull(),
+    allowedRoutesDigest: text("allowed_routes_digest").notNull(),
+    digest: text("digest"),
+    expectedArtifactCount: integer("expected_artifact_count"),
+    uploadSetDigest: text("upload_set_digest"),
+    artifactReservedAt: timestamp("artifact_reserved_at", { withTimezone: true, mode: "date" }),
+    renderBootstrapJti: uuid("render_bootstrap_jti"),
+    renderAttemptId: uuid("render_attempt_id"),
+    renderSessionId: uuid("render_session_id"),
+    renderBootstrapIssuedAt: timestamp("render_bootstrap_issued_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    renderBootstrapExpiresAt: timestamp("render_bootstrap_expires_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    renderBootstrapConsumedAt: timestamp("render_bootstrap_consumed_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    runId: uuid("run_id"),
+    jobId: uuid("job_id"),
+    errorCode: text("error_code"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    renderingStartedAt: timestamp("rendering_started_at", { withTimezone: true, mode: "date" }),
+    completedAt: timestamp("completed_at", { withTimezone: true, mode: "date" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }),
+  },
+  (t) => [
+    unique("np_agent_changeset_previews_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_changeset_previews_contract_unique").on(
+      t.siteId,
+      t.id,
+      t.previewContractFingerprint,
+    ),
+    unique("np_agent_changeset_previews_generation_unique").on(
+      t.siteId,
+      t.changesetId,
+      t.planHash,
+      t.generation,
+    ),
+    unique("np_agent_changeset_previews_invocation_unique").on(t.siteId, t.admittingInvocationId),
+    unique("np_agent_changeset_previews_render_reservation_unique").on(
+      t.siteId,
+      t.id,
+      t.renderSessionId,
+      t.renderAttemptId,
+    ),
+    index("np_agent_changeset_previews_state_idx").on(t.siteId, t.state, t.createdAt),
+    foreignKey({
+      name: "np_agent_changeset_previews_changeset_fk",
+      columns: [t.siteId, t.changesetId],
+      foreignColumns: [npAgentChangesets.siteId, npAgentChangesets.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_changeset_previews_invocation_fk",
+      columns: [t.siteId, t.admittingInvocationId],
+      foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_changeset_previews_run_fk",
+      columns: [t.siteId, t.runId],
+      foreignColumns: [npAgentRuns.siteId, npAgentRuns.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_changeset_previews_state_check",
+      sql`${t.state} in ('queued','rendering','ready','failed','expired') and ${t.generation}>0`,
+    ),
+    check(
+      "np_agent_changeset_previews_hash_check",
+      sql`${t.planHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.previewContractFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.authorizationContextFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.requesterFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.allowedRoutesDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and (${t.digest} is null or ${t.digest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$')`,
+    ),
+    check(
+      "np_agent_changeset_previews_authority_check",
+      sql`(${t.authorizationContextBody}->>'siteId'=${t.siteId} and ${t.authorizationContextBody}->>'schemaVersion'='np.agent-authorization-context.v1' and ${t.authorizationContextBody}->'authorityRef'=${t.authorityRef} and ${t.authorizationContextBody}->'actor'->>'kind'=${t.requesterKind} and ${t.authorizationContextBody}->'actor'->>'actorFingerprint'=${t.requesterFingerprint} and ((${t.requesterKind}='staff' and ${t.authorizationContextBody}->'actor'->>'userId'=${t.requesterId}::text and ${t.authorityRef}->>'kind'='staff-session' and ${t.authorityRef}->>'userId'=${t.requesterId}::text) or (${t.requesterKind}='principal' and ${t.authorizationContextBody}->'actor'->>'principalId'=${t.requesterId}::text and ${t.authorityRef}->>'principalId'=${t.requesterId}::text and ${t.authorityRef}->>'kind' in ('service-family','oauth-grant','runtime-run')))) is true`,
+    ),
+    check(
+      "np_agent_changeset_previews_contract_check",
+      sql`(${t.previewContractBody}->>'schemaVersion'='np.agent-preview-contract.v1' and octet_length(${t.previewContractBody}::text)<=65536 and jsonb_typeof(${t.allowedRoutes})='array' and octet_length(${t.allowedRoutes}::text)<=262144) is true`,
+    ),
+    check(
+      "np_agent_changeset_previews_reservation_check",
+      sql`((${t.expectedArtifactCount} is null and ${t.uploadSetDigest} is null and ${t.artifactReservedAt} is null) or (${t.expectedArtifactCount} between 0 and 24 and ${t.uploadSetDigest} ~ '^aus1:sha256:[A-Za-z0-9_-]{43}$' and ${t.artifactReservedAt} is not null)) is true`,
+    ),
+    check(
+      "np_agent_changeset_previews_bootstrap_check",
+      sql`((${t.renderBootstrapJti} is null and ${t.renderAttemptId} is null and ${t.renderSessionId} is null and ${t.renderBootstrapIssuedAt} is null and ${t.renderBootstrapExpiresAt} is null and ${t.renderBootstrapConsumedAt} is null) or (${t.renderBootstrapJti} is not null and ${t.renderAttemptId} is not null and ${t.renderSessionId} is not null and ${t.renderBootstrapIssuedAt} is not null and ${t.renderBootstrapExpiresAt}>${t.renderBootstrapIssuedAt} and ${t.renderBootstrapExpiresAt}<=${t.renderBootstrapIssuedAt}+interval '120 seconds' and (${t.renderBootstrapConsumedAt} is null or ${t.renderBootstrapConsumedAt}>=${t.renderBootstrapIssuedAt}))) is true`,
+    ),
+    check(
+      "np_agent_changeset_previews_started_check",
+      sql`(${t.state}<>'queued' or ${t.renderingStartedAt} is null) and (${t.state} not in ('rendering','ready') or ${t.renderingStartedAt} is not null) and (${t.renderingStartedAt} is null or ${t.renderingStartedAt}>=${t.createdAt})`,
+    ),
+    check(
+      "np_agent_changeset_previews_terminal_check",
+      sql`((${t.state} in ('queued','rendering') and ${t.completedAt} is null and ${t.expiresAt} is null and ${t.digest} is null) or (${t.state}='ready' and ${t.completedAt} is not null and ${t.expiresAt}>${t.completedAt} and ${t.expiresAt}<=${t.completedAt}+interval '7 days' and ${t.digest} is not null and ${t.expectedArtifactCount} is not null and ${t.errorCode} is null) or (${t.state}='failed' and ${t.completedAt} is not null and ${t.expiresAt} is null and ${t.digest} is null and ${t.errorCode} is not null) or (${t.state}='expired' and ${t.completedAt} is not null and ((${t.expiresAt} is null and ${t.digest} is null) or (${t.expiresAt} is not null and ${t.digest} is not null)))) is true`,
+    ),
+  ],
+);
+
+export const npAgentPreviewArtifacts = pgTable(
+  "np_agent_preview_artifacts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id").notNull(),
+    previewId: uuid("preview_id").notNull(),
+    ordinal: integer("ordinal").notNull(),
+    kind: text("kind").notNull(),
+    previewContractFingerprint: text("preview_contract_fingerprint").notNull(),
+    route: text("route"),
+    locale: text("locale"),
+    viewport: jsonb("viewport").$type<NpAgentPreviewArtifactViewportV1>(),
+    reportPart: integer("report_part"),
+    reportTotalParts: integer("report_total_parts"),
+    storageKey: text("storage_key").notNull(),
+    contentDigest: text("content_digest").notNull(),
+    mime: text("mime").notNull(),
+    bytes: integer("bytes").notNull(),
+    storageAdapterId: text("storage_adapter_id").notNull(),
+    storageAdapterContractVersion: integer("storage_adapter_contract_version").notNull(),
+    storageAdapterFingerprint: text("storage_adapter_fingerprint").notNull(),
+    objectState: text("object_state").notNull().default("absent"),
+    objectExpiresAt: timestamp("object_expires_at", { withTimezone: true, mode: "date" }),
+    metadataPruneAt: timestamp("metadata_prune_at", { withTimezone: true, mode: "date" }).notNull(),
+    deleteAttempt: integer("delete_attempt").notNull().default(0),
+    deleteReceiptDigest: text("delete_receipt_digest"),
+    deleteStatus: text("delete_status"),
+    deleteErrorCode: text("delete_error_code"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
+    rowVersion: integer("row_version").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("np_agent_preview_artifacts_site_preview_id_unique").on(t.siteId, t.previewId, t.id),
+    unique("np_agent_preview_artifacts_site_id_unique").on(t.siteId, t.id),
+    unique("np_agent_preview_artifacts_ordinal_unique").on(t.previewId, t.ordinal),
+    unique("np_agent_preview_artifacts_storage_key_unique").on(t.storageAdapterId, t.storageKey),
+    uniqueIndex("np_agent_preview_artifacts_capture_unique").on(
+      t.previewId,
+      t.kind,
+      sql`coalesce(${t.route},'')`,
+      sql`coalesce(${t.locale},'')`,
+      sql`coalesce(${t.viewport}->>'name','')`,
+      sql`coalesce(${t.reportPart},0)`,
+    ),
+    index("np_agent_preview_artifacts_cleanup_idx").on(t.siteId, t.objectState, t.metadataPruneAt),
+    foreignKey({
+      name: "np_agent_preview_artifacts_preview_fk",
+      columns: [t.siteId, t.previewId, t.previewContractFingerprint],
+      foreignColumns: [
+        npAgentChangesetPreviews.siteId,
+        npAgentChangesetPreviews.id,
+        npAgentChangesetPreviews.previewContractFingerprint,
+      ],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_preview_artifacts_metadata_check",
+      sql`(${t.ordinal} between 1 and 24 and ${t.bytes} between 0 and 2097152 and ${t.storageAdapterContractVersion}>0 and ${t.rowVersion}>0 and ${t.deleteAttempt} between 0 and 255 and char_length(${t.storageKey}) between 1 and 2048 and char_length(${t.storageAdapterId}) between 1 and 128 and ${t.contentDigest} ~ '^ac1:sha256:[A-Za-z0-9_-]{43}$' and ${t.storageAdapterFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$') is true`,
+    ),
+    check(
+      "np_agent_preview_artifacts_kind_check",
+      sql`((${t.kind}='screenshot' and ${t.mime} in ('image/png','image/webp') and ${t.route} is not null and ${t.viewport}->>'name' in ('desktop','mobile') and ${t.reportPart} is null and ${t.reportTotalParts} is null) or (${t.kind}='report' and ${t.mime}='application/json' and ${t.bytes}<=524288 and ${t.route} is null and ${t.locale} is null and ${t.viewport} is null and ${t.reportPart} between 1 and 4 and ${t.reportTotalParts} between ${t.reportPart} and 4)) is true`,
+    ),
+    check(
+      "np_agent_preview_artifacts_state_check",
+      sql`${t.objectState} in ('ready','delete_pending','absent') and (${t.objectState}<>'ready' or ${t.objectExpiresAt} is not null) and (${t.objectState}='absent' or ${t.deletedAt} is null)`,
+    ),
+    check(
+      "np_agent_preview_artifacts_delete_check",
+      sql`((${t.deleteReceiptDigest} is null and ${t.deleteStatus} is null and ${t.deletedAt} is null) or (${t.deleteReceiptDigest} ~ '^adr1:sha256:[A-Za-z0-9_-]{43}$' and ${t.deleteStatus} in ('deleted','already_absent') and ${t.deletedAt} is not null and ${t.objectState}='absent' and ${t.deleteAttempt}>0)) is true`,
+    ),
+    check(
+      "np_agent_preview_artifacts_retention_check",
+      sql`${t.metadataPruneAt}>=${t.createdAt}+interval '365 days' and (${t.objectExpiresAt} is null or ${t.objectExpiresAt}>${t.createdAt})`,
+    ),
+  ],
+);
+
+export const npAgentPreviewArtifactUploads = pgTable(
+  "np_agent_preview_artifact_uploads",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id").notNull(),
+    previewId: uuid("preview_id").notNull(),
+    artifactId: uuid("artifact_id").notNull(),
+    uploadSetDigest: text("upload_set_digest").notNull(),
+    uploadRequestDigest: text("upload_request_digest").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    state: text("state").notNull().default("queued"),
+    attempt: integer("attempt").notNull().default(0),
+    rowVersion: integer("row_version").notNull().default(1),
+    leaseUntil: timestamp("lease_until", { withTimezone: true, mode: "date" }),
+    callDeadlineAt: timestamp("call_deadline_at", { withTimezone: true, mode: "date" }),
+    adapterOperationStatus: text("adapter_operation_status").notNull().default("not_dispatched"),
+    adapterOperationRef: text("adapter_operation_ref"),
+    adapterOperationReceiptDigest: text("adapter_operation_receipt_digest"),
+    adapterOperationResolvedAt: timestamp("adapter_operation_resolved_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    observedObjectState: text("observed_object_state").notNull().default("unknown"),
+    everObservedPresent: boolean("ever_observed_present").notNull().default(false),
+    verifiedAt: timestamp("verified_at", { withTimezone: true, mode: "date" }),
+    lastErrorCode: text("last_error_code"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }),
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
+    pruneAt: timestamp("prune_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    unique("np_agent_preview_artifact_uploads_artifact_unique").on(t.artifactId),
+    unique("np_agent_preview_artifact_uploads_idempotency_unique").on(t.idempotencyKey),
+    index("np_agent_preview_artifact_uploads_state_idx").on(t.siteId, t.state, t.createdAt),
+    foreignKey({
+      name: "np_agent_preview_artifact_uploads_preview_fk",
+      columns: [t.siteId, t.previewId],
+      foreignColumns: [npAgentChangesetPreviews.siteId, npAgentChangesetPreviews.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_preview_artifact_uploads_artifact_fk",
+      columns: [t.siteId, t.previewId, t.artifactId],
+      foreignColumns: [
+        npAgentPreviewArtifacts.siteId,
+        npAgentPreviewArtifacts.previewId,
+        npAgentPreviewArtifacts.id,
+      ],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_preview_artifact_uploads_bounds_check",
+      sql`${t.attempt} between 0 and 255 and ${t.rowVersion}>0 and ${t.pruneAt}>=${t.createdAt}+interval '365 days' and (${t.adapterOperationRef} is null or char_length(${t.adapterOperationRef}) between 1 and 512) and ${t.uploadSetDigest} ~ '^aus1:sha256:[A-Za-z0-9_-]{43}$' and ${t.uploadRequestDigest} ~ '^aur1:sha256:[A-Za-z0-9_-]{43}$' and ${t.idempotencyKey} ~ '^npau1_[A-Za-z0-9_-]{43}$'`,
+    ),
+    check(
+      "np_agent_preview_artifact_uploads_state_check",
+      sql`${t.state} in ('queued','running','waiting_inspection','succeeded','failed','cancelled') and ${t.adapterOperationStatus} in ('not_dispatched','pending','unknown','not_started','committed','failed_no_effect') and ${t.observedObjectState} in ('unknown','present','absent') and (${t.observedObjectState}<>'present' or ${t.everObservedPresent})`,
+    ),
+    check(
+      "np_agent_preview_artifact_uploads_receipt_check",
+      sql`((${t.adapterOperationStatus} in ('not_dispatched','pending','unknown') and ${t.adapterOperationReceiptDigest} is null and ${t.adapterOperationResolvedAt} is null) or (${t.adapterOperationStatus} in ('not_started','committed','failed_no_effect') and ${t.adapterOperationReceiptDigest} ~ '^auo1:sha256:[A-Za-z0-9_-]{43}$' and ${t.adapterOperationResolvedAt} is not null)) is true`,
+    ),
+    check(
+      "np_agent_preview_artifact_uploads_lifecycle_check",
+      sql`(
+    (${t.state}='queued' and ${t.attempt}=0 and ${t.adapterOperationStatus}='not_dispatched' and not ${t.everObservedPresent} and ${t.observedObjectState}='unknown' and ${t.startedAt} is null and ${t.leaseUntil} is null and ${t.callDeadlineAt} is null and ${t.finishedAt} is null and ${t.verifiedAt} is null) or
+    (${t.state}='running' and ${t.attempt}>0 and ${t.startedAt} is not null and ${t.leaseUntil} is not null and ${t.callDeadlineAt} is not null and ${t.finishedAt} is null and ${t.verifiedAt} is null) or
+    (${t.state}='waiting_inspection' and ${t.attempt}>0 and ${t.startedAt} is not null and ${t.leaseUntil} is null and ${t.callDeadlineAt} is not null and ${t.finishedAt} is null and ${t.verifiedAt} is null) or
+    (${t.state}='succeeded' and ${t.attempt}>0 and ${t.startedAt} is not null and ${t.leaseUntil} is null and ${t.callDeadlineAt} is not null and ${t.finishedAt} is not null and ${t.adapterOperationStatus}='committed' and ${t.observedObjectState}='present' and ${t.everObservedPresent} and ${t.verifiedAt} is not null) or
+    (${t.state} in ('failed','cancelled') and ${t.leaseUntil} is null and ${t.finishedAt} is not null and ${t.verifiedAt} is null and ((${t.adapterOperationStatus} in ('not_started','failed_no_effect') and ${t.observedObjectState}='absent') or (${t.adapterOperationStatus}='committed' and ${t.observedObjectState} in ('present','absent')) or (${t.state}='cancelled' and ${t.attempt}=0 and ${t.adapterOperationStatus}='not_dispatched' and ${t.startedAt} is null and ${t.callDeadlineAt} is null and not ${t.everObservedPresent} and ${t.observedObjectState}='absent')))
+  ) is true`,
+    ),
+    check(
+      "np_agent_preview_artifact_uploads_time_check",
+      sql`(${t.startedAt} is null or ${t.startedAt}>=${t.createdAt}) and (${t.callDeadlineAt} is null or (${t.callDeadlineAt}>${t.startedAt} and ${t.callDeadlineAt}<=${t.startedAt}+interval '60 seconds')) and (${t.finishedAt} is null or ${t.finishedAt}>=${t.createdAt})`,
+    ),
+  ],
+);
+
+export const npAgentPreviewViewerLaunches = pgTable(
+  "np_agent_preview_viewer_launches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id").notNull(),
+    previewId: uuid("preview_id").notNull(),
+    staffUserId: uuid("staff_user_id").notNull(),
+    staffSessionId: uuid("staff_session_id").notNull(),
+    sessionFingerprint: text("session_fingerprint").notNull(),
+    sessionFingerprintKeyId: text("session_fingerprint_key_id").notNull(),
+    generation: integer("generation").notNull(),
+    admittingInvocationId: uuid("admitting_invocation_id").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    requestHash: text("request_hash").notNull(),
+    signingKid: text("signing_kid").notNull(),
+    allowedRoutesDigest: text("allowed_routes_digest").notNull(),
+    siteAuthorizationBody: jsonb("site_authorization_body")
+      .$type<NpAgentStaffSiteAuthorizationCanonicalV1>()
+      .notNull(),
+    siteAuthorizationDigest: text("site_authorization_digest").notNull(),
+    iat: integer("iat").notNull(),
+    exp: integer("exp").notNull(),
+    launchPath: text("launch_path").notNull(),
+    exchangeVerifier: text("exchange_verifier").notNull(),
+    exchangeKeyId: text("exchange_key_id").notNull(),
+    exchangeExpiresAt: timestamp("exchange_expires_at", {
+      withTimezone: true,
+      mode: "date",
+    }).notNull(),
+    exchangeConsumedAt: timestamp("exchange_consumed_at", { withTimezone: true, mode: "date" }),
+    oneTimeValueIssued: boolean("one_time_value_issued").notNull().default(true),
+    state: text("state").notNull().default("exchange_pending"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    activatedAt: timestamp("activated_at", { withTimezone: true, mode: "date" }),
+    supersededAt: timestamp("superseded_at", { withTimezone: true, mode: "date" }),
+    expiredAt: timestamp("expired_at", { withTimezone: true, mode: "date" }),
+    terminalReason: text("terminal_reason"),
+  },
+  (t) => [
+    unique("np_agent_preview_viewer_launches_generation_unique").on(
+      t.previewId,
+      t.staffSessionId,
+      t.generation,
+    ),
+    unique("np_agent_preview_viewer_launches_invocation_unique").on(
+      t.siteId,
+      t.admittingInvocationId,
+    ),
+    uniqueIndex("np_agent_preview_viewer_launches_active_unique")
+      .on(t.previewId, t.staffSessionId)
+      .where(sql`${t.state} in ('exchange_pending','active')`),
+    index("np_agent_preview_viewer_launches_site_state_idx").on(t.siteId, t.state, t.createdAt),
+    foreignKey({
+      name: "np_agent_preview_viewer_launches_preview_fk",
+      columns: [t.siteId, t.previewId],
+      foreignColumns: [npAgentChangesetPreviews.siteId, npAgentChangesetPreviews.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_preview_viewer_launches_invocation_fk",
+      columns: [t.siteId, t.admittingInvocationId],
+      foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_preview_viewer_launches_claims_check",
+      sql`(${t.generation}>0 and ${t.iat}>=0 and ${t.exp}>${t.iat} and ${t.exp}<=${t.iat}+300 and ${t.oneTimeValueIssued} and ${t.siteAuthorizationBody}->>'siteId'=${t.siteId} and ${t.siteAuthorizationBody}->>'userId'=${t.staffUserId}::text and ${t.siteAuthorizationBody}->>'schemaVersion'='np.agent-staff-site-authorization.v1' and ${t.sessionFingerprint} ~ '^psf1:hmac-sha256:[A-Za-z0-9][A-Za-z0-9._-]{0,63}:[A-Za-z0-9_-]{43}$' and split_part(${t.sessionFingerprint},':',3)=${t.sessionFingerprintKeyId} and ${t.siteAuthorizationDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.allowedRoutesDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.requestHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.exchangeVerifier} ~ '^lxv1:hmac-sha256:[A-Za-z0-9][A-Za-z0-9._-]{0,63}:[A-Za-z0-9_-]{43}$' and split_part(${t.exchangeVerifier},':',3)=${t.exchangeKeyId} and ${t.exchangeExpiresAt}>${t.createdAt} and ${t.exchangeExpiresAt}<=${t.createdAt}+interval '30 seconds') is true`,
+    ),
+    check(
+      "np_agent_preview_viewer_launches_state_check",
+      sql`((${t.state}='exchange_pending' and ${t.activatedAt} is null and ${t.exchangeConsumedAt} is null and ${t.supersededAt} is null and ${t.expiredAt} is null and ${t.terminalReason} is null) or (${t.state}='active' and ${t.activatedAt} is not null and ${t.exchangeConsumedAt} is not null and ${t.supersededAt} is null and ${t.expiredAt} is null and ${t.terminalReason} is null) or (${t.state}='superseded' and ${t.supersededAt} is not null and ${t.expiredAt} is null and ${t.terminalReason} in ('REPLACED','SESSION_REVOKED','PREVIEW_INVALIDATED','SITE_DELETING')) or (${t.state}='expired' and ${t.expiredAt} is not null and ${t.supersededAt} is null and ${t.terminalReason} in ('REPLACED','SESSION_REVOKED','PREVIEW_INVALIDATED','SITE_DELETING'))) is true`,
+    ),
+  ],
+);
+
+export const npAgentPreviewRenderSessions = pgTable(
+  "np_agent_preview_render_sessions",
+  {
+    id: uuid("id").primaryKey(),
+    siteId: text("site_id").notNull(),
+    previewId: uuid("preview_id").notNull(),
+    generation: integer("generation").notNull(),
+    planHash: text("plan_hash").notNull(),
+    renderAttemptId: uuid("render_attempt_id").notNull(),
+    allowedRoutesDigest: text("allowed_routes_digest").notNull(),
+    previewContractFingerprint: text("preview_contract_fingerprint").notNull(),
+    state: text("state").notNull().default("active"),
+    cookieVerifier: text("cookie_verifier").notNull(),
+    cookieVerifierKeyId: text("cookie_verifier_key_id").notNull(),
+    issuedAt: timestamp("issued_at", { withTimezone: true, mode: "date" }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    closedAt: timestamp("closed_at", { withTimezone: true, mode: "date" }),
+    closeReason: text("close_reason"),
+    capturePlan: jsonb("capture_plan")
+      .$type<
+        Array<{
+          ordinal: number;
+          route: string;
+          locale: string | null;
+          audience: "public";
+          viewportName: "desktop" | "mobile";
+          width: number;
+          height: number;
+          deviceScaleFactor: 1 | 2;
+          captureTicketDigest: string;
+          captureTicketKeyId: string;
+        }>
+      >()
+      .notNull(),
+    consumedOrdinals: jsonb("consumed_ordinals").$type<boolean[]>().notNull(),
+  },
+  (t) => [
+    unique("np_agent_preview_render_sessions_attempt_unique").on(
+      t.previewId,
+      t.generation,
+      t.renderAttemptId,
+    ),
+    index("np_agent_preview_render_sessions_expiry_idx").on(t.siteId, t.state, t.expiresAt),
+    foreignKey({
+      name: "np_agent_preview_render_sessions_preview_fk",
+      columns: [t.siteId, t.previewId, t.previewContractFingerprint],
+      foreignColumns: [
+        npAgentChangesetPreviews.siteId,
+        npAgentChangesetPreviews.id,
+        npAgentChangesetPreviews.previewContractFingerprint,
+      ],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_preview_render_sessions_reservation_fk",
+      columns: [t.siteId, t.previewId, t.id, t.renderAttemptId],
+      foreignColumns: [
+        npAgentChangesetPreviews.siteId,
+        npAgentChangesetPreviews.id,
+        npAgentChangesetPreviews.renderSessionId,
+        npAgentChangesetPreviews.renderAttemptId,
+      ],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_preview_render_sessions_claims_check",
+      sql`(${t.generation}>0 and ${t.expiresAt}>${t.issuedAt} and ${t.expiresAt}<=${t.issuedAt}+interval '120 seconds' and ${t.cookieVerifier} ~ '^rcv1:hmac-sha256:[A-Za-z0-9][A-Za-z0-9._-]{0,63}:[A-Za-z0-9_-]{43}$' and split_part(${t.cookieVerifier},':',3)=${t.cookieVerifierKeyId} and ${t.planHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.allowedRoutesDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and jsonb_typeof(${t.capturePlan})='array' and jsonb_array_length(${t.capturePlan}) between 1 and 20 and jsonb_typeof(${t.consumedOrdinals})='array' and jsonb_array_length(${t.capturePlan})=jsonb_array_length(${t.consumedOrdinals}) and octet_length(${t.capturePlan}::text)<=65536) is true`,
+    ),
+    check(
+      "np_agent_preview_render_sessions_state_check",
+      sql`((${t.state}='active' and ${t.closedAt} is null and ${t.closeReason} is null) or (${t.state}='completed' and ${t.closedAt} is not null and ${t.closeReason} is null and not ${t.consumedOrdinals} @> '[false]'::jsonb) or (${t.state} in ('failed','cancelled','expired') and ${t.closedAt} is not null and ${t.closeReason} in ('CAPTURE_FAILED','PREVIEW_INVALIDATED','SITE_DELETING','SESSION_EXPIRED'))) is true`,
     ),
   ],
 );

@@ -1,3 +1,4 @@
+import { npAssertAgentPreviewEffectsAllowed } from "../agent/changeset-preview-overlay.js";
 import type { ReadableStream } from "node:stream/web";
 
 import {
@@ -17,6 +18,7 @@ export async function npUploadStorageObject(
   data: Buffer | ReadableStream,
   metadata: NpFileMetadata,
 ): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
   const validatedAdapter = npRequireStorageAdapter(adapter);
   const validatedKey = npRequireStorageKey(key);
   const validatedMetadata = npRequireFileMetadata(metadata);
@@ -48,6 +50,7 @@ export async function npGetStorageObjectUrl(
 }
 
 export async function npDeleteStorageObject(adapter: NpStorageAdapter, key: string): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
   const validatedAdapter = npRequireStorageAdapter(adapter);
   const result: unknown = await validatedAdapter.delete(npRequireStorageKey(key));
   requireVoid(result, "storage.adapter.delete.result");

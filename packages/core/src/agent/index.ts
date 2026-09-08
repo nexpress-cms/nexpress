@@ -23,3 +23,17 @@ export * from "./vault-service.js";
 export * from "./activity-service.js";
 export * from "./agent-http-gateway.js";
 export * from "./changeset-service.js";
+
+export {
+  withAgentChangeSetPreview,
+  npIsAgentChangeSetPreview,
+  npAgentPreviewReadTransaction,
+  npGetAgentChangeSetPreviewContext,
+  type NpAgentChangeSetPreviewContextV1,
+} from "./changeset-preview-overlay.js";
+
+export * from "./preview-transport.js";
+export * from "./preview-access-service.js";
+
+export * from "./preview-artifact-contract.js";
+export * from "./preview-artifact-service.js";

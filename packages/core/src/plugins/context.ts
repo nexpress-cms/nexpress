@@ -1,3 +1,7 @@
+import {
+  npAssertAgentPreviewEffectsAllowed,
+  npGetAgentChangeSetPreviewContext,
+} from "../agent/changeset-preview-overlay.js";
 import { randomUUID } from "node:crypto";
 
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -182,7 +186,8 @@ function assertCap(pluginId: string, capabilities: readonly string[], required: 
 export function createPluginRuntimeContext(options: BuildContextOptions): Record<string, unknown> {
   const { pluginId, capabilities, allowedHosts, config, registration, lookupRegistration } =
     options;
-  const db = (): NodePgDatabase<Record<string, unknown>> => getDb();
+  const db = (): NodePgDatabase<Record<string, unknown>> =>
+    (npGetAgentChangeSetPreviewContext()?.tx ?? getDb()) as NodePgDatabase<Record<string, unknown>>;
   const principal = pluginPrincipal(pluginId);
 
   // Plugin logs flow through the global logger (`setLogger` at app boot)
@@ -251,6 +256,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         return result.doc;
       },
       async delete(collection: string, id: string) {
+        npAssertAgentPreviewEffectsAllowed();
         assertCap(pluginId, capabilities, "content:delete");
         await coreDeleteDocument(collection, id, principal);
       },
@@ -321,6 +327,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         return toPluginMediaItem(record);
       },
       async delete(id: string) {
+        npAssertAgentPreviewEffectsAllowed();
         assertCap(pluginId, capabilities, "media:delete");
         const result = await coreDeleteMedia(id);
         if (!result.deleted && result.references && result.references.length > 0) {
@@ -360,6 +367,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         return (row?.value as T | undefined) ?? null;
       },
       async set(key: string, value: unknown, opts?: { ttl?: number }): Promise<void> {
+        npAssertAgentPreviewEffectsAllowed();
         assertCap(pluginId, capabilities, "storage:kv");
         const siteId = await resolveStorageSiteId();
         const expiresAt = opts?.ttl && opts.ttl > 0 ? new Date(Date.now() + opts.ttl * 1000) : null;
@@ -379,6 +387,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
           });
       },
       async delete(key: string): Promise<void> {
+        npAssertAgentPreviewEffectsAllowed();
         assertCap(pluginId, capabilities, "storage:kv");
         const siteId = await resolveStorageSiteId();
         await db()
@@ -436,6 +445,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         value: T,
         opts?: { ttl?: number },
       ): Promise<string> {
+        npAssertAgentPreviewEffectsAllowed();
         assertCap(pluginId, capabilities, "storage:kv");
         const normalizedPrefix = prefix.length > 0 ? prefix : "append:";
         pluginStorageAppendCounter = (pluginStorageAppendCounter + 1) % 1_000_000;
@@ -493,6 +503,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         return Promise.resolve(entry.value as T);
       },
       set(key: string, value: unknown, ttl?: number): Promise<void> {
+        npAssertAgentPreviewEffectsAllowed();
         pluginCache.set(cacheKey(pluginId, key), {
           value,
           expiresAt: ttl && ttl > 0 ? Date.now() + ttl * 1000 : null,
@@ -532,6 +543,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         return {};
       },
       async setPlugin(data: Record<string, unknown>): Promise<void> {
+        npAssertAgentPreviewEffectsAllowed();
         assertCap(pluginId, capabilities, "settings:write");
         // All writes route through the registered plugin contract. Plugins
         // without configSchema still get the exact versioned envelope, but
@@ -553,6 +565,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         return getTheme();
       },
       async setTokens(partial: NpThemeTokensOverlay): Promise<void> {
+        npAssertAgentPreviewEffectsAllowed();
         assertCap(pluginId, capabilities, "theme:write");
         const validatedPartial = npRequireThemeTokensOverlay(
           partial,
@@ -594,6 +607,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
           timeoutMs?: number;
         },
       ): Promise<{ ok: boolean; status: number; headers: Record<string, string>; body?: unknown }> {
+        npAssertAgentPreviewEffectsAllowed();
         assertCap(pluginId, capabilities, "network:fetch");
         // Allowed-host check: manifest.allowedHosts gates every fetch. Empty
         // list means the plugin declared network:fetch but didn't scope it
@@ -708,6 +722,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
 
     next: {
       async revalidatePath(path: string): Promise<void> {
+        npAssertAgentPreviewEffectsAllowed();
         await npInvalidateCache({
           source: "plugin",
           pluginId,
@@ -716,6 +731,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         });
       },
       async revalidateTag(tag: string): Promise<void> {
+        npAssertAgentPreviewEffectsAllowed();
         await npInvalidateCache({
           source: "plugin",
           pluginId,
@@ -743,6 +759,7 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
         actionName: string,
         data?: unknown,
       ): Promise<{ ok: boolean; data?: unknown; error?: string }> {
+        npAssertAgentPreviewEffectsAllowed();
         const target = lookupRegistration(targetPluginId);
         const action = target?.actions.get(actionName);
         if (!action) {

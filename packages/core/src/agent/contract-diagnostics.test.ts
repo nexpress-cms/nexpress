@@ -55,7 +55,7 @@ function queryClient(
 
 describe("Agent contract diagnostics", () => {
   it("freezes the complete R1 table inventory and critical constraint inventory", () => {
-    expect(npAgentDiagnosticsSchemaInventoryV1.tables).toHaveLength(23);
+    expect(npAgentDiagnosticsSchemaInventoryV1.tables).toHaveLength(28);
     expect(npAgentDiagnosticsSchemaInventoryV1.tables).toEqual(
       [...npAgentDiagnosticsSchemaInventoryV1.tables].sort(),
     );

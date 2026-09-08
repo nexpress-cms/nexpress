@@ -957,9 +957,16 @@ browser receives the plaintext exactly once in a trusted `private, no-store`
 HTML bridge as one hidden `exchange` form field posted to
 `<previewOrigin>/__np/launch`; it never appears in JSON, a URL, referrer,
 analytics, audit, or application logs. The bridge has no third-party content,
-sets `Referrer-Policy: no-referrer`, and uses a server nonce solely to submit
+sets `Referrer-Policy: origin`, and uses a server nonce solely to submit
 the fixed form (with a framework-owned submit button fallback) under an exact
 CSP whose `form-action` is only `previewOrigin`.
+This trusted production bridge is the sole referrer-policy exception: the
+browser sends only the canonical production origin, never its path, query or
+exchange value. The Fetch request-Origin algorithm makes a non-CORS form POST
+opaque (`Origin: null`) under `no-referrer`; accepting that opaque origin would
+weaken the exact-origin boundary. Activation, viewer and artifact responses
+retain `no-referrer`. The browser fixture verifies the real cross-site POST,
+Strict cookie activation, absent production cookies and replay rejection.
 
 The wire is exactly
 `nplx1_<canonical-lowercase-launch-uuid>_<43-character-unpadded-base64url>`.
@@ -1806,3 +1813,38 @@ The first implementation is not complete until integration tests prove:
 9. a principal from another site cannot read, preview, approve, apply, or infer
    the ChangeSet;
 10. malicious Markdown/HTML in model text cannot forge the approval UI.
+
+## AP-305/AP-306 implementation boundary (2026-09-08)
+
+The existing ChangeSet service explicitly installs preview contract, route
+resolver, optional enqueue, screenshot and private-storage adapters. Creating
+a preview records a queued generation; only host-invoked `processPreview` or
+`reconcilePreviews` performs work. Maintenance returns a site-bound opaque
+`nextCursor`; hosts must continue that cursor to the end, then restart a pass.
+This includes failed/expired cleanup and prevents old ready evidence or one
+ambiguous storage operation from starving later work.
+
+The overlay uses the existing pool in a read-only repeatable-read transaction.
+Short current-authority admissions run before and after rendering, with no
+row locks held while acquiring the render connection or performing storage
+I/O. Rendering consumes at most 5 MiB of HTML and completes within 120 seconds;
+escaped asynchronous work retains the closed side-effect fence. Proposed
+creates keep the canonical null `beforeHash` and frozen absence snapshot.
+Framework effects are rejected; arbitrary trusted JavaScript using its own
+raw database or network client is outside the ALS boundary. Hosts must use
+the framework read facades and a side-effect-free renderer.
+
+The complete bounded output is copied into a private 0700 local spool with
+0600 files before reservation and any object write, and removed in `finally`.
+Only inspection can recover a lost worker; recovery never recreates bytes or
+repeats PUT. Active render tickets are exposed by a single-use host lease;
+`use`/`dispose` clears internal buffers and ticket references. A host that
+copies an immutable JavaScript string remains responsible for that copy.
+
+The three production Admin route wrappers implement preview request, detail
+and launch only. Dedicated-origin and loopback-render handler factories require
+explicit host installation. No listener, automatic runtime, capture process,
+provider call, seed or default exposure is installed. Full ChangeSet Admin UI,
+link/SEO/accessibility execution, MCP/API advertisement and approval/apply are
+still AP-307 and later. Without screenshots/check execution, ready empty
+previews explicitly report `SCREENSHOTS_UNAVAILABLE` and `CHECKS_NOT_RUN`.

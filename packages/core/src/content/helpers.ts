@@ -1,3 +1,9 @@
+import {
+  npAssertAgentPreviewEffectsAllowed,
+  npAgentPreviewReadTransaction,
+  npGetAgentChangeSetPreviewContext,
+  npAgentPreviewSettingOverride,
+} from "../agent/changeset-preview-overlay.js";
 import { can } from "../auth/capabilities.js";
 import { NpConflictError, NpForbiddenError } from "../errors.js";
 import type { NpTransaction } from "../collections/pipeline.js";
@@ -41,8 +47,17 @@ export async function getNavigation(
       locationIssues.map((entry) => ({ field: entry.path, message: entry.message })),
     );
   }
-  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
+  const db = ((await npAgentPreviewReadTransaction(options?.tx)) ?? getDb()) as ReturnType<
+    typeof getDb
+  >;
   const siteId = await resolveSiteId();
+  const preview = npGetAgentChangeSetPreviewContext()?.plan.body.operations.find(
+    ({ operation }) => operation.kind === "navigation" && operation.resource.location === location,
+  )?.operation;
+  if (preview?.kind === "navigation")
+    return resolveNavItemUrls(structuredClone(preview.input.items), {
+      tx: await npAgentPreviewReadTransaction(options?.tx),
+    });
   const rows = await db
     .select()
     .from(npNavigation)
@@ -287,7 +302,7 @@ export async function findSlugRedirect(
   oldSlug: string,
 ): Promise<string | null> {
   if (!oldSlug || oldSlug.length === 0) return null;
-  const db = getDb();
+  const db = ((await npAgentPreviewReadTransaction()) ?? getDb()) as ReturnType<typeof getDb>;
   const siteId = await resolveSiteId();
 
   const seen = new Set<string>([oldSlug]);
@@ -335,8 +350,12 @@ export async function getSetting<T = unknown>(
       { field: keyValidation.issue.path, message: keyValidation.issue.message },
     ]);
   }
-  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
+  const db = ((await npAgentPreviewReadTransaction(options?.tx)) ?? getDb()) as ReturnType<
+    typeof getDb
+  >;
   const siteId = await resolveSiteId();
+  const preview = npAgentPreviewSettingOverride(key);
+  if (preview) return preview.value as T | null;
   const rows = await db
     .select()
     .from(npSettings)
@@ -358,6 +377,7 @@ export async function setNavigation(
   user: NpAuthUser,
   options?: { tx?: NpTransaction; expectedUpdatedAt?: string },
 ): Promise<{ location: string; items: NpNavItem[]; updatedAt: string }> {
+  npAssertAgentPreviewEffectsAllowed();
   if (!can(user, "admin.manage")) throw new NpForbiddenError("navigation", "update");
   const issues = [...npAnalyzeNavigationLocation(location), ...npAnalyzeNavigationItems(items)];
   if (issues.length > 0) {
@@ -381,7 +401,9 @@ export async function setNavigation(
       ]);
     }
   }
-  const db = (options?.tx ?? getDb()) as ReturnType<typeof getDb>;
+  const db = ((await npAgentPreviewReadTransaction(options?.tx)) ?? getDb()) as ReturnType<
+    typeof getDb
+  >;
   const siteId = await resolveSiteId();
   const now = new Date();
   const [result] = await db

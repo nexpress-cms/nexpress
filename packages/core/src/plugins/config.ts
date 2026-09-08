@@ -1,3 +1,7 @@
+import {
+  npAssertAgentPreviewEffectsAllowed,
+  npAgentPreviewReadTransaction,
+} from "../agent/changeset-preview-overlay.js";
 import { and, eq } from "drizzle-orm";
 import type { ZodTypeAny } from "zod";
 
@@ -79,6 +83,7 @@ export function applyPluginConfigMigration(
   if (fromVersion >= target) return rawValue;
   const migrate = registration.configMigrate;
   if (typeof migrate !== "function") return rawValue;
+  npAssertAgentPreviewEffectsAllowed();
   return migrate(rawValue, fromVersion);
 }
 
@@ -157,7 +162,9 @@ export async function getPluginConfigWithStatus(pluginId: string): Promise<NpPlu
   }
   const schema = registration.configSchema as ZodTypeAny | undefined;
 
-  const db = getOptionalDb();
+  const db = ((await npAgentPreviewReadTransaction()) ?? getOptionalDb()) as ReturnType<
+    typeof getOptionalDb
+  >;
   if (!db) {
     return {
       pluginId,
@@ -253,6 +260,7 @@ export async function setPluginConfig(
   value: unknown,
   updatedBy: string | null = null,
 ): Promise<unknown> {
+  npAssertAgentPreviewEffectsAllowed();
   const registration = getPluginRegistration(pluginId);
   if (!registration) {
     throw new NpValidationError("Invalid input", [

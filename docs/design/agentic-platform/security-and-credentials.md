@@ -2112,3 +2112,25 @@ A newly generated site starts with:
 - existing auth lockout, CSRF, exact sessions, and proxy rate limiting active;
 - Doctor warnings that identify every control required before enabling
   unattended operation.
+
+### Implemented R3 preview boundary (AP-305/AP-306)
+
+Preview viewer and render authentication are separate from production staff
+cookies, Gateway service tokens and MCP OAuth. The dedicated HTTPS viewer
+origin must have a different registrable site from every production origin;
+PSL validation includes private suffixes. Exact canonical Ed25519 claims,
+independent HMAC purposes, one-time 30-second launch exchange and per-preview
+Strict cookies are checked against retained rows and current authority.
+
+The trusted production launch bridge alone uses `Referrer-Policy: origin` so a
+real browser supplies the exact production Origin on its cross-site form
+POST. It sends no path/query or exchange secret in the referrer. Opaque/null
+Origin is rejected. Activation, preview HTML and artifact responses retain
+`no-referrer`, private/no-store, nosniff and noindex. Artifact reads repeat
+current authorization and exact persisted manifest, MIME, size and framed
+content digest checks; storage locators never enter a client projection.
+
+Host render leases are single-use and clear internal ticket/token buffers and
+references on use/disposal. They cannot erase JavaScript strings copied by
+trusted host code. No production listener, automatic worker or default
+preview runtime is installed. See the [preview contract](changesets-and-approvals.md).

@@ -100,7 +100,7 @@ describe("ChangeSet draft and client-safe wire contract", () => {
       `"cj1:sha256:Mh2d4WjSiEnqcJbRDeJsgFmR8b8E_vSxJ_NGhYWpNS8"`,
     );
     expect(await npDigestAgentChangeSetWireContractV1()).toMatchInlineSnapshot(
-      `"cj1:sha256:GaDnrqmIOmFAzPgKAXQUE1qHc_fHH33_-JpVR-qmMfk"`,
+      `"cj1:sha256:Ks7nP9mRgWwoKVDYX-4qiKzkER-1TtP783t3BDu3keE"`,
     );
     expect(
       await npDigestAgentChangeSetDraftInputV1({

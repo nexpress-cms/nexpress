@@ -223,13 +223,14 @@
     "pg": "^8.23.0",
     "pg-boss": "^12.27.0",
     "sharp": "^0.35.3",
+    "tldts": "7.4.12",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",
+    "@typescript/native": "npm:typescript@^7.0.2",
     "drizzle-kit": "^0.31.10",
     "tsup": "^8.5.0",
-    "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "scripts": {
