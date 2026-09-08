@@ -95,16 +95,19 @@ invalidated cached typed lint results; the route lint cache is refreshed after
 the stable build.
 
 PR CI exposed a separate Core declaration-worker heap limit in all four jobs.
-Both 2 GiB and 3 GiB local reproductions confirmed the limit. The deletion inventory now derives
-its name union from the existing order tuple and types descriptor values using
-the existing common contract, avoiding repeated full Drizzle declarations.
-The Core build script also defaults to a bounded 4 GiB heap while preserving
-explicit `NODE_OPTIONS`. The complete Core ESM/declaration build passed at
-4 GiB. Total declaration output fell from 2,070,970 to 1,583,104 bytes (23.6%);
-the public inventory and runtime behavior are unchanged. This is a build-script
-and type-only change; versions and
-dependencies are unchanged. The focused inventory/canonical unit suite (12),
-PostgreSQL persistence regression (19), Core typecheck and ESLint passed.
+The deletion inventory now derives its name union from the existing order tuple
+and types descriptor values using the existing common contract, avoiding repeated
+full Drizzle declarations. Total declaration output fell from 2,070,970 to
+1,583,104 bytes (23.6%). The existing eight-method ChangeSet service contract is
+also explicit, with unchanged inputs, outputs and runtime behavior.
+
+Local Node 24 completed at 4 GiB, but the second CI run still failed. Matching
+CI's exact Node 22.23.2 reproduced the 4 GiB failure locally; the complete
+ESM/declaration build passed at 5 GiB. The Core build script therefore defaults
+to a bounded 5 GiB heap while preserving explicit `NODE_OPTIONS`. These are
+build-script and type-only changes; versions and dependencies are unchanged.
+The focused inventory/canonical unit suite (12), PostgreSQL persistence
+regression (19), service factory suite (3), Core typecheck and ESLint passed.
 
 Skipped: three live Redis tests because `TEST_REDIS_URL` is absent, and five
 existing synchronous theme-render tests disabled after the async server-component

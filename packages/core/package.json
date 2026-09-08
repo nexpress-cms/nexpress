@@ -233,7 +233,7 @@
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "scripts": {
-    "build": "NODE_OPTIONS=\"${NODE_OPTIONS:---max-old-space-size=4096}\" tsup",
+    "build": "NODE_OPTIONS=\"${NODE_OPTIONS:---max-old-space-size=5120}\" tsup",
     "dev": "tsup --watch --no-clean",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",

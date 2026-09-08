@@ -48,7 +48,10 @@ import {
   npDigestAgentAuthorizationContextCanonical,
 } from "../agent-contract/canonical-authorization-context.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
-import { npAnalyzeAgentCursorPageV1 } from "../agent-contract/wire-contract.js";
+import {
+  npAnalyzeAgentCursorPageV1,
+  type NpAgentCursorPageV1,
+} from "../agent-contract/wire-contract.js";
 import { npRequireAgentContractResult } from "../agent-contract/contract.js";
 import {
   npAgentScopeStaffCapability,
@@ -102,6 +105,37 @@ export interface NpAgentChangeSetServiceOptionsV1 extends NpAgentAdminAdmissionO
     draftHash: string;
   }) => Promise<void>;
 }
+export interface NpAgentChangeSetServiceV1 {
+  create: (input: {
+    actor: NpAgentChangeSetActorV1;
+    command: unknown;
+  }) => Promise<NpAgentChangeSetWire>;
+  update: (input: {
+    actor: Extract<NpAgentChangeSetActorV1, { kind: "staff" }>;
+    id: string;
+    command: unknown;
+  }) => Promise<NpAgentChangeSetWire>;
+  get: (input: { actor: NpAgentChangeSetActorV1; id: string }) => Promise<NpAgentChangeSetWire>;
+  list: (input: {
+    actor: NpAgentChangeSetActorV1;
+    limit?: number;
+    cursor?: string;
+  }) => Promise<NpAgentCursorPageV1<NpAgentChangeSetWire, "np.agent-changesets.v1">>;
+  reconcileExpired: (input: {
+    siteId: string;
+    limit?: number;
+  }) => Promise<{ examined: number; cancelled: number }>;
+  validate: (input: {
+    actor: NpAgentChangeSetActorV1;
+    id: string;
+    command: unknown;
+  }) => Promise<NpAgentChangeSetWire>;
+  processValidation: (input: { siteId: string; attemptId: string }) => Promise<{ state: string }>;
+  reconcileValidations: (input: {
+    siteId: string;
+    limit?: number;
+  }) => Promise<{ examined: number; completed: number }>;
+}
 const hash = (domain: string, value: unknown): `cj1:sha256:${string}` =>
   `cj1:sha256:${createHash("sha256").update(`${domain}\0`).update(serializeAgentCanonicalJson(value)).digest("base64url")}`;
 const missing = () =>
@@ -126,7 +160,9 @@ interface Actor {
 }
 
 /** Explicit server service. No transport registration, preview, apply, worker or runtime is installed. */
-export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOptionsV1) {
+export function createAgentChangeSetServiceV1(
+  options: NpAgentChangeSetServiceOptionsV1,
+): NpAgentChangeSetServiceV1 {
   const now = options.now ?? (() => new Date());
   const lifetime = options.eligibilitySeconds ?? 30 * 86400;
   if (!Number.isSafeInteger(lifetime) || lifetime < 60 || lifetime > 90 * 86400)
@@ -1988,4 +2024,3 @@ export function createAgentChangeSetServiceV1(options: NpAgentChangeSetServiceOp
     reconcileValidations,
   };
 }
-export type NpAgentChangeSetServiceV1 = ReturnType<typeof createAgentChangeSetServiceV1>;

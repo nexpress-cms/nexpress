@@ -132,10 +132,13 @@ No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugi
   callbacks. Navigation CAS belongs in the atomic write, not a prior read.
 
 - Core declaration generation exceeds the 2 GiB heap available on constrained
-  runners. The build script defaults to a 4 GiB Node heap and preserves explicit
+  runners. The build script defaults to a 5 GiB Node heap and preserves explicit
   `NODE_OPTIONS`. Derive deletion inventory names from the existing order tuple
   and keep descriptor values typed to the shared `PgTable`/`AnyPgColumn` contract;
   exporting their full inferred Drizzle structures duplicates large declarations.
+  Keep the existing ChangeSet service return contract explicit rather than deriving
+  its public type through SQL implementation inference. Node 22 requires the
+  larger heap even where Node 24 completes at 4 GiB.
 
 - Public build entries are declared in `tsup.config.ts`; client-safe contracts such as `jobs-contract` and `community-contract` must not import server dependencies. Apps reference the `db-schema` entry in `drizzle.config.ts`.
 - `agent-contract/` is likewise pure: browser-safe wires may reuse its exact
