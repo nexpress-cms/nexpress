@@ -106,12 +106,14 @@ export async function principalFixture(
   writeOnly = false,
   options: Partial<NpAgentChangeSetServiceOptionsV1> = {},
   extraScopes: NpAgentScope[] = [],
+  exposure: "propose" | "approved-execute" = "propose",
 ) {
+  const gatewaySettings = { ...settings, stdio: exposure };
   const gateway = createAgentGatewayServiceV1({
     tokenHashKeyring: { active: { id: "draft-key", key: new Uint8Array(32).fill(25) } },
     environment: "production",
-    deploymentGatewaySettings: settings,
-    resolveSiteGatewaySettings: () => settings,
+    deploymentGatewaySettings: gatewaySettings,
+    resolveSiteGatewaySettings: () => gatewaySettings,
     reauthentication: { verify: () => true },
   });
   const baseScopes: NpAgentScope[] = writeOnly
@@ -141,7 +143,7 @@ export async function principalFixture(
       name: "Draft token",
       scopes: [...scopes],
       transport: "stdio",
-      exposure: "propose",
+      exposure,
       expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
     },
   });
@@ -161,7 +163,7 @@ export async function principalFixture(
   const admission = createAgentCapabilityAdmissionServiceV1({
     registry,
     resolveChangeSetCapabilities: () => facade,
-    resolveGatewaySettings: () => settings,
+    resolveGatewaySettings: () => gatewaySettings,
   });
   const service = createAgentChangeSetServiceV1({
     cursorKey: new Uint8Array(32).fill(44),
@@ -172,6 +174,7 @@ export async function principalFixture(
   });
   facade = createAgentChangeSetCapabilityFacadeV1(service);
   return {
+    gatewaySettings,
     gateway,
     principal,
     authentication,

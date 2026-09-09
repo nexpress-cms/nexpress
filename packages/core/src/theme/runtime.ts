@@ -86,6 +86,29 @@ export async function setTheme(
     );
   }
   npAssertSettingValue("theme", value);
+  await persistTheme(value, user, options);
+  return value as NpThemeTokens;
+}
+
+/** Internal canonical overlay replacement, sharing the normal token writer and ACL. */
+export async function npSetThemeTokensOverlay(
+  value: unknown,
+  user: NpAuthUser,
+  options: { tx: NpTransaction },
+): Promise<NpThemeTokensOverlay> {
+  npAssertAgentPreviewEffectsAllowed();
+  if (!can(user, "admin.manage")) throw new NpForbiddenError("settings/theme", "update");
+  const overlay = npRequireThemeTokensOverlay(value);
+  npAssertSettingValue("theme", overlay);
+  await persistTheme(overlay, user, options);
+  return overlay;
+}
+
+async function persistTheme(
+  value: unknown,
+  user: NpAuthUser,
+  options?: { tx?: NpTransaction },
+): Promise<void> {
   const db = ((await npAgentPreviewReadTransaction(options?.tx)) ?? getDb()) as ReturnType<
     typeof getDb
   >;
@@ -98,5 +121,4 @@ export async function setTheme(
       target: [npSettings.siteId, npSettings.key],
       set: { value, updatedAt: now, updatedBy: user.id },
     });
-  return value as NpThemeTokens;
 }

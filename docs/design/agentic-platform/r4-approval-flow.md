@@ -1,5 +1,11 @@
 # R4 approval flow
 
+This document records the AP-401 approval slice. Its execution exclusions below
+are historical; the subsequent [R4 execution slice](r4-execution-flow.md) adds
+explicit apply/schedule/cancel and verification. Rollback and Gateway execution
+exposure remain later work. Verification totals below belong to the approval
+release and do not certify the newer execution changes.
+
 The approval slice connects AP-401 to the approval portions of AP-407 and
 AP-408. It records a human decision over one sealed ChangeSet; it does not
 apply content, schedule execution, consume approval, or run compensation.
@@ -14,8 +20,8 @@ keyring, and a host resolver for the intended execution capability's canonical
 `changeset.apply` or `changeset.schedule` capability, require human approval,
 and use mutation effect profiles at `approved-execute`. Its existing canonical
 registry fingerprint signs the approval. Supplying this definition installs
-no executor and advertises no Gateway capability. AP-406 owns actual execution
-registration and must match the signed definition before consumption.
+no executor and advertises no Gateway capability. The subsequent Admin execution slice must match the signed definition before
+consumption; AP-406 separately owns Gateway capability registration.
 
 The default runtime remains absent. No key is derived from `NP_SECRET`, the
 Gateway signing key, Vault, or database configuration. Integrity keys are

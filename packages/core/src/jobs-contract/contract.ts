@@ -387,6 +387,51 @@ function parseBuiltinPayload(
 ): NpJobData {
   const path = `${dataPath}(${type})`;
   switch (type) {
+    case "agent:changesetApply": {
+      const input = exactRecord(value, path, [
+        "siteId",
+        "changeSetId",
+        "planHash",
+        "approvalId",
+        "scheduledFor",
+        "idempotencyKey",
+      ]);
+      if (!npIsCanonicalSiteId(input.siteId)) fail(`${path}.siteId`, "must be a canonical site id");
+      const planHash = boundedString(input.planHash, `${path}.planHash`, 54);
+      if (!/^cj1:sha256:[A-Za-z0-9_-]{43}$/u.test(planHash))
+        fail(`${path}.planHash`, "must be a canonical digest");
+      const idempotencyKey = boundedString(input.idempotencyKey, `${path}.idempotencyKey`, 256);
+      if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(idempotencyKey))
+        fail(`${path}.idempotencyKey`, "must be an idempotency key");
+      const scheduledFor =
+        input.scheduledFor === null
+          ? null
+          : boundedString(input.scheduledFor, `${path}.scheduledFor`, 24);
+      if (
+        scheduledFor !== null &&
+        (!new RegExp(npJobCanonicalDatePattern, "u").test(scheduledFor) ||
+          !Number.isFinite(Date.parse(scheduledFor)) ||
+          new Date(scheduledFor).toISOString() !== scheduledFor)
+      )
+        fail(`${path}.scheduledFor`, "must be a canonical UTC timestamp");
+      return {
+        siteId: input.siteId,
+        changeSetId: uuid(input.changeSetId, `${path}.changeSetId`),
+        planHash,
+        approvalId: uuid(input.approvalId, `${path}.approvalId`),
+        scheduledFor,
+        idempotencyKey,
+      } satisfies NpBuiltinJobPayloadMap["agent:changesetApply"];
+    }
+    case "agent:changesetVerify": {
+      const input = exactRecord(value, path, ["siteId", "changeSetId", "executionId"]);
+      if (!npIsCanonicalSiteId(input.siteId)) fail(`${path}.siteId`, "must be a canonical site id");
+      return {
+        siteId: input.siteId,
+        changeSetId: uuid(input.changeSetId, `${path}.changeSetId`),
+        executionId: uuid(input.executionId, `${path}.executionId`),
+      } satisfies NpBuiltinJobPayloadMap["agent:changesetVerify"];
+    }
     case "content:afterSave": {
       const input = exactRecord(value, path, [
         "siteId",

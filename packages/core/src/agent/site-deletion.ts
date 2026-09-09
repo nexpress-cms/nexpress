@@ -20,6 +20,7 @@ import {
   npAgentPreviewArtifacts,
   npAgentChangesetPreviews,
   npAgentChangesets,
+  npAgentChangesetExecutions,
   npAgentChangesetValidationAttempts,
   npAgentChangesetOperations,
   npAgentApprovals,
@@ -57,6 +58,7 @@ export const npAgentSiteDeletionOrderV1 = Object.freeze([
   "np_agent_preview_artifact_uploads",
   "np_agent_preview_artifacts",
   "np_agent_changeset_previews",
+  "np_agent_changeset_executions",
   "np_agent_approvals",
   "np_agent_changeset_validation_attempts",
   "np_agent_changeset_operations",
@@ -116,6 +118,11 @@ const descriptors: Record<
     table: npAgentActions,
     id: npAgentActions.id,
     siteId: npAgentActions.siteId,
+  },
+  np_agent_changeset_executions: {
+    table: npAgentChangesetExecutions,
+    id: npAgentChangesetExecutions.id,
+    siteId: npAgentChangesetExecutions.siteId,
   },
   np_agent_approvals: {
     table: npAgentApprovals,
@@ -365,6 +372,14 @@ export async function npDeleteAgentSiteRows(db: NpAgentDb, siteId: string): Prom
   if (workingTask) {
     throw new Error("Agent site deletion requires every MCP task to be terminal.");
   }
+  const unsafeExecution = await db.execute(sql`
+    select 1 from public.np_agent_changeset_executions where site_id=${siteId}
+      and (state in ('reserved','committed','verifying','ambiguous') or exists (
+        select 1 from jsonb_array_elements(effects) e where e->>'state' in ('pending','running','unknown')
+      )) limit 1
+  `);
+  if (unsafeExecution.rows.length)
+    throw new Error("Agent site deletion requires terminal execution effects.");
   const unsafePreview = await db.execute(sql`
     select 1 from public.np_agent_changeset_previews where site_id=${siteId} and state in ('queued','rendering','ready')
     union all select 1 from public.np_agent_preview_viewer_launches where site_id=${siteId} and (state in ('exchange_pending','active') or to_timestamp(exp)+interval '60 seconds'>now())

@@ -8,7 +8,11 @@ import { npDynamicSettingOwnerPattern } from "../settings/contract.js";
 import { npSiteIdPattern } from "../sites/id-contract.js";
 import type { NpCapability } from "../auth/capabilities.js";
 import { npCollectionContractLimits } from "../collection-contract/contract.js";
-import { npAgentContractLimits } from "./contract.js";
+import {
+  npAgentContractLimits,
+  npRequireAgentContractResult,
+  npAnalyzeAgentJsonSchema,
+} from "./contract.js";
 
 import { npThemeTokenKeys } from "../theme/contract.js";
 import {
@@ -293,6 +297,21 @@ export const npAgentApprovalWireSchemaV1 = obj({
   expiresAt: utc,
   decidedAt: nullable(utc),
 });
+export const npAgentExecutionSummarySchemaV1 = obj({
+  executionId: uuid,
+  state: en(["reserved", "committed", "verifying", "succeeded", "failed", "ambiguous"]),
+  resultDigest: nullable(digest),
+  startedAt: utc,
+  finishedAt: nullable(utc),
+});
+export const npAgentVerificationSummarySchemaV1 = obj({
+  state: en(["queued", "running", "passed", "failed"]),
+  requiredPassed: natural,
+  requiredFailed: natural,
+  advisoryWarnings: natural,
+  digest: nullable(digest),
+  completedAt: nullable(utc),
+});
 export const npAgentChangeSetWireSchemaV1: NpAgentJsonSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   ...obj({
@@ -336,25 +355,8 @@ export const npAgentChangeSetWireSchemaV1: NpAgentJsonSchema = {
     preview: nullable({ $ref: "#/$defs/preview" }),
     approval: nullable(npAgentApprovalWireSchemaV1),
     schedule: nullable(obj({ at: utc })),
-    execution: nullable(
-      obj({
-        executionId: uuid,
-        state: en(["reserved", "committed", "verifying", "succeeded", "failed", "ambiguous"]),
-        resultDigest: nullable(digest),
-        startedAt: utc,
-        finishedAt: nullable(utc),
-      }),
-    ),
-    verification: nullable(
-      obj({
-        state: en(["queued", "running", "passed", "failed"]),
-        requiredPassed: natural,
-        requiredFailed: natural,
-        advisoryWarnings: natural,
-        digest: nullable(digest),
-        completedAt: nullable(utc),
-      }),
-    ),
+    execution: nullable(npAgentExecutionSummarySchemaV1),
+    verification: nullable(npAgentVerificationSummarySchemaV1),
     rollback: nullable(
       obj({
         rollbackPlanId: uuid,
@@ -417,3 +419,55 @@ export const npAgentChangeSetListOutputSchemaV1: NpAgentJsonSchema = {
   }),
   $defs: outputDefs,
 };
+
+export function npCompactAgentWireSchemaV1(source: NpAgentJsonSchema): NpAgentJsonSchema {
+  type Node = Record<string, unknown>;
+  const counts = new Map<string, { node: Node; count: number }>();
+  function children(node: Node, visit: (node: Node) => Node): Node {
+    const out: Node = { ...node };
+    for (const key of ["properties", "patternProperties", "$defs"])
+      if (node[key] && typeof node[key] === "object")
+        out[key] = Object.fromEntries(
+          Object.entries(node[key] as Node).map(([name, value]) => [name, visit(value as Node)]),
+        );
+    for (const key of ["items", "additionalProperties", "not", "if", "then", "else"])
+      if (node[key] && typeof node[key] === "object" && !Array.isArray(node[key]))
+        out[key] = visit(node[key] as Node);
+    for (const key of ["oneOf", "anyOf", "allOf"])
+      if (Array.isArray(node[key])) out[key] = (node[key] as Node[]).map(visit);
+    return out;
+  }
+  function count(node: Node): Node {
+    const signature = JSON.stringify(node);
+    if (signature.length >= 40 && !node.$ref) {
+      const prior = counts.get(signature);
+      counts.set(signature, { node, count: (prior?.count ?? 0) + 1 });
+    }
+    children(node, count);
+    return node;
+  }
+  count(source);
+  const names = new Map<string, string>();
+  let sequence = 0;
+  const originalDefinitions = source.$defs as Node | undefined;
+  for (const [signature, value] of counts)
+    if (value.count > 1) {
+      let name: string;
+      do {
+        name = `wireShared${(sequence++).toString()}`;
+      } while (originalDefinitions && Object.hasOwn(originalDefinitions, name));
+      names.set(signature, name);
+    }
+  function compact(node: Node, definition = false): Node {
+    const name = names.get(JSON.stringify(node));
+    if (name && !definition) return { $ref: `#/$defs/${name}` };
+    return children(node, (child) => compact(child));
+  }
+  const result = compact(source, true);
+  const defs = { ...(result.$defs as Node) };
+  for (const [signature, name] of names) defs[name] = compact(counts.get(signature)!.node, true);
+  return npRequireAgentContractResult(
+    npAnalyzeAgentJsonSchema({ ...result, $defs: defs }),
+    "Invalid approval detail schema",
+  );
+}

@@ -92,6 +92,8 @@ test.describe("Agent ChangeSet review", () => {
         json: url.pathname.endsWith(id)
           ? {
               schemaVersion: "np.agent-changeset-review.v1",
+              executionDetail: null,
+              executionActions: [],
               changeSet: draft(),
               requiredStaffCapabilities: ["content.author"],
               operations: [{ ordinal: 1, evidence: "not_validated", fields: [] }],
@@ -159,3 +161,137 @@ test.describe("Agent ChangeSet review", () => {
     await popup.close();
   });
 });
+
+test("execution actions use server authority, exact cancellation and stable retry", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(page.context(), 194 + testInfo.retry);
+  await signInAsE2EAdmin(page);
+  const commands: Record<string, unknown>[] = [];
+  let available = true;
+  const review = () => ({
+    schemaVersion: "np.agent-changeset-review.v1",
+    changeSet: draft(),
+    requiredStaffCapabilities: ["content.author"],
+    operations: [{ ordinal: 1, evidence: "not_validated", fields: [] }],
+    executionDetail: null,
+    executionActions: available ? ["cancel"] : [],
+  });
+  await page.route("**/api/admin/agents/changesets**", async (route) => {
+    if (route.request().url().endsWith("/cancel")) {
+      commands.push(route.request().postDataJSON());
+      if (commands.length === 1) {
+        await route.abort();
+        return;
+      }
+      available = false;
+    }
+    await route.fulfill({ json: review() });
+  });
+  await page.goto(`/admin/agents/changesets/${id}`);
+  await expect(page.getByRole("button", { name: "Apply approved plan" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Schedule approved plan" })).toHaveCount(0);
+  await page.getByLabel("Cancellation reason (optional)").fill("Withdraw proposal");
+  await page.getByRole("button", { name: "Cancel ChangeSet", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "could not be confirmed" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel ChangeSet", exact: true }).click();
+  await expect(page.getByText("No execution actions are currently available.")).toBeVisible();
+  expect(commands).toHaveLength(2);
+  expect(commands[0]).toEqual(commands[1]);
+  expect(commands[0]).toEqual({
+    schemaVersion: "np.agent-changeset-cancel-input.v1",
+    expectedDraftVersion: 1,
+    expectedState: "draft",
+    planHash: null,
+    reasonCode: "OPERATOR_CANCELLED",
+    reason: "Withdraw proposal",
+    idempotencyKey: expect.any(String),
+  });
+});
+
+for (const operation of ["apply", "schedule"] as const) {
+  test(`execution ${operation} binds the approved plan and clears evidence after reauthentication loss`, async ({
+    page,
+  }, testInfo) => {
+    await isolateE2ERateLimitBucket(
+      page.context(),
+      (operation === "apply" ? 197 : 200) + testInfo.retry,
+    );
+    await signInAsE2EAdmin(page);
+    let command: Record<string, unknown> | null = null;
+    const changeSet = {
+      ...draft(),
+      state: "approved",
+      planHash: hash,
+      baseFingerprint: hash,
+      risk: { level: "low", reasonCodes: [], approvalMode: "human", reversible: true },
+      validation: {
+        state: "valid",
+        generation: 1,
+        issueCount: 0,
+        digest: hash,
+        completedAt: "2026-09-08T00:00:00.000Z",
+      },
+      operations: draft().operations.map((row) => ({ ...row, state: "valid", afterHash: hash })),
+      approval: {
+        id,
+        generation: 1,
+        state: "approved",
+        statementHash: hash,
+        requiredHumanCapabilities: ["content.author"],
+        requiredHumanPredicates: [],
+        requestedAt: "2026-09-08T00:00:00.000Z",
+        expiresAt: "2026-09-09T00:00:00.000Z",
+        decidedAt: "2026-09-08T00:01:00.000Z",
+      },
+    };
+    await page.route("**/api/admin/agents/changesets**", async (route) => {
+      if (route.request().url().endsWith(`/${operation}`)) {
+        command = route.request().postDataJSON();
+        await route.fulfill({
+          status: 403,
+          json: {
+            status: 403,
+            error: { code: "RECENT_REAUTHENTICATION_REQUIRED", message: "Reauthenticate" },
+          },
+        });
+        return;
+      }
+      await route.fulfill({
+        json: {
+          schemaVersion: "np.agent-changeset-review.v1",
+          changeSet,
+          requiredStaffCapabilities: ["content.author"],
+          operations: [{ ordinal: 1, evidence: "available", fields: [] }],
+          executionDetail: null,
+          executionActions: [operation],
+        },
+      });
+    });
+    await page.goto(`/admin/agents/changesets/${id}`);
+    if (operation === "schedule")
+      await page.getByLabel("Approved schedule time (local time)").fill("2026-09-08T01:00");
+    const expectedTime = await page.evaluate(() => new Date("2026-09-08T01:00").toISOString());
+    await page
+      .getByRole("button", {
+        name: operation === "apply" ? "Apply approved plan" : "Schedule approved plan",
+        exact: true,
+      })
+      .click();
+    await expect(
+      page
+        .getByRole("alert")
+        .filter({ hasText: "Recent staff-primary reauthentication is required" }),
+    ).toBeVisible();
+    await expect(page.getByText("Review fixture proposal", { exact: true })).toHaveCount(0);
+    expect(command).toEqual({
+      schemaVersion: `np.agent-changeset-${operation}-input.v1`,
+      expectedDraftVersion: 1,
+      planHash: hash,
+      approvalId: id,
+      statementHash: hash,
+      idempotencyKey: expect.any(String),
+      ...(operation === "schedule" ? { scheduledFor: expectedTime } : {}),
+    });
+  });
+}

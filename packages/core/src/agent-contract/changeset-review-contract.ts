@@ -1,7 +1,13 @@
 import {
+  npRequireAgentChangeSetExecutionDetailV1,
+  npAgentChangeSetExecutionDetailSchemaV1,
+  type NpAgentChangeSetExecutionDetailV1,
+} from "./changeset-execution-contract.js";
+import {
   npAgentChangeSetWireSchemaV1,
   npAgentApprovalWireSchemaV1,
   npAgentSchemaObjectV1,
+  npCompactAgentWireSchemaV1,
 } from "./changeset-capability-schema.js";
 import type { NpAgentJsonSchema, NpAgentJsonObject } from "./types.js";
 import type { NpCapability } from "../auth/capabilities.js";
@@ -45,6 +51,8 @@ export interface NpAgentChangeSetReviewV1 {
   changeSet: NpAgentChangeSetWire;
   requiredStaffCapabilities: NpCapability[];
   operations: NpAgentChangeSetReviewOperationV1[];
+  executionDetail: NpAgentChangeSetExecutionDetailV1 | null;
+  executionActions: Array<"apply" | "schedule" | "cancel">;
 }
 const state = () => ({ seen: new WeakSet<object>() });
 function record(value: unknown, path: string, keys: string[]) {
@@ -65,6 +73,8 @@ export function npAnalyzeAgentChangeSetReviewV1(input: unknown) {
       "changeSet",
       "requiredStaffCapabilities",
       "operations",
+      "executionDetail",
+      "executionActions",
     ]);
     const changeSet = npRequireAgentChangeSetWire(r.changeSet);
     const parseValue = (inputValue: unknown, p: string): NpAgentChangeSetReviewValueV1 => {
@@ -121,7 +131,36 @@ export function npAnalyzeAgentChangeSetReviewV1(input: unknown) {
     });
     if (operations.length !== changeSet.operations.length)
       failCanonicalBody("invalid-field", path, "Review must cover every operation");
+    const executionActions = canonicalBodyArray(r.executionActions, path, 3, state()).map((value) =>
+      canonicalBodyEnum<"apply" | "schedule" | "cancel">(
+        value,
+        path,
+        new Set(["apply", "schedule", "cancel"]),
+      ),
+    );
+    const actionOrder = ["apply", "schedule", "cancel"];
+    if (
+      executionActions.some(
+        (action, index) =>
+          index > 0 &&
+          actionOrder.indexOf(executionActions[index - 1]) >= actionOrder.indexOf(action),
+      )
+    )
+      failCanonicalBody("order", path, "Execution actions must follow the fixed unique inventory");
+    const executionDetail =
+      r.executionDetail === null
+        ? null
+        : npRequireAgentChangeSetExecutionDetailV1(r.executionDetail);
+    if (
+      executionDetail &&
+      (executionDetail.changeSetId !== changeSet.id ||
+        executionDetail.planHash !== changeSet.planHash ||
+        executionDetail.execution.executionId !== changeSet.execution?.executionId)
+    )
+      failCanonicalBody("invalid-field", path, "Execution detail must match the ChangeSet");
     return {
+      executionDetail,
+      executionActions,
       schemaVersion: canonicalBodyEnum<"np.agent-changeset-review.v1">(
         r.schemaVersion,
         `${path}.schemaVersion`,
@@ -147,7 +186,14 @@ export function npRequireAgentChangeSetReviewV1(value: unknown): NpAgentChangeSe
 /** Closed review-only additions; the embedded ChangeSet retains its existing contract. */
 export const npAgentChangeSetReviewInventoryV1 = Object.freeze({
   schemaVersion: "np.agent-changeset-review.v1",
-  keys: ["schemaVersion", "changeSet", "requiredStaffCapabilities", "operations"],
+  keys: [
+    "schemaVersion",
+    "changeSet",
+    "requiredStaffCapabilities",
+    "operations",
+    "executionDetail",
+    "executionActions",
+  ],
   operationKeys: ["ordinal", "evidence", "fields"],
   fieldKeys: ["path", "before", "after"],
   valueKeys: ["presence", "value"],
@@ -170,12 +216,19 @@ const reviewValueSchema = reviewObject({
   presence: { enum: [...npAgentChangeSetReviewInventoryV1.presence] },
   value: { $ref: "#/$defs/json" },
 });
-export const npAgentChangeSetReviewSchemaV1: NpAgentJsonSchema = JSON.parse(
+const reviewSchemaSource: NpAgentJsonSchema = JSON.parse(
   JSON.stringify({
     $schema: reviewWireDialect,
     ...reviewObject({
       schemaVersion: { const: npAgentChangeSetReviewInventoryV1.schemaVersion },
       changeSet: { $ref: "#/$defs/changeset" },
+      executionDetail: { anyOf: [{ $ref: "#/$defs/executionDetail" }, { type: "null" }] },
+      executionActions: {
+        type: "array",
+        maxItems: 3,
+        uniqueItems: true,
+        items: { enum: ["apply", "schedule", "cancel"] },
+      },
       requiredStaffCapabilities: (npAgentApprovalWireSchemaV1.properties as NpAgentJsonObject)
         .requiredHumanCapabilities,
       operations: {
@@ -204,6 +257,12 @@ export const npAgentChangeSetReviewSchemaV1: NpAgentJsonSchema = JSON.parse(
         }),
       },
     }),
-    $defs: { ...(reviewWireDefinitions as NpAgentJsonObject), changeset: reviewWireNode },
+    $defs: {
+      ...(reviewWireDefinitions as NpAgentJsonObject),
+      changeset: reviewWireNode,
+      executionDetail: npAgentChangeSetExecutionDetailSchemaV1,
+    },
   }),
 ) as NpAgentJsonSchema;
+
+export const npAgentChangeSetReviewSchemaV1 = npCompactAgentWireSchemaV1(reviewSchemaSource);

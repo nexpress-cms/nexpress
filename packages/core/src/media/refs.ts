@@ -191,6 +191,46 @@ export async function listMediaReferences(
     }));
 }
 
+/** Internal exact relation writer. The caller supplies current document/field write admission. */
+export async function npSetMediaReference(
+  tx: NpTransaction,
+  reference: NpMediaReference,
+  attached: boolean,
+): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
+  const siteId = await requireSiteId();
+  if (reference.siteId !== siteId) throw new Error("Media reference site mismatch.");
+  const active = await tx
+    .select({ id: npMedia.id })
+    .from(npMedia)
+    .where(
+      and(
+        eq(npMedia.siteId, siteId),
+        eq(npMedia.id, reference.mediaId),
+        eq(npMedia.status, "ready"),
+        isNull(npMedia.deletedAt),
+      )!,
+    )
+    .limit(1)
+    .for("key share");
+  if (active.length !== 1) throw new Error("Media reference is unavailable.");
+  const condition = and(
+    eq(npMediaRefs.siteId, siteId),
+    eq(npMediaRefs.mediaId, reference.mediaId),
+    eq(npMediaRefs.collection, reference.collection),
+    eq(npMediaRefs.documentId, reference.documentId),
+    eq(npMediaRefs.field, reference.field),
+  )!;
+  const existing = await tx
+    .select({ id: npMediaRefs.id })
+    .from(npMediaRefs)
+    .where(condition)
+    .limit(2);
+  if (existing.length > 1) throw new Error("Media reference is invalid.");
+  if (attached && existing.length === 0) await tx.insert(npMediaRefs).values({ ...reference });
+  if (!attached && existing.length === 1) await tx.delete(npMediaRefs).where(condition);
+}
+
 function collectMediaIds(
   fields: NpFieldConfig[],
   data: Record<string, unknown>,

@@ -1,3 +1,11 @@
+import {
+  npRequireAgentChangeSetApplyInputV1,
+  npRequireAgentChangeSetScheduleInputV1,
+  npRequireAgentChangeSetCancelInputV1,
+  type NpAgentChangeSetApplyInputV1,
+  type NpAgentChangeSetScheduleInputV1,
+  type NpAgentChangeSetCancelInputV1,
+} from "../agent-contract/changeset-execution-contract.js";
 import { createHash, createHmac } from "node:crypto";
 
 import { and, eq, gt } from "drizzle-orm";
@@ -55,6 +63,9 @@ type NpAgentDb = ReturnType<typeof getDb>;
 export type NpAgentAdmittedAdminOperationIdV1 =
   | NpAgentGatewayAdminOperationIdV1
   | NpAgentConnectionAdminOperationIdV1
+  | "agents.changesets.apply"
+  | "agents.changesets.schedule"
+  | "agents.changesets.cancel"
   | "agents.changesets.create"
   | "agents.changesets.update"
   | "agents.changesets.validate"
@@ -68,6 +79,9 @@ export type NpAgentAdmittedAdminOperationIdV1 =
 
 export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
   NpAgentConnectionAdminInputMapV1 & {
+    "agents.changesets.apply": NpAgentChangeSetApplyInputV1;
+    "agents.changesets.schedule": NpAgentChangeSetScheduleInputV1;
+    "agents.changesets.cancel": NpAgentChangeSetCancelInputV1;
     "agents.changesets.request_approval": NpAgentChangeSetRequestApprovalInputV1;
     "agents.approvals.decision_challenge": NpAgentApprovalChallengeRequestV1;
     "agents.approvals.approve": NpAgentApprovalDecisionInputV1;
@@ -86,6 +100,12 @@ function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
   operationId: I,
   value: unknown,
 ): NpAgentAdmittedAdminInputMapV1[I] {
+  if (operationId === "agents.changesets.apply")
+    return npRequireAgentChangeSetApplyInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.changesets.schedule")
+    return npRequireAgentChangeSetScheduleInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.changesets.cancel")
+    return npRequireAgentChangeSetCancelInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.changesets.request_approval")
     return npRequireAgentChangeSetRequestApprovalInputV1(
       value,

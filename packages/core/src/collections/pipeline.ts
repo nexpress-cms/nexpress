@@ -219,6 +219,25 @@ interface DeferredPostCommitHook {
   label: string;
   context: { collection: string; documentId: string; operation?: string };
   fn: () => Promise<unknown>;
+  metadata?: NpDeferredPostCommitMetadata;
+}
+
+/** Internal host journal seam; never persist the callback or arbitrary hook payload. */
+export interface NpDeferredPostCommitMetadata {
+  ordinal: number;
+  label: string;
+  context: { collection: string; documentId: string; operation?: string };
+}
+export interface NpDeferredPostCommitObserver {
+  /** Awaited at registration, within the caller's transaction. Failure aborts that transaction. */
+  register(metadata: NpDeferredPostCommitMetadata): Promise<void>;
+  /** Runs only after commit. The host durably fences dispatch before invoking fn. */
+  dispatch(metadata: NpDeferredPostCommitMetadata, fn: () => Promise<unknown>): Promise<void>;
+}
+interface DeferredPostCommitScope {
+  queue: DeferredPostCommitHook[];
+  observer?: NpDeferredPostCommitObserver;
+  counter: { next: number };
 }
 
 /**
@@ -230,7 +249,7 @@ interface DeferredPostCommitHook {
  * drained in FIFO order; if the callback throws, the queue is
  * discarded along with whatever caused the failure.
  */
-const deferredPostCommitStore = new AsyncLocalStorage<DeferredPostCommitHook[]>();
+const deferredPostCommitStore = new AsyncLocalStorage<DeferredPostCommitScope>();
 
 /**
  * Wrap a callback in a "deferred post-commit" scope. Any
@@ -257,12 +276,21 @@ const deferredPostCommitStore = new AsyncLocalStorage<DeferredPostCommitHook[]>(
  * its own queue even when the outer callback catches that failure. Wrap the
  * actual outer transaction promise, not only its transaction callback.
  */
-export async function withDeferredPostCommit<T>(callback: () => Promise<T>): Promise<T> {
+export async function withDeferredPostCommit<T>(
+  callback: () => Promise<T>,
+  options?: { observer?: NpDeferredPostCommitObserver },
+): Promise<T> {
   const parent = deferredPostCommitStore.getStore();
+  if (parent && options?.observer && options.observer !== parent.observer)
+    throw new Error("A nested post-commit scope cannot replace its journal observer.");
   const queue: DeferredPostCommitHook[] = [];
-  const result = await deferredPostCommitStore.run(queue, callback);
+  const observer = parent?.observer ?? options?.observer;
+  const result = await deferredPostCommitStore.run(
+    { queue, observer, counter: parent?.counter ?? { next: 1 } },
+    callback,
+  );
   if (parent) {
-    parent.push(...queue);
+    parent.queue.push(...queue);
     return result;
   }
   // Drain on success. Each hook is independently isolated — one
@@ -271,7 +299,8 @@ export async function withDeferredPostCommit<T>(callback: () => Promise<T>): Pro
   // cycle with the observability module.
   for (const hook of queue) {
     try {
-      await hook.fn();
+      if (observer && hook.metadata) await observer.dispatch(hook.metadata, hook.fn);
+      else await hook.fn();
     } catch (err) {
       const { getLogger } = await import("../observability/logger.js");
       getLogger().error(
@@ -319,9 +348,17 @@ export async function runPostCommit(
   fn: () => Promise<unknown>,
 ): Promise<void> {
   npAssertAgentPreviewEffectsAllowed();
-  const queue = deferredPostCommitStore.getStore();
-  if (queue) {
-    queue.push({ label, context, fn });
+  const scope = deferredPostCommitStore.getStore();
+  if (scope) {
+    const metadata = scope.observer
+      ? Object.freeze({
+          ordinal: scope.counter.next++,
+          label,
+          context: Object.freeze({ ...context }),
+        })
+      : undefined;
+    if (scope.observer && metadata) await scope.observer.register(metadata);
+    scope.queue.push({ label, context, fn, metadata });
     return;
   }
   try {
@@ -3843,6 +3880,14 @@ function extractMediaIdsFromFields(
   }
 
   return refs;
+}
+
+/** Internal inspection seam; uses precisely the media index recipe of normal collection saves. */
+export function npExtractPersistedDocumentMediaReferences(
+  fields: NpFieldConfig[],
+  data: Record<string, unknown>,
+): Array<{ mediaId: string; field: string }> {
+  return extractMediaIdsFromFields(fields, data, []);
 }
 
 function extractMediaIdsFromLexicalJson(

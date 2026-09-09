@@ -1,6 +1,6 @@
 # apps/web — AGENTS.md
 
-Approval routes/pages are thin shared-app exports. Migration 0041 is the generated correction to the existing approval decision reauthentication constraint (28 Agent tables/133 critical constraints unchanged). Approval runtime/keyrings and execution-definition bindings remain explicitly injected; wrappers never construct them or enable execution.
+Approval and execution routes/pages remain thin shared-app exports. Migration 0042 adds the durable ChangeSet execution journal (29 Agent tables/144 critical constraints). Approval keys, canonical execution bindings, current execution intent and convergence hooks remain explicitly injected; wrappers never construct them or enable a worker. Apply/schedule/cancel reuse the existing Admin admission and review response. No rollback or Agent HTTP/MCP execution capability is exposed.
 
 Next.js 16 reference app. This app is intentionally thin: most route
 handlers, pages, scripts, proxy behavior, and setup flows are re-exported

@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   runtime: vi.fn(),
   staff: vi.fn(),
   ensure: vi.fn(),
+  apply: vi.fn(),
+  schedule: vi.fn(),
+  cancel: vi.fn(),
   list: vi.fn(),
   getReview: vi.fn(),
   getPreview: vi.fn(),
@@ -28,6 +31,9 @@ beforeEach(() => {
   mocks.staff.mockResolvedValue({ siteId: "default", actor: { user: { id }, sessionId: id } });
   mocks.runtime.mockReturnValue({
     changesets: {
+      apply: mocks.apply,
+      schedule: mocks.schedule,
+      cancel: mocks.cancel,
       list: mocks.list,
       getReview: mocks.getReview,
       getPreview: mocks.getPreview,
@@ -134,4 +140,49 @@ describe("ChangeSet Admin shared HTTP surface", () => {
     expect(results).toEqual(["Not found", "Not found"]);
     expect(mocks.readArtifact).not.toHaveBeenCalled();
   });
+});
+
+describe("ChangeSet execution route boundary", () => {
+  it.each(["apply", "schedule", "cancel"] as const)(
+    "delegates %s to current staff admission and rejects unsafe output",
+    async (operation) => {
+      const command = { idempotencyKey: "attempt-1" };
+      mocks[operation].mockResolvedValue({ rawCredential: "must-not-leak" });
+      const response = await handleAgentChangeSetAdminRequest(
+        new NextRequest(`https://site.example/api/admin/agents/changesets/${id}/${operation}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(command),
+        }),
+        operation,
+        { id },
+      );
+      expect(mocks.ensure).toHaveBeenCalledWith("write");
+      expect(mocks[operation]).toHaveBeenCalledWith({
+        actor: { kind: "staff", siteId: "default", actor: { user: { id }, sessionId: id } },
+        id,
+        command,
+      });
+      expect(response.status).toBe(500);
+      expect(await response.text()).not.toContain("must-not-leak");
+      expect(response.headers.get("cache-control")).toContain("no-store");
+    },
+  );
+  it.each(["apply", "schedule", "cancel"] as const)(
+    "does not dispatch %s without installed runtime",
+    async (operation) => {
+      mocks.runtime.mockReturnValue(null);
+      const response = await handleAgentChangeSetAdminRequest(
+        new NextRequest(`https://site.example/api/admin/agents/changesets/${id}/${operation}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        }),
+        operation,
+        { id },
+      );
+      expect(response.status).toBe(404);
+      expect(mocks[operation]).not.toHaveBeenCalled();
+    },
+  );
 });

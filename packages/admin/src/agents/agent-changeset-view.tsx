@@ -1,5 +1,7 @@
 "use client";
 
+import { AgentChangeSetExecution } from "./agent-changeset-execution.js";
+
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -712,9 +714,14 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
             onChanged={result.refresh}
             onLost={clearEvidence}
           />
-          <p className="text-sm text-neutral-500">
-            Content application and schedule execution are not available in this release.
-          </p>
+          <AgentChangeSetExecution
+            review={result.value}
+            onChanged={result.refresh}
+            onLost={(message) => {
+              setMutationError(message);
+              clearEvidence();
+            }}
+          />
         </>
       )}
     </Frame>

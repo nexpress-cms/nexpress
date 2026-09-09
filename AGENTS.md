@@ -2,16 +2,19 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Current approval slice:** AP-401 and approval portions of AP-407/AP-408 reuse
-canonical statement/decision/revocation MACs, current ChangeSet validation and
-item authority, central Admin admission/CSRF, exact one-time challenges and
-bounded queue/detail projections. Explicit host keyrings and an approval-only
-canonical execution-definition resolver are required; no executor or Gateway
-capability is installed. Migration 0041 corrects the existing reject/reauth
-constraint; Doctor remains 28 tables/133 constraints. Expiry, authority-loss
-and emergency key retirement are explicit bounded host maintenance. No apply,
-schedule/cancel execution, rollback, automatic worker, seed, default enablement,
-package version or changeset is added. See the R4 approval flow document.
+**Current execution slice:** AP-402/AP-403/AP-404 and execution portions of
+AP-407/AP-408 extend the existing ChangeSet/approval facade with exact
+apply/schedule/cancel, one durable execution journal, transaction-scoped
+resource writes and approval consumption, deferred-effect evidence and bounded
+host-invoked verification/reconciliation. Admin review owns safe execution
+detail and server-derived controls; reference/scaffold routes remain thin.
+Execution intent, approval keyrings/definitions and convergence verification
+require explicit host injection. Migration 0042 adds the execution journal, bringing Doctor to 29 Agent tables
+and 144 critical constraints; ordinary site deletion includes 28 tables.
+No automatic worker, provider, AP-405 rollback, AP-406 Gateway execution
+exposure, seed, default activation, package version or changeset is added.
+Workspace, PostgreSQL, browser and packed-scaffold validation passed; see the
+R4 execution flow document for results and the remaining R4 scope.
 
 **Last refreshed:** 2026-09-09 (AP-307/AP-308/AP-309 connect the existing ChangeSet service to framework
 preview checks, bounded Admin review and an explicitly installed Gateway facade.

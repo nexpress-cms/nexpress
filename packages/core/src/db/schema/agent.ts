@@ -44,6 +44,7 @@ import type {
   NpAgentSiteDeletionPlanCanonicalV1,
   NpAgentVaultAadCanonicalV1,
 } from "../../agent-contract/types.js";
+import type { NpAgentVerificationCheckV1 } from "../../agent-contract/changeset-execution-contract.js";
 import { npAuditEvents } from "./community.js";
 import { npSessions, npSites, npUsers } from "./system.js";
 
@@ -2162,6 +2163,131 @@ export const npAgentApprovals = pgTable(
     check(
       "np_agent_approvals_hash_check",
       sql`(${t.planHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.capabilityFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.statementHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.requesterFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and char_length(${t.statementMac}) between 1 and 256 and char_length(${t.integrityKeyId}) between 1 and 128) is true`,
+    ),
+  ],
+);
+
+/** Private durable post-commit hook intent; never exposed through client-safe wires. */
+export interface NpAgentChangeSetExecutionEffectV1 {
+  ordinal: number;
+  label: string;
+  context: { collection: string; documentId: string; operation?: string };
+  state: "pending" | "running" | "succeeded" | "failed" | "unknown";
+  errorCode: string | null;
+}
+
+/** AP-402–404 apply reservation and post-commit verification journal. */
+export const npAgentChangesetExecutions = pgTable(
+  "np_agent_changeset_executions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    changesetId: uuid("changeset_id").notNull(),
+    purpose: text("purpose").notNull().default("apply"),
+    planHash: text("plan_hash").notNull(),
+    approvalId: uuid("approval_id").notNull(),
+    invocationId: uuid("invocation_id"),
+    invocationFingerprint: text("invocation_fingerprint").notNull(),
+    verificationContractFingerprint: text("verification_contract_fingerprint").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true, mode: "date" }),
+    state: text("state").notNull().default("reserved"),
+    version: integer("version").notNull().default(1),
+    resultDigest: text("result_digest"),
+    resultBody: jsonb("result_body").$type<{
+      operations: Array<{
+        ordinal: number;
+        afterHash: string;
+        snapshot: NpAgentChangeSetSnapshotCanonicalV1;
+        snapshotHash: string;
+      }>;
+    }>(),
+    errorCode: text("error_code"),
+    reservedAt: timestamp("reserved_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+    committedAt: timestamp("committed_at", { withTimezone: true, mode: "date" }),
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
+    leaseOwner: text("lease_owner"),
+    leaseToken: uuid("lease_token"),
+    leaseUntil: timestamp("lease_until", { withTimezone: true, mode: "date" }),
+    attempts: integer("attempts").notNull().default(0),
+    verificationState: text("verification_state"),
+    verificationBody: jsonb("verification_body")
+      .$type<NpAgentVerificationCheckV1[]>()
+      .notNull()
+      .default([]),
+    verificationDigest: text("verification_digest"),
+    verificationCompletedAt: timestamp("verification_completed_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    effects: jsonb("effects").$type<NpAgentChangeSetExecutionEffectV1[]>().notNull().default([]),
+  },
+  (t) => [
+    unique("np_agent_changeset_executions_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_changeset_executions_plan_unique").on(
+      t.siteId,
+      t.changesetId,
+      t.purpose,
+      t.planHash,
+    ),
+    unique("np_agent_changeset_executions_approval_unique").on(t.siteId, t.approvalId),
+    unique("np_agent_changeset_executions_invocation_unique").on(t.siteId, t.invocationId),
+    unique("np_agent_changeset_executions_idempotency_unique").on(
+      t.siteId,
+      t.changesetId,
+      t.idempotencyKey,
+    ),
+    index("np_agent_changeset_executions_recovery_idx").on(t.siteId, t.state, t.leaseUntil, t.id),
+    foreignKey({
+      name: "np_agent_changeset_executions_changeset_fk",
+      columns: [t.siteId, t.changesetId],
+      foreignColumns: [npAgentChangesets.siteId, npAgentChangesets.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_changeset_executions_approval_fk",
+      columns: [t.siteId, t.approvalId],
+      foreignColumns: [npAgentApprovals.siteId, npAgentApprovals.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_changeset_executions_invocation_fk",
+      columns: [t.siteId, t.invocationId],
+      foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_changeset_executions_state_check",
+      sql`(${t.purpose}='apply' and ${t.state} in ('reserved','committed','verifying','succeeded','failed','ambiguous') and ${t.version}>0 and ${t.attempts}>=0) is true`,
+    ),
+    check(
+      "np_agent_changeset_executions_hash_check",
+      sql`(${t.verificationContractFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.planHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.invocationFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and (${t.resultDigest} is null or ${t.resultDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$') and (${t.verificationDigest} is null or ${t.verificationDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$') and char_length(${t.idempotencyKey}) between 1 and 128 and (${t.errorCode} is null or ${t.errorCode} ~ '^[A-Z][A-Z0-9_]{0,63}$')) is true`,
+    ),
+    check(
+      "np_agent_changeset_executions_lease_check",
+      sql`((${t.leaseOwner} is null and ${t.leaseToken} is null and ${t.leaseUntil} is null) or (${t.leaseOwner} is not null and char_length(${t.leaseOwner}) between 1 and 128 and ${t.leaseToken} is not null and ${t.leaseUntil}>${t.reservedAt} and ${t.attempts}>0 and ${t.state} in ('reserved','committed','verifying'))) is true`,
+    ),
+    check(
+      "np_agent_changeset_executions_time_check",
+      sql`((${t.committedAt} is null or ${t.committedAt}>=${t.reservedAt}) and (${t.finishedAt} is null or (${t.finishedAt}>=${t.reservedAt} and (${t.committedAt} is null or ${t.finishedAt}>=${t.committedAt}))) and (${t.verificationCompletedAt} is null or (${t.committedAt} is not null and ${t.verificationCompletedAt}>=${t.committedAt}))) is true`,
+    ),
+    check(
+      "np_agent_changeset_executions_terminal_check",
+      sql`(((${t.committedAt} is null)=(${t.resultDigest} is null)) and (${t.state}<>'reserved' or (${t.committedAt} is null and ${t.errorCode} is null)) and (${t.state} not in ('committed','verifying','succeeded') or (${t.committedAt} is not null and ${t.errorCode} is null)) and ((${t.state} in ('succeeded','failed','ambiguous'))=(${t.finishedAt} is not null)) and (${t.state} not in ('failed','ambiguous') or ${t.errorCode} is not null) and (${t.state}<>'succeeded' or ${t.verificationState}='passed')) is true`,
+    ),
+    check(
+      "np_agent_changeset_executions_verification_check",
+      sql`(jsonb_typeof(${t.verificationBody})='array' and jsonb_array_length(${t.verificationBody})<=1000 and octet_length(${t.verificationBody}::text)<=1048576 and (( ${t.verificationState} is null and ${t.verificationDigest} is null and ${t.verificationCompletedAt} is null and jsonb_array_length(${t.verificationBody})=0) or (${t.committedAt} is not null and ${t.verificationState} in ('queued','running') and ${t.verificationDigest} is null and ${t.verificationCompletedAt} is null) or (${t.committedAt} is not null and ${t.verificationState} in ('passed','failed') and ${t.verificationDigest} is not null and ${t.verificationCompletedAt} is not null))) is true`,
+    ),
+    check(
+      "np_agent_changeset_executions_result_check",
+      sql`(((${t.resultBody} is null)=(${t.committedAt} is null)) and (${t.resultBody} is null or (jsonb_typeof(${t.resultBody})='object' and jsonb_typeof(${t.resultBody}->'operations')='array' and jsonb_array_length(${t.resultBody}->'operations') between 1 and 500 and octet_length(${t.resultBody}::text)<=33554432))) is true`,
+    ),
+    check(
+      "np_agent_changeset_executions_effects_check",
+      sql`(jsonb_typeof(${t.effects})='array' and jsonb_array_length(${t.effects})<=4096 and octet_length(${t.effects}::text)<=4194304) is true`,
     ),
   ],
 );

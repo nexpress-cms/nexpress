@@ -826,7 +826,7 @@ export function createAgentCapabilityAdmissionServiceV1(
       authorizationContext: NpAgentAuthorizationContextCanonicalV1;
       authorizationContextFingerprint: string;
       requiredScopes: readonly NpAgentScope[];
-      minimumExposure: "read" | "propose";
+      minimumExposure: "read" | "propose" | "approved-execute";
       resolveTransportAudience: NpAgentGatewayServiceV1["getTransportAudience"];
       mutate: (db: Db, now: Date, authentication: NpAgentCapabilityAuthenticationV1) => Promise<T>;
     }): Promise<T> {
@@ -939,7 +939,7 @@ export function createAgentCapabilityAdmissionServiceV1(
     async withCurrentAuthority<T>(input: {
       authentication: NpAgentCapabilityAuthenticationV1;
       requiredScopes: readonly NpAgentScope[];
-      minimumExposure: "read" | "propose";
+      minimumExposure: "read" | "propose" | "approved-execute";
       mutate: (db: Db, now: Date) => Promise<T>;
     }): Promise<T> {
       const authentication = input.authentication;

@@ -1,6 +1,6 @@
 # packages/core — AGENTS.md
 
-Approval lifecycle reuses the ChangeSet target/validation service and generic server-only approval service. Keep requester and approver authorization separate in one transaction. Approval keys and canonical execution definitions require explicit host injection. Preserve signed evidence and never store challenge plaintext. Migration 0041 only corrects reject reauthentication; no execution is installed.
+Execution extends the existing ChangeSet/approval services with exact Admin apply/schedule/cancel and explicit processExecution/processVerification/reconcileExecutions/registerExecutionJobs. Reuse per-site serialization, current resource writers and the outer transaction for content, revisions, audit and approval consumption. Retain deferred-effect evidence before dispatch; never replay ambiguous opaque hooks. Host execution intent, keys/definitions and convergence verification are explicit. Migration 0042 adds the execution journal (29 Agent tables/144 critical constraints; 28 ordinary deletion tables). No automatic worker, rollback or Gateway execution exposure is installed.
 
 Server-only CMS engine: config, DB, auth, collections pipeline, media, jobs, plugins, storage, cache, theme.
 
@@ -134,8 +134,7 @@ No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugi
   use `saveDocument` to reserve draft ids. Exact ChangeSet wires exclude sealed
   plans, snapshots and approval integrity fields. Draft service installation
   does not advertise new MCP/HTTP capabilities or install a worker. Doctor,
-  deletion and fresh migrations share the current 28-table/133-constraint inventory
-  after AP-305/AP-306.
+  deletion and fresh migrations now share the 29-table/144-constraint inventory after AP-402–404.
 
 - AP-303/AP-304 validation extends that same service with generation-bound
   durable attempts, inline validation and explicitly invoked queue recovery.
@@ -144,7 +143,7 @@ No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugi
   resource validation/base reader; never manufacture preview or apply results.
   Sealed plan/snapshot hashes are verified on projection and never exposed as
   raw bodies. `proposedAfterHash` commits normalized intent; actual apply hashes
-  remain a later responsibility. Transaction callers wrap the outer transaction
+  now come from the execution adapter's persisted resource reads. Transaction callers wrap the outer transaction
   in `withDeferredPostCommit`; nested queues join the parent and rollback drops
   callbacks. Navigation CAS belongs in the atomic write, not a prior read.
 
@@ -165,13 +164,13 @@ No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugi
   queued-source window derives from 24 serial artifacts, four 60-second calls
   each, and 90-second lease grace; its deadline also fences dispatch claims.
   Unknown operations remain blocked, even after deadline or a missing object.
-- Migration 0040 adds exactly five preview tables. Keep the 28-table/133-critical-
-  constraint Doctor inventory, 27-table deletion order, live launch/render plus
-  expiry/skew fence and confirmed storage deletion aligned. Approval preview ids
-  remain logical until their later lifecycle is implemented; do not invent an
-  execution/job/provider FK or install an automatic runtime/worker. All adapters
-  and processors require explicit host injection; default Agent exposure stays
-  disabled.
+- Migration 0040 added five preview tables; execution migration 0042 brings the
+  current Doctor inventory to 29 tables/144 critical constraints and ordinary
+  deletion to 28 tables. Keep live launch/render, expiry/skew fences and confirmed
+  storage deletion aligned with the actual same-site lifecycle references.
+  Preserve logical references where no corresponding lifecycle table exists.
+  All adapters and processors require explicit host injection; no automatic
+  runtime/worker is installed and default Agent exposure stays disabled.
 
 - Core declaration generation exceeds the 2 GiB heap available on constrained
   runners. The build script defaults to a 5 GiB Node heap and preserves explicit

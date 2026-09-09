@@ -1,6 +1,6 @@
 # packages/admin — AGENTS.md
 
-Approval queue/detail and ChangeSet request controls reuse existing review/preview components and exact client-safe contracts. Typed challenges remain in memory; unknown outcomes retry only the identical payload, while conflict/access loss clears stale evidence. Recorded checks are metadata, not a success claim. No apply or rollback controls exist in this slice.
+Approval and execution controls reuse existing review/preview components and exact client-safe contracts. Offer apply/schedule/cancel only from review.executionActions; preserve the sealed approval binding, canonical UTC schedule and identical keys on unknown-outcome retry. Conflict/access loss clears evidence while retaining safe reauthentication guidance. Display executionDetail and fixed verification statuses without inventing convergence or rollback. Challenges remain in memory. No rollback control or public verification route is added.
 
 Admin UI package: shadcn-style primitives (Radix + Tailwind v4) + CMS views. Built with tsup, not Next.
 

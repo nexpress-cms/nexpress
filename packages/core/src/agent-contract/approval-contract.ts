@@ -1,4 +1,7 @@
-import { npAgentApprovalWireSchemaV1 } from "./changeset-capability-schema.js";
+import {
+  npAgentApprovalWireSchemaV1,
+  npCompactAgentWireSchemaV1,
+} from "./changeset-capability-schema.js";
 import { npRequireAgentApprovalTargetV1 } from "./canonical-approval.js";
 import type { NpCapability } from "../auth/capabilities.js";
 import type {
@@ -12,7 +15,6 @@ import { npAgentScopes, npAgentCapabilityIds } from "./types.js";
 import {
   npRequireAgentContractResult,
   npAgentContractLimits,
-  npAnalyzeAgentJsonSchema,
 } from "./contract.js";
 import {
   analyzeCanonicalBody,
@@ -744,51 +746,4 @@ const approvalDetailSchemaSource = JSON.parse(
 
 // Reuse repeated schema nodes through local refs so composing the existing full review
 // remains within the unchanged framework schema node bound.
-function compactApprovalDetailSchema(source: NpAgentJsonSchema): NpAgentJsonSchema {
-  type Node = Record<string, unknown>;
-  const counts = new Map<string, { node: Node; count: number }>();
-  function children(node: Node, visit: (node: Node) => Node): Node {
-    const out: Node = { ...node };
-    for (const key of ["properties", "patternProperties", "$defs"])
-      if (node[key] && typeof node[key] === "object")
-        out[key] = Object.fromEntries(
-          Object.entries(node[key] as Node).map(([name, value]) => [name, visit(value as Node)]),
-        );
-    for (const key of ["items", "additionalProperties", "not", "if", "then", "else"])
-      if (node[key] && typeof node[key] === "object" && !Array.isArray(node[key]))
-        out[key] = visit(node[key] as Node);
-    for (const key of ["oneOf", "anyOf", "allOf"])
-      if (Array.isArray(node[key])) out[key] = (node[key] as Node[]).map(visit);
-    return out;
-  }
-  function count(node: Node): Node {
-    const signature = JSON.stringify(node);
-    if (signature.length >= 40 && !node.$ref) {
-      const prior = counts.get(signature);
-      counts.set(signature, { node, count: (prior?.count ?? 0) + 1 });
-    }
-    children(node, count);
-    return node;
-  }
-  count(source);
-  const names = new Map(
-    [...counts]
-      .filter(([, value]) => value.count > 1)
-      .map(([signature], index) => [signature, `approvalShared${index.toString()}`]),
-  );
-  function compact(node: Node, definition = false): Node {
-    const name = names.get(JSON.stringify(node));
-    if (name && !definition) return { $ref: `#/$defs/${name}` };
-    return children(node, (child) => compact(child));
-  }
-  const result = compact(source, true);
-  const defs = { ...(result.$defs as Node) };
-  for (const [signature, name] of names) defs[name] = compact(counts.get(signature)!.node, true);
-  return npRequireAgentContractResult(
-    npAnalyzeAgentJsonSchema({ ...result, $defs: defs }),
-    "Invalid approval detail schema",
-  );
-}
-export const npAgentApprovalDetailSchemaV1 = compactApprovalDetailSchema(
-  approvalDetailSchemaSource,
-);
+export const npAgentApprovalDetailSchemaV1 = npCompactAgentWireSchemaV1(approvalDetailSchemaSource);

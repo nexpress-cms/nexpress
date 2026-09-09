@@ -101,7 +101,16 @@ export async function readAgentAdminJsonBody(
 }
 export async function handleAgentChangeSetAdminRequest(
   request: NextRequest,
-  operation: "list" | "get" | "create" | "update" | "validate" | "artifact",
+  operation:
+    | "list"
+    | "get"
+    | "create"
+    | "update"
+    | "validate"
+    | "artifact"
+    | "apply"
+    | "schedule"
+    | "cancel",
   ids: { id?: string; previewId?: string; artifactId?: string } = {},
 ): Promise<Response> {
   const headers = {
@@ -168,6 +177,12 @@ export async function handleAgentChangeSetAdminRequest(
       });
     }
     const command = await readAgentAdminJsonBody(request);
+    if (operation === "apply" || operation === "schedule" || operation === "cancel") {
+      return npSuccessResponse(
+        npRequireAgentChangeSetReviewV1(await service[operation]({ actor, id: ids.id!, command })),
+        { headers },
+      );
+    }
     const result =
       operation === "create"
         ? await service.create({ actor, command })

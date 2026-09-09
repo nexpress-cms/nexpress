@@ -1051,6 +1051,132 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
     }
     return { examined: rows.length, expired };
   }
+  async function writeSystemRevocation(
+    db: Db,
+    row: Row,
+    checked: Pick<Awaited<ReturnType<typeof verify>>, "binding" | "decisionBinding">,
+    kind: "authority_loss" | "target_invalidated" | "integrity_key_retired",
+    code: string,
+  ) {
+    const time = now();
+    const revokerFingerprint = hash("np.agent-approval-system.v1", {
+      siteId: row.siteId,
+      kind,
+    });
+    const revocation = await npRequireAgentApprovalRevocationCanonicalForBindings(
+      {
+        schemaVersion: "np.agent-approval-revocation.v1",
+        siteId: row.siteId,
+        approvalId: row.id,
+        approvalGeneration: row.generation,
+        statementHash: row.statementHash,
+        decisionHash: row.decisionHash,
+        revocationKind: kind,
+        revokerFingerprint,
+        revocationCode: code,
+        revocationReason: null,
+        revokedAt: time.toISOString(),
+      },
+      checked.binding,
+      checked.decisionBinding,
+    );
+    await db
+      .update(npAgentApprovals)
+      .set({
+        state: "revoked",
+        ...clearedChallenge,
+        version: row.version + 1,
+        revocationKind: kind,
+        revokerFingerprint,
+        revocationCode: code,
+        revocationBody: revocation,
+        revocationHash: await npDigestAgentApprovalRevocationCanonical(
+          revocation,
+          checked.binding,
+          checked.decisionBinding,
+        ),
+        revocationMac: await npMacAgentApprovalRevocationCanonical(
+          revocation,
+          checked.binding,
+          checked.decisionBinding,
+          active,
+        ),
+        revocationIntegrityKeyId: active.id,
+        revokedAt: time,
+      })
+      .where(eq(npAgentApprovals.id, row.id));
+    return time;
+  }
+  /** Server-only outer transaction seam; caller holds the ChangeSet lock first. */
+  async function consume(input: {
+    db: Db;
+    siteId: string;
+    id: string;
+    changeSetId: string;
+    planHash: string;
+    statementHash: string;
+    consumedAt: Date;
+  }) {
+    const row = await readRow(input.siteId, input.id, input.db, true);
+    const checked = await verify(row);
+    if (
+      row.state !== "approved" ||
+      row.expiresAt <= now() ||
+      row.statementHash !== input.statementHash ||
+      checked.statement.target.kind !== "changeset" ||
+      checked.statement.target.changeSetId !== input.changeSetId ||
+      checked.statement.target.planHash !== input.planHash
+    )
+      throw conflict();
+    await input.db
+      .update(npAgentApprovals)
+      .set({
+        state: "consumed",
+        consumedAt: input.consumedAt,
+        version: row.version + 1,
+        ...clearedChallenge,
+      })
+      .where(
+        and(
+          eq(npAgentApprovals.siteId, input.siteId),
+          eq(npAgentApprovals.id, input.id),
+          eq(npAgentApprovals.version, row.version),
+        ),
+      );
+  }
+  /** Existing canonical revocation under a domain cancellation/failure transaction. */
+  async function invalidateForExecution(input: {
+    db: Db;
+    siteId: string;
+    id: string;
+    changeSetId: string;
+    code: "OPERATOR_CANCELLED" | "EXECUTION_CANCELLED";
+  }) {
+    const row = await readRow(input.siteId, input.id, input.db, true);
+    const checked = await verify(row);
+    if (
+      checked.statement.target.kind !== "changeset" ||
+      checked.statement.target.changeSetId !== input.changeSetId
+    )
+      throw conflict();
+    if (!["pending", "approved"].includes(row.state)) return;
+    const time = await writeSystemRevocation(
+      input.db,
+      row,
+      checked,
+      "target_invalidated",
+      input.code,
+    );
+    await input.db.insert(npAuditEvents).values({
+      siteId: input.siteId,
+      actorKind: "system",
+      action: "agents.approvals.revoked",
+      targetType: "agent-approval",
+      targetId: row.id,
+      payload: { code: input.code, kind: "target_invalidated", verification: "verified" },
+      createdAt: time,
+    });
+  }
   async function revokeSystem(
     seed: Row,
     kind: "authority_loss" | "target_invalidated" | "integrity_key_retired",
@@ -1094,53 +1220,7 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
                 : null,
           };
         } else checked = await verify(row);
-        const time = now();
-        const revokerFingerprint = hash("np.agent-approval-system.v1", {
-          siteId: row.siteId,
-          kind,
-        });
-        const revocation = await npRequireAgentApprovalRevocationCanonicalForBindings(
-          {
-            schemaVersion: "np.agent-approval-revocation.v1",
-            siteId: row.siteId,
-            approvalId: row.id,
-            approvalGeneration: row.generation,
-            statementHash: row.statementHash,
-            decisionHash: row.decisionHash,
-            revocationKind: kind,
-            revokerFingerprint,
-            revocationCode: code,
-            revocationReason: null,
-            revokedAt: time.toISOString(),
-          },
-          checked.binding,
-          checked.decisionBinding,
-        );
-        await db
-          .update(npAgentApprovals)
-          .set({
-            state: "revoked",
-            ...clearedChallenge,
-            version: row.version + 1,
-            revocationKind: kind,
-            revokerFingerprint,
-            revocationCode: code,
-            revocationBody: revocation,
-            revocationHash: await npDigestAgentApprovalRevocationCanonical(
-              revocation,
-              checked.binding,
-              checked.decisionBinding,
-            ),
-            revocationMac: await npMacAgentApprovalRevocationCanonical(
-              revocation,
-              checked.binding,
-              checked.decisionBinding,
-              active,
-            ),
-            revocationIntegrityKeyId: active.id,
-            revokedAt: time,
-          })
-          .where(eq(npAgentApprovals.id, row.id));
+        const time = await writeSystemRevocation(db, row, checked, kind, code);
         await target.transition("ready");
         await db.insert(npAuditEvents).values({
           siteId: row.siteId,
@@ -1285,6 +1365,8 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
     decide,
     reconcileExpired,
     reconcile,
+    consume,
+    invalidateForExecution,
   };
 }
 export type NpAgentApprovalServiceV1 = ReturnType<typeof createAgentApprovalServiceV1>;

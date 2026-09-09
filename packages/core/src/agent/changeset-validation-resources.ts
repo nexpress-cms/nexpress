@@ -46,6 +46,7 @@ interface Context {
 }
 interface ReadInput extends Context, NpAgentChangeSetProposalOperationCanonicalV1 {
   reservedCreateDocumentIds?: readonly string[];
+  currentResource?: boolean;
 }
 interface ValidateInput extends Context {
   operations: NpAgentChangeSetProposalOperationCanonicalV1[];
@@ -184,7 +185,7 @@ export function createAgentChangeSetValidationResourceServiceV1() {
     if (operation.kind === "document") {
       if (canonicalResourceKey.kind !== "document" || !inspected.document)
         fail("SCHEMA_INVALID", input.ordinal);
-      if (operation.operation === "create") {
+      if (operation.operation === "create" && !input.currentResource) {
         const collision = await npGetPersistedCollectionDocumentById(
           operation.resource.collection,
           canonicalResourceKey.documentId,
@@ -599,5 +600,10 @@ export function createAgentChangeSetValidationResourceServiceV1() {
       ],
     };
   }
-  return { readBase, validate };
+  return {
+    readBase,
+    validate,
+    /** Actual persisted state after the complete batch, using the same snapshot/hash recipe. */
+    readCurrent: (input: ReadInput) => readBase({ ...input, currentResource: true }),
+  };
 }
