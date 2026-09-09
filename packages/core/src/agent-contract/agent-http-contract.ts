@@ -1,4 +1,12 @@
 import {
+  npAgentInstalledCapabilityDescriptorsV1,
+  npAgentInstalledCapabilityIdsV1,
+  npIsAgentChangeSetCapabilityIdV1,
+  npRequireAgentChangeSetCapabilityInvocationResultV1,
+  type NpAgentInstalledCapabilityIdV1,
+  type NpAgentChangeSetCapabilityInvocationResultV1,
+} from "./installed-capability-contract.js";
+import {
   analyzeCanonicalBody,
   canonicalBodyArray,
   canonicalBodyEnum,
@@ -8,7 +16,6 @@ import {
 } from "./canonical-body-validation.js";
 import { npRequireAgentCapabilityDescriptor, npRequireAgentContractResult } from "./contract.js";
 import {
-  npAgentReadCapabilityDescriptorsV1,
   npAgentReadCapabilityIdsV1,
   npRequireAgentReadCapabilityOutputV1,
   type NpAgentReadCapabilityIdV1,
@@ -68,16 +75,18 @@ export function npRequireAgentHttpCapabilitiesV1(value: unknown): NpAgentHttpCap
       const capabilities = canonicalBodyArray(
         r.capabilities,
         "agent.http.capabilities.items",
-        npAgentReadCapabilityIdsV1.length,
+        npAgentInstalledCapabilityIdsV1.length,
         { seen: new WeakSet() },
       ).map(npRequireAgentCapabilityDescriptor);
       let previous = "";
       for (const d of capabilities) {
         if (
-          !npAgentReadCapabilityIdsV1.includes(d.id as NpAgentReadCapabilityIdV1) ||
+          !npAgentInstalledCapabilityIdsV1.includes(d.id as NpAgentInstalledCapabilityIdV1) ||
           d.id <= previous ||
           JSON.stringify(d) !==
-            JSON.stringify(npAgentReadCapabilityDescriptorsV1[d.id as NpAgentReadCapabilityIdV1])
+            JSON.stringify(
+              npAgentInstalledCapabilityDescriptorsV1[d.id as NpAgentInstalledCapabilityIdV1],
+            )
         )
           failCanonicalBody(
             "invalid-field",
@@ -159,8 +168,8 @@ export function npBuildAgentHttpInvocationSchemasV1(): {
 } {
   const requestDefs: Record<string, unknown> = {};
   const resultDefs: Record<string, unknown> = {};
-  const request = npAgentReadCapabilityIdsV1.map((id, index) => {
-    const d = npAgentReadCapabilityDescriptorsV1[id];
+  const request = npAgentInstalledCapabilityIdsV1.map((id, index) => {
+    const d = npAgentInstalledCapabilityDescriptorsV1[id];
     const name = `capability${index}`;
     requestDefs[name] = embed(d.inputSchema, `#/$defs/${name}`);
     resultDefs[name] = embed(d.outputSchema, `#/$defs/${name}`);
@@ -168,20 +177,32 @@ export function npBuildAgentHttpInvocationSchemasV1(): {
       ...object({
         schemaVersion: { const: "np.agent-invocation-request.v1" },
         capabilityId: { const: id },
-        arguments: object({ input: { $ref: `#/$defs/${name}` }, idempotencyKey: { type: "null" } }),
+        arguments: object({
+          input: { $ref: `#/$defs/${name}` },
+          idempotencyKey:
+            d.idempotency === "required"
+              ? { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$", maxLength: 256 }
+              : { type: "null" },
+        }),
       }),
       ...npAgentHttpCapabilityMetadataV1(d),
     };
   });
-  const result = npAgentReadCapabilityIdsV1.map((id, index) => ({
+  const result = npAgentInstalledCapabilityIdsV1.map((id, index) => ({
     ...object({
-      schemaVersion: { const: "np.agent-read-invocation-result.v1" },
+      schemaVersion: {
+        const: npIsAgentChangeSetCapabilityIdV1(id)
+          ? "np.agent-changeset-invocation-result.v1"
+          : "np.agent-read-invocation-result.v1",
+      },
       invocationId: { type: "string", format: "uuid" },
-      actionId: { type: "string", format: "uuid" },
+      ...(!npIsAgentChangeSetCapabilityIdV1(id)
+        ? { actionId: { type: "string", format: "uuid" } }
+        : {}),
       capabilityId: { const: id },
       output: { $ref: `#/$defs/capability${index}` },
     }),
-    ...npAgentHttpCapabilityMetadataV1(npAgentReadCapabilityDescriptorsV1[id]),
+    ...npAgentHttpCapabilityMetadataV1(npAgentInstalledCapabilityDescriptorsV1[id]),
   }));
   return {
     request: { oneOf: request, $defs: requestDefs },
@@ -197,4 +218,16 @@ export function npAgentHttpCapabilityMetadataV1(d: NpAgentCapabilityDescriptor) 
     "x-nexpress-approval": d.approval,
     "x-nexpress-idempotency": d.idempotency,
   };
+}
+
+export function npRequireAgentInstalledCapabilityInvocationResultV1(
+  value: unknown,
+): NpAgentReadCapabilityInvocationResultV1 | NpAgentChangeSetCapabilityInvocationResultV1 {
+  const id =
+    typeof value === "object" && value !== null
+      ? Object.getOwnPropertyDescriptor(value, "capabilityId")?.value
+      : undefined;
+  return typeof id === "string" && npIsAgentChangeSetCapabilityIdV1(id)
+    ? npRequireAgentChangeSetCapabilityInvocationResultV1(value)
+    : npRequireAgentReadCapabilityInvocationResultV1(value);
 }

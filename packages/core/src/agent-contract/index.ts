@@ -35,3 +35,8 @@ export * from "./wire-contract.js";
 export * from "./activity-contract.js";
 export * from "./agent-http-contract.js";
 export * from "./changeset-wire-contract.js";
+
+export * from "./changeset-review-contract.js";
+
+export * from "./installed-capability-contract.js";
+export * from "./changeset-capability-schema.js";

@@ -6,6 +6,7 @@ import {
   npRequireAgentChangeSetPreviewLaunchRequestV1,
   npAgentPreviewIssueMessagesV1,
   npDigestAgentPreviewWireContractV1,
+  npRequireAgentPreviewDetailWireV1,
 } from "./changeset-wire-contract.js";
 const digest = `cj1:sha256:${"a".repeat(43)}`;
 const id = "00000000-0000-4000-8000-000000000001";
@@ -109,10 +110,44 @@ describe("closed preview reports and admission", () => {
     for (const route of ["//evil.test", "/a/../b", "/a?token=x", "/a#token", "/a/%2f"])
       expect(() => npRequireAgentChangeSetPreviewLaunchRequestV1({ ...request, route })).toThrow();
   });
+  it("bounds expiry from completion rather than earlier reservation", () => {
+    const detail = {
+      schemaVersion: "np.agent-preview.v1",
+      previewId: id,
+      changeSetId: id,
+      state: "ready",
+      generation: 1,
+      planHash: digest,
+      previewContractFingerprint: digest,
+      digest,
+      artifactCount: 0,
+      artifactRefs: [],
+      interactiveLaunch: null,
+      createdAt: "2026-09-08T00:00:00.000Z",
+      completedAt: "2026-09-08T00:01:00.000Z",
+      expiresAt: "2026-09-15T00:01:00.000Z",
+      allowedRoutes: [],
+      diffSummary: { operationCount: 1 },
+      checkSummary: {
+        checksRun: 0,
+        screenshots: 0,
+        warningCodes: ["SCREENSHOTS_UNAVAILABLE", "CHECKS_NOT_RUN"],
+      },
+      riskSummary: { level: "low", reasonCodes: [], approvalMode: "human", reversible: true },
+      safeErrorCode: null,
+    };
+    expect(npRequireAgentPreviewDetailWireV1(detail, "default").expiresAt).toBe(detail.expiresAt);
+    expect(() =>
+      npRequireAgentPreviewDetailWireV1(
+        { ...detail, expiresAt: "2026-09-15T00:01:00.001Z" },
+        "default",
+      ),
+    ).toThrow();
+  });
   it("has a deterministic wire fingerprint", async () => {
     expect(await npDigestAgentPreviewWireContractV1()).toMatch(/^cj1:sha256:[A-Za-z0-9_-]{43}$/u);
     expect(await npDigestAgentPreviewWireContractV1()).toBe(
-      "cj1:sha256:Ac6wsMutlY515VQOeQR7u0xiKIbYtY-bhL3iOkd-CJ4",
+      "cj1:sha256:w4HByd-2kdoqvWSTMxcxuyJ3R9EN_gU01uY_hFm9zxk",
     );
   });
 });

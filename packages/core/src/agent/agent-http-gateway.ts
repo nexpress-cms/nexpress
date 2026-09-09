@@ -2,10 +2,10 @@ import { NpAgentGatewayError } from "./admin-admission.js";
 import { npDigestAgentPreviewArtifactContentV1 } from "./preview-artifact-contract.js";
 import {
   npRequireAgentHttpCapabilitiesV1,
-  npRequireAgentReadCapabilityInvocationResultV1,
+  npRequireAgentInstalledCapabilityInvocationResultV1,
   npAgentHttpLimitsV1,
 } from "../agent-contract/agent-http-contract.js";
-import { npRequireAgentReadCapabilityInvocationRequestV1 } from "../agent-contract/read-capability-contract.js";
+import { npRequireAgentInstalledCapabilityInvocationRequestV1 } from "../agent-contract/installed-capability-contract.js";
 import { canonicalBodyUuid } from "../agent-contract/canonical-body-validation.js";
 import {
   npRequireAgentActivityRunDetailV1,
@@ -132,14 +132,14 @@ export function createAgentHttpGatewayV1(options: NpAgentHttpGatewayOptionsV1) {
     ) {
       let request;
       try {
-        request = npRequireAgentReadCapabilityInvocationRequestV1(input);
+        request = npRequireAgentInstalledCapabilityInvocationRequestV1(input);
       } catch {
         throw new NpAgentHttpErrorV1(400);
       }
       const projection = await current(authentication);
       if (!projection.entries.some((e) => e.definition.descriptor.id === request.capabilityId))
         throw new NpAgentHttpErrorV1(404);
-      return npRequireAgentReadCapabilityInvocationResultV1(
+      return npRequireAgentInstalledCapabilityInvocationResultV1(
         await options.admission.invoke({ authentication, request, abortSignal }),
       );
     },

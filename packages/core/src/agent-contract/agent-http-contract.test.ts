@@ -1,3 +1,7 @@
+import {
+  npAgentInstalledCapabilityIdsV1,
+  npAgentInstalledCapabilityDescriptorsV1,
+} from "./installed-capability-contract.js";
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
@@ -23,25 +27,25 @@ describe("Agent HTTP closed descriptor contract", () => {
     for (const schema of [schemas.request, schemas.result]) {
       const branches = schema.oneOf as Array<{ properties: { capabilityId: { const: string } } }>;
       expect(branches.map((b) => b.properties.capabilityId.const)).toEqual(
-        npAgentReadCapabilityIdsV1,
+        npAgentInstalledCapabilityIdsV1,
       );
-      for (const [index, id] of npAgentReadCapabilityIdsV1.entries()) {
+      for (const [index, id] of npAgentInstalledCapabilityIdsV1.entries()) {
         expect(branches[index]).toMatchObject({
           additionalProperties: false,
           "x-nexpress-capability-id": id,
-          "x-nexpress-scopes": npAgentReadCapabilityDescriptorsV1[id].requiredScopes,
-          "x-nexpress-risk": "read",
+          "x-nexpress-scopes": npAgentInstalledCapabilityDescriptorsV1[id].requiredScopes,
+          "x-nexpress-risk": npAgentInstalledCapabilityDescriptorsV1[id].risk,
           "x-nexpress-approval": "none",
-          "x-nexpress-idempotency": "none",
+          "x-nexpress-idempotency": npAgentInstalledCapabilityDescriptorsV1[id].idempotency,
         });
       }
     }
-    expect(JSON.stringify(schemas.request)).toContain("#/$defs/capability0/$defs/filter");
+    expect(JSON.stringify(schemas.request)).toContain("#/$defs/capability5/$defs/filter");
     expect(
       createHash("sha256")
         .update(JSON.stringify({ routes: npAgentHttpRoutesV1, schemas }))
         .digest("hex"),
-    ).toMatchInlineSnapshot(`"f114032cf6862b2d5536b3778c1fd741451d436a51cdbeeebfb3b12e4bdc98fe"`);
+    ).toMatchInlineSnapshot(`"4cd0ebf81fefc15969d09c8c730400fd478596d4d779beafc6a4fbeaee6556d8"`);
   });
   it("rejects modified, duplicate and unshipped capability descriptors", () => {
     const capabilities = npAgentReadCapabilityIdsV1.map(

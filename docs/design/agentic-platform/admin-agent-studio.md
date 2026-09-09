@@ -1314,3 +1314,7 @@ An Agent Studio phase is not complete until:
     `@nexpress/admin/client` with only thin reference-app wrappers; and
 12. the live Admin and agent guides replace proposed language only after the
     corresponding behavior ships.
+
+## AP-308 implemented review
+
+Activity links to bounded ChangeSet list/detail/diff/preview views. Existing staff/site admission, target visibility, exact proposal JSON/hash, CAS and idempotency own mutations. Review values exclude private snapshot bookkeeping and current hidden/read-only fields. The existing preview launch POST supports a narrowly scoped native form transport with the same canonical command, central staff CSRF and same-origin metadata checks; response CSP and referrer headers remain effective. No approval/apply controls are exposed. See [R3 review surfaces](r3-review-surfaces.md).

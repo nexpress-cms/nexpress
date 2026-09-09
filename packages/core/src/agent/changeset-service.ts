@@ -1,3 +1,19 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import {
+  npAgentChangeSetCapabilityIdsV1,
+  npBuildAgentChangeSetCapabilityDefinitionCanonicalV1,
+  npRequireAgentInstalledCapabilityInvocationRequestV1,
+  npRequireAgentInstalledCapabilityOutputV1,
+  type NpAgentChangeSetCapabilityInvocationRequestV1,
+  type NpAgentChangeSetCapabilityOutputMapV1,
+  type NpAgentChangeSetCapabilityIdV1,
+} from "../agent-contract/installed-capability-contract.js";
+import { runAgentPreviewChecksV1, npAgentPreviewCheckVersionsV1 } from "./preview-checks.js";
+import { npProjectAgentChangeSetReviewOperationV1 } from "./changeset-review.js";
+import {
+  npRequireAgentChangeSetReviewV1,
+  type NpAgentChangeSetReviewV1,
+} from "../agent-contract/changeset-review-contract.js";
 import type { NpAgentHttpArtifactFacadeV1 } from "./agent-http-gateway.js";
 import {
   createAgentPreviewArtifactServiceV1,
@@ -43,7 +59,11 @@ import {
   npAnalyzeAgentChangeSetWire,
   npVerifyAgentChangeSetAdminProposalV1,
   npDigestAgentChangeSetDraftInputV1,
+  npBuildAgentChangeSetDraftInputJsonV1,
+  npRequireAgentChangeSetDraftInputV1,
   npAgentChangeSetLimits,
+  npAgentChangeSetStates,
+  type NpAgentChangeSetState,
   npRequireAgentChangeSetValidateRequestV1,
   npRequireAgentChangeSetPreviewRequestV1,
   npRequireAgentPreviewDetailWireV1,
@@ -63,11 +83,7 @@ import {
   npDigestAgentChangeSetPlanCanonical,
   npDigestAgentChangeSetSnapshotCanonical,
 } from "../agent-contract/canonical-changeset.js";
-import { npGetAgentAdminOperationV1 } from "../agent-contract/admin-operation-registry.js";
-import {
-  npDigestAgentCapabilityRegistryCanonical,
-  npRequireAgentCapabilityRegistryCanonical,
-} from "../agent-contract/canonical-capability-registry.js";
+import { npDigestAgentCapabilityRegistryCanonical } from "../agent-contract/canonical-capability-registry.js";
 import {
   npDigestAgentInvocationRequestCanonical,
   npRequireAgentInvocationRequestCanonical,
@@ -142,6 +158,17 @@ export interface NpAgentChangeSetServiceOptionsV1 extends NpAgentAdminAdmissionO
         ) => Promise<T>;
       }) => Promise<readonly NpAgentPreviewArtifactInputV1[]>;
     };
+    /** Explicit effect-free host renderer; checks use the existing sealed overlay and authority. */
+    checks?: {
+      rendererId: string;
+      rendererVersion: number;
+      rendererFingerprint: string;
+      productionOrigins: readonly string[];
+      render: (context: NpAgentChangeSetPreviewContextV1) => Promise<string>;
+      resolveManifest: (
+        context: NpAgentChangeSetPreviewContextV1,
+      ) => Promise<NpAgentPreviewRouteCanonicalV1[]>;
+    };
     contract: NpAgentPreviewContractCanonicalV1;
     resolveRoutes: (input: {
       tx: NpTransaction;
@@ -167,7 +194,22 @@ export interface NpAgentChangeSetServiceOptionsV1 extends NpAgentAdminAdmissionO
     draftHash: string;
   }) => Promise<void>;
 }
+export interface NpAgentChangeSetListFiltersV1 {
+  states?: NpAgentChangeSetState[];
+  actorKinds?: Array<"runtime" | "external" | "staff">;
+  createdAfter?: string | null;
+  createdBefore?: string | null;
+}
 export interface NpAgentChangeSetServiceV1 {
+  readonly capabilityIds: readonly NpAgentChangeSetCapabilityIdV1[];
+  invokeCapability: (input: {
+    authentication: NpAgentCapabilityAuthenticationV1;
+    request: NpAgentChangeSetCapabilityInvocationRequestV1;
+  }) => Promise<{
+    invocationId: string;
+    output: NpAgentChangeSetCapabilityOutputMapV1[NpAgentChangeSetCapabilityIdV1];
+  }>;
+
   artifacts: NpAgentPreviewArtifactServiceV1;
   processPreview: (input: { siteId: string; previewId: string }) => Promise<{ state: string }>;
   reconcilePreviews: (input: {
@@ -226,17 +268,24 @@ export interface NpAgentChangeSetServiceV1 {
     id: string;
     command: unknown;
   }) => Promise<NpAgentChangeSetWire>;
-  get: (input: { actor: NpAgentChangeSetActorV1; id: string }) => Promise<NpAgentChangeSetWire>;
-  list: (input: {
+  getReview: (input: {
     actor: NpAgentChangeSetActorV1;
-    limit?: number;
-    cursor?: string;
-  }) => Promise<NpAgentCursorPageV1<NpAgentChangeSetWire, "np.agent-changesets.v1">>;
+    id: string;
+  }) => Promise<NpAgentChangeSetReviewV1>;
+  get: (input: { actor: NpAgentChangeSetActorV1; id: string }) => Promise<NpAgentChangeSetWire>;
+  list: (
+    input: NpAgentChangeSetListFiltersV1 & {
+      actor: NpAgentChangeSetActorV1;
+      limit?: number;
+      cursor?: string;
+    },
+  ) => Promise<NpAgentCursorPageV1<NpAgentChangeSetWire, "np.agent-changesets.v1">>;
   reconcileExpired: (input: {
     siteId: string;
     limit?: number;
   }) => Promise<{ examined: number; cancelled: number }>;
   validate: (input: {
+    expectedDraftHash?: string;
     actor: NpAgentChangeSetActorV1;
     id: string;
     command: unknown;
@@ -748,6 +797,56 @@ export function createAgentChangeSetServiceV1(
     await same(input.actor, actor);
     return result;
   }
+  async function getReview(input: {
+    actor: NpAgentChangeSetActorV1;
+    id: string;
+  }): Promise<NpAgentChangeSetReviewV1> {
+    const actor = await resolve(input.actor, false);
+    if (!uuid.test(input.id)) throw missing();
+    const { review, row } = await getDb().transaction(
+      async (tx) => {
+        const db = tx as unknown as Db;
+        const [row] = await tx
+          .select()
+          .from(npAgentChangesets)
+          .where(
+            and(eq(npAgentChangesets.siteId, actor.siteId), eq(npAgentChangesets.id, input.id)),
+          )
+          .limit(1);
+        if (!row) throw missing();
+        const changeSet = await project(row, actor, false, db, false);
+        const ops = await operations(db, row);
+        const sealed =
+          row.sealedPlanBody === null
+            ? null
+            : npRequireAgentChangeSetPlanCanonical(row.sealedPlanBody);
+        const review = npRequireAgentChangeSetReviewV1({
+          schemaVersion: "np.agent-changeset-review.v1",
+          changeSet,
+          requiredStaffCapabilities:
+            sealed?.planKind === "changeset" ? sealed.body.requiredHumanCapabilities : [],
+          operations: ops.map((op) =>
+            npProjectAgentChangeSetReviewOperationV1({
+              ordinal: op.ordinal,
+              operation: op.input,
+              snapshot: op.beforeSnapshot,
+              expired: row.expiresAt <= now(),
+            }),
+          ),
+        });
+        return { review, row };
+      },
+      { isolationLevel: "repeatable read", accessMode: "read only" },
+    );
+    // Artifact verification re-enters current viewer admission. Release the snapshot
+    // connection first so explicitly installed single-connection pools remain usable.
+    const preview = await latestPreviewSummary(getDb(), row, actor);
+    await same(input.actor, actor);
+    return npRequireAgentChangeSetReviewV1({
+      ...review,
+      changeSet: { ...review.changeSet, preview },
+    });
+  }
   async function prepare(
     actor: Actor,
     draft: NpAgentChangeSetDraftInputV1,
@@ -959,109 +1058,10 @@ export function createAgentChangeSetServiceV1(
     return changeSetId;
   }
   function definition(operation: "create" | "validate" | "preview") {
-    const previewing = operation === "preview";
-    const validating = operation !== "create";
-    const resultKey = previewing ? "previewId" : "attemptId";
-    const sourceSchema = npGetAgentAdminOperationV1(`agents.changesets.${operation}`).schemas.input
-      .schema;
-    const inputSchema = validating
-      ? {
-          ...sourceSchema,
-          properties: {
-            ...(sourceSchema.properties as object),
-            changeSetId: { type: "string", format: "uuid", maxLength: 36 },
-          },
-          required: [...(sourceSchema.required as string[]), "changeSetId"],
-        }
-      : sourceSchema;
-    return npRequireAgentCapabilityRegistryCanonical({
-      schemaVersion: "np.agent-capability-registry.v1",
-      projection: "definition",
-      capabilities: [
-        {
-          descriptor: {
-            schemaVersion: "np.agent-capability.v1",
-            id: `changeset.${operation}`,
-            contractVersion: 1,
-            source: "core",
-            title: previewing
-              ? "Preview ChangeSet plan"
-              : validating
-                ? "Validate ChangeSet draft"
-                : "Create ChangeSet draft",
-            description: previewing
-              ? "Prepare bounded preview evidence without applying content changes."
-              : validating
-                ? "Validate and seal the current draft without applying content changes."
-                : "Persist a canonical draft without applying content changes.",
-            requiredScopes: [validating ? "changeset:read" : "changeset:write"],
-            scopeDerivation: "changeset-resources",
-            risk: "reversible",
-            approval: "none",
-            effectProfiles: [
-              {
-                id: previewing
-                  ? "changeset.preview"
-                  : validating
-                    ? "changeset.validation"
-                    : "changeset.draft-create",
-                kind: "mutation",
-                reversibility: "none",
-                minimumGatewayExposure: "propose",
-                verifierId: previewing
-                  ? "changeset.preview.verify"
-                  : validating
-                    ? "changeset.validation.verify"
-                    : "changeset.draft.verify",
-                compensatorId: null,
-              },
-            ],
-            bootstrapIntent: "write",
-            execution: "inline",
-            idempotency: "required",
-            gateway: { transports: ["agent-http", "mcp-http", "stdio"] },
-            inputSchema,
-            outputSchema: {
-              $schema: "https://json-schema.org/draft/2020-12/schema",
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                changeSetId: { type: "string", format: "uuid", maxLength: 36 },
-                ...(validating
-                  ? { [resultKey]: { type: "string", format: "uuid", maxLength: 36 } }
-                  : {}),
-              },
-              required: validating ? ["changeSetId", resultKey] : ["changeSetId"],
-            },
-          },
-          implementationVersion: 1,
-          effectProfiles: [
-            {
-              schemaVersion: "np.agent-effect-profile.v1",
-              capabilityId: `changeset.${operation}`,
-              capabilityContractVersion: 1,
-              implementationVersion: 1,
-              profileId: previewing
-                ? "changeset.preview"
-                : validating
-                  ? "changeset.validation"
-                  : "changeset.draft-create",
-              kind: "mutation",
-              reversibility: "none",
-              minimumGatewayExposure: "propose",
-              effectContractVersion: 1,
-              verifierId: previewing
-                ? "changeset.preview.verify"
-                : validating
-                  ? "changeset.validation.verify"
-                  : "changeset.draft.verify",
-              compensatorId: null,
-            },
-          ],
-        },
-      ],
-    });
+    return npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(`changeset.${operation}`);
   }
+  const gatewayRequestContext =
+    new AsyncLocalStorage<NpAgentChangeSetCapabilityInvocationRequestV1>();
   const createDefinition = definition("create");
   const validateDefinition = definition("validate");
   const previewDefinition = definition("preview");
@@ -1084,12 +1084,7 @@ export function createAgentChangeSetServiceV1(
     const authentication = input.authentication;
     const operationId = `changeset.${kind}`;
     const resultKey = kind === "preview" ? "previewId" : "attemptId";
-    const profileId =
-      kind === "create"
-        ? "changeset.draft-create"
-        : kind === "preview"
-          ? "changeset.preview"
-          : "changeset.validation";
+    const profileId = kind === "create" ? "changeset.draft-create" : "domain.read";
     const definitionBody =
       kind === "create"
         ? createDefinition
@@ -1103,6 +1098,28 @@ export function createAgentChangeSetServiceV1(
     const authorizationFingerprint = await npDigestAgentAuthorizationContextCanonical(
       authentication.authorizationContext,
     );
+    let descriptorInput = gatewayRequestContext.getStore()?.arguments.input;
+    if (descriptorInput === undefined) {
+      if (kind === "create" && "proposalJson" in request)
+        descriptorInput = npRequireAgentChangeSetDraftInputV1(JSON.parse(request.proposalJson));
+      else if (kind === "preview" && "expectedPlanHash" in request)
+        descriptorInput = { changeSetId: targetId!, planHash: request.expectedPlanHash };
+      else {
+        const [row] = await getDb()
+          .select({ draftHash: npAgentChangesets.draftHash })
+          .from(npAgentChangesets)
+          .where(
+            and(eq(npAgentChangesets.siteId, actor.siteId), eq(npAgentChangesets.id, targetId!)),
+          )
+          .limit(1);
+        if (!row || !("expectedVersion" in request)) throw missing();
+        descriptorInput = {
+          changeSetId: targetId!,
+          draftVersion: request.expectedVersion,
+          draftHash: row.draftHash,
+        };
+      }
+    }
     const body = npRequireAgentInvocationRequestCanonical({
       schemaVersion: "np.agent-idempotency-request.v1",
       siteId: actor.siteId,
@@ -1114,8 +1131,9 @@ export function createAgentChangeSetServiceV1(
       contractVersion: 1,
       contractFingerprint: fingerprint,
       effectProfile: { id: profileId, contractVersion: 1 },
-      input: json(kind !== "create" ? { ...request, changeSetId: targetId } : request),
+      input: json(descriptorInput),
     });
+    const expectedDescriptorInput = descriptorInput;
     const requestHash = await npDigestAgentInvocationRequestCanonical(body);
     return options.admission.withCurrentAuthority({
       authentication,
@@ -1155,6 +1173,17 @@ export function createAgentChangeSetServiceV1(
             changeSetId: previous.resultId,
             ...(kind !== "create" ? { [resultKey]: output[resultKey] as string } : {}),
           };
+        }
+        if (kind === "validate" && "draftHash" in expectedDescriptorInput) {
+          const [current] = await db
+            .select({ draftHash: npAgentChangesets.draftHash })
+            .from(npAgentChangesets)
+            .where(
+              and(eq(npAgentChangesets.siteId, actor.siteId), eq(npAgentChangesets.id, targetId!)),
+            )
+            .for("update")
+            .limit(1);
+          if (!current || current.draftHash !== expectedDescriptorInput.draftHash) throw conflict();
         }
         const [audit] = await db
           .insert(npAuditEvents)
@@ -1283,16 +1312,52 @@ export function createAgentChangeSetServiceV1(
     await same(input.actor, actor, true);
     return result;
   }
-  async function list(input: { actor: NpAgentChangeSetActorV1; limit?: number; cursor?: string }) {
+  async function list(
+    input: NpAgentChangeSetListFiltersV1 & {
+      actor: NpAgentChangeSetActorV1;
+      limit?: number;
+      cursor?: string;
+    },
+  ) {
     const actor = await resolve(input.actor, false);
     const limit = input.limit ?? 25;
     if (!Number.isInteger(limit) || limit < 1 || limit > 100)
       throw new NpAgentGatewayError("CHANGESET_QUERY_INVALID", 400, "Invalid ChangeSet query.");
+    const invalidQuery = () =>
+      new NpAgentGatewayError("CHANGESET_QUERY_INVALID", 400, "Invalid ChangeSet query.");
+    const states = input.states ?? [],
+      actorKinds = input.actorKinds ?? [];
+    for (const [values, inventory] of [
+      [states, npAgentChangeSetStates],
+      [actorKinds, ["runtime", "external", "staff"]],
+    ] as const) {
+      if (
+        !Array.isArray(values) ||
+        values.length > inventory.length ||
+        values.some(
+          (v, i) => !(inventory as readonly string[]).includes(v) || (i > 0 && values[i - 1] >= v),
+        )
+      )
+        throw invalidQuery();
+    }
+    const parseTime = (v: string | null | undefined) => {
+      if (v == null) return null;
+      const d = new Date(v);
+      if (!Number.isFinite(d.getTime()) || d.toISOString() !== v) throw invalidQuery();
+      return d;
+    };
+    const after = parseTime(input.createdAfter),
+      before = parseTime(input.createdBefore);
+    if (after && before && after >= before) throw invalidQuery();
     const binding = cursor.mac(
       serializeAgentCanonicalJson({
         siteId: actor.siteId,
         actor: actor.fingerprint,
         authorization: actor.authorization,
+        states,
+        actorKinds,
+        createdAfter: after?.toISOString() ?? null,
+        createdBefore: before?.toISOString() ?? null,
         limit,
       }),
     );
@@ -1327,6 +1392,10 @@ export function createAgentChangeSetServiceV1(
     let pageFull = false;
     for (let scanned = 0; scanned < 500;) {
       const where: SQL[] = [eq(npAgentChangesets.siteId, actor.siteId)];
+      if (states.length) where.push(inArray(npAgentChangesets.state, states));
+      if (actorKinds.length) where.push(inArray(npAgentChangesets.creatorKind, actorKinds));
+      if (after) where.push(gt(npAgentChangesets.createdAt, after));
+      if (before) where.push(lt(npAgentChangesets.createdAt, before));
       if (position)
         where.push(
           or(
@@ -1410,6 +1479,7 @@ export function createAgentChangeSetServiceV1(
     id: string,
     request: NpAgentChangeSetValidateRequestV1,
     invocationId: string,
+    expectedDraftHash?: string,
   ) {
     const [row] = await db
       .select()
@@ -1421,6 +1491,7 @@ export function createAgentChangeSetServiceV1(
     if (!row) throw missing();
     if (
       row.draftVersion !== request.expectedVersion ||
+      (expectedDraftHash !== undefined && row.draftHash !== expectedDraftHash) ||
       !["draft", "invalid"].includes(row.state) ||
       row.expiresAt.getTime() - time.getTime() < 60000
     )
@@ -2007,7 +2078,12 @@ export function createAgentChangeSetServiceV1(
       }
     }
   }
-  async function validate(input: { actor: NpAgentChangeSetActorV1; id: string; command: unknown }) {
+  async function validate(input: {
+    expectedDraftHash?: string;
+    actor: NpAgentChangeSetActorV1;
+    id: string;
+    command: unknown;
+  }) {
     if (!uuid.test(input.id)) throw missing();
     const command = npRequireAgentChangeSetValidateRequestV1(input.command);
     const actor = await resolve(input.actor, false);
@@ -2022,7 +2098,14 @@ export function createAgentChangeSetServiceV1(
             targetId: input.id,
             command,
             mutate: async ({ db, invocationId }) => {
-              const output = await admitValidation(db, actor, input.id, command, invocationId);
+              const output = await admitValidation(
+                db,
+                actor,
+                input.id,
+                command,
+                invocationId,
+                input.expectedDraftHash,
+              );
               await same(input.actor, actor);
               return { resourceId: input.id, output };
             },
@@ -2035,7 +2118,7 @@ export function createAgentChangeSetServiceV1(
             command,
             "validate",
             (db, _time, invocationId) =>
-              admitValidation(db, actor, input.id, command, invocationId),
+              admitValidation(db, actor, input.id, command, invocationId, input.expectedDraftHash),
             input.id,
           );
         break;
@@ -2209,6 +2292,84 @@ export function createAgentChangeSetServiceV1(
           )
             throw missing();
         } else if (seed.previewContractBody.screenshotAdapterId !== null) throw missing();
+        const checks = options.preview?.checks;
+        if (checks) {
+          if (
+            checks.rendererId !== seed.previewContractBody.rendererId ||
+            checks.rendererVersion !== seed.previewContractBody.rendererVersion ||
+            checks.rendererFingerprint !== seed.previewContractBody.rendererFingerprint ||
+            Object.entries(npAgentPreviewCheckVersionsV1).some(
+              ([key, version]) =>
+                seed.previewContractBody[key as keyof typeof npAgentPreviewCheckVersionsV1] !==
+                version,
+            )
+          )
+            throw missing();
+          if (output.some((a) => a.kind === "report")) throw missing();
+          const manifest = seed.allowedRoutes.length
+            ? await renderPreview({
+                ...input,
+                route: seed.allowedRoutes[0],
+                render: checks.resolveManifest,
+              })
+            : [];
+          const reports = await runAgentPreviewChecksV1({
+            identity: {
+              siteId: seed.siteId,
+              changeSetId: seed.changesetId,
+              previewId: seed.id,
+              generation: seed.generation,
+              planHash: seed.planHash,
+              previewContractFingerprint: seed.previewContractFingerprint,
+              generatedAt: now().toISOString(),
+            },
+            routes: seed.allowedRoutes,
+            render: (route) => renderPreview({ ...input, route, render: checks.render }),
+            productionOrigins: checks.productionOrigins,
+            routeManifest: manifest,
+            resolveRoute: (route) =>
+              Promise.resolve(
+                manifest.filter((r) => r.route === route.route && r.locale === route.locale)
+                  .length === 1,
+              ),
+            assertCurrentAuthority: () =>
+              withPreviewAuthority({ ...input, mutate: () => Promise.resolve(undefined) }),
+            linkAllowlistOrigins: seed.previewContractBody.linkAllowlistOrigins,
+          });
+          output = [
+            ...output,
+            ...reports.map((report) => ({
+              kind: "report" as const,
+              mime: "application/json" as const,
+              route: null,
+              locale: null,
+              viewport: null,
+              reportPart: report.part,
+              reportTotalParts: report.totalParts,
+              bytes: new TextEncoder().encode(serializeAgentCanonicalJson(report)),
+            })),
+          ];
+          await withPreviewAuthority({
+            ...input,
+            mutate: async (db, p) => {
+              await db
+                .update(npAgentChangesetPreviews)
+                .set({
+                  checkSummary: {
+                    checksRun: reports.reduce((sum, report) => sum + report.results.length, 0),
+                    screenshots: 0,
+                    warningCodes: [],
+                  },
+                })
+                .where(
+                  and(
+                    eq(npAgentChangesetPreviews.siteId, p.siteId),
+                    eq(npAgentChangesetPreviews.id, p.id),
+                  ),
+                );
+            },
+          });
+        }
         // Complete a private bounded spool before reserving or writing any object.
         // Recovery only inspects the durable journal; it never replays this spool.
         const spool = await mkdtemp(join(tmpdir(), "nexpress-preview-"));
@@ -3241,7 +3402,206 @@ export function createAgentChangeSetServiceV1(
       return { examined: rows.length, cancelled };
     });
   }
+  async function invokeCapability(input: {
+    authentication: NpAgentCapabilityAuthenticationV1;
+    request: NpAgentChangeSetCapabilityInvocationRequestV1;
+  }) {
+    const request = npRequireAgentInstalledCapabilityInvocationRequestV1(input.request);
+    if (!request.capabilityId.startsWith("changeset.") || !options.admission) throw missing();
+    const projected = await options.admission.project({ authentication: input.authentication });
+    if (!projected.entries.some((entry) => entry.definition.descriptor.id === request.capabilityId))
+      throw missing();
+    const actorInput: NpAgentChangeSetActorV1 = {
+      kind: "principal",
+      authentication: input.authentication,
+    };
+    return gatewayRequestContext.run(
+      request as NpAgentChangeSetCapabilityInvocationRequestV1,
+      async () => {
+        let output: NpAgentChangeSetCapabilityOutputMapV1[NpAgentChangeSetCapabilityIdV1];
+        switch (request.capabilityId) {
+          case "changeset.create": {
+            const draft = request.arguments.input;
+            const changeSet = await write({
+              actor: actorInput,
+              command: {
+                idempotencyKey: request.arguments.idempotencyKey,
+                proposalJson: npBuildAgentChangeSetDraftInputJsonV1(draft),
+                proposalHash: await npDigestAgentChangeSetDraftInputV1(draft),
+              },
+            });
+            output = { schemaVersion: "np.agent-changeset-result.v1", changeSet };
+            break;
+          }
+          case "changeset.validate": {
+            const args = request.arguments.input;
+            const changeSet = await validate({
+              actor: actorInput,
+              id: args.changeSetId,
+              expectedDraftHash: args.draftHash,
+              command: {
+                idempotencyKey: request.arguments.idempotencyKey,
+                expectedVersion: args.draftVersion,
+              },
+            });
+            output = { schemaVersion: "np.agent-changeset-result.v1", changeSet };
+            break;
+          }
+          case "changeset.preview": {
+            const args = request.arguments.input;
+            const current = await get({ actor: actorInput, id: args.changeSetId });
+            await preview({
+              actor: actorInput,
+              id: args.changeSetId,
+              command: {
+                idempotencyKey: request.arguments.idempotencyKey,
+                expectedVersion: current.draftVersion,
+                expectedPlanHash: args.planHash,
+              },
+            });
+            output = {
+              schemaVersion: "np.agent-changeset-result.v1",
+              changeSet: await get({ actor: actorInput, id: args.changeSetId }),
+            };
+            break;
+          }
+          case "changeset.get":
+            output = {
+              schemaVersion: "np.agent-changeset-result.v1",
+              changeSet: await get({ actor: actorInput, id: request.arguments.input.changeSetId }),
+            };
+            break;
+          case "changeset.list": {
+            const args = request.arguments.input;
+            const page = await list({
+              actor: actorInput,
+              ...args,
+              cursor: args.cursor ?? undefined,
+            });
+            output = {
+              schemaVersion: "np.agent-changeset-list.v1",
+              items: page.items,
+              nextCursor: page.nextCursor,
+            };
+            break;
+          }
+          default:
+            throw missing();
+        }
+        npRequireAgentInstalledCapabilityOutputV1(request.capabilityId, output);
+        const actor = await resolve(actorInput, request.capabilityId === "changeset.create");
+        const authFingerprint = await npDigestAgentAuthorizationContextCanonical(
+          input.authentication.authorizationContext,
+        );
+        if (request.arguments.idempotencyKey !== null) {
+          const [invocation] = await getDb()
+            .select({ id: npAgentInvocations.id })
+            .from(npAgentInvocations)
+            .where(
+              and(
+                eq(npAgentInvocations.siteId, actor.siteId),
+                eq(npAgentInvocations.actorFingerprint, actor.fingerprint),
+                eq(npAgentInvocations.authorizationContextFingerprint, authFingerprint),
+                eq(npAgentInvocations.operationKind, "capability"),
+                eq(npAgentInvocations.operationId, request.capabilityId),
+                eq(npAgentInvocations.idempotencyKey, request.arguments.idempotencyKey),
+                eq(npAgentInvocations.state, "completed"),
+              ),
+            )
+            .limit(1);
+          if (!invocation) throw missing();
+          await same(actorInput, actor, request.capabilityId === "changeset.create");
+          return { invocationId: invocation.id, output };
+        }
+        if (!options.admission) throw missing();
+        const definitionBody = npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(
+          request.capabilityId,
+        );
+        const fingerprint = await npDigestAgentCapabilityRegistryCanonical(
+          definitionBody,
+          definitionBody.capabilities,
+        );
+        const body = npRequireAgentInvocationRequestCanonical({
+          schemaVersion: "np.agent-idempotency-request.v1",
+          siteId: actor.siteId,
+          actorKind: "principal",
+          actorFingerprint: actor.fingerprint,
+          authorizationContextFingerprint: authFingerprint,
+          operationKind: "capability",
+          operationId: request.capabilityId,
+          contractVersion: 1,
+          contractFingerprint: fingerprint,
+          effectProfile: { id: "domain.read", contractVersion: 1 },
+          input: request.arguments.input,
+        });
+        const requestHash = await npDigestAgentInvocationRequestCanonical(body);
+        const invocationId = await options.admission.withCurrentAuthority({
+          authentication: input.authentication,
+          requiredScopes: ["changeset:read"],
+          minimumExposure: "read",
+          mutate: async (db, time) => {
+            const id = randomUUID();
+            const [audit] = await db
+              .insert(npAuditEvents)
+              .values({
+                siteId: actor.siteId,
+                actorKind: "agent-principal",
+                action: request.capabilityId,
+                targetType: "agent-changeset",
+                targetId: "changeSet" in output ? output.changeSet.id : null,
+                payload: { operationId: request.capabilityId, outcome: "completed" },
+                createdAt: time,
+              })
+              .returning({ id: npAuditEvents.id });
+            if (!audit) throw missing();
+            await db.insert(npAgentInvocations).values({
+              id,
+              siteId: actor.siteId,
+              actorKind: "principal",
+              principalId: actor.principalId,
+              actorFingerprint: actor.fingerprint,
+              authorizationContextBody: input.authentication.authorizationContext,
+              authorizationContextFingerprint: authFingerprint,
+              authorityRef: input.authentication.authorizationContext.authorityRef,
+              operationKind: "capability",
+              operationId: request.capabilityId,
+              contractVersion: 1,
+              contractFingerprint: fingerprint,
+              capabilityDefinitionBody: definitionBody,
+              effectProfileId: "domain.read",
+              effectContractVersion: 1,
+              transport: input.authentication.authorizationContext.transport,
+              mcpExecutionMode: ["mcp-service", "mcp-oauth"].includes(
+                input.authentication.authorizationContext.transport,
+              )
+                ? "normal"
+                : null,
+              idempotencyKey: null,
+              requestBody: body,
+              requestHash,
+              state: "completed",
+              auditEventId: audit.id,
+              requestedAt: time,
+              completedAt: time,
+              expiresAt: new Date(time.getTime() + 86400_000),
+              outputRedacted: { itemCount: "items" in output ? output.items.length : 1 },
+              outputHash: hash("np.agent-changeset-result.v1", {
+                itemCount: "items" in output ? output.items.length : 1,
+              }),
+            });
+            return id;
+          },
+        });
+        return { invocationId, output };
+      },
+    );
+  }
   return {
+    capabilityIds: Object.freeze(
+      npAgentChangeSetCapabilityIdsV1.filter(
+        (id) => id !== "changeset.preview" || options.preview !== undefined,
+      ),
+    ),
     create: (input: { actor: NpAgentChangeSetActorV1; command: unknown }) => write(input),
     update: (input: {
       actor: Extract<NpAgentChangeSetActorV1, { kind: "staff" }>;
@@ -3249,6 +3609,8 @@ export function createAgentChangeSetServiceV1(
       command: unknown;
     }) => write(input),
     get,
+    getReview,
+    invokeCapability,
     list,
     reconcileExpired,
     validate,

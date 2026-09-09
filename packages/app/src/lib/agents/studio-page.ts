@@ -27,3 +27,13 @@ export async function requireAgentStudioPageAccess(): Promise<void> {
   const siteUser = user ? await resolveSiteAuthUser(user) : null;
   if (!siteUser || !can(siteUser, "admin.manage")) notFound();
 }
+
+export async function requireAgentChangeSetPageAccess(): Promise<void> {
+  await ensureFor("read");
+  const token = (await cookies()).get("np-session")?.value;
+  const user = token
+    ? await verifyTokenFull(token, getAuthRuntimeConfig().secret, getDb(), "access")
+    : null;
+  const siteUser = user ? await resolveSiteAuthUser(user) : null;
+  if (!siteUser || !can(siteUser, "content.author")) notFound();
+}

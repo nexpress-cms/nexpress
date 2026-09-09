@@ -263,7 +263,7 @@ async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult> {
               hint: "Persisted Agent state is valid, but this Doctor runtime cannot confirm one or more frozen provider or Vault adapters.",
             }
           : {
-              hint: "Persistence health does not assert Activity or Agent HTTP availability. Both require explicit host-injected services; preview artifacts remain unavailable without a shared artifact facade.",
+              hint: "Persistence health does not assert Activity, ChangeSet checks or Gateway availability. ChangeSet projections, check renderers and preview artifact facades require explicit host injection; all transports remain disabled by default.",
             }),
       };
     }

@@ -1,8 +1,8 @@
 import {
   npAgentHttpRoutesV1,
   npBuildAgentHttpInvocationSchemasV1,
-  npAgentReadCapabilityIdsV1,
-  npAgentReadCapabilityDescriptorsV1,
+  npAgentInstalledCapabilityIdsV1,
+  npAgentInstalledCapabilityDescriptorsV1,
   npAgentRunStates,
 } from "@nexpress/core/agent-contract";
 
@@ -96,11 +96,11 @@ export function buildAgentHttpOpenApiV1() {
       schemaVersion: { const: "np.agent-http-capabilities.v1" },
       capabilities: {
         type: "array",
-        maxItems: npAgentReadCapabilityIdsV1.length,
+        maxItems: npAgentInstalledCapabilityIdsV1.length,
         uniqueItems: true,
         items: {
-          oneOf: npAgentReadCapabilityIdsV1.map((id) => ({
-            const: npAgentReadCapabilityDescriptorsV1[id],
+          oneOf: npAgentInstalledCapabilityIdsV1.map((id) => ({
+            const: npAgentInstalledCapabilityDescriptorsV1[id],
           })),
         },
       },

@@ -2,7 +2,20 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Last refreshed:** 2026-09-08 (AP-305/AP-306 add generation-bound preview
+**Last refreshed:** 2026-09-09 (AP-307/AP-308/AP-309 connect the existing ChangeSet service to framework
+preview checks, bounded Admin review and an explicitly installed Gateway facade.
+Five descriptor-derived ChangeSet capabilities share the existing scopes,
+exposure intersection and invocation journal; missing preview services remain
+undiscoverable. Admin diffs use current editable-field visibility over verified
+snapshots, and native launch forms reuse central staff CSRF plus the existing
+one-time bridge. Static HTML/SEO/JSON-LD/accessibility and manifest link checks
+write only safe private report artifacts; the reviewed external-link exception
+uses pinned public DNS, credentialless HEAD and strict bounds. Preview artifact
+expiry is anchored to atomic completion. Doctor remains at 28 tables and 133
+critical constraints; no migration, approval/apply, provider, automatic worker,
+listener, seed, default enablement, package version or changeset is added.)
+
+**Earlier:** 2026-09-08 (AP-305/AP-306 add generation-bound preview
 admission and an explicit host processor to the existing ChangeSet service.
 A read-only overlay reuses document, navigation, theme, SEO and media-reference
 contracts, while the preview context blocks framework effects. Current requester

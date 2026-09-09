@@ -1,3 +1,4 @@
+import { npCollectionContractLimits } from "../collection-contract/contract.js";
 import {
   NP_AGENT_ACTOR_RESTRICTION_TTL_DEFAULT_SECONDS,
   NP_AGENT_ACTOR_RESTRICTION_TTL_MAX_SECONDS,
@@ -55,8 +56,8 @@ export const npAgentContractLimits = {
   jsonSchemaNodes: 4_096,
   jsonSchemaDefinitions: 128,
   jsonSchemaObjectProperties: 128,
-  jsonSchemaMaxItems: 1_000,
-  jsonSchemaMaxStringCharacters: 262_144,
+  jsonSchemaMaxItems: npCollectionContractLimits.arrayRows,
+  jsonSchemaMaxStringCharacters: npCollectionContractLimits.stringLength,
   invocationBytes: 4 * 1024 * 1024,
   invocationDepth: 32,
   invocationNodes: 20_000,

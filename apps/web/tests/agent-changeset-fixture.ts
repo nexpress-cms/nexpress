@@ -1,3 +1,8 @@
+import type { NpAgentPreviewArtifactStorageAdapterV1 } from "../../../packages/core/src/agent/preview-artifact-contract.js";
+import {
+  createAgentChangeSetCapabilityFacadeV1,
+  type NpAgentChangeSetCapabilityFacadeV1,
+} from "../../../packages/core/src/agent/changeset-capability.js";
 /* eslint-disable import-x/no-relative-packages */
 import { createHash, randomUUID } from "node:crypto";
 import { createSite, grantSiteMembership, npSessions, npUsers } from "@nexpress/core";
@@ -149,22 +154,27 @@ export async function principalFixture(
     resolveUser: () => f.actor.actor.user,
   });
   const registry = await createAgentReadCapabilityRegistryV1(executors);
+  let facade: NpAgentChangeSetCapabilityFacadeV1 | null = null;
   const admission = createAgentCapabilityAdmissionServiceV1({
     registry,
+    resolveChangeSetCapabilities: () => facade,
     resolveGatewaySettings: () => settings,
   });
+  const service = createAgentChangeSetServiceV1({
+    cursorKey: new Uint8Array(32).fill(44),
+    admission,
+    gateway,
+    ...options,
+    reauthentication: { verify: () => true },
+  });
+  facade = createAgentChangeSetCapabilityFacadeV1(service);
   return {
     gateway,
     principal,
     authentication,
     token,
-    service: createAgentChangeSetServiceV1({
-      cursorKey: new Uint8Array(32).fill(44),
-      admission,
-      gateway,
-      ...options,
-      reauthentication: { verify: () => true },
-    }),
+    service,
+    admission,
     actor: { kind: "principal" as const, authentication },
   };
 }
@@ -319,4 +329,35 @@ export async function readyPreview(f: Awaited<ReturnType<typeof fixture>>) {
   });
   await f.service.processPreview({ siteId: f.actor.siteId, previewId: preview.previewId });
   return f.service.getPreview({ actor: f.actor, previewId: preview.previewId });
+}
+
+export function previewStorageFixture() {
+  const objects = new Map<string, Uint8Array>();
+  const adapter: NpAgentPreviewArtifactStorageAdapterV1 = {
+    id: "review-store",
+    contractVersion: 1,
+    fingerprint: `cj1:sha256:${"a".repeat(43)}`,
+    async put({ request, bytes }) {
+      objects.set(request.storageKey, Uint8Array.from(bytes));
+      return { operationRef: "test-operation" };
+    },
+    async resolveOperation() {
+      return { status: "committed", resolvedAt: new Date().toISOString(), safeCode: null };
+    },
+    async stat({ storageKey }) {
+      const b = objects.get(storageKey);
+      return b
+        ? { state: "present", mime: "application/json", bytes: b.length }
+        : { state: "absent" };
+    },
+    async read({ storageKey }) {
+      const b = objects.get(storageKey);
+      if (!b) throw new Error("missing");
+      return { bytes: Uint8Array.from(b), mime: "application/json" };
+    },
+    async delete({ storageKey }) {
+      return { status: objects.delete(storageKey) ? "deleted" : "already_absent" };
+    },
+  };
+  return { adapter, objects };
 }

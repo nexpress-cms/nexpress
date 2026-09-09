@@ -1,4 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
+import {
+  npDigestAgentCapabilityRegistryCanonical,
+  npRequireAgentCapabilityRegistryCanonical,
+} from "../agent-contract/canonical-capability-registry.js";
+import {
+  npIsAgentChangeSetCapabilityIdV1,
+  npBuildAgentChangeSetCapabilityDefinitionCanonicalV1,
+  npRequireAgentInstalledCapabilityInvocationRequestV1,
+  type NpAgentInstalledCapabilityIdV1,
+  type NpAgentInstalledCapabilityInvocationRequestV1,
+  type NpAgentChangeSetCapabilityInvocationResultV1,
+  type NpAgentChangeSetCapabilityInvocationRequestV1,
+} from "../agent-contract/installed-capability-contract.js";
+import type { NpAgentChangeSetCapabilityFacadeV1 } from "./changeset-capability.js";
 
 import { and, eq } from "drizzle-orm";
 
@@ -66,6 +80,7 @@ function isOauthAuthentication(
 
 export interface NpAgentCapabilityAdmissionOptionsV1 {
   registry: NpAgentReadCapabilityRegistryV1;
+  resolveChangeSetCapabilities?: () => NpAgentChangeSetCapabilityFacadeV1 | null;
   resolveGatewaySettings: (
     siteId: string,
   ) => NpAgentGatewaySettingsV1 | Promise<NpAgentGatewaySettingsV1>;
@@ -499,6 +514,312 @@ export function createAgentCapabilityAdmissionServiceV1(
     throw new Error("Agent invocation retention must be 60..86400 seconds.");
   }
 
+  async function invokeRead<C extends NpAgentReadCapabilityIdV1>(input: {
+    authentication: NpAgentCapabilityAuthenticationV1;
+    request: NpAgentReadCapabilityInvocationRequestV1 & { capabilityId: C };
+    abortSignal?: AbortSignal;
+  }): Promise<NpAgentReadCapabilityInvocationResultV1<C>> {
+    const request = npRequireAgentReadCapabilityInvocationRequestV1(input.request);
+    const capabilityId = request.capabilityId as C;
+    const entry = options.registry.get(capabilityId);
+    const authentication = input.authentication;
+    const principal = resolvedPrincipal(authentication);
+    if (principal.siteId !== authentication.authorizationContext.siteId) {
+      throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
+    }
+    const settings = npRequireAgentGatewaySettings(
+      await options.resolveGatewaySettings(principal.siteId),
+    );
+    const settingsKey = transportSettingsKey(authentication.authorizationContext.transport);
+    if (
+      settings[settingsKey] === "disabled" ||
+      !entry.definition.descriptor.gateway?.transports.includes(
+        descriptorTransport(authentication.authorizationContext.transport),
+      )
+    ) {
+      throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+    }
+    const parsedInput = entry.definition.parseInput(request.arguments.input);
+    const now = nowFn();
+    const requestedAt = now.toISOString();
+    const requirements = npRequireAgentReadDerivedRequirementsV1(
+      (await entry.definition.deriveRequirements?.(parsedInput, {
+        siteId: principal.siteId,
+        principal,
+        requestedAt,
+      })) ?? { additionalScopes: [], targetRefs: [], riskFloor: "read", approvalFloor: "none" },
+    );
+    const requiredScopes = [
+      ...new Set<NpAgentScope>([
+        ...entry.definition.descriptor.requiredScopes,
+        ...requirements.additionalScopes,
+      ]),
+    ].sort();
+    if (requiredScopes.some((scope) => !authentication.scopes.includes(scope))) {
+      throw new NpAgentGatewayError(
+        "INSUFFICIENT_SCOPE",
+        403,
+        "Required capability scope is absent.",
+      );
+    }
+    const authorizationFingerprint = await npDigestAgentAuthorizationContextCanonical(
+      authentication.authorizationContext,
+    );
+    if (authorizationFingerprint !== authentication.authorizationContextFingerprint) {
+      throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
+    }
+    const actorFingerprint = authentication.authorizationContext.actor.actorFingerprint;
+    const requestBody = npRequireAgentInvocationRequestCanonical({
+      schemaVersion: "np.agent-idempotency-request.v1",
+      siteId: principal.siteId,
+      actorKind: "principal",
+      actorFingerprint,
+      authorizationContextFingerprint: authorizationFingerprint,
+      operationKind: "capability",
+      operationId: capabilityId,
+      contractVersion: entry.definition.descriptor.contractVersion,
+      contractFingerprint: entry.capabilityFingerprint,
+      effectProfile: { id: "domain.read", contractVersion: 1 },
+      input: asJsonObject(parsedInput),
+    });
+    const requestHash = await npDigestAgentInvocationRequestCanonical(requestBody);
+    const invocationId = randomUUID();
+    const actionId = randomUUID();
+    const actionCanonical: NpAgentActionCanonicalV1 = npRequireAgentActionCanonical({
+      schemaVersion: "np.agent-action.v1",
+      siteId: principal.siteId,
+      actionId,
+      invocationFingerprint: requestHash,
+      runFingerprint: null,
+      sequence: 1,
+      capabilityId,
+      capabilityContractVersion: entry.definition.descriptor.contractVersion,
+      capabilityFingerprint: entry.capabilityFingerprint,
+      effectProfile: { id: "domain.read", contractVersion: 1 },
+      risk: "read",
+      requiredScopes,
+      targetRefs: requirements.targetRefs,
+      targetVersionFacts: [],
+      input: asJsonObject(parsedInput),
+    });
+    const actionHash = await npDigestAgentActionCanonical(actionCanonical);
+    const db = getDb();
+    const expiresAt = new Date(now.getTime() + retentionSeconds * 1_000);
+    await db.transaction(
+      async (rawTx) => {
+        const tx = rawTx as Db;
+        await assertCurrentAuthentication(tx, authentication, requiredScopes, nowFn);
+        const [audit] = await tx
+          .insert(npAuditEvents)
+          .values({
+            actorKind: "agent-principal",
+            action: "agents.capability.invoke",
+            targetType: "agent-capability",
+            targetId: capabilityId,
+            siteId: principal.siteId,
+            payload: {
+              schemaVersion: "np.agent-capability-audit.v1",
+              outcome: "started",
+              capabilityId,
+              invocationId,
+              actionId,
+              requestHash,
+              authorizationContextFingerprint: authorizationFingerprint,
+            },
+            createdAt: now,
+          })
+          .returning({ id: npAuditEvents.id });
+        if (!audit) throw new Error("Failed to persist Agent capability audit admission.");
+        await tx.insert(npAgentInvocations).values({
+          id: invocationId,
+          siteId: principal.siteId,
+          actorKind: "principal",
+          principalId: principal.principalId,
+          actorFingerprint,
+          authorizationContextBody: authentication.authorizationContext,
+          authorizationContextFingerprint: authorizationFingerprint,
+          authorityRef: authentication.authorizationContext.authorityRef,
+          operationKind: "capability",
+          operationId: capabilityId,
+          contractVersion: entry.definition.descriptor.contractVersion,
+          contractFingerprint: entry.capabilityFingerprint,
+          capabilityDefinitionBody: entry.definitionCanonical,
+          effectProfileId: "domain.read",
+          effectContractVersion: 1,
+          transport: authentication.authorizationContext.transport,
+          mcpExecutionMode:
+            authentication.authorizationContext.transport === "mcp-service" ||
+            authentication.authorizationContext.transport === "mcp-oauth"
+              ? "normal"
+              : null,
+          idempotencyKey: null,
+          requestBody,
+          requestHash,
+          state: "started",
+          auditEventId: audit.id,
+          requestedAt: now,
+          expiresAt,
+        });
+        await tx.insert(npAgentActions).values({
+          id: actionId,
+          siteId: principal.siteId,
+          runId: null,
+          runFingerprint: null,
+          invocationId,
+          invocationFingerprint: requestHash,
+          sequence: 1,
+          capabilityId,
+          capabilityContractVersion: entry.definition.descriptor.contractVersion,
+          capabilityFingerprint: entry.capabilityFingerprint,
+          capabilityDefinitionBody: entry.definitionCanonical,
+          effectProfileId: "domain.read",
+          effectContractVersion: 1,
+          risk: "read",
+          state: "executing",
+          idempotencyKey: null,
+          inputRedacted: asJsonObject(parsedInput),
+          inputCanonical: asJsonObject(parsedInput),
+          requiredScopes,
+          targetRefs: requirements.targetRefs,
+          targetVersionFacts: [],
+          inputHash: actionHash,
+          auditEventId: audit.id,
+          startedAt: now,
+          createdAt: now,
+        });
+      },
+      { isolationLevel: "serializable" },
+    );
+    try {
+      const execution = await entry.definition.execute(parsedInput, {
+        siteId: principal.siteId,
+        principal,
+        requestedAt,
+        invocationId,
+        idempotencyKey: null,
+        abortSignal: input.abortSignal ?? new AbortController().signal,
+      });
+      const output = entry.definition.parseOutput(execution.output);
+      const outputObject = asJsonObject(output);
+      const outputHash = digest("np.agent-capability-output.v1", outputObject);
+      const finishedAt = nowFn();
+      await db.transaction(async (rawTx) => {
+        const tx = rawTx as Db;
+        const [audit] = await tx
+          .insert(npAuditEvents)
+          .values({
+            actorKind: "agent-principal",
+            action: "agents.capability.complete",
+            targetType: "agent-capability",
+            targetId: capabilityId,
+            siteId: principal.siteId,
+            payload: {
+              schemaVersion: "np.agent-capability-audit.v1",
+              outcome: "completed",
+              capabilityId,
+              invocationId,
+              actionId,
+              outputHash,
+            },
+            createdAt: finishedAt,
+          })
+          .returning({ id: npAuditEvents.id });
+        if (!audit) throw new Error("Failed to persist Agent capability completion audit.");
+        const actions = await tx
+          .update(npAgentActions)
+          .set({ state: "succeeded", outputRedacted: outputObject, outputHash, finishedAt })
+          .where(
+            and(
+              eq(npAgentActions.siteId, principal.siteId),
+              eq(npAgentActions.id, actionId),
+              eq(npAgentActions.state, "executing"),
+            ),
+          )
+          .returning({ id: npAgentActions.id });
+        const invocations = await tx
+          .update(npAgentInvocations)
+          .set({
+            state: "completed",
+            resultKind: "action",
+            resultId: actionId,
+            outputRedacted: outputObject,
+            outputHash,
+            completedAt: finishedAt,
+          })
+          .where(
+            and(
+              eq(npAgentInvocations.siteId, principal.siteId),
+              eq(npAgentInvocations.id, invocationId),
+              eq(npAgentInvocations.state, "started"),
+            ),
+          )
+          .returning({ id: npAgentInvocations.id });
+        if (actions.length !== 1 || invocations.length !== 1) {
+          throw new Error("Agent capability completion lost its admission rows.");
+        }
+      });
+      return {
+        schemaVersion: "np.agent-read-invocation-result.v1",
+        invocationId,
+        actionId,
+        capabilityId,
+        output,
+      };
+    } catch (error) {
+      const failure = safeFailure(error);
+      const finishedAt = nowFn();
+      await db.transaction(async (rawTx) => {
+        const tx = rawTx as Db;
+        const [audit] = await tx
+          .insert(npAuditEvents)
+          .values({
+            actorKind: "agent-principal",
+            action: "agents.capability.fail",
+            targetType: "agent-capability",
+            targetId: capabilityId,
+            siteId: principal.siteId,
+            payload: {
+              schemaVersion: "np.agent-capability-audit.v1",
+              outcome: "failed",
+              capabilityId,
+              invocationId,
+              actionId,
+              errorCode: failure.code,
+            },
+            createdAt: finishedAt,
+          })
+          .returning({ id: npAuditEvents.id });
+        if (!audit) throw new Error("Failed to persist Agent capability failure audit.");
+        const actions = await tx
+          .update(npAgentActions)
+          .set({ state: "failed", errorCode: failure.code, finishedAt })
+          .where(
+            and(
+              eq(npAgentActions.siteId, principal.siteId),
+              eq(npAgentActions.id, actionId),
+              eq(npAgentActions.state, "executing"),
+            ),
+          )
+          .returning({ id: npAgentActions.id });
+        const invocations = await tx
+          .update(npAgentInvocations)
+          .set({ state: "failed", errorCode: failure.code, completedAt: finishedAt })
+          .where(
+            and(
+              eq(npAgentInvocations.siteId, principal.siteId),
+              eq(npAgentInvocations.id, invocationId),
+              eq(npAgentInvocations.state, "started"),
+            ),
+          )
+          .returning({ id: npAgentInvocations.id });
+        if (actions.length !== 1 || invocations.length !== 1) {
+          throw new Error("Agent capability failure lost its admission rows.");
+        }
+      });
+      throw failure.outward;
+    }
+  }
+
   const service = {
     /** Resume an admitted server job from persisted authority; never accepts a presented credential. */
     async withStoredAuthority<T>(input: {
@@ -669,325 +990,100 @@ export function createAgentCapabilityAdmissionServiceV1(
         await assertCurrentAuthentication(rawTx, authentication, authentication.scopes, nowFn);
       });
       const transport = descriptorTransport(authentication.authorizationContext.transport);
+      const facade = options.resolveChangeSetCapabilities?.();
+      const extra = facade ? await Promise.all(facade.ids.map((id) => facade.entry(id))) : [];
+      for (const [index, entry] of extra.entries()) {
+        const id = facade!.ids[index];
+        if (
+          !npIsAgentChangeSetCapabilityIdV1(id) ||
+          (index > 0 && facade!.ids[index - 1] >= id) ||
+          serializeAgentCanonicalJson(entry.definitionCanonical) !==
+            serializeAgentCanonicalJson(npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(id)) ||
+          serializeAgentCanonicalJson(entry.canonical) !==
+            serializeAgentCanonicalJson(entry.definitionCanonical.capabilities[0]) ||
+          serializeAgentCanonicalJson(entry.definition) !==
+            serializeAgentCanonicalJson(entry.canonical) ||
+          entry.capabilityFingerprint !==
+            (await npDigestAgentCapabilityRegistryCanonical(
+              entry.definitionCanonical,
+              entry.definitionCanonical.capabilities,
+            ))
+        )
+          throw new NpAgentGatewayError(
+            "CAPABILITY_UNAVAILABLE",
+            404,
+            "Capability is unavailable.",
+          );
+      }
+      const all = [...options.registry.ids.map((id) => options.registry.get(id)), ...extra].sort(
+        (a, b) => a.definition.descriptor.id.localeCompare(b.definition.descriptor.id),
+      );
+      const levels = { disabled: 0, read: 1, propose: 2, "approved-execute": 3 } as const;
+      const currentLevel = Math.min(
+        levels[settings[settingsKey]],
+        levels[authentication.authorizationContext.gatewayExposure ?? "disabled"],
+      );
+      const registry = npRequireAgentCapabilityRegistryCanonical({
+        schemaVersion: "np.agent-capability-registry.v1",
+        projection: "registry",
+        capabilities: all.map((entry) => entry.canonical),
+      });
       return {
         principal,
         settings,
-        registryFingerprint: options.registry.registryFingerprint,
-        entries: options.registry.ids
-          .map((id) => options.registry.get(id))
-          .filter(
-            (entry) =>
-              entry.definition.descriptor.gateway?.transports.includes(transport) === true &&
-              entry.definition.descriptor.requiredScopes.every((scope) =>
-                authentication.scopes.includes(scope),
-              ),
-          ),
+        registryFingerprint: extra.length
+          ? await npDigestAgentCapabilityRegistryCanonical(registry, registry.capabilities)
+          : options.registry.registryFingerprint,
+        entries: all.filter(
+          (entry) =>
+            entry.definition.descriptor.gateway?.transports.includes(transport) === true &&
+            entry.definition.descriptor.requiredScopes.every((scope) =>
+              authentication.scopes.includes(scope),
+            ) &&
+            entry.definition.descriptor.effectProfiles.some(
+              (profile) =>
+                profile.minimumGatewayExposure !== null &&
+                levels[profile.minimumGatewayExposure] <= currentLevel,
+            ),
+        ),
       };
     },
-    async invoke<C extends NpAgentReadCapabilityIdV1>(input: {
+    async invoke<C extends NpAgentInstalledCapabilityIdV1>(input: {
       authentication: NpAgentCapabilityAuthenticationV1;
-      request: NpAgentReadCapabilityInvocationRequestV1 & { capabilityId: C };
+      request: NpAgentInstalledCapabilityInvocationRequestV1 & { capabilityId: C };
       abortSignal?: AbortSignal;
-    }): Promise<NpAgentReadCapabilityInvocationResultV1<C>> {
-      const request = npRequireAgentReadCapabilityInvocationRequestV1(input.request);
-      const capabilityId = request.capabilityId as C;
-      const entry = options.registry.get(capabilityId);
-      const authentication = input.authentication;
-      const principal = resolvedPrincipal(authentication);
-      if (principal.siteId !== authentication.authorizationContext.siteId) {
-        throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
-      }
-      const settings = npRequireAgentGatewaySettings(
-        await options.resolveGatewaySettings(principal.siteId),
-      );
-      const settingsKey = transportSettingsKey(authentication.authorizationContext.transport);
-      if (
-        settings[settingsKey] === "disabled" ||
-        !entry.definition.descriptor.gateway?.transports.includes(
-          descriptorTransport(authentication.authorizationContext.transport),
+    }): Promise<
+      C extends NpAgentReadCapabilityIdV1
+        ? NpAgentReadCapabilityInvocationResultV1<C>
+        : NpAgentChangeSetCapabilityInvocationResultV1
+    > {
+      type Result = C extends NpAgentReadCapabilityIdV1
+        ? NpAgentReadCapabilityInvocationResultV1<C>
+        : NpAgentChangeSetCapabilityInvocationResultV1;
+      const request = npRequireAgentInstalledCapabilityInvocationRequestV1(input.request);
+      if (npIsAgentChangeSetCapabilityIdV1(request.capabilityId)) {
+        const facade = options.resolveChangeSetCapabilities?.();
+        const projection = await service.project({ authentication: input.authentication });
+        if (
+          !facade ||
+          !projection.entries.some(
+            (entry) => entry.definition.descriptor.id === request.capabilityId,
+          )
         )
-      ) {
-        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+          throw new NpAgentGatewayError(
+            "CAPABILITY_UNAVAILABLE",
+            404,
+            "Capability is unavailable.",
+          );
+        return (await facade.invoke(
+          input.authentication,
+          request as NpAgentChangeSetCapabilityInvocationRequestV1,
+        )) as Result;
       }
-      const parsedInput = entry.definition.parseInput(request.arguments.input);
-      const now = nowFn();
-      const requestedAt = now.toISOString();
-      const requirements = npRequireAgentReadDerivedRequirementsV1(
-        (await entry.definition.deriveRequirements?.(parsedInput, {
-          siteId: principal.siteId,
-          principal,
-          requestedAt,
-        })) ?? { additionalScopes: [], targetRefs: [], riskFloor: "read", approvalFloor: "none" },
-      );
-      const requiredScopes = [
-        ...new Set<NpAgentScope>([
-          ...entry.definition.descriptor.requiredScopes,
-          ...requirements.additionalScopes,
-        ]),
-      ].sort();
-      if (requiredScopes.some((scope) => !authentication.scopes.includes(scope))) {
-        throw new NpAgentGatewayError(
-          "INSUFFICIENT_SCOPE",
-          403,
-          "Required capability scope is absent.",
-        );
-      }
-      const authorizationFingerprint = await npDigestAgentAuthorizationContextCanonical(
-        authentication.authorizationContext,
-      );
-      if (authorizationFingerprint !== authentication.authorizationContextFingerprint) {
-        throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
-      }
-      const actorFingerprint = authentication.authorizationContext.actor.actorFingerprint;
-      const requestBody = npRequireAgentInvocationRequestCanonical({
-        schemaVersion: "np.agent-idempotency-request.v1",
-        siteId: principal.siteId,
-        actorKind: "principal",
-        actorFingerprint,
-        authorizationContextFingerprint: authorizationFingerprint,
-        operationKind: "capability",
-        operationId: capabilityId,
-        contractVersion: entry.definition.descriptor.contractVersion,
-        contractFingerprint: entry.capabilityFingerprint,
-        effectProfile: { id: "domain.read", contractVersion: 1 },
-        input: asJsonObject(parsedInput),
-      });
-      const requestHash = await npDigestAgentInvocationRequestCanonical(requestBody);
-      const invocationId = randomUUID();
-      const actionId = randomUUID();
-      const actionCanonical: NpAgentActionCanonicalV1 = npRequireAgentActionCanonical({
-        schemaVersion: "np.agent-action.v1",
-        siteId: principal.siteId,
-        actionId,
-        invocationFingerprint: requestHash,
-        runFingerprint: null,
-        sequence: 1,
-        capabilityId,
-        capabilityContractVersion: entry.definition.descriptor.contractVersion,
-        capabilityFingerprint: entry.capabilityFingerprint,
-        effectProfile: { id: "domain.read", contractVersion: 1 },
-        risk: "read",
-        requiredScopes,
-        targetRefs: requirements.targetRefs,
-        targetVersionFacts: [],
-        input: asJsonObject(parsedInput),
-      });
-      const actionHash = await npDigestAgentActionCanonical(actionCanonical);
-      const db = getDb();
-      const expiresAt = new Date(now.getTime() + retentionSeconds * 1_000);
-      await db.transaction(
-        async (rawTx) => {
-          const tx = rawTx as Db;
-          await assertCurrentAuthentication(tx, authentication, requiredScopes, nowFn);
-          const [audit] = await tx
-            .insert(npAuditEvents)
-            .values({
-              actorKind: "agent-principal",
-              action: "agents.capability.invoke",
-              targetType: "agent-capability",
-              targetId: capabilityId,
-              siteId: principal.siteId,
-              payload: {
-                schemaVersion: "np.agent-capability-audit.v1",
-                outcome: "started",
-                capabilityId,
-                invocationId,
-                actionId,
-                requestHash,
-                authorizationContextFingerprint: authorizationFingerprint,
-              },
-              createdAt: now,
-            })
-            .returning({ id: npAuditEvents.id });
-          if (!audit) throw new Error("Failed to persist Agent capability audit admission.");
-          await tx.insert(npAgentInvocations).values({
-            id: invocationId,
-            siteId: principal.siteId,
-            actorKind: "principal",
-            principalId: principal.principalId,
-            actorFingerprint,
-            authorizationContextBody: authentication.authorizationContext,
-            authorizationContextFingerprint: authorizationFingerprint,
-            authorityRef: authentication.authorizationContext.authorityRef,
-            operationKind: "capability",
-            operationId: capabilityId,
-            contractVersion: entry.definition.descriptor.contractVersion,
-            contractFingerprint: entry.capabilityFingerprint,
-            capabilityDefinitionBody: entry.definitionCanonical,
-            effectProfileId: "domain.read",
-            effectContractVersion: 1,
-            transport: authentication.authorizationContext.transport,
-            mcpExecutionMode:
-              authentication.authorizationContext.transport === "mcp-service" ||
-              authentication.authorizationContext.transport === "mcp-oauth"
-                ? "normal"
-                : null,
-            idempotencyKey: null,
-            requestBody,
-            requestHash,
-            state: "started",
-            auditEventId: audit.id,
-            requestedAt: now,
-            expiresAt,
-          });
-          await tx.insert(npAgentActions).values({
-            id: actionId,
-            siteId: principal.siteId,
-            runId: null,
-            runFingerprint: null,
-            invocationId,
-            invocationFingerprint: requestHash,
-            sequence: 1,
-            capabilityId,
-            capabilityContractVersion: entry.definition.descriptor.contractVersion,
-            capabilityFingerprint: entry.capabilityFingerprint,
-            capabilityDefinitionBody: entry.definitionCanonical,
-            effectProfileId: "domain.read",
-            effectContractVersion: 1,
-            risk: "read",
-            state: "executing",
-            idempotencyKey: null,
-            inputRedacted: asJsonObject(parsedInput),
-            inputCanonical: asJsonObject(parsedInput),
-            requiredScopes,
-            targetRefs: requirements.targetRefs,
-            targetVersionFacts: [],
-            inputHash: actionHash,
-            auditEventId: audit.id,
-            startedAt: now,
-            createdAt: now,
-          });
-        },
-        { isolationLevel: "serializable" },
-      );
-      try {
-        const execution = await entry.definition.execute(parsedInput, {
-          siteId: principal.siteId,
-          principal,
-          requestedAt,
-          invocationId,
-          idempotencyKey: null,
-          abortSignal: input.abortSignal ?? new AbortController().signal,
-        });
-        const output = entry.definition.parseOutput(execution.output);
-        const outputObject = asJsonObject(output);
-        const outputHash = digest("np.agent-capability-output.v1", outputObject);
-        const finishedAt = nowFn();
-        await db.transaction(async (rawTx) => {
-          const tx = rawTx as Db;
-          const [audit] = await tx
-            .insert(npAuditEvents)
-            .values({
-              actorKind: "agent-principal",
-              action: "agents.capability.complete",
-              targetType: "agent-capability",
-              targetId: capabilityId,
-              siteId: principal.siteId,
-              payload: {
-                schemaVersion: "np.agent-capability-audit.v1",
-                outcome: "completed",
-                capabilityId,
-                invocationId,
-                actionId,
-                outputHash,
-              },
-              createdAt: finishedAt,
-            })
-            .returning({ id: npAuditEvents.id });
-          if (!audit) throw new Error("Failed to persist Agent capability completion audit.");
-          const actions = await tx
-            .update(npAgentActions)
-            .set({ state: "succeeded", outputRedacted: outputObject, outputHash, finishedAt })
-            .where(
-              and(
-                eq(npAgentActions.siteId, principal.siteId),
-                eq(npAgentActions.id, actionId),
-                eq(npAgentActions.state, "executing"),
-              ),
-            )
-            .returning({ id: npAgentActions.id });
-          const invocations = await tx
-            .update(npAgentInvocations)
-            .set({
-              state: "completed",
-              resultKind: "action",
-              resultId: actionId,
-              outputRedacted: outputObject,
-              outputHash,
-              completedAt: finishedAt,
-            })
-            .where(
-              and(
-                eq(npAgentInvocations.siteId, principal.siteId),
-                eq(npAgentInvocations.id, invocationId),
-                eq(npAgentInvocations.state, "started"),
-              ),
-            )
-            .returning({ id: npAgentInvocations.id });
-          if (actions.length !== 1 || invocations.length !== 1) {
-            throw new Error("Agent capability completion lost its admission rows.");
-          }
-        });
-        return {
-          schemaVersion: "np.agent-read-invocation-result.v1",
-          invocationId,
-          actionId,
-          capabilityId,
-          output,
-        };
-      } catch (error) {
-        const failure = safeFailure(error);
-        const finishedAt = nowFn();
-        await db.transaction(async (rawTx) => {
-          const tx = rawTx as Db;
-          const [audit] = await tx
-            .insert(npAuditEvents)
-            .values({
-              actorKind: "agent-principal",
-              action: "agents.capability.fail",
-              targetType: "agent-capability",
-              targetId: capabilityId,
-              siteId: principal.siteId,
-              payload: {
-                schemaVersion: "np.agent-capability-audit.v1",
-                outcome: "failed",
-                capabilityId,
-                invocationId,
-                actionId,
-                errorCode: failure.code,
-              },
-              createdAt: finishedAt,
-            })
-            .returning({ id: npAuditEvents.id });
-          if (!audit) throw new Error("Failed to persist Agent capability failure audit.");
-          const actions = await tx
-            .update(npAgentActions)
-            .set({ state: "failed", errorCode: failure.code, finishedAt })
-            .where(
-              and(
-                eq(npAgentActions.siteId, principal.siteId),
-                eq(npAgentActions.id, actionId),
-                eq(npAgentActions.state, "executing"),
-              ),
-            )
-            .returning({ id: npAgentActions.id });
-          const invocations = await tx
-            .update(npAgentInvocations)
-            .set({ state: "failed", errorCode: failure.code, completedAt: finishedAt })
-            .where(
-              and(
-                eq(npAgentInvocations.siteId, principal.siteId),
-                eq(npAgentInvocations.id, invocationId),
-                eq(npAgentInvocations.state, "started"),
-              ),
-            )
-            .returning({ id: npAgentInvocations.id });
-          if (actions.length !== 1 || invocations.length !== 1) {
-            throw new Error("Agent capability failure lost its admission rows.");
-          }
-        });
-        throw failure.outward;
-      }
+      return (await invokeRead({
+        ...input,
+        request: request as NpAgentReadCapabilityInvocationRequestV1,
+      })) as Result;
     },
   };
   return service;

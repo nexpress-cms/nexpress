@@ -1,3 +1,4 @@
+import { isAgentPreviewLaunchForm, readAgentPreviewLaunchForm } from "./preview-launch-form";
 import { createHash } from "node:crypto";
 import { withAgentChangeSetPreviewRender } from "@nexpress/next";
 import { NpError } from "@nexpress/core";
@@ -223,7 +224,9 @@ export async function handleAgentPreviewAdminRequest(
         actor,
         changeSetId: ids.id,
         previewId: ids.previewId,
-        command: await jsonBody(request),
+        command: isAgentPreviewLaunchForm(request)
+          ? (await readAgentPreviewLaunchForm(request)).command
+          : await jsonBody(request),
       });
       return new Response(result.html, { headers: result.headers });
     }

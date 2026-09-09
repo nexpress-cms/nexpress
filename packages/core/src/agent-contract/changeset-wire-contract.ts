@@ -807,12 +807,7 @@ function parsePreview(
         `${path}.artifactRefs[${index}].resourceUri`,
         "must be this preview's canonical artifact resource",
       );
-    order(
-      ref.createdAt,
-      ref.expiresAt,
-      `${path}.artifactRefs[${index}]`,
-      npAgentChangeSetLimits.previewLifetimeSeconds,
-    );
+    order(ref.createdAt, ref.expiresAt, `${path}.artifactRefs[${index}]`);
     if (result.expiresAt !== null && ref.expiresAt !== result.expiresAt)
       failCanonicalBody("invalid-field", path, "artifact expiry must match preview expiry");
   }
@@ -1499,6 +1494,11 @@ export function npRequireAgentPreviewDetailWireV1(
       const createdAt = utc(r.createdAt, `${p}.createdAt`),
         completedAt = nullable(utc)(r.completedAt, `${p}.completedAt`);
       if (completedAt !== null) order(createdAt, completedAt, p);
+      // Artifact rows are reserved before upload. Their common lifetime starts at
+      // atomic preview completion, not at each reservation's creation timestamp.
+      if (completedAt !== null && checked.expiresAt !== null)
+        order(completedAt, checked.expiresAt, p, npAgentChangeSetLimits.previewLifetimeSeconds);
+
       if (["queued", "rendering"].includes(checked.state) !== (completedAt === null))
         failCanonicalBody("invalid-field", p, "completion must match preview state");
       const safeErrorCode = nullable(
@@ -1531,6 +1531,7 @@ export function npRequireAgentPreviewDetailWireV1(
 }
 export const npAgentPreviewWireContractV1 = Object.freeze({
   schemaVersion: "np.agent-preview-wire-contract.v1",
+  lifetimeAnchor: "preview.completedAt",
   checkIds: npAgentPreviewCheckIdsV1,
   issueMessages: npAgentPreviewIssueMessagesV1,
   detailKeys: [

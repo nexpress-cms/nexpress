@@ -2134,3 +2134,7 @@ Host render leases are single-use and clear internal ticket/token buffers and
 references on use/disposal. They cannot erase JavaScript strings copied by
 trusted host code. No production listener, automatic worker or default
 preview runtime is installed. See the [preview contract](changesets-and-approvals.md).
+
+## AP-307–309 boundary implementation
+
+The private preview checker now implements the sole bounded HEAD exception described above. Current requester authority surrounds rendering, DNS-pinned requests and private artifact writes. The normal service credential/OAuth audiences and live-authority intersection remain unchanged for the explicitly installed ChangeSet facade. Native Admin preview launch forms reuse the existing one-time launch command and central staff CSRF check, with exact same-origin Origin/Fetch Metadata and bounded form parsing; no CSRF exemption is introduced. See [R3 review surfaces](r3-review-surfaces.md).

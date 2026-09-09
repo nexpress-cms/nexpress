@@ -561,6 +561,9 @@ export function AgentActivityView({
   const page = resource.value?.schemaVersion === expectedSchema ? resource.value : null;
   return (
     <AgentStudioFrame active="activity">
+      <Link href="/admin/agents/changesets" className="underline">
+        ChangeSets
+      </Link>
       <ActivityNavigation section={section} />
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>

@@ -66,6 +66,7 @@ function resolveCollectionIcon(name: string | undefined): LucideIcon {
  */
 export interface AdminShellCapabilities {
   canManageAdmin: boolean;
+  canAuthor?: boolean;
   canManageSites?: boolean;
   canPublish: boolean;
   canModerate: boolean;
@@ -322,6 +323,12 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
     }
 
     const systemItems: NavItem[] = [{ href: "/admin/plugins", label: "Plugins", icon: Puzzle }];
+    if (caps.canAuthor)
+      systemItems.push({
+        href: "/admin/agents/changesets",
+        label: "Agent ChangeSets",
+        icon: FileText,
+      });
     if (caps.canManageAdmin) {
       systemItems.push({ href: "/admin/agents", label: "Agent Studio", icon: Bot });
       systemItems.push({ href: "/admin/ops", label: "Ops", icon: Gauge });
@@ -336,6 +343,7 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
     return result;
   }, [
     caps.canManageAdmin,
+    caps.canAuthor,
     caps.canManageSites,
     caps.canModerate,
     caps.canPublish,

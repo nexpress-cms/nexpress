@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { npAgentHttpRoutesV1, npAgentReadCapabilityIdsV1 } from "@nexpress/core/agent-contract";
+import {
+  npAgentHttpRoutesV1,
+  npAgentInstalledCapabilityIdsV1,
+} from "@nexpress/core/agent-contract";
 import { buildAgentHttpOpenApiV1 } from "./openapi-agent";
 vi.mock("./init-core", () => ({ ensureFor: vi.fn() }));
 import { buildSpec } from "../api/openapi.json/route";
@@ -18,11 +21,23 @@ describe("Agent HTTP OpenAPI projection", () => {
         properties: { capabilityId: { const: string } };
       }>;
       expect(branches.map((b) => b.properties.capabilityId.const)).toEqual(
-        npAgentReadCapabilityIdsV1,
+        npAgentInstalledCapabilityIdsV1,
       );
     }
+    expect(part.schemas.NpAgentHttpCapabilities).toMatchObject({
+      properties: {
+        capabilities: {
+          maxItems: npAgentInstalledCapabilityIdsV1.length,
+          items: {
+            oneOf: npAgentInstalledCapabilityIdsV1.map((id) => ({
+              const: expect.objectContaining({ id }),
+            })),
+          },
+        },
+      },
+    });
     expect(createHash("sha256").update(JSON.stringify(part)).digest("hex")).toMatchInlineSnapshot(
-      `"c879c2832fa227d33a8681f69faaf495b03b6c02793f31a9094391a696368149"`,
+      `"c1ead6500181ce720b6771e79a1f4df50c293d00ee6fbad5574f13cb8dc36925"`,
     );
   });
   it("resolves every descriptor ref against the completed OpenAPI document", () => {

@@ -261,3 +261,38 @@ describe("shared application proxy rate limiting", () => {
     expect(attachment.headers.get("x-middleware-request-x-np-admin-site")).toBeNull();
   });
 });
+
+describe("native Agent preview launch CSRF", () => {
+  it("accepts only exact same-origin launch forms with matching staff CSRF", async () => {
+    vi.stubEnv("NP_RATE_LIMIT_ADAPTER", "memory");
+    const { proxyModule } = await loadModules();
+    const id = "10000000-0000-4000-8000-000000000001";
+    const path = `/api/admin/agents/changesets/${id}/previews/${id}/launch`;
+    const form = (
+      target = path,
+      extra: Record<string, string> = {},
+      cookie = "np-csrf=fixture-csrf",
+    ) =>
+      new NextRequest(`https://site.example${target}`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          origin: "https://site.example",
+          "sec-fetch-site": "same-origin",
+          cookie,
+          ...extra,
+        },
+        body: new URLSearchParams({ command: "{}", csrfToken: "fixture-csrf" }),
+      });
+    expect((await proxyModule.proxy(form())).status).toBe(200);
+    for (const req of [
+      form(path, { origin: "null" }),
+      form(path, { "sec-fetch-site": "same-site" }),
+      form(path, {}, "np-mb-csrf=fixture-csrf"),
+      form("/api/admin/agents/changesets"),
+      form(path, {}, "np-csrf=other"),
+    ])
+      expect((await proxyModule.proxy(req)).status).toBe(403);
+    vi.unstubAllEnvs();
+  });
+});
