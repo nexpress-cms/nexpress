@@ -1,5 +1,7 @@
 # packages/admin — AGENTS.md
 
+Approval queue/detail and ChangeSet request controls reuse existing review/preview components and exact client-safe contracts. Typed challenges remain in memory; unknown outcomes retry only the identical payload, while conflict/access loss clears stale evidence. Recorded checks are metadata, not a success claim. No apply or rollback controls exist in this slice.
+
 Admin UI package: shadcn-style primitives (Radix + Tailwind v4) + CMS views. Built with tsup, not Next.
 
 **Generated:** 2026-04-22 | **Commit:** 2e07135

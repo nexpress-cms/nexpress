@@ -96,6 +96,15 @@ jobs:
     timeout-minutes: 20
 
     services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
       postgres:
         image: postgres:16-alpine
         env:
@@ -139,6 +148,11 @@ jobs:
       - name: Integration tests
         # Sequential by design — see docs/testing.md "Behaviour".
         run: pnpm test:integration
+
+      - name: Redis integration tests
+        env:
+          TEST_REDIS_URL: redis://127.0.0.1:6379
+        run: pnpm --filter @nexpress/rate-limiter-redis test
 
   # Phase 23.6 — golden-path E2E coverage. Runs Playwright against
   # a built `next start` so the run shape matches production output

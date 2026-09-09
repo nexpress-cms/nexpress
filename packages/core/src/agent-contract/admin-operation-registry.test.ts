@@ -172,7 +172,13 @@ describe("Agent Admin operation registry v1", () => {
       npAgentAdminOperationRegistryV1
         .filter(({ secretBody }) => secretBody === "write-only")
         .map(({ id }) => id),
-    ).toEqual(["agents.connections.create", "agents.connections.rotate"]);
+    ).toEqual([
+      "agents.connections.create",
+      "agents.connections.rotate",
+      "agents.approvals.approve",
+      "agents.approvals.reject",
+      "agents.approvals.revoke",
+    ]);
     expect(
       npAgentAdminOperationsV1["agents.connections.create"].schemas.input.schema.required,
     ).toEqual(
@@ -244,7 +250,7 @@ describe("Agent Admin operation registry v1", () => {
       npDigestAgentAdminOperationContractV1(npAgentAdminOperationRegistryV1[0]),
     ).resolves.toBe("cj1:sha256:5w3d7O1UDEv24p5vldtmuR6qREV8Q6UU4hYYp6aE1nA");
     await expect(npDigestAgentAdminOperationRegistryV1()).resolves.toBe(
-      "cj1:sha256:oIgps6hObDj4NFwEgPGyaiRQjkQKdSbv7GBgwJmFD4Y",
+      "cj1:sha256:JRZqmQXR4xFalB2tw2FSiRs5m_Pt0nsgcqWXO96EmNo",
     );
 
     await expect(

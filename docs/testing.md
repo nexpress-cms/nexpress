@@ -102,7 +102,12 @@ with `pnpm test:integration` (or per-package `pnpm test:integration`).
   export `TEST_REDIS_URL=redis://localhost:6379`, then run
   `pnpm --filter @nexpress/rate-limiter-redis test`. When
   `TEST_REDIS_URL` is unset, that package's Redis integration test is
-  skipped.
+  skipped. CI provisions Redis 7 in the integration job and runs this package
+  directly with `TEST_REDIS_URL`, so its three live cases always execute there.
+- Built-in theme shell/header/footer rendering uses the async React stream
+  boundary and real persisted navigation. The five restored theme-render cases
+  run with the normal PostgreSQL integration suite; they no longer have an
+  unconditional skip.
 
 ### Writing a new integration test
 

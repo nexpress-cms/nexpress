@@ -1,5 +1,7 @@
 # packages/core — AGENTS.md
 
+Approval lifecycle reuses the ChangeSet target/validation service and generic server-only approval service. Keep requester and approver authorization separate in one transaction. Approval keys and canonical execution definitions require explicit host injection. Preserve signed evidence and never store challenge plaintext. Migration 0041 only corrects reject reauthentication; no execution is installed.
+
 Server-only CMS engine: config, DB, auth, collections pipeline, media, jobs, plugins, storage, cache, theme.
 
 **Refreshed:** 2026-09-09

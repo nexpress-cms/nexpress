@@ -2,6 +2,17 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
+**Current approval slice:** AP-401 and approval portions of AP-407/AP-408 reuse
+canonical statement/decision/revocation MACs, current ChangeSet validation and
+item authority, central Admin admission/CSRF, exact one-time challenges and
+bounded queue/detail projections. Explicit host keyrings and an approval-only
+canonical execution-definition resolver are required; no executor or Gateway
+capability is installed. Migration 0041 corrects the existing reject/reauth
+constraint; Doctor remains 28 tables/133 constraints. Expiry, authority-loss
+and emergency key retirement are explicit bounded host maintenance. No apply,
+schedule/cancel execution, rollback, automatic worker, seed, default enablement,
+package version or changeset is added. See the R4 approval flow document.
+
 **Last refreshed:** 2026-09-09 (AP-307/AP-308/AP-309 connect the existing ChangeSet service to framework
 preview checks, bounded Admin review and an explicitly installed Gateway facade.
 Five descriptor-derived ChangeSet capabilities share the existing scopes,

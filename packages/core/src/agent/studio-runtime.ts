@@ -1,3 +1,4 @@
+import type { NpAgentApprovalServiceV1 } from "./approval-service.js";
 import type { NpAgentChangeSetServiceV1 } from "./changeset-service.js";
 import type { NpAgentPreviewAccessServiceV1 } from "./preview-access-service.js";
 import type { NpAgentChangeSetPreviewContextV1 } from "./changeset-preview-overlay.js";
@@ -21,6 +22,7 @@ import type { NpAgentConnectionAuthAdapterRegistryV1 } from "./provider-auth-con
 import { NpServiceUnavailableError } from "../errors.js";
 
 export interface NpAgentStudioServerRuntimeV1 {
+  approvals: NpAgentApprovalServiceV1 | null;
   changesets: NpAgentChangeSetServiceV1 | null;
   previewAccess: NpAgentPreviewAccessServiceV1 | null;
   previewRenderer:
@@ -38,6 +40,7 @@ export interface NpAgentStudioServerRuntimeV1 {
 }
 
 export interface NpAgentStudioServerRuntimeOptionsV1 {
+  approvals?: NpAgentApprovalServiceV1;
   changesets?: NpAgentChangeSetServiceV1;
   previewAccess?: NpAgentPreviewAccessServiceV1;
   previewRenderer?: (
@@ -94,6 +97,7 @@ export function createAgentStudioServerRuntimeV1(
   const adapters = Object.freeze((options.providerRegistry?.list() ?? []).map(adapterProjection));
   return Object.freeze({
     changesets: options.changesets ?? null,
+    approvals: options.approvals ?? options.changesets?.approvals ?? null,
     previewAccess: options.previewAccess ?? null,
     previewRenderer: options.previewRenderer ?? null,
     connections: options.connections ?? null,

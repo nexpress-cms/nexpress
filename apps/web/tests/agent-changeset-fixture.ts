@@ -1,3 +1,4 @@
+import type { NpAgentScope } from "../../../packages/core/src/agent-contract/types.js";
 import type { NpAgentPreviewArtifactStorageAdapterV1 } from "../../../packages/core/src/agent/preview-artifact-contract.js";
 import {
   createAgentChangeSetCapabilityFacadeV1,
@@ -104,6 +105,7 @@ export async function principalFixture(
   f: Awaited<ReturnType<typeof fixture>>,
   writeOnly = false,
   options: Partial<NpAgentChangeSetServiceOptionsV1> = {},
+  extraScopes: NpAgentScope[] = [],
 ) {
   const gateway = createAgentGatewayServiceV1({
     tokenHashKeyring: { active: { id: "draft-key", key: new Uint8Array(32).fill(25) } },
@@ -112,9 +114,10 @@ export async function principalFixture(
     resolveSiteGatewaySettings: () => settings,
     reauthentication: { verify: () => true },
   });
-  const scopes = writeOnly
+  const baseScopes: NpAgentScope[] = writeOnly
     ? ["changeset:write", "content:draft", "site:read"]
     : ["changeset:read", "changeset:write", "content:draft", "content:read", "site:read"];
+  const scopes = [...new Set([...baseScopes, ...extraScopes])].sort();
   const principal = await gateway.executeAdmin({
     siteId,
     actor: f.actor.actor,
@@ -164,8 +167,8 @@ export async function principalFixture(
     cursorKey: new Uint8Array(32).fill(44),
     admission,
     gateway,
-    ...options,
     reauthentication: { verify: () => true },
+    ...options,
   });
   facade = createAgentChangeSetCapabilityFacadeV1(service);
   return {
@@ -311,7 +314,10 @@ export function previewConfiguration(): NonNullable<NpAgentChangeSetServiceOptio
     resolveRoutes: async () => [{ route: "/", locale: null, audience: "public" }],
   };
 }
-export async function readyPreview(f: Awaited<ReturnType<typeof fixture>>) {
+export async function readyPreview(f: {
+  service: ReturnType<typeof createAgentChangeSetServiceV1>;
+  actor: NpAgentChangeSetActorV1;
+}) {
   const created = await f.service.create({ actor: f.actor, command: await command() });
   const sealed = await f.service.validate({
     actor: f.actor,
@@ -327,7 +333,13 @@ export async function readyPreview(f: Awaited<ReturnType<typeof fixture>>) {
       expectedPlanHash: sealed.planHash,
     },
   });
-  await f.service.processPreview({ siteId: f.actor.siteId, previewId: preview.previewId });
+  await f.service.processPreview({
+    siteId:
+      f.actor.kind === "staff"
+        ? f.actor.siteId
+        : f.actor.authentication.authorizationContext.siteId,
+    previewId: preview.previewId,
+  });
   return f.service.getPreview({ actor: f.actor, previewId: preview.previewId });
 }
 

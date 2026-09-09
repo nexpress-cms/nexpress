@@ -329,6 +329,11 @@ function AdminShell({ user, collections, caps, children }: AdminShellProps) {
         label: "Agent ChangeSets",
         icon: FileText,
       });
+    systemItems.push({
+      href: "/admin/agents/approvals",
+      label: "Agent Approvals",
+      icon: ShieldCheck,
+    });
     if (caps.canManageAdmin) {
       systemItems.push({ href: "/admin/agents", label: "Agent Studio", icon: Bot });
       systemItems.push({ href: "/admin/ops", label: "Ops", icon: Gauge });

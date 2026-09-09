@@ -1849,3 +1849,7 @@ provider call, seed or default exposure is installed. AP-307 adds bounded framew
 provides the Admin review UI; AP-309 adds explicitly installed MCP/API
 projection. Approval decisions and apply remain R4. Without screenshots/check execution, ready empty
 previews explicitly report `SCREENSHOTS_UNAVAILABLE` and `CHECKS_NOT_RUN`.
+
+## R4 approval implementation
+
+The current approval-only implementation is described in [R4 approval flow](r4-approval-flow.md). It reuses existing sealed ChangeSets, generic Admin decision routes, canonical integrity evidence and explicit bounded maintenance. Execution, scheduling, cancellation and rollback remain later R4 slices.

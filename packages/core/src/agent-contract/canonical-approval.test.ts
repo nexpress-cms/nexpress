@@ -64,13 +64,13 @@ const previewId = "018f0f30-cd7b-7cc2-8b16-8c052c259bd9";
 const digestA = "cj1:sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 const digestB = "cj1:sha256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 const digestC = "cj1:sha256:CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC";
-const statementGoldenHash = "cj1:sha256:d13EthJaPQ66ZJEya8MsOb6y8JAThlkbW7C2Ls_NnGA";
-const decisionGoldenHash = "cj1:sha256:9UtTOd9OZoewBHH9dkAHxAGvqNbROMel6Gca_9QDWHQ";
-const revocationGoldenHash = "cj1:sha256:YCyjbJiO6mce7YK05EygY6U6TFyo27Gk1Ooa93seHgM";
-const statementGoldenMac = "cj1:hmac-sha256:test-key-1:2hHFHX3OgEG_DiSdhw8to298I5ucS0OFX4tmaUV2Rbo";
-const decisionGoldenMac = "cj1:hmac-sha256:test-key-1:qsTdpw42pCNH4UWzkplROKm_xWx8rbVgmYCovcb4HYI";
+const statementGoldenHash = "cj1:sha256:Oi3C34Xuk7e7HNzfpdkFPY-AD6FslfyBHH__68Bl_ec";
+const decisionGoldenHash = "cj1:sha256:8KkzxMfU-gAtkAfhAkMja6qKqqNtLz3HCLePMeVb74Q";
+const revocationGoldenHash = "cj1:sha256:qW_T_sU5R5udLSH8y5Yw0BQWqLLBH9YOqKDMZ7jwd5Q";
+const statementGoldenMac = "cj1:hmac-sha256:test-key-1:4DyILFkRWtyz1m4jZPpQ_O9NhFHXsWwAF-fPPSi-Txo";
+const decisionGoldenMac = "cj1:hmac-sha256:test-key-1:YTpM1VgL7Dnl6WUyvww_kj28tJlFd_fbXoLWZslitts";
 const revocationGoldenMac =
-  "cj1:hmac-sha256:test-key-1:3ib97kZJUiL8x_D1gvm8o0dOJaqs6vBL_cWLgMCEPio";
+  "cj1:hmac-sha256:test-key-1:mGM9hwWCRoQRQD7EoiwWt3Kna466C1kuM7PQkZj2X0g";
 const key: NpAgentApprovalIntegrityKeyV1 = {
   owner: "approval-integrity",
   id: "test-key-1",
@@ -85,7 +85,7 @@ function statement(
     siteId: "docs-site",
     approvalId,
     requester: { kind: "principal", principalId, fingerprint: "sha256:principal-v1" },
-    target: { kind: "changeset", changeSetId, planHash: digestA },
+    target: { kind: "changeset", changeSetId, planHash: digestA, scheduledFor: null },
     capabilityId: "changeset.apply",
     capabilityContractVersion: 1,
     capabilityFingerprint: digestB,
@@ -173,6 +173,36 @@ function expectIssue(result: NpAgentContractResult<unknown>, code: string, path:
 }
 
 describe("Agent approval canonical contracts", () => {
+  it("binds the requested schedule instant in statement MAC bytes", async () => {
+    const apply = statement();
+    const scheduled = statement({
+      capabilityId: "changeset.schedule",
+      target: {
+        kind: "changeset",
+        changeSetId,
+        planHash: digestA,
+        scheduledFor: "2026-08-23T00:30:00.000Z",
+      },
+    });
+    const rescheduled = {
+      ...scheduled,
+      target: { ...scheduled.target, scheduledFor: "2026-08-23T00:31:00.000Z" },
+    };
+    expect(await npDigestAgentApprovalStatementCanonical(apply)).not.toBe(
+      await npDigestAgentApprovalStatementCanonical(scheduled),
+    );
+    expect(await npDigestAgentApprovalStatementCanonical(scheduled)).not.toBe(
+      await npDigestAgentApprovalStatementCanonical(rescheduled),
+    );
+    expect(
+      await npVerifyAgentApprovalStatementCanonicalMac(
+        rescheduled,
+        await npMacAgentApprovalStatementCanonical(scheduled, key),
+        key,
+      ),
+    ).toBe(false);
+  });
+
   it("publishes all exact top-level, excluded, branch, and discriminator inventories", () => {
     expect(npAgentApprovalRisks).toEqual(["reversible", "sensitive", "destructive"]);
     expect(npAgentApprovalDecisions).toEqual(["approve", "reject"]);
@@ -293,6 +323,7 @@ describe("Agent approval canonical contracts", () => {
       "kind",
       "changeSetId",
       "planHash",
+      "scheduledFor",
     ]);
     expect(npAgentApprovalStatementCanonicalRollbackTargetIncludedKeysV1).toEqual([
       "kind",

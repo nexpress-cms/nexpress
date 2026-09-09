@@ -18,6 +18,7 @@ describe("ChangeSet service factory contract boundary", () => {
     try {
       const service = createAgentChangeSetServiceV1({ cursorKey: new Uint8Array(32).fill(41) });
       expect(Object.keys(service).sort()).toEqual([
+        "approvals",
         "artifacts",
         "capabilityIds",
         "create",
@@ -34,6 +35,7 @@ describe("ChangeSet service factory contract boundary", () => {
         "reconcilePreviews",
         "reconcileValidations",
         "renderPreview",
+        "requestApproval",
         "update",
         "validate",
         "withPreviewAuthority",
@@ -45,6 +47,7 @@ describe("ChangeSet service factory contract boundary", () => {
         "changeset.list",
         "changeset.validate",
       ]);
+      expect(service.approvals).toBeNull();
       expect(getDb).not.toHaveBeenCalled();
       const invocation = validateDefinition.mock.calls.find(
         ([body]) => (body as { projection?: string }).projection === "definition",

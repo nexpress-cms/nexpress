@@ -483,6 +483,12 @@ through the full control loop.
 | AP-407 | Add request-approval/cancel, approval queue, execution timeline, verification, and rollback Admin flows                                                                                                                   |
 | AP-408 | Extend Doctor/Health/runbook and release checks for stuck/failed ChangeSets                                                                                                                                               |
 
+The current R4 approval slice implements AP-401 and the approval-only parts of
+AP-407/AP-408. See [R4 approval flow](r4-approval-flow.md) for exact host
+installation, routes, maintenance and limits. Apply/cancel/schedule execution,
+verification, rollback and their remaining Admin/Doctor surfaces are not
+implemented by this slice; the full R4 gate below remains open.
+
 Gate:
 
 - all acceptance scenarios in

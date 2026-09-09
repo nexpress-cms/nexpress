@@ -1,4 +1,4 @@
-import { NpError } from "@nexpress/core";
+import { NpValidationError } from "@nexpress/core";
 import {
   npRequireAgentChangeSetWire,
   npRequireAgentChangeSetReviewV1,
@@ -19,7 +19,10 @@ import { ensureFor } from "../init-core";
 import { requireAgentOauthStaff, normalizeAgentStudioError } from "./studio-admin";
 
 export function readChangeSetQuery(request: NextRequest) {
-  const invalid = () => new NpError("Invalid ChangeSet query.", "VALIDATION_ERROR", 400);
+  const invalid = () =>
+    new NpValidationError("Invalid ChangeSet query.", [
+      { field: "query", message: "Use the bounded ChangeSet query contract." },
+    ]);
   if (request.nextUrl.search.length > 8192) throw invalid();
   const values: Record<string, unknown> = {
     states: [],
@@ -46,16 +49,24 @@ export function readChangeSetQuery(request: NextRequest) {
   }
 }
 
-async function body(request: NextRequest): Promise<unknown> {
+export async function readAgentAdminJsonBody(
+  request: NextRequest,
+  maximumBytes = npAgentChangeSetLimits.adminProposalCharacters * 6 + 16384,
+): Promise<unknown> {
   if (
     !/^application\/json(?:\s*;\s*charset=utf-8)?$/iu.test(
       request.headers.get("content-type") ?? "",
     ) ||
     request.headers.has("content-encoding")
   )
-    throw new NpError("Invalid input.", "VALIDATION_ERROR", 400);
+    throw new NpValidationError("Invalid input.", [
+      { field: "request", message: "Use the exact bounded JSON request contract." },
+    ]);
   const reader = request.body?.getReader();
-  if (!reader) throw new NpError("Invalid input.", "VALIDATION_ERROR", 400);
+  if (!reader)
+    throw new NpValidationError("Invalid input.", [
+      { field: "request", message: "Use the exact bounded JSON request contract." },
+    ]);
   const chunks: Uint8Array[] = [];
   let size = 0;
   try {
@@ -63,9 +74,11 @@ async function body(request: NextRequest): Promise<unknown> {
       const next = await reader.read();
       if (next.done) break;
       size += next.value.byteLength;
-      if (size > npAgentChangeSetLimits.adminProposalCharacters * 6 + 16384) {
+      if (size > maximumBytes) {
         await reader.cancel();
-        throw new NpError("Invalid input.", "VALIDATION_ERROR", 400);
+        throw new NpValidationError("Invalid input.", [
+          { field: "request", message: "Use the exact bounded JSON request contract." },
+        ]);
       }
       chunks.push(next.value);
     }
@@ -78,7 +91,13 @@ async function body(request: NextRequest): Promise<unknown> {
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+  } catch {
+    throw new NpValidationError("Invalid input.", [
+      { field: "request", message: "Request must be valid UTF-8 JSON." },
+    ]);
+  }
 }
 export async function handleAgentChangeSetAdminRequest(
   request: NextRequest,
@@ -101,7 +120,9 @@ export async function handleAgentChangeSetAdminRequest(
     )
       return new Response("Not found", { status: 404, headers });
     if (operation !== "list" && request.nextUrl.search)
-      throw new NpError("Invalid input.", "VALIDATION_ERROR", 400);
+      throw new NpValidationError("Invalid input.", [
+        { field: "request", message: "Use the exact bounded JSON request contract." },
+      ]);
     await ensureFor(["list", "get", "artifact"].includes(operation) ? "read" : "write");
     const staff = await requireAgentOauthStaff(request);
     const service = getOptionalAgentStudioServerRuntimeV1()?.changesets;
@@ -146,7 +167,7 @@ export async function handleAgentChangeSetAdminRequest(
         }),
       });
     }
-    const command = await body(request);
+    const command = await readAgentAdminJsonBody(request);
     const result =
       operation === "create"
         ? await service.create({ actor, command })

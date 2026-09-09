@@ -41,6 +41,15 @@ import {
   type NpAgentChangeSetAdminInputV1,
 } from "../agent-contract/changeset-wire-contract.js";
 
+import {
+  npRequireAgentChangeSetRequestApprovalInputV1,
+  npRequireAgentApprovalChallengeRequestV1,
+  npRequireAgentApprovalDecisionInputV1,
+  type NpAgentChangeSetRequestApprovalInputV1,
+  type NpAgentApprovalChallengeRequestV1,
+  type NpAgentApprovalDecisionInputV1,
+} from "../agent-contract/approval-contract.js";
+
 type NpAgentDb = ReturnType<typeof getDb>;
 
 export type NpAgentAdmittedAdminOperationIdV1 =
@@ -50,10 +59,20 @@ export type NpAgentAdmittedAdminOperationIdV1 =
   | "agents.changesets.update"
   | "agents.changesets.validate"
   | "agents.changesets.preview"
-  | "agents.changesets.preview_launch";
+  | "agents.changesets.preview_launch"
+  | "agents.changesets.request_approval"
+  | "agents.approvals.decision_challenge"
+  | "agents.approvals.approve"
+  | "agents.approvals.reject"
+  | "agents.approvals.revoke";
 
 export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
   NpAgentConnectionAdminInputMapV1 & {
+    "agents.changesets.request_approval": NpAgentChangeSetRequestApprovalInputV1;
+    "agents.approvals.decision_challenge": NpAgentApprovalChallengeRequestV1;
+    "agents.approvals.approve": NpAgentApprovalDecisionInputV1;
+    "agents.approvals.reject": NpAgentApprovalDecisionInputV1;
+    "agents.approvals.revoke": NpAgentApprovalDecisionInputV1;
     "agents.changesets.create": NpAgentChangeSetAdminInputV1<"create">;
     "agents.changesets.update": NpAgentChangeSetAdminInputV1<"update">;
     "agents.changesets.validate": NpAgentChangeSetValidateRequestV1;
@@ -67,6 +86,14 @@ function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
   operationId: I,
   value: unknown,
 ): NpAgentAdmittedAdminInputMapV1[I] {
+  if (operationId === "agents.changesets.request_approval")
+    return npRequireAgentChangeSetRequestApprovalInputV1(
+      value,
+    ) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.approvals.decision_challenge")
+    return npRequireAgentApprovalChallengeRequestV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId.startsWith("agents.approvals."))
+    return npRequireAgentApprovalDecisionInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.changesets.preview")
     return npRequireAgentChangeSetPreviewRequestV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.changesets.preview_launch")
@@ -108,6 +135,44 @@ export interface NpAgentAdminActorV1 {
   sessionId: string;
 }
 
+export interface NpAgentStaffPrimaryReauthenticationFactV1 {
+  reauthenticatedAt: string;
+  sessionFactFingerprint: string;
+}
+/** One shared check for host-returned primary-auth evidence. Boolean legacy verification is separate. */
+export function npValidateAgentStaffPrimaryReauthenticationFactV1(
+  value: unknown,
+  now: Date,
+  maximumAgeSeconds: number,
+): NpAgentStaffPrimaryReauthenticationFactV1 | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  if (
+    Object.keys(descriptors).sort().join(",") !== "reauthenticatedAt,sessionFactFingerprint" ||
+    Object.values(descriptors).some((property) => !Object.hasOwn(property, "value"))
+  )
+    return null;
+  const reauthenticatedAt = descriptors.reauthenticatedAt.value as unknown;
+  const sessionFactFingerprint = descriptors.sessionFactFingerprint.value as unknown;
+  if (
+    typeof reauthenticatedAt !== "string" ||
+    typeof sessionFactFingerprint !== "string" ||
+    !/^cj1:sha256:[A-Za-z0-9_-]{43}$/u.test(sessionFactFingerprint) ||
+    !Number.isSafeInteger(maximumAgeSeconds) ||
+    maximumAgeSeconds < 1 ||
+    maximumAgeSeconds > 300
+  )
+    return null;
+  const time = Date.parse(reauthenticatedAt);
+  if (
+    !Number.isFinite(time) ||
+    new Date(time).toISOString() !== reauthenticatedAt ||
+    time > now.getTime() ||
+    now.getTime() - time > maximumAgeSeconds * 1000
+  )
+    return null;
+  return { reauthenticatedAt, sessionFactFingerprint };
+}
 export interface NpAgentStaffPrimaryReauthenticationVerifierV1 {
   verify(input: {
     siteId: string;
@@ -116,7 +181,10 @@ export interface NpAgentStaffPrimaryReauthenticationVerifierV1 {
     operationId: NpAgentAdmittedAdminOperationIdV1;
     maximumAgeSeconds: number;
     now: Date;
-  }): boolean | Promise<boolean>;
+  }):
+    | boolean
+    | NpAgentStaffPrimaryReauthenticationFactV1
+    | Promise<boolean | NpAgentStaffPrimaryReauthenticationFactV1>;
 }
 
 export interface NpAgentAdminMutationResultV1<T extends NpAgentJsonObject> {
@@ -180,6 +248,24 @@ function redactedInvocationInput(
   command: NpAgentJsonObject,
   key: { id: string; key: Uint8Array } | null,
 ): NpAgentJsonObject {
+  // Intent secrets use the existing keyed request projection, never plaintext journals.
+  if (operationId.startsWith("agents.approvals.") && typeof command.challenge === "string") {
+    if (!key)
+      throw new NpAgentGatewayError(
+        "ADMIN_SECRET_DIGEST_KEY_UNAVAILABLE",
+        503,
+        "The Admin secret-request digest key is unavailable.",
+      );
+    const { challenge, ...safe } = command;
+    return {
+      ...safe,
+      challengeRequestHmac: createHmac("sha256", key.key)
+        .update("np.agent-approval-intent-request.v1\0")
+        .update(challenge)
+        .digest("base64url"),
+      challengeRequestKeyId: key.id,
+    };
+  }
   if (secretBody === "none") return command;
   if (!key) {
     throw new NpAgentGatewayError(
@@ -345,6 +431,8 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
     siteId: string;
     actor: NpAgentAdminActorV1;
     operationId: I;
+    /** Reuse an outer serializable domain transaction; caller owns its commit. */
+    db?: NpAgentDb;
     parentTargetId?: string | null;
     targetId: string | null;
     command: unknown;
@@ -365,7 +453,7 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
       secretRequestDigestKey,
     );
     const fingerprints = await npResolveAgentAdminOperationFingerprintsV1(operation);
-    const db = getDb();
+    const db = input.db ?? getDb();
     const authorization = await npResolveAgentStaffSessionAuthorizationV1(
       db,
       input.siteId,
@@ -384,7 +472,10 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
         maximumAgeSeconds: 300,
         now,
       });
-      if (accepted !== true) {
+      if (
+        accepted !== true &&
+        !npValidateAgentStaffPrimaryReauthenticationFactV1(accepted, nowFn(), 300)
+      ) {
         throw new NpAgentGatewayError(
           "RECENT_REAUTHENTICATION_REQUIRED",
           403,
@@ -460,32 +551,33 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
       afterCommit: (() => void | Promise<void>) | undefined;
     };
     try {
-      committed = await db.transaction(
-        async (rawTx) => {
-          const tx = rawTx as NpAgentDb;
-          const currentAuthorization = await npResolveAgentStaffSessionAuthorizationV1(
-            tx,
-            input.siteId,
-            input.actor,
-            now,
+      const transact = async (rawTx: NpAgentDb) => {
+        const tx = rawTx;
+        const currentAuthorization = await npResolveAgentStaffSessionAuthorizationV1(
+          tx,
+          input.siteId,
+          input.actor,
+          now,
+        );
+        if (
+          (await npDigestAgentStaffSiteAuthorizationCanonical(currentAuthorization)) !==
+          authorizationDigest
+        ) {
+          throw new NpAgentGatewayError(
+            "STAFF_AUTHORIZATION_CHANGED",
+            409,
+            "Staff site authorization changed during admission.",
           );
-          if (
-            (await npDigestAgentStaffSiteAuthorizationCanonical(currentAuthorization)) !==
-            authorizationDigest
-          ) {
-            throw new NpAgentGatewayError(
-              "STAFF_AUTHORIZATION_CHANGED",
-              409,
-              "Staff site authorization changed during admission.",
-            );
-          }
-          const [audit] = await tx
-            .insert(npAuditEvents)
-            .values({
-              actorKind: "staff",
-              actorUserId: input.actor.user.id,
-              action: operation.audit.eventId,
-              targetType: input.operationId.startsWith("agents.changesets.")
+        }
+        const [audit] = await tx
+          .insert(npAuditEvents)
+          .values({
+            actorKind: "staff",
+            actorUserId: input.actor.user.id,
+            action: operation.audit.eventId,
+            targetType: input.operationId.startsWith("agents.approvals.")
+              ? "agent-approval"
+              : input.operationId.startsWith("agents.changesets.")
                 ? "agent-changeset"
                 : input.operationId.startsWith("agents.connections.")
                   ? "agent-connection"
@@ -494,105 +586,111 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
                     : input.operationId.includes("principal_tokens")
                       ? "agent-service-token"
                       : "agent-principal",
-              targetId: input.targetId,
-              siteId: input.siteId,
-              payload: {
-                operationId: input.operationId,
-                outcome: "completed",
-                siteId: input.siteId,
-                staffUserId: input.actor.user.id,
-                idempotencyFingerprint: requestHash,
-              },
-              createdAt: now,
-            })
-            .returning({ id: npAuditEvents.id });
-          if (!audit) throw new Error("Failed to create Agent Admin audit event.");
-
-          const expiresAt = new Date(now.getTime() + idempotencyLifetimeSeconds * 1_000);
-          const [invocation] = await tx
-            .insert(npAgentInvocations)
-            .values({
-              siteId: input.siteId,
-              actorKind: "staff",
-              staffUserId: input.actor.user.id,
-              actorFingerprint,
-              authorizationContextBody: authorizationContext,
-              authorizationContextFingerprint,
-              authorityRef: authorizationContext.authorityRef,
-              operationKind: "admin",
+            targetId: input.targetId,
+            siteId: input.siteId,
+            payload: {
               operationId: input.operationId,
-              contractVersion: operation.contractVersion,
-              contractFingerprint: fingerprints.contract,
-              transport: "admin",
-              idempotencyKey,
-              requestBody,
-              requestHash,
-              state: "started",
-              auditEventId: audit.id,
-              requestedAt: now,
-              expiresAt,
-            })
-            .returning({ id: npAgentInvocations.id });
-          if (!invocation) throw new Error("Failed to create Agent Admin invocation.");
-
-          const result = await input.mutate({
-            db: tx,
-            now,
-            invocationId: invocation.id,
-            command,
-          });
-          const oneTimeValueIssued = result.oneTimeValue !== undefined;
-          if (oneTimeValueIssued !== operation.idempotency.oneTimeOutput) {
-            throw new Error("Agent Admin mutation output does not match its one-time contract.");
-          }
-          const updatedAudits = await tx
-            .update(npAuditEvents)
-            .set({ targetId: result.resourceId })
-            .where(eq(npAuditEvents.id, audit.id))
-            .returning({ id: npAuditEvents.id });
-          if (updatedAudits.length !== 1) {
-            throw new Error("Failed to finalize Agent Admin audit event.");
-          }
-          const outputHash = oneTimeValueIssued
-            ? null
-            : sha256Canonical("np.agent-admin-output.v1", result.output);
-          const updatedInvocations = await tx
-            .update(npAgentInvocations)
-            .set({
-              state: "completed",
-              resultKind: "admin_resource",
-              resultId: result.resourceId,
-              outputRedacted: oneTimeValueIssued ? null : result.output,
-              outputHash,
-              oneTimeValueIssued,
-              oneTimeResourceId: oneTimeValueIssued ? result.resourceId : null,
-              oneTimeRecoveryOperationId: oneTimeValueIssued
-                ? operation.idempotency.recoveryOperationId
-                : null,
-              completedAt: now,
-            })
-            .where(eq(npAgentInvocations.id, invocation.id))
-            .returning({ id: npAgentInvocations.id });
-          if (updatedInvocations.length !== 1) {
-            throw new Error("Failed to finalize Agent Admin invocation.");
-          }
-          return {
-            execution: {
-              resourceId: result.resourceId,
-              output: result.output,
-              ...(result.oneTimeValue === undefined ? {} : { oneTimeValue: result.oneTimeValue }),
-              replayed: false,
+              outcome: "completed",
+              siteId: input.siteId,
+              staffUserId: input.actor.user.id,
+              idempotencyFingerprint: requestHash,
             },
-            afterCommit: result.afterCommit,
-          };
-        },
-        { isolationLevel: "serializable" },
-      );
+            createdAt: now,
+          })
+          .returning({ id: npAuditEvents.id });
+        if (!audit) throw new Error("Failed to create Agent Admin audit event.");
+
+        const expiresAt = new Date(now.getTime() + idempotencyLifetimeSeconds * 1_000);
+        const [invocation] = await tx
+          .insert(npAgentInvocations)
+          .values({
+            siteId: input.siteId,
+            actorKind: "staff",
+            staffUserId: input.actor.user.id,
+            actorFingerprint,
+            authorizationContextBody: authorizationContext,
+            authorizationContextFingerprint,
+            authorityRef: authorizationContext.authorityRef,
+            operationKind: "admin",
+            operationId: input.operationId,
+            contractVersion: operation.contractVersion,
+            contractFingerprint: fingerprints.contract,
+            transport: "admin",
+            idempotencyKey,
+            requestBody,
+            requestHash,
+            state: "started",
+            auditEventId: audit.id,
+            requestedAt: now,
+            expiresAt,
+          })
+          .returning({ id: npAgentInvocations.id });
+        if (!invocation) throw new Error("Failed to create Agent Admin invocation.");
+
+        const result = await input.mutate({
+          db: tx,
+          now,
+          invocationId: invocation.id,
+          command,
+        });
+        const oneTimeValueIssued = result.oneTimeValue !== undefined;
+        if (oneTimeValueIssued !== operation.idempotency.oneTimeOutput) {
+          throw new Error("Agent Admin mutation output does not match its one-time contract.");
+        }
+        const updatedAudits = await tx
+          .update(npAuditEvents)
+          .set({ targetId: result.resourceId })
+          .where(eq(npAuditEvents.id, audit.id))
+          .returning({ id: npAuditEvents.id });
+        if (updatedAudits.length !== 1) {
+          throw new Error("Failed to finalize Agent Admin audit event.");
+        }
+        const outputHash = oneTimeValueIssued
+          ? null
+          : sha256Canonical("np.agent-admin-output.v1", result.output);
+        const updatedInvocations = await tx
+          .update(npAgentInvocations)
+          .set({
+            state: "completed",
+            resultKind: "admin_resource",
+            resultId: result.resourceId,
+            outputRedacted: oneTimeValueIssued ? null : result.output,
+            outputHash,
+            oneTimeValueIssued,
+            oneTimeResourceId: oneTimeValueIssued ? result.resourceId : null,
+            oneTimeRecoveryOperationId: oneTimeValueIssued
+              ? operation.idempotency.recoveryOperationId
+              : null,
+            completedAt: now,
+          })
+          .where(eq(npAgentInvocations.id, invocation.id))
+          .returning({ id: npAgentInvocations.id });
+        if (updatedInvocations.length !== 1) {
+          throw new Error("Failed to finalize Agent Admin invocation.");
+        }
+        return {
+          execution: {
+            resourceId: result.resourceId,
+            output: result.output,
+            ...(result.oneTimeValue === undefined ? {} : { oneTimeValue: result.oneTimeValue }),
+            replayed: false,
+          },
+          afterCommit: result.afterCommit,
+        };
+      };
+      committed = input.db
+        ? await transact(input.db)
+        : await db.transaction((tx) => transact(tx as NpAgentDb), {
+            isolationLevel: "serializable",
+          });
     } catch (error) {
+      if (input.db) throw error;
       const raced = await findReplay();
       if (raced) return replayResult<T>(raced, requestHash);
       throw error;
     }
+    if (input.db && committed.afterCommit)
+      throw new Error("Outer Admin transactions must own post-commit effects.");
     await committed.afterCommit?.();
     return committed.execution;
   };

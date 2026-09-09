@@ -1561,3 +1561,7 @@ Code review should reject an implementation that violates any of these:
 9. Runtime code changes schema, migrations, package installation, or deployed
    source.
 10. A client component imports server-only Core or a provider SDK.
+
+## R4 approval installation
+
+The current approval-only implementation is described in [R4 approval flow](r4-approval-flow.md). It reuses existing sealed ChangeSets, generic Admin decision routes, canonical integrity evidence and explicit bounded maintenance. Execution, scheduling, cancellation and rollback remain later R4 slices.

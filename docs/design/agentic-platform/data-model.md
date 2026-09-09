@@ -3510,3 +3510,7 @@ background processing remain outside this slice.
 ## AP-307–309 persistence reuse
 
 The review/check/projection slice adds no tables or migration. Existing ChangeSet operations retain private before snapshots; review derives authorized changed-field values without persisting another snapshot. Existing preview artifacts store canonical multipart reports through the full-set upload journal. Check counts remain in preview checkSummary. Preview/object expiry remains exactly min(ChangeSet expiry, completion + seven days); artifact createdAt records reservation and therefore may precede the lifetime anchor. Invocations retain shared canonical descriptor-derived inputs and real admission evidence; no synthetic action/run/task rows are created.
+
+## R4 approval persistence
+
+The current approval-only implementation is described in [R4 approval flow](r4-approval-flow.md). It reuses existing sealed ChangeSets, generic Admin decision routes, canonical integrity evidence and explicit bounded maintenance. Execution, scheduling, cancellation and rollback remain later R4 slices.

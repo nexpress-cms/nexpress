@@ -1,3 +1,10 @@
+import {
+  npAgentChangeSetRequestApprovalInputSchemaV1,
+  npAgentApprovalChallengeRequestSchemaV1,
+  npAgentApprovalDecisionInputSchemaV1,
+  npAgentApprovalChallengeOutputSchemaV1,
+  npAgentApprovalDetailSchemaV1,
+} from "./approval-contract.js";
 import type { NpCapability } from "../auth/capabilities.js";
 import { npApiErrorCodePattern } from "../api-contract/contract.js";
 import { npErrorStatusByCode } from "../api-contract/types.js";
@@ -105,7 +112,13 @@ export type NpAgentAdminOperationOutputKindV1 = (typeof npAgentAdminOperationOut
 export interface NpAgentAdminOperationPreconditionV1 {
   kind: NpAgentAdminOperationPreconditionKindV1;
   location: "body";
-  field: "expectedVersion" | "configHash" | "planHash";
+  field:
+    | "expectedVersion"
+    | "expectedApprovalVersion"
+    | "expectedDraftVersion"
+    | "statementHash"
+    | "configHash"
+    | "planHash";
 }
 
 export interface NpAgentAdminNamedSchemaV1 {
@@ -430,22 +443,23 @@ export const npAgentAdminOperationRouteInventoryV1 = deepFreeze([
       outputKind: "one-time",
       preconditions: ROW_PLAN,
       oneTimeRecovery: "agents.approvals.decision_challenge",
-      ...SENSITIVE,
     },
   ),
   operation("agents.approvals.approve", "POST", "/api/admin/agents/approvals/{id}/approve", {
     inputKind: "approval-decision",
+    secretBody: "write-only",
     outputKind: "decision",
     preconditions: ROW_PLAN,
-    ...SENSITIVE,
   }),
   operation("agents.approvals.reject", "POST", "/api/admin/agents/approvals/{id}/reject", {
     inputKind: "approval-decision",
+    secretBody: "write-only",
     outputKind: "decision",
     preconditions: ROW_PLAN,
   }),
   operation("agents.approvals.revoke", "POST", "/api/admin/agents/approvals/{id}/revoke", {
-    inputKind: "reason",
+    inputKind: "approval-decision",
+    secretBody: "write-only",
     outputKind: "decision",
     preconditions: ROW_PLAN,
   }),
@@ -805,7 +819,37 @@ const PRECONDITION_FIELDS = {
   "plan-hash": { field: "planHash", schema: stringSchema(60, DIGEST_PATTERN) },
 } as const;
 
+function preconditionField(
+  id: string,
+  kind: NpAgentAdminOperationPreconditionKindV1,
+): NpAgentAdminOperationPreconditionV1["field"] {
+  if (id === "agents.changesets.request_approval" && kind === "row-version")
+    return "expectedDraftVersion";
+  if (
+    [
+      "agents.approvals.decision_challenge",
+      "agents.approvals.approve",
+      "agents.approvals.reject",
+      "agents.approvals.revoke",
+    ].includes(id)
+  ) {
+    if (kind === "row-version") return "expectedApprovalVersion";
+    if (kind === "plan-hash") return "statementHash";
+  }
+  return PRECONDITION_FIELDS[kind].field;
+}
+
 function buildInputSchema(seed: OperationSeed): NpAgentJsonSchema {
+  if (seed.id === "agents.changesets.request_approval")
+    return requireSchema(npAgentChangeSetRequestApprovalInputSchemaV1);
+  if (seed.id === "agents.approvals.decision_challenge")
+    return requireSchema(npAgentApprovalChallengeRequestSchemaV1);
+  if (
+    ["agents.approvals.approve", "agents.approvals.reject", "agents.approvals.revoke"].includes(
+      seed.id,
+    )
+  )
+    return requireSchema(npAgentApprovalDecisionInputSchemaV1);
   const command = commandShape(seed.inputKind);
   const properties: Record<string, unknown> = {
     idempotencyKey: stringSchema(256, IDEMPOTENCY_PATTERN),
@@ -908,6 +952,17 @@ function outputShape(kind: NpAgentAdminOperationOutputKindV1): {
 }
 
 function buildOutputSchema(seed: OperationSeed): NpAgentJsonSchema {
+  if (
+    [
+      "agents.changesets.request_approval",
+      "agents.approvals.approve",
+      "agents.approvals.reject",
+      "agents.approvals.revoke",
+    ].includes(seed.id)
+  )
+    return requireSchema(npAgentApprovalDetailSchemaV1);
+  if (seed.id === "agents.approvals.decision_challenge")
+    return requireSchema(npAgentApprovalChallengeOutputSchemaV1);
   const output = outputShape(seed.outputKind);
   return requireSchema({
     $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -1040,7 +1095,7 @@ function buildOperation(seed: OperationSeed): NpAgentAdminOperationContractV1 {
     preconditions: seed.preconditions.map((kind) => ({
       kind,
       location: "body",
-      field: PRECONDITION_FIELDS[kind].field,
+      field: preconditionField(seed.id, kind),
     })),
     secretBody: seed.secretBody,
     effect: {
@@ -1187,6 +1242,7 @@ function parseSchemas(
 }
 
 function parsePreconditions(
+  operationId: string,
   value: unknown,
   path: string,
   state: CanonicalBodyInspectionState,
@@ -1207,7 +1263,7 @@ function parsePreconditions(
       `${entryPath}.kind`,
       PRECONDITION_SET,
     );
-    const expectedField = PRECONDITION_FIELDS[kind].field;
+    const expectedField = preconditionField(operationId, kind);
     if (record.location !== "body" || record.field !== expectedField) {
       failCanonicalBody("invalid-field", entryPath, `must bind ${kind} to body.${expectedField}`);
     }
@@ -1369,7 +1425,12 @@ function parseOperation(
     );
   }
 
-  const preconditions = parsePreconditions(record.preconditions, `${path}.preconditions`, state);
+  const preconditions = parsePreconditions(
+    id,
+    record.preconditions,
+    `${path}.preconditions`,
+    state,
+  );
   const secretBody = canonicalBodyEnum<NpAgentAdminOperationSecretBodyClassV1>(
     record.secretBody,
     `${path}.secretBody`,
