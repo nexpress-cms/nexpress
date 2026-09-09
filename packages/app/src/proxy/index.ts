@@ -1,3 +1,8 @@
+import {
+  isAgentPreviewLaunchForm,
+  readAgentPreviewLaunchForm,
+  equalPreviewLaunchCsrfToken,
+} from "../lib/agents/preview-launch-form";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { npCreateApiError } from "@nexpress/core/api-contract";
@@ -281,11 +286,22 @@ async function runProxy(request: NextRequest, rateLimiter?: NpRateLimiterAdapter
       // per-handler auth still enforces the right session shape.
       // Header must be non-empty; a `undefined === undefined` slip
       // would let cookieless requests pass.
-      const ok = Boolean(
-        headerToken &&
-        ((staffCookie && staffCookie === headerToken) ||
-          (memberCookie && memberCookie === headerToken)),
-      );
+      let formOk = false;
+      if (isAgentPreviewLaunchForm(request)) {
+        try {
+          const form = await readAgentPreviewLaunchForm(request.clone());
+          formOk = equalPreviewLaunchCsrfToken(staffCookie, form.csrfToken);
+        } catch {
+          /* A malformed native launch remains CSRF denied. */
+        }
+      }
+      const ok = isAgentPreviewLaunchForm(request)
+        ? formOk
+        : Boolean(
+            headerToken &&
+            ((staffCookie && staffCookie === headerToken) ||
+              (memberCookie && memberCookie === headerToken)),
+          );
       if (!ok) {
         return NextResponse.json(npCreateApiError("CSRF_INVALID", "Invalid CSRF token", 403), {
           status: 403,

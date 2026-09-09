@@ -1,9 +1,14 @@
+import { canonicalBodyRecord } from "../agent-contract/canonical-body-validation.js";
+import {
+  npAgentInstalledCapabilityDescriptorsV1,
+  npRequireAgentInstalledCapabilityInvocationRequestV1,
+  type NpAgentInstalledCapabilityIdV1,
+} from "../agent-contract/installed-capability-contract.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import {
   npAgentReadCapabilityDescriptorsV1,
   npRequireAgentMcpTaskTtlV1,
-  npRequireAgentReadCapabilityInvocationRequestV1,
   type NpAgentJsonObject,
   type NpAgentJsonSchema,
   type NpAgentMcpStoredTerminalResultV1,
@@ -21,7 +26,11 @@ import type {
 const TOOL_TO_CAPABILITY = Object.freeze({
   inspect_site: "site.inspect",
   query_content: "content.query",
-} as const satisfies Record<string, NpAgentReadCapabilityIdV1>);
+  create_changeset: "changeset.create",
+  validate_changeset: "changeset.validate",
+  preview_changeset: "changeset.preview",
+  query_changesets: "changeset.get",
+} as const satisfies Record<string, NpAgentInstalledCapabilityIdV1>);
 
 type NpAgentMcpToolNameV1 = keyof typeof TOOL_TO_CAPABILITY;
 
@@ -81,12 +90,20 @@ function jsonSchema(value: NpAgentJsonSchema): JsonSchemaObject {
   return value;
 }
 
-function toolInputSchema(value: NpAgentJsonSchema): JsonSchemaObject {
+function toolInputSchema(value: NpAgentJsonSchema, required = false): JsonSchemaObject {
+  // Descriptor-local references remain rooted in the complete MCP input schema.
+  const { $defs, ...input } = value;
   return {
+    ...($defs === undefined ? {} : { $defs }),
     $schema: "https://json-schema.org/draft/2020-12/schema",
     type: "object",
     additionalProperties: false,
-    properties: { input: value, idempotencyKey: { type: "null" } },
+    properties: {
+      input,
+      idempotencyKey: required
+        ? { type: "string", pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$", maxLength: 256 }
+        : { type: "null" },
+    },
     required: ["input", "idempotencyKey"],
   };
 }
@@ -239,8 +256,66 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
           name,
           title: descriptor.title,
           description: descriptor.description,
-          inputSchema: toolInputSchema(descriptor.inputSchema),
-          outputSchema: jsonSchema(descriptor.outputSchema),
+          inputSchema:
+            name === "query_changesets"
+              ? toolInputSchema({
+                  $schema: "https://json-schema.org/draft/2020-12/schema",
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    selector: { enum: ["by_id", "list"] },
+                    ...Object.assign(
+                      {},
+                      ...projected.entries
+                        .filter(
+                          (e) =>
+                            e.definition.descriptor.id === "changeset.get" ||
+                            e.definition.descriptor.id === "changeset.list",
+                        )
+                        .map((e) => e.definition.descriptor.inputSchema.properties),
+                    ),
+                  },
+                  oneOf: projected.entries
+                    .filter(
+                      (e) =>
+                        e.definition.descriptor.id === "changeset.get" ||
+                        e.definition.descriptor.id === "changeset.list",
+                    )
+                    .map((e) => ({
+                      ...e.definition.descriptor.inputSchema,
+                      properties: {
+                        ...(e.definition.descriptor.inputSchema.properties as object),
+                        selector: {
+                          const: e.definition.descriptor.id === "changeset.get" ? "by_id" : "list",
+                        },
+                      },
+                      required: [
+                        ...(e.definition.descriptor.inputSchema.required as string[]),
+                        "selector",
+                      ],
+                    })),
+                })
+              : toolInputSchema(descriptor.inputSchema, descriptor.idempotency === "required"),
+          outputSchema:
+            name === "query_changesets"
+              ? jsonSchema({
+                  ...descriptor.outputSchema,
+                  properties: {
+                    ...(npAgentInstalledCapabilityDescriptorsV1["changeset.get"].outputSchema
+                      .properties as object),
+                    ...(npAgentInstalledCapabilityDescriptorsV1["changeset.list"].outputSchema
+                      .properties as object),
+                    schemaVersion: {
+                      enum: ["np.agent-changeset-result.v1", "np.agent-changeset-list.v1"],
+                    },
+                  },
+                  required: [],
+                  oneOf: [
+                    npAgentInstalledCapabilityDescriptorsV1["changeset.get"].outputSchema,
+                    npAgentInstalledCapabilityDescriptorsV1["changeset.list"].outputSchema,
+                  ],
+                })
+              : jsonSchema(descriptor.outputSchema),
           annotations: {
             title: descriptor.title,
             readOnlyHint: descriptor.risk === "read",
@@ -249,8 +324,7 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
             openWorldHint: false,
           },
           execution: {
-            taskSupport:
-              descriptor.execution === "inline" ? ("forbidden" as const) : ("optional" as const),
+            taskSupport: "forbidden" as const,
           },
         };
       })
@@ -339,7 +413,10 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
         task: { ttlMs: number | null } | null;
       },
     ) {
-      const capabilityId = Object.hasOwn(TOOL_TO_CAPABILITY, input.name)
+      let capabilityId: NpAgentInstalledCapabilityIdV1 | undefined = Object.hasOwn(
+        TOOL_TO_CAPABILITY,
+        input.name,
+      )
         ? TOOL_TO_CAPABILITY[input.name as NpAgentMcpToolNameV1]
         : undefined;
       if (!capabilityId) throw new NpAgentMcpGatewayProtocolErrorV1(-32601, "Method not found");
@@ -354,15 +431,46 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
             throw new NpAgentMcpGatewayProtocolErrorV1(-32602, "Invalid params");
           }
         }
-        // The current read capabilities are strictly inline. Task support is
-        // negotiated for future durable descriptors but cannot change them.
+        // ChangeSet domain work has durable evidence, but this normal invocation
+        // returns admission only. No task is invented without a faithful adapter.
         throw new NpAgentMcpGatewayProtocolErrorV1(-32601, "Method not found");
       }
       try {
-        const request = npRequireAgentReadCapabilityInvocationRequestV1({
+        let args: unknown = input.arguments;
+        if (input.name === "query_changesets") {
+          const wrapper = canonicalBodyRecord(
+            input.arguments,
+            "agent.mcp.arguments",
+            ["input", "idempotencyKey"],
+            ["input", "idempotencyKey"],
+            { seen: new WeakSet<object>() },
+          );
+          const selected = canonicalBodyRecord(
+            wrapper.input,
+            "agent.mcp.query",
+            [
+              "selector",
+              "changeSetId",
+              "states",
+              "actorKinds",
+              "createdAfter",
+              "createdBefore",
+              "limit",
+              "cursor",
+            ],
+            ["selector"],
+            { seen: new WeakSet<object>() },
+          );
+          if (selected.selector !== "by_id" && selected.selector !== "list")
+            throw new NpAgentMcpGatewayProtocolErrorV1(-32602, "Invalid params");
+          const { selector, ...selectedInput } = selected;
+          capabilityId = selector === "by_id" ? "changeset.get" : "changeset.list";
+          args = { ...wrapper, input: selectedInput };
+        }
+        const request = npRequireAgentInstalledCapabilityInvocationRequestV1({
           schemaVersion: "np.agent-invocation-request.v1",
           capabilityId,
-          arguments: input.arguments,
+          arguments: args,
         });
         const invoked = await options.admission.invoke({ authentication, request });
         const structuredContent = invoked.output;

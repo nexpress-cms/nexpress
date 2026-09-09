@@ -112,6 +112,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const canManageSites = await isSuperAdmin(user);
   const caps = {
     canManageAdmin: can(user, "admin.manage"),
+    canAuthor: can(user, "content.author"),
     canManageSites,
     canPublish: can(user, "content.publish"),
     canModerate: can(user, "community.moderate"),

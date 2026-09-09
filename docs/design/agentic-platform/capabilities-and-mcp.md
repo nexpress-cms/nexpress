@@ -2580,3 +2580,7 @@ rather than blog examples:
 - [MCP cursor pagination](https://modelcontextprotocol.io/specification/2025-11-25/server/utilities/pagination)
 - [MCP experimental tasks](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/tasks)
 - [MCP security best practices](https://modelcontextprotocol.io/docs/tutorials/security/security_best_practices)
+
+## AP-309 installed projection
+
+The host explicitly installs the existing ChangeSet service through `createAgentChangeSetCapabilityFacadeV1` and `resolveChangeSetCapabilities`. One installed descriptor source owns all eight read/ChangeSet schemas and OpenAPI branches. Five ChangeSet ids project through four canonical MCP tools (the query tool discriminates get/list). Service absence never creates authority; preview absence excludes `changeset.preview`. Normal calls complete admission and return actual embedded durable state, without invented run/task facts. Task augmentation for these capabilities stays unavailable. Structural JSON Schema limits derive from the existing document contract; transport byte/frame limits remain authoritative. See [R3 review surfaces](r3-review-surfaces.md).

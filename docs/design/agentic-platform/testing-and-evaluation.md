@@ -1621,3 +1621,7 @@ an absent runtime by default. Fresh migration smoke checks the exported full
 Doctor table/constraint inventory rather than a duplicated preview count.
 No AP-307 check runner, AP-308 full UI or AP-309 advertised capability is
 claimed by these tests.
+
+## AP-307–309 review verification
+
+The R3 review slice adds hostile static HTML/report/DNS tests, sealed overlay and authority-loss PostgreSQL tests, descriptor/OpenAPI closed-schema and fingerprint checks, bounded review/filter tests, and a native browser launch POST through the shared proxy/decoder. Existing multi-site credential/admission, artifact integrity, fresh scaffold and Admin Playwright suites remain required. See [R3 review surfaces](r3-review-surfaces.md) for final results and explicit execution boundaries.

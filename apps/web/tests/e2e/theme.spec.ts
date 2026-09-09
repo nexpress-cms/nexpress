@@ -13,13 +13,18 @@
 
 import { expect, test } from "@playwright/test";
 
+import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 
 test.describe("theme switcher", () => {
   test("activates a non-default theme via /admin/settings, then resets", async ({
     page,
     context,
-  }) => {
+  }, testInfo) => {
+    await isolateE2ERateLimitBucket(
+      context,
+      210 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+    );
     await context.clearCookies();
     await signInAsE2EAdmin(page);
 

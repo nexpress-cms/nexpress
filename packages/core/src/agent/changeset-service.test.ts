@@ -19,9 +19,12 @@ describe("ChangeSet service factory contract boundary", () => {
       const service = createAgentChangeSetServiceV1({ cursorKey: new Uint8Array(32).fill(41) });
       expect(Object.keys(service).sort()).toEqual([
         "artifacts",
+        "capabilityIds",
         "create",
         "get",
         "getPreview",
+        "getReview",
+        "invokeCapability",
         "list",
         "preview",
         "processPreview",
@@ -35,6 +38,12 @@ describe("ChangeSet service factory contract boundary", () => {
         "validate",
         "withPreviewAuthority",
         "withPreviewViewer",
+      ]);
+      expect(service.capabilityIds).toEqual([
+        "changeset.create",
+        "changeset.get",
+        "changeset.list",
+        "changeset.validate",
       ]);
       expect(getDb).not.toHaveBeenCalled();
       const invocation = validateDefinition.mock.calls.find(
@@ -55,8 +64,7 @@ describe("ChangeSet service factory contract boundary", () => {
         outputSchema: {
           $schema: "https://json-schema.org/draft/2020-12/schema",
           additionalProperties: false,
-          properties: { changeSetId: { type: "string", format: "uuid", maxLength: 36 } },
-          required: ["changeSetId"],
+          required: ["schemaVersion", "changeSet"],
         },
       });
       expect(definition.capabilities[0]?.effectProfiles).toHaveLength(1);
@@ -74,7 +82,7 @@ describe("ChangeSet service factory contract boundary", () => {
         requiredScopes: ["changeset:read"],
         inputSchema: {
           additionalProperties: false,
-          required: ["idempotencyKey", "expectedVersion", "changeSetId"],
+          required: ["changeSetId", "draftVersion", "draftHash"],
         },
       });
     } finally {

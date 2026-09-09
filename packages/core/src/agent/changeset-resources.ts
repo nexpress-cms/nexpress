@@ -215,7 +215,7 @@ function rejectProtectedFields(
 }
 
 /** Keep server defaults available to validation and ACLs, outside the editable draft body. */
-function editableDocument(
+export function npProjectAgentEditableDocumentV1(
   fields: readonly NpFieldConfig[],
   candidate: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -237,11 +237,14 @@ function editableDocument(
         typeof value === "object" &&
         !Array.isArray(value)
       )
-        editable[field.name] = editableDocument(field.fields, value as Record<string, unknown>);
+        editable[field.name] = npProjectAgentEditableDocumentV1(
+          field.fields,
+          value as Record<string, unknown>,
+        );
       if (field.type === "array" && Array.isArray(value))
         editable[field.name] = value.map((row: unknown) =>
           row !== null && typeof row === "object" && !Array.isArray(row)
-            ? editableDocument(field.fields, row as Record<string, unknown>)
+            ? npProjectAgentEditableDocumentV1(field.fields, row as Record<string, unknown>)
             : row,
         );
     }
@@ -456,7 +459,7 @@ export function createAgentChangeSetResourceServiceV1() {
           input.tx,
         );
         document = { config, original, candidate };
-        const editable = editableDocument(config.fields, candidate);
+        const editable = npProjectAgentEditableDocumentV1(config.fields, candidate);
         if (operation.operation === "create")
           operation = {
             ...operation,

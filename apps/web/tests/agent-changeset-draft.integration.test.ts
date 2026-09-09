@@ -195,11 +195,11 @@ async function principalFixture(f: Awaited<ReturnType<typeof fixture>>, writeOnl
 }
 describe.skipIf(skipIfNoTestDb())("ChangeSet durable draft service", () => {
   beforeAll(ensureMigrated);
-  beforeEach(registerTestCollections);
-  afterEach(async () => {
+  beforeEach(async () => {
     await truncateAll();
     registerTestCollections();
   });
+  afterEach(registerTestCollections);
   afterAll(closeTestDb);
   it("creates and replaces a draft with stable reserved IDs without writing content", async () => {
     const f = await fixture();

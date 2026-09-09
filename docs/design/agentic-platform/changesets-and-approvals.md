@@ -1841,10 +1841,11 @@ repeats PUT. Active render tickets are exposed by a single-use host lease;
 `use`/`dispose` clears internal buffers and ticket references. A host that
 copies an immutable JavaScript string remains responsible for that copy.
 
-The three production Admin route wrappers implement preview request, detail
-and launch only. Dedicated-origin and loopback-render handler factories require
+The AP-305/AP-306 production Admin wrappers implement preview request, detail
+and launch. AP-308 adds ChangeSet CRUD, validation, review and authenticated
+artifact wrappers through those same services. Dedicated-origin and loopback-render handler factories require
 explicit host installation. No listener, automatic runtime, capture process,
-provider call, seed or default exposure is installed. Full ChangeSet Admin UI,
-link/SEO/accessibility execution, MCP/API advertisement and approval/apply are
-still AP-307 and later. Without screenshots/check execution, ready empty
+provider call, seed or default exposure is installed. AP-307 adds bounded framework link/SEO/static-accessibility checks; AP-308
+provides the Admin review UI; AP-309 adds explicitly installed MCP/API
+projection. Approval decisions and apply remain R4. Without screenshots/check execution, ready empty
 previews explicitly report `SCREENSHOTS_UNAVAILABLE` and `CHECKS_NOT_RUN`.

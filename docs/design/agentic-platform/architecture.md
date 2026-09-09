@@ -284,9 +284,9 @@ path remains idempotent, audited, validated, and verification-bound.
 AP-301/AP-302 add the explicit server-only
 `createAgentChangeSetServiceV1` factory under `@nexpress/core/agents`. Staff
 create/update reuse Admin admission; principal creation uses the shared
-current-authority transaction boundary. Its persisted capability definition
-is not installed in the advertised read registry. AP-309 owns Gateway
-projection. Resource preparation reuses collection ACL/schema/reference
+current-authority transaction boundary. AP-309 derives its persisted capability definition and optional Gateway
+projection from the same installed capability descriptor source. The host
+explicitly supplies the ChangeSet capability facade to admission. Resource preparation reuses collection ACL/schema/reference
 checks and existing navigation, theme, SEO and media contracts; it never
 calls content write hooks or applies the proposal. Draft get/list return
 checked editable input, excluding server-owned hidden/read-only defaults,

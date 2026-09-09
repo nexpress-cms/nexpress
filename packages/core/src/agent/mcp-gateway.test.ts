@@ -1,9 +1,10 @@
+import {
+  npAgentInstalledCapabilityDescriptorsV1,
+  type NpAgentInstalledCapabilityIdV1,
+} from "../agent-contract/installed-capability-contract.js";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  npAgentReadCapabilityDescriptorsV1,
-  type NpAgentReadCapabilityIdV1,
-} from "../agent-contract/index.js";
+import { type NpAgentReadCapabilityIdV1 } from "../agent-contract/index.js";
 import type {
   NpAgentCapabilityAdmissionServiceV1,
   NpAgentCapabilityAuthenticationV1,
@@ -22,14 +23,14 @@ function authentication(): NpAgentCapabilityAuthenticationV1 {
   } as unknown as NpAgentCapabilityAuthenticationV1;
 }
 
-function entry(id: NpAgentReadCapabilityIdV1) {
+function entry(id: NpAgentInstalledCapabilityIdV1) {
   return {
-    definition: { descriptor: npAgentReadCapabilityDescriptorsV1[id] },
+    definition: { descriptor: npAgentInstalledCapabilityDescriptorsV1[id] },
     capabilityFingerprint: `cj1:sha256:${id}`,
   };
 }
 
-function admission(ids: NpAgentReadCapabilityIdV1[]) {
+function admission(ids: NpAgentInstalledCapabilityIdV1[]) {
   return {
     project: vi.fn(() =>
       Promise.resolve({
@@ -57,6 +58,36 @@ function admission(ids: NpAgentReadCapabilityIdV1[]) {
 }
 
 describe("Agent MCP core projection", () => {
+  it("resolves every local schema reference from the advertised tool root", async () => {
+    const gateway = createAgentMcpGatewayV1({
+      admission: admission(
+        Object.keys(npAgentInstalledCapabilityDescriptorsV1) as NpAgentInstalledCapabilityIdV1[],
+      ),
+      cursorKey: { id: "test", key: new Uint8Array(32).fill(7) },
+    });
+    for (const tool of (await gateway.listTools(authentication())).tools) {
+      for (const root of [tool.inputSchema, tool.outputSchema]) {
+        const visit = (value: unknown): void => {
+          if (!value || typeof value !== "object") return;
+          if (Array.isArray(value)) {
+            value.forEach(visit);
+            return;
+          }
+          const record = value as Record<string, unknown>;
+          if (typeof record.$ref === "string" && record.$ref.startsWith("#/")) {
+            let target: unknown = root;
+            for (const segment of record.$ref.slice(2).split("/")) {
+              const key = segment.replaceAll("~1", "/").replaceAll("~0", "~");
+              expect(target, `${tool.name}: ${record.$ref}`).toHaveProperty(key);
+              target = (target as Record<string, unknown>)[key];
+            }
+          }
+          Object.values(record).forEach(visit);
+        };
+        visit(root);
+      }
+    }
+  });
   it("projects only installed reads with deterministic annotations and resources", async () => {
     const auth = authentication();
     const service = admission(["site.inspect", "schema.get", "content.query"]);
@@ -157,4 +188,91 @@ describe("Agent MCP core projection", () => {
       }),
     ]);
   });
+});
+
+it("projects ChangeSet commands and one closed selector tool without inventing MCP tasks", async () => {
+  const auth = authentication();
+  const service = admission([
+    "changeset.create",
+    "changeset.get",
+    "changeset.list",
+    "changeset.validate",
+    "changeset.preview",
+  ]);
+  const invoke = vi.spyOn(service, "invoke");
+  const gateway = createAgentMcpGatewayV1({
+    admission: service,
+    cursorKey: { id: "test", key: new Uint8Array(32).fill(7) },
+  });
+  const tools = (await gateway.listTools(auth)).tools;
+  expect(tools.map((tool) => tool.name)).toEqual([
+    "create_changeset",
+    "preview_changeset",
+    "query_changesets",
+    "validate_changeset",
+  ]);
+  expect(tools.every((tool) => tool.execution.taskSupport === "forbidden")).toBe(true);
+  expect(
+    tools.find((tool) => tool.name === "create_changeset")?.inputSchema.properties,
+  ).toMatchObject({ idempotencyKey: { type: "string" } });
+  const input = {
+    selector: "list",
+    states: [],
+    actorKinds: [],
+    createdAfter: null,
+    createdBefore: null,
+    limit: 25,
+    cursor: null,
+  };
+  await gateway.callTool(auth, {
+    name: "query_changesets",
+    arguments: { input, idempotencyKey: null },
+    task: null,
+  });
+  expect(invoke).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      request: expect.objectContaining({
+        capabilityId: "changeset.list",
+        arguments: {
+          input: {
+            states: [],
+            actorKinds: [],
+            createdAfter: null,
+            createdBefore: null,
+            limit: 25,
+            cursor: null,
+          },
+          idempotencyKey: null,
+        },
+      }),
+    }),
+  );
+  await expect(
+    gateway.callTool(auth, {
+      name: "query_changesets",
+      arguments: { input: { ...input, selector: "apply" }, idempotencyKey: null },
+      task: null,
+    }),
+  ).rejects.toMatchObject({ mcpCode: -32602 });
+  await expect(
+    gateway.callTool(auth, {
+      name: "preview_changeset",
+      arguments: { input: {}, idempotencyKey: "key" },
+      task: { ttlMs: null },
+    }),
+  ).rejects.toMatchObject({ mcpCode: -32601 });
+  const readOnly = createAgentMcpGatewayV1({
+    admission: admission(["site.inspect"]),
+    cursorKey: { id: "test", key: new Uint8Array(32).fill(7) },
+  });
+  await expect(
+    readOnly.callTool(auth, {
+      name: "create_changeset",
+      arguments: {
+        input: { title: "Draft", summary: null, operations: [] },
+        idempotencyKey: "key",
+      },
+      task: null,
+    }),
+  ).rejects.toMatchObject({ mcpCode: -32601 });
 });

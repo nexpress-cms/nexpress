@@ -2,7 +2,7 @@
 
 Server-only CMS engine: config, DB, auth, collections pipeline, media, jobs, plugins, storage, cache, theme.
 
-**Refreshed:** 2026-09-08
+**Refreshed:** 2026-09-09
 
 ## STRUCTURE
 
@@ -111,6 +111,20 @@ jobs/handlers ──→ sites/context (optional payload-derived async-local disp
 No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugins/host`, `configureBuiltinJobContext` indirection in `jobs/builtin-handlers`, and per-subsystem singletons.
 
 ## CONVENTIONS
+
+- AP-307–309 reuse the ChangeSet service, safe review/report wires and installed
+  descriptor source. `resolveChangeSetCapabilities` is explicit; preview is not
+  advertised without the host preview service. Persist the same structured
+  capability input and descriptor fingerprint used by MCP/HTTP discovery.
+  Read evidence has its actual invocation id; do not invent actions/runs/tasks.
+  Review snapshots remain private; project only changed editable fields using
+  current collection definitions after all item ACL and integrity checks.
+- Preview check/network implementations stay private modules. The host supplies
+  the effect-free renderer and canonical public route manifest; current authority
+  is rechecked around render, pinned-DNS HEAD and artifact storage. Reports use
+  fixed messages, exact multipart canonical JSON and the existing atomic upload
+  journal. The seven-day lifetime starts at preview completion, while artifact
+  creation timestamps retain their earlier reservation times.
 
 - AP-301/AP-302 draft services use the existing staff admission and current
   Gateway-authority transaction seam. Resource preparation shares collection

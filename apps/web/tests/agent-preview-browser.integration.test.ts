@@ -6,6 +6,11 @@ import { join } from "node:path";
 import { createServer, type Server } from "node:https";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import { NextRequest } from "next/server";
+// eslint-disable-next-line import-x/no-relative-packages
+import { proxy } from "../../../packages/app/src/proxy/index.js";
+// eslint-disable-next-line import-x/no-relative-packages
+import { readAgentPreviewLaunchForm } from "../../../packages/app/src/lib/agents/preview-launch-form.js";
 import { chromium, type Browser } from "@playwright/test";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -122,6 +127,14 @@ describe.skipIf(skipIfNoTestDb() || process.env.NP_TEST_PREVIEW_BROWSER !== "1")
         let siteOrigin = "";
         let access: ReturnType<typeof createAgentPreviewAccessServiceV1>;
         const staffCookie = randomUUID();
+        const csrfCookie = randomUUID();
+        const launchPath = `/api/admin/agents/changesets/${preview.changeSetId}/previews/${preview.previewId}/launch`;
+        const command = {
+          idempotencyKey: randomUUID(),
+          expectedVersion: 1,
+          expectedPlanHash: preview.planHash,
+          route: "/",
+        };
         isolated = createServer({ key, cert }, (req, res) => {
           void (async () => {
             observations.push({
@@ -156,33 +169,38 @@ describe.skipIf(skipIfNoTestDb() || process.env.NP_TEST_PREVIEW_BROWSER !== "1")
         production = createServer({ key, cert }, (req, res) => {
           void (async () => {
             if (req.url === "/") {
-              res.setHeader(
-                "set-cookie",
+              res.setHeader("set-cookie", [
                 `np-session=${staffCookie}; Path=/; Secure; HttpOnly; SameSite=Lax`,
-              );
+                `np-csrf=${csrfCookie}; Path=/; Secure; SameSite=Lax`,
+              ]);
               res.setHeader("content-type", "text/html; charset=utf-8");
-              res.end('<!doctype html><a href="/launch">Open preview</a>');
+              res.end(
+                `<!doctype html><form method="post" action="${launchPath}" target="_blank" rel="noopener"><input type="hidden" name="csrfToken" value="${csrfCookie}"><input type="hidden" name="command" value="${JSON.stringify(command).replaceAll('"', "&quot;")}"><button type="submit">Open preview</button></form>`,
+              );
               return;
             }
             if (
-              req.url !== "/launch" ||
+              req.url !== launchPath ||
               !(req.headers.cookie ?? "").includes(`np-session=${staffCookie}`)
             ) {
               res.statusCode = 404;
               res.end("Not found");
               return;
             }
+            const incoming = await request(req, siteOrigin);
+            const native = new NextRequest(incoming);
+            const admitted = await proxy(native);
+            if (admitted.status !== 200) {
+              await send(admitted, res);
+              return;
+            }
+            const decoded = await readAgentPreviewLaunchForm(native);
             const result = await access.launch({
               siteId,
               actor: f.actor.actor,
               changeSetId: preview.changeSetId,
               previewId: preview.previewId,
-              command: {
-                idempotencyKey: randomUUID(),
-                expectedVersion: 1,
-                expectedPlanHash: preview.planHash,
-                route: "/",
-              },
+              command: decoded.command,
             });
             await send(new Response(result.html, { headers: result.headers }), res);
           })().catch(() => {
@@ -225,9 +243,11 @@ describe.skipIf(skipIfNoTestDb() || process.env.NP_TEST_PREVIEW_BROWSER !== "1")
           ],
         });
         const context = await browser.newContext();
-        const page = await context.newPage();
-        await page.goto(siteOrigin);
-        await page.getByRole("link", { name: "Open preview" }).click();
+        const adminPage = await context.newPage();
+        await adminPage.goto(siteOrigin);
+        const newPage = context.waitForEvent("page");
+        await adminPage.getByRole("button", { name: "Open preview" }).click();
+        const page = await newPage;
         try {
           await page.getByRole("heading", { name: "Preview fixture" }).waitFor({ timeout: 5000 });
         } catch {

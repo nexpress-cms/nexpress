@@ -431,6 +431,22 @@ default enablement, version bump or changeset is added. Actual check execution,
 full Admin views and MCP/API capability exposure remain AP-307–309.
 Details: [R3 preview review](r3-preview-review.md).
 
+AP-307–309 are implemented and verified as one R3 review slice (2026-09-09). It reuses
+sealed ChangeSets, the private artifact journal, current staff/Gateway authority
+and the existing HTTP/MCP projections. Checks are framework-owned static
+HTML/metadata/JSON-LD/accessibility and route/link evidence; a reviewed external
+origin may receive only the bounded DNS-pinned HEAD exception. Admin adds
+list/detail/semantic diff, draft editing, validation and isolated preview launch.
+The host explicitly installs five ChangeSet capabilities, with get/list at read
+and create/validate/preview at propose. Normal calls return completed admission
+with honest embedded queued/validating/preview states; no run or task is invented.
+Approval/apply remain R4. No schema migration, default enablement, worker,
+listener, provider integration, package version or changeset is added.
+Validation: lint 41 tasks, verify 113 tasks, PostgreSQL 67 + 1,049 tests,
+Admin E2E 50 tests, isolated Chromium preview 1 test, and packed fresh scaffold
+53 stages all passed. Versions, changesets and migrations remain unchanged.
+Details: [R3 review surfaces](r3-review-surfaces.md).
+
 | ID     | Scope                                                                                                                                                                                                                                                                                                                                                 |
 | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | AP-301 | Add ChangeSet/operation/approval client-safe contracts and persistence, including retained discriminated sealed plan bodies, frozen rollback duration, and exact before-snapshot `snapshot_hash`                                                                                                                                                      |

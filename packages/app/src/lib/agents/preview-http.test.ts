@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   renderPreview: vi.fn(),
   renderer: vi.fn(),
   staff: vi.fn(),
+  launch: vi.fn(),
   ensure: vi.fn(),
 }));
 vi.mock("@nexpress/core/agents", async (original) => ({
@@ -28,7 +29,12 @@ vi.mock("./studio-admin", () => ({
   normalizeAgentStudioError: (error: unknown) => error,
 }));
 vi.mock("../init-core", () => ({ ensureFor: mocks.ensure }));
-import { handleAgentPreviewOriginRequest, handleAgentPreviewRenderRequest } from "./preview-http";
+import {
+  handleAgentPreviewAdminRequest,
+  handleAgentPreviewOriginRequest,
+  handleAgentPreviewRenderRequest,
+} from "./preview-http";
+import { NextRequest } from "next/server";
 import type { NpAgentStudioServerRuntimeV1 } from "@nexpress/core/agents";
 const id = "10000000-0000-4000-8000-000000000001";
 const previewOrigin = "https://preview.example.net";
@@ -345,6 +351,47 @@ describe("ephemeral render request boundary", () => {
     expect(mocks.renderer).toHaveBeenCalledWith(
       {},
       expect.objectContaining({ nonce: expect.any(String) }),
+    );
+  });
+});
+
+describe("native Admin preview launch handler", () => {
+  it("passes the decoded original canonical command and preserves bridge policy headers", async () => {
+    const command = {
+      idempotencyKey: id,
+      expectedVersion: 1,
+      expectedPlanHash: `cj1:sha256:${"A".repeat(43)}`,
+      route: "/",
+    };
+    mocks.staff.mockResolvedValue({ siteId: "default", actor: { user: { id }, sessionId: id } });
+    mocks.launch.mockResolvedValue({
+      html: "<!doctype html><title>Open preview</title>",
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "content-security-policy": "default-src 'none'",
+        "referrer-policy": "origin",
+        "cache-control": "private, no-store",
+      },
+    });
+    mocks.runtime.mockReturnValue({ ...runtime(), previewAccess: { launch: mocks.launch } });
+    const req = new NextRequest(
+      `https://site.example/api/admin/agents/changesets/${id}/previews/${id}/launch`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          origin: "https://site.example",
+          "sec-fetch-site": "same-origin",
+        },
+        body: new URLSearchParams({ command: JSON.stringify(command), csrfToken: "test-csrf" }),
+      },
+    );
+    const response = await handleAgentPreviewAdminRequest(req, "launch", { id, previewId: id });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("referrer-policy")).toBe("origin");
+    expect(response.headers.get("content-security-policy")).toBe("default-src 'none'");
+    expect(mocks.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ command, changeSetId: id, previewId: id }),
     );
   });
 });

@@ -12,6 +12,7 @@
 
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
+import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 
 type ThemeId = "default" | "docs" | "magazine" | "portfolio";
@@ -119,13 +120,20 @@ interface OverflowMetrics {
 test.describe.configure({ mode: "serial" });
 
 test.describe("bundled theme mobile layout", () => {
-  for (const theme of THEMES) {
+  for (const [themeIndex, theme] of THEMES.entries()) {
     test(`${theme.id} has no mobile horizontal overflow on representative routes`, async ({
       page,
       context,
-    }) => {
+    }, testInfo) => {
       test.setTimeout(120_000);
 
+      await isolateE2ERateLimitBucket(
+        context,
+        190 +
+          themeIndex +
+          testInfo.retry * THEMES.length +
+          testInfo.repeatEachIndex * THEMES.length * (testInfo.project.retries + 1),
+      );
       await context.clearCookies();
       await signInAsE2EAdmin(page);
       await reseedTheme(page, context, theme.id);
