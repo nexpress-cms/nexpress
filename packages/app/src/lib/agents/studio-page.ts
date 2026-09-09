@@ -18,22 +18,25 @@ export function agentActivitySearchString(
   return query.toString();
 }
 
-export async function requireAgentStudioPageAccess(): Promise<void> {
+async function requireAgentPageAccess(
+  capability?: "admin.manage" | "content.author",
+): Promise<void> {
   await ensureFor("read");
   const token = (await cookies()).get("np-session")?.value;
   const user = token
     ? await verifyTokenFull(token, getAuthRuntimeConfig().secret, getDb(), "access")
     : null;
   const siteUser = user ? await resolveSiteAuthUser(user) : null;
-  if (!siteUser || !can(siteUser, "admin.manage")) notFound();
+  if (!siteUser || (capability && !can(siteUser, capability))) notFound();
 }
 
-export async function requireAgentChangeSetPageAccess(): Promise<void> {
-  await ensureFor("read");
-  const token = (await cookies()).get("np-session")?.value;
-  const user = token
-    ? await verifyTokenFull(token, getAuthRuntimeConfig().secret, getDb(), "access")
-    : null;
-  const siteUser = user ? await resolveSiteAuthUser(user) : null;
-  if (!siteUser || !can(siteUser, "content.author")) notFound();
+export function requireAgentStudioPageAccess(): Promise<void> {
+  return requireAgentPageAccess("admin.manage");
+}
+export function requireAgentChangeSetPageAccess(): Promise<void> {
+  return requireAgentPageAccess("content.author");
+}
+/** Item-level approval authority belongs to the injected approval service. */
+export function requireAgentApprovalPageAccess(): Promise<void> {
+  return requireAgentPageAccess();
 }

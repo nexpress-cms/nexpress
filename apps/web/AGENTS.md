@@ -1,5 +1,7 @@
 # apps/web — AGENTS.md
 
+Approval routes/pages are thin shared-app exports. Migration 0041 is the generated correction to the existing approval decision reauthentication constraint (28 Agent tables/133 critical constraints unchanged). Approval runtime/keyrings and execution-definition bindings remain explicitly injected; wrappers never construct them or enable execution.
+
 Next.js 16 reference app. This app is intentionally thin: most route
 handlers, pages, scripts, proxy behavior, and setup flows are re-exported
 from `@nexpress/app`, while `apps/web` supplies the local config,

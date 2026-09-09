@@ -297,6 +297,106 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet persistence foundation", () => {
       db.execute(sql`update np_agent_approvals set statement_body='{}'::jsonb`),
     ).rejects.toThrow();
   });
+  it("allows sensitive rejection without reauthentication but requires recent evidence to approve", async () => {
+    const { db, user } = await fixture();
+    const row = draft(user.userId);
+    await db.insert(npAgentChangesets).values(row);
+    const a = approval(row.id, user.userId);
+    await db.insert(npAgentApprovals).values({
+      ...a,
+      risk: "sensitive",
+      requiredReauthMode: "recent-staff-primary",
+      requiredReauthMaxAgeSeconds: 300,
+      statementBody: {
+        ...a.statementBody,
+        risk: "sensitive",
+        reauthentication: { mode: "recent", maxAgeSeconds: 300, assurance: "staff-primary" },
+      },
+    });
+    const decidedAt = new Date();
+    const decisionBody = {
+      schemaVersion: "np.agent-approval-decision.v1" as const,
+      siteId: a.siteId,
+      approvalId: a.id,
+      approvalGeneration: 1,
+      statementHash: digest,
+      decision: "reject" as const,
+      deciderFingerprint: digest,
+      currentHumanCapabilities: ["content.publish" as const],
+      reason: null,
+      reauthentication: { mode: "none" as const },
+      decidedAt: decidedAt.toISOString(),
+    };
+    const decision = {
+      state: "rejected",
+      decisionBody,
+      decisionHash: digest,
+      decisionMac: "fixture-decision-mac",
+      deciderFingerprint: digest,
+      decidedByUserId: user.userId,
+      decidedAt,
+    };
+    await db.update(npAgentApprovals).set(decision);
+    expect((await npCollectAgentHealthSummaryV1()).issues).toEqual([]);
+    await expect(
+      db.update(npAgentApprovals).set({
+        state: "approved",
+        decisionBody: { ...decisionBody, decision: "approve" },
+      }),
+    ).rejects.toThrow();
+    const recent = {
+      mode: "recent" as const,
+      maxAgeSeconds: 300,
+      assurance: "staff-primary" as const,
+      reauthenticatedAt: decidedAt.toISOString(),
+      sessionFactFingerprint: digest,
+    };
+    await expect(
+      db.update(npAgentApprovals).set({
+        decisionBody: { ...decisionBody, reauthentication: recent },
+        decisionReauthFingerprint: digest,
+        decisionReauthenticatedAt: decidedAt,
+      }),
+    ).rejects.toThrow();
+    await db.update(npAgentApprovals).set({
+      state: "approved",
+      decisionBody: { ...decisionBody, decision: "approve", reauthentication: recent },
+      decisionReauthFingerprint: digest,
+      decisionReauthenticatedAt: decidedAt,
+    });
+    expect((await npCollectAgentHealthSummaryV1()).issues).toEqual([]);
+  });
+  it("reports expired approvals and mismatched integrity bindings without private evidence", async () => {
+    const { db, user } = await fixture();
+    const row = draft(user.userId);
+    await db.insert(npAgentChangesets).values(row);
+    const a = approval(row.id, user.userId);
+    const requestedAt = new Date(Date.now() - 120_000);
+    const expiresAt = new Date(Date.now() - 60_000);
+    await db.insert(npAgentApprovals).values({
+      ...a,
+      requestedAt,
+      expiresAt,
+      // Deliberate mismatched metadata models persisted corruption; no keyring is installed.
+      requesterFingerprint: "cj1:sha256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+      statementBody: {
+        ...a.statementBody,
+        createdAt: requestedAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+      },
+    });
+    const summary = await npCollectAgentHealthSummaryV1();
+    expect(summary.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: "AGENT_EXPIRY_BACKLOG", count: 1 }),
+        expect.objectContaining({ code: "AGENT_ROW_STATE_INVALID", count: 1 }),
+      ]),
+    );
+    const wire = JSON.stringify(summary);
+    for (const forbidden of [a.id, row.id, user.userId, digest, a.statementMac, a.integrityKeyId]) {
+      expect(wire).not.toContain(forbidden);
+    }
+  });
   it("includes all new rows in deletion and keeps Doctor empty state healthy", async () => {
     const { db, user } = await fixture();
     const row = draft(user.userId);

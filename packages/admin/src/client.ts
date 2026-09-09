@@ -132,3 +132,5 @@ export { cn } from "./ui/utils.js";
 export { npFetch } from "./lib/api-client.js";
 
 export { AgentChangeSetListView, AgentChangeSetDetailView } from "./agents/agent-changeset-view.js";
+
+export { AgentApprovalListView, AgentApprovalDetailView } from "./agents/agent-approval-view.js";

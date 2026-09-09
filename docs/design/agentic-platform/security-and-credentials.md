@@ -1435,7 +1435,7 @@ interface NpAgentApprovalStatementV1 {
     | { kind: "principal"; principalId: string; fingerprint: string }
     | { kind: "staff"; userId: string | null; fingerprint: string };
   target:
-    | { kind: "changeset"; changeSetId: string; planHash: string }
+    | { kind: "changeset"; changeSetId: string; planHash: string; scheduledFor: string | null }
     | {
         kind: "changeset_rollback";
         changeSetId: string;
@@ -2138,3 +2138,7 @@ preview runtime is installed. See the [preview contract](changesets-and-approval
 ## AP-307–309 boundary implementation
 
 The private preview checker now implements the sole bounded HEAD exception described above. Current requester authority surrounds rendering, DNS-pinned requests and private artifact writes. The normal service credential/OAuth audiences and live-authority intersection remain unchanged for the explicitly installed ChangeSet facade. Native Admin preview launch forms reuse the existing one-time launch command and central staff CSRF check, with exact same-origin Origin/Fetch Metadata and bounded form parsing; no CSRF exemption is introduced. See [R3 review surfaces](r3-review-surfaces.md).
+
+## R4 approval implementation
+
+The current approval-only implementation is described in [R4 approval flow](r4-approval-flow.md). It reuses existing sealed ChangeSets, generic Admin decision routes, canonical integrity evidence and explicit bounded maintenance. Execution, scheduling, cancellation and rollback remain later R4 slices.

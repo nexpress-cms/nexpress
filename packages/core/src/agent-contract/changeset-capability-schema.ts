@@ -282,6 +282,17 @@ const preview = obj({
   expiresAt: nullable(utc),
 });
 defs.preview = preview;
+export const npAgentApprovalWireSchemaV1 = obj({
+  id: uuid,
+  generation: positive,
+  state: en(["pending", "approved", "rejected", "expired", "consumed", "revoked"]),
+  statementHash: digest,
+  requiredHumanCapabilities: arr(en(npCapabilities), npCapabilities.length),
+  requiredHumanPredicates: arr(en(npAgentHumanPredicates), npAgentHumanPredicates.length),
+  requestedAt: utc,
+  expiresAt: utc,
+  decidedAt: nullable(utc),
+});
 export const npAgentChangeSetWireSchemaV1: NpAgentJsonSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   ...obj({
@@ -323,19 +334,7 @@ export const npAgentChangeSetWireSchemaV1: NpAgentJsonSchema = {
       }),
     ),
     preview: nullable({ $ref: "#/$defs/preview" }),
-    approval: nullable(
-      obj({
-        id: uuid,
-        generation: positive,
-        state: en(["pending", "approved", "rejected", "expired", "consumed", "revoked"]),
-        statementHash: digest,
-        requiredHumanCapabilities: arr(en(npCapabilities), npCapabilities.length),
-        requiredHumanPredicates: arr(en(npAgentHumanPredicates), npAgentHumanPredicates.length),
-        requestedAt: utc,
-        expiresAt: utc,
-        decidedAt: nullable(utc),
-      }),
-    ),
+    approval: nullable(npAgentApprovalWireSchemaV1),
     schedule: nullable(obj({ at: utc })),
     execution: nullable(
       obj({

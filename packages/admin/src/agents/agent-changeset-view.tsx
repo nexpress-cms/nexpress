@@ -16,10 +16,12 @@ import {
   npBuildAgentChangeSetDraftInputJsonV1,
   npDigestAgentChangeSetDraftInputV1,
   type NpAgentChangeSetWire,
+  type NpAgentChangeSetReviewV1,
   type NpAgentPreviewDetailWireV1,
   type NpAgentChangeSetReviewValueV1,
 } from "@nexpress/core/agent-contract";
 import { npFetch } from "../lib/api-client.js";
+import { AgentApprovalRequest } from "./agent-approval-request.js";
 import { AgentStudioApiError, responseError } from "./agent-studio-api.js";
 import { Button } from "../ui/button.js";
 import { Badge } from "../ui/badge.js";
@@ -57,7 +59,11 @@ function errorMessage(error: unknown): string {
   }
   return "The ChangeSet response could not be loaded or validated.";
 }
-function useRead<T>(path: string, parse: (value: unknown) => T) {
+export function useAgentReviewRead<T>(
+  path: string,
+  parse: (value: unknown) => T,
+  formatError: (error: unknown) => string = errorMessage,
+) {
   const [revision, refresh] = React.useReducer((n: number) => n + 1, 0);
   const [stored, setStored] = React.useState<{
     path: string;
@@ -73,10 +79,10 @@ function useRead<T>(path: string, parse: (value: unknown) => T) {
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted)
-          setStored({ path, revision, value: null, error: errorMessage(error) });
+          setStored({ path, revision, value: null, error: formatError(error) });
       });
     return () => controller.abort();
-  }, [path, parse, revision]);
+  }, [path, parse, revision, formatError]);
   const clear = React.useCallback(
     () => setStored({ path, revision, value: null, error: null }),
     [path, revision],
@@ -204,7 +210,7 @@ function ProposalEditor({
 }
 export function AgentChangeSetListView({ queryString = "" }: { queryString?: string }) {
   const router = useRouter();
-  const result = useRead(`${base}${queryString ? `?${queryString}` : ""}`, parsePage);
+  const result = useAgentReviewRead(`${base}${queryString ? `?${queryString}` : ""}`, parsePage);
   const filters = new URLSearchParams(queryString);
   const nextPage = new URLSearchParams(queryString);
   nextPage.set("cursor", result.value?.nextCursor ?? "");
@@ -317,7 +323,7 @@ export function AgentChangeSetListView({ queryString = "" }: { queryString?: str
     </Frame>
   );
 }
-function Preview({
+export function AgentChangeSetPreview({
   changeSet,
   preview,
   onLost,
@@ -493,8 +499,70 @@ function Preview({
     </div>
   );
 }
+export function AgentChangeSetReviewFacts({ review }: { review: NpAgentChangeSetReviewV1 }) {
+  const changeSet = review.changeSet;
+  return (
+    <section id="proposal" className="space-y-4">
+      <h2 className="text-lg font-semibold">Server facts</h2>
+      <Badge>{changeSet.state}</Badge>
+      <dl className="grid gap-2 text-sm">
+        <dt>ChangeSet</dt>
+        <dd className="break-all">{changeSet.id}</dd>
+        <dt>Site</dt>
+        <dd>{changeSet.siteId}</dd>
+        <dt>Plan hash</dt>
+        <dd className="break-all">{changeSet.planHash ?? "Not sealed"}</dd>
+        <dt>Base fingerprint</dt>
+        <dd className="break-all">{changeSet.baseFingerprint ?? "Not validated"}</dd>
+        <dt>Required staff capabilities</dt>
+        <dd>{review.requiredStaffCapabilities.join(", ")}</dd>
+        <dt>Expires</dt>
+        <dd>
+          <Time value={changeSet.expiresAt} />
+        </dd>
+      </dl>
+      <aside className="rounded border p-3">
+        <h3 className="font-medium">Proposal text (untrusted)</h3>
+        <p>{changeSet.title}</p>
+        {changeSet.summary && <p className="whitespace-pre-wrap">{changeSet.summary}</p>}
+      </aside>
+      <h3 className="font-semibold">Semantic field diff</h3>
+      {review.operations.map((operation) => (
+        <Card key={operation.ordinal}>
+          <CardHeader>
+            <CardTitle>
+              Operation {operation.ordinal}:{" "}
+              {changeSet.operations[operation.ordinal - 1]?.operation.kind}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {operation.evidence !== "available" && (
+              <p>Diff evidence: {operation.evidence.replaceAll("_", " ")}</p>
+            )}
+            {operation.fields.map((field) => (
+              <div key={field.path} className="mb-4">
+                <h4 className="break-all font-medium">{field.path}</h4>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded border p-3">
+                    <p className="font-medium">Before</p>
+                    <JsonValue item={field.before} />
+                  </div>
+                  <div className="rounded border p-3">
+                    <p className="font-medium">After</p>
+                    <JsonValue item={field.after} />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ))}
+    </section>
+  );
+}
+
 export function AgentChangeSetDetailView({ id }: { id: string }) {
-  const result = useRead(`${base}/${id}`, npRequireAgentChangeSetReviewV1);
+  const result = useAgentReviewRead(`${base}/${id}`, npRequireAgentChangeSetReviewV1);
   const [busy, setBusy] = React.useState(false);
   const [mutationError, setMutationError] = React.useState<string | null>(null);
   const [preview, setPreview] = React.useState<NpAgentPreviewDetailWireV1 | null>(null);
@@ -579,62 +647,7 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
             <a href="#validation">Validation</a>
             <a href="#preview">Preview</a>
           </nav>
-          <section id="proposal" className="space-y-4">
-            <h2 className="text-lg font-semibold">Server facts</h2>
-            <Badge>{changeSet.state}</Badge>
-            <dl className="grid gap-2 text-sm">
-              <dt>ChangeSet</dt>
-              <dd className="break-all">{changeSet.id}</dd>
-              <dt>Site</dt>
-              <dd>{changeSet.siteId}</dd>
-              <dt>Plan hash</dt>
-              <dd className="break-all">{changeSet.planHash ?? "Not sealed"}</dd>
-              <dt>Base fingerprint</dt>
-              <dd className="break-all">{changeSet.baseFingerprint ?? "Not validated"}</dd>
-              <dt>Required staff capabilities</dt>
-              <dd>{result.value.requiredStaffCapabilities.join(", ")}</dd>
-              <dt>Expires</dt>
-              <dd>
-                <Time value={changeSet.expiresAt} />
-              </dd>
-            </dl>
-            <aside className="rounded border p-3">
-              <h3 className="font-medium">Proposal text (untrusted)</h3>
-              <p>{changeSet.title}</p>
-              {changeSet.summary && <p className="whitespace-pre-wrap">{changeSet.summary}</p>}
-            </aside>
-            <h3 className="font-semibold">Semantic field diff</h3>
-            {result.value.operations.map((operation) => (
-              <Card key={operation.ordinal}>
-                <CardHeader>
-                  <CardTitle>
-                    Operation {operation.ordinal}:{" "}
-                    {changeSet.operations[operation.ordinal - 1]?.operation.kind}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {operation.evidence !== "available" && (
-                    <p>Diff evidence: {operation.evidence.replaceAll("_", " ")}</p>
-                  )}
-                  {operation.fields.map((field) => (
-                    <div key={field.path} className="mb-4">
-                      <h4 className="break-all font-medium">{field.path}</h4>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <div className="rounded border p-3">
-                          <p className="font-medium">Before</p>
-                          <JsonValue item={field.before} />
-                        </div>
-                        <div className="rounded border p-3">
-                          <p className="font-medium">After</p>
-                          <JsonValue item={field.after} />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            ))}
-          </section>
+          <AgentChangeSetReviewFacts review={result.value} />
           <section id="validation" className="space-y-3">
             <h2 className="text-lg font-semibold">Validation</h2>
             <p>
@@ -672,7 +685,7 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
             preview.changeSetId === changeSet.id &&
             preview.previewId === changeSet.preview?.previewId &&
             preview.planHash === changeSet.planHash ? (
-              <Preview
+              <AgentChangeSetPreview
                 key={`${preview.previewId}:${preview.generation}:${preview.state}`}
                 changeSet={changeSet}
                 preview={preview}
@@ -693,8 +706,14 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
               }}
             />
           )}
+          <AgentApprovalRequest
+            key={`${changeSet.id}:${changeSet.draftVersion}`}
+            changeSet={changeSet}
+            onChanged={result.refresh}
+            onLost={clearEvidence}
+          />
           <p className="text-sm text-neutral-500">
-            Approval decisions and content application are not available in this release.
+            Content application and schedule execution are not available in this release.
           </p>
         </>
       )}

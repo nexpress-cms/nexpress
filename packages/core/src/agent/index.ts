@@ -39,3 +39,5 @@ export * from "./preview-artifact-contract.js";
 export * from "./preview-artifact-service.js";
 
 export * from "./changeset-capability.js";
+
+export * from "./approval-service.js";

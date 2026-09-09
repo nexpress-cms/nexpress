@@ -180,6 +180,7 @@ export const npAgentApprovalStatementCanonicalChangeSetTargetIncludedKeysV1 = [
   "kind",
   "changeSetId",
   "planHash",
+  "scheduledFor",
 ] as const satisfies readonly (keyof Extract<NpAgentApprovalTargetV1, { kind: "changeset" }>)[];
 
 export const npAgentApprovalStatementCanonicalRollbackTargetIncludedKeysV1 = [
@@ -274,6 +275,7 @@ export const npAgentApprovalCanonicalDiscriminatorCasesV1 = [
 
 const REQUESTER_KEYS = ["kind", "principalId", "userId", "fingerprint"] as const;
 const TARGET_KEYS = [
+  "scheduledFor",
   "kind",
   "changeSetId",
   "rollbackPlanId",
@@ -433,6 +435,16 @@ function parseRequester(
   };
 }
 
+/** Reuses the statement's closed target contract for current safe review projections. */
+export function npRequireAgentApprovalTargetV1(value: unknown): NpAgentApprovalTargetV1 {
+  return npRequireAgentContractResult(
+    analyzeCanonicalBody("agent.approval.target", () =>
+      parseTarget(value, "agent.approval.target", { seen: new WeakSet<object>() }),
+    ),
+    "Invalid approval target",
+  );
+}
+
 function parseTarget(
   value: unknown,
   path: string,
@@ -450,6 +462,10 @@ function parseTarget(
       kind,
       changeSetId: canonicalBodyUuid(record.changeSetId, `${path}.changeSetId`),
       planHash: canonicalBodySha256Digest(record.planHash, `${path}.planHash`),
+      scheduledFor:
+        record.scheduledFor === null
+          ? null
+          : canonicalBodyUtc(record.scheduledFor, `${path}.scheduledFor`),
     };
   }
   if (kind === "changeset_rollback") {

@@ -97,7 +97,7 @@ export type NpAgentApprovalRequesterV1 =
   | { kind: "staff"; userId: string | null; fingerprint: string };
 
 export type NpAgentApprovalTargetV1 =
-  | { kind: "changeset"; changeSetId: string; planHash: string }
+  | { kind: "changeset"; changeSetId: string; planHash: string; scheduledFor: string | null }
   | {
       kind: "changeset_rollback";
       changeSetId: string;

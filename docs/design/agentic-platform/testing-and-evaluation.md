@@ -1625,3 +1625,7 @@ claimed by these tests.
 ## AP-307–309 review verification
 
 The R3 review slice adds hostile static HTML/report/DNS tests, sealed overlay and authority-loss PostgreSQL tests, descriptor/OpenAPI closed-schema and fingerprint checks, bounded review/filter tests, and a native browser launch POST through the shared proxy/decoder. Existing multi-site credential/admission, artifact integrity, fresh scaffold and Admin Playwright suites remain required. See [R3 review surfaces](r3-review-surfaces.md) for final results and explicit execution boundaries.
+
+## R4 approval verification
+
+The current approval-only implementation is described in [R4 approval flow](r4-approval-flow.md). It reuses existing sealed ChangeSets, generic Admin decision routes, canonical integrity evidence and explicit bounded maintenance. Execution, scheduling, cancellation and rollback remain later R4 slices.

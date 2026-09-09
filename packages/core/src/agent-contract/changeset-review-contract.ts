@@ -1,3 +1,9 @@
+import {
+  npAgentChangeSetWireSchemaV1,
+  npAgentApprovalWireSchemaV1,
+  npAgentSchemaObjectV1,
+} from "./changeset-capability-schema.js";
+import type { NpAgentJsonSchema, NpAgentJsonObject } from "./types.js";
 import type { NpCapability } from "../auth/capabilities.js";
 import { npCollectionContractLimits } from "../collection-contract/contract.js";
 import type { NpAgentJsonValue } from "./types.js";
@@ -152,3 +158,52 @@ export const npAgentChangeSetReviewInventoryV1 = Object.freeze({
   maximumPathCharacters: 512,
   maximumBytes: npAgentChangeSetLimits.wireBytes,
 } as const);
+
+/** Discovery projection of the existing safe review; canonical analyzers own semantic checks. */
+const {
+  $defs: reviewWireDefinitions,
+  $schema: reviewWireDialect,
+  ...reviewWireNode
+} = npAgentChangeSetWireSchemaV1;
+const reviewObject = npAgentSchemaObjectV1;
+const reviewValueSchema = reviewObject({
+  presence: { enum: [...npAgentChangeSetReviewInventoryV1.presence] },
+  value: { $ref: "#/$defs/json" },
+});
+export const npAgentChangeSetReviewSchemaV1: NpAgentJsonSchema = JSON.parse(
+  JSON.stringify({
+    $schema: reviewWireDialect,
+    ...reviewObject({
+      schemaVersion: { const: npAgentChangeSetReviewInventoryV1.schemaVersion },
+      changeSet: { $ref: "#/$defs/changeset" },
+      requiredStaffCapabilities: (npAgentApprovalWireSchemaV1.properties as NpAgentJsonObject)
+        .requiredHumanCapabilities,
+      operations: {
+        type: "array",
+        maxItems: npAgentChangeSetReviewInventoryV1.maximumOperations,
+        items: reviewObject({
+          ordinal: {
+            type: "integer",
+            minimum: 1,
+            maximum: npAgentChangeSetReviewInventoryV1.maximumOperations,
+          },
+          evidence: { enum: [...npAgentChangeSetReviewInventoryV1.evidence] },
+          fields: {
+            type: "array",
+            maxItems: npAgentChangeSetReviewInventoryV1.maximumFields,
+            items: reviewObject({
+              path: {
+                type: "string",
+                minLength: 1,
+                maxLength: npAgentChangeSetReviewInventoryV1.maximumPathCharacters,
+              },
+              before: reviewValueSchema,
+              after: reviewValueSchema,
+            }),
+          },
+        }),
+      },
+    }),
+    $defs: { ...(reviewWireDefinitions as NpAgentJsonObject), changeset: reviewWireNode },
+  }),
+) as NpAgentJsonSchema;

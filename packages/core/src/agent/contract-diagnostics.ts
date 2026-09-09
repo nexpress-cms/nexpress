@@ -341,6 +341,32 @@ const ISSUE_SUMMARY_SQL = `
      where ordinal not between 1 and 500 or (before_snapshot is null) <> (snapshot_hash is null)
     union all select 'AGENT_ROW_STATE_INVALID', requested_at from public.np_agent_approvals
      where generation < 1 or version < 1 or (state = 'consumed') <> (consumed_at is not null)
+        or statement_body->>'siteId' is distinct from site_id
+        or statement_body->>'approvalId' is distinct from id::text
+        or statement_body->>'capabilityId' is distinct from capability_id
+        or statement_body->>'capabilityFingerprint' is distinct from capability_fingerprint
+        or (case when target_kind='action' then statement_body->'target'->>'proposalHash' else statement_body->'target'->>'planHash' end) is distinct from plan_hash
+        or statement_body->'requester'->>'fingerprint' is distinct from requester_fingerprint
+        or statement_body->'requiredScopes' is distinct from to_jsonb(required_scopes)
+        or statement_body->'requiredHumanCapabilities' is distinct from to_jsonb(required_human_capabilities)
+        or statement_body->'requiredHumanPredicates' is distinct from to_jsonb(required_human_predicates)
+        or statement_body->'policyHashes' is distinct from to_jsonb(policy_hashes)
+        or (state in ('approved','rejected','consumed') and decision_body is null)
+        or (state = 'pending' and decision_body is not null)
+        or (decision_body is not null and (
+          decision_body->>'siteId' is distinct from site_id
+          or decision_body->>'approvalId' is distinct from id::text
+          or decision_body->>'approvalGeneration' is distinct from generation::text
+          or decision_body->>'statementHash' is distinct from statement_hash
+          or decision_body->>'deciderFingerprint' is distinct from decider_fingerprint
+          or not coalesce((
+            (decision_body->>'decision'='reject' and decision_body->'reauthentication'->>'mode'='none' and decision_reauth_fingerprint is null and decision_reauthenticated_at is null)
+            or (decision_body->>'decision'='approve' and (
+              (required_reauth_mode='none' and decision_body->'reauthentication'->>'mode'='none' and decision_reauth_fingerprint is null and decision_reauthenticated_at is null)
+              or (required_reauth_mode='recent-staff-primary' and decision_body->'reauthentication'->>'mode'='recent' and decision_reauth_fingerprint is not null and decision_reauthenticated_at is not null)
+            ))
+          ), false)
+        ))
     union all select 'AGENT_RELATION_CROSS_SITE', operation.created_at from public.np_agent_changeset_operations operation
       left join public.np_agent_changesets target on target.id=operation.changeset_id
      where target.id is null or target.site_id<>operation.site_id
