@@ -12,10 +12,7 @@ import type {
   NpAgentJsonSchema,
 } from "./types.js";
 import { npAgentScopes, npAgentCapabilityIds } from "./types.js";
-import {
-  npRequireAgentContractResult,
-  npAgentContractLimits,
-} from "./contract.js";
+import { npRequireAgentContractResult, npAgentContractLimits } from "./contract.js";
 import {
   analyzeCanonicalBody,
   canonicalBodyRecord,
