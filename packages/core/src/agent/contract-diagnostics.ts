@@ -18,6 +18,7 @@ import type { NpAgentVaultAdapterRegistryV1 } from "./vault-runtime.js";
 const AGENT_TABLES = [
   "np_agent_actions",
   "np_agent_approvals",
+  "np_agent_changeset_executions",
   "np_agent_changeset_operations",
   "np_agent_changeset_previews",
   "np_agent_changeset_validation_attempts",
@@ -48,6 +49,18 @@ const AGENT_TABLES = [
 
 /** Critical state and same-site constraints whose absence weakens fail-closed diagnostics. */
 const AGENT_CONSTRAINTS = [
+  "np_agent_changeset_executions_changeset_fk",
+  "np_agent_changeset_executions_approval_fk",
+  "np_agent_changeset_executions_invocation_fk",
+  "np_agent_changeset_executions_state_check",
+  "np_agent_changeset_executions_hash_check",
+  "np_agent_changeset_executions_lease_check",
+  "np_agent_changeset_executions_time_check",
+  "np_agent_changeset_executions_terminal_check",
+  "np_agent_changeset_executions_verification_check",
+  "np_agent_changeset_executions_effects_check",
+  "np_agent_changeset_executions_result_check",
+
   "np_agent_changeset_previews_started_check",
   "np_agent_changeset_previews_changeset_fk",
   "np_agent_changeset_previews_invocation_fk",
@@ -231,6 +244,7 @@ const STATE_SUMMARY_SQL = `
     union all select 'preview-upload', state, created_at from public.np_agent_preview_artifact_uploads
     union all select 'preview-viewer-launch', state, created_at from public.np_agent_preview_viewer_launches
     union all select 'preview-render-session', state, issued_at from public.np_agent_preview_render_sessions
+    union all select 'changeset-execution', state, reserved_at from public.np_agent_changeset_executions
     union all select 'changeset', state, created_at from public.np_agent_changesets
     union all select 'changeset-operation', state, created_at from public.np_agent_changeset_operations
     union all select 'approval', state, requested_at from public.np_agent_approvals
@@ -293,6 +307,16 @@ const ISSUE_SUMMARY_SQL = `
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_oauth_codes
      where status not in ('active', 'consumed', 'revoked', 'expired')
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_changesets where state not in ('draft','validating','invalid','ready','approval_pending','approved','scheduled','applying','applied','verifying','verified','rejected','cancelled','apply_failed','verification_failed','rolling_back','rolled_back','rollback_failed')
+    union all select 'AGENT_EXECUTION_DIVERGED', e.reserved_at from public.np_agent_changeset_executions e
+     where not exists(select 1 from public.np_agent_changesets c where c.site_id=e.site_id and c.id=e.changeset_id and c.plan_hash=e.plan_hash and c.scheduled_for is not distinct from e.scheduled_for)
+       or not exists(select 1 from public.np_agent_approvals a where a.site_id=e.site_id and a.id=e.approval_id and a.target_kind='changeset' and a.target_changeset_id=e.changeset_id and a.plan_hash=e.plan_hash and (e.committed_at is null or (a.state='consumed' and a.consumed_at=e.committed_at)))
+       or (e.invocation_id is not null and not exists(select 1 from public.np_agent_invocations i where i.site_id=e.site_id and i.id=e.invocation_id))
+       or (e.committed_at is not null and (not exists(select 1 from public.np_agent_changeset_operations o where o.site_id=e.site_id and o.changeset_id=e.changeset_id) or exists(select 1 from public.np_agent_changeset_operations o where o.site_id=e.site_id and o.changeset_id=e.changeset_id and (o.after_hash is null or o.result_digest is null or o.state not in ('applied','verified','failed')))))
+       or e.state='ambiguous'
+       or exists(select 1 from jsonb_array_elements(e.effects) x where x->>'state'='unknown')
+    union all select 'AGENT_STALE_EXECUTION', e.reserved_at from public.np_agent_changeset_executions e
+     where e.state in ('reserved','committed','verifying') and ((e.lease_until is not null and e.lease_until<=$1::timestamptz) or (e.lease_until is null and coalesce(e.committed_at,e.scheduled_for,e.reserved_at)<=$1::timestamptz-interval '10 minutes'))
+    union all select 'AGENT_EXECUTION_VERIFICATION_FAILED', e.verification_completed_at from public.np_agent_changeset_executions e where e.verification_state='failed'
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_changeset_operations where state not in ('draft','valid','invalid','applied','verified','failed')
     union all select 'AGENT_ROW_STATE_INVALID', requested_at from public.np_agent_approvals where state not in ('pending','approved','rejected','expired','consumed','revoked')
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_connections

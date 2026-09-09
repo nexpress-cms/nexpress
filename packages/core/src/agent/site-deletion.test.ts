@@ -10,6 +10,7 @@ import {
 const expectedTables = [
   "np_agent_actions",
   "np_agent_approvals",
+  "np_agent_changeset_executions",
   "np_agent_changeset_operations",
   "np_agent_changeset_previews",
   "np_agent_changeset_validation_attempts",

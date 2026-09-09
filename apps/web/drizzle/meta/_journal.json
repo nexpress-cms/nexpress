@@ -295,6 +295,13 @@
       "when": 1788935721501,
       "tag": "0041_agent-approval-decision-reauth",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1788953802626,
+      "tag": "0042_agent-changeset-execution",
+      "breakpoints": true
     }
   ]
 }

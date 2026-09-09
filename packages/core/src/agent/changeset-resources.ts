@@ -48,6 +48,8 @@ interface ResourceContext {
   user: NpAuthUser;
   operation: NpAgentChangeSetOperationInput;
   canonicalResourceKey: NpAgentChangeSetResourceKeyV1;
+  /** Server-only: caller verified committed execution before selecting current target visibility. */
+  currentResource?: boolean;
 }
 export interface NpAgentChangeSetPrepareResourceInputV1 extends ResourceContext {
   /** All create reservations in this draft, including earlier accepted operations. */
@@ -346,6 +348,7 @@ export function createAgentChangeSetResourceServiceV1() {
     writable: boolean,
     reserved: ReadonlySet<string>,
   ): Promise<InspectedResource> {
+    if (writable && input.currentResource) throw invalid();
     if (!npIsCanonicalSiteId(input.siteId)) throw invalid();
     let operation: NpAgentChangeSetOperationInput;
     let canonicalResourceKey: NpAgentChangeSetResourceKeyV1;
@@ -365,7 +368,7 @@ export function createAgentChangeSetResourceServiceV1() {
       let document: InspectedResource["document"] = null;
       if (operation.kind === "document") {
         const config = collection(operation.resource.collection);
-        const creating = operation.operation === "create";
+        const creating = operation.operation === "create" && !input.currentResource;
         if (canonicalResourceKey.kind !== "document") throw invalid();
         const original = creating
           ? null
@@ -394,8 +397,9 @@ export function createAgentChangeSetResourceServiceV1() {
           }
           if (collision) throw reference();
         }
-        const supplied =
-          operation.operation === "create"
+        const supplied = input.currentResource
+          ? null
+          : operation.operation === "create"
             ? operation.input.document
             : operation.operation === "update"
               ? operation.input.patch
@@ -460,12 +464,12 @@ export function createAgentChangeSetResourceServiceV1() {
         );
         document = { config, original, candidate };
         const editable = npProjectAgentEditableDocumentV1(config.fields, candidate);
-        if (operation.operation === "create")
+        if (operation.operation === "create" && !input.currentResource)
           operation = {
             ...operation,
             input: { ...operation.input, document: json(editable) as NpAgentJsonObject },
           };
-        if (operation.operation === "update")
+        if (operation.operation === "update" && !input.currentResource)
           operation = {
             ...operation,
             input: {
@@ -479,7 +483,7 @@ export function createAgentChangeSetResourceServiceV1() {
           };
       } else if (operation.kind === "navigation") {
         const [row] = await (input.tx ?? getDb())
-          .select({ location: npNavigation.location })
+          .select({ location: npNavigation.location, items: npNavigation.items })
           .from(npNavigation)
           .where(
             and(
@@ -492,7 +496,7 @@ export function createAgentChangeSetResourceServiceV1() {
         await navigation(
           input.siteId,
           input.user,
-          operation.input.items,
+          input.currentResource ? (row as { items: NpNavItem[] }).items : operation.input.items,
           reserved,
           scopes,
           input.tx,
@@ -501,7 +505,10 @@ export function createAgentChangeSetResourceServiceV1() {
         const active = await getActiveTheme(input.tx ? { tx: input.tx } : undefined);
         if (!active || active.manifest.id !== operation.resource.themeId) throw missing();
       } else if (operation.kind === "setting") {
-        if (operation.operation === "remove" || operation.base !== null) {
+        if (
+          !input.currentResource &&
+          (operation.operation === "remove" || operation.base !== null)
+        ) {
           const [row] = await (input.tx ?? getDb())
             .select({ key: npSettings.key })
             .from(npSettings)

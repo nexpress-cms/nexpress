@@ -1,4 +1,10 @@
 import {
+  npAgentChangeSetApplyInputSchemaV1,
+  npAgentChangeSetScheduleInputSchemaV1,
+  npAgentChangeSetCancelInputSchemaV1,
+} from "./changeset-execution-contract.js";
+import { npAgentChangeSetReviewSchemaV1 } from "./changeset-review-contract.js";
+import {
   npAgentChangeSetRequestApprovalInputSchemaV1,
   npAgentApprovalChallengeRequestSchemaV1,
   npAgentApprovalDecisionInputSchemaV1,
@@ -823,7 +829,15 @@ function preconditionField(
   id: string,
   kind: NpAgentAdminOperationPreconditionKindV1,
 ): NpAgentAdminOperationPreconditionV1["field"] {
-  if (id === "agents.changesets.request_approval" && kind === "row-version")
+  if (
+    [
+      "agents.changesets.request_approval",
+      "agents.changesets.apply",
+      "agents.changesets.schedule",
+      "agents.changesets.cancel",
+    ].includes(id) &&
+    kind === "row-version"
+  )
     return "expectedDraftVersion";
   if (
     [
@@ -840,6 +854,12 @@ function preconditionField(
 }
 
 function buildInputSchema(seed: OperationSeed): NpAgentJsonSchema {
+  if (seed.id === "agents.changesets.apply")
+    return requireSchema(npAgentChangeSetApplyInputSchemaV1);
+  if (seed.id === "agents.changesets.schedule")
+    return requireSchema(npAgentChangeSetScheduleInputSchemaV1);
+  if (seed.id === "agents.changesets.cancel")
+    return requireSchema(npAgentChangeSetCancelInputSchemaV1);
   if (seed.id === "agents.changesets.request_approval")
     return requireSchema(npAgentChangeSetRequestApprovalInputSchemaV1);
   if (seed.id === "agents.approvals.decision_challenge")
@@ -952,6 +972,12 @@ function outputShape(kind: NpAgentAdminOperationOutputKindV1): {
 }
 
 function buildOutputSchema(seed: OperationSeed): NpAgentJsonSchema {
+  if (
+    ["agents.changesets.apply", "agents.changesets.schedule", "agents.changesets.cancel"].includes(
+      seed.id,
+    )
+  )
+    return requireSchema(npAgentChangeSetReviewSchemaV1);
   if (
     [
       "agents.changesets.request_approval",

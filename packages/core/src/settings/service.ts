@@ -148,3 +148,16 @@ export async function getAdminSettingsSnapshot(siteId?: string): Promise<NpAdmin
   ]);
   return { site, seo };
 }
+
+/** Remove the stored SEO override, restoring the existing default read behavior. */
+export async function removeSeoSettings(
+  siteId: string,
+  options: { tx: NpTransaction },
+): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
+  const resolved = await resolveSiteId(siteId);
+  await requireSettingsSite(resolved, options);
+  await options.tx
+    .delete(npSettings)
+    .where(and(eq(npSettings.siteId, resolved), eq(npSettings.key, "seo"))!);
+}

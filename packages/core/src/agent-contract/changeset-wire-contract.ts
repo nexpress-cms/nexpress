@@ -829,7 +829,7 @@ function parseExecution(value: unknown, path: string): NpAgentExecutionSummary {
     finishedAt: nullable(utc),
   });
   if (result.finishedAt !== null) order(result.startedAt, result.finishedAt, path);
-  if (["succeeded", "failed"].includes(result.state) !== (result.finishedAt !== null))
+  if (["succeeded", "failed", "ambiguous"].includes(result.state) !== (result.finishedAt !== null))
     failCanonicalBody("invalid-field", path, "execution terminal timestamp must match state");
   return result;
 }
@@ -848,6 +848,22 @@ function parseVerification(value: unknown, path: string): NpAgentVerificationSum
   )
     failCanonicalBody("invalid-field", path, "verification result must match state");
   return result;
+}
+export function npRequireAgentExecutionSummaryV1(value: unknown): NpAgentExecutionSummary {
+  return npRequireAgentContractResult(
+    analyzeCanonicalBody("agent.execution.summary", () =>
+      parseExecution(clone(value, "agent.execution.summary"), "agent.execution.summary"),
+    ),
+    "Invalid execution summary",
+  );
+}
+export function npRequireAgentVerificationSummaryV1(value: unknown): NpAgentVerificationSummary {
+  return npRequireAgentContractResult(
+    analyzeCanonicalBody("agent.verification.summary", () =>
+      parseVerification(clone(value, "agent.verification.summary"), "agent.verification.summary"),
+    ),
+    "Invalid verification summary",
+  );
 }
 function parseRollback(value: unknown, path: string): NpAgentRollbackSummary {
   const result = object(value, path, {

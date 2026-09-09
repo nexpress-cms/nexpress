@@ -1320,6 +1320,22 @@ The effective AP-206 inventory remains server-authoritative. Plugins cannot
 add Agent Gateway capability ids, scopes, MCP tools, resources, templates, or
 prompts in v1.
 
+## ChangeSet approval and execution
+
+The generated Admin ChangeSet and approval wrappers reuse the shared service.
+They remain unavailable until the server host explicitly installs the runtime,
+approval keyrings and canonical execution-definition resolver. Apply/schedule/
+cancel additionally require explicit execution intent and convergence hooks.
+An approval authorizes only its sealed plan and intended operation/time; it does
+not enable execution or create a worker. The existing review shows only current
+server-authorized controls and recorded execution/verification evidence.
+
+The host explicitly owns bounded execution/verification processors and job
+registration. After an unknown effect, inspect retained evidence before retrying;
+never replay opaque hooks or treat a missing response as proof of no commit.
+Rollback and Agent HTTP/MCP execution capabilities are not installed by these
+wrappers. Generated configuration remains disabled by default.
+
 ## Jobs
 
 \`\`\`bash

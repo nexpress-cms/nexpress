@@ -18,6 +18,7 @@ const HEALTH_SUMMARY_MAXIMUM_BYTES = 128 * 1024;
 export const npAgentDiagnosticEntitiesV1 = [
   "action",
   "changeset",
+  "changeset-execution",
   "changeset-operation",
   "changeset-validation-attempt",
   "changeset-preview",
@@ -49,6 +50,8 @@ export const npAgentDiagnosticEntitiesV1 = [
 export type NpAgentDiagnosticEntityV1 = (typeof npAgentDiagnosticEntitiesV1)[number];
 
 export const npAgentDiagnosticStatesV1 = [
+  "committed",
+  "reserved",
   "rendering",
   "delete_pending",
   "exchange_pending",
@@ -121,6 +124,9 @@ export const npAgentContractDiagnosticIssueCodesV1 = [
   "AGENT_CONNECTION_OPERATION_DIVERGED",
   "AGENT_CONNECTION_POINTER_DIVERGED",
   "AGENT_DELETION_SAGA_DIVERGED",
+  "AGENT_EXECUTION_DIVERGED",
+  "AGENT_STALE_EXECUTION",
+  "AGENT_EXECUTION_VERIFICATION_FAILED",
   "AGENT_EXPIRY_BACKLOG",
   "AGENT_MCP_TASK_DIVERGED",
   "AGENT_RELATION_CROSS_SITE",

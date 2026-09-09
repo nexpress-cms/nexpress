@@ -21,6 +21,40 @@ const MEMBER_ID = "7d133e30-8079-47a7-b970-66cd478956de";
 const DOCUMENT_ID = "d4cafb07-c120-4503-90fa-6d6fc4104ce3";
 
 describe("job runtime contract", () => {
+  it("closes explicitly installed ChangeSet jobs over site and immutable admission", () => {
+    const apply = {
+      siteId: "default",
+      changeSetId: DOCUMENT_ID,
+      planHash: `cj1:sha256:${"A".repeat(43)}`,
+      approvalId: STAFF_ID,
+      scheduledFor: null,
+      idempotencyKey: "apply-1",
+    };
+    expect(npAnalyzeJobPayload("agent:changesetApply", apply).ok).toBe(true);
+    expect(
+      npAnalyzeJobPayload("agent:changesetVerify", {
+        siteId: "default",
+        changeSetId: DOCUMENT_ID,
+        executionId: STAFF_ID,
+      }).ok,
+    ).toBe(true);
+    for (const bad of [
+      { ...apply, siteId: "Bad Site" },
+      { ...apply, executionId: STAFF_ID },
+      { ...apply, scheduledFor: "2026-09-09" },
+      { ...apply, planHash: "raw" },
+      { ...apply, idempotencyKey: "" },
+    ])
+      expect(npAnalyzeJobPayload("agent:changesetApply", bad).ok).toBe(false);
+    expect(
+      npAnalyzeJobPayload("agent:changesetVerify", {
+        siteId: "default",
+        changeSetId: DOCUMENT_ID,
+        executionId: STAFF_ID,
+        credential: "hidden",
+      }).ok,
+    ).toBe(false);
+  });
   it("keeps the registry extensible while rejecting non-canonical job types", () => {
     expect(npAnalyzeJobType("search:reindex")).toEqual({
       ok: true,

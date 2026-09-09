@@ -16,6 +16,8 @@ export const NP_BUILTIN_JOB_TYPES = [
   "members:sendPasswordReset",
   "notifications:sendDigest",
   "import:wordpressApply",
+  "agent:changesetApply",
+  "agent:changesetVerify",
 ] as const;
 
 export const NP_JOB_STATES = [
@@ -126,7 +128,24 @@ export interface NpWordPressImportApplyJobData {
   runId: string;
 }
 
+/** Explicitly installed Agent continuation jobs; these types do not install workers. */
+export interface NpAgentChangeSetApplyJobPayload {
+  siteId: string;
+  changeSetId: string;
+  planHash: string;
+  approvalId: string;
+  scheduledFor: string | null;
+  idempotencyKey: string;
+}
+export interface NpAgentChangeSetVerifyJobPayload {
+  siteId: string;
+  changeSetId: string;
+  executionId: string;
+}
+
 export interface NpBuiltinJobPayloadMap {
+  "agent:changesetApply": NpAgentChangeSetApplyJobPayload;
+  "agent:changesetVerify": NpAgentChangeSetVerifyJobPayload;
   "content:afterSave": NpContentAfterSaveJobData;
   "content:afterDelete": NpContentAfterDeleteJobData;
   "search:reindex": NpSearchReindexJobData;

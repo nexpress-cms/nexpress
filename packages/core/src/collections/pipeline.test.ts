@@ -15,6 +15,87 @@ import {
 describe("nested post-commit scopes", () => {
   const context = { collection: "posts", documentId: "document" };
 
+  it("registers journal evidence before commit and dispatches stable nested ordinals after commit", async () => {
+    const events: string[] = [];
+    let committed = false;
+    const observer = {
+      register: vi.fn((metadata: { ordinal: number }) => {
+        expect(committed).toBe(false);
+        events.push(`register:${metadata.ordinal}`);
+        return Promise.resolve();
+      }),
+      dispatch: vi.fn(async (metadata: { ordinal: number }, fn: () => Promise<unknown>) => {
+        expect(committed).toBe(true);
+        events.push(`dispatch:${metadata.ordinal}`);
+        await fn();
+      }),
+    };
+    await withDeferredPostCommit(
+      async () => {
+        await runPostCommit("first", context, () => {
+          events.push("first");
+          return Promise.resolve();
+        });
+        await withDeferredPostCommit(async () => {
+          await runPostCommit("second", context, () => {
+            events.push("second");
+            return Promise.resolve();
+          });
+        });
+        committed = true;
+      },
+      { observer },
+    );
+    expect(events).toEqual([
+      "register:1",
+      "register:2",
+      "dispatch:1",
+      "first",
+      "dispatch:2",
+      "second",
+    ]);
+    expect(observer.register.mock.calls[0]?.[0]).toEqual({ ordinal: 1, label: "first", context });
+  });
+
+  it("aborts before dispatch when durable registration fails and forbids replacing a nested observer", async () => {
+    const effect = vi.fn(async () => {});
+    const observer = {
+      register: vi.fn(() => Promise.reject(new Error("journal unavailable"))),
+      dispatch: vi.fn(async () => {}),
+    };
+    await expect(
+      withDeferredPostCommit(
+        async () => {
+          await runPostCommit("first", context, effect);
+        },
+        { observer },
+      ),
+    ).rejects.toThrow("journal unavailable");
+    expect(observer.dispatch).not.toHaveBeenCalled();
+    expect(effect).not.toHaveBeenCalled();
+    await expect(
+      withDeferredPostCommit(
+        async () => {
+          await withDeferredPostCommit(async () => {}, { observer: { ...observer } });
+        },
+        { observer },
+      ),
+    ).rejects.toThrow("cannot replace");
+  });
+
+  it("allows journal dispatch to fence uncertain work without invoking its closure", async () => {
+    const effect = vi.fn(async () => {});
+    const observer = { register: vi.fn(async () => {}), dispatch: vi.fn(async () => {}) };
+    await withDeferredPostCommit(
+      async () => {
+        await runPostCommit("uncertain", context, effect);
+      },
+      { observer },
+    );
+    expect(observer.dispatch).toHaveBeenCalledOnce();
+    expect(effect).not.toHaveBeenCalled();
+  });
+
   it("waits for the outer commit and preserves nested FIFO order", async () => {
     const effects: string[] = [];
     await withDeferredPostCommit(async () => {

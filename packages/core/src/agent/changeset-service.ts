@@ -1,3 +1,23 @@
+import { createAgentChangeSetApplyResourceServiceV1 } from "./changeset-apply-resources.js";
+import { npVerifyChangeSetExecutionV1 } from "./changeset-execution-verification.js";
+import {
+  withDeferredPostCommit,
+  type NpDeferredPostCommitMetadata,
+} from "../collections/pipeline.js";
+import { withCurrentSite } from "../sites/context.js";
+import { registerJobHandler } from "../jobs/handlers.js";
+import { npNormalizeJobPayload } from "../jobs-contract/contract.js";
+import type {
+  NpAgentChangeSetApplyJobPayload,
+  NpAgentChangeSetVerifyJobPayload,
+} from "../jobs-contract/types.js";
+import {
+  npRequireAgentChangeSetApplyInputV1,
+  npRequireAgentChangeSetScheduleInputV1,
+  npRequireAgentChangeSetCancelInputV1,
+  npRequireAgentChangeSetExecutionDetailV1,
+  type NpAgentVerificationCheckV1,
+} from "../agent-contract/changeset-execution-contract.js";
 import {
   createAgentApprovalServiceV1,
   type NpAgentApprovalServiceV1,
@@ -52,10 +72,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, chmod, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { and, asc, desc, eq, gt, lt, lte, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, lt, lte, inArray, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
 import {
   npAgentChangesets,
+  npAgentChangesetExecutions,
+  type NpAgentChangeSetExecutionEffectV1,
   npAgentChangesetOperations,
   npAgentInvocations,
   npAgentPrincipals,
@@ -65,7 +87,7 @@ import {
   npAgentPreviewArtifacts,
   npAgentPreviewArtifactUploads,
 } from "../db/schema/agent.js";
-import { npUsers, npSessions, npSiteMemberships } from "../db/schema/system.js";
+import { npUsers, npSessions, npSiteMemberships, npRevisions } from "../db/schema/system.js";
 import { npAuditEvents } from "../db/schema/community.js";
 import { can } from "../auth/capabilities.js";
 import type { NpTransaction } from "../collections/pipeline.js";
@@ -156,6 +178,17 @@ export type NpAgentChangeSetActorV1 =
   | { kind: "principal"; authentication: NpAgentCapabilityAuthenticationV1 };
 export interface NpAgentChangeSetServiceOptionsV1 extends NpAgentAdminAdmissionOptionsV1 {
   cursorKey: Uint8Array;
+  /** Explicit host installation; no worker, queue, or runtime is created. */
+  execution?: {
+    resolveIntent: (input: { siteId: string }) => Promise<{ enabled: boolean; paused: boolean }>;
+    verificationFingerprint: string;
+    verifyConvergence: Parameters<typeof npVerifyChangeSetExecutionV1>[0]["verifyConvergence"];
+    inspectPostCommitEffect?: Parameters<
+      typeof npVerifyChangeSetExecutionV1
+    >[0]["inspectPostCommitEffect"];
+    enqueueApply?: (job: NpAgentChangeSetApplyJobPayload) => Promise<void>;
+    enqueueVerify?: (job: NpAgentChangeSetVerifyJobPayload) => Promise<void>;
+  };
   /** Explicit approval-only installation. Execution is not installed or advertised. */
   approvals?: Pick<NpAgentApprovalServiceOptionsV1, "integrityKeys" | "challengeKeys"> & {
     lifetimeSeconds?: number;
@@ -234,6 +267,32 @@ export interface NpAgentChangeSetListFiltersV1 {
   createdBefore?: string | null;
 }
 export interface NpAgentChangeSetServiceV1 {
+  apply: (input: {
+    actor: Extract<NpAgentChangeSetActorV1, { kind: "staff" }>;
+    id: string;
+    command: unknown;
+  }) => Promise<NpAgentChangeSetReviewV1>;
+  schedule: (input: {
+    actor: Extract<NpAgentChangeSetActorV1, { kind: "staff" }>;
+    id: string;
+    command: unknown;
+  }) => Promise<NpAgentChangeSetReviewV1>;
+  cancel: (input: {
+    actor: Extract<NpAgentChangeSetActorV1, { kind: "staff" }>;
+    id: string;
+    command: unknown;
+  }) => Promise<NpAgentChangeSetReviewV1>;
+  processExecution: (
+    input: NpAgentChangeSetApplyJobPayload,
+    control?: { signal: AbortSignal },
+  ) => Promise<{ state: string }>;
+  processVerification: (input: NpAgentChangeSetVerifyJobPayload) => Promise<void>;
+  reconcileExecutions: (input: {
+    siteId: string;
+    limit?: number;
+    cursor?: string;
+  }) => Promise<{ examined: number; nextCursor: string | null }>;
+  registerExecutionJobs: () => void;
   readonly approvals: NpAgentApprovalServiceV1 | null;
   requestApproval: (input: {
     actor: Extract<NpAgentChangeSetActorV1, { kind: "staff" }>;
@@ -347,6 +406,13 @@ const conflict = () =>
   );
 const denied = () =>
   new NpAgentGatewayError("CHANGESET_ACCESS_DENIED", 403, "ChangeSet access is denied.");
+const staffUserProjection = {
+  id: npUsers.id,
+  email: npUsers.email,
+  name: npUsers.name,
+  role: npUsers.role,
+  tokenVersion: npUsers.tokenVersion,
+};
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const json = (value: object) => value as unknown as NpAgentJsonObject;
 interface Actor {
@@ -363,6 +429,19 @@ interface Actor {
 export function createAgentChangeSetServiceV1(
   options: NpAgentChangeSetServiceOptionsV1,
 ): NpAgentChangeSetServiceV1 {
+  if (
+    options.execution &&
+    (!options.approvals ||
+      !/^cj1:sha256:[A-Za-z0-9_-]{43}$/.test(options.execution.verificationFingerprint) ||
+      typeof options.execution.resolveIntent !== "function" ||
+      typeof options.execution.verifyConvergence !== "function" ||
+      [
+        options.execution.enqueueApply,
+        options.execution.enqueueVerify,
+        options.execution.inspectPostCommitEffect,
+      ].some((fn) => fn !== undefined && typeof fn !== "function"))
+  )
+    throw new Error("Invalid explicit ChangeSet execution installation.");
   const now = options.now ?? (() => new Date());
   const lifetime = options.eligibilitySeconds ?? 30 * 86400;
   if (!Number.isSafeInteger(lifetime) || lifetime < 60 || lifetime > 90 * 86400)
@@ -429,7 +508,11 @@ export function createAgentChangeSetServiceV1(
     const siteId = auth.principal.siteId;
     const userId = auth.principal.authority.userId;
     const live = await npResolveLiveAgentStaffAuthorizationV1(getDb(), siteId, userId);
-    const [user] = await getDb().select().from(npUsers).where(eq(npUsers.id, userId)).limit(1);
+    const [user] = await getDb()
+      .select(staffUserProjection)
+      .from(npUsers)
+      .where(eq(npUsers.id, userId))
+      .limit(1);
     if (!user || !live.authority.capabilities.includes(npAgentScopeStaffCapability[scope]))
       throw denied();
     return {
@@ -485,6 +568,7 @@ export function createAgentChangeSetServiceV1(
     includePreview = true,
   ): Promise<NpAgentChangeSetWire> {
     const ops = await operations(db, row);
+    const execution = await executionEvidence(db, row, ops);
     const reserved = ops
       .filter((op) => op.input.kind === "document" && op.input.operation === "create")
       .flatMap((op) => (op.resourceKey.kind === "document" ? [op.resourceKey.documentId] : []));
@@ -501,7 +585,10 @@ export function createAgentChangeSetServiceV1(
         write
           ? (await resources.prepare({ ...context, reservedCreateDocumentIds: reserved }))
               .requiredScopes
-          : await resources.assertVisible(context),
+          : await resources.assertVisible({
+              ...context,
+              currentResource: Boolean(execution?.committedAt),
+            }),
       );
     }
     // Canonical draft identity is checked again on every read; denormalized payloads never win.
@@ -530,6 +617,13 @@ export function createAgentChangeSetServiceV1(
         "approved",
         "rejected",
         "cancelled",
+        "scheduled",
+        "applying",
+        "applied",
+        "apply_failed",
+        "verifying",
+        "verified",
+        "verification_failed",
       ].includes(row.state)
     )
       throw missing();
@@ -643,7 +737,20 @@ export function createAgentChangeSetServiceV1(
         sealed.changeSetId !== row.id ||
         !attempt ||
         attempt.state !== "ready" ||
-        !["ready", "approval_pending", "approved", "rejected", "cancelled"].includes(row.state)
+        ![
+          "ready",
+          "approval_pending",
+          "approved",
+          "rejected",
+          "cancelled",
+          "scheduled",
+          "applying",
+          "applied",
+          "apply_failed",
+          "verifying",
+          "verified",
+          "verification_failed",
+        ].includes(row.state)
       )
         throw missing();
       const body = sealed.body;
@@ -676,10 +783,14 @@ export function createAgentChangeSetServiceV1(
         const planned = body.operations[index];
         const snapshot = op.beforeSnapshot;
         if (
-          op.state !== "valid" ||
+          op.state !==
+            (execution?.committedAt
+              ? row.state === "verified"
+                ? "verified"
+                : "applied"
+              : "valid") ||
           op.issues.length !== 0 ||
-          op.afterHash !== null ||
-          op.resultDigest !== null ||
+          (!execution?.committedAt && (op.afterHash !== null || op.resultDigest !== null)) ||
           planned.ordinal !== op.ordinal ||
           serializeAgentCanonicalJson(planned.operation) !==
             serializeAgentCanonicalJson(op.input) ||
@@ -794,8 +905,7 @@ export function createAgentChangeSetServiceV1(
         .from(npUsers)
         .where(eq(npUsers.id, row.createdByUserId))
         .limit(1);
-      if (!user) throw missing();
-      name = user.name ?? "Staff";
+      name = user?.name ?? "Deleted staff";
     }
     return npRequireAgentChangeSetWire({
       schemaVersion: "np.agent-changeset.v1",
@@ -827,9 +937,9 @@ export function createAgentChangeSetServiceV1(
       validation,
       preview: includePreview ? await latestPreviewSummary(db, row, actor) : null,
       approval: await latestApprovalSummary(db, row),
-      schedule: null,
-      execution: null,
-      verification: null,
+      schedule: row.scheduledFor ? { at: row.scheduledFor.toISOString() } : null,
+      execution: execution ? executionSummary(execution) : null,
+      verification: execution ? verificationSummary(execution) : null,
       rollback: null,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
@@ -883,6 +993,8 @@ export function createAgentChangeSetServiceV1(
         const review = npRequireAgentChangeSetReviewV1({
           schemaVersion: "np.agent-changeset-review.v1",
           changeSet,
+          executionDetail: await executionDetail(db, row, ops),
+          executionActions: [],
           requiredStaffCapabilities:
             sealed?.planKind === "changeset" ? sealed.body.requiredHumanCapabilities : [],
           operations: ops.map((op) =>
@@ -904,6 +1016,7 @@ export function createAgentChangeSetServiceV1(
     await same(input.actor, actor);
     return npRequireAgentChangeSetReviewV1({
       ...review,
+      executionActions: await executionActions(row, actor),
       changeSet: { ...review.changeSet, preview },
     });
   }
@@ -1664,7 +1777,7 @@ export function createAgentChangeSetServiceV1(
     )
       throw denied();
     const [user] = await db
-      .select()
+      .select(staffUserProjection)
       .from(npUsers)
       .where(eq(npUsers.id, ref.userId))
       .for("update")
@@ -1745,7 +1858,11 @@ export function createAgentChangeSetServiceV1(
             : null;
         if (!userId) throw denied();
         const authority = await npResolveLiveAgentStaffAuthorizationV1(db, seed.siteId, userId);
-        const [user] = await db.select().from(npUsers).where(eq(npUsers.id, userId)).limit(1);
+        const [user] = await db
+          .select(staffUserProjection)
+          .from(npUsers)
+          .where(eq(npUsers.id, userId))
+          .limit(1);
         if (!user) throw denied();
         return run(db, {
           siteId: seed.siteId,
@@ -2828,7 +2945,7 @@ export function createAgentChangeSetServiceV1(
     if (
       !options.preview ||
       !row.planHash ||
-      !["ready", "approval_pending", "approved", "rejected"].includes(row.state)
+      !["ready", "approval_pending", "approved", "rejected", "scheduled"].includes(row.state)
     )
       return null;
     const [latest] = await db
@@ -3117,7 +3234,7 @@ export function createAgentChangeSetServiceV1(
           requireReady: true,
           mutate: async (db, preview, authority) => {
             const [user] = await db
-              .select()
+              .select(staffUserProjection)
               .from(npUsers)
               .where(eq(npUsers.id, input.viewer!.userId))
               .limit(1);
@@ -3181,7 +3298,7 @@ export function createAgentChangeSetServiceV1(
   }): Promise<T> {
     const run = async (db: Db) => {
       const [user] = await db
-        .select()
+        .select(staffUserProjection)
         .from(npUsers)
         .where(eq(npUsers.id, input.userId))
         .for("update")
@@ -3745,7 +3862,7 @@ export function createAgentChangeSetServiceV1(
     if (
       !row ||
       row.planHash !== target.planHash ||
-      !["ready", "approval_pending", "approved", "rejected"].includes(row.state)
+      !["ready", "approval_pending", "approved", "rejected", "scheduled"].includes(row.state)
     )
       throw missing();
     return row;
@@ -3758,6 +3875,7 @@ export function createAgentChangeSetServiceV1(
     scheduledFor: string | null,
     verifiedPreview: NpAgentChangeSetWire["preview"],
     minimumPreviewSeconds: number,
+    executing = false,
   ) {
     if (!options.approvals || !row.sealedPlanBody || row.expiresAt <= now()) throw conflict();
     await project(row, actor, false, db, false);
@@ -3887,7 +4005,7 @@ export function createAgentChangeSetServiceV1(
     if (
       intendedOperation === "schedule" &&
       (!scheduledFor ||
-        Date.parse(scheduledFor) <= now().getTime() ||
+        (!executing && Date.parse(scheduledFor) <= now().getTime()) ||
         Date.parse(scheduledFor) >= row.expiresAt.getTime())
     )
       throw conflict();
@@ -3959,6 +4077,25 @@ export function createAgentChangeSetServiceV1(
         if (!sameJson(facts, signed)) throw conflict();
       },
       transition: async (state) => {
+        if (row.state === "scheduled" && state === "ready") {
+          const [decision] = await db
+            .select()
+            .from(npAgentApprovals)
+            .where(
+              and(
+                eq(npAgentApprovals.siteId, row.siteId),
+                eq(npAgentApprovals.targetChangesetId, row.id),
+              ),
+            )
+            .orderBy(desc(npAgentApprovals.generation))
+            .limit(1);
+          await failReservedExecution(
+            db,
+            row,
+            decision?.state === "expired" ? "APPROVAL_EXPIRED" : "APPROVAL_REVOKED",
+          );
+          return;
+        }
         if (!["approval_pending", "approved"].includes(row.state)) throw conflict();
         await db
           .update(npAgentChangesets)
@@ -4044,6 +4181,41 @@ export function createAgentChangeSetServiceV1(
           revalidate: async (input) => {
             if (input.statement.target.kind !== "changeset") throw missing();
             const target = input.statement.target;
+            if (options.execution && approvals) {
+              const [approved] = await getDb()
+                .select()
+                .from(npAgentApprovals)
+                .where(
+                  and(
+                    eq(npAgentApprovals.siteId, input.siteId),
+                    eq(npAgentApprovals.id, input.statement.approvalId),
+                  ),
+                )
+                .limit(1);
+              if (approved?.state === "approved") {
+                const { statement } = await approvals.verify(approved);
+                if (!sameJson(statement, input.statement)) throw conflict();
+                const preview = await executionPreview(approved);
+                await withExecutionAuthority(approved, async (db, actor) => {
+                  const row = await lockApprovalTarget(db, input.siteId, target);
+                  const [current] = await db
+                    .select()
+                    .from(npAgentApprovals)
+                    .where(
+                      and(
+                        eq(npAgentApprovals.siteId, input.siteId),
+                        eq(npAgentApprovals.id, approved.id),
+                      ),
+                    )
+                    .for("update")
+                    .limit(1);
+                  if (!current || current.statementHash !== approved.statementHash)
+                    throw conflict();
+                  await checkExecutionApproval(db, row, current, actor, preview, true);
+                });
+                return;
+              }
+            }
             const seed = await approvalSeed(input.siteId, target.changeSetId);
             let verifiedPreview: NpAgentChangeSetWire["preview"] = null;
             if (input.statement.requiresLivePreview && input.statement.previewId) {
@@ -4166,6 +4338,10 @@ export function createAgentChangeSetServiceV1(
                 return input.mutate(db, {
                   verify: () => Promise.reject(missing()),
                   transition: async (state) => {
+                    if (state === "ready" && row.state === "scheduled") {
+                      await failReservedExecution(db, row, "APPROVAL_EXPIRED");
+                      return;
+                    }
                     if (state !== "ready" || !["approval_pending", "approved"].includes(row.state))
                       throw conflict();
                     await db
@@ -4288,7 +4464,1170 @@ export function createAgentChangeSetServiceV1(
       id: String(result.output.approvalId),
     });
   }
+  type ExecutionRow = typeof npAgentChangesetExecutions.$inferSelect;
+  type ApprovalRow = typeof npAgentApprovals.$inferSelect;
+  const executionResources = createAgentChangeSetApplyResourceServiceV1();
+  const executionWhere = (siteId: string, id: string) =>
+    and(eq(npAgentChangesetExecutions.siteId, siteId), eq(npAgentChangesetExecutions.id, id));
+  const parentWhere = (siteId: string, id: string) =>
+    and(eq(npAgentChangesets.siteId, siteId), eq(npAgentChangesets.id, id));
+  const executeError = (code: string) =>
+    new NpAgentGatewayError(code, 409, "ChangeSet execution requires attention.");
+  function executionSummary(e: ExecutionRow) {
+    return {
+      executionId: e.id,
+      state: e.state,
+      resultDigest: e.resultDigest,
+      startedAt: e.reservedAt.toISOString(),
+      finishedAt: e.finishedAt?.toISOString() ?? null,
+    };
+  }
+  function verificationSummary(e: ExecutionRow) {
+    if (!e.verificationState) return null;
+    return {
+      state: e.verificationState,
+      requiredPassed: e.verificationBody.filter((c) => c.required && c.status === "passed").length,
+      requiredFailed: e.verificationBody.filter(
+        (c) => c.required && ["failed", "unavailable"].includes(c.status),
+      ).length,
+      advisoryWarnings: e.verificationBody.filter(
+        (c) => !c.required && ["failed", "unavailable"].includes(c.status),
+      ).length,
+      digest: e.verificationDigest,
+      completedAt: e.verificationCompletedAt?.toISOString() ?? null,
+    };
+  }
+  function operationResult(row: Row, op: Pick<OpRow, "ordinal" | "afterHash">) {
+    return hash("np.agent-changeset-operation-result.v1", {
+      siteId: row.siteId,
+      changeSetId: row.id,
+      planHash: row.planHash,
+      ordinal: op.ordinal,
+      afterHash: op.afterHash,
+    });
+  }
+  function executionResult(
+    row: Row,
+    e: Pick<ExecutionRow, "id" | "approvalId">,
+    ops: readonly Pick<OpRow, "ordinal" | "afterHash" | "resultDigest">[],
+    resultBody: ExecutionRow["resultBody"],
+  ) {
+    return hash("np.agent-changeset-execution-result.v1", {
+      siteId: row.siteId,
+      changeSetId: row.id,
+      executionId: e.id,
+      approvalId: e.approvalId,
+      snapshots: resultBody?.operations.map((op) => ({
+        ordinal: op.ordinal,
+        snapshotHash: op.snapshotHash,
+      })),
+      planHash: row.planHash,
+      operations: ops.map((op) => ({
+        ordinal: op.ordinal,
+        afterHash: op.afterHash,
+        resultDigest: op.resultDigest,
+      })),
+    });
+  }
+  async function executionEvidence(db: Db, row: Row, ops: OpRow[]) {
+    const [e] = await db
+      .select()
+      .from(npAgentChangesetExecutions)
+      .where(
+        and(
+          eq(npAgentChangesetExecutions.siteId, row.siteId),
+          eq(npAgentChangesetExecutions.changesetId, row.id),
+        ),
+      )
+      .limit(1);
+    if (!e) {
+      if (
+        [
+          "scheduled",
+          "applying",
+          "applied",
+          "verifying",
+          "verified",
+          "verification_failed",
+          "apply_failed",
+        ].includes(row.state)
+      )
+        throw missing();
+      return null;
+    }
+    if (
+      e.planHash !== row.planHash ||
+      e.scheduledFor?.toISOString() !== row.scheduledFor?.toISOString()
+    )
+      throw missing();
+    if (e.committedAt) {
+      if (!e.resultBody || e.resultBody.operations.length !== ops.length) throw missing();
+      let actualSnapshotBytes = 0;
+      for (let i = 0; i < ops.length; i++) {
+        const actual = e.resultBody.operations[i],
+          op = ops[i];
+        actualSnapshotBytes += Buffer.byteLength(serializeAgentCanonicalJson(actual.snapshot));
+        if (actualSnapshotBytes > npAgentChangeSetLimits.aggregateSnapshotBytes) throw missing();
+        if (
+          actual.ordinal !== op.ordinal ||
+          actual.afterHash !== op.afterHash ||
+          actual.snapshot.siteId !== row.siteId ||
+          actual.snapshot.changeSetId !== row.id ||
+          actual.snapshot.operationOrdinal !== op.ordinal ||
+          !sameJson(actual.snapshot.canonicalResourceKey, op.resourceKey) ||
+          (await npDigestAgentChangeSetSnapshotCanonical(actual.snapshot)) !== actual.snapshotHash
+        )
+          throw missing();
+      }
+      if (
+        !["applied", "verifying", "verified", "verification_failed"].includes(row.state) ||
+        row.appliedAt?.toISOString() !== e.committedAt.toISOString() ||
+        !row.rollbackEligibleUntil ||
+        row.rollbackEligibleUntil.getTime() !==
+          e.committedAt.getTime() + (row.rollbackWindowSeconds ?? 0) * 1000 ||
+        ops.some(
+          (op) =>
+            op.state !== (row.state === "verified" ? "verified" : "applied") ||
+            !op.afterHash ||
+            op.resultDigest !== operationResult(row, op),
+        ) ||
+        e.resultDigest !== executionResult(row, e, ops, e.resultBody)
+      )
+        throw missing();
+      const [a] = await db
+        .select()
+        .from(npAgentApprovals)
+        .where(and(eq(npAgentApprovals.siteId, row.siteId), eq(npAgentApprovals.id, e.approvalId)))
+        .limit(1);
+      if (
+        !a ||
+        a.state !== "consumed" ||
+        a.planHash !== row.planHash ||
+        a.consumedAt?.toISOString() !== e.committedAt.toISOString()
+      )
+        throw missing();
+      // Historical integrity-key retirement redacts approval evidence but does not invent a second apply.
+      if (row.state === "verified" && (e.state !== "succeeded" || e.verificationState !== "passed"))
+        throw missing();
+    } else if (
+      !["applying", "scheduled", "apply_failed", "cancelled"].includes(row.state) ||
+      ops.some((op) => op.afterHash !== null || op.resultDigest !== null)
+    )
+      throw missing();
+    return e;
+  }
+  async function executionDetail(db: Db, row: Row, ops: OpRow[]) {
+    const e = await executionEvidence(db, row, ops);
+    return e
+      ? npRequireAgentChangeSetExecutionDetailV1({
+          schemaVersion: "np.agent-changeset-execution.v1",
+          changeSetId: row.id,
+          execution: executionSummary(e),
+          approvalId: e.approvalId,
+          planHash: e.planHash,
+          scheduledFor: e.scheduledFor?.toISOString() ?? null,
+          committedAt: e.committedAt?.toISOString() ?? null,
+          rollbackEligibleUntil: row.rollbackEligibleUntil?.toISOString() ?? null,
+          errorCode: e.errorCode,
+          verification: verificationSummary(e),
+          checks: e.verificationBody,
+        })
+      : null;
+  }
+  async function executionActions(
+    row: Row,
+    actor: Actor,
+  ): Promise<Array<"apply" | "schedule" | "cancel">> {
+    if (!options.execution || !options.approvals || actor.principalId) return [];
+    const result: Array<"apply" | "schedule" | "cancel"> = [];
+    const intent = await options.execution.resolveIntent({ siteId: row.siteId });
+    if (
+      row.state === "approved" &&
+      row.expiresAt > now() &&
+      intent.enabled &&
+      !intent.paused &&
+      can(actor.user, "content.publish") &&
+      approvals
+    ) {
+      const [a] = await getDb()
+        .select()
+        .from(npAgentApprovals)
+        .where(
+          and(
+            eq(npAgentApprovals.siteId, row.siteId),
+            eq(npAgentApprovals.targetChangesetId, row.id),
+          ),
+        )
+        .orderBy(desc(npAgentApprovals.generation))
+        .limit(1);
+      if (a && a.state === "approved" && a.expiresAt > now()) {
+        const { statement } = await approvals.verify(a);
+        const authority = await npResolveLiveAgentStaffAuthorizationV1(
+          getDb(),
+          row.siteId,
+          actor.user.id,
+        );
+        if (
+          statement.requiredHumanCapabilities.every((c) =>
+            authority.authority.capabilities.includes(c),
+          ) &&
+          (!statement.requiredHumanPredicates.includes("is-super-admin") ||
+            authority.authority.kind === "super-admin")
+        )
+          result.push(statement.capabilityId === "changeset.schedule" ? "schedule" : "apply");
+      }
+    }
+    if (
+      ["draft", "invalid", "ready", "approval_pending", "approved", "scheduled"].includes(
+        row.state,
+      ) &&
+      can(actor.user, "content.author")
+    )
+      result.push("cancel");
+    return result;
+  }
+  async function liveApprover(db: Db, a: ApprovalRow, lock = true) {
+    if (!a.decidedByUserId) throw executeError("AUTHORIZATION_CHANGED");
+    const userQuery = db
+      .select(staffUserProjection)
+      .from(npUsers)
+      .where(eq(npUsers.id, a.decidedByUserId))
+      .limit(1);
+    const [user] = await (lock ? userQuery.for("update") : userQuery);
+    if (lock)
+      await db
+        .select({ role: npSiteMemberships.role })
+        .from(npSiteMemberships)
+        .where(
+          and(
+            eq(npSiteMemberships.siteId, a.siteId),
+            eq(npSiteMemberships.userId, a.decidedByUserId),
+          ),
+        )
+        .for("update");
+    if (!user) throw executeError("AUTHORIZATION_CHANGED");
+    const auth = await npResolveLiveAgentStaffAuthorizationV1(db, a.siteId, user.id);
+    if (
+      !auth.authority.capabilities.includes("site.access") ||
+      a.requiredHumanCapabilities.some(
+        (c) => !auth.authority.capabilities.some((allowed) => allowed === c),
+      ) ||
+      (a.requiredHumanPredicates.includes("is-super-admin") &&
+        auth.authority.kind !== "super-admin")
+    )
+      throw executeError("AUTHORIZATION_CHANGED");
+    return {
+      user: {
+        ...user,
+        role:
+          auth.authority.kind === "super-admin"
+            ? ("admin" as const)
+            : (auth.authority.role as NpAuthUser["role"]),
+      },
+      authorization: serializeAgentCanonicalJson(auth),
+    };
+  }
+  async function withExecutionAuthority<T>(
+    a: ApprovalRow,
+    run: (db: Db, actor: Actor) => Promise<T>,
+  ): Promise<T> {
+    if (!approvals) throw missing();
+    const { statement } = await approvals.verify(a);
+    const seed = await approvalSeed(a.siteId, a.targetId);
+    if (seed.requesterFingerprint !== statement.requester.fingerprint)
+      throw executeError("AUTHORIZATION_CHANGED");
+    async function human(db: Db, actor?: Actor) {
+      const first = await liveApprover(db, a);
+      const effective: Actor = actor ?? {
+        siteId: a.siteId,
+        user: first.user,
+        authorization: first.authorization,
+        fingerprint: statement.requester.fingerprint,
+        principalId: null,
+        scopes: null,
+      };
+      const result = await run(db, effective);
+      if ((await liveApprover(db, a)).authorization !== first.authorization)
+        throw executeError("AUTHORIZATION_CHANGED");
+      return result;
+    }
+    if (statement.requester.kind === "staff")
+      return getDb().transaction((db) => human(db), { isolationLevel: "serializable" });
+    if (!options.admission || !options.gateway) throw executeError("AUTHORIZATION_CHANGED");
+    return options.admission.withStoredAuthority({
+      authorizationContext: seed.authorizationContextBody,
+      authorizationContextFingerprint: seed.authorizationContextFingerprint,
+      requiredScopes: statement.requiredScopes,
+      minimumExposure: "approved-execute",
+      resolveTransportAudience: options.gateway.getTransportAudience,
+      mutate: async (db, _time, authentication) => {
+        if (
+          authentication.principal.id !== a.requestedByPrincipalId ||
+          authentication.principal.authority.kind !== "user"
+        )
+          throw executeError("AUTHORIZATION_CHANGED");
+        const userId = authentication.principal.authority.userId;
+        if (!userId) throw executeError("AUTHORIZATION_CHANGED");
+        const authority = await npResolveLiveAgentStaffAuthorizationV1(db, a.siteId, userId);
+        const [user] = await db
+          .select(staffUserProjection)
+          .from(npUsers)
+          .where(eq(npUsers.id, userId))
+          .limit(1);
+        if (!user) throw executeError("AUTHORIZATION_CHANGED");
+        return human(db, {
+          siteId: a.siteId,
+          user: {
+            ...user,
+            role:
+              authority.authority.kind === "super-admin"
+                ? "admin"
+                : (authority.authority.role as NpAuthUser["role"]),
+          },
+          authorization: serializeAgentCanonicalJson(authority),
+          fingerprint: seed.requesterFingerprint,
+          principalId: authentication.principal.id,
+          scopes: authentication.scopes,
+        });
+      },
+    });
+  }
+  async function executionPreview(a: ApprovalRow): Promise<NpAgentChangeSetWire["preview"]> {
+    if (!a.requiresLivePreview) return null;
+    if (!a.previewId) throw executeError("PREVIEW_REQUIRED");
+    const read = () =>
+      withExecutionAuthority(a, async (db, actor) => {
+        const [p] = await db
+          .select()
+          .from(npAgentChangesetPreviews)
+          .where(
+            and(
+              eq(npAgentChangesetPreviews.siteId, a.siteId),
+              eq(npAgentChangesetPreviews.id, a.previewId!),
+            ),
+          )
+          .limit(1);
+        if (
+          !p ||
+          p.changesetId !== a.targetId ||
+          p.planHash !== a.planHash ||
+          p.digest !== a.previewDigest
+        )
+          throw executeError("PREVIEW_REQUIRED");
+        const detail = await previewProjection(db, p, actor, false);
+        if (detail.state !== "ready") throw executeError("PREVIEW_REQUIRED");
+        return detail;
+      });
+    const detail = await read();
+    for (const artifact of detail.artifactRefs) {
+      const content = await previewArtifacts.readArtifact({
+        siteId: a.siteId,
+        previewId: detail.previewId,
+        artifactId: artifact.artifactId,
+        authorize: async () => {
+          const current = await read();
+          if (current.digest !== detail.digest) throw executeError("PREVIEW_REQUIRED");
+        },
+      });
+      try {
+        if (artifact.kind === "report") assertApprovalReport(content.bytes, a.siteId);
+      } finally {
+        content.bytes.fill(0);
+      }
+    }
+    const {
+      changeSetId: _id,
+      allowedRoutes: _r,
+      diffSummary: _d,
+      checkSummary: _c,
+      riskSummary: _risk,
+      createdAt: _at,
+      completedAt: _end,
+      safeErrorCode: _error,
+      ...summary
+    } = detail;
+    return npRequireAgentPreviewSummaryV1(
+      { ...summary, schemaVersion: "np.agent-preview-summary.v1" },
+      { siteId: a.siteId, changeSetId: a.targetId },
+    );
+  }
+  async function checkExecutionApproval(
+    db: Db,
+    row: Row,
+    a: ApprovalRow,
+    actor: Actor,
+    preview: NpAgentChangeSetWire["preview"],
+    executing: boolean,
+  ) {
+    if (!options.execution || !approvals) throw missing();
+    const intent = await options.execution.resolveIntent({ siteId: row.siteId });
+    if (!intent.enabled || intent.paused) throw executeError("POLICY_CHANGED");
+    const { statement } = await approvals.verify(a);
+    if (a.expiresAt <= now()) throw executeError("APPROVAL_EXPIRED");
+    if (a.state !== "approved")
+      throw executeError(a.state === "revoked" ? "APPROVAL_REVOKED" : "APPROVAL_REQUIRED");
+    if (
+      statement.target.kind !== "changeset" ||
+      statement.target.changeSetId !== row.id ||
+      statement.target.planHash !== row.planHash
+    )
+      throw executeError("APPROVAL_INTEGRITY_INVALID");
+    const facts = await approvalFacts(
+      db,
+      row,
+      actor,
+      statement.capabilityId === "changeset.schedule" ? "schedule" : "apply",
+      statement.target.scheduledFor,
+      preview,
+      0,
+      executing,
+    );
+    // Staff-origin execution is authorized by the approved human record, independent of the requester's old session.
+    const {
+      version: _v,
+      siteId: _site,
+      approvalId: _id,
+      createdAt: _c,
+      expiresAt: _e,
+      ...signed
+    } = statement;
+    if (!sameJson({ ...facts, requester: statement.requester }, signed))
+      throw executeError("POLICY_CHANGED");
+    if (
+      statement.target.scheduledFor &&
+      (Date.parse(statement.target.scheduledFor) >= a.expiresAt.getTime() ||
+        (preview?.expiresAt &&
+          Date.parse(statement.target.scheduledFor) >= Date.parse(preview.expiresAt)))
+    )
+      throw executeError("APPROVAL_EXPIRED");
+  }
+  async function failReservedExecution(db: Db, row: Row, code: string) {
+    const records = await db
+      .update(npAgentChangesetExecutions)
+      .set({
+        state: "failed",
+        errorCode: code,
+        finishedAt: now(),
+        leaseOwner: null,
+        leaseToken: null,
+        leaseUntil: null,
+      })
+      .where(
+        and(
+          eq(npAgentChangesetExecutions.siteId, row.siteId),
+          eq(npAgentChangesetExecutions.changesetId, row.id),
+          eq(npAgentChangesetExecutions.state, "reserved"),
+        ),
+      )
+      .returning({
+        id: npAgentChangesetExecutions.id,
+        approvalId: npAgentChangesetExecutions.approvalId,
+      });
+    if (records.length) {
+      if (code === "EXECUTION_CANCELLED" && approvals) {
+        await approvals.invalidateForExecution({
+          db,
+          siteId: row.siteId,
+          id: records[0].approvalId,
+          changeSetId: row.id,
+          code: "EXECUTION_CANCELLED",
+        });
+      }
+      await db
+        .update(npAgentChangesets)
+        .set({ state: "apply_failed", updatedAt: now() })
+        .where(parentWhere(row.siteId, row.id));
+      await db.insert(npAuditEvents).values({
+        siteId: row.siteId,
+        actorKind: "system",
+        action: "agents.changesets.execution_failed",
+        targetType: "agent-changeset",
+        targetId: row.id,
+        payload: { code },
+        createdAt: now(),
+      });
+      row.state = "apply_failed";
+    }
+  }
+  type StaffExecutionInput = {
+    actor: Extract<NpAgentChangeSetActorV1, { kind: "staff" }>;
+    id: string;
+    command: unknown;
+  };
+  async function admitExecution(input: StaffExecutionInput, kind: "apply" | "schedule") {
+    if (!options.execution || !approvals || !uuid.test(input.id)) throw missing();
+    if (!/^cj1:sha256:[A-Za-z0-9_-]{43}$/.test(options.execution.verificationFingerprint))
+      throw missing();
+    const command =
+      kind === "apply"
+        ? npRequireAgentChangeSetApplyInputV1(input.command)
+        : npRequireAgentChangeSetScheduleInputV1(input.command);
+    const actor = await resolve(input.actor, false);
+    const [seed] = await getDb()
+      .select()
+      .from(npAgentApprovals)
+      .where(
+        and(eq(npAgentApprovals.siteId, actor.siteId), eq(npAgentApprovals.id, command.approvalId)),
+      )
+      .limit(1);
+    if (!seed || seed.targetId !== input.id || seed.statementHash !== command.statementHash)
+      throw missing();
+    const preview = seed.state === "approved" ? await executionPreview(seed) : null;
+    const admitted = await admin({
+      siteId: actor.siteId,
+      actor: input.actor.actor,
+      operationId: kind === "apply" ? "agents.changesets.apply" : "agents.changesets.schedule",
+      targetId: input.id,
+      command,
+      mutate: async ({ db, invocationId }) => {
+        await db.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${`np.agent-changeset:${actor.siteId}`},0))`,
+        );
+        const [row] = await db
+          .select()
+          .from(npAgentChangesets)
+          .where(parentWhere(actor.siteId, input.id))
+          .for("update")
+          .limit(1);
+        const [a] = await db
+          .select()
+          .from(npAgentApprovals)
+          .where(
+            and(
+              eq(npAgentApprovals.siteId, actor.siteId),
+              eq(npAgentApprovals.id, command.approvalId),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (
+          !row ||
+          !a ||
+          row.state !== "approved" ||
+          row.draftVersion !== command.expectedDraftVersion ||
+          row.planHash !== command.planHash ||
+          a.statementHash !== command.statementHash
+        )
+          throw conflict();
+        const { statement } = await approvals.verify(a);
+        const scheduledFor = "scheduledFor" in command ? command.scheduledFor : null;
+        if (
+          statement.capabilityId !== `changeset.${kind}` ||
+          statement.target.kind !== "changeset" ||
+          statement.target.scheduledFor !== scheduledFor
+        )
+          throw conflict();
+        const submitterAuthority = await npResolveAgentStaffSessionAuthorizationV1(
+          db,
+          actor.siteId,
+          input.actor.actor,
+          now(),
+        );
+        if (
+          a.requiredHumanCapabilities.some(
+            (c) => !submitterAuthority.authority.capabilities.some((allowed) => allowed === c),
+          ) ||
+          (a.requiredHumanPredicates.includes("is-super-admin") &&
+            submitterAuthority.authority.kind !== "super-admin")
+        )
+          throw denied();
+        await checkExecutionApproval(db, row, a, actor, preview, false);
+        const [invocation] = await db
+          .select()
+          .from(npAgentInvocations)
+          .where(eq(npAgentInvocations.id, invocationId))
+          .limit(1);
+        if (!invocation) throw missing();
+        const executionId = randomUUID();
+        await db.insert(npAgentChangesetExecutions).values({
+          id: executionId,
+          siteId: row.siteId,
+          changesetId: row.id,
+          planHash: row.planHash,
+          approvalId: a.id,
+          invocationId,
+          invocationFingerprint: invocation.requestHash,
+          verificationContractFingerprint: options.execution!.verificationFingerprint,
+          idempotencyKey: command.idempotencyKey,
+          scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
+          reservedAt: now(),
+        });
+        await db
+          .update(npAgentChangesets)
+          .set({
+            state: kind === "schedule" ? "scheduled" : "applying",
+            scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
+            updatedAt: now(),
+          })
+          .where(parentWhere(row.siteId, row.id));
+        return { resourceId: row.id, output: { executionId } };
+      },
+    });
+    const [e] = await getDb()
+      .select()
+      .from(npAgentChangesetExecutions)
+      .where(executionWhere(actor.siteId, String(admitted.output.executionId)))
+      .limit(1);
+    if (!e) throw missing();
+    const job = executionJob(e);
+    if (kind === "apply") await processExecution(job);
+    else if (options.execution.enqueueApply)
+      try {
+        await options.execution.enqueueApply(job);
+      } catch {
+        /* Durable scheduled reservation remains available to host reconciliation. */
+      }
+    return getReview({ actor: input.actor, id: input.id });
+  }
+  const apply = (input: StaffExecutionInput) => admitExecution(input, "apply");
+  const schedule = (input: StaffExecutionInput) => admitExecution(input, "schedule");
+  async function cancel(input: StaffExecutionInput) {
+    if (!options.execution || !uuid.test(input.id)) throw missing();
+    const command = npRequireAgentChangeSetCancelInputV1(input.command),
+      actor = await resolve(input.actor, false);
+    await admin({
+      siteId: actor.siteId,
+      actor: input.actor.actor,
+      operationId: "agents.changesets.cancel",
+      targetId: input.id,
+      command,
+      mutate: async ({ db }) => {
+        await db.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${`np.agent-changeset:${actor.siteId}`},0))`,
+        );
+        const [row] = await db
+          .select()
+          .from(npAgentChangesets)
+          .where(parentWhere(actor.siteId, input.id))
+          .for("update")
+          .limit(1);
+        if (
+          !row ||
+          row.state !== command.expectedState ||
+          row.draftVersion !== command.expectedDraftVersion ||
+          row.planHash !== command.planHash
+        )
+          throw conflict();
+        await project(row, actor, false, db, false);
+        const pending = await db
+          .select()
+          .from(npAgentApprovals)
+          .where(
+            and(
+              eq(npAgentApprovals.siteId, row.siteId),
+              eq(npAgentApprovals.targetChangesetId, row.id),
+              inArray(npAgentApprovals.state, ["pending", "approved"]),
+            ),
+          )
+          .limit(2);
+        if (pending.length > 1) throw missing();
+        for (const a of pending) {
+          if (!approvals) throw missing();
+          await approvals.invalidateForExecution({
+            db,
+            siteId: row.siteId,
+            id: a.id,
+            changeSetId: row.id,
+            code: "OPERATOR_CANCELLED",
+          });
+        }
+        await failReservedExecution(db, row, "EXECUTION_CANCELLED");
+        await db
+          .update(npAgentChangesets)
+          .set({ state: "cancelled", cancellationCode: "OPERATOR_CANCELLED", updatedAt: now() })
+          .where(parentWhere(row.siteId, row.id));
+        return { resourceId: row.id, output: { changeSetId: row.id } };
+      },
+    });
+    return getReview({ actor: input.actor, id: input.id });
+  }
+  function executionJob(e: ExecutionRow): NpAgentChangeSetApplyJobPayload {
+    return {
+      siteId: e.siteId,
+      changeSetId: e.changesetId,
+      planHash: e.planHash,
+      approvalId: e.approvalId,
+      scheduledFor: e.scheduledFor?.toISOString() ?? null,
+      idempotencyKey: e.idempotencyKey,
+    };
+  }
+  async function processExecution(
+    raw: NpAgentChangeSetApplyJobPayload,
+    control?: { signal: AbortSignal },
+  ): Promise<{ state: string }> {
+    const input = npNormalizeJobPayload("agent:changesetApply", raw);
+    if (!options.execution || !approvals) throw missing();
+    const [seed] = await getDb()
+      .select()
+      .from(npAgentChangesetExecutions)
+      .where(
+        and(
+          eq(npAgentChangesetExecutions.siteId, input.siteId),
+          eq(npAgentChangesetExecutions.changesetId, input.changeSetId),
+          eq(npAgentChangesetExecutions.planHash, input.planHash),
+        ),
+      )
+      .limit(1);
+    if (!seed || !sameJson(executionJob(seed), input)) return { state: "stale" };
+    if (seed.committedAt) {
+      if (["committed", "verifying", "failed"].includes(seed.state))
+        await processVerification({
+          siteId: input.siteId,
+          changeSetId: input.changeSetId,
+          executionId: seed.id,
+        });
+      return { state: seed.state };
+    }
+    if (seed.state !== "reserved" || (seed.scheduledFor && seed.scheduledFor > now()))
+      return { state: seed.state };
+    const [a] = await getDb()
+      .select()
+      .from(npAgentApprovals)
+      .where(
+        and(eq(npAgentApprovals.siteId, input.siteId), eq(npAgentApprovals.id, seed.approvalId)),
+      )
+      .limit(1);
+    if (!a) return { state: "stale" };
+    const effects: NpAgentChangeSetExecutionEffectV1[] = [];
+    const dispatchToken = randomUUID();
+    let effectDeadline: number | null = null;
+    try {
+      if (control?.signal.aborted) throw executeError("EXECUTION_CANCELLED");
+      if (a.expiresAt <= now()) throw executeError("APPROVAL_EXPIRED");
+      const preview = await executionPreview(a);
+      await withCurrentSite(input.siteId, () =>
+        withDeferredPostCommit(
+          () =>
+            withExecutionAuthority(a, async (db, actor) => {
+              await db.execute(
+                sql`select pg_advisory_xact_lock(hashtextextended(${`np.agent-changeset:${input.siteId}`},0))`,
+              );
+              const [row] = await db
+                .select()
+                .from(npAgentChangesets)
+                .where(parentWhere(input.siteId, input.changeSetId))
+                .for("update")
+                .limit(1);
+              const [e] = await db
+                .select()
+                .from(npAgentChangesetExecutions)
+                .where(executionWhere(input.siteId, seed.id))
+                .for("update")
+                .limit(1);
+              const [approval] = await db
+                .select()
+                .from(npAgentApprovals)
+                .where(
+                  and(eq(npAgentApprovals.siteId, input.siteId), eq(npAgentApprovals.id, a.id)),
+                )
+                .for("update")
+                .limit(1);
+              if (!row || !e || !approval) throw missing();
+              if (e.committedAt || e.state !== "reserved") return;
+              if (
+                !["applying", "scheduled"].includes(row.state) ||
+                row.planHash !== e.planHash ||
+                e.verificationContractFingerprint !== options.execution!.verificationFingerprint
+              )
+                throw executeError("POLICY_CHANGED");
+              await checkExecutionApproval(db, row, approval, actor, preview, true);
+              const plan = npRequireAgentChangeSetPlanCanonical(row.sealedPlanBody);
+              if (plan.planKind !== "changeset") throw missing();
+              if (control?.signal.aborted) throw executeError("EXECUTION_CANCELLED");
+              const applied = await executionResources.apply({
+                tx: db as unknown as NpTransaction,
+                siteId: row.siteId,
+                user: actor.user,
+                changeSetId: row.id,
+                operations: plan.body.operations,
+              });
+              const results = applied.operations.map((op) => ({
+                ordinal: op.ordinal,
+                afterHash: op.afterHash,
+                resultDigest: operationResult(row, op),
+              }));
+              for (const op of results)
+                await db
+                  .update(npAgentChangesetOperations)
+                  .set({
+                    state: "applied",
+                    afterHash: op.afterHash,
+                    resultDigest: op.resultDigest,
+                    updatedAt: now(),
+                  })
+                  .where(
+                    and(
+                      eq(npAgentChangesetOperations.siteId, row.siteId),
+                      eq(npAgentChangesetOperations.changesetId, row.id),
+                      eq(npAgentChangesetOperations.ordinal, op.ordinal),
+                    ),
+                  );
+              const time = now();
+              await approvals.consume({
+                db,
+                siteId: row.siteId,
+                id: approval.id,
+                changeSetId: row.id,
+                planHash: e.planHash,
+                statementHash: approval.statementHash,
+                consumedAt: time,
+              });
+              await db
+                .update(npAgentChangesetExecutions)
+                .set({
+                  state: "committed",
+                  committedAt: time,
+                  resultDigest: executionResult(row, e, results, applied),
+                  resultBody: applied,
+                  verificationState: "queued",
+                  effects,
+                  leaseOwner: "changeset-post-commit",
+                  leaseToken: dispatchToken,
+                  leaseUntil: new Date(time.getTime() + 60_000),
+                  attempts: e.attempts + 1,
+                  version: e.version + 1,
+                })
+                .where(executionWhere(row.siteId, e.id));
+              await db
+                .update(npAgentChangesets)
+                .set({
+                  state: "applied",
+                  appliedAt: time,
+                  rollbackEligibleUntil: new Date(
+                    time.getTime() + row.rollbackWindowSeconds! * 1000,
+                  ),
+                  updatedAt: time,
+                })
+                .where(parentWhere(row.siteId, row.id));
+              await db.insert(npAuditEvents).values({
+                siteId: row.siteId,
+                actorKind: "system",
+                action: "agents.changesets.execution_committed",
+                targetType: "agent-changeset",
+                targetId: row.id,
+                payload: {
+                  executionId: e.id,
+                  resultDigest: executionResult(row, e, results, applied),
+                },
+                createdAt: time,
+              });
+            }),
+          {
+            observer: {
+              register: (metadata: NpDeferredPostCommitMetadata) => {
+                if (effects.length >= 4096) return Promise.reject(executeError("APPLY_FAILED"));
+                effects.push({ ...metadata, state: "pending", errorCode: null });
+                return Promise.resolve();
+              },
+              dispatch: async (metadata, fn) => {
+                const claimed = await getDb().transaction(async (db) => {
+                  const [e] = await db
+                    .select()
+                    .from(npAgentChangesetExecutions)
+                    .where(executionWhere(input.siteId, seed.id))
+                    .for("update")
+                    .limit(1);
+                  const effect = e?.effects.find((x) => x.ordinal === metadata.ordinal);
+                  if (
+                    !e?.committedAt ||
+                    e.leaseToken !== dispatchToken ||
+                    !e.leaseUntil ||
+                    e.leaseUntil <= now() ||
+                    !effect ||
+                    effect.state !== "pending" ||
+                    !sameJson(
+                      { ordinal: effect.ordinal, label: effect.label, context: effect.context },
+                      metadata,
+                    )
+                  )
+                    return false;
+                  effect.state = "running";
+                  await db
+                    .update(npAgentChangesetExecutions)
+                    .set({ effects: e.effects })
+                    .where(executionWhere(input.siteId, e.id));
+                  return true;
+                });
+                if (!claimed) return;
+                let errorCode: string | null = null;
+                let timer: ReturnType<typeof setTimeout> | undefined;
+                let timedOut = false;
+                try {
+                  effectDeadline ??= Date.now() + 30_000;
+                  if (Date.now() >= effectDeadline) {
+                    timedOut = true;
+                    throw executeError("EFFECT_AMBIGUOUS");
+                  }
+                  const result = await Promise.race([
+                    fn(),
+                    new Promise<never>((_resolve, reject) => {
+                      timer = setTimeout(
+                        () => {
+                          timedOut = true;
+                          reject(executeError("EFFECT_AMBIGUOUS"));
+                        },
+                        Math.max(1, effectDeadline! - Date.now()),
+                      );
+                    }),
+                  ]);
+                  if (metadata.label.startsWith("enqueue:") && result === "")
+                    errorCode = "DEPENDENCY_UNAVAILABLE";
+                } catch {
+                  errorCode = timedOut ? "EFFECT_AMBIGUOUS" : "VERIFICATION_FAILED";
+                } finally {
+                  if (timer) clearTimeout(timer);
+                }
+                await getDb().transaction(async (db) => {
+                  const [e] = await db
+                    .select()
+                    .from(npAgentChangesetExecutions)
+                    .where(executionWhere(input.siteId, seed.id))
+                    .for("update")
+                    .limit(1);
+                  const effect = e?.effects.find((x) => x.ordinal === metadata.ordinal);
+                  if (!e || e.leaseToken !== dispatchToken || effect?.state !== "running") return;
+                  effect.state = timedOut ? "unknown" : errorCode ? "failed" : "succeeded";
+                  effect.errorCode = errorCode;
+                  await db
+                    .update(npAgentChangesetExecutions)
+                    .set({ effects: e.effects })
+                    .where(executionWhere(input.siteId, e.id));
+                });
+              },
+            },
+          },
+        ),
+      );
+    } catch (error) {
+      const [current] = await getDb()
+        .select()
+        .from(npAgentChangesetExecutions)
+        .where(executionWhere(input.siteId, seed.id))
+        .limit(1);
+      if (!current?.committedAt) {
+        const direct = error as { code?: unknown; cause?: { code?: unknown } } | null;
+        const sqlCode =
+          typeof direct?.code === "string"
+            ? direct.code
+            : typeof direct?.cause?.code === "string"
+              ? direct.cause.code
+              : "";
+        if (["40001", "40P01"].includes(sqlCode)) return { state: "reserved" };
+        const safeCodes = [
+          "EXECUTION_CANCELLED",
+          "APPROVAL_EXPIRED",
+          "APPROVAL_REVOKED",
+          "APPROVAL_REQUIRED",
+          "APPROVAL_INTEGRITY_INVALID",
+          "PREVIEW_REQUIRED",
+          "AUTHORIZATION_CHANGED",
+          "POLICY_CHANGED",
+        ];
+        const code = safeCodes.includes(sqlCode)
+          ? sqlCode
+          : sqlCode === "CHANGESET_BASE_CONFLICT" || sqlCode === "CHANGESET_CONFLICT"
+            ? "BASE_CONFLICT"
+            : [
+                  "AGENT_FORBIDDEN",
+                  "CHANGESET_ACCESS_DENIED",
+                  "AGENT_ACCESS_DENIED",
+                  "INSUFFICIENT_SCOPE",
+                  "CAPABILITY_UNAVAILABLE",
+                  "TRANSPORT_UNAVAILABLE",
+                ].includes(sqlCode)
+              ? "AUTHORIZATION_CHANGED"
+              : "APPLY_FAILED";
+        await getDb().transaction(async (db) => {
+          await db.execute(
+            sql`select pg_advisory_xact_lock(hashtextextended(${`np.agent-changeset:${input.siteId}`},0))`,
+          );
+          const [row] = await db
+            .select()
+            .from(npAgentChangesets)
+            .where(parentWhere(input.siteId, input.changeSetId))
+            .for("update")
+            .limit(1);
+          if (row) await failReservedExecution(db, row, code);
+        });
+        return { state: "failed" };
+      }
+    }
+    // A duplicate processor cannot release another dispatcher or verifier's lease.
+    await getDb()
+      .update(npAgentChangesetExecutions)
+      .set({ leaseOwner: null, leaseToken: null, leaseUntil: null })
+      .where(
+        and(
+          executionWhere(input.siteId, seed.id),
+          eq(npAgentChangesetExecutions.leaseToken, dispatchToken),
+        ),
+      );
+    {
+      const job = { siteId: input.siteId, changeSetId: input.changeSetId, executionId: seed.id };
+      if (options.execution.enqueueVerify)
+        try {
+          await options.execution.enqueueVerify(job);
+        } catch {
+          /* Durable queued verification is reconciled by the host. */
+        }
+      else await processVerification(job);
+    }
+    const [current] = await getDb()
+      .select({ state: npAgentChangesetExecutions.state })
+      .from(npAgentChangesetExecutions)
+      .where(executionWhere(input.siteId, seed.id))
+      .limit(1);
+    return { state: current?.state ?? "stale" };
+  }
+  async function processVerification(raw: NpAgentChangeSetVerifyJobPayload) {
+    const input = npNormalizeJobPayload("agent:changesetVerify", raw);
+    if (!options.execution) throw missing();
+    await withCurrentSite(input.siteId, () =>
+      npVerifyChangeSetExecutionV1({
+        ...input,
+        now,
+        verificationFingerprint: options.execution!.verificationFingerprint,
+        verifyConvergence: options.execution!.verifyConvergence,
+        inspectPostCommitEffect: options.execution!.inspectPostCommitEffect,
+        readResources: async (tx, row, ops) => {
+          const db = tx as unknown as Db;
+          const e = await executionEvidence(db, row, ops);
+          if (!e?.committedAt) throw missing();
+          const [a] = await db
+            .select()
+            .from(npAgentApprovals)
+            .where(
+              and(eq(npAgentApprovals.siteId, row.siteId), eq(npAgentApprovals.id, e.approvalId)),
+            )
+            .limit(1);
+          if (!a || !approvals) throw missing();
+          await approvals.verify(a);
+          const actor = await liveApprover(db, a, false);
+          let hashes = true,
+            revisions = true;
+          for (const op of ops) {
+            const current = await validationResources.readCurrent({
+              tx: db as unknown as NpTransaction,
+              siteId: row.siteId,
+              user: actor.user,
+              changeSetId: row.id,
+              ordinal: op.ordinal,
+              operation: op.input,
+              canonicalResourceKey: op.resourceKey,
+            });
+            if (current.beforeHash !== op.afterHash) hashes = false;
+            if (op.input.kind === "document" && op.resourceKey.kind === "document") {
+              const [revision] = await db
+                .select({ id: npRevisions.id })
+                .from(npRevisions)
+                .where(
+                  and(
+                    eq(npRevisions.collection, op.input.resource.collection),
+                    eq(npRevisions.documentId, op.resourceKey.documentId),
+                    gte(npRevisions.createdAt, e.reservedAt),
+                  ),
+                )
+                .limit(1);
+              if (!revision) revisions = false;
+            }
+          }
+          const [audit] = await db
+            .select({ id: npAuditEvents.id })
+            .from(npAuditEvents)
+            .where(
+              and(
+                eq(npAuditEvents.siteId, row.siteId),
+                eq(npAuditEvents.targetId, row.id),
+                eq(npAuditEvents.action, "agents.changesets.execution_committed"),
+                sql`${npAuditEvents.payload}->>'executionId'=${e.id}`,
+              ),
+            )
+            .limit(1);
+          const check = (
+            checkId: "resource_after_hashes" | "revisions_audit",
+            passed: boolean,
+          ): NpAgentVerificationCheckV1 => ({
+            checkId,
+            required: true,
+            severity: "error",
+            status: passed ? "passed" : "failed",
+            evidenceRefs: ops.map((op) => ({ kind: "operation", id: String(op.ordinal) })),
+            nextAction: passed ? "none" : "refresh_plan",
+          });
+          if ((await liveApprover(db, a, false)).authorization !== actor.authorization)
+            throw executeError("AUTHORIZATION_CHANGED");
+          return [
+            check("resource_after_hashes", hashes),
+            check("revisions_audit", revisions && Boolean(audit)),
+          ];
+        },
+      }),
+    );
+  }
+  async function reconcileExecutions(input: { siteId: string; limit?: number; cursor?: string }) {
+    const limit = input.limit ?? 25;
+    if (
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 100 ||
+      (input.cursor && !uuid.test(input.cursor))
+    )
+      throw conflict();
+    const rows = await getDb()
+      .select()
+      .from(npAgentChangesetExecutions)
+      .where(
+        and(
+          eq(npAgentChangesetExecutions.siteId, input.siteId),
+          inArray(npAgentChangesetExecutions.state, [
+            "reserved",
+            "committed",
+            "verifying",
+            "failed",
+          ]),
+          ...(input.cursor ? [gt(npAgentChangesetExecutions.id, input.cursor)] : []),
+        ),
+      )
+      .orderBy(asc(npAgentChangesetExecutions.id))
+      .limit(limit);
+    for (const e of rows) {
+      if (e.committedAt)
+        await processVerification({
+          siteId: e.siteId,
+          changeSetId: e.changesetId,
+          executionId: e.id,
+        });
+      else if (e.state === "reserved") await processExecution(executionJob(e));
+    }
+    return { examined: rows.length, nextCursor: rows.length === limit ? rows.at(-1)!.id : null };
+  }
+  const applyHandler = async (job: NpAgentChangeSetApplyJobPayload) => {
+    await processExecution(job);
+  };
+  const verifyHandler = async (job: NpAgentChangeSetVerifyJobPayload) => {
+    await processVerification(job);
+  };
+  const executionSiteId = (payload: { siteId: string }) => payload.siteId;
+  function registerExecutionJobs() {
+    if (!options.execution) throw missing();
+    registerJobHandler("agent:changesetApply", applyHandler, {
+      resolveSiteId: executionSiteId,
+      quota: "site",
+    });
+    registerJobHandler("agent:changesetVerify", verifyHandler, {
+      resolveSiteId: executionSiteId,
+      quota: "site",
+    });
+  }
+
   return {
+    apply,
+    schedule,
+    cancel,
+    processExecution,
+    processVerification,
+    reconcileExecutions,
+    registerExecutionJobs,
     approvals,
     requestApproval,
     capabilityIds: Object.freeze(
