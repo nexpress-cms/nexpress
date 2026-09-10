@@ -824,7 +824,7 @@ describe.skipIf(skipIfNoTestDb())("shop durable packing work", () => {
       parcels: parcels(),
       requestedAt: expect.any(String),
     });
-    expect(Object.keys(createRequests[0]!).sort()).toEqual(
+    expect(Object.keys(createRequests[0]).sort()).toEqual(
       [
         "contract",
         "exchangeId",
@@ -873,7 +873,7 @@ describe.skipIf(skipIfNoTestDb())("shop durable packing work", () => {
     expect(cancelled).toMatchObject({ status: "cancelled", revision: 6 });
     await expect(
       Promise.resolve().then(() =>
-        shop.runtime.packingWorkAdapter?.createPackingWork(createRequests[0]!),
+        shop.runtime.packingWorkAdapter?.createPackingWork(createRequests[0]),
       ),
     ).rejects.toMatchObject({ code: "cancel-tombstone", retryable: false });
     const createRequestCountAfterProviderTombstone = createRequests.length;
@@ -3012,7 +3012,10 @@ describe.skipIf(skipIfNoTestDb())("shop durable packing work", () => {
         const waitForAdvisoryWaiters = async (minimum: number) => {
           for (let attempt = 0; attempt < 200; attempt += 1) {
             const result = await tx.execute(
-              sql`select count(*)::int as waiting from pg_locks where locktype = 'advisory' and not granted`,
+              // pg_locks spans the entire cluster; other worker databases must not release this barrier.
+              sql`select count(*)::int as waiting from pg_locks
+                where locktype = 'advisory' and not granted
+                  and database = (select oid from pg_database where datname = current_database())`,
             );
             const waiting = Number(
               (
@@ -3330,7 +3333,10 @@ describe.skipIf(skipIfNoTestDb())("shop durable packing work", () => {
         const waitForAdvisoryWaiters = async (minimum: number) => {
           for (let attempt = 0; attempt < 200; attempt += 1) {
             const result = await tx.execute(
-              sql`select count(*)::int as waiting from pg_locks where locktype = 'advisory' and not granted`,
+              // pg_locks spans the entire cluster; other worker databases must not release this barrier.
+              sql`select count(*)::int as waiting from pg_locks
+                where locktype = 'advisory' and not granted
+                  and database = (select oid from pg_database where datname = current_database())`,
             );
             const waiting = Number(
               (
