@@ -1,5 +1,6 @@
 import { NpValidationError } from "@nexpress/core";
 import {
+  npRequireAgentApprovalDetailV1,
   npRequireAgentChangeSetWire,
   npRequireAgentChangeSetReviewV1,
   npAnalyzeAgentChangeSetWire,
@@ -110,8 +111,11 @@ export async function handleAgentChangeSetAdminRequest(
     | "artifact"
     | "apply"
     | "schedule"
-    | "cancel",
-  ids: { id?: string; previewId?: string; artifactId?: string } = {},
+    | "cancel"
+    | "prepareRollback"
+    | "requestRollbackApproval"
+    | "executeRollback",
+  ids: { id?: string; previewId?: string; artifactId?: string; rollbackPlanId?: string } = {},
 ): Promise<Response> {
   const headers = {
     "cache-control": "private, no-store",
@@ -177,6 +181,37 @@ export async function handleAgentChangeSetAdminRequest(
       });
     }
     const command = await readAgentAdminJsonBody(request);
+    if (operation === "prepareRollback")
+      return npSuccessResponse(
+        npRequireAgentChangeSetReviewV1(
+          await service.prepareRollback({ actor, id: ids.id!, command }),
+        ),
+        { headers },
+      );
+    if (operation === "requestRollbackApproval")
+      return npSuccessResponse(
+        npRequireAgentApprovalDetailV1(
+          await service.requestRollbackApproval({
+            actor,
+            id: ids.id!,
+            rollbackPlanId: ids.rollbackPlanId!,
+            command,
+          }),
+        ),
+        { headers },
+      );
+    if (operation === "executeRollback")
+      return npSuccessResponse(
+        npRequireAgentChangeSetReviewV1(
+          await service.executeRollback({
+            actor,
+            id: ids.id!,
+            rollbackPlanId: ids.rollbackPlanId!,
+            command,
+          }),
+        ),
+        { headers },
+      );
     if (operation === "apply" || operation === "schedule" || operation === "cancel") {
       return npSuccessResponse(
         npRequireAgentChangeSetReviewV1(await service[operation]({ actor, id: ids.id!, command })),

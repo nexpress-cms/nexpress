@@ -25,6 +25,7 @@ import type {
   NpAgentInvocationAuthorityRefV1,
   NpAgentChangeSetPlanCanonicalV1,
   NpAgentChangeSetOperationInput,
+  NpAgentChangeSetRollbackCompensationInputV1,
   NpAgentChangeSetResourceKeyV1,
   NpAgentChangeSetSnapshotCanonicalV1,
   NpAgentVersionBaseV1,
@@ -2007,6 +2008,7 @@ export const npAgentApprovals = pgTable(
     targetId: uuid("target_id").notNull(),
     targetChangesetId: uuid("target_changeset_id"),
     targetActionId: uuid("target_action_id"),
+    targetRollbackPlanId: uuid("target_rollback_plan_id"),
     generation: integer("generation").notNull(),
     version: integer("version").notNull().default(1),
     planHash: text("plan_hash").notNull(),
@@ -2102,10 +2104,14 @@ export const npAgentApprovals = pgTable(
       columns: [t.siteId, t.requestedByPrincipalId],
       foreignColumns: [npAgentPrincipals.siteId, npAgentPrincipals.id],
     }).onDelete("restrict"),
-    // Rollback targets remain rejected until their actual storage and same-site FK exist.
+    foreignKey({
+      name: "np_agent_approvals_rollback_plan_fk",
+      columns: [t.siteId, t.targetRollbackPlanId],
+      foreignColumns: [npAgentChangesetRollbackPlans.siteId, npAgentChangesetRollbackPlans.id],
+    }).onDelete("restrict"),
     check(
       "np_agent_approvals_target_check",
-      sql`((${t.targetKind}='changeset' and ${t.targetChangesetId}=${t.targetId} and ${t.targetActionId} is null) or (${t.targetKind}='action' and ${t.targetActionId}=${t.targetId} and ${t.targetChangesetId} is null)) is true`,
+      sql`((${t.targetKind}='changeset' and ${t.targetChangesetId}=${t.targetId} and ${t.targetActionId} is null and ${t.targetRollbackPlanId} is null) or (${t.targetKind}='action' and ${t.targetActionId}=${t.targetId} and ${t.targetChangesetId} is null and ${t.targetRollbackPlanId} is null) or (${t.targetKind}='changeset_rollback' and ${t.targetRollbackPlanId}=${t.targetId} and ${t.targetChangesetId} is not null and ${t.targetActionId} is null)) is true`,
     ),
     check(
       "np_agent_approvals_version_check",
@@ -2134,7 +2140,7 @@ export const npAgentApprovals = pgTable(
     check(
       "np_agent_approvals_statement_check",
       sql`(jsonb_typeof(${t.statementBody})='object' and ${t.statementBody}->>'version'='np.agent-approval-statement.v1' and ${t.statementBody}->>'siteId'=${t.siteId} and ${t.statementBody}->>'approvalId'=${t.id}::text and ${t.statementBody}->>'capabilityId'=${t.capabilityId} and ${t.statementBody}->>'capabilityContractVersion'=${t.capabilityContractVersion}::text and ${t.statementBody}->>'capabilityFingerprint'=${t.capabilityFingerprint} and ${t.statementBody}->'target'->>'kind'=${t.targetKind} and
- ((${t.targetKind}='changeset' and ${t.statementBody}->'target'->>'changeSetId'=${t.targetId}::text and ${t.statementBody}->'target'->>'planHash'=${t.planHash}) or (${t.targetKind}='action' and ${t.statementBody}->'target'->>'actionId'=${t.targetId}::text and ${t.statementBody}->'target'->>'proposalHash'=${t.planHash}))) is true`,
+ ((${t.targetKind}='changeset' and ${t.statementBody}->'target'->>'changeSetId'=${t.targetId}::text and ${t.statementBody}->'target'->>'planHash'=${t.planHash}) or (${t.targetKind}='changeset_rollback' and ${t.statementBody}->'target'->>'rollbackPlanId'=${t.targetId}::text and ${t.statementBody}->'target'->>'changeSetId'=${t.targetChangesetId}::text and ${t.statementBody}->'target'->>'planHash'=${t.planHash}) or (${t.targetKind}='action' and ${t.statementBody}->'target'->>'actionId'=${t.targetId}::text and ${t.statementBody}->'target'->>'proposalHash'=${t.planHash}))) is true`,
     ),
     check(
       "np_agent_approvals_challenge_check",
@@ -2167,6 +2173,191 @@ export const npAgentApprovals = pgTable(
   ],
 );
 
+/** Independent immutable rollback generations. The two cycle-closing FKs are
+ * installed by the reviewed lifecycle migration as deferred NO ACTION keys. */
+export const npAgentChangesetRollbackPlans = pgTable(
+  "np_agent_changeset_rollback_plans",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    changesetId: uuid("changeset_id").notNull(),
+    generation: integer("generation").notNull(),
+    version: integer("version").notNull().default(1),
+    admittingInvocationId: uuid("admitting_invocation_id").notNull(),
+    authorizationContextBody: jsonb("authorization_context_body")
+      .$type<NpAgentAuthorizationContextCanonicalV1>()
+      .notNull(),
+    authorizationContextFingerprint: text("authorization_context_fingerprint").notNull(),
+    authorityRef: jsonb("authority_ref").$type<NpAgentInvocationAuthorityRefV1>().notNull(),
+    requesterKind: text("requester_kind").notNull(),
+    requesterId: uuid("requester_id").notNull(),
+    requesterFingerprint: text("requester_fingerprint").notNull(),
+    compensatesExecutionId: uuid("compensates_execution_id").notNull(),
+    originalPlanHash: text("original_plan_hash").notNull(),
+    appliedResultDigest: text("applied_result_digest").notNull(),
+    state: text("state").notNull().default("preparing"),
+    baseFingerprint: text("base_fingerprint"),
+    planHash: text("plan_hash"),
+    sealedPlanBody: jsonb("sealed_plan_body").$type<NpAgentChangeSetPlanCanonicalV1>(),
+    riskSummary: jsonb("risk_summary").$type<NpAgentRiskSummary>(),
+    policyRefs: jsonb("policy_refs").$type<NpAgentJsonObject[]>().notNull().default([]),
+    issues: jsonb("issues").$type<NpAgentJsonObject[]>().notNull().default([]),
+    approvalId: uuid("approval_id"),
+    resultDigest: text("result_digest"),
+    verificationDigest: text("verification_digest"),
+    terminalReason: text("terminal_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    approvedAt: timestamp("approved_at", { withTimezone: true, mode: "date" }),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }),
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    unique("np_agent_changeset_rollback_plans_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_changeset_rollback_plans_generation_unique").on(
+      t.siteId,
+      t.changesetId,
+      t.generation,
+    ),
+    unique("np_agent_changeset_rollback_plans_invocation_unique").on(
+      t.siteId,
+      t.admittingInvocationId,
+    ),
+    uniqueIndex("np_agent_changeset_rollback_plans_active_unique")
+      .on(t.siteId, t.changesetId)
+      .where(sql`${t.state} in ('preparing','ready','approval_pending','approved','executing')`),
+    index("np_agent_changeset_rollback_plans_expiry_idx").on(t.siteId, t.state, t.expiresAt, t.id),
+    foreignKey({
+      name: "np_agent_changeset_rollback_plans_changeset_fk",
+      columns: [t.siteId, t.changesetId],
+      foreignColumns: [npAgentChangesets.siteId, npAgentChangesets.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_changeset_rollback_plans_invocation_fk",
+      columns: [t.siteId, t.admittingInvocationId],
+      foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_changeset_rollback_plans_state_check",
+      sql`(${t.state} in ('preparing','invalid','ready','approval_pending','approved','executing','verified','failed','conflicted','expired') and ${t.generation}>0 and ${t.version}>0) is true`,
+    ),
+    check(
+      "np_agent_changeset_rollback_plans_hash_check",
+      sql`(${t.originalPlanHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.appliedResultDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.authorizationContextFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.requesterFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and (${t.planHash} is null or ${t.planHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$') and (${t.baseFingerprint} is null or ${t.baseFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$') and (${t.resultDigest} is null or ${t.resultDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$') and (${t.verificationDigest} is null or ${t.verificationDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$')) is true`,
+    ),
+    check(
+      "np_agent_changeset_rollback_plans_authority_check",
+      sql`(jsonb_typeof(${t.authorizationContextBody})='object' and ${t.authorizationContextBody}->>'schemaVersion'='np.agent-authorization-context.v1' and ${t.authorizationContextBody}->>'siteId'=${t.siteId} and ${t.authorizationContextBody}->'authorityRef'=${t.authorityRef} and ${t.authorizationContextBody}->'actor'->>'kind'=${t.requesterKind} and ${t.authorizationContextBody}->'actor'->>'actorFingerprint'=${t.requesterFingerprint} and ((${t.requesterKind}='staff' and ${t.authorizationContextBody}->'actor'->>'userId'=${t.requesterId}::text and ${t.authorityRef}->>'kind'='staff-session' and ${t.authorityRef}->>'userId'=${t.requesterId}::text) or (${t.requesterKind}='principal' and ${t.authorizationContextBody}->'actor'->>'principalId'=${t.requesterId}::text and ${t.authorityRef}->>'kind' in ('service-family','oauth-grant','runtime-run') and ${t.authorityRef}->>'principalId'=${t.requesterId}::text))) is true`,
+    ),
+    check(
+      "np_agent_changeset_rollback_plans_sealed_check",
+      sql`(((${t.planHash} is null and ${t.baseFingerprint} is null and ${t.sealedPlanBody} is null) or (${t.planHash} is not null and ${t.baseFingerprint} is not null and ${t.sealedPlanBody} is not null and ${t.sealedPlanBody}->>'schemaVersion'='np.agent-changeset-plan.v1' and ${t.sealedPlanBody}->>'planKind'='rollback' and ${t.sealedPlanBody}->>'siteId'=${t.siteId} and ${t.sealedPlanBody}->>'changeSetId'=${t.changesetId}::text and ${t.sealedPlanBody}->'body'->>'rollbackPlanId'=${t.id}::text and ${t.sealedPlanBody}->'body'->>'generation'=${t.generation}::text and ${t.sealedPlanBody}->'body'->>'compensatesExecutionId'=${t.compensatesExecutionId}::text and ${t.sealedPlanBody}->'body'->>'originalPlanHash'=${t.originalPlanHash} and ${t.sealedPlanBody}->'body'->>'appliedResultDigest'=${t.appliedResultDigest} and ${t.sealedPlanBody}->'body'->>'baseFingerprint'=${t.baseFingerprint})) and (${t.state} not in ('ready','approval_pending','approved','executing','verified') or ${t.sealedPlanBody} is not null)) is true`,
+    ),
+    check(
+      "np_agent_changeset_rollback_plans_approval_check",
+      sql`(${t.state} not in ('approval_pending','approved','executing','verified') or ${t.approvalId} is not null) and (${t.terminalReason} is null or ${t.terminalReason} not in ('approval_rejected','approval_revoked','approval_expired') or ${t.approvalId} is not null)`,
+    ),
+    check(
+      "np_agent_changeset_rollback_plans_time_check",
+      sql`(${t.expiresAt}>${t.createdAt} and ${t.expiresAt}<=${t.createdAt}+interval '90 days' and (${t.approvedAt} is null or ${t.approvedAt}>=${t.createdAt}) and (${t.startedAt} is null or (${t.approvedAt} is not null and ${t.startedAt}>=${t.approvedAt})) and (${t.finishedAt} is null or (${t.finishedAt}>=${t.createdAt} and (${t.startedAt} is null or ${t.finishedAt}>=${t.startedAt})))) is true`,
+    ),
+    check(
+      "np_agent_changeset_rollback_plans_terminal_check",
+      sql`(((${t.state} in ('invalid','verified','failed','conflicted','expired'))=(${t.finishedAt} is not null)) and ((${t.state} in ('invalid','failed','conflicted','expired'))=(${t.terminalReason} is not null)) and (${t.terminalReason} is null or ${t.terminalReason} in ('validation_failed','snapshot_expired','conflict','policy_blocked','approval_rejected','approval_revoked','approval_expired','operator_cancelled','execution_cancelled','execution_failed','verification_failed')) and (${t.state}<>'verified' or (${t.resultDigest} is not null and ${t.verificationDigest} is not null)) and (${t.state}<>'executing' or ${t.startedAt} is not null)) is true`,
+    ),
+    check(
+      "np_agent_changeset_rollback_plans_bounds_check",
+      sql`(jsonb_typeof(${t.issues})='array' and jsonb_array_length(${t.issues})<=1000 and octet_length(${t.issues}::text)<=262144 and jsonb_typeof(${t.policyRefs})='array' and octet_length(${t.policyRefs}::text)<=65536 and (${t.sealedPlanBody} is null or octet_length(${t.sealedPlanBody}::text)<=33554432)) is true`,
+    ),
+  ],
+);
+
+export const npAgentChangesetRollbackOperations = pgTable(
+  "np_agent_changeset_rollback_operations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    changesetId: uuid("changeset_id").notNull(),
+    rollbackPlanId: uuid("rollback_plan_id").notNull(),
+    ordinal: integer("ordinal").notNull(),
+    originalOperationId: uuid("original_operation_id").notNull(),
+    originalOperationOrdinal: integer("original_operation_ordinal").notNull(),
+    canonicalResourceKey: jsonb("canonical_resource_key")
+      .$type<NpAgentChangeSetResourceKeyV1>()
+      .notNull(),
+    beforeSnapshot: jsonb("before_snapshot").$type<NpAgentChangeSetSnapshotCanonicalV1>().notNull(),
+    beforeHash: text("before_hash"),
+    snapshotHash: text("snapshot_hash").notNull(),
+    expectedCurrentHash: text("expected_current_hash").notNull(),
+    expectedCurrentVersion: text("expected_current_version").notNull(),
+    compensationOperation: jsonb("compensation_operation")
+      .$type<NpAgentChangeSetRollbackCompensationInputV1>()
+      .notNull(),
+    proposedAfterHash: text("proposed_after_hash").notNull(),
+    rollbackClass: text("rollback_class").notNull(),
+    residualCodes: text("residual_codes").array().notNull().default([]),
+    state: text("state").notNull().default("draft"),
+    issues: jsonb("issues").$type<NpAgentJsonObject[]>().notNull().default([]),
+    afterHash: text("after_hash"),
+    resultDigest: text("result_digest"),
+    errorCode: text("error_code"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("np_agent_changeset_rollback_operations_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_changeset_rollback_operations_ordinal_unique").on(
+      t.siteId,
+      t.rollbackPlanId,
+      t.ordinal,
+    ),
+    unique("np_agent_changeset_rollback_operations_original_unique").on(
+      t.siteId,
+      t.rollbackPlanId,
+      t.originalOperationId,
+    ),
+    foreignKey({
+      name: "np_agent_changeset_rollback_operations_plan_fk",
+      columns: [t.siteId, t.rollbackPlanId],
+      foreignColumns: [npAgentChangesetRollbackPlans.siteId, npAgentChangesetRollbackPlans.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_changeset_rollback_operations_original_fk",
+      columns: [t.siteId, t.originalOperationId],
+      foreignColumns: [npAgentChangesetOperations.siteId, npAgentChangesetOperations.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_changeset_rollback_operations_changeset_fk",
+      columns: [t.siteId, t.changesetId],
+      foreignColumns: [npAgentChangesets.siteId, npAgentChangesets.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_changeset_rollback_operations_state_check",
+      sql`(${t.state} in ('draft','valid','invalid','applied','verified','failed') and ${t.ordinal} between 1 and 500 and ${t.originalOperationOrdinal} between 1 and 500 and ${t.rollbackClass} in ('full','residual','unavailable') and cardinality(${t.residualCodes})<=64) is true`,
+    ),
+    check(
+      "np_agent_changeset_rollback_operations_hash_check",
+      sql`(${t.snapshotHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.expectedCurrentHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.proposedAfterHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and (${t.beforeHash} is null or ${t.beforeHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$') and (${t.afterHash} is null or ${t.afterHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$') and (${t.resultDigest} is null or ${t.resultDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$') and char_length(${t.expectedCurrentVersion}) between 1 and 512) is true`,
+    ),
+    check(
+      "np_agent_changeset_rollback_operations_snapshot_check",
+      sql`(${t.beforeSnapshot}->>'schemaVersion'='np.agent-changeset-snapshot.v1' and ${t.beforeSnapshot}->>'siteId'=${t.siteId} and ${t.beforeSnapshot}->>'changeSetId'=${t.changesetId}::text and ${t.beforeSnapshot}->>'operationOrdinal'=${t.originalOperationOrdinal}::text and ${t.beforeSnapshot}->'canonicalResourceKey'=${t.canonicalResourceKey} and ${t.compensationOperation}->>'kind'=${t.canonicalResourceKey}->>'kind') is true`,
+    ),
+    check(
+      "np_agent_changeset_rollback_operations_bounds_check",
+      sql`(jsonb_typeof(${t.issues})='array' and jsonb_array_length(${t.issues})<=1000 and octet_length(${t.issues}::text)<=262144 and octet_length(${t.beforeSnapshot}::text)<=4194304 and octet_length(${t.compensationOperation}::text)<=4194304 and (${t.errorCode} is null or ${t.errorCode} ~ '^[A-Z][A-Z0-9_]{0,63}$')) is true`,
+    ),
+    check(
+      "np_agent_changeset_rollback_operations_time_check",
+      sql`(${t.updatedAt}>=${t.createdAt}) is true`,
+    ),
+  ],
+);
+
 /** Private durable post-commit hook intent; never exposed through client-safe wires. */
 export interface NpAgentChangeSetExecutionEffectV1 {
   ordinal: number;
@@ -2186,6 +2377,7 @@ export const npAgentChangesetExecutions = pgTable(
       .references(() => npSites.id, { onDelete: "restrict" }),
     changesetId: uuid("changeset_id").notNull(),
     purpose: text("purpose").notNull().default("apply"),
+    rollbackPlanId: uuid("rollback_plan_id"),
     planHash: text("plan_hash").notNull(),
     approvalId: uuid("approval_id").notNull(),
     invocationId: uuid("invocation_id"),
@@ -2257,9 +2449,18 @@ export const npAgentChangesetExecutions = pgTable(
       columns: [t.siteId, t.invocationId],
       foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
     }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_changeset_executions_rollback_plan_fk",
+      columns: [t.siteId, t.rollbackPlanId],
+      foreignColumns: [npAgentChangesetRollbackPlans.siteId, npAgentChangesetRollbackPlans.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_changeset_executions_target_check",
+      sql`((${t.purpose}='apply' and ${t.rollbackPlanId} is null) or (${t.purpose}='rollback' and ${t.rollbackPlanId} is not null and ${t.scheduledFor} is null)) is true`,
+    ),
     check(
       "np_agent_changeset_executions_state_check",
-      sql`(${t.purpose}='apply' and ${t.state} in ('reserved','committed','verifying','succeeded','failed','ambiguous') and ${t.version}>0 and ${t.attempts}>=0) is true`,
+      sql`(${t.purpose} in ('apply','rollback') and ${t.state} in ('reserved','committed','verifying','succeeded','failed','ambiguous') and ${t.version}>0 and ${t.attempts}>=0) is true`,
     ),
     check(
       "np_agent_changeset_executions_hash_check",

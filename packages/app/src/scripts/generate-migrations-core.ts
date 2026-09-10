@@ -25,18 +25,21 @@ function run(command: string, args: string[]): Promise<void> {
 export async function generateMigrations(): Promise<void> {
   const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
   await run(pnpm, ["exec", "drizzle-kit", "generate"]);
-  const result = await npEnsureAgentLifecycleConstraintMigrationV1({
-    createCustomMigration: () =>
-      run(pnpm, [
-        "exec",
-        "drizzle-kit",
-        "generate",
-        "--custom",
-        "--name",
-        "agent-r1-lifecycle-constraints",
-      ]),
-  });
-  if (result.state === "created") {
-    process.stdout.write(`Created reviewed Agent lifecycle migration: ${result.migrationFile}\n`);
+  for (const inventory of ["r1", "rollback"] as const) {
+    const result = await npEnsureAgentLifecycleConstraintMigrationV1({
+      inventory,
+      createCustomMigration: () =>
+        run(pnpm, [
+          "exec",
+          "drizzle-kit",
+          "generate",
+          "--custom",
+          "--name",
+          `agent-${inventory}-lifecycle-constraints`,
+        ]),
+    });
+    if (result.state === "created") {
+      process.stdout.write(`Created reviewed Agent lifecycle migration: ${result.migrationFile}\n`);
+    }
   }
 }

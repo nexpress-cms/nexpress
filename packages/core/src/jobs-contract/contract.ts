@@ -423,6 +423,31 @@ function parseBuiltinPayload(
         idempotencyKey,
       } satisfies NpBuiltinJobPayloadMap["agent:changesetApply"];
     }
+    case "agent:changesetRollback": {
+      const input = exactRecord(value, path, [
+        "siteId",
+        "changeSetId",
+        "rollbackPlanId",
+        "planHash",
+        "approvalId",
+        "idempotencyKey",
+      ]);
+      if (!npIsCanonicalSiteId(input.siteId)) fail(`${path}.siteId`, "must be a canonical site id");
+      const planHash = boundedString(input.planHash, `${path}.planHash`, 54);
+      if (!/^cj1:sha256:[A-Za-z0-9_-]{43}$/u.test(planHash))
+        fail(`${path}.planHash`, "must be canonical digest");
+      const idempotencyKey = boundedString(input.idempotencyKey, `${path}.idempotencyKey`, 128);
+      if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(idempotencyKey))
+        fail(`${path}.idempotencyKey`, "must be bounded idempotency key");
+      return {
+        siteId: input.siteId,
+        changeSetId: uuid(input.changeSetId, `${path}.changeSetId`),
+        rollbackPlanId: uuid(input.rollbackPlanId, `${path}.rollbackPlanId`),
+        approvalId: uuid(input.approvalId, `${path}.approvalId`),
+        planHash,
+        idempotencyKey,
+      } satisfies NpBuiltinJobPayloadMap["agent:changesetRollback"];
+    }
     case "agent:changesetVerify": {
       const input = exactRecord(value, path, ["siteId", "changeSetId", "executionId"]);
       if (!npIsCanonicalSiteId(input.siteId)) fail(`${path}.siteId`, "must be a canonical site id");

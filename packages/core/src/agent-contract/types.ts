@@ -542,6 +542,12 @@ export interface NpAgentInitialChangeSetPlanBodyV1 {
   rollbackWindowSeconds: number;
 }
 
+/** Snapshot restoration is accepted only inside a canonical rollback plan. */
+export type NpAgentChangeSetRollbackCompensationInputV1 =
+  | NpAgentChangeSetOperationInput
+  | { kind: "document"; operation: "restore"; resource: { collection: string; documentId: string } }
+  | { kind: "theme_tokens"; operation: "restore"; resource: { themeId: string } };
+
 export interface NpAgentRollbackChangeSetPlanOperationCanonicalV1 {
   ordinal: number;
   originalOperationOrdinal: number;
@@ -549,7 +555,7 @@ export interface NpAgentRollbackChangeSetPlanOperationCanonicalV1 {
   originalSnapshotHash: string;
   expectedCurrentHash: string;
   expectedCurrentVersion: string;
-  compensationOperation: NpAgentChangeSetOperationInput;
+  compensationOperation: NpAgentChangeSetRollbackCompensationInputV1;
   proposedAfterHash: string;
   rollbackClass: NpAgentChangeSetRollbackClass;
   residualCodes: string[];

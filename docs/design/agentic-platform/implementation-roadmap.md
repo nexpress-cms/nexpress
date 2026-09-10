@@ -483,17 +483,16 @@ through the full control loop.
 | AP-407 | Add request-approval/cancel, approval queue, execution timeline, verification, and rollback Admin flows                                                                                                                   |
 | AP-408 | Extend Doctor/Health/runbook and release checks for stuck/failed ChangeSets                                                                                                                                               |
 
-The current R4 execution slice adds AP-402/AP-403/AP-404 and the execution
-portions of AP-407/AP-408 to the preceding AP-401 approval implementation.
-See [R4 execution flow](r4-execution-flow.md) for explicit host installation,
-apply/schedule/cancel admission, bounded processors and verification evidence,
-and [R4 approval flow](r4-approval-flow.md) for approval integrity. The existing
-Admin review now includes execution detail and server-derived controls; the
-reference and scaffold wrappers install no runtime or worker. Workspace,
-PostgreSQL, browser and packed-scaffold validation passed for this slice;
-the execution flow document records the final regression checks. AP-405 rollback, AP-406 Agent HTTP/MCP execution
-capabilities/tasks and the remaining rollback Admin/Doctor flows stay open;
-the full R4 gate below is not yet complete.
+The current R4 rollback slice implements AP-405 and the rollback portions of
+AP-407/AP-408, extending the preceding approval and execution slices. See
+[R4 rollback flow](r4-rollback-flow.md) for exact preparation, fresh approval,
+compensation, bounded recovery and Admin/Doctor scope. The existing facade,
+canonical plan/approval contracts and transaction-aware domain services remain
+authoritative. Rollback-slice validation is complete, including PostgreSQL,
+60 production browser tests and the final packed scaffold refresh; see the
+linked flow for detailed results. AP-406 Agent HTTP/MCP execution
+capabilities and task projection remain open, so the complete R4 gate below
+is not yet satisfied.
 
 Gate:
 

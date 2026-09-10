@@ -122,3 +122,16 @@ async function persistTheme(
       set: { value, updatedAt: now, updatedBy: user.id },
     });
 }
+
+/** Internal restoration of explicit override absence, under the normal theme write admission. */
+export async function npRemoveThemeTokensOverlay(
+  user: NpAuthUser,
+  options: { tx: NpTransaction },
+): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
+  if (!can(user, "admin.manage")) throw new NpForbiddenError("settings/theme", "update");
+  const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
+  await options.tx
+    .delete(npSettings)
+    .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "theme"))!);
+}

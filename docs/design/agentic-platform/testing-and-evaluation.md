@@ -1628,4 +1628,13 @@ The R3 review slice adds hostile static HTML/report/DNS tests, sealed overlay an
 
 ## R4 approval verification
 
-The current approval-only implementation is described in [R4 approval flow](r4-approval-flow.md). It reuses existing sealed ChangeSets, generic Admin decision routes, canonical integrity evidence and explicit bounded maintenance. Execution, scheduling, cancellation and rollback remain later R4 slices.
+The current [R4 rollback implementation](r4-rollback-flow.md) extends the existing
+[approval](r4-approval-flow.md) and [execution](r4-execution-flow.md) services with
+forward compensation, fresh target-bound approval and shared bounded verification.
+Migrations 0043/0044 bring the Agent inventory to 31 tables/167 critical constraints
+and 11 deferred lifecycle foreign keys. Rollback-slice validation is complete:
+full PostgreSQL suites passed 1,147 web and 67 core tests; final affected
+regressions, live Redis, theme PostgreSQL, native preview, all 60 production
+browser tests and the final 14-stage packed scaffold refresh passed. See the
+linked rollback flow for the complete result table and self-review corrections.
+AP-406 Agent HTTP/MCP execution exposure and task projection remain open.

@@ -14,6 +14,8 @@ const { npAgentDiagnosticsSchemaInventoryV1, npCollectAgentHealthSummaryV1 } = a
 );
 
 const DEFERRED_CONSTRAINTS = [
+  "np_agent_changeset_rollback_plans_execution_fk",
+  "np_agent_changeset_rollback_plans_approval_fk",
   "np_agent_connections_active_config_fk",
   "np_agent_connections_active_secret_fk",
   "np_agent_connection_auth_requests_expected_secret_fk",

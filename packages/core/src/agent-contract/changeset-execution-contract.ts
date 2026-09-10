@@ -29,7 +29,7 @@ import {
   type NpAgentVerificationSummary,
   type NpAgentChangeSetState,
 } from "./changeset-wire-contract.js";
-import type { NpAgentJsonSchema } from "./types.js";
+import type { NpAgentJsonSchema, NpAgentJsonObject } from "./types.js";
 export interface NpAgentChangeSetApplyInputV1 {
   schemaVersion: "np.agent-changeset-apply-input.v1";
   expectedDraftVersion: number;
@@ -53,7 +53,7 @@ export const npAgentChangeSetCancellableStatesV1 = [
   "approved",
   "scheduled",
 ] as const satisfies readonly NpAgentChangeSetState[];
-export interface NpAgentChangeSetCancelInputV1 {
+interface NpAgentChangeSetCancelParentInputV1 {
   schemaVersion: "np.agent-changeset-cancel-input.v1";
   expectedDraftVersion: number;
   expectedState: (typeof npAgentChangeSetCancellableStatesV1)[number];
@@ -62,6 +62,20 @@ export interface NpAgentChangeSetCancelInputV1 {
   reason: string | null;
   idempotencyKey: string;
 }
+export const npAgentRollbackCancellableStatesV1 = [
+  "preparing",
+  "ready",
+  "approval_pending",
+  "approved",
+] as const;
+export type NpAgentChangeSetCancelInputV1 =
+  | NpAgentChangeSetCancelParentInputV1
+  | (Omit<NpAgentChangeSetCancelParentInputV1, "expectedState"> & {
+      targetKind: "rollback_plan";
+      rollbackPlanId: string;
+      expectedRollbackVersion: number;
+      expectedState: (typeof npAgentRollbackCancellableStatesV1)[number];
+    });
 export const npAgentVerificationCheckIdsV1 = [
   "resource_after_hashes",
   "revisions_audit",
@@ -242,6 +256,42 @@ export const npRequireAgentChangeSetScheduleInputV1 = (v: unknown) =>
     "Invalid schedule request",
   );
 export function npAnalyzeAgentChangeSetCancelInputV1(value: unknown) {
+  if (value !== null && typeof value === "object" && Object.hasOwn(value, "targetKind"))
+    return analyze(
+      "agent.changeset.cancel",
+      value,
+      [
+        "schemaVersion",
+        "targetKind",
+        "rollbackPlanId",
+        "expectedRollbackVersion",
+        "expectedDraftVersion",
+        "expectedState",
+        "planHash",
+        "reasonCode",
+        "reason",
+        "idempotencyKey",
+      ],
+      (r, p): NpAgentChangeSetCancelInputV1 => {
+        const expectedState = en(r.expectedState, p, npAgentRollbackCancellableStatesV1),
+          planHash = nullableDigest(r.planHash, p);
+        if ((expectedState === "preparing") !== (planHash === null))
+          failCanonicalBody("invalid-field", p, "Rollback hash must match expected state");
+        return {
+          schemaVersion: en(r.schemaVersion, p, ["np.agent-changeset-cancel-input.v1"]),
+          targetKind: en(r.targetKind, p, ["rollback_plan"]),
+          rollbackPlanId: canonicalBodyUuid(r.rollbackPlanId, p),
+          expectedRollbackVersion: positive(r.expectedRollbackVersion, p),
+          expectedDraftVersion: positive(r.expectedDraftVersion, p),
+          expectedState,
+          planHash,
+          reasonCode: en(r.reasonCode, p, ["OPERATOR_CANCELLED"]),
+          reason: r.reason === null ? null : canonicalRuntimeText(r.reason, p, 2000),
+          idempotencyKey: idem(r.idempotencyKey, p),
+        };
+      },
+    );
+
   return analyze(
     "agent.changeset.cancel",
     value,
@@ -388,7 +438,7 @@ export const npAgentChangeSetScheduleInputSchemaV1 = schema({
   ...baseSchema,
   scheduledFor: utc,
 });
-export const npAgentChangeSetCancelInputSchemaV1 = schema({
+const cancelParentSchema = schema({
   schemaVersion: { const: "np.agent-changeset-cancel-input.v1" },
   expectedDraftVersion: integer,
   expectedState: { enum: [...npAgentChangeSetCancellableStatesV1] },
@@ -397,6 +447,42 @@ export const npAgentChangeSetCancelInputSchemaV1 = schema({
   reason: nullable({ type: "string", minLength: 1, maxLength: 2000 }),
   idempotencyKey: idempotency,
 });
+export const npAgentChangeSetCancelInputSchemaV1 = npRequireAgentContractResult(
+  npAnalyzeAgentJsonSchema(
+    JSON.parse(
+      JSON.stringify({
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        type: "object",
+        additionalProperties: false,
+        required: cancelParentSchema.required,
+        properties: {
+          ...(cancelParentSchema.properties as NpAgentJsonObject),
+          targetKind: { const: "rollback_plan" },
+          rollbackPlanId: uuid,
+          expectedRollbackVersion: integer,
+          expectedState: {
+            enum: [
+              ...new Set([
+                ...npAgentChangeSetCancellableStatesV1,
+                ...npAgentRollbackCancellableStatesV1,
+              ]),
+            ],
+          },
+        },
+        oneOf: [
+          cancelParentSchema,
+          schema({
+            ...(cancelParentSchema.properties as NpAgentJsonObject),
+            targetKind: { const: "rollback_plan" },
+            rollbackPlanId: uuid,
+            expectedRollbackVersion: integer,
+            expectedState: { enum: [...npAgentRollbackCancellableStatesV1] },
+          }),
+        ],
+      }),
+    ),
+  ),
+);
 export const npAgentChangeSetExecutionDetailSchemaV1 = schema({
   schemaVersion: { const: "np.agent-changeset-execution.v1" },
   changeSetId: uuid,
@@ -438,15 +524,26 @@ export async function npDigestAgentVerificationResultV1(
   input: unknown,
 ): Promise<`cj1:sha256:${string}`> {
   const p = "agent.changeset.verification";
-  const r = record(cloneCanonicalRuntimeInput(input, p, 256 * 1024), p, [
+  const cloned = cloneCanonicalRuntimeInput(input, p, 256 * 1024);
+  const rollback =
+    cloned !== null && typeof cloned === "object" && Object.hasOwn(cloned, "purpose");
+  const r = record(cloned, p, [
     "siteId",
     "changeSetId",
     "executionId",
     "verificationContractFingerprint",
     "checks",
+    ...(rollback ? ["purpose", "rollbackPlanId"] : []),
   ]);
+  const target = rollback
+    ? {
+        purpose: en(r.purpose, p, ["rollback"]),
+        rollbackPlanId: canonicalBodyUuid(r.rollbackPlanId, p),
+      }
+    : {};
   const body = {
     schemaVersion: "np.agent-changeset-verification.v1",
+    ...target,
     siteId: canonicalBodySiteId(r.siteId, p),
     changeSetId: canonicalBodyUuid(r.changeSetId, p),
     executionId: canonicalBodyUuid(r.executionId, p),

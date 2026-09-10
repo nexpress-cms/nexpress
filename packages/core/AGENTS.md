@@ -1,6 +1,6 @@
 # packages/core — AGENTS.md
 
-Execution extends the existing ChangeSet/approval services with exact Admin apply/schedule/cancel and explicit processExecution/processVerification/reconcileExecutions/registerExecutionJobs. Reuse per-site serialization, current resource writers and the outer transaction for content, revisions, audit and approval consumption. Retain deferred-effect evidence before dispatch; never replay ambiguous opaque hooks. Host execution intent, keys/definitions and convergence verification are explicit. Migration 0042 adds the execution journal (29 Agent tables/144 critical constraints; 28 ordinary deletion tables). No automatic worker, rollback or Gateway execution exposure is installed.
+Rollback extends the existing ChangeSet/approval/execution facade and journal. Keep original apply evidence immutable; derive exact compensation from verified snapshots and current after hashes. Snapshot restore variants belong only to canonical rollback operations, never initial proposals. Reuse current domain writers, per-site serialization, normal revisions/audit, fresh approval consumption and bounded verification. Host installation remains explicit; no AP-406 exposure or automatic worker. Migrations 0043/0044: 31 Agent tables/167 critical constraints, 11 deferred lifecycle foreign keys. Terminal failed rollback evidence remains immutable; optional inspection only CAS-records confirmed execution-effect outcomes. Unresolved effects fence both new generations and site deletion even after plan failure. Rollback-slice validation is complete; see the R4 rollback flow results.
 
 Server-only CMS engine: config, DB, auth, collections pipeline, media, jobs, plugins, storage, cache, theme.
 
@@ -134,7 +134,7 @@ No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugi
   use `saveDocument` to reserve draft ids. Exact ChangeSet wires exclude sealed
   plans, snapshots and approval integrity fields. Draft service installation
   does not advertise new MCP/HTTP capabilities or install a worker. Doctor,
-  deletion and fresh migrations now share the 29-table/144-constraint inventory after AP-402–404.
+  deletion and fresh migrations now share the 31-table/167-constraint inventory after AP-405.
 
 - AP-303/AP-304 validation extends that same service with generation-bound
   durable attempts, inline validation and explicitly invoked queue recovery.
@@ -164,9 +164,9 @@ No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugi
   queued-source window derives from 24 serial artifacts, four 60-second calls
   each, and 90-second lease grace; its deadline also fences dispatch claims.
   Unknown operations remain blocked, even after deadline or a missing object.
-- Migration 0040 added five preview tables; execution migration 0042 brings the
-  current Doctor inventory to 29 tables/144 critical constraints and ordinary
-  deletion to 28 tables. Keep live launch/render, expiry/skew fences and confirmed
+- Migration 0040 added five preview tables, 0042 the execution journal, and
+  0043/0044 rollback persistence/references. The current Doctor inventory has
+  31 tables/167 critical constraints and 11 deferred lifecycle foreign keys. Keep live launch/render, expiry/skew fences and confirmed
   storage deletion aligned with the actual same-site lifecycle references.
   Preserve logical references where no corresponding lifecycle table exists.
   All adapters and processors require explicit host injection; no automatic

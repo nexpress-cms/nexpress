@@ -1,6 +1,6 @@
 # apps/web — AGENTS.md
 
-Approval and execution routes/pages remain thin shared-app exports. Migration 0042 adds the durable ChangeSet execution journal (29 Agent tables/144 critical constraints). Approval keys, canonical execution bindings, current execution intent and convergence hooks remain explicitly injected; wrappers never construct them or enable a worker. Apply/schedule/cancel reuse the existing Admin admission and review response. No rollback or Agent HTTP/MCP execution capability is exposed.
+Rollback preparation/request-approval/execute routes remain thin shared-app exports; cancellation reuses the existing ChangeSet route. Runtime, keys/definitions, intent and verification are explicitly injected; wrappers do not enable workers or Gateway execution. Generated migrations 0043/0044 cover 31 Agent tables/167 critical constraints and 11 deferred lifecycle foreign keys. Rollback-slice validation is complete; see the R4 rollback flow results.
 
 Next.js 16 reference app. This app is intentionally thin: most route
 handlers, pages, scripts, proxy behavior, and setup flows are re-exported

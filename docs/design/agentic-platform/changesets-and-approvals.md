@@ -1857,4 +1857,8 @@ It reuses existing sealed ChangeSets, generic Admin decision routes, canonical
 integrity evidence and explicit bounded maintenance. The subsequent
 [R4 execution flow](r4-execution-flow.md) implements apply, scheduling,
 cancellation and bounded post-commit verification through the same facade.
-AP-405 rollback and AP-406 Agent HTTP/MCP execution exposure remain later slices.
+The subsequent [R4 rollback flow](r4-rollback-flow.md) implements AP-405 and
+the rollback Admin/Doctor portions with fresh approval and shared execution.
+The existing cancel route adds an exact rollback-plan target branch; no new
+cancellation route is introduced. Full rollback validation is in progress.
+AP-406 Agent HTTP/MCP execution exposure and task projection remain open.

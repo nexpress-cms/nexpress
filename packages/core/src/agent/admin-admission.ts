@@ -1,4 +1,12 @@
 import {
+  npRequireAgentRollbackPlanCreateInputV1,
+  npRequireAgentRollbackPlanRequestApprovalInputV1,
+  npRequireAgentRollbackPlanExecuteInputV1,
+  type NpAgentRollbackPlanCreateInputV1,
+  type NpAgentRollbackPlanRequestApprovalInputV1,
+  type NpAgentRollbackPlanExecuteInputV1,
+} from "../agent-contract/rollback-contract.js";
+import {
   npRequireAgentChangeSetApplyInputV1,
   npRequireAgentChangeSetScheduleInputV1,
   npRequireAgentChangeSetCancelInputV1,
@@ -63,6 +71,9 @@ type NpAgentDb = ReturnType<typeof getDb>;
 export type NpAgentAdmittedAdminOperationIdV1 =
   | NpAgentGatewayAdminOperationIdV1
   | NpAgentConnectionAdminOperationIdV1
+  | "agents.changesets.rollback_plans.create"
+  | "agents.changesets.rollback_plans.request_approval"
+  | "agents.changesets.rollback_plans.execute"
   | "agents.changesets.apply"
   | "agents.changesets.schedule"
   | "agents.changesets.cancel"
@@ -79,6 +90,9 @@ export type NpAgentAdmittedAdminOperationIdV1 =
 
 export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
   NpAgentConnectionAdminInputMapV1 & {
+    "agents.changesets.rollback_plans.create": NpAgentRollbackPlanCreateInputV1;
+    "agents.changesets.rollback_plans.request_approval": NpAgentRollbackPlanRequestApprovalInputV1;
+    "agents.changesets.rollback_plans.execute": NpAgentRollbackPlanExecuteInputV1;
     "agents.changesets.apply": NpAgentChangeSetApplyInputV1;
     "agents.changesets.schedule": NpAgentChangeSetScheduleInputV1;
     "agents.changesets.cancel": NpAgentChangeSetCancelInputV1;
@@ -100,6 +114,14 @@ function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
   operationId: I,
   value: unknown,
 ): NpAgentAdmittedAdminInputMapV1[I] {
+  if (operationId === "agents.changesets.rollback_plans.create")
+    return npRequireAgentRollbackPlanCreateInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.changesets.rollback_plans.request_approval")
+    return npRequireAgentRollbackPlanRequestApprovalInputV1(
+      value,
+    ) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.changesets.rollback_plans.execute")
+    return npRequireAgentRollbackPlanExecuteInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.changesets.apply")
     return npRequireAgentChangeSetApplyInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.changesets.schedule")

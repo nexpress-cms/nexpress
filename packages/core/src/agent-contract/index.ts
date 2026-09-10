@@ -44,3 +44,5 @@ export * from "./changeset-capability-schema.js";
 export * from "./approval-contract.js";
 
 export * from "./changeset-execution-contract.js";
+
+export * from "./rollback-contract.js";

@@ -1,6 +1,6 @@
 # packages/admin — AGENTS.md
 
-Approval and execution controls reuse existing review/preview components and exact client-safe contracts. Offer apply/schedule/cancel only from review.executionActions; preserve the sealed approval binding, canonical UTC schedule and identical keys on unknown-outcome retry. Conflict/access loss clears evidence while retaining safe reauthentication guidance. Display executionDetail and fixed verification statuses without inventing convergence or rollback. Challenges remain in memory. No rollback control or public verification route is added.
+Rollback controls use existing review.rollbackDetail/rollbackActions and exact same-service contracts. Reuse current declared editable-field projection for restoration diffs; hide undeclared/hidden/read-only snapshot metadata. Request a fresh approval for the exact rollback plan/version/hash; execute only its signed approval. Non-executing cancellation uses the existing ChangeSet cancel route with the rollback-plan discriminator. Keep unknown-outcome keys stable and clear evidence on conflict/access loss. No optimistic success, new public verify route, or AP-406 exposure. Rollback-slice validation is complete, including all 60 production browser tests; see the R4 rollback flow results.
 
 Admin UI package: shadcn-style primitives (Radix + Tailwind v4) + CMS views. Built with tsup, not Next.
 

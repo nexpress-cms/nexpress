@@ -42,7 +42,12 @@ function item(state: "pending" | "approved" = "pending", version = 1) {
   };
 }
 function detail(state: "pending" | "approved" = "pending", version = 1) {
-  return { schemaVersion: "np.agent-approval-detail.v1", item: item(state, version), review: null };
+  return {
+    schemaVersion: "np.agent-approval-detail.v1",
+    rollbackReview: null,
+    item: item(state, version),
+    review: null,
+  };
 }
 test.describe("Agent approval review", () => {
   test("distinguishes unavailable runtime from an authorized empty queue", async ({
@@ -167,7 +172,7 @@ test.describe("Agent approval review", () => {
     });
     await expect(
       page.getByText(
-        "Approval records a human decision. Apply, schedule execution and rollback are not available here.",
+        "Approval records a human decision. Execute the approved operation from the current ChangeSet review after its authority and evidence checks.",
         { exact: true },
       ),
     ).toBeVisible();

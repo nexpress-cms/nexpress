@@ -192,6 +192,46 @@ async function apply(
   );
 }
 
+async function rollbackPlan(
+  user: NpAuthUser,
+  changeSetId: string,
+  plan: Awaited<ReturnType<typeof seal>>,
+  applied: Awaited<ReturnType<typeof apply>>,
+) {
+  return (await getTestDb()).transaction((tx) =>
+    applyResources.prepareRollback({
+      tx: tx as unknown as NpTransaction,
+      user,
+      siteId: "default",
+      changeSetId,
+      operations: plan.operations,
+      beforeSnapshots: plan.snapshots,
+      appliedResources: applied.operations,
+    }),
+  );
+}
+async function rollback(
+  user: NpAuthUser,
+  changeSetId: string,
+  plan: Awaited<ReturnType<typeof seal>>,
+  prepared: Awaited<ReturnType<typeof rollbackPlan>>,
+) {
+  return withDeferredPostCommit(async () =>
+    (await getTestDb()).transaction(
+      (tx) =>
+        applyResources.applyRollback({
+          tx: tx as unknown as NpTransaction,
+          user,
+          siteId: "default",
+          changeSetId,
+          operations: prepared.operations,
+          beforeSnapshots: plan.snapshots,
+        }),
+      { isolationLevel: "serializable" },
+    ),
+  );
+}
+
 describe.skipIf(skipIfNoTestDb())("ChangeSet atomic existing-domain apply", () => {
   beforeAll(ensureMigrated);
   beforeEach(async () => {
@@ -489,5 +529,378 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet atomic existing-domain apply", () =
       "Apply fixture",
     );
     expect(await (await getTestDb()).select().from(npMediaRefs)).toHaveLength(0);
+  });
+  it("compensates all five kinds while preserving the created row and deleting absent overrides", async () => {
+    const user = await actor(),
+      changeSetId = randomUUID(),
+      id = randomUUID(),
+      db = await getTestDb();
+    const owner = await saveDocument("posts", null, content("Owner"), user, { status: "draft" });
+    const mediaId = await addMedia();
+    await db.insert(npNavigation).values({ siteId: "default", location: "main", items: [] });
+    const themeId = (await getActiveTheme())!.manifest.id;
+    const plan = await seal(user, changeSetId, [
+      create(id),
+      entry(
+        {
+          clientOperationId: "navigation",
+          reason: null,
+          kind: "navigation",
+          operation: "replace",
+          resource: { location: "main" },
+          base: placeholder,
+          input: { items: [{ id: "changed", type: "link", label: "Changed", url: "/changed" }] },
+        },
+        { kind: "navigation", location: "main" },
+        2,
+      ),
+      entry(
+        {
+          clientOperationId: "theme",
+          reason: null,
+          kind: "theme_tokens",
+          operation: "replace",
+          resource: { themeId },
+          base: placeholder,
+          input: { tokens: {} },
+        },
+        { kind: "theme_tokens", themeId },
+        3,
+      ),
+      entry(
+        {
+          clientOperationId: "seo",
+          reason: null,
+          kind: "setting",
+          operation: "replace",
+          resource: { key: "seo" },
+          base: null,
+          input: { value: { defaultOgImage: null, twitterHandle: null, defaultLocale: "en" } },
+        },
+        { kind: "setting", key: "seo" },
+        4,
+      ),
+      media(String(owner.doc.id), mediaId, "attach", 5),
+    ]);
+    const applied = await apply(user, changeSetId, plan);
+    const prepared = await rollbackPlan(user, changeSetId, plan, applied);
+    expect(prepared.risk).toMatchObject({ reversible: false, reasonCodes: ["ROLLBACK_PARTIAL"] });
+    const restored = await rollback(user, changeSetId, plan, prepared);
+    expect((await npGetPersistedCollectionDocumentById("posts", id, "default"))?.status).toBe(
+      "archived",
+    );
+    expect(await db.select().from(npRevisions).where(eq(npRevisions.documentId, id))).toHaveLength(
+      2,
+    );
+    expect((await db.select().from(npNavigation))[0].items).toEqual([]);
+    expect(await db.select().from(npSettings)).toHaveLength(0);
+    expect(await db.select().from(npMediaRefs)).toHaveLength(0);
+    expect(restored.operations.map((o) => o.afterHash)).toEqual(
+      prepared.operations.map((o) => o.proposedAfterHash),
+    );
+    await expect(rollback(user, changeSetId, plan, prepared)).rejects.toMatchObject({
+      code: "CHANGESET_BASE_CONFLICT",
+    });
+  });
+  it.each(["draft", "published", "archived", "scheduled", "pending"] as const)(
+    "restores full document content and prior %s state through a new revision",
+    async (status) => {
+      const user = await actor(),
+        changeSetId = randomUUID(),
+        db = await getTestDb();
+      const publishedAt = status === "scheduled" ? new Date(Date.now() + 3_600_000) : null;
+      const before = await saveDocument(
+        "posts",
+        null,
+        { ...content("Before"), publishedAt },
+        user,
+        { status },
+      );
+      const id = String(before.doc.id);
+      const proposed = update(id);
+      if (proposed.operation.kind !== "document" || proposed.operation.operation !== "update")
+        throw new Error("Invalid fixture");
+      proposed.operation.input = {
+        patch: { title: "After" },
+        targetStatus: "draft",
+      };
+      const plan = await seal(user, changeSetId, [proposed]);
+      const applied = await apply(user, changeSetId, plan);
+      const prepared = await rollbackPlan(user, changeSetId, plan, applied);
+      const restored = await rollback(user, changeSetId, plan, prepared);
+      expect(await npGetPersistedCollectionDocumentById("posts", id, "default")).toMatchObject({
+        title: "Before",
+        status,
+        publishedAt,
+      });
+      expect(
+        await db.select().from(npRevisions).where(eq(npRevisions.documentId, id)),
+      ).toHaveLength(3);
+      expect(restored.operations[0].afterHash).toBe(plan.operations[0].beforeHash);
+    },
+  );
+  it("restores explicit schedule absence, removed SEO and a detached active media relation", async () => {
+    const user = await actor(),
+      changeSetId = randomUUID(),
+      db = await getTestDb(),
+      mediaId = await addMedia();
+    const owner = await saveDocument("posts", null, content(), user, { status: "draft" });
+    const id = String(owner.doc.id);
+    await db.insert(npMediaRefs).values({
+      siteId: "default",
+      collection: "posts",
+      documentId: id,
+      field: "coverImage",
+      mediaId,
+    });
+    const value = { defaultOgImage: null, twitterHandle: "before", defaultLocale: "en" };
+    await db.insert(npSettings).values({ siteId: "default", key: "seo", value });
+    const plan = await seal(user, changeSetId, [
+      entry(
+        {
+          clientOperationId: "schedule",
+          reason: null,
+          kind: "document",
+          operation: "schedule",
+          resource: { collection: "posts", documentId: id },
+          base: placeholder,
+          input: { publishAt: new Date(Date.now() + 3_600_000).toISOString() },
+        },
+        { kind: "document", collection: "posts", documentId: id },
+      ),
+      entry(
+        {
+          clientOperationId: "remove",
+          reason: null,
+          kind: "setting",
+          operation: "remove",
+          resource: { key: "seo" },
+          base: placeholder,
+          input: {},
+        },
+        { kind: "setting", key: "seo" },
+        2,
+      ),
+    ]);
+    const applied = await apply(user, changeSetId, plan),
+      prepared = await rollbackPlan(user, changeSetId, plan, applied);
+    await rollback(user, changeSetId, plan, prepared);
+    expect(await npGetPersistedCollectionDocumentById("posts", id, "default")).toMatchObject({
+      status: "draft",
+      publishedAt: null,
+    });
+    expect((await db.select().from(npSettings))[0].value).toEqual(value);
+    // Standalone media relation compensations preserve relation-only semantics.
+    await db
+      .insert(npMediaRefs)
+      .values({
+        siteId: "default",
+        collection: "posts",
+        documentId: id,
+        field: "coverImage",
+        mediaId,
+      })
+      .onConflictDoNothing();
+    const mediaPlan = await seal(user, randomUUID(), [media(id, mediaId, "detach", 1)]);
+    const mediaChangeSetId = mediaPlan.snapshots[0].changeSetId;
+    const mediaApplied = await apply(user, mediaChangeSetId, mediaPlan);
+    const mediaPrepared = await rollbackPlan(user, mediaChangeSetId, mediaPlan, mediaApplied);
+    await rollback(user, mediaChangeSetId, mediaPlan, mediaPrepared);
+    expect(await db.select().from(npMediaRefs)).toHaveLength(1);
+  });
+  it("fences later edits, tampered snapshots and current write authority before compensation", async () => {
+    const user = await actor(),
+      changeSetId = randomUUID(),
+      db = await getTestDb();
+    const saved = await saveDocument("posts", null, content(), user, { status: "draft" });
+    const id = String(saved.doc.id);
+    const plan = await seal(user, changeSetId, [update(id)]),
+      applied = await apply(user, changeSetId, plan),
+      prepared = await rollbackPlan(user, changeSetId, plan, applied);
+    const tampered = {
+      ...plan,
+      snapshots: plan.snapshots.map((s) => ({
+        ...s,
+        value: { ...(s.value as Record<string, never>), title: "Tampered" },
+      })),
+    };
+    await expect(rollback(user, changeSetId, tampered, prepared)).rejects.toMatchObject({
+      code: "CHANGESET_ROLLBACK_UNAVAILABLE",
+    });
+    const config = getCollectionConfig("posts");
+    registerCollection("posts", getCollectionTable("posts"), {
+      ...config,
+      access: { ...config.access, update: () => false },
+    });
+    await expect(rollback(user, changeSetId, plan, prepared)).rejects.toMatchObject({
+      code: "CHANGESET_ACCESS_DENIED",
+    });
+    registerCollection("posts", getCollectionTable("posts"), config);
+    await saveDocument("posts", id, { title: "Later" }, user);
+    await expect(rollbackPlan(user, changeSetId, plan, applied)).rejects.toMatchObject({
+      code: "CHANGESET_BASE_CONFLICT",
+    });
+    await expect(rollback(user, changeSetId, plan, prepared)).rejects.toMatchObject({
+      code: "CHANGESET_BASE_CONFLICT",
+    });
+    expect((await npGetPersistedCollectionDocumentById("posts", id, "default"))?.title).toBe(
+      "Later",
+    );
+    expect(await db.select().from(npRevisions).where(eq(npRevisions.documentId, id))).toHaveLength(
+      3,
+    );
+  });
+  it("restores retained hidden fields and rejects a newly incompatible prior schema", async () => {
+    const user = await actor(),
+      changeSetId = randomUUID();
+    const saved = await saveDocument(
+      "posts",
+      null,
+      { ...content("Long prior title"), excerpt: "Private prior" },
+      user,
+      { status: "draft" },
+    );
+    const id = String(saved.doc.id),
+      config = getCollectionConfig("posts");
+    const fields = config.fields.map((field) =>
+      "name" in field && field.name === "excerpt" ? { ...field, hidden: true } : field,
+    );
+    registerCollection("posts", getCollectionTable("posts"), { ...config, fields });
+    const plan = await seal(user, changeSetId, [update(id, { title: "After" })]);
+    registerCollection("posts", getCollectionTable("posts"), {
+      ...config,
+      fields,
+      hooks: {
+        ...config.hooks,
+        beforeUpdate: [({ data }) => Promise.resolve({ ...data, excerpt: "Private after" })],
+      },
+    });
+    const applied = await apply(user, changeSetId, plan);
+    registerCollection("posts", getCollectionTable("posts"), { ...config, fields });
+    const prepared = await rollbackPlan(user, changeSetId, plan, applied);
+    registerCollection("posts", getCollectionTable("posts"), {
+      ...config,
+      fields: fields.map((field) =>
+        "name" in field && field.name === "title" && field.type === "text"
+          ? { ...field, maxLength: 6 }
+          : field,
+      ),
+    });
+    await expect(rollback(user, changeSetId, plan, prepared)).rejects.toMatchObject({
+      code: "CHANGESET_SCHEMA_INVALID",
+    });
+    registerCollection("posts", getCollectionTable("posts"), { ...config, fields });
+    await rollback(user, changeSetId, plan, prepared);
+    expect(await npGetPersistedCollectionDocumentById("posts", id, "default")).toMatchObject({
+      title: "Long prior title",
+      excerpt: "Private prior",
+    });
+  });
+  it("restores an overlapping document and media index only after all compensation writes", async () => {
+    const user = await actor(),
+      changeSetId = randomUUID(),
+      mediaId = await addMedia();
+    const saved = await saveDocument("posts", null, content(), user, { status: "draft" });
+    const id = String(saved.doc.id);
+    const plan = await seal(user, changeSetId, [
+        update(id, { coverImage: mediaId }),
+        media(id, mediaId, "attach", 2),
+      ]),
+      applied = await apply(user, changeSetId, plan),
+      prepared = await rollbackPlan(user, changeSetId, plan, applied);
+    const result = await rollback(user, changeSetId, plan, prepared);
+    expect(
+      (await npGetPersistedCollectionDocumentById("posts", id, "default"))?.coverImage,
+    ).toBeNull();
+    expect(await (await getTestDb()).select().from(npMediaRefs)).toHaveLength(0);
+    expect(result.operations.map((o) => o.afterHash)).toEqual(
+      prepared.operations.map((o) => o.proposedAfterHash),
+    );
+  });
+  it("rejects missing media and equal-content newer document revisions without any compensation", async () => {
+    const user = await actor(),
+      changeSetId = randomUUID(),
+      mediaId = await addMedia(),
+      db = await getTestDb();
+    const saved = await saveDocument("posts", null, content(), user, { status: "draft" });
+    const id = String(saved.doc.id);
+    await db.insert(npMediaRefs).values({
+      siteId: "default",
+      collection: "posts",
+      documentId: id,
+      field: "coverImage",
+      mediaId,
+    });
+    const plan = await seal(user, changeSetId, [media(id, mediaId, "detach", 1)]),
+      applied = await apply(user, changeSetId, plan);
+    await db.update(npMedia).set({ deletedAt: new Date() }).where(eq(npMedia.id, mediaId));
+    await expect(rollbackPlan(user, changeSetId, plan, applied)).rejects.toThrow();
+    expect(await db.select().from(npMediaRefs)).toHaveLength(0);
+    const documentId = randomUUID();
+    const proposed = create(documentId);
+    if (proposed.operation.kind !== "document" || proposed.operation.operation !== "create")
+      throw new Error("Invalid fixture");
+    proposed.operation.input.document.title = "Second document";
+    const documentPlan = await seal(user, randomUUID(), [proposed]),
+      changeSet2 = documentPlan.snapshots[0].changeSetId;
+    const documentApplied = await apply(user, changeSet2, documentPlan);
+    await saveDocument("posts", documentId, {}, user);
+    await expect(
+      rollbackPlan(user, changeSet2, documentPlan, documentApplied),
+    ).rejects.toMatchObject({ code: "CHANGESET_BASE_CONFLICT" });
+    expect(
+      (await npGetPersistedCollectionDocumentById("posts", documentId, "default"))?.status,
+    ).toBe("draft");
+  });
+  it("restores a present empty theme override without confusing it with absence", async () => {
+    const user = await actor(),
+      changeSetId = randomUUID(),
+      db = await getTestDb(),
+      themeId = (await getActiveTheme())!.manifest.id;
+    await db.insert(npSettings).values({ siteId: "default", key: "theme", value: {} });
+    const plan = await seal(user, changeSetId, [
+      entry(
+        {
+          clientOperationId: "theme",
+          reason: null,
+          kind: "theme_tokens",
+          operation: "replace",
+          resource: { themeId },
+          base: placeholder,
+          input: { tokens: { colors: { primary: "#123456" } } },
+        },
+        { kind: "theme_tokens", themeId },
+      ),
+    ]);
+    const applied = await apply(user, changeSetId, plan),
+      prepared = await rollbackPlan(user, changeSetId, plan, applied),
+      result = await rollback(user, changeSetId, plan, prepared);
+    expect((await db.select().from(npSettings))[0].value).toEqual({});
+    expect(result.operations[0].snapshot.presence).toBe("present");
+    expect(result.operations[0].afterHash).toBe(plan.operations[0].beforeHash);
+  });
+  it("retains every prior revision during compensation even at the normal revision cap", async () => {
+    const user = await actor(),
+      changeSetId = randomUUID(),
+      db = await getTestDb(),
+      config = getCollectionConfig("posts");
+    registerCollection("posts", getCollectionTable("posts"), {
+      ...config,
+      versions: { ...(typeof config.versions === "object" ? config.versions : {}), max: 2 },
+    });
+    const saved = await saveDocument("posts", null, content(), user, { status: "draft" });
+    const id = String(saved.doc.id),
+      plan = await seal(user, changeSetId, [update(id)]),
+      applied = await apply(user, changeSetId, plan);
+    const before = await db.select().from(npRevisions).where(eq(npRevisions.documentId, id));
+    expect(before).toHaveLength(2);
+    await rollback(user, changeSetId, plan, await rollbackPlan(user, changeSetId, plan, applied));
+    const after = await db.select().from(npRevisions).where(eq(npRevisions.documentId, id));
+    expect(after).toHaveLength(3);
+    expect(after).toEqual(expect.arrayContaining(before));
+    await saveDocument("posts", id, { title: "Ordinary later update" }, user);
+    expect(await db.select().from(npRevisions).where(eq(npRevisions.documentId, id))).toHaveLength(
+      2,
+    );
   });
 });

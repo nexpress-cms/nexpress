@@ -13,6 +13,8 @@ const expectedTables = [
   "np_agent_changeset_executions",
   "np_agent_changeset_operations",
   "np_agent_changeset_previews",
+  "np_agent_changeset_rollback_operations",
+  "np_agent_changeset_rollback_plans",
   "np_agent_changeset_validation_attempts",
   "np_agent_changesets",
   "np_agent_connection_auth_requests",

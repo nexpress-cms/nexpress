@@ -2,7 +2,19 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Current execution slice:** AP-402/AP-403/AP-404 and execution portions of
+**Current rollback slice:** AP-405 and rollback portions of AP-407/AP-408 reuse
+the existing canonical rollback plan, approval lifecycle, execution journal,
+transaction-aware domain writers and bounded verification/recovery. Explicit
+host services prepare, request approval for and execute compensation; the
+existing cancel route also accepts a closed rollback-plan target. Current Admin
+review projects safe compensation diffs and server-derived actions. Initial
+proposal operations cannot use the rollback-only snapshot restore variants.
+Migrations 0043/0044 bring Doctor to 31 Agent tables/167 critical constraints
+and 11 deferred lifecycle foreign keys. Rollback-slice validation is complete; see the R4 rollback flow results. No
+AP-406 Gateway execution exposure, automatic worker/provider, seed, default
+activation, package version or changeset is added. See the R4 rollback flow.
+
+**Earlier execution slice:** AP-402/AP-403/AP-404 and execution portions of
 AP-407/AP-408 extend the existing ChangeSet/approval facade with exact
 apply/schedule/cancel, one durable execution journal, transaction-scoped
 resource writes and approval consumption, deferred-effect evidence and bounded

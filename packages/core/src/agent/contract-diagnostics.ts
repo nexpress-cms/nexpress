@@ -21,6 +21,8 @@ const AGENT_TABLES = [
   "np_agent_changeset_executions",
   "np_agent_changeset_operations",
   "np_agent_changeset_previews",
+  "np_agent_changeset_rollback_operations",
+  "np_agent_changeset_rollback_plans",
   "np_agent_changeset_validation_attempts",
   "np_agent_changesets",
   "np_agent_connection_auth_requests",
@@ -49,6 +51,30 @@ const AGENT_TABLES = [
 
 /** Critical state and same-site constraints whose absence weakens fail-closed diagnostics. */
 const AGENT_CONSTRAINTS = [
+  "np_agent_changeset_rollback_operations_bounds_check",
+  "np_agent_changeset_rollback_operations_changeset_fk",
+  "np_agent_changeset_rollback_operations_hash_check",
+  "np_agent_changeset_rollback_operations_original_fk",
+  "np_agent_changeset_rollback_operations_plan_fk",
+  "np_agent_changeset_rollback_operations_snapshot_check",
+  "np_agent_changeset_rollback_operations_state_check",
+  "np_agent_changeset_rollback_operations_time_check",
+  "np_agent_changeset_rollback_plans_approval_check",
+  "np_agent_changeset_rollback_plans_authority_check",
+  "np_agent_changeset_rollback_plans_bounds_check",
+  "np_agent_changeset_rollback_plans_changeset_fk",
+  "np_agent_changeset_rollback_plans_hash_check",
+  "np_agent_changeset_rollback_plans_invocation_fk",
+  "np_agent_changeset_rollback_plans_sealed_check",
+  "np_agent_changeset_rollback_plans_state_check",
+  "np_agent_changeset_rollback_plans_terminal_check",
+  "np_agent_changeset_rollback_plans_time_check",
+  "np_agent_changeset_rollback_plans_execution_fk",
+  "np_agent_changeset_rollback_plans_approval_fk",
+  "np_agent_approvals_rollback_plan_fk",
+  "np_agent_changeset_executions_rollback_plan_fk",
+  "np_agent_changeset_executions_target_check",
+
   "np_agent_changeset_executions_changeset_fk",
   "np_agent_changeset_executions_approval_fk",
   "np_agent_changeset_executions_invocation_fk",
@@ -244,6 +270,8 @@ const STATE_SUMMARY_SQL = `
     union all select 'preview-upload', state, created_at from public.np_agent_preview_artifact_uploads
     union all select 'preview-viewer-launch', state, created_at from public.np_agent_preview_viewer_launches
     union all select 'preview-render-session', state, issued_at from public.np_agent_preview_render_sessions
+    union all select 'rollback-plan', state, created_at from public.np_agent_changeset_rollback_plans
+    union all select 'rollback-operation', state, created_at from public.np_agent_changeset_rollback_operations
     union all select 'changeset-execution', state, reserved_at from public.np_agent_changeset_executions
     union all select 'changeset', state, created_at from public.np_agent_changesets
     union all select 'changeset-operation', state, created_at from public.np_agent_changeset_operations
@@ -308,12 +336,17 @@ const ISSUE_SUMMARY_SQL = `
      where status not in ('active', 'consumed', 'revoked', 'expired')
     union all select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_changesets where state not in ('draft','validating','invalid','ready','approval_pending','approved','scheduled','applying','applied','verifying','verified','rejected','cancelled','apply_failed','verification_failed','rolling_back','rolled_back','rollback_failed')
     union all select 'AGENT_EXECUTION_DIVERGED', e.reserved_at from public.np_agent_changeset_executions e
-     where not exists(select 1 from public.np_agent_changesets c where c.site_id=e.site_id and c.id=e.changeset_id and c.plan_hash=e.plan_hash and c.scheduled_for is not distinct from e.scheduled_for)
-       or not exists(select 1 from public.np_agent_approvals a where a.site_id=e.site_id and a.id=e.approval_id and a.target_kind='changeset' and a.target_changeset_id=e.changeset_id and a.plan_hash=e.plan_hash and (e.committed_at is null or (a.state='consumed' and a.consumed_at=e.committed_at)))
+     where not exists(select 1 from public.np_agent_changesets c where c.site_id=e.site_id and c.id=e.changeset_id and ((e.purpose='apply' and c.plan_hash=e.plan_hash and c.scheduled_for is not distinct from e.scheduled_for) or (e.purpose='rollback' and exists(select 1 from public.np_agent_changeset_rollback_plans p where p.site_id=e.site_id and p.changeset_id=e.changeset_id and p.id=e.rollback_plan_id and p.plan_hash=e.plan_hash and p.approval_id=e.approval_id))))
+       or not exists(select 1 from public.np_agent_approvals a where a.site_id=e.site_id and a.id=e.approval_id and ((e.purpose='apply' and a.target_kind='changeset' and a.target_changeset_id=e.changeset_id) or (e.purpose='rollback' and a.target_kind='changeset_rollback' and a.target_rollback_plan_id=e.rollback_plan_id)) and a.plan_hash=e.plan_hash and (e.committed_at is null or (a.state='consumed' and a.consumed_at=e.committed_at)))
        or (e.invocation_id is not null and not exists(select 1 from public.np_agent_invocations i where i.site_id=e.site_id and i.id=e.invocation_id))
-       or (e.committed_at is not null and (not exists(select 1 from public.np_agent_changeset_operations o where o.site_id=e.site_id and o.changeset_id=e.changeset_id) or exists(select 1 from public.np_agent_changeset_operations o where o.site_id=e.site_id and o.changeset_id=e.changeset_id and (o.after_hash is null or o.result_digest is null or o.state not in ('applied','verified','failed')))))
+       or (e.purpose='apply' and e.committed_at is not null and (not exists(select 1 from public.np_agent_changeset_operations o where o.site_id=e.site_id and o.changeset_id=e.changeset_id) or exists(select 1 from public.np_agent_changeset_operations o where o.site_id=e.site_id and o.changeset_id=e.changeset_id and (o.after_hash is null or o.result_digest is null or o.state not in ('applied','verified','failed')))))
+       or (e.purpose='rollback' and e.committed_at is not null and (not exists(select 1 from public.np_agent_changeset_rollback_operations o where o.site_id=e.site_id and o.rollback_plan_id=e.rollback_plan_id) or exists(select 1 from public.np_agent_changeset_rollback_operations o where o.site_id=e.site_id and o.rollback_plan_id=e.rollback_plan_id and (o.after_hash is null or o.result_digest is null or o.state not in ('applied','verified','failed')))))
        or e.state='ambiguous'
-       or exists(select 1 from jsonb_array_elements(e.effects) x where x->>'state'='unknown')
+       or exists(select 1 from jsonb_array_elements(e.effects) x where x->>'state'='unknown' or (e.state='failed' and x->>'state' in ('pending','running')))
+    union all select 'AGENT_EXECUTION_DIVERGED', p.created_at from public.np_agent_changeset_rollback_plans p where not exists(select 1 from public.np_agent_changeset_executions e where e.site_id=p.site_id and e.changeset_id=p.changeset_id and e.id=p.compensates_execution_id and e.purpose='apply' and e.committed_at is not null and e.plan_hash=p.original_plan_hash and e.result_digest=p.applied_result_digest)
+    union all select 'AGENT_RELATION_CROSS_SITE', p.created_at from public.np_agent_changeset_rollback_plans p where p.approval_id is not null and not exists(select 1 from public.np_agent_approvals a where a.site_id=p.site_id and a.id=p.approval_id and a.target_kind='changeset_rollback' and a.target_rollback_plan_id=p.id and a.target_changeset_id=p.changeset_id and a.plan_hash=p.plan_hash)
+    union all select 'AGENT_RELATION_CROSS_SITE', o.created_at from public.np_agent_changeset_rollback_operations o where not exists(select 1 from public.np_agent_changeset_rollback_plans p where p.site_id=o.site_id and p.id=o.rollback_plan_id and p.changeset_id=o.changeset_id) or not exists(select 1 from public.np_agent_changeset_operations source where source.site_id=o.site_id and source.id=o.original_operation_id and source.changeset_id=o.changeset_id and source.ordinal=o.original_operation_ordinal)
+    union all select 'AGENT_EXPIRY_BACKLOG', p.expires_at from public.np_agent_changeset_rollback_plans p where p.state in ('preparing','ready','approval_pending','approved') and p.expires_at<=$1::timestamptz
     union all select 'AGENT_STALE_EXECUTION', e.reserved_at from public.np_agent_changeset_executions e
      where e.state in ('reserved','committed','verifying') and ((e.lease_until is not null and e.lease_until<=$1::timestamptz) or (e.lease_until is null and coalesce(e.committed_at,e.scheduled_for,e.reserved_at)<=$1::timestamptz-interval '10 minutes'))
     union all select 'AGENT_EXECUTION_VERIFICATION_FAILED', e.verification_completed_at from public.np_agent_changeset_executions e where e.verification_state='failed'
@@ -400,6 +433,9 @@ const ISSUE_SUMMARY_SQL = `
     union all select 'AGENT_RELATION_CROSS_SITE', approval.requested_at from public.np_agent_approvals approval
       left join public.np_agent_actions target on target.id=approval.target_action_id
      where approval.target_kind='action' and (target.id is null or target.site_id<>approval.site_id)
+    union all select 'AGENT_RELATION_CROSS_SITE', approval.requested_at from public.np_agent_approvals approval
+      left join public.np_agent_changeset_rollback_plans target on target.id=approval.target_rollback_plan_id
+     where approval.target_kind='changeset_rollback' and (target.id is null or target.site_id<>approval.site_id or approval.statement_body->'target'->>'changeSetId' is distinct from target.changeset_id::text)
     union all select 'AGENT_EXPIRY_BACKLOG', expires_at from public.np_agent_changesets
      where state in ('draft','invalid','ready','approval_pending','approved','scheduled') and expires_at <= $1::timestamptz
     union all select 'AGENT_EXPIRY_BACKLOG', expires_at from public.np_agent_approvals

@@ -156,6 +156,7 @@ describe("approval request, challenge and safe review contracts", () => {
     expect(
       npRequireAgentApprovalDetailV1({
         schemaVersion: "np.agent-approval-detail.v1",
+        rollbackReview: null,
         item: item(),
         review: null,
       }).review,
@@ -236,7 +237,12 @@ describe("approval request, challenge and safe review contracts", () => {
   });
   it("projects all four approval mutation outputs from the same full detail schema", () => {
     expect(npAnalyzeAgentJsonSchema(npAgentApprovalDetailSchemaV1).ok).toBe(true);
-    expect(npAgentApprovalDetailSchemaV1.required).toEqual(["schemaVersion", "item", "review"]);
+    expect(npAgentApprovalDetailSchemaV1.required).toEqual([
+      "schemaVersion",
+      "item",
+      "review",
+      "rollbackReview",
+    ]);
     const properties = npAgentApprovalDetailSchemaV1.properties as Record<
       string,
       Record<string, unknown>

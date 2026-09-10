@@ -36,6 +36,7 @@ const challenge = {
 };
 const detail = () => ({
   schemaVersion: "np.agent-approval-detail.v1",
+  rollbackReview: null,
   item: {
     schemaVersion: "np.agent-approval-list-item.v1",
     approval: {

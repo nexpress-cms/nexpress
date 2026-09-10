@@ -1,3 +1,4 @@
+import type { NpAgentChangeSetRollbackCompensationInputV1 } from "./types.js";
 import {
   npAnalyzeCollectionJsonValue,
   npCollectionContractLimits,
@@ -645,6 +646,49 @@ function parseInitialPlanOperation(
   };
 }
 
+export function npRequireAgentChangeSetRollbackCompensationInputV1(
+  value: unknown,
+): NpAgentChangeSetRollbackCompensationInputV1 {
+  const p = "agent.rollback.compensation";
+  if (value && typeof value === "object" && "operation" in value && value.operation === "restore") {
+    const r = canonicalBodyRecord(
+      value,
+      p,
+      ["kind", "operation", "resource"],
+      ["kind", "operation", "resource"],
+      { seen: new WeakSet<object>() },
+    );
+    const kind = canonicalBodyEnum<"document" | "theme_tokens">(
+      r.kind,
+      p,
+      new Set(["document", "theme_tokens"]),
+    );
+    const keys = kind === "document" ? ["collection", "documentId"] : ["themeId"];
+    const resource = canonicalBodyRecord(r.resource, p, keys, keys, {
+      seen: new WeakSet<object>(),
+    });
+    const key = requireNested<NpAgentChangeSetResourceKeyV1>(
+      npAnalyzeAgentChangeSetResourceKey({ kind, ...resource }),
+      "agent.changeSet.resourceKey",
+      p,
+    );
+    if (kind === "document" && key.kind === "document")
+      return {
+        kind,
+        operation: "restore",
+        resource: { collection: key.collection, documentId: key.documentId },
+      };
+    if (kind === "theme_tokens" && key.kind === "theme_tokens")
+      return { kind, operation: "restore", resource: { themeId: key.themeId } };
+    failCanonicalBody("invalid-field", p, "Invalid restore resource");
+  }
+  return requireNested<NpAgentChangeSetOperationInput>(
+    npAnalyzeAgentChangeSetOperationInput(value),
+    "agent.changeSet.operation",
+    p,
+  );
+}
+
 function parseRollbackPlanOperation(
   value: unknown,
   path: string,
@@ -662,18 +706,25 @@ function parseRollbackPlanOperation(
     "agent.changeSet.resourceKey",
     `${path}.canonicalResourceKey`,
   );
-  const compensationOperation = requireNested<NpAgentChangeSetOperationInput>(
-    npAnalyzeAgentChangeSetOperationInput(entry.compensationOperation),
-    "agent.changeSet.operation",
-    `${path}.compensationOperation`,
+  const compensationOperation = npRequireAgentChangeSetRollbackCompensationInputV1(
+    entry.compensationOperation,
   );
-  if (!npAgentChangeSetOperationMatchesResourceKey(compensationOperation, canonicalResourceKey)) {
+  const matched =
+    compensationOperation.operation === "restore"
+      ? canonicalResourceKey.kind === compensationOperation.kind &&
+        (compensationOperation.kind === "document"
+          ? canonicalResourceKey.kind === "document" &&
+            canonicalResourceKey.collection === compensationOperation.resource.collection &&
+            canonicalResourceKey.documentId === compensationOperation.resource.documentId
+          : canonicalResourceKey.kind === "theme_tokens" &&
+            canonicalResourceKey.themeId === compensationOperation.resource.themeId)
+      : npAgentChangeSetOperationMatchesResourceKey(compensationOperation, canonicalResourceKey);
+  if (!matched)
     failCanonicalBody(
       "invalid-field",
       `${path}.canonicalResourceKey`,
-      "must exactly identify the compensation operation resource",
+      "Compensation must identify the same resource",
     );
-  }
   return {
     ordinal: canonicalBodyInteger(entry.ordinal, `${path}.ordinal`, 1, SIGNED_32_BIT_MAXIMUM),
     originalOperationOrdinal: canonicalBodyInteger(

@@ -865,6 +865,13 @@ export function npRequireAgentVerificationSummaryV1(value: unknown): NpAgentVeri
     "Invalid verification summary",
   );
 }
+export function npRequireAgentRollbackSummaryV1(value: unknown): NpAgentRollbackSummary {
+  return npRequireAgentContractResult(
+    analyzeCanonicalBody("agent.rollback.summary", () =>
+      parseRollback(clone(value, "agent.rollback.summary"), "agent.rollback.summary"),
+    ),
+  );
+}
 function parseRollback(value: unknown, path: string): NpAgentRollbackSummary {
   const result = object(value, path, {
     rollbackPlanId: uuid,

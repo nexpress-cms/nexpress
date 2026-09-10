@@ -92,6 +92,8 @@ test.describe("Agent ChangeSet review", () => {
         json: url.pathname.endsWith(id)
           ? {
               schemaVersion: "np.agent-changeset-review.v1",
+              rollbackDetail: null,
+              rollbackActions: [],
               executionDetail: null,
               executionActions: [],
               changeSet: draft(),
@@ -171,6 +173,8 @@ test("execution actions use server authority, exact cancellation and stable retr
   let available = true;
   const review = () => ({
     schemaVersion: "np.agent-changeset-review.v1",
+    rollbackDetail: null,
+    rollbackActions: [],
     changeSet: draft(),
     requiredStaffCapabilities: ["content.author"],
     operations: [{ ordinal: 1, evidence: "not_validated", fields: [] }],
@@ -260,6 +264,8 @@ for (const operation of ["apply", "schedule"] as const) {
       await route.fulfill({
         json: {
           schemaVersion: "np.agent-changeset-review.v1",
+          rollbackDetail: null,
+          rollbackActions: [],
           changeSet,
           requiredStaffCapabilities: ["content.author"],
           operations: [{ ordinal: 1, evidence: "available", fields: [] }],
@@ -293,5 +299,173 @@ for (const operation of ["apply", "schedule"] as const) {
       idempotencyKey: expect.any(String),
       ...(operation === "schedule" ? { scheduledFor: expectedTime } : {}),
     });
+  });
+}
+
+for (const action of ["prepare", "request_approval", "execute", "cancel"] as const) {
+  test(`rollback ${action} uses exact current bindings and removes stale evidence`, async ({
+    page,
+  }, testInfo) => {
+    await isolateE2ERateLimitBucket(
+      page.context(),
+      (action === "prepare"
+        ? 220
+        : action === "request_approval"
+          ? 223
+          : action === "execute"
+            ? 226
+            : 229) + testInfo.retry,
+    );
+    await signInAsE2EAdmin(page);
+    const at = "2026-09-08T00:00:00.000Z";
+    const approval = {
+      id,
+      generation: 1,
+      state: "approved",
+      statementHash: hash,
+      requiredHumanCapabilities: ["content.publish"],
+      requiredHumanPredicates: [],
+      requestedAt: at,
+      expiresAt: "2026-09-09T00:00:00.000Z",
+      decidedAt: "2026-09-08T00:01:00.000Z",
+    };
+    const summary = {
+      rollbackPlanId: id,
+      generation: 1,
+      state: action === "execute" ? "approved" : "ready",
+      planHash: hash,
+      approvalId: action === "execute" ? id : null,
+      operationCount: 1,
+      createdAt: at,
+      expiresAt: "2026-09-08T01:00:00.000Z",
+      finishedAt: null,
+      terminalReason: null,
+    };
+    const rollbackDetail =
+      action === "prepare"
+        ? null
+        : {
+            schemaVersion: "np.agent-rollback-detail.v1",
+            changeSetId: id,
+            summary,
+            version: 2,
+            compensatesExecutionId: id,
+            originalPlanHash: hash,
+            appliedResultDigest: hash,
+            baseFingerprint: hash,
+            risk: { level: "low", reasonCodes: [], approvalMode: "human", reversible: true },
+            requiredScopes: ["changeset:apply"],
+            requiredHumanCapabilities: ["content.publish"],
+            requiredHumanPredicates: [],
+            policyHashes: [],
+            operations: [
+              {
+                review: {
+                  ordinal: 1,
+                  evidence: "available",
+                  fields: [
+                    {
+                      path: "title",
+                      before: { presence: "present", value: "Applied" },
+                      after: { presence: "present", value: "<script>Restored title</script>" },
+                    },
+                  ],
+                },
+                originalOperationOrdinal: 1,
+                rollbackClass: "full",
+                residualCodes: [],
+              },
+            ],
+            approval: action === "execute" ? approval : null,
+            execution: null,
+            verification: null,
+            checks: [],
+          };
+    const changeSet = {
+      ...draft(),
+      state: "applied",
+      planHash: hash,
+      baseFingerprint: hash,
+      risk: { level: "low", reasonCodes: [], approvalMode: "human", reversible: true },
+      validation: { state: "valid", generation: 1, issueCount: 0, digest: hash, completedAt: at },
+      operations: draft().operations.map((op) => ({
+        ...op,
+        state: "applied",
+        afterHash: hash,
+        resultDigest: hash,
+      })),
+      execution: {
+        executionId: id,
+        state: "committed",
+        resultDigest: hash,
+        startedAt: at,
+        finishedAt: null,
+      },
+      rollback: rollbackDetail ? summary : null,
+    };
+    let posted: Record<string, unknown> | null = null;
+    await page.route("**/api/admin/agents/changesets**", async (route) => {
+      if (route.request().method() === "POST") {
+        posted = route.request().postDataJSON();
+        await route.fulfill({
+          status: 409,
+          json: { status: 409, error: { code: "CONFLICT", message: "Changed" } },
+        });
+        return;
+      }
+      await route.fulfill({
+        json: {
+          schemaVersion: "np.agent-changeset-review.v1",
+          changeSet,
+          requiredStaffCapabilities: ["content.publish"],
+          operations: [{ ordinal: 1, evidence: "available", fields: [] }],
+          executionDetail: null,
+          executionActions: [],
+          rollbackDetail,
+          rollbackActions: [action],
+        },
+      });
+    });
+    await page.goto(`/admin/agents/changesets/${id}`);
+    if (action !== "prepare")
+      await expect(
+        page.getByText('After: "<script>Restored title</script>"', { exact: true }),
+      ).toBeVisible();
+    const labels = {
+      prepare: "Prepare rollback plan",
+      request_approval: "Request rollback approval",
+      execute: "Execute approved rollback",
+      cancel: "Cancel rollback plan",
+    };
+    for (const other of ["prepare", "request_approval", "execute", "cancel"] as const)
+      if (other !== action)
+        await expect(page.getByRole("button", { name: labels[other], exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: labels[action], exact: true }).click();
+    await expect(
+      page.getByRole("alert").filter({ hasText: "Rollback request could not be confirmed" }),
+    ).toBeVisible();
+    await expect(page.getByRole("region", { name: "Rollback plan facts" })).toHaveCount(0);
+    expect(posted).toEqual(
+      action === "cancel"
+        ? {
+            schemaVersion: "np.agent-changeset-cancel-input.v1",
+            targetKind: "rollback_plan",
+            rollbackPlanId: id,
+            expectedRollbackVersion: 2,
+            expectedDraftVersion: 1,
+            expectedState: "ready",
+            planHash: hash,
+            reasonCode: "OPERATOR_CANCELLED",
+            reason: null,
+            idempotencyKey: expect.any(String),
+          }
+        : {
+            schemaVersion: `np.agent-rollback-plan-${action === "prepare" ? "create" : action === "request_approval" ? "request-approval" : "execute"}-input.v1`,
+            expectedVersion: action === "prepare" ? 1 : 2,
+            planHash: hash,
+            idempotencyKey: expect.any(String),
+            ...(action === "execute" ? { approvalId: id, statementHash: hash } : {}),
+          },
+    );
   });
 }

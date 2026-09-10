@@ -227,6 +227,11 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
         !(
           (row.targetKind === "changeset" &&
             row.targetChangesetId === row.targetId &&
+            row.targetActionId === null &&
+            row.targetRollbackPlanId === null) ||
+          (row.targetKind === "changeset_rollback" &&
+            row.targetRollbackPlanId === row.targetId &&
+            row.targetChangesetId !== null &&
             row.targetActionId === null) ||
           (row.targetKind === "action" &&
             row.targetActionId === row.targetId &&
@@ -255,6 +260,11 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
       statement.approvalId !== row.id ||
       statement.target.kind !== row.targetKind ||
       targetId !== row.targetId ||
+      (statement.target.kind !== "action" &&
+        statement.target.changeSetId !== row.targetChangesetId) ||
+      (statement.target.kind === "changeset_rollback"
+        ? statement.target.rollbackPlanId !== row.targetRollbackPlanId
+        : row.targetRollbackPlanId !== null) ||
       (statement.target.kind === "action"
         ? statement.target.proposalHash
         : statement.target.planHash) !== row.planHash ||
@@ -488,13 +498,14 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
     generation: number;
   }) {
     const s = npRequireAgentApprovalStatementCanonical(input.statement);
-    if (s.target.kind !== "changeset") throw missing();
+    if (s.target.kind === "action") throw missing();
     const statementHash = await npDigestAgentApprovalStatementCanonical(s);
     await input.db.insert(npAgentApprovals).values({
       id: s.approvalId,
       siteId: s.siteId,
       targetKind: s.target.kind,
-      targetId: s.target.changeSetId,
+      targetId: s.target.kind === "changeset" ? s.target.changeSetId : s.target.rollbackPlanId,
+      targetRollbackPlanId: s.target.kind === "changeset_rollback" ? s.target.rollbackPlanId : null,
       targetChangesetId: s.target.changeSetId,
       generation: input.generation,
       planHash: s.target.planHash,
@@ -587,7 +598,9 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
       return npRequireAgentApprovalDetailV1({
         schemaVersion: "np.agent-approval-detail.v1",
         item: projected,
-        review,
+        review: projected.target.kind === "changeset_rollback" ? null : review,
+        rollbackReview:
+          projected.target.kind === "changeset_rollback" ? review.rollbackDetail : null,
       });
     } catch (error) {
       if (error instanceof NpAgentGatewayError && error.code === "APPROVAL_INTEGRITY_INVALID")
@@ -1116,6 +1129,7 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
     planHash: string;
     statementHash: string;
     consumedAt: Date;
+    rollbackPlanId?: string;
   }) {
     const row = await readRow(input.siteId, input.id, input.db, true);
     const checked = await verify(row);
@@ -1123,7 +1137,11 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
       row.state !== "approved" ||
       row.expiresAt <= now() ||
       row.statementHash !== input.statementHash ||
-      checked.statement.target.kind !== "changeset" ||
+      checked.statement.target.kind === "action" ||
+      (input.rollbackPlanId
+        ? checked.statement.target.kind !== "changeset_rollback" ||
+          checked.statement.target.rollbackPlanId !== input.rollbackPlanId
+        : checked.statement.target.kind !== "changeset") ||
       checked.statement.target.changeSetId !== input.changeSetId ||
       checked.statement.target.planHash !== input.planHash
     )
@@ -1151,11 +1169,16 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
     id: string;
     changeSetId: string;
     code: "OPERATOR_CANCELLED" | "EXECUTION_CANCELLED";
+    rollbackPlanId?: string;
   }) {
     const row = await readRow(input.siteId, input.id, input.db, true);
     const checked = await verify(row);
     if (
-      checked.statement.target.kind !== "changeset" ||
+      checked.statement.target.kind === "action" ||
+      (input.rollbackPlanId
+        ? checked.statement.target.kind !== "changeset_rollback" ||
+          checked.statement.target.rollbackPlanId !== input.rollbackPlanId
+        : checked.statement.target.kind !== "changeset") ||
       checked.statement.target.changeSetId !== input.changeSetId
     )
       throw conflict();
