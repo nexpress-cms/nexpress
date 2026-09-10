@@ -1,3 +1,10 @@
+import {
+  npRequireAgentRollbackPlanCreateInputV1,
+  npRequireAgentRollbackPlanRequestApprovalInputV1,
+  npRequireAgentRollbackPlanExecuteInputV1,
+  npRequireAgentRollbackDetailV1,
+  type NpAgentRollbackDetailV1,
+} from "../agent-contract/rollback-contract.js";
 import { createAgentChangeSetApplyResourceServiceV1 } from "./changeset-apply-resources.js";
 import { npVerifyChangeSetExecutionV1 } from "./changeset-execution-verification.js";
 import {
@@ -10,6 +17,7 @@ import { npNormalizeJobPayload } from "../jobs-contract/contract.js";
 import type {
   NpAgentChangeSetApplyJobPayload,
   NpAgentChangeSetVerifyJobPayload,
+  NpAgentChangeSetRollbackJobPayload,
 } from "../jobs-contract/types.js";
 import {
   npRequireAgentChangeSetApplyInputV1,
@@ -17,6 +25,7 @@ import {
   npRequireAgentChangeSetCancelInputV1,
   npRequireAgentChangeSetExecutionDetailV1,
   type NpAgentVerificationCheckV1,
+  type NpAgentChangeSetCancelInputV1,
 } from "../agent-contract/changeset-execution-contract.js";
 import {
   createAgentApprovalServiceV1,
@@ -33,6 +42,7 @@ import { npRequireAgentCapabilityRegistryCanonical } from "../agent-contract/can
 import type {
   NpAgentCapabilityRegistryCanonicalV1,
   NpAgentApprovalTargetV1,
+  NpAgentApprovalStatementCanonicalV1,
 } from "../agent-contract/types.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
@@ -45,7 +55,10 @@ import {
   type NpAgentChangeSetCapabilityIdV1,
 } from "../agent-contract/installed-capability-contract.js";
 import { runAgentPreviewChecksV1, npAgentPreviewCheckVersionsV1 } from "./preview-checks.js";
-import { npProjectAgentChangeSetReviewOperationV1 } from "./changeset-review.js";
+import {
+  npProjectAgentChangeSetReviewOperationV1,
+  npProjectAgentRollbackReviewOperationV1,
+} from "./changeset-review.js";
 import {
   npRequireAgentChangeSetReviewV1,
   type NpAgentChangeSetReviewV1,
@@ -77,6 +90,8 @@ import { getDb } from "../db/runtime.js";
 import {
   npAgentChangesets,
   npAgentChangesetExecutions,
+  npAgentChangesetRollbackPlans,
+  npAgentChangesetRollbackOperations,
   type NpAgentChangeSetExecutionEffectV1,
   npAgentChangesetOperations,
   npAgentInvocations,
@@ -94,6 +109,7 @@ import type { NpTransaction } from "../collections/pipeline.js";
 import type { NpAuthUser } from "../config/types.js";
 import {
   npRequireAgentChangeSetWire,
+  npRequireAgentRollbackSummaryV1,
   npRequireAgentPreviewReportV1,
   npAnalyzeAgentChangeSetWire,
   npVerifyAgentChangeSetAdminProposalV1,
@@ -187,6 +203,7 @@ export interface NpAgentChangeSetServiceOptionsV1 extends NpAgentAdminAdmissionO
       typeof npVerifyChangeSetExecutionV1
     >[0]["inspectPostCommitEffect"];
     enqueueApply?: (job: NpAgentChangeSetApplyJobPayload) => Promise<void>;
+    enqueueRollback?: (job: NpAgentChangeSetRollbackJobPayload) => Promise<void>;
     enqueueVerify?: (job: NpAgentChangeSetVerifyJobPayload) => Promise<void>;
   };
   /** Explicit approval-only installation. Execution is not installed or advertised. */
@@ -194,12 +211,9 @@ export interface NpAgentChangeSetServiceOptionsV1 extends NpAgentAdminAdmissionO
     lifetimeSeconds?: number;
     resolveExecutionBinding: (input: {
       siteId: string;
-      intendedOperation: "apply" | "schedule";
+      intendedOperation: "apply" | "schedule" | "rollback";
     }) => Promise<NpAgentCapabilityRegistryCanonicalV1>;
-    policy?: (input: {
-      siteId: string;
-      plan: Extract<NpAgentChangeSetPlanCanonicalV1, { planKind: "changeset" }>;
-    }) => Promise<{
+    policy?: (input: { siteId: string; plan: NpAgentChangeSetPlanCanonicalV1 }) => Promise<{
       policyHashes: string[];
       requiresLivePreview: boolean;
       reauthenticationMaxAgeSeconds: number | null;
@@ -267,6 +281,32 @@ export interface NpAgentChangeSetListFiltersV1 {
   createdBefore?: string | null;
 }
 export interface NpAgentChangeSetServiceV1 {
+  prepareRollback: (input: {
+    actor: Extract<NpAgentChangeSetActorV1, { kind: "staff" }>;
+    id: string;
+    command: unknown;
+  }) => Promise<NpAgentChangeSetReviewV1>;
+  requestRollbackApproval: (input: {
+    actor: Extract<NpAgentChangeSetActorV1, { kind: "staff" }>;
+    id: string;
+    rollbackPlanId: string;
+    command: unknown;
+  }) => Promise<NpAgentApprovalDetailV1>;
+  executeRollback: (input: {
+    actor: Extract<NpAgentChangeSetActorV1, { kind: "staff" }>;
+    id: string;
+    rollbackPlanId: string;
+    command: unknown;
+  }) => Promise<NpAgentChangeSetReviewV1>;
+  processRollback: (
+    input: NpAgentChangeSetRollbackJobPayload,
+    control?: { signal: AbortSignal },
+  ) => Promise<{ state: string }>;
+  reconcileRollbacks: (input: {
+    siteId: string;
+    limit?: number;
+    cursor?: string;
+  }) => Promise<{ examined: number; nextCursor: string | null }>;
   apply: (input: {
     actor: Extract<NpAgentChangeSetActorV1, { kind: "staff" }>;
     id: string;
@@ -438,6 +478,7 @@ export function createAgentChangeSetServiceV1(
       [
         options.execution.enqueueApply,
         options.execution.enqueueVerify,
+        options.execution.enqueueRollback,
         options.execution.inspectPostCommitEffect,
       ].some((fn) => fn !== undefined && typeof fn !== "function"))
   )
@@ -624,6 +665,9 @@ export function createAgentChangeSetServiceV1(
         "verifying",
         "verified",
         "verification_failed",
+        "rolling_back",
+        "rolled_back",
+        "rollback_failed",
       ].includes(row.state)
     )
       throw missing();
@@ -750,6 +794,9 @@ export function createAgentChangeSetServiceV1(
           "verifying",
           "verified",
           "verification_failed",
+          "rolling_back",
+          "rolled_back",
+          "rollback_failed",
         ].includes(row.state)
       )
         throw missing();
@@ -785,7 +832,7 @@ export function createAgentChangeSetServiceV1(
         if (
           op.state !==
             (execution?.committedAt
-              ? row.state === "verified"
+              ? execution.verificationState === "passed"
                 ? "verified"
                 : "applied"
               : "valid") ||
@@ -940,7 +987,7 @@ export function createAgentChangeSetServiceV1(
       schedule: row.scheduledFor ? { at: row.scheduledFor.toISOString() } : null,
       execution: execution ? executionSummary(execution) : null,
       verification: execution ? verificationSummary(execution) : null,
-      rollback: null,
+      rollback: await latestRollbackSummary(db, row),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       expiresAt: row.expiresAt.toISOString(),
@@ -970,6 +1017,7 @@ export function createAgentChangeSetServiceV1(
       id: string;
     },
     approvalChecks = false,
+    selectedRollbackPlanId?: string,
   ): Promise<NpAgentChangeSetReviewV1> {
     const actor = await resolve(input.actor, false);
     if (!uuid.test(input.id)) throw missing();
@@ -995,6 +1043,8 @@ export function createAgentChangeSetServiceV1(
           changeSet,
           executionDetail: await executionDetail(db, row, ops),
           executionActions: [],
+          rollbackDetail: await rollbackDetail(db, row, actor, selectedRollbackPlanId),
+          rollbackActions: [],
           requiredStaffCapabilities:
             sealed?.planKind === "changeset" ? sealed.body.requiredHumanCapabilities : [],
           operations: ops.map((op) =>
@@ -1017,6 +1067,7 @@ export function createAgentChangeSetServiceV1(
     return npRequireAgentChangeSetReviewV1({
       ...review,
       executionActions: await executionActions(row, actor),
+      rollbackActions: await rollbackActions(row, actor, review.rollbackDetail),
       changeSet: { ...review.changeSet, preview },
     });
   }
@@ -3818,6 +3869,7 @@ export function createAgentChangeSetServiceV1(
         and(
           eq(npAgentApprovals.siteId, row.siteId),
           eq(npAgentApprovals.targetChangesetId, row.id),
+          eq(npAgentApprovals.targetKind, "changeset"),
         ),
       )
       .orderBy(desc(npAgentApprovals.generation))
@@ -4055,6 +4107,7 @@ export function createAgentChangeSetServiceV1(
   ): NpAgentApprovalTargetAccessV1 {
     return {
       verify: async (statement, decision) => {
+        if (!actor) throw missing();
         await project(row, actor, false, db, false);
         if (decision !== "approve") return;
         const facts = await approvalFacts(
@@ -4085,6 +4138,7 @@ export function createAgentChangeSetServiceV1(
               and(
                 eq(npAgentApprovals.siteId, row.siteId),
                 eq(npAgentApprovals.targetChangesetId, row.id),
+                eq(npAgentApprovals.targetKind, "changeset"),
               ),
             )
             .orderBy(desc(npAgentApprovals.generation))
@@ -4130,6 +4184,8 @@ export function createAgentChangeSetServiceV1(
         ...options.approvals,
         targets: {
           visible: async (input) => {
+            if (input.target.kind === "changeset_rollback")
+              return rollbackApprovalVisible({ ...input, target: input.target });
             if (input.target.kind !== "changeset") throw missing();
             const target = input.target;
             return getDb().transaction(
@@ -4179,6 +4235,8 @@ export function createAgentChangeSetServiceV1(
             );
           },
           revalidate: async (input) => {
+            if (input.statement.target.kind === "changeset_rollback")
+              return revalidateRollbackApproval(input);
             if (input.statement.target.kind !== "changeset") throw missing();
             const target = input.statement.target;
             if (options.execution && approvals) {
@@ -4290,6 +4348,15 @@ export function createAgentChangeSetServiceV1(
             });
           },
           review: async (input) => {
+            if (input.target.kind === "changeset_rollback")
+              return getReview(
+                {
+                  actor: { kind: "staff", siteId: input.siteId, actor: input.actor },
+                  id: input.target.changeSetId,
+                },
+                false,
+                input.target.rollbackPlanId,
+              );
             if (input.target.kind !== "changeset") throw missing();
             return getReview({
               actor: { kind: "staff", siteId: input.siteId, actor: input.actor },
@@ -4297,6 +4364,8 @@ export function createAgentChangeSetServiceV1(
             });
           },
           withAuthority: async (input) => {
+            if (input.target.kind === "changeset_rollback")
+              return withRollbackApprovalAuthority({ ...input, target: input.target });
             if (input.target.kind !== "changeset") throw missing();
             const staffInput = { kind: "staff" as const, siteId: input.siteId, actor: input.actor };
             const review = await getReview(
@@ -4334,6 +4403,19 @@ export function createAgentChangeSetServiceV1(
             getDb().transaction(
               async (tx) => {
                 const db = tx as unknown as Db;
+                if (input.target.kind === "changeset_rollback") {
+                  const { row, plan } = await lockRollback(
+                    db,
+                    input.siteId,
+                    input.target.changeSetId,
+                    input.target.rollbackPlanId,
+                  );
+                  if (plan.planHash !== input.target.planHash) throw missing();
+                  return input.mutate(db, {
+                    verify: () => Promise.reject(missing()),
+                    transition: rollbackTargetAccess(db, row, plan, null).transition,
+                  });
+                }
                 const row = await lockApprovalTarget(db, input.siteId, input.target);
                 return input.mutate(db, {
                   verify: () => Promise.reject(missing()),
@@ -4403,6 +4485,7 @@ export function createAgentChangeSetServiceV1(
               and(
                 eq(npAgentApprovals.siteId, row.siteId),
                 eq(npAgentApprovals.targetChangesetId, row.id),
+                eq(npAgentApprovals.targetKind, "changeset"),
               ),
             )
             .orderBy(desc(npAgentApprovals.generation))
@@ -4464,6 +4547,1400 @@ export function createAgentChangeSetServiceV1(
       id: String(result.output.approvalId),
     });
   }
+  type RollbackRow = typeof npAgentChangesetRollbackPlans.$inferSelect;
+  type RollbackOpRow = typeof npAgentChangesetRollbackOperations.$inferSelect;
+  const rollbackWhere = (siteId: string, id: string) =>
+    and(eq(npAgentChangesetRollbackPlans.siteId, siteId), eq(npAgentChangesetRollbackPlans.id, id));
+  const rollbackTerminal = ["invalid", "verified", "failed", "conflicted", "expired"];
+  async function rollbackSeed(siteId: string, changeSetId: string, id: string) {
+    if (!uuid.test(id) || !uuid.test(changeSetId)) throw missing();
+    const [plan] = await getDb()
+      .select()
+      .from(npAgentChangesetRollbackPlans)
+      .where(
+        and(rollbackWhere(siteId, id), eq(npAgentChangesetRollbackPlans.changesetId, changeSetId)),
+      )
+      .limit(1);
+    if (!plan) throw missing();
+    return plan;
+  }
+  async function rollbackOperations(db: Db, plan: RollbackRow) {
+    return db
+      .select()
+      .from(npAgentChangesetRollbackOperations)
+      .where(
+        and(
+          eq(npAgentChangesetRollbackOperations.siteId, plan.siteId),
+          eq(npAgentChangesetRollbackOperations.rollbackPlanId, plan.id),
+        ),
+      )
+      .orderBy(asc(npAgentChangesetRollbackOperations.ordinal));
+  }
+  async function latestRollback(db: Db, row: Row) {
+    const [plan] = await db
+      .select()
+      .from(npAgentChangesetRollbackPlans)
+      .where(
+        and(
+          eq(npAgentChangesetRollbackPlans.siteId, row.siteId),
+          eq(npAgentChangesetRollbackPlans.changesetId, row.id),
+        ),
+      )
+      .orderBy(desc(npAgentChangesetRollbackPlans.generation))
+      .limit(1);
+    return plan ?? null;
+  }
+  async function rollbackEvidence(db: Db, row: Row, plan: RollbackRow) {
+    const original = await operations(db, row);
+    const applied = await executionEvidence(db, row, original);
+    const context = npRequireAgentAuthorizationContextCanonical(plan.authorizationContextBody);
+    if (
+      !applied?.committedAt ||
+      !applied.resultBody ||
+      !applied.resultDigest ||
+      plan.siteId !== row.siteId ||
+      plan.changesetId !== row.id ||
+      plan.compensatesExecutionId !== applied.id ||
+      plan.originalPlanHash !== row.planHash ||
+      plan.appliedResultDigest !== applied.resultDigest ||
+      context.siteId !== row.siteId ||
+      (await npDigestAgentAuthorizationContextCanonical(context)) !==
+        plan.authorizationContextFingerprint ||
+      !sameJson(context.authorityRef, plan.authorityRef) ||
+      context.actor.kind !== plan.requesterKind ||
+      context.actor.actorFingerprint !== plan.requesterFingerprint ||
+      (context.actor.kind === "staff" ? context.actor.userId : context.actor.principalId) !==
+        plan.requesterId
+    )
+      throw missing();
+    const [invocation] = await db
+      .select()
+      .from(npAgentInvocations)
+      .where(
+        and(
+          eq(npAgentInvocations.siteId, row.siteId),
+          eq(npAgentInvocations.id, plan.admittingInvocationId),
+        ),
+      )
+      .limit(1);
+    if (
+      !invocation ||
+      (plan.state !== "preparing" &&
+        (invocation.state !== "completed" ||
+          invocation.resultId !== row.id ||
+          invocation.outputRedacted?.rollbackPlanId !== plan.id)) ||
+      invocation.operationId !== "agents.changesets.rollback_plans.create" ||
+      invocation.authorizationContextFingerprint !== plan.authorizationContextFingerprint ||
+      !sameJson(invocation.authorizationContextBody, context) ||
+      (await npDigestAgentInvocationRequestCanonical(invocation.requestBody)) !==
+        invocation.requestHash
+    )
+      throw missing();
+    const ops = await rollbackOperations(db, plan);
+    if (!plan.sealedPlanBody) {
+      if (
+        plan.planHash ||
+        plan.baseFingerprint ||
+        plan.riskSummary ||
+        ops.length ||
+        !["preparing", "invalid", "conflicted", "expired", "failed"].includes(plan.state)
+      )
+        throw missing();
+      return { original, applied, ops, sealed: null };
+    }
+    const sealed = npRequireAgentChangeSetPlanCanonical(plan.sealedPlanBody);
+    if (
+      sealed.planKind !== "rollback" ||
+      sealed.siteId !== row.siteId ||
+      sealed.changeSetId !== row.id ||
+      (await npDigestAgentChangeSetPlanCanonical(sealed)) !== plan.planHash ||
+      sealed.body.rollbackPlanId !== plan.id ||
+      sealed.body.generation !== plan.generation ||
+      sealed.body.compensatesExecutionId !== applied.id ||
+      sealed.body.originalPlanHash !== row.planHash ||
+      sealed.body.appliedResultDigest !== applied.resultDigest ||
+      sealed.body.baseFingerprint !== plan.baseFingerprint ||
+      sealed.body.expiresAt !== plan.expiresAt.toISOString() ||
+      !sameJson(sealed.body.risk, plan.riskSummary) ||
+      !sameJson(
+        sealed.body.policyHashes.map((hash) => ({ hash })),
+        plan.policyRefs,
+      ) ||
+      ops.length !== sealed.body.operations.length
+    )
+      throw missing();
+    for (let index = 0; index < ops.length; index++) {
+      const op = ops[index],
+        expected = sealed.body.operations[index],
+        source = original.find((x) => x.ordinal === expected.originalOperationOrdinal);
+      if (
+        !source?.beforeSnapshot ||
+        source.id !== op.originalOperationId ||
+        op.changesetId !== row.id ||
+        !sameJson(op.beforeSnapshot, source.beforeSnapshot) ||
+        op.beforeHash !== source.beforeHash ||
+        op.snapshotHash !== source.snapshotHash ||
+        !sameJson(expected, {
+          ordinal: op.ordinal,
+          originalOperationOrdinal: op.originalOperationOrdinal,
+          canonicalResourceKey: op.canonicalResourceKey,
+          originalSnapshotHash: op.snapshotHash,
+          expectedCurrentHash: op.expectedCurrentHash,
+          expectedCurrentVersion: op.expectedCurrentVersion,
+          compensationOperation: op.compensationOperation,
+          proposedAfterHash: op.proposedAfterHash,
+          rollbackClass: op.rollbackClass,
+          residualCodes: op.residualCodes,
+        })
+      )
+        throw missing();
+    }
+    return { original, applied, ops, sealed };
+  }
+  async function rollbackSummary(db: Db, row: Row, plan: RollbackRow) {
+    const evidence = await rollbackEvidence(db, row, plan);
+    return npRequireAgentRollbackSummaryV1({
+      rollbackPlanId: plan.id,
+      generation: plan.generation,
+      state: plan.state,
+      planHash: plan.planHash,
+      approvalId: plan.approvalId,
+      operationCount: evidence.ops.length,
+      createdAt: plan.createdAt.toISOString(),
+      expiresAt: plan.expiresAt.toISOString(),
+      finishedAt: plan.finishedAt?.toISOString() ?? null,
+      terminalReason: plan.terminalReason,
+    });
+  }
+  async function latestRollbackSummary(db: Db, row: Row) {
+    const plan = await latestRollback(db, row);
+    return plan ? rollbackSummary(db, row, plan) : null;
+  }
+  async function lockRollback(db: Db, siteId: string, changeSetId: string, id: string) {
+    if (!uuid.test(id) || !uuid.test(changeSetId)) throw missing();
+    await db.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`np.agent-changeset:${siteId}`},0))`,
+    );
+    const [row] = await db
+      .select()
+      .from(npAgentChangesets)
+      .where(parentWhere(siteId, changeSetId))
+      .for("update")
+      .limit(1);
+    const [plan] = await db
+      .select()
+      .from(npAgentChangesetRollbackPlans)
+      .where(
+        and(rollbackWhere(siteId, id), eq(npAgentChangesetRollbackPlans.changesetId, changeSetId)),
+      )
+      .for("update")
+      .limit(1);
+    if (!row || !plan) throw missing();
+    return { row, plan };
+  }
+  async function rollbackCurrent(db: Db, row: Row, plan: RollbackRow, actor: Actor) {
+    const evidence = await rollbackEvidence(db, row, plan);
+    if (!row.rollbackEligibleUntil || row.rollbackEligibleUntil <= now() || plan.expiresAt <= now())
+      throw executeError("SNAPSHOT_EXPIRED");
+    if (
+      (evidence.applied.leaseUntil && evidence.applied.leaseUntil > now()) ||
+      evidence.applied.effects.some((e) => ["pending", "running", "unknown"].includes(e.state))
+    )
+      throw executeError("EFFECT_AMBIGUOUS");
+    const source = npRequireAgentChangeSetPlanCanonical(row.sealedPlanBody);
+    if (source.planKind !== "changeset") throw missing();
+    const checked = await executionResources.prepareRollback({
+      tx: db as unknown as NpTransaction,
+      siteId: row.siteId,
+      user: actor.user,
+      changeSetId: row.id,
+      operations: source.body.operations,
+      beforeSnapshots: evidence.original.map((op) => op.beforeSnapshot!),
+      appliedResources: evidence.applied.resultBody!.operations,
+    });
+    const requiredScopes = [
+      ...new Set<NpAgentScope>(["changeset:apply", ...checked.requiredApplyScopes]),
+    ].sort();
+    requireScopes(actor, [...new Set([...checked.requiredScopes, ...requiredScopes])]);
+    if (
+      evidence.sealed &&
+      (!sameJson(evidence.sealed.body.operations, checked.operations) ||
+        evidence.sealed.body.baseFingerprint !== checked.baseFingerprint ||
+        !sameJson(evidence.sealed.body.risk, checked.risk) ||
+        !sameJson(evidence.sealed.body.requiredScopes, requiredScopes) ||
+        !sameJson(evidence.sealed.body.policyHashes, checked.policyHashes))
+    )
+      throw executeError("BASE_CONFLICT");
+    return { ...evidence, checked, requiredScopes };
+  }
+  async function prepareRollback(input: StaffExecutionInput) {
+    if (input.actor.kind !== "staff") throw denied();
+    if (!options.execution || !approvals || !uuid.test(input.id)) throw missing();
+    const command = npRequireAgentRollbackPlanCreateInputV1(input.command),
+      actor = await resolve(input.actor, false);
+    await admin({
+      siteId: actor.siteId,
+      actor: input.actor.actor,
+      operationId: "agents.changesets.rollback_plans.create",
+      targetId: input.id,
+      command,
+      mutate: async ({ db, invocationId }) => {
+        await db.execute(
+          sql`select pg_advisory_xact_lock(hashtextextended(${`np.agent-changeset:${actor.siteId}`},0))`,
+        );
+        const [row] = await db
+          .select()
+          .from(npAgentChangesets)
+          .where(parentWhere(actor.siteId, input.id))
+          .for("update")
+          .limit(1);
+        if (!row) throw missing();
+        await project(row, actor, false, db, false);
+        if (
+          row.draftVersion !== command.expectedVersion ||
+          row.planHash !== command.planHash ||
+          !["applied", "verified", "verification_failed", "rollback_failed"].includes(row.state)
+        )
+          throw conflict();
+        const time = now();
+        if (!row.rollbackEligibleUntil || row.rollbackEligibleUntil <= time)
+          throw executeError("SNAPSHOT_EXPIRED");
+        if (await pendingRollbackVerification(db, row)) throw conflict();
+        const previous = await latestRollback(db, row);
+        if (previous && !rollbackTerminal.includes(previous.state)) throw conflict();
+        const original = await operations(db, row),
+          applied = await executionEvidence(db, row, original);
+        if (!applied?.resultDigest || !applied.resultBody || !applied.committedAt) throw missing();
+        const [invocation] = await db
+          .select()
+          .from(npAgentInvocations)
+          .where(
+            and(eq(npAgentInvocations.siteId, row.siteId), eq(npAgentInvocations.id, invocationId)),
+          )
+          .limit(1);
+        if (!invocation) throw missing();
+        const context = npRequireAgentAuthorizationContextCanonical(
+          invocation.authorizationContextBody,
+        );
+        const id = randomUUID();
+        const [plan] = await db
+          .insert(npAgentChangesetRollbackPlans)
+          .values({
+            id,
+            siteId: row.siteId,
+            changesetId: row.id,
+            generation: (previous?.generation ?? 0) + 1,
+            admittingInvocationId: invocationId,
+            authorizationContextBody: context,
+            authorizationContextFingerprint: invocation.authorizationContextFingerprint,
+            authorityRef: context.authorityRef,
+            requesterKind: context.actor.kind,
+            requesterId:
+              context.actor.kind === "staff" ? context.actor.userId : context.actor.principalId,
+            requesterFingerprint: context.actor.actorFingerprint,
+            compensatesExecutionId: applied.id,
+            originalPlanHash: row.planHash,
+            appliedResultDigest: applied.resultDigest,
+            createdAt: time,
+            expiresAt: row.rollbackEligibleUntil,
+          })
+          .returning();
+        try {
+          const { checked, requiredScopes } = await rollbackCurrent(db, row, plan, actor);
+          const sealed = npRequireAgentChangeSetPlanCanonical({
+            schemaVersion: "np.agent-changeset-plan.v1",
+            planKind: "rollback",
+            siteId: row.siteId,
+            changeSetId: row.id,
+            body: {
+              rollbackPlanId: id,
+              generation: plan.generation,
+              compensatesExecutionId: applied.id,
+              originalPlanHash: row.planHash,
+              appliedResultDigest: applied.resultDigest,
+              baseFingerprint: checked.baseFingerprint,
+              operations: checked.operations,
+              risk: checked.risk,
+              requiredScopes,
+              requiredHumanCapabilities: [
+                ...new Set(requiredScopes.map((scope) => npAgentScopeStaffCapability[scope])),
+              ].sort(),
+              requiredHumanPredicates: [],
+              policyHashes: checked.policyHashes,
+              expiresAt: plan.expiresAt.toISOString(),
+            },
+          });
+          if (sealed.planKind !== "rollback") throw missing();
+          for (const op of sealed.body.operations) {
+            const source = original.find((x) => x.ordinal === op.originalOperationOrdinal)!;
+            await db.insert(npAgentChangesetRollbackOperations).values({
+              siteId: row.siteId,
+              changesetId: row.id,
+              rollbackPlanId: id,
+              ordinal: op.ordinal,
+              originalOperationId: source.id,
+              originalOperationOrdinal: source.ordinal,
+              canonicalResourceKey: op.canonicalResourceKey,
+              beforeSnapshot: source.beforeSnapshot!,
+              beforeHash: source.beforeHash,
+              snapshotHash: op.originalSnapshotHash,
+              expectedCurrentHash: op.expectedCurrentHash,
+              expectedCurrentVersion: op.expectedCurrentVersion,
+              compensationOperation: op.compensationOperation,
+              proposedAfterHash: op.proposedAfterHash,
+              rollbackClass: op.rollbackClass,
+              residualCodes: op.residualCodes,
+              state: "valid",
+              createdAt: time,
+              updatedAt: time,
+            });
+          }
+          await db
+            .update(npAgentChangesetRollbackPlans)
+            .set({
+              state: "ready",
+              planHash: await npDigestAgentChangeSetPlanCanonical(sealed),
+              sealedPlanBody: sealed,
+              baseFingerprint: checked.baseFingerprint,
+              riskSummary: checked.risk,
+              policyRefs: checked.policyHashes.map((hash) => ({ hash })),
+              version: plan.version + 1,
+            })
+            .where(rollbackWhere(row.siteId, id));
+        } catch (error) {
+          const issues =
+            error instanceof NpAgentChangeSetValidationResourceErrorV1
+              ? error.issues.map((issue) => issue.code)
+              : error instanceof NpAgentGatewayError &&
+                  [
+                    "CHANGESET_BASE_CONFLICT",
+                    "CHANGESET_ROLLBACK_UNAVAILABLE",
+                    "SCHEMA_INVALID",
+                    "REFERENCE_INVALID",
+                    "CHANGESET_SCHEMA_INVALID",
+                    "CHANGESET_REFERENCE_INVALID",
+                  ].includes(error.code)
+                ? [error.code]
+                : null;
+          if (!issues) throw error;
+          if (issues.includes("ACCESS_DENIED")) throw denied();
+          const conflicted = issues.some((code) =>
+            ["BASE_CONFLICT", "CHANGESET_BASE_CONFLICT"].includes(code),
+          );
+          await db
+            .update(npAgentChangesetRollbackPlans)
+            .set({
+              state: conflicted ? "conflicted" : "invalid",
+              terminalReason: conflicted ? "conflict" : "validation_failed",
+              issues: issues.map((code) => ({ code })),
+              finishedAt: now(),
+              version: plan.version + 1,
+            })
+            .where(rollbackWhere(row.siteId, id));
+        }
+        const current = await npResolveAgentStaffSessionAuthorizationV1(
+          db,
+          actor.siteId,
+          input.actor.actor,
+          now(),
+        );
+        if (serializeAgentCanonicalJson(current) !== actor.authorization) throw denied();
+        return { resourceId: row.id, output: { rollbackPlanId: id } };
+      },
+    });
+    return getReview({ actor: input.actor, id: input.id });
+  }
+
+  async function rollbackFacts(db: Db, row: Row, plan: RollbackRow, actor: Actor) {
+    if (!options.approvals) throw missing();
+    const evidence = await rollbackCurrent(db, row, plan, actor);
+    if (!evidence.sealed) throw conflict();
+    const binding = npRequireAgentCapabilityRegistryCanonical(
+      await options.approvals.resolveExecutionBinding({
+        siteId: row.siteId,
+        intendedOperation: "rollback",
+      }),
+    );
+    const capability = binding.capabilities[0];
+    if (
+      binding.projection !== "definition" ||
+      binding.capabilities.length !== 1 ||
+      capability.descriptor.id !== "changeset.rollback" ||
+      capability.descriptor.source !== "core" ||
+      capability.descriptor.approval !== "human" ||
+      capability.descriptor.risk === "read" ||
+      capability.descriptor.effectProfiles.length === 0 ||
+      capability.descriptor.effectProfiles.some(
+        (p) => p.kind !== "mutation" || p.minimumGatewayExposure !== "approved-execute",
+      )
+    )
+      throw missing();
+    const policy = await options.approvals.policy?.({ siteId: row.siteId, plan: evidence.sealed });
+    // An initial apply preview does not certify a distinct compensation plan.
+    if (policy?.requiresLivePreview) throw executeError("PREVIEW_REQUIRED");
+    const requiredScopes = [
+      ...new Set([...evidence.requiredScopes, ...capability.descriptor.requiredScopes]),
+    ].sort();
+    requireScopes(actor, requiredScopes);
+    const risk =
+      !evidence.sealed.body.risk.reversible ||
+      evidence.sealed.body.risk.level === "critical" ||
+      capability.descriptor.risk === "destructive"
+        ? "destructive"
+        : evidence.sealed.body.risk.level !== "low" || capability.descriptor.risk === "sensitive"
+          ? "sensitive"
+          : "reversible";
+    const age = policy?.reauthenticationMaxAgeSeconds ?? (risk === "reversible" ? null : 300);
+    if (age !== null && (!Number.isInteger(age) || age < 1 || age > 300)) throw missing();
+    return {
+      target: {
+        kind: "changeset_rollback" as const,
+        changeSetId: row.id,
+        rollbackPlanId: plan.id,
+        planHash: plan.planHash!,
+      },
+      requester: actor.principalId
+        ? {
+            kind: "principal" as const,
+            principalId: actor.principalId,
+            fingerprint: plan.requesterFingerprint,
+          }
+        : {
+            kind: "staff" as const,
+            userId: plan.requesterId,
+            fingerprint: plan.requesterFingerprint,
+          },
+      capabilityId: capability.descriptor.id,
+      capabilityContractVersion: capability.descriptor.contractVersion,
+      capabilityFingerprint: await npDigestAgentCapabilityRegistryCanonical(
+        binding,
+        binding.capabilities,
+      ),
+      requiredScopes,
+      requiredHumanCapabilities: [
+        ...new Set([
+          ...evidence.sealed.body.requiredHumanCapabilities,
+          ...requiredScopes.map((scope) => npAgentScopeStaffCapability[scope]),
+        ]),
+      ].sort(),
+      requiredHumanPredicates: evidence.sealed.body.requiredHumanPredicates,
+      policyHashes: [
+        ...new Set([...evidence.sealed.body.policyHashes, ...(policy?.policyHashes ?? [])]),
+      ].sort(),
+      requiresLivePreview: false,
+      previewId: null,
+      previewDigest: null,
+      risk,
+      reauthentication:
+        age === null
+          ? { mode: "none" as const }
+          : { mode: "recent" as const, maxAgeSeconds: age, assurance: "staff-primary" as const },
+    };
+  }
+  async function checkRollbackApproval(
+    db: Db,
+    row: Row,
+    plan: RollbackRow,
+    a: ApprovalRow,
+    actor: Actor,
+  ) {
+    if (!approvals || !options.execution) throw missing();
+    const intent = await options.execution.resolveIntent({ siteId: row.siteId });
+    if (!intent.enabled || intent.paused) throw executeError("POLICY_CHANGED");
+    const { statement } = await approvals.verify(a);
+    if (a.expiresAt <= now()) throw executeError("APPROVAL_EXPIRED");
+    if (a.state !== "approved")
+      throw executeError(a.state === "revoked" ? "APPROVAL_REVOKED" : "APPROVAL_REQUIRED");
+    if (
+      plan.approvalId !== a.id ||
+      statement.target.kind !== "changeset_rollback" ||
+      statement.target.changeSetId !== row.id ||
+      statement.target.rollbackPlanId !== plan.id ||
+      statement.target.planHash !== plan.planHash
+    )
+      throw executeError("APPROVAL_INTEGRITY_INVALID");
+    const facts = await rollbackFacts(db, row, plan, actor);
+    const {
+      version: _v,
+      siteId: _s,
+      approvalId: _id,
+      createdAt: _c,
+      expiresAt: _e,
+      ...signed
+    } = statement;
+    if (!sameJson({ ...facts, requester: statement.requester }, signed))
+      throw executeError("POLICY_CHANGED");
+  }
+  function rollbackTargetAccess(
+    db: Db,
+    row: Row,
+    plan: RollbackRow,
+    actor: Actor | null,
+  ): NpAgentApprovalTargetAccessV1 {
+    return {
+      verify: async (statement, decision) => {
+        if (!actor) throw missing();
+        await project(row, actor, false, db, false);
+        await rollbackEvidence(db, row, plan);
+        if (
+          statement.target.kind !== "changeset_rollback" ||
+          statement.target.rollbackPlanId !== plan.id ||
+          statement.target.planHash !== plan.planHash
+        )
+          throw missing();
+        if (decision !== "approve") return;
+        if (plan.state !== "approval_pending") throw conflict();
+        const facts = await rollbackFacts(db, row, plan, actor);
+        const {
+          version: _v,
+          siteId: _s,
+          approvalId: _id,
+          createdAt: _c,
+          expiresAt: _e,
+          ...signed
+        } = statement;
+        if (!sameJson(facts, signed)) throw conflict();
+      },
+      transition: async (state) => {
+        if (!["approval_pending", "approved", "executing"].includes(plan.state)) throw conflict();
+        const time = now();
+        if (state === "approved") {
+          if (plan.state !== "approval_pending") throw conflict();
+          await db
+            .update(npAgentChangesetRollbackPlans)
+            .set({ state: "approved", approvedAt: time, version: plan.version + 1 })
+            .where(rollbackWhere(row.siteId, plan.id));
+          return;
+        }
+        const [a] = plan.approvalId
+          ? await db
+              .select()
+              .from(npAgentApprovals)
+              .where(
+                and(
+                  eq(npAgentApprovals.siteId, row.siteId),
+                  eq(npAgentApprovals.id, plan.approvalId),
+                ),
+              )
+              .limit(1)
+          : [];
+        const reason =
+          state === "rejected"
+            ? "approval_rejected"
+            : a?.state === "expired"
+              ? "approval_expired"
+              : "approval_revoked";
+        await db
+          .update(npAgentChangesetRollbackPlans)
+          .set({
+            state: reason === "approval_expired" ? "expired" : "failed",
+            terminalReason: reason,
+            finishedAt: time,
+            version: plan.version + 1,
+          })
+          .where(rollbackWhere(row.siteId, plan.id));
+        if (plan.state === "executing") {
+          await db
+            .update(npAgentChangesetExecutions)
+            .set({
+              state: "failed",
+              errorCode: reason === "approval_expired" ? "APPROVAL_EXPIRED" : "APPROVAL_REVOKED",
+              finishedAt: time,
+              leaseOwner: null,
+              leaseToken: null,
+              leaseUntil: null,
+            })
+            .where(
+              and(
+                eq(npAgentChangesetExecutions.siteId, row.siteId),
+                eq(npAgentChangesetExecutions.rollbackPlanId, plan.id),
+                eq(npAgentChangesetExecutions.state, "reserved"),
+              ),
+            );
+          await db
+            .update(npAgentChangesets)
+            .set({ state: "rollback_failed", updatedAt: time })
+            .where(parentWhere(row.siteId, row.id));
+        }
+      },
+    };
+  }
+  async function rollbackApprovalVisible(input: {
+    siteId: string;
+    target: Extract<NpAgentApprovalTargetV1, { kind: "changeset_rollback" }>;
+    actor: NpAgentAdminActorV1;
+  }) {
+    return getDb().transaction(
+      async (tx) => {
+        const db = tx as unknown as Db;
+        const [row] = await db
+          .select()
+          .from(npAgentChangesets)
+          .where(parentWhere(input.siteId, input.target.changeSetId))
+          .limit(1);
+        const [plan] = await db
+          .select()
+          .from(npAgentChangesetRollbackPlans)
+          .where(rollbackWhere(input.siteId, input.target.rollbackPlanId))
+          .limit(1);
+        if (!row || !plan || plan.planHash !== input.target.planHash) throw missing();
+        await approvalViewer(db, input.siteId, input.actor, row);
+        const evidence = await rollbackEvidence(db, row, plan);
+        return {
+          operationCount: evidence.ops.length,
+          targetCount: new Set(
+            evidence.ops.map((op) => serializeAgentCanonicalJson(op.canonicalResourceKey)),
+          ).size,
+          previewState: null,
+          checksRun: null,
+          rollbackPlan: evidence.sealed ? ("available" as const) : ("unavailable" as const),
+        };
+      },
+      { isolationLevel: "repeatable read", accessMode: "read only" },
+    );
+  }
+  async function withRollbackApprovalAuthority<T>(input: {
+    siteId: string;
+    target: Extract<NpAgentApprovalTargetV1, { kind: "changeset_rollback" }>;
+    actor: NpAgentAdminActorV1;
+    decision: "approve" | "reject" | "revoke";
+    mutate: (db: Db, target: NpAgentApprovalTargetAccessV1) => Promise<T>;
+  }) {
+    const seed = await rollbackSeed(
+      input.siteId,
+      input.target.changeSetId,
+      input.target.rollbackPlanId,
+    );
+    const run = async (db: Db, requester?: Actor) => {
+      const { row, plan } = await lockRollback(
+        db,
+        input.siteId,
+        input.target.changeSetId,
+        input.target.rollbackPlanId,
+      );
+      if (plan.planHash !== input.target.planHash) throw missing();
+      const viewer = await approvalViewer(db, input.siteId, input.actor, row);
+      const result = await input.mutate(
+        db,
+        rollbackTargetAccess(db, row, plan, requester ?? viewer),
+      );
+      await approvalViewer(db, input.siteId, input.actor, row);
+      return result;
+    };
+    return input.decision === "approve"
+      ? withStoredActor(seed, run)
+      : getDb().transaction((db) => run(db), { isolationLevel: "serializable" });
+  }
+  async function revalidateRollbackApproval(input: {
+    siteId: string;
+    statement: NpAgentApprovalStatementCanonicalV1;
+  }) {
+    const target = input.statement.target;
+    if (target.kind !== "changeset_rollback" || !approvals) throw missing();
+    const [a] = await getDb()
+      .select()
+      .from(npAgentApprovals)
+      .where(
+        and(
+          eq(npAgentApprovals.siteId, input.siteId),
+          eq(npAgentApprovals.id, input.statement.approvalId),
+        ),
+      )
+      .limit(1);
+    if (!a) throw missing();
+    if (a.state === "approved")
+      return withExecutionAuthority(a, async (db, actor) => {
+        const { row, plan } = await lockRollback(
+          db,
+          input.siteId,
+          target.changeSetId,
+          target.rollbackPlanId,
+        );
+        await checkRollbackApproval(db, row, plan, a, actor);
+      });
+    const seed = await rollbackSeed(input.siteId, target.changeSetId, target.rollbackPlanId);
+    return withStoredActor(seed, async (db, actor) => {
+      const { row, plan } = await lockRollback(
+        db,
+        input.siteId,
+        target.changeSetId,
+        target.rollbackPlanId,
+      );
+      await rollbackTargetAccess(db, row, plan, actor).verify(input.statement, "approve");
+    });
+  }
+  async function requestRollbackApproval(input: StaffExecutionInput & { rollbackPlanId: string }) {
+    if (input.actor.kind !== "staff") throw denied();
+    if (!approvals || !options.execution) throw missing();
+    const command = npRequireAgentRollbackPlanRequestApprovalInputV1(input.command),
+      seed = await rollbackSeed(input.actor.siteId, input.id, input.rollbackPlanId);
+    const result = await withStoredActor(seed, async (db, requester) => {
+      const { row, plan } = await lockRollback(
+        db,
+        input.actor.siteId,
+        input.id,
+        input.rollbackPlanId,
+      );
+      return admin({
+        db,
+        siteId: row.siteId,
+        actor: input.actor.actor,
+        operationId: "agents.changesets.rollback_plans.request_approval",
+        targetId: plan.id,
+        command,
+        mutate: async () => {
+          await approvalViewer(db, row.siteId, input.actor.actor, row);
+          if (
+            plan.version !== command.expectedVersion ||
+            plan.planHash !== command.planHash ||
+            plan.state !== "ready"
+          )
+            throw conflict();
+          const facts = await rollbackFacts(db, row, plan, requester),
+            time = now();
+          const statement = npRequireAgentApprovalStatementCanonical({
+            ...facts,
+            version: "np.agent-approval-statement.v1",
+            siteId: row.siteId,
+            approvalId: randomUUID(),
+            createdAt: time.toISOString(),
+            expiresAt: new Date(
+              Math.min(plan.expiresAt.getTime(), time.getTime() + approvalLifetime * 1000),
+            ).toISOString(),
+          });
+          const approval = await approvals.create({ db, statement, generation: 1 });
+          await db
+            .update(npAgentChangesetRollbackPlans)
+            .set({ state: "approval_pending", approvalId: approval.id, version: plan.version + 1 })
+            .where(rollbackWhere(row.siteId, plan.id));
+          return { resourceId: plan.id, output: { approvalId: approval.id } };
+        },
+      });
+    });
+    return approvals.get({
+      siteId: input.actor.siteId,
+      actor: input.actor.actor,
+      id: String(result.output.approvalId),
+    });
+  }
+
+  function rollbackJob(e: ExecutionRow): NpAgentChangeSetRollbackJobPayload {
+    if (e.purpose !== "rollback" || !e.rollbackPlanId) throw missing();
+    return {
+      siteId: e.siteId,
+      changeSetId: e.changesetId,
+      rollbackPlanId: e.rollbackPlanId,
+      planHash: e.planHash,
+      approvalId: e.approvalId,
+      idempotencyKey: e.idempotencyKey,
+    };
+  }
+  async function executeRollback(input: StaffExecutionInput & { rollbackPlanId: string }) {
+    if (input.actor.kind !== "staff") throw denied();
+    if (!options.execution || !approvals) throw missing();
+    const command = npRequireAgentRollbackPlanExecuteInputV1(input.command),
+      actor = await resolve(input.actor, false);
+    const admitted = await admin({
+      siteId: actor.siteId,
+      actor: input.actor.actor,
+      operationId: "agents.changesets.rollback_plans.execute",
+      targetId: input.rollbackPlanId,
+      command,
+      mutate: async ({ db, invocationId }) => {
+        const { row, plan } = await lockRollback(db, actor.siteId, input.id, input.rollbackPlanId);
+        await project(row, actor, false, db, false);
+        if (
+          plan.version !== command.expectedVersion ||
+          plan.state !== "approved" ||
+          plan.planHash !== command.planHash ||
+          plan.approvalId !== command.approvalId ||
+          !["applied", "verified", "verification_failed", "rollback_failed"].includes(row.state)
+        )
+          throw conflict();
+        const [a] = await db
+          .select()
+          .from(npAgentApprovals)
+          .where(
+            and(
+              eq(npAgentApprovals.siteId, actor.siteId),
+              eq(npAgentApprovals.id, command.approvalId),
+            ),
+          )
+          .for("update")
+          .limit(1);
+        if (!a || a.statementHash !== command.statementHash) throw conflict();
+        await checkRollbackApproval(db, row, plan, a, actor);
+        const [invocation] = await db
+          .select()
+          .from(npAgentInvocations)
+          .where(
+            and(eq(npAgentInvocations.siteId, row.siteId), eq(npAgentInvocations.id, invocationId)),
+          )
+          .limit(1);
+        if (!invocation) throw missing();
+        const executionId = randomUUID(),
+          time = now();
+        await db.insert(npAgentChangesetExecutions).values({
+          id: executionId,
+          siteId: row.siteId,
+          changesetId: row.id,
+          purpose: "rollback",
+          rollbackPlanId: plan.id,
+          planHash: plan.planHash,
+          approvalId: a.id,
+          invocationId,
+          invocationFingerprint: invocation.requestHash,
+          verificationContractFingerprint: options.execution!.verificationFingerprint,
+          idempotencyKey: command.idempotencyKey,
+          reservedAt: time,
+        });
+        await db
+          .update(npAgentChangesetRollbackPlans)
+          .set({ state: "executing", startedAt: time, version: plan.version + 1 })
+          .where(rollbackWhere(row.siteId, plan.id));
+        await db
+          .update(npAgentChangesets)
+          .set({ state: "rolling_back", updatedAt: time })
+          .where(parentWhere(row.siteId, row.id));
+        return { resourceId: plan.id, output: { executionId } };
+      },
+    });
+    const [execution] = await getDb()
+      .select()
+      .from(npAgentChangesetExecutions)
+      .where(executionWhere(actor.siteId, String(admitted.output.executionId)))
+      .limit(1);
+    if (!execution) throw missing();
+    const job = rollbackJob(execution);
+    if (options.execution.enqueueRollback) {
+      try {
+        await options.execution.enqueueRollback(job);
+      } catch {
+        /* Retained reservation is recovered explicitly. */
+      }
+    } else await processRollback(job);
+    return getReview({ actor: input.actor, id: input.id });
+  }
+  async function commitRollback(
+    db: Db,
+    row: Row,
+    e: ExecutionRow,
+    approval: ApprovalRow,
+    actor: Actor,
+    effects: NpAgentChangeSetExecutionEffectV1[],
+    dispatchToken: string,
+    signal?: AbortSignal,
+  ) {
+    if (!options.execution || !approvals || !e.rollbackPlanId) throw missing();
+    const [plan] = await db
+      .select()
+      .from(npAgentChangesetRollbackPlans)
+      .where(rollbackWhere(row.siteId, e.rollbackPlanId))
+      .for("update")
+      .limit(1);
+    if (
+      !plan ||
+      plan.state !== "executing" ||
+      row.state !== "rolling_back" ||
+      e.purpose !== "rollback" ||
+      plan.planHash !== e.planHash ||
+      e.verificationContractFingerprint !== options.execution.verificationFingerprint
+    )
+      throw executeError("POLICY_CHANGED");
+    await checkRollbackApproval(db, row, plan, approval, actor);
+    const evidence = await rollbackEvidence(db, row, plan);
+    if (!evidence.sealed) throw missing();
+    if (signal?.aborted) throw executeError("EXECUTION_CANCELLED");
+    const applied = await executionResources.applyRollback({
+      tx: db as unknown as NpTransaction,
+      siteId: row.siteId,
+      user: actor.user,
+      changeSetId: row.id,
+      operations: evidence.sealed.body.operations,
+      beforeSnapshots: evidence.ops.map((op) => op.beforeSnapshot),
+    });
+    const resultRow = { ...row, planHash: e.planHash };
+    const results = applied.operations.map((op) => ({
+      ordinal: op.ordinal,
+      afterHash: op.afterHash,
+      resultDigest: operationResult(resultRow, op),
+    }));
+    for (const op of results)
+      await db
+        .update(npAgentChangesetRollbackOperations)
+        .set({
+          state: "applied",
+          afterHash: op.afterHash,
+          resultDigest: op.resultDigest,
+          updatedAt: now(),
+        })
+        .where(
+          and(
+            eq(npAgentChangesetRollbackOperations.siteId, row.siteId),
+            eq(npAgentChangesetRollbackOperations.rollbackPlanId, plan.id),
+            eq(npAgentChangesetRollbackOperations.ordinal, op.ordinal),
+          ),
+        );
+    const time = now(),
+      digest = executionResult(resultRow, e, results, applied);
+    await approvals.consume({
+      db,
+      siteId: row.siteId,
+      id: approval.id,
+      changeSetId: row.id,
+      rollbackPlanId: plan.id,
+      planHash: e.planHash,
+      statementHash: approval.statementHash,
+      consumedAt: time,
+    });
+    await db
+      .update(npAgentChangesetExecutions)
+      .set({
+        state: "committed",
+        committedAt: time,
+        resultDigest: digest,
+        resultBody: applied,
+        verificationState: "queued",
+        effects,
+        leaseOwner: "changeset-post-commit",
+        leaseToken: dispatchToken,
+        leaseUntil: new Date(time.getTime() + 60_000),
+        attempts: e.attempts + 1,
+        version: e.version + 1,
+      })
+      .where(executionWhere(row.siteId, e.id));
+    await db
+      .update(npAgentChangesetRollbackPlans)
+      .set({ resultDigest: digest, version: plan.version + 1 })
+      .where(rollbackWhere(row.siteId, plan.id));
+    await db.insert(npAuditEvents).values({
+      siteId: row.siteId,
+      actorKind: "system",
+      action: "agents.changesets.rollback_committed",
+      targetType: "agent-changeset",
+      targetId: row.id,
+      payload: { executionId: e.id, rollbackPlanId: plan.id, resultDigest: digest },
+      createdAt: time,
+    });
+  }
+  async function failReservedRollback(db: Db, row: Row, e: ExecutionRow, code: string) {
+    if (!e.rollbackPlanId) throw missing();
+    const [plan] = await db
+      .select()
+      .from(npAgentChangesetRollbackPlans)
+      .where(rollbackWhere(row.siteId, e.rollbackPlanId))
+      .for("update")
+      .limit(1);
+    if (!plan) throw missing();
+    const time = now();
+    const changed = await db
+      .update(npAgentChangesetExecutions)
+      .set({
+        state: "failed",
+        errorCode: code,
+        finishedAt: time,
+        leaseOwner: null,
+        leaseToken: null,
+        leaseUntil: null,
+      })
+      .where(
+        and(
+          executionWhere(row.siteId, e.id),
+          eq(npAgentChangesetExecutions.state, "reserved"),
+          sql`${npAgentChangesetExecutions.committedAt} is null`,
+        ),
+      )
+      .returning({ id: npAgentChangesetExecutions.id });
+    if (!changed.length) return;
+    if (code === "EXECUTION_CANCELLED" && approvals)
+      await approvals.invalidateForExecution({
+        db,
+        siteId: row.siteId,
+        id: e.approvalId,
+        changeSetId: row.id,
+        rollbackPlanId: plan.id,
+        code: "EXECUTION_CANCELLED",
+      });
+    const reason =
+      code === "BASE_CONFLICT"
+        ? "conflict"
+        : code === "SNAPSHOT_EXPIRED"
+          ? "snapshot_expired"
+          : code === "APPROVAL_EXPIRED"
+            ? "approval_expired"
+            : code === "APPROVAL_REVOKED"
+              ? "approval_revoked"
+              : code === "EXECUTION_CANCELLED"
+                ? "execution_cancelled"
+                : code === "POLICY_CHANGED"
+                  ? "policy_blocked"
+                  : "execution_failed";
+    await db
+      .update(npAgentChangesetRollbackPlans)
+      .set({
+        state:
+          reason === "conflict"
+            ? "conflicted"
+            : ["snapshot_expired", "approval_expired"].includes(reason)
+              ? "expired"
+              : "failed",
+        terminalReason: reason,
+        finishedAt: time,
+        version: plan.version + 1,
+      })
+      .where(rollbackWhere(row.siteId, plan.id));
+    await db
+      .update(npAgentChangesets)
+      .set({ state: "rollback_failed", updatedAt: time })
+      .where(parentWhere(row.siteId, row.id));
+    await db.insert(npAuditEvents).values({
+      siteId: row.siteId,
+      actorKind: "system",
+      action: "agents.changesets.rollback_failed",
+      targetType: "agent-changeset",
+      targetId: row.id,
+      payload: { rollbackPlanId: plan.id, code },
+      createdAt: time,
+    });
+  }
+  async function rollbackExecutionEvidence(
+    db: Db,
+    row: Row,
+    plan: RollbackRow,
+    ops: RollbackOpRow[],
+  ) {
+    const [e] = await db
+      .select()
+      .from(npAgentChangesetExecutions)
+      .where(
+        and(
+          eq(npAgentChangesetExecutions.siteId, row.siteId),
+          eq(npAgentChangesetExecutions.changesetId, row.id),
+          eq(npAgentChangesetExecutions.rollbackPlanId, plan.id),
+          eq(npAgentChangesetExecutions.purpose, "rollback"),
+        ),
+      )
+      .limit(1);
+    if (!e) {
+      if (["executing", "verified"].includes(plan.state) || plan.resultDigest) throw missing();
+      return null;
+    }
+    if (e.planHash !== plan.planHash || e.approvalId !== plan.approvalId || e.scheduledFor !== null)
+      throw missing();
+    if (!e.committedAt) {
+      if (e.resultDigest || ops.some((op) => op.afterHash || op.resultDigest)) throw missing();
+      return e;
+    }
+    if (
+      !e.resultBody ||
+      e.resultBody.operations.length !== ops.length ||
+      e.resultDigest !== plan.resultDigest ||
+      e.resultDigest !== executionResult({ ...row, planHash: plan.planHash }, e, ops, e.resultBody)
+    )
+      throw missing();
+    let bytes = 0;
+    for (let i = 0; i < ops.length; i++) {
+      const op = ops[i],
+        result = e.resultBody.operations[i];
+      bytes += Buffer.byteLength(serializeAgentCanonicalJson(result.snapshot));
+      if (
+        bytes > npAgentChangeSetLimits.aggregateSnapshotBytes ||
+        result.ordinal !== op.ordinal ||
+        result.afterHash !== op.afterHash ||
+        result.snapshot.siteId !== row.siteId ||
+        result.snapshot.changeSetId !== row.id ||
+        result.snapshot.operationOrdinal !== op.ordinal ||
+        !sameJson(result.snapshot.canonicalResourceKey, op.canonicalResourceKey) ||
+        (await npDigestAgentChangeSetSnapshotCanonical(result.snapshot)) !== result.snapshotHash ||
+        op.resultDigest !== operationResult({ ...row, planHash: plan.planHash }, op) ||
+        op.state !== (e.verificationState === "passed" ? "verified" : "applied")
+      )
+        throw missing();
+    }
+    const [a] = await db
+      .select()
+      .from(npAgentApprovals)
+      .where(and(eq(npAgentApprovals.siteId, row.siteId), eq(npAgentApprovals.id, e.approvalId)))
+      .limit(1);
+    if (
+      !a ||
+      !approvals ||
+      a.state !== "consumed" ||
+      a.consumedAt?.toISOString() !== e.committedAt.toISOString()
+    )
+      throw missing();
+    const { statement } = await approvals.verify(a);
+    if (
+      statement.target.kind !== "changeset_rollback" ||
+      statement.target.rollbackPlanId !== plan.id ||
+      statement.target.changeSetId !== row.id ||
+      statement.target.planHash !== plan.planHash
+    )
+      throw missing();
+    return e;
+  }
+  async function verifyRollbackResources(
+    tx: NpTransaction,
+    target: Extract<
+      Parameters<Parameters<typeof npVerifyChangeSetExecutionV1>[0]["readResources"]>[1],
+      { kind: "rollback" }
+    >,
+  ) {
+    const db = tx as unknown as Db,
+      { parent: row, plan, operations: ops } = target;
+    const evidence = await rollbackEvidence(db, row, plan),
+      e = await rollbackExecutionEvidence(db, row, plan, ops);
+    if (!e?.committedAt || !evidence.sealed || !approvals) throw missing();
+    const [a] = await db
+      .select()
+      .from(npAgentApprovals)
+      .where(and(eq(npAgentApprovals.siteId, row.siteId), eq(npAgentApprovals.id, e.approvalId)))
+      .limit(1);
+    if (!a) throw missing();
+    const actor = await liveApprover(db, a, false);
+    let hashes = true,
+      revisions = true;
+    for (const op of evidence.sealed.body.operations) {
+      const result = ops.find((x) => x.ordinal === op.ordinal)!;
+      const current = await executionResources.readRollback({
+        tx,
+        siteId: row.siteId,
+        user: actor.user,
+        changeSetId: row.id,
+        operation: op,
+      });
+      if (current.beforeHash !== result.afterHash || result.afterHash !== op.proposedAfterHash)
+        hashes = false;
+      if (op.canonicalResourceKey.kind === "document") {
+        const [revision] = await db
+          .select({ id: npRevisions.id })
+          .from(npRevisions)
+          .where(
+            and(
+              eq(npRevisions.collection, op.canonicalResourceKey.collection),
+              eq(npRevisions.documentId, op.canonicalResourceKey.documentId),
+              gte(npRevisions.createdAt, e.reservedAt),
+            ),
+          )
+          .limit(1);
+        if (!revision) revisions = false;
+      }
+    }
+    const [audit] = await db
+      .select({ id: npAuditEvents.id })
+      .from(npAuditEvents)
+      .where(
+        and(
+          eq(npAuditEvents.siteId, row.siteId),
+          eq(npAuditEvents.targetId, row.id),
+          eq(npAuditEvents.action, "agents.changesets.rollback_committed"),
+          sql`${npAuditEvents.payload}->>'executionId'=${e.id}`,
+        ),
+      )
+      .limit(1);
+    if ((await liveApprover(db, a, false)).authorization !== actor.authorization)
+      throw executeError("AUTHORIZATION_CHANGED");
+    const check = (
+      checkId: "resource_after_hashes" | "revisions_audit",
+      passed: boolean,
+    ): NpAgentVerificationCheckV1 => ({
+      checkId,
+      required: true,
+      severity: "error",
+      status: passed ? "passed" : "failed",
+      evidenceRefs: ops.map((op) => ({ kind: "operation", id: String(op.ordinal) })),
+      nextAction: passed ? "none" : "refresh_plan",
+    });
+    return [
+      check("resource_after_hashes", hashes),
+      check("revisions_audit", revisions && Boolean(audit)),
+    ];
+  }
+
+  async function rollbackDetail(db: Db, row: Row, actor: Actor, selected?: string) {
+    const plan = selected
+      ? (
+          await db
+            .select()
+            .from(npAgentChangesetRollbackPlans)
+            .where(
+              and(
+                rollbackWhere(row.siteId, selected),
+                eq(npAgentChangesetRollbackPlans.changesetId, row.id),
+              ),
+            )
+            .limit(1)
+        )[0]
+      : await latestRollback(db, row);
+    if (!plan) {
+      if (selected) throw missing();
+      return null;
+    }
+    const evidence = await rollbackEvidence(db, row, plan),
+      e = await rollbackExecutionEvidence(db, row, plan, evidence.ops);
+    const [a] = plan.approvalId
+      ? await db
+          .select()
+          .from(npAgentApprovals)
+          .where(
+            and(eq(npAgentApprovals.siteId, row.siteId), eq(npAgentApprovals.id, plan.approvalId)),
+          )
+          .limit(1)
+      : [];
+    for (const source of evidence.original)
+      requireScopes(
+        actor,
+        await resources.assertVisible({
+          tx: db as unknown as NpTransaction,
+          siteId: row.siteId,
+          user: actor.user,
+          operation: source.input,
+          canonicalResourceKey: source.resourceKey,
+          currentResource: true,
+        }),
+      );
+    return npRequireAgentRollbackDetailV1({
+      schemaVersion: "np.agent-rollback-detail.v1",
+      changeSetId: row.id,
+      summary: await rollbackSummary(db, row, plan),
+      version: plan.version,
+      compensatesExecutionId: plan.compensatesExecutionId,
+      originalPlanHash: plan.originalPlanHash,
+      appliedResultDigest: plan.appliedResultDigest,
+      baseFingerprint: plan.baseFingerprint,
+      risk: plan.riskSummary,
+      requiredScopes: evidence.sealed?.body.requiredScopes ?? [],
+      requiredHumanCapabilities: evidence.sealed?.body.requiredHumanCapabilities ?? [],
+      requiredHumanPredicates: evidence.sealed?.body.requiredHumanPredicates ?? [],
+      policyHashes: evidence.sealed?.body.policyHashes ?? [],
+      operations:
+        evidence.sealed?.body.operations.map((op) => ({
+          review: npProjectAgentRollbackReviewOperationV1({
+            ordinal: op.ordinal,
+            operation: op,
+            snapshot: evidence.ops.find((x) => x.ordinal === op.ordinal)?.beforeSnapshot ?? null,
+            currentSnapshot:
+              evidence.applied.resultBody!.operations.find(
+                (x) => x.ordinal === op.originalOperationOrdinal,
+              )?.snapshot ?? null,
+            expired: plan.expiresAt <= now(),
+          }),
+          originalOperationOrdinal: op.originalOperationOrdinal,
+          rollbackClass: op.rollbackClass,
+          residualCodes: op.residualCodes,
+        })) ?? [],
+      approval: a && approvals ? await approvals.summary(a) : null,
+      execution: e ? executionSummary(e) : null,
+      verification: e ? verificationSummary(e) : null,
+      checks: e?.verificationBody ?? [],
+    });
+  }
+  async function pendingRollbackVerification(db: Db, row: Row) {
+    const [execution] = await db
+      .select({ id: npAgentChangesetExecutions.id })
+      .from(npAgentChangesetExecutions)
+      .where(
+        and(
+          eq(npAgentChangesetExecutions.siteId, row.siteId),
+          eq(npAgentChangesetExecutions.changesetId, row.id),
+          eq(npAgentChangesetExecutions.purpose, "rollback"),
+          sql`${npAgentChangesetExecutions.committedAt} is not null`,
+          or(
+            inArray(npAgentChangesetExecutions.state, ["committed", "verifying", "ambiguous"]),
+            sql`exists (
+              select 1 from jsonb_array_elements(${npAgentChangesetExecutions.effects}) effect
+              where effect->>'state' in ('pending','running','unknown')
+            )`,
+          ),
+        ),
+      )
+      .limit(1);
+    return Boolean(execution);
+  }
+  async function rollbackActions(
+    row: Row,
+    actor: Actor,
+    detail: NpAgentRollbackDetailV1 | null,
+  ): Promise<Array<"prepare" | "request_approval" | "execute" | "cancel">> {
+    if (!options.execution || !approvals || actor.principalId) return [];
+    const cancel: Array<"cancel"> =
+      detail &&
+      ["preparing", "ready", "approval_pending", "approved"].includes(detail.summary.state) &&
+      can(actor.user, "content.author")
+        ? ["cancel"]
+        : [];
+    if (!can(actor.user, npAgentScopeStaffCapability["changeset:apply"])) return cancel;
+    const intent = await options.execution.resolveIntent({ siteId: row.siteId });
+    if (
+      !intent.enabled ||
+      intent.paused ||
+      !row.rollbackEligibleUntil ||
+      row.rollbackEligibleUntil <= now()
+    )
+      return cancel;
+    if (!detail || rollbackTerminal.includes(detail.summary.state)) {
+      if (await pendingRollbackVerification(getDb(), row)) return [];
+      return ["applied", "verified", "verification_failed", "rollback_failed"].includes(row.state)
+        ? ["prepare"]
+        : [];
+    }
+    if (Date.parse(detail.summary.expiresAt) <= now().getTime()) return cancel;
+    if (detail.summary.state === "ready") return ["request_approval", ...cancel];
+    if (
+      detail.summary.state === "approved" &&
+      detail.approval?.state === "approved" &&
+      Date.parse(detail.approval.expiresAt) > now().getTime()
+    )
+      return ["execute", ...cancel];
+    return cancel;
+  }
+  async function reconcileRollbacks(input: { siteId: string; limit?: number; cursor?: string }) {
+    const limit = input.limit ?? 25;
+    if (
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 100 ||
+      (input.cursor && !uuid.test(input.cursor))
+    )
+      throw conflict();
+    const plans = await getDb()
+      .select()
+      .from(npAgentChangesetRollbackPlans)
+      .where(
+        and(
+          eq(npAgentChangesetRollbackPlans.siteId, input.siteId),
+          inArray(npAgentChangesetRollbackPlans.state, [
+            "preparing",
+            "ready",
+            "approval_pending",
+            "approved",
+            "executing",
+          ]),
+          ...(input.cursor ? [gt(npAgentChangesetRollbackPlans.id, input.cursor)] : []),
+        ),
+      )
+      .orderBy(asc(npAgentChangesetRollbackPlans.id))
+      .limit(limit);
+    for (const seed of plans) {
+      if (seed.state === "executing") continue; // Execution reservations retain their own recovery fence.
+      if (seed.expiresAt <= now() && !seed.approvalId)
+        await getDb().transaction(async (db) => {
+          const { row, plan } = await lockRollback(db, seed.siteId, seed.changesetId, seed.id);
+          if (plan.expiresAt > now() || !["preparing", "ready"].includes(plan.state)) return;
+          await db
+            .update(npAgentChangesetRollbackPlans)
+            .set({
+              state: "expired",
+              terminalReason: "snapshot_expired",
+              finishedAt: now(),
+              version: plan.version + 1,
+            })
+            .where(rollbackWhere(row.siteId, plan.id));
+        });
+    }
+    return { examined: plans.length, nextCursor: plans.length === limit ? plans.at(-1)!.id : null };
+  }
+
   type ExecutionRow = typeof npAgentChangesetExecutions.$inferSelect;
   type ApprovalRow = typeof npAgentApprovals.$inferSelect;
   const executionResources = createAgentChangeSetApplyResourceServiceV1();
@@ -4537,6 +6014,7 @@ export function createAgentChangeSetServiceV1(
         and(
           eq(npAgentChangesetExecutions.siteId, row.siteId),
           eq(npAgentChangesetExecutions.changesetId, row.id),
+          eq(npAgentChangesetExecutions.purpose, "apply"),
         ),
       )
       .limit(1);
@@ -4580,14 +6058,22 @@ export function createAgentChangeSetServiceV1(
           throw missing();
       }
       if (
-        !["applied", "verifying", "verified", "verification_failed"].includes(row.state) ||
+        ![
+          "applied",
+          "verifying",
+          "verified",
+          "verification_failed",
+          "rolling_back",
+          "rolled_back",
+          "rollback_failed",
+        ].includes(row.state) ||
         row.appliedAt?.toISOString() !== e.committedAt.toISOString() ||
         !row.rollbackEligibleUntil ||
         row.rollbackEligibleUntil.getTime() !==
           e.committedAt.getTime() + (row.rollbackWindowSeconds ?? 0) * 1000 ||
         ops.some(
           (op) =>
-            op.state !== (row.state === "verified" ? "verified" : "applied") ||
+            op.state !== (e.verificationState === "passed" ? "verified" : "applied") ||
             !op.afterHash ||
             op.resultDigest !== operationResult(row, op),
         ) ||
@@ -4656,6 +6142,7 @@ export function createAgentChangeSetServiceV1(
           and(
             eq(npAgentApprovals.siteId, row.siteId),
             eq(npAgentApprovals.targetChangesetId, row.id),
+            eq(npAgentApprovals.targetKind, "changeset"),
           ),
         )
         .orderBy(desc(npAgentApprovals.generation))
@@ -4733,7 +6220,14 @@ export function createAgentChangeSetServiceV1(
   ): Promise<T> {
     if (!approvals) throw missing();
     const { statement } = await approvals.verify(a);
-    const seed = await approvalSeed(a.siteId, a.targetId);
+    const seed =
+      statement.target.kind === "changeset_rollback"
+        ? await rollbackSeed(
+            a.siteId,
+            statement.target.changeSetId,
+            statement.target.rollbackPlanId,
+          )
+        : await approvalSeed(a.siteId, a.targetId);
     if (seed.requesterFingerprint !== statement.requester.fingerprint)
       throw executeError("AUTHORIZATION_CHANGED");
     async function human(db: Db, actor?: Actor) {
@@ -4916,6 +6410,7 @@ export function createAgentChangeSetServiceV1(
         and(
           eq(npAgentChangesetExecutions.siteId, row.siteId),
           eq(npAgentChangesetExecutions.changesetId, row.id),
+          eq(npAgentChangesetExecutions.purpose, "apply"),
           eq(npAgentChangesetExecutions.state, "reserved"),
         ),
       )
@@ -5081,10 +6576,63 @@ export function createAgentChangeSetServiceV1(
   }
   const apply = (input: StaffExecutionInput) => admitExecution(input, "apply");
   const schedule = (input: StaffExecutionInput) => admitExecution(input, "schedule");
+  async function cancelRollback(
+    input: StaffExecutionInput,
+    command: Extract<NpAgentChangeSetCancelInputV1, { targetKind: "rollback_plan" }>,
+  ) {
+    if (!approvals) throw missing();
+    const actor = await resolve(input.actor, false);
+    await admin({
+      siteId: actor.siteId,
+      actor: input.actor.actor,
+      operationId: "agents.changesets.cancel",
+      targetId: input.id,
+      command,
+      mutate: async ({ db }) => {
+        const { row, plan } = await lockRollback(
+          db,
+          actor.siteId,
+          input.id,
+          command.rollbackPlanId,
+        );
+        await project(row, actor, false, db, false);
+        if (
+          row.draftVersion !== command.expectedDraftVersion ||
+          plan.version !== command.expectedRollbackVersion ||
+          plan.state !== command.expectedState ||
+          plan.planHash !== command.planHash ||
+          !["applied", "verified", "verification_failed", "rollback_failed"].includes(row.state) ||
+          !["preparing", "ready", "approval_pending", "approved"].includes(plan.state)
+        )
+          throw conflict();
+        if (plan.approvalId)
+          await approvals.invalidateForExecution({
+            db,
+            siteId: row.siteId,
+            id: plan.approvalId,
+            changeSetId: row.id,
+            rollbackPlanId: plan.id,
+            code: "OPERATOR_CANCELLED",
+          });
+        await db
+          .update(npAgentChangesetRollbackPlans)
+          .set({
+            state: "failed",
+            terminalReason: "operator_cancelled",
+            finishedAt: now(),
+            version: plan.version + 1,
+          })
+          .where(rollbackWhere(row.siteId, plan.id));
+        return { resourceId: row.id, output: { rollbackPlanId: plan.id } };
+      },
+    });
+    return getReview({ actor: input.actor, id: input.id });
+  }
   async function cancel(input: StaffExecutionInput) {
     if (!options.execution || !uuid.test(input.id)) throw missing();
-    const command = npRequireAgentChangeSetCancelInputV1(input.command),
-      actor = await resolve(input.actor, false);
+    const command = npRequireAgentChangeSetCancelInputV1(input.command);
+    if ("targetKind" in command) return cancelRollback(input, command);
+    const actor = await resolve(input.actor, false);
     await admin({
       siteId: actor.siteId,
       actor: input.actor.actor,
@@ -5116,6 +6664,7 @@ export function createAgentChangeSetServiceV1(
             and(
               eq(npAgentApprovals.siteId, row.siteId),
               eq(npAgentApprovals.targetChangesetId, row.id),
+              eq(npAgentApprovals.targetKind, "changeset"),
               inArray(npAgentApprovals.state, ["pending", "approved"]),
             ),
           )
@@ -5156,6 +6705,22 @@ export function createAgentChangeSetServiceV1(
     control?: { signal: AbortSignal },
   ): Promise<{ state: string }> {
     const input = npNormalizeJobPayload("agent:changesetApply", raw);
+    return processExecutionReservation(input, control);
+  }
+  async function processRollback(
+    raw: NpAgentChangeSetRollbackJobPayload,
+    control?: { signal: AbortSignal },
+  ) {
+    return processExecutionReservation(
+      npNormalizeJobPayload("agent:changesetRollback", raw),
+      control,
+    );
+  }
+  async function processExecutionReservation(
+    input: NpAgentChangeSetApplyJobPayload | NpAgentChangeSetRollbackJobPayload,
+    control?: { signal: AbortSignal },
+  ): Promise<{ state: string }> {
+    const rollback = "rollbackPlanId" in input;
     if (!options.execution || !approvals) throw missing();
     const [seed] = await getDb()
       .select()
@@ -5168,7 +6733,12 @@ export function createAgentChangeSetServiceV1(
         ),
       )
       .limit(1);
-    if (!seed || !sameJson(executionJob(seed), input)) return { state: "stale" };
+    if (
+      !seed ||
+      seed.purpose !== (rollback ? "rollback" : "apply") ||
+      !sameJson(rollback ? rollbackJob(seed) : executionJob(seed), input)
+    )
+      return { state: "stale" };
     if (seed.committedAt) {
       if (["committed", "verifying", "failed"].includes(seed.state))
         await processVerification({
@@ -5208,6 +6778,12 @@ export function createAgentChangeSetServiceV1(
                 .where(parentWhere(input.siteId, input.changeSetId))
                 .for("update")
                 .limit(1);
+              if (rollback)
+                await db
+                  .select({ id: npAgentChangesetRollbackPlans.id })
+                  .from(npAgentChangesetRollbackPlans)
+                  .where(rollbackWhere(input.siteId, input.rollbackPlanId))
+                  .for("update");
               const [e] = await db
                 .select()
                 .from(npAgentChangesetExecutions)
@@ -5224,6 +6800,19 @@ export function createAgentChangeSetServiceV1(
                 .limit(1);
               if (!row || !e || !approval) throw missing();
               if (e.committedAt || e.state !== "reserved") return;
+              if (rollback) {
+                await commitRollback(
+                  db,
+                  row,
+                  e,
+                  approval,
+                  actor,
+                  effects,
+                  dispatchToken,
+                  control?.signal,
+                );
+                return;
+              }
               if (
                 !["applying", "scheduled"].includes(row.state) ||
                 row.planHash !== e.planHash ||
@@ -5415,6 +7004,8 @@ export function createAgentChangeSetServiceV1(
         if (["40001", "40P01"].includes(sqlCode)) return { state: "reserved" };
         const safeCodes = [
           "EXECUTION_CANCELLED",
+          "SNAPSHOT_EXPIRED",
+          "BASE_CONFLICT",
           "APPROVAL_EXPIRED",
           "APPROVAL_REVOKED",
           "APPROVAL_REQUIRED",
@@ -5447,7 +7038,10 @@ export function createAgentChangeSetServiceV1(
             .where(parentWhere(input.siteId, input.changeSetId))
             .for("update")
             .limit(1);
-          if (row) await failReservedExecution(db, row, code);
+          if (row) {
+            if (rollback) await failReservedRollback(db, row, seed, code);
+            else await failReservedExecution(db, row, code);
+          }
         });
         return { state: "failed" };
       }
@@ -5489,7 +7083,9 @@ export function createAgentChangeSetServiceV1(
         verificationFingerprint: options.execution!.verificationFingerprint,
         verifyConvergence: options.execution!.verifyConvergence,
         inspectPostCommitEffect: options.execution!.inspectPostCommitEffect,
-        readResources: async (tx, row, ops) => {
+        readResources: async (tx, target) => {
+          if (target.kind === "rollback") return verifyRollbackResources(tx, target);
+          const { parent: row, operations: ops } = target;
           const db = tx as unknown as Db;
           const e = await executionEvidence(db, row, ops);
           if (!e?.committedAt) throw missing();
@@ -5597,12 +7193,18 @@ export function createAgentChangeSetServiceV1(
           changeSetId: e.changesetId,
           executionId: e.id,
         });
-      else if (e.state === "reserved") await processExecution(executionJob(e));
+      else if (e.state === "reserved") {
+        if (e.purpose === "rollback") await processRollback(rollbackJob(e));
+        else await processExecution(executionJob(e));
+      }
     }
     return { examined: rows.length, nextCursor: rows.length === limit ? rows.at(-1)!.id : null };
   }
   const applyHandler = async (job: NpAgentChangeSetApplyJobPayload) => {
     await processExecution(job);
+  };
+  const rollbackHandler = async (job: NpAgentChangeSetRollbackJobPayload) => {
+    await processRollback(job);
   };
   const verifyHandler = async (job: NpAgentChangeSetVerifyJobPayload) => {
     await processVerification(job);
@@ -5611,6 +7213,10 @@ export function createAgentChangeSetServiceV1(
   function registerExecutionJobs() {
     if (!options.execution) throw missing();
     registerJobHandler("agent:changesetApply", applyHandler, {
+      resolveSiteId: executionSiteId,
+      quota: "site",
+    });
+    registerJobHandler("agent:changesetRollback", rollbackHandler, {
       resolveSiteId: executionSiteId,
       quota: "site",
     });
@@ -5624,6 +7230,11 @@ export function createAgentChangeSetServiceV1(
     apply,
     schedule,
     cancel,
+    prepareRollback,
+    reconcileRollbacks,
+    requestRollbackApproval,
+    executeRollback,
+    processRollback,
     processExecution,
     processVerification,
     reconcileExecutions,

@@ -187,7 +187,8 @@ export function AgentChangeSetExecution({
             <dd>{detail.errorCode ?? "None"}</dd>
             <dt>Rollback eligibility window</dt>
             <dd>
-              {detail.rollbackEligibleUntil ?? "Unavailable"} (rollback execution is unavailable)
+              {detail.rollbackEligibleUntil ?? "Unavailable"} (eligibility is rechecked when
+              preparing compensation)
             </dd>
           </dl>
           {detail.verification && (

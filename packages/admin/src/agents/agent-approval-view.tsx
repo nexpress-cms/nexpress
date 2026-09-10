@@ -1,4 +1,5 @@
 "use client";
+import { AgentRollbackReviewFacts } from "./agent-changeset-rollback.js";
 
 import * as React from "react";
 import Link from "next/link";
@@ -604,10 +605,11 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
               </dd>
             </dl>
             <p>
-              Approval records a human decision. Apply, schedule execution and rollback are not
-              available here.
+              Approval records a human decision. Execute the approved operation from the current
+              ChangeSet review after its authority and evidence checks.
             </p>
           </section>
+          {detail.rollbackReview && <AgentRollbackReviewFacts detail={detail.rollbackReview} />}
           {detail.review ? (
             <>
               <AgentChangeSetReviewFacts review={detail.review} />
@@ -631,12 +633,12 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
                 />
               </section>
             </>
-          ) : (
+          ) : !detail.rollbackReview ? (
             <p>
               Target evidence is redacted or unavailable. No runtime or execution evidence is
               inferred.
             </p>
-          )}
+          ) : null}
           <DecisionControls
             key={`${id}:${detail.item.version}:${detail.item.statementHash}`}
             detail={detail}

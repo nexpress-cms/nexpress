@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentChangeSetRollback } from "./agent-changeset-rollback.js";
 import { AgentChangeSetExecution } from "./agent-changeset-execution.js";
 
 import * as React from "react";
@@ -713,6 +714,14 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
             changeSet={changeSet}
             onChanged={result.refresh}
             onLost={clearEvidence}
+          />
+          <AgentChangeSetRollback
+            review={result.value}
+            onChanged={result.refresh}
+            onLost={(message) => {
+              setMutationError(message);
+              clearEvidence();
+            }}
           />
           <AgentChangeSetExecution
             review={result.value}

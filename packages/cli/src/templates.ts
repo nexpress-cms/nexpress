@@ -1333,8 +1333,11 @@ server-authorized controls and recorded execution/verification evidence.
 The host explicitly owns bounded execution/verification processors and job
 registration. After an unknown effect, inspect retained evidence before retrying;
 never replay opaque hooks or treat a missing response as proof of no commit.
-Rollback and Agent HTTP/MCP execution capabilities are not installed by these
-wrappers. Generated configuration remains disabled by default.
+Rollback preparation, fresh approval and compensation use that same explicit
+service installation and current review. Non-executing rollback cancellation
+uses the existing ChangeSet cancel route. The generated wrappers do not enable
+Agent HTTP/MCP execution capabilities or a worker. Generated configuration
+remains disabled by default.
 
 ## Jobs
 

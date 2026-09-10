@@ -19,6 +19,8 @@ export const npAgentDiagnosticEntitiesV1 = [
   "action",
   "changeset",
   "changeset-execution",
+  "rollback-plan",
+  "rollback-operation",
   "changeset-operation",
   "changeset-validation-attempt",
   "changeset-preview",
@@ -50,6 +52,8 @@ export const npAgentDiagnosticEntitiesV1 = [
 export type NpAgentDiagnosticEntityV1 = (typeof npAgentDiagnosticEntitiesV1)[number];
 
 export const npAgentDiagnosticStatesV1 = [
+  "preparing",
+  "conflicted",
   "committed",
   "reserved",
   "rendering",

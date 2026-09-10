@@ -1312,6 +1312,8 @@ export type NpDocumentStatus = "draft" | "scheduled" | "published" | "archived" 
 
 export interface NpSaveOptions {
   status?: NpDocumentStatus;
+  /** Server-only compensation control: retain earlier revisions for this write; never bind request input. */
+  preserveRevisionHistory?: true;
   /**
    * Canonical UUID to use for a create. Content-transfer imports use this to
    * preserve document identity, keep relationship references intact, and

@@ -21,6 +21,8 @@ import {
   npAgentChangesetPreviews,
   npAgentChangesets,
   npAgentChangesetExecutions,
+  npAgentChangesetRollbackPlans,
+  npAgentChangesetRollbackOperations,
   npAgentChangesetValidationAttempts,
   npAgentChangesetOperations,
   npAgentApprovals,
@@ -60,6 +62,8 @@ export const npAgentSiteDeletionOrderV1 = Object.freeze([
   "np_agent_changeset_previews",
   "np_agent_changeset_executions",
   "np_agent_approvals",
+  "np_agent_changeset_rollback_operations",
+  "np_agent_changeset_rollback_plans",
   "np_agent_changeset_validation_attempts",
   "np_agent_changeset_operations",
   "np_agent_changesets",
@@ -118,6 +122,16 @@ const descriptors: Record<
     table: npAgentActions,
     id: npAgentActions.id,
     siteId: npAgentActions.siteId,
+  },
+  np_agent_changeset_rollback_plans: {
+    table: npAgentChangesetRollbackPlans,
+    id: npAgentChangesetRollbackPlans.id,
+    siteId: npAgentChangesetRollbackPlans.siteId,
+  },
+  np_agent_changeset_rollback_operations: {
+    table: npAgentChangesetRollbackOperations,
+    id: npAgentChangesetRollbackOperations.id,
+    siteId: npAgentChangesetRollbackOperations.siteId,
   },
   np_agent_changeset_executions: {
     table: npAgentChangesetExecutions,
@@ -364,23 +378,24 @@ export async function npCountAgentSiteRows(db: NpAgentDb, siteId: string): Promi
 }
 
 export async function npDeleteAgentSiteRows(db: NpAgentDb, siteId: string): Promise<void> {
-  const [workingTask] = await db
-    .select({ id: npAgentMcpTasks.id })
-    .from(npAgentMcpTasks)
-    .where(and(eq(npAgentMcpTasks.siteId, siteId), eq(npAgentMcpTasks.status, "working")))
-    .limit(1);
-  if (workingTask) {
-    throw new Error("Agent site deletion requires every MCP task to be terminal.");
-  }
-  const unsafeExecution = await db.execute(sql`
+  await db.transaction(async (tx) => {
+    const [workingTask] = await tx
+      .select({ id: npAgentMcpTasks.id })
+      .from(npAgentMcpTasks)
+      .where(and(eq(npAgentMcpTasks.siteId, siteId), eq(npAgentMcpTasks.status, "working")))
+      .limit(1);
+    if (workingTask) {
+      throw new Error("Agent site deletion requires every MCP task to be terminal.");
+    }
+    const unsafeExecution = await tx.execute(sql`
     select 1 from public.np_agent_changeset_executions where site_id=${siteId}
       and (state in ('reserved','committed','verifying','ambiguous') or exists (
         select 1 from jsonb_array_elements(effects) e where e->>'state' in ('pending','running','unknown')
       )) limit 1
   `);
-  if (unsafeExecution.rows.length)
-    throw new Error("Agent site deletion requires terminal execution effects.");
-  const unsafePreview = await db.execute(sql`
+    if (unsafeExecution.rows.length)
+      throw new Error("Agent site deletion requires terminal execution effects.");
+    const unsafePreview = await tx.execute(sql`
     select 1 from public.np_agent_changeset_previews where site_id=${siteId} and state in ('queued','rendering','ready')
     union all select 1 from public.np_agent_preview_viewer_launches where site_id=${siteId} and (state in ('exchange_pending','active') or to_timestamp(exp)+interval '60 seconds'>now())
     union all select 1 from public.np_agent_preview_render_sessions where site_id=${siteId} and (state='active' or expires_at+interval '60 seconds'>now())
@@ -388,12 +403,13 @@ export async function npDeleteAgentSiteRows(db: NpAgentDb, siteId: string): Prom
     union all select 1 from public.np_agent_preview_artifacts a join public.np_agent_preview_artifact_uploads u on u.site_id=a.site_id and u.artifact_id=a.id where a.site_id=${siteId} and (a.object_state<>'absent' or ((u.ever_observed_present or u.adapter_operation_status='committed') and a.delete_receipt_digest is null))
     limit 1
   `);
-  if (unsafePreview.rows.length)
-    throw new Error("Agent site deletion requires confirmed preview cleanup.");
-  for (const tableName of npAgentSiteDeletionOrderV1) {
-    const item = descriptor(tableName);
-    await db.delete(item.table).where(eq(item.siteId as never, siteId));
-  }
+    if (unsafePreview.rows.length)
+      throw new Error("Agent site deletion requires confirmed preview cleanup.");
+    for (const tableName of npAgentSiteDeletionOrderV1) {
+      const item = descriptor(tableName);
+      await tx.delete(item.table).where(eq(item.siteId as never, siteId));
+    }
+  });
 }
 
 export async function npCountAgentSiteDeletionMarkers(

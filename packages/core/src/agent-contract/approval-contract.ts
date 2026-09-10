@@ -1,4 +1,8 @@
 import {
+  npRequireAgentRollbackDetailV1,
+  type NpAgentRollbackDetailV1,
+} from "./rollback-contract.js";
+import {
   npAgentApprovalWireSchemaV1,
   npCompactAgentWireSchemaV1,
 } from "./changeset-capability-schema.js";
@@ -100,13 +104,14 @@ export interface NpAgentApprovalListItemV1 {
     targetCount: number;
     previewState: NpAgentPreviewSummary["state"] | null;
     checksRun: number | null;
-    rollbackPlan: "unavailable";
+    rollbackPlan: "unavailable" | "available";
   };
 }
 export interface NpAgentApprovalDetailV1 {
   schemaVersion: "np.agent-approval-detail.v1";
   item: NpAgentApprovalListItemV1;
   review: NpAgentChangeSetReviewV1 | null;
+  rollbackReview: NpAgentRollbackDetailV1 | null;
 }
 export interface NpAgentApprovalPageV1 {
   schemaVersion: "np.agent-approval-page.v1";
@@ -381,7 +386,7 @@ export function npAnalyzeAgentApprovalListItemV1(v: unknown) {
             targetCount,
             previewState,
             checksRun,
-            rollbackPlan: enumeration(value.rollbackPlan, p, ["unavailable"]),
+            rollbackPlan: enumeration(value.rollbackPlan, p, ["unavailable", "available"]),
           };
         })(),
         schemaVersion: enumeration(r.schemaVersion, p, ["np.agent-approval-list-item.v1"]),
@@ -448,6 +453,16 @@ export function npAnalyzeAgentApprovalDetailV1(v: unknown) {
     (r, p): NpAgentApprovalDetailV1 => {
       const item = npRequireAgentApprovalListItemV1(r.item);
       const review = r.review === null ? null : npRequireAgentChangeSetReviewV1(r.review);
+      const rollbackReview =
+        r.rollbackReview === null ? null : npRequireAgentRollbackDetailV1(r.rollbackReview);
+      if (
+        rollbackReview &&
+        (item.target.kind !== "changeset_rollback" ||
+          rollbackReview.changeSetId !== item.target.changeSetId ||
+          rollbackReview.summary.rollbackPlanId !== item.target.rollbackPlanId ||
+          rollbackReview.summary.planHash !== item.target.planHash)
+      )
+        failCanonicalBody("invalid-field", p, "Rollback review target mismatch");
       if (
         review &&
         (item.target.kind !== "changeset" ||
@@ -459,9 +474,10 @@ export function npAnalyzeAgentApprovalDetailV1(v: unknown) {
         schemaVersion: enumeration(r.schemaVersion, p, ["np.agent-approval-detail.v1"]),
         item,
         review,
+        rollbackReview,
       };
     },
-    ["schemaVersion", "item", "review"],
+    ["schemaVersion", "item", "review", "rollbackReview"],
   );
 }
 export const npRequireAgentApprovalDetailV1 = (v: unknown) =>
@@ -723,7 +739,7 @@ const approvalItemSchema = schema({
     targetCount: { type: "integer", minimum: 1, maximum: npAgentChangeSetLimits.operations },
     previewState: { enum: ["queued", "rendering", "ready", "failed", "expired", null] },
     checksRun: nullable({ type: "integer", minimum: 0, maximum: 1000 }),
-    rollbackPlan: { const: "unavailable" },
+    rollbackPlan: { enum: ["unavailable", "available"] },
   }),
 });
 const approvalDetailSchemaSource = JSON.parse(
@@ -732,6 +748,7 @@ const approvalDetailSchemaSource = JSON.parse(
       schemaVersion: { const: "np.agent-approval-detail.v1" },
       item: approvalItemSchema,
       review: nullable({ $ref: "#/$defs/approvalReview" }),
+      rollbackReview: nullable({ $ref: "#/$defs/rollbackDetail" }),
     }),
     $schema: approvalReviewDialect,
     $defs: {

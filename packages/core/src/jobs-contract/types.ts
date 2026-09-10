@@ -18,6 +18,7 @@ export const NP_BUILTIN_JOB_TYPES = [
   "import:wordpressApply",
   "agent:changesetApply",
   "agent:changesetVerify",
+  "agent:changesetRollback",
 ] as const;
 
 export const NP_JOB_STATES = [
@@ -137,6 +138,14 @@ export interface NpAgentChangeSetApplyJobPayload {
   scheduledFor: string | null;
   idempotencyKey: string;
 }
+export interface NpAgentChangeSetRollbackJobPayload {
+  siteId: string;
+  changeSetId: string;
+  rollbackPlanId: string;
+  planHash: string;
+  approvalId: string;
+  idempotencyKey: string;
+}
 export interface NpAgentChangeSetVerifyJobPayload {
   siteId: string;
   changeSetId: string;
@@ -146,6 +155,7 @@ export interface NpAgentChangeSetVerifyJobPayload {
 export interface NpBuiltinJobPayloadMap {
   "agent:changesetApply": NpAgentChangeSetApplyJobPayload;
   "agent:changesetVerify": NpAgentChangeSetVerifyJobPayload;
+  "agent:changesetRollback": NpAgentChangeSetRollbackJobPayload;
   "content:afterSave": NpContentAfterSaveJobData;
   "content:afterDelete": NpContentAfterDeleteJobData;
   "search:reindex": NpSearchReindexJobData;

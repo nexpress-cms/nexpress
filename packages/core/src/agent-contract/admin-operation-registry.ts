@@ -1,4 +1,9 @@
 import {
+  npAgentRollbackPlanCreateInputSchemaV1,
+  npAgentRollbackPlanRequestApprovalInputSchemaV1,
+  npAgentRollbackPlanExecuteInputSchemaV1,
+} from "./rollback-contract.js";
+import {
   npAgentChangeSetApplyInputSchemaV1,
   npAgentChangeSetScheduleInputSchemaV1,
   npAgentChangeSetCancelInputSchemaV1,
@@ -854,6 +859,12 @@ function preconditionField(
 }
 
 function buildInputSchema(seed: OperationSeed): NpAgentJsonSchema {
+  if (seed.id === "agents.changesets.rollback_plans.create")
+    return requireSchema(npAgentRollbackPlanCreateInputSchemaV1);
+  if (seed.id === "agents.changesets.rollback_plans.request_approval")
+    return requireSchema(npAgentRollbackPlanRequestApprovalInputSchemaV1);
+  if (seed.id === "agents.changesets.rollback_plans.execute")
+    return requireSchema(npAgentRollbackPlanExecuteInputSchemaV1);
   if (seed.id === "agents.changesets.apply")
     return requireSchema(npAgentChangeSetApplyInputSchemaV1);
   if (seed.id === "agents.changesets.schedule")
@@ -972,6 +983,15 @@ function outputShape(kind: NpAgentAdminOperationOutputKindV1): {
 }
 
 function buildOutputSchema(seed: OperationSeed): NpAgentJsonSchema {
+  if (seed.id === "agents.changesets.rollback_plans.request_approval")
+    return requireSchema(npAgentApprovalDetailSchemaV1);
+  if (
+    [
+      "agents.changesets.rollback_plans.create",
+      "agents.changesets.rollback_plans.execute",
+    ].includes(seed.id)
+  )
+    return requireSchema(npAgentChangeSetReviewSchemaV1);
   if (
     ["agents.changesets.apply", "agents.changesets.schedule", "agents.changesets.cancel"].includes(
       seed.id,

@@ -2,6 +2,7 @@ import { getCollectionConfig } from "../collections/registry.js";
 import { npProjectAgentEditableDocumentV1 } from "./changeset-resources.js";
 import type {
   NpAgentChangeSetOperationInput,
+  NpAgentRollbackChangeSetPlanOperationCanonicalV1,
   NpAgentChangeSetSnapshotCanonicalV1,
   NpAgentJsonValue,
 } from "../agent-contract/types.js";
@@ -86,6 +87,14 @@ export function npProjectAgentChangeSetReviewOperationV1(input: {
     before = { attached: stored.attached };
     after = { attached: op.operation === "attach" };
   }
+  return reviewDifference(ordinal, before, after);
+}
+
+function reviewDifference(
+  ordinal: number,
+  before: Record<string, NpAgentJsonValue>,
+  after: Record<string, NpAgentJsonValue>,
+): NpAgentChangeSetReviewOperationV1 {
   const fields = [...new Set([...Object.keys(before), ...Object.keys(after)])]
     .sort()
     .flatMap((path) => {
@@ -96,4 +105,47 @@ export function npProjectAgentChangeSetReviewOperationV1(input: {
         : [{ path, before: b, after: a }];
     });
   return { ordinal, evidence: "available", fields };
+}
+
+/** Caller has already verified source/current snapshot hashes and current item authority. */
+export function npProjectAgentRollbackReviewOperationV1(input: {
+  ordinal: number;
+  operation: NpAgentRollbackChangeSetPlanOperationCanonicalV1;
+  snapshot: NpAgentChangeSetSnapshotCanonicalV1 | null;
+  currentSnapshot: NpAgentChangeSetSnapshotCanonicalV1 | null;
+  expired: boolean;
+}): NpAgentChangeSetReviewOperationV1 {
+  const { ordinal, snapshot, currentSnapshot } = input,
+    op = input.operation.compensationOperation;
+  if (input.expired) return { ordinal, evidence: "expired", fields: [] };
+  if (!snapshot || !currentSnapshot) return { ordinal, evidence: "redacted", fields: [] };
+  if (op.operation !== "restore")
+    return npProjectAgentChangeSetReviewOperationV1({
+      ordinal,
+      operation: op,
+      snapshot: currentSnapshot,
+      expired: false,
+    });
+  let before: Record<string, NpAgentJsonValue> = {},
+    after: Record<string, NpAgentJsonValue> = {};
+  if (op.kind === "document") {
+    const config = getCollectionConfig(op.resource.collection);
+    before = npProjectAgentEditableDocumentV1(config.fields, record(currentSnapshot.value), {
+      declaredOnly: true,
+    }) as Record<string, NpAgentJsonValue>;
+    after = npProjectAgentEditableDocumentV1(config.fields, record(snapshot.value), {
+      declaredOnly: true,
+    }) as Record<string, NpAgentJsonValue>;
+    for (const key of ["status", "publishedAt"]) {
+      const previous = record(currentSnapshot.value),
+        restored = record(snapshot.value);
+      if (Object.hasOwn(previous, key)) before[key] = previous[key];
+      if (Object.hasOwn(restored, key)) after[key] = restored[key];
+    }
+  } else {
+    if (currentSnapshot.presence === "present")
+      before = { tokens: record(currentSnapshot.value).value };
+    if (snapshot.presence === "present") after = { tokens: record(snapshot.value).value };
+  }
+  return reviewDifference(ordinal, before, after);
 }

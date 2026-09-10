@@ -1,4 +1,18 @@
 import {
+  npRequireAgentRollbackDetailV1,
+  npAgentRollbackDetailSchemaV1,
+  type NpAgentRollbackDetailV1,
+} from "./rollback-contract.js";
+import {
+  npRequireAgentChangeSetReviewOperationsV1,
+  npAgentChangeSetReviewOperationSchemaV1,
+  type NpAgentChangeSetReviewOperationV1,
+} from "./changeset-review-operations.js";
+export type {
+  NpAgentChangeSetReviewOperationV1,
+  NpAgentChangeSetReviewValueV1,
+} from "./changeset-review-operations.js";
+import {
   npRequireAgentChangeSetExecutionDetailV1,
   npAgentChangeSetExecutionDetailSchemaV1,
   type NpAgentChangeSetExecutionDetailV1,
@@ -12,7 +26,6 @@ import {
 import type { NpAgentJsonSchema, NpAgentJsonObject } from "./types.js";
 import type { NpCapability } from "../auth/capabilities.js";
 import { npCollectionContractLimits } from "../collection-contract/contract.js";
-import type { NpAgentJsonValue } from "./types.js";
 import { npRequireAgentContractResult } from "./contract.js";
 import {
   analyzeCanonicalBody,
@@ -20,37 +33,22 @@ import {
   canonicalBodyArray,
   canonicalBodyCapabilities,
   canonicalBodyEnum,
-  canonicalBodyInteger,
   failCanonicalBody,
 } from "./canonical-body-validation.js";
-import {
-  canonicalRuntimeText,
-  cloneCanonicalRuntimeInput,
-} from "./canonical-runtime-primitives.js";
+import { cloneCanonicalRuntimeInput } from "./canonical-runtime-primitives.js";
 import {
   npAgentChangeSetLimits,
   npRequireAgentChangeSetWire,
   type NpAgentChangeSetWire,
 } from "./changeset-wire-contract.js";
 
-export interface NpAgentChangeSetReviewValueV1 {
-  presence: "present" | "absent" | "redacted";
-  value: NpAgentJsonValue;
-}
-export interface NpAgentChangeSetReviewOperationV1 {
-  ordinal: number;
-  evidence: "available" | "not_validated" | "redacted" | "expired";
-  fields: Array<{
-    path: string;
-    before: NpAgentChangeSetReviewValueV1;
-    after: NpAgentChangeSetReviewValueV1;
-  }>;
-}
 export interface NpAgentChangeSetReviewV1 {
   schemaVersion: "np.agent-changeset-review.v1";
   changeSet: NpAgentChangeSetWire;
   requiredStaffCapabilities: NpCapability[];
   operations: NpAgentChangeSetReviewOperationV1[];
+  rollbackDetail: NpAgentRollbackDetailV1 | null;
+  rollbackActions: Array<"prepare" | "request_approval" | "execute" | "cancel">;
   executionDetail: NpAgentChangeSetExecutionDetailV1 | null;
   executionActions: Array<"apply" | "schedule" | "cancel">;
 }
@@ -73,62 +71,13 @@ export function npAnalyzeAgentChangeSetReviewV1(input: unknown) {
       "changeSet",
       "requiredStaffCapabilities",
       "operations",
+      "rollbackDetail",
+      "rollbackActions",
       "executionDetail",
       "executionActions",
     ]);
     const changeSet = npRequireAgentChangeSetWire(r.changeSet);
-    const parseValue = (inputValue: unknown, p: string): NpAgentChangeSetReviewValueV1 => {
-      const v = record(inputValue, p, ["presence", "value"]);
-      const presence = canonicalBodyEnum<NpAgentChangeSetReviewValueV1["presence"]>(
-        v.presence,
-        `${p}.presence`,
-        new Set(["present", "absent", "redacted"]),
-      );
-      if (presence !== "present" && v.value !== null)
-        failCanonicalBody("invalid-field", p, "Unavailable values must be null");
-      return { presence, value: v.value as NpAgentJsonValue };
-    };
-    const operations = canonicalBodyArray(
-      r.operations,
-      `${path}.operations`,
-      npAgentChangeSetLimits.operations,
-      state(),
-    ).map((value, index): NpAgentChangeSetReviewOperationV1 => {
-      const p = `${path}.operations[${index.toString()}]`;
-      const op = record(value, p, ["ordinal", "evidence", "fields"]);
-      const ordinal = canonicalBodyInteger(
-        op.ordinal,
-        `${p}.ordinal`,
-        1,
-        npAgentChangeSetLimits.operations,
-      );
-      if (ordinal !== index + 1)
-        failCanonicalBody("order", p, "Operations must follow proposal order");
-      const evidence = canonicalBodyEnum<NpAgentChangeSetReviewOperationV1["evidence"]>(
-        op.evidence,
-        `${p}.evidence`,
-        new Set(["available", "not_validated", "redacted", "expired"]),
-      );
-      const fields = canonicalBodyArray(
-        op.fields,
-        `${p}.fields`,
-        npCollectionContractLimits.jsonKeys,
-        state(),
-      ).map((field, fieldIndex) => {
-        const f = `${p}.fields[${fieldIndex.toString()}]`;
-        const item = record(field, f, ["path", "before", "after"]);
-        return {
-          path: canonicalRuntimeText(item.path, `${f}.path`, 512),
-          before: parseValue(item.before, `${f}.before`),
-          after: parseValue(item.after, `${f}.after`),
-        };
-      });
-      if (new Set(fields.map((field) => field.path)).size !== fields.length)
-        failCanonicalBody("duplicate", p, "Field paths must be unique");
-      if (evidence !== "available" && fields.length)
-        failCanonicalBody("invalid-field", p, "Unavailable evidence has no fields");
-      return { ordinal, evidence, fields };
-    });
+    const operations = npRequireAgentChangeSetReviewOperationsV1(r.operations);
     if (operations.length !== changeSet.operations.length)
       failCanonicalBody("invalid-field", path, "Review must cover every operation");
     const executionActions = canonicalBodyArray(r.executionActions, path, 3, state()).map((value) =>
@@ -158,7 +107,33 @@ export function npAnalyzeAgentChangeSetReviewV1(input: unknown) {
         executionDetail.execution.executionId !== changeSet.execution?.executionId)
     )
       failCanonicalBody("invalid-field", path, "Execution detail must match the ChangeSet");
+    const rollbackDetail =
+      r.rollbackDetail === null ? null : npRequireAgentRollbackDetailV1(r.rollbackDetail);
+    if (
+      rollbackDetail &&
+      (rollbackDetail.changeSetId !== changeSet.id ||
+        rollbackDetail.originalPlanHash !== changeSet.planHash ||
+        rollbackDetail.summary.rollbackPlanId !== changeSet.rollback?.rollbackPlanId)
+    )
+      failCanonicalBody("invalid-field", path, "Rollback detail must match parent");
+    const rollbackOrder = ["prepare", "request_approval", "execute", "cancel"];
+    const rollbackActions = canonicalBodyArray(r.rollbackActions, path, 4, state()).map((x) =>
+      canonicalBodyEnum<"prepare" | "request_approval" | "execute" | "cancel">(
+        x,
+        path,
+        new Set(rollbackOrder),
+      ),
+    );
+    if (
+      rollbackActions.some(
+        (x, i) =>
+          i > 0 && rollbackOrder.indexOf(x) <= rollbackOrder.indexOf(rollbackActions[i - 1]),
+      )
+    )
+      failCanonicalBody("order", path, "Rollback actions must be ordered unique");
     return {
+      rollbackDetail,
+      rollbackActions,
       executionDetail,
       executionActions,
       schemaVersion: canonicalBodyEnum<"np.agent-changeset-review.v1">(
@@ -191,6 +166,8 @@ export const npAgentChangeSetReviewInventoryV1 = Object.freeze({
     "changeSet",
     "requiredStaffCapabilities",
     "operations",
+    "rollbackDetail",
+    "rollbackActions",
     "executionDetail",
     "executionActions",
   ],
@@ -212,16 +189,19 @@ const {
   ...reviewWireNode
 } = npAgentChangeSetWireSchemaV1;
 const reviewObject = npAgentSchemaObjectV1;
-const reviewValueSchema = reviewObject({
-  presence: { enum: [...npAgentChangeSetReviewInventoryV1.presence] },
-  value: { $ref: "#/$defs/json" },
-});
 const reviewSchemaSource: NpAgentJsonSchema = JSON.parse(
   JSON.stringify({
     $schema: reviewWireDialect,
     ...reviewObject({
       schemaVersion: { const: npAgentChangeSetReviewInventoryV1.schemaVersion },
       changeSet: { $ref: "#/$defs/changeset" },
+      rollbackDetail: { anyOf: [{ $ref: "#/$defs/rollbackDetail" }, { type: "null" }] },
+      rollbackActions: {
+        type: "array",
+        maxItems: 4,
+        uniqueItems: true,
+        items: { enum: ["prepare", "request_approval", "execute", "cancel"] },
+      },
       executionDetail: { anyOf: [{ $ref: "#/$defs/executionDetail" }, { type: "null" }] },
       executionActions: {
         type: "array",
@@ -233,33 +213,14 @@ const reviewSchemaSource: NpAgentJsonSchema = JSON.parse(
         .requiredHumanCapabilities,
       operations: {
         type: "array",
-        maxItems: npAgentChangeSetReviewInventoryV1.maximumOperations,
-        items: reviewObject({
-          ordinal: {
-            type: "integer",
-            minimum: 1,
-            maximum: npAgentChangeSetReviewInventoryV1.maximumOperations,
-          },
-          evidence: { enum: [...npAgentChangeSetReviewInventoryV1.evidence] },
-          fields: {
-            type: "array",
-            maxItems: npAgentChangeSetReviewInventoryV1.maximumFields,
-            items: reviewObject({
-              path: {
-                type: "string",
-                minLength: 1,
-                maxLength: npAgentChangeSetReviewInventoryV1.maximumPathCharacters,
-              },
-              before: reviewValueSchema,
-              after: reviewValueSchema,
-            }),
-          },
-        }),
+        maxItems: npAgentChangeSetLimits.operations,
+        items: npAgentChangeSetReviewOperationSchemaV1,
       },
     }),
     $defs: {
       ...(reviewWireDefinitions as NpAgentJsonObject),
       changeset: reviewWireNode,
+      rollbackDetail: npAgentRollbackDetailSchemaV1,
       executionDetail: npAgentChangeSetExecutionDetailSchemaV1,
     },
   }),

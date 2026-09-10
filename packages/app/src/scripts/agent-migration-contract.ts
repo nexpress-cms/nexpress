@@ -53,6 +53,38 @@ const DEFERRED_LIFECYCLE_STATEMENTS = [
  */
 export const npAgentR1DeferredLifecycleConstraintsSqlV1 = `${DEFERRED_LIFECYCLE_STATEMENTS.join(`\n${STATEMENT_BREAK}\n`)}\n`;
 
+export const npAgentRollbackTableNamesV1 = Object.freeze([
+  "np_agent_changeset_rollback_plans",
+  "np_agent_changeset_rollback_operations",
+  "np_agent_changeset_executions",
+  "np_agent_approvals",
+] as const);
+export const npAgentRollbackDeferredLifecycleConstraintNamesV1 = Object.freeze([
+  "np_agent_changeset_rollback_plans_execution_fk",
+  "np_agent_changeset_rollback_plans_approval_fk",
+] as const);
+const ROLLBACK_STATEMENTS = [
+  'ALTER TABLE "np_agent_changeset_rollback_plans" ADD CONSTRAINT "np_agent_changeset_rollback_plans_execution_fk" FOREIGN KEY ("site_id","compensates_execution_id") REFERENCES "public"."np_agent_changeset_executions"("site_id","id") ON DELETE no action DEFERRABLE INITIALLY DEFERRED;',
+  'ALTER TABLE "np_agent_changeset_rollback_plans" ADD CONSTRAINT "np_agent_changeset_rollback_plans_approval_fk" FOREIGN KEY ("site_id","approval_id") REFERENCES "public"."np_agent_approvals"("site_id","id") ON DELETE no action DEFERRABLE INITIALLY DEFERRED;',
+] as const;
+export const npAgentRollbackDeferredLifecycleConstraintsSqlV1 = `${ROLLBACK_STATEMENTS.join(`\n${STATEMENT_BREAK}\n`)}\n`;
+type Inventory = "r1" | "rollback";
+function inventoryDefinition(inventory: Inventory) {
+  return inventory === "r1"
+    ? {
+        tables: npAgentR1TableNamesV1,
+        names: npAgentR1DeferredLifecycleConstraintNamesV1,
+        statements: DEFERRED_LIFECYCLE_STATEMENTS,
+        sql: npAgentR1DeferredLifecycleConstraintsSqlV1,
+      }
+    : {
+        tables: npAgentRollbackTableNamesV1,
+        names: npAgentRollbackDeferredLifecycleConstraintNamesV1,
+        statements: ROLLBACK_STATEMENTS,
+        sql: npAgentRollbackDeferredLifecycleConstraintsSqlV1,
+      };
+}
+
 export interface NpAgentMigrationInspectionV1 {
   missingTables: string[];
   presentDeferredConstraints: string[];
@@ -62,6 +94,7 @@ export interface NpAgentMigrationInspectionV1 {
 
 export interface NpEnsureAgentLifecycleMigrationOptionsV1 {
   migrationsFolder?: string;
+  inventory?: Inventory;
   createCustomMigration: () => Promise<void>;
 }
 
@@ -70,25 +103,27 @@ export interface NpEnsureAgentLifecycleMigrationResultV1 {
   migrationFile: string | null;
 }
 
-export function npInspectAgentMigrationSqlV1(sql: string): NpAgentMigrationInspectionV1 {
-  const missingTables = npAgentR1TableNamesV1.filter(
+export function npInspectAgentMigrationSqlV1(
+  sql: string,
+  inventory: Inventory = "r1",
+): NpAgentMigrationInspectionV1 {
+  const definition = inventoryDefinition(inventory);
+  const missingTables = definition.tables.filter(
     (table) => !sql.includes(`CREATE TABLE "${table}"`),
   );
-  const presentDeferredConstraints = npAgentR1DeferredLifecycleConstraintNamesV1.filter(
-    (_constraint, index) => sql.includes(DEFERRED_LIFECYCLE_STATEMENTS[index] ?? "\0"),
+  const presentDeferredConstraints = definition.names.filter((_constraint, index) =>
+    sql.includes(definition.statements[index] ?? "\0"),
   );
-  const present = new Set(presentDeferredConstraints);
-  const mismatchedDeferredConstraints = npAgentR1DeferredLifecycleConstraintNamesV1.filter(
+  const present = new Set<string>(presentDeferredConstraints);
+  const mismatchedDeferredConstraints = definition.names.filter(
     (constraint, index) =>
       sql.includes(`CONSTRAINT "${constraint}"`) &&
-      !sql.includes(DEFERRED_LIFECYCLE_STATEMENTS[index] ?? "\0"),
+      !sql.includes(definition.statements[index] ?? "\0"),
   );
   return {
     missingTables: [...missingTables],
     presentDeferredConstraints: [...presentDeferredConstraints],
-    missingDeferredConstraints: npAgentR1DeferredLifecycleConstraintNamesV1.filter(
-      (constraint) => !present.has(constraint),
-    ),
+    missingDeferredConstraints: definition.names.filter((constraint) => !present.has(constraint)),
     mismatchedDeferredConstraints: [...mismatchedDeferredConstraints],
   };
 }
@@ -105,10 +140,14 @@ async function readMigrationChain(folder: string, files: readonly string[]): Pro
   return (await Promise.all(files.map((file) => readFile(join(folder, file), "utf8")))).join("\n");
 }
 
-function assertReadyForLifecycleCompletion(inspection: NpAgentMigrationInspectionV1): void {
+function assertReadyForLifecycleCompletion(
+  inspection: NpAgentMigrationInspectionV1,
+  inventory: Inventory,
+): void {
+  const definition = inventoryDefinition(inventory);
   if (inspection.missingTables.length > 0) {
     throw new Error(
-      `Agent migration inventory is incomplete: missing ${inspection.missingTables.length.toString()} of ${npAgentR1TableNamesV1.length.toString()} required tables.`,
+      `Agent migration inventory is incomplete: missing ${inspection.missingTables.length.toString()} of ${definition.tables.length.toString()} required tables.`,
     );
   }
   if (inspection.mismatchedDeferredConstraints.length > 0) {
@@ -121,7 +160,7 @@ function assertReadyForLifecycleCompletion(inspection: NpAgentMigrationInspectio
     inspection.missingDeferredConstraints.length > 0
   ) {
     throw new Error(
-      `Agent deferred lifecycle constraint inventory is partial: found ${inspection.presentDeferredConstraints.length.toString()} of ${npAgentR1DeferredLifecycleConstraintNamesV1.length.toString()}. Review the migration chain before continuing.`,
+      `Agent deferred lifecycle constraint inventory is partial: found ${inspection.presentDeferredConstraints.length.toString()} of ${definition.names.length.toString()}. Review the migration chain before continuing.`,
     );
   }
 }
@@ -129,12 +168,21 @@ function assertReadyForLifecycleCompletion(inspection: NpAgentMigrationInspectio
 export async function npEnsureAgentLifecycleConstraintMigrationV1(
   options: NpEnsureAgentLifecycleMigrationOptionsV1,
 ): Promise<NpEnsureAgentLifecycleMigrationResultV1> {
+  const inventory = options.inventory ?? "r1";
+  const definition = inventoryDefinition(inventory);
   const folder = resolve(options.migrationsFolder ?? "./drizzle");
   const beforeFiles = await sqlFiles(folder);
-  const beforeInspection = npInspectAgentMigrationSqlV1(
-    await readMigrationChain(folder, beforeFiles),
-  );
-  assertReadyForLifecycleCompletion(beforeInspection);
+  const chain = await readMigrationChain(folder, beforeFiles);
+  if (
+    inventory === "rollback" &&
+    !["np_agent_changeset_rollback_plans", "np_agent_changeset_rollback_operations"].some((table) =>
+      chain.includes(`CREATE TABLE "${table}"`),
+    )
+  ) {
+    return { state: "already-complete", migrationFile: null };
+  }
+  const beforeInspection = npInspectAgentMigrationSqlV1(chain, inventory);
+  assertReadyForLifecycleCompletion(beforeInspection, inventory);
 
   if (beforeInspection.missingDeferredConstraints.length === 0) {
     return { state: "already-complete", migrationFile: null };
@@ -152,12 +200,13 @@ export async function npEnsureAgentLifecycleConstraintMigrationV1(
 
   const migrationFile = createdFiles[0];
   if (!migrationFile) throw new Error("Custom Agent migration filename is unavailable.");
-  await writeFile(join(folder, migrationFile), npAgentR1DeferredLifecycleConstraintsSqlV1, "utf8");
+  await writeFile(join(folder, migrationFile), definition.sql, "utf8");
 
   const completed = npInspectAgentMigrationSqlV1(
     await readMigrationChain(folder, await sqlFiles(folder)),
+    inventory,
   );
-  assertReadyForLifecycleCompletion(completed);
+  assertReadyForLifecycleCompletion(completed, inventory);
   if (completed.missingDeferredConstraints.length > 0) {
     throw new Error(
       "Agent deferred lifecycle constraint migration did not complete the inventory.",

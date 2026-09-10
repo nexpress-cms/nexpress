@@ -3513,4 +3513,9 @@ The review/check/projection slice adds no tables or migration. Existing ChangeSe
 
 ## R4 approval persistence
 
-The current approval-only implementation is described in [R4 approval flow](r4-approval-flow.md). It reuses existing sealed ChangeSets, generic Admin decision routes, canonical integrity evidence and explicit bounded maintenance. Execution, scheduling, cancellation and rollback remain later R4 slices.
+The current [R4 rollback implementation](r4-rollback-flow.md) extends the existing
+[approval](r4-approval-flow.md) and [execution](r4-execution-flow.md) services with
+forward compensation, fresh target-bound approval and shared bounded verification.
+Migrations 0043/0044 bring the Agent inventory to 31 tables/167 critical constraints
+and 11 deferred lifecycle foreign keys. Full validation is in progress; AP-406
+Agent HTTP/MCP execution exposure and task projection remain open.

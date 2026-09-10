@@ -1,7 +1,10 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 
 import { can } from "../auth/capabilities.js";
-import { npCollectionDocumentToWriteInput } from "../collection-contract/contract.js";
+import {
+  npParseCollectionDocumentWire,
+  npCollectionDocumentToWriteInput,
+} from "../collection-contract/contract.js";
 import {
   npGetPersistedCollectionDocumentById,
   npAssertCollectionWriteAccess,
@@ -9,10 +12,16 @@ import {
   npAssertCollectionReadScope,
   type NpTransaction,
 } from "../collections/pipeline.js";
-import { getCollectionConfig } from "../collections/registry.js";
+import type { PgTable } from "drizzle-orm/pg-core";
+import { getCollectionConfig, getCollectionTable } from "../collections/registry.js";
 import { applySlugField } from "../collections/slug.js";
 import { getCollectionZodSchema } from "../collections/validation.js";
-import type { NpAuthUser, NpFieldConfig, NpCollectionConfig } from "../config/types.js";
+import type {
+  NpAuthUser,
+  NpFieldConfig,
+  NpCollectionConfig,
+  NpDocumentStatus,
+} from "../config/types.js";
 import {
   npCollectContentTransferMediaReferences,
   npCollectContentTransferRelationshipReferences,
@@ -35,6 +44,7 @@ import { npAgentScopeStaffCapability } from "../agent-contract/types.js";
 import type {
   NpAgentChangeSetOperationInput,
   NpAgentChangeSetResourceKeyV1,
+  NpAgentChangeSetSnapshotCanonicalV1,
   NpAgentJsonObject,
   NpAgentJsonValue,
   NpAgentScope,
@@ -220,14 +230,17 @@ function rejectProtectedFields(
 export function npProjectAgentEditableDocumentV1(
   fields: readonly NpFieldConfig[],
   candidate: Record<string, unknown>,
+  options: { declaredOnly?: boolean } = {},
 ): Record<string, unknown> {
   const editable = { ...candidate };
+  const declared = new Set<string>();
   const strip = (nestedFields: readonly NpFieldConfig[]) => {
     for (const field of nestedFields) {
       if (field.type === "row" || field.type === "collapsible") {
         strip(field.fields);
         continue;
       }
+      declared.add(field.name);
       if (field.hidden || field.admin?.readOnly) {
         delete editable[field.name];
         continue;
@@ -242,16 +255,23 @@ export function npProjectAgentEditableDocumentV1(
         editable[field.name] = npProjectAgentEditableDocumentV1(
           field.fields,
           value as Record<string, unknown>,
+          options,
         );
       if (field.type === "array" && Array.isArray(value))
         editable[field.name] = value.map((row: unknown) =>
           row !== null && typeof row === "object" && !Array.isArray(row)
-            ? npProjectAgentEditableDocumentV1(field.fields, row as Record<string, unknown>)
+            ? npProjectAgentEditableDocumentV1(
+                field.fields,
+                row as Record<string, unknown>,
+                options,
+              )
             : row,
         );
     }
   };
   strip(fields);
+  if (options.declaredOnly)
+    for (const key of Object.keys(editable)) if (!declared.has(key)) delete editable[key];
   return editable;
 }
 
@@ -567,6 +587,96 @@ export function createAgentChangeSetResourceServiceV1() {
     });
   }
   return {
+    /** Private snapshot restoration admission. The caller verifies its canonical hash first. */
+    prepareDocumentRestore: async (
+      input: ResourceContext & { tx: NpTransaction; snapshot: NpAgentChangeSetSnapshotCanonicalV1 },
+    ) => {
+      if (input.operation.kind !== "document" || input.canonicalResourceKey.kind !== "document")
+        throw invalid();
+      const current = await resolve({ ...input, currentResource: true }, false, new Set());
+      if (!current.document?.original || input.snapshot.presence !== "present") throw missing();
+      const config = current.document.config;
+      let stored: Record<string, unknown>;
+      let candidate: Record<string, unknown>;
+      try {
+        stored = npParseCollectionDocumentWire(input.snapshot.value, config);
+        if (stored.id !== input.canonicalResourceKey.documentId || stored.siteId !== input.siteId)
+          throw invalid();
+        candidate = npCollectionDocumentToWriteInput(stored, config);
+        getCollectionZodSchema(config, candidate).parse(candidate);
+        if (stored.status === "scheduled" && !config.versions?.drafts) throw invalid();
+        if (
+          stored.status === "published" &&
+          stored.publishedAt instanceof Date &&
+          stored.publishedAt > new Date()
+        )
+          throw invalid();
+        const hiddenField = config.community?.moderation?.hiddenField;
+        if (
+          hiddenField &&
+          ((stored.status === "published" && candidate[hiddenField] !== false) ||
+            (stored.status === "pending" &&
+              current.document.original.status === "published" &&
+              candidate[hiddenField] !== true))
+        )
+          throw invalid();
+        if (
+          config.i18n &&
+          (stored.locale !== current.document.original.locale ||
+            stored.translationGroupId !== current.document.original.translationGroupId)
+        )
+          throw invalid();
+      } catch {
+        throw invalid();
+      }
+      if (config.slugField && typeof candidate.slug === "string") {
+        const table = getCollectionTable(input.operation.resource.collection) as PgTable;
+        const columns = table as unknown as Record<string, Parameters<typeof eq>[0]>;
+        const conflicts = await input.tx
+          .select({ id: columns.id })
+          .from(table)
+          .where(
+            and(
+              eq(columns.siteId, input.siteId),
+              eq(columns.slug, candidate.slug),
+              ne(columns.id, input.canonicalResourceKey.documentId),
+              config.i18n ? eq(columns.locale, candidate.locale) : undefined,
+            )!,
+          )
+          .limit(1);
+        if (conflicts.length) throw invalid();
+      }
+      const scopes = new Set<NpAgentScope>(current.requiredScopes);
+      if (stored.status !== "published") scopes.add("content:draft");
+      requireScopes(input.user, [...scopes, "content:draft", "content:publish"]);
+      await references(
+        input.siteId,
+        input.user,
+        config.fields,
+        candidate,
+        new Set(),
+        scopes,
+        input.tx,
+      );
+      try {
+        await npAssertCollectionWriteAccess(
+          config,
+          input.operation.resource.collection,
+          "update",
+          input.user,
+          candidate,
+          current.document.original,
+        );
+      } catch {
+        throw denied();
+      }
+      requireScopes(input.user, scopes);
+      return {
+        data: candidate,
+        status: stored.status as NpDocumentStatus,
+        requiredScopes: [...scopes].sort(),
+      };
+    },
     prepare: async (
       input: NpAgentChangeSetPrepareResourceInputV1,
     ): Promise<NpAgentChangeSetPreparedResourceV1> => {

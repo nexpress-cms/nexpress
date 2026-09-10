@@ -1,5 +1,9 @@
 import { and, desc, eq, ne } from "drizzle-orm";
-import { npSerializeCollectionDocument } from "../collection-contract/contract.js";
+import {
+  npParseCollectionDocumentWire,
+  NpCollectionContractError,
+  npSerializeCollectionDocument,
+} from "../collection-contract/contract.js";
 import {
   npGetPersistedCollectionDocumentById,
   type NpTransaction,
@@ -601,6 +605,44 @@ export function createAgentChangeSetValidationResourceServiceV1() {
     };
   }
   return {
+    /** Same resource hash recipe for a verified retained snapshot; never reconstruct from a digest. */
+    hashSnapshot: async (snapshot: NpAgentChangeSetSnapshotCanonicalV1) => {
+      const key = snapshot.canonicalResourceKey;
+      let semantic: NpAgentJsonValue | null = null;
+      if (snapshot.presence === "present") {
+        const value = snapshot.value as Record<string, NpAgentJsonValue>;
+        if (key.kind === "document") {
+          try {
+            semantic = semanticDocument(
+              npParseCollectionDocumentWire(snapshot.value, getCollectionConfig(key.collection)),
+            );
+          } catch (error) {
+            if (error instanceof NpCollectionContractError)
+              throw new NpAgentGatewayError(
+                "CHANGESET_SCHEMA_INVALID",
+                400,
+                "Retained document is incompatible with the current schema.",
+              );
+            throw error;
+          }
+        } else if (key.kind === "navigation") semantic = value.items;
+        else if (key.kind === "theme_tokens" || key.kind === "setting") semantic = value.value;
+        else {
+          const media = value.media as Record<string, NpAgentJsonValue>;
+          semantic = {
+            media: {
+              id: media.id,
+              siteId: media.siteId,
+              status: media.status,
+              deletedAt: media.deletedAt,
+            },
+            ownerValue: value.ownerValue,
+            attached: value.attached,
+          };
+        }
+      }
+      return resourceHash(snapshot.siteId, key, snapshot.presence, semantic);
+    },
     readBase,
     validate,
     /** Actual persisted state after the complete batch, using the same snapshot/hash recipe. */

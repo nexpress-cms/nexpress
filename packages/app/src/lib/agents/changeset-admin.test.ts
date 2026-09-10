@@ -5,6 +5,9 @@ const mocks = vi.hoisted(() => ({
   runtime: vi.fn(),
   staff: vi.fn(),
   ensure: vi.fn(),
+  prepareRollback: vi.fn(),
+  requestRollbackApproval: vi.fn(),
+  executeRollback: vi.fn(),
   apply: vi.fn(),
   schedule: vi.fn(),
   cancel: vi.fn(),
@@ -31,6 +34,9 @@ beforeEach(() => {
   mocks.staff.mockResolvedValue({ siteId: "default", actor: { user: { id }, sessionId: id } });
   mocks.runtime.mockReturnValue({
     changesets: {
+      prepareRollback: mocks.prepareRollback,
+      requestRollbackApproval: mocks.requestRollbackApproval,
+      executeRollback: mocks.executeRollback,
       apply: mocks.apply,
       schedule: mocks.schedule,
       cancel: mocks.cancel,
@@ -186,3 +192,27 @@ describe("ChangeSet execution route boundary", () => {
     },
   );
 });
+
+it.each(["prepareRollback", "requestRollbackApproval", "executeRollback"] as const)(
+  "delegates rollback %s with current staff and conceals unsafe response",
+  async (operation) => {
+    mocks[operation].mockResolvedValue({ rawSnapshot: "must-not-leak" });
+    const response = await handleAgentChangeSetAdminRequest(
+      new NextRequest(`https://site.example/api/admin/agents/changesets/${id}/rollback-plans`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      }),
+      operation,
+      { id, rollbackPlanId: id },
+    );
+    expect(mocks[operation]).toHaveBeenCalledWith({
+      actor: expect.objectContaining({ kind: "staff", siteId: "default" }),
+      id,
+      ...(operation === "prepareRollback" ? {} : { rollbackPlanId: id }),
+      command: {},
+    });
+    expect(response.status).toBe(500);
+    expect(await response.text()).not.toContain("must-not-leak");
+  },
+);

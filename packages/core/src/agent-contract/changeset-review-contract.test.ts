@@ -69,6 +69,8 @@ function fixture(n: number) {
 function review() {
   return {
     schemaVersion: "np.agent-changeset-review.v1",
+    rollbackDetail: null,
+    rollbackActions: [],
     executionDetail: null,
     executionActions: [],
     changeSet: fixture(0).wire,

@@ -136,6 +136,43 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet persistence foundation", () => {
   beforeAll(async () => {
     await ensureMigrated();
   });
+  it("keeps rollback lifecycle references same-site and deferred without weakening apply targets", async () => {
+    const { db, user } = await fixture();
+    const constraints = await db.execute(
+      sql`select conname, condeferrable, condeferred, confdeltype, pg_get_constraintdef(oid) as definition from pg_constraint where conname in ('np_agent_changeset_rollback_plans_execution_fk','np_agent_changeset_rollback_plans_approval_fk') order by conname`,
+    );
+    expect(constraints.rows).toHaveLength(2);
+    for (const row of constraints.rows) {
+      expect(row).toMatchObject({ condeferrable: true, condeferred: true, confdeltype: "a" });
+      expect(row.definition).toContain("FOREIGN KEY (site_id,");
+      expect(row.definition).toContain("(site_id, id)");
+    }
+    const change = draft(user.userId);
+    await db.insert(npAgentChangesets).values(change);
+    const approved = approval(change.id, user.userId);
+    await db.insert(npAgentApprovals).values(approved);
+    const execution = {
+      id: randomUUID(),
+      siteId: change.siteId,
+      changesetId: change.id,
+      approvalId: approved.id,
+      planHash: digest,
+      invocationFingerprint: digest,
+      verificationContractFingerprint: digest,
+      idempotencyKey: "invalid-rollback",
+    };
+    await expect(
+      db.insert(npAgentChangesetExecutions).values({ ...execution, purpose: "rollback" }),
+    ).rejects.toThrow();
+    await expect(
+      db
+        .insert(npAgentChangesetExecutions)
+        .values({ ...execution, purpose: "apply", rollbackPlanId: randomUUID() }),
+    ).rejects.toThrow();
+    await expect(
+      db.update(npAgentApprovals).set({ targetKind: "changeset_rollback" }),
+    ).rejects.toThrow();
+  });
   it("fences execution site, approval reuse, leases and terminal verification facts", async () => {
     const { db, user } = await fixture();
     const change = draft(user.userId);
@@ -698,7 +735,7 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet persistence foundation", () => {
     await db.insert(npAgentChangesetOperations).values(operation(row.id));
     await db.insert(npAgentApprovals).values(approval(row.id, user.userId));
     const inventory = await npInspectAgentSiteDeletionRows(db, "changeset-a");
-    expect(inventory).toHaveLength(28);
+    expect(inventory).toHaveLength(30);
     for (const table of [
       "np_agent_changesets",
       "np_agent_changeset_operations",

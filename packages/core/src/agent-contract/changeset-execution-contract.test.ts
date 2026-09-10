@@ -210,3 +210,57 @@ it("binds exact ordered verification checks to site, execution and contract", as
   );
   await expect(npDigestAgentVerificationResultV1({ ...body, locator: "hidden" })).rejects.toThrow();
 });
+
+it("binds rollback verification identity without changing apply inputs", async () => {
+  const body = {
+    siteId: "default",
+    changeSetId: id,
+    executionId: id,
+    verificationContractFingerprint: hash,
+    checks: [],
+  };
+  const apply = await npDigestAgentVerificationResultV1(body);
+  const rollback = await npDigestAgentVerificationResultV1({
+    ...body,
+    purpose: "rollback",
+    rollbackPlanId: id,
+  });
+  expect(rollback).not.toBe(apply);
+  await expect(
+    npDigestAgentVerificationResultV1({ ...body, purpose: "rollback" }),
+  ).rejects.toThrow();
+  await expect(
+    npDigestAgentVerificationResultV1({ ...body, purpose: "apply", rollbackPlanId: id }),
+  ).rejects.toThrow();
+});
+
+it("cancels nonexecuting rollback plans through the same exact cancellation contract", () => {
+  const command = {
+    schemaVersion: "np.agent-changeset-cancel-input.v1",
+    targetKind: "rollback_plan",
+    rollbackPlanId: id,
+    expectedRollbackVersion: 2,
+    expectedDraftVersion: 1,
+    expectedState: "ready",
+    planHash: hash,
+    reasonCode: "OPERATOR_CANCELLED",
+    reason: null,
+    idempotencyKey: "cancel-rollback",
+  };
+  expect(npRequireAgentChangeSetCancelInputV1(command)).toEqual(command);
+  expect(
+    npRequireAgentChangeSetCancelInputV1({
+      ...command,
+      expectedState: "preparing",
+      planHash: null,
+    }),
+  ).toMatchObject({ expectedState: "preparing" });
+  for (const bad of [
+    { ...command, targetKind: "changeset" },
+    { ...command, expectedState: "executing" },
+    { ...command, expectedRollbackVersion: 0 },
+    { ...command, planHash: null },
+    { ...command, expectedState: "preparing" },
+  ])
+    expect(() => npRequireAgentChangeSetCancelInputV1(bad)).toThrow();
+});

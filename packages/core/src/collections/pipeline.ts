@@ -1405,9 +1405,11 @@ async function persistDocumentTx(ctx: SaveContext): Promise<Record<string, unkno
       // revisions as drafts (they map to the pre-publish snapshot).
       const revisionStatus = docStatus === "published" ? "published" : "draft";
       const maxRevisions =
-        typeof ctx.config.versions === "object" && ctx.config.versions.max !== undefined
-          ? ctx.config.versions.max
-          : undefined;
+        ctx.options?.preserveRevisionHistory === true
+          ? undefined
+          : typeof ctx.config.versions === "object" && ctx.config.versions.max !== undefined
+            ? ctx.config.versions.max
+            : undefined;
       await insertRevision(
         tx,
         ctx.collection,

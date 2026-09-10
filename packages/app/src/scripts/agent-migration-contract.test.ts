@@ -8,6 +8,8 @@ import {
   npAgentR1DeferredLifecycleConstraintNamesV1,
   npAgentR1DeferredLifecycleConstraintsSqlV1,
   npAgentR1TableNamesV1,
+  npAgentRollbackTableNamesV1,
+  npAgentRollbackDeferredLifecycleConstraintsSqlV1,
   npEnsureAgentLifecycleConstraintMigrationV1,
   npInspectAgentMigrationSqlV1,
 } from "./agent-migration-contract.js";
@@ -113,5 +115,55 @@ describe("Agent migration contract", () => {
         createCustomMigration: async () => {},
       }),
     ).rejects.toThrow(/Expected one new custom Agent migration, but found 0/u);
+  });
+});
+
+describe("rollback deferred lifecycle migrations", () => {
+  it("adds exactly two reviewed constraints and preserves prior SQL", async () => {
+    const folder = await tempMigrationFolder();
+    const base = npAgentRollbackTableNamesV1.map((name) => `CREATE TABLE "${name}" ();`).join("\n");
+    await writeFile(join(folder, "0043_schema.sql"), base);
+    const createCustomMigration = async () => {
+      await writeFile(join(folder, "0044_rollback.sql"), "-- generated custom");
+    };
+    expect(
+      await npEnsureAgentLifecycleConstraintMigrationV1({
+        inventory: "rollback",
+        migrationsFolder: folder,
+        createCustomMigration,
+      }),
+    ).toMatchObject({ state: "created" });
+    expect(await readFile(join(folder, "0043_schema.sql"), "utf8")).toBe(base);
+    expect(await readFile(join(folder, "0044_rollback.sql"), "utf8")).toBe(
+      npAgentRollbackDeferredLifecycleConstraintsSqlV1,
+    );
+    expect(
+      npAgentRollbackDeferredLifecycleConstraintsSqlV1.match(/DEFERRABLE INITIALLY DEFERRED/gu),
+    ).toHaveLength(2);
+    expect(
+      await npEnsureAgentLifecycleConstraintMigrationV1({
+        inventory: "rollback",
+        migrationsFolder: folder,
+        createCustomMigration: () => Promise.reject(new Error("no rewrite")),
+      }),
+    ).toMatchObject({ state: "already-complete" });
+  });
+  it("leaves old projects unchanged but rejects partial rollback table chains", async () => {
+    const folder = await tempMigrationFolder();
+    const options = {
+      inventory: "rollback" as const,
+      migrationsFolder: folder,
+      createCustomMigration: () => Promise.reject(new Error("must not generate")),
+    };
+    expect(await npEnsureAgentLifecycleConstraintMigrationV1(options)).toMatchObject({
+      state: "already-complete",
+    });
+    await writeFile(
+      join(folder, "0043_partial.sql"),
+      'CREATE TABLE "np_agent_changeset_rollback_plans" ();',
+    );
+    await expect(npEnsureAgentLifecycleConstraintMigrationV1(options)).rejects.toThrow(
+      "missing 3 of 4",
+    );
   });
 });

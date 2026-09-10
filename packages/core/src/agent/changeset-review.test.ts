@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { npProjectAgentChangeSetReviewOperationV1 } from "./changeset-review.js";
+import {
+  npProjectAgentChangeSetReviewOperationV1,
+  npProjectAgentRollbackReviewOperationV1,
+} from "./changeset-review.js";
 import type {
   NpAgentChangeSetOperationInput,
+  NpAgentRollbackChangeSetPlanOperationCanonicalV1,
   NpAgentChangeSetSnapshotCanonicalV1,
 } from "../agent-contract/types.js";
 vi.mock("../collections/registry.js", () => ({
@@ -110,4 +114,58 @@ describe("ChangeSet semantic review projection", () => {
       },
     ]);
   });
+});
+
+it("projects full snapshot restoration through current editable fields only", () => {
+  const rollback: NpAgentRollbackChangeSetPlanOperationCanonicalV1 = {
+    ordinal: 1,
+    originalOperationOrdinal: 1,
+    canonicalResourceKey: snapshot.canonicalResourceKey,
+    originalSnapshotHash: digest,
+    expectedCurrentHash: digest,
+    expectedCurrentVersion: "2",
+    compensationOperation: { kind: "document", operation: "restore", resource: operation.resource },
+    proposedAfterHash: digest,
+    rollbackClass: "full",
+    residualCodes: [],
+  };
+  const current = {
+    ...snapshot,
+    value: {
+      title: "Applied",
+      nested: { visible: "current", private: "secret" },
+      createdBy: "private",
+      serverOnly: "internal",
+    },
+  };
+  const result = npProjectAgentRollbackReviewOperationV1({
+    ordinal: 1,
+    operation: rollback,
+    snapshot,
+    currentSnapshot: current,
+    expired: false,
+  });
+  expect(result.fields.find((f) => f.path === "title")).toMatchObject({
+    before: { value: "Applied" },
+    after: { value: "Before" },
+  });
+  expect(JSON.stringify(result)).not.toMatch(/secret|internal|createdBy|private@example/);
+  expect(
+    npProjectAgentRollbackReviewOperationV1({
+      ordinal: 1,
+      operation: rollback,
+      snapshot,
+      currentSnapshot: null,
+      expired: false,
+    }).evidence,
+  ).toBe("redacted");
+  expect(
+    npProjectAgentRollbackReviewOperationV1({
+      ordinal: 1,
+      operation: rollback,
+      snapshot,
+      currentSnapshot: current,
+      expired: true,
+    }).fields,
+  ).toEqual([]);
 });
