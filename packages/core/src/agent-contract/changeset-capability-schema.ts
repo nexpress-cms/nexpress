@@ -1,3 +1,4 @@
+import { npAgentMcpTaskLimitsV1 } from "./mcp-task-contract.js";
 import {
   npNavigationLimits,
   npNavigationItemIdPattern,
@@ -409,6 +410,176 @@ export const npAgentChangeSetOutputSchemaV1: NpAgentJsonSchema = {
     changeSet: { $ref: "#/$defs/changeset" },
   }),
   $defs: outputDefs,
+};
+export const npAgentChangeSetExecutionOutputSchemaV1: NpAgentJsonSchema = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  ...obj(
+    {
+      schemaVersion: { const: "np.agent-changeset-execution-result.v1" },
+      state: en(["completed", "accepted", "approval_required"]),
+      changeSet: { $ref: "#/$defs/changeset" },
+      runId: uuid,
+      statusResource: { ...str(128), pattern: "^/api/agent/v1/runs/[0-9a-f-]{36}$" },
+      pollAfterMs: {
+        type: "integer",
+        minimum: npAgentMcpTaskLimitsV1.pollIntervalMinMs,
+        maximum: npAgentMcpTaskLimitsV1.pollIntervalMaxMs,
+      },
+      actionId: uuid,
+      approvalId: uuid,
+      proposalHash: digest,
+      approvalResource: { ...str(128), pattern: "^/admin/agents/approvals/[0-9a-f-]{36}$" },
+      expiresAt: utc,
+    },
+    ["schemaVersion", "state", "changeSet", "runId"],
+  ),
+  oneOf: [
+    obj({
+      schemaVersion: { const: "np.agent-changeset-execution-result.v1" },
+      state: { const: "completed" },
+      changeSet: { $ref: "#/$defs/changeset" },
+      runId: uuid,
+    }),
+    obj({
+      schemaVersion: { const: "np.agent-changeset-execution-result.v1" },
+      state: { const: "accepted" },
+      changeSet: { $ref: "#/$defs/changeset" },
+      runId: uuid,
+      statusResource: { ...str(128), pattern: "^/api/agent/v1/runs/[0-9a-f-]{36}$" },
+      pollAfterMs: {
+        type: "integer",
+        minimum: npAgentMcpTaskLimitsV1.pollIntervalMinMs,
+        maximum: npAgentMcpTaskLimitsV1.pollIntervalMaxMs,
+      },
+    }),
+    obj({
+      schemaVersion: { const: "np.agent-changeset-execution-result.v1" },
+      state: { const: "approval_required" },
+      changeSet: { $ref: "#/$defs/changeset" },
+      runId: uuid,
+      actionId: uuid,
+      approvalId: uuid,
+      proposalHash: digest,
+      approvalResource: { ...str(128), pattern: "^/admin/agents/approvals/[0-9a-f-]{36}$" },
+      expiresAt: utc,
+    }),
+  ],
+  $defs: outputDefs,
+};
+export const npAgentChangeSetRollbackModePoliciesV1 = Object.freeze({
+  prepare: Object.freeze({
+    risk: "read",
+    approval: "none",
+    effectProfileId: "domain.read",
+    minimumGatewayExposure: "propose",
+  } as const),
+  request_approval: Object.freeze({
+    risk: "read",
+    approval: "none",
+    effectProfileId: "domain.read",
+    minimumGatewayExposure: "propose",
+  } as const),
+  execute_approved: Object.freeze({
+    risk: "sensitive",
+    approval: "human",
+    effectProfileId: "changeset.rollback-execute",
+    minimumGatewayExposure: "approved-execute",
+  } as const),
+});
+export const npAgentChangeSetExecutionPhasePoliciesV1 = Object.freeze({
+  "changeset.apply": Object.freeze({
+    request_approval: npAgentChangeSetRollbackModePoliciesV1.prepare,
+    execute_approved: Object.freeze({
+      ...npAgentChangeSetRollbackModePoliciesV1.execute_approved,
+      effectProfileId: "changeset.apply",
+    } as const),
+  }),
+  "changeset.schedule": Object.freeze({
+    request_approval: npAgentChangeSetRollbackModePoliciesV1.prepare,
+    execute_approved: Object.freeze({
+      ...npAgentChangeSetRollbackModePoliciesV1.execute_approved,
+      effectProfileId: "changeset.schedule",
+    } as const),
+  }),
+});
+function executionPolicyMetadata(policy: {
+  risk: string;
+  approval: string;
+  effectProfileId: string;
+  minimumGatewayExposure: string;
+}) {
+  return {
+    "x-nexpress-risk": policy.risk,
+    "x-nexpress-approval": policy.approval,
+    "x-nexpress-effect-profile": policy.effectProfileId,
+    "x-nexpress-minimum-gateway-exposure": policy.minimumGatewayExposure,
+  };
+}
+function executionCapabilityInputSchema(
+  id: keyof typeof npAgentChangeSetExecutionPhasePoliciesV1,
+): NpAgentJsonSchema {
+  const properties = {
+    changeSetId: uuid,
+    planHash: digest,
+    ...(id === "changeset.schedule" ? { scheduledFor: utc } : {}),
+  };
+  const phases = npAgentChangeSetExecutionPhasePoliciesV1[id];
+  return {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    ...obj({ ...properties, approvalId: nullable(uuid) }),
+    oneOf: [
+      {
+        ...obj({ ...properties, approvalId: { type: "null" } }),
+        ...executionPolicyMetadata(phases.request_approval),
+      },
+      {
+        ...obj({ ...properties, approvalId: uuid }),
+        ...executionPolicyMetadata(phases.execute_approved),
+      },
+    ],
+  };
+}
+export const npAgentChangeSetApplyCapabilityInputSchemaV1 =
+  executionCapabilityInputSchema("changeset.apply");
+export const npAgentChangeSetScheduleCapabilityInputSchemaV1 =
+  executionCapabilityInputSchema("changeset.schedule");
+export const npAgentChangeSetRollbackCapabilityInputSchemaV1: NpAgentJsonSchema = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  ...obj(
+    {
+      mode: en(["prepare", "request_approval", "execute_approved"]),
+      changeSetId: uuid,
+      rollbackPlanId: uuid,
+      planHash: digest,
+      approvalId: uuid,
+    },
+    ["mode", "changeSetId"],
+  ),
+  oneOf: [
+    {
+      ...obj({ mode: { const: "prepare" }, changeSetId: uuid }),
+      ...executionPolicyMetadata(npAgentChangeSetRollbackModePoliciesV1.prepare),
+    },
+    {
+      ...obj({
+        mode: { const: "request_approval" },
+        changeSetId: uuid,
+        rollbackPlanId: uuid,
+        planHash: digest,
+      }),
+      ...executionPolicyMetadata(npAgentChangeSetRollbackModePoliciesV1.request_approval),
+    },
+    {
+      ...obj({
+        mode: { const: "execute_approved" },
+        changeSetId: uuid,
+        rollbackPlanId: uuid,
+        planHash: digest,
+        approvalId: uuid,
+      }),
+      ...executionPolicyMetadata(npAgentChangeSetRollbackModePoliciesV1.execute_approved),
+    },
+  ],
 };
 export const npAgentChangeSetListOutputSchemaV1: NpAgentJsonSchema = {
   $schema: "https://json-schema.org/draft/2020-12/schema",

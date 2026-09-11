@@ -1,9 +1,12 @@
 # R4 ChangeSet execution and verification
 
 This slice implements AP-402/AP-403/AP-404 and the execution portions of
-AP-407/AP-408 on the existing ChangeSet and approval services. AP-405 rollback
-and AP-406 Agent HTTP/MCP execution exposure remain open. Validation of this
-slice passed; this document does not certify the full R4 release gate.
+AP-407/AP-408 on the existing ChangeSet and approval services. The subsequent
+[R4 rollback slice](r4-rollback-flow.md) adds AP-405 compensation, and
+[R4 Gateway execution slice](r4-gateway-execution-flow.md) connects AP-406 Agent
+HTTP/MCP execution and bounded run/task projection. Validation of this slice
+passed; current AP-406 results are recorded in the Gateway flow, including the passing final 66-case execution PostgreSQL run and
+40-package/56-stage packed scaffold refresh. The R4 section 18 acceptance gate passed.
 See [R4 approval flow](r4-approval-flow.md) for the preceding approval boundary.
 
 ## Explicit installation

@@ -1,6 +1,10 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
+  npRequireAgentChangeSetExecutionOutputV1,
+  npRequireAgentChangeSetApplyCapabilityInputV1,
+  npRequireAgentChangeSetScheduleCapabilityInputV1,
+  npRequireAgentChangeSetRollbackCapabilityInputV1,
   npAgentChangeSetCapabilityIdsV1,
   npAgentInstalledCapabilityIdsV1,
   npAgentInstalledCapabilityDescriptorsV1,
@@ -15,7 +19,11 @@ import {
   npAgentReadCapabilityDescriptorsV1,
 } from "./read-capability-contract.js";
 import { npAgentChangeSetWireIncludedKeysV1 } from "./changeset-wire-contract.js";
-import { npAgentChangeSetWireSchemaV1 } from "./changeset-capability-schema.js";
+import {
+  npAgentChangeSetExecutionPhasePoliciesV1,
+  npAgentChangeSetRollbackModePoliciesV1,
+  npAgentChangeSetWireSchemaV1,
+} from "./changeset-capability-schema.js";
 const id = "00000000-0000-4000-8000-000000000001";
 const hash = `cj1:sha256:${"a".repeat(43)}`;
 const list = {
@@ -27,12 +35,15 @@ const list = {
   cursor: null,
 };
 describe("installed framework capability projection", () => {
-  it("extends the locked reads with exactly five ChangeSet descriptors", () => {
+  it("extends the locked reads with exactly eight ChangeSet descriptors", () => {
     expect(npAgentInstalledCapabilityIdsV1).toEqual([
+      "changeset.apply",
       "changeset.create",
       "changeset.get",
       "changeset.list",
       "changeset.preview",
+      "changeset.rollback",
+      "changeset.schedule",
       "changeset.validate",
       "content.query",
       "schema.get",
@@ -51,7 +62,7 @@ describe("installed framework capability projection", () => {
         npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(id).capabilities[0].descriptor,
       ).toEqual(d);
       expect(d).toMatchObject({
-        approval: "none",
+        approval: id === "changeset.apply" || id === "changeset.schedule" ? "human" : "none",
         scopeDerivation: "changeset-resources",
         gateway: { transports: ["agent-http", "mcp-http", "stdio"] },
       });
@@ -72,7 +83,7 @@ describe("installed framework capability projection", () => {
       createHash("sha256")
         .update(JSON.stringify(npAgentInstalledCapabilityDescriptorsV1))
         .digest("hex"),
-    ).toMatchInlineSnapshot(`"d28efc8e6d75b5c007e37d2a61ec55f73b71a803218a5b83d78e415c9634111c"`);
+    ).toMatchInlineSnapshot(`"d15e6aeb772154c92bda1248bb887e48d6bcfe07524418081cd473c0881440f9"`);
   });
   it("reuses the whole wire and closes every workflow object", () => {
     expect(Object.keys(npAgentChangeSetWireSchemaV1.properties as object)).toEqual(
@@ -95,6 +106,14 @@ describe("installed framework capability projection", () => {
   });
   it("requires exact immutable evidence, selector fields and external idempotency", () => {
     const inputs = {
+      "changeset.apply": { changeSetId: id, planHash: hash, approvalId: null },
+      "changeset.schedule": {
+        changeSetId: id,
+        planHash: hash,
+        approvalId: null,
+        scheduledFor: "2026-09-11T10:00:00.000Z",
+      },
+      "changeset.rollback": { mode: "prepare", changeSetId: id },
       "changeset.create": { title: "Draft", summary: null, operations: [] },
       "changeset.get": { changeSetId: id },
       "changeset.list": list,
@@ -115,7 +134,7 @@ describe("installed framework capability projection", () => {
         { siteId: "other" },
         { credential: "secret" },
         { runId: id },
-        { approvalId: id },
+        { statementHash: hash },
       ])
         expect(() =>
           npRequireAgentInstalledCapabilityInvocationRequestV1({
@@ -175,4 +194,237 @@ describe("installed framework capability projection", () => {
         npRequireAgentChangeSetCapabilityInvocationResultV1({ ...result, ...extra }),
       ).toThrow();
   });
+});
+
+describe("exact Gateway execution capability inputs", () => {
+  const apply = { changeSetId: id, planHash: hash, approvalId: null };
+  it("distinguishes approval requests from approved apply and schedule without duplicate idempotency", () => {
+    expect(npRequireAgentChangeSetApplyCapabilityInputV1(apply)).toEqual(apply);
+    expect(
+      npRequireAgentChangeSetApplyCapabilityInputV1({ ...apply, approvalId: id }).approvalId,
+    ).toBe(id);
+    const scheduled = { ...apply, scheduledFor: "2026-09-11T10:00:00.000Z" };
+    expect(npRequireAgentChangeSetScheduleCapabilityInputV1(scheduled)).toEqual(scheduled);
+    for (const field of [
+      "siteId",
+      "idempotencyKey",
+      "statementHash",
+      "expectedDraftVersion",
+      "scheduledFor",
+    ])
+      expect(() =>
+        npRequireAgentChangeSetApplyCapabilityInputV1({ ...apply, [field]: id }),
+      ).toThrow();
+    expect(() => npRequireAgentChangeSetScheduleCapabilityInputV1(apply)).toThrow();
+    expect(() =>
+      npRequireAgentChangeSetScheduleCapabilityInputV1({
+        ...scheduled,
+        scheduledFor: "2026-09-11T19:00:00+09:00",
+      }),
+    ).toThrow();
+    expect(() =>
+      npRequireAgentChangeSetApplyCapabilityInputV1({ changeSetId: id, planHash: hash }),
+    ).toThrow();
+  });
+  it("closes every rollback mode and does not accept execution facts in preparation", () => {
+    const prepare = { mode: "prepare", changeSetId: id };
+    const request = {
+      mode: "request_approval",
+      changeSetId: id,
+      rollbackPlanId: id,
+      planHash: hash,
+    };
+    const execute = { ...request, mode: "execute_approved", approvalId: id };
+    for (const value of [prepare, request, execute])
+      expect(npRequireAgentChangeSetRollbackCapabilityInputV1(value)).toEqual(value);
+    for (const value of [
+      { ...prepare, approvalId: id },
+      { ...prepare, planHash: hash },
+      { ...request, approvalId: null },
+      { ...execute, approvalId: null },
+      { ...execute, mode: "execute" },
+      { ...execute, statementHash: hash },
+      { ...request, rollbackPlanId: undefined },
+    ])
+      expect(() => npRequireAgentChangeSetRollbackCapabilityInputV1(value)).toThrow();
+  });
+});
+
+describe("client-safe execution capability results", () => {
+  const at = "2026-09-08T00:00:00.000Z";
+  const changeSet = {
+    schemaVersion: "np.agent-changeset.v1",
+    id,
+    siteId: "default",
+    title: "Draft",
+    summary: null,
+    state: "draft",
+    actor: { id, kind: "external", name: "External" },
+    agentId: null,
+    agentVersionId: null,
+    agentConfigHash: null,
+    runId: null,
+    planHash: null,
+    baseFingerprint: null,
+    draftVersion: 1,
+    draftHash: hash,
+    risk: null,
+    operations: [],
+    validation: null,
+    preview: null,
+    approval: null,
+    schedule: null,
+    execution: null,
+    verification: null,
+    rollback: null,
+    createdAt: at,
+    updatedAt: at,
+    expiresAt: "2026-10-08T00:00:00.000Z",
+  };
+  const base = { schemaVersion: "np.agent-changeset-execution-result.v1", changeSet, runId: id };
+  it("requires actual bounded run references and rejects hidden or mismatched fields", () => {
+    const complete = { ...base, state: "completed" };
+    const accepted = {
+      ...base,
+      state: "accepted",
+      statusResource: `/api/agent/v1/runs/${id}`,
+      pollAfterMs: 2000,
+    };
+    for (const value of [complete, accepted]) {
+      expect(npRequireAgentChangeSetExecutionOutputV1(value)).toEqual(value);
+      for (const key of ["credential", "locator", "canonicalInput", "internalError"])
+        expect(() =>
+          npRequireAgentChangeSetExecutionOutputV1({ ...value, [key]: "private" }),
+        ).toThrow();
+    }
+    for (const value of [
+      { ...complete, runId: null },
+      { ...complete, pollAfterMs: 2000 },
+      { ...accepted, pollAfterMs: 999 },
+      { ...accepted, pollAfterMs: 10001 },
+      { ...accepted, statusResource: "https://evil.invalid/" },
+      {
+        ...accepted,
+        statusResource: `/api/agent/v1/runs/${"11111111-1111-4111-8111-111111111111"}`,
+      },
+    ])
+      expect(() => npRequireAgentChangeSetExecutionOutputV1(value)).toThrow();
+  });
+  it("binds approval-required references to the projected target and exact Admin link", () => {
+    const sealed = {
+      ...changeSet,
+      state: "approval_pending",
+      planHash: hash,
+      baseFingerprint: hash,
+      risk: { level: "low", reasonCodes: [], approvalMode: "human", reversible: true },
+      validation: { state: "valid", generation: 1, issueCount: 0, digest: hash, completedAt: at },
+      approval: {
+        id,
+        generation: 1,
+        state: "pending",
+        statementHash: hash,
+        requiredHumanCapabilities: ["content.author"],
+        requiredHumanPredicates: [],
+        requestedAt: at,
+        expiresAt: "2026-09-09T00:00:00.000Z",
+        decidedAt: null,
+      },
+    };
+    const result = {
+      ...base,
+      changeSet: sealed,
+      state: "approval_required",
+      actionId: id,
+      approvalId: id,
+      proposalHash: hash,
+      approvalResource: `/admin/agents/approvals/${id}`,
+      expiresAt: "2026-09-09T00:00:00.000Z",
+    };
+    expect(npRequireAgentChangeSetExecutionOutputV1(result)).toEqual(result);
+    for (const value of [
+      { ...result, actionId: null },
+      { ...result, approvalResource: "https://evil.invalid" },
+      { ...result, proposalHash: `cj1:sha256:${"b".repeat(43)}` },
+      { ...result, changeSet },
+    ])
+      expect(() => npRequireAgentChangeSetExecutionOutputV1(value)).toThrow();
+  });
+});
+
+it("locks execution policy floors and declared bookkeeping profiles", () => {
+  for (const id of ["changeset.apply", "changeset.schedule"] as const) {
+    expect(npAgentInstalledCapabilityDescriptorsV1[id]).toMatchObject({
+      risk: "sensitive",
+      approval: "human",
+      execution: "durable",
+      idempotency: "required",
+      requiredScopes: ["changeset:apply"],
+      effectProfiles: [
+        {
+          id,
+          kind: "mutation",
+          reversibility: "none",
+          minimumGatewayExposure: "approved-execute",
+          verifierId: "changeset.verify",
+          compensatorId: null,
+        },
+        {
+          id: "domain.read",
+          kind: "read",
+          minimumGatewayExposure: "propose",
+          verifierId: null,
+          compensatorId: null,
+        },
+      ],
+    });
+  }
+  expect(npAgentInstalledCapabilityDescriptorsV1["changeset.rollback"]).toMatchObject({
+    risk: "read",
+    approval: "none",
+    execution: "durable",
+    requiredScopes: ["changeset:apply"],
+    effectProfiles: [
+      {
+        id: "changeset.rollback-execute",
+        kind: "mutation",
+        minimumGatewayExposure: "approved-execute",
+        verifierId: "changeset.verify",
+        compensatorId: null,
+      },
+      {
+        id: "domain.read",
+        kind: "read",
+        minimumGatewayExposure: "propose",
+        verifierId: null,
+        compensatorId: null,
+      },
+    ],
+  });
+});
+
+it("declares every selected execution phase profile in its canonical definition", () => {
+  const policies = {
+    ...npAgentChangeSetExecutionPhasePoliciesV1,
+    "changeset.rollback": npAgentChangeSetRollbackModePoliciesV1,
+  };
+  for (const id of ["changeset.apply", "changeset.schedule", "changeset.rollback"] as const) {
+    const definition = npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(id);
+    for (const policy of Object.values(policies[id])) {
+      expect(definition.capabilities[0].effectProfiles).toContainEqual(
+        expect.objectContaining({
+          profileId: policy.effectProfileId,
+          minimumGatewayExposure: policy.minimumGatewayExposure,
+        }),
+      );
+      const descriptor = npAgentInstalledCapabilityDescriptorsV1[id];
+      expect(descriptor.inputSchema.oneOf).toContainEqual(
+        expect.objectContaining({
+          "x-nexpress-effect-profile": policy.effectProfileId,
+          "x-nexpress-risk": policy.risk,
+          "x-nexpress-approval": policy.approval,
+          "x-nexpress-minimum-gateway-exposure": policy.minimumGatewayExposure,
+        }),
+      );
+    }
+  }
 });

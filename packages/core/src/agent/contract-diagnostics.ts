@@ -541,11 +541,28 @@ const ISSUE_SUMMARY_SQL = `
           or invocation.authorization_context_body <> task.authorization_context_body
           or invocation.authority_ref <> task.authority_ref
           or invocation.mcp_execution_mode <> 'task'
+          or task.run_id is distinct from invocation.run_id
           or invocation.mcp_requested_task_ttl_ms is distinct from
              coalesce(task.requested_ttl_ms, 3600000)
           or task.ttl_ms > coalesce(task.requested_ttl_ms, 3600000)
           or ((task.status = 'working') <> (task.terminal_result is null))
           or ((task.status = 'cancelled') <> (task.cancelled_at is not null))
+
+    union all
+      select 'AGENT_EXECUTION_DIVERGED', action.created_at
+        from public.np_agent_actions action
+        left join public.np_agent_invocations invocation on invocation.id=action.invocation_id
+        left join public.np_agent_runs run on run.id=action.run_id
+       where action.capability_id in ('changeset.apply','changeset.schedule','changeset.rollback')
+         and (invocation.id is null or run.id is null
+           or invocation.site_id<>action.site_id or run.site_id<>action.site_id
+           or invocation.operation_kind<>'capability' or invocation.operation_id<>action.capability_id
+           or invocation.run_id is distinct from run.id or run.invocation_id is distinct from invocation.id
+           or run.principal_id is distinct from invocation.principal_id
+           or action.invocation_fingerprint is distinct from invocation.request_hash
+           or action.run_fingerprint is distinct from run.admission_fingerprint
+           or action.input_canonical is distinct from invocation.request_body->'input'
+           or action.input_canonical->>'changeSetId' is distinct from invocation.result_id::text)
 
     union all
       select 'AGENT_RELATION_ORPHANED', edge.occurred_at from (

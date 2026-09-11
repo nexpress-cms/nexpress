@@ -32,6 +32,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { cn } from "../ui/utils.js";
+import { useAgentPolling } from "./use-agent-polling.js";
 
 type ActivityPage =
   NpAgentActivityRunsPageV1 | NpAgentActivityActionsPageV1 | NpAgentActivityPrincipalsPageV1;
@@ -123,10 +124,10 @@ function useActivity<T>(path: string, parse: (value: unknown) => T) {
       controller.abort();
     };
   }, [path, parse, revision]);
-  const refresh = () => {
+  const refresh = React.useCallback(() => {
     setLoading(true);
     setRevision((current) => current + 1);
-  };
+  }, []);
   // A route/filter change must never borrow another request's visible record or error.
   const matches = result?.path === path && result.parse === parse;
   return {
@@ -665,6 +666,16 @@ export function AgentActivityRunDetailView({ runId }: { runId: string }) {
   );
   const detail: NpAgentActivityRunDetailV1 | null = resource.value;
   const run = detail?.run;
+  useAgentPolling(
+    runId,
+    detail,
+    Boolean(
+      run &&
+      ["queued", "running", "waiting_approval", "waiting_retry", "verifying"].includes(run.state),
+    ),
+    resource.loading,
+    resource.refresh,
+  );
   return (
     <AgentStudioFrame active="activity">
       <ActivityNavigation section="runs" />

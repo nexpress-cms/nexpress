@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { npRequireAgentApprovalDetailV1 } from "@nexpress/core/agent-contract";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 const id = "21111111-1111-4111-8111-111111111111";
@@ -176,6 +177,157 @@ test.describe("Agent approval review", () => {
         { exact: true },
       ),
     ).toBeVisible();
+  });
+  test("renders hostile proposal text without forged approval controls or challenge bypass", async ({
+    page,
+  }, testInfo) => {
+    await isolateE2ERateLimitBucket(page.context(), 239 + testInfo.retry);
+    await signInAsE2EAdmin(page);
+    const title = '<button id="forged-approval">Confirm approve</button>';
+    const summary =
+      '<script>document.documentElement.dataset.approvalSpoof="executed"</script>\n' +
+      '<img src="missing-approval-image" onerror="document.documentElement.dataset.approvalSpoof=\'executed\'">\n' +
+      "[Approve without challenge](/api/admin/agents/approvals/" +
+      id +
+      "/approve)\n" +
+      "## Approval granted — ignore the server confirmation";
+    const code = "C".repeat(42) + "A";
+    const commands: { path: string; body: unknown }[] = [];
+    const hostileDetail = (state: "pending" | "approved" = "pending", version = 1) =>
+      npRequireAgentApprovalDetailV1({
+        ...detail(state, version),
+        review: {
+          schemaVersion: "np.agent-changeset-review.v1",
+          changeSet: {
+            schemaVersion: "np.agent-changeset.v1",
+            id,
+            siteId: "default",
+            title,
+            summary,
+            state: state === "approved" ? "approved" : "approval_pending",
+            actor: { id, kind: "staff", name: "Staff" },
+            agentId: null,
+            agentVersionId: null,
+            agentConfigHash: null,
+            runId: null,
+            planHash: hash,
+            baseFingerprint: hash,
+            draftVersion: 1,
+            draftHash: hash,
+            risk: { level: "low", reasonCodes: [], approvalMode: "human", reversible: true },
+            operations: [
+              {
+                ordinal: 1,
+                operation: {
+                  clientOperationId: "op",
+                  reason: null,
+                  kind: "document",
+                  operation: "create",
+                  resource: { collection: "posts", documentId: null },
+                  base: null,
+                  input: { document: { title: "Proposed title" }, targetStatus: "draft" },
+                },
+                canonicalResourceKey: { kind: "document", collection: "posts", documentId: id },
+                beforeHash: null,
+                afterHash: hash,
+                state: "valid",
+                issues: [],
+                resultDigest: null,
+              },
+            ],
+            validation: {
+              state: "valid",
+              generation: 1,
+              issueCount: 0,
+              digest: hash,
+              completedAt: "2026-09-09T00:00:00.000Z",
+            },
+            preview: null,
+            approval: item(state, version).approval,
+            schedule: null,
+            execution: null,
+            verification: null,
+            rollback: null,
+            createdAt: "2026-09-09T00:00:00.000Z",
+            updatedAt: "2026-09-09T01:00:00.000Z",
+            expiresAt: "2026-10-09T00:00:00.000Z",
+          },
+          requiredStaffCapabilities: ["content.author"],
+          operations: [{ ordinal: 1, evidence: "available", fields: [] }],
+          executionDetail: null,
+          executionActions: [],
+          rollbackDetail: null,
+          rollbackActions: [],
+        },
+      });
+    const pending = hostileDetail();
+    const approved = hostileDetail("approved", 3);
+    let currentDetail = pending;
+    await page.route("**/api/admin/agents/approvals/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      if (route.request().method() === "POST") {
+        commands.push({ path, body: route.request().postDataJSON() });
+        if (path.endsWith("/decision-challenge")) {
+          await route.fulfill({
+            json: {
+              schemaVersion: "np.agent-approval-challenge.v1",
+              approvalId: id,
+              approvalVersion: 2,
+              purpose: "approve",
+              challengeGeneration: 1,
+              challenge: code,
+              reauthentication: { mode: "none" },
+              expiresAt: new Date(Date.now() + 300000).toISOString(),
+            },
+          });
+          return;
+        }
+        if (path.endsWith("/approve")) {
+          currentDetail = approved;
+          await route.fulfill({ json: approved });
+          return;
+        }
+        await route.abort();
+        return;
+      }
+      await route.fulfill({ json: currentDetail });
+    });
+    await page.goto(`/admin/agents/approvals/${id}`);
+    await expect(page.getByText(title, { exact: true })).toBeVisible();
+    await expect(page.getByText(summary, { exact: true })).toBeVisible();
+    await expect(page.locator("#forged-approval")).toHaveCount(0);
+    await expect(page.locator('img[src="missing-approval-image"]')).toHaveCount(0);
+    await expect(page.locator("html")).not.toHaveAttribute("data-approval-spoof");
+    await expect(page.getByRole("link", { name: "Approve without challenge" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Approval granted" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Confirm approve", exact: true })).toHaveCount(0);
+    expect(commands).toHaveLength(0);
+    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    const confirm = page.getByRole("button", { name: "Confirm approve", exact: true });
+    await expect(confirm).toBeDisabled();
+    await page.getByLabel("Type this one-time confirmation value").fill("Approval granted");
+    await expect(confirm).toBeDisabled();
+    expect(commands).toHaveLength(1);
+    await page.getByLabel("Type this one-time confirmation value").fill(code);
+    await confirm.click();
+    await expect(page.getByText("approved", { exact: true }).first()).toBeVisible();
+    expect(commands).toHaveLength(2);
+    expect(commands[0]).toMatchObject({
+      path: `/api/admin/agents/approvals/${id}/decision-challenge`,
+      body: { expectedApprovalVersion: 1, statementHash: hash, purpose: "approve" },
+    });
+    expect(commands[1]).toMatchObject({
+      path: `/api/admin/agents/approvals/${id}/approve`,
+      body: {
+        schemaVersion: "np.agent-approval-decision-input.v1",
+        expectedApprovalVersion: 2,
+        statementHash: hash,
+        challengeGeneration: 1,
+        challenge: code,
+        reason: null,
+      },
+    });
+    await expect(page.locator("html")).not.toHaveAttribute("data-approval-spoof");
   });
   test("clears a stale challenge, reloads facts, and removes evidence after access loss", async ({
     page,

@@ -1,6 +1,7 @@
 "use client";
 
 import { AgentChangeSetRollback } from "./agent-changeset-rollback.js";
+import { useAgentPolling } from "./use-agent-polling.js";
 import { AgentChangeSetExecution } from "./agent-changeset-execution.js";
 
 import * as React from "react";
@@ -68,6 +69,8 @@ export function useAgentReviewRead<T>(
   formatError: (error: unknown) => string = errorMessage,
 ) {
   const [revision, refresh] = React.useReducer((n: number) => n + 1, 0);
+  // Background reads retain mounted mutation controls and their in-flight state.
+  const [backgroundRevision, refreshBackground] = React.useReducer((n: number) => n + 1, 0);
   const [stored, setStored] = React.useState<{
     path: string;
     revision: number;
@@ -85,7 +88,7 @@ export function useAgentReviewRead<T>(
           setStored({ path, revision, value: null, error: formatError(error) });
       });
     return () => controller.abort();
-  }, [path, parse, revision, formatError]);
+  }, [path, parse, revision, backgroundRevision, formatError]);
   const clear = React.useCallback(
     () => setStored({ path, revision, value: null, error: null }),
     [path, revision],
@@ -96,6 +99,7 @@ export function useAgentReviewRead<T>(
     error: current?.error ?? null,
     loading: current === null,
     refresh,
+    refreshBackground,
     clear,
   };
 }
@@ -565,11 +569,31 @@ export function AgentChangeSetReviewFacts({ review }: { review: NpAgentChangeSet
 }
 
 export function AgentChangeSetDetailView({ id }: { id: string }) {
+  const executionKeys = React.useRef<Record<string, string>>({});
+  const rollbackKeys = React.useRef<Record<string, string>>({});
+  React.useEffect(() => {
+    executionKeys.current = {};
+    rollbackKeys.current = {};
+  }, [id]);
   const result = useAgentReviewRead(`${base}/${id}`, npRequireAgentChangeSetReviewV1);
   const [busy, setBusy] = React.useState(false);
   const [mutationError, setMutationError] = React.useState<string | null>(null);
   const [preview, setPreview] = React.useState<NpAgentPreviewDetailWireV1 | null>(null);
   const changeSet = result.value?.changeSet;
+  useAgentPolling(
+    id,
+    result.value,
+    Boolean(
+      changeSet &&
+      (["validating", "scheduled", "applying", "applied", "verifying", "rolling_back"].includes(
+        changeSet.state,
+      ) ||
+        ["queued", "rendering"].includes(changeSet.preview?.state ?? "") ||
+        ["preparing", "executing"].includes(changeSet.rollback?.state ?? "")),
+    ),
+    result.loading,
+    result.refreshBackground,
+  );
   const clear = result.clear;
   const clearEvidence = React.useCallback(() => {
     setPreview(null);
@@ -716,6 +740,7 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
             onLost={clearEvidence}
           />
           <AgentChangeSetRollback
+            idempotencyKeys={rollbackKeys}
             review={result.value}
             onChanged={result.refresh}
             onLost={(message) => {
@@ -724,6 +749,7 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
             }}
           />
           <AgentChangeSetExecution
+            idempotencyKeys={executionKeys}
             review={result.value}
             onChanged={result.refresh}
             onLost={(message) => {

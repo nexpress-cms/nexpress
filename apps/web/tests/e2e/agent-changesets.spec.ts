@@ -54,6 +54,71 @@ function draft() {
   };
 }
 test.describe("Agent ChangeSet review", () => {
+  test("backs off active review polling and stops when evidence becomes unavailable", async ({
+    page,
+  }, testInfo) => {
+    await isolateE2ERateLimitBucket(page.context(), 209 + testInfo.retry);
+    await signInAsE2EAdmin(page);
+    await page.clock.install();
+    let reads = 0;
+    let releaseSecond: (() => void) | undefined;
+    const secondRead = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    await page.route(`**/api/admin/agents/changesets/${id}`, async (route) => {
+      reads++;
+      if (reads === 2) await secondRead;
+      if (reads === 3) {
+        await route.fulfill({
+          status: 404,
+          json: { status: 404, error: { code: "NOT_FOUND", message: "Not found" } },
+        });
+        return;
+      }
+      await route.fulfill({
+        json: {
+          schemaVersion: "np.agent-changeset-review.v1",
+          changeSet: {
+            ...draft(),
+            summary: reads === 2 ? "Second poll completed" : draft().summary,
+            state: "validating",
+            validation: {
+              state: "running",
+              generation: 1,
+              issueCount: 0,
+              digest: null,
+              completedAt: null,
+            },
+          },
+          requiredStaffCapabilities: ["content.author"],
+          operations: [{ ordinal: 1, evidence: "not_validated", fields: [] }],
+          executionDetail: null,
+          executionActions: [],
+          rollbackDetail: null,
+          rollbackActions: [],
+        },
+      });
+    });
+    await page.goto(`/admin/agents/changesets/${id}`);
+    await expect(page.getByText("Review fixture proposal", { exact: true })).toBeVisible();
+    expect(reads).toBe(1);
+    await page.clock.fastForward(2_000);
+    await expect.poll(() => reads).toBe(2);
+    await expect(page.getByText("Review fixture proposal", { exact: true })).toBeVisible();
+    await expect(page.getByText("Loading ChangeSet…", { exact: true })).toHaveCount(0);
+    releaseSecond?.();
+    await expect(page.getByText("Second poll completed", { exact: true })).toBeVisible();
+    await page.clock.fastForward(3_999);
+    expect(reads).toBe(2);
+    await page.clock.fastForward(1);
+    await expect.poll(() => reads).toBe(3);
+    await expect(page.getByText("Review fixture proposal", { exact: true })).toHaveCount(0);
+    await page.clock.fastForward(30_000);
+    expect(reads).toBe(3);
+    await page.goto("/admin/agents");
+    await page.clock.fastForward(30_000);
+    expect(reads).toBe(3);
+  });
   test("distinguishes unavailable runtime from empty history", async ({ page }, testInfo) => {
     await isolateE2ERateLimitBucket(page.context(), 180 + testInfo.retry * 3);
     await signInAsE2EAdmin(page);
@@ -171,6 +236,7 @@ test("execution actions use server authority, exact cancellation and stable retr
   await signInAsE2EAdmin(page);
   const commands: Record<string, unknown>[] = [];
   let available = true;
+  let failNextRead = false;
   const review = () => ({
     schemaVersion: "np.agent-changeset-review.v1",
     rollbackDetail: null,
@@ -185,10 +251,19 @@ test("execution actions use server authority, exact cancellation and stable retr
     if (route.request().url().endsWith("/cancel")) {
       commands.push(route.request().postDataJSON());
       if (commands.length === 1) {
+        failNextRead = true;
         await route.abort();
         return;
       }
       available = false;
+    }
+    if (route.request().method() === "GET" && failNextRead) {
+      failNextRead = false;
+      await route.fulfill({
+        status: 503,
+        json: { status: 503, error: { code: "SERVICE_UNAVAILABLE", message: "Unavailable" } },
+      });
+      return;
     }
     await route.fulfill({ json: review() });
   });
@@ -198,6 +273,15 @@ test("execution actions use server authority, exact cancellation and stable retr
   await page.getByLabel("Cancellation reason (optional)").fill("Withdraw proposal");
   await page.getByRole("button", { name: "Cancel ChangeSet", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "could not be confirmed" })).toBeVisible();
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Cancel ChangeSet", exact: true })).toHaveCount(0);
+  await expect(
+    page
+      .getByRole("alert")
+      .filter({ hasText: "The ChangeSet response could not be loaded or validated." }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.getByLabel("Cancellation reason (optional)").fill("Withdraw proposal");
   await page.getByRole("button", { name: "Cancel ChangeSet", exact: true }).click();
   await expect(page.getByText("No execution actions are currently available.")).toBeVisible();
   expect(commands).toHaveLength(2);
@@ -404,9 +488,15 @@ for (const action of ["prepare", "request_approval", "execute", "cancel"] as con
       rollback: rollbackDetail ? summary : null,
     };
     let posted: Record<string, unknown> | null = null;
+    const attempts: Record<string, unknown>[] = [];
     await page.route("**/api/admin/agents/changesets**", async (route) => {
       if (route.request().method() === "POST") {
         posted = route.request().postDataJSON();
+        attempts.push(posted!);
+        if (action === "execute" && attempts.length === 1) {
+          await route.abort();
+          return;
+        }
         await route.fulfill({
           status: 409,
           json: { status: 409, error: { code: "CONFLICT", message: "Changed" } },
@@ -441,6 +531,16 @@ for (const action of ["prepare", "request_approval", "execute", "cancel"] as con
       if (other !== action)
         await expect(page.getByRole("button", { name: labels[other], exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: labels[action], exact: true }).click();
+    if (action === "execute") {
+      await expect(
+        page.getByRole("alert").filter({ hasText: "Rollback request could not be confirmed" }),
+      ).toBeVisible();
+      await page.getByRole("button", { name: "Refresh", exact: true }).click();
+      await expect(page.getByRole("region", { name: "Rollback plan facts" })).toBeVisible();
+      await page.getByRole("button", { name: labels[action], exact: true }).click();
+      expect(attempts).toHaveLength(2);
+      expect(attempts[0]).toEqual(attempts[1]);
+    }
     await expect(
       page.getByRole("alert").filter({ hasText: "Rollback request could not be confirmed" }),
     ).toBeVisible();

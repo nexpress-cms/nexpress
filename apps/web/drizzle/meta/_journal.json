@@ -316,6 +316,13 @@
       "when": 1788999350003,
       "tag": "0044_agent-rollback-lifecycle-constraints",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1789085654038,
+      "tag": "0045_agent-stdio-tasks",
+      "breakpoints": true
     }
   ]
 }

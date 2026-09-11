@@ -340,10 +340,41 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity", () => {
     expect(
       (await f.activity.listRuns({ siteId, actor: f.actor, query: { origin: "runtime" } })).items,
     ).toEqual([]);
+    expect(
+      (await f.activity.getMachineRun({ authentication: f.authentication, runId: id })).run.id,
+    ).toBe(id);
+    const httpToken = await f.gateway.executeAdmin({
+      siteId,
+      actor: f.actor,
+      operationId: "agents.gateway.principal_tokens.create",
+      targetId: f.principal.resourceId,
+      command: {
+        idempotencyKey: "agent:activity:cross-transport-token",
+        expectedVersion: 2,
+        name: "Activity Agent HTTP",
+        scopes: ["content:read", "site:read"],
+        transport: "agent-http",
+        exposure: "read",
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1_000).toISOString(),
+      },
+    });
+    const httpAuthentication = await f.gateway.authenticateServiceToken({
+      siteId,
+      credential: httpToken.oneTimeValue,
+      transport: "agent-http",
+      audience: "https://activity.example.test/api/agent/v1",
+    });
+    expect(httpAuthentication.principal.id).toBe(f.authentication.principal.id);
+    expect(
+      (await f.admission.project({ authentication: httpAuthentication })).entries.length,
+    ).toBeGreaterThan(0);
     for (const runId of [id, randomUUID()])
       await expect(
-        f.activity.getMachineRun({ authentication: f.authentication, runId }),
+        f.activity.getMachineRun({ authentication: httpAuthentication, runId }),
       ).rejects.toMatchObject({ status: 404, code: "ACTIVITY_NOT_FOUND" });
+    await expect(
+      f.activity.getMachineRun({ authentication: f.authentication, runId: randomUUID() }),
+    ).rejects.toMatchObject({ status: 404, code: "ACTIVITY_NOT_FOUND" });
     await f.db
       .update(npUsers)
       .set({ tokenVersion: f.actor.user.tokenVersion + 1 })

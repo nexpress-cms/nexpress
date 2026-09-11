@@ -483,16 +483,28 @@ through the full control loop.
 | AP-407 | Add request-approval/cancel, approval queue, execution timeline, verification, and rollback Admin flows                                                                                                                   |
 | AP-408 | Extend Doctor/Health/runbook and release checks for stuck/failed ChangeSets                                                                                                                                               |
 
-The current R4 rollback slice implements AP-405 and the rollback portions of
+The current AP-406 slice connects the existing schedule/apply/rollback service
+to explicitly installed Agent HTTP/MCP capabilities and real bounded Gateway
+run/task evidence. Remaining AP-407/AP-408 work reuses Activity item authority,
+active-detail polling and aggregate linkage diagnostics. See
+[R4 Gateway execution](r4-gateway-execution-flow.md) for exact section 18 test
+mapping and results: workspace verify 113 tasks, lint 41 tasks, Core PostgreSQL
+67 cases, web PostgreSQL 1,181 ordinary cases across the full run and corrected
+regressions, native preview separately, production Playwright 62 cases and
+40-package/56-stage packed scaffold. Live Redis 16 and restored theme-render
+5 also passed. Final revalidation passed Core unit 1,726, typecheck/build, reference build,
+lint 41, execution PostgreSQL 66 and packed 40-package/56-stage checks; the complete
+R4 section 18 acceptance gate below passed.
+
+The preceding R4 rollback slice implements AP-405 and the rollback portions of
 AP-407/AP-408, extending the preceding approval and execution slices. See
 [R4 rollback flow](r4-rollback-flow.md) for exact preparation, fresh approval,
 compensation, bounded recovery and Admin/Doctor scope. The existing facade,
 canonical plan/approval contracts and transaction-aware domain services remain
 authoritative. Rollback-slice validation is complete, including PostgreSQL,
 60 production browser tests and the final packed scaffold refresh; see the
-linked flow for detailed results. AP-406 Agent HTTP/MCP execution
-capabilities and task projection remain open, so the complete R4 gate below
-is not yet satisfied.
+linked flow for detailed results. Those results precede AP-406 and do not
+substitute for its final Gateway and task acceptance tests.
 
 Gate:
 

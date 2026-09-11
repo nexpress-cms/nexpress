@@ -85,14 +85,17 @@ export function AgentChangeSetRollback({
   review,
   onChanged,
   onLost,
+  idempotencyKeys,
 }: {
   review: NpAgentChangeSetReviewV1;
   onChanged: () => void;
   onLost: (message: string) => void;
+  idempotencyKeys?: React.RefObject<Record<string, string>>;
 }) {
   const [busy, setBusy] = React.useState(false),
     [error, setError] = React.useState<string | null>(null);
-  const keys = React.useRef<Record<string, string>>({});
+  const localKeys = React.useRef<Record<string, string>>({});
+  const keys = idempotencyKeys ?? localKeys;
   const { changeSet, rollbackDetail: detail, rollbackActions: actions } = review;
   async function submit(action: "prepare" | "request_approval" | "execute" | "cancel") {
     if (busy || !actions.includes(action)) return;

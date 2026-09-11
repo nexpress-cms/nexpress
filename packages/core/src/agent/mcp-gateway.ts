@@ -1,3 +1,5 @@
+import { npProjectAgentMcpInvocationOutputV1 } from "./changeset-execution-projection.js";
+import type { NpAgentActivityServiceV1 } from "./activity-service.js";
 import { canonicalBodyRecord } from "../agent-contract/canonical-body-validation.js";
 import {
   npAgentInstalledCapabilityDescriptorsV1,
@@ -8,6 +10,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import {
   npAgentReadCapabilityDescriptorsV1,
+  npRequireAgentActivityRunDetailV1,
   npRequireAgentMcpTaskTtlV1,
   type NpAgentJsonObject,
   type NpAgentJsonSchema,
@@ -30,6 +33,9 @@ const TOOL_TO_CAPABILITY = Object.freeze({
   validate_changeset: "changeset.validate",
   preview_changeset: "changeset.preview",
   query_changesets: "changeset.get",
+  apply_changeset: "changeset.apply",
+  schedule_changeset: "changeset.schedule",
+  rollback_changeset: "changeset.rollback",
 } as const satisfies Record<string, NpAgentInstalledCapabilityIdV1>);
 
 type NpAgentMcpToolNameV1 = keyof typeof TOOL_TO_CAPABILITY;
@@ -84,6 +90,7 @@ export interface NpAgentMcpGatewayOptionsV1<
   admission: NpAgentCapabilityAdmissionServiceV1;
   cursorKey: { id: string; key: Uint8Array };
   tasks?: NpAgentMcpTaskProjectionServiceV1<TAuthentication>;
+  runs?: Pick<NpAgentActivityServiceV1, "getMachineRun">;
 }
 
 function jsonSchema(value: NpAgentJsonSchema): JsonSchemaObject {
@@ -251,7 +258,12 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
       .map((entry) => {
         const descriptor = entry.definition.descriptor;
         const name = CAPABILITY_TO_TOOL[descriptor.id];
-        if (!name) return null;
+        if (
+          !name ||
+          (!options.runs &&
+            ["changeset.apply", "changeset.schedule", "changeset.rollback"].includes(descriptor.id))
+        )
+          return null;
         return {
           name,
           title: descriptor.title,
@@ -318,13 +330,19 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
               : jsonSchema(descriptor.outputSchema),
           annotations: {
             title: descriptor.title,
-            readOnlyHint: descriptor.risk === "read",
+            readOnlyHint: descriptor.effectProfiles.every((profile) => profile.kind === "read"),
             destructiveHint: descriptor.risk === "destructive",
             idempotentHint: descriptor.idempotency !== "none",
             openWorldHint: false,
           },
           execution: {
-            taskSupport: "forbidden" as const,
+            taskSupport:
+              options.tasks &&
+              ["changeset.apply", "changeset.schedule", "changeset.rollback"].includes(
+                descriptor.id,
+              )
+                ? ("optional" as const)
+                : ("forbidden" as const),
           },
         };
       })
@@ -377,9 +395,9 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
       const projected = await projection(authentication);
       const ids = new Set(projected.entries.map((entry) => entry.definition.descriptor.id));
       return {
-        tools: ids.has("site.inspect") || ids.has("content.query"),
-        resources: ids.has("site.inspect") || ids.has("schema.get"),
-        resourceTemplates: ids.has("schema.get"),
+        tools: (await toolInventory(authentication)).length > 0,
+        resources: ids.has("site.inspect") || ids.has("schema.get") || options.runs !== undefined,
+        resourceTemplates: ids.has("schema.get") || options.runs !== undefined,
         // The four v1 starter prompts depend on capabilities not installed
         // until later APs. Empty capability advertisement stays honest.
         prompts: false,
@@ -431,9 +449,11 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
             throw new NpAgentMcpGatewayProtocolErrorV1(-32602, "Invalid params");
           }
         }
-        // ChangeSet domain work has durable evidence, but this normal invocation
-        // returns admission only. No task is invented without a faithful adapter.
-        throw new NpAgentMcpGatewayProtocolErrorV1(-32601, "Method not found");
+        if (
+          !options.tasks ||
+          !["changeset.apply", "changeset.schedule", "changeset.rollback"].includes(capabilityId)
+        )
+          throw new NpAgentMcpGatewayProtocolErrorV1(-32601, "Method not found");
       }
       try {
         let args: unknown = input.arguments;
@@ -472,15 +492,23 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
           capabilityId,
           arguments: args,
         });
-        const invoked = await options.admission.invoke({ authentication, request });
-        const structuredContent = invoked.output;
-        return {
-          content: [
-            { type: "text" as const, text: serializeAgentCanonicalJson(structuredContent) },
-          ],
-          structuredContent,
-          isError: false,
-        };
+        const invoked = await options.admission.invoke({
+          authentication,
+          request,
+          ...(input.task ? { taskRequest: { requestedTtlMs: input.task.ttlMs } } : {}),
+        });
+        if (input.task) {
+          if (!("task" in invoked) || !invoked.task)
+            throw new NpAgentMcpGatewayProtocolErrorV1(-32603, "Internal error");
+          return {
+            task: invoked.task,
+            _meta: { "io.modelcontextprotocol/related-task": { taskId: invoked.task.taskId } },
+          };
+        }
+        return npProjectAgentMcpInvocationOutputV1(
+          authentication.principal.siteId,
+          invoked.output as unknown as NpAgentJsonObject,
+        );
       } catch (error) {
         safeGatewayError(error);
       }
@@ -522,6 +550,13 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
             },
           ]
         : [];
+      if (options.runs)
+        values.push({
+          uriTemplate: resourceUri(projected.principal.siteId, "runs/{runId}"),
+          name: "ChangeSet execution status",
+          description: "One currently authorized Gateway run.",
+          mimeType: JSON_MIME,
+        });
       const offset = decodeCursor(
         options.cursorKey,
         "resource-templates",
@@ -549,7 +584,19 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
       }
       const suffix = uri.slice(prefix.length);
       let body: NpAgentJsonObject;
-      if (suffix === "capabilities") {
+      if (/^runs\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(suffix)) {
+        if (!options.runs) throw new NpAgentMcpGatewayProtocolErrorV1(-32602, "Invalid params");
+        try {
+          body = npRequireAgentActivityRunDetailV1(
+            await options.runs.getMachineRun({
+              authentication,
+              runId: suffix.slice(5),
+            }),
+          ) as unknown as NpAgentJsonObject;
+        } catch {
+          throw new NpAgentMcpGatewayProtocolErrorV1(-32602, "Invalid params");
+        }
+      } else if (suffix === "capabilities") {
         body = {
           schemaVersion: "np.agent-mcp-capability-catalog.v1",
           registryFingerprint: projected.registryFingerprint,

@@ -1637,4 +1637,18 @@ full PostgreSQL suites passed 1,147 web and 67 core tests; final affected
 regressions, live Redis, theme PostgreSQL, native preview, all 60 production
 browser tests and the final 14-stage packed scaffold refresh passed. See the
 linked rollback flow for the complete result table and self-review corrections.
-AP-406 Agent HTTP/MCP execution exposure and task projection remain open.
+These recorded results precede AP-406. The current
+[Gateway execution acceptance slice](r4-gateway-execution-flow.md) additionally
+requires approval-required/new-invocation flows; exact exposure and current
+authority negatives; immutable MCP task result, cancellation and TTL tests;
+real execution-to-run/action linkage; safe Activity item visibility and Doctor
+aggregates; and active-detail polling with terminal/error stop. Migration 0045
+extends the existing stdio MCP-mode constraint without changing the 31/167/11
+inventory. The linked flow now records workspace verify 113/lint 41 tasks,
+Core PostgreSQL 67, all 1,181 ordinary web PostgreSQL cases across the full run
+and corrected regressions, one separate native-preview case, 62 production
+browser cases and the 40-package/56-stage packed scaffold. Live Redis 16 and
+all five restored theme-render PostgreSQL cases passed separately; generic
+environment-gated skips are not used as live coverage. Final revalidation passed Core unit 1,726, typecheck/build, reference build,
+lint 41, execution PostgreSQL 66 and packed 40-package/56-stage checks.
+The R4 section 18 acceptance gate passed; see the linked test mapping.

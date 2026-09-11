@@ -18,17 +18,20 @@ export function AgentChangeSetExecution({
   review,
   onChanged,
   onLost,
+  idempotencyKeys,
 }: {
   review: NpAgentChangeSetReviewV1;
   onChanged: () => void;
   onLost: (message: string) => void;
+  idempotencyKeys?: React.RefObject<Record<string, string>>;
 }) {
   const { changeSet, executionDetail: detail, executionActions: actions } = review;
   const [scheduledFor, setScheduledFor] = React.useState("");
   const [reason, setReason] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const keys = React.useRef<Record<string, string>>({});
+  const localKeys = React.useRef<Record<string, string>>({});
+  const keys = idempotencyKeys ?? localKeys;
   async function submit(operation: "apply" | "schedule" | "cancel") {
     if (!actions.includes(operation) || busy) return;
     setError(null);

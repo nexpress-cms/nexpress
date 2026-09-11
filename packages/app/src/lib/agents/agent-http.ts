@@ -5,6 +5,7 @@ import {
   npAgentHttpLimitsV1,
   npRequireAgentHttpCapabilitiesV1,
   npRequireAgentReadCapabilityInvocationResultV1,
+  npRequireAgentChangeSetCapabilityInvocationResultV1,
   npRequireAgentActivityRunDetailV1,
 } from "@nexpress/core/agent-contract";
 import {
@@ -171,7 +172,10 @@ export async function handleAgentHttpRequest(
         operation === "capabilities"
           ? npRequireAgentHttpCapabilitiesV1(result)
           : operation === "invocations"
-            ? npRequireAgentReadCapabilityInvocationResultV1(result)
+            ? (result as { schemaVersion?: unknown }).schemaVersion ===
+              "np.agent-changeset-invocation-result.v1"
+              ? npRequireAgentChangeSetCapabilityInvocationResultV1(result)
+              : npRequireAgentReadCapabilityInvocationResultV1(result)
             : npRequireAgentActivityRunDetailV1(result);
       const serialized = JSON.stringify(safeResult);
       if (new TextEncoder().encode(serialized).byteLength > npAgentHttpLimitsV1.responseBytes)

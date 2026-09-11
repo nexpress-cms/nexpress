@@ -804,8 +804,9 @@ The v1 profile assignment is normative:
 | `site.inspect`, `schema.get`, `content.query`, `changeset.get/list` | `domain.read`                | Read only                                                                                   | none                                                           |
 | `changeset.create`                                                  | `changeset.draft-create`     | Persist one draft; verify exact id/version/hash                                             | cancel exact unexecuted draft via `changeset_draft` handle     |
 | `changeset.validate`, `changeset.preview`, `audit.run`              | `domain.read`                | Domain read; sealed validation/preview/audit artifacts are framework bookkeeping            | none                                                           |
-| `changeset.schedule`                                                | `changeset.schedule`         | Bind one approved schedule; verify queued/scheduled identity                                | none; cancellation is a separately authorized state transition |
-| `changeset.apply`                                                   | `changeset.apply`            | Mutate exact sealed resources; verify committed target/convergence digests                  | none in generic API; separate rollback-plan/approval workflow  |
+| `changeset.apply/schedule` with `approvalId: null`                  | `domain.read`                | Domain read; approval rows are framework bookkeeping                                        | none                                                           |
+| `changeset.schedule` with non-null `approvalId`                     | `changeset.schedule`         | Bind one approved schedule; verify queued/scheduled identity                                | none; cancellation is a separately authorized state transition |
+| `changeset.apply` with non-null `approvalId`                        | `changeset.apply`            | Mutate exact sealed resources; verify committed target/convergence digests                  | none in generic API; separate rollback-plan/approval workflow  |
 | `changeset.rollback` `prepare` or `request_approval`                | `domain.read`                | Domain read; rollback plan/approval rows are framework bookkeeping                          | none                                                           |
 | `changeset.rollback` `execute_approved`                             | `changeset.rollback-execute` | Mutate exact compensation targets; verify result/convergence; this is itself a compensation | none; later changes require a new ChangeSet                    |
 | `ops.status`, `ops.plan`, `incident.get/list`                       | `domain.read`                | Domain read; plan/evidence/approval rows are framework bookkeeping                          | none                                                           |
@@ -818,8 +819,8 @@ The v1 profile assignment is normative:
 Every row with a mutating profile declares the named verifier in its
 descriptor/definition. The three compensatable rows additionally declare the
 named compensator and derive only the listed opaque undo handle. Every
-capability except `changeset.rollback` resolves one fixed named profile from
-the table; rollback resolves `domain.read` for `prepare`/`request_approval`
+capability except the three ChangeSet execution capabilities resolves one fixed named profile from
+the table. Apply/schedule resolve `domain.read` for a null approval id and their named mutation profile for a non-null approval id. Rollback resolves `domain.read` for `prepare`/`request_approval`
 and `changeset.rollback-execute` for `execute_approved`. A new branch is a
 contract-version change. A completed read profile cannot return a mutation
 receipt, and a mutation cannot complete without its receipt and verifier
@@ -839,9 +840,9 @@ and test fixture imports the following named pair. There is no generic
 | `changeset.create`        | `NpAgentChangeSetCreateInputV1`                             | `NpAgentChangeSetOutputV1`          |
 | `changeset.validate`      | `NpAgentChangeSetValidateInputV1`                           | `NpAgentChangeSetOutputV1`          |
 | `changeset.preview`       | `NpAgentChangeSetPreviewInputV1`                            | `NpAgentChangeSetOutputV1`          |
-| `changeset.schedule`      | `NpAgentChangeSetScheduleInputV1`                           | `NpAgentChangeSetOutputV1`          |
-| `changeset.apply`         | `NpAgentChangeSetApplyInputV1`                              | `NpAgentChangeSetOutputV1`          |
-| `changeset.rollback`      | `NpAgentChangeSetRollbackInputV1`                           | `NpAgentChangeSetOutputV1`          |
+| `changeset.schedule`      | `NpAgentChangeSetScheduleCapabilityInputV1`                 | `NpAgentChangeSetExecutionOutputV1` |
+| `changeset.apply`         | `NpAgentChangeSetApplyCapabilityInputV1`                    | `NpAgentChangeSetExecutionOutputV1` |
+| `changeset.rollback`      | `NpAgentChangeSetRollbackCapabilityInputV1`                 | `NpAgentChangeSetExecutionOutputV1` |
 | `changeset.get`           | `NpAgentChangeSetGetInputV1`                                | `NpAgentChangeSetOutputV1`          |
 | `changeset.list`          | `NpAgentChangeSetListInputV1`                               | `NpAgentChangeSetListOutputV1`      |
 | `audit.run`               | `NpAgentAuditRunInputV1`                                    | `NpAgentAuditRunOutputV1`           |
@@ -866,9 +867,9 @@ interface NpAgentInputByCapability {
   "changeset.create": NpAgentChangeSetCreateInputV1;
   "changeset.validate": NpAgentChangeSetValidateInputV1;
   "changeset.preview": NpAgentChangeSetPreviewInputV1;
-  "changeset.schedule": NpAgentChangeSetScheduleInputV1;
-  "changeset.apply": NpAgentChangeSetApplyInputV1;
-  "changeset.rollback": NpAgentChangeSetRollbackInputV1;
+  "changeset.schedule": NpAgentChangeSetScheduleCapabilityInputV1;
+  "changeset.apply": NpAgentChangeSetApplyCapabilityInputV1;
+  "changeset.rollback": NpAgentChangeSetRollbackCapabilityInputV1;
   "changeset.get": NpAgentChangeSetGetInputV1;
   "changeset.list": NpAgentChangeSetListInputV1;
   "audit.run": NpAgentAuditRunInputV1;
@@ -1013,20 +1014,20 @@ interface NpAgentChangeSetPreviewInputV1 {
   planHash: string;
 }
 
-interface NpAgentChangeSetScheduleInputV1 {
+interface NpAgentChangeSetScheduleCapabilityInputV1 {
   changeSetId: string;
   planHash: string;
   scheduledFor: string;
   approvalId: string | null;
 }
 
-interface NpAgentChangeSetApplyInputV1 {
+interface NpAgentChangeSetApplyCapabilityInputV1 {
   changeSetId: string;
   planHash: string;
   approvalId: string | null;
 }
 
-type NpAgentChangeSetRollbackInputV1 =
+type NpAgentChangeSetRollbackCapabilityInputV1 =
   | {
       mode: "prepare";
       changeSetId: string;
@@ -1350,6 +1351,74 @@ never enter `ops.execute`. `security.limitActor` never accepts a
 caller-created bucket/key: `incident-subject` resolves the current normalized
 incident subject, and `principal` is resolved server-side to the enforcement
 key.
+
+### Installed R4 execution projection
+
+The installed `changeset.apply`, `changeset.schedule` and `changeset.rollback`
+inputs above are descriptor-derived Gateway contracts. Their `CapabilityInput`
+names distinguish them from the existing Admin commands, which retain their
+schema versions, draft/row CAS, statement hash and body idempotency fields.
+Gateway idempotency remains in `arguments.idempotencyKey` (up to 256 characters);
+internal execution and run-admission keys are derived without truncating it.
+Current locked rows and signed approvals supply the internal CAS and statement
+facts. No transport can submit an alternate site, policy or execution body.
+
+The original five installed ChangeSet output contracts remain unchanged. These
+three execution capabilities return one exact client-safe output, nested in the
+existing `np.agent-changeset-invocation-result.v1` envelope:
+
+```ts
+type NpAgentChangeSetExecutionOutputV1 = {
+  schemaVersion: "np.agent-changeset-execution-result.v1";
+  changeSet: NpAgentChangeSetWire;
+  runId: string;
+} & (
+  | { state: "completed" }
+  | {
+      state: "accepted";
+      statusResource: string;
+      pollAfterMs: number;
+    }
+  | {
+      state: "approval_required";
+      actionId: string;
+      approvalId: string;
+      proposalHash: string;
+      approvalResource: string;
+      expiresAt: string;
+    }
+);
+```
+
+Every `runId` and approval-required `actionId` refers to an actual persisted
+Gateway record, including inline rollback preparation. No Agent, Runtime or
+provider identity is manufactured. `statusResource` is exactly
+`/api/agent/v1/runs/{runId}`; `approvalResource` is the existing authenticated
+`/admin/agents/approvals/{approvalId}` page. They are relative current-site
+references, not unimplemented MCP resources. `pollAfterMs` reuses the shared
+1,000–10,000 millisecond task bounds and 2,000 millisecond default. Approval id
+and proposal hash must match the projected ChangeSet or rollback target.
+`changeSet.rollback` already exposes the bounded rollback plan id, hash and
+state; no parallel rollback detail or private snapshot body is added.
+
+Apply and schedule retain the sensitive/human execution floor. Their null-approval
+request phase resolves the declared `domain.read` bookkeeping profile at `propose`;
+the approved phase resolves the named mutation profile at `approved-execute`.
+Both exact input branches derive risk, approval, effect profile and minimum exposure
+metadata from `npAgentChangeSetExecutionPhasePoliciesV1`, which reuses the frozen
+rollback bookkeeping policy. Discovery cannot admit a mutation below `approved-execute`. Rollback preparation
+and approval requests resolve `domain.read`; `execute_approved` resolves
+`changeset.rollback-execute` and raises the immutable sensitive/human floor.
+The exact rollback input `oneOf` branches expose their risk, approval, effect
+profile and minimum exposure through `x-nexpress-*` annotations derived from
+`npAgentChangeSetRollbackModePoliciesV1`, the same frozen mode policy used by
+admission. The base read/none descriptor cannot hide the execute branch floor.
+All three mutation profiles reuse `changeset.verify`, with no generic
+compensator; rollback itself requires a separately approved exact plan.
+Gateway execution binds the complete installed descriptor-derived definition,
+while existing staff-only host bindings remain compatible. Descriptor and
+OpenAPI fingerprints change for this installed inventory extension; unrelated
+read and proposal descriptors remain unchanged.
 
 ### 5.3 ChangeSet resource-derived scopes
 

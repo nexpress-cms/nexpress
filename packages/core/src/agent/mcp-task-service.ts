@@ -38,12 +38,26 @@ const EXPIRED_RESULT = Object.freeze({
   error: { code: -32800, message: "Task lifetime expired" },
 } as const satisfies NpAgentMcpStoredTerminalResultV1);
 
+export interface NpAgentMcpTaskRequestV1 {
+  requestedTtlMs: number | null;
+}
+
 export interface NpAgentMcpTaskServiceOptionsV1 {
   admission: NpAgentCapabilityAdmissionServiceV1;
   cursorKey: { id: string; key: Uint8Array };
   now?: () => Date;
   maximumTtlMs?: number;
   pollIntervalMs?: number;
+  /** Domain cancellation shares current authority and the task transaction. */
+  refreshInvocation?: (input: { siteId: string; invocationId: string }) => Promise<void>;
+  cancelInTransaction?: (input: {
+    db: Db;
+    authentication: NpAgentCapabilityAuthenticationV1;
+    siteId: string;
+    invocationId: string;
+    runId: string | null;
+    taskId: string;
+  }) => Promise<boolean>;
   /**
    * Idempotently request cancellation of the underlying admitted work. This
    * hook runs outside database transactions and must be safe to retry by task id.
@@ -300,134 +314,189 @@ export function createAgentMcpTaskServiceV1(options: NpAgentMcpTaskServiceOption
     return row;
   }
 
+  async function refreshVisible(
+    authentication: NpAgentCapabilityAuthenticationV1,
+    taskId: string,
+  ): Promise<void> {
+    if (!options.refreshInvocation) return;
+    const row = await findVisible(getDb(), authentication, taskId, nowFn());
+    if (row.status !== "working") return;
+    await options.refreshInvocation({ siteId: row.siteId, invocationId: row.invocationId });
+    await live(authentication);
+  }
+
+  async function admitInTransaction<T extends { invocationId: string }>(
+    tx: Db,
+    input: {
+      authentication: NpAgentCapabilityAuthenticationV1;
+      taskRequest: NpAgentMcpTaskRequestV1;
+      admit: () => Promise<T>;
+    },
+  ): Promise<{ value: T; task: NpAgentMcpTaskV1 }> {
+    const now = nowFn();
+    const requested =
+      input.taskRequest.requestedTtlMs === null
+        ? npAgentMcpTaskLimitsV1.ttlDefaultMs
+        : npRequireAgentMcpTaskTtlV1(input.taskRequest.requestedTtlMs);
+    const ttlMs = Math.min(requested, maximumTtlMs);
+    const taskId = npCreateAgentMcpTaskIdV1(now);
+    await consumeOperation(tx, input.authentication, now, "create");
+    await lockCounter(tx, `agent-mcp-task-site:${input.authentication.principal.siteId}`);
+    await lockCounter(
+      tx,
+      `agent-mcp-task-auth:${input.authentication.authorizationContextFingerprint}`,
+    );
+    await expireWorkingTasks(tx, now, input.authentication.principal.siteId);
+    const [[siteCount], [authorizationCount]] = await Promise.all([
+      tx
+        .select({
+          count: sql<number>`count(*)::int`,
+          earliestExpiry: sql<Date | null>`min(${npAgentMcpTasks.expiresAt})`,
+        })
+        .from(npAgentMcpTasks)
+        .where(
+          and(
+            eq(npAgentMcpTasks.siteId, input.authentication.principal.siteId),
+            eq(npAgentMcpTasks.status, "working"),
+          ),
+        ),
+      tx
+        .select({
+          count: sql<number>`count(*)::int`,
+          earliestExpiry: sql<Date | null>`min(${npAgentMcpTasks.expiresAt})`,
+        })
+        .from(npAgentMcpTasks)
+        .where(
+          and(
+            eq(npAgentMcpTasks.siteId, input.authentication.principal.siteId),
+            eq(npAgentMcpTasks.principalId, input.authentication.principal.id),
+            eq(
+              npAgentMcpTasks.authorizationContextFingerprint,
+              input.authentication.authorizationContextFingerprint,
+            ),
+            eq(npAgentMcpTasks.status, "working"),
+          ),
+        ),
+    ]);
+    if (
+      (siteCount?.count ?? 0) >= npAgentMcpTaskLimitsV1.activePerSite ||
+      (authorizationCount?.count ?? 0) >= npAgentMcpTaskLimitsV1.activePerAuthorizationContext
+    ) {
+      const deadlines = [
+        (siteCount?.count ?? 0) >= npAgentMcpTaskLimitsV1.activePerSite
+          ? siteCount?.earliestExpiry
+          : null,
+        (authorizationCount?.count ?? 0) >= npAgentMcpTaskLimitsV1.activePerAuthorizationContext
+          ? authorizationCount?.earliestExpiry
+          : null,
+      ].filter((value): value is Date => value instanceof Date);
+      // Admission resumes only after every violated ceiling has a free slot.
+      const deadline = deadlines.sort((left, right) => right.getTime() - left.getTime())[0];
+      throw new NpAgentMcpGatewayProtocolErrorV1(-32000, "Request rejected", {
+        code: "RATE_LIMITED",
+        retryAfterSeconds: retryAfterSeconds(deadline, now),
+      });
+    }
+    const value = await input.admit();
+    const [invocation] = await tx
+      .select()
+      .from(npAgentInvocations)
+      .where(
+        and(
+          eq(npAgentInvocations.siteId, input.authentication.principal.siteId),
+          eq(npAgentInvocations.id, value.invocationId),
+          eq(npAgentInvocations.principalId, input.authentication.principal.id),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (
+      !invocation ||
+      invocation.operationKind !== "capability" ||
+      !["mcp-oauth", "mcp-service", "stdio"].includes(invocation.transport) ||
+      invocation.mcpExecutionMode !== "task" ||
+      invocation.mcpRequestedTaskTtlMs !== requested ||
+      invocation.authorizationContextFingerprint !==
+        input.authentication.authorizationContextFingerprint ||
+      serializeAgentCanonicalJson(invocation.authorizationContextBody) !==
+        serializeAgentCanonicalJson(input.authentication.authorizationContext) ||
+      serializeAgentCanonicalJson(invocation.authorityRef) !==
+        serializeAgentCanonicalJson(input.authentication.authorizationContext.authorityRef)
+    ) {
+      return invalidParams();
+    }
+    const expiresAt = new Date(now.getTime() + ttlMs);
+    const [row] = await tx
+      .insert(npAgentMcpTasks)
+      .values({
+        id: taskId,
+        siteId: invocation.siteId,
+        invocationId: invocation.id,
+        runId: invocation.runId,
+        principalId: input.authentication.principal.id,
+        authorizationContextBody: input.authentication.authorizationContext,
+        authorizationContextFingerprint: input.authentication.authorizationContextFingerprint,
+        authorityRef: input.authentication.authorizationContext.authorityRef,
+        status: "working",
+        requestedTtlMs: input.taskRequest.requestedTtlMs,
+        ttlMs,
+        pollIntervalMs,
+        createdAt: now,
+        lastUpdatedAt: now,
+        expiresAt,
+      })
+      .returning();
+    if (!row) throw new Error("Failed to persist Agent MCP task.");
+    return { value, task: taskProjection(row) };
+  }
+
   return Object.freeze({
+    admitInTransaction,
+    async replayInTransaction(
+      tx: Db,
+      input: {
+        authentication: NpAgentCapabilityAuthenticationV1;
+        invocationId: string;
+        taskRequest: NpAgentMcpTaskRequestV1;
+      },
+    ): Promise<NpAgentMcpTaskV1> {
+      await consumeOperation(tx, input.authentication, nowFn(), "create");
+      const [row] = await tx
+        .select()
+        .from(npAgentMcpTasks)
+        .where(
+          and(
+            visibleWhere(input.authentication, nowFn()),
+            eq(npAgentMcpTasks.invocationId, input.invocationId),
+          ),
+        )
+        .limit(1);
+      if (!row) return invalidParams();
+      if (row.requestedTtlMs !== input.taskRequest.requestedTtlMs) {
+        throw new NpAgentMcpGatewayProtocolErrorV1(-32000, "Request rejected", {
+          code: "CONFLICT",
+        });
+      }
+      return taskProjection(row);
+    },
     async create(input: {
       authentication: NpAgentCapabilityAuthenticationV1;
       invocationId: string;
       requestedTtlMs: number | null;
     }): Promise<NpAgentMcpTaskV1> {
       await live(input.authentication);
-      const now = nowFn();
-      await consume(input.authentication, now, "create");
-      const requested =
-        input.requestedTtlMs === null
-          ? npAgentMcpTaskLimitsV1.ttlDefaultMs
-          : npRequireAgentMcpTaskTtlV1(input.requestedTtlMs);
-      const ttlMs = Math.min(requested, maximumTtlMs);
-      const taskId = npCreateAgentMcpTaskIdV1(now);
-      return getDb().transaction(
-        async (rawTx) => {
-          const tx = rawTx as Db;
-          await lockCounter(tx, `agent-mcp-task-site:${input.authentication.principal.siteId}`);
-          await lockCounter(
-            tx,
-            `agent-mcp-task-auth:${input.authentication.authorizationContextFingerprint}`,
-          );
-          await expireWorkingTasks(tx, now, input.authentication.principal.siteId);
-          const [invocation] = await tx
-            .select()
-            .from(npAgentInvocations)
-            .where(
-              and(
-                eq(npAgentInvocations.siteId, input.authentication.principal.siteId),
-                eq(npAgentInvocations.id, input.invocationId),
-                eq(npAgentInvocations.principalId, input.authentication.principal.id),
-              ),
-            )
-            .for("update")
-            .limit(1);
-          if (
-            !invocation ||
-            invocation.operationKind !== "capability" ||
-            !["mcp-oauth", "mcp-service"].includes(invocation.transport) ||
-            invocation.mcpExecutionMode !== "task" ||
-            invocation.mcpRequestedTaskTtlMs !== requested ||
-            invocation.authorizationContextFingerprint !==
-              input.authentication.authorizationContextFingerprint ||
-            serializeAgentCanonicalJson(invocation.authorizationContextBody) !==
-              serializeAgentCanonicalJson(input.authentication.authorizationContext) ||
-            serializeAgentCanonicalJson(invocation.authorityRef) !==
-              serializeAgentCanonicalJson(input.authentication.authorizationContext.authorityRef)
-          ) {
-            return invalidParams();
-          }
-          const [[siteCount], [authorizationCount]] = await Promise.all([
-            tx
-              .select({
-                count: sql<number>`count(*)::int`,
-                earliestExpiry: sql<Date | null>`min(${npAgentMcpTasks.expiresAt})`,
-              })
-              .from(npAgentMcpTasks)
-              .where(
-                and(
-                  eq(npAgentMcpTasks.siteId, invocation.siteId),
-                  eq(npAgentMcpTasks.status, "working"),
-                ),
-              ),
-            tx
-              .select({
-                count: sql<number>`count(*)::int`,
-                earliestExpiry: sql<Date | null>`min(${npAgentMcpTasks.expiresAt})`,
-              })
-              .from(npAgentMcpTasks)
-              .where(
-                and(
-                  eq(npAgentMcpTasks.siteId, invocation.siteId),
-                  eq(npAgentMcpTasks.principalId, input.authentication.principal.id),
-                  eq(
-                    npAgentMcpTasks.authorizationContextFingerprint,
-                    invocation.authorizationContextFingerprint,
-                  ),
-                  eq(npAgentMcpTasks.status, "working"),
-                ),
-              ),
-          ]);
-          if (
-            (siteCount?.count ?? 0) >= npAgentMcpTaskLimitsV1.activePerSite ||
-            (authorizationCount?.count ?? 0) >= npAgentMcpTaskLimitsV1.activePerAuthorizationContext
-          ) {
-            const deadlines = [
-              (siteCount?.count ?? 0) >= npAgentMcpTaskLimitsV1.activePerSite
-                ? siteCount?.earliestExpiry
-                : null,
-              (authorizationCount?.count ?? 0) >=
-              npAgentMcpTaskLimitsV1.activePerAuthorizationContext
-                ? authorizationCount?.earliestExpiry
-                : null,
-            ].filter((value): value is Date => value instanceof Date);
-            // Admission resumes only after every violated ceiling has a free slot.
-            const deadline = deadlines.sort((left, right) => right.getTime() - left.getTime())[0];
-            throw new NpAgentMcpGatewayProtocolErrorV1(-32000, "Request rejected", {
-              code: "RATE_LIMITED",
-              retryAfterSeconds: retryAfterSeconds(deadline, now),
-            });
-          }
-          const expiresAt = new Date(now.getTime() + ttlMs);
-          const [row] = await tx
-            .insert(npAgentMcpTasks)
-            .values({
-              id: taskId,
-              siteId: invocation.siteId,
-              invocationId: invocation.id,
-              runId: invocation.runId,
-              principalId: input.authentication.principal.id,
-              authorizationContextBody: input.authentication.authorizationContext,
-              authorizationContextFingerprint: input.authentication.authorizationContextFingerprint,
-              authorityRef: input.authentication.authorizationContext.authorityRef,
-              status: "working",
-              requestedTtlMs: input.requestedTtlMs,
-              ttlMs,
-              pollIntervalMs,
-              createdAt: now,
-              lastUpdatedAt: now,
-              expiresAt,
-            })
-            .returning();
-          if (!row) throw new Error("Failed to persist Agent MCP task.");
-          return taskProjection(row);
-        },
-        { isolationLevel: "serializable" },
-      );
+      const admitted = await options.admission.withCurrentAuthority({
+        authentication: input.authentication,
+        requiredScopes: input.authentication.scopes,
+        minimumExposure: "read",
+        mutate: (tx) =>
+          admitInTransaction(tx, {
+            authentication: input.authentication,
+            taskRequest: { requestedTtlMs: input.requestedTtlMs },
+            admit: () => Promise.resolve({ invocationId: input.invocationId }),
+          }),
+      });
+      return admitted.task;
     },
 
     async terminalize(input: {
@@ -480,8 +549,9 @@ export function createAgentMcpTaskServiceV1(options: NpAgentMcpTaskServiceOption
 
     async get(authentication: NpAgentCapabilityAuthenticationV1, taskId: string) {
       await live(authentication);
+      await consume(authentication, nowFn(), "get");
+      await refreshVisible(authentication, taskId);
       const now = nowFn();
-      await consume(authentication, now, "get");
       return getDb().transaction(async (rawTx) => {
         const tx = rawTx as Db;
         const row = await findVisible(tx, authentication, taskId, now);
@@ -528,8 +598,9 @@ export function createAgentMcpTaskServiceV1(options: NpAgentMcpTaskServiceOption
 
     async result(authentication: NpAgentCapabilityAuthenticationV1, taskId: string) {
       await live(authentication);
+      await consume(authentication, nowFn(), "result");
+      await refreshVisible(authentication, taskId);
       const now = nowFn();
-      await consume(authentication, now, "result");
       return getDb().transaction(async (rawTx) => {
         const tx = rawTx as Db;
         const row = await findVisible(tx, authentication, taskId, now);
@@ -567,29 +638,75 @@ export function createAgentMcpTaskServiceV1(options: NpAgentMcpTaskServiceOption
       await consume(authentication, now, "cancel");
       const result = npRequireAgentMcpStoredTerminalResult(CANCELLED_RESULT);
       const terminalResultDigest = await npDigestAgentMcpTaskResultCanonical(result);
-      const candidate = await getDb().transaction(async (rawTx) => {
-        const tx = rawTx as Db;
-        const row = await findVisible(tx, authentication, taskId, now);
-        if (row.status !== "working") return invalidParams();
-        return row;
-      });
+      if (options.cancelInTransaction) {
+        return options.admission.withCurrentAuthority({
+          authentication,
+          requiredScopes: authentication.scopes,
+          minimumExposure: "approved-execute",
+          mutate: async (tx) => {
+            const row = await findVisible(tx, authentication, taskId, nowFn());
+            if (row.status !== "working") return invalidParams();
+            if (
+              !(await options.cancelInTransaction!({
+                db: tx,
+                authentication,
+                siteId: row.siteId,
+                invocationId: row.invocationId,
+                runId: row.runId,
+                taskId: row.id,
+              }))
+            ) {
+              throw new NpAgentMcpGatewayProtocolErrorV1(-32000, "Request rejected", {
+                code: "CONFLICT",
+              });
+            }
+            const at = nowFn();
+            const [cancelled] = await tx
+              .update(npAgentMcpTasks)
+              .set({
+                status: "cancelled",
+                terminalResult: result,
+                terminalResultDigest,
+                safeStatusCode: "REQUEST_CANCELLED",
+                lastUpdatedAt: at,
+                cancelledAt: at,
+              })
+              .where(
+                and(
+                  eq(npAgentMcpTasks.id, row.id),
+                  eq(npAgentMcpTasks.status, "working"),
+                  gt(npAgentMcpTasks.expiresAt, at),
+                ),
+              )
+              .returning();
+            if (!cancelled) return invalidParams();
+            return taskProjection(cancelled);
+          },
+        });
+      }
+      const candidate = await getDb().transaction((tx) =>
+        findVisible(tx, authentication, taskId, nowFn()),
+      );
+      if (candidate.status !== "working") return invalidParams();
       if (
-        options.cancelUnderlying &&
+        !options.cancelUnderlying ||
         !(await options.cancelUnderlying({
           siteId: candidate.siteId,
           invocationId: candidate.invocationId,
           runId: candidate.runId,
           taskId: candidate.id,
         }))
-      ) {
+      )
         throw new NpAgentMcpGatewayProtocolErrorV1(-32000, "Request rejected", {
           code: "CONFLICT",
         });
-      }
-      return getDb().transaction(
-        async (rawTx) => {
-          const tx = rawTx as Db;
-          const row = await findVisible(tx, authentication, taskId, now, true);
+      return options.admission.withCurrentAuthority({
+        authentication,
+        requiredScopes: authentication.scopes,
+        minimumExposure: "approved-execute",
+        mutate: async (tx) => {
+          const at = nowFn();
+          const row = await findVisible(tx, authentication, taskId, at, true);
           if (row.status !== "working") return invalidParams();
           const [cancelled] = await tx
             .update(npAgentMcpTasks)
@@ -598,16 +715,15 @@ export function createAgentMcpTaskServiceV1(options: NpAgentMcpTaskServiceOption
               terminalResult: result,
               terminalResultDigest,
               safeStatusCode: "REQUEST_CANCELLED",
-              lastUpdatedAt: now,
-              cancelledAt: now,
+              lastUpdatedAt: at,
+              cancelledAt: at,
             })
             .where(and(eq(npAgentMcpTasks.id, row.id), eq(npAgentMcpTasks.status, "working")))
             .returning();
           if (!cancelled) return invalidParams();
           return taskProjection(cancelled);
         },
-        { isolationLevel: "serializable" },
-      );
+      });
     },
   });
 }
