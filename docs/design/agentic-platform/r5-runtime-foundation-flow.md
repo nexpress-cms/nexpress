@@ -187,6 +187,9 @@ authoritative.
   existing same-site call/reservation/run tuple remains authoritative; applied
   migration SQL is unchanged. Focused fixture type checking also exposed and
   resolved the existing request/body type mismatches without suppressions.
+- CI also caught dotenv startup banners in the reference CLI JSON output. The
+  reference environment loader now uses the same `quiet: true` options as the
+  shared scaffold loader; the existing strict script smoke covers the boundary.
 - Packed verification now distinguishes a migration-only scaffold with no site
   from a temporary ordinary site with disabled runtime settings. The existing CI
   foundation check exercises absent actor/site and safe default CLI results,
@@ -249,6 +252,5 @@ existing-site result, without seeding Agent authority.
 
 All 46 previously tracked migration SQL files are byte-for-byte unchanged.
 Only the new generated 0046/0047 chain and snapshots extend the schema. The final
-review found no remaining implementation-scope issue. No package version,
-changeset, commit, PR or merge is part of this work; the remaining R5 boundary is
+review found no remaining implementation-scope issue. No package version or changeset is included; the remaining R5 boundary is
 listed above.

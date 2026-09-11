@@ -18,5 +18,5 @@ import { config as loadEnv } from "dotenv";
  * `apps/web/.env` is the secondary, gap-filling source.
  */
 const projectRoot = process.cwd();
-loadEnv({ path: resolve(projectRoot, "../../.env") });
-loadEnv({ path: resolve(projectRoot, ".env"), override: false });
+loadEnv({ path: resolve(projectRoot, "../../.env"), quiet: true });
+loadEnv({ path: resolve(projectRoot, ".env"), override: false, quiet: true });
