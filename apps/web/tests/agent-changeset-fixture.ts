@@ -1,10 +1,11 @@
+import type { NpAgentMcpTaskServiceV1 } from "../../../packages/core/src/agent/mcp-task-service.js";
+import type { NpAgentCapabilityAdmissionServiceV1 } from "../../../packages/core/src/agent/capability-admission.js";
 import type { NpAgentScope } from "../../../packages/core/src/agent-contract/types.js";
 import type { NpAgentPreviewArtifactStorageAdapterV1 } from "../../../packages/core/src/agent/preview-artifact-contract.js";
 import {
   createAgentChangeSetCapabilityFacadeV1,
   type NpAgentChangeSetCapabilityFacadeV1,
 } from "../../../packages/core/src/agent/changeset-capability.js";
-/* eslint-disable import-x/no-relative-packages */
 import { createHash, randomUUID } from "node:crypto";
 import { createSite, grantSiteMembership, npSessions, npUsers } from "@nexpress/core";
 import { eq } from "drizzle-orm";
@@ -82,13 +83,13 @@ export async function fixture(options: Partial<NpAgentChangeSetServiceOptionsV1>
     siteId,
     actor: {
       user: {
-        id: user!.id,
-        email: user!.email,
-        name: user!.name,
-        role: user!.role,
-        tokenVersion: user!.tokenVersion,
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        tokenVersion: user.tokenVersion,
       },
-      sessionId: session!.id,
+      sessionId: session.id,
     },
   };
   return {
@@ -101,17 +102,33 @@ export async function fixture(options: Partial<NpAgentChangeSetServiceOptionsV1>
     }),
   };
 }
+export interface PrincipalFixtureControl {
+  transport?: "stdio" | "mcp-http" | "agent-http";
+  tasks?: (input: {
+    admission: NpAgentCapabilityAdmissionServiceV1;
+    now: () => Date;
+    getService: () => ReturnType<typeof createAgentChangeSetServiceV1>;
+  }) => NpAgentMcpTaskServiceV1;
+}
 export async function principalFixture(
   f: Awaited<ReturnType<typeof fixture>>,
   writeOnly = false,
   options: Partial<NpAgentChangeSetServiceOptionsV1> = {},
   extraScopes: NpAgentScope[] = [],
   exposure: "propose" | "approved-execute" = "propose",
+  control: PrincipalFixtureControl = {},
 ) {
-  const gatewaySettings = { ...settings, stdio: exposure };
+  const transport = control.transport ?? "stdio";
+  const gatewaySettings = {
+    ...settings,
+    stdio: exposure,
+    ...(transport === "mcp-http" ? { mcpHttp: exposure } : {}),
+    ...(transport === "agent-http" ? { agentHttp: exposure } : {}),
+  };
   const gateway = createAgentGatewayServiceV1({
     tokenHashKeyring: { active: { id: "draft-key", key: new Uint8Array(32).fill(25) } },
     environment: "production",
+    resolveCanonicalSiteOrigin: () => "https://site.example",
     deploymentGatewaySettings: gatewaySettings,
     resolveSiteGatewaySettings: () => gatewaySettings,
     reauthentication: { verify: () => true },
@@ -142,7 +159,7 @@ export async function principalFixture(
       expectedVersion: 1,
       name: "Draft token",
       scopes: [...scopes],
-      transport: "stdio",
+      transport,
       exposure,
       expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
     },
@@ -150,8 +167,13 @@ export async function principalFixture(
   const authentication = await gateway.authenticateServiceToken({
     siteId,
     credential: token.oneTimeValue,
-    transport: "stdio",
-    audience: "urn:nexpress:agent-gateway:stdio",
+    transport,
+    audience:
+      transport === "stdio"
+        ? "urn:nexpress:agent-gateway:stdio"
+        : transport === "mcp-http"
+          ? "https://site.example/api/mcp"
+          : "https://site.example/api/agent/v1",
   });
   const executors = createAgentCoreReadCapabilityExecutorsV1({
     cursorHmacKey: { id: "draft-read-key", key: new Uint8Array(32).fill(26) },
@@ -163,17 +185,25 @@ export async function principalFixture(
   const admission = createAgentCapabilityAdmissionServiceV1({
     registry,
     resolveChangeSetCapabilities: () => facade,
+    now: options.now,
     resolveGatewaySettings: () => gatewaySettings,
   });
-  const service = createAgentChangeSetServiceV1({
+  const tasks = control.tasks?.({
+    admission,
+    now: options.now ?? (() => new Date()),
+    getService: () => service,
+  });
+  const service: ReturnType<typeof createAgentChangeSetServiceV1> = createAgentChangeSetServiceV1({
     cursorKey: new Uint8Array(32).fill(44),
     admission,
     gateway,
     reauthentication: { verify: () => true },
     ...options,
+    ...(tasks ? { tasks } : {}),
   });
   facade = createAgentChangeSetCapabilityFacadeV1(service);
   return {
+    tasks,
     gatewaySettings,
     gateway,
     principal,
@@ -221,7 +251,8 @@ export async function oauthFixture(f: Awaited<ReturnType<typeof fixture>>) {
       transports: ["mcp-http"],
     },
   });
-  const clientId = String(registered.output.clientId);
+  const clientId = registered.output.clientId;
+  if (typeof clientId !== "string") throw new Error("Expected client id");
   const scopes = [
     "changeset:read",
     "changeset:write",
@@ -314,7 +345,7 @@ export function previewConfiguration(): NonNullable<NpAgentChangeSetServiceOptio
       responseHeaderBuilderVersion: 1,
       cspBuilderVersion: 1,
     },
-    resolveRoutes: async () => [{ route: "/", locale: null, audience: "public" }],
+    resolveRoutes: () => Promise.resolve([{ route: "/", locale: null, audience: "public" }]),
   };
 }
 export async function readyPreview(f: {
@@ -352,26 +383,30 @@ export function previewStorageFixture() {
     id: "review-store",
     contractVersion: 1,
     fingerprint: `cj1:sha256:${"a".repeat(43)}`,
-    async put({ request, bytes }) {
+    put({ request, bytes }) {
       objects.set(request.storageKey, Uint8Array.from(bytes));
-      return { operationRef: "test-operation" };
+      return Promise.resolve({ operationRef: "test-operation" });
     },
-    async resolveOperation() {
-      return { status: "committed", resolvedAt: new Date().toISOString(), safeCode: null };
+    resolveOperation() {
+      return Promise.resolve({
+        status: "committed",
+        resolvedAt: new Date().toISOString(),
+        safeCode: null,
+      });
     },
-    async stat({ storageKey }) {
+    stat({ storageKey }) {
       const b = objects.get(storageKey);
-      return b
-        ? { state: "present", mime: "application/json", bytes: b.length }
-        : { state: "absent" };
+      return Promise.resolve(
+        b ? { state: "present", mime: "application/json", bytes: b.length } : { state: "absent" },
+      );
     },
-    async read({ storageKey }) {
+    read({ storageKey }) {
       const b = objects.get(storageKey);
-      if (!b) throw new Error("missing");
-      return { bytes: Uint8Array.from(b), mime: "application/json" };
+      if (!b) return Promise.reject(new Error("missing"));
+      return Promise.resolve({ bytes: Uint8Array.from(b), mime: "application/json" });
     },
-    async delete({ storageKey }) {
-      return { status: objects.delete(storageKey) ? "deleted" : "already_absent" };
+    delete({ storageKey }) {
+      return Promise.resolve({ status: objects.delete(storageKey) ? "deleted" : "already_absent" });
     },
   };
   return { adapter, objects };

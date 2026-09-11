@@ -2141,4 +2141,12 @@ The private preview checker now implements the sole bounded HEAD exception descr
 
 ## R4 approval implementation
 
-The current approval-only implementation is described in [R4 approval flow](r4-approval-flow.md). It reuses existing sealed ChangeSets, generic Admin decision routes, canonical integrity evidence and explicit bounded maintenance. Execution, scheduling, cancellation and rollback remain later R4 slices.
+The [R4 approval implementation](r4-approval-flow.md) reuses existing sealed
+ChangeSets, generic Admin decision routes, canonical integrity evidence and
+explicit bounded maintenance. The subsequent [execution](r4-execution-flow.md)
+and [rollback](r4-rollback-flow.md) slices add execution, scheduling, cancellation
+and compensation under current authority and fresh approval.
+[R4 Gateway execution](r4-gateway-execution-flow.md) connects AP-406 Agent
+HTTP/MCP capabilities to those same services and admission boundaries. Current
+AP-406 results are recorded in the Gateway flow, including the passing final 66-case execution PostgreSQL run and
+40-package/56-stage packed scaffold refresh. The R4 section 18 acceptance gate passed.

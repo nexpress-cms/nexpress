@@ -11,7 +11,17 @@ import {
   npAgentRuns,
   npAgentActions,
   npAgentInvocations,
+  npAgentChangesetExecutions,
 } from "../db/schema/agent.js";
+import {
+  npRequireAgentChangeSetApplyCapabilityInputV1,
+  npRequireAgentChangeSetScheduleCapabilityInputV1,
+  npRequireAgentChangeSetRollbackCapabilityInputV1,
+} from "../agent-contract/installed-capability-contract.js";
+import { npDigestAgentActionCanonical } from "../agent-contract/canonical-action.js";
+import { npDigestAgentInvocationRequestCanonical } from "../agent-contract/canonical-idempotency-request.js";
+import { npAgentChangeSetActionTargetsV1 } from "./changeset-resources.js";
+import type { NpAgentChangeSetActorV1, NpAgentChangeSetServiceV1 } from "./changeset-service.js";
 import { getCollectionConfig, findDocuments } from "../collections/index.js";
 import { npAgentScopeStaffCapability, type NpAgentScope } from "../agent-contract/types.js";
 import {
@@ -31,11 +41,11 @@ import {
   NpAgentGatewayError,
   type NpAgentAdminActorV1,
 } from "./admin-admission.js";
-import {
-  npProjectAgentPrincipalV1,
-  type NpAgentAuthenticatedServicePrincipalV1,
-} from "./gateway-service.js";
-import type { NpAgentCapabilityAdmissionServiceV1 } from "./capability-admission.js";
+import { npProjectAgentPrincipalV1 } from "./gateway-service.js";
+import type {
+  NpAgentCapabilityAdmissionServiceV1,
+  NpAgentCapabilityAuthenticationV1,
+} from "./capability-admission.js";
 import type { NpAuthUser } from "../config/types.js";
 import type { NpCapability } from "../auth/capabilities.js";
 
@@ -52,10 +62,14 @@ interface Staff {
 interface Visibility {
   user: NpAuthUser;
   capabilities: readonly NpCapability[];
+  actor: NpAgentChangeSetActorV1;
 }
 export interface NpAgentActivityServiceOptionsV1 {
   cursorHmacKey: Uint8Array;
   admission?: NpAgentCapabilityAdmissionServiceV1;
+  /** Explicit current-item authorization through the existing ChangeSet service. */
+  changesets?: Pick<NpAgentChangeSetServiceV1, "get"> &
+    Partial<Pick<NpAgentChangeSetServiceV1, "refreshGatewayInvocation">>;
   now?: () => Date;
 }
 const missing = () =>
@@ -84,6 +98,7 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     return {
       auth,
       visibility: {
+        actor: { kind: "staff", siteId: input.siteId, actor: input.actor },
         user: {
           ...input.actor.user,
           role:
@@ -134,6 +149,8 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       )
     )
       return false;
+    if (["changeset.apply", "changeset.schedule", "changeset.rollback"].includes(row.capabilityId))
+      return changeSetActionVisible(row, visibility);
     // Read capabilities historically have no targetRefs. Their exact selector still gates visibility.
     if (
       row.capabilityId === "content.query" ||
@@ -161,6 +178,109 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       }
     }
     return true;
+  }
+  async function changeSetActionVisible(row: Action, visibility: Visibility): Promise<boolean> {
+    if (!options.changesets || !row.invocationId || !row.runId) return false;
+    try {
+      const input =
+        row.capabilityId === "changeset.apply"
+          ? npRequireAgentChangeSetApplyCapabilityInputV1(row.inputCanonical)
+          : row.capabilityId === "changeset.schedule"
+            ? npRequireAgentChangeSetScheduleCapabilityInputV1(row.inputCanonical)
+            : npRequireAgentChangeSetRollbackCapabilityInputV1(row.inputCanonical);
+      const [inv] = await getDb()
+        .select()
+        .from(npAgentInvocations)
+        .where(
+          and(
+            eq(npAgentInvocations.siteId, row.siteId),
+            eq(npAgentInvocations.id, row.invocationId),
+          ),
+        )
+        .limit(1);
+      const [run] = await getDb()
+        .select()
+        .from(npAgentRuns)
+        .where(and(eq(npAgentRuns.siteId, row.siteId), eq(npAgentRuns.id, row.runId)))
+        .limit(1);
+      if (
+        !inv ||
+        !run ||
+        inv.operationKind !== "capability" ||
+        inv.operationId !== row.capabilityId ||
+        inv.resultId !== input.changeSetId ||
+        inv.runId !== run.id ||
+        run.invocationId !== inv.id ||
+        run.principalId !== inv.principalId ||
+        row.invocationFingerprint !== inv.requestHash ||
+        row.runFingerprint !== run.admissionFingerprint
+      )
+        return false;
+      const hash = await npDigestAgentActionCanonical({
+        schemaVersion: "np.agent-action.v1",
+        siteId: row.siteId,
+        actionId: row.id,
+        invocationFingerprint: row.invocationFingerprint,
+        runFingerprint: row.runFingerprint,
+        sequence: row.sequence,
+        capabilityId: row.capabilityId,
+        capabilityContractVersion: row.capabilityContractVersion,
+        capabilityFingerprint: row.capabilityFingerprint,
+        effectProfile: { id: row.effectProfileId, contractVersion: row.effectContractVersion },
+        risk: row.risk,
+        requiredScopes: row.requiredScopes,
+        targetRefs: row.targetRefs,
+        targetVersionFacts: row.targetVersionFacts,
+        input: row.inputCanonical,
+      });
+      if (
+        hash !== row.inputHash ||
+        (await npDigestAgentInvocationRequestCanonical(inv.requestBody)) !== inv.requestHash ||
+        serializeAgentCanonicalJson(inv.requestBody.input) !==
+          serializeAgentCanonicalJson(row.inputCanonical) ||
+        serializeAgentCanonicalJson(inv.capabilityDefinitionBody) !==
+          serializeAgentCanonicalJson(row.capabilityDefinitionBody)
+      )
+        return false;
+      const executions = await getDb()
+        .select()
+        .from(npAgentChangesetExecutions)
+        .where(
+          and(
+            eq(npAgentChangesetExecutions.siteId, row.siteId),
+            eq(npAgentChangesetExecutions.invocationId, inv.id),
+          ),
+        )
+        .limit(2);
+      if (
+        executions.length > 1 ||
+        executions.some(
+          (execution) =>
+            execution.changesetId !== input.changeSetId ||
+            execution.purpose !==
+              (row.capabilityId === "changeset.rollback" ? "rollback" : "apply") ||
+            ("planHash" in input && execution.planHash !== input.planHash) ||
+            ("approvalId" in input && execution.approvalId !== input.approvalId) ||
+            ("rollbackPlanId" in input && execution.rollbackPlanId !== input.rollbackPlanId),
+        )
+      )
+        return false;
+      const changeSet = await options.changesets.get({
+        actor: visibility.actor,
+        id: input.changeSetId,
+      });
+      return (
+        changeSet.id === input.changeSetId &&
+        changeSet.siteId === row.siteId &&
+        serializeAgentCanonicalJson(
+          npAgentChangeSetActionTargetsV1(
+            changeSet.operations.map((operation) => operation.canonicalResourceKey),
+          ),
+        ) === serializeAgentCanonicalJson(row.targetRefs)
+      );
+    } catch {
+      return false;
+    }
   }
   async function actionOwner(row: Action, inv: Invocation | null) {
     if (!row.runId) return inv?.principalId ?? null;
@@ -251,6 +371,43 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     }
     return true;
   }
+  async function refreshRun(row: Run): Promise<Run> {
+    if (
+      row.origin !== "gateway" ||
+      !["queued", "running", "waiting_approval", "waiting_retry", "verifying"].includes(
+        row.state,
+      ) ||
+      !row.invocationId ||
+      !options.changesets?.refreshGatewayInvocation
+    )
+      return row;
+    const inv = await invocation(row.siteId, row.invocationId);
+    if (
+      !inv ||
+      !["changeset.apply", "changeset.schedule", "changeset.rollback"].includes(inv.operationId)
+    )
+      return row;
+    try {
+      await options.changesets.refreshGatewayInvocation({
+        siteId: row.siteId,
+        invocationId: inv.id,
+      });
+    } catch {
+      throw missing();
+    }
+    const [current] = await getDb()
+      .select()
+      .from(npAgentRuns)
+      .where(and(eq(npAgentRuns.siteId, row.siteId), eq(npAgentRuns.id, row.id)))
+      .limit(1);
+    if (
+      !current ||
+      current.invocationId !== row.invocationId ||
+      current.principalId !== row.principalId
+    )
+      throw missing();
+    return current;
+  }
   function runDetail(row: Run, inv: Invocation | null): NpAgentActivityRunDetailV1 {
     return npRequireAgentActivityRunDetailV1({
       schemaVersion: "np.agent-activity-run.v1",
@@ -322,12 +479,14 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
   async function getRun(input: Staff & { id: string }) {
     const { auth, visibility } = await staff(input);
     if (!uuid.test(input.id)) throw missing();
-    const [row] = await getDb()
+    let [row] = await getDb()
       .select()
       .from(npAgentRuns)
       .where(and(eq(npAgentRuns.siteId, input.siteId), eq(npAgentRuns.id, input.id)))
       .limit(1);
     if (!row || !(await runVisible(row, visibility))) throw missing();
+    row = await refreshRun(row);
+    if (!(await runVisible(row, visibility))) throw missing();
     const detail = runDetail(row, await invocation(input.siteId, row.invocationId));
     await assertSameStaff(input, auth);
     return detail;
@@ -479,15 +638,17 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
         npAnalyzeAgentActivityActionsPageV1(await list("actions", input)),
       ),
     async getMachineRun(input: {
-      authentication: NpAgentAuthenticatedServicePrincipalV1;
+      authentication: NpAgentCapabilityAuthenticationV1;
       runId: string;
     }) {
       try {
         if (!options.admission || !uuid.test(input.runId)) throw missing();
         const { authentication } = input;
         const projection = await options.admission.project({ authentication });
-        if (authentication.authorizationContext.transport !== "agent-api") throw missing();
-        const [row] = await getDb()
+        const transport = authentication.authorizationContext.transport;
+        if (!["agent-api", "stdio", "mcp-service", "mcp-oauth"].includes(transport))
+          throw missing();
+        let [row] = await getDb()
           .select()
           .from(npAgentRuns)
           .where(
@@ -505,8 +666,14 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
           inv.principalId !== row.principalId ||
           inv.authorizationContextBody.transport !==
             authentication.authorizationContext.transport ||
-          inv.authorizationContextBody.authorityRef.kind !== "service-family" ||
-          authentication.authorizationContext.authorityRef.kind !== "service-family" ||
+          !["service-family", "oauth-grant"].includes(
+            inv.authorizationContextBody.authorityRef.kind,
+          ) ||
+          !["service-family", "oauth-grant"].includes(
+            authentication.authorizationContext.authorityRef.kind,
+          ) ||
+          !("audience" in inv.authorizationContextBody.authorityRef) ||
+          !("audience" in authentication.authorizationContext.authorityRef) ||
           inv.authorizationContextBody.authorityRef.audience !==
             authentication.authorizationContext.authorityRef.audience
         )
@@ -523,6 +690,7 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
         const [user] = await getDb().select().from(npUsers).where(eq(npUsers.id, userId)).limit(1);
         if (!user) throw missing();
         const visibility: Visibility = {
+          actor: { kind: "principal", authentication },
           user: {
             id: user.id,
             email: user.email,
@@ -535,6 +703,8 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
           },
           capabilities: live.authority.capabilities,
         };
+        if (!(await runVisible(row, visibility, authentication.scopes))) throw missing();
+        row = await refreshRun(row);
         if (!(await runVisible(row, visibility, authentication.scopes))) throw missing();
         await options.admission.project({ authentication });
         return runDetail(row, inv);

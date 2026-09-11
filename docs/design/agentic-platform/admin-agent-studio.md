@@ -1321,4 +1321,7 @@ Activity links to bounded ChangeSet list/detail/diff/preview views. Existing sta
 
 ## R4 approval surfaces
 
-The current approval-only implementation is described in [R4 approval flow](r4-approval-flow.md). It reuses existing sealed ChangeSets, generic Admin decision routes, canonical integrity evidence and explicit bounded maintenance. Execution, scheduling, cancellation and rollback remain later R4 slices.
+The initial approval implementation is described in [R4 approval flow](r4-approval-flow.md). Subsequent [execution](r4-execution-flow.md) and [rollback](r4-rollback-flow.md) slices reuse the same sealed ChangeSets, generic decision routes, canonical integrity evidence and explicit bounded maintenance.
+
+The current [Gateway execution acceptance slice](r4-gateway-execution-flow.md) connects real Gateway run/action evidence to Activity through the existing ChangeSet current-item read facade. Canonical inputs remain private. Active run and ChangeSet detail reuse bounded backoff polling and stop on terminal/access loss or navigation. Missing injected services remain unavailable. All 62 production browser cases passed, including hostile approval text and typed challenge enforcement. Final revalidation passed Core unit 1,726, typecheck/build, reference build,
+lint 41, execution PostgreSQL 66 and packed 40-package/56-stage checks; the linked flow records the complete results. No R5 Agent/provider facts or automatic runtime activation are implied.

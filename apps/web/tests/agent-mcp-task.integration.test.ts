@@ -12,7 +12,6 @@ import {
   npAuditEvents,
 } from "@nexpress/core";
 
-// eslint-disable-next-line import-x/no-relative-packages
 import {
   createAgentMcpTaskServiceV1,
   type NpAgentCapabilityAdmissionServiceV1,
@@ -51,8 +50,11 @@ function authentication(
   } as unknown as NpAgentCapabilityAuthenticationV1;
 }
 
-async function seedInvocation(requestedTtlMs: number | null): Promise<string> {
-  const db = await getTestDb();
+async function seedInvocation(
+  requestedTtlMs: number | null,
+  dbInput?: Awaited<ReturnType<typeof getTestDb>>,
+): Promise<string> {
+  const db = dbInput ?? (await getTestDb());
   const invocationId = randomUUID();
   const [audit] = await db
     .insert(npAuditEvents)
@@ -103,7 +105,7 @@ async function seedInvocation(requestedTtlMs: number | null): Promise<string> {
     },
     requestHash: "cj1:sha256:request",
     state: "accepted",
-    auditEventId: audit!.id,
+    auditEventId: audit.id,
     expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1_000),
   });
   return invocationId;
@@ -137,9 +139,17 @@ describe.skipIf(skipIfNoTestDb())("Agent MCP task persistence", () => {
       authorityFingerprint: "cj1:sha256:deployment-authority",
     });
     const project = vi.fn(() => Promise.resolve({ entries: [] }));
-    const admission = { project } as unknown as NpAgentCapabilityAdmissionServiceV1;
+    const admission = {
+      project,
+      withCurrentAuthority: ({
+        mutate,
+      }: {
+        mutate: (tx: Awaited<ReturnType<typeof getTestDb>>) => Promise<unknown>;
+      }) => db.transaction(mutate),
+    } as unknown as NpAgentCapabilityAdmissionServiceV1;
     const taskService = createAgentMcpTaskServiceV1({
       admission,
+      cancelInTransaction: () => Promise.resolve(true),
       cursorKey: { id: "mcp-task-test", key: new Uint8Array(32).fill(31) },
     });
     const auth = authentication();
@@ -238,5 +248,134 @@ describe.skipIf(skipIfNoTestDb())("Agent MCP task persistence", () => {
     const rows = await db.select().from(npAgentMcpTasks).where(eq(npAgentMcpTasks.siteId, siteId));
     expect(rows.map((row) => row.status).sort()).toEqual(["cancelled", "completed"]);
     expect(project).toHaveBeenCalled();
+  });
+  it("reserves before domain admission and rolls back both invocation and task on failure", async () => {
+    await createSite({ id: siteId, name: "Task atomic admission" });
+    const db = await getTestDb();
+    await db.insert(npAgentPrincipals).values({
+      id: principalId,
+      siteId,
+      kind: "external",
+      name: "Task principal",
+      status: "active",
+      scopes: ["site:read"],
+      authorityKind: "deployment",
+      authorityPolicyId: "deployment-default",
+      authorityFingerprint: "cj1:sha256:deployment-authority",
+    });
+    const service = createAgentMcpTaskServiceV1({
+      admission: {
+        project: () => Promise.resolve({}),
+      } as unknown as NpAgentCapabilityAdmissionServiceV1,
+      cursorKey: { id: "task-test", key: new Uint8Array(32).fill(17) },
+    });
+    const auth = authentication();
+    const before = (await db.select().from(npAgentInvocations)).length;
+    await expect(
+      db.transaction(async (tx) => {
+        await service.admitInTransaction(tx, {
+          authentication: auth,
+          taskRequest: { requestedTtlMs: null },
+          admit: async () => ({ invocationId: await seedInvocation(null, tx) }),
+        });
+        throw new Error("rollback fixture");
+      }),
+    ).rejects.toThrow("rollback fixture");
+    expect(await db.select().from(npAgentMcpTasks)).toHaveLength(0);
+    expect(await db.select().from(npAgentInvocations)).toHaveLength(before);
+    let first: { invocationId: string; taskId: string } | undefined;
+    for (let i = 0; i < 32; i++) {
+      const admitted = await db.transaction((tx) =>
+        service.admitInTransaction(tx, {
+          authentication: auth,
+          taskRequest: { requestedTtlMs: null },
+          admit: async () => ({ invocationId: await seedInvocation(null, tx) }),
+        }),
+      );
+      first ??= { invocationId: admitted.value.invocationId, taskId: admitted.task.taskId };
+    }
+    const domain = vi.fn(async () => ({ invocationId: await seedInvocation(null) }));
+    await expect(
+      db.transaction((tx) =>
+        service.admitInTransaction(tx, {
+          authentication: auth,
+          taskRequest: { requestedTtlMs: null },
+          admit: domain,
+        }),
+      ),
+    ).rejects.toMatchObject({ mcpCode: -32000, mcpData: { code: "RATE_LIMITED" } });
+    expect(domain).not.toHaveBeenCalled();
+    const expiredService = createAgentMcpTaskServiceV1({
+      admission: {
+        project: () => Promise.resolve({}),
+      } as unknown as NpAgentCapabilityAdmissionServiceV1,
+      cursorKey: { id: "task-test", key: new Uint8Array(32).fill(17) },
+      now: () => new Date(Date.now() + 86400001),
+    });
+    await expect(
+      db.transaction((tx) =>
+        expiredService.replayInTransaction(tx, {
+          authentication: auth,
+          invocationId: first!.invocationId,
+          taskRequest: { requestedTtlMs: null },
+        }),
+      ),
+    ).rejects.toMatchObject({ mcpCode: -32602 });
+
+    expect(await db.select().from(npAgentInvocations)).toHaveLength(before + 32);
+    expect(
+      await db.transaction((tx) =>
+        service.replayInTransaction(tx, {
+          authentication: auth,
+          invocationId: first!.invocationId,
+          taskRequest: { requestedTtlMs: null },
+        }),
+      ),
+    ).toMatchObject({ taskId: first!.taskId, status: "working" });
+    await expect(
+      db.transaction((tx) =>
+        service.replayInTransaction(tx, {
+          authentication: auth,
+          invocationId: first!.invocationId,
+          taskRequest: { requestedTtlMs: 3600000 },
+        }),
+      ),
+    ).rejects.toMatchObject({ mcpData: { code: "CONFLICT" } });
+    await expect(service.cancel(auth, first!.taskId)).rejects.toMatchObject({
+      mcpData: { code: "CONFLICT" },
+    });
+    expect((await service.get(auth, first!.taskId)).status).toBe("working");
+    let allowCancellation = false;
+    const cancelService = createAgentMcpTaskServiceV1({
+      admission: {
+        project: () => Promise.resolve({}),
+        withCurrentAuthority: ({
+          mutate,
+        }: {
+          mutate: (tx: Awaited<ReturnType<typeof getTestDb>>) => Promise<unknown>;
+        }) => db.transaction(mutate),
+      } as unknown as NpAgentCapabilityAdmissionServiceV1,
+      cursorKey: { id: "task-test", key: new Uint8Array(32).fill(17) },
+      cancelInTransaction: async ({ db: tx }) => {
+        await tx
+          .update(npAgentPrincipals)
+          .set({ name: "Confirmed cancellation" })
+          .where(eq(npAgentPrincipals.id, principalId));
+        return allowCancellation;
+      },
+    });
+    await expect(cancelService.cancel(auth, first!.taskId)).rejects.toMatchObject({
+      mcpData: { code: "CONFLICT" },
+    });
+    expect((await db.select().from(npAgentPrincipals))[0].name).toBe("Task principal");
+    expect((await cancelService.get(auth, first!.taskId)).status).toBe("working");
+    allowCancellation = true;
+    expect((await cancelService.cancel(auth, first!.taskId)).status).toBe("cancelled");
+    expect((await db.select().from(npAgentPrincipals))[0].name).toBe("Confirmed cancellation");
+    expect(await cancelService.result(auth, first!.taskId)).toEqual({
+      schemaVersion: "np.agent-mcp-stored-task-result.v1",
+      kind: "jsonrpc_error",
+      error: { code: -32800, message: "Request cancelled" },
+    });
   });
 });

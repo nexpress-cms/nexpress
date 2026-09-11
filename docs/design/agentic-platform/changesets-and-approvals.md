@@ -1860,5 +1860,11 @@ cancellation and bounded post-commit verification through the same facade.
 The subsequent [R4 rollback flow](r4-rollback-flow.md) implements AP-405 and
 the rollback Admin/Doctor portions with fresh approval and shared execution.
 The existing cancel route adds an exact rollback-plan target branch; no new
-cancellation route is introduced. Full rollback validation is in progress.
-AP-406 Agent HTTP/MCP execution exposure and task projection remain open.
+cancellation route is introduced. The rollback slice has its own completed
+validation record. [R4 Gateway execution flow](r4-gateway-execution-flow.md)
+connects AP-406 Agent HTTP/MCP execution exposure and bounded run/task
+projection to those existing services, with the remaining Admin/Doctor work.
+The Gateway flow records current acceptance evidence and exact section 18
+test mapping. Final execution PostgreSQL 66 and packed 40-package/56-stage revalidation
+passed after the admission conflict correction. The R4 section 18 gate passed; earlier slice results do
+not certify the current bundle.

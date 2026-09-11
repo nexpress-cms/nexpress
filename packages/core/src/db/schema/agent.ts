@@ -890,7 +890,7 @@ export const npAgentInvocations = pgTable(
     check(
       "np_agent_invocations_mcp_mode_check",
       sql`(
-        (${table.transport} in ('mcp-oauth', 'mcp-service') and ${table.mcpExecutionMode} in ('normal', 'task') and
+        (${table.transport} in ('mcp-oauth', 'mcp-service', 'stdio') and ${table.mcpExecutionMode} in ('normal', 'task') and
           ((${table.mcpExecutionMode} = 'task' and ${table.mcpRequestedTaskTtlMs} is not null and ${table.mcpRequestedTaskTtlMs} > 0) or
            (${table.mcpExecutionMode} = 'normal' and ${table.mcpRequestedTaskTtlMs} is null)))
         or (${table.transport} not in ('mcp-oauth', 'mcp-service') and ${table.mcpExecutionMode} is null and ${table.mcpRequestedTaskTtlMs} is null)

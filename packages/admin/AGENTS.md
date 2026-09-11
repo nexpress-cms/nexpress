@@ -1,6 +1,9 @@
 # packages/admin — AGENTS.md
 
-Rollback controls use existing review.rollbackDetail/rollbackActions and exact same-service contracts. Reuse current declared editable-field projection for restoration diffs; hide undeclared/hidden/read-only snapshot metadata. Request a fresh approval for the exact rollback plan/version/hash; execute only its signed approval. Non-executing cancellation uses the existing ChangeSet cancel route with the rollback-plan discriminator. Keep unknown-outcome keys stable and clear evidence on conflict/access loss. No optimistic success, new public verify route, or AP-406 exposure. Rollback-slice validation is complete, including all 60 production browser tests; see the R4 rollback flow results.
+Gateway execution Activity reuses the existing safe run/action projections; never show raw canonical inputs or invented Runtime/provider facts. Active run and ChangeSet detail share bounded backoff polling, stop on terminal/access loss and cancel timers on navigation. All 62 production browser tests passed, including hostile approval HTML/Markdown, typed challenge enforcement and stable unknown-outcome keys across read errors. Final revalidation passed Core unit 1,726, typecheck/build, reference build,
+lint 41, execution PostgreSQL 66 and packed 40-package/56-stage checks; see the R4 Gateway execution flow.
+
+Rollback controls use existing review.rollbackDetail/rollbackActions and exact same-service contracts. Reuse current declared editable-field projection for restoration diffs; hide undeclared/hidden/read-only snapshot metadata. Request a fresh approval for the exact rollback plan/version/hash; execute only its signed approval. Non-executing cancellation uses the existing ChangeSet cancel route with the rollback-plan discriminator. Keep unknown-outcome keys stable and clear evidence on conflict/access loss. No optimistic success or new public verify route. The preceding rollback slice passed all 60 production browser tests; see the R4 rollback flow results.
 
 Admin UI package: shadcn-style primitives (Radix + Tailwind v4) + CMS views. Built with tsup, not Next.
 

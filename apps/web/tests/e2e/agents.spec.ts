@@ -293,6 +293,7 @@ test("Agent Activity shows recorded Gateway and Runtime facts without inventing 
     };
   };
   const records = [makeRun("gateway"), makeRun("runtime")];
+  let gatewayReads = 0;
   await page.route("**/api/admin/agents/activity**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/actions"))
@@ -301,8 +302,12 @@ test("Agent Activity shows recorded Gateway and Runtime facts without inventing 
       });
     else {
       const detail = records.find(({ run }) => path.endsWith(`/${run.id}`));
+      const pollingDetail =
+        detail?.run.id === gatewayId && ++gatewayReads < 3
+          ? { ...detail, run: { ...detail.run, state: "running", finishedAt: null } }
+          : detail;
       await route.fulfill({
-        json: detail ?? {
+        json: pollingDetail ?? {
           schemaVersion: "np.agent-activity-runs.v1",
           items: records,
           nextCursor: null,
@@ -311,6 +316,7 @@ test("Agent Activity shows recorded Gateway and Runtime facts without inventing 
     }
   });
   await signInViaForm(page);
+  await page.clock.install();
   await page.goto("/admin/agents/activity");
   await page.getByRole("link", { name: /redacted gateway fixture/ }).click();
   await expect(
@@ -320,6 +326,16 @@ test("Agent Activity shows recorded Gateway and Runtime facts without inventing 
   await expect(page.getByText("Provider calls", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Agent version", { exact: true })).toHaveCount(0);
   await expect(page.getByText("No visible actions for this run.", { exact: true })).toBeVisible();
+  expect(gatewayReads).toBe(1);
+  await page.clock.fastForward(2_000);
+  await expect.poll(() => gatewayReads).toBe(2);
+  await expect(page.getByText("Loading run…", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("running", { exact: true })).toBeVisible();
+  await page.clock.fastForward(4_000);
+  await expect.poll(() => gatewayReads).toBe(3);
+  await expect(page.getByText("succeeded", { exact: true }).first()).toBeVisible();
+  await page.clock.fastForward(30_000);
+  expect(gatewayReads).toBe(3);
   await page.getByRole("link", { name: "Runs", exact: true }).click();
   await page.getByRole("link", { name: /redacted runtime fixture/ }).click();
   await expect(
@@ -329,4 +345,6 @@ test("Agent Activity shows recorded Gateway and Runtime facts without inventing 
   await expect(page.getByText("Provider calls", { exact: true })).toBeVisible();
   await expect(page.getByText("Agent version", { exact: true })).toBeVisible();
   await expect(page.getByText(agentId, { exact: true })).toBeVisible();
+  await page.clock.fastForward(30_000);
+  expect(gatewayReads).toBe(3);
 });

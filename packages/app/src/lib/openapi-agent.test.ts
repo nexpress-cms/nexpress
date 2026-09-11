@@ -37,7 +37,7 @@ describe("Agent HTTP OpenAPI projection", () => {
       },
     });
     expect(createHash("sha256").update(JSON.stringify(part)).digest("hex")).toMatchInlineSnapshot(
-      `"c1ead6500181ce720b6771e79a1f4df50c293d00ee6fbad5574f13cb8dc36925"`,
+      `"39bfc59065a83fa25c8361ce007c9cf70a80c8a7843e078094b2ad22c857a2d9"`,
     );
   });
   it("resolves every descriptor ref against the completed OpenAPI document", () => {

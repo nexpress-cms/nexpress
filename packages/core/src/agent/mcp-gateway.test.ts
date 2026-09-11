@@ -276,3 +276,84 @@ it("projects ChangeSet commands and one closed selector tool without inventing M
     }),
   ).rejects.toMatchObject({ mcpCode: -32601 });
 });
+
+it("advertises execution-only authority and preserves the real admitted task projection", async () => {
+  const service = admission(["changeset.apply"]);
+  const task = {
+    taskId: "npt1_01990000-0000-7000-8000-000000000001",
+    status: "working" as const,
+    statusMessage: "Operation in progress",
+    createdAt: "2026-09-11T00:00:00.000Z",
+    lastUpdatedAt: "2026-09-11T00:00:00.000Z",
+    ttl: 3600000,
+    pollInterval: 2000,
+  };
+  const invokeSpy = vi.spyOn(service, "invoke").mockResolvedValue({
+    invocationId: "01990000-0000-7000-8000-000000000002",
+    output: {},
+    task,
+  } as never);
+  const gateway = createAgentMcpGatewayV1({
+    admission: service,
+    cursorKey: { id: "test", key: new Uint8Array(32).fill(7) },
+    tasks: {} as never,
+    runs: {} as never,
+  });
+  expect(await gateway.snapshot(authentication())).toMatchObject({ tools: true, tasks: true });
+  expect((await gateway.listTools(authentication())).tools).toMatchObject([
+    { name: "apply_changeset", execution: { taskSupport: "optional" } },
+  ]);
+  const result = await gateway.callTool(authentication(), {
+    name: "apply_changeset",
+    arguments: {
+      input: {
+        changeSetId: "01990000-0000-7000-8000-000000000003",
+        planHash: `cj1:sha256:${"A".repeat(43)}`,
+        approvalId: null,
+      },
+      idempotencyKey: "real-task",
+    },
+    task: { ttlMs: null },
+  });
+  expect(result).toEqual({
+    task,
+    _meta: { "io.modelcontextprotocol/related-task": { taskId: task.taskId } },
+  });
+  expect(invokeSpy).toHaveBeenCalledWith(
+    expect.objectContaining({ taskRequest: { requestedTtlMs: null } }),
+  );
+});
+
+it("hides durable execution without the explicitly installed run reader", async () => {
+  const service = admission(["changeset.apply", "changeset.schedule", "changeset.rollback"]);
+  const invokeSpy = vi.spyOn(service, "invoke");
+  const gateway = createAgentMcpGatewayV1({
+    admission: service,
+    cursorKey: { id: "test", key: new Uint8Array(32).fill(7) },
+    tasks: {} as never,
+  });
+  expect((await gateway.snapshot(authentication())).tools).toBe(false);
+  expect((await gateway.listTools(authentication())).tools).toEqual([]);
+  await expect(
+    gateway.callTool(authentication(), { name: "apply_changeset", arguments: {}, task: null }),
+  ).rejects.toMatchObject({ mcpCode: -32601 });
+  expect(invokeSpy).not.toHaveBeenCalled();
+});
+
+it("does not advertise multi-branch rollback as read-only", async () => {
+  const gateway = createAgentMcpGatewayV1({
+    admission: admission([
+      "site.inspect",
+      "changeset.apply",
+      "changeset.schedule",
+      "changeset.rollback",
+    ]),
+    cursorKey: { id: "test", key: new Uint8Array(32).fill(7) },
+    runs: {} as never,
+  });
+  const tools = (await gateway.listTools(authentication())).tools;
+  expect(tools.find((tool) => tool.name === "inspect_site")?.annotations.readOnlyHint).toBe(true);
+  for (const name of ["apply_changeset", "schedule_changeset", "rollback_changeset"]) {
+    expect(tools.find((tool) => tool.name === name)?.annotations.readOnlyHint).toBe(false);
+  }
+});

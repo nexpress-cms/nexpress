@@ -1,7 +1,10 @@
 import { npCreateEmptyRichTextContent } from "../fields/rich-text.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NpAuthUser, NpCollectionConfig } from "../config/types.js";
-import { createAgentChangeSetResourceServiceV1 } from "./changeset-resources.js";
+import {
+  createAgentChangeSetResourceServiceV1,
+  npAgentChangeSetActionTargetsV1,
+} from "./changeset-resources.js";
 import type {
   NpAgentChangeSetOperationInput,
   NpAgentChangeSetResourceKeyV1,
@@ -20,6 +23,26 @@ vi.mock("../collections/registry.js", async (original) => ({
 }));
 vi.mock("../themes/registry.js", () => ({ getActiveTheme: vi.fn() }));
 const id = "11111111-1111-4111-8111-111111111111";
+
+describe("ChangeSet action target inventory", () => {
+  it("deduplicates owning document references without merging distinct resource families", () => {
+    const resources: NpAgentChangeSetResourceKeyV1[] = [
+      { kind: "document", collection: "posts", documentId: id },
+      { kind: "media_ref", collection: "posts", documentId: id, mediaId: id, field: "coverImage" },
+      { kind: "navigation", location: "primary" },
+      { kind: "theme_tokens", themeId: "default" },
+      { kind: "setting", key: "seo" },
+    ];
+    const targets = npAgentChangeSetActionTargetsV1(resources);
+    expect(targets).toHaveLength(4);
+    expect(targets).toContainEqual(resources[0]);
+    expect(targets).toContainEqual(resources[2]);
+    expect(targets).toContainEqual(resources[3]);
+    expect(targets).toContainEqual(resources[4]);
+    expect(npAgentChangeSetActionTargetsV1([...resources].reverse())).toEqual(targets);
+    expect(resources).toHaveLength(5);
+  });
+});
 const otherId = "22222222-2222-4222-8222-222222222222";
 const user = {
   id: otherId,

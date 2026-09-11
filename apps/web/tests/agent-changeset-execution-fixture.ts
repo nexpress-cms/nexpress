@@ -109,7 +109,13 @@ export async function executionFixture({
   deferRollback = false,
   rollbackWindowSeconds,
   inspectPostCommitEffect,
+  resolveExecutionBinding,
+  principalControl,
 }: {
+  principalControl?: Parameters<typeof principalFixture>[5];
+  resolveExecutionBinding?: NonNullable<
+    NpAgentChangeSetServiceOptionsV1["approvals"]
+  >["resolveExecutionBinding"];
   intendedOperation?: "apply" | "schedule";
   document?: boolean;
   deferVerification?: boolean;
@@ -158,7 +164,8 @@ export async function executionFixture({
       },
       challengeKeys: { active: { id: "execution-challenge", key: new Uint8Array(32).fill(73) } },
       lifetimeSeconds: 600,
-      resolveExecutionBinding: (input) => Promise.resolve(binding(input.intendedOperation)),
+      resolveExecutionBinding:
+        resolveExecutionBinding ?? ((input) => Promise.resolve(binding(input.intendedOperation))),
     },
     execution: {
       resolveIntent: () => Promise.resolve({ enabled: true, paused }),
@@ -212,6 +219,7 @@ export async function executionFixture({
         options,
         ["changeset:apply", "content:publish", "settings:read", "settings:write"],
         principalExposure,
+        principalControl,
       )
     : null;
   const service = principal?.service ?? f.service;

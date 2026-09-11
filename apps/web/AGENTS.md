@@ -1,6 +1,9 @@
 # apps/web — AGENTS.md
 
-Rollback preparation/request-approval/execute routes remain thin shared-app exports; cancellation reuses the existing ChangeSet route. Runtime, keys/definitions, intent and verification are explicitly injected; wrappers do not enable workers or Gateway execution. Generated migrations 0043/0044 cover 31 Agent tables/167 critical constraints and 11 deferred lifecycle foreign keys. Rollback-slice validation is complete; see the R4 rollback flow results.
+AP-406 uses the existing four Agent HTTP wrappers and shared MCP entrypoints; do not add parallel execution routes or automatic Gateway/runtime installation. Current Activity uses the explicitly injected ChangeSet read facade and safe execution projections. Migration 0045 updates the existing stdio MCP-mode constraint; Doctor remains 31 Agent tables/167 critical constraints/11 deferred lifecycle foreign keys. All 1,181 ordinary PostgreSQL cases passed across the full run and corrected regressions; native preview passed separately. Live Redis 16, restored theme-render 5, production browser 62 and packed 40-package/56-stage checks passed. Final revalidation passed Core unit 1,726, typecheck/build, reference build,
+lint 41, execution PostgreSQL 66 and packed 40-package/56-stage checks; see the R4 Gateway execution flow.
+
+Rollback preparation/request-approval/execute routes remain thin shared-app exports; cancellation reuses the existing ChangeSet route. Runtime, keys/definitions, intent and verification are explicitly injected; wrappers do not enable workers or Gateway execution. The preceding rollback slice passed its recorded validation; see the R4 rollback flow results.
 
 Next.js 16 reference app. This app is intentionally thin: most route
 handlers, pages, scripts, proxy behavior, and setup flows are re-exported

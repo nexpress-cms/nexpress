@@ -1,9 +1,12 @@
 # R4 rollback compensation
 
 This slice implements AP-405 and the rollback portions of AP-407/AP-408 on the
-existing ChangeSet, approval, execution and verification services. AP-406
-Agent HTTP/MCP execution capabilities and task projection remain open.
-Validation for this rollback slice is complete; results are recorded below.
+existing ChangeSet, approval, execution and verification services. The subsequent
+[R4 Gateway execution slice](r4-gateway-execution-flow.md) connects AP-406 Agent
+HTTP/MCP execution capabilities and bounded run/task projection. Validation for
+this rollback slice is complete; results below belong to that slice. Current
+AP-406 results are recorded in the Gateway flow, including the passing final 66-case execution PostgreSQL run and
+40-package/56-stage packed scaffold refresh. The R4 section 18 acceptance gate passed.
 
 ## Installation and surface
 
@@ -218,6 +221,6 @@ result-body bound was verified, and the isolated database was removed.
   the full browser suite verifies the final wording and server-derived controls.
 
 Explicit host installation, current authority, fresh approval, rollback window
-and current resource bases remain prerequisites. AP-406 Gateway execution and
-task exposure remain later work; no automatic worker or default activation is
-introduced.
+and current resource bases remain prerequisites. The subsequent AP-406 Gateway
+execution and task exposure retain those requirements; no automatic worker or
+default activation is introduced.

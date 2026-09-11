@@ -1,3 +1,6 @@
+import { npAgentMcpToolDefinitionsV1 } from "../agent-contract/contract.js";
+import type { NpAgentMcpTaskV1 } from "../agent-contract/index.js";
+import type { NpAgentMcpTaskRequestV1 } from "./mcp-task-service.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   npDigestAgentCapabilityRegistryCanonical,
@@ -504,6 +507,24 @@ async function assertCurrentAuthentication(
 export function createAgentCapabilityAdmissionServiceV1(
   options: NpAgentCapabilityAdmissionOptionsV1,
 ) {
+  const definitionCache = new Map<string, Promise<{ canonical: string; fingerprint: string }>>();
+  function expectedDefinition(id: NpAgentChangeSetCapabilityInvocationRequestV1["capabilityId"]) {
+    let cached = definitionCache.get(id);
+    if (!cached) {
+      cached = (async () => {
+        const definition = npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(id);
+        return {
+          canonical: serializeAgentCanonicalJson(definition),
+          fingerprint: await npDigestAgentCapabilityRegistryCanonical(
+            definition,
+            definition.capabilities,
+          ),
+        };
+      })();
+      definitionCache.set(id, cached);
+    }
+    return cached;
+  }
   const nowFn = options.now ?? (() => new Date());
   const retentionSeconds = options.invocationRetentionSeconds ?? 60 * 60;
   if (
@@ -994,20 +1015,22 @@ export function createAgentCapabilityAdmissionServiceV1(
       const extra = facade ? await Promise.all(facade.ids.map((id) => facade.entry(id))) : [];
       for (const [index, entry] of extra.entries()) {
         const id = facade!.ids[index];
+        if (!npIsAgentChangeSetCapabilityIdV1(id) || (index > 0 && facade!.ids[index - 1] >= id))
+          throw new NpAgentGatewayError(
+            "CAPABILITY_UNAVAILABLE",
+            404,
+            "Capability is unavailable.",
+          );
+        const expected = await expectedDefinition(id);
         if (
           !npIsAgentChangeSetCapabilityIdV1(id) ||
           (index > 0 && facade!.ids[index - 1] >= id) ||
-          serializeAgentCanonicalJson(entry.definitionCanonical) !==
-            serializeAgentCanonicalJson(npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(id)) ||
+          serializeAgentCanonicalJson(entry.definitionCanonical) !== expected.canonical ||
           serializeAgentCanonicalJson(entry.canonical) !==
             serializeAgentCanonicalJson(entry.definitionCanonical.capabilities[0]) ||
           serializeAgentCanonicalJson(entry.definition) !==
             serializeAgentCanonicalJson(entry.canonical) ||
-          entry.capabilityFingerprint !==
-            (await npDigestAgentCapabilityRegistryCanonical(
-              entry.definitionCanonical,
-              entry.definitionCanonical.capabilities,
-            ))
+          entry.capabilityFingerprint !== expected.fingerprint
         )
           throw new NpAgentGatewayError(
             "CAPABILITY_UNAVAILABLE",
@@ -1040,11 +1063,18 @@ export function createAgentCapabilityAdmissionServiceV1(
             entry.definition.descriptor.requiredScopes.every((scope) =>
               authentication.scopes.includes(scope),
             ) &&
-            entry.definition.descriptor.effectProfiles.some(
-              (profile) =>
-                profile.minimumGatewayExposure !== null &&
-                levels[profile.minimumGatewayExposure] <= currentLevel,
-            ),
+            (() => {
+              const tool = npAgentMcpToolDefinitionsV1.find((definition) =>
+                definition.capabilityIds.includes(entry.definition.descriptor.id),
+              );
+              return tool
+                ? levels[tool.listedFrom] <= currentLevel
+                : entry.definition.descriptor.effectProfiles.some(
+                    (profile) =>
+                      profile.minimumGatewayExposure !== null &&
+                      levels[profile.minimumGatewayExposure] <= currentLevel,
+                  );
+            })(),
         ),
       };
     },
@@ -1052,10 +1082,13 @@ export function createAgentCapabilityAdmissionServiceV1(
       authentication: NpAgentCapabilityAuthenticationV1;
       request: NpAgentInstalledCapabilityInvocationRequestV1 & { capabilityId: C };
       abortSignal?: AbortSignal;
+      taskRequest?: NpAgentMcpTaskRequestV1;
     }): Promise<
       C extends NpAgentReadCapabilityIdV1
         ? NpAgentReadCapabilityInvocationResultV1<C>
-        : NpAgentChangeSetCapabilityInvocationResultV1
+        : NpAgentChangeSetCapabilityInvocationResultV1 & {
+            task?: NpAgentMcpTaskV1;
+          }
     > {
       type Result = C extends NpAgentReadCapabilityIdV1
         ? NpAgentReadCapabilityInvocationResultV1<C>
@@ -1078,6 +1111,7 @@ export function createAgentCapabilityAdmissionServiceV1(
         return (await facade.invoke(
           input.authentication,
           request as NpAgentChangeSetCapabilityInvocationRequestV1,
+          input.taskRequest,
         )) as Result;
       }
       return (await invokeRead({

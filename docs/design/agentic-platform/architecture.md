@@ -1564,9 +1564,14 @@ Code review should reject an implementation that violates any of these:
 
 ## R4 approval installation
 
-The current [R4 rollback implementation](r4-rollback-flow.md) extends the existing
+The [R4 rollback implementation](r4-rollback-flow.md) extends the existing
 [approval](r4-approval-flow.md) and [execution](r4-execution-flow.md) services with
 forward compensation, fresh target-bound approval and shared bounded verification.
 Migrations 0043/0044 bring the Agent inventory to 31 tables/167 critical constraints
-and 11 deferred lifecycle foreign keys. Full validation is in progress; AP-406
-Agent HTTP/MCP execution exposure and task projection remain open.
+and 11 deferred lifecycle foreign keys. The subsequent
+[R4 Gateway execution implementation](r4-gateway-execution-flow.md) connects
+AP-406 Agent HTTP/MCP execution and bounded run/task projection to these
+services. Migration 0045 updates the existing stdio MCP-mode constraint without
+changing that inventory. Rollback validation has its own completed record;
+current AP-406 results are recorded in the Gateway flow, including the passing final 66-case execution PostgreSQL run and
+40-package/56-stage packed scaffold refresh. The R4 section 18 acceptance gate passed.

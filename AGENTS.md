@@ -2,7 +2,24 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Current rollback slice:** AP-405 and rollback portions of AP-407/AP-408 reuse
+**Current Gateway execution slice:** AP-406 and remaining AP-407/AP-408 reuse
+the existing ChangeSet/approval/execution services for three additional
+capabilities, real Gateway runs/actions and bounded durable MCP tasks. Keep
+descriptor-derived HTTP/MCP projection, exact approval binding and current
+deployment/site/credential exposure and item authority together. Activity uses
+the explicitly injected ChangeSet read facade; scope-only visibility is not
+sufficient. Migration 0045 extends the existing stdio MCP-mode constraint;
+Doctor remains 31 Agent tables/167 critical constraints/11 deferred lifecycle
+foreign keys. Acceptance passed workspace verify 113/lint 41 tasks, Core PG 67,
+web PG 1,181 ordinary cases across full/corrected runs, native preview, live
+Redis 16, theme-render 5, production browser 62 and packed 40-package/56-stage
+checks. Final revalidation passed Core unit 1,726, typecheck/build, reference build,
+lint 41, execution PostgreSQL 66 and packed 40-package/56-stage checks. The
+R4 section 18 acceptance gate passed; see the R4 Gateway execution flow.
+No R5 runtime, provider, automatic worker/factory, seed, default activation,
+package version or changeset is added.
+
+**Earlier rollback slice:** AP-405 and rollback portions of AP-407/AP-408 reuse
 the existing canonical rollback plan, approval lifecycle, execution journal,
 transaction-aware domain writers and bounded verification/recovery. Explicit
 host services prepare, request approval for and execute compensation; the

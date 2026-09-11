@@ -2,6 +2,7 @@ import {
   npAgentInstalledCapabilityIdsV1,
   npAgentInstalledCapabilityDescriptorsV1,
 } from "./installed-capability-contract.js";
+import { npAgentChangeSetRollbackModePoliciesV1 } from "./changeset-capability-schema.js";
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
@@ -35,17 +36,17 @@ describe("Agent HTTP closed descriptor contract", () => {
           "x-nexpress-capability-id": id,
           "x-nexpress-scopes": npAgentInstalledCapabilityDescriptorsV1[id].requiredScopes,
           "x-nexpress-risk": npAgentInstalledCapabilityDescriptorsV1[id].risk,
-          "x-nexpress-approval": "none",
+          "x-nexpress-approval": npAgentInstalledCapabilityDescriptorsV1[id].approval,
           "x-nexpress-idempotency": npAgentInstalledCapabilityDescriptorsV1[id].idempotency,
         });
       }
     }
-    expect(JSON.stringify(schemas.request)).toContain("#/$defs/capability5/$defs/filter");
+    expect(JSON.stringify(schemas.request)).toContain("#/$defs/capability8/$defs/filter");
     expect(
       createHash("sha256")
         .update(JSON.stringify({ routes: npAgentHttpRoutesV1, schemas }))
         .digest("hex"),
-    ).toMatchInlineSnapshot(`"4cd0ebf81fefc15969d09c8c730400fd478596d4d779beafc6a4fbeaee6556d8"`);
+    ).toMatchInlineSnapshot(`"13f892f339b95648763c03d9229eafa5b57e72e215047f6adc1bdb579672a302"`);
   });
   it("rejects modified, duplicate and unshipped capability descriptors", () => {
     const capabilities = npAgentReadCapabilityIdsV1.map(
@@ -117,5 +118,30 @@ describe("Agent HTTP closed descriptor contract", () => {
     expect(
       npAnalyzeAgentReadCapabilityInvocationResultV1({ ...value, credential: "private" }).ok,
     ).toBe(false);
+  });
+  it("projects the same locked rollback mode floors through descriptor-derived HTTP schemas", () => {
+    const schemas = npBuildAgentHttpInvocationSchemasV1();
+    const index = npAgentInstalledCapabilityIdsV1.indexOf("changeset.rollback");
+    const input = (
+      schemas.request.$defs as Record<string, { oneOf: Array<Record<string, unknown>> }>
+    )[`capability${index}`];
+    for (const [position, mode] of ["prepare", "request_approval", "execute_approved"].entries()) {
+      const policy =
+        npAgentChangeSetRollbackModePoliciesV1[
+          mode as keyof typeof npAgentChangeSetRollbackModePoliciesV1
+        ];
+      expect(input.oneOf[position]).toMatchObject({
+        properties: { mode: { const: mode } },
+        "x-nexpress-risk": policy.risk,
+        "x-nexpress-approval": policy.approval,
+        "x-nexpress-effect-profile": policy.effectProfileId,
+        "x-nexpress-minimum-gateway-exposure": policy.minimumGatewayExposure,
+      });
+    }
+    expect(input.oneOf[2]).toMatchObject({
+      "x-nexpress-risk": "sensitive",
+      "x-nexpress-approval": "human",
+      "x-nexpress-minimum-gateway-exposure": "approved-execute",
+    });
   });
 });

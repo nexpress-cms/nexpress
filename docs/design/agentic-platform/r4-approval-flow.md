@@ -2,14 +2,19 @@
 
 This document records the AP-401 approval slice. Its execution exclusions below
 are historical; the subsequent [R4 execution slice](r4-execution-flow.md) adds
-explicit apply/schedule/cancel and verification. Rollback and Gateway execution
-exposure remain later work. Verification totals below belong to the approval
-release and do not certify the newer execution changes.
+explicit apply/schedule/cancel and verification. The subsequent
+[R4 rollback slice](r4-rollback-flow.md) adds compensation, and
+[R4 Gateway execution slice](r4-gateway-execution-flow.md) connects Agent
+HTTP/MCP execution and bounded run/task projection. Verification totals below
+belong to the approval release; current AP-406 results are recorded in the
+Gateway flow, including the passing final 66-case execution PostgreSQL run and
+40-package/56-stage packed scaffold refresh. The R4 section 18 acceptance gate passed.
 
 The approval slice connects AP-401 to the approval portions of AP-407 and
 AP-408. It records a human decision over one sealed ChangeSet; it does not
 apply content, schedule execution, consume approval, or run compensation.
-The remaining R4 execution gate stays open.
+These are the approval slice boundaries, not the current R4 implementation
+boundary linked above.
 
 ## Installed surface
 
