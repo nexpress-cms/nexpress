@@ -41,3 +41,11 @@ export * from "./preview-artifact-service.js";
 export * from "./changeset-capability.js";
 
 export * from "./approval-service.js";
+
+export * from "./runtime-controls.js";
+export * from "./runtime-service.js";
+export * from "./runtime-admission.js";
+
+export * from "./runtime-usage.js";
+
+export * from "./runtime-admission-sources.js";

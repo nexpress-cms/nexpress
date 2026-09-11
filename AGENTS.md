@@ -2,7 +2,34 @@
 
 This file provides guidance to Agents when working with code in this repository.
 
-**Current Gateway execution slice:** AP-406 and remaining AP-407/AP-408 reuse
+**Current runtime foundation:** AP-500/AP-502 and the foundation of AP-504
+reuse existing canonical Agent/policy/budget contracts, shared Admin admission,
+immutable connection evidence and the site quota advisory lock. Explicit host
+services own definition/policy lifecycle, queued runtime admission, private
+frozen/current policy and budget-source verification, usage reservations and
+local emergency controls. `agents.runtime` remains disabled when absent;
+`agents.runtime.control` is a private positive revision/current resume
+plan/latest consumed receipt, excluded with runtime settings from content
+transfer. Local status/pause require configured deployment authority and stay
+available without readiness; resume requires live bounded readiness and the
+reviewed five-minute plan. Staff resume retains existing Admin admission and
+its fixed envelope. Budget cooldown composes by max, warning by min, and each
+saved policy's quiet-hour bound does not truncate the effective deny union.
+Generated migrations 0046/0047 bring Doctor to 40 Agent tables/265 critical
+constraints/15 deferred lifecycle foreign keys; ordinary deletion inventories
+39 tables and fences unresolved runtime usage. Reference/scaffold additions
+are thin local CLI wrappers. Acceptance passed workspace verify 113/lint 41
+tasks, Core unit 1,772, Core PostgreSQL 67, web PostgreSQL 1,290 (including
+Runtime 108, theme-render 5 and native preview 1), live Redis 16, production
+browser 62 and packed 40-package/56-stage checks. Packed CI also verifies the
+CLI actor/site boundaries, disabled defaults and zero seeded Agent settings.
+AP-501/AP-503/AP-505–AP-508 and full R5 acceptance
+remain later work. No provider inference, automatic worker/factory/listener,
+new runtime HTTP surface or completed configuration UI, seed, default
+activation, package version or changeset is added. See
+[the R5 runtime foundation flow](docs/design/agentic-platform/r5-runtime-foundation-flow.md).
+
+**Earlier Gateway execution slice:** AP-406 and remaining AP-407/AP-408 reuse
 the existing ChangeSet/approval/execution services for three additional
 capabilities, real Gateway runs/actions and bounded durable MCP tasks. Keep
 descriptor-derived HTTP/MCP projection, exact approval binding and current

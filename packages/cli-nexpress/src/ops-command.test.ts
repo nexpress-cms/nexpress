@@ -27,6 +27,24 @@ describe("buildRunScriptArgs", () => {
     ]);
     expect(buildRunScriptArgs("yarn", "ops:status", ["--json"])).toEqual(["ops:status", "--json"]);
   });
+  it("keeps JSON output quiet for Classic while preserving modern Yarn arguments", () => {
+    expect(
+      buildRunScriptArgs(
+        "yarn",
+        "agent:runtime",
+        ["status", "--site", "default", "--json"],
+        "1.22.22",
+      ),
+    ).toEqual(["--silent", "run", "agent:runtime", "status", "--site", "default", "--json"]);
+    expect(
+      buildRunScriptArgs(
+        "yarn",
+        "agent:runtime",
+        ["status", "--site", "default", "--json"],
+        "4.9.2",
+      ),
+    ).toEqual(["agent:runtime", "status", "--site", "default", "--json"]);
+  });
 
   it("maps ops subcommands to project scripts", () => {
     expect(resolveOpsScriptInvocation("status", ["--json"])).toEqual({

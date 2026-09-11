@@ -8,6 +8,15 @@ import type { NpAgentSiteDeletionRowInventoryCanonicalV1 } from "../agent-contra
 import { npAuthUuidPattern } from "../auth-contract/contract.js";
 import type { getDb } from "../db/runtime.js";
 import {
+  npAgents,
+  npAgentVersions,
+  npAgentPolicies,
+  npAgentTriggers,
+  npAgentProviderCalls,
+  npAgentUsageReservations,
+  npAgentUsageDaily,
+  npAgentCircuitBreakers,
+  npAgentEvents,
   npAgentConnectionAuthRequests,
   npAgentConnectionConfigVersions,
   npAgentConnectionOperations,
@@ -68,8 +77,17 @@ export const npAgentSiteDeletionOrderV1 = Object.freeze([
   "np_agent_changeset_operations",
   "np_agent_changesets",
   "np_agent_mcp_tasks",
+  "np_agent_provider_calls",
+  "np_agent_usage_reservations",
+  "np_agent_usage_daily",
+  "np_agent_events",
   "np_agent_actions",
   "np_agent_runs",
+  "np_agent_triggers",
+  "np_agent_policies",
+  "np_agent_versions",
+  "np_agents",
+  "np_agent_circuit_breakers",
   "np_agent_vault_entries",
   "np_agent_connection_operations",
   "np_agent_connection_auth_requests",
@@ -93,6 +111,43 @@ const descriptors: Record<
   NpAgentSiteOwnedTableName,
   Omit<NpAgentSiteOwnedTableDescriptor, "tableName">
 > = {
+  np_agents: { table: npAgents, id: npAgents.id, siteId: npAgents.siteId },
+  np_agent_versions: {
+    table: npAgentVersions,
+    id: npAgentVersions.id,
+    siteId: npAgentVersions.siteId,
+  },
+  np_agent_policies: {
+    table: npAgentPolicies,
+    id: npAgentPolicies.id,
+    siteId: npAgentPolicies.siteId,
+  },
+  np_agent_triggers: {
+    table: npAgentTriggers,
+    id: npAgentTriggers.id,
+    siteId: npAgentTriggers.siteId,
+  },
+  np_agent_provider_calls: {
+    table: npAgentProviderCalls,
+    id: npAgentProviderCalls.id,
+    siteId: npAgentProviderCalls.siteId,
+  },
+  np_agent_usage_reservations: {
+    table: npAgentUsageReservations,
+    id: npAgentUsageReservations.id,
+    siteId: npAgentUsageReservations.siteId,
+  },
+  np_agent_usage_daily: {
+    table: npAgentUsageDaily,
+    id: npAgentUsageDaily.id,
+    siteId: npAgentUsageDaily.siteId,
+  },
+  np_agent_circuit_breakers: {
+    table: npAgentCircuitBreakers,
+    id: npAgentCircuitBreakers.id,
+    siteId: npAgentCircuitBreakers.siteId,
+  },
+  np_agent_events: { table: npAgentEvents, id: npAgentEvents.id, siteId: npAgentEvents.siteId },
   np_agent_preview_viewer_launches: {
     table: npAgentPreviewViewerLaunches,
     id: npAgentPreviewViewerLaunches.id,
@@ -387,6 +442,18 @@ export async function npDeleteAgentSiteRows(db: NpAgentDb, siteId: string): Prom
     if (workingTask) {
       throw new Error("Agent site deletion requires every MCP task to be terminal.");
     }
+    const unsafeRuntime = await tx.execute(sql`
+      select 1 from public.np_agent_runs where site_id=${siteId} and origin='runtime' and state not in ('succeeded','failed','cancelled','policy_blocked','budget_blocked')
+      union all select 1 from public.np_agent_provider_calls c where c.site_id=${siteId} and (
+        c.state in ('reserved','in_flight') or ((c.state='ambiguous' or c.dispatch_state='unknown') and not exists (
+          select 1 from public.np_agent_usage_reservations u where u.site_id=c.site_id and u.id=c.usage_reservation_id and u.state in ('reconciled','released') and not u.unpriced
+            and (select count(*)=1 and bool_and(e.actor_kind='system' and e.payload->>'reservationId'=u.id::text and e.payload->>'responseDigest' ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$')
+              from public.np_audit_events e where e.site_id=c.site_id and e.target_type='agent-provider-call' and e.target_id=c.id::text and e.action='agent.runtime.usage' and e.payload->>'transition'='late-reconciled')
+        )))
+      union all select 1 from public.np_agent_usage_reservations where site_id=${siteId} and state in ('reserved','expired') limit 1
+    `);
+    if (unsafeRuntime.rows.length)
+      throw new Error("Agent site deletion requires reconciled runtime work and usage.");
     const unsafeExecution = await tx.execute(sql`
     select 1 from public.np_agent_changeset_executions where site_id=${siteId}
       and (state in ('reserved','committed','verifying','ambiguous') or exists (

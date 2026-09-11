@@ -371,7 +371,7 @@ Implementation boundaries and self-review:
 
 Through R4, capability policy evaluation uses the immutable framework hard
 rules plus the exact disabled-by-default deployment/site feature settings.
-There is no mutable Runtime Agent policy row to configure yet. R5 adds
+At the R2 transport boundary there is no mutable Runtime Agent policy to configure. The R5 foundation separately adds
 versioned site/agent policies as an additional narrowing layer; it cannot
 widen a capability that the earlier hard rules, principal grant, resource
 authorization, or human approval deny.
@@ -519,6 +519,19 @@ Gate:
   capability approval remains independently required.
 
 ### R5 — Durable provider-backed Agent Runtime
+
+The AP-500/AP-502/AP-504 foundation now supplies exact Agent/policy versions,
+queued runtime admission, frozen policy/budget source verification, integer
+usage ledgers and explicit local emergency controls. Generated migrations
+0046/0047 extend the existing run table and add nine tables; Doctor covers
+40 Agent tables, 265 critical constraints and 15 deferred lifecycle foreign
+keys. Ordinary deletion inventories 39 tables. All services and readiness
+remain host-injected, and absent runtime settings remain disabled. No provider
+inference, automatic worker/trigger job, new runtime HTTP route, completed
+Studio configuration UI, seed or package-version change is included. AP-501,
+AP-503, AP-505–AP-508 and the full R5 gate remain open. See
+[the runtime foundation flow](r5-runtime-foundation-flow.md) for implemented
+boundaries and verification evidence.
 
 Outcome: one configured agent can run a bounded event/manual/scheduled workflow
 with budget and policy enforcement.

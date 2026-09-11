@@ -139,7 +139,7 @@ describe.skipIf(skipIfNoTestDb())("Rollback persistence and recovery", () => {
     await f.service.reconcilePreviews({ siteId, limit: 100 });
     await npDeleteAgentSiteRows(f.db, siteId);
     const inventory = await npInspectAgentSiteDeletionRows(f.db, siteId);
-    expect(inventory).toHaveLength(30);
+    expect(inventory).toHaveLength(39);
     expect(inventory.every((item) => item.count === 0)).toBe(true);
   });
   it("verifies rollback with its own operation journal and preserves the original result", async () => {

@@ -1,5 +1,24 @@
 # packages/core — AGENTS.md
 
+AP-500/AP-502/AP-504 now add explicit Agent/policy lifecycle, queued runtime
+admission, retained canonical policy/budget-source verification, usage ledgers
+and emergency controls. Reuse the same site quota lock for settings, admission,
+reservation and deletion. `agents.runtime` defaults disabled; private
+`agents.runtime.control` holds only a positive revision/current local resume
+plan/latest consumed receipt, and both settings stay outside portable content.
+Local deployment authority is never a staff actor. Pause remains available
+without provider/worker readiness; local resume requires a matching persisted
+five-minute plan and current readiness fingerprint, while staff resume uses
+existing admission and its fixed envelope. Cooldown composes by max, warning by
+min; effective quiet-hour deny union never truncates saved policy layers.
+Migrations 0046/0047 give 40 Agent tables/265 critical constraints/15 deferred
+lifecycle foreign keys and a 39-table ordinary deletion inventory. No provider
+inference, automatic worker/factory, new runtime HTTP surface, seed or default
+activation is installed. See the R5 runtime foundation flow for the remaining
+R5 scope and current verification evidence.
+
+Earlier R4 slice:
+
 AP-406 Gateway execution reuses the existing ChangeSet/approval/execution facade and journals. Three additional descriptor-derived capabilities create real Gateway run/action evidence and optional durable MCP tasks; approval-required terminal tasks never revive on later execution. Activity must recheck canonical linkage and use the explicitly injected ChangeSet read facade for every current item. Migration 0045 extends the existing stdio MCP-mode constraint; the inventory remains 31 Agent tables/167 critical constraints/11 deferred lifecycle foreign keys. Core PostgreSQL 67 and all 1,181 ordinary web PostgreSQL cases passed across the full run and corrected regressions. Shared ChangeSet admission maps SQLSTATE 40001/40P01 to the existing safe 409 conflict without retry. Final revalidation passed Core unit 1,726, typecheck/build, reference build,
 lint 41, execution PostgreSQL 66 and packed 40-package/56-stage checks; see the R4 Gateway execution flow. Host installation stays explicit, with no provider, R5 runtime, automatic worker or default activation.
 
@@ -7,7 +26,7 @@ Rollback keeps original apply evidence immutable and derives compensation from v
 
 Server-only CMS engine: config, DB, auth, collections pipeline, media, jobs, plugins, storage, cache, theme.
 
-**Refreshed:** 2026-09-09
+**Refreshed:** 2026-09-11
 
 ## STRUCTURE
 
@@ -176,7 +195,7 @@ No static import cycles exist. Cycle avoidance is via: dynamic imports in `plugi
   runtime/worker is installed and default Agent exposure stays disabled.
 
 - Core declaration generation exceeds the 2 GiB heap available on constrained
-  runners. The build script defaults to a 5 GiB Node heap and preserves explicit
+  runners. The build script defaults to a 6 GiB Node heap and preserves explicit
   `NODE_OPTIONS`. Derive deletion inventory names from the existing order tuple
   and keep descriptor values typed to the shared `PgTable`/`AnyPgColumn` contract;
   exporting their full inferred Drizzle structures duplicates large declarations.

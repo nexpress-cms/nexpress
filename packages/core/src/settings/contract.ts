@@ -18,7 +18,12 @@ import type {
   NpSiteWireRecord,
   NpUpdateSiteInput,
 } from "./types.js";
-import { NP_AGENT_GATEWAY_SETTING_KEY, npSiteQuotaMetrics } from "./types.js";
+import {
+  NP_AGENT_GATEWAY_SETTING_KEY,
+  NP_AGENT_RUNTIME_SETTING_KEY,
+  NP_AGENT_RUNTIME_CONTROL_SETTING_KEY,
+  npSiteQuotaMetrics,
+} from "./types.js";
 import {
   npIsUserRole as npIsAuthUserRole,
   npUserRoles,
@@ -28,6 +33,8 @@ import { npAnalyzeThemeTokensOverlay } from "../theme/contract.js";
 import { npValidateBlockContent } from "../fields/block-content.js";
 import { npAnalyzeJobsPauseState } from "../jobs-contract/contract.js";
 import { npAnalyzeAgentGatewaySettings } from "../agent-contract/contract.js";
+import { npAnalyzeAgentRuntimeSettingsV1 } from "../agent-contract/runtime-contract.js";
+import { npAnalyzeAgentRuntimeControlV1 } from "../agent-contract/runtime-ops-contract.js";
 import { NP_DEFAULT_SITE_ID, npIsCanonicalSiteId } from "../sites/id-contract.js";
 
 export { NP_DEFAULT_SITE_ID, npIsCanonicalSiteId, npSiteIdPattern } from "../sites/id-contract.js";
@@ -1043,6 +1050,8 @@ export function npAssertSiteQuotaSnapshot(value: unknown): asserts value is NpSi
 
 export function npClassifySettingKey(key: unknown): NpSettingContractKind | null {
   if (key === NP_AGENT_GATEWAY_SETTING_KEY) return "agents-gateway";
+  if (key === NP_AGENT_RUNTIME_SETTING_KEY) return "agents-runtime";
+  if (key === NP_AGENT_RUNTIME_CONTROL_SETTING_KEY) return "agents-runtime-control";
   if (key === "seo") return "seo";
   if (key === "site.quotas") return "site-quotas";
   if (key === "theme") return "theme-tokens";
@@ -1267,6 +1276,22 @@ export function npAnalyzeSettingValue(key: unknown, value: unknown): NpSettingCo
       : [validation.issue];
   }
   switch (kind) {
+    case "agents-runtime":
+    case "agents-runtime-control": {
+      const result =
+        kind === "agents-runtime"
+          ? npAnalyzeAgentRuntimeSettingsV1(value)
+          : npAnalyzeAgentRuntimeControlV1(value);
+      return result.ok
+        ? []
+        : result.issues.map((entry) =>
+            issue(
+              entry.code === "unknown-field" ? "unknown-field" : "invalid-field",
+              `settings.${key as string}`,
+              "invalid runtime settings contract",
+            ),
+          );
+    }
     case "agents-gateway": {
       const result = npAnalyzeAgentGatewaySettings(value);
       return result.ok

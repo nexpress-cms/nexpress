@@ -1,5 +1,19 @@
 # apps/web — AGENTS.md
 
+AP-500/AP-502/AP-504 add only a thin `scripts/agent-runtime.ts` wrapper and
+`agent:runtime` script for the shared local status/pause/reviewed-resume facade.
+The explicit deployment actor fingerprint is environment-only; wrappers do not
+construct workers, provider adapters, schedulers or automatic runtime services.
+Absent readiness blocks resume while local status/pause remain available.
+Generated migrations 0046/0047 extend the run table and nine runtime tables;
+Doctor is 40 Agent tables/265 critical constraints/15 deferred lifecycle foreign
+keys, ordinary deletion 39 tables. Reuse the existing runtime service fixture
+for controls and negative PostgreSQL cases. Runtime configuration HTTP routes
+and Studio views remain AP-507; no versions/changesets or default activation
+are added. See the R5 runtime foundation flow for current scope and validation.
+
+Earlier R4 slice:
+
 AP-406 uses the existing four Agent HTTP wrappers and shared MCP entrypoints; do not add parallel execution routes or automatic Gateway/runtime installation. Current Activity uses the explicitly injected ChangeSet read facade and safe execution projections. Migration 0045 updates the existing stdio MCP-mode constraint; Doctor remains 31 Agent tables/167 critical constraints/11 deferred lifecycle foreign keys. All 1,181 ordinary PostgreSQL cases passed across the full run and corrected regressions; native preview passed separately. Live Redis 16, restored theme-render 5, production browser 62 and packed 40-package/56-stage checks passed. Final revalidation passed Core unit 1,726, typecheck/build, reference build,
 lint 41, execution PostgreSQL 66 and packed 40-package/56-stage checks; see the R4 Gateway execution flow.
 

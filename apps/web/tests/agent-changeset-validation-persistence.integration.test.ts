@@ -248,7 +248,7 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet validation attempt persistence", ()
     const drift = await npCollectAgentHealthSummaryV1();
     expect(drift.issues.some((issue) => issue.code === "AGENT_ROW_STATE_INVALID")).toBe(true);
     const inventory = await npInspectAgentSiteDeletionRows(f.db, siteId);
-    expect(inventory).toHaveLength(30);
+    expect(inventory).toHaveLength(39);
     expect(inventory.some((row) => row.table === "np_agent_changeset_validation_attempts")).toBe(
       true,
     );

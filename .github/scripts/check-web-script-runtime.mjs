@@ -13,7 +13,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../..");
@@ -45,6 +45,12 @@ const COMMON_ENV = {
 
 const CASES = [
   { script: "agent-mcp-stdio.ts" },
+  { script: "agent-runtime.ts", args: ["--help"] },
+  {
+    script: "agent-runtime.ts",
+    args: ["status", "--site", "*", "--json"],
+    runtimeErrorCode: "RUNTIME_ARGUMENT_INVALID",
+  },
   { script: "build.ts", args: ["--help"], timeoutMs: 20_000 },
   { script: "deploy-plan.ts", args: ["--help"] },
   { script: "dev-notice.ts" },
@@ -191,6 +197,23 @@ for (const entry of CASES) {
     console.error(`::error::scripts/${entry.script} crashed at module load`);
     console.error(tail(output));
     continue;
+  }
+
+  if (entry.runtimeErrorCode) {
+    try {
+      const { npRequireAgentRuntimeOpsResultV1 } = await import(
+        pathToFileURL(resolve(repoRoot, "packages/core/dist/agent-contract.js")).href
+      );
+      if (result.timedOut || result.code !== 1 || Buffer.byteLength(result.stdout) > 32_768)
+        throw new Error("Runtime recovery did not fail closed");
+      const wire = npRequireAgentRuntimeOpsResultV1(JSON.parse(result.stdout));
+      if (wire.outcome !== "blocked" || wire.errorCode !== entry.runtimeErrorCode)
+        throw new Error("Runtime recovery result mismatch");
+    } catch {
+      failed = true;
+      console.error(`::error::scripts/${entry.script} did not return its safe JSON failure`);
+      continue;
+    }
   }
 
   const status = result.timedOut

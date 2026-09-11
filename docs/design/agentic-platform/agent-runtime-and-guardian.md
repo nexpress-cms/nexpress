@@ -1287,6 +1287,14 @@ observability facade.
 
 ## Admission budgets and circuit breakers
 
+The AP-500/AP-502/AP-504 foundation now implements explicit queued runtime
+admission, frozen/current hard-policy composition, usage reservation and
+reconciliation, emergency controls and aggregate diagnostics. Provider
+inference, event/schedule dispatch, the planner and breaker recovery workers
+remain later R5 work. See
+[the runtime foundation flow](r5-runtime-foundation-flow.md) for the installed
+server services and local `status/pause/resume` ceremony.
+
 Budget admission occurs before building a provider prompt and again before
 each additional turn. Counters use Postgres, site-scoped transaction locks,
 integer units, and conservative reservations.
@@ -1299,8 +1307,11 @@ tokens/attempts/capability calls, daily/monthly tokens and cost micros,
 incident analysis per fingerprint/cooldown, and direct action site/subject
 frequency. Admin and admission do not maintain parallel inventories.
 
-`null` means the next concrete outer ceiling, not unbounded. `0` disables the
-activity. The deployment sets hard maxima that a site admin cannot raise.
+`null` means the next concrete outer ceiling, not unbounded. For ordinary
+maxima, `0` disables the activity and layers compose by minimum. Cooldown is a
+minimum delay, so layers compose by maximum and zero adds no delay; warning
+basis points compose by minimum. The deployment sets hard bounds that a site
+admin cannot loosen.
 Provider usage is reserved from the requested maximum before invocation and
 reconciled to the validated result afterward. If usage or cost cannot be
 measured exactly in USD micros, every provider-backed run fails admission in

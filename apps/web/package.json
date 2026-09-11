@@ -9,6 +9,7 @@
     "dev": "concurrently -n next,schema -c blue,magenta -k \"next dev\" \"NP_SCHEMA_WATCH=1 tsx watch --watch-path=src/collections --watch-path=src/nexpress.config.ts scripts/generate-schema.ts\"",
     "start": "next start",
     "agent:mcp": "tsx scripts/agent-mcp-stdio.ts",
+    "agent:runtime": "tsx scripts/agent-runtime.ts",
     "typecheck": "tsc --noEmit",
     "lint": "NODE_OPTIONS='--max-old-space-size=6144' eslint . --cache --cache-location node_modules/.cache/eslint --cache-strategy content && pnpm run lint:scripts",
     "lint:scripts": "NODE_OPTIONS='--max-old-space-size=6144' eslint scripts --no-ignore --cache --cache-location node_modules/.cache/eslint-scripts --cache-strategy content",

@@ -11,6 +11,17 @@
 > ChangeSet state, runtime behavior, credentials, and verification are defined
 > by the other documents in this directory.
 
+The AP-500/AP-502/AP-504 runtime foundation now installs explicit server
+construction seams for Agent/policy lifecycle, queued admission, retained
+canonical hard-policy/budget sources, usage ledgers and local emergency
+controls. Settings, runtime admission and deletion share the existing site
+quota advisory lock and DB ownership; no parallel runtime pool is introduced.
+The runtime remains disabled without explicit settings, host authority and
+readiness. Provider inference, automatic workers, event/schedule dispatch and
+the AP-507 Studio configuration surfaces remain later work. See
+[the runtime foundation flow](r5-runtime-foundation-flow.md) for the implemented
+boundary and validation evidence.
+
 ## 1. Architectural objective
 
 NexPress should let an external coding agent build a normal NexPress

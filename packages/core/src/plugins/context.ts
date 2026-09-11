@@ -643,12 +643,12 @@ export function createPluginRuntimeContext(options: BuildContextOptions): Record
           // `BodyInit` isn't in @types/node's global scope even with lib.dom
           // off, so keep the local union narrow enough for fetch() while
           // staying portable across runtimes.
-          let body: string | Uint8Array | undefined;
+          let body: string | Uint8Array<ArrayBuffer> | undefined;
           if (opts?.body !== undefined && opts.body !== null) {
             if (typeof opts.body === "string") {
               body = opts.body;
             } else if (opts.body instanceof Uint8Array) {
-              body = opts.body;
+              body = new Uint8Array(opts.body);
             } else {
               body = JSON.stringify(opts.body);
             }

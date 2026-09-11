@@ -68,8 +68,41 @@ const ROLLBACK_STATEMENTS = [
   'ALTER TABLE "np_agent_changeset_rollback_plans" ADD CONSTRAINT "np_agent_changeset_rollback_plans_approval_fk" FOREIGN KEY ("site_id","approval_id") REFERENCES "public"."np_agent_approvals"("site_id","id") ON DELETE no action DEFERRABLE INITIALLY DEFERRED;',
 ] as const;
 export const npAgentRollbackDeferredLifecycleConstraintsSqlV1 = `${ROLLBACK_STATEMENTS.join(`\n${STATEMENT_BREAK}\n`)}\n`;
-type Inventory = "r1" | "rollback";
+export const npAgentRuntimeTableNamesV1 = Object.freeze([
+  "np_agents",
+  "np_agent_versions",
+  "np_agent_policies",
+  "np_agent_triggers",
+  "np_agent_provider_calls",
+  "np_agent_usage_reservations",
+  "np_agent_usage_daily",
+  "np_agent_circuit_breakers",
+  "np_agent_runs",
+  "np_agent_events",
+  "np_agent_actions",
+] as const);
+export const npAgentRuntimeDeferredLifecycleConstraintNamesV1 = Object.freeze([
+  "np_agents_active_version_fk",
+  "np_agents_draft_version_fk",
+  "np_agent_runs_causal_event_fk",
+  "np_agent_runs_causal_action_fk",
+] as const);
+const RUNTIME_STATEMENTS = [
+  'ALTER TABLE "np_agents" ADD CONSTRAINT "np_agents_active_version_fk" FOREIGN KEY ("site_id","id","active_version_id") REFERENCES "public"."np_agent_versions"("site_id","agent_id","id") ON DELETE no action DEFERRABLE INITIALLY DEFERRED;',
+  'ALTER TABLE "np_agents" ADD CONSTRAINT "np_agents_draft_version_fk" FOREIGN KEY ("site_id","id","draft_version_id") REFERENCES "public"."np_agent_versions"("site_id","agent_id","id") ON DELETE no action DEFERRABLE INITIALLY DEFERRED;',
+  'ALTER TABLE "np_agent_runs" ADD CONSTRAINT "np_agent_runs_causal_event_fk" FOREIGN KEY ("site_id","causal_event_id") REFERENCES "public"."np_agent_events"("site_id","id") ON DELETE no action DEFERRABLE INITIALLY DEFERRED;',
+  'ALTER TABLE "np_agent_runs" ADD CONSTRAINT "np_agent_runs_causal_action_fk" FOREIGN KEY ("site_id","causal_action_id") REFERENCES "public"."np_agent_actions"("site_id","id") ON DELETE no action DEFERRABLE INITIALLY DEFERRED;',
+] as const;
+export const npAgentRuntimeDeferredLifecycleConstraintsSqlV1 = `${RUNTIME_STATEMENTS.join(`\n${STATEMENT_BREAK}\n`)}\n`;
+type Inventory = "r1" | "rollback" | "runtime";
 function inventoryDefinition(inventory: Inventory) {
+  if (inventory === "runtime")
+    return {
+      tables: npAgentRuntimeTableNamesV1,
+      names: npAgentRuntimeDeferredLifecycleConstraintNamesV1,
+      statements: RUNTIME_STATEMENTS,
+      sql: npAgentRuntimeDeferredLifecycleConstraintsSqlV1,
+    };
   return inventory === "r1"
     ? {
         tables: npAgentR1TableNamesV1,
@@ -173,6 +206,13 @@ export async function npEnsureAgentLifecycleConstraintMigrationV1(
   const folder = resolve(options.migrationsFolder ?? "./drizzle");
   const beforeFiles = await sqlFiles(folder);
   const chain = await readMigrationChain(folder, beforeFiles);
+  if (
+    inventory === "runtime" &&
+    !npAgentRuntimeTableNamesV1
+      .filter((table) => table !== "np_agent_runs" && table !== "np_agent_actions")
+      .some((table) => chain.includes(`CREATE TABLE "${table}"`))
+  )
+    return { state: "already-complete", migrationFile: null };
   if (
     inventory === "rollback" &&
     !["np_agent_changeset_rollback_plans", "np_agent_changeset_rollback_operations"].some((table) =>

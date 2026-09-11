@@ -1134,7 +1134,21 @@ repeat critical paths against Postgres/pg-boss in integration.
 - local `nexpress agent runtime status/pause/resume` works with provider, MCP,
   worker, and Admin JavaScript unavailable; requires an exact site and
   deployment-authority audit fingerprint, pause is idempotent, and resume
-  rejects a missing/tampered/stale plan or approval and blocking readiness.
+  rejects a missing/tampered/stale plan or approval and blocking readiness;
+- AP-504 controls use the shared runtime fixture to prove actor/site/settings
+  and readiness-fingerprint binding, exact five-minute expiry, one consumed
+  receipt replay, newer-pause invalidation, CAS and outer-transaction rollback.
+  Staff resume uses existing admission/reauthentication without a local plan.
+  A missing/throwing readiness callback leaves status/pause available and resume
+  blocked. Private settings/run-source Doctor reads return only aggregate codes;
+- the local project CLI validates the shared result before writing an artifact
+  or forwarding JSON. Child stderr, malformed/oversized stdout, package-manager
+  banners, raw errors and private fields never become an operations result.
+  Packed fresh-scaffold CI also checks absent deployment authority/site and a
+  temporary existing site's disabled defaults, then removes that fixture and
+  verifies that status seeded no Agent rows or settings.
+  The exact implemented AP-500/AP-502/AP-504 scope and acceptance evidence are
+  tracked in [the runtime foundation flow](r5-runtime-foundation-flow.md).
 
 ## 8. Adversarial security suite
 

@@ -273,7 +273,7 @@ export function buildRequest(path: string, options: RequestOptions = {}): NextRe
     headers.cookie = cookies.join("; ");
   }
 
-  const init: RequestInit = {
+  const init: NonNullable<ConstructorParameters<typeof NextRequest>[1]> = {
     method: options.method ?? "GET",
     headers,
   };

@@ -18,6 +18,7 @@ import {
 } from "../../../packages/core/src/agent/changeset-service.js";
 import {
   npBuildAgentChangeSetDraftInputJsonV1,
+  npRequireAgentChangeSetDraftInputV1,
   npDigestAgentChangeSetDraftInputV1,
   type NpAgentChangeSetDraftInputV1,
 } from "../../../packages/core/src/agent-contract/changeset-wire-contract.js";
@@ -35,7 +36,7 @@ export const settings = {
   agentHttp: "disabled" as const,
 };
 export function draft(title = "Proposed content"): NpAgentChangeSetDraftInputV1 {
-  return {
+  return npRequireAgentChangeSetDraftInputV1({
     title,
     summary: null,
     operations: [
@@ -55,7 +56,7 @@ export function draft(title = "Proposed content"): NpAgentChangeSetDraftInputV1 
         },
       },
     ],
-  };
+  });
 }
 export async function command(
   value = draft(),
@@ -296,6 +297,7 @@ export async function oauthFixture(f: Awaited<ReturnType<typeof fixture>>) {
     siteId,
     authorization: `Bearer ${tokens.access_token}`,
   });
+  if (authentication.kind !== "oauth") throw new Error("Expected OAuth fixture authentication.");
   expect(authentication.authorizationContext.authorityRef.kind).toBe("oauth-grant");
   const registry = await createAgentReadCapabilityRegistryV1(
     createAgentCoreReadCapabilityExecutorsV1({

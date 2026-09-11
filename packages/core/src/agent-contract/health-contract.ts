@@ -16,6 +16,15 @@ const SIGNED_32_BIT_MAXIMUM = 2_147_483_647;
 const HEALTH_SUMMARY_MAXIMUM_BYTES = 128 * 1024;
 
 export const npAgentDiagnosticEntitiesV1 = [
+  "agent",
+  "agent-version",
+  "policy",
+  "trigger",
+  "provider-call",
+  "usage-reservation",
+  "usage-daily",
+  "circuit-breaker",
+  "event",
   "action",
   "changeset",
   "changeset-execution",
@@ -52,6 +61,14 @@ export const npAgentDiagnosticEntitiesV1 = [
 export type NpAgentDiagnosticEntityV1 = (typeof npAgentDiagnosticEntitiesV1)[number];
 
 export const npAgentDiagnosticStatesV1 = [
+  "paused",
+  "archived",
+  "in_flight",
+  "reconciled",
+  "released",
+  "closed",
+  "open",
+  "half_open",
   "preparing",
   "conflicted",
   "committed",
@@ -123,6 +140,9 @@ export const npAgentDiagnosticStatesV1 = [
 export type NpAgentDiagnosticStateV1 = (typeof npAgentDiagnosticStatesV1)[number];
 
 export const npAgentContractDiagnosticIssueCodesV1 = [
+  "AGENT_RUNTIME_DIVERGED",
+  "AGENT_USAGE_DIVERGED",
+  "AGENT_STALE_USAGE_RESERVATION",
   "AGENT_AUTH_REQUEST_DIVERGED",
   "AGENT_CONNECTION_CONFIG_DIVERGED",
   "AGENT_CONNECTION_OPERATION_DIVERGED",

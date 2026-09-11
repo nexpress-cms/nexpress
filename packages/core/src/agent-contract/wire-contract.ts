@@ -719,9 +719,7 @@ export function npRequireAgentServiceTokenV1(value: unknown): NpAgentServiceToke
   );
 }
 
-const BUDGET_KEYS = [
-  "schemaVersion",
-  "costCurrency",
+export const npAgentBudgetDimensionKeysV1 = [
   "maxConcurrentRuns",
   "maxConcurrentProviderCalls",
   "runsPerHour",
@@ -741,6 +739,12 @@ const BUDGET_KEYS = [
   "incidentAnalysisCooldownSeconds",
   "directActionsPerHour",
   "directActionsPerSubjectPerHour",
+] as const satisfies readonly (keyof NpAgentBudgetV1)[];
+
+const BUDGET_KEYS = [
+  "schemaVersion",
+  "costCurrency",
+  ...npAgentBudgetDimensionKeysV1,
   "warningBasisPoints",
 ] as const satisfies readonly (keyof NpAgentBudgetV1)[];
 
