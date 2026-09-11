@@ -1122,7 +1122,10 @@ by signed 32-bit maximum, cost micros by JavaScript safe-integer maximum,
 cooldown by 86,400 seconds, and `warningBasisPoints` by `0..10_000` (default
 `8_000`). `null` means inherit the next outer ceiling, never unlimited. The
 deployment budget is concrete with no nulls; site and Agent budgets may only
-narrow it. `0` disables that dimension. Per-hour counters are rolling 60
+narrow it. Ordinary maxima compose by minimum, and `0` prevents admission
+for that activity. Incident-analysis cooldown is a minimum delay: composition
+takes the maximum, and `0` adds no delay. Warning basis points compose by
+minimum. Per-hour counters are rolling 60
 minutes, per-day counters are UTC calendar days, and per-month counters are
 UTC calendar months. Cost currency is USD in v1. A provider
 adapter/connection without a validated exact USD-micros pricing contract is
@@ -1134,8 +1137,10 @@ AP-101 implements this exact `NpAgentBudgetV1` in the client-safe contract.
 The default analyzer permits `null` for site/Agent inheritance, while its
 `requireConcrete` option rejects every `null` for the deployment projection;
 both paths share the published count, cost, cooldown, and warning bounds.
-Persistence, layer composition, counters, reservations, and Admin mutation
-remain AP-102 and later work rather than being inferred by this wire parser.
+AP-500/AP-502/AP-504 now reuse this parser for persisted definitions,
+layer composition, durable counters, usage reservations and explicitly
+installed Admin mutation services. The wire parser itself grants no authority;
+see [the runtime foundation flow](r5-runtime-foundation-flow.md).
 
 `NpAgentRunLimitsV1` is the concrete non-null minimum resolved at admission
 from deployment/site/Agent budgets and recipe hard bounds. Counts/tokens/cost
@@ -1157,7 +1162,9 @@ layer can resolve that class. Severity uses the shared
 minimum notification severity takes `max`; Guardian actor-limit severity is
 disabled when any layer is null, otherwise it takes `max`. Quiet-hour windows
 are non-overlapping UTC minutes in `0..1_440` and
-compose by union as deny periods. Guardian TTL must stay within the frozen
+compose by union as deny periods. The eight-window bound applies to each
+saved layer; the effective union preserves every interval even when the union
+contains more than eight windows. Guardian TTL must stay within the frozen
 60–3,600 second actor-restriction bounds; every day value stays within the
 retention maxima in this document. Rules can narrow but never remove a
 descriptor's human-approval floor.
@@ -1267,6 +1274,7 @@ invent an Agent configuration.
 | `state`                         | text                 | `queued`, `running`, `waiting_approval`, `waiting_retry`, `verifying`, `succeeded`, `failed`, `cancelled`, `policy_blocked`, or `budget_blocked` |
 | `goal`                          | text                 | Bounded operator/framework goal                                                                                                                  |
 | `event_ref`                     | jsonb nullable       | Exact redacted source reference                                                                                                                  |
+| `runtime_admission_sources`     | jsonb nullable       | Runtime-only private retained framework/feature-setting hard policies and deployment/site budgets; exact existing canonical ref/digest binding   |
 | `policy_refs`                   | jsonb                | Effective ids and content hashes                                                                                                                 |
 | `run_limits`                    | jsonb                | Frozen concrete `NpAgentRunLimitsV1`                                                                                                             |
 | `run_limits_hash`               | text                 | Canonical limits digest                                                                                                                          |
@@ -1283,7 +1291,7 @@ invent an Agent configuration.
 | `pricing_id`                    | text nullable        | Selected effective pricing rule; provider-backed Runtime only                                                                                    |
 | `pricing_version`               | integer nullable     | Frozen positive pricing version                                                                                                                  |
 | `pricing_fingerprint`           | text nullable        | Frozen selected pricing-rule digest                                                                                                              |
-| `pricing_effective_at`          | timestamptz nullable | Exact admission/reservation instant used for half-open interval selection                                                                        |
+| `pricing_effective_at`          | timestamptz nullable | Immutable run-admission pricing evaluation instant used for half-open interval selection                                                         |
 | `usage`                         | jsonb                | Exact tokens/calls/cost-micros counters                                                                                                          |
 | `result`                        | jsonb nullable       | Bounded safe summary                                                                                                                             |
 | `error_code`                    | text nullable        | Stable code                                                                                                                                      |
@@ -1299,7 +1307,13 @@ Exactly all three Agent fields are present for `runtime` and absent for
 are owned only by the authenticated external principal and frozen capability
 invocation. `policy_refs` always includes immutable framework hard-rule and
 feature-setting fingerprints; Runtime rows additionally freeze the resolved
-site/Agent policy ids and hashes.
+site/Agent policy ids and hashes. The Runtime-only
+`runtime_admission_sources` bundle retains the exact framework policy/version,
+feature-setting policy, deployment budget and site budget. Both policy bodies
+have empty soft instructions. The shared verifier checks their canonical
+bytes against `policy_refs`, the budget source refs and snapshot/limit hashes;
+current rules and budgets can narrow those frozen sources but cannot widen
+them. It is private evidence, never a client or portable-content projection.
 For `NpAgentRunAdmissionCanonicalV1`, `admittedAt` is the canonical ISO
 projection of this row's immutable `queued_at`, and `deadlineAt` is the
 canonical ISO projection of `deadline_at`; no other timestamp may be selected
@@ -1320,12 +1334,15 @@ pricing id/version/fingerprint/effective-at are all null for Gateway runs and
 deterministic Runtime recipes. They are all non-null only for a
 provider-backed Runtime run and must match its selected same-site ready
 connection plus immutable config-version row. Price selection uses
-`pricing_effective_at=reservation.reserved_at` and exactly one catalog entry
+`pricing_effective_at=run.queued_at` and exactly one catalog entry
 for the concrete model whose half-open interval is
 `effectiveFrom <= pricing_effective_at < effectiveUntil` (or has null end).
 Zero or multiple matches fail before a credential lease or budget mutation.
 Provider-call and reservation rows always repeat that frozen snapshot/pricing
-tuple.
+tuple. Each reservation records its actual `reserved_at`, at or after that
+immutable evaluation instant; subsequent turns never invent a new run pricing
+time. A newly admitted reservation must still find the frozen rule eligible
+at its current time.
 
 `np_agent_invocations` remains the only cross-transport idempotency authority;
 a Gateway/manual run references its unique invocation rather than defining a
@@ -1647,7 +1664,7 @@ admission:
   the admitted maximum reservation when an ambiguity window expires unknown;
 - `reserved_at`, `expires_at`, and nullable `finalized_at`.
 
-`np_agent_usage_daily` contains one row per
+`np_agent_usage_daily` uses a generated UUID primary key and contains one row per
 `(site_id, agent_id, connection_id, usage_date)` with integer provider calls,
 provider-reported and adapter-estimated token buckets, reported and estimated
 cost micros, conservative budget-charge micros, and unknown/unpriced-call
@@ -1665,10 +1682,13 @@ retained for the budget horizon in section 9. Doctor reports expired
 reservations, missing aggregates, and counters that cannot be measured; a
 configured hard ceiling fails closed rather than assuming zero.
 
-Admission evaluates the chosen rule at `pricing_effective_at=reserved_at`,
-stores the tuple before provider dispatch, and reserves from its exact
+Run admission evaluates the chosen rule at
+`pricing_effective_at=run.queued_at`. Calls and reservations preserve this
+same tuple, while each reservation records its actual `reserved_at` and
+requires `pricing_effective_at<=reserved_at`. New reservation admission checks
+the frozen rule's eligibility at that current time and reserves from its exact
 integer formula. Later catalog activation or effective-interval expiry does
-not reinterpret an admitted reservation. Reconciliation resolves the retained
+not reinterpret an already admitted reservation. Reconciliation resolves the retained
 immutable config snapshot and verifies its catalog/rule fingerprints before
 using reported or estimated usage; a missing/mismatched snapshot leaves the
 reservation blocking and raises Doctor rather than charging a current price.
@@ -3067,7 +3087,7 @@ approval. Mixed proposal/effect tools resolve the exact input-selected effect
 profile, so `propose` can prepare/request approval without admitting the
 effecting branch. The setting contains no host, port, relay, token, or secret.
 
-Site-wide runtime intent is a new exact `np_settings` key,
+Site-wide runtime intent uses the exact `np_settings` key,
 `agents.runtime`. It includes:
 
 - enabled flag;
@@ -3076,6 +3096,19 @@ Site-wide runtime intent is a new exact `np_settings` key,
   deployment ceilings;
 - default exact policy-rule/retention values within the framework maxima; and
 - emergency pause `{ paused, reasonCode, actorFingerprint, changedAt }`.
+
+AP-504 registers this exact `np.agent-runtime-settings.v1` body. Absence means
+disabled. Its paired private `agents.runtime.control` key is the exact bounded
+`{revision,currentResumePlan,lastResumeReceipt}` record: logical revision starts
+at 1, one persisted five-minute local resume plan binds actor/site/settings
+and live readiness, and only the most recent consumed receipt supports safe
+same-actor replay. Shared settings, pause, resume and deletion use the existing
+per-site quota advisory lock. Local audit retains the configured deployment
+actor and a reason fingerprint, never raw reason text. Staff resume reuses
+current Admin admission and its fixed reason/version/idempotency body. Both
+runtime keys are excluded from content import/export; the private control
+record is excluded from status and Admin wire output. See
+[the runtime foundation flow](r5-runtime-foundation-flow.md).
 
 Each active `np_agent_versions.budget` may narrow those ceilings. Missing
 per-agent limits do not widen the site limit. Admission acquires the same class
@@ -3392,7 +3425,7 @@ contract.
 ## 11. Transfer, backup, and migration
 
 - Content transfer excludes every table in this document, the `agents.gateway`
-  and `agents.runtime` settings, secrets, policies, signals, incidents, and
+  and both `agents.runtime`/`agents.runtime.control` settings, secrets, policies, signals, incidents, and
   history.
 - Physical database/media backup includes them naturally. Restore validation
   checks that vault master-key configuration can decrypt or intentionally

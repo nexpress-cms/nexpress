@@ -60,6 +60,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "src/collections/tags.ts": utf8(tagsCollectionTemplate()),
     "scripts/_load-env.ts": utf8(loadEnvScriptTemplate()),
     "scripts/agent-mcp-stdio.ts": utf8(agentMcpStdioScriptTemplate()),
+    "scripts/agent-runtime.ts": utf8(agentRuntimeScriptTemplate()),
     "scripts/build.ts": utf8(buildScriptTemplate()),
     "scripts/deploy-plan.ts": utf8(deployPlanScriptTemplate()),
     "scripts/dev-notice.ts": utf8(devNoticeScriptTemplate()),
@@ -153,6 +154,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
       packageManager: "pnpm@10.33.0",
       scripts: {
         "agent:mcp": "tsx scripts/agent-mcp-stdio.ts",
+        "agent:runtime": "tsx scripts/agent-runtime.ts",
         predev: "tsx scripts/dev-notice.ts",
         dev: "next dev",
         prebuild: "pnpm schema:gen",
@@ -507,6 +509,15 @@ function agentMcpStdioScriptTemplate(): string {
     `  process.stderr.write(formatAgentMcpStdioFailureV1(error));\n` +
     `  process.exitCode = 1;\n` +
     `}\n`
+  );
+}
+
+function agentRuntimeScriptTemplate(): string {
+  return (
+    `import "./_load-env.js";\n` +
+    `import { runAgentRuntimeProcessV1 } from "@nexpress/app/scripts/agent-runtime";\n` +
+    `import { ensureFor, shutdownBootstrap } from "../src/lib/bootstrap.js";\n\n` +
+    `process.exitCode = await runAgentRuntimeProcessV1({ ensureFor, shutdown: shutdownBootstrap });\n`
   );
 }
 

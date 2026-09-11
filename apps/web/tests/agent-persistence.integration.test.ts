@@ -258,7 +258,7 @@ describe.skipIf(skipIfNoTestDb())("Agent persistence and site deletion foundatio
     await seedPendingNotificationConnection("agent-a");
 
     const inventory = await npInspectAgentSiteDeletionRows(db, "agent-a");
-    expect(inventory).toHaveLength(30);
+    expect(inventory).toHaveLength(39);
     expect(inventory.map((row) => row.table)).toEqual(
       [...inventory.map((row) => row.table)].sort(),
     );
@@ -315,7 +315,7 @@ describe.skipIf(skipIfNoTestDb())("Agent persistence and site deletion foundatio
       requesterFingerprint: "staff:test",
     });
 
-    expect(await npInspectAgentSiteDeletionRows(db, "agent-saga")).toHaveLength(30);
+    expect(await npInspectAgentSiteDeletionRows(db, "agent-saga")).toHaveLength(39);
     await expect(deleteSite("agent-saga", { cascade: true })).rejects.toMatchObject({
       errors: [
         {

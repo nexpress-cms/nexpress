@@ -25,6 +25,21 @@ function summary() {
 }
 
 describe("Agent health summary contract", () => {
+  it("accepts bounded R5 lifecycle and accounting evidence without row details", () => {
+    const value = summary();
+    value.states = [
+      { entity: "agent", state: "paused", count: 1, oldestAgeSeconds: 60 },
+      { entity: "agent-version", state: "active", count: 1, oldestAgeSeconds: 60 },
+      { entity: "circuit-breaker", state: "half_open", count: 1, oldestAgeSeconds: 60 },
+      { entity: "event", state: "queued", count: 1, oldestAgeSeconds: 60 },
+      { entity: "policy", state: "retired", count: 1, oldestAgeSeconds: 60 },
+      { entity: "provider-call", state: "in_flight", count: 1, oldestAgeSeconds: 60 },
+      { entity: "trigger", state: "disabled", count: 1, oldestAgeSeconds: 60 },
+      { entity: "usage-daily", state: "completed", count: 1, oldestAgeSeconds: 60 },
+      { entity: "usage-reservation", state: "reconciled", count: 1, oldestAgeSeconds: 60 },
+    ];
+    expect(npRequireAgentHealthSummaryV1(value)).toEqual(value);
+  });
   it("accepts one exact aggregate-only projection", () => {
     expect(npRequireAgentHealthSummaryV1(summary())).toEqual(summary());
   });

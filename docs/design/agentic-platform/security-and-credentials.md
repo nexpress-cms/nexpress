@@ -1971,6 +1971,7 @@ The exact recovery surface extends the shipped local-first ops CLI:
 ```text
 nexpress agent runtime status --site <siteId> --json
 nexpress agent runtime pause  --site <siteId> --reason <text> --execute --json
+nexpress agent runtime resume --site <siteId> --out <artifact> --json
 nexpress agent runtime resume --site <siteId> --plan <artifact> --execute --approve <planId> --json
 ```
 
@@ -1988,6 +1989,28 @@ is blocking. All commands emit one bounded `np.agent-runtime-ops.v1` result;
 there is no all-site wildcard. A deployment-wide incident runbook enumerates
 the authoritative site registry and invokes/records this exact operation for
 each affected site; partial progress remains explicit.
+
+AP-504 implements this boundary with explicitly constructed shared controls.
+The project CLI uses `NP_AGENT_DEPLOYMENT_ACTOR_FINGERPRINT` only as the
+configured non-PII audit identity; it accepts no credential in argv. Status and
+pause work with absent readiness, while resume fails closed without the
+host-injected live readiness checker. The checker returns all six exact states
+and a fingerprint of the current policy/budget/Vault/key/worker evidence; a
+five-second bound and abort signal contain failure. Vault alone may explicitly
+be `not-required`.
+
+The private `agents.runtime.control` setting holds positive revision, one
+current plan and the most recent consumed receipt. A plan expires in five
+minutes, binds the exact actor/site/settings revision and hashes, and must
+match the persisted plan before `--execute --approve` can clear containment.
+Prepare writes a mode-0600 local artifact; the default parent directory is
+mode 0700. A configuration change or later pause invalidates the plan. The
+same actor and exact consumed plan can safely replay its unchanged receipt;
+all older plans fail closed. Local pause audit stores a reason fingerprint
+instead of raw operator prose. Existing staff admission uses the fixed Admin
+resume envelope and the shared live-check transaction seam without fabricating
+a local plan. Neither setting is portable content. See
+[the runtime foundation flow](r5-runtime-foundation-flow.md).
 
 ## Security test and release gates
 

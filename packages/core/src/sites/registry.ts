@@ -1,3 +1,4 @@
+import { npLockSiteQuotas } from "./quotas.js";
 import {
   npAssertAgentPreviewEffectsAllowed,
   npAgentPreviewReadTransaction,
@@ -466,6 +467,7 @@ export async function deleteSite(id: string, options?: NpDeleteSiteOptions): Pro
   const collectionTables = getSiteCollectionTables();
   await db.transaction(async (transaction) => {
     const tx = transaction as ReturnType<typeof getDb>;
+    await npLockSiteQuotas(tx as unknown as Parameters<typeof npLockSiteQuotas>[0], id);
     const [target] = await tx.select().from(npSites).where(eq(npSites.id, id)).limit(1);
     if (!target) {
       throw new NpValidationError("Invalid input", [

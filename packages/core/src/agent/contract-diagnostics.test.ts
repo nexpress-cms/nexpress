@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { npCreateDisabledAgentRuntimeSettingsV1 } from "../agent-contract/runtime-contract.js";
 
 import { createAgentFakeProviderAdapterV1 } from "./provider-fake.js";
 import { NpAgentConnectionAuthAdapterRegistryV1 } from "./provider-auth-contract.js";
@@ -15,6 +16,8 @@ function queryClient(
     issues?: Array<{ code: string; count: string; oldest_age_seconds: string | null }>;
     provider?: { adapter_id: string; contract_version: string; fingerprint: string }[];
     vault?: { adapter_id: string; contract_version: string; fingerprint: string }[];
+    runtimeRows?: Record<string, unknown>[];
+    runtimeAdmissionRows?: Record<string, unknown>[];
   } = {},
 ): NpAgentDiagnosticsQueryClientV1 {
   const castRows = <T extends Record<string, unknown>>(rows: Record<string, unknown>[]): T[] =>
@@ -32,6 +35,9 @@ function queryClient(
       if (text.includes("with violations")) {
         return result<T>(options.issues ?? []);
       }
+      if (text.includes("runtime_control_rows")) return result<T>(options.runtimeRows ?? []);
+      if (text.includes("runtime_admission_rows"))
+        return result<T>(options.runtimeAdmissionRows ?? []);
       if (text.includes("with state_rows")) {
         return result<T>([
           {
@@ -54,9 +60,62 @@ function queryClient(
 }
 
 describe("Agent contract diagnostics", () => {
+  it("contains malformed private run-source evidence behind aggregate issue codes", async () => {
+    const result = await npCollectAgentHealthSummaryV1({
+      client: queryClient({
+        runtimeAdmissionRows: [
+          {
+            id: "018f0f30-cd7b-7cc2-8b16-8c052c259bd1",
+            runtimeAdmissionSources: { rawCredential: "private-runtime-source-marker" },
+          },
+        ],
+      }),
+    });
+    expect(result.issues).toContainEqual({
+      code: "AGENT_RUNTIME_DIVERGED",
+      count: 1,
+      oldestAgeSeconds: null,
+    });
+    expect(JSON.stringify(result)).not.toContain("private-runtime-source-marker");
+    expect(JSON.stringify(result)).not.toContain("018f0f30-cd7b-7cc2-8b16-8c052c259bd1");
+  });
+  it("validates private runtime control records without projecting their values", async () => {
+    const healthy = await npCollectAgentHealthSummaryV1({
+      client: queryClient({
+        runtimeRows: [
+          {
+            site_id: "default",
+            settings: npCreateDisabledAgentRuntimeSettingsV1(),
+            control: { revision: 1, currentResumePlan: null, lastResumeReceipt: null },
+            control_present: true,
+          },
+        ],
+      }),
+    });
+    expect(healthy.issueCount).toBe(0);
+    const result = await npCollectAgentHealthSummaryV1({
+      client: queryClient({
+        runtimeRows: [
+          {
+            site_id: "default",
+            settings: npCreateDisabledAgentRuntimeSettingsV1(),
+            control: { revision: 1, rawCredential: "private-credential-marker" },
+            control_present: true,
+          },
+        ],
+      }),
+    });
+    expect(result.issues).toContainEqual({
+      code: "AGENT_RUNTIME_DIVERGED",
+      count: 1,
+      oldestAgeSeconds: null,
+    });
+    expect(JSON.stringify(result)).not.toContain("private-credential-marker");
+    expect(JSON.stringify(result)).not.toContain("rawCredential");
+  });
   it("freezes the complete R1 table inventory and critical constraint inventory", () => {
-    expect(npAgentDiagnosticsSchemaInventoryV1.tables).toHaveLength(31);
-    expect(npAgentDiagnosticsSchemaInventoryV1.constraints).toHaveLength(167);
+    expect(npAgentDiagnosticsSchemaInventoryV1.tables).toHaveLength(40);
+    expect(npAgentDiagnosticsSchemaInventoryV1.constraints).toHaveLength(265);
     expect(npAgentDiagnosticsSchemaInventoryV1.tables).toEqual(
       [...npAgentDiagnosticsSchemaInventoryV1.tables].sort(),
     );

@@ -859,6 +859,16 @@ Guardian pages always include:
 
 ## 12. Budgets and runtime settings
 
+The AP-500/AP-502/AP-504 foundation supplies the shared definition/policy,
+budget and emergency-control server services with existing Admin admission,
+exact commands and CAS. This does not yet install the Agents/Policies/Budgets
+route/view inventory or complete the AP-507 UI described below. Local
+`nexpress agent runtime status/pause/resume` is implemented through the same
+controls. Staff resume retains its existing reason/version/idempotency command;
+local resume additionally requires a persisted, reviewed readiness plan. Raw
+local reasons and private `agents.runtime.control` records are not wire data.
+See [the runtime foundation flow](r5-runtime-foundation-flow.md).
+
 ### 12.1 Budget hierarchy
 
 Display the site ceiling first, then per-Agent narrower limits. Missing Agent
@@ -871,7 +881,9 @@ input/output tokens and cost micros per UTC day/month; incident analyses per
 fingerprint plus cooldown; direct actions per site/subject rolling hour; and
 the warning basis-points threshold. “Total tokens” is a derived display only,
 not a parallel persisted ceiling. Every Agent value shows its inherited
-deployment/site value and cannot be raised above it.
+deployment/site value and cannot loosen it. Ordinary maxima and warning
+basis points compose by minimum; cooldown is a minimum delay and composes by
+maximum, with zero adding no delay.
 
 Usage distinguishes:
 

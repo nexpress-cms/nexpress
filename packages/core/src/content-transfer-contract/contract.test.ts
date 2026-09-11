@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { npCreateDisabledAgentRuntimeSettingsV1 } from "../agent-contract/runtime-contract.js";
 import type { NpFieldConfig } from "../config/types.js";
 import type { NpContentTransferDocumentEntry } from "./types.js";
 
@@ -102,6 +103,20 @@ describe("content transfer envelope contract", () => {
         },
       }).ok,
     ).toBe(false);
+  });
+
+  it("excludes valid runtime intent and private recovery authority from transfer", () => {
+    for (const [key, value] of [
+      ["agents.runtime", npCreateDisabledAgentRuntimeSettingsV1()],
+      ["agents.runtime.control", { revision: 1, currentResumePlan: null, lastResumeReceipt: null }],
+    ]) {
+      expect(
+        npAnalyzeContentTransferEnvelope({
+          ...fullTransfer(),
+          settings: { activeTheme: "default", [key as string]: value },
+        }).ok,
+      ).toBe(false);
+    }
   });
 
   it("rejects version drift, unknown fields, and mismatched inventories", () => {

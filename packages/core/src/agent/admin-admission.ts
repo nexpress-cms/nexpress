@@ -15,6 +15,12 @@ import {
   type NpAgentChangeSetCancelInputV1,
 } from "../agent-contract/changeset-execution-contract.js";
 import { createHash, createHmac } from "node:crypto";
+import {
+  npAgentRuntimeAdminOperationIdsV1,
+  npRequireAgentRuntimeAdminInputV1,
+  type NpAgentRuntimeAdminOperationIdV1,
+  type NpAgentRuntimeAdminInputMapV1,
+} from "../agent-contract/runtime-admin-contract.js";
 
 import { and, eq, gt } from "drizzle-orm";
 
@@ -69,6 +75,7 @@ import {
 type NpAgentDb = ReturnType<typeof getDb>;
 
 export type NpAgentAdmittedAdminOperationIdV1 =
+  | NpAgentRuntimeAdminOperationIdV1
   | NpAgentGatewayAdminOperationIdV1
   | NpAgentConnectionAdminOperationIdV1
   | "agents.changesets.rollback_plans.create"
@@ -89,6 +96,7 @@ export type NpAgentAdmittedAdminOperationIdV1 =
   | "agents.approvals.revoke";
 
 export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
+  NpAgentRuntimeAdminInputMapV1 &
   NpAgentConnectionAdminInputMapV1 & {
     "agents.changesets.rollback_plans.create": NpAgentRollbackPlanCreateInputV1;
     "agents.changesets.rollback_plans.request_approval": NpAgentRollbackPlanRequestApprovalInputV1;
@@ -109,11 +117,17 @@ export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
   };
 
 const CONNECTION_ADMIN_OPERATION_IDS = new Set<string>(npAgentConnectionAdminOperationIdsV1);
+const RUNTIME_ADMIN_OPERATION_IDS = new Set<string>(npAgentRuntimeAdminOperationIdsV1);
 
 function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
   operationId: I,
   value: unknown,
 ): NpAgentAdmittedAdminInputMapV1[I] {
+  if (RUNTIME_ADMIN_OPERATION_IDS.has(operationId))
+    return npRequireAgentRuntimeAdminInputV1(
+      operationId as NpAgentRuntimeAdminOperationIdV1,
+      value,
+    ) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.changesets.rollback_plans.create")
     return npRequireAgentRollbackPlanCreateInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.changesets.rollback_plans.request_approval")
@@ -585,8 +599,31 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
         .limit(1);
       return row ?? null;
     };
+    const requireCurrentAuthorization = async (currentDb: NpAgentDb): Promise<Date> => {
+      const currentNow = nowFn();
+      const currentAuthorization = await npResolveAgentStaffSessionAuthorizationV1(
+        currentDb,
+        input.siteId,
+        input.actor,
+        currentNow,
+      );
+      if (
+        (await npDigestAgentStaffSiteAuthorizationCanonical(currentAuthorization)) !==
+        authorizationDigest
+      ) {
+        throw new NpAgentGatewayError(
+          "STAFF_AUTHORIZATION_CHANGED",
+          409,
+          "Staff site authorization changed during admission.",
+        );
+      }
+      return currentNow;
+    };
     const existing = await findReplay();
-    if (existing) return replayResult<T>(existing, requestHash);
+    if (existing) {
+      await requireCurrentAuthorization(db);
+      return replayResult<T>(existing, requestHash);
+    }
 
     let committed: {
       execution: NpAgentAdminExecutionResultV1<T>;
@@ -595,39 +632,27 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
     try {
       const transact = async (rawTx: NpAgentDb) => {
         const tx = rawTx;
-        const currentAuthorization = await npResolveAgentStaffSessionAuthorizationV1(
-          tx,
-          input.siteId,
-          input.actor,
-          now,
-        );
-        if (
-          (await npDigestAgentStaffSiteAuthorizationCanonical(currentAuthorization)) !==
-          authorizationDigest
-        ) {
-          throw new NpAgentGatewayError(
-            "STAFF_AUTHORIZATION_CHANGED",
-            409,
-            "Staff site authorization changed during admission.",
-          );
-        }
+        // Reauthentication and lock waits must not extend an expired staff session.
+        const now = await requireCurrentAuthorization(tx);
         const [audit] = await tx
           .insert(npAuditEvents)
           .values({
             actorKind: "staff",
             actorUserId: input.actor.user.id,
             action: operation.audit.eventId,
-            targetType: input.operationId.startsWith("agents.approvals.")
-              ? "agent-approval"
-              : input.operationId.startsWith("agents.changesets.")
-                ? "agent-changeset"
-                : input.operationId.startsWith("agents.connections.")
-                  ? "agent-connection"
-                  : input.operationId.includes("oauth_clients")
-                    ? "agent-oauth-client"
-                    : input.operationId.includes("principal_tokens")
-                      ? "agent-service-token"
-                      : "agent-principal",
+            targetType: RUNTIME_ADMIN_OPERATION_IDS.has(input.operationId)
+              ? "agent-runtime"
+              : input.operationId.startsWith("agents.approvals.")
+                ? "agent-approval"
+                : input.operationId.startsWith("agents.changesets.")
+                  ? "agent-changeset"
+                  : input.operationId.startsWith("agents.connections.")
+                    ? "agent-connection"
+                    : input.operationId.includes("oauth_clients")
+                      ? "agent-oauth-client"
+                      : input.operationId.includes("principal_tokens")
+                        ? "agent-service-token"
+                        : "agent-principal",
             targetId: input.targetId,
             siteId: input.siteId,
             payload: {
@@ -728,7 +753,10 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
     } catch (error) {
       if (input.db) throw error;
       const raced = await findReplay();
-      if (raced) return replayResult<T>(raced, requestHash);
+      if (raced) {
+        await requireCurrentAuthorization(db);
+        return replayResult<T>(raced, requestHash);
+      }
       throw error;
     }
     if (input.db && committed.afterCommit)

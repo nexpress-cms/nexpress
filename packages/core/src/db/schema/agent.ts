@@ -4,6 +4,7 @@ import {
   boolean,
   check,
   customType,
+  date,
   foreignKey,
   index,
   integer,
@@ -40,11 +41,22 @@ import type {
   NpAgentMcpStoredTerminalResultV1,
   NpAgentJsonObject,
   NpAgentRunLimitsV1,
+  NpAgentCapabilityModeV1,
+  NpAgentPolicyRulesV1,
+  NpAgentRecipeRegistryCanonicalV1,
+  NpAgentEventCanonicalV1,
+  NpAgentProviderTaskOutputV1,
   NpAgentScope,
   NpAgentTargetRef,
   NpAgentSiteDeletionPlanCanonicalV1,
   NpAgentVaultAadCanonicalV1,
 } from "../../agent-contract/types.js";
+import type { NpAgentBudgetV1 } from "../../agent-contract/wire-contract.js";
+import type {
+  NpAgentRecipeSettingsV1,
+  NpAgentRuntimeAdmissionSourcesV1,
+} from "../../agent-contract/runtime-contract.js";
+import { npAgentEventKinds } from "../../agent-contract/types.js";
 import type { NpAgentVerificationCheckV1 } from "../../agent-contract/changeset-execution-contract.js";
 import { npAuditEvents } from "./community.js";
 import { npSessions, npSites, npUsers } from "./system.js";
@@ -118,7 +130,7 @@ export const npAgentPrincipals = pgTable(
     ),
     check(
       "np_agent_principals_scopes_check",
-      sql`cardinality(${table.scopes}) between 1 and 64 and array_position(${table.scopes}, null) is null`,
+      sql`cardinality(${table.scopes}) between (case when ${table.kind} = 'runtime' and ${table.status} <> 'active' then 0 else 1 end) and 64 and array_position(${table.scopes}, null) is null`,
     ),
     check(
       "np_agent_principals_active_scope_check",
@@ -729,6 +741,13 @@ export const npAgentConnectionConfigVersions = pgTable(
   },
   (table) => [
     unique("np_agent_connection_config_versions_site_id_id_unique").on(table.siteId, table.id),
+    unique("np_agent_connection_config_versions_binding_unique").on(
+      table.siteId,
+      table.connectionId,
+      table.id,
+      table.version,
+      table.configHash,
+    ),
     unique("np_agent_connection_config_versions_number_unique").on(
       table.siteId,
       table.connectionId,
@@ -922,11 +941,251 @@ export const npAgentInvocations = pgTable(
   ],
 );
 
-/**
- * Generalized execution attribution. AP-203 creates Gateway rows only; the
- * nullable Runtime columns are reserved for the R5 migration that installs
- * Agent/version/trigger/provider owners.
- */
+/** Stable Runtime identity. Active/draft version cycles use reviewed deferred keys. */
+export const npAgents = pgTable(
+  "np_agents",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    principalId: uuid("principal_id").notNull(),
+    name: text("name").notNull(),
+    template: text("template").notNull(),
+    status: text("status").notNull(),
+    activeVersionId: uuid("active_version_id"),
+    draftVersionId: uuid("draft_version_id"),
+    rowVersion: integer("row_version").default(1).notNull(),
+    createdBy: uuid("created_by").references(() => npUsers.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("np_agents_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agents_principal_unique").on(t.principalId),
+    unique("np_agents_principal_binding_unique").on(t.siteId, t.id, t.principalId),
+    index("np_agents_site_status_idx").on(t.siteId, t.status, t.createdAt),
+    foreignKey({
+      name: "np_agents_principal_fk",
+      columns: [t.siteId, t.principalId],
+      foreignColumns: [npAgentPrincipals.siteId, npAgentPrincipals.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agents_status_check",
+      sql`${t.status} in ('draft','active','paused','error','archived')`,
+    ),
+    check(
+      "np_agents_template_check",
+      sql`${t.template} in ('publisher','moderator','operator','guardian','custom')`,
+    ),
+    check("np_agents_version_check", sql`${t.rowVersion} > 0`),
+    check(
+      "np_agents_name_check",
+      sql`char_length(${t.name}) between 1 and 120 and ${t.name}=btrim(${t.name})`,
+    ),
+    check(
+      "np_agents_lifecycle_check",
+      sql`((${t.status}='draft' and ${t.activeVersionId} is null) or (${t.status} in ('active','paused','error') and ${t.activeVersionId} is not null) or ${t.status}='archived') and (${t.activeVersionId} is null or ${t.draftVersionId} is null or ${t.activeVersionId}<>${t.draftVersionId}) and (${t.status}<>'archived' or ${t.draftVersionId} is null)`,
+    ),
+    check("np_agents_time_check", sql`${t.updatedAt} >= ${t.createdAt}`),
+  ],
+);
+
+export const npAgentVersions = pgTable(
+  "np_agent_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    agentId: uuid("agent_id").notNull(),
+    version: integer("version").notNull(),
+    rowVersion: integer("row_version").default(1).notNull(),
+    status: text("status").notNull(),
+    modelConnectionId: uuid("model_connection_id"),
+    model: text("model"),
+    scopes: text("scopes").array().$type<NpAgentScope[]>().notNull(),
+    autonomy: text("autonomy").notNull(),
+    capabilityModes: jsonb("capability_modes").$type<NpAgentCapabilityModeV1[]>().notNull(),
+    policyMode: text("policy_mode").notNull(),
+    budget: jsonb("budget").$type<NpAgentBudgetV1>().notNull(),
+    settings: jsonb("settings").$type<NpAgentRecipeSettingsV1[]>().notNull(),
+    recipeRegistryBody: jsonb("recipe_registry_body")
+      .$type<NpAgentRecipeRegistryCanonicalV1>()
+      .notNull(),
+    recipeRegistryFingerprint: text("recipe_registry_fingerprint").notNull(),
+    configHash: text("config_hash").notNull(),
+    createdBy: uuid("created_by").references(() => npUsers.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    activatedAt: timestamp("activated_at", { withTimezone: true, mode: "date" }),
+    retiredAt: timestamp("retired_at", { withTimezone: true, mode: "date" }),
+  },
+  (t) => [
+    unique("np_agent_versions_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_versions_agent_id_unique").on(t.siteId, t.agentId, t.id),
+    unique("np_agent_versions_config_unique").on(t.siteId, t.agentId, t.id, t.configHash),
+    unique("np_agent_versions_number_unique").on(t.siteId, t.agentId, t.version),
+    uniqueIndex("np_agent_versions_active_uidx")
+      .on(t.siteId, t.agentId)
+      .where(sql`${t.status}='active'`),
+    uniqueIndex("np_agent_versions_draft_uidx")
+      .on(t.siteId, t.agentId)
+      .where(sql`${t.status}='draft'`),
+    foreignKey({
+      name: "np_agent_versions_agent_fk",
+      columns: [t.siteId, t.agentId],
+      foreignColumns: [npAgents.siteId, npAgents.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_versions_connection_fk",
+      columns: [t.siteId, t.modelConnectionId],
+      foreignColumns: [npAgentConnections.siteId, npAgentConnections.id],
+    }).onDelete("restrict"),
+    check("np_agent_versions_status_check", sql`${t.status} in ('draft','active','retired')`),
+    check("np_agent_versions_number_check", sql`${t.version}>0 and ${t.rowVersion}>0`),
+    check(
+      "np_agent_versions_modes_check",
+      sql`${t.autonomy} in ('observe','advise','guarded','approved') and ${t.policyMode} in ('site','site_and_agent')`,
+    ),
+    check(
+      "np_agent_versions_model_check",
+      sql`((${t.modelConnectionId} is null and ${t.model} is null) or (${t.modelConnectionId} is not null and char_length(${t.model}) between 1 and 128)) is true`,
+    ),
+    check(
+      "np_agent_versions_scopes_check",
+      sql`cardinality(${t.scopes}) between 0 and 64 and array_position(${t.scopes},null) is null and (${t.status}='draft' or ${t.scopes} @> array['site:read']::text[])`,
+    ),
+    check(
+      "np_agent_versions_contract_check",
+      sql`(jsonb_typeof(${t.capabilityModes})='array' and jsonb_array_length(${t.capabilityModes})<=21 and jsonb_typeof(${t.settings})='array' and jsonb_array_length(${t.settings}) between 1 and 8 and ${t.budget}->>'schemaVersion'='np.agent-budget.v1' and ${t.budget}->>'costCurrency'='USD' and ${t.recipeRegistryBody}->>'schemaVersion'='np.agent-recipe-registry.v1' and ${t.recipeRegistryBody}->>'projection'='registry' and jsonb_array_length(${t.recipeRegistryBody}->'recipes') between 1 and 8 and octet_length(${t.recipeRegistryBody}::text)<=8388608 and octet_length(${t.settings}::text)<=262144) is true`,
+    ),
+    check(
+      "np_agent_versions_hash_check",
+      sql`${t.configHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.recipeRegistryFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$'`,
+    ),
+    check(
+      "np_agent_versions_time_check",
+      sql`((${t.status}='draft' and ${t.activatedAt} is null and ${t.retiredAt} is null) or (${t.status}='active' and ${t.activatedAt}>=${t.createdAt} and ${t.retiredAt} is null) or (${t.status}='retired' and ${t.activatedAt}>=${t.createdAt} and ${t.retiredAt}>=${t.activatedAt})) is true`,
+    ),
+  ],
+);
+
+export const npAgentPolicies = pgTable(
+  "np_agent_policies",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    agentId: uuid("agent_id"),
+    version: integer("version").notNull(),
+    rowVersion: integer("row_version").default(1).notNull(),
+    status: text("status").notNull(),
+    name: text("name").notNull(),
+    instructions: text("instructions").notNull(),
+    rules: jsonb("rules").$type<NpAgentPolicyRulesV1>().notNull(),
+    contentHash: text("content_hash").notNull(),
+    createdBy: uuid("created_by").references(() => npUsers.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    activatedAt: timestamp("activated_at", { withTimezone: true, mode: "date" }),
+  },
+  (t) => [
+    unique("np_agent_policies_site_id_id_unique").on(t.siteId, t.id),
+    uniqueIndex("np_agent_policies_site_number_uidx")
+      .on(t.siteId, t.version)
+      .where(sql`${t.agentId} is null`),
+    uniqueIndex("np_agent_policies_agent_number_uidx")
+      .on(t.siteId, t.agentId, t.version)
+      .where(sql`${t.agentId} is not null`),
+    uniqueIndex("np_agent_policies_site_active_uidx")
+      .on(t.siteId)
+      .where(sql`${t.agentId} is null and ${t.status}='active'`),
+    uniqueIndex("np_agent_policies_agent_active_uidx")
+      .on(t.siteId, t.agentId)
+      .where(sql`${t.agentId} is not null and ${t.status}='active'`),
+    index("np_agent_policies_site_status_idx").on(t.siteId, t.status, t.createdAt),
+    foreignKey({
+      name: "np_agent_policies_agent_fk",
+      columns: [t.siteId, t.agentId],
+      foreignColumns: [npAgents.siteId, npAgents.id],
+    }).onDelete("restrict"),
+    check("np_agent_policies_status_check", sql`${t.status} in ('draft','active','retired')`),
+    check("np_agent_policies_version_check", sql`${t.version}>0 and ${t.rowVersion}>0`),
+    check(
+      "np_agent_policies_body_check",
+      sql`(char_length(${t.name}) between 1 and 120 and ${t.name}=btrim(${t.name}) and octet_length(${t.instructions})<=262144 and ${t.rules}->>'schemaVersion'='np.agent-policy-rules.v1' and octet_length(${t.rules}::text)<=262144 and ${t.contentHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$') is true`,
+    ),
+    check(
+      "np_agent_policies_time_check",
+      sql`((${t.status}='draft' and ${t.activatedAt} is null) or (${t.status} in ('active','retired') and ${t.activatedAt}>=${t.createdAt})) is true`,
+    ),
+  ],
+);
+
+export const npAgentTriggers = pgTable(
+  "np_agent_triggers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    agentId: uuid("agent_id").notNull(),
+    agentVersionId: uuid("agent_version_id").notNull(),
+    kind: text("kind").notNull(),
+    eventType: text("event_type"),
+    cron: text("cron"),
+    catchUp: text("catch_up"),
+    nextRunAt: timestamp("next_run_at", { withTimezone: true, mode: "date" }),
+    lastEnqueuedAt: timestamp("last_enqueued_at", { withTimezone: true, mode: "date" }),
+    filter: jsonb("filter").$type<NpAgentJsonObject>().notNull(),
+    filterHash: text("filter_hash").notNull(),
+    coalesceSeconds: integer("coalesce_seconds").notNull(),
+    enabled: boolean("enabled").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("np_agent_triggers_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_triggers_version_binding_unique").on(
+      t.siteId,
+      t.agentId,
+      t.agentVersionId,
+      t.id,
+    ),
+    uniqueIndex("np_agent_triggers_logical_uidx").on(
+      t.siteId,
+      t.agentId,
+      t.agentVersionId,
+      t.kind,
+      sql`coalesce(${t.eventType},${t.cron},'')`,
+      t.filterHash,
+    ),
+    index("np_agent_triggers_due_idx")
+      .on(t.siteId, t.nextRunAt)
+      .where(sql`${t.enabled}=true and ${t.kind}='schedule'`),
+    foreignKey({
+      name: "np_agent_triggers_version_fk",
+      columns: [t.siteId, t.agentId, t.agentVersionId],
+      foreignColumns: [npAgentVersions.siteId, npAgentVersions.agentId, npAgentVersions.id],
+    }).onDelete("restrict"),
+    check("np_agent_triggers_kind_check", sql`${t.kind} in ('event','schedule','manual')`),
+    check(
+      "np_agent_triggers_event_check",
+      sql`${t.eventType} is null or ${t.eventType} in (${sql.raw(npAgentEventKinds.map((kind) => `'${kind}'`).join(","))})`,
+    ),
+    check(
+      "np_agent_triggers_shape_check",
+      sql`((${t.kind}='event' and ${t.eventType} is not null and ${t.cron} is null and ${t.catchUp} is null and ${t.nextRunAt} is null and ${t.lastEnqueuedAt} is null) or (${t.kind}='schedule' and ${t.eventType} is null and ${t.cron} ~ '^[^[:space:]]+ [^[:space:]]+ [^[:space:]]+ [^[:space:]]+ [^[:space:]]+$' and char_length(${t.cron})<=128 and ${t.catchUp} in ('skip','once') and (${t.enabled}=false or ${t.nextRunAt} is not null)) or (${t.kind}='manual' and ${t.eventType} is null and ${t.cron} is null and ${t.catchUp} is null and ${t.nextRunAt} is null and ${t.lastEnqueuedAt} is null)) is true`,
+    ),
+    check(
+      "np_agent_triggers_filter_check",
+      sql`(jsonb_typeof(${t.filter})='object' and octet_length(${t.filter}::text)<=16384 and ${t.filterHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.coalesceSeconds} between 0 and 86400) is true`,
+    ),
+    check("np_agent_triggers_time_check", sql`${t.updatedAt}>=${t.createdAt}`),
+  ],
+);
+
+/** One shared durable Gateway/Runtime run; no parallel Runtime execution journal. */
 export const npAgentRuns = pgTable(
   "np_agent_runs",
   {
@@ -959,6 +1218,9 @@ export const npAgentRuns = pgTable(
     goal: text("goal").notNull(),
     eventRef: jsonb("event_ref").$type<NpAgentJsonObject>(),
     policyRefs: jsonb("policy_refs").$type<NpAgentJsonObject[]>().notNull(),
+    runtimeAdmissionSources: jsonb(
+      "runtime_admission_sources",
+    ).$type<NpAgentRuntimeAdmissionSourcesV1>(),
     runLimits: jsonb("run_limits").$type<NpAgentRunLimitsV1>().notNull(),
     runLimitsHash: text("run_limits_hash").notNull(),
     budgetSnapshot: jsonb("budget_snapshot").$type<NpAgentJsonObject>().notNull(),
@@ -987,6 +1249,19 @@ export const npAgentRuns = pgTable(
   },
   (table) => [
     unique("np_agent_runs_site_id_id_unique").on(table.siteId, table.id),
+    unique("np_agent_runs_agent_binding_unique").on(table.siteId, table.agentId, table.id),
+    unique("np_agent_runs_causation_unique").on(
+      table.siteId,
+      table.id,
+      table.rootRunId,
+      table.causalDepth,
+    ),
+    unique("np_agent_runs_connection_binding_unique").on(
+      table.siteId,
+      table.id,
+      table.connectionId,
+      table.connectionConfigSnapshotId,
+    ),
     unique("np_agent_runs_invocation_unique").on(table.invocationId),
     unique("np_agent_runs_admission_unique").on(
       table.siteId,
@@ -997,6 +1272,49 @@ export const npAgentRuns = pgTable(
     index("np_agent_runs_site_state_idx").on(table.siteId, table.state, table.queuedAt),
     index("np_agent_runs_principal_idx").on(table.siteId, table.principalId, table.queuedAt),
     index("np_agent_runs_deadline_idx").on(table.siteId, table.deadlineAt),
+    index("np_agent_runs_agent_idx").on(table.siteId, table.agentId, table.queuedAt),
+    foreignKey({
+      name: "np_agent_runs_agent_fk",
+      columns: [table.siteId, table.agentId, table.principalId],
+      foreignColumns: [npAgents.siteId, npAgents.id, npAgents.principalId],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_runs_version_fk",
+      columns: [table.siteId, table.agentId, table.agentVersionId, table.agentConfigHash],
+      foreignColumns: [
+        npAgentVersions.siteId,
+        npAgentVersions.agentId,
+        npAgentVersions.id,
+        npAgentVersions.configHash,
+      ],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_runs_trigger_fk",
+      columns: [table.siteId, table.agentId, table.agentVersionId, table.triggerId],
+      foreignColumns: [
+        npAgentTriggers.siteId,
+        npAgentTriggers.agentId,
+        npAgentTriggers.agentVersionId,
+        npAgentTriggers.id,
+      ],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_runs_connection_config_fk",
+      columns: [
+        table.siteId,
+        table.connectionId,
+        table.connectionConfigSnapshotId,
+        table.connectionConfigVersion,
+        table.connectionConfigHash,
+      ],
+      foreignColumns: [
+        npAgentConnectionConfigVersions.siteId,
+        npAgentConnectionConfigVersions.connectionId,
+        npAgentConnectionConfigVersions.id,
+        npAgentConnectionConfigVersions.version,
+        npAgentConnectionConfigVersions.configHash,
+      ],
+    }).onDelete("restrict"),
     foreignKey({
       name: "np_agent_runs_principal_fk",
       columns: [table.siteId, table.principalId],
@@ -1018,6 +1336,30 @@ export const npAgentRuns = pgTable(
       foreignColumns: [table.siteId, table.id],
     }).onDelete("restrict"),
     check("np_agent_runs_origin_check", sql`${table.origin} in ('gateway', 'runtime')`),
+    check(
+      "np_agent_runs_runtime_admission_sources_check",
+      sql`((${table.origin}='gateway' and ${table.runtimeAdmissionSources} is null) or (${table.origin}='runtime' and ${table.runtimeAdmissionSources}->>'schemaVersion'='np.agent-runtime-admission-sources.v1' and ${table.runtimeAdmissionSources}->'frameworkPolicy'->>'schemaVersion'='np.agent-policy.v1' and ${table.runtimeAdmissionSources}->'frameworkPolicy'->>'instructions'='' and ${table.runtimeAdmissionSources}->'frameworkPolicy'->'rules'->>'schemaVersion'='np.agent-policy-rules.v1' and ${table.runtimeAdmissionSources}->>'frameworkPolicyVersion' ~ '^[1-9][0-9]{0,9}$' and (${table.runtimeAdmissionSources}->>'frameworkPolicyVersion')::numeric<=2147483647 and ${table.runtimeAdmissionSources}->'sitePolicy'->>'schemaVersion'='np.agent-policy.v1' and ${table.runtimeAdmissionSources}->'sitePolicy'->>'instructions'='' and ${table.runtimeAdmissionSources}->'sitePolicy'->'rules'->>'schemaVersion'='np.agent-policy-rules.v1' and ${table.runtimeAdmissionSources}->'deploymentBudget'->>'schemaVersion'='np.agent-budget.v1' and ${table.runtimeAdmissionSources}->'siteBudget'->>'schemaVersion'='np.agent-budget.v1' and octet_length(${table.runtimeAdmissionSources}::text)<=1048576)) is true`,
+    ),
+    check(
+      "np_agent_runs_runtime_shape_check",
+      sql`(${table.origin}<>'runtime' or (${table.agentId} is not null and ${table.agentVersionId} is not null and ${table.agentConfigHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${table.recipeId} is not null and ${table.recipeVersion}>0 and ${table.recipeFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${table.responseSchemaDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and (${table.manualInputSchemaDigest} is null or ${table.manualInputSchemaDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$'))) is true`,
+    ),
+    check(
+      "np_agent_runs_provider_shape_check",
+      sql`((
+      ${table.connectionId} is null and ${table.connectionConfigSnapshotId} is null and ${table.connectionConfigVersion} is null and ${table.connectionConfigHash} is null and ${table.providerDataClassCeiling} is null and ${table.pricingId} is null and ${table.pricingVersion} is null and ${table.pricingFingerprint} is null and ${table.pricingEffectiveAt} is null and ${table.providerRequestId} is null
+    ) or (
+      ${table.origin}='runtime' and ${table.connectionId} is not null and ${table.connectionConfigSnapshotId} is not null and ${table.connectionConfigVersion}>0 and ${table.connectionConfigHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${table.providerDataClassCeiling} in ('public-only','internal-redacted','sensitive-approved') and char_length(${table.pricingId}) between 1 and 128 and ${table.pricingVersion}>0 and ${table.pricingFingerprint} ~ '^pr1:sha256:[A-Za-z0-9_-]{43}$' and ${table.pricingEffectiveAt} is not null
+    )) is true`,
+    ),
+    check(
+      "np_agent_runs_instruction_check",
+      sql`(( ${table.instructionTemplateId} is null and ${table.instructionTemplateVersion} is null and ${table.instructionDigest} is null ) or ( ${table.origin}='runtime' and char_length(${table.instructionTemplateId}) between 1 and 128 and ${table.instructionTemplateVersion}>0 and ${table.instructionDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' )) is true`,
+    ),
+    check(
+      "np_agent_runs_runtime_time_check",
+      sql`${table.origin}<>'runtime' or (${table.deadlineAt}<=${table.queuedAt}+interval '86400 seconds' and (${table.startedAt} is null or ${table.startedAt}>=${table.queuedAt}) and (${table.leaseUntil} is null or (${table.startedAt} is not null and ${table.leaseUntil}<=${table.deadlineAt})) and (${table.finishedAt} is null or ${table.finishedAt}>=${table.queuedAt}))`,
+    ),
     check(
       "np_agent_runs_state_check",
       sql`${table.state} in ('queued', 'running', 'waiting_approval', 'waiting_retry', 'verifying', 'succeeded', 'failed', 'cancelled', 'policy_blocked', 'budget_blocked')`,
@@ -1117,6 +1459,7 @@ export const npAgentActions = pgTable(
   },
   (table) => [
     unique("np_agent_actions_site_id_id_unique").on(table.siteId, table.id),
+    unique("np_agent_actions_run_binding_unique").on(table.siteId, table.runId, table.id),
     unique("np_agent_actions_invocation_sequence_unique").on(table.invocationId, table.sequence),
     index("np_agent_actions_site_state_idx").on(table.siteId, table.state, table.createdAt),
     index("np_agent_actions_run_idx").on(table.siteId, table.runId, table.sequence),
@@ -1555,6 +1898,12 @@ export const npAgentConnectionSecretVersions = pgTable(
   },
   (table) => [
     unique("np_agent_connection_secret_versions_site_id_id_unique").on(table.siteId, table.id),
+    unique("np_agent_connection_secret_versions_binding_unique").on(
+      table.siteId,
+      table.connectionId,
+      table.id,
+      table.version,
+    ),
     unique("np_agent_connection_secret_versions_number_unique").on(
       table.siteId,
       table.connectionId,
@@ -3012,6 +3361,472 @@ export const npAgentPreviewRenderSessions = pgTable(
     check(
       "np_agent_preview_render_sessions_state_check",
       sql`((${t.state}='active' and ${t.closedAt} is null and ${t.closeReason} is null) or (${t.state}='completed' and ${t.closedAt} is not null and ${t.closeReason} is null and not ${t.consumedOrdinals} @> '[false]'::jsonb) or (${t.state} in ('failed','cancelled','expired') and ${t.closedAt} is not null and ${t.closeReason} in ('CAPTURE_FAILED','PREVIEW_INVALIDATED','SITE_DELETING','SESSION_EXPIRED'))) is true`,
+    ),
+  ],
+);
+
+/** Spend is reserved before dispatch and finalized together with its daily aggregate. */
+export const npAgentUsageReservations = pgTable(
+  "np_agent_usage_reservations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    agentId: uuid("agent_id").notNull(),
+    runId: uuid("run_id").notNull(),
+    connectionId: uuid("connection_id").notNull(),
+    connectionConfigSnapshotId: uuid("connection_config_snapshot_id").notNull(),
+    model: text("model").notNull(),
+    pricingId: text("pricing_id").notNull(),
+    pricingVersion: integer("pricing_version").notNull(),
+    pricingFingerprint: text("pricing_fingerprint").notNull(),
+    pricingEffectiveAt: timestamp("pricing_effective_at", {
+      withTimezone: true,
+      mode: "date",
+    }).notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    state: text("state").notNull(),
+    reservedCalls: integer("reserved_calls").notNull(),
+    reservedInputTokens: integer("reserved_input_tokens").notNull(),
+    reservedOutputTokens: integer("reserved_output_tokens").notNull(),
+    reservedCostMicros: bigint("reserved_cost_micros", { mode: "number" }).notNull(),
+    actualInputTokens: integer("actual_input_tokens"),
+    actualCachedInputTokens: integer("actual_cached_input_tokens"),
+    actualOutputTokens: integer("actual_output_tokens"),
+    actualCostMicros: bigint("actual_cost_micros", { mode: "number" }),
+    actualUsageSource: text("actual_usage_source"),
+    actualCostSource: text("actual_cost_source"),
+    unpriced: boolean("unpriced").default(false).notNull(),
+    budgetChargeCostMicros: bigint("budget_charge_cost_micros", { mode: "number" }),
+    reservedAt: timestamp("reserved_at", { withTimezone: true, mode: "date" }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    finalizedAt: timestamp("finalized_at", { withTimezone: true, mode: "date" }),
+  },
+  (t) => [
+    unique("np_agent_usage_reservations_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_usage_reservations_call_binding_unique").on(
+      t.siteId,
+      t.runId,
+      t.connectionId,
+      t.id,
+    ),
+    unique("np_agent_usage_reservations_idempotency_unique").on(
+      t.siteId,
+      t.runId,
+      t.connectionId,
+      t.idempotencyKey,
+    ),
+    index("np_agent_usage_reservations_expiry_idx").on(t.siteId, t.state, t.expiresAt),
+    index("np_agent_usage_reservations_budget_idx").on(t.siteId, t.agentId, t.reservedAt),
+    foreignKey({
+      name: "np_agent_usage_reservations_run_fk",
+      columns: [t.siteId, t.agentId, t.runId],
+      foreignColumns: [npAgentRuns.siteId, npAgentRuns.agentId, npAgentRuns.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_usage_reservations_connection_fk",
+      columns: [t.siteId, t.runId, t.connectionId, t.connectionConfigSnapshotId],
+      foreignColumns: [
+        npAgentRuns.siteId,
+        npAgentRuns.id,
+        npAgentRuns.connectionId,
+        npAgentRuns.connectionConfigSnapshotId,
+      ],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_usage_reservations_state_check",
+      sql`${t.state} in ('reserved','reconciled','released','expired')`,
+    ),
+    check(
+      "np_agent_usage_reservations_bounds_check",
+      sql`${t.reservedCalls} between 1 and 2147483647 and ${t.reservedInputTokens}>=0 and ${t.reservedOutputTokens}>=0 and ${t.reservedCostMicros} between 0 and 9007199254740991 and (${t.actualInputTokens} is null or ${t.actualInputTokens}>=0) and (${t.actualCachedInputTokens} is null or ${t.actualCachedInputTokens} between 0 and ${t.actualInputTokens}) and (${t.actualOutputTokens} is null or ${t.actualOutputTokens}>=0) and (${t.actualCostMicros} is null or ${t.actualCostMicros} between 0 and 9007199254740991) and (${t.budgetChargeCostMicros} is null or ${t.budgetChargeCostMicros} between 0 and 9007199254740991)`,
+    ),
+    check(
+      "np_agent_usage_reservations_pricing_check",
+      sql`${t.pricingVersion}>0 and ${t.pricingFingerprint} ~ '^pr1:sha256:[A-Za-z0-9_-]{43}$' and ${t.pricingEffectiveAt}<=${t.reservedAt} and char_length(${t.model}) between 1 and 128 and char_length(${t.pricingId}) between 1 and 128 and ${t.idempotencyKey} ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$'`,
+    ),
+    check(
+      "np_agent_usage_reservations_usage_check",
+      sql`((
+      ${t.state} in ('reserved','released') and ${t.actualInputTokens} is null and ${t.actualCachedInputTokens} is null and ${t.actualOutputTokens} is null and ${t.actualCostMicros} is null and ${t.actualUsageSource} is null and ${t.actualCostSource} is null and ${t.unpriced}=false and ((${t.state}='reserved' and ${t.budgetChargeCostMicros} is null) or (${t.state}='released' and ${t.budgetChargeCostMicros}=0))
+    ) or (
+      ${t.state}='reconciled' and ${t.actualInputTokens} is not null and ${t.actualCachedInputTokens} is not null and ${t.actualOutputTokens} is not null and ${t.actualCostMicros} is not null and ${t.actualUsageSource} in ('provider','adapter-estimate') and ${t.actualCostSource} in ('provider','adapter-estimate') and ${t.unpriced}=false and ${t.budgetChargeCostMicros}=${t.actualCostMicros}
+    ) or (
+      ${t.state}='expired' and ${t.actualInputTokens} is null and ${t.actualCachedInputTokens} is null and ${t.actualOutputTokens} is null and ${t.actualCostMicros} is null and ${t.actualUsageSource}='unknown' and ${t.actualCostSource}='unknown' and ${t.unpriced}=true and ${t.budgetChargeCostMicros}=${t.reservedCostMicros}
+    )) is true`,
+    ),
+    check(
+      "np_agent_usage_reservations_time_check",
+      sql`(${t.expiresAt}>${t.reservedAt} and ((${t.state}='reserved' and ${t.finalizedAt} is null) or (${t.state}<>'reserved' and ${t.finalizedAt}>=${t.reservedAt})) and (${t.state}<>'expired' or ${t.finalizedAt}>=${t.expiresAt})) is true`,
+    ),
+  ],
+);
+
+/** A UUID keeps the existing bounded site-deletion identity inventory authoritative. */
+export const npAgentUsageDaily = pgTable(
+  "np_agent_usage_daily",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    agentId: uuid("agent_id").notNull(),
+    connectionId: uuid("connection_id").notNull(),
+    usageDate: date("usage_date", { mode: "string" }).notNull(),
+    providerCalls: integer("provider_calls").default(0).notNull(),
+    reportedInputTokens: integer("reported_input_tokens").default(0).notNull(),
+    reportedCachedInputTokens: integer("reported_cached_input_tokens").default(0).notNull(),
+    reportedOutputTokens: integer("reported_output_tokens").default(0).notNull(),
+    estimatedInputTokens: integer("estimated_input_tokens").default(0).notNull(),
+    estimatedCachedInputTokens: integer("estimated_cached_input_tokens").default(0).notNull(),
+    estimatedOutputTokens: integer("estimated_output_tokens").default(0).notNull(),
+    reportedCostMicros: bigint("reported_cost_micros", { mode: "number" }).default(0).notNull(),
+    estimatedCostMicros: bigint("estimated_cost_micros", { mode: "number" }).default(0).notNull(),
+    budgetChargeCostMicros: bigint("budget_charge_cost_micros", { mode: "number" })
+      .default(0)
+      .notNull(),
+    unknownCalls: integer("unknown_calls").default(0).notNull(),
+  },
+  (t) => [
+    unique("np_agent_usage_daily_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_usage_daily_bucket_unique").on(
+      t.siteId,
+      t.agentId,
+      t.connectionId,
+      t.usageDate,
+    ),
+    index("np_agent_usage_daily_budget_idx").on(t.siteId, t.usageDate, t.agentId),
+    foreignKey({
+      name: "np_agent_usage_daily_agent_fk",
+      columns: [t.siteId, t.agentId],
+      foreignColumns: [npAgents.siteId, npAgents.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_usage_daily_connection_fk",
+      columns: [t.siteId, t.connectionId],
+      foreignColumns: [npAgentConnections.siteId, npAgentConnections.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_usage_daily_tokens_check",
+      sql`${t.providerCalls}>=0 and ${t.reportedInputTokens}>=0 and ${t.reportedCachedInputTokens} between 0 and ${t.reportedInputTokens} and ${t.reportedOutputTokens}>=0 and ${t.estimatedInputTokens}>=0 and ${t.estimatedCachedInputTokens} between 0 and ${t.estimatedInputTokens} and ${t.estimatedOutputTokens}>=0 and ${t.unknownCalls} between 0 and ${t.providerCalls}`,
+    ),
+    check(
+      "np_agent_usage_daily_cost_check",
+      sql`${t.reportedCostMicros} between 0 and 9007199254740991 and ${t.estimatedCostMicros} between 0 and 9007199254740991 and ${t.budgetChargeCostMicros} between 0 and 9007199254740991 and ${t.budgetChargeCostMicros}>=${t.reportedCostMicros}+${t.estimatedCostMicros}`,
+    ),
+  ],
+);
+
+export const npAgentProviderCalls = pgTable(
+  "np_agent_provider_calls",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    runId: uuid("run_id").notNull(),
+    sequence: integer("sequence").notNull(),
+    retryOfId: uuid("retry_of_id"),
+    connectionId: uuid("connection_id").notNull(),
+    connectionConfigSnapshotId: uuid("connection_config_snapshot_id").notNull(),
+    secretVersionId: uuid("secret_version_id").notNull(),
+    credentialVersion: integer("credential_version").notNull(),
+    connectionConfigVersion: integer("connection_config_version").notNull(),
+    connectionConfigHash: text("connection_config_hash").notNull(),
+    providerDataClassCeiling: text("provider_data_class_ceiling").notNull(),
+    requestDataClass: text("request_data_class").notNull(),
+    classificationManifest: jsonb("classification_manifest").$type<NpAgentJsonObject>().notNull(),
+    classificationManifestDigest: text("classification_manifest_digest").notNull(),
+    recipeId: text("recipe_id").notNull(),
+    recipeVersion: integer("recipe_version").notNull(),
+    recipeFingerprint: text("recipe_fingerprint").notNull(),
+    instructionTemplateId: text("instruction_template_id").notNull(),
+    instructionTemplateVersion: integer("instruction_template_version").notNull(),
+    instructionDigest: text("instruction_digest").notNull(),
+    responseSchemaDigest: text("response_schema_digest").notNull(),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    pricingId: text("pricing_id").notNull(),
+    pricingVersion: integer("pricing_version").notNull(),
+    pricingFingerprint: text("pricing_fingerprint").notNull(),
+    pricingEffectiveAt: timestamp("pricing_effective_at", {
+      withTimezone: true,
+      mode: "date",
+    }).notNull(),
+    state: text("state").notNull(),
+    dispatchState: text("dispatch_state").notNull(),
+    usageReservationId: uuid("usage_reservation_id").notNull(),
+    requestDigest: text("request_digest").notNull(),
+    requestRedacted: jsonb("request_redacted").$type<NpAgentJsonObject>(),
+    responseDigest: text("response_digest"),
+    responseRedacted: jsonb("response_redacted").$type<NpAgentJsonObject>(),
+    decision: jsonb("decision").$type<NpAgentProviderTaskOutputV1>(),
+    providerRequestId: text("provider_request_id"),
+    idempotencyKey: text("idempotency_key").notNull(),
+    errorClass: text("error_class"),
+    retryable: boolean("retryable").default(false).notNull(),
+    inputTokens: integer("input_tokens"),
+    cachedInputTokens: integer("cached_input_tokens"),
+    outputTokens: integer("output_tokens"),
+    usageSource: text("usage_source"),
+    costMicros: bigint("cost_micros", { mode: "number" }),
+    costSource: text("cost_source"),
+    costCurrency: text("cost_currency"),
+    finishReason: text("finish_reason"),
+    latencyMs: integer("latency_ms"),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }),
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
+    diagnosticExpiresAt: timestamp("diagnostic_expires_at", { withTimezone: true, mode: "date" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("np_agent_provider_calls_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_provider_calls_run_id_unique").on(t.siteId, t.runId, t.id),
+    unique("np_agent_provider_calls_sequence_unique").on(t.siteId, t.runId, t.sequence),
+    unique("np_agent_provider_calls_idempotency_unique").on(t.siteId, t.runId, t.idempotencyKey),
+    unique("np_agent_provider_calls_reservation_unique").on(t.usageReservationId),
+    index("np_agent_provider_calls_state_idx").on(t.siteId, t.state, t.createdAt),
+    foreignKey({
+      name: "np_agent_provider_calls_run_fk",
+      columns: [t.siteId, t.runId, t.connectionId, t.connectionConfigSnapshotId],
+      foreignColumns: [
+        npAgentRuns.siteId,
+        npAgentRuns.id,
+        npAgentRuns.connectionId,
+        npAgentRuns.connectionConfigSnapshotId,
+      ],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_provider_calls_retry_fk",
+      columns: [t.siteId, t.runId, t.retryOfId],
+      foreignColumns: [t.siteId, t.runId, t.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_provider_calls_config_fk",
+      columns: [
+        t.siteId,
+        t.connectionId,
+        t.connectionConfigSnapshotId,
+        t.connectionConfigVersion,
+        t.connectionConfigHash,
+      ],
+      foreignColumns: [
+        npAgentConnectionConfigVersions.siteId,
+        npAgentConnectionConfigVersions.connectionId,
+        npAgentConnectionConfigVersions.id,
+        npAgentConnectionConfigVersions.version,
+        npAgentConnectionConfigVersions.configHash,
+      ],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_provider_calls_secret_fk",
+      columns: [t.siteId, t.connectionId, t.secretVersionId, t.credentialVersion],
+      foreignColumns: [
+        npAgentConnectionSecretVersions.siteId,
+        npAgentConnectionSecretVersions.connectionId,
+        npAgentConnectionSecretVersions.id,
+        npAgentConnectionSecretVersions.version,
+      ],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_provider_calls_reservation_fk",
+      columns: [t.siteId, t.runId, t.connectionId, t.usageReservationId],
+      foreignColumns: [
+        npAgentUsageReservations.siteId,
+        npAgentUsageReservations.runId,
+        npAgentUsageReservations.connectionId,
+        npAgentUsageReservations.id,
+      ],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_provider_calls_state_check",
+      sql`${t.state} in ('reserved','in_flight','succeeded','failed','ambiguous','cancelled')`,
+    ),
+    check(
+      "np_agent_provider_calls_dispatch_check",
+      sql`(${t.dispatchState} in ('not-dispatched','dispatched','unknown') and ((${t.state}='reserved' and ${t.dispatchState}='not-dispatched') or (${t.state} in ('in_flight','ambiguous') and ${t.dispatchState}='unknown') or (${t.state}='succeeded' and ${t.dispatchState}='dispatched') or (${t.state} in ('failed','cancelled') and ${t.dispatchState} in ('not-dispatched','dispatched')))) is true`,
+    ),
+    check(
+      "np_agent_provider_calls_versions_check",
+      sql`${t.sequence}>0 and ${t.credentialVersion}>0 and ${t.connectionConfigVersion}>0 and ${t.recipeVersion}>0 and ${t.instructionTemplateVersion}>0 and ${t.pricingVersion}>0 and (${t.retryOfId} is null or ${t.retryOfId}<>${t.id})`,
+    ),
+    check(
+      "np_agent_provider_calls_identity_check",
+      sql`char_length(${t.provider}) between 1 and 128 and char_length(${t.model}) between 1 and 128 and char_length(${t.recipeId}) between 1 and 128 and char_length(${t.instructionTemplateId}) between 1 and 128 and char_length(${t.pricingId}) between 1 and 128 and ${t.idempotencyKey} ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$' and (${t.providerRequestId} is null or ${t.providerRequestId} ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$')`,
+    ),
+    check(
+      "np_agent_provider_calls_hash_check",
+      sql`${t.connectionConfigHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.recipeFingerprint} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.instructionDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.responseSchemaDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.requestDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.classificationManifestDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.pricingFingerprint} ~ '^pr1:sha256:[A-Za-z0-9_-]{43}$' and (${t.responseDigest} is null or ${t.responseDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$')`,
+    ),
+    check(
+      "np_agent_provider_calls_data_class_check",
+      sql`${t.providerDataClassCeiling} in ('public-only','internal-redacted','sensitive-approved') and ${t.requestDataClass} in ('public-only','internal-redacted','sensitive-approved') and (case ${t.requestDataClass} when 'public-only' then 0 when 'internal-redacted' then 1 else 2 end)<=(case ${t.providerDataClassCeiling} when 'public-only' then 0 when 'internal-redacted' then 1 else 2 end)`,
+    ),
+    check(
+      "np_agent_provider_calls_body_check",
+      sql`(jsonb_typeof(${t.classificationManifest})='object' and octet_length(${t.classificationManifest}::text)<=262144 and (${t.requestRedacted} is null or (jsonb_typeof(${t.requestRedacted})='object' and octet_length(${t.requestRedacted}::text)<=65536)) and (${t.responseRedacted} is null or (jsonb_typeof(${t.responseRedacted})='object' and octet_length(${t.responseRedacted}::text)<=65536)) and ((${t.requestRedacted} is null and ${t.responseRedacted} is null) or ${t.diagnosticExpiresAt} is not null) and (${t.decision} is null or octet_length(${t.decision}::text)<=262144)) is true`,
+    ),
+    check(
+      "np_agent_provider_calls_usage_bounds_check",
+      sql`(${t.inputTokens} is null or ${t.inputTokens}>=0) and (${t.cachedInputTokens} is null or ${t.cachedInputTokens} between 0 and ${t.inputTokens}) and (${t.outputTokens} is null or ${t.outputTokens}>=0) and (${t.costMicros} is null or ${t.costMicros} between 0 and 9007199254740991) and (${t.latencyMs} is null or ${t.latencyMs}>=0)`,
+    ),
+    check(
+      "np_agent_provider_calls_usage_check",
+      sql`((
+      ${t.inputTokens} is null and ${t.cachedInputTokens} is null and ${t.outputTokens} is null and ${t.costMicros} is null and ${t.costCurrency} is null and ${t.finishReason} is null and ((${t.state}='ambiguous' and ${t.usageSource}='unknown' and ${t.costSource}='unknown') or (${t.state}<>'ambiguous' and ${t.usageSource} is null and ${t.costSource} is null))
+    ) or (
+      ${t.state} in ('succeeded','failed','cancelled') and ${t.dispatchState}='dispatched' and ${t.inputTokens} is not null and ${t.cachedInputTokens} is not null and ${t.outputTokens} is not null and ${t.costMicros} is not null and ${t.costCurrency}='USD' and ${t.usageSource} in ('provider','adapter-estimate') and ${t.costSource} in ('provider','adapter-estimate') and (${t.finishReason} in ('stop','length','tool','content-filter','cancelled') or (${t.state} in ('failed','cancelled') and ${t.finishReason} is null))
+    )) is true`,
+    ),
+    check(
+      "np_agent_provider_calls_outcome_check",
+      sql`(((
+      ${t.state} in ('reserved','in_flight') and ${t.responseDigest} is null and ${t.decision} is null and ${t.errorClass} is null and ${t.retryable}=false and ${t.latencyMs} is null and ${t.inputTokens} is null
+    ) or (
+      ${t.state}='succeeded' and ${t.responseDigest} is not null and ${t.decision} is not null and ${t.errorClass} is null and ${t.retryable}=false and ${t.inputTokens} is not null and ${t.latencyMs} is not null and ${t.finishReason} in ('stop','length','tool')
+    ) or (
+      ${t.state} in ('failed','cancelled') and ${t.responseDigest} is not null and ${t.decision} is null and ${t.errorClass} in ('authentication','rate-limited','transient','timeout','invalid-request','invalid-output','content-policy','cancelled','unknown') and ${t.latencyMs} is not null and (${t.finishReason} is null or ${t.finishReason} in ('content-filter','cancelled'))
+    ) or (
+      ${t.state}='ambiguous' and ${t.responseDigest} is not null and ${t.decision} is null and ${t.errorClass} in ('timeout','unknown') and ${t.retryable}=false and ${t.latencyMs} is not null
+    )) and (${t.dispatchState}<>'not-dispatched' or ${t.providerRequestId} is null)) is true`,
+    ),
+    check(
+      "np_agent_provider_calls_time_check",
+      sql`(((
+      ${t.state}='reserved' and ${t.startedAt} is null and ${t.finishedAt} is null
+    ) or (
+      ${t.state}='in_flight' and ${t.startedAt}>=${t.createdAt} and ${t.finishedAt} is null
+    ) or (
+      ${t.state} in ('succeeded','failed','ambiguous','cancelled') and ${t.finishedAt}>=${t.createdAt} and (${t.startedAt} is null or ${t.finishedAt}>=${t.startedAt}) and (${t.dispatchState}='not-dispatched' or ${t.startedAt}>=${t.createdAt})
+    )) and (${t.diagnosticExpiresAt} is null or ${t.diagnosticExpiresAt}>${t.createdAt})) is true`,
+    ),
+  ],
+);
+
+export const npAgentCircuitBreakers = pgTable(
+  "np_agent_circuit_breakers",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    scopeKind: text("scope_kind").notNull(),
+    scopeRef: text("scope_ref").notNull(),
+    state: text("state").notNull(),
+    reasonCode: text("reason_code"),
+    failureCount: integer("failure_count").notNull(),
+    windowStartedAt: timestamp("window_started_at", { withTimezone: true, mode: "date" }).notNull(),
+    openedAt: timestamp("opened_at", { withTimezone: true, mode: "date" }),
+    retryAt: timestamp("retry_at", { withTimezone: true, mode: "date" }),
+    probeLeaseUntil: timestamp("probe_lease_until", { withTimezone: true, mode: "date" }),
+    versionNumber: integer("version_number").default(1).notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    unique("np_agent_circuit_breakers_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_circuit_breakers_scope_unique").on(t.siteId, t.scopeKind, t.scopeRef),
+    index("np_agent_circuit_breakers_state_idx").on(t.siteId, t.state, t.retryAt),
+    check(
+      "np_agent_circuit_breakers_scope_check",
+      sql`((${t.scopeKind}='site' and ${t.scopeRef}=${t.siteId}) or (${t.scopeKind} in ('agent','connection') and ${t.scopeRef} ~ '^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$') or (${t.scopeKind}='subject' and ${t.scopeRef} ~ '^[A-Za-z0-9_-]{43}$')) is true`,
+    ),
+    check(
+      "np_agent_circuit_breakers_state_check",
+      sql`${t.state} in ('closed','open','half_open') and ${t.versionNumber}>0 and ${t.failureCount}>=0 and (${t.reasonCode} is null or ${t.reasonCode} ~ '^[A-Z][A-Z0-9_]{0,63}$')`,
+    ),
+    check(
+      "np_agent_circuit_breakers_time_check",
+      sql`(${t.updatedAt}>=${t.windowStartedAt} and ((
+      ${t.state}='closed' and ${t.openedAt} is null and ${t.retryAt} is null and ${t.probeLeaseUntil} is null
+    ) or (
+      ${t.state}='open' and ${t.reasonCode} is not null and ${t.openedAt}>=${t.windowStartedAt} and ${t.retryAt}>${t.openedAt} and ${t.probeLeaseUntil} is null
+    ) or (
+      ${t.state}='half_open' and ${t.reasonCode} is not null and ${t.openedAt}>=${t.windowStartedAt} and ${t.retryAt} is null and ${t.probeLeaseUntil}>${t.openedAt}
+    ))) is true`,
+    ),
+  ],
+);
+
+/** Exact normalized envelope facts; retained causation survives shorter-lived lookup rows. */
+export const npAgentEvents = pgTable(
+  "np_agent_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    kind: text("kind").notNull(),
+    sourceKind: text("source_kind").notNull(),
+    sourceComponent: text("source_component").notNull(),
+    subject: jsonb("subject").$type<NpAgentEventCanonicalV1["subject"]>(),
+    actor: jsonb("actor").$type<NpAgentEventCanonicalV1["actor"]>(),
+    causation: jsonb("causation").$type<NpAgentEventCanonicalV1["causation"]>(),
+    causalRootRunId: uuid("causal_root_run_id"),
+    causalRunId: uuid("causal_run_id"),
+    causalActionId: uuid("causal_action_id"),
+    causalDepth: integer("causal_depth"),
+    correlationId: text("correlation_id"),
+    deduplicationKey: text("deduplication_key"),
+    eventHash: text("event_hash").notNull(),
+    privacy: text("privacy").notNull(),
+    payload: jsonb("payload").$type<NpAgentEventCanonicalV1["payload"]>().notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true, mode: "date" }).notNull(),
+    recordedAt: timestamp("recorded_at", { withTimezone: true, mode: "date" })
+      .defaultNow()
+      .notNull(),
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true, mode: "date" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    unique("np_agent_events_site_id_id_unique").on(t.siteId, t.id),
+    uniqueIndex("np_agent_events_deduplication_uidx")
+      .on(t.siteId, t.sourceKind, t.sourceComponent, t.kind, t.deduplicationKey)
+      .where(sql`${t.deduplicationKey} is not null`),
+    index("np_agent_events_recorded_idx").on(t.siteId, t.recordedAt),
+    index("np_agent_events_kind_idx").on(t.siteId, t.kind, t.recordedAt),
+    index("np_agent_events_undispatched_idx")
+      .on(t.siteId, t.recordedAt)
+      .where(sql`${t.dispatchedAt} is null`),
+    index("np_agent_events_expiry_idx").on(t.siteId, t.expiresAt),
+    foreignKey({
+      name: "np_agent_events_causal_run_fk",
+      columns: [t.siteId, t.causalRunId, t.causalRootRunId, t.causalDepth],
+      foreignColumns: [
+        npAgentRuns.siteId,
+        npAgentRuns.id,
+        npAgentRuns.rootRunId,
+        npAgentRuns.causalDepth,
+      ],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_events_causal_action_fk",
+      columns: [t.siteId, t.causalRunId, t.causalActionId],
+      foreignColumns: [npAgentActions.siteId, npAgentActions.runId, npAgentActions.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_events_kind_check",
+      sql`${t.kind} in (${sql.raw(npAgentEventKinds.map((kind) => `'${kind}'`).join(","))})`,
+    ),
+    check(
+      "np_agent_events_source_check",
+      sql`${t.sourceKind} in ('auth','api','community','content','jobs','ops','storage','plugin','integration','agent') and ${t.sourceComponent} ~ '^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$' and (${t.correlationId} is null or ${t.correlationId} ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$') and (${t.deduplicationKey} is null or ${t.deduplicationKey} ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$')`,
+    ),
+    check(
+      "np_agent_events_body_check",
+      sql`(${t.privacy} in ('public','internal','sensitive') and ${t.eventHash} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.payload}->>'kind'=${t.kind} and octet_length(${t.payload}::text)<=65536 and (${t.subject} is null or octet_length(${t.subject}::text)<=4096) and (${t.actor} is null or octet_length(${t.actor}::text)<=4096)) is true`,
+    ),
+    check(
+      "np_agent_events_causation_check",
+      sql`(((
+      ${t.causalRootRunId} is null and ${t.causalRunId} is null and ${t.causalActionId} is null and ${t.causalDepth} is null
+    ) or (
+      ${t.causalRootRunId} is not null and ${t.causalRunId} is not null and ${t.causalActionId} is not null and ${t.causalDepth} between 0 and 4 and ${t.causation}->>'rootRunId'=${t.causalRootRunId}::text and ${t.causation}->>'sourceRunId'=${t.causalRunId}::text and ${t.causation}->>'sourceActionId'=${t.causalActionId}::text and ${t.causation}->>'depth'=${t.causalDepth}::text
+    )) and (${t.causation} is null or (jsonb_typeof(${t.causation})='object' and octet_length(${t.causation}::text)<=4096))) is true`,
+    ),
+    check(
+      "np_agent_events_time_check",
+      sql`${t.expiresAt}>${t.recordedAt} and (${t.dispatchedAt} is null or ${t.dispatchedAt}>=${t.recordedAt})`,
     ),
   ],
 );

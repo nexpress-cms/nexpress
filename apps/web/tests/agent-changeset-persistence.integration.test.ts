@@ -735,7 +735,7 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet persistence foundation", () => {
     await db.insert(npAgentChangesetOperations).values(operation(row.id));
     await db.insert(npAgentApprovals).values(approval(row.id, user.userId));
     const inventory = await npInspectAgentSiteDeletionRows(db, "changeset-a");
-    expect(inventory).toHaveLength(30);
+    expect(inventory).toHaveLength(39);
     for (const table of [
       "np_agent_changesets",
       "np_agent_changeset_operations",

@@ -721,6 +721,46 @@ function parsePolicyCanonical(value: unknown): NpAgentPolicyCanonicalV1 {
   return result;
 }
 
+/** The same exact rules parser used by the policy canonical body. */
+export function npAnalyzeAgentPolicyRulesV1(
+  value: unknown,
+): NpAgentContractResult<NpAgentPolicyRulesV1> {
+  const path = "agent.policyRules";
+  return analyzeCanonicalBody(path, () =>
+    parsePolicyRules(
+      cloneCanonicalRuntimeInput(value, path, npAgentCanonicalBodyMaxBytesV1[POLICY_PURPOSE]),
+      path,
+      { seen: new WeakSet<object>() },
+    ),
+  );
+}
+
+export function npRequireAgentPolicyRulesV1(value: unknown): NpAgentPolicyRulesV1 {
+  return npRequireAgentContractResult(
+    npAnalyzeAgentPolicyRulesV1(value),
+    "Invalid Agent policy rules",
+  );
+}
+
+/** Version and policy modes share one sorted, closed capability inventory. */
+export function npAnalyzeAgentCapabilityModesV1(
+  value: unknown,
+): NpAgentContractResult<NpAgentCapabilityModeV1[]> {
+  const path = "agent.capabilityModes";
+  return analyzeCanonicalBody(path, () =>
+    parseCapabilityModes(cloneCanonicalRuntimeInput(value, path, 16 * 1024), path, {
+      seen: new WeakSet<object>(),
+    }),
+  );
+}
+
+export function npRequireAgentCapabilityModesV1(value: unknown): NpAgentCapabilityModeV1[] {
+  return npRequireAgentContractResult(
+    npAnalyzeAgentCapabilityModesV1(value),
+    "Invalid Agent capability modes",
+  );
+}
+
 export function npAnalyzeAgentNotificationDeliveryCanonical(
   value: unknown,
 ): NpAgentContractResult<NpAgentNotificationDeliveryCanonicalV1> {

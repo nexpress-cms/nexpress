@@ -2,8 +2,12 @@ export function buildRunScriptArgs(
   manager: "pnpm" | "npm" | "yarn",
   script: string,
   passthrough: string[],
+  yarnVersion?: string,
 ): string[] {
-  if (manager === "yarn") return [script, ...passthrough];
+  if (manager === "yarn")
+    return passthrough.includes("--json") && yarnVersion?.startsWith("1.")
+      ? ["--silent", "run", script, ...passthrough]
+      : [script, ...passthrough];
   if (passthrough.includes("--json")) return ["--silent", "run", script, "--", ...passthrough];
   return ["run", script, "--", ...passthrough];
 }

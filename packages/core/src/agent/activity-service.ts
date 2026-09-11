@@ -409,40 +409,52 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     return current;
   }
   function runDetail(row: Run, inv: Invocation | null): NpAgentActivityRunDetailV1 {
-    return npRequireAgentActivityRunDetailV1({
-      schemaVersion: "np.agent-activity-run.v1",
-      invocationId: row.invocationId,
-      evidence: inv && inv.expiresAt <= now() ? "expired" : "redacted",
-      auditEventIds: inv ? [inv.auditEventId] : [],
-      run: {
-        schemaVersion: "np.agent-run.v1",
-        id: row.id,
-        siteId: row.siteId,
-        origin: row.origin,
-        agent:
-          row.agentId && row.agentVersionId
-            ? { id: row.agentId, versionId: row.agentVersionId }
-            : null,
-        principalId: row.principalId,
-        rootRunId: row.rootRunId,
-        parentRunId: row.parentRunId,
-        causalDepth: row.causalDepth,
-        state: row.state,
-        goal: "[redacted]",
-        runLimits: row.runLimits,
-        usage:
-          row.origin === "gateway"
-            ? { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, costMicros: 0, ...row.usage }
-            : row.usage,
-        attempt: row.attempt,
-        errorCode: row.errorCode === null ? null : "RUN_FAILED",
-        errorMessage: row.errorCode === null ? null : "Run did not complete successfully.",
-        queuedAt: iso(row.queuedAt),
-        deadlineAt: iso(row.deadlineAt),
-        startedAt: iso(row.startedAt),
-        finishedAt: iso(row.finishedAt),
-      },
-    });
+    try {
+      return npRequireAgentActivityRunDetailV1({
+        schemaVersion: "np.agent-activity-run.v1",
+        invocationId: row.invocationId,
+        evidence: inv && inv.expiresAt <= now() ? "expired" : "redacted",
+        auditEventIds: inv ? [inv.auditEventId] : [],
+        run: {
+          schemaVersion: "np.agent-run.v1",
+          id: row.id,
+          siteId: row.siteId,
+          origin: row.origin,
+          agent:
+            row.agentId && row.agentVersionId
+              ? { id: row.agentId, versionId: row.agentVersionId }
+              : null,
+          principalId: row.principalId,
+          rootRunId: row.rootRunId,
+          parentRunId: row.parentRunId,
+          causalDepth: row.causalDepth,
+          state: row.state,
+          goal: "[redacted]",
+          runLimits: row.runLimits,
+          usage:
+            row.origin === "gateway"
+              ? {
+                  inputTokens: 0,
+                  cachedInputTokens: 0,
+                  outputTokens: 0,
+                  costMicros: 0,
+                  ...row.usage,
+                }
+              : row.usage,
+          attempt: row.attempt,
+          errorCode: row.errorCode === null ? null : "RUN_FAILED",
+          errorMessage: row.errorCode === null ? null : "Run did not complete successfully.",
+          queuedAt: iso(row.queuedAt),
+          deadlineAt: iso(row.deadlineAt),
+          startedAt: iso(row.startedAt),
+          finishedAt: iso(row.finishedAt),
+        },
+      });
+    } catch {
+      // Runtime reservations can have unresolved usage. The current wire shape
+      // requires exact numeric totals, so unprojectable evidence stays unavailable.
+      throw missing();
+    }
   }
   async function getPrincipal(input: Staff & { id: string }) {
     const { auth } = await staff(input);
@@ -593,7 +605,11 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
           const inv = await invocation(row.siteId, row.invocationId);
           if (query.capabilityId && inv?.operationId !== query.capabilityId) continue;
           if (!(await runVisible(row, visibility))) continue;
-          items.push(runDetail(row, inv));
+          try {
+            items.push(runDetail(row, inv));
+          } catch {
+            continue;
+          }
         } else {
           const row = raw as Action;
           const inv = await invocation(row.siteId, row.invocationId);

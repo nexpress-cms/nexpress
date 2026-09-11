@@ -25,7 +25,7 @@ function run(command: string, args: string[]): Promise<void> {
 export async function generateMigrations(): Promise<void> {
   const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
   await run(pnpm, ["exec", "drizzle-kit", "generate"]);
-  for (const inventory of ["r1", "rollback"] as const) {
+  for (const inventory of ["r1", "rollback", "runtime"] as const) {
     const result = await npEnsureAgentLifecycleConstraintMigrationV1({
       inventory,
       createCustomMigration: () =>

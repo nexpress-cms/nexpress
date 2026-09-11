@@ -1,6 +1,8 @@
 import type { NpUserRole } from "../auth-contract/types.js";
 
 export const NP_AGENT_GATEWAY_SETTING_KEY = "agents.gateway" as const;
+export { NP_AGENT_RUNTIME_SETTING_KEY } from "../agent-contract/runtime-contract.js";
+export const NP_AGENT_RUNTIME_CONTROL_SETTING_KEY = "agents.runtime.control" as const;
 
 export interface NpSiteRuntimeSettings {
   siteUrl: string | null;
@@ -134,6 +136,8 @@ export interface NpAdminSettingsSnapshot {
 
 export type NpSettingContractKind =
   | "agents-gateway"
+  | "agents-runtime"
+  | "agents-runtime-control"
   | "seo"
   | "site-quotas"
   | "theme-tokens"

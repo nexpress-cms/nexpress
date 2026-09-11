@@ -1,4 +1,8 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import {
+  npRequireAgentRuntimeOpsResultV1,
+  type NpAgentRuntimeOpsResultV1,
+} from "@nexpress/core/agent-contract";
 import { readFile, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
@@ -65,6 +69,7 @@ Usage:
   nexpress deploy plan --target <host> [--json]       Print a deployment bridge plan
   nexpress feedback [--json]                          Print a local PII-free support report and issue link
   nexpress agent connect --client <codex|claude> --transport <stdio|http>  Plan or apply a safe MCP connection
+  nexpress agent runtime status|pause|resume --site <siteId> [--json]   Local runtime containment and recovery
   nexpress ops status [--json|--brief|--no-color]     Print read-only runtime status for operators and agents
   nexpress ops contracts [--json|--brief]             Print the shipped local ops contract registry
   nexpress ops doctor [--prod|--json|--fix-plan]      Run the project doctor through the ops namespace
@@ -240,8 +245,95 @@ function runProjectScript(
   passthrough: string[],
   cwd: string,
 ): Promise<void> {
-  const args = buildRunScriptArgs(manager, script, passthrough);
+  const runtimeJson =
+    script === "agent:runtime" &&
+    passthrough.includes("--json") &&
+    !passthrough.includes("--help") &&
+    !passthrough.includes("-h");
+  const operation: NpAgentRuntimeOpsResultV1["operation"] =
+    passthrough[0] === "pause"
+      ? "pause"
+      : passthrough[0] === "resume"
+        ? passthrough.includes("--execute")
+          ? "resume"
+          : "resume-plan"
+        : "status";
+  const blockedRuntimeResult = (): NpAgentRuntimeOpsResultV1 =>
+    npRequireAgentRuntimeOpsResultV1({
+      schemaVersion: "np.agent-runtime-ops.v1",
+      operation,
+      outcome: "blocked",
+      errorCode: "RUNTIME_UNAVAILABLE",
+      status: null,
+      plan: null,
+    });
+  let yarnVersion: string | undefined;
+  if (manager === "yarn" && passthrough.includes("--json")) {
+    // Classic needs --silent; modern Yarn rejects that option. Match the
+    // existing MCP launcher by reading the installed major without its output.
+    const version = spawnSync(manager, ["--version"], {
+      cwd,
+      encoding: "utf8",
+      timeout: 10_000,
+      maxBuffer: 1024,
+    });
+    if (
+      version.error ||
+      version.status !== 0 ||
+      !/^\d+\.\d+\.\d+(?:[-+].*)?\s*$/.test(version.stdout)
+    ) {
+      if (runtimeJson) process.stdout.write(`${JSON.stringify(blockedRuntimeResult())}\n`);
+      return Promise.reject(new Error("Project script unavailable"));
+    }
+    yarnVersion = version.stdout.trim();
+  }
+  const args = buildRunScriptArgs(manager, script, passthrough, yarnVersion);
   return new Promise((resolveFn, reject) => {
+    if (runtimeJson) {
+      const child = spawn(manager, args, { cwd, stdio: ["inherit", "pipe", "pipe"] });
+      const chunks: Buffer[] = [];
+      let size = 0;
+      let finished = false;
+      child.stdout.on("data", (chunk: Buffer) => {
+        size += chunk.byteLength;
+        if (size <= 32_768) chunks.push(chunk);
+      });
+      // Only the validated shared result is public; bootstrap and package
+      // manager errors can contain local paths, argv or deployment details.
+      child.stderr.resume();
+      const finish = (code: number | null): void => {
+        if (finished) return;
+        finished = true;
+        let result = blockedRuntimeResult();
+        try {
+          if (size > 32_768) throw new Error("Project result exceeded bound");
+          const parsed = npRequireAgentRuntimeOpsResultV1(
+            JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
+          );
+          const requestedSiteIndex = passthrough.indexOf("--site");
+          if (
+            parsed.operation !== operation ||
+            (parsed.status &&
+              (requestedSiteIndex < 0 ||
+                parsed.status.siteId !== passthrough[requestedSiteIndex + 1]))
+          )
+            throw new Error("Project result does not match the requested operation");
+          if (
+            (code === 0 && parsed.outcome !== "blocked") ||
+            (code === 1 && parsed.outcome === "blocked")
+          )
+            result = parsed;
+        } catch {
+          // The closed fallback has no child output or exception text.
+        }
+        process.stdout.write(`${JSON.stringify(result)}\n`);
+        if (result.outcome === "blocked") reject(new Error("Project script unavailable"));
+        else resolveFn();
+      };
+      child.on("error", () => finish(null));
+      child.on("close", finish);
+      return;
+    }
     const child = spawn(manager, args, { cwd, stdio: "inherit" });
     child.on("error", reject);
     child.on("exit", (code) => {
@@ -468,6 +560,16 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
   }
 
   if (args[0] === "agent") {
+    if (args[1] === "runtime") {
+      try {
+        await projectScriptRunner(detectPackageManager(cwd), "agent:runtime", args.slice(2), cwd);
+        return 0;
+      } catch {
+        // The shared project runner already emitted one bounded result.
+        // Raw argv can contain an operator reason and must not be repeated.
+        return 1;
+      }
+    }
     if (args[1] !== "connect") {
       process.stderr.write(`Unknown subcommand: agent ${args[1] ?? ""}\n${AGENT_CONNECT_HELP}`);
       return 2;

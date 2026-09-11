@@ -14,6 +14,12 @@ import {
 import { getDb } from "../db/runtime.js";
 import type { NpAgentConnectionAuthAdapterRegistryV1 } from "./provider-auth-contract.js";
 import type { NpAgentVaultAdapterRegistryV1 } from "./vault-runtime.js";
+import { npAnalyzeAgentRuntimeSettingsV1 } from "../agent-contract/runtime-contract.js";
+import { npValidateAgentRuntimeControlStateV1 } from "./runtime-controls.js";
+import { npRuntimeRunAdmissionBodyV1 } from "./runtime-admission.js";
+import { npVerifyAgentRuntimeAdmissionSourcesV1 } from "./runtime-admission-sources.js";
+import { npDigestAgentRunAdmissionCanonical } from "../agent-contract/canonical-run-admission.js";
+import { npDigestAgentRunLimitsCanonical } from "../agent-contract/canonical-bodies.js";
 
 const AGENT_TABLES = [
   "np_agent_actions",
@@ -25,11 +31,13 @@ const AGENT_TABLES = [
   "np_agent_changeset_rollback_plans",
   "np_agent_changeset_validation_attempts",
   "np_agent_changesets",
+  "np_agent_circuit_breakers",
   "np_agent_connection_auth_requests",
   "np_agent_connection_config_versions",
   "np_agent_connection_operations",
   "np_agent_connection_secret_versions",
   "np_agent_connections",
+  "np_agent_events",
   "np_agent_invocations",
   "np_agent_mcp_tasks",
   "np_agent_oauth_clients",
@@ -37,20 +45,125 @@ const AGENT_TABLES = [
   "np_agent_oauth_grants",
   "np_agent_oauth_refresh_tokens",
   "np_agent_oauth_requests",
+  "np_agent_policies",
   "np_agent_preview_artifact_uploads",
   "np_agent_preview_artifacts",
   "np_agent_preview_render_sessions",
   "np_agent_preview_viewer_launches",
   "np_agent_principals",
+  "np_agent_provider_calls",
   "np_agent_runs",
   "np_agent_service_tokens",
   "np_agent_site_deletion_sagas",
+  "np_agent_triggers",
+  "np_agent_usage_daily",
+  "np_agent_usage_reservations",
   "np_agent_vault_entries",
   "np_agent_vault_operations",
+  "np_agent_versions",
+  "np_agents",
 ] as const;
 
 /** Critical state and same-site constraints whose absence weakens fail-closed diagnostics. */
 const AGENT_CONSTRAINTS = [
+  "np_agents_status_check",
+  "np_agents_template_check",
+  "np_agents_version_check",
+  "np_agents_name_check",
+  "np_agents_lifecycle_check",
+  "np_agents_time_check",
+  "np_agents_site_id_np_sites_id_fk",
+  "np_agents_created_by_np_users_id_fk",
+  "np_agents_principal_fk",
+  "np_agent_versions_status_check",
+  "np_agent_versions_number_check",
+  "np_agent_versions_modes_check",
+  "np_agent_versions_model_check",
+  "np_agent_versions_scopes_check",
+  "np_agent_versions_contract_check",
+  "np_agent_versions_hash_check",
+  "np_agent_versions_time_check",
+  "np_agent_versions_site_id_np_sites_id_fk",
+  "np_agent_versions_created_by_np_users_id_fk",
+  "np_agent_versions_agent_fk",
+  "np_agent_versions_connection_fk",
+  "np_agent_policies_status_check",
+  "np_agent_policies_version_check",
+  "np_agent_policies_body_check",
+  "np_agent_policies_time_check",
+  "np_agent_policies_site_id_np_sites_id_fk",
+  "np_agent_policies_created_by_np_users_id_fk",
+  "np_agent_policies_agent_fk",
+  "np_agent_triggers_kind_check",
+  "np_agent_triggers_event_check",
+  "np_agent_triggers_shape_check",
+  "np_agent_triggers_filter_check",
+  "np_agent_triggers_time_check",
+  "np_agent_triggers_site_id_np_sites_id_fk",
+  "np_agent_triggers_version_fk",
+  "np_agent_provider_calls_state_check",
+  "np_agent_provider_calls_dispatch_check",
+  "np_agent_provider_calls_versions_check",
+  "np_agent_provider_calls_identity_check",
+  "np_agent_provider_calls_hash_check",
+  "np_agent_provider_calls_data_class_check",
+  "np_agent_provider_calls_body_check",
+  "np_agent_provider_calls_usage_bounds_check",
+  "np_agent_provider_calls_usage_check",
+  "np_agent_provider_calls_outcome_check",
+  "np_agent_provider_calls_time_check",
+  "np_agent_provider_calls_site_id_np_sites_id_fk",
+  "np_agent_provider_calls_run_fk",
+  "np_agent_provider_calls_retry_fk",
+  "np_agent_provider_calls_config_fk",
+  "np_agent_provider_calls_secret_fk",
+  "np_agent_provider_calls_reservation_fk",
+  "np_agent_usage_reservations_state_check",
+  "np_agent_usage_reservations_bounds_check",
+  "np_agent_usage_reservations_pricing_check",
+  "np_agent_usage_reservations_usage_check",
+  "np_agent_usage_reservations_time_check",
+  "np_agent_usage_reservations_site_id_np_sites_id_fk",
+  "np_agent_usage_reservations_run_fk",
+  "np_agent_usage_reservations_connection_fk",
+  "np_agent_usage_daily_tokens_check",
+  "np_agent_usage_daily_cost_check",
+  "np_agent_usage_daily_site_id_np_sites_id_fk",
+  "np_agent_usage_daily_agent_fk",
+  "np_agent_usage_daily_connection_fk",
+  "np_agent_circuit_breakers_scope_check",
+  "np_agent_circuit_breakers_state_check",
+  "np_agent_circuit_breakers_time_check",
+  "np_agent_circuit_breakers_site_id_np_sites_id_fk",
+  "np_agent_events_kind_check",
+  "np_agent_events_source_check",
+  "np_agent_events_body_check",
+  "np_agent_events_causation_check",
+  "np_agent_events_time_check",
+  "np_agent_events_site_id_np_sites_id_fk",
+  "np_agent_events_causal_run_fk",
+  "np_agent_events_causal_action_fk",
+  "np_agents_active_version_fk",
+  "np_agents_draft_version_fk",
+  "np_agent_runs_causal_event_fk",
+  "np_agent_runs_causal_action_fk",
+  "np_agent_runs_agent_fk",
+  "np_agent_runs_version_fk",
+  "np_agent_runs_trigger_fk",
+  "np_agent_runs_connection_config_fk",
+  "np_agent_runs_runtime_admission_sources_check",
+  "np_agent_runs_runtime_shape_check",
+  "np_agent_runs_provider_shape_check",
+  "np_agent_runs_instruction_check",
+  "np_agent_runs_runtime_time_check",
+  "np_agent_principals_scopes_check",
+  "np_agent_runs_root_fk",
+  "np_agent_runs_parent_fk",
+  "np_agent_runs_origin_check",
+  "np_agent_runs_gateway_shape_check",
+  "np_agent_runs_lineage_check",
+  "np_agent_runs_attempt_check",
+  "np_agent_runs_deadline_check",
   "np_agent_changeset_rollback_operations_bounds_check",
   "np_agent_changeset_rollback_operations_changeset_fk",
   "np_agent_changeset_rollback_operations_hash_check",
@@ -262,7 +375,16 @@ export interface NpAgentDiagnosticsOptionsV1 {
 
 const STATE_SUMMARY_SQL = `
   with state_rows(entity, state, occurred_at) as (
-    select 'action', state, created_at from public.np_agent_actions
+    select 'agent', status, created_at from public.np_agents
+    union all select 'agent-version', status, created_at from public.np_agent_versions
+    union all select 'policy', status, created_at from public.np_agent_policies
+    union all select 'trigger', case when enabled then 'active' else 'disabled' end, created_at from public.np_agent_triggers
+    union all select 'provider-call', state, created_at from public.np_agent_provider_calls
+    union all select 'usage-reservation', state, reserved_at from public.np_agent_usage_reservations
+    union all select 'usage-daily', 'completed', usage_date::timestamptz from public.np_agent_usage_daily
+    union all select 'circuit-breaker', state, updated_at from public.np_agent_circuit_breakers
+    union all select 'event', case when dispatched_at is null then 'queued' else 'completed' end, recorded_at from public.np_agent_events
+    union all select 'action', state, created_at from public.np_agent_actions
     union all select 'run', state, queued_at from public.np_agent_runs
     union all select 'changeset-validation-attempt', state, created_at from public.np_agent_changeset_validation_attempts
     union all select 'changeset-preview', state, created_at from public.np_agent_changeset_previews
@@ -306,6 +428,25 @@ const STATE_SUMMARY_SQL = `
 
 const ISSUE_SUMMARY_SQL = `
   with violations(code, occurred_at) as (
+    select 'AGENT_RUNTIME_DIVERGED', a.created_at from public.np_agents a
+      left join public.np_agent_principals p on p.site_id=a.site_id and p.id=a.principal_id
+      left join public.np_agent_versions v on v.site_id=a.site_id and v.agent_id=a.id and v.id=a.active_version_id
+      where p.id is null or p.kind<>'runtime' or p.authority_kind<>'deployment'
+        or (a.status='draft' and (p.status<>'suspended' or cardinality(p.scopes)<>0 or a.active_version_id is not null))
+        or (a.status in ('active','paused','error') and (v.id is null or v.status<>'active' or p.scopes is distinct from v.scopes or p.status<>case when a.status='active' then 'active' else 'suspended' end))
+        or (a.status='archived' and p.status<>'revoked')
+        or (a.draft_version_id is not null and not exists(select 1 from public.np_agent_versions d where d.site_id=a.site_id and d.agent_id=a.id and d.id=a.draft_version_id and d.status='draft'))
+    union all select 'AGENT_RUNTIME_DIVERGED', p.created_at from public.np_agent_principals p where p.kind='runtime' and not exists(select 1 from public.np_agents a where a.site_id=p.site_id and a.principal_id=p.id)
+    union all select 'AGENT_RUNTIME_DIVERGED', t.created_at from public.np_agent_triggers t where t.enabled and not exists(select 1 from public.np_agents a join public.np_agent_versions v on v.site_id=a.site_id and v.agent_id=a.id and v.id=a.active_version_id where a.site_id=t.site_id and a.id=t.agent_id and v.id=t.agent_version_id and a.status='active' and v.status='active')
+    union all select 'AGENT_RUNTIME_DIVERGED', r.queued_at from public.np_agent_runs r where r.origin='runtime' and not exists(select 1 from public.np_agents a join public.np_agent_versions v on v.site_id=a.site_id and v.agent_id=a.id where a.site_id=r.site_id and a.id=r.agent_id and a.principal_id=r.principal_id and v.id=r.agent_version_id and v.config_hash=r.agent_config_hash)
+    union all select 'AGENT_RUNTIME_DIVERGED', p.created_at from public.np_agent_policies p where p.status='active' and (select count(*) from public.np_agent_policies other where other.site_id=p.site_id and other.agent_id is not distinct from p.agent_id and other.status='active')<>1
+    union all select 'AGENT_USAGE_DIVERGED', u.reserved_at from public.np_agent_usage_reservations u where not exists(select 1 from public.np_agent_runs r where r.site_id=u.site_id and r.id=u.run_id and r.origin='runtime' and r.agent_id=u.agent_id and r.connection_id=u.connection_id and r.connection_config_snapshot_id=u.connection_config_snapshot_id and r.pricing_id=u.pricing_id and r.pricing_version=u.pricing_version and r.pricing_fingerprint=u.pricing_fingerprint and r.pricing_effective_at=u.pricing_effective_at)
+    union all select 'AGENT_USAGE_DIVERGED', c.created_at from public.np_agent_provider_calls c where not exists(select 1 from public.np_agent_usage_reservations u where u.site_id=c.site_id and u.id=c.usage_reservation_id and u.run_id=c.run_id and u.connection_id=c.connection_id and u.connection_config_snapshot_id=c.connection_config_snapshot_id and u.pricing_id=c.pricing_id and u.pricing_version=c.pricing_version and u.pricing_fingerprint=c.pricing_fingerprint and u.pricing_effective_at=c.pricing_effective_at and u.model=c.model) or ((c.state='ambiguous' or c.dispatch_state='unknown') and exists(select 1 from public.np_agent_usage_reservations u where u.site_id=c.site_id and u.id=c.usage_reservation_id and u.state in ('reconciled','released') and not (
+      select count(*)=1 and coalesce(bool_and(e.actor_kind='system' and e.payload->>'reservationId'=u.id::text and e.payload->>'responseDigest' ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$'),false)
+      from public.np_audit_events e where e.site_id=c.site_id and e.target_type='agent-provider-call' and e.target_id=c.id::text and e.action='agent.runtime.usage' and e.payload->>'transition'='late-reconciled'
+    )))
+    union all select 'AGENT_STALE_USAGE_RESERVATION', u.expires_at from public.np_agent_usage_reservations u where u.state in ('reserved','expired') and u.expires_at<=$1::timestamptz
+    union all
     select 'AGENT_ROW_STATE_INVALID', created_at from public.np_agent_actions
      where state not in ('proposed', 'policy_blocked', 'approval_pending', 'approved', 'executing', 'succeeded', 'failed', 'compensated')
     union all select 'AGENT_ROW_STATE_INVALID', p.created_at from public.np_agent_changeset_previews p
@@ -879,6 +1020,116 @@ function unavailableSummary(now: Date): NpAgentHealthSummaryV1 {
   });
 }
 
+async function collectRuntimeSettingIssues(
+  client: NpAgentDiagnosticsQueryClientV1,
+): Promise<RawIssueRow[]> {
+  let after = "";
+  let count = 0;
+  for (;;) {
+    const result = await client.query<{
+      site_id: unknown;
+      settings: unknown;
+      control: unknown;
+      control_present: unknown;
+    }>(
+      `
+      /* runtime_control_rows: bounded private reads, aggregate result only */
+      select site.site_id,
+        case when octet_length(s.value::text)<=262144 then s.value else null end as settings,
+        case when octet_length(c.value::text)<=8192 then c.value else null end as control, c.key is not null as control_present
+      from (select distinct site_id from public.np_settings where key in ('agents.runtime','agents.runtime.control') and site_id>$1 order by site_id limit 32) site
+      left join public.np_settings s on s.site_id=site.site_id and s.key='agents.runtime'
+      left join public.np_settings c on c.site_id=site.site_id and c.key='agents.runtime.control'
+      order by site.site_id`,
+      [after],
+    );
+    if (result.rows.length === 0) break;
+    for (const row of result.rows) {
+      if (typeof row.site_id !== "string" || row.site_id <= after)
+        throw new Error("Invalid runtime diagnostic cursor");
+      after = row.site_id;
+      if (
+        typeof row.control_present !== "boolean" ||
+        (row.control_present && row.control === null) ||
+        !npAnalyzeAgentRuntimeSettingsV1(row.settings).ok ||
+        !npValidateAgentRuntimeControlStateV1({
+          siteId: row.site_id,
+          settings: row.settings,
+          control: row.control ?? { revision: 1, currentResumePlan: null, lastResumeReceipt: null },
+        })
+      )
+        count += 1;
+    }
+    if (result.rows.length < 32) break;
+  }
+  return count
+    ? [{ code: "AGENT_RUNTIME_DIVERGED", count: count.toString(), oldest_age_seconds: null }]
+    : [];
+}
+
+async function collectRuntimeAdmissionIssues(
+  client: NpAgentDiagnosticsQueryClientV1,
+): Promise<RawIssueRow[]> {
+  let after = "00000000-0000-0000-0000-000000000000";
+  let count = 0;
+  for (;;) {
+    const result = await client.query<Record<string, unknown>>(
+      `
+      /* runtime_admission_rows: bounded private evidence, no provider body or error reads */
+      select id, site_id as "siteId", origin, principal_id as "principalId",
+        invocation_id as "invocationId", trigger_id as "triggerId",
+        agent_id as "agentId", agent_version_id as "agentVersionId", agent_config_hash as "agentConfigHash",
+        root_run_id as "rootRunId", parent_run_id as "parentRunId", causal_depth as "causalDepth",
+        causal_event_id as "causalEventId", causal_action_id as "causalActionId",
+        recipe_id as "recipeId", recipe_version as "recipeVersion", recipe_fingerprint as "recipeFingerprint",
+        instruction_template_id as "instructionTemplateId", instruction_template_version as "instructionTemplateVersion",
+        instruction_digest as "instructionDigest", response_schema_digest as "responseSchemaDigest", manual_input_schema_digest as "manualInputSchemaDigest",
+        case when octet_length(goal)<=8192 then goal else null end as goal,
+        case when event_ref is null or octet_length(event_ref::text)<=524288 then event_ref else '{"invalid":true}'::jsonb end as "eventRef",
+        case when octet_length(policy_refs::text)<=524288 then policy_refs else null end as "policyRefs",
+        case when octet_length(run_limits::text)<=65536 then run_limits else null end as "runLimits",
+        run_limits_hash as "runLimitsHash", budget_snapshot_hash as "budgetSnapshotHash", idempotency_key as "idempotencyKey",
+        case when octet_length(budget_snapshot::text)<=262144 then budget_snapshot else null end as "budgetSnapshot",
+        case when octet_length(runtime_admission_sources::text)<=1048576 then runtime_admission_sources else null end as "runtimeAdmissionSources",
+        admission_fingerprint as "admissionFingerprint", connection_id as "connectionId", connection_config_snapshot_id as "connectionConfigSnapshotId",
+        connection_config_version as "connectionConfigVersion", connection_config_hash as "connectionConfigHash", provider_data_class_ceiling as "providerDataClassCeiling",
+        pricing_id as "pricingId", pricing_version as "pricingVersion", pricing_fingerprint as "pricingFingerprint", pricing_effective_at as "pricingEffectiveAt",
+        queued_at as "queuedAt", deadline_at as "deadlineAt"
+      from public.np_agent_runs where origin='runtime' and id>$1::uuid order by id limit 16`,
+      [after],
+    );
+    if (result.rows.length === 0) break;
+    for (const row of result.rows) {
+      if (typeof row.id !== "string" || !/^[0-9a-f-]{36}$/.test(row.id) || row.id <= after)
+        throw new Error("Invalid runtime admission diagnostic cursor");
+      after = row.id;
+      try {
+        // The query selects every field this existing reconstruction reads.
+        // Private result/error/provider fields are deliberately not fetched.
+        const admission = npRuntimeRunAdmissionBodyV1(
+          row as unknown as Parameters<typeof npRuntimeRunAdmissionBodyV1>[0],
+        );
+        if (
+          (await npDigestAgentRunAdmissionCanonical(admission)) !== row.admissionFingerprint ||
+          (await npDigestAgentRunLimitsCanonical(row.runLimits)) !== row.runLimitsHash
+        )
+          throw new Error("Invalid runtime admission evidence");
+        await npVerifyAgentRuntimeAdmissionSourcesV1({
+          sources: row.runtimeAdmissionSources,
+          admission,
+          budgetSnapshot: row.budgetSnapshot,
+        });
+      } catch {
+        count += 1;
+      }
+    }
+    if (result.rows.length < 16) break;
+  }
+  return count
+    ? [{ code: "AGENT_RUNTIME_DIVERGED", count: count.toString(), oldest_age_seconds: null }]
+    : [];
+}
+
 /**
  * Collect one fail-closed, read-only Agent contract snapshot. Its projection
  * contains only aggregate counts, ages and adapter readiness; credentials,
@@ -916,7 +1167,9 @@ export async function npCollectAgentHealthSummaryV1(
       REQUIRED_PROVIDER_ADAPTERS_SQL,
     );
     const vaultResult = await client.query<RawRequiredAdapterRow>(REQUIRED_VAULT_ADAPTERS_SQL);
-    const issues = parseIssues([...schemaIssues, ...issueResult.rows]);
+    const runtimeIssues = await collectRuntimeSettingIssues(client);
+    runtimeIssues.push(...(await collectRuntimeAdmissionIssues(client)));
+    const issues = parseIssues([...schemaIssues, ...issueResult.rows, ...runtimeIssues]);
     const providers = readiness(
       parseRequiredAdapters(providerResult.rows),
       options.providerRegistry?.list(),

@@ -10,6 +10,9 @@ import {
   npAgentR1TableNamesV1,
   npAgentRollbackTableNamesV1,
   npAgentRollbackDeferredLifecycleConstraintsSqlV1,
+  npAgentRuntimeTableNamesV1,
+  npAgentRuntimeDeferredLifecycleConstraintsSqlV1,
+  npAgentRuntimeDeferredLifecycleConstraintNamesV1,
   npEnsureAgentLifecycleConstraintMigrationV1,
   npInspectAgentMigrationSqlV1,
 } from "./agent-migration-contract.js";
@@ -164,6 +167,53 @@ describe("rollback deferred lifecycle migrations", () => {
     );
     await expect(npEnsureAgentLifecycleConstraintMigrationV1(options)).rejects.toThrow(
       "missing 3 of 4",
+    );
+  });
+});
+
+describe("runtime deferred lifecycle migrations", () => {
+  it("adds four same-site NO ACTION constraints once without rewriting schema SQL", async () => {
+    const folder = await tempMigrationFolder();
+    const base = npAgentRuntimeTableNamesV1.map((name) => `CREATE TABLE "${name}" ();`).join("\n");
+    await writeFile(join(folder, "0046_runtime.sql"), base);
+    const options = {
+      inventory: "runtime" as const,
+      migrationsFolder: folder,
+      createCustomMigration: async () => {
+        await writeFile(join(folder, "0047_runtime_lifecycle.sql"), "-- custom");
+      },
+    };
+    expect(await npEnsureAgentLifecycleConstraintMigrationV1(options)).toMatchObject({
+      state: "created",
+    });
+    expect(await readFile(join(folder, "0046_runtime.sql"), "utf8")).toBe(base);
+    const actual = await readFile(join(folder, "0047_runtime_lifecycle.sql"), "utf8");
+    expect(actual).toBe(npAgentRuntimeDeferredLifecycleConstraintsSqlV1);
+    expect(actual.match(/NO ACTION/giu)).toHaveLength(4);
+    expect(actual.match(/DEFERRABLE INITIALLY DEFERRED/gu)).toHaveLength(4);
+    expect(
+      npInspectAgentMigrationSqlV1(`${base}\n${actual}`, "runtime").presentDeferredConstraints,
+    ).toEqual([...npAgentRuntimeDeferredLifecycleConstraintNamesV1]);
+    expect(
+      await npEnsureAgentLifecycleConstraintMigrationV1({
+        ...options,
+        createCustomMigration: () => Promise.reject(new Error("must not rewrite")),
+      }),
+    ).toMatchObject({ state: "already-complete" });
+  });
+  it("detects partial runtime chains even when only a non-agent runtime table exists", async () => {
+    const folder = await tempMigrationFolder();
+    const options = {
+      inventory: "runtime" as const,
+      migrationsFolder: folder,
+      createCustomMigration: () => Promise.reject(new Error("must not generate")),
+    };
+    expect(await npEnsureAgentLifecycleConstraintMigrationV1(options)).toMatchObject({
+      state: "already-complete",
+    });
+    await writeFile(join(folder, "0046_partial.sql"), 'CREATE TABLE "np_agent_usage_daily" ();');
+    await expect(npEnsureAgentLifecycleConstraintMigrationV1(options)).rejects.toThrow(
+      "missing 10 of 11",
     );
   });
 });
