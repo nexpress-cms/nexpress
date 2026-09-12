@@ -6,6 +6,7 @@ import {
   NpAgentConnectionAuthAdapterRegistryV1,
   npBuildAgentAccountSubjectDigestBytesV1,
   npParseAgentProviderConnectionConfigV1,
+  npParseAgentStoredProviderConnectionConfigV1,
   npProjectAgentAccountSubjectV1,
   npProjectAgentConnectionDestinationV1,
   npRequireAgentProviderAuthorizationUrlV1,
@@ -247,5 +248,65 @@ describe("Agent provider authentication contract", () => {
     expect(accessToken).toEqual(new Uint8Array(2));
     expect(refreshToken).toEqual(new Uint8Array(2));
     expect(providerSubject).toEqual(new Uint8Array(2));
+  });
+  it("reproduces retained config through the activation parser and rejects cross-site or changed pricing", async () => {
+    const adapter = createAgentFakeProviderAdapterV1();
+    const registry = new NpAgentConnectionAuthAdapterRegistryV1().register(adapter);
+    const connection = {
+      siteId: "docs-site",
+      id: connectionId,
+      kind: "model",
+      provider: adapter.id,
+      authKind: "api_key",
+    };
+    const parsed = await npParseAgentProviderConnectionConfigV1({
+      adapter,
+      siteId: connection.siteId,
+      connectionId,
+      kind: "model",
+      provider: adapter.id,
+      authKind: "api_key",
+      configVersion: 1,
+      config: {
+        accountId: "account-1",
+        connectionKind: "model",
+        destination: null,
+        modelId: "fake-model",
+      },
+      dataProcessingCeiling: "internal-redacted",
+    });
+    const snapshot = {
+      siteId: connection.siteId,
+      connectionId,
+      adapterId: adapter.id,
+      adapterContractVersion: adapter.contractVersion,
+      adapterFingerprint: adapter.fingerprint,
+      version: 1,
+      config: parsed.config,
+      dataProcessingCeiling: "internal-redacted",
+      activatedAt: null,
+      createdAt: new Date(),
+      configHash: parsed.configHash,
+      pricingCatalogFingerprint: parsed.pricingCatalogFingerprint,
+      pricingCatalog: parsed.pricingCatalog,
+    };
+    expect(
+      (await npParseAgentStoredProviderConnectionConfigV1({ registry, connection, snapshot }))
+        .parsed,
+    ).toEqual(parsed);
+    await expect(
+      npParseAgentStoredProviderConnectionConfigV1({
+        registry,
+        connection,
+        snapshot: { ...snapshot, siteId: "other-site" },
+      }),
+    ).rejects.toMatchObject({ code: "PROVIDER_CONFIG_INTEGRITY_FAILED" });
+    await expect(
+      npParseAgentStoredProviderConnectionConfigV1({
+        registry,
+        connection,
+        snapshot: { ...snapshot, pricingCatalog: [] },
+      }),
+    ).rejects.toMatchObject({ code: "PROVIDER_CONFIG_INTEGRITY_FAILED" });
   });
 });

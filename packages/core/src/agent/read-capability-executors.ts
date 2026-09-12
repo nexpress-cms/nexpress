@@ -33,13 +33,18 @@ import {
   type NpAgentSchemaGetInputV1,
   type NpAgentSchemaGetOutputV1,
   type NpAgentSiteInspectOutputV1,
+  type NpAgentEvidenceRequest,
 } from "../agent-contract/index.js";
+import type { NpAgentRuntimeRunContextV1 } from "./runtime-admission.js";
+import { buildSearchVector } from "../collections/search.js";
+import { isNpRichTextContent } from "../fields/rich-text.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import {
   findDocuments,
   getAllCollectionSlugs,
   getCollectionConfig,
   getCollectionTable,
+  type NpTransaction,
 } from "../collections/index.js";
 import type { NpAuthUser, NpCollectionConfig, NpFieldConfig } from "../config/types.js";
 import { getDb } from "../db/runtime.js";
@@ -66,6 +71,10 @@ const MAX_PROJECTED_OBJECT_PROPERTIES = 512;
 const MAX_PROJECTED_STRING_CHARACTERS = 262_144;
 
 type ContentRow = Record<string, unknown>;
+type ReadContext = Pick<
+  NpAgentReadCapabilityContextV1,
+  "siteId" | "principal" | "requestedAt" | "transaction"
+>;
 type NamedField = Exclude<NpFieldConfig, { type: "row" } | { type: "collapsible" }>;
 
 export interface NpAgentCoreReadCapabilityOptionsV1 {
@@ -357,7 +366,7 @@ function schemaFor(
 }
 
 async function visibleSchemaCollections(
-  context: NpAgentReadCapabilityContextV1,
+  context: ReadContext,
   resolveUser: NpAgentCoreReadCapabilityOptionsV1["resolveUser"],
 ): Promise<NpCollectionConfig[]> {
   if (context.principal.authority.kind !== "user") {
@@ -681,7 +690,7 @@ function contentStatus(value: unknown): "draft" | "published" | "archived" {
 
 async function resolveReadUser(
   input: NpAgentContentQueryInputV1,
-  context: NpAgentReadCapabilityContextV1,
+  context: ReadContext,
   resolver: NpAgentCoreReadCapabilityOptionsV1["resolveUser"],
 ): Promise<NpAuthUser | undefined> {
   if (input.audience === "public" && input.status === "published") return undefined;
@@ -695,12 +704,12 @@ async function resolveReadUser(
 
 async function queryContent(
   input: NpAgentContentQueryInputV1,
-  context: NpAgentReadCapabilityContextV1,
+  context: ReadContext,
   options: NpAgentCoreReadCapabilityOptionsV1,
 ): Promise<NpAgentContentQueryOutputV1> {
   const config = getCollectionConfig(input.collection);
   const table = getCollectionTable(input.collection) as PgTable;
-  const db = getDb();
+  const db = context.transaction ?? getDb();
   const user = await resolveReadUser(input, context, options.resolveUser);
   if (config.access?.read && !(await config.access.read({ user: user ?? null }))) {
     throw new NpForbiddenError(input.collection, "read");
@@ -780,6 +789,9 @@ async function queryContent(
         },
       },
       user,
+      ...(context.transaction
+        ? ([{ tx: context.transaction as unknown as NpTransaction }] as const)
+        : ([] as const)),
     );
     const byId = new Map(hydrated.docs.map((doc) => [doc.id, doc]));
     docs = ids.flatMap((id) => {
@@ -853,6 +865,121 @@ async function queryContent(
     ]);
   }
   return output;
+}
+
+export interface NpAgentRuntimeDocumentEvidenceReaderV1 {
+  read(
+    context: NpAgentRuntimeRunContextV1,
+    request: Extract<NpAgentEvidenceRequest, { kind: "document" }>,
+  ): Promise<NpAgentContentQueryOutputV1 | NpAgentSchemaGetOutputV1>;
+  projectText(collection: string, data: NpAgentJsonObject): string;
+}
+
+const runtimeEvidenceReaders = new WeakSet<NpAgentRuntimeDocumentEvidenceReaderV1>();
+
+/** Reject generic host callbacks: this facet is issued only by the framework read owner. */
+export function npIsAgentRuntimeDocumentEvidenceReaderV1(
+  value: NpAgentRuntimeDocumentEvidenceReaderV1,
+): boolean {
+  return runtimeEvidenceReaders.has(value);
+}
+
+/** Exact public/published document evidence for the existing deployment Runtime authority. */
+export function createAgentCoreRuntimeDocumentEvidenceReaderV1(
+  options: NpAgentCoreReadCapabilityOptionsV1,
+): NpAgentRuntimeDocumentEvidenceReaderV1 {
+  createAgentCoreReadCapabilityExecutorsV1(options);
+  const reader: NpAgentRuntimeDocumentEvidenceReaderV1 = {
+    projectText(collection, data) {
+      const config = getCollectionConfig(collection);
+      const fields = safeFieldEntries(config.fields);
+      for (const field of fields)
+        if (
+          field.type === "richText" &&
+          data[field.name] !== undefined &&
+          data[field.name] !== null &&
+          !isNpRichTextContent(data[field.name])
+        )
+          throw new NpNotFoundError("evidence", "unavailable");
+      return buildSearchVector({ ...config, fields }, data);
+    },
+    async read(context, request) {
+      const { principal, definition } = context.evidence;
+      const recipe = definition.settings.find((entry) => entry.recipeId === context.run.recipeId);
+      const collections = context.policy.effective.resources.collections;
+      if (
+        principal.authorityKind !== "deployment" ||
+        !principal.authorityPolicyId ||
+        !recipe ||
+        !("collectionSlugs" in recipe) ||
+        !recipe.collectionSlugs.includes(request.collection) ||
+        (collections !== null && !collections.includes(request.collection)) ||
+        !definition.scopes.includes("content:read") ||
+        !context.policy.effective.capabilityModes.some(
+          (entry) => entry.capabilityId === "content.query",
+        )
+      )
+        throw new NpNotFoundError("evidence", "unavailable");
+      const readContext: ReadContext = {
+        siteId: context.siteId,
+        principal: {
+          kind: "runtime",
+          siteId: context.siteId,
+          principalId: principal.id,
+          runId: context.run.id,
+          authority: { kind: "deployment", policyId: principal.authorityPolicyId },
+          scopes: definition.scopes,
+        },
+        requestedAt: context.now.toISOString(),
+        transaction: context.db,
+      };
+      const config = getCollectionConfig(request.collection);
+      const fields =
+        request.projection === "bounded-text"
+          ? safeFieldEntries(config.fields)
+              .filter(
+                (field) =>
+                  field.type === "text" || field.type === "textarea" || field.type === "richText",
+              )
+              .map((field) => field.name)
+              .sort()
+          : [];
+      if (fields.length > 32) throw new NpNotFoundError("evidence", "unavailable");
+      const output = await queryContent(
+        {
+          collection: request.collection,
+          filter: { op: "eq", field: "id", value: request.documentId },
+          fields,
+          audience: "public",
+          status: "published",
+          sort: [],
+          limit: 1,
+          cursor: null,
+        },
+        readContext,
+        options,
+      );
+      if (output.items.length !== 1 || output.items[0].id !== request.documentId)
+        throw new NpNotFoundError("evidence", "unavailable");
+      if (request.projection !== "schema") return output;
+      if (!definition.scopes.includes("schema:read"))
+        throw new NpNotFoundError("evidence", "unavailable");
+      const selector = { selector: "collection", slug: request.collection } as const;
+      const [visibleCollections, blocks] = await Promise.all([
+        visibleSchemaCollections(readContext, options.resolveUser),
+        exactBlockSchemas(context.siteId, options.resolveBlockSchemas),
+      ]);
+      const schema = schemaFor(selector, visibleCollections, blocks);
+      return {
+        schemaVersion: "np.agent-schema-resource.v1",
+        selector,
+        digest: digest("np.agent-schema-resource.v1", { selector, schema }),
+        schema,
+      };
+    },
+  };
+  runtimeEvidenceReaders.add(reader);
+  return Object.freeze(reader);
 }
 
 export function createAgentCoreReadCapabilityExecutorsV1(

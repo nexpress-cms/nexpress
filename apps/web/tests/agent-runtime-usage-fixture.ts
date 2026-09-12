@@ -23,6 +23,7 @@ import {
   createAgentFakeProviderAdapterV1,
   createAgentVaultServiceV1,
   createLocalEnvelopeVaultAdapterV1,
+  type NpAgentConnectionAuthAdapterV1,
 } from "../../../packages/core/src/agent/index.js";
 import {
   npDigestAgentStudioConnectionDefinitionV1,
@@ -34,6 +35,9 @@ import type {
   NpAgentJsonSchema,
   NpAgentProviderRequestCanonicalV1,
   NpAgentProviderResponseCanonicalV1,
+  NpAgentProviderDataClass,
+  NpAgentCapabilityModeV1,
+  NpAgentScope,
   NpAgentRunLimitsV1,
 } from "../../../packages/core/src/agent-contract/types.js";
 import {
@@ -74,9 +78,22 @@ export async function runtimeUsageFixture(
     agentBudget?: NpAgentBudgetV1;
     limits?: Partial<NpAgentRunLimitsV1>;
     verifier?: "present" | "absent" | "reject" | "throw";
+    dataClassCeiling?: NpAgentProviderDataClass;
+    documentCollection?: string;
+    providerInference?: NpAgentConnectionAuthAdapterV1["inference"];
   } = {},
 ) {
   const f = await runtimeFixture(options.budget ?? runtimeBudget());
+  const scopes: NpAgentScope[] = options.documentCollection
+    ? ["content:read", "schema:read", "site:read"]
+    : ["site:read"];
+  const modes: NpAgentCapabilityModeV1[] = options.documentCollection
+    ? [
+        { capabilityId: "content.query", mode: "observe" },
+        { capabilityId: "schema.get", mode: "observe" },
+        { capabilityId: "site.inspect", mode: "observe" },
+      ]
+    : [{ capabilityId: "site.inspect", mode: "observe" }];
   const vaultRegistry = new NpAgentVaultAdapterRegistryV1();
   vaultRegistry.register(
     createLocalEnvelopeVaultAdapterV1({
@@ -94,9 +111,13 @@ export async function runtimeUsageFixture(
     },
     resolveDb: () => f.db,
   });
-  const provider = createAgentFakeProviderAdapterV1();
+  const provider: NpAgentConnectionAuthAdapterV1 = {
+    ...createAgentFakeProviderAdapterV1(),
+    ...(options.providerInference ? { inference: options.providerInference } : {}),
+  };
+  const providerRegistry = new NpAgentConnectionAuthAdapterRegistryV1().register(provider);
   const connections = createAgentConnectionServiceV1({
-    providerRegistry: new NpAgentConnectionAuthAdapterRegistryV1().register(provider),
+    providerRegistry,
     vault,
     projectionKeyring: {
       accountSubject: {
@@ -134,7 +155,7 @@ export async function runtimeUsageFixture(
       destination: null,
       modelId: "fake-model",
     },
-    dataProcessingCeiling: "public-only" as const,
+    dataProcessingCeiling: options.dataClassCeiling ?? ("public-only" as const),
   };
   const connection = await admin.executeAdmin({
     siteId,
@@ -159,6 +180,10 @@ export async function runtimeUsageFixture(
   f.advance(2);
   await npWithAgentRuntimeControlTransactionV1(siteId, ({ db, revision, settings }) => {
     settings.allowedProviderIds = [provider.id];
+    settings.defaultPolicyRules.providerDataMaximum = options.dataClassCeiling ?? "public-only";
+    settings.defaultPolicyRules.capabilityModes = modes;
+    if (options.documentCollection)
+      settings.defaultPolicyRules.resources.collections = [options.documentCollection];
     return f.controls.updateInTransaction({
       db,
       siteId,
@@ -176,11 +201,71 @@ export async function runtimeUsageFixture(
     text: usageInstruction,
   };
   recipes.recipes[0]!.responseSchema = usageResponseSchema;
-  const runtimeOptions = { ...f.options, recipes };
+  if (options.documentCollection) {
+    const recipe = recipes.recipes[0]!;
+    recipe.id = "publisher.stale-content";
+    recipe.allowedTemplates = ["publisher"];
+    recipe.capabilityIds = modes.map((entry) => entry.capabilityId);
+    recipe.settingsSchema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        recipeId: { type: "string", const: "publisher.stale-content", maxLength: 128 },
+        recipeVersion: { type: "integer", const: 1, minimum: 1, maximum: 1 },
+        collectionSlugs: {
+          type: "array",
+          minItems: 1,
+          maxItems: 32,
+          uniqueItems: true,
+          items: { type: "string", maxLength: 96 },
+        },
+        staleAfterDays: { type: "integer", minimum: 30, maximum: 3650 },
+        candidateLimit: { type: "integer", minimum: 1, maximum: 50 },
+        batchSize: { type: "integer", minimum: 1, maximum: 5 },
+      },
+      required: [
+        "batchSize",
+        "candidateLimit",
+        "collectionSlugs",
+        "recipeId",
+        "recipeVersion",
+        "staleAfterDays",
+      ],
+    };
+  }
+  const runtimeOptions = {
+    ...f.options,
+    recipes,
+    deploymentAuthority: { ...f.options.deploymentAuthority, scopes },
+  };
+  runtimeOptions.frameworkPolicy = {
+    ...f.options.frameworkPolicy,
+    rules: {
+      ...f.options.frameworkPolicy.rules,
+      providerDataMaximum: options.dataClassCeiling ?? "public-only",
+      capabilityModes: modes,
+    },
+  };
   const service = createAgentRuntimeServiceV1(runtimeOptions);
   const runtime = runtimeDefinition();
   runtime.modelConnectionId = connection.resourceId;
   runtime.model = "fake-model";
+  if (options.documentCollection) {
+    runtime.template = "publisher";
+    runtime.scopes = scopes;
+    runtime.capabilityModes = modes;
+    runtime.settings = [
+      {
+        recipeId: "publisher.stale-content",
+        recipeVersion: 1,
+        collectionSlugs: [options.documentCollection],
+        staleAfterDays: 30,
+        candidateLimit: 1,
+        batchSize: 1,
+      },
+    ];
+  }
   if (options.agentBudget) runtime.budget = options.agentBudget;
   const created = await service.executeAdmin({
     siteId,
@@ -216,7 +301,7 @@ export async function runtimeUsageFixture(
     siteId,
     agentId: created.resourceId,
     expectedVersionId: active.output.versionId as string,
-    recipeId: "operator.worker-not-draining" as const,
+    recipeId: runtime.settings[0]!.recipeId,
     idempotencyKey: randomUUID(),
   };
   const admitted = await admission.admit(runInput);
@@ -320,6 +405,9 @@ export async function runtimeUsageFixture(
   return {
     ...f,
     usage,
+    vault,
+    provider,
+    providerRegistry,
     admission,
     runInput,
     runId: admitted.runId,

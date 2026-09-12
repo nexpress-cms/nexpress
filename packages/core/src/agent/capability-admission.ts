@@ -1,3 +1,9 @@
+import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
+import type {
+  NpAgentRuntimeAdmissionV1,
+  NpAgentRuntimeRunContextV1,
+  NpAgentRuntimeExecutionClaimV1,
+} from "./runtime-admission.js";
 import { npAgentMcpToolDefinitionsV1 } from "../agent-contract/contract.js";
 import type { NpAgentMcpTaskV1 } from "../agent-contract/index.js";
 import type { NpAgentMcpTaskRequestV1 } from "./mcp-task-service.js";
@@ -17,7 +23,7 @@ import {
 } from "../agent-contract/installed-capability-contract.js";
 import type { NpAgentChangeSetCapabilityFacadeV1 } from "./changeset-capability.js";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, desc, count } from "drizzle-orm";
 
 import {
   npAgentScopeStaffCapability,
@@ -58,6 +64,7 @@ import {
   npRequireAgentReadDerivedRequirementsV1,
   type NpAgentReadCapabilityRegistryV1,
   type NpAgentResolvedGatewayPrincipalV1,
+  type NpAgentResolvedRuntimePrincipalV1,
 } from "./capability-registry.js";
 import {
   npProjectAgentPrincipalV1,
@@ -82,6 +89,7 @@ function isOauthAuthentication(
 }
 
 export interface NpAgentCapabilityAdmissionOptionsV1 {
+  runtimeAdmission?: NpAgentRuntimeAdmissionV1;
   registry: NpAgentReadCapabilityRegistryV1;
   resolveChangeSetCapabilities?: () => NpAgentChangeSetCapabilityFacadeV1 | null;
   resolveGatewaySettings: (
@@ -535,30 +543,219 @@ export function createAgentCapabilityAdmissionServiceV1(
     throw new Error("Agent invocation retention must be 60..86400 seconds.");
   }
 
-  async function invokeRead<C extends NpAgentReadCapabilityIdV1>(input: {
-    authentication: NpAgentCapabilityAuthenticationV1;
-    request: NpAgentReadCapabilityInvocationRequestV1 & { capabilityId: C };
-    abortSignal?: AbortSignal;
-  }): Promise<NpAgentReadCapabilityInvocationResultV1<C>> {
+  function runtimePrincipal(
+    context: Pick<NpAgentRuntimeRunContextV1, "evidence" | "run" | "siteId">,
+  ): NpAgentResolvedRuntimePrincipalV1 {
+    const principal = context.evidence.principal;
+    const authority =
+      principal.authorityKind === "user" && principal.authorityUserId
+        ? { kind: "user" as const, userId: principal.authorityUserId }
+        : principal.authorityPolicyId
+          ? { kind: "deployment" as const, policyId: principal.authorityPolicyId }
+          : null;
+    if (!authority)
+      throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
+    return {
+      kind: "runtime",
+      principalId: principal.id,
+      siteId: context.siteId,
+      authority,
+      scopes: context.evidence.definition.scopes,
+      runId: context.run.id,
+    };
+  }
+  async function runtimeAuthentication(context: NpAgentRuntimeRunContextV1) {
+    const authorizationContext = npRequireAgentAuthorizationContextCanonical({
+      schemaVersion: "np.agent-authorization-context.v1",
+      siteId: context.siteId,
+      actor: {
+        kind: "principal",
+        principalId: context.evidence.principal.id,
+        actorFingerprint: digest("np.agent-principal-actor.v1", {
+          siteId: context.siteId,
+          principalId: context.evidence.principal.id,
+        }),
+      },
+      transport: "runtime",
+      gatewayExposure: null,
+      authorityRef: {
+        kind: "runtime-run",
+        principalId: context.evidence.principal.id,
+        runId: context.run.id,
+        agentVersionId: context.evidence.version.id,
+        deadlineAt: context.run.deadlineAt.toISOString(),
+      },
+    });
+    return {
+      kind: "runtime" as const,
+      scopes: context.evidence.definition.scopes,
+      authorizationContext,
+      authorizationContextFingerprint:
+        await npDigestAgentAuthorizationContextCanonical(authorizationContext),
+    };
+  }
+  async function currentRuntimeAction(
+    context: NpAgentRuntimeRunContextV1,
+    action: typeof npAgentActions.$inferSelect,
+  ) {
+    if (
+      !options.registry.ids.includes(action.capabilityId as NpAgentReadCapabilityIdV1) ||
+      action.siteId !== context.siteId ||
+      action.runId !== context.run.id ||
+      action.runFingerprint !== context.run.admissionFingerprint ||
+      !action.invocationId ||
+      action.idempotencyKey !== `runtime:${context.run.id}:${action.sequence.toString()}`
+    )
+      throw new NpAgentGatewayError(
+        "RUNTIME_ACTION_CONFLICT",
+        409,
+        "Runtime action is unavailable.",
+      );
+    const entry = options.registry.get(action.capabilityId as NpAgentReadCapabilityIdV1);
+    if (
+      !service
+        .sourceEntries(context)
+        .some((item) => item.canonical.descriptor.id === action.capabilityId) ||
+      entry.capabilityFingerprint !== action.capabilityFingerprint ||
+      serializeAgentCanonicalJson(entry.definitionCanonical) !==
+        serializeAgentCanonicalJson(action.capabilityDefinitionBody)
+    )
+      throw new NpAgentGatewayError(
+        "RUNTIME_ACTION_CONFLICT",
+        409,
+        "Runtime action is unavailable.",
+      );
+    const canonical = npRequireAgentActionCanonical({
+      schemaVersion: "np.agent-action.v1",
+      siteId: action.siteId,
+      actionId: action.id,
+      invocationFingerprint: action.invocationFingerprint,
+      runFingerprint: action.runFingerprint,
+      sequence: action.sequence,
+      capabilityId: action.capabilityId,
+      capabilityContractVersion: action.capabilityContractVersion,
+      capabilityFingerprint: action.capabilityFingerprint,
+      effectProfile: { id: action.effectProfileId, contractVersion: action.effectContractVersion },
+      risk: action.risk,
+      requiredScopes: action.requiredScopes,
+      targetRefs: action.targetRefs,
+      targetVersionFacts: action.targetVersionFacts,
+      input: action.inputCanonical,
+    });
+    const [invocation] = await context.db
+      .select()
+      .from(npAgentInvocations)
+      .where(
+        and(
+          eq(npAgentInvocations.siteId, context.siteId),
+          eq(npAgentInvocations.id, action.invocationId),
+        ),
+      )
+      .limit(1);
+    const auth = await runtimeAuthentication(context);
+    if (
+      (await npDigestAgentActionCanonical(canonical)) !== action.inputHash ||
+      !invocation ||
+      invocation.transport !== "runtime" ||
+      invocation.principalId !== context.evidence.principal.id ||
+      invocation.authorizationContextFingerprint !== auth.authorizationContextFingerprint ||
+      serializeAgentCanonicalJson(invocation.authorizationContextBody) !==
+        serializeAgentCanonicalJson(auth.authorizationContext) ||
+      invocation.requestHash !== action.invocationFingerprint ||
+      (await npDigestAgentInvocationRequestCanonical(
+        npRequireAgentInvocationRequestCanonical(invocation.requestBody),
+      )) !== invocation.requestHash ||
+      invocation.outputHash !== action.outputHash ||
+      action.outputRedacted === null ||
+      digest("np.agent-capability-output.v1", action.outputRedacted) !== action.outputHash ||
+      serializeAgentCanonicalJson(invocation.outputRedacted) !==
+        serializeAgentCanonicalJson(action.outputRedacted) ||
+      invocation.expiresAt <= context.now ||
+      invocation.operationId !== action.capabilityId ||
+      invocation.resultId !== action.id ||
+      invocation.state !== "completed" ||
+      action.state !== "succeeded"
+    )
+      throw new NpAgentGatewayError(
+        "RUNTIME_ACTION_CONFLICT",
+        409,
+        "Runtime action is unavailable.",
+      );
+    const input = entry.definition.parseInput(action.inputCanonical);
+    const principal = runtimePrincipal(context);
+    const requirements = npRequireAgentReadDerivedRequirementsV1(
+      (await entry.definition.deriveRequirements?.(input, {
+        siteId: context.siteId,
+        principal,
+        requestedAt: context.now.toISOString(),
+      })) ?? { additionalScopes: [], targetRefs: [], riskFloor: "read", approvalFloor: "none" },
+    );
+    if (
+      [...entry.definition.descriptor.requiredScopes, ...requirements.additionalScopes].some(
+        (scope) => !principal.scopes.includes(scope),
+      )
+    )
+      throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+    const current = await entry.definition.execute(input, {
+      siteId: context.siteId,
+      principal,
+      requestedAt: context.now.toISOString(),
+      invocationId: invocation.id,
+      idempotencyKey: null,
+      abortSignal: new AbortController().signal,
+      transaction: context.db,
+    });
+    return { entry, output: entry.definition.parseOutput(current.output), invocation };
+  }
+  async function invokeRead<C extends NpAgentReadCapabilityIdV1>(
+    input: {
+      request: NpAgentReadCapabilityInvocationRequestV1 & { capabilityId: C };
+      abortSignal?: AbortSignal;
+    } & (
+      | { authentication: NpAgentCapabilityAuthenticationV1 }
+      | {
+          runtime: NpAgentRuntimeRunContextV1;
+          sequence: number;
+        }
+    ),
+  ): Promise<NpAgentReadCapabilityInvocationResultV1<C>> {
     const request = npRequireAgentReadCapabilityInvocationRequestV1(input.request);
     const capabilityId = request.capabilityId as C;
     const entry = options.registry.get(capabilityId);
-    const authentication = input.authentication;
-    const principal = resolvedPrincipal(authentication);
-    if (principal.siteId !== authentication.authorizationContext.siteId) {
+    const runtime = "runtime" in input ? input.runtime : undefined;
+    const runtimeSequence = "sequence" in input ? input.sequence : 1;
+    const runtimeKey = runtime ? `runtime:${runtime.run.id}:${runtimeSequence.toString()}` : null;
+    const authentication =
+      "authentication" in input ? input.authentication : await runtimeAuthentication(input.runtime);
+    const principal =
+      "authentication" in input
+        ? resolvedPrincipal(input.authentication)
+        : runtimePrincipal(input.runtime);
+    const transaction = async <T>(operation: (db: Db) => Promise<T>): Promise<T> =>
+      runtime
+        ? operation(runtime.db)
+        : getDb().transaction((db) => operation(db as Db), { isolationLevel: "serializable" });
+    if (principal.siteId !== authentication.authorizationContext.siteId)
       throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
-    }
-    const settings = npRequireAgentGatewaySettings(
-      await options.resolveGatewaySettings(principal.siteId),
-    );
-    const settingsKey = transportSettingsKey(authentication.authorizationContext.transport);
-    if (
-      settings[settingsKey] === "disabled" ||
-      !entry.definition.descriptor.gateway?.transports.includes(
-        descriptorTransport(authentication.authorizationContext.transport),
+    if (runtime) {
+      if (
+        !service
+          .sourceEntries(runtime)
+          .some((item) => item.canonical.descriptor.id === capabilityId)
       )
-    ) {
-      throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+    } else {
+      const settings = npRequireAgentGatewaySettings(
+        await options.resolveGatewaySettings(principal.siteId),
+      );
+      const settingsKey = transportSettingsKey(authentication.authorizationContext.transport);
+      if (
+        settings[settingsKey] === "disabled" ||
+        !entry.definition.descriptor.gateway?.transports.includes(
+          descriptorTransport(authentication.authorizationContext.transport),
+        )
+      )
+        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
     }
     const parsedInput = entry.definition.parseInput(request.arguments.input);
     const now = nowFn();
@@ -604,6 +801,50 @@ export function createAgentCapabilityAdmissionServiceV1(
       input: asJsonObject(parsedInput),
     });
     const requestHash = await npDigestAgentInvocationRequestCanonical(requestBody);
+    if (runtime) {
+      const [previous] = await runtime.db
+        .select()
+        .from(npAgentActions)
+        .where(
+          and(
+            eq(npAgentActions.siteId, runtime.siteId),
+            eq(npAgentActions.runId, runtime.run.id),
+            eq(npAgentActions.sequence, runtimeSequence),
+          ),
+        )
+        .limit(1);
+      if (previous) {
+        if (
+          previous.capabilityId !== capabilityId ||
+          previous.invocationFingerprint !== requestHash ||
+          previous.runFingerprint !== runtime.run.admissionFingerprint ||
+          previous.idempotencyKey !== runtimeKey ||
+          previous.state !== "succeeded" ||
+          !previous.invocationId ||
+          !previous.outputRedacted
+        )
+          throw new NpAgentGatewayError(
+            "RUNTIME_ACTION_CONFLICT",
+            409,
+            "Runtime action is unavailable.",
+          );
+        const current = await currentRuntimeAction(runtime, previous);
+        const output = entry.definition.parseOutput(current.output);
+        if (digest("np.agent-capability-output.v1", asJsonObject(output)) !== previous.outputHash)
+          throw new NpAgentGatewayError(
+            "RUNTIME_ACTION_CONFLICT",
+            409,
+            "Runtime action is unavailable.",
+          );
+        return {
+          schemaVersion: "np.agent-read-invocation-result.v1",
+          invocationId: previous.invocationId,
+          actionId: previous.id,
+          capabilityId,
+          output,
+        };
+      }
+    }
     const invocationId = randomUUID();
     const actionId = randomUUID();
     const actionCanonical: NpAgentActionCanonicalV1 = npRequireAgentActionCanonical({
@@ -611,8 +852,8 @@ export function createAgentCapabilityAdmissionServiceV1(
       siteId: principal.siteId,
       actionId,
       invocationFingerprint: requestHash,
-      runFingerprint: null,
-      sequence: 1,
+      runFingerprint: runtime?.run.admissionFingerprint ?? null,
+      sequence: runtimeSequence,
       capabilityId,
       capabilityContractVersion: entry.definition.descriptor.contractVersion,
       capabilityFingerprint: entry.capabilityFingerprint,
@@ -624,93 +865,90 @@ export function createAgentCapabilityAdmissionServiceV1(
       input: asJsonObject(parsedInput),
     });
     const actionHash = await npDigestAgentActionCanonical(actionCanonical);
-    const db = getDb();
     const expiresAt = new Date(now.getTime() + retentionSeconds * 1_000);
-    await db.transaction(
-      async (rawTx) => {
-        const tx = rawTx as Db;
-        await assertCurrentAuthentication(tx, authentication, requiredScopes, nowFn);
-        const [audit] = await tx
-          .insert(npAuditEvents)
-          .values({
-            actorKind: "agent-principal",
-            action: "agents.capability.invoke",
-            targetType: "agent-capability",
-            targetId: capabilityId,
-            siteId: principal.siteId,
-            payload: {
-              schemaVersion: "np.agent-capability-audit.v1",
-              outcome: "started",
-              capabilityId,
-              invocationId,
-              actionId,
-              requestHash,
-              authorizationContextFingerprint: authorizationFingerprint,
-            },
-            createdAt: now,
-          })
-          .returning({ id: npAuditEvents.id });
-        if (!audit) throw new Error("Failed to persist Agent capability audit admission.");
-        await tx.insert(npAgentInvocations).values({
-          id: invocationId,
+    await transaction(async (rawTx) => {
+      const tx = rawTx;
+      if ("authentication" in input)
+        await assertCurrentAuthentication(tx, input.authentication, requiredScopes, nowFn);
+      const [audit] = await tx
+        .insert(npAuditEvents)
+        .values({
+          actorKind: "agent-principal",
+          action: "agents.capability.invoke",
+          targetType: "agent-capability",
+          targetId: capabilityId,
           siteId: principal.siteId,
-          actorKind: "principal",
-          principalId: principal.principalId,
-          actorFingerprint,
-          authorizationContextBody: authentication.authorizationContext,
-          authorizationContextFingerprint: authorizationFingerprint,
-          authorityRef: authentication.authorizationContext.authorityRef,
-          operationKind: "capability",
-          operationId: capabilityId,
-          contractVersion: entry.definition.descriptor.contractVersion,
-          contractFingerprint: entry.capabilityFingerprint,
-          capabilityDefinitionBody: entry.definitionCanonical,
-          effectProfileId: "domain.read",
-          effectContractVersion: 1,
-          transport: authentication.authorizationContext.transport,
-          mcpExecutionMode:
-            authentication.authorizationContext.transport === "mcp-service" ||
-            authentication.authorizationContext.transport === "mcp-oauth"
-              ? "normal"
-              : null,
-          idempotencyKey: null,
-          requestBody,
-          requestHash,
-          state: "started",
-          auditEventId: audit.id,
-          requestedAt: now,
-          expiresAt,
-        });
-        await tx.insert(npAgentActions).values({
-          id: actionId,
-          siteId: principal.siteId,
-          runId: null,
-          runFingerprint: null,
-          invocationId,
-          invocationFingerprint: requestHash,
-          sequence: 1,
-          capabilityId,
-          capabilityContractVersion: entry.definition.descriptor.contractVersion,
-          capabilityFingerprint: entry.capabilityFingerprint,
-          capabilityDefinitionBody: entry.definitionCanonical,
-          effectProfileId: "domain.read",
-          effectContractVersion: 1,
-          risk: "read",
-          state: "executing",
-          idempotencyKey: null,
-          inputRedacted: asJsonObject(parsedInput),
-          inputCanonical: asJsonObject(parsedInput),
-          requiredScopes,
-          targetRefs: requirements.targetRefs,
-          targetVersionFacts: [],
-          inputHash: actionHash,
-          auditEventId: audit.id,
-          startedAt: now,
+          payload: {
+            schemaVersion: "np.agent-capability-audit.v1",
+            outcome: "started",
+            capabilityId,
+            invocationId,
+            actionId,
+            requestHash,
+            authorizationContextFingerprint: authorizationFingerprint,
+          },
           createdAt: now,
-        });
-      },
-      { isolationLevel: "serializable" },
-    );
+        })
+        .returning({ id: npAuditEvents.id });
+      if (!audit) throw new Error("Failed to persist Agent capability audit admission.");
+      await tx.insert(npAgentInvocations).values({
+        id: invocationId,
+        siteId: principal.siteId,
+        actorKind: "principal",
+        principalId: principal.principalId,
+        actorFingerprint,
+        authorizationContextBody: authentication.authorizationContext,
+        authorizationContextFingerprint: authorizationFingerprint,
+        authorityRef: authentication.authorizationContext.authorityRef,
+        operationKind: "capability",
+        operationId: capabilityId,
+        contractVersion: entry.definition.descriptor.contractVersion,
+        contractFingerprint: entry.capabilityFingerprint,
+        capabilityDefinitionBody: entry.definitionCanonical,
+        effectProfileId: "domain.read",
+        effectContractVersion: 1,
+        transport: authentication.authorizationContext.transport,
+        mcpExecutionMode:
+          authentication.authorizationContext.transport === "mcp-service" ||
+          authentication.authorizationContext.transport === "mcp-oauth"
+            ? "normal"
+            : null,
+        idempotencyKey: runtimeKey,
+        requestBody,
+        requestHash,
+        state: "started",
+        auditEventId: audit.id,
+        requestedAt: now,
+        expiresAt,
+      });
+      await tx.insert(npAgentActions).values({
+        id: actionId,
+        siteId: principal.siteId,
+        runId: runtime?.run.id ?? null,
+        runFingerprint: runtime?.run.admissionFingerprint ?? null,
+        invocationId,
+        invocationFingerprint: requestHash,
+        sequence: runtimeSequence,
+        capabilityId,
+        capabilityContractVersion: entry.definition.descriptor.contractVersion,
+        capabilityFingerprint: entry.capabilityFingerprint,
+        capabilityDefinitionBody: entry.definitionCanonical,
+        effectProfileId: "domain.read",
+        effectContractVersion: 1,
+        risk: "read",
+        state: "executing",
+        idempotencyKey: runtimeKey,
+        inputRedacted: asJsonObject(parsedInput),
+        inputCanonical: asJsonObject(parsedInput),
+        requiredScopes,
+        targetRefs: requirements.targetRefs,
+        targetVersionFacts: [],
+        inputHash: actionHash,
+        auditEventId: audit.id,
+        startedAt: now,
+        createdAt: now,
+      });
+    });
     try {
       const execution = await entry.definition.execute(parsedInput, {
         siteId: principal.siteId,
@@ -719,13 +957,14 @@ export function createAgentCapabilityAdmissionServiceV1(
         invocationId,
         idempotencyKey: null,
         abortSignal: input.abortSignal ?? new AbortController().signal,
+        ...(runtime ? { transaction: runtime.db } : {}),
       });
       const output = entry.definition.parseOutput(execution.output);
       const outputObject = asJsonObject(output);
       const outputHash = digest("np.agent-capability-output.v1", outputObject);
       const finishedAt = nowFn();
-      await db.transaction(async (rawTx) => {
-        const tx = rawTx as Db;
+      await transaction(async (rawTx) => {
+        const tx = rawTx;
         const [audit] = await tx
           .insert(npAuditEvents)
           .values({
@@ -789,8 +1028,8 @@ export function createAgentCapabilityAdmissionServiceV1(
     } catch (error) {
       const failure = safeFailure(error);
       const finishedAt = nowFn();
-      await db.transaction(async (rawTx) => {
-        const tx = rawTx as Db;
+      await transaction(async (rawTx) => {
+        const tx = rawTx;
         const [audit] = await tx
           .insert(npAuditEvents)
           .values({
@@ -842,6 +1081,118 @@ export function createAgentCapabilityAdmissionServiceV1(
   }
 
   const service = {
+    sourceEntries(context: Readonly<Omit<NpAgentRuntimeRunContextV1, "db">>) {
+      return options.registry.ids
+        .map((id) => options.registry.get(id))
+        .filter(
+          (entry) =>
+            (context.evidence.principal.authorityKind === "user" ||
+              entry.definition.descriptor.id === "content.query") &&
+            context.evidence.definition.scopes.length > 0 &&
+            context.policy.effective.capabilityModes.some(
+              (mode) => mode.capabilityId === entry.definition.descriptor.id,
+            ) &&
+            entry.definition.descriptor.requiredScopes.every((scope) =>
+              context.evidence.definition.scopes.includes(scope),
+            ),
+        );
+    },
+    async runtimeActionOutcomes(context: NpAgentRuntimeRunContextV1): Promise<
+      readonly {
+        capabilityId: NpAgentReadCapabilityIdV1;
+        state: "succeeded";
+        safeCode: null;
+      }[]
+    > {
+      npAssertAgentPreviewEffectsAllowed();
+      const rows = await context.db
+        .select()
+        .from(npAgentActions)
+        .where(
+          and(eq(npAgentActions.siteId, context.siteId), eq(npAgentActions.runId, context.run.id)),
+        )
+        .orderBy(desc(npAgentActions.sequence))
+        .limit(32);
+      const result: {
+        capabilityId: NpAgentReadCapabilityIdV1;
+        state: "succeeded";
+        safeCode: null;
+      }[] = [];
+      for (const row of rows.reverse()) {
+        try {
+          await currentRuntimeAction(context, row);
+          result.push({
+            capabilityId: row.capabilityId as NpAgentReadCapabilityIdV1,
+            state: "succeeded",
+            safeCode: null,
+          });
+        } catch {
+          /* Missing, expired, modified or currently hidden action evidence is not provider input. */
+        }
+      }
+      return result;
+    },
+    async invokeRuntime<C extends NpAgentInstalledCapabilityIdV1>(input: {
+      siteId: string;
+      runId: string;
+      claim: NpAgentRuntimeExecutionClaimV1;
+      sequence: number;
+      request: NpAgentInstalledCapabilityInvocationRequestV1 & { capabilityId: C };
+      abortSignal?: AbortSignal;
+    }) {
+      npAssertAgentPreviewEffectsAllowed();
+      if (!options.runtimeAdmission || !Number.isSafeInteger(input.sequence) || input.sequence < 1)
+        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+      const request = npRequireAgentInstalledCapabilityInvocationRequestV1(input.request);
+      if (npIsAgentChangeSetCapabilityIdV1(request.capabilityId))
+        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+      const result = await options.runtimeAdmission.withCurrentRun(
+        { siteId: input.siteId, runId: input.runId, claim: input.claim },
+        async (context) => {
+          const [existing] = await context.db
+            .select({ id: npAgentActions.id })
+            .from(npAgentActions)
+            .where(
+              and(
+                eq(npAgentActions.siteId, context.siteId),
+                eq(npAgentActions.runId, context.run.id),
+                eq(npAgentActions.sequence, input.sequence),
+              ),
+            )
+            .limit(1);
+          const [used] = await context.db
+            .select({ total: count() })
+            .from(npAgentActions)
+            .where(
+              and(
+                eq(npAgentActions.siteId, context.siteId),
+                eq(npAgentActions.runId, context.run.id),
+              ),
+            );
+          if (!existing && used.total >= context.limits.maxCapabilityCalls)
+            throw new NpAgentGatewayError(
+              "RUNTIME_BUDGET_EXCEEDED",
+              409,
+              "Runtime action limit reached.",
+            );
+          try {
+            return {
+              value: await invokeRead({
+                runtime: context,
+                sequence: input.sequence,
+                request: request as NpAgentReadCapabilityInvocationRequestV1,
+                abortSignal: input.abortSignal,
+              }),
+            };
+          } catch (error) {
+            return { error };
+          }
+        },
+      );
+      if ("error" in result) throw result.error;
+      return result.value;
+    },
+
     /** Resume an admitted server job from persisted authority; never accepts a presented credential. */
     async withStoredAuthority<T>(input: {
       authorizationContext: NpAgentAuthorizationContextCanonicalV1;

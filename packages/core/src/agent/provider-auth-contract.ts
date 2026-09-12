@@ -14,6 +14,8 @@ import {
   type NpAgentJsonValue,
   type NpAgentModelPricingV1,
   type NpAgentProviderDataClass,
+  type NpAgentProviderRequestCanonicalV1,
+  type NpAgentProviderInvokeOutcomeV1,
 } from "../agent-contract/index.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import type {
@@ -188,7 +190,42 @@ export interface NpAgentProviderConnectionConfigInputV1 {
   config: NpAgentJsonObject;
 }
 
+/** The existing canonical request owns every field; private journal coordinates stay in the host. */
+export type NpAgentProviderInferenceRequestV1 = Pick<
+  NpAgentProviderRequestCanonicalV1,
+  | "schemaVersion"
+  | "runId"
+  | "provider"
+  | "model"
+  | "recipe"
+  | "task"
+  | "instruction"
+  | "trustedContext"
+  | "untrustedEvidence"
+  | "responseSchema"
+  | "responseSchemaDigest"
+  | "responseSchemaClassification"
+  | "tools"
+  | "limits"
+  | "pricing"
+  | "dataClass"
+  | "dataClassCeiling"
+>;
+
+export interface NpAgentProviderInferenceFacetV1 {
+  invoke(
+    request: NpAgentProviderInferenceRequestV1,
+    context: {
+      credentialLease: NpProviderCredentialLeaseV1;
+      connection: NpAgentParsedConnectionConfigV1;
+      signal: AbortSignal;
+    },
+  ): Promise<NpAgentProviderInvokeOutcomeV1>;
+  shutdown?(): void | Promise<void>;
+}
+
 export interface NpAgentConnectionAuthAdapterV1 {
+  readonly inference?: NpAgentProviderInferenceFacetV1;
   readonly id: string;
   readonly contractVersion: number;
   readonly fingerprint: string;
@@ -415,6 +452,7 @@ export function npRequireAgentProviderSchemaValueV1(
   value: NpAgentJsonValue,
   path = "agent.provider.schemaValue",
 ): void {
+  requireSupportedSchema(schemaValue, path);
   validateSchemaValue(schemaValue, value, path, schemaValue, new Set());
 }
 
@@ -1444,6 +1482,15 @@ function requireAdapter(value: NpAgentConnectionAuthAdapterV1): NpAgentConnectio
     typeof value.probeCredential !== "function"
   )
     fail("PROVIDER_CONTRACT_INVALID", "The provider adapter callbacks are incomplete.");
+  if (value.inference !== undefined) {
+    if (
+      !value.inference ||
+      typeof value.inference.invoke !== "function" ||
+      (value.inference.shutdown !== undefined && typeof value.inference.shutdown !== "function") ||
+      !kinds.includes("model")
+    )
+      fail("PROVIDER_CONTRACT_INVALID", "The inference facet must support model connections.");
+  }
   return value;
 }
 
@@ -1482,24 +1529,37 @@ function hardenAdapter(adapter: NpAgentConnectionAuthAdapterV1): NpAgentConnecti
     parseConfig: adapter.parseConfig.bind(adapter),
     deriveDestinationDescriptor: adapter.deriveDestinationDescriptor.bind(adapter),
     probeCredential: adapter.probeCredential.bind(adapter),
+    ...(adapter.inference
+      ? {
+          inference: Object.freeze({
+            invoke: adapter.inference.invoke.bind(adapter.inference),
+            ...(adapter.inference.shutdown
+              ? { shutdown: adapter.inference.shutdown.bind(adapter.inference) }
+              : {}),
+          }),
+        }
+      : {}),
   });
 }
 
 export class NpAgentConnectionAuthAdapterRegistryV1 {
   readonly #adapters = new Map<string, NpAgentConnectionAuthAdapterV1>();
+  readonly #sources = new Map<string, NpAgentConnectionAuthAdapterV1>();
 
   register(adapterValue: NpAgentConnectionAuthAdapterV1): this {
     const adapter = hardenAdapter(requireAdapter(adapterValue));
     const key = `${adapter.id}:${adapter.contractVersion.toString()}`;
     const existing = this.#adapters.get(key);
     if (existing) {
-      if (existing.fingerprint === adapter.fingerprint) return this;
+      if (existing.fingerprint === adapter.fingerprint && this.#sources.get(key) === adapterValue)
+        return this;
       fail(
         "PROVIDER_ADAPTER_CONFLICT",
         "The provider adapter identity is already bound to another fingerprint.",
       );
     }
     this.#adapters.set(key, adapter);
+    this.#sources.set(key, adapterValue);
     return this;
   }
 
@@ -1549,4 +1609,58 @@ export function npRequireAgentProviderPkceVerifierV1(value: Uint8Array): Uint8Ar
     return fail("PROVIDER_PKCE_INVALID", "The provider PKCE verifier is invalid.");
   }
   return bytes;
+}
+
+/** Reproduce retained provider evidence through the same source-owned parser used at activation. */
+export async function npParseAgentStoredProviderConnectionConfigV1(input: {
+  registry: NpAgentConnectionAuthAdapterRegistryV1;
+  connection: { siteId: string; id: string; kind: string; provider: string; authKind: string };
+  snapshot: {
+    connectionId: string;
+    siteId: string;
+    adapterId: string;
+    adapterContractVersion: number;
+    adapterFingerprint: string;
+    version: number;
+    config: NpAgentJsonObject;
+    dataProcessingCeiling: string;
+    activatedAt: Date | null;
+    createdAt: Date;
+    configHash: string;
+    pricingCatalogFingerprint: string;
+    pricingCatalog: unknown;
+  };
+}): Promise<{ adapter: NpAgentConnectionAuthAdapterV1; parsed: NpAgentParsedConnectionConfigV1 }> {
+  const { connection, snapshot: config } = input;
+  const adapter = input.registry.resolve({
+    id: config.adapterId,
+    contractVersion: config.adapterContractVersion,
+    fingerprint: config.adapterFingerprint,
+  });
+  if (
+    connection.provider !== adapter.id ||
+    connection.siteId !== config.siteId ||
+    connection.id !== config.connectionId
+  )
+    fail("PROVIDER_CONFIG_INTEGRITY_FAILED", "The retained provider identity is inconsistent.");
+  const parsed = await npParseAgentProviderConnectionConfigV1({
+    adapter,
+    siteId: connection.siteId,
+    connectionId: connection.id,
+    kind: connection.kind as NpAgentConnectionKind,
+    provider: connection.provider,
+    authKind: connection.authKind as "api_key" | "oauth",
+    configVersion: config.version,
+    config: config.config,
+    dataProcessingCeiling: config.dataProcessingCeiling as NpAgentProviderDataClass,
+    effectiveAt: config.activatedAt ?? config.createdAt,
+  });
+  if (
+    parsed.configHash !== config.configHash ||
+    parsed.pricingCatalogFingerprint !== config.pricingCatalogFingerprint ||
+    serializeAgentCanonicalJson(parsed.pricingCatalog) !==
+      serializeAgentCanonicalJson(config.pricingCatalog)
+  )
+    fail("PROVIDER_CONFIG_INTEGRITY_FAILED", "The immutable provider config cannot be reproduced.");
+  return { adapter, parsed };
 }
