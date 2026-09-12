@@ -86,9 +86,18 @@ describe("provider inference host", () => {
     }
   });
   it("aborts hanging calls, disposes leases, contains throwing shutdown and closes admission", async () => {
-    const f = fixture(vi.fn().mockImplementation(() => new Promise(() => undefined)));
+    let dispatched!: () => void;
+    const started = new Promise<void>((resolve) => {
+      dispatched = resolve;
+    });
+    const f = fixture(
+      vi.fn().mockImplementation(() => {
+        dispatched();
+        return new Promise(() => undefined);
+      }),
+    );
     const run = f.runtime.invoke(f.input);
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await started;
     expect(await f.runtime.shutdown()).toEqual({ status: "closed", safeCodes: [] });
     expect((await run).outcome.status).toBe("ambiguous");
     expect(f.input.isDisposed()).toBe(true);
@@ -98,10 +107,19 @@ describe("provider inference host", () => {
     });
   });
   it("normalizes caller abort without trusting exception classes", async () => {
-    const f = fixture(vi.fn().mockImplementation(() => new Promise(() => undefined)));
+    let dispatched!: () => void;
+    const started = new Promise<void>((resolve) => {
+      dispatched = resolve;
+    });
+    const f = fixture(
+      vi.fn().mockImplementation(() => {
+        dispatched();
+        return new Promise(() => undefined);
+      }),
+    );
     const controller = new AbortController();
     const run = f.runtime.invoke({ ...f.input, signal: controller.signal });
-    await new Promise((resolve) => setTimeout(resolve, 5));
+    await started;
     controller.abort();
     expect((await run).outcome.status).toBe("ambiguous");
   });
