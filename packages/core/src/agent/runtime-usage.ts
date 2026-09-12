@@ -1,3 +1,6 @@
+import { npRequireAgentRuntimeProviderFailureV1 } from "./runtime-provider-evidence.js";
+import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
+import { npBuildAgentRuntimeClassificationManifestV1 } from "./runtime-context.js";
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, lte, or, sql } from "drizzle-orm";
 import type { getDb } from "../db/runtime.js";
@@ -7,9 +10,11 @@ import {
   npAgentUsageReservations,
   npAgentConnectionConfigVersions,
   npAgentConnections,
+  npAgentConnectionSecretVersions,
 } from "../db/schema/agent.js";
 import { npAuditEvents } from "../db/schema/community.js";
 import {
+  npAgentProviderRetryableErrorClassesV1,
   npRequireAgentProviderRequestCanonical,
   npDigestAgentProviderRequestCanonical,
   npRequireAgentProviderResponseCanonical,
@@ -30,7 +35,6 @@ import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundat
 import { canonicalBodyRecord } from "../agent-contract/canonical-body-validation.js";
 import { npAgentProviderDataClassRank } from "../agent-contract/types.js";
 import type {
-  NpAgentJsonObject,
   NpAgentProviderRequestCanonicalV1,
   NpAgentProviderResponseCanonicalV1,
   NpAgentProviderUsageV1,
@@ -39,6 +43,7 @@ import type {
 import {
   npRuntimeRunAdmissionBodyV1,
   type NpAgentRuntimeAdmissionV1,
+  type NpAgentRuntimeExecutionClaimV1,
   type NpAgentRuntimeRunContextV1,
 } from "./runtime-admission.js";
 import { npRequireAgentRuntimeVersionV1 } from "./runtime-service.js";
@@ -105,15 +110,16 @@ export interface NpAgentRuntimeUsageOptionsV1 {
   /** Explicit deployment bound for unresolved work; no implicit retry or worker. */
   ambiguityWindowSeconds: number;
   /**
-   * A trusted synchronous source/classification verifier is required. It verifies
+   * A trusted source/classification verifier is required. It verifies
    * every source digest and the classification manifest against the canonical
-   * request and the current context. AP-501/AP-505 own its eventual host builder.
-   * No verifier is installed by default and no asynchronous provider I/O belongs here.
+   * request and current context using transaction-aware framework evidence reads.
+   * No verifier is installed by default; provider I/O never belongs here.
    */
   verifyRequest?: (
     context: Readonly<Omit<NpAgentRuntimeRunContextV1, "db">>,
     request: NpAgentProviderRequestCanonicalV1,
-  ) => boolean;
+    transaction: Pick<NpAgentRuntimeRunContextV1, "db">,
+  ) => boolean | Promise<boolean>;
   now?: () => Date;
 }
 
@@ -132,17 +138,21 @@ export interface NpAgentRuntimeUsageV1 {
     siteId: string;
     runId: string;
     request: unknown;
+    claim?: NpAgentRuntimeExecutionClaimV1;
   }): Promise<NpAgentRuntimeUsageReceiptV1>;
   /** Only the pre-invoke ledger fence. It never leases a secret or invokes a provider. */
   beginDispatch(input: {
     siteId: string;
     runId: string;
     request: unknown;
+    claim?: NpAgentRuntimeExecutionClaimV1;
   }): Promise<NpAgentRuntimeUsageReceiptV1>;
   reconcile(input: {
     siteId: string;
     providerCallId: string;
     response: unknown;
+    /** Integrity-only recovery may release only a still-unsent reservation. */
+    requireUnsent?: true;
   }): Promise<NpAgentRuntimeUsageReceiptV1>;
   expire(input: {
     siteId: string;
@@ -164,35 +174,6 @@ function receipt(
   };
 }
 
-/** No text, source bodies, credentials, locators or diagnostic bodies are retained. */
-function manifest(request: NpAgentProviderRequestCanonicalV1): NpAgentJsonObject {
-  return {
-    components: [
-      {
-        id: request.instruction.templateId,
-        kind: "instruction",
-        ...request.instruction.classification,
-      },
-      ...request.trustedContext.map(({ id, kind, classification }) => ({
-        id,
-        kind,
-        ...classification,
-      })),
-      ...request.untrustedEvidence.map(({ id, kind, classification }) => ({
-        id,
-        kind,
-        ...classification,
-      })),
-      { id: "response-schema", kind: "schema", ...request.responseSchemaClassification },
-      ...request.tools.map(({ capabilityId, classification }) => ({
-        id: capabilityId,
-        kind: "tool",
-        ...classification,
-      })),
-    ],
-  };
-}
-
 /** Upper bound includes the extra ceil caused by splitting cached/uncached input. */
 function maximumCost(request: NpAgentProviderRequestCanonicalV1): number {
   const p = request.pricing;
@@ -210,11 +191,11 @@ function maximumCost(request: NpAgentProviderRequestCanonicalV1): number {
   return Number(value);
 }
 
-function validateCurrentRequest(
+async function validateCurrentRequest(
   context: NpAgentRuntimeRunContextV1,
   request: NpAgentProviderRequestCanonicalV1,
   verify: NpAgentRuntimeUsageOptionsV1["verifyRequest"],
-): void {
+): Promise<void> {
   const { run, connection, connectionSnapshot: snapshot, pricing, evidence } = context;
   const recipe = evidence.registry.recipes.find(
     (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
@@ -269,12 +250,13 @@ function validateCurrentRequest(
     request.limits.maxOutputTokens > runLimits.maxOutputTokens
   )
     fail("RUNTIME_BUDGET_BLOCKED");
-  // Provider tools/actions are a later typed planning surface. An empty list is
-  // the only honest foundation request until that admission is installed.
-  if (request.tools.length) fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
   try {
     const { db: _db, ...evidence } = context;
-    if (!verify || verify(verificationCopy(evidence), verificationCopy(request)) !== true)
+    if (
+      !verify ||
+      (await verify(verificationCopy(evidence), verificationCopy(request), { db: context.db })) !==
+        true
+    )
       fail("RUNTIME_PROVIDER_INPUT_UNAVAILABLE");
   } catch {
     fail("RUNTIME_PROVIDER_INPUT_UNAVAILABLE");
@@ -455,14 +437,26 @@ async function perRunCapacity(
   }
 }
 
-async function audit(db: Db, call: Call, responseDigest: string, transition: string, now: Date) {
+async function audit(
+  db: Db,
+  call: Call,
+  responseDigest: string,
+  transition: string,
+  now: Date,
+  outcomeSafeCode?: string,
+) {
   await db.insert(npAuditEvents).values({
     siteId: call.siteId,
     actorKind: "system",
     action: "agent.runtime.usage",
     targetType: "agent-provider-call",
     targetId: call.id,
-    payload: { reservationId: call.usageReservationId, responseDigest, transition },
+    payload: {
+      reservationId: call.usageReservationId,
+      responseDigest,
+      transition,
+      ...(outcomeSafeCode === undefined ? {} : { outcomeSafeCode }),
+    },
     createdAt: now,
   });
 }
@@ -538,18 +532,52 @@ export function createAgentRuntimeUsageV1(
   const { admission, ambiguityWindowSeconds, verifyRequest } = options;
   const now = options.now ?? (() => new Date());
   const admit = async (
-    input: { siteId: string; runId: string; request: unknown },
+    input: {
+      siteId: string;
+      runId: string;
+      request: unknown;
+      claim?: NpAgentRuntimeExecutionClaimV1;
+    },
     dispatch: boolean,
   ) => {
-    input = closed(input, ["siteId", "runId", "request"]);
+    input = closed(input, ["siteId", "runId", "request", "claim"], ["siteId", "runId", "request"]);
     const request = parseRequest(input.request);
     const requestDigest = await npDigestAgentProviderRequestCanonical(request);
     if (request.siteId !== input.siteId || request.runId !== input.runId)
       fail("RUNTIME_RESOURCE_UNAVAILABLE", 404);
     return admission.withCurrentRun(
-      { siteId: input.siteId, runId: input.runId },
+      { siteId: input.siteId, runId: input.runId, ...(input.claim ? { claim: input.claim } : {}) },
       async (context) => {
-        validateCurrentRequest(context, request, verifyRequest);
+        await validateCurrentRequest(context, request, verifyRequest);
+        const [secret] = await context.db
+          .select({ expiresAt: npAgentConnectionSecretVersions.expiresAt })
+          .from(npAgentConnectionSecretVersions)
+          .where(
+            and(
+              eq(npAgentConnectionSecretVersions.siteId, input.siteId),
+              eq(npAgentConnectionSecretVersions.id, request.connection.secretVersionId),
+            ),
+          )
+          .limit(1);
+        const current = nowAt(now);
+        if (
+          !secret ||
+          (secret.expiresAt && secret.expiresAt <= current) ||
+          request.limits.timeoutSeconds * 1000 >
+            Math.min(
+              context.run.deadlineAt.getTime(),
+              context.run.leaseUntil?.getTime() ?? Infinity,
+            ) -
+              current.getTime()
+        )
+          fail("RUNTIME_PROVIDER_UNAVAILABLE");
+        npSelectAgentModelPricingV1({
+          catalog: [request.pricing],
+          model: request.model,
+          at: current.toISOString(),
+        });
+        context.now = current;
+        if (context.run.leaseUntil && context.run.leaseUntil <= now()) fail("RUNTIME_LEASE_LOST");
         const { db, run } = context;
         const existing = await db
           .select()
@@ -634,11 +662,14 @@ export function createAgentRuntimeUsageV1(
         if (request.sequence !== (previous[0]?.sequence ?? 0) + 1) fail("RUNTIME_SEQUENCE_INVALID");
         if (request.retryOfId !== null) {
           const retry = await findCall(db, input.siteId, request.retryOfId);
+          const outcome = await npRequireAgentRuntimeProviderFailureV1({ db, call: retry });
           if (
             retry.runId !== run.id ||
             retry.sequence >= request.sequence ||
             retry.state !== "failed" ||
-            !retry.retryable
+            !outcome.retryable ||
+            !npAgentProviderRetryableErrorClassesV1.some((value) => value === outcome.errorClass) ||
+            !["not-dispatched", "dispatched"].includes(outcome.dispatchState)
           )
             fail("RUNTIME_RETRY_UNAVAILABLE");
         }
@@ -705,7 +736,7 @@ export function createAgentRuntimeUsageV1(
             connectionConfigHash: request.connection.configHash,
             providerDataClassCeiling: request.dataClassCeiling,
             requestDataClass: request.dataClass,
-            classificationManifest: manifest(request),
+            classificationManifest: npBuildAgentRuntimeClassificationManifestV1(request),
             classificationManifestDigest: request.classificationManifestDigest,
             recipeId: request.recipe.id,
             recipeVersion: request.recipe.version,
@@ -744,13 +775,27 @@ export function createAgentRuntimeUsageV1(
     reserve: (input) => admit(input, false),
     beginDispatch: (input) => admit(input, true),
     reconcile: async (input) => {
-      input = closed(input, ["siteId", "providerCallId", "response"]);
+      npAssertAgentPreviewEffectsAllowed();
+      input = closed(
+        input,
+        ["siteId", "providerCallId", "response", "requireUnsent"],
+        ["siteId", "providerCallId", "response"],
+      );
+      if (input.requireUnsent !== undefined && input.requireUnsent !== true)
+        fail("RUNTIME_ARGUMENT_INVALID", 400);
       const response = parseResponse(input.response);
       if (response.siteId !== input.siteId || response.providerCallId !== input.providerCallId)
         fail("RUNTIME_RESOURCE_UNAVAILABLE", 404);
       const responseDigest = await npDigestAgentProviderResponseCanonical(response);
       return npWithAgentRuntimeControlTransactionV1(input.siteId, async ({ db }) => {
         const call = await findCall(db, input.siteId, input.providerCallId);
+        if (
+          input.requireUnsent &&
+          (call.state !== "reserved" ||
+            call.dispatchState !== "not-dispatched" ||
+            response.dispatchState !== "not-dispatched")
+        )
+          fail("RUNTIME_DISPATCH_UNAVAILABLE");
         const { reservation, pricing, recipe } = await retained(db, call);
         const observedAt = new Date(response.observedAt),
           current = nowAt(now);
@@ -884,11 +929,19 @@ export function createAgentRuntimeUsageV1(
               eq(npAgentUsageReservations.id, reservation.id),
             ),
           );
-        await audit(db, call, responseDigest, late ? "late-reconciled" : "reconciled", current);
+        await audit(
+          db,
+          call,
+          responseDigest,
+          late ? "late-reconciled" : "reconciled",
+          current,
+          response.outcome.status === "failed" ? response.outcome.safeCode : undefined,
+        );
         return receipt(nextCall, { ...reservation, ...patch }, false);
       });
     },
     expire: (input) => {
+      npAssertAgentPreviewEffectsAllowed();
       input = closed(input, ["siteId", "limit"], ["siteId"]);
       return npWithAgentRuntimeControlTransactionV1(input.siteId, async ({ db }) => {
         const limit = input.limit ?? MAXIMUM_PAGE;
@@ -994,6 +1047,7 @@ export function createAgentRuntimeUsageV1(
               responseDigest,
               undispatched ? "expired-unsent" : "expired-unknown",
               current,
+              undispatched ? "RESERVATION_EXPIRED" : undefined,
             );
           }
           await daily(db, reservation, null, !undispatched);

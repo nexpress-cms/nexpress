@@ -118,6 +118,10 @@ export interface NpAgentRuntimeRunContextV1 {
   pricing: NpAgentModelPricingV1 | null;
   limits: NpAgentRunLimitsV1;
 }
+export interface NpAgentRuntimeExecutionClaimV1 {
+  attempt: number;
+  leaseUntil: string;
+}
 export interface NpAgentRuntimeAdmissionV1 {
   /** Host-only root admission. Event dispatch/manual UI and execution remain their own later slices. */
   admit(input: {
@@ -128,7 +132,7 @@ export interface NpAgentRuntimeAdmissionV1 {
     idempotencyKey: string;
   }): Promise<{ runId: string; replayed: boolean }>;
   withCurrentRun<T>(
-    input: { siteId: string; runId: string },
+    input: { siteId: string; runId: string; claim?: NpAgentRuntimeExecutionClaimV1 },
     operation: (context: NpAgentRuntimeRunContextV1) => Promise<T>,
   ): Promise<T>;
 }
@@ -385,6 +389,7 @@ export function createAgentRuntimeAdmissionV1(
     runId: string,
     settings: NpAgentRuntimeSettingsV1,
     revision: number,
+    claim?: NpAgentRuntimeExecutionClaimV1,
   ): Promise<NpAgentRuntimeRunContextV1> {
     if (!UUID.test(runId)) fail("RUNTIME_RESOURCE_UNAVAILABLE", 404);
     const [run] = await db
@@ -407,9 +412,20 @@ export function createAgentRuntimeAdmissionV1(
       settings.emergencyPause.paused ||
       run.finishedAt ||
       run.deadlineAt <= now ||
-      !["queued", "running", "waiting_retry"].includes(run.state)
+      !["queued", "running", "verifying"].includes(run.state)
     )
       fail();
+    if (run.state !== "queued" || claim !== undefined || run.leaseUntil !== null) {
+      if (
+        !claim ||
+        !Number.isSafeInteger(claim.attempt) ||
+        claim.attempt !== run.attempt ||
+        !run.leaseUntil ||
+        claim.leaseUntil !== run.leaseUntil.toISOString() ||
+        run.leaseUntil <= now
+      )
+        fail("RUNTIME_LEASE_LOST");
+    }
     await options.controls.requireReadyInTransaction({ db, siteId });
     const evidence = await npRequireAgentRuntimeVersionV1({
       db,
@@ -526,22 +542,65 @@ export function createAgentRuntimeAdmissionV1(
   }
   return {
     withCurrentRun: (input, operation) => {
+      npAssertAgentPreviewEffectsAllowed();
       const keys = ["siteId", "runId"];
       const row = canonicalBodyRecord(
         cloneCanonicalRuntimeInput(input, "agent.runtime.run", 4096),
         "agent.runtime.run",
-        keys,
+        [...keys, "claim"],
         keys,
         { seen: new WeakSet<object>() },
       );
+      let claim: NpAgentRuntimeExecutionClaimV1 | undefined;
+      if (row.claim !== undefined) {
+        const value = canonicalBodyRecord(
+          row.claim,
+          "agent.runtime.claim",
+          ["attempt", "leaseUntil"],
+          ["attempt", "leaseUntil"],
+          { seen: new WeakSet<object>() },
+        );
+        if (
+          typeof value.attempt !== "number" ||
+          !Number.isSafeInteger(value.attempt) ||
+          value.attempt < 1 ||
+          typeof value.leaseUntil !== "string" ||
+          !Number.isFinite(Date.parse(value.leaseUntil)) ||
+          new Date(value.leaseUntil).toISOString() !== value.leaseUntil
+        )
+          fail("RUNTIME_LEASE_LOST");
+        claim = { attempt: value.attempt, leaseUntil: value.leaseUntil };
+      }
       input = {
         siteId: canonicalBodySiteId(row.siteId, "agent.runtime.siteId"),
         runId: canonicalBodyUuid(row.runId, "agent.runtime.runId"),
+        ...(claim ? { claim } : {}),
       };
       return npWithAgentRuntimeControlTransactionV1(
         input.siteId,
         async ({ db, settings, revision }) =>
-          operation(await verifiedRun(db, input.siteId, input.runId, settings, revision)),
+          (async () => {
+            const context = await verifiedRun(
+              db,
+              input.siteId,
+              input.runId,
+              settings,
+              revision,
+              input.claim,
+            );
+            if (context.run.leaseUntil && context.run.leaseUntil <= nowFn())
+              fail("RUNTIME_LEASE_LOST");
+            const result = await operation(context);
+            const finished = nowFn();
+            if (
+              (context.run.leaseUntil && context.run.leaseUntil <= finished) ||
+              context.run.deadlineAt <= finished ||
+              finished.getTime() >=
+                context.run.queuedAt.getTime() + context.limits.maxWallClockSeconds * 1000
+            )
+              fail("RUNTIME_LEASE_LOST");
+            return result;
+          })(),
       );
     },
     admit: (input) => {

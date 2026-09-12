@@ -77,12 +77,15 @@ type ProviderFailureErrorClass = Extract<
   NpAgentProviderInvokeOutcomeV1,
   { status: "failed" }
 >["errorClass"];
-const RETRYABLE_ERROR_CLASSES = new Set<ProviderFailureErrorClass>([
+export const npAgentProviderRetryableErrorClassesV1 = Object.freeze([
   "rate-limited",
   "transient",
   "timeout",
   "invalid-output",
-]);
+] as const satisfies readonly ProviderFailureErrorClass[]);
+const RETRYABLE_ERROR_CLASSES = new Set<ProviderFailureErrorClass>(
+  npAgentProviderRetryableErrorClassesV1,
+);
 const RECIPE_TASK_BY_ID = {
   "publisher.stale-content": "interactive-capability",
   "moderator.repeated-link-spam": "moderation-classification",
@@ -1198,6 +1201,20 @@ export function npRequireAgentProviderRequestCanonical(
   return npRequireAgentContractResult(
     npAnalyzeAgentProviderRequestCanonical(value),
     "Invalid Agent provider-request canonical body",
+  );
+}
+
+/** Reuse the exact evidence branch for server-side Runtime context selection. */
+export function npRequireAgentEvidenceRequestV1(value: unknown): NpAgentEvidenceRequest {
+  return npRequireAgentContractResult(
+    analyzeCanonicalBody("agent.evidenceRequest", () =>
+      parseEvidenceRequest(
+        cloneCanonicalRuntimeInput(value, "agent.evidenceRequest", 4_096),
+        "agent.evidenceRequest",
+        { seen: new WeakSet<object>() },
+      ),
+    ),
+    "Invalid Agent evidence request",
   );
 }
 

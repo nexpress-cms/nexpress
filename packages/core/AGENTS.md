@@ -1,5 +1,18 @@
 # packages/core — AGENTS.md
 
+**Current explicit execution slice:** AP-501 provider inference, AP-505 bounded
+context/read execution and AP-506 outcome-bound recovery reuse the existing
+Run, action and usage journals. Generated 0048 adds `runtimeRetryAt`; Doctor
+covers 40 Agent tables and 266 critical constraints. Deployment principals
+retain only their existing public/published content read authority; site/schema
+and ChangeSet capabilities remain unavailable without genuine staff/item
+authority. Full AP-505 mutation/approval integration is the next separate task,
+starting with an explicit staff-delegation decision. Do not synthesize users,
+sessions or delegation from an Agent creator. Current-slice full verification
+is pending; retain the recorded focused results without claiming the full R5
+gate. No automatic installation, package versions or changesets are added.
+See [the execution slice and next authority decision](../../docs/design/agentic-platform/r5-runtime-execution-flow.md).
+
 AP-500/AP-502/AP-504 now add explicit Agent/policy lifecycle, queued runtime
 admission, retained canonical policy/budget-source verification, usage ledgers
 and emergency controls. Reuse the same site quota lock for settings, admission,

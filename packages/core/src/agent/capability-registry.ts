@@ -1,3 +1,4 @@
+import type { getDb } from "../db/runtime.js";
 import {
   npAgentReadCapabilityDescriptorsV1,
   npAgentReadCapabilityIdsV1,
@@ -27,9 +28,20 @@ export interface NpAgentResolvedGatewayPrincipalV1 {
   scopes: readonly NpAgentScope[];
 }
 
+export interface NpAgentResolvedRuntimePrincipalV1 {
+  kind: "runtime";
+  principalId: string;
+  siteId: string;
+  authority: { kind: "user"; userId: string } | { kind: "deployment"; policyId: string };
+  scopes: readonly NpAgentScope[];
+  runId: string;
+}
+export type NpAgentResolvedCapabilityPrincipalV1 =
+  NpAgentResolvedGatewayPrincipalV1 | NpAgentResolvedRuntimePrincipalV1;
+
 export interface NpAgentReadRequirementContextV1 {
   siteId: string;
-  principal: NpAgentResolvedGatewayPrincipalV1;
+  principal: NpAgentResolvedCapabilityPrincipalV1;
   requestedAt: string;
 }
 
@@ -44,6 +56,7 @@ export interface NpAgentReadCapabilityContextV1 extends NpAgentReadRequirementCo
   invocationId: string;
   idempotencyKey: null;
   abortSignal: AbortSignal;
+  transaction?: ReturnType<typeof getDb>;
 }
 
 export interface NpAgentReadExecutionResultV1<C extends NpAgentReadCapabilityIdV1> {

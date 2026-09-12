@@ -533,6 +533,21 @@ AP-503, AP-505–AP-508 and the full R5 gate remain open. See
 [the runtime foundation flow](r5-runtime-foundation-flow.md) for implemented
 boundaries and verification evidence.
 
+The next bounded execution slice implements AP-501 provider inference,
+AP-505 context and explicit read execution, and AP-506 outcome-bound recovery.
+It reuses the existing Run, action and usage journals; generated migration 0048
+adds one retry timestamp/check (40 tables, 266 critical constraints). Deployment
+Runtime principals can use the existing public/published `content.query` path.
+`site.inspect`, `schema.get` and ChangeSet capabilities remain unavailable
+without the real staff/item authority their existing owners require.
+
+The recommended next task is an explicit staff-delegation decision plus the
+remaining AP-505 ChangeSet/approval execution and recovery path, preserving
+current staff/site membership, item ACL, exact approval binding, idempotency,
+CAS and audit. Full AP-505 and the R5 acceptance gate remain open. Current-slice
+verification is recorded separately from the foundation; see
+[the explicit execution slice and next authority decision](r5-runtime-execution-flow.md).
+
 Outcome: one configured agent can run a bounded event/manual/scheduled workflow
 with budget and policy enforcement.
 

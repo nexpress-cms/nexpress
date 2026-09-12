@@ -156,6 +156,7 @@ const AGENT_CONSTRAINTS = [
   "np_agent_runs_provider_shape_check",
   "np_agent_runs_instruction_check",
   "np_agent_runs_runtime_time_check",
+  "np_agent_runs_runtime_retry_check",
   "np_agent_principals_scopes_check",
   "np_agent_runs_root_fk",
   "np_agent_runs_parent_fk",

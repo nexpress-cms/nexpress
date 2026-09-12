@@ -1245,6 +1245,7 @@ export const npAgentRuns = pgTable(
     deadlineAt: timestamp("deadline_at", { withTimezone: true, mode: "date" }).notNull(),
     startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }),
     leaseUntil: timestamp("lease_until", { withTimezone: true, mode: "date" }),
+    runtimeRetryAt: timestamp("runtime_retry_at", { withTimezone: true, mode: "date" }),
     finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
   },
   (table) => [
@@ -1359,6 +1360,10 @@ export const npAgentRuns = pgTable(
     check(
       "np_agent_runs_runtime_time_check",
       sql`${table.origin}<>'runtime' or (${table.deadlineAt}<=${table.queuedAt}+interval '86400 seconds' and (${table.startedAt} is null or ${table.startedAt}>=${table.queuedAt}) and (${table.leaseUntil} is null or (${table.startedAt} is not null and ${table.leaseUntil}<=${table.deadlineAt})) and (${table.finishedAt} is null or ${table.finishedAt}>=${table.queuedAt}))`,
+    ),
+    check(
+      "np_agent_runs_runtime_retry_check",
+      sql`((${table.origin}='gateway' and ${table.runtimeRetryAt} is null) or (${table.origin}='runtime' and ((${table.state}='waiting_retry')=(${table.runtimeRetryAt} is not null)) and (${table.runtimeRetryAt} is null or (${table.runtimeRetryAt}>=${table.queuedAt} and ${table.runtimeRetryAt}<${table.deadlineAt})) and (${table.leaseUntil} is null or ${table.state} in ('running','verifying')))) is true`,
     ),
     check(
       "np_agent_runs_state_check",

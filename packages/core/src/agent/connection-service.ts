@@ -30,6 +30,7 @@ import {
   npBuildAgentOAuthCredentialEnvelopeV1,
   npCreateAgentProviderResultDigestV1,
   npParseAgentProviderConnectionConfigV1,
+  npParseAgentStoredProviderConnectionConfigV1,
   npProjectAgentAccountSubjectV1,
   npProjectAgentConnectionDestinationV1,
   npRequireAgentProviderAuthorizationUrlV1,
@@ -417,37 +418,11 @@ export function createAgentConnectionServiceV1(options: NpAgentConnectionService
     connection: ConnectionRow,
     config: ConfigRow,
   ): Promise<{ adapter: NpAgentConnectionAuthAdapterV1; parsed: NpAgentParsedConnectionConfigV1 }> {
-    const adapter = options.providerRegistry.resolve({
-      id: config.adapterId,
-      contractVersion: config.adapterContractVersion,
-      fingerprint: config.adapterFingerprint,
+    return npParseAgentStoredProviderConnectionConfigV1({
+      registry: options.providerRegistry,
+      connection,
+      snapshot: config,
     });
-    if (connection.provider !== adapter.id) {
-      fail("PROVIDER_CONFIG_INTEGRITY_FAILED", "The connection provider and adapter disagree.");
-    }
-    const parsed = await npParseAgentProviderConnectionConfigV1({
-      adapter,
-      siteId: connection.siteId,
-      connectionId: connection.id,
-      kind: connection.kind as NpAgentConnectionKind,
-      provider: connection.provider,
-      authKind: connection.authKind as "api_key" | "oauth",
-      configVersion: config.version,
-      config: config.config,
-      dataProcessingCeiling: config.dataProcessingCeiling as NpAgentProviderDataClass,
-      effectiveAt: config.activatedAt ?? config.createdAt,
-    });
-    if (
-      parsed.configHash !== config.configHash ||
-      parsed.pricingCatalogFingerprint !== config.pricingCatalogFingerprint ||
-      !jsonEqual(parsed.pricingCatalog, config.pricingCatalog)
-    ) {
-      fail(
-        "PROVIDER_CONFIG_INTEGRITY_FAILED",
-        "The immutable connection config cannot be reproduced.",
-      );
-    }
-    return { adapter, parsed };
   }
 
   async function resolveOAuthClientConfigDigest(
