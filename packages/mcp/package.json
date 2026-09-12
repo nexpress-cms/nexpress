@@ -1,6 +1,6 @@
 {
   "name": "@nexpress/mcp",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "description": "Port-free Model Context Protocol transports for the NexPress Agent Gateway.",
   "license": "MIT",
   "author": "Nexpress",
