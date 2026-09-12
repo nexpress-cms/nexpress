@@ -1,5 +1,15 @@
 # @nexpress/auth-pages
 
+## 0.4.7
+
+### Patch Changes
+
+- Updated dependencies [1eed8ca]
+- Updated dependencies [ab284fc]
+- Updated dependencies [d785c92]
+  - @nexpress/core@0.4.7
+  - @nexpress/next@0.4.7
+
 ## 0.4.6
 
 ### Patch Changes

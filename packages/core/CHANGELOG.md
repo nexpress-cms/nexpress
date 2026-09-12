@@ -1,5 +1,13 @@
 # @nexpress/core
 
+## 0.4.7
+
+### Patch Changes
+
+- 1eed8ca: Update `@node-rs/argon2` to 2.1.0 while retaining verification compatibility with existing password hashes.
+- ab284fc: Refresh the supported runtime dependency versions for S3 storage, JWT handling, PostgreSQL, XML parsing, and CSS tooling while applying the patched Nano ID security floor.
+- d785c92: Update `cron-parser` to 5.10.0 and reject invalid plugin schedules during registration.
+
 ## 0.4.6
 
 ### Patch Changes
