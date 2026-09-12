@@ -731,10 +731,16 @@ export function createAgentCapabilityAdmissionServiceV1(
       "authentication" in input
         ? resolvedPrincipal(input.authentication)
         : runtimePrincipal(input.runtime);
-    const transaction = async <T>(operation: (db: Db) => Promise<T>): Promise<T> =>
+    const transaction = async <T>(
+      operation: (db: Db) => Promise<T>,
+      isolationLevel?: "serializable",
+    ): Promise<T> =>
       runtime
         ? operation(runtime.db)
-        : getDb().transaction((db) => operation(db as Db), { isolationLevel: "serializable" });
+        : getDb().transaction(
+            (db) => operation(db as Db),
+            isolationLevel ? { isolationLevel } : undefined,
+          );
     if (principal.siteId !== authentication.authorizationContext.siteId)
       throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
     if (runtime) {
@@ -948,7 +954,7 @@ export function createAgentCapabilityAdmissionServiceV1(
         startedAt: now,
         createdAt: now,
       });
-    });
+    }, "serializable");
     try {
       const execution = await entry.definition.execute(parsedInput, {
         siteId: principal.siteId,

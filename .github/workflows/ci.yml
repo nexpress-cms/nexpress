@@ -149,7 +149,8 @@ jobs:
 
       - name: Integration tests
         # Sequential by design — see docs/testing.md "Behaviour".
-        run: pnpm test:integration
+        # Preserve the active test output if a task times out before Turbo flushes it.
+        run: pnpm test:integration --log-order=stream
 
       - name: Redis integration tests
         env:
