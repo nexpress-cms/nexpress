@@ -1,5 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
+import type { NpAuthUser } from "../config/types.js";
+import { npUsers, npSiteMemberships } from "../db/schema/system.js";
+import { npDigestAgentStaffSiteAuthorizationCanonical } from "../agent-contract/canonical-bodies.js";
+import type { NpAgentRuntimeAuthorityEvidenceV1 } from "../agent-contract/types.js";
 import { type getDb } from "../db/runtime.js";
 import {
   npAgents,
@@ -49,6 +53,7 @@ import { npRequireAgentProviderSchemaValueV1 } from "./provider-auth-contract.js
 import {
   createAgentAdminAdmissionV1,
   npResolveAgentStaffSessionAuthorizationV1,
+  npResolveLiveAgentStaffAuthorizationV1,
   NpAgentGatewayError,
   type NpAgentAdminAdmissionOptionsV1,
   type NpAgentAdminActorV1,
@@ -232,6 +237,82 @@ export async function npRequireAgentRuntimeVersionV1(input: {
   )
     safeError("RUNTIME_AUTHORITY_CHANGED");
   return { agent, version, principal, definition, registry };
+}
+
+/** Caller already holds the principal row, before user and membership locks. */
+export async function npResolveAgentRuntimeAuthorityV1(input: {
+  db: Db;
+  siteId: string;
+  principal: Principal;
+  scopes: readonly NpAgentScope[];
+  deploymentAuthority: NpAgentRuntimeServiceOptionsV1["deploymentAuthority"];
+}): Promise<{ runtimeAuthority: NpAgentRuntimeAuthorityEvidenceV1; staffUser: NpAuthUser | null }> {
+  const { db, siteId, principal, deploymentAuthority } = input;
+  if (
+    principal.siteId !== siteId ||
+    principal.kind !== "runtime" ||
+    input.scopes.some((scope) => !deploymentAuthority.scopes.includes(scope))
+  )
+    safeError("RUNTIME_AUTHORITY_CHANGED");
+  let staffUser: NpAuthUser | null = null;
+  let staffAuthorizationFingerprint: string | null = null;
+  if (principal.authorityKind === "deployment") {
+    if (
+      principal.authorityPolicyId !== deploymentAuthority.policyId ||
+      principal.authorityFingerprint !== deploymentAuthority.fingerprint
+    )
+      safeError("RUNTIME_AUTHORITY_CHANGED");
+  } else {
+    const userId = principal.authorityUserId;
+    if (
+      !userId ||
+      principal.authorityDeletedAt ||
+      principal.authorityFingerprint !== hash("np.agent-principal-authority.v1", { siteId, userId })
+    )
+      safeError("RUNTIME_AUTHORITY_CHANGED");
+    const [user] = await db
+      .select({
+        id: npUsers.id,
+        email: npUsers.email,
+        name: npUsers.name,
+        role: npUsers.role,
+        tokenVersion: npUsers.tokenVersion,
+      })
+      .from(npUsers)
+      .where(eq(npUsers.id, userId))
+      .for("update")
+      .limit(1);
+    await db
+      .select({ userId: npSiteMemberships.userId })
+      .from(npSiteMemberships)
+      .where(and(eq(npSiteMemberships.siteId, siteId), eq(npSiteMemberships.userId, userId)))
+      .for("update");
+    const live = await npResolveLiveAgentStaffAuthorizationV1(db, siteId, userId);
+    if (
+      !user ||
+      input.scopes.some(
+        (scope) => !live.authority.capabilities.includes(npAgentScopeStaffCapability[scope]),
+      )
+    )
+      safeError("RUNTIME_AUTHORITY_CHANGED");
+    staffUser = {
+      ...user,
+      role:
+        live.authority.kind === "super-admin"
+          ? "admin"
+          : (live.authority.role as NpAuthUser["role"]),
+    };
+    staffAuthorizationFingerprint = await npDigestAgentStaffSiteAuthorizationCanonical(live);
+  }
+  return {
+    staffUser,
+    runtimeAuthority: {
+      principalTokenVersion: principal.tokenVersion,
+      authorityFingerprint: principal.authorityFingerprint,
+      deploymentAuthorityFingerprint: deploymentAuthority.fingerprint,
+      staffAuthorizationFingerprint,
+    },
+  };
 }
 
 async function verifiedPolicy(row: Policy) {
@@ -443,6 +524,20 @@ export function createAgentRuntimeServiceV1(
     await npMeasureAgentRuntimeBudgetV1({ db, siteId, now: nowFn() });
     await npMeasureAgentRuntimeBudgetV1({ db, siteId, agentId: agent.id, now: nowFn() });
     const definition = definitionFromRow(agent, version);
+    const [principal] = await db
+      .select()
+      .from(npAgentPrincipals)
+      .where(and(eq(npAgentPrincipals.siteId, siteId), eq(npAgentPrincipals.id, agent.principalId)))
+      .for("update")
+      .limit(1);
+    if (!principal) safeError("RUNTIME_AUTHORITY_INVALID");
+    await npResolveAgentRuntimeAuthorityV1({
+      db,
+      siteId,
+      principal,
+      scopes: definition.scopes,
+      deploymentAuthority: authority,
+    });
     npRequireAgentBudgetNarrowingV1(
       npResolveAgentBudgetV1(deploymentBudget, [settings.budgetCeiling]),
       definition.budget,
@@ -786,19 +881,40 @@ export function createAgentRuntimeServiceV1(
                 const id = randomUUID(),
                   versionId = randomUUID(),
                   principalId = randomUUID();
-                await db.insert(npAgentPrincipals).values({
-                  id: principalId,
+                const delegated = (command as { authority?: { kind: "user"; userId: string } })
+                  .authority;
+                if (delegated && delegated.userId !== input.actor.user.id)
+                  safeError("SITE_ACCESS_DENIED", 403);
+                const [createdPrincipal] = await db
+                  .insert(npAgentPrincipals)
+                  .values({
+                    id: principalId,
+                    siteId: input.siteId,
+                    kind: "runtime",
+                    name: definition.name,
+                    status: "suspended",
+                    scopes: [],
+                    authorityKind: delegated ? "user" : "deployment",
+                    authorityUserId: delegated?.userId ?? null,
+                    authorityPolicyId: delegated ? null : authority.policyId,
+                    authorityFingerprint: delegated
+                      ? hash("np.agent-principal-authority.v1", {
+                          siteId: input.siteId,
+                          userId: delegated.userId,
+                        })
+                      : authority.fingerprint,
+                    ownerUserId: input.actor.user.id,
+                    createdAt: now,
+                    updatedAt: now,
+                  })
+                  .returning();
+                if (!createdPrincipal) safeError("RUNTIME_AUTHORITY_INVALID");
+                await npResolveAgentRuntimeAuthorityV1({
+                  db,
                   siteId: input.siteId,
-                  kind: "runtime",
-                  name: definition.name,
-                  status: "suspended",
-                  scopes: [],
-                  authorityKind: "deployment",
-                  authorityPolicyId: authority.policyId,
-                  authorityFingerprint: authority.fingerprint,
-                  ownerUserId: input.actor.user.id,
-                  createdAt: now,
-                  updatedAt: now,
+                  principal: createdPrincipal,
+                  scopes: definition.scopes,
+                  deploymentAuthority: authority,
                 });
                 await db.insert(npAgents).values({
                   id,
@@ -853,11 +969,14 @@ export function createAgentRuntimeServiceV1(
               if (
                 !principal ||
                 principal.kind !== "runtime" ||
-                principal.authorityKind !== "deployment" ||
-                principal.authorityPolicyId !== authority.policyId ||
-                principal.authorityFingerprint !== authority.fingerprint ||
                 agent.status === "archived" ||
                 principal.status === "revoked"
+              )
+                safeError("RUNTIME_AUTHORITY_CHANGED");
+              if (
+                principal.authorityKind === "deployment" &&
+                (principal.authorityPolicyId !== authority.policyId ||
+                  principal.authorityFingerprint !== authority.fingerprint)
               )
                 safeError("RUNTIME_AUTHORITY_CHANGED");
               if (agent.rowVersion !== raw.expectedVersion) safeError("RUNTIME_VERSION_CONFLICT");

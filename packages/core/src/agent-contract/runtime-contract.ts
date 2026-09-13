@@ -24,6 +24,7 @@ import {
   npRequireAgentPolicyCanonical,
   npRequireAgentPolicyRulesV1,
 } from "./canonical-notification-policy.js";
+import { npRequireAgentRuntimeAuthorityEvidenceV1 } from "./canonical-run-admission.js";
 import { npRequireAgentContractResult } from "./contract.js";
 import { npMeetAgentAutonomyModesV1 } from "./runtime-policy.js";
 import { npRequireAgentBudgetV1, type NpAgentBudgetV1 } from "./wire-contract.js";
@@ -41,6 +42,7 @@ import {
   type NpAgentPolicyRulesV1,
   type NpAgentRecipeTemplate,
   type NpAgentScope,
+  type NpAgentRuntimeAuthorityEvidenceV1,
 } from "./types.js";
 
 export const NP_AGENT_RUNTIME_SETTING_KEY = "agents.runtime";
@@ -139,6 +141,7 @@ export interface NpAgentRuntimeSettingsV1 {
 
 /** Private retained admission evidence. This is not a browser settings projection. */
 export interface NpAgentRuntimeAdmissionSourcesV1 {
+  runtimeAuthority?: NpAgentRuntimeAuthorityEvidenceV1;
   schemaVersion: "np.agent-runtime-admission-sources.v1";
   frameworkPolicy: NpAgentPolicyCanonicalV1;
   frameworkPolicyVersion: number;
@@ -519,6 +522,7 @@ export function npAnalyzeAgentRuntimeAdmissionSourcesV1(
   const path = "agent.runtimeAdmissionSources";
   return analyzeCanonicalBody(path, () => {
     const keys = [
+      "runtimeAuthority",
       "schemaVersion",
       "frameworkPolicy",
       "frameworkPolicyVersion",
@@ -534,7 +538,7 @@ export function npAnalyzeAgentRuntimeAdmissionSourcesV1(
       ),
       path,
       keys,
-      keys,
+      keys.filter((key) => key !== "runtimeAuthority"),
       { seen: new WeakSet<object>() },
     );
     if (row.schemaVersion !== "np.agent-runtime-admission-sources.v1")
@@ -552,6 +556,9 @@ export function npAnalyzeAgentRuntimeAdmissionSourcesV1(
         "retained hard-rule sources cannot contain instructions",
       );
     return {
+      ...(Object.hasOwn(row, "runtimeAuthority")
+        ? { runtimeAuthority: npRequireAgentRuntimeAuthorityEvidenceV1(row.runtimeAuthority) }
+        : {}),
       schemaVersion: "np.agent-runtime-admission-sources.v1",
       frameworkPolicy,
       frameworkPolicyVersion: canonicalBodyInteger(

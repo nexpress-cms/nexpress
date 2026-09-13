@@ -371,7 +371,7 @@ export async function readyPreview(f: {
   });
   await f.service.processPreview({
     siteId:
-      f.actor.kind === "staff"
+      f.actor.kind !== "principal"
         ? f.actor.siteId
         : f.actor.authentication.authorizationContext.siteId,
     previewId: preview.previewId,

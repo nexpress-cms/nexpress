@@ -541,12 +541,13 @@ Runtime principals can use the existing public/published `content.query` path.
 `site.inspect`, `schema.get` and ChangeSet capabilities remain unavailable
 without the real staff/item authority their existing owners require.
 
-The recommended next task is an explicit staff-delegation decision plus the
-remaining AP-505 ChangeSet/approval execution and recovery path, preserving
-current staff/site membership, item ACL, exact approval binding, idempotency,
-CAS and audit. Full AP-505 and the R5 acceptance gate remain open. Current-slice
-verification is recorded separately from the foundation; see
-[the explicit execution slice and next authority decision](r5-runtime-execution-flow.md).
+The current slice implements explicit self-delegation through the
+existing principal relationship and the AP-505 ChangeSet/approval execution
+and recovery path. Current staff/site membership, item ACL, exact approval
+binding, idempotency, CAS and audit remain authoritative. Local acceptance
+passed, while AP-503/AP-507/AP-508 and the full R5 gate remain open. See
+[the delegated execution flow](r5-runtime-delegated-execution-flow.md) and the
+[preceding provider/read execution checkpoint](r5-runtime-execution-flow.md).
 
 Outcome: one configured agent can run a bounded event/manual/scheduled workflow
 with budget and policy enforcement.

@@ -74,7 +74,7 @@ type ContentRow = Record<string, unknown>;
 type ReadContext = Pick<
   NpAgentReadCapabilityContextV1,
   "siteId" | "principal" | "requestedAt" | "transaction"
->;
+> & { staffUser?: NpAuthUser | null };
 type NamedField = Exclude<NpFieldConfig, { type: "row" } | { type: "collapsible" }>;
 
 export interface NpAgentCoreReadCapabilityOptionsV1 {
@@ -365,6 +365,18 @@ function schemaFor(
   }
 }
 
+async function resolvePrincipalReadUser(
+  context: ReadContext,
+  resolveUser: NpAgentCoreReadCapabilityOptionsV1["resolveUser"],
+): Promise<NpAuthUser | null> {
+  if (context.principal.authority.kind !== "user") return null;
+  const user =
+    context.principal.kind === "runtime"
+      ? context.staffUser
+      : await resolveUser(context.principal.authority.userId);
+  return user?.id === context.principal.authority.userId ? user : null;
+}
+
 async function visibleSchemaCollections(
   context: ReadContext,
   resolveUser: NpAgentCoreReadCapabilityOptionsV1["resolveUser"],
@@ -372,7 +384,7 @@ async function visibleSchemaCollections(
   if (context.principal.authority.kind !== "user") {
     throw new NpForbiddenError("schema", "agent schema visibility");
   }
-  const user = await resolveUser(context.principal.authority.userId);
+  const user = await resolvePrincipalReadUser(context, resolveUser);
   if (!user) throw new NpForbiddenError("schema", "agent schema visibility");
   const visible: NpCollectionConfig[] = [];
   for (const slug of getAllCollectionSlugs().sort()) {
@@ -697,7 +709,7 @@ async function resolveReadUser(
   if (context.principal.authority.kind !== "user") {
     throw new NpForbiddenError(input.collection, "agent content audience");
   }
-  const user = await resolver(context.principal.authority.userId);
+  const user = await resolvePrincipalReadUser(context, resolver);
   if (!user) throw new NpForbiddenError(input.collection, "agent content audience");
   return user;
 }
@@ -884,7 +896,7 @@ export function npIsAgentRuntimeDocumentEvidenceReaderV1(
   return runtimeEvidenceReaders.has(value);
 }
 
-/** Exact public/published document evidence for the existing deployment Runtime authority. */
+/** Framework item-authorized evidence; deployment authority remains public/published only. */
 export function createAgentCoreRuntimeDocumentEvidenceReaderV1(
   options: NpAgentCoreReadCapabilityOptionsV1,
 ): NpAgentRuntimeDocumentEvidenceReaderV1 {
@@ -907,9 +919,16 @@ export function createAgentCoreRuntimeDocumentEvidenceReaderV1(
       const { principal, definition } = context.evidence;
       const recipe = definition.settings.find((entry) => entry.recipeId === context.run.recipeId);
       const collections = context.policy.effective.resources.collections;
+      const authority =
+        principal.authorityKind === "deployment" && principal.authorityPolicyId
+          ? { kind: "deployment" as const, policyId: principal.authorityPolicyId }
+          : principal.authorityKind === "user" &&
+              principal.authorityUserId &&
+              context.staffUser?.id === principal.authorityUserId
+            ? { kind: "user" as const, userId: principal.authorityUserId }
+            : null;
       if (
-        principal.authorityKind !== "deployment" ||
-        !principal.authorityPolicyId ||
+        !authority ||
         !recipe ||
         !("collectionSlugs" in recipe) ||
         !recipe.collectionSlugs.includes(request.collection) ||
@@ -927,11 +946,12 @@ export function createAgentCoreRuntimeDocumentEvidenceReaderV1(
           siteId: context.siteId,
           principalId: principal.id,
           runId: context.run.id,
-          authority: { kind: "deployment", policyId: principal.authorityPolicyId },
+          authority,
           scopes: definition.scopes,
         },
         requestedAt: context.now.toISOString(),
         transaction: context.db,
+        staffUser: context.staffUser,
       };
       const config = getCollectionConfig(request.collection);
       const fields =
@@ -950,8 +970,11 @@ export function createAgentCoreRuntimeDocumentEvidenceReaderV1(
           collection: request.collection,
           filter: { op: "eq", field: "id", value: request.documentId },
           fields,
-          audience: "public",
-          status: "published",
+          audience: authority.kind === "user" ? "member" : "public",
+          status:
+            authority.kind === "user" && definition.scopes.includes("content:draft")
+              ? "any"
+              : "published",
           sort: [],
           limit: 1,
           cursor: null,

@@ -5,6 +5,7 @@ import type { NpAgentRuntimeAdmissionV1 } from "./runtime-admission.js";
 const admission: NpAgentRuntimeAdmissionV1 = {
   admit: () => Promise.reject(new Error("unused")),
   withCurrentRun: () => Promise.reject(new Error("unused")),
+  withRunAuthority: () => Promise.reject(new Error("unused")),
 };
 describe("explicit runtime execution construction", () => {
   it.each([0, -1, 91, Infinity, 1.5])("rejects unbounded lease %s", (leaseSeconds) => {
@@ -29,6 +30,16 @@ describe("explicit runtime execution construction", () => {
         }),
       ),
     ).toContain("observeCall");
+  });
+  it("does not claim approval without an explicitly installed evidence facade", () => {
+    const store = createAgentRuntimeExecutionStoreV1({ admission });
+    expect(() =>
+      store.claimApproval({
+        siteId: "default",
+        runId: "00000000-0000-4000-8000-000000000001",
+        requestActionId: "00000000-0000-4000-8000-000000000002",
+      }),
+    ).toThrow();
   });
   it("rejects unknown input fields without touching the database", () => {
     const store = createAgentRuntimeExecutionStoreV1({ admission });

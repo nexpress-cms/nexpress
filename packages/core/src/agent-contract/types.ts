@@ -784,7 +784,16 @@ export interface NpAgentRunAdmissionConnectionV1 {
   pricingEffectiveAt: string;
 }
 
+export interface NpAgentRuntimeAuthorityEvidenceV1 {
+  principalTokenVersion: number;
+  authorityFingerprint: string;
+  deploymentAuthorityFingerprint: string;
+  staffAuthorizationFingerprint: string | null;
+}
+
 export interface NpAgentRunAdmissionCanonicalV1 {
+  /** Optional only for retained legacy admissions; new Runtime runs bind current authority. */
+  runtimeAuthority?: NpAgentRuntimeAuthorityEvidenceV1;
   schemaVersion: "np.agent-run-admission.v1";
   siteId: string;
   origin: NpAgentRunAdmissionOrigin;

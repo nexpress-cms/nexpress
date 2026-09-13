@@ -1,9 +1,19 @@
 import {
+  npAgentAutonomyAllowsV1,
+  type NpAgentRuntimePermissionV1,
+} from "../agent-contract/runtime-policy.js";
+import {
+  npRequireAgentActionCanonical,
+  npDigestAgentActionCanonical,
+} from "../agent-contract/canonical-action.js";
+import {
   npAgentChangeSetRollbackModePoliciesV1,
   npAgentChangeSetExecutionPhasePoliciesV1,
 } from "../agent-contract/changeset-capability-schema.js";
 import {
   npAdmitChangeSetExecutionProjectionV1,
+  npHasFreshChangeSetExecutionOutputV1,
+  npDigestChangeSetExecutionProjectionV1,
   npReconcileChangeSetExecutionProjectionV1,
 } from "./changeset-execution-projection.js";
 import { npAgentMcpTaskLimitsV1 } from "../agent-contract/mcp-task-contract.js";
@@ -100,7 +110,13 @@ import { mkdtemp, chmod, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, asc, desc, eq, gt, gte, lt, lte, inArray, or, sql, type SQL } from "drizzle-orm";
-import { getDb } from "../db/runtime.js";
+import { getDb as getRootDb } from "../db/runtime.js";
+import {
+  npRuntimeAuthorizationContextV1,
+  type NpAgentRuntimeAdmissionV1,
+  type NpAgentRuntimeRunContextV1,
+  type NpAgentRuntimeExecutionClaimV1,
+} from "./runtime-admission.js";
 import {
   npAgentChangesets,
   npAgentChangesetExecutions,
@@ -202,15 +218,27 @@ import {
 } from "./changeset-validation-resources.js";
 import { createAgentCursorCodecV1 } from "./cursor.js";
 
-type Db = ReturnType<typeof getDb>;
+type Db = ReturnType<typeof getRootDb>;
+const runtimeChangeSetTransaction = new AsyncLocalStorage<Db>();
+function getDb(): Db {
+  return runtimeChangeSetTransaction.getStore() ?? getRootDb();
+}
 type Row = typeof npAgentChangesets.$inferSelect;
 type PreviewRow = typeof npAgentChangesetPreviews.$inferSelect;
 type OpRow = typeof npAgentChangesetOperations.$inferSelect;
 export type NpAgentChangeSetActorV1 =
   | { kind: "staff"; siteId: string; actor: NpAgentAdminActorV1 }
-  | { kind: "principal"; authentication: NpAgentCapabilityAuthenticationV1 };
+  | { kind: "principal"; authentication: NpAgentCapabilityAuthenticationV1 }
+  | {
+      kind: "runtime";
+      siteId: string;
+      runId: string;
+      claim?: NpAgentRuntimeExecutionClaimV1;
+      sequence?: number;
+    };
 export interface NpAgentChangeSetServiceOptionsV1 extends NpAgentAdminAdmissionOptionsV1 {
   cursorKey: Uint8Array;
+  runtimeAdmission?: NpAgentRuntimeAdmissionV1;
   /** Explicit host installation; no worker, queue, or runtime is created. */
   execution?: {
     resolveIntent: (input: { siteId: string }) => Promise<{ enabled: boolean; paused: boolean }>;
@@ -299,7 +327,65 @@ export interface NpAgentChangeSetListFiltersV1 {
   createdAfter?: string | null;
   createdBefore?: string | null;
 }
+/** A field selection from the existing authorized ChangeSet output; no content or credential data. */
+export interface NpAgentRuntimeChangeSetReferencesV1 {
+  changeSets: Array<{
+    changeSetId: NpAgentChangeSetWire["id"];
+    state: NpAgentChangeSetWire["state"];
+    draftVersion: NpAgentChangeSetWire["draftVersion"];
+    draftHash: NpAgentChangeSetWire["draftHash"];
+    planHash: NpAgentChangeSetWire["planHash"];
+    previewId: string | null;
+    previewState: NonNullable<NpAgentChangeSetWire["preview"]>["state"] | null;
+    approvalId: string | null;
+    approvalState: NonNullable<NpAgentChangeSetWire["approval"]>["state"] | null;
+    executionId: string | null;
+    executionState: NonNullable<NpAgentChangeSetWire["execution"]>["state"] | null;
+    rollbackPlanId: string | null;
+    rollbackPlanHash: string | null;
+    rollbackState: NonNullable<NpAgentChangeSetWire["rollback"]>["state"] | null;
+  }>;
+  nextCursor: string | null;
+}
+
+export interface NpAgentRuntimeApprovalInspectionV1 {
+  status: "pending" | "ready" | "completed" | "unresolved";
+  requestActionId: string;
+  executionActionId: string | null;
+  executionSequence: number | null;
+}
+export interface NpAgentRuntimeChangeSetInvocationV1 {
+  siteId: string;
+  runId: string;
+  claim: NpAgentRuntimeExecutionClaimV1;
+  sequence: number;
+  request: NpAgentChangeSetCapabilityInvocationRequestV1;
+}
+export interface NpAgentRuntimeChangeSetResultV1 {
+  invocationId: string;
+  capabilityId: NpAgentChangeSetCapabilityIdV1;
+  output: NpAgentChangeSetCapabilityOutputMapV1[NpAgentChangeSetCapabilityIdV1];
+}
 export interface NpAgentChangeSetServiceV1 {
+  projectRuntimeAction: (
+    context: NpAgentRuntimeRunContextV1,
+    actionId: string,
+  ) => Promise<{
+    capabilityId: NpAgentChangeSetCapabilityIdV1;
+    state: "succeeded";
+    safeCode: null;
+    references?: NpAgentRuntimeChangeSetReferencesV1;
+  } | null>;
+  inspectRuntimeApproval: (
+    context: NpAgentRuntimeRunContextV1,
+    requestActionId: string,
+  ) => Promise<NpAgentRuntimeApprovalInspectionV1>;
+  invokeRuntimeCapability: (
+    input: NpAgentRuntimeChangeSetInvocationV1,
+  ) => Promise<NpAgentRuntimeChangeSetResultV1>;
+  resumeRuntimeApproval: (
+    input: Omit<NpAgentRuntimeChangeSetInvocationV1, "request"> & { requestActionId: string },
+  ) => Promise<NpAgentRuntimeChangeSetResultV1>;
   prepareRollback: (input: {
     actor: Extract<NpAgentChangeSetActorV1, { kind: "staff" }>;
     id: string;
@@ -486,6 +572,13 @@ const staffUserProjection = {
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
 const json = (value: object) => value as unknown as NpAgentJsonObject;
 interface Actor {
+  runtime?: {
+    agentId: string;
+    agentVersionId: string;
+    agentConfigHash: string;
+    runId: string;
+    runFingerprint: string;
+  };
   source?: NpAgentChangeSetActorV1;
   siteId: string;
   user: NpAuthUser;
@@ -537,6 +630,101 @@ export function createAgentChangeSetServiceV1(
     rollbackWindow > npAgentChangeSetLimits.rollbackMaximumSeconds
   )
     throw new Error("Invalid ChangeSet validation limits.");
+  async function withRuntime<T>(
+    input: Extract<NpAgentChangeSetActorV1, { kind: "runtime" }>,
+    run: (context: NpAgentRuntimeRunContextV1) => Promise<T>,
+  ): Promise<T> {
+    if (!options.runtimeAdmission) throw denied();
+    return options.runtimeAdmission.withRunAuthority(
+      {
+        siteId: input.siteId,
+        runId: input.runId,
+        ...(runtimeChangeSetTransaction.getStore() ? { db: getDb() } : {}),
+      },
+      (context) => runtimeChangeSetTransaction.run(context.db, () => run(context)),
+    );
+  }
+  async function runtimeActor(
+    input: Extract<NpAgentChangeSetActorV1, { kind: "runtime" }>,
+    context: NpAgentRuntimeRunContextV1,
+  ): Promise<Actor> {
+    if (!context.staffUser) throw denied();
+    const { authorizationContext } = await npRuntimeAuthorizationContextV1(context);
+    return {
+      source: input,
+      runtime: {
+        agentId: context.run.agentId!,
+        agentVersionId: context.run.agentVersionId!,
+        agentConfigHash: context.run.agentConfigHash!,
+        runId: context.run.id,
+        runFingerprint: context.run.admissionFingerprint,
+      },
+      siteId: context.siteId,
+      user: context.staffUser,
+      principalId: context.evidence.principal.id,
+      scopes: context.evidence.definition.scopes,
+      fingerprint: authorizationContext.actor.actorFingerprint,
+      authorization: serializeAgentCanonicalJson(authorizationContext),
+    };
+  }
+  async function principalContext(input: Exclude<NpAgentChangeSetActorV1, { kind: "staff" }>) {
+    return input.kind === "principal"
+      ? input.authentication.authorizationContext
+      : withRuntime(
+          input,
+          async (context) => (await npRuntimeAuthorizationContextV1(context)).authorizationContext,
+        );
+  }
+  async function withPrincipal<T>(
+    input: Exclude<NpAgentChangeSetActorV1, { kind: "staff" }>,
+    scopes: readonly NpAgentScope[],
+    exposure: "read" | "propose" | "approved-execute",
+    mutate: (db: Db, time: Date) => Promise<T>,
+  ): Promise<T> {
+    if (input.kind === "runtime") {
+      if (!options.runtimeAdmission || !input.claim) throw denied();
+      return options.runtimeAdmission.withCurrentRun(
+        { siteId: input.siteId, runId: input.runId, claim: input.claim },
+        (context) =>
+          runtimeChangeSetTransaction.run(context.db, async () => {
+            const actor = await runtimeActor(input, context);
+            requireScopes(actor, scopes);
+            const request = gatewayRequestContext.getStore();
+            if (!request) throw denied();
+            requireRuntimeMode(context, request);
+            if (!input.sequence) throw denied();
+            const actions = await context.db
+              .select({
+                sequence: npAgentActions.sequence,
+                idempotencyKey: npAgentActions.idempotencyKey,
+                capabilityId: npAgentActions.capabilityId,
+              })
+              .from(npAgentActions)
+              .where(
+                and(eq(npAgentActions.siteId, input.siteId), eq(npAgentActions.runId, input.runId)),
+              )
+              .limit(context.limits.maxCapabilityCalls + 1);
+            const previous = actions.find((action) => action.sequence === input.sequence);
+            if (
+              previous
+                ? !request ||
+                  previous.capabilityId !== request.capabilityId ||
+                  previous.idempotencyKey !== request.arguments.idempotencyKey
+                : actions.length >= context.limits.maxCapabilityCalls
+            )
+              throw conflict();
+            return mutate(context.db, context.now);
+          }),
+      );
+    }
+    if (!options.admission) throw denied();
+    return options.admission.withCurrentAuthority({
+      authentication: input.authentication,
+      requiredScopes: scopes,
+      minimumExposure: exposure,
+      mutate,
+    });
+  }
   async function resolve(input: NpAgentChangeSetActorV1, write: boolean): Promise<Actor> {
     const scope: NpAgentScope = write ? "changeset:write" : "changeset:read";
     if (input.kind === "staff") {
@@ -567,6 +755,12 @@ export function createAgentChangeSetServiceV1(
         scopes: null,
       };
     }
+    if (input.kind === "runtime")
+      return withRuntime(input, async (context) => {
+        const actor = await runtimeActor(input, context);
+        requireScopes(actor, [scope]);
+        return actor;
+      });
     if (!options.admission) throw missing();
     const auth = input.authentication;
     await options.admission.project({ authentication: auth });
@@ -1244,7 +1438,9 @@ export function createAgentChangeSetServiceV1(
       await db.insert(npAgentChangesets).values({
         id: changeSetId,
         siteId: actor.siteId,
-        creatorKind: actor.principalId ? "external" : "staff",
+        creatorKind:
+          actor.source?.kind === "runtime" ? "runtime" : actor.principalId ? "external" : "staff",
+        ...(actor.runtime ?? {}),
         principalId: actor.principalId,
         createdByUserId: actor.principalId ? null : actor.user.id,
         actorFingerprint: actor.fingerprint,
@@ -1326,7 +1522,7 @@ export function createAgentChangeSetServiceV1(
   const validateDefinition = definition("validate");
   const previewDefinition = definition("preview");
   async function invokePrincipal(
-    input: Extract<NpAgentChangeSetActorV1, { kind: "principal" }>,
+    input: Exclude<NpAgentChangeSetActorV1, { kind: "staff" }>,
     actor: Actor,
     request:
       | NpAgentChangeSetAdminInputV1<"create">
@@ -1349,8 +1545,8 @@ export function createAgentChangeSetServiceV1(
     }>,
     targetId?: string,
   ) {
-    if (!options.admission) throw missing();
-    const authentication = input.authentication;
+    const authentication = input.kind === "principal" ? input.authentication : null;
+    const authorizationContext = await principalContext(input);
     const operationId = `changeset.${kind}`;
     const resultKey = kind === "preview" ? "previewId" : "attemptId";
     const gatewayRequest = gatewayRequestContext.getStore();
@@ -1358,7 +1554,8 @@ export function createAgentChangeSetServiceV1(
     const taskRequest = transportContext?.taskRequest;
     if (
       taskRequest &&
-      !["stdio", "mcp-service", "mcp-oauth"].includes(authentication.authorizationContext.transport)
+      (!authentication ||
+        !["stdio", "mcp-service", "mcp-oauth"].includes(authorizationContext.transport))
     )
       throw missing();
     if (taskRequest && (!options.tasks || !["apply", "schedule", "rollback"].includes(kind)))
@@ -1391,9 +1588,8 @@ export function createAgentChangeSetServiceV1(
       definitionBody,
       definitionBody.capabilities,
     );
-    const authorizationFingerprint = await npDigestAgentAuthorizationContextCanonical(
-      authentication.authorizationContext,
-    );
+    const authorizationFingerprint =
+      await npDigestAgentAuthorizationContextCanonical(authorizationContext);
     let descriptorInput = gatewayRequestContext.getStore()?.arguments.input;
     if (descriptorInput === undefined) {
       if (kind === "create" && "proposalJson" in request)
@@ -1431,11 +1627,11 @@ export function createAgentChangeSetServiceV1(
     });
     const expectedDescriptorInput = descriptorInput;
     const requestHash = await npDigestAgentInvocationRequestCanonical(body);
-    return options.admission.withCurrentAuthority({
-      authentication,
-      requiredScopes: authentication.scopes,
-      minimumExposure: executionRequest ? "approved-execute" : "propose",
-      mutate: async (db, time) => {
+    return withPrincipal(
+      input,
+      actor.scopes ?? [],
+      executionRequest ? "approved-execute" : "propose",
+      async (db, time) => {
         const [previous] = await db
           .select()
           .from(npAgentInvocations)
@@ -1462,7 +1658,7 @@ export function createAgentChangeSetServiceV1(
             throw conflict();
           const expectedMode = taskRequest
             ? "task"
-            : ["mcp-service", "mcp-oauth"].includes(authentication.authorizationContext.transport)
+            : ["mcp-service", "mcp-oauth"].includes(authorizationContext.transport)
               ? "normal"
               : null;
           if (
@@ -1473,7 +1669,7 @@ export function createAgentChangeSetServiceV1(
                 : null)
           )
             throw conflict();
-          if (taskRequest && options.tasks && transportContext)
+          if (taskRequest && authentication && options.tasks && transportContext)
             transportContext.task = await options.tasks.replayInTransaction(db, {
               authentication,
               invocationId: previous.id,
@@ -1544,9 +1740,9 @@ export function createAgentChangeSetServiceV1(
             actorKind: "principal",
             principalId: actor.principalId,
             actorFingerprint: actor.fingerprint,
-            authorizationContextBody: authentication.authorizationContext,
+            authorizationContextBody: authorizationContext,
             authorizationContextFingerprint: authorizationFingerprint,
-            authorityRef: authentication.authorizationContext.authorityRef,
+            authorityRef: authorizationContext.authorityRef,
             operationKind: "capability",
             operationId,
             contractVersion: 1,
@@ -1554,10 +1750,10 @@ export function createAgentChangeSetServiceV1(
             capabilityDefinitionBody: definitionBody,
             effectProfileId: profileId,
             effectContractVersion: 1,
-            transport: authentication.authorizationContext.transport,
+            transport: authorizationContext.transport,
             mcpExecutionMode: taskRequest
               ? "task"
-              : ["mcp-service", "mcp-oauth"].includes(authentication.authorizationContext.transport)
+              : ["mcp-service", "mcp-oauth"].includes(authorizationContext.transport)
                 ? "normal"
                 : null,
             mcpRequestedTaskTtlMs: taskRequest
@@ -1576,7 +1772,16 @@ export function createAgentChangeSetServiceV1(
             gatewayRequest && ["apply", "schedule", "rollback"].includes(kind)
               ? await npAdmitChangeSetExecutionProjectionV1({
                   db,
-                  authentication,
+                  ...(authentication
+                    ? { authentication }
+                    : {
+                        runtime: {
+                          siteId: actor.siteId,
+                          principalId: actor.principalId!,
+                          runId: input.kind === "runtime" ? input.runId : "",
+                          sequence: input.kind === "runtime" ? input.sequence! : 0,
+                        },
+                      }),
                   invocationId,
                   requestHash,
                   request: gatewayRequest,
@@ -1609,9 +1814,15 @@ export function createAgentChangeSetServiceV1(
               completedAt: time,
             })
             .where(eq(npAgentInvocations.id, invocationId));
+          if (
+            input.kind === "runtime" &&
+            gatewayRequest &&
+            !["apply", "schedule", "rollback"].includes(kind)
+          )
+            await appendRuntimeAction(input, gatewayRequest, invocationId, { changeSetId: id });
           return { ...output, invocationId };
         };
-        if (taskRequest && options.tasks && transportContext) {
+        if (taskRequest && authentication && options.tasks && transportContext) {
           const admitted = await options.tasks.admitInTransaction(db, {
             authentication,
             taskRequest,
@@ -1622,7 +1833,7 @@ export function createAgentChangeSetServiceV1(
         }
         return admit();
       },
-    });
+    );
   }
   async function admitChangeSetOperation(input: {
     actor: NpAgentChangeSetActorV1;
@@ -2095,10 +2306,62 @@ export function createAgentChangeSetServiceV1(
       authorizationContextBody: NpAgentAuthorizationContextCanonicalV1;
       authorizationContextFingerprint: string;
       requesterFingerprint: string;
+      admittingInvocationId?: string;
     },
     run: (db: Db, actor: Actor) => Promise<T>,
   ): Promise<T> {
     const context = npRequireAgentAuthorizationContextCanonical(seed.authorizationContextBody);
+    if (context.authorityRef.kind === "runtime-run") {
+      const input = {
+        kind: "runtime" as const,
+        siteId: seed.siteId,
+        runId: context.authorityRef.runId,
+      };
+      return withRuntime(input, async (current) => {
+        const checked = await npRuntimeAuthorizationContextV1(current);
+        if (
+          checked.authorizationContextFingerprint !== seed.authorizationContextFingerprint ||
+          checked.authorizationContext.actor.actorFingerprint !== seed.requesterFingerprint
+        )
+          throw denied();
+        const descriptor = seed.authorizationContextBody.authorityRef;
+        if (descriptor.kind !== "runtime-run") throw denied();
+        if (!seed.admittingInvocationId) throw denied();
+        const [invocation] = await current.db
+          .select()
+          .from(npAgentInvocations)
+          .where(
+            and(
+              eq(npAgentInvocations.siteId, seed.siteId),
+              eq(npAgentInvocations.id, seed.admittingInvocationId),
+            ),
+          )
+          .limit(1);
+        if (
+          !invocation ||
+          invocation.transport !== "runtime" ||
+          invocation.runId !== current.run.id ||
+          invocation.principalId !== current.evidence.principal.id ||
+          invocation.authorizationContextFingerprint !== seed.authorizationContextFingerprint ||
+          !sameJson(invocation.authorizationContextBody, checked.authorizationContext) ||
+          (await npDigestAgentInvocationRequestCanonical(invocation.requestBody)) !==
+            invocation.requestHash
+        )
+          throw denied();
+        requireRuntimeMode(
+          current,
+          npRequireAgentInstalledCapabilityInvocationRequestV1({
+            schemaVersion: "np.agent-invocation-request.v1",
+            capabilityId: invocation.operationId,
+            arguments: {
+              input: invocation.requestBody.input,
+              idempotencyKey: invocation.idempotencyKey,
+            },
+          }) as NpAgentChangeSetCapabilityInvocationRequestV1,
+        );
+        return run(current.db, await runtimeActor(input, current));
+      });
+    }
     if (context.authorityRef.kind === "staff-session")
       return getDb().transaction(
         async (db) => {
@@ -4039,6 +4302,7 @@ export function createAgentChangeSetServiceV1(
           authorizationContextBody: invocation.authorizationContextBody,
           authorizationContextFingerprint: invocation.authorizationContextFingerprint,
           requesterFingerprint: invocation.actorFingerprint,
+          admittingInvocationId: invocation.id,
         },
         async (db, actor) => {
           const [row] = await db
@@ -4158,13 +4422,16 @@ export function createAgentChangeSetServiceV1(
     );
   }
   async function invokeGatewayExecution(
-    actor: Extract<NpAgentChangeSetActorV1, { kind: "principal" }>,
+    actor: Exclude<NpAgentChangeSetActorV1, { kind: "staff" }>,
     request: Extract<
       NpAgentChangeSetCapabilityInvocationRequestV1,
       { capabilityId: "changeset.apply" | "changeset.schedule" | "changeset.rollback" }
     >,
   ): Promise<NpAgentChangeSetExecutionOutputV1> {
     if (!options.execution || !approvals) throw missing();
+    const identity = await resolve(actor, false);
+    const authority = await principalContext(actor);
+    const authorityFingerprint = await npDigestAgentAuthorizationContextCanonical(authority);
     const args = request.arguments.input;
     const current = await get({ actor, id: args.changeSetId });
     // The wire key keeps its existing 256-byte bound; internal execution commands
@@ -4197,7 +4464,7 @@ export function createAgentChangeSetServiceV1(
           .from(npAgentApprovals)
           .where(
             and(
-              eq(npAgentApprovals.siteId, actor.authentication.principal.siteId),
+              eq(npAgentApprovals.siteId, identity.siteId),
               eq(npAgentApprovals.id, args.approvalId),
             ),
           )
@@ -4237,11 +4504,7 @@ export function createAgentChangeSetServiceV1(
           },
         });
       else {
-        const plan = await rollbackSeed(
-          actor.authentication.principal.siteId,
-          args.changeSetId,
-          args.rollbackPlanId,
-        );
+        const plan = await rollbackSeed(identity.siteId, args.changeSetId, args.rollbackPlanId);
         if (args.mode === "request_approval")
           await requestRollbackApprovalTarget({
             actor,
@@ -4260,7 +4523,7 @@ export function createAgentChangeSetServiceV1(
             .from(npAgentApprovals)
             .where(
               and(
-                eq(npAgentApprovals.siteId, actor.authentication.principal.siteId),
+                eq(npAgentApprovals.siteId, identity.siteId),
                 eq(npAgentApprovals.id, args.approvalId),
               ),
             )
@@ -4287,12 +4550,9 @@ export function createAgentChangeSetServiceV1(
       .from(npAgentInvocations)
       .where(
         and(
-          eq(npAgentInvocations.siteId, actor.authentication.principal.siteId),
-          eq(npAgentInvocations.principalId, actor.authentication.principal.id),
-          eq(
-            npAgentInvocations.authorizationContextFingerprint,
-            actor.authentication.authorizationContextFingerprint,
-          ),
+          eq(npAgentInvocations.siteId, identity.siteId),
+          eq(npAgentInvocations.principalId, identity.principalId!),
+          eq(npAgentInvocations.authorizationContextFingerprint, authorityFingerprint),
           eq(npAgentInvocations.operationId, request.capabilityId),
           eq(npAgentInvocations.idempotencyKey, request.arguments.idempotencyKey),
         ),
@@ -4312,13 +4572,712 @@ export function createAgentChangeSetServiceV1(
     });
     return output;
   }
+  function requireRuntimeMode(
+    context: NpAgentRuntimeRunContextV1,
+    request: NpAgentChangeSetCapabilityInvocationRequestV1,
+  ) {
+    if (
+      !context.staffUser ||
+      (request.capabilityId === "changeset.preview" && !options.preview) ||
+      (["changeset.apply", "changeset.schedule", "changeset.rollback"].includes(
+        request.capabilityId,
+      ) &&
+        (!options.execution || !approvals))
+    )
+      throw denied();
+    const recipe = context.evidence.registry.recipes.find(
+      (entry) => entry.id === context.run.recipeId && entry.version === context.run.recipeVersion,
+    );
+    if (!recipe?.capabilityIds.includes(request.capabilityId)) throw denied();
+    const descriptor = npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(request.capabilityId)
+      .capabilities[0].descriptor;
+    const mode = context.policy.effective.capabilityModes.find(
+      (row) => row.capabilityId === request.capabilityId,
+    )?.mode;
+    let permission: NpAgentRuntimePermissionV1 = descriptor.risk === "read" ? "read" : "propose";
+    if (request.capabilityId === "changeset.apply" || request.capabilityId === "changeset.schedule")
+      permission =
+        request.arguments.input.approvalId === null ? "request-approval" : "execute-approved";
+    if (request.capabilityId === "changeset.rollback")
+      permission =
+        request.arguments.input.mode === "prepare"
+          ? "propose"
+          : request.arguments.input.mode === "request_approval"
+            ? "request-approval"
+            : "execute-approved";
+    if (
+      !mode ||
+      !npAgentAutonomyAllowsV1(mode, permission) ||
+      descriptor.requiredScopes.some((scope) => !context.evidence.definition.scopes.includes(scope))
+    )
+      throw denied();
+  }
+  async function invokeRuntimeCapability(
+    input: NpAgentRuntimeChangeSetInvocationV1,
+  ): Promise<NpAgentRuntimeChangeSetResultV1> {
+    if (!options.runtimeAdmission || !Number.isSafeInteger(input.sequence) || input.sequence < 1)
+      throw denied();
+    const request = npRequireAgentInstalledCapabilityInvocationRequestV1(
+      input.request,
+    ) as NpAgentChangeSetCapabilityInvocationRequestV1;
+    if (!npAgentChangeSetCapabilityIdsV1.includes(request.capabilityId)) throw missing();
+    input = {
+      siteId: input.siteId,
+      runId: input.runId,
+      claim: { ...input.claim },
+      sequence: input.sequence,
+      request,
+    };
+    const actor = {
+      kind: "runtime" as const,
+      siteId: input.siteId,
+      runId: input.runId,
+      claim: input.claim,
+      sequence: input.sequence,
+    };
+    const replay = await options.runtimeAdmission.withCurrentRun(
+      { siteId: input.siteId, runId: input.runId, claim: input.claim },
+      (context) =>
+        runtimeChangeSetTransaction.run(context.db, async () => {
+          requireRuntimeMode(context, request);
+          const approvedId =
+            request.capabilityId === "changeset.apply" ||
+            request.capabilityId === "changeset.schedule"
+              ? request.arguments.input.approvalId
+              : request.capabilityId === "changeset.rollback" &&
+                  request.arguments.input.mode === "execute_approved"
+                ? request.arguments.input.approvalId
+                : null;
+          if (approvedId) {
+            const pending = await context.db
+              .select({ id: npAgentActions.id, sequence: npAgentActions.sequence })
+              .from(npAgentActions)
+              .where(
+                and(
+                  eq(npAgentActions.siteId, context.siteId),
+                  eq(npAgentActions.runId, context.run.id),
+                  sql`${npAgentActions.outputRedacted}->>'approvalId' = ${approvedId}`,
+                  eq(npAgentActions.state, "approval_pending"),
+                ),
+              )
+              .limit(2);
+            if (pending.length !== 1 || input.sequence <= pending[0].sequence) throw denied();
+            const receipt = await runtimeApprovalEvidence(context, pending[0].id);
+            if (
+              receipt.status === "pending" ||
+              !sameJson(receipt.request, request) ||
+              (receipt.executionSequence !== null && receipt.executionSequence !== input.sequence)
+            )
+              throw denied();
+          }
+          const rows = await context.db
+            .select()
+            .from(npAgentActions)
+            .where(
+              and(eq(npAgentActions.siteId, input.siteId), eq(npAgentActions.runId, input.runId)),
+            )
+            .limit(context.limits.maxCapabilityCalls + 1);
+          const existing = rows.find((row) => row.sequence === input.sequence);
+          if (!existing && rows.length >= context.limits.maxCapabilityCalls) throw conflict();
+          if (existing) {
+            const invocation = await verifyRuntimeAction(context, existing);
+            if (
+              invocation.operationId !== request.capabilityId ||
+              !sameJson(invocation.requestBody.input, request.arguments.input) ||
+              existing.idempotencyKey !== request.arguments.idempotencyKey
+            )
+              throw conflict();
+            return { existing, invocation };
+          }
+          return null;
+        }),
+    );
+    if (replay)
+      return options.runtimeAdmission.withCurrentRun(
+        { siteId: input.siteId, runId: input.runId, claim: input.claim },
+        (context) =>
+          runtimeChangeSetTransaction.run(context.db, async () => {
+            const resolved = await runtimeActor(actor, context);
+            let output: NpAgentChangeSetCapabilityOutputMapV1[NpAgentChangeSetCapabilityIdV1];
+            if (
+              ["changeset.apply", "changeset.schedule", "changeset.rollback"].includes(
+                request.capabilityId,
+              )
+            ) {
+              if (!replay.invocation.resultId) throw denied();
+              output = await gatewayExecutionOutput(
+                context.db,
+                replay.invocation,
+                await get({ actor, id: replay.invocation.resultId }),
+              );
+              await npReconcileChangeSetExecutionProjectionV1({
+                db: context.db,
+                siteId: context.siteId,
+                invocationId: replay.invocation.id,
+                output,
+                now: context.now,
+              });
+            } else if (request.capabilityId === "changeset.list") {
+              if (
+                !replay.existing.outputRedacted ||
+                replay.existing.outputHash !==
+                  hash("np.agent-runtime-changeset-output.v1", replay.existing.outputRedacted)
+              )
+                throw denied();
+              output = npRequireAgentInstalledCapabilityOutputV1(
+                request.capabilityId,
+                replay.existing.outputRedacted,
+              );
+              for (const item of output.items) await get({ actor, id: item.id });
+            } else {
+              const id =
+                replay.invocation.resultId ??
+                (typeof replay.existing.outputRedacted?.changeSetId === "string"
+                  ? replay.existing.outputRedacted.changeSetId
+                  : null);
+              if (!id) throw denied();
+              output = {
+                schemaVersion: "np.agent-changeset-result.v1",
+                changeSet: await get({ actor, id }),
+              };
+            }
+            requireScopes(resolved, replay.existing.requiredScopes);
+            return {
+              invocationId: replay.invocation.id,
+              capabilityId: request.capabilityId,
+              output,
+            };
+          }),
+      );
+    const result = await invokeCapabilityAsActor({ actor, request });
+    return options.runtimeAdmission.withCurrentRun(
+      { siteId: input.siteId, runId: input.runId, claim: input.claim },
+      (context) =>
+        runtimeChangeSetTransaction.run(context.db, async () => {
+          requireRuntimeMode(context, request);
+          const [invocation] = await context.db
+            .select()
+            .from(npAgentInvocations)
+            .where(
+              and(
+                eq(npAgentInvocations.siteId, input.siteId),
+                eq(npAgentInvocations.id, result.invocationId),
+              ),
+            )
+            .limit(1);
+          if (!invocation) throw missing();
+          const [action] = await context.db
+            .select()
+            .from(npAgentActions)
+            .where(
+              and(
+                eq(npAgentActions.siteId, input.siteId),
+                eq(npAgentActions.invocationId, invocation.id),
+              ),
+            )
+            .limit(1);
+          if (action && (action.runId !== input.runId || action.sequence !== input.sequence))
+            throw conflict();
+          if (!action) throw missing();
+          return {
+            invocationId: result.invocationId,
+            capabilityId: request.capabilityId,
+            output: result.output,
+          };
+        }),
+    );
+  }
+  async function appendRuntimeAction(
+    input: Extract<NpAgentChangeSetActorV1, { kind: "runtime" }>,
+    request: NpAgentChangeSetCapabilityInvocationRequestV1,
+    invocationId: string,
+    output: object,
+  ) {
+    if (!input.sequence) throw denied();
+    return withRuntime(input, async (context) => {
+      const [invocation] = await context.db
+        .select()
+        .from(npAgentInvocations)
+        .where(
+          and(eq(npAgentInvocations.siteId, input.siteId), eq(npAgentInvocations.id, invocationId)),
+        )
+        .limit(1);
+      if (!invocation || !invocation.capabilityDefinitionBody) throw missing();
+
+      const id = randomUUID();
+      const canonical = npRequireAgentActionCanonical({
+        schemaVersion: "np.agent-action.v1",
+        siteId: input.siteId,
+        actionId: id,
+        invocationFingerprint: invocation.requestHash,
+        runFingerprint: context.run.admissionFingerprint,
+        sequence: input.sequence!,
+        capabilityId: request.capabilityId,
+        capabilityContractVersion: invocation.contractVersion,
+        capabilityFingerprint: invocation.contractFingerprint,
+        effectProfile: {
+          id: invocation.effectProfileId,
+          contractVersion: invocation.effectContractVersion,
+        },
+        risk: invocation.effectProfileId === "domain.read" ? "read" : "reversible",
+        requiredScopes: npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(request.capabilityId)
+          .capabilities[0].descriptor.requiredScopes,
+        targetRefs: [],
+        targetVersionFacts: [],
+        input: request.arguments.input,
+      });
+      await context.db.insert(npAgentActions).values({
+        id,
+        siteId: input.siteId,
+        runId: input.runId,
+        runFingerprint: context.run.admissionFingerprint,
+        invocationId: invocation.id,
+        invocationFingerprint: invocation.requestHash,
+        sequence: input.sequence!,
+        capabilityId: request.capabilityId,
+        capabilityContractVersion: invocation.contractVersion,
+        capabilityFingerprint: invocation.contractFingerprint,
+        capabilityDefinitionBody: invocation.capabilityDefinitionBody,
+        effectProfileId: canonical.effectProfile.id,
+        effectContractVersion: canonical.effectProfile.contractVersion,
+        risk: canonical.risk,
+        state: "succeeded",
+        idempotencyKey: request.arguments.idempotencyKey,
+        inputRedacted: {},
+        inputCanonical: canonical.input,
+        requiredScopes: canonical.requiredScopes,
+        targetRefs: [],
+        targetVersionFacts: [],
+        inputHash: await npDigestAgentActionCanonical(canonical),
+        auditEventId: invocation.auditEventId,
+        outputRedacted: json(output),
+        outputHash: hash("np.agent-runtime-changeset-output.v1", output),
+        createdAt: context.now,
+        startedAt: context.now,
+        finishedAt: context.now,
+      } satisfies typeof npAgentActions.$inferInsert);
+      await context.db
+        .update(npAgentInvocations)
+        .set({ runId: input.runId })
+        .where(eq(npAgentInvocations.id, invocation.id));
+    });
+  }
+  async function verifyRuntimeAction(
+    context: NpAgentRuntimeRunContextV1,
+    action: typeof npAgentActions.$inferSelect,
+  ) {
+    const authority = await npRuntimeAuthorizationContextV1(context);
+    if (
+      action.siteId !== context.siteId ||
+      action.runId !== context.run.id ||
+      action.runFingerprint !== context.run.admissionFingerprint ||
+      !action.invocationId
+    )
+      throw denied();
+    const canonical = npRequireAgentActionCanonical({
+      schemaVersion: "np.agent-action.v1",
+      siteId: action.siteId,
+      actionId: action.id,
+      invocationFingerprint: action.invocationFingerprint,
+      runFingerprint: action.runFingerprint,
+      sequence: action.sequence,
+      capabilityId: action.capabilityId,
+      capabilityContractVersion: action.capabilityContractVersion,
+      capabilityFingerprint: action.capabilityFingerprint,
+      effectProfile: { id: action.effectProfileId, contractVersion: action.effectContractVersion },
+      risk: action.risk,
+      requiredScopes: action.requiredScopes,
+      targetRefs: action.targetRefs,
+      targetVersionFacts: action.targetVersionFacts,
+      input: action.inputCanonical,
+    });
+    const [invocation] = await context.db
+      .select()
+      .from(npAgentInvocations)
+      .where(
+        and(
+          eq(npAgentInvocations.siteId, context.siteId),
+          eq(npAgentInvocations.id, action.invocationId),
+        ),
+      )
+      .limit(1);
+    if (
+      (await npDigestAgentActionCanonical(canonical)) !== action.inputHash ||
+      !invocation ||
+      invocation.runId !== context.run.id ||
+      invocation.transport !== "runtime" ||
+      invocation.principalId !== context.evidence.principal.id ||
+      invocation.authorizationContextFingerprint !== authority.authorizationContextFingerprint ||
+      !sameJson(invocation.authorizationContextBody, authority.authorizationContext) ||
+      invocation.requestHash !== action.invocationFingerprint ||
+      invocation.operationId !== action.capabilityId ||
+      (await npDigestAgentInvocationRequestCanonical(invocation.requestBody)) !==
+        invocation.requestHash ||
+      !sameJson(invocation.requestBody.input, action.inputCanonical)
+    )
+      throw denied();
+    const definition = npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(
+      action.capabilityId as NpAgentChangeSetCapabilityIdV1,
+    );
+    if (
+      !sameJson(definition, action.capabilityDefinitionBody) ||
+      (await npDigestAgentCapabilityRegistryCanonical(definition, definition.capabilities)) !==
+        action.capabilityFingerprint
+    )
+      throw denied();
+    requireRuntimeMode(
+      context,
+      npRequireAgentInstalledCapabilityInvocationRequestV1({
+        schemaVersion: "np.agent-invocation-request.v1",
+        capabilityId: action.capabilityId,
+        arguments: { input: action.inputCanonical, idempotencyKey: action.idempotencyKey },
+      }) as NpAgentChangeSetCapabilityInvocationRequestV1,
+    );
+    return invocation;
+  }
+  async function projectRuntimeAction(
+    context: NpAgentRuntimeRunContextV1,
+    actionId: string,
+  ): Promise<{
+    capabilityId: NpAgentChangeSetCapabilityIdV1;
+    state: "succeeded";
+    safeCode: null;
+    references?: NpAgentRuntimeChangeSetReferencesV1;
+  } | null> {
+    return runtimeChangeSetTransaction.run(context.db, async () => {
+      try {
+        const [action] = await context.db
+          .select()
+          .from(npAgentActions)
+          .where(
+            and(
+              eq(npAgentActions.siteId, context.siteId),
+              eq(npAgentActions.runId, context.run.id),
+              eq(npAgentActions.id, actionId),
+            ),
+          )
+          .limit(1);
+        if (!action || action.state !== "succeeded") return null;
+        const invocation = await verifyRuntimeAction(context, action);
+        const actor = await runtimeActor(
+          { kind: "runtime", siteId: context.siteId, runId: context.run.id },
+          context,
+        );
+        const ids = new Set<string>();
+        if (invocation.resultId) ids.add(invocation.resultId);
+        const output = action.outputRedacted;
+        if (output && "items" in output && Array.isArray(output.items))
+          for (const item of output.items) {
+            if (
+              !item ||
+              typeof item !== "object" ||
+              Array.isArray(item) ||
+              typeof item.id !== "string"
+            )
+              return null;
+            ids.add(item.id);
+          }
+        if (
+          !output ||
+          action.outputHash !==
+            (action.capabilityId === "changeset.apply" ||
+            action.capabilityId === "changeset.schedule" ||
+            action.capabilityId === "changeset.rollback"
+              ? npDigestChangeSetExecutionProjectionV1(output)
+              : hash("np.agent-runtime-changeset-output.v1", output))
+        )
+          return null;
+        const changeSets: NpAgentChangeSetWire[] = [];
+        for (const id of ids) {
+          const [row] = await context.db
+            .select()
+            .from(npAgentChangesets)
+            .where(parentWhere(context.siteId, id))
+            .limit(1);
+          if (!row) return null;
+          changeSets.push(await project(row, actor, false, context.db, true));
+        }
+        const outputBody =
+          action.capabilityId === "changeset.list"
+            ? npRequireAgentInstalledCapabilityOutputV1("changeset.list", {
+                ...output,
+                items: changeSets,
+              })
+            : npRequireAgentInstalledCapabilityOutputV1(
+                action.capabilityId as NpAgentChangeSetCapabilityIdV1,
+                ["changeset.apply", "changeset.schedule", "changeset.rollback"].includes(
+                  action.capabilityId,
+                )
+                  ? { ...output, changeSet: changeSets[0] }
+                  : { schemaVersion: "np.agent-changeset-result.v1", changeSet: changeSets[0] },
+              );
+        const selected = "items" in outputBody ? outputBody.items : [outputBody.changeSet];
+        return {
+          capabilityId: action.capabilityId as NpAgentChangeSetCapabilityIdV1,
+          state: "succeeded",
+          safeCode: null,
+          references: {
+            changeSets: selected.map((row) => ({
+              changeSetId: row.id,
+              state: row.state,
+              draftVersion: row.draftVersion,
+              draftHash: row.draftHash,
+              planHash: row.planHash,
+              previewId: row.preview?.previewId ?? null,
+              previewState: row.preview?.state ?? null,
+              approvalId: row.approval?.id ?? null,
+              approvalState: row.approval?.state ?? null,
+              executionId: row.execution?.executionId ?? null,
+              executionState: row.execution?.state ?? null,
+              rollbackPlanId: row.rollback?.rollbackPlanId ?? null,
+              rollbackPlanHash: row.rollback?.planHash ?? null,
+              rollbackState: row.rollback?.state ?? null,
+            })),
+            nextCursor: "nextCursor" in outputBody ? outputBody.nextCursor : null,
+          },
+        };
+      } catch {
+        return null;
+      }
+    });
+  }
+  async function runtimeApprovalEvidence(
+    context: NpAgentRuntimeRunContextV1,
+    requestActionId: string,
+  ) {
+    if (!approvals || !uuid.test(requestActionId)) throw missing();
+    const [action] = await context.db
+      .select()
+      .from(npAgentActions)
+      .where(
+        and(
+          eq(npAgentActions.siteId, context.siteId),
+          eq(npAgentActions.runId, context.run.id),
+          eq(npAgentActions.id, requestActionId),
+        ),
+      )
+      .limit(1);
+    if (!action || action.state !== "approval_pending") throw denied();
+    const approvalId = action.outputRedacted?.approvalId;
+    if (typeof approvalId !== "string" || !uuid.test(approvalId)) throw denied();
+    const invocation = await verifyRuntimeAction(context, action);
+    if (
+      !invocation.outputRedacted ||
+      invocation.outputRedacted.approvalId !== approvalId ||
+      invocation.outputHash !== hash("np.agent-changeset-result.v1", invocation.outputRedacted) ||
+      !action.outputRedacted ||
+      action.outputRedacted.approvalId !== approvalId ||
+      action.outputHash !== npDigestChangeSetExecutionProjectionV1(action.outputRedacted)
+    )
+      throw denied();
+    const request = npRequireAgentInstalledCapabilityInvocationRequestV1({
+      schemaVersion: "np.agent-invocation-request.v1",
+      capabilityId: action.capabilityId,
+      arguments: { input: action.inputCanonical, idempotencyKey: action.idempotencyKey },
+    });
+    if (
+      request.capabilityId !== "changeset.apply" &&
+      request.capabilityId !== "changeset.schedule" &&
+      request.capabilityId !== "changeset.rollback"
+    )
+      throw denied();
+    if (
+      request.capabilityId === "changeset.rollback"
+        ? request.arguments.input.mode !== "request_approval"
+        : request.arguments.input.approvalId !== null
+    )
+      throw denied();
+    if (!("planHash" in request.arguments.input)) throw denied();
+    const [approval] = await context.db
+      .select()
+      .from(npAgentApprovals)
+      .where(and(eq(npAgentApprovals.siteId, context.siteId), eq(npAgentApprovals.id, approvalId)))
+      .limit(1);
+    if (!approval) throw denied();
+    const { statement } = await approvals.verify(approval);
+    if (
+      statement.requester.kind !== "principal" ||
+      statement.requester.fingerprint !== invocation.actorFingerprint ||
+      approval.requestedByPrincipalId !== context.evidence.principal.id ||
+      statement.capabilityId !== action.capabilityId ||
+      statement.capabilityFingerprint !== action.capabilityFingerprint ||
+      (statement.target.kind !== "changeset" && statement.target.kind !== "changeset_rollback") ||
+      statement.target.changeSetId !== request.arguments.input.changeSetId ||
+      statement.target.planHash !== request.arguments.input.planHash ||
+      (request.capabilityId === "changeset.schedule" &&
+        (statement.target.kind !== "changeset" ||
+          statement.target.scheduledFor !== request.arguments.input.scheduledFor)) ||
+      (request.capabilityId === "changeset.rollback" &&
+        (statement.target.kind !== "changeset_rollback" ||
+          !("rollbackPlanId" in request.arguments.input) ||
+          statement.target.rollbackPlanId !== request.arguments.input.rollbackPlanId))
+    )
+      throw denied();
+    const actor = await runtimeActor(
+      { kind: "runtime", siteId: context.siteId, runId: context.run.id },
+      context,
+    );
+    const [row] = await context.db
+      .select()
+      .from(npAgentChangesets)
+      .where(parentWhere(context.siteId, statement.target.changeSetId))
+      .limit(1);
+    if (!row) throw missing();
+    await project(row, actor, false, context.db, false);
+    const key = hash("np.agent-runtime-approved-execution.v1", {
+      runId: context.run.id,
+      requestActionId,
+      approvalId: approval.id,
+      statementHash: approval.statementHash,
+    });
+    const executionRequest = npRequireAgentInstalledCapabilityInvocationRequestV1({
+      schemaVersion: "np.agent-invocation-request.v1",
+      capabilityId: request.capabilityId,
+      arguments: {
+        idempotencyKey: key,
+        input: {
+          ...request.arguments.input,
+          approvalId: approval.id,
+          ...(request.capabilityId === "changeset.rollback" ? { mode: "execute_approved" } : {}),
+        },
+      },
+    }) as NpAgentChangeSetCapabilityInvocationRequestV1;
+    requireRuntimeMode(context, executionRequest);
+    const [executionAction] = await context.db
+      .select()
+      .from(npAgentActions)
+      .where(
+        and(
+          eq(npAgentActions.siteId, context.siteId),
+          eq(npAgentActions.runId, context.run.id),
+          eq(npAgentActions.idempotencyKey, key),
+        ),
+      )
+      .limit(1);
+    if (executionAction) {
+      const executionInvocation = await verifyRuntimeAction(context, executionAction);
+      if (
+        executionAction.id === action.id ||
+        executionAction.sequence <= action.sequence ||
+        executionAction.approvalId !== approval.id ||
+        !sameJson(executionInvocation.requestBody.input, executionRequest.arguments.input)
+      )
+        throw denied();
+      const [execution] = await context.db
+        .select()
+        .from(npAgentChangesetExecutions)
+        .where(
+          and(
+            eq(npAgentChangesetExecutions.siteId, context.siteId),
+            eq(npAgentChangesetExecutions.invocationId, executionInvocation.id),
+          ),
+        )
+        .limit(1);
+      if (
+        !execution ||
+        execution.approvalId !== approval.id ||
+        execution.planHash !== statement.target.planHash ||
+        execution.changesetId !== row.id
+      )
+        throw denied();
+      if (execution.state === "succeeded") {
+        if (
+          approval.state !== "consumed" ||
+          executionAction.state !== "succeeded" ||
+          !executionAction.outputRedacted ||
+          executionAction.outputHash !==
+            npDigestChangeSetExecutionProjectionV1(executionAction.outputRedacted) ||
+          !npHasFreshChangeSetExecutionOutputV1(
+            execution,
+            npRequireAgentChangeSetExecutionOutputV1(executionAction.outputRedacted),
+          )
+        )
+          throw denied();
+        return {
+          status: "completed" as const,
+          requestActionId,
+          executionActionId: executionAction.id,
+          executionSequence: executionAction.sequence,
+          request: executionRequest,
+        };
+      }
+      if (!["reserved", "committed", "verifying"].includes(execution.state)) throw denied();
+      return {
+        status: "unresolved" as const,
+        requestActionId,
+        executionActionId: executionAction.id,
+        executionSequence: executionAction.sequence,
+        request: executionRequest,
+      };
+    }
+    if (approval.expiresAt <= context.now || !["pending", "approved"].includes(approval.state))
+      throw denied();
+    if (approval.state === "approved") await liveApprover(context.db, approval);
+    return {
+      status: approval.state === "approved" ? ("ready" as const) : ("pending" as const),
+      requestActionId,
+      executionActionId: null,
+      executionSequence: null,
+      request: executionRequest,
+    };
+  }
+  async function inspectRuntimeApproval(
+    context: NpAgentRuntimeRunContextV1,
+    requestActionId: string,
+  ): Promise<NpAgentRuntimeApprovalInspectionV1> {
+    return runtimeChangeSetTransaction.run(context.db, async () => {
+      const { request: _request, ...receipt } = await runtimeApprovalEvidence(
+        context,
+        requestActionId,
+      );
+      return receipt;
+    });
+  }
+  async function resumeRuntimeApproval(
+    input: Omit<NpAgentRuntimeChangeSetInvocationV1, "request"> & { requestActionId: string },
+  ): Promise<NpAgentRuntimeChangeSetResultV1> {
+    if (!options.runtimeAdmission) throw denied();
+    input = {
+      siteId: input.siteId,
+      runId: input.runId,
+      claim: { ...input.claim },
+      sequence: input.sequence,
+      requestActionId: input.requestActionId,
+    };
+    // Inspect before the invocation claims its own exact transaction; no pool reentry under a run lock.
+    const evidence = await options.runtimeAdmission.withCurrentRun(
+      { siteId: input.siteId, runId: input.runId, claim: input.claim },
+      (context) =>
+        runtimeChangeSetTransaction.run(context.db, () =>
+          runtimeApprovalEvidence(context, input.requestActionId),
+        ),
+    );
+    if (
+      evidence.status === "pending" ||
+      (evidence.executionSequence !== null && evidence.executionSequence !== input.sequence)
+    )
+      throw conflict();
+    return invokeRuntimeCapability({ ...input, request: evidence.request });
+  }
+
   async function invokeCapability(input: {
     authentication: NpAgentCapabilityAuthenticationV1;
     request: NpAgentChangeSetCapabilityInvocationRequestV1;
     taskRequest?: NpAgentMcpTaskRequestV1;
   }) {
+    return invokeCapabilityAsActor({
+      actor: { kind: "principal", authentication: input.authentication },
+      request: input.request,
+      taskRequest: input.taskRequest,
+    });
+  }
+  async function invokeCapabilityAsActor(input: {
+    actor: Exclude<NpAgentChangeSetActorV1, { kind: "staff" }>;
+    request: NpAgentChangeSetCapabilityInvocationRequestV1;
+    taskRequest?: NpAgentMcpTaskRequestV1;
+  }) {
     const request = npRequireAgentInstalledCapabilityInvocationRequestV1(input.request);
-    if (!request.capabilityId.startsWith("changeset.") || !options.admission) throw missing();
+    if (!request.capabilityId.startsWith("changeset.")) throw missing();
     if (
       input.taskRequest &&
       (!options.tasks ||
@@ -4327,13 +5286,18 @@ export function createAgentChangeSetServiceV1(
         ))
     )
       throw missing();
-    const projected = await options.admission.project({ authentication: input.authentication });
-    if (!projected.entries.some((entry) => entry.definition.descriptor.id === request.capabilityId))
-      throw missing();
-    const actorInput: NpAgentChangeSetActorV1 = {
-      kind: "principal",
-      authentication: input.authentication,
-    };
+    const actorInput = input.actor;
+    const authorizationContext = await principalContext(actorInput);
+    if (actorInput.kind === "principal") {
+      if (!options.admission) throw missing();
+      const projected = await options.admission.project({
+        authentication: actorInput.authentication,
+      });
+      if (
+        !projected.entries.some((entry) => entry.definition.descriptor.id === request.capabilityId)
+      )
+        throw missing();
+    }
     return gatewayExecutionContext.run({ taskRequest: input.taskRequest }, () =>
       gatewayRequestContext.run(
         request as NpAgentChangeSetCapabilityInvocationRequestV1,
@@ -4418,9 +5382,8 @@ export function createAgentChangeSetServiceV1(
           }
           npRequireAgentInstalledCapabilityOutputV1(request.capabilityId, output);
           const actor = await resolve(actorInput, request.capabilityId === "changeset.create");
-          const authFingerprint = await npDigestAgentAuthorizationContextCanonical(
-            input.authentication.authorizationContext,
-          );
+          const authFingerprint =
+            await npDigestAgentAuthorizationContextCanonical(authorizationContext);
           if (request.arguments.idempotencyKey !== null) {
             const [invocation] = await getDb()
               .select({ id: npAgentInvocations.id })
@@ -4445,7 +5408,6 @@ export function createAgentChangeSetServiceV1(
               task: gatewayExecutionContext.getStore()?.task,
             };
           }
-          if (!options.admission) throw missing();
           const definitionBody = npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(
             request.capabilityId,
           );
@@ -4467,11 +5429,11 @@ export function createAgentChangeSetServiceV1(
             input: request.arguments.input,
           });
           const requestHash = await npDigestAgentInvocationRequestCanonical(body);
-          const invocationId = await options.admission.withCurrentAuthority({
-            authentication: input.authentication,
-            requiredScopes: ["changeset:read"],
-            minimumExposure: "read",
-            mutate: async (db, time) => {
+          const invocationId = await withPrincipal(
+            actorInput,
+            ["changeset:read"],
+            "read",
+            async (db, time) => {
               const id = randomUUID();
               const [audit] = await db
                 .insert(npAuditEvents)
@@ -4492,9 +5454,9 @@ export function createAgentChangeSetServiceV1(
                 actorKind: "principal",
                 principalId: actor.principalId,
                 actorFingerprint: actor.fingerprint,
-                authorizationContextBody: input.authentication.authorizationContext,
+                authorizationContextBody: authorizationContext,
                 authorizationContextFingerprint: authFingerprint,
-                authorityRef: input.authentication.authorizationContext.authorityRef,
+                authorityRef: authorizationContext.authorityRef,
                 operationKind: "capability",
                 operationId: request.capabilityId,
                 contractVersion: 1,
@@ -4502,15 +5464,17 @@ export function createAgentChangeSetServiceV1(
                 capabilityDefinitionBody: definitionBody,
                 effectProfileId: "domain.read",
                 effectContractVersion: 1,
-                transport: input.authentication.authorizationContext.transport,
+                transport: authorizationContext.transport,
                 mcpExecutionMode: ["mcp-service", "mcp-oauth"].includes(
-                  input.authentication.authorizationContext.transport,
+                  authorizationContext.transport,
                 )
                   ? "normal"
                   : null,
                 idempotencyKey: null,
                 requestBody: body,
                 requestHash,
+                resultKind: "changeSet" in output ? "changeset" : null,
+                resultId: "changeSet" in output ? output.changeSet.id : null,
                 state: "completed",
                 auditEventId: audit.id,
                 requestedAt: time,
@@ -4521,9 +5485,11 @@ export function createAgentChangeSetServiceV1(
                   itemCount: "items" in output ? output.items.length : 1,
                 }),
               });
+              if (actorInput.kind === "runtime")
+                await appendRuntimeAction(actorInput, request, id, output);
               return id;
             },
-          });
+          );
           return { invocationId, output };
         },
       ),
@@ -5159,9 +6125,7 @@ export function createAgentChangeSetServiceV1(
         if (
           seed.requesterFingerprint !== actor.fingerprint ||
           seed.authorizationContextFingerprint !==
-            (await npDigestAgentAuthorizationContextCanonical(
-              input.actor.authentication.authorizationContext,
-            ))
+            (await npDigestAgentAuthorizationContextCanonical(await principalContext(input.actor)))
         )
           throw denied();
       }
@@ -6014,9 +6978,7 @@ export function createAgentChangeSetServiceV1(
         if (
           seed.requesterFingerprint !== actor.fingerprint ||
           seed.authorizationContextFingerprint !==
-            (await npDigestAgentAuthorizationContextCanonical(
-              input.actor.authentication.authorizationContext,
-            ))
+            (await npDigestAgentAuthorizationContextCanonical(await principalContext(input.actor)))
         )
           throw denied();
       }
@@ -6114,8 +7076,8 @@ export function createAgentChangeSetServiceV1(
           .for("update")
           .limit(1);
         if (!a || a.statementHash !== command.statementHash) throw conflict();
-        if (input.actor.kind === "principal")
-          await assertGatewayApprovalActor(db, input.actor.authentication, a, actor);
+        if (input.actor.kind !== "staff")
+          await assertGatewayApprovalActor(db, await principalContext(input.actor), a, actor);
         await checkRollbackApproval(db, row, plan, a, actor);
         const [invocation] = await db
           .select()
@@ -6997,6 +7959,28 @@ export function createAgentChangeSetServiceV1(
     }
     if (statement.requester.kind === "staff")
       return getDb().transaction((db) => human(db), { isolationLevel: "serializable" });
+    if (seed.authorizationContextBody.authorityRef.kind === "runtime-run")
+      return withStoredActor(seed, (db, actor) =>
+        withRuntime(
+          {
+            kind: "runtime",
+            siteId: a.siteId,
+            runId:
+              seed.authorizationContextBody.authorityRef.kind === "runtime-run"
+                ? seed.authorizationContextBody.authorityRef.runId
+                : "",
+          },
+          async (current) => {
+            const mode = current.policy.effective.capabilityModes.find(
+              (entry) => entry.capabilityId === statement.capabilityId,
+            )?.mode;
+            if (!mode || !npAgentAutonomyAllowsV1(mode, "execute-approved"))
+              throw executeError("AUTHORIZATION_CHANGED");
+            requireScopes(actor, statement.requiredScopes);
+            return human(db, actor);
+          },
+        ),
+      );
     if (!options.admission || !options.gateway) throw executeError("AUTHORIZATION_CHANGED");
     return options.admission.withStoredAuthority({
       authorizationContext: seed.authorizationContextBody,
@@ -7097,7 +8081,7 @@ export function createAgentChangeSetServiceV1(
   }
   async function assertGatewayApprovalActor(
     db: Db,
-    authentication: NpAgentCapabilityAuthenticationV1,
+    authorizationContext: NpAgentAuthorizationContextCanonicalV1,
     approval: ApprovalRow,
     actor: Actor,
   ) {
@@ -7147,8 +8131,7 @@ export function createAgentChangeSetServiceV1(
             .limit(1);
     if (
       !seed ||
-      seed.fingerprint !==
-        (await npDigestAgentAuthorizationContextCanonical(authentication.authorizationContext))
+      seed.fingerprint !== (await npDigestAgentAuthorizationContextCanonical(authorizationContext))
     )
       throw denied();
     const id = statement.capabilityId;
@@ -7339,8 +8322,8 @@ export function createAgentChangeSetServiceV1(
                 now(),
               )
             : await npResolveLiveAgentStaffAuthorizationV1(db, actor.siteId, actor.user.id);
-        if (input.actor.kind === "principal") {
-          await assertGatewayApprovalActor(db, input.actor.authentication, a, actor);
+        if (input.actor.kind !== "staff") {
+          await assertGatewayApprovalActor(db, await principalContext(input.actor), a, actor);
         }
         if (
           a.requiredHumanCapabilities.some(
@@ -8092,6 +9075,10 @@ export function createAgentChangeSetServiceV1(
     get,
     getReview,
     invokeCapability,
+    invokeRuntimeCapability,
+    inspectRuntimeApproval,
+    projectRuntimeAction,
+    resumeRuntimeApproval,
     list,
     reconcileExpired,
     validate,

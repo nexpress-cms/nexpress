@@ -12,7 +12,16 @@ import type { NpAgentCapabilityAuthenticationV1 } from "./capability-admission.j
 
 /** Explicitly installed projection of the existing service, including its journals and authority checks. */
 export function createAgentChangeSetCapabilityFacadeV1(
-  service: Pick<NpAgentChangeSetServiceV1, "invokeCapability" | "capabilityIds">,
+  service: Pick<NpAgentChangeSetServiceV1, "invokeCapability" | "capabilityIds"> &
+    Partial<
+      Pick<
+        NpAgentChangeSetServiceV1,
+        | "invokeRuntimeCapability"
+        | "inspectRuntimeApproval"
+        | "resumeRuntimeApproval"
+        | "projectRuntimeAction"
+      >
+    >,
 ) {
   if (
     service.capabilityIds.some(
@@ -52,6 +61,40 @@ export function createAgentChangeSetCapabilityFacadeV1(
         entries.set(id, cached);
       }
       return cached;
+    },
+    async projectRuntimeAction(
+      ...input: Parameters<NpAgentChangeSetServiceV1["projectRuntimeAction"]>
+    ) {
+      return service.projectRuntimeAction ? service.projectRuntimeAction(...input) : null;
+    },
+    async invokeRuntime(
+      input: Parameters<NpAgentChangeSetServiceV1["invokeRuntimeCapability"]>[0],
+    ) {
+      if (!service.invokeRuntimeCapability)
+        throw new Error("Runtime ChangeSet service is unavailable.");
+      const result = await service.invokeRuntimeCapability(input);
+      return npRequireAgentChangeSetCapabilityInvocationResultV1({
+        schemaVersion: "np.agent-changeset-invocation-result.v1",
+        ...result,
+      });
+    },
+    async inspectRuntimeApproval(
+      ...input: Parameters<NpAgentChangeSetServiceV1["inspectRuntimeApproval"]>
+    ) {
+      if (!service.inspectRuntimeApproval)
+        throw new Error("Runtime ChangeSet service is unavailable.");
+      return service.inspectRuntimeApproval(...input);
+    },
+    async resumeRuntimeApproval(
+      input: Parameters<NpAgentChangeSetServiceV1["resumeRuntimeApproval"]>[0],
+    ) {
+      if (!service.resumeRuntimeApproval)
+        throw new Error("Runtime ChangeSet service is unavailable.");
+      const result = await service.resumeRuntimeApproval(input);
+      return npRequireAgentChangeSetCapabilityInvocationResultV1({
+        schemaVersion: "np.agent-changeset-invocation-result.v1",
+        ...result,
+      });
     },
     async invoke(
       authentication: NpAgentCapabilityAuthenticationV1,

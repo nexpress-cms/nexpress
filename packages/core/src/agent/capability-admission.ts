@@ -1,4 +1,7 @@
+import { npAgentAutonomyAllowsV1 } from "../agent-contract/runtime-policy.js";
+import type { NpAgentRuntimeChangeSetReferencesV1 } from "./changeset-service.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
+import { npRuntimeAuthorizationContextV1 } from "./runtime-admission.js";
 import type {
   NpAgentRuntimeAdmissionV1,
   NpAgentRuntimeRunContextV1,
@@ -565,33 +568,10 @@ export function createAgentCapabilityAdmissionServiceV1(
     };
   }
   async function runtimeAuthentication(context: NpAgentRuntimeRunContextV1) {
-    const authorizationContext = npRequireAgentAuthorizationContextCanonical({
-      schemaVersion: "np.agent-authorization-context.v1",
-      siteId: context.siteId,
-      actor: {
-        kind: "principal",
-        principalId: context.evidence.principal.id,
-        actorFingerprint: digest("np.agent-principal-actor.v1", {
-          siteId: context.siteId,
-          principalId: context.evidence.principal.id,
-        }),
-      },
-      transport: "runtime",
-      gatewayExposure: null,
-      authorityRef: {
-        kind: "runtime-run",
-        principalId: context.evidence.principal.id,
-        runId: context.run.id,
-        agentVersionId: context.evidence.version.id,
-        deadlineAt: context.run.deadlineAt.toISOString(),
-      },
-    });
     return {
       kind: "runtime" as const,
       scopes: context.evidence.definition.scopes,
-      authorizationContext,
-      authorizationContextFingerprint:
-        await npDigestAgentAuthorizationContextCanonical(authorizationContext),
+      ...(await npRuntimeAuthorizationContextV1(context)),
     };
   }
   async function currentRuntimeAction(
@@ -613,9 +593,9 @@ export function createAgentCapabilityAdmissionServiceV1(
       );
     const entry = options.registry.get(action.capabilityId as NpAgentReadCapabilityIdV1);
     if (
-      !service
-        .sourceEntries(context)
-        .some((item) => item.canonical.descriptor.id === action.capabilityId) ||
+      !(await service.sourceEntries(context)).some(
+        (item) => item.canonical.descriptor.id === action.capabilityId,
+      ) ||
       entry.capabilityFingerprint !== action.capabilityFingerprint ||
       serializeAgentCanonicalJson(entry.definitionCanonical) !==
         serializeAgentCanonicalJson(action.capabilityDefinitionBody)
@@ -688,6 +668,7 @@ export function createAgentCapabilityAdmissionServiceV1(
         siteId: context.siteId,
         principal,
         requestedAt: context.now.toISOString(),
+        staffUser: context.staffUser,
       })) ?? { additionalScopes: [], targetRefs: [], riskFloor: "read", approvalFloor: "none" },
     );
     if (
@@ -704,6 +685,7 @@ export function createAgentCapabilityAdmissionServiceV1(
       idempotencyKey: null,
       abortSignal: new AbortController().signal,
       transaction: context.db,
+      staffUser: context.staffUser,
     });
     return { entry, output: entry.definition.parseOutput(current.output), invocation };
   }
@@ -745,9 +727,9 @@ export function createAgentCapabilityAdmissionServiceV1(
       throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
     if (runtime) {
       if (
-        !service
-          .sourceEntries(runtime)
-          .some((item) => item.canonical.descriptor.id === capabilityId)
+        !(await service.sourceEntries(runtime)).some(
+          (item) => item.canonical.descriptor.id === capabilityId,
+        )
       )
         throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
     } else {
@@ -771,6 +753,7 @@ export function createAgentCapabilityAdmissionServiceV1(
         siteId: principal.siteId,
         principal,
         requestedAt,
+        ...(runtime ? { staffUser: runtime.staffUser } : {}),
       })) ?? { additionalScopes: [], targetRefs: [], riskFloor: "read", approvalFloor: "none" },
     );
     const requiredScopes = [
@@ -963,7 +946,7 @@ export function createAgentCapabilityAdmissionServiceV1(
         invocationId,
         idempotencyKey: null,
         abortSignal: input.abortSignal ?? new AbortController().signal,
-        ...(runtime ? { transaction: runtime.db } : {}),
+        ...(runtime ? { transaction: runtime.db, staffUser: runtime.staffUser } : {}),
       });
       const output = entry.definition.parseOutput(execution.output);
       const outputObject = asJsonObject(output);
@@ -1086,28 +1069,70 @@ export function createAgentCapabilityAdmissionServiceV1(
     }
   }
 
+  async function changeSetEntries() {
+    const facade = options.resolveChangeSetCapabilities?.();
+    const extra = facade ? await Promise.all(facade.ids.map((id) => facade.entry(id))) : [];
+    for (const [index, entry] of extra.entries()) {
+      const id = facade!.ids[index];
+      if (!npIsAgentChangeSetCapabilityIdV1(id) || (index > 0 && facade!.ids[index - 1] >= id))
+        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+      const expected = await expectedDefinition(id);
+      if (
+        !npIsAgentChangeSetCapabilityIdV1(id) ||
+        (index > 0 && facade!.ids[index - 1] >= id) ||
+        serializeAgentCanonicalJson(entry.definitionCanonical) !== expected.canonical ||
+        serializeAgentCanonicalJson(entry.canonical) !==
+          serializeAgentCanonicalJson(entry.definitionCanonical.capabilities[0]) ||
+        serializeAgentCanonicalJson(entry.definition) !==
+          serializeAgentCanonicalJson(entry.canonical) ||
+        entry.capabilityFingerprint !== expected.fingerprint
+      )
+        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+    }
+    return extra;
+  }
   const service = {
-    sourceEntries(context: Readonly<Omit<NpAgentRuntimeRunContextV1, "db">>) {
-      return options.registry.ids
-        .map((id) => options.registry.get(id))
+    async sourceEntries(context: Readonly<Omit<NpAgentRuntimeRunContextV1, "db">>) {
+      const recipe = context.evidence.registry.recipes.find(
+        (entry) => entry.id === context.run.recipeId && entry.version === context.run.recipeVersion,
+      );
+      const entries = [
+        ...options.registry.ids.map((id) => options.registry.get(id)),
+        ...(context.staffUser ? await changeSetEntries() : []),
+      ];
+      return entries
         .filter(
           (entry) =>
+            recipe?.capabilityIds.includes(entry.definition.descriptor.id) === true &&
             (context.evidence.principal.authorityKind === "user" ||
               entry.definition.descriptor.id === "content.query") &&
             context.evidence.definition.scopes.length > 0 &&
             context.policy.effective.capabilityModes.some(
-              (mode) => mode.capabilityId === entry.definition.descriptor.id,
+              (mode) =>
+                mode.capabilityId === entry.definition.descriptor.id &&
+                npAgentAutonomyAllowsV1(
+                  mode.mode,
+                  entry.definition.descriptor.risk === "read"
+                    ? "read"
+                    : ["changeset.apply", "changeset.schedule"].includes(
+                          entry.definition.descriptor.id,
+                        )
+                      ? "request-approval"
+                      : "propose",
+                ),
             ) &&
             entry.definition.descriptor.requiredScopes.every((scope) =>
               context.evidence.definition.scopes.includes(scope),
             ),
-        );
+        )
+        .sort((a, b) => a.canonical.descriptor.id.localeCompare(b.canonical.descriptor.id));
     },
     async runtimeActionOutcomes(context: NpAgentRuntimeRunContextV1): Promise<
       readonly {
-        capabilityId: NpAgentReadCapabilityIdV1;
+        capabilityId: NpAgentInstalledCapabilityIdV1;
         state: "succeeded";
         safeCode: null;
+        references?: NpAgentRuntimeChangeSetReferencesV1;
       }[]
     > {
       npAssertAgentPreviewEffectsAllowed();
@@ -1120,15 +1145,22 @@ export function createAgentCapabilityAdmissionServiceV1(
         .orderBy(desc(npAgentActions.sequence))
         .limit(32);
       const result: {
-        capabilityId: NpAgentReadCapabilityIdV1;
+        capabilityId: NpAgentInstalledCapabilityIdV1;
         state: "succeeded";
         safeCode: null;
+        references?: NpAgentRuntimeChangeSetReferencesV1;
       }[] = [];
       for (const row of rows.reverse()) {
         try {
+          if (npIsAgentChangeSetCapabilityIdV1(row.capabilityId)) {
+            const facade = options.resolveChangeSetCapabilities?.();
+            const projected = await facade?.projectRuntimeAction(context, row.id);
+            if (projected) result.push(projected);
+            continue;
+          }
           await currentRuntimeAction(context, row);
           result.push({
-            capabilityId: row.capabilityId as NpAgentReadCapabilityIdV1,
+            capabilityId: row.capabilityId as NpAgentInstalledCapabilityIdV1,
             state: "succeeded",
             safeCode: null,
           });
@@ -1137,6 +1169,22 @@ export function createAgentCapabilityAdmissionServiceV1(
         }
       }
       return result;
+    },
+    async inspectRuntimeApproval(context: NpAgentRuntimeRunContextV1, requestActionId: string) {
+      npAssertAgentPreviewEffectsAllowed();
+      const facade = options.resolveChangeSetCapabilities?.();
+      if (!context.staffUser || !facade)
+        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+      return facade.inspectRuntimeApproval(context, requestActionId);
+    },
+    async resumeRuntimeApproval(
+      input: Parameters<NpAgentChangeSetCapabilityFacadeV1["resumeRuntimeApproval"]>[0],
+    ) {
+      npAssertAgentPreviewEffectsAllowed();
+      const facade = options.resolveChangeSetCapabilities?.();
+      if (!options.runtimeAdmission || !facade)
+        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+      return facade.resumeRuntimeApproval(input);
     },
     async invokeRuntime<C extends NpAgentInstalledCapabilityIdV1>(input: {
       siteId: string;
@@ -1150,8 +1198,38 @@ export function createAgentCapabilityAdmissionServiceV1(
       if (!options.runtimeAdmission || !Number.isSafeInteger(input.sequence) || input.sequence < 1)
         throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
       const request = npRequireAgentInstalledCapabilityInvocationRequestV1(input.request);
-      if (npIsAgentChangeSetCapabilityIdV1(request.capabilityId))
-        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+      if (npIsAgentChangeSetCapabilityIdV1(request.capabilityId)) {
+        const facade = options.resolveChangeSetCapabilities?.();
+        if (!facade || !facade.ids.includes(request.capabilityId))
+          throw new NpAgentGatewayError(
+            "CAPABILITY_UNAVAILABLE",
+            404,
+            "Capability is unavailable.",
+          );
+        await options.runtimeAdmission.withCurrentRun(
+          { siteId: input.siteId, runId: input.runId, claim: input.claim },
+          async (context) => {
+            if (
+              !context.staffUser ||
+              !(await service.sourceEntries(context)).some(
+                (entry) => entry.canonical.descriptor.id === request.capabilityId,
+              )
+            )
+              throw new NpAgentGatewayError(
+                "CAPABILITY_UNAVAILABLE",
+                404,
+                "Capability is unavailable.",
+              );
+          },
+        );
+        return facade.invokeRuntime({
+          siteId: input.siteId,
+          runId: input.runId,
+          claim: input.claim,
+          sequence: input.sequence,
+          request: request as NpAgentChangeSetCapabilityInvocationRequestV1,
+        });
+      }
       const result = await options.runtimeAdmission.withCurrentRun(
         { siteId: input.siteId, runId: input.runId, claim: input.claim },
         async (context) => {
@@ -1368,33 +1446,7 @@ export function createAgentCapabilityAdmissionServiceV1(
         await assertCurrentAuthentication(rawTx, authentication, authentication.scopes, nowFn);
       });
       const transport = descriptorTransport(authentication.authorizationContext.transport);
-      const facade = options.resolveChangeSetCapabilities?.();
-      const extra = facade ? await Promise.all(facade.ids.map((id) => facade.entry(id))) : [];
-      for (const [index, entry] of extra.entries()) {
-        const id = facade!.ids[index];
-        if (!npIsAgentChangeSetCapabilityIdV1(id) || (index > 0 && facade!.ids[index - 1] >= id))
-          throw new NpAgentGatewayError(
-            "CAPABILITY_UNAVAILABLE",
-            404,
-            "Capability is unavailable.",
-          );
-        const expected = await expectedDefinition(id);
-        if (
-          !npIsAgentChangeSetCapabilityIdV1(id) ||
-          (index > 0 && facade!.ids[index - 1] >= id) ||
-          serializeAgentCanonicalJson(entry.definitionCanonical) !== expected.canonical ||
-          serializeAgentCanonicalJson(entry.canonical) !==
-            serializeAgentCanonicalJson(entry.definitionCanonical.capabilities[0]) ||
-          serializeAgentCanonicalJson(entry.definition) !==
-            serializeAgentCanonicalJson(entry.canonical) ||
-          entry.capabilityFingerprint !== expected.fingerprint
-        )
-          throw new NpAgentGatewayError(
-            "CAPABILITY_UNAVAILABLE",
-            404,
-            "Capability is unavailable.",
-          );
-      }
+      const extra = await changeSetEntries();
       const all = [...options.registry.ids.map((id) => options.registry.get(id)), ...extra].sort(
         (a, b) => a.definition.descriptor.id.localeCompare(b.definition.descriptor.id),
       );

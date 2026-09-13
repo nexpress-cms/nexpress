@@ -194,6 +194,7 @@ describe("Agent run-admission canonical body", () => {
       "connection",
       "admittedAt",
       "deadlineAt",
+      "runtimeAuthority",
     ]);
     expect(npAgentRunAdmissionCanonicalExcludedKeysV1).toEqual([
       "admissionHash",
@@ -505,5 +506,52 @@ describe("Agent run-admission canonical body", () => {
         runAdmission({ goal: "Assess one different bounded Agent abuse signal" }),
       ),
     ).not.toBe(goldenDigest);
+  });
+});
+
+describe("Runtime frozen authority evidence", () => {
+  const authority = {
+    principalTokenVersion: 2,
+    authorityFingerprint: `cj1:sha256:${"A".repeat(43)}`,
+    deploymentAuthorityFingerprint: `cj1:sha256:${"B".repeat(43)}`,
+    staffAuthorizationFingerprint: `cj1:sha256:${"C".repeat(43)}`,
+  };
+  it("binds every authority field while preserving legacy omission", async () => {
+    const legacy = runAdmission();
+    expect(npRequireAgentRunAdmissionCanonical(legacy)).not.toHaveProperty("runtimeAuthority");
+    const bound = { ...legacy, runtimeAuthority: authority };
+    expect(npRequireAgentRunAdmissionCanonical(bound).runtimeAuthority).toEqual(authority);
+    const fingerprint = await npDigestAgentRunAdmissionCanonical(bound);
+    expect(fingerprint).toBe("cj1:sha256:HSaLb2UUq3GVDqe0buKx8-MFGslidmWikre--RQoAQA");
+    expect(fingerprint).not.toBe(await npDigestAgentRunAdmissionCanonical(legacy));
+    for (const patch of [
+      { principalTokenVersion: 3 },
+      { authorityFingerprint: authority.deploymentAuthorityFingerprint },
+      { deploymentAuthorityFingerprint: authority.authorityFingerprint },
+      { staffAuthorizationFingerprint: null },
+    ])
+      expect(
+        await npDigestAgentRunAdmissionCanonical({
+          ...bound,
+          runtimeAuthority: { ...authority, ...patch },
+        }),
+      ).not.toBe(fingerprint);
+  });
+  it("rejects Gateway, malformed, unknown and explicitly absent authority", () => {
+    expect(
+      npAnalyzeAgentRunAdmissionCanonical({ ...gatewayAdmission(), runtimeAuthority: authority })
+        .ok,
+    ).toBe(false);
+    for (const runtimeAuthority of [
+      null,
+      undefined,
+      { ...authority, principalTokenVersion: 0 },
+      { ...authority, userId: "hidden" },
+      { ...authority, authorityFingerprint: "invalid" },
+      { ...authority, staffAuthorizationFingerprint: undefined },
+    ])
+      expect(npAnalyzeAgentRunAdmissionCanonical({ ...runAdmission(), runtimeAuthority }).ok).toBe(
+        false,
+      );
   });
 });

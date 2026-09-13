@@ -16,6 +16,7 @@ import {
   npAgentApprovalChallengeOutputSchemaV1,
   npAgentApprovalDetailSchemaV1,
 } from "./approval-contract.js";
+import { npAuthUuidPattern } from "../auth-contract/index.js";
 import type { NpCapability } from "../auth/capabilities.js";
 import { npApiErrorCodePattern } from "../api-contract/contract.js";
 import { npErrorStatusByCode } from "../api-contract/types.js";
@@ -886,6 +887,17 @@ function buildInputSchema(seed: OperationSeed): NpAgentJsonSchema {
     idempotencyKey: stringSchema(256, IDEMPOTENCY_PATTERN),
     ...command.properties,
   };
+  if (seed.id === "agents.configurations.create") {
+    properties.authority = {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        kind: { const: "user" },
+        userId: stringSchema(36, npAuthUuidPattern),
+      },
+      required: ["kind", "userId"],
+    };
+  }
   const required = ["idempotencyKey", ...command.required];
   for (const kind of seed.preconditions) {
     const precondition = PRECONDITION_FIELDS[kind];

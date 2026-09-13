@@ -1,3 +1,4 @@
+import type { NpAuthUser } from "../config/types.js";
 import type { getDb } from "../db/runtime.js";
 import {
   npAgentReadCapabilityDescriptorsV1,
@@ -43,6 +44,8 @@ export interface NpAgentReadRequirementContextV1 {
   siteId: string;
   principal: NpAgentResolvedCapabilityPrincipalV1;
   requestedAt: string;
+  /** Authoritative live Runtime staff projection; never supplied by a provider. */
+  staffUser?: NpAuthUser | null;
 }
 
 export interface NpAgentReadDerivedRequirementsV1 {

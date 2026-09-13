@@ -31,6 +31,7 @@ import {
 } from "../../../packages/core/src/agent-contract/studio-contract.js";
 import { npDigestAgentProviderRequestCanonical } from "../../../packages/core/src/agent-contract/canonical-provider.js";
 import type { NpAgentBudgetV1 } from "../../../packages/core/src/agent-contract/wire-contract.js";
+import type { NpAgentConfigurationDefinitionV1 } from "../../../packages/core/src/agent-contract/runtime-contract.js";
 import type {
   NpAgentJsonSchema,
   NpAgentProviderRequestCanonicalV1,
@@ -74,6 +75,8 @@ const classification = (sourceDigest: string) => ({
 
 export async function runtimeUsageFixture(
   options: {
+    delegated?: boolean;
+    definition?: NpAgentConfigurationDefinitionV1;
     budget?: NpAgentBudgetV1;
     agentBudget?: NpAgentBudgetV1;
     limits?: Partial<NpAgentRunLimitsV1>;
@@ -84,16 +87,18 @@ export async function runtimeUsageFixture(
   } = {},
 ) {
   const f = await runtimeFixture(options.budget ?? runtimeBudget());
-  const scopes: NpAgentScope[] = options.documentCollection
-    ? ["content:read", "schema:read", "site:read"]
-    : ["site:read"];
-  const modes: NpAgentCapabilityModeV1[] = options.documentCollection
-    ? [
-        { capabilityId: "content.query", mode: "observe" },
-        { capabilityId: "schema.get", mode: "observe" },
-        { capabilityId: "site.inspect", mode: "observe" },
-      ]
-    : [{ capabilityId: "site.inspect", mode: "observe" }];
+  const scopes: NpAgentScope[] =
+    options.definition?.scopes ??
+    (options.documentCollection ? ["content:read", "schema:read", "site:read"] : ["site:read"]);
+  const modes: NpAgentCapabilityModeV1[] =
+    options.definition?.capabilityModes ??
+    (options.documentCollection
+      ? [
+          { capabilityId: "content.query", mode: "observe" },
+          { capabilityId: "schema.get", mode: "observe" },
+          { capabilityId: "site.inspect", mode: "observe" },
+        ]
+      : [{ capabilityId: "site.inspect", mode: "observe" }]);
   const vaultRegistry = new NpAgentVaultAdapterRegistryV1();
   vaultRegistry.register(
     createLocalEnvelopeVaultAdapterV1({
@@ -201,6 +206,7 @@ export async function runtimeUsageFixture(
     text: usageInstruction,
   };
   recipes.recipes[0]!.responseSchema = usageResponseSchema;
+  recipes.recipes[0]!.capabilityIds = modes.map((entry) => entry.capabilityId);
   if (options.documentCollection) {
     const recipe = recipes.recipes[0]!;
     recipe.id = "publisher.stale-content";
@@ -248,7 +254,7 @@ export async function runtimeUsageFixture(
     },
   };
   const service = createAgentRuntimeServiceV1(runtimeOptions);
-  const runtime = runtimeDefinition();
+  const runtime = structuredClone(options.definition ?? runtimeDefinition());
   runtime.modelConnectionId = connection.resourceId;
   runtime.model = "fake-model";
   if (options.documentCollection) {
@@ -272,7 +278,11 @@ export async function runtimeUsageFixture(
     actor: f.actor.actor,
     operationId: "agents.configurations.create",
     targetId: null,
-    command: { idempotencyKey: randomUUID(), ...npBuildAgentRuntimeDefinitionInputV1(runtime) },
+    command: {
+      idempotencyKey: randomUUID(),
+      ...npBuildAgentRuntimeDefinitionInputV1(runtime),
+      ...(options.delegated ? { authority: { kind: "user", userId: f.actor.actor.user.id } } : {}),
+    },
   });
   const active = await service.executeAdmin({
     siteId,

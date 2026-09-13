@@ -1082,7 +1082,7 @@ export function createAgentGatewayServiceV1(options: NpAgentGatewayServiceOption
           .from(npAgentPrincipals)
           .where(
             and(
-              eq(npAgentPrincipals.kind, "external"),
+              inArray(npAgentPrincipals.kind, ["external", "runtime"]),
               eq(npAgentPrincipals.authorityKind, "user"),
               eq(npAgentPrincipals.authorityUserId, userId),
             ),

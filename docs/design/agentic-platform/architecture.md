@@ -1575,6 +1575,15 @@ Code review should reject an implementation that violates any of these:
 
 ## R4 approval installation
 
+The subsequent [R5 delegated Runtime execution](r5-runtime-delegated-execution-flow.md)
+uses these same ChangeSet, approval and execution services with the existing
+canonical Runtime actor. Explicit staff delegation enables current item
+authority; deployment-only Runtime access remains unchanged. Stage-local
+transactions recheck exact Run claims, and artifact storage I/O stays outside
+authority locks. Explicit approval resumption reuses the immutable request and
+a distinct execution receipt, without a second execution engine or transport.
+Its completed local verification is recorded separately in the linked flow.
+
 The [R4 rollback implementation](r4-rollback-flow.md) extends the existing
 [approval](r4-approval-flow.md) and [execution](r4-execution-flow.md) services with
 forward compensation, fresh target-bound approval and shared bounded verification.

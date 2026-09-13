@@ -250,7 +250,7 @@ describe("Agent Admin operation registry v1", () => {
       npDigestAgentAdminOperationContractV1(npAgentAdminOperationRegistryV1[0]),
     ).resolves.toBe("cj1:sha256:5w3d7O1UDEv24p5vldtmuR6qREV8Q6UU4hYYp6aE1nA");
     await expect(npDigestAgentAdminOperationRegistryV1()).resolves.toBe(
-      "cj1:sha256:LSlcL-N1xUnlBbpLvbVzQeSc6G-SeOQLyIzUJ-oBMWw",
+      "cj1:sha256:p4gHsVebVDkapmIiTWbrMQN4M5xhv39sVLCUnfsDBCg",
     );
 
     await expect(
@@ -369,4 +369,19 @@ describe("Agent Admin operation registry v1", () => {
       ],
     });
   });
+});
+
+it("offers explicit user authority only on configuration creation", () => {
+  for (const operation of npAgentAdminOperationRegistryV1) {
+    const properties = operation.schemas.input.schema.properties as Record<string, unknown>;
+    if (operation.id === "agents.configurations.create") {
+      expect(properties.authority).toMatchObject({
+        type: "object",
+        additionalProperties: false,
+        required: ["kind", "userId"],
+        properties: { kind: { const: "user" } },
+      });
+      expect(operation.schemas.input.schema.required).not.toContain("authority");
+    } else expect(properties).not.toHaveProperty("authority");
+  }
 });
