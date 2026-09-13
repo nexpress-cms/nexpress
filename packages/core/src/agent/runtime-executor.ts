@@ -7,7 +7,7 @@ import {
 import { cloneCanonicalRuntimeInput } from "../agent-contract/canonical-runtime-primitives.js";
 import { createHash, randomUUID } from "node:crypto";
 import { and, asc, eq } from "drizzle-orm";
-import { npAgentActions, npAgentProviderCalls } from "../db/schema/agent.js";
+import { npAgentActions, npAgentProviderCalls, npAgentInvocations } from "../db/schema/agent.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import {
   npAgentProviderRetryableErrorClassesV1,
@@ -114,6 +114,25 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
     });
   }
 
+  async function approvalStatus(claimed: Identity & { claim: NpAgentRuntimeExecutionClaimV1 }) {
+    return options.store.withClaim(claimed, async (context) => {
+      const actions = await context.db
+        .select({ id: npAgentActions.id, state: npAgentActions.state })
+        .from(npAgentActions)
+        .where(
+          and(eq(npAgentActions.siteId, context.siteId), eq(npAgentActions.runId, context.run.id)),
+        )
+        .limit(1001);
+      if (actions.length > 1000) fail("RUNTIME_ACTION_UNRESOLVED");
+      const receipts = [];
+      for (const action of actions) {
+        if (!["approval_pending", "approved"].includes(action.state)) continue;
+        receipts.push(await options.capabilities.inspectRuntimeApproval(context, action.id));
+      }
+      return receipts;
+    });
+  }
+
   async function processRun(
     identity: Identity,
     initialClaim: NpAgentRuntimeExecutionClaimV1,
@@ -149,6 +168,16 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
               await npRequireAgentRuntimeProviderFailureV1({ db: context.db, call });
           return { calls, limits: context.limits };
         });
+        // Retained approval requests never authorize another provider turn by themselves.
+        // This also fences a crash after the explicit resume claim but before execution.
+        const approvals = await approvalStatus(claimed);
+        if (approvals.some((item) => item.status !== "completed"))
+          return options.store.transition({
+            ...claimed,
+            state: approvals.some((item) => item.status === "unresolved")
+              ? "verifying"
+              : "waiting_approval",
+          });
         const latest = history.calls.at(-1);
         if (latest && ["in_flight", "ambiguous"].includes(latest.state))
           return options.store.transition({
@@ -217,9 +246,42 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
                   : key(identity.runId, latest.sequence, "action"),
               },
             });
+            const actionSequence = await options.store.withClaim(claimed, async ({ db, run }) => {
+              const actions = await db
+                .select({
+                  sequence: npAgentActions.sequence,
+                  capabilityId: npAgentActions.capabilityId,
+                  input: npAgentActions.inputCanonical,
+                  idempotencyKey: npAgentInvocations.idempotencyKey,
+                })
+                .from(npAgentActions)
+                .innerJoin(
+                  npAgentInvocations,
+                  and(
+                    eq(npAgentInvocations.id, npAgentActions.invocationId),
+                    eq(npAgentInvocations.siteId, npAgentActions.siteId),
+                  ),
+                )
+                .where(and(eq(npAgentActions.siteId, run.siteId), eq(npAgentActions.runId, run.id)))
+                .limit(1001);
+              if (actions.length > 1000) fail("RUNTIME_ACTION_UNRESOLVED");
+              const matching = actions.filter(
+                (action) =>
+                  action.capabilityId === request.capabilityId &&
+                  (request.arguments.idempotencyKey !== null
+                    ? action.idempotencyKey === request.arguments.idempotencyKey
+                    : serializeAgentCanonicalJson(action.input) ===
+                      serializeAgentCanonicalJson(request.arguments.input)),
+              );
+              if (matching.length > 1) fail("RUNTIME_ACTION_UNRESOLVED");
+              return (
+                matching[0]?.sequence ??
+                Math.max(0, ...actions.map((action) => action.sequence)) + 1
+              );
+            });
             await options.capabilities.invokeRuntime({
               ...claimed,
-              sequence: latest.sequence,
+              sequence: actionSequence,
               request,
               abortSignal: signal,
             });
@@ -231,14 +293,19 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
                   and(
                     eq(npAgentActions.siteId, identity.siteId),
                     eq(npAgentActions.runId, identity.runId),
-                    eq(npAgentActions.sequence, latest.sequence),
+                    eq(npAgentActions.sequence, actionSequence),
                   ),
                 )
                 .limit(1),
             );
-            if (pending.some((action) => ["approval_pending", "approved"].includes(action.state)))
-              return options.store.transition({ ...claimed, state: "waiting_approval" });
-            if (pending.length !== 1 || !["succeeded", "compensated"].includes(pending[0].state))
+            if (pending.some((action) => ["approval_pending", "approved"].includes(action.state))) {
+              const receipts = await approvalStatus(claimed);
+              if (receipts.some((receipt) => receipt.status !== "completed"))
+                return options.store.transition({ ...claimed, state: "waiting_approval" });
+            } else if (
+              pending.length !== 1 ||
+              !["succeeded", "compensated"].includes(pending[0].state)
+            )
               fail("RUNTIME_ACTION_UNRESOLVED");
           }
         }
@@ -374,6 +441,66 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
         )
           await options.breakers.observeRun(input);
         return result;
+      } finally {
+        if (active.get(processKey) === controller) active.delete(processKey);
+      }
+    },
+    async resumeApproval(
+      input: Identity & { requestActionId: string },
+    ): Promise<{ state: string }> {
+      npAssertAgentPreviewEffectsAllowed();
+      const row = canonicalBodyRecord(
+        cloneCanonicalRuntimeInput(input, "runtime.resume", 4096),
+        "runtime.resume",
+        ["siteId", "runId", "requestActionId"],
+        ["siteId", "runId", "requestActionId"],
+        { seen: new WeakSet<object>() },
+      );
+      const target = identity({ siteId: row.siteId as string, runId: row.runId as string });
+      const requestActionId = canonicalBodyUuid(
+        row.requestActionId,
+        "runtime.resume.requestActionId",
+      );
+      if (closed) fail("RUNTIME_EXECUTOR_CLOSED");
+      const acquired = await options.store.claimApproval({ ...target, requestActionId });
+      if (!acquired.claim) return { state: acquired.state };
+      const controller = new AbortController();
+      const processKey = `${target.siteId}:${target.runId}`;
+      active.set(processKey, controller);
+      const claimed = { ...target, claim: acquired.claim };
+      try {
+        const sequence = await options.store.withClaim(claimed, async (context) => {
+          const evidence = await options.capabilities.inspectRuntimeApproval(
+            context,
+            requestActionId,
+          );
+          if (evidence.executionSequence !== null) return evidence.executionSequence;
+          const actions = await context.db
+            .select({ sequence: npAgentActions.sequence })
+            .from(npAgentActions)
+            .where(
+              and(eq(npAgentActions.siteId, target.siteId), eq(npAgentActions.runId, target.runId)),
+            )
+            .limit(1001);
+          if (actions.length > 1000) fail("RUNTIME_ACTION_UNRESOLVED");
+          return Math.max(0, ...actions.map((action) => action.sequence)) + 1;
+        });
+        if (closed || controller.signal.aborted) return options.store.cancel(target);
+        await options.capabilities.resumeRuntimeApproval({ ...claimed, requestActionId, sequence });
+        const receipts = await approvalStatus(claimed);
+        if (receipts.some((receipt) => receipt.status !== "completed"))
+          return options.store.transition({ ...claimed, state: "verifying" });
+        const result = await processRun(target, acquired.claim, controller.signal);
+        if (
+          ["succeeded", "failed", "cancelled", "policy_blocked", "budget_blocked"].includes(
+            result.state,
+          )
+        )
+          await options.breakers.observeRun(target);
+        return result;
+      } catch (error) {
+        if (error instanceof NpAgentGatewayError) throw error;
+        fail("RUNTIME_EXECUTION_FAILED");
       } finally {
         if (active.get(processKey) === controller) active.delete(processKey);
       }

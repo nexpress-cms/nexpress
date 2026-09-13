@@ -108,3 +108,38 @@ describe("Runtime Admin owner parsers", () => {
     expect(reads).toBe(0);
   });
 });
+
+it("parses the optional explicit create authority without widening update or policy inputs", () => {
+  const input = { idempotencyKey: "delegated", definitionJson: "{}", definitionHash: digest };
+  const authority = { kind: "user", userId: "018f0f30-cd7b-7cc2-8b16-8c052c259bd1" };
+  expect(
+    npRequireAgentRuntimeAdminInputV1("agents.configurations.create", { ...input, authority }),
+  ).toEqual({ ...input, authority });
+  expect(
+    npRequireAgentRuntimeAdminInputV1("agents.configurations.create", input),
+  ).not.toHaveProperty("authority");
+  for (const value of [
+    null,
+    undefined,
+    { ...authority, kind: "deployment" },
+    { ...authority, userId: "invalid" },
+    { ...authority, session: "invented" },
+  ])
+    expect(
+      npAnalyzeAgentRuntimeAdminInputV1("agents.configurations.create", {
+        ...input,
+        authority: value,
+      }).ok,
+    ).toBe(false);
+  expect(
+    npAnalyzeAgentRuntimeAdminInputV1("agents.configurations.update", {
+      ...input,
+      expectedVersion: 1,
+      configHash: digest,
+      authority,
+    }).ok,
+  ).toBe(false);
+  expect(
+    npAnalyzeAgentRuntimeAdminInputV1("agents.policies.create", { ...input, authority }).ok,
+  ).toBe(false);
+});

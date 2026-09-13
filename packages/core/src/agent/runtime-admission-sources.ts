@@ -110,6 +110,8 @@ export async function npVerifyAgentRuntimeAdmissionSourcesV1(input: {
     const admission = npRequireAgentRunAdmissionCanonical(row.admission);
     const budget = npRequireAgentBudgetSnapshotCanonical(row.budgetSnapshot);
     if (
+      serializeAgentCanonicalJson(sources.runtimeAuthority ?? null) !==
+        serializeAgentCanonicalJson(admission.runtimeAuthority ?? null) ||
       admission.origin !== "runtime" ||
       !admission.agent ||
       !admission.recipe ||

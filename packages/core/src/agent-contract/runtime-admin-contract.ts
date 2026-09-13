@@ -2,6 +2,7 @@ import {
   analyzeCanonicalBody,
   canonicalBodyInteger,
   canonicalBodyRecord,
+  canonicalBodyUuid,
   canonicalBodySha256Digest,
   failCanonicalBody,
 } from "./canonical-body-validation.js";
@@ -57,6 +58,9 @@ export interface NpAgentRuntimeDefinitionAdminInputV1 {
   definitionJson: string;
   definitionHash: string;
 }
+export interface NpAgentRuntimeConfigurationCreateAdminInputV1 extends NpAgentRuntimeDefinitionAdminInputV1 {
+  authority?: { kind: "user"; userId: string };
+}
 export interface NpAgentRuntimeVersionedAdminInputV1 {
   idempotencyKey: string;
   expectedVersion: number;
@@ -83,7 +87,7 @@ export interface NpAgentRuntimeBudgetAdminInputV1 extends NpAgentRuntimeDefiniti
   expectedVersion: number;
 }
 export interface NpAgentRuntimeAdminInputMapV1 {
-  "agents.configurations.create": NpAgentRuntimeDefinitionAdminInputV1;
+  "agents.configurations.create": NpAgentRuntimeConfigurationCreateAdminInputV1;
   "agents.configurations.update": NpAgentRuntimeDefinitionUpdateAdminInputV1;
   "agents.configurations.activate": NpAgentRuntimeVersionedAdminInputV1;
   "agents.configurations.pause": NpAgentRuntimeReasonAdminInputV1;
@@ -118,19 +122,44 @@ export function npAnalyzeAgentRuntimeAdminInputV1<K extends NpAgentRuntimeAdminO
       !required.every((key): key is string => typeof key === "string")
     )
       failCanonicalBody("shape", path, "requires the installed exact Admin schema");
-    const keys = required;
+    const keys = Object.keys(
+      npGetAgentAdminOperationV1(operationId).schemas.input.schema.properties ?? {},
+    );
     const row = canonicalBodyRecord(
       cloneCanonicalRuntimeInput(value, path, 1024 * 1024),
       path,
       keys,
-      keys,
+      required,
       { seen: new WeakSet<object>() },
     );
     const output: Record<string, unknown> = {
       idempotencyKey: canonicalRuntimeIdempotencyKey(row.idempotencyKey, `${path}.idempotencyKey`),
     };
     for (const key of keys) {
+      if (!Object.hasOwn(row, key)) continue;
       switch (key) {
+        case "authority": {
+          if (operationId !== "agents.configurations.create")
+            failCanonicalBody(
+              "invalid-field",
+              `${path}.authority`,
+              "is only valid for configuration creation",
+            );
+          const authority = canonicalBodyRecord(
+            row.authority,
+            `${path}.authority`,
+            ["kind", "userId"],
+            ["kind", "userId"],
+            { seen: new WeakSet<object>() },
+          );
+          if (authority.kind !== "user")
+            failCanonicalBody("invalid-field", `${path}.authority.kind`, "must be user");
+          output.authority = {
+            kind: "user",
+            userId: canonicalBodyUuid(authority.userId, `${path}.authority.userId`),
+          };
+          break;
+        }
         case "idempotencyKey":
           break;
         case "expectedVersion":

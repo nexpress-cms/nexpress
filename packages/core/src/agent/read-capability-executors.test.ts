@@ -74,7 +74,13 @@ import {
   npRequireAgentSchemaGetOutputV1,
   npRequireAgentSiteInspectOutputV1,
 } from "../agent-contract/index.js";
-import { createAgentCoreReadCapabilityExecutorsV1 } from "./read-capability-executors.js";
+import { getDb } from "../db/runtime.js";
+import type { NpAgentRuntimeRunContextV1 } from "./runtime-admission.js";
+import {
+  type NpAgentCoreReadCapabilityOptionsV1,
+  createAgentCoreRuntimeDocumentEvidenceReaderV1,
+  createAgentCoreReadCapabilityExecutorsV1,
+} from "./read-capability-executors.js";
 
 const requestedAt = "2026-08-30T00:00:00.000Z";
 const context = {
@@ -521,4 +527,169 @@ describe("Agent core read capability executors", () => {
       ).rejects.toThrow("invalid update timestamp");
     },
   );
+});
+
+describe("Runtime read identity and document evidence", () => {
+  const staffUser = {
+    id: context.principal.authority.userId,
+    email: "staff@example.test",
+    name: "Staff",
+    role: "editor" as const,
+    tokenVersion: 1,
+  };
+  const resolveUser = vi.fn(() => staffUser);
+  const options: NpAgentCoreReadCapabilityOptionsV1 = {
+    cursorHmacKey: { id: "runtime", key: new Uint8Array(32).fill(7) },
+    resolveUser,
+    resolveBlockSchemas: () => [
+      {
+        type: "core.hero",
+        schema: {
+          $schema: "https://json-schema.org/draft/2020-12/schema",
+          type: "object",
+          additionalProperties: false,
+          properties: {},
+          required: [],
+        },
+      },
+    ],
+  };
+  const request = {
+    kind: "document" as const,
+    collection: "posts",
+    documentId: "01900000-0000-7000-8000-000000000001",
+    projection: "bounded-text" as const,
+  };
+  function run(delegated: boolean, drafts = false): NpAgentRuntimeRunContextV1 {
+    return {
+      siteId: "default",
+      now: new Date(requestedAt),
+      db: getDb(),
+      staffUser: delegated ? staffUser : null,
+      run: { id: "01900000-0000-7000-8000-000000000002", recipeId: "publisher.stale-content" },
+      evidence: {
+        principal: {
+          id: context.principal.principalId,
+          authorityKind: delegated ? "user" : "deployment",
+          authorityUserId: delegated ? staffUser.id : null,
+          authorityPolicyId: delegated ? null : "deployment",
+        },
+        definition: {
+          scopes: ["content:read", "schema:read", ...(drafts ? ["content:draft"] : [])],
+          settings: [{ recipeId: "publisher.stale-content", collectionSlugs: ["posts"] }],
+        },
+      },
+      policy: {
+        effective: {
+          resources: { collections: ["posts"] },
+          capabilityModes: [{ capabilityId: "content.query", mode: "observe" }],
+        },
+      },
+    } as unknown as NpAgentRuntimeRunContextV1;
+  }
+  beforeEach(() => {
+    resolveUser.mockClear();
+    mocks.fields = [];
+    mocks.queryRows = [{ id: request.documentId }];
+    mocks.findDocuments.mockResolvedValue({
+      docs: [
+        {
+          id: request.documentId,
+          slug: "evidence",
+          status: "published",
+          updatedAt: new Date(requestedAt),
+          title: "Visible",
+          secretNote: "excluded",
+        },
+      ],
+    });
+  });
+  it("keeps deployment evidence public/published without resolving staff", async () => {
+    const output = await createAgentCoreRuntimeDocumentEvidenceReaderV1(options).read(
+      run(false),
+      request,
+    );
+    expect(output).toMatchObject({ items: [{ data: { title: "Visible" } }] });
+    expect(JSON.stringify(output)).not.toContain("excluded");
+    expect(mocks.findDocuments).toHaveBeenLastCalledWith(
+      "posts",
+      expect.objectContaining({
+        where: expect.objectContaining({ visibility: "public", status: ["published"] }),
+      }),
+      undefined,
+      expect.anything(),
+    );
+    expect(resolveUser).not.toHaveBeenCalled();
+  });
+  it("uses actual delegated item authority for private drafts and safe schema", async () => {
+    const reader = createAgentCoreRuntimeDocumentEvidenceReaderV1(options);
+    mocks.findDocuments.mockResolvedValue({
+      docs: [
+        {
+          id: request.documentId,
+          slug: "draft",
+          status: "draft",
+          updatedAt: new Date(requestedAt),
+          title: "Draft",
+          secretNote: "excluded",
+        },
+      ],
+    });
+    const output = await reader.read(run(true, true), request);
+    expect(output).toMatchObject({ items: [{ status: "draft", data: { title: "Draft" } }] });
+    expect(mocks.findDocuments).toHaveBeenLastCalledWith(
+      "posts",
+      expect.objectContaining({
+        where: {
+          id: [request.documentId],
+          siteId: "default",
+          status: ["archived", "draft", "published"],
+        },
+      }),
+      staffUser,
+      expect.anything(),
+    );
+    const schema = await reader.read(run(true, true), { ...request, projection: "schema" });
+    expect(schema).toHaveProperty("schema");
+    expect(JSON.stringify(schema)).not.toContain("secretNote");
+    expect(resolveUser).not.toHaveBeenCalled();
+  });
+  it("keeps draft scope and current item visibility authoritative", async () => {
+    const reader = createAgentCoreRuntimeDocumentEvidenceReaderV1(options);
+    await reader.read(run(true), request);
+    expect(mocks.findDocuments).toHaveBeenLastCalledWith(
+      "posts",
+      expect.objectContaining({ where: expect.objectContaining({ status: ["published"] }) }),
+      staffUser,
+      expect.anything(),
+    );
+    mocks.findDocuments.mockResolvedValue({ docs: [] });
+    await expect(reader.read(run(true, true), request)).rejects.toThrow();
+    await expect(reader.read(run(false), { ...request, projection: "schema" })).rejects.toThrow();
+  });
+
+  it("never obtains Runtime identity from the generic resolver", async () => {
+    const reader = createAgentCoreRuntimeDocumentEvidenceReaderV1(options);
+    const missing = run(true);
+    missing.staffUser = null;
+    await expect(reader.read(missing, request)).rejects.toThrow();
+    const wrong = run(true);
+    wrong.staffUser = { ...staffUser, id: "01900000-0000-7000-8000-000000000099" };
+    await expect(reader.read(wrong, request)).rejects.toThrow();
+    const execution = {
+      ...context,
+      principal: {
+        ...context.principal,
+        kind: "runtime" as const,
+        runId: "01900000-0000-7000-8000-000000000002",
+      },
+    };
+    await expect(
+      createAgentCoreReadCapabilityExecutorsV1(options)["schema.get"](
+        { selector: "collection", slug: "posts" },
+        execution,
+      ),
+    ).rejects.toThrow();
+    expect(resolveUser).not.toHaveBeenCalled();
+  });
 });

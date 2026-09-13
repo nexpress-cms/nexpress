@@ -1,6 +1,12 @@
+import { createHash } from "node:crypto";
+import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
+import type { NpAgentRuntimeRunContextV1 } from "./runtime-admission.js";
 import { describe, expect, it, vi } from "vitest";
 import { npRequireAgentEvidenceRequestV1 } from "../agent-contract/canonical-provider.js";
-import { createAgentRuntimeContextV1 } from "./runtime-context.js";
+import {
+  createAgentRuntimeContextV1,
+  npProjectAgentRuntimeActionOutcomeV1,
+} from "./runtime-context.js";
 import { npIsAgentRuntimeDocumentEvidenceReaderV1 } from "./read-capability-executors.js";
 import type { NpAgentRuntimeAdmissionV1 } from "./runtime-admission.js";
 
@@ -44,7 +50,11 @@ describe("Runtime context source boundary", () => {
 
   it("rejects over-bound or duplicate requests before touching current authority", async () => {
     const withCurrentRun = vi.fn();
-    const admission: NpAgentRuntimeAdmissionV1 = { admit: vi.fn(), withCurrentRun };
+    const admission: NpAgentRuntimeAdmissionV1 = {
+      admit: vi.fn(),
+      withCurrentRun,
+      withRunAuthority: vi.fn(),
+    };
     const context = createAgentRuntimeContextV1({ admission });
     const base = {
       siteId: "default",
@@ -62,5 +72,173 @@ describe("Runtime context source boundary", () => {
       code: "RUNTIME_PROVIDER_INPUT_UNAVAILABLE",
     });
     expect(withCurrentRun).not.toHaveBeenCalled();
+  });
+});
+
+it("awaits installed capability discovery and contains a rejected async source", async () => {
+  const text = "Fixed instructions";
+  const digest = `cj1:sha256:${createHash("sha256").update(text).digest("base64url")}`;
+  const schema = { type: "object", additionalProperties: false, properties: {}, required: [] };
+  const schemaDigest = `cj1:sha256:${createHash("sha256").update("np.agent-runtime-schema.v1").update("\0").update(serializeAgentCanonicalJson(schema)).digest("base64url")}`;
+  const runId = "018f0f30-cd7b-7cc2-8b16-8c052c259bd2";
+  const current = {
+    siteId: "default",
+    now: new Date("2026-09-12T00:00:00.000Z"),
+    run: {
+      id: runId,
+      recipeId: "fixture",
+      recipeVersion: 1,
+      providerDataClassCeiling: "sensitive-approved",
+      instructionDigest: digest,
+      responseSchemaDigest: schemaDigest,
+    },
+    evidence: {
+      definition: { model: "fixture" },
+      registry: {
+        recipes: [
+          {
+            id: "fixture",
+            version: 1,
+            task: "interactive-capability",
+            instruction: { text, digest },
+            responseSchema: schema,
+          },
+        ],
+      },
+    },
+    connection: { activeSecretVersionId: "secret-version", credentialVersion: 1 },
+    connectionSnapshot: {},
+    pricing: {},
+  } as unknown as NpAgentRuntimeRunContextV1;
+  let reject!: (error: Error) => void;
+  const pending = new Promise<never>((_resolve, onReject) => {
+    reject = onReject;
+  });
+  const list = vi.fn(() => pending);
+  const admission = {
+    admit: vi.fn(),
+    withRunAuthority: vi.fn(),
+    withCurrentRun: vi.fn((_input, execute) => execute(current)),
+  } as NpAgentRuntimeAdmissionV1;
+  const service = createAgentRuntimeContextV1({ admission, capabilities: { list } });
+  const prepared = service.prepare({
+    siteId: "default",
+    runId,
+    providerCallId: "018f0f30-cd7b-7cc2-8b16-8c052c259bd3",
+    sequence: 1,
+    retryOfId: null,
+    idempotencyKey: "fixture",
+  });
+  const rejected = expect(prepared).rejects.toMatchObject({
+    code: "RUNTIME_PROVIDER_INPUT_UNAVAILABLE",
+  });
+  await vi.waitFor(() => expect(list).toHaveBeenCalledOnce());
+  reject(new Error("private source failure"));
+  await rejected;
+});
+
+describe("Runtime ChangeSet action references", () => {
+  const digest = `cj1:sha256:${"A".repeat(43)}`;
+  const item = {
+    changeSetId: "018f0f30-cd7b-7cc2-8b16-8c052c259bd1",
+    state: "ready",
+    draftVersion: 2,
+    draftHash: digest,
+    planHash: digest,
+    previewId: "018f0f30-cd7b-7cc2-8b16-8c052c259bd2",
+    previewState: "ready",
+    approvalId: null,
+    approvalState: null,
+    executionId: null,
+    executionState: null,
+    rollbackPlanId: null,
+    rollbackPlanHash: null,
+    rollbackState: null,
+  };
+  const current = {
+    policy: {
+      effective: {
+        capabilityModes: [
+          { capabilityId: "changeset.create", mode: "approved" },
+          { capabilityId: "content.query", mode: "observe" },
+        ],
+      },
+    },
+  } as unknown as Pick<NpAgentRuntimeRunContextV1, "policy">;
+  const outcome = () => ({
+    capabilityId: "changeset.create",
+    state: "succeeded",
+    safeCode: null,
+    references: { changeSets: [structuredClone(item)], nextCursor: null },
+  });
+
+  it("retains the exact identifiers, versions and hashes needed for the next descriptor call", () => {
+    const projected = npProjectAgentRuntimeActionOutcomeV1(current, outcome());
+    expect(projected.references?.changeSets[0]).toEqual(item);
+    expect(projected.references?.changeSets[0]).toMatchObject({
+      changeSetId: item.changeSetId,
+      draftVersion: 2,
+      draftHash: digest,
+      planHash: digest,
+      previewState: "ready",
+    });
+    expect(Object.keys(projected.references!.changeSets[0])).toEqual(Object.keys(item));
+  });
+
+  it("rejects content, credentials, locators, unknown states and unbounded references", () => {
+    for (const field of ["title", "name", "body", "input", "locator", "credential", "reasoning"]) {
+      const value = outcome();
+      Object.assign(value.references.changeSets[0], { [field]: "private-data" });
+      expect(() => npProjectAgentRuntimeActionOutcomeV1(current, value)).toThrow();
+    }
+    for (const fields of [
+      { state: "invented" },
+      { previewState: "approved" },
+      { draftVersion: 0 },
+      { draftHash: "raw-value" },
+      { approvalState: "approved" },
+    ]) {
+      const value = outcome();
+      Object.assign(value.references.changeSets[0], fields);
+      expect(() => npProjectAgentRuntimeActionOutcomeV1(current, value)).toThrow();
+    }
+    expect(() =>
+      npProjectAgentRuntimeActionOutcomeV1(current, {
+        ...outcome(),
+        references: {
+          changeSets: Array.from({ length: 101 }, () => structuredClone(item)),
+          nextCursor: null,
+        },
+      }),
+    ).toThrow();
+    expect(() =>
+      npProjectAgentRuntimeActionOutcomeV1(current, {
+        ...outcome(),
+        references: {
+          changeSets: [structuredClone(item), structuredClone(item)],
+          nextCursor: null,
+        },
+      }),
+    ).toThrow();
+  });
+
+  it("does not evaluate injected getters or turn pending approval into planner evidence", () => {
+    const getter = vi.fn(() => "private-data");
+    const value = outcome();
+    Object.defineProperty(value.references.changeSets[0], "draftHash", {
+      get: getter,
+      enumerable: true,
+    });
+    expect(() => npProjectAgentRuntimeActionOutcomeV1(current, value)).toThrow();
+    expect(getter).not.toHaveBeenCalled();
+    expect(() =>
+      npProjectAgentRuntimeActionOutcomeV1(current, { ...outcome(), state: "approval_pending" }),
+    ).toThrow();
+    expect(() =>
+      npProjectAgentRuntimeActionOutcomeV1(current, {
+        ...outcome(),
+        capabilityId: "content.query",
+      }),
+    ).toThrow();
   });
 });

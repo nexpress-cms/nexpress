@@ -1,3 +1,22 @@
+import type { NpAgentRuntimeChangeSetReferencesV1 } from "./changeset-service.js";
+import {
+  canonicalBodyRecord,
+  canonicalBodyArray,
+  canonicalBodyInteger,
+  canonicalBodyUuid,
+  canonicalBodySha256Digest,
+  canonicalBodyEnum,
+} from "../agent-contract/canonical-body-validation.js";
+import {
+  cloneCanonicalRuntimeInput,
+  canonicalRuntimeText,
+} from "../agent-contract/canonical-runtime-primitives.js";
+import {
+  npAgentChangeSetWireSchemaV1,
+  npAgentApprovalWireSchemaV1,
+  npAgentExecutionSummarySchemaV1,
+} from "../agent-contract/changeset-capability-schema.js";
+import { npAgentRollbackPlanStates } from "../agent-contract/changeset-wire-contract.js";
 import { createHash } from "node:crypto";
 import { and, asc, eq, lt } from "drizzle-orm";
 import { npAgentProviderCalls } from "../db/schema/agent.js";
@@ -35,18 +54,25 @@ import type {
 type Context = Readonly<Omit<NpAgentRuntimeRunContextV1, "db">>;
 type Request = NpAgentProviderRequestCanonicalV1;
 
+interface NpAgentRuntimeContextCapabilityEntryV1 {
+  canonical: NpAgentCapabilityRegistryEntryCanonicalV1;
+  capabilityFingerprint: string;
+}
+
 /** Existing installed descriptor entries, never model or plugin-defined tool declarations. */
 export interface NpAgentRuntimeContextCapabilitySourceV1 {
-  list(context: Context): readonly {
-    canonical: NpAgentCapabilityRegistryEntryCanonicalV1;
-    capabilityFingerprint: string;
-  }[];
+  list(
+    context: Context,
+  ):
+    | readonly NpAgentRuntimeContextCapabilityEntryV1[]
+    | Promise<readonly NpAgentRuntimeContextCapabilityEntryV1[]>;
   /** Shared invocation facade: verifies retained linkage and current item authority. */
   actionOutcomes?(context: NpAgentRuntimeRunContextV1): Promise<
     readonly {
       capabilityId: NpAgentCapabilityId;
       state: "succeeded";
       safeCode: null;
+      references?: NpAgentRuntimeChangeSetReferencesV1;
     }[]
   >;
 }
@@ -123,6 +149,151 @@ function redactText(text: string): string {
 }
 
 /** The private manifest shared by the builder and the existing usage ledger. */
+/** Retains only exact metadata from the installed facade; enum values come from its existing wire schemas. */
+export function npProjectAgentRuntimeActionOutcomeV1(
+  context: Pick<NpAgentRuntimeRunContextV1, "policy">,
+  value: unknown,
+) {
+  const path = "agent.runtime.actionOutcome";
+  const state = { seen: new WeakSet<object>() };
+  const row = canonicalBodyRecord(
+    cloneCanonicalRuntimeInput(value, path, 256000),
+    path,
+    ["capabilityId", "state", "safeCode", "references"],
+    ["capabilityId", "state", "safeCode"],
+    state,
+  );
+  if (
+    row.state !== "succeeded" ||
+    row.safeCode !== null ||
+    !context.policy.effective.capabilityModes.some(
+      (entry) => entry.capabilityId === row.capabilityId,
+    )
+  )
+    unavailable();
+  const capabilityId = row.capabilityId as NpAgentCapabilityId;
+  let references: NpAgentRuntimeChangeSetReferencesV1 | undefined;
+  if (row.references !== undefined) {
+    if (!capabilityId.startsWith("changeset.")) unavailable();
+    const refs = canonicalBodyRecord(
+      row.references,
+      path,
+      ["changeSets", "nextCursor"],
+      ["changeSets", "nextCursor"],
+      state,
+    );
+    const schemaValue = (source: unknown, ...keys: string[]) => {
+      let node: unknown = source;
+      for (const key of keys) {
+        if (!node || typeof node !== "object" || Array.isArray(node)) unavailable();
+        node = (node as Record<string, unknown>)[key];
+      }
+      return node;
+    };
+    const enumValues = (source: unknown, ...keys: string[]) => {
+      const values = schemaValue(source, ...keys, "enum");
+      if (!Array.isArray(values) || values.some((item) => typeof item !== "string")) unavailable();
+      return new Set(values as string[]);
+    };
+    const rowKeys = [
+      "changeSetId",
+      "state",
+      "draftVersion",
+      "draftHash",
+      "planHash",
+      "previewId",
+      "previewState",
+      "approvalId",
+      "approvalState",
+      "executionId",
+      "executionState",
+      "rollbackPlanId",
+      "rollbackPlanHash",
+      "rollbackState",
+    ];
+    const seen = new Set<string>();
+    const changeSets = canonicalBodyArray(refs.changeSets, path, 100, state).map((value) => {
+      const item = canonicalBodyRecord(value, path, rowKeys, rowKeys, state);
+      const changeSetId = canonicalBodyUuid(item.changeSetId, path);
+      if (seen.has(changeSetId)) unavailable();
+      seen.add(changeSetId);
+      type Ref = NpAgentRuntimeChangeSetReferencesV1["changeSets"][number];
+      const uuidOrNull = (value: unknown) =>
+        value === null ? null : canonicalBodyUuid(value, path);
+      const hashOrNull = (value: unknown) =>
+        value === null ? null : canonicalBodySha256Digest(value, path);
+      const selected: Ref = {
+        changeSetId,
+        state: canonicalBodyEnum<Ref["state"]>(
+          item.state,
+          path,
+          enumValues(npAgentChangeSetWireSchemaV1, "properties", "state"),
+        ),
+        draftVersion: canonicalBodyInteger(item.draftVersion, path, 1, 2147483647),
+        draftHash: canonicalBodySha256Digest(item.draftHash, path),
+        planHash: hashOrNull(item.planHash),
+        previewId: uuidOrNull(item.previewId),
+        previewState:
+          item.previewState === null
+            ? null
+            : canonicalBodyEnum<NonNullable<Ref["previewState"]>>(
+                item.previewState,
+                path,
+                enumValues(npAgentChangeSetWireSchemaV1, "$defs", "preview", "properties", "state"),
+              ),
+        approvalId: uuidOrNull(item.approvalId),
+        approvalState:
+          item.approvalState === null
+            ? null
+            : canonicalBodyEnum<NonNullable<Ref["approvalState"]>>(
+                item.approvalState,
+                path,
+                enumValues(npAgentApprovalWireSchemaV1, "properties", "state"),
+              ),
+        executionId: uuidOrNull(item.executionId),
+        executionState:
+          item.executionState === null
+            ? null
+            : canonicalBodyEnum<NonNullable<Ref["executionState"]>>(
+                item.executionState,
+                path,
+                enumValues(npAgentExecutionSummarySchemaV1, "properties", "state"),
+              ),
+        rollbackPlanId: uuidOrNull(item.rollbackPlanId),
+        rollbackPlanHash: hashOrNull(item.rollbackPlanHash),
+        rollbackState:
+          item.rollbackState === null
+            ? null
+            : canonicalBodyEnum<NonNullable<Ref["rollbackState"]>>(
+                item.rollbackState,
+                path,
+                new Set(npAgentRollbackPlanStates),
+              ),
+      };
+      for (const [id, status] of [
+        [selected.previewId, selected.previewState],
+        [selected.approvalId, selected.approvalState],
+        [selected.executionId, selected.executionState],
+        [selected.rollbackPlanId, selected.rollbackState],
+      ])
+        if ((id === null) !== (status === null)) unavailable();
+      if (selected.rollbackPlanId === null && selected.rollbackPlanHash !== null) unavailable();
+      return selected;
+    });
+    references = {
+      changeSets,
+      nextCursor:
+        refs.nextCursor === null ? null : canonicalRuntimeText(refs.nextCursor, path, 2048),
+    };
+  }
+  return {
+    capabilityId,
+    state: "succeeded" as const,
+    safeCode: null,
+    ...(references ? { references } : {}),
+  };
+}
+
 export function npBuildAgentRuntimeClassificationManifestV1(request: Request): NpAgentJsonObject {
   return {
     components: [
@@ -183,13 +354,13 @@ function authorityDigest(context: Context): string {
   return hash("np.agent-runtime-context-authority.v1", dates(retained));
 }
 
-function build(
+async function build(
   context: Context,
   input: Omit<NpAgentRuntimeContextPrepareInputV1, "evidence" | "claim">,
   source: NpAgentRuntimeContextCapabilitySourceV1 | undefined,
   sources: { trusted: Request["trustedContext"]; untrusted: Request["untrustedEvidence"] },
   timeoutSeconds?: number,
-): Request {
+): Promise<Request> {
   const { run, evidence, connection, connectionSnapshot: snapshot, pricing } = context;
   const recipe = evidence.registry.recipes.find(
     (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
@@ -219,7 +390,7 @@ function build(
   )
     unavailable();
   const tools: Request["tools"] = [];
-  const entries = source?.list(context) ?? [];
+  const entries = (await source?.list(context)) ?? [];
   if (!Array.isArray(entries) || entries.length > 21) unavailable();
   const seen = new Set<string>();
   for (const entry of entries) {
@@ -359,21 +530,9 @@ async function readSources(
         if (!capabilities?.actionOutcomes) unavailable();
         const outcomes = await capabilities.actionOutcomes(context);
         if (!Array.isArray(outcomes) || outcomes.length > 32) unavailable();
-        const facts = outcomes.map((outcome) => {
-          if (
-            outcome.state !== "succeeded" ||
-            outcome.safeCode !== null ||
-            !context.policy.effective.capabilityModes.some(
-              (entry) => entry.capabilityId === outcome.capabilityId,
-            )
-          )
-            unavailable();
-          return {
-            capabilityId: outcome.capabilityId,
-            state: outcome.state,
-            safeCode: outcome.safeCode,
-          };
-        });
+        const facts = outcomes.map((outcome) =>
+          npProjectAgentRuntimeActionOutcomeV1(context, outcome),
+        );
         const digest = hash("np.agent-runtime-action-outcomes.v1", facts);
         trusted.push({
           id,
@@ -492,19 +651,7 @@ async function readSources(
     const outcomes = (await capabilities?.actionOutcomes?.(context)) ?? [];
     if (!Array.isArray(outcomes) || outcomes.length > 32) unavailable();
     for (const [index, outcome] of outcomes.entries()) {
-      if (
-        outcome.state !== "succeeded" ||
-        outcome.safeCode !== null ||
-        !context.policy.effective.capabilityModes.some(
-          (entry) => entry.capabilityId === outcome.capabilityId,
-        )
-      )
-        unavailable();
-      const facts = {
-        capabilityId: outcome.capabilityId,
-        state: outcome.state,
-        safeCode: outcome.safeCode,
-      };
+      const facts = npProjectAgentRuntimeActionOutcomeV1(context, outcome);
       const digest = hash("np.agent-runtime-action-outcome.v1", facts);
       trusted.push({
         id: `action-outcome-${index.toString().padStart(3, "0")}`,
@@ -566,7 +713,7 @@ export function createAgentRuntimeContextV1(
               capturedAt,
               options.capabilities,
             );
-            const request = build(context, input, options.capabilities, sources);
+            const request = await build(context, input, options.capabilities, sources);
             const attestation = {
               request: hash("np.agent-runtime-context-request.v1", request),
               authority: authorityDigest(context),
@@ -607,7 +754,7 @@ export function createAgentRuntimeContextV1(
               options.capabilities,
             )
           : { trusted: [], untrusted: [] };
-        const expected = build(
+        const expected = await build(
           context,
           request,
           options.capabilities,

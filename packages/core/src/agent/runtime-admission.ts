@@ -1,3 +1,8 @@
+import type { NpAuthUser } from "../config/types.js";
+import {
+  npRequireAgentAuthorizationContextCanonical,
+  npDigestAgentAuthorizationContextCanonical,
+} from "../agent-contract/canonical-authorization-context.js";
 import { createHash, randomUUID } from "node:crypto";
 import { and, eq, inArray, or } from "drizzle-orm";
 import type { getDb } from "../db/runtime.js";
@@ -65,6 +70,7 @@ import type {
 import { NpAgentGatewayError } from "./admin-admission.js";
 import {
   npRequireAgentRuntimeVersionV1,
+  npResolveAgentRuntimeAuthorityV1,
   npResolveAgentRuntimePolicyV1,
   type NpAgentRuntimeVersionEvidenceV1,
   type NpAgentRuntimePolicyEvidenceV1,
@@ -109,6 +115,7 @@ export interface NpAgentRuntimeRunContextV1 {
   now: Date;
   run: Run;
   evidence: NpAgentRuntimeVersionEvidenceV1;
+  staffUser: NpAuthUser | null;
   settings: NpAgentRuntimeSettingsV1;
   policy: NpAgentRuntimePolicyEvidenceV1;
   siteBudget: NpAgentConcreteBudgetV1;
@@ -131,15 +138,24 @@ export interface NpAgentRuntimeAdmissionV1 {
     recipeId: NpAgentRecipeId;
     idempotencyKey: string;
   }): Promise<{ runId: string; replayed: boolean }>;
+  /** Retained requester authority, including nonterminal approval/retry waits. No lease is granted. */
+  withRunAuthority<T>(
+    input: { siteId: string; runId: string; db?: Db; allowTerminal?: boolean },
+    operation: (context: NpAgentRuntimeRunContextV1) => Promise<T>,
+  ): Promise<T>;
   withCurrentRun<T>(
-    input: { siteId: string; runId: string; claim?: NpAgentRuntimeExecutionClaimV1 },
+    input: { siteId: string; runId: string; claim?: NpAgentRuntimeExecutionClaimV1; db?: Db },
     operation: (context: NpAgentRuntimeRunContextV1) => Promise<T>,
   ): Promise<T>;
 }
 
 /** Exact reconstruction used by admission, reservations and retained evidence verification. */
 export function npRuntimeRunAdmissionBodyV1(run: Run): NpAgentRunAdmissionCanonicalV1 {
+  const sources = run.runtimeAdmissionSources
+    ? npRequireAgentRuntimeAdmissionSourcesV1(run.runtimeAdmissionSources)
+    : null;
   return npRequireAgentRunAdmissionCanonical({
+    ...(sources?.runtimeAuthority ? { runtimeAuthority: sources.runtimeAuthority } : {}),
     schemaVersion: "np.agent-run-admission.v1",
     siteId: run.siteId,
     origin: run.origin,
@@ -188,6 +204,36 @@ export function npRuntimeRunAdmissionBodyV1(run: Run): NpAgentRunAdmissionCanoni
   });
 }
 
+/** Shared private Runtime identity for invocation and stored ChangeSet authority. */
+export async function npRuntimeAuthorizationContextV1(context: NpAgentRuntimeRunContextV1) {
+  const authorizationContext = npRequireAgentAuthorizationContextCanonical({
+    schemaVersion: "np.agent-authorization-context.v1",
+    siteId: context.siteId,
+    actor: {
+      kind: "principal",
+      principalId: context.evidence.principal.id,
+      actorFingerprint: hash("np.agent-principal-actor.v1", {
+        siteId: context.siteId,
+        principalId: context.evidence.principal.id,
+      }),
+    },
+    transport: "runtime",
+    gatewayExposure: null,
+    authorityRef: {
+      kind: "runtime-run",
+      principalId: context.evidence.principal.id,
+      runId: context.run.id,
+      agentVersionId: context.evidence.version.id,
+      deadlineAt: context.run.deadlineAt.toISOString(),
+    },
+  });
+  return {
+    authorizationContext,
+    authorizationContextFingerprint:
+      await npDigestAgentAuthorizationContextCanonical(authorizationContext),
+  };
+}
+
 export function createAgentRuntimeAdmissionV1(
   options: NpAgentRuntimeAdmissionOptionsV1,
 ): NpAgentRuntimeAdmissionV1 {
@@ -231,13 +277,22 @@ export function createAgentRuntimeAdmissionV1(
         : 0,
     });
   }
-  function currentAuthority(evidence: NpAgentRuntimeVersionEvidenceV1) {
-    const principal = evidence.principal;
+  function currentAuthority(db: Db, siteId: string, evidence: NpAgentRuntimeVersionEvidenceV1) {
+    return npResolveAgentRuntimeAuthorityV1({
+      db,
+      siteId,
+      principal: evidence.principal,
+      scopes: evidence.definition.scopes,
+      deploymentAuthority: authority,
+    });
+  }
+  function requireFrozenAuthority(run: Run, current: Awaited<ReturnType<typeof currentAuthority>>) {
+    const frozen = npRuntimeRunAdmissionBodyV1(run).runtimeAuthority;
     if (
-      principal.authorityKind !== "deployment" ||
-      principal.authorityPolicyId !== authority.policyId ||
-      principal.authorityFingerprint !== authority.fingerprint ||
-      evidence.definition.scopes.some((scope) => !authority.scopes.includes(scope))
+      frozen
+        ? serializeAgentCanonicalJson(frozen) !==
+          serializeAgentCanonicalJson(current.runtimeAuthority)
+        : current.staffUser !== null
     )
       fail("RUNTIME_AUTHORITY_CHANGED");
   }
@@ -390,6 +445,8 @@ export function createAgentRuntimeAdmissionV1(
     settings: NpAgentRuntimeSettingsV1,
     revision: number,
     claim?: NpAgentRuntimeExecutionClaimV1,
+    authorityOnly = false,
+    allowTerminal = false,
   ): Promise<NpAgentRuntimeRunContextV1> {
     if (!UUID.test(runId)) fail("RUNTIME_RESOURCE_UNAVAILABLE", 404);
     const [run] = await db
@@ -407,15 +464,23 @@ export function createAgentRuntimeAdmissionV1(
     if (!run?.agentId || !run.agentVersionId || !run.runtimeAdmissionSources)
       fail("RUNTIME_RESOURCE_UNAVAILABLE", 404);
     const now = nowFn();
+    const terminalRead = authorityOnly && allowTerminal && run.finishedAt !== null;
     if (
       !settings.enabled ||
       settings.emergencyPause.paused ||
-      run.finishedAt ||
-      run.deadlineAt <= now ||
-      !["queued", "running", "verifying"].includes(run.state)
+      (!terminalRead && (run.finishedAt || run.deadlineAt <= now)) ||
+      (!terminalRead &&
+        !(
+          authorityOnly
+            ? ["queued", "running", "verifying", "waiting_approval", "waiting_retry"]
+            : ["queued", "running", "verifying"]
+        ).includes(run.state))
     )
       fail();
-    if (run.state !== "queued" || claim !== undefined || run.leaseUntil !== null) {
+    if (
+      !authorityOnly &&
+      (run.state !== "queued" || claim !== undefined || run.leaseUntil !== null)
+    ) {
       if (
         !claim ||
         !Number.isSafeInteger(claim.attempt) ||
@@ -433,7 +498,8 @@ export function createAgentRuntimeAdmissionV1(
       agentId: run.agentId,
       versionId: run.agentVersionId,
     });
-    currentAuthority(evidence);
+    const resolvedAuthority = await currentAuthority(db, siteId, evidence);
+    requireFrozenAuthority(run, resolvedAuthority);
     const body = npRuntimeRunAdmissionBodyV1(run);
     const limits = npRequireAgentRunLimitsCanonical(run.runLimits);
     const snapshot = npRequireAgentBudgetSnapshotCanonical(run.budgetSnapshot);
@@ -521,7 +587,8 @@ export function createAgentRuntimeAdmissionV1(
     const resolvedLimits = resolveRunLimits(agentBudget, provider.connection !== null, limits);
     if (
       run.attempt > resolvedLimits.maxAttempts ||
-      nowFn().getTime() >= run.queuedAt.getTime() + resolvedLimits.maxWallClockSeconds * 1000
+      (!terminalRead &&
+        nowFn().getTime() >= run.queuedAt.getTime() + resolvedLimits.maxWallClockSeconds * 1000)
     )
       fail("RUNTIME_ADMISSION_DENIED");
     return {
@@ -530,6 +597,7 @@ export function createAgentRuntimeAdmissionV1(
       now: nowFn(),
       run,
       evidence,
+      staffUser: resolvedAuthority.staffUser,
       settings,
       policy,
       siteBudget,
@@ -541,11 +609,43 @@ export function createAgentRuntimeAdmissionV1(
     };
   }
   return {
+    withRunAuthority: (input, operation) => {
+      npAssertAgentPreviewEffectsAllowed();
+      const siteId = canonicalBodySiteId(input.siteId, "agent.runtime.siteId");
+      const runId = canonicalBodyUuid(input.runId, "agent.runtime.runId");
+      if (
+        Object.keys(input).some((key) => !["siteId", "runId", "db", "allowTerminal"].includes(key))
+      )
+        fail();
+      return npWithAgentRuntimeControlTransactionV1(
+        siteId,
+        async ({ db, settings, revision }) => {
+          if (input.allowTerminal !== undefined && typeof input.allowTerminal !== "boolean") fail();
+          const context = await verifiedRun(
+            db,
+            siteId,
+            runId,
+            settings,
+            revision,
+            undefined,
+            true,
+            input.allowTerminal,
+          );
+          const result = await operation(context);
+          if (!context.run.finishedAt && context.run.deadlineAt <= nowFn())
+            fail("RUNTIME_LEASE_LOST");
+          requireFrozenAuthority(context.run, await currentAuthority(db, siteId, context.evidence));
+          return result;
+        },
+        input.db,
+      );
+    },
     withCurrentRun: (input, operation) => {
       npAssertAgentPreviewEffectsAllowed();
+      const { db: outerDb, ...envelope } = input;
       const keys = ["siteId", "runId"];
       const row = canonicalBodyRecord(
-        cloneCanonicalRuntimeInput(input, "agent.runtime.run", 4096),
+        cloneCanonicalRuntimeInput(envelope, "agent.runtime.run", 4096),
         "agent.runtime.run",
         [...keys, "claim"],
         keys,
@@ -601,6 +701,7 @@ export function createAgentRuntimeAdmissionV1(
               fail("RUNTIME_LEASE_LOST");
             return result;
           })(),
+        outerDb,
       );
     },
     admit: (input) => {
@@ -637,7 +738,7 @@ export function createAgentRuntimeAdmissionV1(
             agentId: input.agentId,
             versionId: input.expectedVersionId,
           });
-          currentAuthority(evidence);
+          const resolvedAuthority = await currentAuthority(db, input.siteId, evidence);
           const [previous] = await db
             .select()
             .from(npAgentRuns)
@@ -661,6 +762,7 @@ export function createAgentRuntimeAdmissionV1(
               previous.admissionFingerprint
             )
               fail("RUNTIME_ADMISSION_INVALID");
+            requireFrozenAuthority(previous, resolvedAuthority);
             return { runId: previous.id, replayed: true };
           }
           if (!settings.enabled || settings.emergencyPause.paused) fail("RUNTIME_PAUSED");
@@ -697,6 +799,7 @@ export function createAgentRuntimeAdmissionV1(
             provider.canonical.dataClassCeiling = policy.effective.providerDataMaximum;
           const sources = npRequireAgentRuntimeAdmissionSourcesV1({
             schemaVersion: "np.agent-runtime-admission-sources.v1",
+            runtimeAuthority: resolvedAuthority.runtimeAuthority,
             frameworkPolicy: {
               schemaVersion: "np.agent-policy.v1",
               instructions: "",
@@ -775,6 +878,7 @@ export function createAgentRuntimeAdmissionV1(
           const deadlineAt = new Date(now.getTime() + runLimits.maxWallClockSeconds * 1000);
           const body = npRequireAgentRunAdmissionCanonical({
             schemaVersion: "np.agent-run-admission.v1",
+            runtimeAuthority: resolvedAuthority.runtimeAuthority,
             siteId: input.siteId,
             origin: "runtime",
             principalId: evidence.principal.id,

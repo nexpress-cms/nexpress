@@ -1666,3 +1666,18 @@ all five restored theme-render PostgreSQL cases passed separately; generic
 environment-gated skips are not used as live coverage. Final revalidation passed Core unit 1,726, typecheck/build, reference build,
 lint 41, execution PostgreSQL 66 and packed 40-package/56-stage checks.
 The R4 section 18 acceptance gate passed; see the linked test mapping.
+
+## R5 delegated execution verification
+
+The [delegated Runtime slice](r5-runtime-delegated-execution-flow.md) adds real
+PostgreSQL coverage for explicit self-delegation, omitted deployment authority,
+principal/staff token changes, membership removal/regrant and synchronized
+authority changes. Approval checks must exercise immutable original requests,
+exact distinct execution receipts, replay, stale leases, current revocation,
+scheduled verification and the actual executor's return to an injected planner.
+Model-facing references must remain bounded, currently authorized and free of
+raw ChangeSet input, titles, credentials and internal evidence. New focused
+results do not substitute for full workspace, PostgreSQL, Redis, theme, native
+preview, production browser and packed-scaffold verification. Current results
+are recorded in the linked flow, including the completed local acceptance and
+the still-separate AP-503/AP-507/AP-508 work.

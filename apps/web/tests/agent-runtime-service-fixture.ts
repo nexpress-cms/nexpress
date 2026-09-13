@@ -102,8 +102,19 @@ export function runtimeRecipes(): NpAgentRecipeRegistryCanonicalV1 {
     ],
   };
 }
-export async function runtimeFixture(budget = runtimeBudget(), activate = true) {
+export async function runtimeFixture(
+  budget = runtimeBudget(),
+  activate = true,
+  overrides: {
+    delegated?: boolean;
+    definition?: NpAgentConfigurationDefinitionV1;
+    recipes?: NpAgentRecipeRegistryCanonicalV1;
+    maxCapabilityCalls?: number;
+    maxAttempts?: number;
+  } = {},
+) {
   const f = await fixture();
+  const definition = overrides.definition ?? runtimeDefinition();
   let now = new Date();
   const state = { ready: true, fingerprint: runtimeFingerprint };
   const controls = createAgentRuntimeControlsV1({
@@ -123,7 +134,7 @@ export async function runtimeFixture(budget = runtimeBudget(), activate = true) 
   });
   const settings = npCreateDisabledAgentRuntimeSettingsV1();
   settings.enabled = true;
-  settings.defaultPolicyRules.capabilityModes = [{ capabilityId: "site.inspect", mode: "observe" }];
+  settings.defaultPolicyRules.capabilityModes = structuredClone(definition.capabilityModes);
   await npWithAgentRuntimeControlTransactionV1(siteId, ({ db, revision }) =>
     controls.updateInTransaction({
       db,
@@ -136,10 +147,10 @@ export async function runtimeFixture(budget = runtimeBudget(), activate = true) 
   const deploymentAuthority = {
     policyId: "runtime-test",
     fingerprint: runtimeFingerprint,
-    scopes: ["site:read"] as const,
+    scopes: [...definition.scopes],
   };
   const options = {
-    recipes: runtimeRecipes(),
+    recipes: overrides.recipes ?? runtimeRecipes(),
     controls,
     deploymentAuthority: { ...deploymentAuthority, scopes: [...deploymentAuthority.scopes] },
     deploymentBudget: budget,
@@ -152,22 +163,27 @@ export async function runtimeFixture(budget = runtimeBudget(), activate = true) 
     ...options,
     runLimits: {
       schemaVersion: "np.agent-run-limits.v1",
-      maxAttempts: 2,
+      maxAttempts: overrides.maxAttempts ?? 2,
       maxProviderCalls: 2,
-      maxCapabilityCalls: 2,
+      maxCapabilityCalls: overrides.maxCapabilityCalls ?? 2,
       maxInputTokens: 100,
       maxOutputTokens: 100,
       maxCostMicros: 100,
       maxWallClockSeconds: 120,
     },
   });
-  const definition = runtimeDefinition();
   const created = await service.executeAdmin({
     siteId,
     actor: f.actor.actor,
     operationId: "agents.configurations.create",
     targetId: null,
-    command: { idempotencyKey: randomUUID(), ...npBuildAgentRuntimeDefinitionInputV1(definition) },
+    command: {
+      idempotencyKey: randomUUID(),
+      ...npBuildAgentRuntimeDefinitionInputV1(definition),
+      ...(overrides.delegated
+        ? { authority: { kind: "user", userId: f.actor.actor.user.id } }
+        : {}),
+    },
   });
   let current = created;
   if (activate)

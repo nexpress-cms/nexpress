@@ -1,5 +1,10 @@
 # R5 explicit provider, read execution and recovery slice
 
+This is the PR #1440 checkpoint. The subsequent explicit self-delegation and
+approval-resume implementation is tracked in
+[the delegated execution flow](r5-runtime-delegated-execution-flow.md); the
+authority decision below records the boundary of this earlier slice.
+
 This slice implements provider inference from AP-501, bounded context and
 explicit read execution from AP-505, and outcome-bound recovery from AP-506.
 Its base is the runtime foundation at `1dad00f0` (PR #1439). An explicitly
@@ -110,3 +115,10 @@ has a bounded 30-minute deadline because the preceding foundation already used
 The full R5 gate also remains open regardless of this slice's verification,
 because mutation/approval, triggers and the later product surfaces are outside
 its implemented scope.
+
+PR #1440 subsequently passed all four checks and merged as `ee16abd9`.
+Its full PostgreSQL job passed Core 67 and web 1,337 cases, including five
+theme-render cases, plus live Redis 16. The production browser job passed
+62 Playwright cases and the separate native-preview PostgreSQL case. The
+workspace and packed fresh-scaffold jobs also passed. These results belong
+to that merged checkpoint and do not substitute for the next slice's checks.

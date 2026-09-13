@@ -1,8 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 import { can, type NpCapability } from "../auth/capabilities.js";
 import type { NpAuthUser, NpUserRole } from "../config/types.js";
 import { getDb } from "../db/runtime.js";
+import { npAgentPrincipals } from "../db/schema/agent.js";
+import { npAuditEvents } from "../db/schema/community.js";
 import { npSiteMemberships, npSites, npUsers } from "../db/schema/system.js";
 import { NpValidationError } from "../errors.js";
 import {
@@ -89,6 +91,52 @@ export async function getMembership(
   return row ? rowToMembership(row) : null;
 }
 
+type MembershipDb = ReturnType<typeof getDb>;
+
+/** Match Runtime admission's principal-before-user lock order. */
+async function lockRuntimeDelegations(db: MembershipDb, userId: string, siteId?: string) {
+  return db
+    .select()
+    .from(npAgentPrincipals)
+    .where(
+      and(
+        eq(npAgentPrincipals.kind, "runtime"),
+        eq(npAgentPrincipals.authorityKind, "user"),
+        eq(npAgentPrincipals.authorityUserId, userId),
+        siteId === undefined ? undefined : eq(npAgentPrincipals.siteId, siteId),
+      ),
+    )
+    .orderBy(asc(npAgentPrincipals.siteId), asc(npAgentPrincipals.id))
+    .for("update");
+}
+
+async function invalidateRuntimeDelegations(
+  db: MembershipDb,
+  principals: Awaited<ReturnType<typeof lockRuntimeDelegations>>,
+  reason: "membership_changed" | "membership_removed" | "super_admin_changed",
+  now: Date,
+) {
+  for (const principal of principals) {
+    await db
+      .update(npAgentPrincipals)
+      .set({
+        rowVersion: principal.rowVersion + 1,
+        tokenVersion: principal.tokenVersion + 1,
+        updatedAt: now,
+      })
+      .where(eq(npAgentPrincipals.id, principal.id));
+    await db.insert(npAuditEvents).values({
+      actorKind: "system",
+      action: "agents.runtime.principals.authority_changed",
+      targetType: "agent-principal",
+      targetId: principal.id,
+      siteId: principal.siteId,
+      payload: { outcome: "invalidated", reason },
+      createdAt: now,
+    });
+  }
+}
+
 export async function grantSiteMembership(
   siteId: string,
   userId: string,
@@ -100,14 +148,29 @@ export async function grantSiteMembership(
   const db = getDb();
   return db.transaction(async (transaction) => {
     const tx = transaction as ReturnType<typeof getDb>;
-    const [[site], [user]] = await Promise.all([
-      tx.select({ id: npSites.id }).from(npSites).where(eq(npSites.id, siteId)).limit(1),
-      tx.select({ id: npUsers.id }).from(npUsers).where(eq(npUsers.id, userId)).limit(1),
-    ]);
+    const principals = await lockRuntimeDelegations(tx, userId, siteId);
+    const [site] = await tx
+      .select({ id: npSites.id })
+      .from(npSites)
+      .where(eq(npSites.id, siteId))
+      .limit(1);
+    const [user] = await tx
+      .select({ id: npUsers.id })
+      .from(npUsers)
+      .where(eq(npUsers.id, userId))
+      .for("update")
+      .limit(1);
     if (!site) throw invalid("siteId", `Site "${siteId}" not found`);
     if (!user) throw invalid("userId", `User "${userId}" not found`);
-
+    const [previous] = await tx
+      .select()
+      .from(npSiteMemberships)
+      .where(and(eq(npSiteMemberships.siteId, siteId), eq(npSiteMemberships.userId, userId)))
+      .for("update")
+      .limit(1);
+    if (previous?.role === role) return rowToMembership(previous);
     const now = new Date();
+    await invalidateRuntimeDelegations(tx, principals, "membership_changed", now);
     const [row] = await tx
       .insert(npSiteMemberships)
       .values({ siteId, userId, role, createdAt: now, updatedAt: now })
@@ -125,9 +188,22 @@ export async function revokeSiteMembership(siteId: string, userId: string): Prom
   assertSiteId(siteId);
   assertUserId(userId);
   const db = getDb();
-  await db
-    .delete(npSiteMemberships)
-    .where(and(eq(npSiteMemberships.siteId, siteId), eq(npSiteMemberships.userId, userId)));
+  await db.transaction(async (transaction) => {
+    const tx = transaction as MembershipDb;
+    const principals = await lockRuntimeDelegations(tx, userId, siteId);
+    await tx.select({ id: npUsers.id }).from(npUsers).where(eq(npUsers.id, userId)).for("update");
+    const [previous] = await tx
+      .select()
+      .from(npSiteMemberships)
+      .where(and(eq(npSiteMemberships.siteId, siteId), eq(npSiteMemberships.userId, userId)))
+      .for("update")
+      .limit(1);
+    if (!previous) return;
+    await invalidateRuntimeDelegations(tx, principals, "membership_removed", new Date());
+    await tx
+      .delete(npSiteMemberships)
+      .where(and(eq(npSiteMemberships.siteId, siteId), eq(npSiteMemberships.userId, userId)));
+  });
 }
 
 export async function setSuperAdmin(userId: string, isSuperAdmin: boolean): Promise<void> {
@@ -136,12 +212,21 @@ export async function setSuperAdmin(userId: string, isSuperAdmin: boolean): Prom
     throw invalid("isSuperAdmin", "isSuperAdmin must be boolean");
   }
   const db = getDb();
-  const result = await db
-    .update(npUsers)
-    .set({ isSuperAdmin, updatedAt: new Date() })
-    .where(eq(npUsers.id, userId))
-    .returning({ id: npUsers.id });
-  if (result.length === 0) throw invalid("userId", `User "${userId}" not found`);
+  await db.transaction(async (transaction) => {
+    const tx = transaction as MembershipDb;
+    const principals = await lockRuntimeDelegations(tx, userId);
+    const [user] = await tx
+      .select()
+      .from(npUsers)
+      .where(eq(npUsers.id, userId))
+      .for("update")
+      .limit(1);
+    if (!user) throw invalid("userId", `User "${userId}" not found`);
+    if (user.isSuperAdmin === isSuperAdmin) return;
+    const now = new Date();
+    await invalidateRuntimeDelegations(tx, principals, "super_admin_changed", now);
+    await tx.update(npUsers).set({ isSuperAdmin, updatedAt: now }).where(eq(npUsers.id, userId));
+  });
 }
 
 /**

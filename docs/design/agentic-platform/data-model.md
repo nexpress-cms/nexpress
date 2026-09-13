@@ -3405,6 +3405,14 @@ deferrable same-site foreign keys, but may not weaken the cross-site checks to
 avoid that cycle.
 
 Deleting a staff user does not erase historical action/approval attribution.
+The [delegated Runtime slice](r5-runtime-delegated-execution-flow.md) reuses the
+existing principal authority fields and token version. Its optional private
+`runtimeAuthority` evidence is included in the existing Run admission sources
+and canonical digest; old admission bytes remain valid only for deployment
+authority. No new table or migration is required. Membership and super-admin
+changes invalidate delegated principal versions rather than allowing old Runs
+to revive after authority is restored.
+
 Before user-owned references are nulled, deletion revokes active OAuth grants
 and service tokens whose authority is that user and suspends their principals
 and Runtime Agents. The same serialized authority-change transaction revokes

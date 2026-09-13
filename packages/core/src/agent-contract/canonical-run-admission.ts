@@ -32,6 +32,7 @@ import {
   type NpAgentJsonValue,
   type NpAgentProviderDataClass,
   type NpAgentRecipeId,
+  type NpAgentRuntimeAuthorityEvidenceV1,
   type NpAgentRunAdmissionAgentV1,
   type NpAgentRunAdmissionCanonicalV1,
   type NpAgentRunAdmissionConnectionV1,
@@ -81,6 +82,7 @@ export const npAgentRunAdmissionCanonicalIncludedKeysV1 = [
   "connection",
   "admittedAt",
   "deadlineAt",
+  "runtimeAuthority",
 ] as const satisfies readonly (keyof NpAgentRunAdmissionCanonicalV1)[];
 
 export const npAgentRunAdmissionCanonicalExcludedKeysV1 = [
@@ -447,6 +449,50 @@ function parseConnection(
   };
 }
 
+export const npAgentRuntimeAuthorityEvidenceIncludedKeysV1 = [
+  "principalTokenVersion",
+  "authorityFingerprint",
+  "deploymentAuthorityFingerprint",
+  "staffAuthorizationFingerprint",
+] as const satisfies readonly (keyof NpAgentRuntimeAuthorityEvidenceV1)[];
+
+/** One exact authority snapshot shared by retained sources and canonical Run admission. */
+export function npRequireAgentRuntimeAuthorityEvidenceV1(
+  value: unknown,
+): NpAgentRuntimeAuthorityEvidenceV1 {
+  const path = "agent.canonical.runAdmission.runtimeAuthority";
+  const row = canonicalBodyRecord(
+    value,
+    path,
+    npAgentRuntimeAuthorityEvidenceIncludedKeysV1,
+    npAgentRuntimeAuthorityEvidenceIncludedKeysV1,
+    { seen: new WeakSet<object>() },
+  );
+  return {
+    principalTokenVersion: canonicalBodyInteger(
+      row.principalTokenVersion,
+      `${path}.principalTokenVersion`,
+      1,
+      SIGNED_32_BIT_MAXIMUM,
+    ),
+    authorityFingerprint: canonicalBodySha256Digest(
+      row.authorityFingerprint,
+      `${path}.authorityFingerprint`,
+    ),
+    deploymentAuthorityFingerprint: canonicalBodySha256Digest(
+      row.deploymentAuthorityFingerprint,
+      `${path}.deploymentAuthorityFingerprint`,
+    ),
+    staffAuthorizationFingerprint:
+      row.staffAuthorizationFingerprint === null
+        ? null
+        : canonicalBodySha256Digest(
+            row.staffAuthorizationFingerprint,
+            `${path}.staffAuthorizationFingerprint`,
+          ),
+  };
+}
+
 function parseRunAdmissionCanonical(value: unknown): NpAgentRunAdmissionCanonicalV1 {
   const path = "agent.canonical.runAdmission";
   const preflight = parsePreflightObject(value, path);
@@ -455,7 +501,7 @@ function parseRunAdmissionCanonical(value: unknown): NpAgentRunAdmissionCanonica
     preflight,
     path,
     npAgentRunAdmissionCanonicalIncludedKeysV1,
-    npAgentRunAdmissionCanonicalIncludedKeysV1,
+    npAgentRunAdmissionCanonicalIncludedKeysV1.filter((key) => key !== "runtimeAuthority"),
     state,
   );
   if (record.schemaVersion !== PURPOSE) {
@@ -476,6 +522,16 @@ function parseRunAdmissionCanonical(value: unknown): NpAgentRunAdmissionCanonica
     record.connection === null
       ? null
       : parseConnection(record.connection, `${path}.connection`, state);
+
+  const runtimeAuthority = Object.hasOwn(record, "runtimeAuthority")
+    ? npRequireAgentRuntimeAuthorityEvidenceV1(record.runtimeAuthority)
+    : undefined;
+  if (origin === "gateway" && runtimeAuthority !== undefined)
+    failCanonicalBody(
+      "invalid-field",
+      `${path}.runtimeAuthority`,
+      "is only valid for Runtime admission",
+    );
 
   if (origin === "gateway") {
     if (invocationId === null) {
@@ -520,6 +576,7 @@ function parseRunAdmissionCanonical(value: unknown): NpAgentRunAdmissionCanonica
 
   const result: NpAgentRunAdmissionCanonicalV1 = {
     schemaVersion: PURPOSE,
+    ...(runtimeAuthority === undefined ? {} : { runtimeAuthority }),
     siteId: canonicalBodySiteId(record.siteId, `${path}.siteId`),
     origin,
     principalId: canonicalBodyUuid(record.principalId, `${path}.principalId`),

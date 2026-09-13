@@ -307,3 +307,23 @@ describe("Runtime retained admission source evidence", () => {
     expect(reads).toBe(0);
   });
 });
+
+it("requires retained authority evidence to match canonical admission exactly", async () => {
+  const value = await fixture();
+  const authority = {
+    principalTokenVersion: 2,
+    authorityFingerprint: digest,
+    deploymentAuthorityFingerprint: otherDigest,
+    staffAuthorizationFingerprint: digest,
+  };
+  value.sources.runtimeAuthority = authority;
+  await expect(npVerifyAgentRuntimeAdmissionSourcesV1(value)).rejects.toMatchObject(invalid);
+  value.admission.runtimeAuthority = structuredClone(authority);
+  await expect(npVerifyAgentRuntimeAdmissionSourcesV1(value)).resolves.toMatchObject({
+    runtimeAuthority: authority,
+  });
+  value.sources.runtimeAuthority.principalTokenVersion++;
+  await expect(npVerifyAgentRuntimeAdmissionSourcesV1(value)).rejects.toMatchObject(invalid);
+  delete value.sources.runtimeAuthority;
+  await expect(npVerifyAgentRuntimeAdmissionSourcesV1(value)).rejects.toMatchObject(invalid);
+});

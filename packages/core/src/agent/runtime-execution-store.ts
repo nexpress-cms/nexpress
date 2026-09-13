@@ -1,4 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
+import type { NpAgentCapabilityAdmissionServiceV1 } from "./capability-admission.js";
 import type { getDb } from "../db/runtime.js";
 import { npAgentRuns, npAgentProviderCalls, npAgentActions } from "../db/schema/agent.js";
 import { npAuditEvents } from "../db/schema/community.js";
@@ -92,6 +93,9 @@ export async function npRequireAgentRuntimeExecutionIntegrityV1(run: Run): Promi
 }
 export interface NpAgentRuntimeExecutionStoreV1 {
   claim(input: Identity): Promise<{ state: string; claim: NpAgentRuntimeExecutionClaimV1 | null }>;
+  claimApproval(
+    input: Identity & { requestActionId: string },
+  ): Promise<{ state: string; claim: NpAgentRuntimeExecutionClaimV1 | null }>;
   renew(input: Claimed): Promise<NpAgentRuntimeExecutionClaimV1>;
   withClaim<T>(
     input: Claimed,
@@ -117,6 +121,7 @@ export function createAgentRuntimeExecutionStoreV1(options: {
   admission: NpAgentRuntimeAdmissionV1;
   now?: () => Date;
   leaseSeconds?: number;
+  approval?: Pick<NpAgentCapabilityAdmissionServiceV1, "inspectRuntimeApproval">;
 }): NpAgentRuntimeExecutionStoreV1 {
   const leaseSeconds = options.leaseSeconds ?? 90;
   if (!Number.isSafeInteger(leaseSeconds) || leaseSeconds < 1 || leaseSeconds > 90)
@@ -220,7 +225,7 @@ export function createAgentRuntimeExecutionStoreV1(options: {
     });
     return { state };
   };
-  const unresolved = async (db: Db, run: Run) => {
+  const unresolved = async (db: Db, run: Run, context?: NpAgentRuntimeRunContextV1) => {
     const calls = await db
       .select({ id: npAgentProviderCalls.id })
       .from(npAgentProviderCalls)
@@ -233,15 +238,21 @@ export function createAgentRuntimeExecutionStoreV1(options: {
       )
       .limit(1);
     const actions = await db
-      .select({ state: npAgentActions.state })
+      .select({ id: npAgentActions.id, state: npAgentActions.state })
       .from(npAgentActions)
       .where(and(eq(npAgentActions.siteId, run.siteId), eq(npAgentActions.runId, run.id)))
       .limit(1001);
     if (actions.length > 1000) fail("RUNTIME_EXECUTION_INTEGRITY_INVALID");
-    return (
-      calls.length > 0 ||
-      actions.some((action) => !["succeeded", "compensated"].includes(action.state))
-    );
+    if (calls.length > 0) return true;
+    for (const action of actions) {
+      if (["succeeded", "compensated"].includes(action.state)) continue;
+      if (context && options.approval && ["approval_pending", "approved"].includes(action.state)) {
+        const evidence = await options.approval.inspectRuntimeApproval(context, action.id);
+        if (evidence.status === "completed") continue;
+      }
+      return true;
+    }
+    return false;
   };
   return {
     claim: (input) =>
@@ -275,6 +286,48 @@ export function createAgentRuntimeExecutionStoreV1(options: {
         });
         return { state: "running", claim: { attempt, leaseUntil: leaseUntil.toISOString() } };
       }),
+    claimApproval: (input) => {
+      npAssertAgentPreviewEffectsAllowed();
+      input = closed(input, ["requestActionId"]);
+      identity({ siteId: input.siteId, runId: input.requestActionId });
+      if (!options.approval) fail("RUNTIME_APPROVAL_UNAVAILABLE");
+      const approval = options.approval;
+      return options.admission.withRunAuthority(
+        { siteId: input.siteId, runId: input.runId, allowTerminal: true },
+        async (context) => {
+          const { db, run } = context;
+          const evidence = await approval.inspectRuntimeApproval(context, input.requestActionId);
+          const at = now();
+          if (evidence.requestActionId !== input.requestActionId || !Number.isFinite(at.getTime()))
+            fail("RUNTIME_APPROVAL_UNAVAILABLE");
+          if (
+            evidence.status === "pending" ||
+            terminal.includes(run.state) ||
+            (run.leaseUntil && run.leaseUntil > at)
+          )
+            return { state: run.state, claim: null };
+          if (
+            !["waiting_approval", "running", "verifying"].includes(run.state) ||
+            run.deadlineAt <= at
+          )
+            fail("RUNTIME_APPROVAL_UNAVAILABLE");
+          // Every claim changes the durable attempt, including approval continuation.
+          // Waiting states clear leaseUntil, so a lease timestamp alone cannot fence stale workers.
+          const attempt = run.attempt + 1;
+          if (attempt > context.limits.maxAttempts) fail("RUNTIME_ATTEMPTS_EXHAUSTED");
+          const leaseUntil = new Date(
+            Math.min(at.getTime() + leaseSeconds * 1000, run.deadlineAt.getTime()),
+          );
+          await update(db, run, at, {
+            state: "running",
+            attempt,
+            leaseUntil,
+            runtimeRetryAt: null,
+          });
+          return { state: "running", claim: { attempt, leaseUntil: leaseUntil.toISOString() } };
+        },
+      );
+    },
     renew: (input) =>
       locked(closed(input, ["claim"]), async (db, run, at, input) => {
         assertClaim(run, input.claim, at);
@@ -291,7 +344,7 @@ export function createAgentRuntimeExecutionStoreV1(options: {
     transition: (input) => {
       npAssertAgentPreviewEffectsAllowed();
       input = closed(input, ["claim", "state", "errorCode"]);
-      const change = async (db: Db, run: Run, at: Date) => {
+      const change = async (db: Db, run: Run, at: Date, context?: NpAgentRuntimeRunContextV1) => {
         assertClaim(run, input.claim, at);
         if (
           ![
@@ -309,7 +362,7 @@ export function createAgentRuntimeExecutionStoreV1(options: {
           fail("RUNTIME_ARGUMENT_INVALID", 400);
         if (input.state === "waiting_approval") {
           const pending = await db
-            .select({ approvalId: npAgentActions.approvalId })
+            .select({ id: npAgentActions.id, approvalId: npAgentActions.approvalId })
             .from(npAgentActions)
             .where(
               and(
@@ -318,10 +371,25 @@ export function createAgentRuntimeExecutionStoreV1(options: {
                 inArray(npAgentActions.state, ["approval_pending", "approved"]),
               ),
             )
-            .limit(2);
-          if (pending.length !== 1 || !pending[0].approvalId) fail("RUNTIME_APPROVAL_UNAVAILABLE");
+            .limit(1001);
+          if (pending.length > 1000) fail("RUNTIME_APPROVAL_UNAVAILABLE");
+          const unresolvedApprovals = [];
+          for (const action of pending) {
+            if (context && options.approval) {
+              const evidence = await options.approval.inspectRuntimeApproval(context, action.id);
+              if (evidence.requestActionId !== action.id) fail("RUNTIME_APPROVAL_UNAVAILABLE");
+              if (evidence.status === "completed") continue;
+              unresolvedApprovals.push(action);
+            } else {
+              // Without the shared signed-receipt owner, only the existing bound-column
+              // contract may identify a pending request. A scope or state alone is insufficient.
+              if (!action.approvalId) fail("RUNTIME_APPROVAL_UNAVAILABLE");
+              unresolvedApprovals.push(action);
+            }
+          }
+          if (unresolvedApprovals.length !== 1) fail("RUNTIME_APPROVAL_UNAVAILABLE");
         }
-        if (input.state === "succeeded" && (await unresolved(db, run)))
+        if (input.state === "succeeded" && (await unresolved(db, run, context)))
           fail("RUNTIME_EXECUTION_UNRESOLVED");
         if (terminal.includes(input.state))
           return finish(db, run, at, input.state, input.errorCode ?? null);
@@ -335,29 +403,36 @@ export function createAgentRuntimeExecutionStoreV1(options: {
       return ["succeeded", "waiting_approval", "verifying"].includes(input.state)
         ? options.admission.withCurrentRun(
             { siteId: input.siteId, runId: input.runId, claim: input.claim },
-            (context) => change(context.db, context.run, context.now),
+            (context) => change(context.db, context.run, context.now, context),
           )
-        : locked(input, change);
+        : locked(input, (db, run, at) => change(db, run, at));
     },
-    waitRetry: (input) =>
-      locked(closed(input, ["claim", "retryAt"]), async (db, run, at, input) => {
-        assertClaim(run, input.claim, at);
-        const retryAt = new Date(input.retryAt);
-        if (
-          !Number.isFinite(retryAt.getTime()) ||
-          retryAt.toISOString() !== input.retryAt ||
-          retryAt <= at ||
-          retryAt >= run.deadlineAt ||
-          (await unresolved(db, run))
-        )
-          fail();
-        await update(db, run, at, {
-          state: "waiting_retry",
-          leaseUntil: null,
-          runtimeRetryAt: retryAt,
-        });
-        return { state: "waiting_retry" };
-      }),
+    waitRetry: (input) => {
+      npAssertAgentPreviewEffectsAllowed();
+      input = closed(input, ["claim", "retryAt"]);
+      return options.admission.withCurrentRun(
+        { siteId: input.siteId, runId: input.runId, claim: input.claim },
+        async (context) => {
+          const { db, run, now: at } = context;
+          assertClaim(run, input.claim, at);
+          const retryAt = new Date(input.retryAt);
+          if (
+            !Number.isFinite(retryAt.getTime()) ||
+            retryAt.toISOString() !== input.retryAt ||
+            retryAt <= at ||
+            retryAt >= run.deadlineAt ||
+            (await unresolved(db, run, context))
+          )
+            fail();
+          await update(db, run, at, {
+            state: "waiting_retry",
+            leaseUntil: null,
+            runtimeRetryAt: retryAt,
+          });
+          return { state: "waiting_retry" };
+        },
+      );
+    },
     cancel: (input) =>
       locked(closed(input), async (db, run, at) =>
         terminal.includes(run.state)

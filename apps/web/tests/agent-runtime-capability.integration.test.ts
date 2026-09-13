@@ -184,7 +184,7 @@ describe.skipIf(skipIfNoTestDb())("Runtime capability admission", () => {
       { siteId, runId: f.input.runId, claim: f.input.claim },
       async (context) => {
         expect(
-          f.capability.sourceEntries(context).map((entry) => entry.canonical.descriptor.id),
+          (await f.capability.sourceEntries(context)).map((entry) => entry.canonical.descriptor.id),
         ).toEqual(["content.query"]);
         expect(await f.capability.runtimeActionOutcomes(context)).toEqual([
           { capabilityId: "content.query", state: "succeeded", safeCode: null },

@@ -1,17 +1,20 @@
 # AGENTS.md
 
-**Current explicit execution slice:** AP-501 provider inference, AP-505 bounded
-context/read execution and AP-506 outcome-bound recovery reuse the existing
-Run, action and usage journals. Generated 0048 adds `runtimeRetryAt`; Doctor
-covers 40 Agent tables and 266 critical constraints. Deployment principals
-retain only their existing public/published content read authority; site/schema
-and ChangeSet capabilities remain unavailable without genuine staff/item
-authority. Full AP-505 mutation/approval integration is the next separate task,
-starting with an explicit staff-delegation decision. Do not synthesize users,
-sessions or delegation from an Agent creator. Current-slice full verification
-is pending; retain the recorded focused results without claiming the full R5
-gate. No automatic installation, package versions or changesets are added.
-See [the execution slice and next authority decision](docs/design/agentic-platform/r5-runtime-execution-flow.md).
+**Current delegated execution slice:** Explicit self-delegation on the existing
+Agent create command binds a real staff user; omitted authority remains
+deployment-only. Runtime admission freezes principal/staff/deployment authority
+and rechecks live scope, membership and item access. Existing ChangeSet,
+approval, invocation and execution services own Runtime mutations and explicit
+approval resumption; the request action stays immutable and only its exact
+approved-execution receipt fulfills it. Membership changes invalidate old
+Run authority, including removal/regrant. No users, sessions or delegation are
+synthesized from an Agent creator. Local acceptance passed verify 113/lint 41,
+Core unit 1,854, Core PostgreSQL 67, web PostgreSQL 1,373 (theme 5), native
+preview 1, Redis 16, production browser 62 and packed 40-package/56-stage
+checks. The full R5 gate remains open for AP-503/AP-507/AP-508. Doctor remains
+40 tables/266 critical constraints, with no migration, automatic worker, seed,
+default activation,
+package versions or changesets. See [the delegated execution flow](docs/design/agentic-platform/r5-runtime-delegated-execution-flow.md).
 
 This file provides guidance to Agents when working with code in this repository.
 

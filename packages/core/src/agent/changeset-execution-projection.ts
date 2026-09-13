@@ -41,7 +41,7 @@ type Db = ReturnType<typeof getDb>;
 function object(value: object): NpAgentJsonObject {
   return value as unknown as NpAgentJsonObject;
 }
-function hash(value: unknown): string {
+export function npDigestChangeSetExecutionProjectionV1(value: unknown): string {
   return `cj1:sha256:${createHash("sha256").update("np.agent-execution-projection.v1\0").update(serializeAgentCanonicalJson(value)).digest("base64url")}`;
 }
 function invalid(): never {
@@ -51,7 +51,8 @@ function invalid(): never {
 /** Projection only. The caller owns current authority, domain mutation and transaction. */
 export async function npAdmitChangeSetExecutionProjectionV1(input: {
   db: Db;
-  authentication: NpAgentCapabilityAuthenticationV1;
+  authentication?: NpAgentCapabilityAuthenticationV1;
+  runtime?: { siteId: string; principalId: string; runId: string; sequence: number };
   invocationId: string;
   requestHash: string;
   request: NpAgentChangeSetCapabilityInvocationRequestV1;
@@ -63,8 +64,14 @@ export async function npAdmitChangeSetExecutionProjectionV1(input: {
 }): Promise<{ runId: string; actionId: string }> {
   const { db, authentication, request } = input,
     now = input.now ?? new Date();
-  const siteId = authentication.principal.siteId,
-    principalId = authentication.principal.id;
+  if (!!authentication === !!input.runtime) return invalid();
+  const siteId = authentication?.principal.siteId ?? input.runtime!.siteId,
+    principalId = authentication?.principal.id ?? input.runtime!.principalId;
+  if (
+    input.runtime &&
+    (!Number.isSafeInteger(input.runtime.sequence) || input.runtime.sequence < 1)
+  )
+    return invalid();
   if (
     !["changeset.apply", "changeset.schedule", "changeset.rollback"].includes(request.capabilityId)
   )
@@ -152,120 +159,138 @@ export async function npAdmitChangeSetExecutionProjectionV1(input: {
           eq(npAgentChangesetOperations.changesetId, parent.id),
         ),
       );
-  const runId = randomUUID(),
+  const runId = input.runtime?.runId ?? randomUUID(),
     actionId = randomUUID();
-  // No provider is installed for this one-capability Gateway projection. The
-  // canonical legacy provider-call ceiling is positive; zero token/cost limits
-  // and absent provider identity do not grant provider authority.
-  const limits = npRequireAgentRunLimitsCanonical({
-    schemaVersion: "np.agent-run-limits.v1",
-    maxAttempts: 1,
-    maxProviderCalls: 1,
-    maxCapabilityCalls: 1,
-    maxInputTokens: 0,
-    maxOutputTokens: 0,
-    maxCostMicros: 0,
-    maxWallClockSeconds: 86400,
-  });
-  const [counts] = await db
-    .select({
-      active: sql<number>`count(*) filter (where ${npAgentRuns.finishedAt} is null)::int`,
-      hour: sql<number>`count(*) filter (where ${npAgentRuns.queuedAt} >= ${new Date(now.getTime() - 3600000)})::int`,
-    })
-    .from(npAgentRuns)
-    .where(and(eq(npAgentRuns.siteId, siteId), eq(npAgentRuns.principalId, principalId)));
-  const budget = npRequireAgentBudgetSnapshotCanonical({
-    schemaVersion: "np.agent-budget-snapshot.v1",
-    siteId,
-    principalId,
-    agentId: null,
-    recipe: null,
-    capturedAt: now.toISOString(),
-    sourceRefs: [],
-    limits,
-    counters: {
-      concurrentRuns: counts?.active ?? 0,
-      concurrentProviderCalls: 0,
-      runsRollingHour: counts?.hour ?? 0,
-      providerCallsRollingHour: 0,
-      inputTokensUtcDay: 0,
-      outputTokensUtcDay: 0,
-      inputTokensUtcMonth: 0,
-      outputTokensUtcMonth: 0,
-      costMicrosUtcDay: 0,
-      costMicrosUtcMonth: 0,
-      incidentAnalysesFingerprintUtcDay: 0,
-      directActionsRollingHour: 0,
-      directActionsSubjectRollingHour: 0,
-    },
-    windows: {
-      rollingHourStartedAt: new Date(now.getTime() - 3600000).toISOString(),
-      utcDay: now.toISOString().slice(0, 10),
-      utcMonth: now.toISOString().slice(0, 7),
-    },
-    reservation: { runs: 1, providerCalls: 0, inputTokens: 0, outputTokens: 0, costMicros: 0 },
-  });
-  const runLimitsHash = await npDigestAgentRunLimitsCanonical(limits),
-    budgetSnapshotHash = await npDigestAgentBudgetSnapshotCanonical(budget);
-  const deadlineAt = new Date(now.getTime() + limits.maxWallClockSeconds * 1000);
-  const admission = npRequireAgentRunAdmissionCanonical({
-    schemaVersion: "np.agent-run-admission.v1",
-    siteId,
-    origin: "gateway",
-    principalId,
-    invocationId: invocation.id,
-    triggerId: null,
-    agent: null,
-    lineage: {
+  let admissionFingerprint: string;
+  if (input.runtime) {
+    const [run] = await db
+      .select()
+      .from(npAgentRuns)
+      .where(and(eq(npAgentRuns.siteId, siteId), eq(npAgentRuns.id, runId)))
+      .limit(1);
+    if (
+      !run ||
+      run.origin !== "runtime" ||
+      run.principalId !== principalId ||
+      run.finishedAt ||
+      invocation.transport !== "runtime"
+    )
+      return invalid();
+    admissionFingerprint = run.admissionFingerprint;
+  } else {
+    // No provider is installed for this one-capability Gateway projection. The
+    // canonical legacy provider-call ceiling is positive; zero token/cost limits
+    // and absent provider identity do not grant provider authority.
+    const limits = npRequireAgentRunLimitsCanonical({
+      schemaVersion: "np.agent-run-limits.v1",
+      maxAttempts: 1,
+      maxProviderCalls: 1,
+      maxCapabilityCalls: 1,
+      maxInputTokens: 0,
+      maxOutputTokens: 0,
+      maxCostMicros: 0,
+      maxWallClockSeconds: 86400,
+    });
+    const [counts] = await db
+      .select({
+        active: sql<number>`count(*) filter (where ${npAgentRuns.finishedAt} is null)::int`,
+        hour: sql<number>`count(*) filter (where ${npAgentRuns.queuedAt} >= ${new Date(now.getTime() - 3600000)})::int`,
+      })
+      .from(npAgentRuns)
+      .where(and(eq(npAgentRuns.siteId, siteId), eq(npAgentRuns.principalId, principalId)));
+    const budget = npRequireAgentBudgetSnapshotCanonical({
+      schemaVersion: "np.agent-budget-snapshot.v1",
+      siteId,
+      principalId,
+      agentId: null,
+      recipe: null,
+      capturedAt: now.toISOString(),
+      sourceRefs: [],
+      limits,
+      counters: {
+        concurrentRuns: counts?.active ?? 0,
+        concurrentProviderCalls: 0,
+        runsRollingHour: counts?.hour ?? 0,
+        providerCallsRollingHour: 0,
+        inputTokensUtcDay: 0,
+        outputTokensUtcDay: 0,
+        inputTokensUtcMonth: 0,
+        outputTokensUtcMonth: 0,
+        costMicrosUtcDay: 0,
+        costMicrosUtcMonth: 0,
+        incidentAnalysesFingerprintUtcDay: 0,
+        directActionsRollingHour: 0,
+        directActionsSubjectRollingHour: 0,
+      },
+      windows: {
+        rollingHourStartedAt: new Date(now.getTime() - 3600000).toISOString(),
+        utcDay: now.toISOString().slice(0, 10),
+        utcMonth: now.toISOString().slice(0, 7),
+      },
+      reservation: { runs: 1, providerCalls: 0, inputTokens: 0, outputTokens: 0, costMicros: 0 },
+    });
+    const runLimitsHash = await npDigestAgentRunLimitsCanonical(limits),
+      budgetSnapshotHash = await npDigestAgentBudgetSnapshotCanonical(budget);
+    const deadlineAt = new Date(now.getTime() + limits.maxWallClockSeconds * 1000);
+    const admission = npRequireAgentRunAdmissionCanonical({
+      schemaVersion: "np.agent-run-admission.v1",
+      siteId,
+      origin: "gateway",
+      principalId,
+      invocationId: invocation.id,
+      triggerId: null,
+      agent: null,
+      lineage: {
+        rootRunId: runId,
+        parentRunId: null,
+        causalDepth: 0,
+        causalEventId: null,
+        causalActionId: null,
+      },
+      recipe: null,
+      goal: request.capabilityId,
+      eventRef: null,
+      policyRefs: [],
+      runLimitsHash,
+      budgetSnapshotHash,
+      idempotencyKey: `invocation:${invocation.id}`,
+      connection: null,
+      admittedAt: now.toISOString(),
+      deadlineAt: deadlineAt.toISOString(),
+    });
+    admissionFingerprint = await npDigestAgentRunAdmissionCanonical(admission);
+    const awaitingApproval = !!input.approvalId && !input.executionId;
+    await db.insert(npAgentRuns).values({
+      id: runId,
+      siteId,
+      origin: "gateway",
+      principalId,
+      invocationId: invocation.id,
+      admissionFingerprint,
       rootRunId: runId,
-      parentRunId: null,
       causalDepth: 0,
-      causalEventId: null,
-      causalActionId: null,
-    },
-    recipe: null,
-    goal: request.capabilityId,
-    eventRef: null,
-    policyRefs: [],
-    runLimitsHash,
-    budgetSnapshotHash,
-    idempotencyKey: `invocation:${invocation.id}`,
-    connection: null,
-    admittedAt: now.toISOString(),
-    deadlineAt: deadlineAt.toISOString(),
-  });
-  const admissionFingerprint = await npDigestAgentRunAdmissionCanonical(admission);
-  const awaitingApproval = !!input.approvalId && !input.executionId;
-  await db.insert(npAgentRuns).values({
-    id: runId,
-    siteId,
-    origin: "gateway",
-    principalId,
-    invocationId: invocation.id,
-    admissionFingerprint,
-    rootRunId: runId,
-    causalDepth: 0,
-    state: awaitingApproval ? "waiting_approval" : "queued",
-    goal: request.capabilityId,
-    policyRefs: [],
-    runLimits: limits,
-    runLimitsHash,
-    budgetSnapshot: object(budget),
-    budgetSnapshotHash,
-    idempotencyKey: `invocation:${invocation.id}`,
-    attempt: 1,
-    usage: {
-      providerCalls: 0,
-      capabilityCalls: 1,
-      inputTokens: 0,
-      cachedInputTokens: 0,
-      outputTokens: 0,
-      costMicros: 0,
-    },
-    queuedAt: now,
-    startedAt: awaitingApproval ? now : null,
-    deadlineAt,
-  });
+      state: awaitingApproval ? "waiting_approval" : "queued",
+      goal: request.capabilityId,
+      policyRefs: [],
+      runLimits: limits,
+      runLimitsHash,
+      budgetSnapshot: object(budget),
+      budgetSnapshotHash,
+      idempotencyKey: `invocation:${invocation.id}`,
+      attempt: 1,
+      usage: {
+        providerCalls: 0,
+        capabilityCalls: 1,
+        inputTokens: 0,
+        cachedInputTokens: 0,
+        outputTokens: 0,
+        costMicros: 0,
+      },
+      queuedAt: now,
+      startedAt: awaitingApproval ? now : null,
+      deadlineAt,
+    });
+  }
   const [rollbackPlan] = input.rollbackPlanId
     ? await db
         .select()
@@ -311,7 +336,7 @@ export async function npAdmitChangeSetExecutionProjectionV1(input: {
     actionId,
     invocationFingerprint: invocation.requestHash,
     runFingerprint: admissionFingerprint,
-    sequence: 1,
+    sequence: input.runtime?.sequence ?? 1,
     capabilityId: request.capabilityId,
     capabilityContractVersion: invocation.contractVersion,
     capabilityFingerprint: invocation.contractFingerprint,
@@ -333,7 +358,7 @@ export async function npAdmitChangeSetExecutionProjectionV1(input: {
     runFingerprint: admissionFingerprint,
     invocationId: invocation.id,
     invocationFingerprint: invocation.requestHash,
-    sequence: 1,
+    sequence: input.runtime?.sequence ?? 1,
     capabilityId: request.capabilityId,
     capabilityContractVersion: invocation.contractVersion,
     capabilityFingerprint: invocation.contractFingerprint,
@@ -389,6 +414,24 @@ export async function npReconcileChangeSetExecutionProjectionV1(input: {
     .limit(1);
   if (!invocation?.runId) return;
   if (!invocation.resultId) return invalid();
+  // Runtime admission owns the Run before any ChangeSet locks. Standalone
+  // recovery must preserve that order too, or replay can deadlock with it.
+  if (invocation.transport === "runtime") {
+    const [runtimeRun] = await db
+      .select({ id: npAgentRuns.id })
+      .from(npAgentRuns)
+      .where(
+        and(
+          eq(npAgentRuns.siteId, input.siteId),
+          eq(npAgentRuns.id, invocation.runId),
+          eq(npAgentRuns.origin, "runtime"),
+          eq(npAgentRuns.principalId, invocation.principalId!),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!runtimeRun) return invalid();
+  }
   await db
     .select({ id: npAgentChangesets.id })
     .from(npAgentChangesets)
@@ -416,8 +459,27 @@ export async function npReconcileChangeSetExecutionProjectionV1(input: {
     .where(and(eq(npAgentRuns.siteId, input.siteId), eq(npAgentRuns.id, invocation.runId)))
     .for("update")
     .limit(1);
-  if (!run || run.invocationId !== invocation.id) return invalid();
+  if (
+    !run ||
+    (run.origin === "gateway"
+      ? run.invocationId !== invocation.id
+      : invocation.transport !== "runtime" || invocation.principalId !== run.principalId)
+  )
+    return invalid();
   if (run.finishedAt) return;
+  if (run.origin === "runtime" && typeof invocation.outputRedacted?.approvalId === "string") {
+    const [requestAction] = await db
+      .select({ state: npAgentActions.state })
+      .from(npAgentActions)
+      .where(
+        and(
+          eq(npAgentActions.siteId, input.siteId),
+          eq(npAgentActions.invocationId, invocation.id),
+        ),
+      )
+      .limit(1);
+    if (requestAction?.state === "approval_pending") return;
+  }
   const output = input.output ? npRequireAgentChangeSetExecutionOutputV1(input.output) : null;
   if (output && (output.runId !== run.id || output.changeSet.id !== invocation.resultId))
     return invalid();
@@ -475,27 +537,35 @@ export async function npReconcileChangeSetExecutionProjectionV1(input: {
   const failed = next === "failed" || next === "cancelled";
   if (finished && !failed && !output) return;
   const actionTerminal = finished || output?.state === "approval_required";
-  await db
-    .update(npAgentRuns)
-    .set({
-      state: next,
-      startedAt: run.startedAt ?? (next === "queued" ? null : now),
-      finishedAt: finished ? now : null,
-      ...(output && !(approvalId && run.result) ? { result: object(output) } : {}),
-      errorCode: failed
-        ? (input.failureCode ??
-          (approvalFailed
-            ? `APPROVAL_${proposalApproval.state.toUpperCase()}`
-            : "CAPABILITY_EXECUTION_FAILED"))
-        : null,
-      errorMessage: failed ? "Operation failed" : null,
-    })
-    .where(eq(npAgentRuns.id, run.id));
+  if (run.origin === "gateway")
+    await db
+      .update(npAgentRuns)
+      .set({
+        state: next,
+        startedAt: run.startedAt ?? (next === "queued" ? null : now),
+        finishedAt: finished ? now : null,
+        ...(output && !(approvalId && run.result) ? { result: object(output) } : {}),
+        errorCode: failed
+          ? (input.failureCode ??
+            (approvalFailed
+              ? `APPROVAL_${proposalApproval.state.toUpperCase()}`
+              : "CAPABILITY_EXECUTION_FAILED"))
+          : null,
+        errorMessage: failed ? "Operation failed" : null,
+      })
+      .where(eq(npAgentRuns.id, run.id));
   await db
     .update(npAgentActions)
     .set({
-      state: failed ? "failed" : actionTerminal ? "succeeded" : "executing",
-      finishedAt: actionTerminal ? now : null,
+      state:
+        run.origin === "runtime" && approvalId
+          ? "approval_pending"
+          : failed
+            ? "failed"
+            : actionTerminal
+              ? "succeeded"
+              : "executing",
+      finishedAt: run.origin === "runtime" && approvalId ? null : actionTerminal ? now : null,
       errorCode: failed
         ? (input.failureCode ??
           (approvalFailed
@@ -503,7 +573,7 @@ export async function npReconcileChangeSetExecutionProjectionV1(input: {
             : "CAPABILITY_EXECUTION_FAILED"))
         : null,
       outputRedacted: actionTerminal && output ? object(output) : null,
-      outputHash: actionTerminal && output ? hash(output) : null,
+      outputHash: actionTerminal && output ? npDigestChangeSetExecutionProjectionV1(output) : null,
     })
     .where(
       and(
@@ -512,6 +582,7 @@ export async function npReconcileChangeSetExecutionProjectionV1(input: {
         isNull(npAgentActions.finishedAt),
       ),
     );
+  if (run.origin === "runtime") return;
   if ((!finished && output?.state !== "approval_required") || (!output && !failed)) return;
   const result = npRequireAgentMcpStoredTerminalResult(
     failed
