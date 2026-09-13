@@ -51,7 +51,9 @@ export async function runtimeApprovalResumeFixture(
     queuedWork?: {
       kind: "validation" | "preview";
       check: (input: {
-        fixture: Awaited<ReturnType<typeof runtimeFixture>> | Awaited<ReturnType<typeof runtimeUsageFixture>>;
+        fixture:
+          | Awaited<ReturnType<typeof runtimeFixture>>
+          | Awaited<ReturnType<typeof runtimeUsageFixture>>;
         service: ReturnType<typeof createAgentChangeSetServiceV1>;
         job: { siteId: string; id: string };
       }) => Promise<never>;
