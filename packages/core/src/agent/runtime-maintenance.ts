@@ -1,5 +1,6 @@
-import { and, asc, eq, gt, isNotNull, lte, sql } from "drizzle-orm";
-import { npAgentEvents } from "../db/schema/agent.js";
+import { sql } from "drizzle-orm";
+import { npWithAgentRuntimeRetentionBudgetV1 } from "./runtime-retention-budget.js";
+import { npPruneAgentRuntimeRetentionV1 } from "./runtime-retention.js";
 import { npIsCanonicalSiteId } from "../sites/id-contract.js";
 import { NpAgentGatewayError } from "./admin-admission.js";
 import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
@@ -48,7 +49,7 @@ function age(value: unknown, now: Date): number | null {
   return Math.floor((now.getTime() - date.getTime()) / 1000);
 }
 
-/** Host-only bounded maintenance; the cursor is an internal scan position, never authority. */
+/** Host-only Runtime retention; the legacy name and UUID cursor remain job-compatible. */
 export async function pruneAgentRuntimeEventsV1(options: {
   siteId: string;
   cursor?: string | null;
@@ -70,45 +71,23 @@ export async function pruneAgentRuntimeEventsV1(options: {
   )
     return invalid();
   npAssertAgentPreviewEffectsAllowed();
-  return npWithAgentRuntimeControlTransactionV1(options.siteId, async ({ db }) => {
-    const rows = await db
-      .select({ id: npAgentEvents.id })
-      .from(npAgentEvents)
-      .where(
-        and(
-          eq(npAgentEvents.siteId, options.siteId),
-          isNotNull(npAgentEvents.dispatchedAt),
-          lte(npAgentEvents.expiresAt, now),
-          cursor === null ? undefined : gt(npAgentEvents.id, cursor),
-        ),
-      )
-      .orderBy(asc(npAgentEvents.id))
-      .limit(limit)
-      .for("update");
-    let pruned = 0;
-    if (rows.length > 0) {
-      // Logical references are deliberately retained even in terminal rows. The
-      // conservative literal check also protects nested private evidence; its
-      // false positives retain an event rather than erasing required evidence.
-      const result = await db.execute(sql`delete from np_agent_events e
-        where e.site_id=${options.siteId} and e.id in (${sql.join(
-          rows.map((row) => sql`${row.id}::uuid`),
-          sql`, `,
-        )})
-        and not exists (select 1 from np_agent_runs r where r.site_id=e.site_id and
-          (r.causal_event_id=e.id or position(e.id::text in coalesce(r.event_ref::text,''))>0))
-        and not exists (select 1 from np_agent_actions a where a.site_id=e.site_id and position(e.id::text in to_jsonb(a)::text)>0)
-        and not exists (select 1 from np_agent_invocations i where i.site_id=e.site_id and position(e.id::text in to_jsonb(i)::text)>0)
-        and not exists (select 1 from np_agent_provider_calls p where p.site_id=e.site_id and position(e.id::text in to_jsonb(p)::text)>0)
-        returning e.id`);
-      pruned = result.rows.length;
-    }
-    return {
-      examined: rows.length,
-      pruned,
-      nextCursor: rows.length === limit ? rows.at(-1)!.id : null,
-    };
-  });
+  return npWithAgentRuntimeRetentionBudgetV1((db, beforeStatement) =>
+    npWithAgentRuntimeControlTransactionV1(
+      options.siteId,
+      ({ db, settings, revision }) =>
+        npPruneAgentRuntimeRetentionV1({
+          db,
+          siteId: options.siteId,
+          cursor,
+          limit,
+          now,
+          settings,
+          revision,
+          beforeStatement,
+        }),
+      db,
+    ),
+  );
 }
 
 /** Internal aggregate evidence only; no row ids, payloads or provider/worker readiness are invented. */

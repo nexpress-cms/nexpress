@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +6,9 @@ import { NextRequest } from "next/server";
 import { NpAuthError, NpForbiddenError } from "@nexpress/core";
 import {
   npAgentRuntimeAdminOperationIdsV1,
+  npBuildAgentPolicySimulationFixtureInputV1,
+  npSimulateAgentPolicyV1,
+  npCreateDisabledAgentRuntimeSettingsV1,
   npAgentRuntimeStudioReadRoutesV1,
   npGetAgentAdminOperationV1,
 } from "@nexpress/core/agent-contract";
@@ -205,6 +208,58 @@ describe("Runtime Studio shared HTTP admission", () => {
       expect(mocks.executeAdmin).not.toHaveBeenCalled();
     },
   );
+  it("returns only an exact owned simulation report and rejects leaked or malformed host results", async () => {
+    const fixture = await npBuildAgentPolicySimulationFixtureInputV1();
+    const report = npSimulateAgentPolicyV1({
+      policyId: id,
+      policyVersion: 1,
+      policyHash: `cj1:sha256:${"A".repeat(43)}`,
+      fixtureHash: fixture.fixtureHash,
+      layers: [npCreateDisabledAgentRuntimeSettingsV1().defaultPolicyRules],
+    });
+    const body = {
+      idempotencyKey: "simulation-http",
+      expectedVersion: 1,
+      configHash: report.policyHash,
+      ...fixture,
+    };
+    mocks.executeAdmin.mockResolvedValue({ resourceId: id, replayed: false, output: report });
+    const response = await handleAgentRuntimeAdminRequest(
+      request("", body),
+      "agents.policies.simulate",
+      id,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(report);
+    expect(mocks.ensure).toHaveBeenCalledWith("write");
+    for (const patch of [
+      { policyId: "20000000-0000-4000-8000-000000000002" },
+      { policyHash: `cj1:sha256:${"B".repeat(43)}` },
+      { fixtureHash: `cj1:sha256:${"B".repeat(43)}` },
+    ]) {
+      mocks.executeAdmin.mockResolvedValue({
+        resourceId: id,
+        replayed: false,
+        output: { ...report, ...patch },
+      });
+      expect(
+        (await handleAgentRuntimeAdminRequest(request("", body), "agents.policies.simulate", id))
+          .status,
+      ).toBe(500);
+    }
+    mocks.executeAdmin.mockResolvedValue({
+      resourceId: id,
+      replayed: false,
+      output: { ...report, rawBody: "private-body" },
+    });
+    const rejected = await handleAgentRuntimeAdminRequest(
+      request("", body),
+      "agents.policies.simulate",
+      id,
+    );
+    expect(rejected.status).toBe(500);
+    expect(await rejected.text()).not.toContain("private-body");
+  });
   it("rejects unknown mutation fields before admission dispatch", async () => {
     const response = await handleAgentRuntimeAdminRequest(
       request("", {
@@ -218,7 +273,7 @@ describe("Runtime Studio shared HTTP admission", () => {
     expect(response.status).toBe(400);
     expect(mocks.executeAdmin).not.toHaveBeenCalled();
   });
-  it("leaves simulation absent and does not dispatch malformed or oversized JSON", async () => {
+  it("rejects incomplete simulation and malformed or oversized JSON", async () => {
     expect(
       (await handleAgentRuntimeAdminRequest(request("", {}), "agents.policies.simulate", id))
         .status,
@@ -283,15 +338,15 @@ describe("Runtime route inventory and thin wrappers", () => {
                 ? "status"
                 : route.kind,
     })),
-    ...mutationIds.map((id) => {
+    ...npAgentRuntimeAdminOperationIdsV1.map((id) => {
       const operation = npGetAgentAdminOperationV1(id);
       return { method: operation.method, path: operation.pathTemplate, operation: id };
     }),
   ];
-  it("locks the exact nine read and fourteen installed mutation operations", () => {
+  it("locks the exact nine read and fifteen installed Admin operations", () => {
     expect(npAgentRuntimeStudioReadRoutesV1).toHaveLength(9);
-    expect(mutationIds).toHaveLength(14);
-    expect(new Set(inventory.map(({ method, path }) => `${method} ${path}`)).size).toBe(23);
+    expect(npAgentRuntimeAdminOperationIdsV1).toHaveLength(15);
+    expect(new Set(inventory.map(({ method, path }) => `${method} ${path}`)).size).toBe(24);
   });
   it.each(inventory)(
     "keeps $method $path shared across reference and scaffold",
@@ -313,14 +368,4 @@ describe("Runtime route inventory and thin wrappers", () => {
       }
     },
   );
-  it("does not create a simulation wrapper", () => {
-    for (const base of [
-      "packages/app/src/api",
-      "apps/web/src/app/api",
-      "packages/cli/templates/snapshot/src/app/api",
-    ])
-      expect(existsSync(resolve(root, base, "admin/agents/policies/[id]/simulate/route.ts"))).toBe(
-        false,
-      );
-  });
 });

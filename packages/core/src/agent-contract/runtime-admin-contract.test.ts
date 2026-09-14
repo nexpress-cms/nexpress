@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { npGetAgentAdminOperationV1 } from "./admin-operation-registry.js";
 import {
+  npAgentPolicySimulationFixtureJsonV1,
+  npBuildAgentPolicySimulationFixtureInputV1,
+} from "./runtime-policy-simulation.js";
+import {
   npAgentRuntimeAdminOperationIdsV1,
   npAnalyzeAgentRuntimeAdminInputV1,
   npRequireAgentRuntimeAdminInputV1,
@@ -22,11 +26,42 @@ const fields: Record<string, unknown> = {
   reason: "Operator action",
   inputJson: "{}",
   triggerId: "manual",
-  fixtureJson: "{}",
+  fixtureJson: npAgentPolicySimulationFixtureJsonV1,
   fixtureHash: digest,
 };
 
 describe("Runtime Admin owner parsers", () => {
+  it("publishes exactly the fixed fixture accepted by the simulation owner parser", async () => {
+    const fixture = await npBuildAgentPolicySimulationFixtureInputV1();
+    const operation = npGetAgentAdminOperationV1("agents.policies.simulate");
+    expect(operation.schemas.input.schema).toMatchObject({
+      properties: {
+        fixtureJson: { type: "string", maxLength: 256, const: fixture.fixtureJson },
+      },
+    });
+    const input = {
+      idempotencyKey: "simulation-fixture",
+      expectedVersion: 1,
+      configHash: digest,
+      ...fixture,
+    };
+    expect(npRequireAgentRuntimeAdminInputV1("agents.policies.simulate", input)).toEqual(input);
+    for (const fixtureJson of [
+      "{}",
+      " ".repeat(257),
+      ` ${fixture.fixtureJson}`,
+      fixture.fixtureJson.replace('"suite":', '"suite":"other","suite":'),
+      JSON.stringify({
+        schemaVersion: "np.agent-policy-simulation-fixture.v1",
+        suite: "autonomy-and-quiet-hours",
+        facts: "private",
+      }),
+    ]) {
+      expect(
+        npAnalyzeAgentRuntimeAdminInputV1("agents.policies.simulate", { ...input, fixtureJson }).ok,
+      ).toBe(false);
+    }
+  });
   it("derives each exact envelope from the existing 55-operation registry", () => {
     expect(npAgentRuntimeAdminOperationIdsV1).toHaveLength(15);
     for (const id of npAgentRuntimeAdminOperationIdsV1) {

@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 import {
   npCreateInheritedAgentBudgetV1,
+  npBuildAgentPolicySimulationFixtureInputV1,
+  npSimulateAgentPolicyV1,
   npCreateDisabledAgentRuntimeSettingsV1,
 } from "@nexpress/core/agent-contract";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
@@ -361,4 +363,140 @@ test("Agent override policy creation binds the target and retries the exact type
   expect(command.idempotencyKey).toBeTruthy();
   await expect(page.getByText(guidance, { exact: true })).toBeVisible();
   await expect(page.locator('[data-runtime-untrusted="marker"]')).toHaveCount(0);
+});
+
+test("Policy simulation displays bounded non-authorizing facts and preserves unknown-outcome retry identity", async ({
+  page,
+}) => {
+  const rules = npCreateDisabledAgentRuntimeSettingsV1().defaultPolicyRules;
+  rules.capabilityModes = [{ capabilityId: "site.inspect", mode: "observe" }];
+  const fixture = await npBuildAgentPolicySimulationFixtureInputV1();
+  const report = npSimulateAgentPolicyV1({
+    policyId: id,
+    policyVersion: 1,
+    policyHash: digest,
+    fixtureHash: fixture.fixtureHash,
+    layers: [rules],
+  });
+  await page.route("**/api/admin/agents/catalog", (route) => route.fulfill({ json: catalog }));
+  await page.route(`**/api/admin/agents/policies/${id}`, (route) =>
+    route.fulfill({
+      json: {
+        schemaVersion: "np.agent-policy-detail.v1",
+        id,
+        rowVersion: 1,
+        version: 1,
+        status: "draft",
+        contentHash: digest,
+        definition: {
+          schemaVersion: "np.agent-policy-definition.v1",
+          agentId: null,
+          name: "Synthetic policy",
+          instructions: "",
+          rules,
+        },
+        availableActions: ["agents.policies.simulate", "agents.policies.validate"],
+        createdAt: at,
+      },
+    }),
+  );
+  const writes: unknown[] = [];
+  await page.route(`**/api/admin/agents/policies/${id}/simulate`, async (route) => {
+    writes.push(route.request().postDataJSON());
+    if (writes.length === 1) await route.fulfill({ status: 502, body: "Temporary failure" });
+    else await route.fulfill({ json: report });
+  });
+  await signInAsE2EAdmin(page);
+  await page.goto(`/admin/agents/policies/${id}`);
+  const section = page.getByRole("region", { name: "Policy simulation", exact: true });
+  await section.getByRole("button", { name: "Simulate policy", exact: true }).click();
+  await expect(section.getByRole("alert")).toContainText("502");
+  await section.getByRole("button", { name: "Simulate policy", exact: true }).click();
+  await expect(section.getByRole("status")).toContainText("Simulation complete");
+  await expect(section).toContainText("Non-authorizing");
+  expect(writes).toHaveLength(2);
+  expect(writes[1]).toEqual(writes[0]);
+  expect(writes[0]).toMatchObject({ expectedVersion: 1, configHash: digest, ...fixture });
+  await section.getByText("observe · 1 policy capabilities", { exact: true }).click();
+  await expect(
+    section.getByText("site.inspect: observe · read", { exact: true }).first(),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByRole("status", { name: "Non-authorizing simulation report" })).toHaveCount(
+    0,
+  );
+});
+
+test("Policy simulation discards stale and inaccessible evidence", async ({ page }) => {
+  const rules = npCreateDisabledAgentRuntimeSettingsV1().defaultPolicyRules;
+  const fixture = await npBuildAgentPolicySimulationFixtureInputV1();
+  const report = npSimulateAgentPolicyV1({
+    policyId: id,
+    policyVersion: 1,
+    policyHash: digest,
+    fixtureHash: fixture.fixtureHash,
+    layers: [rules],
+  });
+  await page.route("**/api/admin/agents/catalog", (route) => route.fulfill({ json: catalog }));
+  await page.route(`**/api/admin/agents/policies/${id}`, (route) =>
+    route.fulfill({
+      json: {
+        schemaVersion: "np.agent-policy-detail.v1",
+        id,
+        rowVersion: 1,
+        version: 1,
+        status: "draft",
+        contentHash: digest,
+        definition: {
+          schemaVersion: "np.agent-policy-definition.v1",
+          agentId: null,
+          name: "Synthetic policy",
+          instructions: "",
+          rules,
+        },
+        availableActions: ["agents.policies.simulate", "agents.policies.validate"],
+        createdAt: at,
+      },
+    }),
+  );
+  let reply: "mismatch" | "success" | "stale" | "denied" = "mismatch";
+  await page.route(`**/api/admin/agents/policies/${id}/simulate`, async (route) => {
+    if (reply === "mismatch") await route.fulfill({ json: { ...report, policyId: versionId } });
+    else if (reply === "success") await route.fulfill({ json: report });
+    else
+      await route.fulfill({
+        status: reply === "stale" ? 409 : 403,
+        json: {
+          error: {
+            code: reply === "stale" ? "RUNTIME_VERSION_CONFLICT" : "SITE_ACCESS_DENIED",
+            message: "Unavailable",
+          },
+        },
+      });
+  });
+  await signInAsE2EAdmin(page);
+  await page.goto(`/admin/agents/policies/${id}`);
+  const section = page.getByRole("region", { name: "Policy simulation", exact: true });
+  const button = section.getByRole("button", { name: "Simulate policy", exact: true });
+  await button.click();
+  await expect(section.getByRole("alert")).toContainText("does not match");
+  await expect(section.getByRole("status")).toHaveCount(0);
+  reply = "stale";
+  await button.click();
+  await expect(button).toBeDisabled();
+  await expect(section.getByRole("alert")).toContainText("resource changed");
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(button).toBeEnabled();
+  reply = "success";
+  await button.click();
+  await expect(section.getByRole("status")).toContainText("Simulation complete");
+  reply = "denied";
+  await button.click();
+  await expect(page.getByRole("heading", { name: "Synthetic policy", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("status", { name: "Non-authorizing simulation report" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("alert").filter({ hasText: "no longer have access" }).first(),
+  ).toBeVisible();
 });

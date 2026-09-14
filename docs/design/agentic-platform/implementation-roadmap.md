@@ -567,9 +567,11 @@ binds exact trigger definitions and compare-only reviewed policy references;
 manual input is exactly a selected recipe and bounded goal, with no silently
 ignored structured inputs. Status and usage preserve unavailable/unknown states.
 See [the Runtime Studio flow](r5-runtime-studio-flow.md) for the implemented
-boundary and verification checkpoint. Advanced policy simulation still has no
-owned fixture engine; broader retention, unimplemented product refinements and
-the full R5 acceptance gate remain open. This slice adds no automatic worker,
+boundary and verification checkpoints. Bounded synthetic policy simulation now
+uses the real policy evaluator with exact non-authorizing output. The existing
+maintenance sweep adds dependency-safe retention; audit-source release and the
+full R5 acceptance gate remain open (see the
+[retention matrix](r5-runtime-retention-flow.md)). This work adds no automatic worker,
 provider activation, migration, seed, package version or changeset.
 
 Outcome: one configured agent can run a bounded event/manual/scheduled workflow

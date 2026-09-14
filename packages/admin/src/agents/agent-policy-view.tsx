@@ -13,6 +13,7 @@ import {
   type NpAgentRuntimeStudioPolicyV1,
   type NpAgentRuntimeStudioCatalogV1,
 } from "@nexpress/core/agent-contract";
+import { AgentPolicySimulation } from "./agent-policy-simulation.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentStudioApiError } from "./agent-studio-api.js";
 import { runtimeRequest, runtimeErrorMessage, useRuntimeResource } from "./agent-runtime-api.js";
@@ -440,9 +441,15 @@ export function AgentPolicyDetailView({ id }: { id: string }) {
               </div>
             </form>
           ) : null}
-          <p className="text-sm text-neutral-500">
-            No simulation report is available in this view. Simulation cannot authorize execution.
-          </p>
+          {!editing &&
+          !duplicate &&
+          policy.availableActions.includes("agents.policies.simulate") ? (
+            <AgentPolicySimulation
+              key={`${policy.id}:${policy.rowVersion}`}
+              policy={policy}
+              onAccessLost={state.clear}
+            />
+          ) : null}
           {message ? <p role="status">{message}</p> : null}
           <RuntimeNotice loading={false} error={error} />
         </>

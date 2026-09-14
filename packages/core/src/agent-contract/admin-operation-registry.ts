@@ -1,4 +1,8 @@
 import {
+  npAgentPolicySimulationFixtureJsonV1,
+  npAgentPolicySimulationReportSchemaV1,
+} from "./runtime-policy-simulation.js";
+import {
   npAgentTriggerSchemaV1,
   npAgentTriggerSchemaDefinitionsV1,
 } from "./runtime-trigger-contract.js";
@@ -438,6 +442,7 @@ export const npAgentAdminOperationRouteInventoryV1 = deepFreeze([
     preconditions: ROW_CONFIG,
   }),
   operation("agents.policies.simulate", "POST", "/api/admin/agents/policies/{id}/simulate", {
+    contractVersion: 2,
     inputKind: "simulation",
     outputKind: "validation",
     preconditions: ROW_CONFIG,
@@ -797,7 +802,7 @@ function commandShape(kind: NpAgentAdminOperationInputKindV1): {
     case "simulation":
       return {
         properties: {
-          fixtureJson: stringSchema(262_144),
+          fixtureJson: { ...stringSchema(256), const: npAgentPolicySimulationFixtureJsonV1 },
           fixtureHash: stringSchema(60, DIGEST_PATTERN),
         },
         required: ["fixtureJson", "fixtureHash"],
@@ -1033,6 +1038,8 @@ function outputShape(kind: NpAgentAdminOperationOutputKindV1): {
 }
 
 function buildOutputSchema(seed: OperationSeed): NpAgentJsonSchema {
+  if (seed.id === "agents.policies.simulate")
+    return requireSchema(npAgentPolicySimulationReportSchemaV1);
   if (seed.id === "agents.changesets.rollback_plans.request_approval")
     return requireSchema(npAgentApprovalDetailSchemaV1);
   if (

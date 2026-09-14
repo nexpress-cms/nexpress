@@ -1,4 +1,8 @@
 import { npRequireAgentRunAdmissionPolicyRefsV1 } from "./canonical-run-admission.js";
+import {
+  npAgentPolicySimulationFixtureJsonV1,
+  npRequireAgentPolicySimulationFixtureJsonV1,
+} from "./runtime-policy-simulation.js";
 import { npRequireAgentTriggerV1, type NpAgentTrigger } from "./runtime-trigger-contract.js";
 import type { NpAgentRunAdmissionPolicyRefV1 } from "./types.js";
 import {
@@ -208,8 +212,11 @@ export function npAnalyzeAgentRuntimeAdminInputV1<K extends NpAgentRuntimeAdminO
           break;
         case "definitionJson":
         case "inputJson":
-        case "fixtureJson":
           output[key] = canonicalRuntimeText(row[key], `${path}.${key}`, 262_144);
+          break;
+        case "fixtureJson":
+          npRequireAgentPolicySimulationFixtureJsonV1(row[key]);
+          output[key] = npAgentPolicySimulationFixtureJsonV1;
           break;
         case "reason":
           output[key] = canonicalRuntimeText(row[key], `${path}.${key}`, 2_000, {
