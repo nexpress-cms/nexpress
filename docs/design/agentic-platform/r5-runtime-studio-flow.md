@@ -211,3 +211,11 @@ provider inference, Runtime activation or new credentials are part of this
 verification. Package versions, changesets, lockfile, schema and migrations
 remain unchanged. These are local pre-merge results; current integration status
 is recorded in the [current handoff](../../agent-guidance/current-handoff.md).
+
+[PR #1445](https://github.com/nexpress-cms/nexpress/pull/1445) was squash-merged
+as `9a87712f618e74742558ceae788d030dcf503e9c` on 2026-09-14 UTC.
+[CI run 34874219970](https://github.com/nexpress-cms/nexpress/actions/runs/34874219970)
+passed all four checks on exact PR head `9899d673e625fb27475f573e5f31dd4d71551563`:
+typecheck/build/test, PostgreSQL integration, production Playwright and packed
+fresh scaffold. This is PR acceptance evidence, not a full R5 product completion
+claim or evidence of a later main-branch CI/Release run.
