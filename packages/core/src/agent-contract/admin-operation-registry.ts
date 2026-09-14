@@ -1,4 +1,8 @@
 import {
+  npAgentTriggerSchemaV1,
+  npAgentTriggerSchemaDefinitionsV1,
+} from "./runtime-trigger-contract.js";
+import {
   npAgentRollbackPlanCreateInputSchemaV1,
   npAgentRollbackPlanRequestApprovalInputSchemaV1,
   npAgentRollbackPlanExecuteInputSchemaV1,
@@ -395,7 +399,11 @@ export const npAgentAdminOperationRouteInventoryV1 = deepFreeze([
     "agents.configurations.activate",
     "POST",
     "/api/admin/agents/configurations/{id}/activate",
-    { preconditions: ROW_CONFIG, ...SENSITIVE },
+    {
+      contractVersion: 2,
+      preconditions: ROW_CONFIG,
+      ...SENSITIVE,
+    },
   ),
   operation("agents.configurations.pause", "POST", "/api/admin/agents/configurations/{id}/pause", {
     inputKind: "reason",
@@ -898,6 +906,33 @@ function buildInputSchema(seed: OperationSeed): NpAgentJsonSchema {
       required: ["kind", "userId"],
     };
   }
+  if (seed.id === "agents.configurations.activate") {
+    properties.triggers = {
+      type: "array",
+      maxItems: 32,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: { definition: npAgentTriggerSchemaV1, enabled: { type: "boolean" } },
+        required: ["definition", "enabled"],
+      },
+    };
+    properties.reviewedPolicyRefs = {
+      type: "array",
+      maxItems: 16,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          kind: { enum: ["framework", "feature-setting", "site-policy", "agent-policy"] },
+          id: { type: ["string", "null"], maxLength: 128 },
+          version: { type: "integer", minimum: 1, maximum: 2147483647 },
+          digest: stringSchema(60, DIGEST_PATTERN),
+        },
+        required: ["kind", "id", "version", "digest"],
+      },
+    };
+  }
   const required = ["idempotencyKey", ...command.required];
   for (const kind of seed.preconditions) {
     const precondition = PRECONDITION_FIELDS[kind];
@@ -910,6 +945,9 @@ function buildInputSchema(seed: OperationSeed): NpAgentJsonSchema {
     additionalProperties: false,
     properties,
     required,
+    ...(seed.id === "agents.configurations.activate"
+      ? { $defs: npAgentTriggerSchemaDefinitionsV1 }
+      : {}),
   });
 }
 

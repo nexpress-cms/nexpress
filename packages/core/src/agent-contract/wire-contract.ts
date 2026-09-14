@@ -285,7 +285,8 @@ export interface NpAgentRunV1 {
   state: NpAgentRunState;
   goal: string;
   runLimits: NpAgentRunLimitsV1;
-  usage: NpAgentRunUsageV1;
+  /** Null only for Runtime ledger totals that cannot currently be projected. */
+  usage: NpAgentRunUsageV1 | null;
   attempt: number;
   errorCode: string | null;
   errorMessage: string | null;
@@ -1258,13 +1259,17 @@ function parseRun(value: unknown): NpAgentRunV1 {
       "must describe either one self-rooted run or one non-self child lineage",
     );
   }
-  const usage = parseRunUsage(record.usage, `${path}.usage`, state);
+  const usage =
+    origin === "runtime" && record.usage === null
+      ? null
+      : parseRunUsage(record.usage, `${path}.usage`, state);
   if (
-    usage.providerCalls > runLimits.maxProviderCalls ||
-    usage.capabilityCalls > runLimits.maxCapabilityCalls ||
-    usage.inputTokens > runLimits.maxInputTokens ||
-    usage.outputTokens > runLimits.maxOutputTokens ||
-    usage.costMicros > runLimits.maxCostMicros
+    usage !== null &&
+    (usage.providerCalls > runLimits.maxProviderCalls ||
+      usage.capabilityCalls > runLimits.maxCapabilityCalls ||
+      usage.inputTokens > runLimits.maxInputTokens ||
+      usage.outputTokens > runLimits.maxOutputTokens ||
+      usage.costMicros > runLimits.maxCostMicros)
   ) {
     failCanonicalBody("limit", `${path}.usage`, "must remain within the frozen run limits");
   }

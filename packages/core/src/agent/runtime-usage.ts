@@ -760,9 +760,9 @@ export function createAgentRuntimeUsageV1(
           })
           .returning();
         if (!call) fail();
-        // The legacy v1 Activity usage object cannot represent reserved/unknown
-        // spend. Keep runtime evidence unprojectable until the later runtime wire
-        // owns those states; only the exact ledger and daily buckets own usage.
+        // Reserved/unknown spend has no exact numeric Activity projection. The
+        // runtime wire projects this marker as null; the ledger and daily
+        // buckets remain the authoritative usage evidence.
         await db
           .update(npAgentRuns)
           .set({ usage: {} })

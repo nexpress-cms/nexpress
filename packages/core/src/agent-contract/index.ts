@@ -54,3 +54,4 @@ export * from "./runtime-ops-contract.js";
 
 export * from "./runtime-trigger-contract.js";
 export * from "./runtime-job-state-contract.js";
+export * from "./runtime-studio-contract.js";

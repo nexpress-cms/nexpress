@@ -1,6 +1,6 @@
 # Security and credentials
 
-The current [delegated Runtime execution slice](r5-runtime-delegated-execution-flow.md)
+The earlier [delegated Runtime execution slice](r5-runtime-delegated-execution-flow.md)
 uses explicit self-selection on Agent creation. It reuses the principal's
 existing real-user authority relationship, current staff/site and item access,
 and frozen/current deployment and Agent ceilings. Omitted authority stays
@@ -9,6 +9,25 @@ neither creator attribution nor a scope list grants staff authority. Approval
 resumption verifies the original immutable request and distinct exact execution
 receipt under current authority. Local acceptance results are recorded in the
 linked flow; the full R5 gate remains open.
+
+The [Runtime Studio management slice](r5-runtime-studio-flow.md) adds no machine
+credential or authority fallback. Its explicitly installed staff facade
+reauthorizes the current session and site capability for bounded reads, binds
+cursors to that authority and exact filters, and reuses existing mutation
+admission, CSRF, reauthentication floors, idempotency, CAS and audit. Missing
+host installation remains unavailable. The staff status seam does not use or
+manufacture the local CLI deployment actor.
+
+Optional activation trigger plans are exact, version-bound and atomic with
+Agent/principal activation; reviewed policy references are comparison inputs,
+not new policy authority. Manual admission requires the current active version,
+a real enabled manual trigger and an installed compatible recipe. Its bounded
+goal cannot override retained instructions, scopes, model or targets, and
+unsupported structured inputs are rejected. Runtime Activity retains item-level
+checks and redaction; unknown usage does not become zero. Raw control records,
+credentials, locators and provider bodies stay private. This slice introduces
+no automatic worker, enablement, provider call, migration, version or changeset.
+Broader retention and the full R5 gate remain open.
 
 > Status: implementation design. This document proposes future behavior; the
 > shipped staff/member session contract remains

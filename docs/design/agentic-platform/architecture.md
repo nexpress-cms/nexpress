@@ -17,10 +17,21 @@ canonical hard-policy/budget sources, usage ledgers and local emergency
 controls. Settings, runtime admission and deletion share the existing site
 quota advisory lock and DB ownership; no parallel runtime pool is introduced.
 The runtime remains disabled without explicit settings, host authority and
-readiness. Provider inference, automatic workers, event/schedule dispatch and
-the AP-507 Studio configuration surfaces remain later work. See
-[the runtime foundation flow](r5-runtime-foundation-flow.md) for the implemented
-boundary and validation evidence.
+readiness. The later provider/delegated execution and event slices extend these
+same owners; no automatic worker is installed. See
+[the runtime foundation flow](r5-runtime-foundation-flow.md) for that checkpoint.
+
+The current [Runtime Studio slice](r5-runtime-studio-flow.md) adds an explicitly
+injected `runtimeStudio` staff facade over the same definition, admission,
+control, budget and Activity services. Bounded reads use the current staff/site
+and the existing quota transaction; reference/scaffold routes remain thin.
+Fourteen existing Admin mutations retain CSRF, current authority,
+reauthentication floors, idempotency, CAS and audit. Optional activation trigger
+plans commit through the existing trigger table and registration transaction.
+Manual runs reuse canonical admission and do not introduce a second executor.
+Unknown usage and absent readiness remain explicit. Policy simulation, broader
+retention and the full R5 gate remain open; this slice adds no migration,
+default enablement, provider call, worker factory, package version or changeset.
 
 ## 1. Architectural objective
 

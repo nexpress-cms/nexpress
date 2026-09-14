@@ -19,6 +19,14 @@ const slugify = (value: string): string =>
     .replace(/^-|-$/g, "");
 
 test.describe("in-page block editor", () => {
+  test.beforeEach(async ({ context }, testInfo) => {
+    // Match the other preview fixtures: unrelated Admin flows must not consume
+    // this browser's real preview rate-limit bucket, including on a retry.
+    await context.setExtraHTTPHeaders({
+      "x-forwarded-for": `198.51.100.${119 + testInfo.retry}`,
+    });
+  });
+
   test("Document view edits preview blocks and persists them", async ({ page, context }) => {
     const title = `E2E document editor ${Date.now()}`;
     const slug = slugify(title);

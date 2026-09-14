@@ -4,7 +4,8 @@ import { Activity, Bot, Cable, KeyRound } from "lucide-react";
 
 import { cn } from "../ui/utils.js";
 
-export type AgentStudioSection = "overview" | "connections" | "activity";
+export type AgentStudioSection =
+  "overview" | "connections" | "activity" | "configurations" | "policies" | "budgets";
 
 export function AgentStudioFrame({
   active,
@@ -21,7 +22,8 @@ export function AgentStudioFrame({
           <h1 className="text-[22px] font-semibold tracking-[-0.02em]">Agent Studio</h1>
         </div>
         <p className="max-w-[72ch] text-[13.5px] text-neutral-500 dark:text-neutral-400">
-          Configure provider connections and Gateway authority, and review authorized site activity.
+          Manage Runtime Agents, policies and budgets, configure connections, and review authorized
+          site activity.
         </p>
       </header>
       <nav
@@ -35,6 +37,24 @@ export function AgentStudioFrame({
             href: "/admin/agents/connections",
             label: "Connections",
             icon: Cable,
+          },
+          {
+            id: "configurations" as const,
+            href: "/admin/agents/configurations",
+            label: "Agents",
+            icon: Bot,
+          },
+          {
+            id: "policies" as const,
+            href: "/admin/agents/policies",
+            label: "Policies",
+            icon: KeyRound,
+          },
+          {
+            id: "budgets" as const,
+            href: "/admin/agents/budgets",
+            label: "Budgets",
+            icon: Activity,
           },
           {
             id: "activity" as const,

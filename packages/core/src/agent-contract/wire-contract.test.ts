@@ -481,6 +481,11 @@ describe("Agent client-safe wire contract v1", () => {
 
   it("reuses the canonical run-limit analyzer inside the safe run projection", () => {
     expect(npRequireAgentRunV1(run())).toEqual(run());
+    expect(npRequireAgentRunV1({ ...run(), usage: null }).usage).toBeNull();
+    expect(npAnalyzeAgentRunV1({ ...run(), usage: {} }).ok).toBe(false);
+    expect(npAnalyzeAgentRunV1({ ...run(), origin: "gateway", agent: null, usage: null }).ok).toBe(
+      false,
+    );
     expect(npAnalyzeAgentRunLimitsCanonical(runLimits())).toMatchObject({ ok: true });
     expect(npAnalyzeAgentWireContractV1("np.agent-run-limits.v1", runLimits())).toEqual(
       npAnalyzeAgentRunLimitsCanonical(runLimits()),
