@@ -1,3 +1,4 @@
+import { npCreateAgentRuntimeJobStateV1 } from "../agent-contract/runtime-job-state-contract.js";
 import { describe, expect, it } from "vitest";
 import { npCreateDisabledAgentRuntimeSettingsV1 } from "../agent-contract/runtime-contract.js";
 import type { NpFieldConfig } from "../config/types.js";
@@ -108,6 +109,7 @@ describe("content transfer envelope contract", () => {
   it("excludes valid runtime intent and private recovery authority from transfer", () => {
     for (const [key, value] of [
       ["agents.runtime", npCreateDisabledAgentRuntimeSettingsV1()],
+      ["agents.runtime.jobs", npCreateAgentRuntimeJobStateV1()],
       ["agents.runtime.control", { revision: 1, currentResumePlan: null, lastResumeReceipt: null }],
     ]) {
       expect(

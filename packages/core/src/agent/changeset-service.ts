@@ -9037,7 +9037,6 @@ export function createAgentChangeSetServiceV1(
     });
     registerJobHandler("agent:changesetVerify", verifyHandler, {
       resolveSiteId: executionSiteId,
-      quota: "site",
     });
   }
 

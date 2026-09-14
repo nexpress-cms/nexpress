@@ -69,6 +69,7 @@ const PORTABLE_SETTING_EXCLUSIONS = [
   "agents.gateway",
   "agents.runtime",
   "agents.runtime.control",
+  "agents.runtime.jobs",
 ];
 const PORTABLE_SETTING_PREFIX_EXCLUSIONS = ["plugin.config:"];
 

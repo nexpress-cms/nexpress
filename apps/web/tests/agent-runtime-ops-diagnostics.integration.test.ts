@@ -1,7 +1,11 @@
+import { npDigestAgentEventCanonical } from "../../../packages/core/src/agent-contract/canonical-events.js";
+import { npSettings } from "../../../packages/core/src/db/schema/system.js";
+import { npCreateAgentRuntimeJobStateV1 } from "../../../packages/core/src/agent-contract/runtime-job-state-contract.js";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
+  npAgentEvents,
   npAgentRuns,
   npAgentUsageReservations,
 } from "../../../packages/core/src/db/schema/agent.js";
@@ -39,6 +43,98 @@ describe.skipIf(skipIfNoTestDb())("Runtime private diagnostics and settled delet
     for (const f of usageFixtures.splice(0)) await f.dispose();
   });
   afterAll(closeTestDb);
+
+  it("accepts real delegated Runtime authority in aggregate diagnostics", async () => {
+    const f = await runtimeFixture(undefined, true, { delegated: true });
+    await f.admission.admit(f.runInput);
+    const result = await npCollectAgentHealthSummaryV1();
+    expect(
+      result.issues.filter(
+        (issue) =>
+          issue.code === "AGENT_RUNTIME_DIVERGED" || issue.code === "AGENT_SCHEMA_UNAVAILABLE",
+      ),
+    ).toEqual([]);
+  });
+  it("validates coordination metadata without requiring Runtime activation or settings", async () => {
+    const f = await runtimeFixture();
+    await f.db
+      .delete(npSettings)
+      .where(
+        and(
+          eq(npSettings.siteId, siteId),
+          sql`${npSettings.key} in ('agents.runtime', 'agents.runtime.control')`,
+        ),
+      );
+    await f.db
+      .insert(npSettings)
+      .values({ siteId, key: "agents.runtime.jobs", value: npCreateAgentRuntimeJobStateV1() });
+    const healthy = await npCollectAgentHealthSummaryV1();
+    expect(
+      healthy.issues.filter(
+        (issue) =>
+          issue.code === "AGENT_RUNTIME_DIVERGED" || issue.code === "AGENT_SCHEMA_UNAVAILABLE",
+      ),
+    ).toEqual([]);
+    await f.db
+      .update(npSettings)
+      .set({ value: { privateMarker: "private-job-cursor" } })
+      .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "agents.runtime.jobs")));
+    const broken = await npCollectAgentHealthSummaryV1();
+    expect(broken.issues).toContainEqual(
+      expect.objectContaining({ code: "AGENT_RUNTIME_DIVERGED", count: 1 }),
+    );
+    expect(JSON.stringify(broken)).not.toContain("private-job-cursor");
+  });
+
+  it("detects a hashed causal event whose nullable persisted lineage projection was stripped", async () => {
+    const f = await runtimeFixture();
+    const at = new Date();
+    const cause = {
+      rootRunId: randomUUID(),
+      sourceRunId: randomUUID(),
+      sourceActionId: randomUUID(),
+      depth: 0,
+    };
+    const body = {
+      version: "np.agent-event.v1",
+      siteId,
+      kind: "jobs.handler.failed",
+      occurredAt: at.toISOString(),
+      source: { kind: "jobs", component: "worker" },
+      subject: null,
+      actor: null,
+      causation: cause,
+      correlationId: null,
+      deduplicationKey: null,
+      privacy: "internal",
+      payload: {
+        kind: "jobs.handler.failed",
+        handlerName: "worker",
+        jobId: "job-causal",
+        reasonCode: "FAILED",
+      },
+    };
+    await f.db.insert(npAgentEvents).values({
+      siteId,
+      kind: body.kind,
+      sourceKind: body.source.kind,
+      sourceComponent: body.source.component,
+      privacy: body.privacy,
+      payload: body.payload,
+      causation: cause,
+      eventHash: await npDigestAgentEventCanonical(body),
+      occurredAt: at,
+      recordedAt: at,
+      expiresAt: new Date(at.getTime() + 86400_000),
+    });
+    const result = await npCollectAgentHealthSummaryV1();
+    expect(result.issues).toContainEqual(
+      expect.objectContaining({ code: "AGENT_RUNTIME_DIVERGED", count: 1 }),
+    );
+    expect(result.issues.some((issue) => issue.code === "AGENT_SCHEMA_UNAVAILABLE")).toBe(false);
+    for (const value of [cause.rootRunId, cause.sourceRunId, cause.sourceActionId, "causation"])
+      expect(JSON.stringify(result)).not.toContain(value);
+  });
 
   it("verifies real zero-provider queued admission and detects retained source tampering without exposing it", async () => {
     const f = await runtimeFixture();

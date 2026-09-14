@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { and, eq } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   createSite,
@@ -141,6 +141,12 @@ describe.skipIf(skipIfNoTestDb())("Agent provider connection lifecycle", () => {
     await ensureMigrated();
   });
 
+  // Workers reuse the database across files; the preceding suite may only
+  // truncate before its tests, leaving its final fixture behind.
+  beforeEach(async () => {
+    await truncateAll();
+  });
+
   afterEach(async () => {
     await truncateAll();
   });
@@ -207,7 +213,13 @@ describe.skipIf(skipIfNoTestDb())("Agent provider connection lifecycle", () => {
     const [invocation] = await fixture.db
       .select({ requestBody: npAgentInvocations.requestBody })
       .from(npAgentInvocations)
-      .where(eq(npAgentInvocations.operationId, "agents.connections.create"))
+      .where(
+        and(
+          eq(npAgentInvocations.siteId, siteId),
+          eq(npAgentInvocations.operationId, "agents.connections.create"),
+          eq(npAgentInvocations.idempotencyKey, "connection:atomic:create"),
+        ),
+      )
       .limit(1);
     expect(JSON.stringify(invocation?.requestBody)).not.toContain("fake-api-key");
     expect(invocation?.requestBody.input).toMatchObject({
@@ -322,7 +334,13 @@ describe.skipIf(skipIfNoTestDb())("Agent provider connection lifecycle", () => {
     const [invocation] = await fixture.db
       .select({ requestBody: npAgentInvocations.requestBody })
       .from(npAgentInvocations)
-      .where(eq(npAgentInvocations.operationId, "agents.connections.rotate"))
+      .where(
+        and(
+          eq(npAgentInvocations.siteId, siteId),
+          eq(npAgentInvocations.operationId, "agents.connections.rotate"),
+          eq(npAgentInvocations.idempotencyKey, "connection:api-key:first"),
+        ),
+      )
       .limit(1);
     expect(JSON.stringify(invocation?.requestBody)).not.toContain("fake-api-key");
     expect(invocation?.requestBody.input).toMatchObject({

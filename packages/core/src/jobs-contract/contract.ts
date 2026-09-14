@@ -387,6 +387,19 @@ function parseBuiltinPayload(
 ): NpJobData {
   const path = `${dataPath}(${type})`;
   switch (type) {
+    case "agent:eventDispatch":
+    case "agent:runExecute":
+    case "agent:retentionPrune": {
+      const idKey =
+        type === "agent:eventDispatch" ? "eventId" : type === "agent:runExecute" ? "runId" : null;
+      const input = exactRecord(value, path, idKey ? ["siteId", idKey] : ["siteId"]);
+      if (!npIsCanonicalSiteId(input.siteId)) fail(`${path}.siteId`, "must be a canonical site id");
+      return {
+        siteId: input.siteId,
+        ...(idKey ? { [idKey]: uuid(input[idKey], `${path}.${idKey}`) } : {}),
+      };
+    }
+
     case "agent:changesetApply": {
       const input = exactRecord(value, path, [
         "siteId",
@@ -626,6 +639,9 @@ function parseBuiltinPayload(
         runId: uuid(input.runId, `${path}.runId`),
       } satisfies NpBuiltinJobPayloadMap["import:wordpressApply"];
     }
+    case "agent:eventReconcile":
+    case "agent:scheduleTick":
+    case "agent:retentionTick":
     case "content:publishScheduled":
     case "media:cleanup":
     case "system:revisionPrune":

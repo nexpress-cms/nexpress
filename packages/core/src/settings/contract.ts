@@ -22,6 +22,7 @@ import {
   NP_AGENT_GATEWAY_SETTING_KEY,
   NP_AGENT_RUNTIME_SETTING_KEY,
   NP_AGENT_RUNTIME_CONTROL_SETTING_KEY,
+  NP_AGENT_RUNTIME_JOBS_SETTING_KEY,
   npSiteQuotaMetrics,
 } from "./types.js";
 import {
@@ -34,6 +35,7 @@ import { npValidateBlockContent } from "../fields/block-content.js";
 import { npAnalyzeJobsPauseState } from "../jobs-contract/contract.js";
 import { npAnalyzeAgentGatewaySettings } from "../agent-contract/contract.js";
 import { npAnalyzeAgentRuntimeSettingsV1 } from "../agent-contract/runtime-contract.js";
+import { npAnalyzeAgentRuntimeJobStateV1 } from "../agent-contract/runtime-job-state-contract.js";
 import { npAnalyzeAgentRuntimeControlV1 } from "../agent-contract/runtime-ops-contract.js";
 import { NP_DEFAULT_SITE_ID, npIsCanonicalSiteId } from "../sites/id-contract.js";
 
@@ -1051,6 +1053,7 @@ export function npAssertSiteQuotaSnapshot(value: unknown): asserts value is NpSi
 export function npClassifySettingKey(key: unknown): NpSettingContractKind | null {
   if (key === NP_AGENT_GATEWAY_SETTING_KEY) return "agents-gateway";
   if (key === NP_AGENT_RUNTIME_SETTING_KEY) return "agents-runtime";
+  if (key === NP_AGENT_RUNTIME_JOBS_SETTING_KEY) return "agents-runtime-jobs";
   if (key === NP_AGENT_RUNTIME_CONTROL_SETTING_KEY) return "agents-runtime-control";
   if (key === "seo") return "seo";
   if (key === "site.quotas") return "site-quotas";
@@ -1277,11 +1280,14 @@ export function npAnalyzeSettingValue(key: unknown, value: unknown): NpSettingCo
   }
   switch (kind) {
     case "agents-runtime":
+    case "agents-runtime-jobs":
     case "agents-runtime-control": {
       const result =
         kind === "agents-runtime"
           ? npAnalyzeAgentRuntimeSettingsV1(value)
-          : npAnalyzeAgentRuntimeControlV1(value);
+          : kind === "agents-runtime-jobs"
+            ? npAnalyzeAgentRuntimeJobStateV1(value)
+            : npAnalyzeAgentRuntimeControlV1(value);
       return result.ok
         ? []
         : result.issues.map((entry) =>

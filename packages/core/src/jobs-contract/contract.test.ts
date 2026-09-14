@@ -21,6 +21,25 @@ const MEMBER_ID = "7d133e30-8079-47a7-b970-66cd478956de";
 const DOCUMENT_ID = "d4cafb07-c120-4503-90fa-6d6fc4104ce3";
 
 describe("job runtime contract", () => {
+  it("closes Runtime jobs over only site-stamped identities or exact global empty payloads", () => {
+    for (const [name, payload] of [
+      ["agent:eventDispatch", { siteId: "default", eventId: DOCUMENT_ID }],
+      ["agent:runExecute", { siteId: "default", runId: DOCUMENT_ID }],
+      ["agent:retentionPrune", { siteId: "default" }],
+    ] as const) {
+      expect(npAnalyzeJobPayload(name, payload).ok).toBe(true);
+      expect(npAnalyzeJobPayload(name, { ...payload, authority: "staff" }).ok).toBe(false);
+      expect(npAnalyzeJobPayload(name, { ...payload, siteId: "_system" }).ok).toBe(false);
+    }
+    for (const name of [
+      "agent:eventReconcile",
+      "agent:scheduleTick",
+      "agent:retentionTick",
+    ] as const) {
+      expect(npAnalyzeJobPayload(name, {}).ok).toBe(true);
+      expect(npAnalyzeJobPayload(name, { siteId: "default" }).ok).toBe(false);
+    }
+  });
   it("closes explicitly installed ChangeSet jobs over site and immutable admission", () => {
     const apply = {
       siteId: "default",
