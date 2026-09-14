@@ -1,3 +1,8 @@
+import { sql } from "drizzle-orm";
+import { PgBossAdapter } from "../jobs/pg-boss-adapter.js";
+import { registerBuiltinHandlers } from "../jobs/builtin-handlers.js";
+import { npAuditEvents } from "../db/schema/community.js";
+import { withCurrentSite } from "../sites/context.js";
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -10,6 +15,7 @@ import {
   closeTestDb,
   ensureMigrated,
   getTestDatabaseUrl,
+  getTestDb,
   skipIfNoTestDb,
   truncateAll,
 } from "./setup.js";
@@ -73,6 +79,76 @@ describe.skipIf(skipIfNoTestDb())("pg-boss worker integration", () => {
       token,
       currentJobId: jobId,
     });
+  });
+
+  it("projects retained pg-boss 12 history and charges Runtime receipts once", async () => {
+    const url = getTestDatabaseUrl();
+    if (!url) throw new Error("TEST_DATABASE_URL not set");
+    const db = await getTestDb();
+    registerBuiltinHandlers();
+    registerJobHandler("agent:runExecute", () => Promise.resolve(), {
+      resolveSiteId: (data: { siteId: string }) => data.siteId,
+    });
+    const adapter = new PgBossAdapter(url);
+    try {
+      await adapter.start();
+      await adapter.pauseProcessing();
+      await adapter.scheduleRecurring();
+      expect(
+        (await adapter.listSchedules()).some((row) => row.name === "system.revisionPrune"),
+      ).toBe(true);
+      const payload = { siteId: "retained-a", pluginId: "analytics", taskId: "daily" };
+      const first = await adapter.enqueue("plugin:scheduledTask", payload);
+      const second = await adapter.enqueue("plugin:scheduledTask", payload);
+      await db.execute(
+        sql`update pgboss.job set state='completed', completed_on=now() where id=${first}::uuid`,
+      );
+      expect(
+        await adapter.listJobs({ name: "plugin.scheduledTask", source: "archive" }),
+      ).toMatchObject({ total: 1, jobs: [{ id: first, source: "archive", state: "completed" }] });
+      expect(
+        await adapter.listJobs({ name: "plugin.scheduledTask", source: "live" }),
+      ).toMatchObject({ total: 1, jobs: [{ id: second, source: "live", state: "created" }] });
+      expect((await adapter.countByState()).completed).toBeGreaterThanOrEqual(1);
+      expect(
+        await withCurrentSite("retained-a", () => adapter.getPluginScheduleStats("analytics")),
+      ).toMatchObject([{ taskId: "daily", completedCount: 1 }]);
+      const runId = randomUUID();
+      await adapter.enqueue("agent:runExecute", { siteId: "retained-a", runId });
+      await adapter.enqueue("agent:runExecute", { siteId: "retained-a", runId });
+      await db.insert(npAuditEvents).values({
+        actorKind: "system",
+        siteId: "retained-a",
+        action: "agent.runtime.job_admitted",
+        targetType: "agent-run",
+        targetId: runId,
+        payload: {},
+      });
+      const since = new Date(Date.now() - 60_000);
+      expect(
+        await adapter.countSiteEnqueues("retained-a", since, [
+          "plugin:scheduledTask",
+          "agent:runExecute",
+        ]),
+      ).toBe(3);
+      expect(
+        await adapter.countSiteEnqueues("retained-b", since, [
+          "plugin:scheduledTask",
+          "agent:runExecute",
+        ]),
+      ).toBe(0);
+      await adapter.cancelJob(second);
+      expect(
+        await adapter.listJobs({ name: "plugin.scheduledTask", source: "archive" }),
+      ).toMatchObject({ total: 2 });
+      const retried = await adapter.retryJob(second);
+      expect(retried).not.toBe(second);
+      expect(
+        await adapter.listJobs({ name: "plugin.scheduledTask", source: "live" }),
+      ).toMatchObject({ total: 1 });
+    } finally {
+      await adapter.stop();
+    }
   });
 });
 

@@ -862,6 +862,18 @@ redacted operation resource.
 
 ## 6. Durable jobs
 
+The [current Runtime event/operations slice](r5-runtime-events-operations-flow.md)
+installs only the six event dispatch, Run execution, event reconciliation,
+schedule tick and retention tick/prune handlers when explicitly requested by the
+host. Global jobs require an explicit coordination site and persist bounded
+private cursors; they do not select ambient tenant authority. Schedule Run
+admissions form the durable outbox; a final locked recipe inventory check advances
+the chosen occurrence after all admissions resolve, without a synthetic event kind. Local verification passed; see the Runtime events and operations flow. The wider inventory
+below also contains future R6 and operational handlers; it is not a claim that
+all are installed by this slice. The shipped ChangeSet rollback job remains
+`agent:changesetRollback`; the separately named prepare/execute rows are planning
+inventory, not alternate currently registered jobs.
+
 Agent work uses the existing pg-boss queue and exact job registration API.
 There is no second broker or in-memory scheduler.
 

@@ -11,12 +11,18 @@ const scaffoldDir = resolve(scaffoldDirArg ?? process.cwd());
 const requireFromScaffold = createRequire(resolve(scaffoldDir, "package.json"));
 const pg = requireFromScaffold("pg");
 const agentsEntry = requireFromScaffold.resolve("@nexpress/core/agents");
-const { npAgentDiagnosticsSchemaInventoryV1, npCollectAgentHealthSummaryV1 } = await import(
-  pathToFileURL(agentsEntry).href
-);
-const { npRequireAgentRuntimeOpsResultV1 } = await import(
-  pathToFileURL(requireFromScaffold.resolve("@nexpress/core/agent-contract")).href
-);
+const {
+  npAgentDiagnosticsSchemaInventoryV1,
+  npCollectAgentHealthSummaryV1,
+  createAgentRuntimeEventServiceV1,
+  createAgentRuntimeJobsV1,
+  pruneAgentRuntimeEventsV1,
+} = await import(pathToFileURL(agentsEntry).href);
+const {
+  npRequireAgentRuntimeOpsResultV1,
+  npRequireAgentTriggerV1,
+  npCreateAgentRuntimeJobStateV1,
+} = await import(pathToFileURL(requireFromScaffold.resolve("@nexpress/core/agent-contract")).href);
 
 const DEFERRED_CONSTRAINTS = [
   "np_agents_active_version_fk",
@@ -41,6 +47,21 @@ function fail(message, detail) {
   if (detail !== undefined) console.error(JSON.stringify(detail, null, 2));
   process.exitCode = 1;
   throw new Error(message);
+}
+
+for (const factory of [
+  createAgentRuntimeEventServiceV1,
+  createAgentRuntimeJobsV1,
+  pruneAgentRuntimeEventsV1,
+]) {
+  if (typeof factory !== "function") fail("packed Runtime operations exports are unavailable");
+}
+const trigger = npRequireAgentTriggerV1({ type: "manual", id: randomUUID() });
+if (
+  trigger.type !== "manual" ||
+  Object.values(npCreateAgentRuntimeJobStateV1().cursors).some((value) => value !== null)
+) {
+  fail("packed Runtime trigger or absent cursor contract diverged");
 }
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -179,7 +200,7 @@ try {
        FROM np_settings
       WHERE key = ANY($1::text[])
       ORDER BY key`,
-    [["agents.gateway", "agents.runtime", "agents.runtime.control"]],
+    [["agents.gateway", "agents.runtime", "agents.runtime.control", "agents.runtime.jobs"]],
   );
   if (settingResult.rows.length !== 0) {
     fail("fresh scaffold must not seed Agent Gateway or runtime settings", settingResult.rows);

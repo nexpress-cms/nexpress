@@ -1726,6 +1726,18 @@ provider budget is exhausted, but they do not receive an unmetered model call.
 Queue saturation must not prevent existing auth lockout, rate limiting, an
 already-admitted action's verification/undo, or credential revocation.
 
+The current AP-503 operations slice admits event and schedule recipes through
+those existing Runtime authority and budget gates. Each successful Run is durable
+before queue notification; one denied sibling cannot roll back its progress.
+The initial `agent:runExecute` site job admission reserves one existing audit
+receipt per Run before delivery. Redelivery reuses that receipt, while a different
+Run still faces the live quota. Queue adapters must count those admission
+receipts rather than physical Runtime redeliveries. Verification and retention
+remain convergence work. The private `agents.runtime.jobs` cursors carry no
+authority, are excluded from content transfer and require explicit host
+coordination-site selection. Agent job normalization, parser and handler failures
+collapse to a fixed message and stack before log or error-report persistence.
+
 `security.limitActor` uses a separate exact restriction adapter shared by the
 worker capability and proxy enforcement entrypoint. It persists a canonical
 site, opaque actor bucket or authenticated principal, allowlisted route/action

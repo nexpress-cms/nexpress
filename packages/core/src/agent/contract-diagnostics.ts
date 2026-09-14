@@ -1,3 +1,11 @@
+import { createHash } from "node:crypto";
+import { npAnalyzeAgentRuntimeJobStateV1 } from "../agent-contract/runtime-job-state-contract.js";
+import { npRequireAgentTriggerV1 } from "../agent-contract/runtime-trigger-contract.js";
+import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
+import {
+  npRequireAgentEventCanonical,
+  npDigestAgentEventCanonical,
+} from "../agent-contract/canonical-events.js";
 import {
   npAgentContractDiagnosticIssueCodesV1,
   npAgentDiagnosticEntitiesV1,
@@ -432,12 +440,18 @@ const ISSUE_SUMMARY_SQL = `
     select 'AGENT_RUNTIME_DIVERGED', a.created_at from public.np_agents a
       left join public.np_agent_principals p on p.site_id=a.site_id and p.id=a.principal_id
       left join public.np_agent_versions v on v.site_id=a.site_id and v.agent_id=a.id and v.id=a.active_version_id
-      where p.id is null or p.kind<>'runtime' or p.authority_kind<>'deployment'
+      where p.id is null or p.kind<>'runtime' or not ((p.authority_kind='deployment' and p.authority_user_id is null and p.authority_policy_id is not null and p.authority_deleted_at is null) or (p.authority_kind='user' and p.authority_policy_id is null and ((p.authority_user_id is not null and p.authority_deleted_at is null) or (p.authority_user_id is null and p.authority_deleted_at is not null))))
         or (a.status='draft' and (p.status<>'suspended' or cardinality(p.scopes)<>0 or a.active_version_id is not null))
         or (a.status in ('active','paused','error') and (v.id is null or v.status<>'active' or p.scopes is distinct from v.scopes or p.status<>case when a.status='active' then 'active' else 'suspended' end))
         or (a.status='archived' and p.status<>'revoked')
         or (a.draft_version_id is not null and not exists(select 1 from public.np_agent_versions d where d.site_id=a.site_id and d.agent_id=a.id and d.id=a.draft_version_id and d.status='draft'))
     union all select 'AGENT_RUNTIME_DIVERGED', p.created_at from public.np_agent_principals p where p.kind='runtime' and not exists(select 1 from public.np_agents a where a.site_id=p.site_id and a.principal_id=p.id)
+    union all select 'AGENT_EXPIRY_BACKLOG', e.expires_at from public.np_agent_events e where e.expires_at<=$1::timestamptz
+      and (e.dispatched_at is null or (
+        not exists(select 1 from public.np_agent_runs r where r.site_id=e.site_id and (r.causal_event_id=e.id or position(e.id::text in coalesce(r.event_ref::text,''))>0))
+        and not exists(select 1 from public.np_agent_actions a where a.site_id=e.site_id and position(e.id::text in to_jsonb(a)::text)>0)
+        and not exists(select 1 from public.np_agent_invocations i where i.site_id=e.site_id and position(e.id::text in to_jsonb(i)::text)>0)
+        and not exists(select 1 from public.np_agent_provider_calls p where p.site_id=e.site_id and position(e.id::text in to_jsonb(p)::text)>0)))
     union all select 'AGENT_RUNTIME_DIVERGED', t.created_at from public.np_agent_triggers t where t.enabled and not exists(select 1 from public.np_agents a join public.np_agent_versions v on v.site_id=a.site_id and v.agent_id=a.id and v.id=a.active_version_id where a.site_id=t.site_id and a.id=t.agent_id and v.id=t.agent_version_id and a.status='active' and v.status='active')
     union all select 'AGENT_RUNTIME_DIVERGED', r.queued_at from public.np_agent_runs r where r.origin='runtime' and not exists(select 1 from public.np_agents a join public.np_agent_versions v on v.site_id=a.site_id and v.agent_id=a.id where a.site_id=r.site_id and a.id=r.agent_id and a.principal_id=r.principal_id and v.id=r.agent_version_id and v.config_hash=r.agent_config_hash)
     union all select 'AGENT_RUNTIME_DIVERGED', p.created_at from public.np_agent_policies p where p.status='active' and (select count(*) from public.np_agent_policies other where other.site_id=p.site_id and other.agent_id is not distinct from p.agent_id and other.status='active')<>1
@@ -1032,15 +1046,20 @@ async function collectRuntimeSettingIssues(
       settings: unknown;
       control: unknown;
       control_present: unknown;
+      settings_present: unknown;
+      jobs: unknown;
+      jobs_present: unknown;
     }>(
       `
       /* runtime_control_rows: bounded private reads, aggregate result only */
-      select site.site_id,
+      select site.site_id, s.key is not null as settings_present,
         case when octet_length(s.value::text)<=262144 then s.value else null end as settings,
-        case when octet_length(c.value::text)<=8192 then c.value else null end as control, c.key is not null as control_present
-      from (select distinct site_id from public.np_settings where key in ('agents.runtime','agents.runtime.control') and site_id>$1 order by site_id limit 32) site
+        case when octet_length(c.value::text)<=8192 then c.value else null end as control, c.key is not null as control_present,
+        case when octet_length(j.value::text)<=2048 then j.value else null end as jobs, j.key is not null as jobs_present
+      from (select distinct site_id from public.np_settings where key in ('agents.runtime','agents.runtime.control','agents.runtime.jobs') and site_id>$1 order by site_id limit 32) site
       left join public.np_settings s on s.site_id=site.site_id and s.key='agents.runtime'
       left join public.np_settings c on c.site_id=site.site_id and c.key='agents.runtime.control'
+      left join public.np_settings j on j.site_id=site.site_id and j.key='agents.runtime.jobs'
       order by site.site_id`,
       [after],
     );
@@ -1049,15 +1068,25 @@ async function collectRuntimeSettingIssues(
       if (typeof row.site_id !== "string" || row.site_id <= after)
         throw new Error("Invalid runtime diagnostic cursor");
       after = row.site_id;
+      const runtimeInvalid = row.settings_present
+        ? !npAnalyzeAgentRuntimeSettingsV1(row.settings).ok ||
+          !npValidateAgentRuntimeControlStateV1({
+            siteId: row.site_id,
+            settings: row.settings,
+            control: row.control ?? {
+              revision: 1,
+              currentResumePlan: null,
+              lastResumeReceipt: null,
+            },
+          })
+        : row.control_present;
       if (
+        typeof row.settings_present !== "boolean" ||
         typeof row.control_present !== "boolean" ||
+        typeof row.jobs_present !== "boolean" ||
         (row.control_present && row.control === null) ||
-        !npAnalyzeAgentRuntimeSettingsV1(row.settings).ok ||
-        !npValidateAgentRuntimeControlStateV1({
-          siteId: row.site_id,
-          settings: row.settings,
-          control: row.control ?? { revision: 1, currentResumePlan: null, lastResumeReceipt: null },
-        })
+        runtimeInvalid ||
+        (row.jobs_present && !npAnalyzeAgentRuntimeJobStateV1(row.jobs).ok)
       )
         count += 1;
     }
@@ -1131,6 +1160,89 @@ async function collectRuntimeAdmissionIssues(
     : [];
 }
 
+/** Only fixed row projections are read; malformed private source evidence becomes a count. */
+async function collectRuntimeEventIssues(
+  client: NpAgentDiagnosticsQueryClientV1,
+): Promise<RawIssueRow[]> {
+  let count = 0;
+  for (const kind of ["trigger", "event"] as const) {
+    let after = "00000000-0000-0000-0000-000000000000";
+    for (;;) {
+      const query =
+        kind === "trigger"
+          ? `/* runtime_trigger_rows */ select id, kind, event_type, coalesce_seconds, cron, catch_up, filter_hash, octet_length(filter::text)<=32768 as body_bounded,
+            case when octet_length(filter::text)<=32768 then filter else null end as filter
+            from public.np_agent_triggers where id>$1::uuid order by id limit 16`
+          : `/* runtime_event_rows */ select id, site_id, kind, occurred_at, source_kind, source_component, privacy, event_hash, causal_root_run_id, causal_run_id, causal_action_id, causal_depth,
+            coalesce(octet_length(subject::text),0)<=16384 and coalesce(octet_length(actor::text),0)<=16384 and coalesce(octet_length(causation::text),0)<=16384 and octet_length(payload::text)<=65536 as body_bounded,
+            case when octet_length(subject::text)<=16384 then subject else null end as subject,
+            case when octet_length(actor::text)<=16384 then actor else null end as actor,
+            case when octet_length(causation::text)<=16384 then causation else null end as causation,
+            correlation_id, deduplication_key,
+            case when octet_length(payload::text)<=65536 then payload else null end as payload
+            from public.np_agent_events where id>$1::uuid order by id limit 16`;
+      const result = await client.query<Record<string, unknown>>(query, [after]);
+      if (!result.rows.length) break;
+      for (const row of result.rows) {
+        if (typeof row.id !== "string" || row.id <= after)
+          throw new Error("Invalid event diagnostic cursor");
+        after = row.id;
+        try {
+          if (row.body_bounded !== true) throw new Error("Invalid event diagnostic body bound");
+          if (kind === "trigger") {
+            const hash = `cj1:sha256:${createHash("sha256").update(serializeAgentCanonicalJson(row.filter)).digest("base64url")}`;
+            if (hash !== row.filter_hash) throw new Error("Invalid trigger hash");
+            npRequireAgentTriggerV1(
+              row.kind === "event"
+                ? {
+                    type: row.kind,
+                    id: row.id,
+                    eventKind: row.event_type,
+                    filter: row.filter,
+                    coalesceSeconds: row.coalesce_seconds,
+                  }
+                : row.kind === "schedule"
+                  ? { type: row.kind, id: row.id, cron: row.cron, catchUp: row.catch_up }
+                  : { type: row.kind, id: row.id },
+            );
+          } else {
+            const body = npRequireAgentEventCanonical({
+              version: "np.agent-event.v1",
+              siteId: row.site_id,
+              kind: row.kind,
+              occurredAt:
+                row.occurred_at instanceof Date ? row.occurred_at.toISOString() : row.occurred_at,
+              source: { kind: row.source_kind, component: row.source_component },
+              subject: row.subject,
+              actor: row.actor,
+              causation: row.causation,
+              correlationId: row.correlation_id,
+              deduplicationKey: row.deduplication_key,
+              privacy: row.privacy,
+              payload: row.payload,
+            });
+            if (
+              row.causal_root_run_id !== (body.causation?.rootRunId ?? null) ||
+              row.causal_run_id !== (body.causation?.sourceRunId ?? null) ||
+              row.causal_action_id !== (body.causation?.sourceActionId ?? null) ||
+              row.causal_depth !== (body.causation?.depth ?? null)
+            )
+              throw new Error("Invalid event causation projection");
+            if ((await npDigestAgentEventCanonical(body)) !== row.event_hash)
+              throw new Error("Invalid event hash");
+          }
+        } catch {
+          count += 1;
+        }
+      }
+      if (result.rows.length < 16) break;
+    }
+  }
+  return count
+    ? [{ code: "AGENT_RUNTIME_DIVERGED", count: count.toString(), oldest_age_seconds: null }]
+    : [];
+}
+
 /**
  * Collect one fail-closed, read-only Agent contract snapshot. Its projection
  * contains only aggregate counts, ages and adapter readiness; credentials,
@@ -1170,6 +1282,7 @@ export async function npCollectAgentHealthSummaryV1(
     const vaultResult = await client.query<RawRequiredAdapterRow>(REQUIRED_VAULT_ADAPTERS_SQL);
     const runtimeIssues = await collectRuntimeSettingIssues(client);
     runtimeIssues.push(...(await collectRuntimeAdmissionIssues(client)));
+    runtimeIssues.push(...(await collectRuntimeEventIssues(client)));
     const issues = parseIssues([...schemaIssues, ...issueResult.rows, ...runtimeIssues]);
     const providers = readiness(
       parseRequiredAdapters(providerResult.rows),

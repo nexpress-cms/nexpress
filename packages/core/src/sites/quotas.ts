@@ -1,8 +1,11 @@
-import { count, eq, sql, type SQL } from "drizzle-orm";
+import { and, count, eq, sql, type SQL } from "drizzle-orm";
 import type { PgTable } from "drizzle-orm/pg-core";
 
 import { getAllCollectionSlugs, getCollectionTable } from "../collections/registry.js";
 import { getDb } from "../db/runtime.js";
+import { npAgentRuns, npAgentSiteDeletionSagas } from "../db/schema/agent.js";
+import { npAuditEvents } from "../db/schema/community.js";
+import { npNormalizeJobPayload } from "../jobs-contract/index.js";
 import { npMedia } from "../db/schema/media.js";
 import { npSettings, npSites } from "../db/schema/system.js";
 import { NpNotFoundError, NpRateLimitError, NpServiceUnavailableError } from "../errors.js";
@@ -267,27 +270,72 @@ export async function npWithSiteJobEnqueueQuota<T>(
   siteId: string,
   readJobUsage: NpSiteJobUsageReader | undefined,
   enqueue: () => Promise<T>,
+  /** Framework-only identity derived from the exact agent:runExecute payload. */
+  runtime?: { agentRunId: string },
 ): Promise<T> {
+  if (runtime) npNormalizeJobPayload("agent:runExecute", { siteId, runId: runtime.agentRunId });
   const db = getDb() as unknown as NpSiteQuotaDatabase;
-  return db.transaction(async (tx) => {
+  const admitted = await db.transaction(async (tx) => {
     await npLockSiteQuotas(tx, siteId);
+    if (runtime) {
+      const [deletion] = await tx
+        .select({ id: npAgentSiteDeletionSagas.id })
+        .from(npAgentSiteDeletionSagas)
+        .where(eq(npAgentSiteDeletionSagas.siteId, siteId))
+        .limit(1);
+      if (deletion) throw new NpServiceUnavailableError("Agent run job admission is unavailable.");
+      const [run] = await tx
+        .select({ id: npAgentRuns.id })
+        .from(npAgentRuns)
+        .where(
+          and(
+            eq(npAgentRuns.siteId, siteId),
+            eq(npAgentRuns.id, runtime.agentRunId),
+            eq(npAgentRuns.origin, "runtime"),
+          )!,
+        )
+        .limit(1);
+      if (!run) throw new NpServiceUnavailableError("Agent run job admission is unavailable.");
+      const [receipt] = await tx
+        .select({ id: npAuditEvents.id })
+        .from(npAuditEvents)
+        .where(
+          and(
+            eq(npAuditEvents.siteId, siteId),
+            eq(npAuditEvents.action, "agent.runtime.job_admitted"),
+            eq(npAuditEvents.actorKind, "system"),
+            eq(npAuditEvents.targetType, "agent-run"),
+            eq(npAuditEvents.targetId, runtime.agentRunId),
+          )!,
+        )
+        .limit(1);
+      if (receipt) return undefined;
+    }
     const quotas = await getSiteQuotasWithDb(tx, siteId);
-    if (quotas.jobEnqueuesPerHour === null) return enqueue();
-    if (!readJobUsage) {
-      throw new NpServiceUnavailableError(
-        "The active job queue cannot measure exact site enqueue history required by this quota.",
+    if (quotas.jobEnqueuesPerHour !== null) {
+      if (!readJobUsage) {
+        throw new NpServiceUnavailableError(
+          "The active job queue cannot measure exact site enqueue history required by this quota.",
+        );
+      }
+      const since = new Date(Date.now() - NP_SITE_JOB_QUOTA_WINDOW_MS);
+      const used = requireNonNegativeSafeInteger(
+        await readJobUsage(siteId, since),
+        "siteQuota.jobEnqueuesLastHour",
       );
+      if (used >= quotas.jobEnqueuesPerHour) {
+        throw new NpRateLimitError(
+          `Site job enqueue quota exceeded — ${used.toString()} of ${quotas.jobEnqueuesPerHour.toString()} jobs were admitted in the last hour.`,
+        );
+      }
     }
-    const since = new Date(Date.now() - NP_SITE_JOB_QUOTA_WINDOW_MS);
-    const used = requireNonNegativeSafeInteger(
-      await readJobUsage(siteId, since),
-      "siteQuota.jobEnqueuesLastHour",
-    );
-    if (used >= quotas.jobEnqueuesPerHour) {
-      throw new NpRateLimitError(
-        `Site job enqueue quota exceeded — ${used.toString()} of ${quotas.jobEnqueuesPerHour.toString()} jobs were admitted in the last hour.`,
-      );
-    }
-    return enqueue();
+    if (!runtime) return enqueue();
+    // This is a durable admission reservation, not a delivery receipt. Commit
+    // before queue I/O so lost enqueue recovery cannot charge the Run again.
+    await tx.execute(sql`insert into np_audit_events
+      (site_id,actor_kind,action,target_type,target_id,payload,created_at)
+      values (${siteId},'system','agent.runtime.job_admitted','agent-run',${runtime.agentRunId},'{}'::jsonb,now())`);
+    return undefined;
   });
+  return runtime ? enqueue() : (admitted as T);
 }

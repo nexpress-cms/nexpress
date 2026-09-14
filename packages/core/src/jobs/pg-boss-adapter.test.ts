@@ -1,6 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as JobLog from "./job-log.js";
+
+const jobErrorMocks = vi.hoisted(() => ({
+  error: vi.fn(),
+  report: vi.fn().mockResolvedValue(undefined),
+  record: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../observability/logger.js", () => ({
+  getLogger: () => ({
+    error: jobErrorMocks.error,
+    info: vi.fn(),
+    warn: vi.fn(),
+    debug: vi.fn(),
+  }),
+}));
+vi.mock("../observability/error-reporter.js", () => ({ reportError: jobErrorMocks.report }));
+vi.mock("./job-log.js", async (original) => ({
+  ...(await original<typeof JobLog>()),
+  recordJobLog: jobErrorMocks.record,
+}));
 
 import type { NpScheduleSummary } from "./queue.js";
+import { registerJobHandler } from "./handlers.js";
 import { registerBuiltinHandlers } from "./builtin-handlers.js";
 import { PgBossAdapter } from "./pg-boss-adapter.js";
 import { getRegisteredPluginSchedules, loadPlugins, resetPlugins } from "../plugins/index.js";
@@ -285,7 +306,35 @@ describe("PgBossAdapter persisted job contracts", () => {
     );
   });
 
-  it("counts exact site quota enqueue history across live and archive rows", async () => {
+  it("removes only persisted Agent schedules when their host is absent", async () => {
+    const schedule = vi.fn().mockResolvedValue(undefined);
+    const unschedule = vi.fn().mockResolvedValue(undefined);
+    const adapter = adapterWithBoss(vi.fn(), { schedule, unschedule });
+    vi.spyOn(adapter, "listSchedules").mockResolvedValue([
+      scheduleRow("agent.eventReconcile", "* * * * *"),
+      scheduleRow("unrelated.tick", "* * * * *"),
+    ]);
+    await adapter.scheduleRecurring();
+    expect(unschedule).toHaveBeenCalledWith("agent.eventReconcile", "");
+    expect(unschedule).not.toHaveBeenCalledWith("agent.scheduleTick", expect.anything());
+    expect(schedule.mock.calls.some(([name]) => String(name).startsWith("agent."))).toBe(false);
+  });
+
+  it("schedules only explicitly installed Agent handlers", async () => {
+    registerJobHandler("agent:eventReconcile", () => Promise.resolve());
+    registerJobHandler("agent:scheduleTick", () => Promise.resolve());
+    registerJobHandler("agent:retentionTick", () => Promise.resolve());
+    const schedule = vi.fn().mockResolvedValue(undefined);
+    const unschedule = vi.fn().mockResolvedValue(undefined);
+    const adapter = adapterWithBoss(vi.fn(), { schedule, unschedule });
+    vi.spyOn(adapter, "listSchedules").mockResolvedValue([]);
+    await adapter.scheduleRecurring();
+    expect(schedule).toHaveBeenCalledWith("agent.eventReconcile", "* * * * *", {});
+    expect(schedule).toHaveBeenCalledWith("agent.scheduleTick", "* * * * *", {});
+    expect(schedule).toHaveBeenCalledWith("agent.retentionTick", "0 * * * *", {});
+  });
+
+  it("counts exact retained site quota enqueue history", async () => {
     const executeSql = vi.fn().mockResolvedValue({ rows: [{ total: "7" }] });
     const adapter = adapterWithSql(executeSql);
     const since = new Date("2026-07-22T00:00:00.000Z");
@@ -301,6 +350,62 @@ describe("PgBossAdapter persisted job contracts", () => {
     await expect(
       adapter.countSiteEnqueues("Tenant A", since, ["plugin:scheduledTask"]),
     ).rejects.toThrow("siteId must be canonical");
+  });
+
+  it("counts durable Runtime admission receipts instead of retry delivery rows", async () => {
+    const executeSql = vi.fn().mockResolvedValue({ rows: [{ total: "3" }, { total: "2" }] });
+    const adapter = adapterWithSql(executeSql);
+    await expect(
+      adapter.countSiteEnqueues("tenant-a", new Date(), [
+        "agent:runExecute",
+        "plugin:scheduledTask",
+      ]),
+    ).resolves.toBe(5);
+    const query = executeSql.mock.calls[0]?.[0] as string;
+    expect(query).toContain("name <> 'agent.runExecute'");
+    expect(query).toContain("COUNT(DISTINCT target_id)");
+    expect(query).toContain("action='agent.runtime.job_admitted'");
+    expect(query).toContain("site_id=$1");
+  });
+
+  it("redacts Agent normalization and handler failures before every job error sink", async () => {
+    const secret = "private-provider-locator";
+    registerJobHandler("agent:errorBoundaryTest", () => Promise.reject(new Error(secret)));
+    registerJobHandler("test:errorBoundaryUnchanged", () => Promise.reject(new Error(secret)));
+    const work = vi.fn().mockResolvedValue(undefined);
+    const adapter = adapterWithBoss(vi.fn(), {
+      start: vi.fn().mockResolvedValue(undefined),
+      createQueue: vi.fn().mockResolvedValue(undefined),
+      getQueue: vi.fn().mockResolvedValue({ policy: "stately" }),
+      updateQueue: vi.fn().mockResolvedValue(undefined),
+      work,
+    });
+    await adapter.start();
+    const callback = (name: string) =>
+      work.mock.calls.find(([queue]) => queue === name)?.[1] as (
+        jobs: Array<{ id: string; data: unknown }>,
+      ) => Promise<void>;
+    for (const data of [{ unknown: secret }, { [secret]: () => undefined }]) {
+      jobErrorMocks.error.mockClear();
+      jobErrorMocks.record.mockClear();
+      jobErrorMocks.report.mockClear();
+      await expect(
+        callback("agent.errorBoundaryTest")([{ id: "test-job", data }]),
+      ).rejects.toMatchObject({
+        message: "Agent job execution failed.",
+        stack: "Error: Agent job execution failed.",
+      });
+      const reported = jobErrorMocks.report.mock.calls[0]?.[0] as Error;
+      expect(reported.message).toBe("Agent job execution failed.");
+      expect(reported.stack).toBe("Error: Agent job execution failed.");
+      expect(reported.cause).toBeUndefined();
+      expect(JSON.stringify(jobErrorMocks.error.mock.calls)).not.toContain(secret);
+      expect(JSON.stringify(jobErrorMocks.record.mock.calls)).not.toContain(secret);
+      expect(jobErrorMocks.record).toHaveBeenCalledOnce();
+    }
+    await expect(
+      callback("test.errorBoundaryUnchanged")([{ id: "ordinary-job", data: {} }]),
+    ).rejects.toThrow(secret);
   });
 
   it("rejects retrying non-terminal and handlerless jobs before enqueue", async () => {
@@ -343,7 +448,7 @@ function adapterWithBoss(
   methods: Record<string, unknown> = {},
 ): PgBossAdapter {
   const adapter = new PgBossAdapter("postgres://nexpress:nexpress@localhost:5433/nexpress");
-  Object.defineProperty(adapter, "boss", { value: { db: { executeSql }, ...methods } });
+  Object.defineProperty(adapter, "boss", { value: { getDb: () => ({ executeSql }), ...methods } });
   return adapter;
 }
 

@@ -533,7 +533,7 @@ AP-503, AP-505–AP-508 and the full R5 gate remain open. See
 [the runtime foundation flow](r5-runtime-foundation-flow.md) for implemented
 boundaries and verification evidence.
 
-The next bounded execution slice implements AP-501 provider inference,
+The preceding provider/read execution slice implements AP-501 provider inference,
 AP-505 context and explicit read execution, and AP-506 outcome-bound recovery.
 It reuses the existing Run, action and usage journals; generated migration 0048
 adds one retry timestamp/check (40 tables, 266 critical constraints). Deployment
@@ -541,13 +541,21 @@ Runtime principals can use the existing public/published `content.query` path.
 `site.inspect`, `schema.get` and ChangeSet capabilities remain unavailable
 without the real staff/item authority their existing owners require.
 
-The current slice implements explicit self-delegation through the
+The preceding delegated slice implements explicit self-delegation through the
 existing principal relationship and the AP-505 ChangeSet/approval execution
 and recovery path. Current staff/site membership, item ACL, exact approval
 binding, idempotency, CAS and audit remain authoritative. Local acceptance
 passed, while AP-503/AP-507/AP-508 and the full R5 gate remain open. See
 [the delegated execution flow](r5-runtime-delegated-execution-flow.md) and the
 [preceding provider/read execution checkpoint](r5-runtime-execution-flow.md).
+
+The current event/operations slice implements AP-503 and the related AP-508
+recovery foundation through existing event/trigger/Run tables and explicit host
+worker installation. The schedule outbox reuses admitted Runs and locked occurrence advancement, with no
+invented schedule event kind. Trigger rows are capped at 100 per site; compatible
+installed recipes retain the current task boundary. AP-507, remaining AP-508 and
+the full R5 gate remain open. Local verification for this slice passed. See the
+[Runtime events and operations flow](r5-runtime-events-operations-flow.md).
 
 Outcome: one configured agent can run a bounded event/manual/scheduled workflow
 with budget and policy enforcement.

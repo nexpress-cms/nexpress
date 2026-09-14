@@ -1681,3 +1681,17 @@ results do not substitute for full workspace, PostgreSQL, Redis, theme, native
 preview, production browser and packed-scaffold verification. Current results
 are recorded in the linked flow, including the completed local acceptance and
 the still-separate AP-503/AP-507/AP-508 work.
+
+## R5 event and operations verification
+
+The [Runtime events and operations flow](r5-runtime-events-operations-flow.md)
+tracks final validation separately from previous delegated execution results.
+Focused coverage must prove exact event replay/conflict, concurrent dispatch,
+coalescing partitions, current source authority and immutable Run evidence,
+expired/tampered/foreign causal rejection, UTC skip/once behavior and poisoned
+schedule fairness. Queue recovery must validate exact payloads and site scope,
+charge initial Run quota once, preserve durable work when enqueue fails, and
+advance persisted cursors across failures. Retention must preserve every
+referenced or unresolved event. Full workspace, PostgreSQL, Redis, theme,
+native-preview, browser and packed-scaffold checks remain required; this planning
+checkpoint does not claim that they have passed for the new slice.

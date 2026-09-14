@@ -11,6 +11,23 @@ import {
 import { getCurrentSiteId } from "../sites/context.js";
 
 describe("custom job handler contracts", () => {
+  it("enforces Runtime job quota without installing a worker handler", () => {
+    expect(getJobHandler("agent:runExecute")).toBeUndefined();
+    expect(getSiteQuotaJobTypes().filter((type) => type === "agent:runExecute")).toHaveLength(1);
+    expect(
+      resolveRegisteredJobQuotaSiteId("agent:runExecute", {
+        siteId: "tenant-a",
+        runId: "d4cafb07-c120-4503-90fa-6d6fc4104ce3",
+      }),
+    ).toBe("tenant-a");
+    expect(() =>
+      resolveRegisteredJobQuotaSiteId("agent:runExecute", {
+        siteId: "tenant-a",
+        runId: "d4cafb07-c120-4503-90fa-6d6fc4104ce3",
+        bypass: true,
+      }),
+    ).toThrow();
+  });
   it("runs an additive custom parser before enqueue and dispatch", async () => {
     const handler = vi.fn<(data: { documentId: string }) => Promise<void>>();
     registerJobHandler("search:customReindex", handler, {

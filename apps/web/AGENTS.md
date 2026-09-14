@@ -1,6 +1,25 @@
 # apps/web — AGENTS.md
 
-**Current delegated execution slice:** Explicit self-delegation on the existing
+**Current events and operations slice:** AP-503 and related AP-508 reuse the
+canonical event envelope, existing trigger/Run tables, Runtime admission,
+executor and generic worker registry. Exact immutable triggers, bounded filters,
+per-recipe durable event/schedule progress and current authority checks preserve
+healthy admissions across sibling failures. Run rows are the schedule outbox;
+no synthetic schedule event is introduced. Explicit host registration owns six
+closed jobs and private fair cursors under `agents.runtime.jobs`; absent Runtime
+stays disabled. Initial Run job quota reservations use existing audit receipts,
+and recovery does not charge them again. Only expired, dispatched, unreferenced
+events are pruned. Agent job errors and diagnostics remain safe aggregates.
+Local verification passed workspace 113/lint 41, Core unit 1,894, Core
+PostgreSQL 68, web PostgreSQL 1,401 ordinary cases across full/corrected runs
+(including theme 5), native preview 1, Redis 16, production browser 62 and
+packed 40-package/56-stage checks. Doctor remains 40 tables/266 critical
+constraints. No migration, provider call,
+automatic factory, seed, default activation, package version or changeset is
+added. AP-507, remaining AP-508 and full R5 acceptance stay open. Current
+verification is recorded in [the events and operations flow](../../docs/design/agentic-platform/r5-runtime-events-operations-flow.md).
+
+**Earlier delegated execution slice:** Explicit self-delegation on the existing
 Agent create command binds a real staff user; omitted authority remains
 deployment-only. Runtime admission freezes principal/staff/deployment authority
 and rechecks live scope, membership and item access. Existing ChangeSet,

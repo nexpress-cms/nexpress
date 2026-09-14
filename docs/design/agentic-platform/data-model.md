@@ -1210,7 +1210,7 @@ rule when it attempts an action.
 | `cron`             | text nullable        | Valid five-field UTC cron only            |
 | `catch_up`         | text nullable        | `skip` or `once`; schedule triggers only  |
 | `next_run_at`      | timestamptz nullable | Required for an enabled schedule          |
-| `last_enqueued_at` | timestamptz nullable | Last durable schedule event creation      |
+| `last_enqueued_at` | timestamptz nullable | Last durable schedule Run admission       |
 | `filter`           | jsonb                | Exact bounded declarative filter; no code |
 | `coalesce_seconds` | integer              | Bounded non-negative window               |
 | `enabled`          | boolean              | Required                                  |
@@ -1222,11 +1222,13 @@ event_type/cron, filter hash)`. Only triggers belonging to the agent's current
 active version are dispatchable. An event trigger has exactly one
 `event_type`; a schedule has exactly one `cron`, `catch_up`, and computed
 `next_run_at`; a manual trigger has none of those fields. A fixed-cursor
-schedule tick locks due rows, transactionally creates one normalized schedule
-event, advances `next_run_at`, and records `last_enqueued_at`. The normal
-undispatched-event reconciler then makes queue delivery retry-safe.
-`catch_up=skip` advances past missed occurrences; `catch_up=once` emits at most
-one coalesced event before advancing.
+schedule tick locks each due row, atomically admits its compatible Runs,
+advances `next_run_at`, and records `last_enqueued_at` only when a Run was
+admitted. The retained Run is the delivery outbox; the current canonical event
+inventory has no synthetic schedule event. Run reconciliation makes queue
+delivery retry-safe. `catch_up=skip` advances past missed occurrences;
+`catch_up=once` admits at most one occurrence before advancing. Each trigger
+commits independently so one denied trigger cannot roll back another.
 
 Every durable dispatch stamps `siteId`, `triggerId`, and the bounded event
 reference.
@@ -3126,6 +3128,20 @@ units are forbidden. `cost=null`/`unpriced=true` exists only for a late,
 ambiguous, or historically imported provider result after admission against a
 known maximum price; the maximum reservation remains charged/blocked until
 reconciliation. It is never permission to admit another provider call.
+
+Initial `agent:runExecute` site-job quota admission is recorded once in the
+existing audit table as `agent.runtime.job_admitted` for the exact same-site
+Runtime Run. The admission commits before queue I/O and survives a failed send;
+recovery reuses it even after queue history is pruned. Rolling quota measurement
+counts these receipts and excludes duplicate Run delivery jobs. This receipt
+must be retained for the entire Run lifetime; it carries no credential, raw
+input or caller-selected authority. Ordinary job accounting is unchanged.
+
+Private `agents.runtime.jobs` cursor metadata reuses `np_settings`, is excluded
+from content transfer and generic Admin settings, and is never a source of
+execution authority. An explicit host-selected coordination site holds global
+scan positions; each tenant holds its own bounded scan positions. The empty
+factory is not a persisted default or feature activation.
 
 ## 9. Retention
 

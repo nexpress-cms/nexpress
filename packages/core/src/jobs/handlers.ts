@@ -165,13 +165,22 @@ export function getKnownJobTypes(): readonly NpJobType[] {
 }
 
 export function getSiteQuotaJobTypes(): readonly NpJobType[] {
-  return Array.from(registrations)
-    .filter(([, registration]) => registration.sourceQuota === "site")
-    .map(([type]) => type)
-    .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  // Runtime admission is a framework quota invariant even in a producer that
+  // never installs worker handlers. Registration does not activate execution.
+  return Array.from(
+    new Set<NpJobType>([
+      "agent:runExecute",
+      ...Array.from(registrations)
+        .filter(([, registration]) => registration.sourceQuota === "site")
+        .map(([type]) => type),
+    ]),
+  ).sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
 }
 
 export function resolveRegisteredJobQuotaSiteId(type: NpJobType, data: NpJobData): string | null {
+  if (type === "agent:runExecute") {
+    return npNormalizeJobPayload("agent:runExecute", data).siteId;
+  }
   const registration = registrations.get(type);
   if (registration?.sourceQuota !== "site") return null;
   const siteId = registration.sourceSiteIdResolver?.(data);

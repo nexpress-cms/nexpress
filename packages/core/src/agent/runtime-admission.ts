@@ -1,3 +1,11 @@
+import {
+  npRequireAgentEventCanonical,
+  npDigestAgentEventCanonical,
+} from "../agent-contract/canonical-events.js";
+import {
+  npMatchAgentTriggerEventV1,
+  npRequireAgentTriggerV1,
+} from "../agent-contract/runtime-trigger-contract.js";
 import type { NpAuthUser } from "../config/types.js";
 import {
   npRequireAgentAuthorizationContextCanonical,
@@ -8,6 +16,9 @@ import { and, eq, inArray, or } from "drizzle-orm";
 import type { getDb } from "../db/runtime.js";
 import {
   npAgentRuns,
+  npAgentTriggers,
+  npAgentEvents,
+  npAgentActions,
   npAgentConnections,
   npAgentConnectionConfigVersions,
   npAgentConnectionSecretVersions,
@@ -130,13 +141,15 @@ export interface NpAgentRuntimeExecutionClaimV1 {
   leaseUntil: string;
 }
 export interface NpAgentRuntimeAdmissionV1 {
-  /** Host-only root admission. Event dispatch/manual UI and execution remain their own later slices. */
+  /** Host-only admission; optional persisted trigger sources share the same authority and budget gate. */
   admit(input: {
     siteId: string;
     agentId: string;
     expectedVersionId: string;
     recipeId: NpAgentRecipeId;
     idempotencyKey: string;
+    source?: { triggerId: string; eventId?: string; scheduledFor?: string };
+    db?: Db;
   }): Promise<{ runId: string; replayed: boolean }>;
   /** Retained requester authority, including nonterminal approval/retry waits. No lease is granted. */
   withRunAuthority<T>(
@@ -706,9 +719,45 @@ export function createAgentRuntimeAdmissionV1(
     },
     admit: (input) => {
       npAssertAgentPreviewEffectsAllowed();
+      canonicalBodyRecord(
+        input,
+        "agent.runtime.admit",
+        ["siteId", "agentId", "expectedVersionId", "recipeId", "idempotencyKey", "source", "db"],
+        ["siteId", "agentId", "expectedVersionId", "recipeId", "idempotencyKey"],
+        { seen: new WeakSet<object>() },
+      );
+      const outerDb = input.db;
+      const source =
+        input.source === undefined
+          ? undefined
+          : (cloneCanonicalRuntimeInput(input.source, "agent.runtime.source", 1024) as {
+              triggerId: string;
+              eventId?: string;
+              scheduledFor?: string;
+            });
+      if (input.source !== undefined) {
+        const parsed = canonicalBodyRecord(
+          source,
+          "agent.runtime.source",
+          ["triggerId", "eventId", "scheduledFor"],
+          ["triggerId"],
+          { seen: new WeakSet<object>() },
+        );
+        canonicalBodyUuid(parsed.triggerId, "agent.runtime.source.triggerId");
+        if (parsed.eventId !== undefined)
+          canonicalBodyUuid(parsed.eventId, "agent.runtime.source.eventId");
+        if (parsed.scheduledFor !== undefined && typeof parsed.scheduledFor !== "string")
+          fail("RUNTIME_TRIGGER_UNAVAILABLE");
+      }
       const keys = ["siteId", "agentId", "expectedVersionId", "recipeId", "idempotencyKey"];
       const row = canonicalBodyRecord(
-        cloneCanonicalRuntimeInput(input, "agent.runtime.admit", 4096),
+        cloneCanonicalRuntimeInput(
+          Object.fromEntries(
+            Object.entries(input).filter(([key]) => key !== "db" && key !== "source"),
+          ),
+          "agent.runtime.admit",
+          4096,
+        ),
         "agent.runtime.admit",
         keys,
         keys,
@@ -739,6 +788,166 @@ export function createAgentRuntimeAdmissionV1(
             versionId: input.expectedVersionId,
           });
           const resolvedAuthority = await currentAuthority(db, input.siteId, evidence);
+          const trigger = source
+            ? (
+                await db
+                  .select()
+                  .from(npAgentTriggers)
+                  .where(
+                    and(
+                      eq(npAgentTriggers.siteId, input.siteId),
+                      eq(npAgentTriggers.id, source.triggerId),
+                      eq(npAgentTriggers.agentId, input.agentId),
+                      eq(npAgentTriggers.agentVersionId, input.expectedVersionId),
+                    ),
+                  )
+                  .limit(1)
+              )[0]
+            : null;
+          if (
+            source &&
+            (!trigger ||
+              !trigger.enabled ||
+              Object.keys(source).some(
+                (key) => !["triggerId", "eventId", "scheduledFor"].includes(key),
+              ))
+          )
+            fail("RUNTIME_TRIGGER_UNAVAILABLE");
+          if (
+            trigger &&
+            trigger.filterHash !==
+              `cj1:sha256:${createHash("sha256").update(serializeAgentCanonicalJson(trigger.filter)).digest("base64url")}`
+          )
+            fail("RUNTIME_TRIGGER_UNAVAILABLE");
+          if (trigger)
+            npRequireAgentTriggerV1(
+              trigger.kind === "event"
+                ? {
+                    type: "event",
+                    id: trigger.id,
+                    eventKind: trigger.eventType,
+                    filter: trigger.filter,
+                    coalesceSeconds: trigger.coalesceSeconds,
+                  }
+                : trigger.kind === "schedule"
+                  ? {
+                      type: "schedule",
+                      id: trigger.id,
+                      cron: trigger.cron,
+                      catchUp: trigger.catchUp,
+                    }
+                  : { type: trigger.kind, id: trigger.id },
+            );
+          const event = source?.eventId
+            ? (
+                await db
+                  .select()
+                  .from(npAgentEvents)
+                  .where(
+                    and(
+                      eq(npAgentEvents.siteId, input.siteId),
+                      eq(npAgentEvents.id, source.eventId),
+                    ),
+                  )
+                  .limit(1)
+              )[0]
+            : null;
+          if (
+            trigger &&
+            ((trigger.kind === "event" &&
+              (!event || source?.scheduledFor !== undefined || event.expiresAt <= nowFn())) ||
+              (trigger.kind === "schedule" &&
+                (source?.eventId !== undefined ||
+                  !source?.scheduledFor ||
+                  !Number.isFinite(Date.parse(source.scheduledFor)) ||
+                  new Date(source.scheduledFor).toISOString() !== source.scheduledFor)) ||
+              (trigger.kind === "manual" &&
+                (source?.eventId !== undefined || source?.scheduledFor !== undefined)))
+          )
+            fail("RUNTIME_TRIGGER_UNAVAILABLE");
+          if (
+            event &&
+            trigger &&
+            (event.kind !== trigger.eventType ||
+              (event.causalDepth !== null && event.causalDepth >= 4))
+          )
+            fail("RUNTIME_EVENT_INVALID");
+          if (event && trigger) {
+            const envelope = npRequireAgentEventCanonical({
+              version: "np.agent-event.v1",
+              siteId: event.siteId,
+              kind: event.kind,
+              occurredAt: event.occurredAt.toISOString(),
+              source: { kind: event.sourceKind, component: event.sourceComponent },
+              subject: event.subject,
+              actor: event.actor,
+              causation: event.causation,
+              correlationId: event.correlationId,
+              deduplicationKey: event.deduplicationKey,
+              privacy: event.privacy,
+              payload: event.payload,
+            });
+            const cause = envelope.causation;
+            if (
+              cause
+                ? event.causalRootRunId !== cause.rootRunId ||
+                  event.causalRunId !== cause.sourceRunId ||
+                  event.causalActionId !== cause.sourceActionId ||
+                  event.causalDepth !== cause.depth
+                : event.causalRootRunId !== null ||
+                  event.causalRunId !== null ||
+                  event.causalActionId !== null ||
+                  event.causalDepth !== null
+            )
+              fail("RUNTIME_EVENT_INVALID");
+            if (cause) {
+              const [parent] = await db
+                .select()
+                .from(npAgentRuns)
+                .where(
+                  and(eq(npAgentRuns.siteId, input.siteId), eq(npAgentRuns.id, cause.sourceRunId)),
+                )
+                .limit(1);
+              const [action] = await db
+                .select({ id: npAgentActions.id })
+                .from(npAgentActions)
+                .where(
+                  and(
+                    eq(npAgentActions.siteId, input.siteId),
+                    eq(npAgentActions.runId, cause.sourceRunId),
+                    eq(npAgentActions.id, cause.sourceActionId),
+                  ),
+                )
+                .limit(1);
+              if (
+                !parent ||
+                !action ||
+                parent.rootRunId !== cause.rootRunId ||
+                parent.causalDepth !== cause.depth
+              )
+                fail("RUNTIME_EVENT_INVALID");
+            }
+            if (
+              (await npDigestAgentEventCanonical(envelope)) !== event.eventHash ||
+              !npMatchAgentTriggerEventV1(
+                {
+                  type: "event",
+                  id: trigger.id,
+                  eventKind: trigger.eventType,
+                  filter: trigger.filter,
+                  coalesceSeconds: trigger.coalesceSeconds,
+                },
+                envelope,
+              )
+            )
+              fail("RUNTIME_EVENT_INVALID");
+          }
+          const eventRef = event
+            ? { eventId: event.id, eventHash: event.eventHash }
+            : source?.scheduledFor
+              ? { scheduledFor: source.scheduledFor }
+              : null;
+
           const [previous] = await db
             .select()
             .from(npAgentRuns)
@@ -754,7 +963,10 @@ export function createAgentRuntimeAdmissionV1(
           if (previous) {
             if (
               previous.agentVersionId !== evidence.version.id ||
-              previous.recipeId !== input.recipeId
+              previous.recipeId !== input.recipeId ||
+              previous.triggerId !== (trigger?.id ?? null) ||
+              serializeAgentCanonicalJson(previous.eventRef) !==
+                serializeAgentCanonicalJson(eventRef)
             )
               fail("IDEMPOTENCY_KEY_REUSED");
             if (
@@ -765,6 +977,13 @@ export function createAgentRuntimeAdmissionV1(
             requireFrozenAuthority(previous, resolvedAuthority);
             return { runId: previous.id, replayed: true };
           }
+          if (
+            trigger?.kind === "schedule" &&
+            (trigger.nextRunAt?.toISOString() !== source?.scheduledFor ||
+              !trigger.nextRunAt ||
+              trigger.nextRunAt > nowFn())
+          )
+            fail("RUNTIME_TRIGGER_UNAVAILABLE");
           if (!settings.enabled || settings.emergencyPause.paused) fail("RUNTIME_PAUSED");
           await options.controls.requireReadyInTransaction({ db, siteId: input.siteId });
           let now = nowFn();
@@ -772,6 +991,11 @@ export function createAgentRuntimeAdmissionV1(
           if (
             !recipe ||
             !evidence.definition.settings.some((branch) => branch.recipeId === recipe.id)
+          )
+            fail("RUNTIME_RECIPE_UNAVAILABLE");
+          if (
+            trigger &&
+            !recipe.triggerKinds.includes(trigger.kind as "event" | "schedule" | "manual")
           )
             fail("RUNTIME_RECIPE_UNAVAILABLE");
           if (recipe.task !== "interactive-capability")
@@ -883,18 +1107,21 @@ export function createAgentRuntimeAdmissionV1(
             origin: "runtime",
             principalId: evidence.principal.id,
             invocationId: null,
-            triggerId: null,
+            triggerId: trigger?.id ?? null,
             agent: {
               id: evidence.agent.id,
               versionId: evidence.version.id,
               configHash: evidence.version.configHash,
             },
             lineage: {
-              rootRunId: id,
-              parentRunId: null,
-              causalDepth: 0,
-              causalEventId: null,
-              causalActionId: null,
+              rootRunId: event?.causalRootRunId ?? id,
+              parentRunId: event?.causalRunId ?? null,
+              causalDepth:
+                event?.causalDepth !== null && event?.causalDepth !== undefined
+                  ? event.causalDepth + 1
+                  : 0,
+              causalEventId: event?.causalRunId ? event.id : null,
+              causalActionId: event?.causalActionId ?? null,
             },
             recipe: {
               ...recipeRef,
@@ -907,7 +1134,7 @@ export function createAgentRuntimeAdmissionV1(
                 : null,
             },
             goal: `Run ${recipe.id}`,
-            eventRef: null,
+            eventRef,
             policyRefs: policy.refs,
             runLimitsHash: await npDigestAgentRunLimitsCanonical(runLimits),
             budgetSnapshotHash: await npDigestAgentBudgetSnapshotCanonical(snapshot),
@@ -926,8 +1153,13 @@ export function createAgentRuntimeAdmissionV1(
             agentConfigHash: evidence.version.configHash,
             principalId: evidence.principal.id,
             admissionFingerprint,
-            rootRunId: id,
-            causalDepth: 0,
+            triggerId: body.triggerId,
+            rootRunId: body.lineage.rootRunId,
+            parentRunId: body.lineage.parentRunId,
+            causalDepth: body.lineage.causalDepth,
+            causalEventId: body.lineage.causalEventId,
+            causalActionId: body.lineage.causalActionId,
+            eventRef: body.eventRef,
             recipeId: recipe.id,
             recipeVersion: recipe.version,
             recipeFingerprint: fingerprint,
@@ -977,6 +1209,7 @@ export function createAgentRuntimeAdmissionV1(
           });
           return { runId: id, replayed: false };
         },
+        outerDb,
       );
     },
   };

@@ -596,6 +596,14 @@ transaction.
 
 ## Trigger model
 
+The [current event/operations implementation](r5-runtime-events-operations-flow.md)
+uses this exact trigger union with at most 100 persisted trigger rows per site.
+Only recipes installed for the current active version and compatible with the
+trigger kind dispatch; R6 target/detector execution remains separate. Schedule
+occurrences use the existing Run outbox and locked occurrence advancement with `triggerId` and
+`scheduledFor`, because the canonical event inventory has no schedule kind.
+Worker installation remains explicit; local validation passed as recorded in the Runtime events and operations flow.
+
 An agent trigger is source-owned configuration with one exact discriminator:
 
 ```ts

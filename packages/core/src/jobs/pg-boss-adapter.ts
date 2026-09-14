@@ -157,7 +157,15 @@ export class PgBossAdapter implements NpJobQueue {
               } catch (error) {
                 // Surface job failures to logs + the configured error reporter.
                 // Re-throw so pg-boss applies its retry/dead-letter policy.
-                const err = error instanceof Error ? error : new Error(String(error));
+                const err = type.startsWith("agent:")
+                  ? new Error("Agent job execution failed.")
+                  : error instanceof Error
+                    ? error
+                    : new Error(String(error));
+                // The outer boundary also covers payload normalization and
+                // registration parsers before a Runtime handler is entered.
+                // Never retain the original message, stack, cause or object.
+                if (type.startsWith("agent:")) err.stack = "Error: Agent job execution failed.";
                 getLogger().error("Job handler threw", {
                   type,
                   jobId: job.id,
@@ -320,6 +328,24 @@ export class PgBossAdapter implements NpJobQueue {
   }
 
   async scheduleRecurring(): Promise<void> {
+    // Only an explicitly installed host owns Agent maintenance. Removed hosts
+    // also remove their old schedules without creating queues or work loops.
+    const agentSchedules = [
+      ["agent:eventReconcile", "* * * * *"],
+      ["agent:scheduleTick", "* * * * *"],
+      ["agent:retentionTick", "0 * * * *"],
+    ] as const;
+    const persistedSchedules = await this.listSchedules();
+    for (const [type, cron] of agentSchedules) {
+      const name = toQueueName(type);
+      if (getJobHandler(type)) {
+        await this.boss.schedule(name, cron, {});
+      } else {
+        for (const persisted of persistedSchedules.filter((entry) => entry.name === name)) {
+          await this.boss.unschedule(name, persisted.key);
+        }
+      }
+    }
     await this.boss.schedule(toQueueName("system:revisionPrune"), "0 3 * * *", {});
     // Reclaim soft-deleted media daily after its 30-day retention window.
     // Offset from the revision and job-log sweeps to spread storage/DB load.
@@ -364,17 +390,7 @@ export class PgBossAdapter implements NpJobQueue {
     return this.boss;
   }
 
-  /**
-   * Phase 13 — admin job introspection. Joins pgboss.job
-   * (pending / active / retry) and pgboss.archive (completed
-   * / failed / expired) into one unified list.
-   *
-   * Phase 13.2 — `since` filter for time-bounded queries
-   * ("last 24 hours") and accurate `total` via a parallel
-   * COUNT(*) so the admin pagination shows the right count.
-   * The COUNT runs against the same UNION; the per-page
-   * SELECT still gets the row data.
-   */
+  /** Bounded retained job inventory, filtered by logical live/terminal source. */
   async listJobs(options: NpJobListOptions): Promise<NpJobListResult> {
     requireExactOptions(options, "jobs", ["name", "state", "limit", "offset", "since", "source"]);
     const limit = requireBoundedInteger(options.limit, "jobs.limit", 50, 1, 200);
@@ -398,11 +414,9 @@ export class PgBossAdapter implements NpJobQueue {
       throw new Error("jobs.since must be a valid Date.");
     }
 
-    const db = (
-      this.boss as unknown as {
-        db: { executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: PgBossRow[] }> };
-      }
-    ).db;
+    const db = this.boss.getDb() as {
+      executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: PgBossRow[] }>;
+    };
     const params: unknown[] = [];
     const where: string[] = [];
     if (name) {
@@ -417,57 +431,20 @@ export class PgBossAdapter implements NpJobQueue {
       params.push(options.since.toISOString());
       where.push(`created_on >= $${params.length}`);
     }
+    if (options.source === "live") where.push("state::text IN ('created','retry','active')");
+    if (options.source === "archive") where.push("state::text NOT IN ('created','retry','active')");
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-
-    // NexPress pins the canonical `pgboss` schema in the constructor so
-    // runtime writes and every Admin/ops diagnostic query share one store.
-    //
-    // Phase 20.4 — when `options.source` is set we narrow the
-    // UNION to that single table; otherwise we keep the
-    // historical "show everything" union. The `source` column on
-    // each row is what the admin uses to split live vs archive
-    // visually without an extra round trip.
-    const liveSelect = `
-      SELECT id, name, state, data, retry_count,
-             output::text AS output, created_on, started_on, completed_on,
-             'live' AS source
-        FROM pgboss.job`;
-    const archiveSelect = `
-      SELECT id, name, state, data, retry_count,
-             output::text AS output, created_on, started_on, completed_on,
-             'archive' AS source
-        FROM pgboss.archive`;
-    const innerUnion =
-      options.source === "live"
-        ? liveSelect
-        : options.source === "archive"
-          ? archiveSelect
-          : `${liveSelect}\n        UNION ALL${archiveSelect}`;
+    // pg-boss 12 retains both active and terminal rows in job. The existing
+    // public source discriminator remains a logical lifecycle projection.
     const listSql = `
       SELECT id, name, state::text AS state, data, retry_count,
-             output, created_on, started_on, completed_on, source
-      FROM (
-        ${innerUnion}
-      ) jobs
-      ${whereSql}
-      ORDER BY created_on DESC
-      LIMIT ${limit} OFFSET ${offset}
-    `;
-    const liveCount = `SELECT id, name, state, data, created_on, 'live' AS source FROM pgboss.job`;
-    const archiveCount = `SELECT id, name, state, data, created_on, 'archive' AS source FROM pgboss.archive`;
-    const countUnion =
-      options.source === "live"
-        ? liveCount
-        : options.source === "archive"
-          ? archiveCount
-          : `${liveCount} UNION ALL ${archiveCount}`;
-    const countSql = `
-      SELECT COUNT(*)::bigint AS total
-      FROM (
-        ${countUnion}
-      ) jobs
-      ${whereSql}
-    `;
+             output::text AS output, created_on, started_on, completed_on,
+             CASE WHEN state::text IN ('created','retry','active') THEN 'live' ELSE 'archive' END AS source
+        FROM pgboss.job
+        ${whereSql}
+        ORDER BY created_on DESC, id DESC
+        LIMIT ${limit} OFFSET ${offset}`;
+    const countSql = `SELECT COUNT(*)::bigint AS total FROM pgboss.job ${whereSql}`;
     const [listResult, countResult] = await Promise.all([
       db.executeSql(listSql, params),
       db.executeSql(countSql, params) as unknown as Promise<{
@@ -491,13 +468,9 @@ export class PgBossAdapter implements NpJobQueue {
    * by name for stable display.
    */
   async listSchedules(): Promise<NpScheduleSummary[]> {
-    const db = (
-      this.boss as unknown as {
-        db: {
-          executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: PgBossScheduleRow[] }>;
-        };
-      }
-    ).db;
+    const db = this.boss.getDb() as {
+      executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: PgBossScheduleRow[] }>;
+    };
     const result = await db.executeSql(
       `SELECT name, key, cron, timezone, data, created_on, updated_on
          FROM pgboss.schedule
@@ -506,17 +479,7 @@ export class PgBossAdapter implements NpJobQueue {
     return result.rows.map(scheduleRowToSummary);
   }
 
-  /**
-   * Phase 4.2 — pulls per-(pluginId, taskId) execution stats from the
-   * union of `pgboss.job` (in-flight + recently-completed) and
-   * `pgboss.archive` (rolled-over history). One row per taskId so the
-   * caller can index without a second pass.
-   *
-   * The window default is 7 days because longer windows force the
-   * archive table into the hot path and admins typically want recent
-   * health, not lifetime totals. Increase via `windowDays` if surfacing
-   * a "30-day reliability" widget.
-   */
+  /** Site-bound plugin execution health from retained pg-boss 12 job rows. */
   async getPluginScheduleStats(
     pluginId: string,
     options?: { windowDays?: number },
@@ -534,25 +497,21 @@ export class PgBossAdapter implements NpJobQueue {
       taskId: "contract-probe",
     }).pluginId;
     const siteId = (await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID;
-    const db = (
-      this.boss as unknown as {
-        db: {
-          executeSql: (
-            sql: string,
-            params?: unknown[],
-          ) => Promise<{
-            rows: Array<{
-              task_id: string | null;
-              last_run: Date | string | null;
-              last_success: Date | string | null;
-              last_failure: Date | string | null;
-              completed_count: string | number;
-              failed_count: string | number;
-            }>;
-          }>;
-        };
-      }
-    ).db;
+    const db = this.boss.getDb() as {
+      executeSql: (
+        sql: string,
+        params?: unknown[],
+      ) => Promise<{
+        rows: Array<{
+          task_id: string | null;
+          last_run: Date | string | null;
+          last_success: Date | string | null;
+          last_failure: Date | string | null;
+          completed_count: string | number;
+          failed_count: string | number;
+        }>;
+      }>;
+    };
 
     // Cron ticks only fan out work; site health is measured from the durable
     // `plugin.scheduledTask` execution jobs so one tenant's failure cannot
@@ -565,13 +524,7 @@ export class PgBossAdapter implements NpJobQueue {
             AND data->>'pluginId' = $1
             AND data->>'siteId' = $2
             AND completed_on > NOW() - ($3 || ' days')::interval
-         UNION ALL
-         SELECT state, completed_on, data
-           FROM pgboss.archive
-          WHERE name = 'plugin.scheduledTask'
-            AND data->>'pluginId' = $1
-            AND data->>'siteId' = $2
-            AND completed_on > NOW() - ($3 || ' days')::interval
+
        )
        SELECT data->>'taskId' AS task_id,
               MAX(completed_on) AS last_run,
@@ -696,26 +649,17 @@ export class PgBossAdapter implements NpJobQueue {
   }
 
   /**
-   * Phase 23.5 — `GROUP BY state` across the union of pgboss.job
-   * (live) and pgboss.archive (rolled). Returns a fully-populated
-   * record so callers can index without optional chaining.
-   *
-   * Uses `created_on` for the optional `since` filter. Both tables
-   * carry the same column, so the union pre-filter is a single
-   * predicate.
+   * Counts retained pg-boss 12 rows by state with an optional creation-time
+   * bound. Every supported public state is present, including zero counts.
    */
   async countByState(options?: NpJobCountOptions): Promise<NpJobStateCounts> {
     requireExactOptions(options, "jobs.counts", ["since"]);
-    const db = (
-      this.boss as unknown as {
-        db: {
-          executeSql: (
-            sql: string,
-            params?: unknown[],
-          ) => Promise<{ rows: Array<{ state: string; count: string | number }> }>;
-        };
-      }
-    ).db;
+    const db = this.boss.getDb() as {
+      executeSql: (
+        sql: string,
+        params?: unknown[],
+      ) => Promise<{ rows: Array<{ state: string; count: string | number }> }>;
+    };
     const params: unknown[] = [];
     let whereSql = "";
     if (options?.since !== undefined) {
@@ -727,11 +671,7 @@ export class PgBossAdapter implements NpJobQueue {
     }
     const result = await db.executeSql(
       `SELECT state::text AS state, COUNT(*)::bigint AS count
-         FROM (
-           SELECT state, created_on FROM pgboss.job
-           UNION ALL
-           SELECT state, created_on FROM pgboss.archive
-         ) jobs
+         FROM pgboss.job
          ${whereSql}
         GROUP BY state`,
       params,
@@ -767,31 +707,32 @@ export class PgBossAdapter implements NpJobQueue {
     }
     const queueNames = Array.from(new Set(types.map((type) => toQueueName(type))));
     if (queueNames.length === 0) return 0;
-    const db = (
-      this.boss as unknown as {
-        db: {
-          executeSql: (
-            text: string,
-            values?: unknown[],
-          ) => Promise<{ rows: Array<{ total: unknown }> }>;
-        };
-      }
-    ).db;
+    const db = this.boss.getDb() as {
+      executeSql: (
+        text: string,
+        values?: unknown[],
+      ) => Promise<{ rows: Array<{ total: unknown }> }>;
+    };
     const result = await db.executeSql(
       `SELECT COUNT(*)::bigint AS total
-         FROM (
-           SELECT name, data, created_on FROM pgboss.job
-           UNION ALL
-           SELECT name, data, created_on FROM pgboss.archive
-         ) jobs
+         FROM pgboss.job
         WHERE data->>'siteId' = $1
           AND created_on >= $2
-          AND name = ANY($3::text[])`,
+          AND name = ANY($3::text[]) AND name <> 'agent.runExecute'
+         UNION ALL
+         SELECT COUNT(DISTINCT target_id)::bigint AS total
+           FROM np_audit_events
+          WHERE site_id=$1 AND created_at >= $2
+            AND action='agent.runtime.job_admitted' AND actor_kind='system' AND target_type='agent-run'
+            AND 'agent.runExecute'=ANY($3::text[])`,
       [siteId, since.toISOString(), queueNames],
     );
-    const total = result.rows[0]?.total ?? 0;
-    if (typeof total !== "string" && typeof total !== "number") {
-      throw new Error("jobs.siteEnqueues.total must be numeric.");
+    let total = 0;
+    for (const row of result.rows) {
+      if (typeof row.total !== "string" && typeof row.total !== "number") {
+        throw new Error("jobs.siteEnqueues.total must be numeric.");
+      }
+      total += requireCount(row.total, "jobs.siteEnqueues.total");
     }
     return requireCount(total, "jobs.siteEnqueues.total");
   }
@@ -799,24 +740,16 @@ export class PgBossAdapter implements NpJobQueue {
   async retryJob(id: string): Promise<string> {
     const canonicalId = npRequireJobId(id);
     // Look up the original payload + queue name first so we
-    // can re-enqueue with the same shape. Could be in either
-    // pgboss.job (still pending/active/retry) or pgboss.archive
-    // (already terminal); UNION handles both.
-    const db = (
-      this.boss as unknown as {
-        db: {
-          executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: PgBossRetryRow[] }>;
-        };
-      }
-    ).db;
+    // can re-enqueue with the same shape. pg-boss 12 retains terminal rows
+    // in the same job table until its retention deadline.
+    const db = this.boss.getDb() as {
+      executeSql: (sql: string, params?: unknown[]) => Promise<{ rows: PgBossRetryRow[] }>;
+    };
     const result = await db.executeSql(
       `SELECT id, name, state::text AS state, data, retry_count,
               output::text AS output, created_on, started_on, completed_on
        FROM pgboss.job WHERE id = $1
-       UNION ALL
-       SELECT id, name, state, data, retry_count,
-              output::text AS output, created_on, started_on, completed_on
-       FROM pgboss.archive WHERE id = $1
+
        LIMIT 1`,
       [canonicalId],
     );
@@ -857,18 +790,14 @@ export class PgBossAdapter implements NpJobQueue {
   async cancelJob(id: string): Promise<void> {
     const canonicalId = npRequireJobId(id);
     // pg-boss's cancel API requires the queue name; look it up
-    // from pgboss.job. Already-archived (terminal) jobs can't
+    // from pgboss.job. Already-terminal jobs can't
     // be cancelled, which matches user intuition.
-    const db = (
-      this.boss as unknown as {
-        db: {
-          executeSql: (
-            sql: string,
-            params?: unknown[],
-          ) => Promise<{ rows: Array<{ name: string; state: string }> }>;
-        };
-      }
-    ).db;
+    const db = this.boss.getDb() as {
+      executeSql: (
+        sql: string,
+        params?: unknown[],
+      ) => Promise<{ rows: Array<{ name: string; state: string }> }>;
+    };
     const result = await db.executeSql(
       `SELECT name, state::text AS state FROM pgboss.job WHERE id = $1`,
       [canonicalId],
@@ -895,7 +824,7 @@ interface PgBossRow {
   created_on: Date | string;
   started_on: Date | string | null;
   completed_on: Date | string | null;
-  /** Phase 20.4 — `live` (pgboss.job) or `archive` (pgboss.archive). */
+  /** Logical active or retained terminal lifecycle partition. */
   source: string;
 }
 

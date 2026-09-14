@@ -16,6 +16,12 @@ export const NP_BUILTIN_JOB_TYPES = [
   "members:sendPasswordReset",
   "notifications:sendDigest",
   "import:wordpressApply",
+  "agent:eventDispatch",
+  "agent:eventReconcile",
+  "agent:scheduleTick",
+  "agent:runExecute",
+  "agent:retentionTick",
+  "agent:retentionPrune",
   "agent:changesetApply",
   "agent:changesetVerify",
   "agent:changesetRollback",
@@ -153,6 +159,12 @@ export interface NpAgentChangeSetVerifyJobPayload {
 }
 
 export interface NpBuiltinJobPayloadMap {
+  "agent:eventDispatch": { siteId: string; eventId: string };
+  "agent:eventReconcile": NpEmptyJobData;
+  "agent:scheduleTick": NpEmptyJobData;
+  "agent:runExecute": { siteId: string; runId: string };
+  "agent:retentionTick": NpEmptyJobData;
+  "agent:retentionPrune": { siteId: string };
   "agent:changesetApply": NpAgentChangeSetApplyJobPayload;
   "agent:changesetVerify": NpAgentChangeSetVerifyJobPayload;
   "agent:changesetRollback": NpAgentChangeSetRollbackJobPayload;

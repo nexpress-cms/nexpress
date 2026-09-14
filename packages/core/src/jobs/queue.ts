@@ -16,11 +16,9 @@ import {
 import { npWithSiteJobEnqueueQuota } from "../sites/quotas.js";
 
 /**
- * Phase 13 — admin-side job introspection. pg-boss tracks jobs
- * across two tables (`pgboss.job` for active/scheduled,
- * `pgboss.archive` for completed/failed); the framework
- * surfaces a unified shape so the admin UI doesn't have to
- * know the storage split.
+ * Phase 13 — admin-side job introspection. The queue retains active and terminal
+ * jobs; the framework surfaces a unified shape so the admin UI does not need
+ * to know the physical storage layout.
  */
 export interface NpJobListOptions {
   /** Filter to one queue name (e.g. `"media.processImage"`). */
@@ -38,13 +36,11 @@ export interface NpJobListOptions {
    */
   since?: Date;
   /**
-   * Phase 20.4 — partition the result by pg-boss table:
-   *   - `"live"` — pending / active / retry rows still in
-   *     `pgboss.job`. Retryable.
-   *   - `"archive"` — rolled terminal rows in `pgboss.archive`.
-   *     Failed, cancelled, and expired rows may be re-enqueued as
-   *     fresh jobs by the retry API.
-   * Default (undefined) keeps the historical UNION behavior.
+   * Logical lifecycle partition of retained jobs:
+   * - "live": created, active, or retrying work.
+   * - "archive": retained terminal work. Failed, cancelled, and expired
+   *   jobs may be re-enqueued through the existing retry API.
+   * Omission returns both partitions, independent of physical queue storage.
    */
   source?: "live" | "archive";
 }
@@ -55,8 +51,8 @@ export interface NpJobListResult {
 }
 
 /**
- * Phase 23.5 — counts per terminal-and-transient state across the
- * union of `pgboss.job` and `pgboss.archive`. Drives the stuck-job
+ * Phase 23.5 — counts per terminal-and-transient state across retained
+ * queue history. Drives the stuck-job
  * widget in `/admin/jobs` and is the building block plugin authors
  * use to roll their own monitoring without taking a hard dep on
  * pg-boss schema knowledge.
@@ -123,22 +119,22 @@ export interface NpJobQueue {
    */
   isHealthy?(): Promise<boolean>;
   /**
-   * Phase 23.5 — return job counts grouped by state across both
-   * pg-boss tables. Optional on the interface so test stubs that
-   * don't model state need not implement it; the admin endpoint
+   * Phase 23.5 — return retained job counts grouped by state. Optional on the
+   * interface so test stubs that do not model state need not implement it; the admin endpoint
    * omits the stuck-job widget when missing.
    */
   countByState?(options?: NpJobCountOptions): Promise<NpJobStateCounts>;
   /**
    * Exact persisted enqueue count used by site quotas. Implementations must
-   * count both active and archived rows created since `since` for the given
-   * quota-participating logical job types.
+   * count retained active and terminal rows created since `since` for the given
+   * quota-participating logical job types. agent:runExecute is counted from
+   * durable agent.runtime.job_admitted audit receipts, once per Run; its queue
+   * delivery rows must not be counted again.
    */
   countSiteEnqueues?(siteId: string, since: Date, types: readonly NpJobType[]): Promise<number>;
   /**
    * Phase 4.2 — per-plugin schedule observability. Returns one row per
-   * `(pluginId, taskId)` aggregated over the plugin's history in
-   * `pgboss.job` + `pgboss.archive`: last completion, last failure, and
+   * `(pluginId, taskId)` aggregated over retained plugin execution history: last completion, last failure, and
    * counts split by state over the last `windowDays` (default 7). The
    * registry-side cron / description is overlaid on top by the caller.
    *
@@ -289,6 +285,7 @@ async function enqueueNormalizedJob<TType extends NpJobType>(
     quotaSiteId,
     countSiteEnqueues ? (siteId, since) => countSiteEnqueues(siteId, since, quotaTypes) : undefined,
     () => queue.enqueue(type, normalized),
+    type === "agent:runExecute" ? { agentRunId: normalized.runId as string } : undefined,
   );
 }
 
