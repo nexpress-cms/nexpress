@@ -17,8 +17,9 @@ repeated HTTP query keys fail closed. Responses are validated at the service
 and HTTP boundary; malformed host responses never become browser data.
 
 The existing configuration, policy, budget and emergency-control commands own
-all fourteen installed mutations. HTTP returns only the existing execution
-result's resource id and replay flag, and the UI refreshes the authorized read.
+all fifteen installed Admin operations. Ordinary mutations return only the
+resource id and replay flag; simulation returns its exact non-authorizing report.
+The UI refreshes the authorized read after ordinary mutations.
 Current staff capability, primary reauthentication, CSRF, CAS, idempotency and
 audited transactions remain authoritative. No parallel mutation registry or
 new auth fallback is introduced.
@@ -71,13 +72,44 @@ contract. Malformed nonempty usage remains unavailable. Canonical goals,
 execution input, raw provider bodies, locators, credentials, policy source
 bodies, internal errors and chain-of-thought remain outside activity projection.
 
+## Bounded policy simulation
+
+`agents.policies.simulate` now owns a fixed canonical v1 synthetic fixture.
+The existing Admin operation's v2 output is an exact bounded report; this
+contract version does not change package versions. The fixture contains only
+the version and suite identifier. Arbitrary facts, duplicate JSON keys,
+noncanonical JSON and mismatched fixture hashes are rejected.
+
+The server verifies the selected policy row version/content hash and loads the
+real framework and site-setting policy layers. A site-policy candidate replaces
+the selected site-policy layer; an Agent override also intersects the current
+active site policy. Four synthetic configurations use the existing
+`npResolveAgentPolicyV1`, autonomy permission checks and UTC quiet-time evaluator.
+The report contains effective enforced rules and five fixed UTC probes, never
+guidance, raw historical facts, credentials, execution input or provider output.
+It is explicitly a policy-only snapshot: principal authority, capability
+descriptor floors, budget and provider readiness still belong to real admission.
+
+Simulation uses the same current staff admission, CSRF, CAS, idempotency and
+audit transaction as the existing policy operation. It cannot activate a policy,
+create a Run/action/reservation, invoke a capability or call a provider. Replays
+return the original snapshot after current access checks. Unknown-outcome UI
+retries preserve the key; refresh/edit/version changes discard the report and
+access loss removes the resource. Reference and scaffold routes remain wrappers.
+
 ## Remaining boundary
 
-This slice does not claim the full R5 gate. Advanced policy simulation remains
-unavailable until a bounded owned simulation fixture/engine contract exists;
-no successful simulation is fabricated. Broader dependency-safe retention and
-future recipe execution surfaces remain separate work. Existing host-only
-Runtime controls, event jobs and retention behavior remain intact.
+[Dependency-safe Runtime retention](r5-runtime-retention-flow.md) extends the
+existing explicitly registered maintenance sweep. Audit-referenced Run/call
+history and action source references remain protected until their owning
+verified-reference lifecycle can release them. No migration or unverified
+reference detachment is introduced to claim full R5 completion.
+
+Structured manual-input recipes remain unavailable until an executor owns their
+canonical storage and consumption. R5 bounded manual admission supports the
+installed schema-null interactive recipe and bounded goal. Template-specific
+Publisher/Moderator/Operator execution belongs to R6; the fixture metadata alone
+does not fabricate that support. Historical-fact simulation remains unavailable.
 
 ## Self-review corrections
 
@@ -95,7 +127,8 @@ Runtime controls, event jobs and retention behavior remain intact.
 
 ## Verification
 
-Local verification completed on 2026-09-14:
+Previous management-slice verification completed on 2026-09-14 (not evidence for
+the subsequent simulation/retention changes):
 
 | Gate                                          | Result                                                                                                                               |
 | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
@@ -121,9 +154,60 @@ integration skip. An initial quiet Web database run was interrupted and replaced
 by the complete post-build run above. Browser fixture corrections were verified
 by a fresh complete 67-test run. No required local test remains unexecuted.
 
-No live provider inference or unowned policy simulation was run; neither is part
-of this installed surface. The full R5 acceptance gate remains open for the
+At that checkpoint no live provider inference or policy simulation was run. The full R5 acceptance gate remains open for the
 remaining product/retention scope above. No package versions, changesets,
 lockfile, schema or migrations were changed. These results describe the local
 acceptance checkpoint; current integration status is tracked in the
 [current handoff](../../agent-guidance/current-handoff.md).
+
+## R5 completion audit and current verification
+
+The five roadmap safety gates map to the existing Runtime admission/context/
+usage, installed-capability, event/job replay and circuit-breaker suites.
+`agent-runtime-isolation.integration.test.ts` adds the missing direct regression
+that an injected provider failure still permits normal collection pipeline
+create/read/update and an unrelated built-in maintenance handler. It uses the
+real Run/usage journals; it does not claim a live external provider call or
+fresh-process bootstrap proof.
+
+Current simulation/retention verification on 2026-09-15 KST:
+
+| Gate                                         | Result                                                                                                  |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Production workspace build                   | 41 successful tasks                                                                                     |
+| Workspace `pnpm verify --concurrency=1`      | 113 successful tasks                                                                                    |
+| Workspace `pnpm lint`                        | 41 successful tasks                                                                                     |
+| Core / Admin / App / Web unit                | 1,920 / 149 / 572 / 151 passed                                                                          |
+| Core PostgreSQL                              | 68 passed in 10 files                                                                                   |
+| Web PostgreSQL                               | 1,433 passed in 158 files, including theme-render 5                                                     |
+| New simulation / outage isolation PostgreSQL | 4 / 1 passed, included above                                                                            |
+| Runtime maintenance / retention PostgreSQL   | 9 / 4 passed, included above                                                                            |
+| Native preview                               | 1 passed separately with `NP_TEST_PREVIEW_BROWSER=1`                                                    |
+| Live Redis                                   | 16 passed against an ephemeral Redis container                                                          |
+| Production Playwright                        | 69 passed in one complete run against an isolated migrated database                                     |
+| Packed fresh scaffold                        | 40 packages / 56 stages passed, including migration, production build, extensions and first-run journey |
+
+The ordinary PostgreSQL run deliberately skips the one native browser case;
+its explicit run passed. Redis was also enabled and run explicitly. The new
+browser cases cover report binding, unknown-outcome retry identity, stale
+policy evidence and access loss. The retention suites include real advisory
+lock contention and rollback, not only mocked timeout checks.
+
+On the 16 GiB local host, interrupted high-concurrency checks were replaced
+by complete serial runs. Web ESLint needed an 8 GiB heap for its existing
+type-aware inventory; that was a command-local Node wrapper, with no package,
+script or global configuration change. An initial browser attempt used a
+stale local database and was stopped after missing-table failures. The final
+69-case run used a fresh disposable database initialized by the existing
+`db:migrate` command, then removed it. Neither that recovery nor the packed
+scaffold modifies repository migrations. The scaffold gate's previous
+simulation-route exclusion was updated to the shipped 24-route inventory,
+with a packed pure simulation smoke check. Host absence, disabled defaults,
+empty Agent authority/settings and healthy disabled diagnostics remain required.
+
+Full R5 remains open where required retention evidence has no release owner;
+a passing software gate does not remove that product boundary. No external
+provider inference, Runtime activation or new credentials are part of this
+verification. Package versions, changesets, lockfile, schema and migrations
+remain unchanged. These are local pre-merge results; current integration status
+is recorded in the [current handoff](../../agent-guidance/current-handoff.md).

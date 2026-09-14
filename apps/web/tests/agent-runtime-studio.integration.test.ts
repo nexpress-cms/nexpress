@@ -118,7 +118,7 @@ describe.skipIf(skipIfNoTestDb())("Runtime Studio current staff projections", ()
     ).rejects.toMatchObject({ code: "ACTIVITY_CURSOR_INVALID" });
   });
 
-  it("projects verified policy versions without advertising unavailable simulation", async () => {
+  it("projects verified policy versions with bounded simulation", async () => {
     const f = await runtimeFixture();
     const definition = {
       schemaVersion: "np.agent-policy-definition.v1",
@@ -149,7 +149,7 @@ describe.skipIf(skipIfNoTestDb())("Runtime Studio current staff projections", ()
     const service = studio(f);
     const detail = await service.getPolicy({ ...staff(f), id: created.resourceId });
     expect(detail.definition).toEqual(definition);
-    expect(detail.availableActions).not.toContain("agents.policies.simulate");
+    expect(detail.availableActions).toContain("agents.policies.simulate");
     const page = await service.listPolicies({ ...staff(f), query: { status: "draft" } });
     expect(page.items.map((entry) => entry.id)).toEqual([created.resourceId]);
     await expect(service.getPolicy({ ...staff(f), id: foreign.resourceId })).rejects.toMatchObject({

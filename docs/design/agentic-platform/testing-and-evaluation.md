@@ -1725,5 +1725,13 @@ no seeded runtime authority or default activation. Full lint, typecheck, unit,
 build, PostgreSQL, actual Redis and theme tests, native preview, production
 browser and packed-scaffold checks remain required, along with diff/secret and
 version/changeset checks. The linked flow records executed results and any
-skips; this section does not declare the full R5 gate or advanced policy
-simulation complete.
+skips; this section does not declare the full R5 gate complete.
+
+Bounded policy simulation tests use the actual evaluator with fixed versioned
+synthetic fixtures. They reject altered fixtures/hashes, stale policy versions,
+foreign targets and lost staff access; prove replay preserves the original
+snapshot; and verify no Run, action, provider call or usage reservation appears.
+HTTP output validation rejects extra host fields, and browser tests cover
+non-authorizing labels, retry identity and report cleanup. The retention matrix
+and its evidence-release limitations are tracked in the
+[retention flow](r5-runtime-retention-flow.md).

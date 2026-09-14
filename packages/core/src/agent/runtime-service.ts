@@ -1,3 +1,8 @@
+import {
+  npRequireAgentPolicySimulationFixtureJsonV1,
+  npDigestAgentPolicySimulationFixtureV1,
+  npSimulateAgentPolicyV1,
+} from "../agent-contract/runtime-policy-simulation.js";
 import { npBuildAgentRuntimeDefinitionBytesV1 } from "../agent-contract/runtime-studio-contract.js";
 import type { NpAgentRuntimeAdmissionV1 } from "./runtime-admission.js";
 import type { NpAgentRuntimeEventServiceV1 } from "./runtime-event-service.js";
@@ -465,10 +470,7 @@ export interface NpAgentRuntimeServiceOptionsV1 extends NpAgentAdminAdmissionOpt
   deploymentBudget: NpAgentBudgetV1;
   frameworkPolicy: { version: number; rules: NpAgentPolicyRulesV1 };
 }
-export type NpAgentRuntimeDefinitionOperationV1 = Exclude<
-  NpAgentRuntimeAdminOperationIdV1,
-  "agents.policies.simulate"
->;
+export type NpAgentRuntimeDefinitionOperationV1 = NpAgentRuntimeAdminOperationIdV1;
 export interface NpAgentRuntimeServiceV1 {
   getDefinitionInventory(): {
     recipes: NpAgentRecipeRegistryCanonicalV1;
@@ -520,9 +522,7 @@ export function createAgentRuntimeServiceV1(
   });
   if (!Number.isSafeInteger(frameworkPolicy.version) || frameworkPolicy.version < 1)
     safeError("RUNTIME_CONFIGURATION_INVALID");
-  const executableOperations = new Set<string>(
-    npAgentRuntimeAdminOperationIdsV1.filter((id) => id !== "agents.policies.simulate"),
-  );
+  const executableOperations = new Set<string>(npAgentRuntimeAdminOperationIdsV1);
   const admit = createAgentAdminAdmissionV1(options);
   const nowFn = options.now ?? (() => new Date());
   async function validateActivation(
@@ -900,7 +900,44 @@ export function createAgentRuntimeServiceV1(
                   });
                 }
                 if (!row) safeError("RUNTIME_RESOURCE_UNAVAILABLE", 404);
-                await verifiedPolicy(row);
+                const candidate = await verifiedPolicy(row);
+                if (operation === "agents.policies.simulate") {
+                  const fixture = npRequireAgentPolicySimulationFixtureJsonV1(raw.fixtureJson);
+                  const fixtureHash = await npDigestAgentPolicySimulationFixtureV1(fixture);
+                  if (fixtureHash !== raw.fixtureHash) safeError("RUNTIME_DEFINITION_INVALID");
+                  // Synthetic configurations replace only the selected policy layer. Host and
+                  // site ceilings remain real; no principal, provider, budget or capability is invoked.
+                  const layers = [frameworkPolicy.rules, settings.defaultPolicyRules];
+                  if (row.agentId !== null) {
+                    const activeSite = await db
+                      .select()
+                      .from(npAgentPolicies)
+                      .where(
+                        and(
+                          eq(npAgentPolicies.siteId, input.siteId),
+                          eq(npAgentPolicies.status, "active"),
+                          isNull(npAgentPolicies.agentId),
+                        ),
+                      )
+                      .limit(2);
+                    if (activeSite.length > 1) safeError("RUNTIME_POLICY_INVALID");
+                    for (const source of activeSite)
+                      layers.push((await verifiedPolicy(source)).rules);
+                  }
+                  layers.push(candidate.rules);
+                  return result(
+                    row.id,
+                    json(
+                      npSimulateAgentPolicyV1({
+                        policyId: row.id,
+                        policyVersion: row.version,
+                        policyHash: row.contentHash,
+                        fixtureHash,
+                        layers,
+                      }),
+                    ),
+                  );
+                }
                 if (operation === "agents.policies.validate")
                   return result(row.id, { id: row.id, valid: true, contentHash: row.contentHash });
                 if (operation !== "agents.policies.activate")

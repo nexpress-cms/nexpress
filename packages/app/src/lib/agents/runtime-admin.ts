@@ -1,6 +1,7 @@
 import { NpServiceUnavailableError, NpValidationError } from "@nexpress/core";
 import {
   npAgentRuntimeAdminOperationIdsV1,
+  npRequireAgentPolicySimulationReportV1,
   npRequireAgentRuntimeStudioQueryV1,
   npRequireAgentRuntimeStudioEffectiveQueryV1,
   npRequireAgentRuntimeStudioMutationResultV1,
@@ -33,9 +34,7 @@ type Read =
   | "catalog"
   | "budget"
   | "status";
-const mutationIds = new Set<string>(
-  npAgentRuntimeAdminOperationIdsV1.filter((id) => id !== "agents.policies.simulate"),
-);
+const mutationIds = new Set<string>(npAgentRuntimeAdminOperationIdsV1);
 const invalid = () =>
   new NpValidationError("Invalid Runtime request.", [
     { field: "request", message: "Use the bounded Runtime request contract." },
@@ -130,7 +129,7 @@ export async function handleAgentRuntimeAdminRequest(
         result = await service.getStatus(staff);
         break;
       default: {
-        if (!mutation || operation === "agents.policies.simulate") throw invalid();
+        if (!mutation) throw invalid();
         let command;
         try {
           command = npRequireAgentRuntimeAdminInputV1(
@@ -146,10 +145,22 @@ export async function handleAgentRuntimeAdminRequest(
           targetId: id ?? null,
           command,
         });
-        result = npRequireAgentRuntimeStudioMutationResultV1({
-          resourceId: completed.resourceId,
-          replayed: completed.replayed,
-        });
+        if (operation === "agents.policies.simulate") {
+          const simulation = npRequireAgentRuntimeAdminInputV1(operation, command);
+          const report = npRequireAgentPolicySimulationReportV1(completed.output);
+          if (
+            completed.resourceId !== id ||
+            report.policyId !== id ||
+            report.policyHash !== simulation.configHash ||
+            report.fixtureHash !== simulation.fixtureHash
+          )
+            throw new Error("Runtime simulation response binding is invalid.");
+          result = report;
+        } else
+          result = npRequireAgentRuntimeStudioMutationResultV1({
+            resourceId: completed.resourceId,
+            replayed: completed.replayed,
+          });
       }
     }
     if (Object.hasOwn(readOutputs, operation)) result = readOutputs[operation as Read](result);

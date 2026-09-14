@@ -454,20 +454,20 @@ already admitted under a frozen version.
 
 ### 7.3 Agent state and emergency controls
 
-| Status     | Meaning and controls                                                                                                                           |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `draft`    | Never triggered. Editable and activatable after server review.                                                                                 |
-| `active`   | Triggers may admit runs. Pause is available and records reason.                                                                                |
-| `paused`   | No new triggers/model calls. Existing deterministic action may finish to a recorded safe boundary. Resume revalidates effective configuration. |
-| `error`    | Server detected unusable configuration or required dependency. No new admission; repair/duplicate/archive actions only.                        |
-| `archived` | Terminal configuration state; triggers disabled, history retained, no resume.                                                                  |
+| Status     | Meaning and controls                                                                                                                                      |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `draft`    | Never triggered. Editable and activatable after server review.                                                                                            |
+| `active`   | Triggers may admit runs. Pause is available and records reason.                                                                                           |
+| `paused`   | No new triggers/model calls. Existing deterministic action may finish to a recorded safe boundary. Resume revalidates effective configuration.            |
+| `error`    | Server detected unusable configuration or required dependency. No new admission; reviewed resume of an existing active version, repair/duplicate/archive. |
+| `archived` | Terminal configuration state; triggers disabled, history retained, no resume.                                                                             |
 
 The site-wide **Emergency pause** is visually and operationally distinct from
 pausing one Agent. Its confirmation states what stops immediately, what reaches
 a safe boundary, which deterministic security controls continue, and who can
 resume it.
 
-**Resume** exists only for `paused` and performs the same effective-version,
+**Resume** exists for `paused` and `error` with an active version and performs the same effective-version,
 connection, policy, scope, budget, worker, and safety validation as activation
 before returning that immutable version to `active`. **Run now** is available
 only for an active Agent with one enabled registered manual trigger. Its exact
@@ -492,10 +492,11 @@ runtime projection.
 ## 8. Policies
 
 Current policy views reuse draft create/update, canonical validation and exact
-activation. The simulation operation has no installed, owned fixture engine
-and is not advertised as an available action. Validation does not imply that
-simulation or an execution occurred. Advanced simulation and richer historical
-comparison remain separate product work.
+activation. The installed non-authorizing simulation uses a versioned synthetic
+fixture and the actual policy evaluator, with real framework/site ceilings.
+It reports four autonomy cases, resource/risk/data limits, quiet periods and
+retention; no capability, provider or admission is executed. Historical-fact
+simulation and richer historical comparison remain separate product work.
 
 ### 8.1 Policy editor
 
@@ -1199,11 +1200,12 @@ Secret inputs should use request bodies only, with no persistence in URLs,
 client caches, analytics, or error details. `npFetch` remains the browser
 client so shared auth and CSRF headers are used.
 
-The current Runtime Studio route factory installs fourteen operations from
-this existing inventory: seven configuration operations, four policy operations
-(create/update/validate/activate), budget update and site pause/resume. It does
-not install policy simulation, a standalone trigger mutation route, an Agent
-credential fallback or a runtime enablement command. Activation contract v2
+The current Runtime Studio route factory installs fifteen operations from
+this existing inventory: seven configuration operations, five policy operations
+(create/update/validate/simulate/activate), budget update and site pause/resume.
+Simulation contract v2 returns the exact bounded report and uses existing staff
+admission, CAS, idempotency and audit. A standalone trigger mutation route, an
+Agent credential fallback and a runtime enablement command remain absent. Activation contract v2
 adds the optional exact trigger plan and compare-only policy references;
 package versions remain unchanged.
 

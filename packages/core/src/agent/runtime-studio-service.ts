@@ -246,8 +246,13 @@ export function createAgentRuntimeStudioServiceV1(options: NpAgentRuntimeStudioS
       },
       availableActions:
         row.status === "draft"
-          ? ["agents.policies.activate", "agents.policies.update", "agents.policies.validate"]
-          : ["agents.policies.validate"],
+          ? [
+              "agents.policies.activate",
+              "agents.policies.simulate",
+              "agents.policies.update",
+              "agents.policies.validate",
+            ]
+          : ["agents.policies.simulate", "agents.policies.validate"],
       createdAt: row.createdAt.toISOString(),
     });
   }
