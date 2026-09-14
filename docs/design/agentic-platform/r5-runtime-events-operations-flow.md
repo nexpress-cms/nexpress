@@ -153,6 +153,12 @@ removing only older ignored, regenerable Turbo cache files recovered about
 20 GiB without changing source or build outputs.
 
 No package versions, changesets, lockfile, database schema or migrations changed.
+The first PR CI run exposed a separate connection-lifecycle fixture isolation
+issue: a reused PostgreSQL worker retained a Runtime usage invocation, and the
+connection assertion selected by operation alone. The lifecycle suite now also
+truncates before each test and selects evidence by site, operation and exact
+idempotency key. A shared-worker shuffled run of both suites passed all 29
+cases; the changed test also passed lint and formatting checks.
 These are local implementation results; hosted CI is verified separately during
 the PR and merge workflow. AP-507 management surfaces, broader retention and the full R5 gate
 remain later work. Host installation and source adapters remain explicit.
