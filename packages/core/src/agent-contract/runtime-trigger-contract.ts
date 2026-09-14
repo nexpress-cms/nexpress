@@ -313,3 +313,82 @@ export function npNextAgentTriggerScheduleV1(cron: string, after: Date): Date {
     );
   }
 }
+
+/** Bounded discovery schema; the canonical analyzer also checks event-field applicability. */
+export const npAgentTriggerSchemaDefinitionsV1: Record<string, unknown> = {};
+const triggerObject = (properties: Record<string, unknown>) => ({
+  type: "object",
+  additionalProperties: false,
+  properties,
+  required: Object.keys(properties),
+});
+for (let depth = 4; depth >= 0; depth--) {
+  const scalar = {
+    oneOf: [
+      { type: "string", minLength: 1, maxLength: 128 },
+      { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+      { type: "boolean" },
+    ],
+  };
+  const terms: unknown[] = [
+    triggerObject({
+      op: { const: "eq" },
+      field: { enum: [...npAgentTriggerFieldsV1] },
+      value: scalar,
+    }),
+    triggerObject({
+      op: { const: "in" },
+      field: { enum: [...npAgentTriggerFieldsV1] },
+      values: {
+        type: "array",
+        minItems: 1,
+        maxItems: 20,
+        uniqueItems: true,
+        items: structuredClone(scalar),
+      },
+    }),
+    triggerObject({
+      op: { enum: ["gte", "lte"] },
+      field: { const: "payload.count" },
+      value: { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+    }),
+  ];
+  if (depth < 4)
+    terms.push(
+      triggerObject({
+        op: { enum: ["all", "any"] },
+        terms: {
+          type: "array",
+          minItems: 1,
+          maxItems: 32,
+          items: { $ref: `#/$defs/agentTriggerFilter${depth + 1}` },
+        },
+      }),
+    );
+  npAgentTriggerSchemaDefinitionsV1[`agentTriggerFilter${depth}`] = { oneOf: terms };
+}
+export const npAgentTriggerSchemaV1 = {
+  oneOf: [
+    triggerObject({
+      type: { const: "manual" },
+      id: {
+        type: "string",
+        maxLength: 36,
+        pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      },
+    }),
+    triggerObject({
+      type: { const: "schedule" },
+      id: { type: "string", maxLength: 36 },
+      cron: { type: "string", minLength: 1, maxLength: 128 },
+      catchUp: { enum: ["skip", "once"] },
+    }),
+    triggerObject({
+      type: { const: "event" },
+      id: { type: "string", maxLength: 36 },
+      eventKind: { enum: [...npAgentEventKinds] },
+      filter: { $ref: "#/$defs/agentTriggerFilter0" },
+      coalesceSeconds: { type: "integer", minimum: 0, maximum: 86400 },
+    }),
+  ],
+};

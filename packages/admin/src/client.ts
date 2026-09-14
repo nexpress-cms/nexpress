@@ -134,3 +134,15 @@ export { npFetch } from "./lib/api-client.js";
 export { AgentChangeSetListView, AgentChangeSetDetailView } from "./agents/agent-changeset-view.js";
 
 export { AgentApprovalListView, AgentApprovalDetailView } from "./agents/agent-approval-view.js";
+
+export {
+  AgentRuntimeListView,
+  AgentRuntimeCreateView,
+  AgentRuntimeDetailView,
+} from "./agents/agent-runtime-view.js";
+export {
+  AgentPolicyListView,
+  AgentPolicyCreateView,
+  AgentPolicyDetailView,
+} from "./agents/agent-policy-view.js";
+export { AgentBudgetView } from "./agents/agent-budget-view.js";

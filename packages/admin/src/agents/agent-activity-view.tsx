@@ -497,8 +497,9 @@ function PageRows({ page }: { page: ActivityPage }) {
             <StateBadge state={run.state} />
           </div>
           <p className="mt-1 text-[12px] text-neutral-500">
-            {run.origin === "gateway" ? "Gateway" : "Runtime"} · {run.usage.capabilityCalls}{" "}
-            capability calls · <ActivityTime value={run.startedAt ?? run.queuedAt} />
+            {run.origin === "gateway" ? "Gateway" : "Runtime"} ·{" "}
+            {run.usage?.capabilityCalls ?? "Unknown"} capability calls ·{" "}
+            <ActivityTime value={run.startedAt ?? run.queuedAt} />
           </p>
           <p className="mt-1 break-all font-mono text-[10.5px] text-neutral-500">{run.id}</p>
           {evidence === "expired" ? (
@@ -776,14 +777,16 @@ export function AgentActivityRunDetailView({ runId }: { runId: string }) {
             </CardHeader>
             <CardContent>
               <dl className="grid gap-4 sm:grid-cols-3">
-                <Fact label="Capability calls">{run.usage.capabilityCalls}</Fact>
+                <Fact label="Capability calls">{run.usage?.capabilityCalls ?? "Unknown"}</Fact>
                 {run.origin === "runtime" ? (
                   <>
-                    <Fact label="Provider calls">{run.usage.providerCalls}</Fact>
-                    <Fact label="Input tokens">{run.usage.inputTokens}</Fact>
-                    <Fact label="Cached input tokens">{run.usage.cachedInputTokens}</Fact>
-                    <Fact label="Output tokens">{run.usage.outputTokens}</Fact>
-                    <Fact label="Cost (micros)">{run.usage.costMicros}</Fact>
+                    <Fact label="Provider calls">{run.usage?.providerCalls ?? "Unknown"}</Fact>
+                    <Fact label="Input tokens">{run.usage?.inputTokens ?? "Unknown"}</Fact>
+                    <Fact label="Cached input tokens">
+                      {run.usage?.cachedInputTokens ?? "Unknown"}
+                    </Fact>
+                    <Fact label="Output tokens">{run.usage?.outputTokens ?? "Unknown"}</Fact>
+                    <Fact label="Cost (micros)">{run.usage?.costMicros ?? "Unknown"}</Fact>
                   </>
                 ) : null}
               </dl>

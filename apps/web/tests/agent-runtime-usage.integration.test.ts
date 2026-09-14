@@ -136,7 +136,7 @@ describe.skipIf(skipIfNoTestDb())("Runtime provider usage ledger", () => {
       now: f.options.now,
     });
     expect(
-      (await activity.getRun({ siteId, actor: f.actor.actor, id: f.runId })).run.usage.costMicros,
+      (await activity.getRun({ siteId, actor: f.actor.actor, id: f.runId })).run.usage?.costMicros,
     ).toBe(0);
     const first = await f.usage.reserve({ siteId, runId: f.runId, request });
     expect(await f.usage.reserve({ siteId, runId: f.runId, request })).toEqual({
@@ -163,13 +163,13 @@ describe.skipIf(skipIfNoTestDb())("Runtime provider usage ledger", () => {
     expect(
       (await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, f.runId)))[0]!.usage,
     ).toEqual({});
-    await expect(
-      activity.getRun({ siteId, actor: f.actor.actor, id: f.runId }),
-    ).rejects.toMatchObject({ code: "ACTIVITY_NOT_FOUND", status: 404 });
+    expect(await activity.getRun({ siteId, actor: f.actor.actor, id: f.runId })).toMatchObject({
+      run: { id: f.runId, origin: "runtime", usage: null, goal: "[redacted]" },
+    });
     expect(
       (await activity.listRuns({ siteId, actor: f.actor.actor, query: { origin: "runtime" } }))
         .items,
-    ).toEqual([]);
+    ).toMatchObject([{ run: { id: f.runId, origin: "runtime", usage: null } }]);
     expect(await measure(f)).toMatchObject({
       concurrentProviderCalls: 1,
       providerCallsRollingHour: 1,

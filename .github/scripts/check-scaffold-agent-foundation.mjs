@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { readFileSync, existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -14,11 +15,17 @@ const agentsEntry = requireFromScaffold.resolve("@nexpress/core/agents");
 const {
   npAgentDiagnosticsSchemaInventoryV1,
   npCollectAgentHealthSummaryV1,
+  createAgentRuntimeStudioServiceV1,
+  getOptionalAgentStudioServerRuntimeV1,
   createAgentRuntimeEventServiceV1,
   createAgentRuntimeJobsV1,
   pruneAgentRuntimeEventsV1,
 } = await import(pathToFileURL(agentsEntry).href);
 const {
+  npAgentRuntimeStudioReadRoutesV1,
+  npAgentRuntimeAdminOperationIdsV1,
+  npGetAgentAdminOperationV1,
+  npRequireAgentRuntimeStudioQueryV1,
   npRequireAgentRuntimeOpsResultV1,
   npRequireAgentTriggerV1,
   npCreateAgentRuntimeJobStateV1,
@@ -50,6 +57,7 @@ function fail(message, detail) {
 }
 
 for (const factory of [
+  createAgentRuntimeStudioServiceV1,
   createAgentRuntimeEventServiceV1,
   createAgentRuntimeJobsV1,
   pruneAgentRuntimeEventsV1,
@@ -62,6 +70,51 @@ if (
   Object.values(npCreateAgentRuntimeJobStateV1().cursors).some((value) => value !== null)
 ) {
   fail("packed Runtime trigger or absent cursor contract diverged");
+}
+
+// Shipped wrappers reuse one closed shared inventory and never construct a Runtime.
+if (getOptionalAgentStudioServerRuntimeV1() !== null) {
+  fail("packed Agent Studio must remain absent without explicit host installation");
+}
+if (npRequireAgentRuntimeStudioQueryV1("configurations", {}).limit !== 25) {
+  fail("packed Runtime Studio default page bound diverged");
+}
+const studioMutations = npAgentRuntimeAdminOperationIdsV1.filter(
+  (id) => id !== "agents.policies.simulate",
+);
+const studioInventory = [
+  ...npAgentRuntimeStudioReadRoutesV1,
+  ...studioMutations.map((id) => {
+    const operation = npGetAgentAdminOperationV1(id);
+    return { method: operation.method, path: operation.pathTemplate };
+  }),
+];
+if (
+  npAgentRuntimeStudioReadRoutesV1.length !== 9 ||
+  studioMutations.length !== 14 ||
+  new Set(studioInventory.map(({ method, path }) => `${method} ${path}`)).size !== 23
+) {
+  fail("packed Runtime Studio route inventory diverged");
+}
+for (const { method, path } of studioInventory) {
+  const route = path.replace(/^\/api\//u, "").replaceAll("{id}", "[id]");
+  let source;
+  try {
+    source = readFileSync(resolve(scaffoldDir, "src/app/api", route, "route.ts"), "utf8");
+  } catch {
+    fail("fresh scaffold is missing a Runtime Studio route wrapper");
+  }
+  if (
+    !source.includes(`from "@nexpress/app/api/${route}/route"`) ||
+    !source.includes('dynamic = "force-dynamic"') ||
+    !new RegExp(String.raw`export \{[^}]*\b${method}\b[^}]*\} from`, "u").test(source) ||
+    /createAgentRuntime|executeAdmin|new |fetch\(/u.test(source)
+  ) {
+    fail("fresh scaffold Runtime Studio routes must remain thin shared wrappers");
+  }
+}
+if (existsSync(resolve(scaffoldDir, "src/app/api/admin/agents/policies/[id]/simulate/route.ts"))) {
+  fail("fresh scaffold must not imply Runtime policy simulation is installed");
 }
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -217,7 +270,7 @@ try {
   }
 
   console.log(
-    `✓ fresh scaffold Agent foundation: ${expectedTables.length.toString()} tables, ${expectedConstraints.length.toString()} critical constraints, ${DEFERRED_CONSTRAINTS.length.toString()} deferred constraints, runtime CLI authority/site/default checks, disabled and healthy`,
+    `✓ fresh scaffold Agent foundation: ${expectedTables.length.toString()} tables, ${expectedConstraints.length.toString()} critical constraints, ${DEFERRED_CONSTRAINTS.length.toString()} deferred constraints, runtime CLI authority/site/default checks, 23 Studio route projections, disabled and healthy`,
   );
 } finally {
   await client.end();

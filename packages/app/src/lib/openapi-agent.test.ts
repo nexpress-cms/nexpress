@@ -37,8 +37,47 @@ describe("Agent HTTP OpenAPI projection", () => {
       },
     });
     expect(createHash("sha256").update(JSON.stringify(part)).digest("hex")).toMatchInlineSnapshot(
-      `"39bfc59065a83fa25c8361ce007c9cf70a80c8a7843e078094b2ad22c857a2d9"`,
+      `"929ec07758d1288c7bdcfd253e48d4b435e1a836c8835fb66e647142e44cd3d1"`,
     );
+  });
+  it("permits unknown usage only for Runtime origins and preserves exact Gateway counters", () => {
+    const part = buildAgentHttpOpenApiV1();
+    const run = (part.schemas.NpAgentHttpRun.properties as Record<string, Record<string, unknown>>)
+      .run;
+    const properties = run.properties as Record<string, Record<string, unknown>>;
+    expect(properties.origin).toEqual({ enum: ["gateway", "runtime"] });
+    const [numeric, unknown] = properties.usage.oneOf as Array<Record<string, unknown>>;
+    expect(unknown).toEqual({ type: "null" });
+    expect(numeric).toEqual({
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "providerCalls",
+        "capabilityCalls",
+        "inputTokens",
+        "cachedInputTokens",
+        "outputTokens",
+        "costMicros",
+      ],
+      properties: Object.fromEntries(
+        [
+          "providerCalls",
+          "capabilityCalls",
+          "inputTokens",
+          "cachedInputTokens",
+          "outputTokens",
+          "costMicros",
+        ].map((key) => [key, { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER }]),
+      ),
+    });
+    // Base object requires origin/usage; only the Gateway branch narrows away null.
+    expect(run.required).toEqual(expect.arrayContaining(["origin", "usage"]));
+    expect(run.allOf).toEqual([
+      {
+        if: { properties: { origin: { const: "gateway" } } },
+        then: { properties: { usage: numeric } },
+      },
+    ]);
   });
   it("resolves every descriptor ref against the completed OpenAPI document", () => {
     const spec = buildSpec() as Record<string, unknown>;

@@ -66,6 +66,7 @@ import {
 } from "../agent-contract/canonical-body-validation.js";
 import {
   canonicalRuntimeIdempotencyKey,
+  canonicalRuntimeText,
   cloneCanonicalRuntimeInput,
 } from "../agent-contract/canonical-runtime-primitives.js";
 import { npAgentRecipeIds, npAgentProviderDataClassRank } from "../agent-contract/types.js";
@@ -149,6 +150,8 @@ export interface NpAgentRuntimeAdmissionV1 {
     recipeId: NpAgentRecipeId;
     idempotencyKey: string;
     source?: { triggerId: string; eventId?: string; scheduledFor?: string };
+    /** Bounded manual goal only; it never overrides retained instructions or settings. */
+    goal?: string;
     db?: Db;
   }): Promise<{ runId: string; replayed: boolean }>;
   /** Retained requester authority, including nonterminal approval/retry waits. No lease is granted. */
@@ -722,11 +725,24 @@ export function createAgentRuntimeAdmissionV1(
       canonicalBodyRecord(
         input,
         "agent.runtime.admit",
-        ["siteId", "agentId", "expectedVersionId", "recipeId", "idempotencyKey", "source", "db"],
+        [
+          "siteId",
+          "agentId",
+          "expectedVersionId",
+          "recipeId",
+          "idempotencyKey",
+          "source",
+          "db",
+          "goal",
+        ],
         ["siteId", "agentId", "expectedVersionId", "recipeId", "idempotencyKey"],
         { seen: new WeakSet<object>() },
       );
       const outerDb = input.db;
+      const manualGoal =
+        input.goal === undefined
+          ? undefined
+          : canonicalRuntimeText(input.goal, "agent.runtime.goal", 2000, { requireTrimmed: true });
       const source =
         input.source === undefined
           ? undefined
@@ -753,7 +769,9 @@ export function createAgentRuntimeAdmissionV1(
       const row = canonicalBodyRecord(
         cloneCanonicalRuntimeInput(
           Object.fromEntries(
-            Object.entries(input).filter(([key]) => key !== "db" && key !== "source"),
+            Object.entries(input).filter(
+              ([key]) => key !== "db" && key !== "source" && key !== "goal",
+            ),
           ),
           "agent.runtime.admit",
           4096,
@@ -960,8 +978,11 @@ export function createAgentRuntimeAdmissionV1(
               ),
             )
             .limit(1);
+          if (manualGoal !== undefined && trigger?.kind !== "manual")
+            fail("RUNTIME_TRIGGER_UNAVAILABLE");
           if (previous) {
             if (
+              previous.goal !== (manualGoal ?? `Run ${input.recipeId}`) ||
               previous.agentVersionId !== evidence.version.id ||
               previous.recipeId !== input.recipeId ||
               previous.triggerId !== (trigger?.id ?? null) ||
@@ -1133,7 +1154,7 @@ export function createAgentRuntimeAdmissionV1(
                 ? hash("np.agent-runtime-schema.v1", recipe.manualInputSchema)
                 : null,
             },
-            goal: `Run ${recipe.id}`,
+            goal: manualGoal ?? `Run ${recipe.id}`,
             eventRef,
             policyRefs: policy.refs,
             runLimitsHash: await npDigestAgentRunLimitsCanonical(runLimits),

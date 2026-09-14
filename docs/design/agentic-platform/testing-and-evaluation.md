@@ -1680,7 +1680,7 @@ raw ChangeSet input, titles, credentials and internal evidence. New focused
 results do not substitute for full workspace, PostgreSQL, Redis, theme, native
 preview, production browser and packed-scaffold verification. Current results
 are recorded in the linked flow, including the completed local acceptance and
-the still-separate AP-503/AP-507/AP-508 work.
+the AP-503/AP-507/AP-508 work that was separate at that checkpoint.
 
 ## R5 event and operations verification
 
@@ -1693,5 +1693,37 @@ schedule fairness. Queue recovery must validate exact payloads and site scope,
 charge initial Run quota once, preserve durable work when enqueue fails, and
 advance persisted cursors across failures. Retention must preserve every
 referenced or unresolved event. Full workspace, PostgreSQL, Redis, theme,
-native-preview, browser and packed-scaffold checks remain required; this planning
-checkpoint does not claim that they have passed for the new slice.
+native-preview, browser and packed-scaffold checks remain required; the linked
+flow records the results for that slice.
+
+## R5 Runtime Studio verification
+
+The [Runtime Studio flow](r5-runtime-studio-flow.md) owns the current AP-507 and
+related AP-508 verification checkpoint; earlier slice totals are not evidence
+for this change. The existing Admin registry fingerprint and exact Runtime
+Studio page/detail analyzers cover the closed read inventory and fourteen
+installed mutations. The activation contract includes optional exact trigger
+plans and compare-only policy references. Unknown fields, malformed filters,
+unsupported manual inputs and plugin/provider configuration remain outside the
+client-safe boundary.
+
+PostgreSQL coverage must exercise atomic activation/trigger rollback, stale
+policy/version rejection, exact manual-goal idempotency, active-version resume
+while a replacement draft exists, current session/membership revocation,
+site isolation and indistinguishable unavailable resources. Bounded cursor
+checks include altered filters, another valid session, expiry and literal
+query wildcards. Configuration/principal divergence fails closed. Run actions
+are advertised only for installed admission and an enabled compatible manual
+trigger whose input schema is supported. Real reservation/dispatch/ambiguous
+reconciliation fixtures verify unknown budgets and Runtime Activity usage,
+redaction and rejection of malformed nonempty usage evidence.
+
+Production browser coverage exercises management forms, effective review,
+explicit lifecycle/manual controls, policies, budget/runtime status and retained
+Activity. Reference and packed fresh-scaffold wrappers must remain thin with
+no seeded runtime authority or default activation. Full lint, typecheck, unit,
+build, PostgreSQL, actual Redis and theme tests, native preview, production
+browser and packed-scaffold checks remain required, along with diff/secret and
+version/changeset checks. The linked flow records executed results and any
+skips; this section does not declare the full R5 gate or advanced policy
+simulation complete.

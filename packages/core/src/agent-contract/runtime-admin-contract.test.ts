@@ -45,6 +45,35 @@ describe("Runtime Admin owner parsers", () => {
     }
   });
 
+  it("binds an exact optional activation trigger plan and compare-only policy references", () => {
+    const definition = { type: "manual", id: "00000000-0000-4000-8000-000000000001" };
+    const command = {
+      idempotencyKey: "activation",
+      expectedVersion: 1,
+      configHash: digest,
+      triggers: [{ definition, enabled: true }],
+      reviewedPolicyRefs: [{ kind: "framework", id: null, version: 1, digest }],
+    };
+    expect(npRequireAgentRuntimeAdminInputV1("agents.configurations.activate", command)).toEqual(
+      command,
+    );
+    for (const value of [
+      { ...command, triggers: [...command.triggers, ...command.triggers] },
+      { ...command, triggers: [{ definition: { ...definition, siteId: "other" }, enabled: true }] },
+      { ...command, triggers: [{ definition, enabled: "true" }] },
+      {
+        ...command,
+        reviewedPolicyRefs: [{ kind: "framework", id: null, version: 1, digest, authority: true }],
+      },
+    ])
+      expect(npAnalyzeAgentRuntimeAdminInputV1("agents.configurations.activate", value).ok).toBe(
+        false,
+      );
+    expect(npAnalyzeAgentRuntimeAdminInputV1("agents.configurations.resume", command).ok).toBe(
+      false,
+    );
+  });
+
   it("keeps budget updates limited to the existing budget body", () => {
     const budget = npCreateInheritedAgentBudgetV1();
     const encoded = npSerializeAgentRuntimeDefinitionV1("budget", budget);

@@ -1,0 +1,326 @@
+import { readFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+import { NpAuthError, NpForbiddenError } from "@nexpress/core";
+import {
+  npAgentRuntimeAdminOperationIdsV1,
+  npAgentRuntimeStudioReadRoutesV1,
+  npGetAgentAdminOperationV1,
+} from "@nexpress/core/agent-contract";
+const mocks = vi.hoisted(() => ({
+  runtime: vi.fn(),
+  staff: vi.fn(),
+  ensure: vi.fn(),
+  listConfigurations: vi.fn(),
+  listPolicies: vi.fn(),
+  listTriggers: vi.fn(),
+  getConfiguration: vi.fn(),
+  getPolicy: vi.fn(),
+  getEffective: vi.fn(),
+  getCatalog: vi.fn(),
+  getBudget: vi.fn(),
+  getStatus: vi.fn(),
+  executeAdmin: vi.fn(),
+}));
+vi.mock("@nexpress/core/agents", async (original) => ({
+  ...(await original<object>()),
+  getOptionalAgentStudioServerRuntimeV1: mocks.runtime,
+}));
+vi.mock("./studio-admin", () => ({
+  requireAgentStudioAdmin: mocks.staff,
+  normalizeAgentStudioError: (error: unknown) => error,
+}));
+vi.mock("../init-core", () => ({ ensureFor: mocks.ensure }));
+import { handleAgentRuntimeAdminRequest } from "./runtime-admin";
+const id = "10000000-0000-4000-8000-000000000001";
+const staff = { siteId: "default", actor: { user: { id }, sessionId: id } };
+const request = (query = "", body?: unknown) =>
+  new NextRequest(
+    `https://site.example/api/admin/agents/configurations${query}`,
+    body === undefined
+      ? {}
+      : {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        },
+  );
+const mutationIds = npAgentRuntimeAdminOperationIdsV1.filter(
+  (id) => id !== "agents.policies.simulate",
+);
+const reads = [
+  ["configurations", "listConfigurations"],
+  ["policies", "listPolicies"],
+  ["triggers", "listTriggers"],
+  ["configuration", "getConfiguration"],
+  ["policy", "getPolicy"],
+  ["effective", "getEffective"],
+  ["catalog", "getCatalog"],
+  ["budget", "getBudget"],
+  ["status", "getStatus"],
+] as const;
+beforeEach(() => {
+  vi.resetAllMocks();
+  mocks.staff.mockResolvedValue(staff);
+  mocks.runtime.mockReturnValue({ runtimeStudio: mocks });
+  mocks.executeAdmin.mockResolvedValue({
+    resourceId: id,
+    replayed: false,
+    output: { rawBody: "private-output", credential: "private-credential" },
+    invocationId: id,
+  });
+});
+describe("Runtime Studio shared HTTP admission", () => {
+  it.each([new NpAuthError(), new NpForbiddenError("agent-studio", "manage")])(
+    "checks current staff before resolving installed management",
+    async (error) => {
+      mocks.staff.mockRejectedValue(error);
+      const response = await handleAgentRuntimeAdminRequest(request(), "configurations");
+      expect(response.status).toBe(error.statusCode);
+      expect(mocks.runtime).not.toHaveBeenCalled();
+      expect(mocks.listConfigurations).not.toHaveBeenCalled();
+    },
+  );
+  it.each(reads)("keeps unavailable %s distinct from an empty page", async (operation) => {
+    mocks.runtime.mockReturnValue(null);
+    const response = await handleAgentRuntimeAdminRequest(request(), operation, id);
+    expect(response.status).toBe(503);
+    expect(response.headers.get("cache-control")).toContain("no-store");
+  });
+  it("passes bounded filters with the server-selected staff site", async () => {
+    mocks.listConfigurations.mockResolvedValue({
+      schemaVersion: "np.agent-configurations-page.v1",
+      items: [],
+      nextCursor: null,
+    });
+    const response = await handleAgentRuntimeAdminRequest(
+      request("?limit=5&status=paused&template=operator"),
+      "configurations",
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.ensure).toHaveBeenCalledWith("read");
+    expect(mocks.listConfigurations).toHaveBeenCalledWith({
+      ...staff,
+      query: { limit: 5, status: "paused", template: "operator" },
+    });
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+  it.each([
+    "?limit=0",
+    "?limit=101",
+    "?limit=01",
+    "?limit=1&limit=1",
+    "?siteId=other",
+    "?cursor=",
+    "?status=retired",
+    "?unknown=value",
+    "?__proto__=value",
+    "?cursor=" + "x".repeat(8192),
+  ])("rejects malformed or non-inventory query %s before service dispatch", async (query) => {
+    const response = await handleAgentRuntimeAdminRequest(request(query), "configurations");
+    expect(response.status).toBe(400);
+    expect(mocks.listConfigurations).not.toHaveBeenCalled();
+  });
+  it("allows only active-version review selector and prohibits detail query injection", async () => {
+    mocks.getEffective.mockRejectedValue(new Error("private error"));
+    await handleAgentRuntimeAdminRequest(request("?version=active"), "effective", id);
+    expect(mocks.getEffective).toHaveBeenCalledWith({ ...staff, id, version: "active" });
+    mocks.getEffective.mockClear();
+    for (const query of ["?version=draft", "?version=active&version=active", "?versionId=" + id])
+      expect((await handleAgentRuntimeAdminRequest(request(query), "effective", id)).status).toBe(
+        400,
+      );
+    expect(mocks.getEffective).not.toHaveBeenCalled();
+    expect(
+      (await handleAgentRuntimeAdminRequest(request("?siteId=other"), "configuration", id)).status,
+    ).toBe(400);
+    expect(mocks.getConfiguration).not.toHaveBeenCalled();
+  });
+  it.each(reads)("rejects unvalidated private %s output", async (operation, method) => {
+    mocks[method].mockResolvedValue({
+      rawBody: "private-body",
+      locator: "private-locator",
+      credential: "private-credential",
+    });
+    const response = await handleAgentRuntimeAdminRequest(request(), operation, id);
+    expect(response.status).toBe(500);
+    const text = await response.text();
+    for (const secret of ["private-body", "private-locator", "private-credential"])
+      expect(text).not.toContain(secret);
+  });
+  it.each(mutationIds.map((operationId) => ({ operationId })))(
+    "delegates $operationId through the exact existing operation and projects only acknowledgement",
+    async ({ operationId }) => {
+      const values: Record<string, unknown> = {
+        idempotencyKey: "runtime-http-attempt",
+        expectedVersion: 1,
+        definitionJson: "{}",
+        definitionHash: `cj1:sha256:${"A".repeat(43)}`,
+        configHash: `cj1:sha256:${"A".repeat(43)}`,
+        inputJson: "{}",
+        triggerId: id,
+        reason: "Operator action",
+      };
+      const required = npGetAgentAdminOperationV1(operationId).schemas.input.schema.required;
+      if (
+        !Array.isArray(required) ||
+        !required.every((key): key is string => typeof key === "string")
+      )
+        throw new Error("Missing exact command fields");
+      const command = Object.fromEntries(required.map((key) => [key, values[key]]));
+      const targetId = operationId.endsWith(".create") ? undefined : id;
+      const response = await handleAgentRuntimeAdminRequest(
+        request("", command),
+        operationId,
+        targetId,
+      );
+      expect(mocks.ensure).toHaveBeenCalledWith("write");
+      expect(mocks.executeAdmin).toHaveBeenCalledWith({
+        ...staff,
+        operationId,
+        targetId: targetId ?? null,
+        command,
+      });
+      expect(response.status).toBe(
+        operationId.endsWith(".create") || operationId === "agents.configurations.run" ? 201 : 200,
+      );
+      const body = await response.json();
+      expect(body).toEqual({ resourceId: id, replayed: false });
+      expect(JSON.stringify(body)).not.toMatch(
+        /private-output|private-credential|invocationId|rawBody/,
+      );
+    },
+  );
+  it.each(mutationIds.map((operation) => ({ operation })))(
+    "does not dispatch $operation without explicit host installation",
+    async ({ operation }) => {
+      mocks.runtime.mockReturnValue({ runtimeStudio: null });
+      expect((await handleAgentRuntimeAdminRequest(request("", {}), operation, id)).status).toBe(
+        503,
+      );
+      expect(mocks.executeAdmin).not.toHaveBeenCalled();
+    },
+  );
+  it("rejects unknown mutation fields before admission dispatch", async () => {
+    const response = await handleAgentRuntimeAdminRequest(
+      request("", {
+        idempotencyKey: "test",
+        definitionJson: "{}",
+        definitionHash: `cj1:sha256:${"A".repeat(43)}`,
+        siteId: "other",
+      }),
+      "agents.configurations.create",
+    );
+    expect(response.status).toBe(400);
+    expect(mocks.executeAdmin).not.toHaveBeenCalled();
+  });
+  it("leaves simulation absent and does not dispatch malformed or oversized JSON", async () => {
+    expect(
+      (await handleAgentRuntimeAdminRequest(request("", {}), "agents.policies.simulate", id))
+        .status,
+    ).toBe(400);
+    expect(mocks.executeAdmin).not.toHaveBeenCalled();
+    for (const body of ["{", JSON.stringify({ input: "x".repeat(1_048_577) })]) {
+      const response = await handleAgentRuntimeAdminRequest(
+        new NextRequest("https://site.example/api/admin/agents/configurations", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body,
+        }),
+        "agents.configurations.create",
+      );
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(response.status).toBeLessThan(500);
+    }
+    expect(mocks.executeAdmin).not.toHaveBeenCalled();
+  });
+  it("conceals unknown internal failures and invalid acknowledgements", async () => {
+    mocks.executeAdmin.mockResolvedValue({ resourceId: "private-locator", replayed: false });
+    const invalid = await handleAgentRuntimeAdminRequest(
+      request("", {
+        idempotencyKey: "test-create",
+        definitionJson: "{}",
+        definitionHash: `cj1:sha256:${"A".repeat(43)}`,
+      }),
+      "agents.configurations.create",
+    );
+    expect(invalid.status).toBe(500);
+    expect(await invalid.text()).not.toContain("private-locator");
+    mocks.executeAdmin.mockRejectedValue(new Error("private-provider-token"));
+    const failed = await handleAgentRuntimeAdminRequest(
+      request("", {
+        idempotencyKey: "test-create",
+        definitionJson: "{}",
+        definitionHash: `cj1:sha256:${"A".repeat(43)}`,
+      }),
+      "agents.configurations.create",
+    );
+    expect(failed.status).toBe(500);
+    expect(await failed.text()).not.toContain("private-provider-token");
+  });
+});
+describe("Runtime route inventory and thin wrappers", () => {
+  const root = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../../../..");
+  const inventory = [
+    ...npAgentRuntimeStudioReadRoutesV1.map((route) => ({
+      ...route,
+      operation:
+        route.kind === "configurations"
+          ? route.detail
+            ? "configuration"
+            : "configurations"
+          : route.kind === "policies"
+            ? route.detail
+              ? "policy"
+              : "policies"
+            : route.kind === "budgets"
+              ? "budget"
+              : route.kind === "runtime-status"
+                ? "status"
+                : route.kind,
+    })),
+    ...mutationIds.map((id) => {
+      const operation = npGetAgentAdminOperationV1(id);
+      return { method: operation.method, path: operation.pathTemplate, operation: id };
+    }),
+  ];
+  it("locks the exact nine read and fourteen installed mutation operations", () => {
+    expect(npAgentRuntimeStudioReadRoutesV1).toHaveLength(9);
+    expect(mutationIds).toHaveLength(14);
+    expect(new Set(inventory.map(({ method, path }) => `${method} ${path}`)).size).toBe(23);
+  });
+  it.each(inventory)(
+    "keeps $method $path shared across reference and scaffold",
+    ({ path, method, operation }) => {
+      const segment = path.replace(/^\/api\//u, "").replaceAll("{id}", "[id]");
+      const source = readFileSync(
+        resolve(root, "packages/app/src/api", segment, "route.ts"),
+        "utf8",
+      );
+      expect(source).toContain(`export async function ${method}(`);
+      const handler = source.split(`export async function ${method}(`)[1]?.split("\n}")[0];
+      expect(handler).toContain("handleAgentRuntimeAdminRequest");
+      expect(handler).toContain(`"${operation}"`);
+      for (const base of ["apps/web/src/app/api", "packages/cli/templates/snapshot/src/app/api"]) {
+        const wrapper = readFileSync(resolve(root, base, segment, "route.ts"), "utf8");
+        expect(wrapper).toContain(`from "@nexpress/app/api/${segment}/route"`);
+        expect(wrapper).toContain('dynamic = "force-dynamic"');
+        expect(wrapper).not.toMatch(/createAgentRuntime|executeAdmin|new |fetch\(/u);
+      }
+    },
+  );
+  it("does not create a simulation wrapper", () => {
+    for (const base of [
+      "packages/app/src/api",
+      "apps/web/src/app/api",
+      "packages/cli/templates/snapshot/src/app/api",
+    ])
+      expect(existsSync(resolve(root, base, "admin/agents/policies/[id]/simulate/route.ts"))).toBe(
+        false,
+      );
+  });
+});
