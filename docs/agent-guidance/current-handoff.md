@@ -21,7 +21,8 @@ Observed after Next.js security PR #1422 merged on 2026-09-15 10:54 UTC
 - Verified two parents: prior main `48a056ba` and reviewed PR head `7473e739`.
   Local main was fast-forwarded to the merge and dependencies installed with
   `pnpm install --frozen-lockfile`; reference app resolves Next.js 16.3.4.
-- This handoff is a subsequent documentation-only change. Verify current
+- This handoff accompanies the test-isolation follow-up in
+  [PR #1446](https://github.com/nexpress-cms/nexpress/pull/1446). Verify current
   branch/HEAD, remote synchronization and ownership of pending changes.
 - Live main protection requires a PR and status checks, including for docs.
   Do not rely on older guidance claiming main protection is absent.
@@ -46,17 +47,19 @@ Observed after Next.js security PR #1422 merged on 2026-09-15 10:54 UTC
   (69 passed) and packed scaffold/extension/first-run checks.
 - Post-merge [CI 34960479358](https://github.com/nexpress-cms/nexpress/actions/runs/34960479358)
   and [Release 34960479510](https://github.com/nexpress-cms/nexpress/actions/runs/34960479510)
-  target the exact merge SHA. At this observation CI was running; Release was
-  retried after a GitHub 502 response during Version PR creation/update.
-  Inspect final conclusions before claiming the post-merge gate passed.
-- Documentation-only updates need preservation/link/format checks and
-  `git diff --check`, not another application build.
+  target the exact merge SHA. Release recovered from a GitHub 502 on retry,
+  but both main and downstream Version PR CI exposed the same maintenance
+  fixture failure: `pgboss.job` already existed in a reused worker database.
+- PR #1446 replaces the fixture's create/drop of a fake journal table with
+  idempotent producer-only pg-boss initialization and cleanup of its own row.
+  It starts no job processing and preserves the shared journal schema.
+  Inspect the follow-up PR and post-merge CI/Release conclusions before
+  claiming the corrected gate passed; the original runs did not pass.
 
 ## Next boundary
 
-- Recheck GitHub dependency alerts after scanner refresh. Next.js 16.3.4 is
-  above the 16.3.3 fix listed by Critical alerts #64/#66; do not confuse a
-  patched lockfile with a confirmed closed GitHub alert.
+- GitHub confirmed Critical alerts #64/#66 fixed after the merge. Six alerts
+  remained (three High, three Medium) at this observation; recheck live state.
 - Remaining candidates include sharp, nodemailer and browserslist security
   updates. Recheck each current diff/head/base and all four required checks;
   use `pnpm merge:dependabot -- <pr>`, the exact-head approval token and
