@@ -1,78 +1,68 @@
 # Current work handoff
 
-Observed after Next.js security PR #1422 merged on 2026-09-15 10:54 UTC
-(2026-09-15 19:54 KST). Verify Git state and current checks before continuing.
+Observed after Nodemailer PR #1433 merged on 2026-09-15 12:49 UTC
+(21:49 KST). Verify Git state and final workflow conclusions before continuing.
 
 ## Objective and authorization
 
 - Repository: `/Users/baesw/development/nexpress`.
-- The user requested the proposed Next.js security task, allowing dependency
-  manifests and lockfile updates while keeping own package versions and
-  changesets unchanged. [PR #1422](https://github.com/nexpress-cms/nexpress/pull/1422)
+- The user authorized the recommended Nodemailer security update, its merge
+  and post-merge verification. [PR #1433](https://github.com/nexpress-cms/nexpress/pull/1433)
   was merged through the repository's Dependabot workflow.
+- Own package versions, changesets, schema and migrations remain unchanged.
+  Dependency manifests and lockfile changes were authorized for this bundle.
 - No other dependency PR, Version PR, package publication or R5 implementation
   is authorized by this handoff. No automatic Runtime/provider/worker activation,
-  new credentials or provider calls. Schema and migrations remain unchanged.
+  new credentials, provider calls or external email delivery.
 
 ## Observed checkout
 
-- Merged implementation baseline on `main`:
-  `56431bcdf4ba600a793328666536f4ed3a367d0c`.
-- Verified two parents: prior main `48a056ba` and reviewed PR head `7473e739`.
-  Local main was fast-forwarded to the merge and dependencies installed with
-  `pnpm install --frozen-lockfile`; reference app resolves Next.js 16.3.4.
-- This handoff accompanies the test-isolation follow-up in
-  [PR #1446](https://github.com/nexpress-cms/nexpress/pull/1446). Verify current
-  branch/HEAD, remote synchronization and ownership of pending changes.
-- Live main protection requires a PR and status checks, including for docs.
-  Do not rely on older guidance claiming main protection is absent.
+- Implementation baseline: `main` at
+  `85bb8b35c330a64f2b9adf950132f770c4e7b068`.
+- The merge contains prior main `d344b3c6` and reviewed PR head `2fde9d60`.
+  Local main was fast-forwarded before this subsequent documentation update.
+- Verify current HEAD, remote synchronization and ownership of pending changes.
+  Main protection requires a PR and checks, including documentation changes;
+  never rely on bypass privileges or obsolete direct-push guidance.
 
 ## Implementation and evidence
 
-- Fourteen manifests update Next.js from ^16.3.1 to ^16.3.4. The lockfile also
-  updates Next/SWC and compatible Rollup/browser-data transitive dependencies.
-  `baseline-browser-mapping` resolves to 2.11.22. Own package versions and
-  changesets did not change.
-- `.github/workflows/release.yml` now allows 35 minutes for the Version PR CI
-  bridge and 45 minutes for the overall Release job. The previous 15-minute
-  bridge timed out while its downstream CI later passed. Required checks,
-  draft Version PR behavior and release authorization remain unchanged.
-- Local verification: frozen install, 56 repository tests, `pnpm verify
---concurrency=1` (113 tasks, all uncached), `pnpm lint` (41 tasks, all uncached),
-  formatting and diff checks passed. Web ESLint used the existing command-local
-  8 GiB Node wrapper; no global Node setting or package script was changed.
-- [PR CI 34958552229](https://github.com/nexpress-cms/nexpress/actions/runs/34958552229)
-  passed all four checks on exact head `7473e7392d9fe6a97713f59bee305f1997be8c0d`.
-  This includes PostgreSQL, explicit Redis/native preview, production E2E
-  (69 passed) and packed scaffold/extension/first-run checks.
-- Post-merge [CI 34960479358](https://github.com/nexpress-cms/nexpress/actions/runs/34960479358)
-  and [Release 34960479510](https://github.com/nexpress-cms/nexpress/actions/runs/34960479510)
-  target the exact merge SHA. Release recovered from a GitHub 502 on retry,
-  but both main and downstream Version PR CI exposed the same maintenance
-  fixture failure: `pgboss.job` already existed in a reused worker database.
-- PR #1446 replaces the fixture's create/drop of a fake journal table with
-  idempotent producer-only pg-boss initialization and cleanup of its own row.
-  It starts no job processing and preserves the shared journal schema.
-  Inspect the follow-up PR and post-merge CI/Release conclusions before
-  claiming the corrected gate passed; the original runs did not pass.
+- `apps/web/package.json` selects Nodemailer ^9.1.1. The lockfile resolves both
+  the app and Core's optional peer to 9.1.1, with no older Nodemailer entries.
+  Core's public peer range remains unchanged. Compatible Rollup patch entries
+  update from 4.63.1 to 4.63.3 with their platform packages.
+- Self-review found the original app-only update left Core's optional peer at
+  9.0.1. The final lockfile removes it. Frozen installation and explicit runtime
+  resolution checks passed for both app and Core.
+- Local verification: verify 113 tasks and lint 41 tasks passed uncached before
+  the peer correction, then passed from cache on the final lockfile. Core's full
+  1,920 unit tests were rerun without Turbo caching on 9.1.1; all passed.
+  All 25 email tests and a direct app SMTP envelope/text/HTML smoke passed using
+  loopback capture only. Formatting, manifest preservation and diff checks passed.
+- [PR CI 34968856260](https://github.com/nexpress-cms/nexpress/actions/runs/34968856260)
+  passed all four checks on exact head `2fde9d6017e51f2b6190e5d3632427341b25b8e2`:
+  build/typecheck/unit tests, PostgreSQL and explicit Redis, production E2E
+  with isolated native preview, and packed scaffold/extension/first-run checks.
+- Exact-merge [CI 34971192693](https://github.com/nexpress-cms/nexpress/actions/runs/34971192693)
+  and [Release 34971192724](https://github.com/nexpress-cms/nexpress/actions/runs/34971192724)
+  were running at this checkpoint. Inspect their final conclusions and the
+  linked PR's final evidence before claiming the post-merge gate passed.
+- GitHub's refreshed open-alert inventory contains only sharp #67 and
+  browserslist #62 (both High); the four Nodemailer alerts are no longer open.
 
 ## Next boundary
 
-- GitHub confirmed Critical alerts #64/#66 fixed after the merge. Six alerts
-  remained (three High, three Medium) at this observation; recheck live state.
-- Remaining candidates include sharp, nodemailer and browserslist security
-  updates. Recheck each current diff/head/base and all four required checks;
-  use `pnpm merge:dependabot -- <pr>`, the exact-head approval token and
+- Next candidate: sharp security PR #1409, then browserslist. Recheck current
+  alerts, diff/head/base and all four required checks; do not merge automatically.
+  Dependabot work uses `pnpm merge:dependabot -- <pr>`, its exact-head token and
   post-merge CI/Release verification when the user authorizes the next bundle.
 - R5 remains open: audit source release lacks an owner, and Action attribution
   requires the Run reference and fingerprint to be null together. Define the
-  verified evidence/reference lifecycle and agree on necessary migration scope
-  before implementing it. Preserve active work, unresolved usage/outcomes,
-  approvals and rollback evidence. See the
-  [retention matrix](../design/agentic-platform/r5-runtime-retention-flow.md).
+  evidence/reference lifecycle and agree on necessary migration scope first.
+  Preserve active work, unresolved usage/outcomes, approvals and rollback
+  evidence. See the [retention matrix](../design/agentic-platform/r5-runtime-retention-flow.md).
 - Structured manual-input recipes still need executor-owned storage/consumption;
-  existing schema-null recipe/goal admission remains supported. Prior R5
-  implementation evidence is in the
-  [Runtime Studio flow](../design/agentic-platform/r5-runtime-studio-flow.md).
-- Start the next requested bundle in a fresh task; reuse relevant current
-  contracts and guidance instead of reloading the full implementation history.
+  existing schema-null recipe/goal admission remains supported. Prior R5 evidence
+  is in the [Runtime Studio flow](../design/agentic-platform/r5-runtime-studio-flow.md).
+- Start the next requested bundle in a fresh task. Reuse current contracts and
+  relevant guidance instead of reloading the full implementation history.
