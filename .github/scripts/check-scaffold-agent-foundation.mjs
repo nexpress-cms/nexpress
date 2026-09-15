@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
@@ -14,14 +15,25 @@ const agentsEntry = requireFromScaffold.resolve("@nexpress/core/agents");
 const {
   npAgentDiagnosticsSchemaInventoryV1,
   npCollectAgentHealthSummaryV1,
+  createAgentRuntimeStudioServiceV1,
+  getOptionalAgentStudioServerRuntimeV1,
   createAgentRuntimeEventServiceV1,
   createAgentRuntimeJobsV1,
   pruneAgentRuntimeEventsV1,
 } = await import(pathToFileURL(agentsEntry).href);
 const {
+  npAgentRuntimeStudioReadRoutesV1,
+  npAgentRuntimeAdminOperationIdsV1,
+  npGetAgentAdminOperationV1,
+  npRequireAgentRuntimeStudioQueryV1,
   npRequireAgentRuntimeOpsResultV1,
   npRequireAgentTriggerV1,
   npCreateAgentRuntimeJobStateV1,
+  npBuildAgentPolicySimulationFixtureInputV1,
+  npRequireAgentRuntimeAdminInputV1,
+  npCreateDisabledAgentRuntimeSettingsV1,
+  npSimulateAgentPolicyV1,
+  npRequireAgentPolicySimulationReportV1,
 } = await import(pathToFileURL(requireFromScaffold.resolve("@nexpress/core/agent-contract")).href);
 
 const DEFERRED_CONSTRAINTS = [
@@ -50,6 +62,7 @@ function fail(message, detail) {
 }
 
 for (const factory of [
+  createAgentRuntimeStudioServiceV1,
   createAgentRuntimeEventServiceV1,
   createAgentRuntimeJobsV1,
   pruneAgentRuntimeEventsV1,
@@ -62,6 +75,71 @@ if (
   Object.values(npCreateAgentRuntimeJobStateV1().cursors).some((value) => value !== null)
 ) {
   fail("packed Runtime trigger or absent cursor contract diverged");
+}
+
+// Shipped wrappers reuse one closed shared inventory and never construct a Runtime.
+if (getOptionalAgentStudioServerRuntimeV1() !== null) {
+  fail("packed Agent Studio must remain absent without explicit host installation");
+}
+if (npRequireAgentRuntimeStudioQueryV1("configurations", {}).limit !== 25) {
+  fail("packed Runtime Studio default page bound diverged");
+}
+const studioMutations = npAgentRuntimeAdminOperationIdsV1;
+const studioInventory = [
+  ...npAgentRuntimeStudioReadRoutesV1,
+  ...studioMutations.map((id) => {
+    const operation = npGetAgentAdminOperationV1(id);
+    return { method: operation.method, path: operation.pathTemplate };
+  }),
+];
+if (
+  npAgentRuntimeStudioReadRoutesV1.length !== 9 ||
+  studioMutations.length !== 15 ||
+  new Set(studioInventory.map(({ method, path }) => `${method} ${path}`)).size !== 24
+) {
+  fail("packed Runtime Studio route inventory diverged");
+}
+for (const { method, path } of studioInventory) {
+  const route = path.replace(/^\/api\//u, "").replaceAll("{id}", "[id]");
+  let source;
+  try {
+    source = readFileSync(resolve(scaffoldDir, "src/app/api", route, "route.ts"), "utf8");
+  } catch {
+    fail("fresh scaffold is missing a Runtime Studio route wrapper");
+  }
+  if (
+    !source.includes(`from "@nexpress/app/api/${route}/route"`) ||
+    !source.includes('dynamic = "force-dynamic"') ||
+    !new RegExp(String.raw`export \{[^}]*\b${method}\b[^}]*\} from`, "u").test(source) ||
+    /createAgentRuntime|executeAdmin|new |fetch\(/u.test(source)
+  ) {
+    fail("fresh scaffold Runtime Studio routes must remain thin shared wrappers");
+  }
+}
+// The packed pure evaluator needs no installed Runtime or provider. The HTTP
+// wrapper still uses the absent host boundary checked above.
+const fixture = await npBuildAgentPolicySimulationFixtureInputV1();
+npRequireAgentRuntimeAdminInputV1("agents.policies.simulate", {
+  idempotencyKey: randomUUID(),
+  expectedVersion: 1,
+  configHash: fixture.fixtureHash,
+  ...fixture,
+});
+const simulation = npRequireAgentPolicySimulationReportV1(
+  npSimulateAgentPolicyV1({
+    policyId: randomUUID(),
+    policyVersion: 1,
+    policyHash: fixture.fixtureHash,
+    fixtureHash: fixture.fixtureHash,
+    layers: [npCreateDisabledAgentRuntimeSettingsV1().defaultPolicyRules],
+  }),
+);
+if (
+  simulation.nonAuthorizing !== true ||
+  simulation.cases.length !== 4 ||
+  getOptionalAgentStudioServerRuntimeV1() !== null
+) {
+  fail("packed policy simulation must remain bounded and non-authorizing without a Runtime");
 }
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -217,7 +295,7 @@ try {
   }
 
   console.log(
-    `✓ fresh scaffold Agent foundation: ${expectedTables.length.toString()} tables, ${expectedConstraints.length.toString()} critical constraints, ${DEFERRED_CONSTRAINTS.length.toString()} deferred constraints, runtime CLI authority/site/default checks, disabled and healthy`,
+    `✓ fresh scaffold Agent foundation: ${expectedTables.length.toString()} tables, ${expectedConstraints.length.toString()} critical constraints, ${DEFERRED_CONSTRAINTS.length.toString()} deferred constraints, runtime CLI authority/site/default checks, 24 Studio route projections, bounded non-authorizing simulation, disabled and healthy`,
   );
 } finally {
   await client.end();

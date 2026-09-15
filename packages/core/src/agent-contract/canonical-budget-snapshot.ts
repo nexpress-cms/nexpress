@@ -385,3 +385,17 @@ export async function npDigestAgentBudgetSnapshotCanonical(
     npBuildAgentBudgetSnapshotCanonicalBytes(value).domainSeparatedUtf8,
   );
 }
+
+/** Exact aggregate counters, shared by retained snapshots and authorized Studio reads. */
+export function npAnalyzeAgentBudgetSnapshotCountersV1(
+  value: unknown,
+): NpAgentContractResult<NpAgentBudgetSnapshotCountersV1> {
+  return analyzeCanonicalBody("agent.budget.counters", () =>
+    parseCounters(value, "agent.budget.counters", { seen: new WeakSet() }),
+  );
+}
+export function npRequireAgentBudgetSnapshotCountersV1(
+  value: unknown,
+): NpAgentBudgetSnapshotCountersV1 {
+  return npRequireAgentContractResult(npAnalyzeAgentBudgetSnapshotCountersV1(value));
+}

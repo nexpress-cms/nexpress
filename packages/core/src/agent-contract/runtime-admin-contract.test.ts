@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { npGetAgentAdminOperationV1 } from "./admin-operation-registry.js";
 import {
+  npAgentPolicySimulationFixtureJsonV1,
+  npBuildAgentPolicySimulationFixtureInputV1,
+} from "./runtime-policy-simulation.js";
+import {
   npAgentRuntimeAdminOperationIdsV1,
   npAnalyzeAgentRuntimeAdminInputV1,
   npRequireAgentRuntimeAdminInputV1,
@@ -22,11 +26,42 @@ const fields: Record<string, unknown> = {
   reason: "Operator action",
   inputJson: "{}",
   triggerId: "manual",
-  fixtureJson: "{}",
+  fixtureJson: npAgentPolicySimulationFixtureJsonV1,
   fixtureHash: digest,
 };
 
 describe("Runtime Admin owner parsers", () => {
+  it("publishes exactly the fixed fixture accepted by the simulation owner parser", async () => {
+    const fixture = await npBuildAgentPolicySimulationFixtureInputV1();
+    const operation = npGetAgentAdminOperationV1("agents.policies.simulate");
+    expect(operation.schemas.input.schema).toMatchObject({
+      properties: {
+        fixtureJson: { type: "string", maxLength: 256, const: fixture.fixtureJson },
+      },
+    });
+    const input = {
+      idempotencyKey: "simulation-fixture",
+      expectedVersion: 1,
+      configHash: digest,
+      ...fixture,
+    };
+    expect(npRequireAgentRuntimeAdminInputV1("agents.policies.simulate", input)).toEqual(input);
+    for (const fixtureJson of [
+      "{}",
+      " ".repeat(257),
+      ` ${fixture.fixtureJson}`,
+      fixture.fixtureJson.replace('"suite":', '"suite":"other","suite":'),
+      JSON.stringify({
+        schemaVersion: "np.agent-policy-simulation-fixture.v1",
+        suite: "autonomy-and-quiet-hours",
+        facts: "private",
+      }),
+    ]) {
+      expect(
+        npAnalyzeAgentRuntimeAdminInputV1("agents.policies.simulate", { ...input, fixtureJson }).ok,
+      ).toBe(false);
+    }
+  });
   it("derives each exact envelope from the existing 55-operation registry", () => {
     expect(npAgentRuntimeAdminOperationIdsV1).toHaveLength(15);
     for (const id of npAgentRuntimeAdminOperationIdsV1) {
@@ -43,6 +78,35 @@ describe("Runtime Admin owner parsers", () => {
         false,
       );
     }
+  });
+
+  it("binds an exact optional activation trigger plan and compare-only policy references", () => {
+    const definition = { type: "manual", id: "00000000-0000-4000-8000-000000000001" };
+    const command = {
+      idempotencyKey: "activation",
+      expectedVersion: 1,
+      configHash: digest,
+      triggers: [{ definition, enabled: true }],
+      reviewedPolicyRefs: [{ kind: "framework", id: null, version: 1, digest }],
+    };
+    expect(npRequireAgentRuntimeAdminInputV1("agents.configurations.activate", command)).toEqual(
+      command,
+    );
+    for (const value of [
+      { ...command, triggers: [...command.triggers, ...command.triggers] },
+      { ...command, triggers: [{ definition: { ...definition, siteId: "other" }, enabled: true }] },
+      { ...command, triggers: [{ definition, enabled: "true" }] },
+      {
+        ...command,
+        reviewedPolicyRefs: [{ kind: "framework", id: null, version: 1, digest, authority: true }],
+      },
+    ])
+      expect(npAnalyzeAgentRuntimeAdminInputV1("agents.configurations.activate", value).ok).toBe(
+        false,
+      );
+    expect(npAnalyzeAgentRuntimeAdminInputV1("agents.configurations.resume", command).ok).toBe(
+      false,
+    );
   });
 
   it("keeps budget updates limited to the existing budget body", () => {

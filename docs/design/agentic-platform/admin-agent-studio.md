@@ -369,6 +369,20 @@ official server-side API authorization flow under the separate provider tab.
 
 ## 7. Runtime Agents
 
+The [current Runtime Studio implementation](r5-runtime-studio-flow.md) supplies
+bounded configuration and trigger reads, structured definition editing,
+effective review and the existing create/update/activate/pause/resume/archive
+and manual-run commands. The following subsections remain the full product
+design; they do not declare every proposed wizard refinement or summary metric
+complete. Absent host `runtimeStudio` installation remains unavailable.
+
+Trigger choices are an explicit activation plan, not saved draft-version data.
+The optional activation fields are `triggers` (exact definition/enabled pairs)
+and `reviewedPolicyRefs` (compare-only current references). Activation commits
+the plan through existing immutable, version-bound trigger rows and disables
+old-version triggers in the same transaction. Replacement versions use new
+trigger ids. Merely editing a draft does not enable a trigger.
+
 ### 7.1 Agent list
 
 The list shows:
@@ -440,27 +454,33 @@ already admitted under a frozen version.
 
 ### 7.3 Agent state and emergency controls
 
-| Status     | Meaning and controls                                                                                                                           |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `draft`    | Never triggered. Editable and activatable after server review.                                                                                 |
-| `active`   | Triggers may admit runs. Pause is available and records reason.                                                                                |
-| `paused`   | No new triggers/model calls. Existing deterministic action may finish to a recorded safe boundary. Resume revalidates effective configuration. |
-| `error`    | Server detected unusable configuration or required dependency. No new admission; repair/duplicate/archive actions only.                        |
-| `archived` | Terminal configuration state; triggers disabled, history retained, no resume.                                                                  |
+| Status     | Meaning and controls                                                                                                                                      |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `draft`    | Never triggered. Editable and activatable after server review.                                                                                            |
+| `active`   | Triggers may admit runs. Pause is available and records reason.                                                                                           |
+| `paused`   | No new triggers/model calls. Existing deterministic action may finish to a recorded safe boundary. Resume revalidates effective configuration.            |
+| `error`    | Server detected unusable configuration or required dependency. No new admission; reviewed resume of an existing active version, repair/duplicate/archive. |
+| `archived` | Terminal configuration state; triggers disabled, history retained, no resume.                                                                             |
 
 The site-wide **Emergency pause** is visually and operationally distinct from
 pausing one Agent. Its confirmation states what stops immediately, what reaches
 a safe boundary, which deterministic security controls continue, and who can
 resume it.
 
-**Resume** exists only for `paused` and performs the same effective-version,
+**Resume** exists for `paused` and `error` with an active version and performs the same effective-version,
 connection, policy, scope, budget, worker, and safety validation as activation
 before returning that immutable version to `active`. **Run now** is available
 only for an active Agent with one enabled registered manual trigger. Its exact
 request contains that `triggerId`, a bounded server-visible goal, caller-stable
-idempotency key, and optional approved structured recipe inputs; it cannot add
-a prompt, capability, scope, event, model, or target outside the active
-version. Admission returns the generalized Runtime run contract.
+idempotency key; the implemented `inputJson` is exactly `{recipeId, goal}`.
+Only an installed `interactive-capability` recipe with `manualInputSchema: null`
+is currently offered. Structured manual inputs remain unavailable until their
+canonical persistence and executor consumption exist; they are never ignored.
+The request cannot add a prompt, capability, scope, event, model, or target
+outside the active version. Admission returns the existing safe mutation
+receipt with the admitted Run id; the shared Activity facade reads the Run.
+When a replacement draft exists, resume reviews and targets the active version
+explicitly (`effective?version=active`), retaining the draft unchanged.
 
 Every displayed Agent state is the server-checked Agent/runtime-principal
 projection: draft is suspended with empty scopes; active is active with exact
@@ -470,6 +490,13 @@ atomically. Gateway principal edit/resume controls are never rendered for a
 runtime projection.
 
 ## 8. Policies
+
+Current policy views reuse draft create/update, canonical validation and exact
+activation. The installed non-authorizing simulation uses a versioned synthetic
+fixture and the actual policy evaluator, with real framework/site ceilings.
+It reports four autonomy cases, resource/risk/data limits, quiet periods and
+retention; no capability, provider or admission is executed. Historical-fact
+simulation and richer historical comparison remain separate product work.
 
 ### 8.1 Policy editor
 
@@ -860,14 +887,20 @@ Guardian pages always include:
 ## 12. Budgets and runtime settings
 
 The AP-500/AP-502/AP-504 foundation supplies the shared definition/policy,
-budget and emergency-control server services with existing Admin admission,
-exact commands and CAS. This does not yet install the Agents/Policies/Budgets
-route/view inventory or complete the AP-507 UI described below. Local
-`nexpress agent runtime status/pause/resume` is implemented through the same
-controls. Staff resume retains its existing reason/version/idempotency command;
-local resume additionally requires a persisted, reviewed readiness plan. Raw
-local reasons and private `agents.runtime.control` records are not wire data.
-See [the runtime foundation flow](r5-runtime-foundation-flow.md).
+budget and emergency-control services with existing Admin admission, exact
+commands and CAS. The current [Runtime Studio slice](r5-runtime-studio-flow.md)
+connects these owners to the Agents/Policies/Budgets routes and views. The site
+budget read shows the existing inherited/effective ceiling and measured counters;
+per-Agent narrower limits remain in the definition editor. Unresolved usage or
+failed measurement is unavailable, never a fabricated zero balance. Runtime
+status combines the existing safe readiness result and bounded operations
+aggregates, without local control records or raw reasons.
+
+Local `nexpress agent runtime status/pause/resume` still uses the same controls.
+Site-wide staff resume retains its reason/version/idempotency command; local
+resume additionally requires a persisted, reviewed readiness plan. The staff
+status seam does not synthesize local deployment authority. See
+[the runtime foundation flow](r5-runtime-foundation-flow.md).
 
 ### 12.1 Budget hierarchy
 
@@ -1010,6 +1043,13 @@ and the action projection contains redacted input/output rather than canonical
 execution input or undo/evidence material. These are response contracts only;
 they do not make any proposed route in the following tables live.
 
+The implemented Runtime Studio read inventory is closed in
+`runtime-studio-contract.ts`: configuration list/detail/effective, capability
+catalog, policy list/detail, trigger list, budgets and runtime status. It uses
+its exact client-safe page/detail families; `runtime-status` returns
+`np.agent-runtime-overview.v1`, containing the existing status plus safe
+operations aggregates. The tables below also retain proposed future dependencies.
+
 ### 15.1 Read dependencies
 
 | Method and proposed path                                                            | Schema family                    | Used by                                                          |
@@ -1025,7 +1065,8 @@ they do not make any proposed route in the following tables live.
 | `GET /api/admin/agents/configurations`                                              | `np.agent-configuration.v1` list | Agent list                                                       |
 | `GET /api/admin/agents/configurations/{id}`                                         | `np.agent-configuration.v1`      | Agent editor/detail                                              |
 | `GET /api/admin/agents/configurations/{id}/effective`                               | `np.agent-effective-config.v1`   | Server review/blockers before activation                         |
-| `GET /api/admin/agents/capabilities`                                                | `np.agent-capability-catalog.v1` | Exact scope/risk/approval/reversibility inventory                |
+| `GET /api/admin/agents/capabilities`                                                | `np.agent-runtime-catalog.v1`    | Exact scope/risk/approval/reversibility inventory                |
+| `GET /api/admin/agents/triggers`                                                    | `np.agent-triggers-page.v1`      | Registered immutable trigger definitions and schedule metadata   |
 | `GET /api/admin/agents/policies`                                                    | `np.agent-policy.v1` list        | Policy list                                                      |
 | `GET /api/admin/agents/policies/{id}`                                               | `np.agent-policy.v1`             | Policy detail/version diff                                       |
 | `GET /api/admin/agents/activity`                                                    | `np.agent-run.v1` list           | Run list                                                         |
@@ -1038,8 +1079,8 @@ they do not make any proposed route in the following tables live.
 | `GET /api/admin/agents/changesets/{id}/previews/{previewId}/artifacts/{artifactId}` | private artifact bytes           | Reauthorize site/target/digest/expiry then no-store stream       |
 | `GET /api/admin/agents/incidents`                                                   | `np.agent-incident.v1` list      | Incident queue                                                   |
 | `GET /api/admin/agents/incidents/{id}`                                              | `np.agent-incident-detail.v1`    | Incident evidence/timeline/actions                               |
-| `GET /api/admin/agents/budgets`                                                     | `np.agent-budget.v1`             | Site and Agent ceilings/usage                                    |
-| `GET /api/admin/agents/runtime-status`                                              | `np.agent-runtime-status.v1`     | Worker, emergency pause, quota, vault, adapter posture           |
+| `GET /api/admin/agents/budgets`                                                     | `np.agent-runtime-budget.v1`     | Site and Agent ceilings/usage                                    |
+| `GET /api/admin/agents/runtime-status`                                              | `np.agent-runtime-overview.v1`   | Worker, emergency pause, quota, vault, adapter posture           |
 
 The artifact GET is a safe read, not AP-001 mutation admission: it requires a
 current staff session/site/capability, every ChangeSet target still visible,
@@ -1158,6 +1199,15 @@ a new generation with a new key and invalidate or supersede the old verifier.
 Secret inputs should use request bodies only, with no persistence in URLs,
 client caches, analytics, or error details. `npFetch` remains the browser
 client so shared auth and CSRF headers are used.
+
+The current Runtime Studio route factory installs fifteen operations from
+this existing inventory: seven configuration operations, five policy operations
+(create/update/validate/simulate/activate), budget update and site pause/resume.
+Simulation contract v2 returns the exact bounded report and uses existing staff
+admission, CAS, idempotency and audit. A standalone trigger mutation route, an
+Agent credential fallback and a runtime enablement command remain absent. Activation contract v2
+adds the optional exact trigger plan and compare-only policy references;
+package versions remain unchanged.
 
 ### 15.3 Provider OAuth callback
 

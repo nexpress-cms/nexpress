@@ -189,6 +189,11 @@ interface MutationInput {
   actorFingerprint: string;
 }
 export interface NpAgentRuntimeControlsV1 {
+  /** Staff read callers own current session/site authorization. */
+  statusInTransaction(input: {
+    db: ReturnType<typeof getDb>;
+    siteId: string;
+  }): Promise<NpAgentRuntimeStatusV1>;
   requireDependenciesReadyInTransaction(input: {
     db: ReturnType<typeof getDb>;
     siteId: string;
@@ -434,6 +439,8 @@ export function createAgentRuntimeControlsV1(
       plan,
     });
   return {
+    statusInTransaction: (input) =>
+      npWithAgentRuntimeControlTransactionV1(input.siteId, status, input.db),
     requireDependenciesReadyInTransaction: (input) =>
       npWithAgentRuntimeControlTransactionV1(
         input.siteId,

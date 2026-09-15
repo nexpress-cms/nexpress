@@ -60,3 +60,4 @@ export * from "./runtime-executor.js";
 export * from "./runtime-event-service.js";
 export * from "./runtime-jobs.js";
 export * from "./runtime-maintenance.js";
+export * from "./runtime-studio-service.js";

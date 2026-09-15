@@ -528,8 +528,8 @@ usage ledgers and explicit local emergency controls. Generated migrations
 keys. Ordinary deletion inventories 39 tables. All services and readiness
 remain host-injected, and absent runtime settings remain disabled. No provider
 inference, automatic worker/trigger job, new runtime HTTP route, completed
-Studio configuration UI, seed or package-version change is included. AP-501,
-AP-503, AP-505–AP-508 and the full R5 gate remain open. See
+Studio configuration UI, seed or package-version change was included at that
+checkpoint. AP-501/AP-503/AP-505–AP-508 and the full R5 gate were still open. See
 [the runtime foundation flow](r5-runtime-foundation-flow.md) for implemented
 boundaries and verification evidence.
 
@@ -545,17 +545,34 @@ The preceding delegated slice implements explicit self-delegation through the
 existing principal relationship and the AP-505 ChangeSet/approval execution
 and recovery path. Current staff/site membership, item ACL, exact approval
 binding, idempotency, CAS and audit remain authoritative. Local acceptance
-passed, while AP-503/AP-507/AP-508 and the full R5 gate remain open. See
+passed; AP-503/AP-507/AP-508 and the full R5 gate were still open at that
+checkpoint. See
 [the delegated execution flow](r5-runtime-delegated-execution-flow.md) and the
 [preceding provider/read execution checkpoint](r5-runtime-execution-flow.md).
 
-The current event/operations slice implements AP-503 and the related AP-508
+The preceding event/operations slice implements AP-503 and the related AP-508
 recovery foundation through existing event/trigger/Run tables and explicit host
 worker installation. The schedule outbox reuses admitted Runs and locked occurrence advancement, with no
 invented schedule event kind. Trigger rows are capped at 100 per site; compatible
-installed recipes retain the current task boundary. AP-507, remaining AP-508 and
-the full R5 gate remain open. Local verification for this slice passed. See the
+installed recipes retain the current task boundary. Local verification for that
+slice passed. See the
 [Runtime events and operations flow](r5-runtime-events-operations-flow.md).
+
+The current AP-507 management and related AP-508 visibility slice adds bounded
+Agents, Triggers, Policies and Budgets views, effective configuration review,
+per-Agent lifecycle controls, bounded manual admission and the existing Runtime
+Activity detail. One explicitly installed `runtimeStudio` facade reuses the
+existing services and fourteen Admin mutation operations. Activation optionally
+binds exact trigger definitions and compare-only reviewed policy references;
+manual input is exactly a selected recipe and bounded goal, with no silently
+ignored structured inputs. Status and usage preserve unavailable/unknown states.
+See [the Runtime Studio flow](r5-runtime-studio-flow.md) for the implemented
+boundary and verification checkpoints. Bounded synthetic policy simulation now
+uses the real policy evaluator with exact non-authorizing output. The existing
+maintenance sweep adds dependency-safe retention; audit-source release and the
+full R5 acceptance gate remain open (see the
+[retention matrix](r5-runtime-retention-flow.md)). This work adds no automatic worker,
+provider activation, migration, seed, package version or changeset.
 
 Outcome: one configured agent can run a bounded event/manual/scheduled workflow
 with budget and policy enforcement.

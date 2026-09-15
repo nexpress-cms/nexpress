@@ -1,4 +1,12 @@
 import {
+  npAgentPolicySimulationFixtureJsonV1,
+  npAgentPolicySimulationReportSchemaV1,
+} from "./runtime-policy-simulation.js";
+import {
+  npAgentTriggerSchemaV1,
+  npAgentTriggerSchemaDefinitionsV1,
+} from "./runtime-trigger-contract.js";
+import {
   npAgentRollbackPlanCreateInputSchemaV1,
   npAgentRollbackPlanRequestApprovalInputSchemaV1,
   npAgentRollbackPlanExecuteInputSchemaV1,
@@ -395,7 +403,11 @@ export const npAgentAdminOperationRouteInventoryV1 = deepFreeze([
     "agents.configurations.activate",
     "POST",
     "/api/admin/agents/configurations/{id}/activate",
-    { preconditions: ROW_CONFIG, ...SENSITIVE },
+    {
+      contractVersion: 2,
+      preconditions: ROW_CONFIG,
+      ...SENSITIVE,
+    },
   ),
   operation("agents.configurations.pause", "POST", "/api/admin/agents/configurations/{id}/pause", {
     inputKind: "reason",
@@ -430,6 +442,7 @@ export const npAgentAdminOperationRouteInventoryV1 = deepFreeze([
     preconditions: ROW_CONFIG,
   }),
   operation("agents.policies.simulate", "POST", "/api/admin/agents/policies/{id}/simulate", {
+    contractVersion: 2,
     inputKind: "simulation",
     outputKind: "validation",
     preconditions: ROW_CONFIG,
@@ -789,7 +802,7 @@ function commandShape(kind: NpAgentAdminOperationInputKindV1): {
     case "simulation":
       return {
         properties: {
-          fixtureJson: stringSchema(262_144),
+          fixtureJson: { ...stringSchema(256), const: npAgentPolicySimulationFixtureJsonV1 },
           fixtureHash: stringSchema(60, DIGEST_PATTERN),
         },
         required: ["fixtureJson", "fixtureHash"],
@@ -898,6 +911,33 @@ function buildInputSchema(seed: OperationSeed): NpAgentJsonSchema {
       required: ["kind", "userId"],
     };
   }
+  if (seed.id === "agents.configurations.activate") {
+    properties.triggers = {
+      type: "array",
+      maxItems: 32,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: { definition: npAgentTriggerSchemaV1, enabled: { type: "boolean" } },
+        required: ["definition", "enabled"],
+      },
+    };
+    properties.reviewedPolicyRefs = {
+      type: "array",
+      maxItems: 16,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          kind: { enum: ["framework", "feature-setting", "site-policy", "agent-policy"] },
+          id: { type: ["string", "null"], maxLength: 128 },
+          version: { type: "integer", minimum: 1, maximum: 2147483647 },
+          digest: stringSchema(60, DIGEST_PATTERN),
+        },
+        required: ["kind", "id", "version", "digest"],
+      },
+    };
+  }
   const required = ["idempotencyKey", ...command.required];
   for (const kind of seed.preconditions) {
     const precondition = PRECONDITION_FIELDS[kind];
@@ -910,6 +950,9 @@ function buildInputSchema(seed: OperationSeed): NpAgentJsonSchema {
     additionalProperties: false,
     properties,
     required,
+    ...(seed.id === "agents.configurations.activate"
+      ? { $defs: npAgentTriggerSchemaDefinitionsV1 }
+      : {}),
   });
 }
 
@@ -995,6 +1038,8 @@ function outputShape(kind: NpAgentAdminOperationOutputKindV1): {
 }
 
 function buildOutputSchema(seed: OperationSeed): NpAgentJsonSchema {
+  if (seed.id === "agents.policies.simulate")
+    return requireSchema(npAgentPolicySimulationReportSchemaV1);
   if (seed.id === "agents.changesets.rollback_plans.request_approval")
     return requireSchema(npAgentApprovalDetailSchemaV1);
   if (

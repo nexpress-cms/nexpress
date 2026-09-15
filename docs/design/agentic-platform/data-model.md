@@ -1233,6 +1233,16 @@ commits independently so one denied trigger cannot roll back another.
 Every durable dispatch stamps `siteId`, `triggerId`, and the bounded event
 reference.
 
+The [Runtime Studio slice](r5-runtime-studio-flow.md) reuses this table for the
+optional exact trigger plan on `agents.configurations.activate`. The existing
+Admin invocation digest binds each definition and explicit enabled boolean;
+registration and Agent/principal activation commit in one transaction. Draft
+editing does not persist a parallel trigger document. A replacement version
+uses new trigger ids, old-version rows are disabled, and their historical
+references remain intact. The existing 100-row site bound still includes
+historical and disabled rows. No trigger table, migration or separate mutation
+contract is introduced.
+
 ## 5. Execution tables
 
 AP-209/AP-210 reuse the existing run/action/invocation/principal tables without
@@ -1241,6 +1251,23 @@ Invocation expiry determines expired evidence; even unexpired read payloads are
 redacted at this boundary. Gateway machine run reads bind the persisted
 invocation to the same site, principal and Agent HTTP audience and recheck
 current scopes and item visibility. Preview persistence remains an R3 concern.
+
+The Runtime Studio management slice likewise adds no persistence table. Its
+manual command is admitted through the existing staff invocation journal and
+Runtime admission in one site-locked transaction. That invocation id becomes
+the Run's canonical idempotency key; the selected recipe, registered trigger
+and bounded goal are frozen in existing admission evidence. The current manual
+input is exactly `{recipeId, goal}` and does not claim storage or execution of
+additional structured inputs.
+
+Runtime provider reservations can leave the existing private Run usage object
+empty while the outcome is unresolved. The shared client-safe Run projection
+represents that state as `usage: null`; malformed nonempty counters remain
+unavailable. The budget projection separately reuses durable reservations and
+daily counters, retaining unknown/unmeasurable posture instead of deriving
+spare capacity from zero. Neither projection exposes raw provider evidence,
+canonical execution inputs or private runtime-control records. See
+[the Runtime Studio flow](r5-runtime-studio-flow.md).
 
 ### 5.1 `np_agent_runs`
 

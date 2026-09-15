@@ -407,6 +407,18 @@ function parsePolicyRefs(
   return result;
 }
 
+/** Reuses the canonical ordered reference parser for compare-only Admin review. */
+export function npRequireAgentRunAdmissionPolicyRefsV1(
+  value: unknown,
+): NpAgentRunAdmissionPolicyRefV1[] {
+  return npRequireAgentContractResult(
+    analyzeCanonicalBody("agent.policyRefs", () =>
+      parsePolicyRefs(value, "agent.policyRefs", { seen: new WeakSet<object>() }),
+    ),
+    "Invalid Agent policy references",
+  );
+}
+
 function parseConnection(
   value: unknown,
   path: string,

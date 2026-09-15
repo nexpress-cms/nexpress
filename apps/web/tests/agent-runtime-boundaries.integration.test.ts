@@ -184,7 +184,7 @@ describe.skipIf(skipIfNoTestDb())("Runtime admission and mutation boundaries", (
   });
   afterAll(closeTestDb);
 
-  it("rejects deferred run/simulate operation IDs before any invocation or resource mutation", async () => {
+  it("rejects unavailable manual execution and malformed simulation before any resource mutation", async () => {
     const f = await runtimeFixture();
     const draftPolicy = await f.service.executeAdmin({
       siteId,
@@ -217,13 +217,13 @@ describe.skipIf(skipIfNoTestDb())("Runtime admission and mutation boundaries", (
       {
         operationId: "agents.policies.simulate" as const,
         targetId: draftPolicy.resourceId,
-        command: npRequireAgentRuntimeAdminInputV1("agents.policies.simulate", {
+        command: {
           expectedVersion: draftPolicy.output.rowVersion,
           configHash: draftPolicy.output.contentHash,
           idempotencyKey: randomUUID(),
           fixtureJson: "{}",
           fixtureHash: draftPolicy.output.contentHash,
-        }),
+        },
       },
     ];
     const before = await mutationFootprint(f);
@@ -232,10 +232,12 @@ describe.skipIf(skipIfNoTestDb())("Runtime admission and mutation boundaries", (
       const forged = { siteId, actor: f.actor.actor, ...command } as unknown as Parameters<
         typeof f.service.executeAdmin
       >[0];
-      await expect(f.service.executeAdmin(forged)).rejects.toMatchObject({
-        code: "RUNTIME_OPERATION_UNAVAILABLE",
-        status: 404,
-      });
+      if (command.operationId === "agents.configurations.run")
+        await expect(f.service.executeAdmin(forged)).rejects.toMatchObject({
+          code: "RUNTIME_OPERATION_UNAVAILABLE",
+          status: 404,
+        });
+      else await expect(f.service.executeAdmin(forged)).rejects.toThrow();
       expect(await mutationFootprint(f)).toEqual(before);
     }
   });

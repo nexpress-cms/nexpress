@@ -1,6 +1,14 @@
+import { npRequireAgentRunAdmissionPolicyRefsV1 } from "./canonical-run-admission.js";
+import {
+  npAgentPolicySimulationFixtureJsonV1,
+  npRequireAgentPolicySimulationFixtureJsonV1,
+} from "./runtime-policy-simulation.js";
+import { npRequireAgentTriggerV1, type NpAgentTrigger } from "./runtime-trigger-contract.js";
+import type { NpAgentRunAdmissionPolicyRefV1 } from "./types.js";
 import {
   analyzeCanonicalBody,
   canonicalBodyInteger,
+  canonicalBodyArray,
   canonicalBodyRecord,
   canonicalBodyUuid,
   canonicalBodySha256Digest,
@@ -75,6 +83,10 @@ export interface NpAgentRuntimeReasonAdminInputV1 {
   expectedVersion: number;
   reason: string;
 }
+export interface NpAgentRuntimeActivationAdminInputV1 extends NpAgentRuntimeVersionedAdminInputV1 {
+  triggers?: Array<{ definition: NpAgentTrigger; enabled: boolean }>;
+  reviewedPolicyRefs?: NpAgentRunAdmissionPolicyRefV1[];
+}
 export interface NpAgentRuntimeManualAdminInputV1 extends NpAgentRuntimeVersionedAdminInputV1 {
   inputJson: string;
   triggerId: string;
@@ -89,7 +101,7 @@ export interface NpAgentRuntimeBudgetAdminInputV1 extends NpAgentRuntimeDefiniti
 export interface NpAgentRuntimeAdminInputMapV1 {
   "agents.configurations.create": NpAgentRuntimeConfigurationCreateAdminInputV1;
   "agents.configurations.update": NpAgentRuntimeDefinitionUpdateAdminInputV1;
-  "agents.configurations.activate": NpAgentRuntimeVersionedAdminInputV1;
+  "agents.configurations.activate": NpAgentRuntimeActivationAdminInputV1;
   "agents.configurations.pause": NpAgentRuntimeReasonAdminInputV1;
   "agents.configurations.resume": NpAgentRuntimeVersionedAdminInputV1;
   "agents.configurations.run": NpAgentRuntimeManualAdminInputV1;
@@ -138,6 +150,34 @@ export function npAnalyzeAgentRuntimeAdminInputV1<K extends NpAgentRuntimeAdminO
     for (const key of keys) {
       if (!Object.hasOwn(row, key)) continue;
       switch (key) {
+        case "reviewedPolicyRefs":
+          output[key] = npRequireAgentRunAdmissionPolicyRefsV1(row[key]);
+          break;
+        case "triggers": {
+          const entries = canonicalBodyArray(row[key], `${path}.triggers`, 32, {
+            seen: new WeakSet<object>(),
+          });
+          const ids = new Set<string>();
+          output[key] = entries.map((entry) => {
+            const trigger = canonicalBodyRecord(
+              entry,
+              `${path}.triggers`,
+              ["definition", "enabled"],
+              ["definition", "enabled"],
+              { seen: new WeakSet<object>() },
+            );
+            const definition = npRequireAgentTriggerV1(trigger.definition);
+            if (typeof trigger.enabled !== "boolean" || ids.has(definition.id))
+              failCanonicalBody(
+                "invalid-field",
+                `${path}.triggers`,
+                "requires unique triggers and explicit enabled state",
+              );
+            ids.add(definition.id);
+            return { definition, enabled: trigger.enabled };
+          });
+          break;
+        }
         case "authority": {
           if (operationId !== "agents.configurations.create")
             failCanonicalBody(
@@ -172,8 +212,11 @@ export function npAnalyzeAgentRuntimeAdminInputV1<K extends NpAgentRuntimeAdminO
           break;
         case "definitionJson":
         case "inputJson":
-        case "fixtureJson":
           output[key] = canonicalRuntimeText(row[key], `${path}.${key}`, 262_144);
+          break;
+        case "fixtureJson":
+          npRequireAgentPolicySimulationFixtureJsonV1(row[key]);
+          output[key] = npAgentPolicySimulationFixtureJsonV1;
           break;
         case "reason":
           output[key] = canonicalRuntimeText(row[key], `${path}.${key}`, 2_000, {

@@ -1,10 +1,24 @@
+import {
+  npRequireAgentPolicySimulationFixtureJsonV1,
+  npDigestAgentPolicySimulationFixtureV1,
+  npSimulateAgentPolicyV1,
+} from "../agent-contract/runtime-policy-simulation.js";
+import { npBuildAgentRuntimeDefinitionBytesV1 } from "../agent-contract/runtime-studio-contract.js";
+import type { NpAgentRuntimeAdmissionV1 } from "./runtime-admission.js";
+import type { NpAgentRuntimeEventServiceV1 } from "./runtime-event-service.js";
+import {
+  canonicalBodyRecord,
+  canonicalBodyUuid,
+} from "../agent-contract/canonical-body-validation.js";
+import { canonicalRuntimeText } from "../agent-contract/canonical-runtime-primitives.js";
+import type { NpAgentRuntimeActivationAdminInputV1 } from "../agent-contract/runtime-admin-contract.js";
 import { createHash, randomUUID } from "node:crypto";
 import { and, asc, desc, eq, isNull, or, sql } from "drizzle-orm";
 import type { NpAuthUser } from "../config/types.js";
 import { npUsers, npSiteMemberships } from "../db/schema/system.js";
 import { npDigestAgentStaffSiteAuthorizationCanonical } from "../agent-contract/canonical-bodies.js";
 import type { NpAgentRuntimeAuthorityEvidenceV1 } from "../agent-contract/types.js";
-import { type getDb } from "../db/runtime.js";
+import type { getDb } from "../db/runtime.js";
 import {
   npAgents,
   npAgentVersions,
@@ -21,7 +35,6 @@ import { npDeriveAgentRuntimeAdmissionSourceRefsV1 } from "./runtime-admission-s
 import { npMeasureAgentRuntimeBudgetV1 } from "./runtime-budget.js";
 import {
   npRequireAgentConfigurationDefinitionV1,
-  npRequireAgentPolicyDefinitionV1,
   type NpAgentConfigurationDefinitionV1,
   type NpAgentRuntimeSettingsV1,
   npRequireAgentRuntimeAdmissionSourcesV1,
@@ -68,7 +81,7 @@ import {
   npAgentRuntimeAdminOperationIdsV1,
   type NpAgentRuntimeAdminOperationIdV1,
 } from "../agent-contract/runtime-admin-contract.js";
-import { npRequireAgentBudgetV1, type NpAgentBudgetV1 } from "../agent-contract/wire-contract.js";
+import type { NpAgentBudgetV1 } from "../agent-contract/wire-contract.js";
 import {
   npResolveAgentBudgetV1,
   npRequireAgentBudgetNarrowingV1,
@@ -95,22 +108,10 @@ export function npBuildAgentRuntimeDefinitionInputV1(value: unknown): {
   definitionJson: string;
   definitionHash: string;
 } {
-  value = cloneCanonicalRuntimeInput(value, "agent.runtime.definition", 1_048_576);
-  const definition =
-    value &&
-    typeof value === "object" &&
-    "schemaVersion" in value &&
-    value.schemaVersion === "np.agent-policy-definition.v1"
-      ? npRequireAgentPolicyDefinitionV1(value)
-      : value &&
-          typeof value === "object" &&
-          "schemaVersion" in value &&
-          value.schemaVersion === "np.agent-budget.v1"
-        ? npRequireAgentBudgetV1(value)
-        : npRequireAgentConfigurationDefinitionV1(value);
+  const { definitionJson, bytes } = npBuildAgentRuntimeDefinitionBytesV1(value);
   return {
-    definitionJson: serializeAgentCanonicalJson(definition),
-    definitionHash: hash("np.agent-runtime-definition.v1", definition),
+    definitionJson,
+    definitionHash: `cj1:sha256:${createHash("sha256").update(bytes).digest("base64url")}`,
   };
 }
 
@@ -462,16 +463,32 @@ export async function npResolveAgentRuntimePolicyV1(input: {
 export interface NpAgentRuntimeServiceOptionsV1 extends NpAgentAdminAdmissionOptionsV1 {
   /** Explicit framework-owned complete installed set. No registry or worker is auto-installed. */
   recipes: NpAgentRecipeRegistryCanonicalV1;
+  admission?: NpAgentRuntimeAdmissionV1;
+  events?: Pick<NpAgentRuntimeEventServiceV1, "registerTriggerInTransaction">;
   deploymentAuthority: { policyId: string; fingerprint: string; scopes: NpAgentScope[] };
   controls: NpAgentRuntimeControlsV1;
   deploymentBudget: NpAgentBudgetV1;
   frameworkPolicy: { version: number; rules: NpAgentPolicyRulesV1 };
 }
-export type NpAgentRuntimeDefinitionOperationV1 = Exclude<
-  NpAgentRuntimeAdminOperationIdV1,
-  "agents.configurations.run" | "agents.policies.simulate"
->;
+export type NpAgentRuntimeDefinitionOperationV1 = NpAgentRuntimeAdminOperationIdV1;
 export interface NpAgentRuntimeServiceV1 {
+  getDefinitionInventory(): {
+    recipes: NpAgentRecipeRegistryCanonicalV1;
+    deploymentBudget: NpAgentBudgetV1;
+    scopes: NpAgentScope[];
+    manualAdmissionAvailable: boolean;
+    triggerRegistrationAvailable: boolean;
+  };
+  reviewEffective(input: {
+    siteId: string;
+    actor: NpAgentAdminActorV1;
+    agentId: string;
+    versionId?: string;
+    db?: Db;
+  }): Promise<{
+    definition: NpAgentConfigurationDefinitionV1;
+    policyRefs: NpAgentRunAdmissionPolicyRefV1[];
+  }>;
   executeAdmin(input: {
     siteId: string;
     actor: NpAgentAdminActorV1;
@@ -505,11 +522,7 @@ export function createAgentRuntimeServiceV1(
   });
   if (!Number.isSafeInteger(frameworkPolicy.version) || frameworkPolicy.version < 1)
     safeError("RUNTIME_CONFIGURATION_INVALID");
-  const executableOperations = new Set<string>(
-    npAgentRuntimeAdminOperationIdsV1.filter(
-      (id) => id !== "agents.configurations.run" && id !== "agents.policies.simulate",
-    ),
-  );
+  const executableOperations = new Set<string>(npAgentRuntimeAdminOperationIdsV1);
   const admit = createAgentAdminAdmissionV1(options);
   const nowFn = options.now ?? (() => new Date());
   async function validateActivation(
@@ -519,6 +532,7 @@ export function createAgentRuntimeServiceV1(
     agent: Agent,
     version: Version,
     settings: NpAgentRuntimeSettingsV1,
+    settingsRevision: number,
   ) {
     await options.controls.requireDependenciesReadyInTransaction({ db, siteId });
     await npMeasureAgentRuntimeBudgetV1({ db, siteId, now: nowFn() });
@@ -632,14 +646,15 @@ export function createAgentRuntimeServiceV1(
       versionId: version.id,
       active: false,
     });
-    await npResolveAgentRuntimePolicyV1({
+    const policy = await npResolveAgentRuntimePolicyV1({
       db,
       siteId,
       evidence,
       settings,
-      settingsRevision: 1,
+      settingsRevision,
       frameworkPolicy,
     });
+    return { definition, policyRefs: policy.refs };
   }
   function versionValues(definition: NpAgentConfigurationDefinitionV1) {
     return {
@@ -658,6 +673,53 @@ export function createAgentRuntimeServiceV1(
     return { resourceId, output };
   }
   return {
+    getDefinitionInventory: () =>
+      structuredClone({
+        recipes: registry,
+        deploymentBudget,
+        scopes: authority.scopes,
+        manualAdmissionAvailable: !!options.admission,
+        triggerRegistrationAvailable: !!options.events,
+      }),
+    async reviewEffective(input) {
+      return npWithAgentRuntimeControlTransactionV1(
+        input.siteId,
+        async ({ db, settings, revision }) => {
+          const auth = await npResolveAgentStaffSessionAuthorizationV1(
+            db,
+            input.siteId,
+            input.actor,
+            nowFn(),
+          );
+          if (!auth.authority.capabilities.includes("admin.manage"))
+            safeError("SITE_ACCESS_DENIED", 403);
+          const [agent] = await db
+            .select()
+            .from(npAgents)
+            .where(and(eq(npAgents.siteId, input.siteId), eq(npAgents.id, input.agentId)))
+            .limit(1);
+          if (!agent || agent.status === "archived") safeError("RUNTIME_RESOURCE_UNAVAILABLE", 404);
+          const evidence = await npRequireAgentRuntimeVersionV1({
+            db,
+            siteId: input.siteId,
+            agentId: agent.id,
+            versionId:
+              input.versionId ?? agent.draftVersionId ?? agent.activeVersionId ?? undefined,
+            active: false,
+          });
+          return validateActivation(
+            db,
+            input.siteId,
+            input.actor,
+            agent,
+            evidence.version,
+            settings,
+            revision,
+          );
+        },
+        input.db,
+      );
+    },
     async executeAdmin(input) {
       npAssertAgentPreviewEffectsAllowed();
       if (!executableOperations.has(input.operationId))
@@ -838,7 +900,44 @@ export function createAgentRuntimeServiceV1(
                   });
                 }
                 if (!row) safeError("RUNTIME_RESOURCE_UNAVAILABLE", 404);
-                await verifiedPolicy(row);
+                const candidate = await verifiedPolicy(row);
+                if (operation === "agents.policies.simulate") {
+                  const fixture = npRequireAgentPolicySimulationFixtureJsonV1(raw.fixtureJson);
+                  const fixtureHash = await npDigestAgentPolicySimulationFixtureV1(fixture);
+                  if (fixtureHash !== raw.fixtureHash) safeError("RUNTIME_DEFINITION_INVALID");
+                  // Synthetic configurations replace only the selected policy layer. Host and
+                  // site ceilings remain real; no principal, provider, budget or capability is invoked.
+                  const layers = [frameworkPolicy.rules, settings.defaultPolicyRules];
+                  if (row.agentId !== null) {
+                    const activeSite = await db
+                      .select()
+                      .from(npAgentPolicies)
+                      .where(
+                        and(
+                          eq(npAgentPolicies.siteId, input.siteId),
+                          eq(npAgentPolicies.status, "active"),
+                          isNull(npAgentPolicies.agentId),
+                        ),
+                      )
+                      .limit(2);
+                    if (activeSite.length > 1) safeError("RUNTIME_POLICY_INVALID");
+                    for (const source of activeSite)
+                      layers.push((await verifiedPolicy(source)).rules);
+                  }
+                  layers.push(candidate.rules);
+                  return result(
+                    row.id,
+                    json(
+                      npSimulateAgentPolicyV1({
+                        policyId: row.id,
+                        policyVersion: row.version,
+                        policyHash: row.contentHash,
+                        fixtureHash,
+                        layers,
+                      }),
+                    ),
+                  );
+                }
                 if (operation === "agents.policies.validate")
                   return result(row.id, { id: row.id, valid: true, contentHash: row.contentHash });
                 if (operation !== "agents.policies.activate")
@@ -1000,6 +1099,85 @@ export function createAgentRuntimeServiceV1(
                 : [];
               if ("configHash" in raw && (!version || version.configHash !== raw.configHash))
                 safeError("RUNTIME_VERSION_CONFLICT");
+              if (operation === "agents.configurations.run") {
+                if (!options.admission) safeError("RUNTIME_OPERATION_UNAVAILABLE", 404);
+                if (agent.status !== "active" || !version || version.status !== "active")
+                  safeError("RUNTIME_VERSION_CONFLICT");
+                let parsed: unknown;
+                try {
+                  parsed = JSON.parse(raw.inputJson as string);
+                } catch {
+                  safeError("RUNTIME_DEFINITION_INVALID", 400);
+                }
+                const manual = canonicalBodyRecord(
+                  cloneCanonicalRuntimeInput(parsed, "agent.runtime.manual", 8192),
+                  "agent.runtime.manual",
+                  ["recipeId", "goal"],
+                  ["recipeId", "goal"],
+                  { seen: new WeakSet<object>() },
+                );
+                const goal = canonicalRuntimeText(manual.goal, "agent.runtime.manual.goal", 2000, {
+                  requireTrimmed: true,
+                });
+                const evidence = await npRequireAgentRuntimeVersionV1({
+                  db,
+                  siteId: input.siteId,
+                  agentId: agent.id,
+                  versionId: version.id,
+                });
+                const recipe = evidence.registry.recipes.find(
+                  (entry) => entry.id === manual.recipeId,
+                );
+                if (
+                  !recipe ||
+                  recipe.task !== "interactive-capability" ||
+                  !recipe.triggerKinds.includes("manual") ||
+                  recipe.manualInputSchema !== null ||
+                  !evidence.definition.settings.some((entry) => entry.recipeId === recipe.id)
+                )
+                  safeError("RUNTIME_RECIPE_UNAVAILABLE");
+                canonicalBodyUuid(raw.triggerId, "agent.runtime.manual.triggerId");
+                const [trigger] = await db
+                  .select()
+                  .from(npAgentTriggers)
+                  .where(
+                    and(
+                      eq(npAgentTriggers.siteId, input.siteId),
+                      eq(npAgentTriggers.id, raw.triggerId as string),
+                      eq(npAgentTriggers.agentId, agent.id),
+                      eq(npAgentTriggers.agentVersionId, version.id),
+                    ),
+                  )
+                  .limit(1);
+                if (!trigger || trigger.kind !== "manual" || !trigger.enabled)
+                  safeError("RUNTIME_TRIGGER_UNAVAILABLE");
+                const authorization = await npResolveAgentStaffSessionAuthorizationV1(
+                  db,
+                  input.siteId,
+                  input.actor,
+                  nowFn(),
+                );
+                if (
+                  evidence.definition.scopes.some(
+                    (scope) =>
+                      !authorization.authority.capabilities.includes(
+                        npAgentScopeStaffCapability[scope],
+                      ),
+                  )
+                )
+                  safeError("SITE_ACCESS_DENIED", 403);
+                const run = await options.admission.admit({
+                  db,
+                  siteId: input.siteId,
+                  agentId: agent.id,
+                  expectedVersionId: version.id,
+                  recipeId: recipe.id,
+                  idempotencyKey: invocationId,
+                  source: { triggerId: trigger.id },
+                  goal,
+                });
+                return result(run.runId, { id: run.runId, runId: run.runId, state: "queued" });
+              }
               if (operation === "agents.configurations.update") {
                 const definition = npRequireAgentRuntimeDefinitionJsonV1(
                   "configuration",
@@ -1084,7 +1262,24 @@ export function createAgentRuntimeServiceV1(
                     : !["paused", "error"].includes(agent.status) || version.status !== "active")
                 )
                   safeError("RUNTIME_VERSION_CONFLICT");
-                await validateActivation(db, input.siteId, input.actor, agent, version, settings);
+                const reviewed = await validateActivation(
+                  db,
+                  input.siteId,
+                  input.actor,
+                  agent,
+                  version,
+                  settings,
+                  revision,
+                );
+                const activation = command as NpAgentRuntimeActivationAdminInputV1;
+                if (
+                  activation.reviewedPolicyRefs !== undefined &&
+                  serializeAgentCanonicalJson(activation.reviewedPolicyRefs) !==
+                    serializeAgentCanonicalJson(reviewed.policyRefs)
+                )
+                  safeError("RUNTIME_POLICY_CHANGED");
+                if (activation.triggers !== undefined && !options.events)
+                  safeError("RUNTIME_OPERATION_UNAVAILABLE", 404);
                 if (operation === "agents.configurations.activate") {
                   if (agent.activeVersionId)
                     await db
@@ -1151,6 +1346,19 @@ export function createAgentRuntimeServiceV1(
                       eq(npAgentTriggers.agentId, agent.id),
                     ),
                   );
+              if (operation === "agents.configurations.activate") {
+                for (const trigger of (command as NpAgentRuntimeActivationAdminInputV1).triggers ??
+                  []) {
+                  await options.events!.registerTriggerInTransaction({
+                    db,
+                    siteId: input.siteId,
+                    agentId: agent.id,
+                    expectedVersionId: version.id,
+                    trigger: trigger.definition,
+                    enabled: trigger.enabled,
+                  });
+                }
+              }
               return result(agent.id, {
                 id: agent.id,
                 rowVersion: agent.rowVersion + 1,

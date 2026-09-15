@@ -1,0 +1,531 @@
+# Root agent reference
+
+Source: `AGENTS.md`, extracted 2026-09-14. Detailed guidance retained from the original AGENTS.md. Read the relevant section before changing that area; do not preload the whole document. Dated inventories and implementation status must be checked against current code and the current handoff.
+
+## Naming convention
+
+The framework reserves a single prefix for every symbol/identifier it
+owns: **`np` / `Np` / `NP_` / `np_` / `np-` / `--np-`**. The choice of
+casing follows the host language:
+
+| Layer                                    | Form                                                   | Example                                               |
+| ---------------------------------------- | ------------------------------------------------------ | ----------------------------------------------------- |
+| TypeScript type / interface / class      | `Np<Capital>`                                          | `NpAuthUser`, `NpForbiddenError`, `NpBlockDefinition` |
+| Runtime variable / function              | `np<Capital>`                                          | `npFetch`, `npUsers` (Drizzle), `npMedia`             |
+| Environment variable                     | `NP_<UPPER>`                                           | `NP_SECRET`, `NP_S3_BUCKET`                           |
+| Database table                           | `np_<lower>`                                           | `np_users`, `np_settings`, `np_c_posts`               |
+| Cookie / HTTP header                     | `np-<lower>` / `x-np-<lower>`                          | `np-session`, `x-np-admin-site`                       |
+| CSS custom property                      | `--np-<lower>`                                         | `--np-color-primary`, `--np-radius-md`                |
+| CSS class / `@layer` / `data-` attribute | `np-<lower>` / `@layer np-<lower>` / `data-np-<lower>` | `.np-form-input`, `@layer np-theme`, `data-np-theme`  |
+
+Package names use the brand name `@nexpress/*` and stay as-is — they're
+orthogonal to the `np` prefix.
+
+Compatibility exception: older internal Next data-cache tags and Redis
+rate-limit keys still use the `nx:*` namespace (`nx:sitemap`,
+`nx:theme:<siteId>`, `nx:rl:`, etc.). Keep those where the implementation
+and docs already name them; do not introduce new public `nx` identifiers.
+
+## Commands
+
+Package manager is pnpm (v10.33, required). Node >=20.19.0.
+
+```bash
+pnpm install
+docker compose -f docker/docker-compose.yml up -d       # Postgres :5433 + Mailpit (SMTP :1025, inbox http://localhost:8025)
+cp .env.example .env                                    # then replace NP_SECRET with 32+ random characters
+pnpm build                                              # build all packages (dist/) — needed before dev
+pnpm dev                                                # next dev (apps/web only) + collection schema:gen on src/collections/* changes
+```
+
+### Dev workflows (which `dev` to run)
+
+`pnpm dev` watches **only `apps/web`** (next dev + schema-gen).
+Other packages serve from their last-built `dist/`. This keeps the
+process count and memory footprint sane — the full-watch shape we
+shipped before brought 30 `tsup --watch` instances and ~3 GB of
+resident watcher memory.
+
+- **Default — app-level work in `apps/web/src/*`:**
+  ```bash
+  pnpm install && pnpm build   # one-time, builds every package
+  pnpm dev                     # next dev only; subsequent runs skip the build
+  ```
+- **Editing a leaf package — `@nexpress/admin`, `@nexpress/blocks`, etc.:**
+  ```bash
+  pnpm --filter @nexpress/admin... dev
+  ```
+  The `...` expands to that package + every workspace dep. Watcher count scales with the slice you actually touched.
+- **Cross-package refactor — every `dist/` should rebuild on save:**
+  ```bash
+  pnpm dev:full                # current full-fan-out behavior
+  ```
+  Heavy (~30 watchers, ~3 GB RSS) — reach for it when you really do need everyone watching at once.
+
+When a leaf package changes and you used the default `pnpm dev`, the leaf's `dist/` is stale. Either rebuild that leaf (`pnpm --filter <pkg> build`) or switch to the `... dev` filter for the rest of the session.
+
+- `pnpm build` / `pnpm test` — turbo fan-out over all workspaces. `pnpm dev` is now scoped to apps/web (see above).
+- `pnpm lint` — fans out via `turbo run lint --concurrency=2`. Each package runs `eslint . --cache --cache-location node_modules/.cache/eslint`, so the heavy `recommendedTypeChecked` rule set's TS programs stay bounded per process and incremental runs hit cache. The previous root `eslint .` over 1000+ files OOMed at an 8 GB heap; the per-package fan-out caps peak RSS at ~1.2 GB. Use `pnpm --filter <pkg> lint` to target one package, or `turbo run lint --filter=<pkg>...` for a dependency-aware subset.
+- `pnpm typecheck` — `turbo run typecheck`, which runs `tsc --noEmit` in each package. Distinct from `pnpm lint` (ESLint).
+- `pnpm db:generate` / `pnpm db:migrate` — Drizzle migrations (turbo tasks; wired per-app)
+- `pnpm format` / `pnpm format:check` — Prettier
+- `pnpm test` runs the vitest unit suite across every workspace (no DB required). `pnpm test:integration` runs the Postgres-backed suite, gated on `TEST_DATABASE_URL` (skips silently when unset). See `docs/testing.md` for setup.
+- `pnpm verify` — pre-merge gate. Runs `turbo run build typecheck test` in one shot. CI also runs on PRs and selected `push: main` changes (see NOTES below), but this is still the fastest local equivalent — run it before merging anything that touches schema, migrations, codegen, or risky surface a typecheck-only pass might miss (#586). Cheap thanks to turbo caching when you've been building during dev.
+- `pnpm changeset` opens the changesets prompt — run it whenever you make a user-facing change to a `@nexpress/*` package (Phase 22.1). The generated file in `.changeset/` is committed with the code. See `.changeset/README.md` for the rule of thumb on when a changeset is needed.
+
+### Release authorization (hard rule)
+
+Never merge or publish a Version PR that raises the fixed `@nexpress/*`
+family across a minor boundary (for example, `0.4.x` to `0.5.0`) unless the
+user has explicitly approved that exact target minor version in the current
+release discussion. A general request such as “publish the version”,
+“release”, or “update the demo” does **not** authorize a minor bump. If the
+generated Version PR proposes an unapproved minor, stop before merge, report
+the exact proposed versions and the changesets causing the bump, and ask for
+approval. This rule also applies when the Version PR is already open and all
+CI checks are green.
+
+Running a single package's build/typecheck:
+
+```bash
+pnpm --filter @nexpress/core build
+pnpm --filter @nexpress/core typecheck # tsc --noEmit for just that package
+```
+
+## Architecture
+
+Monorepo: `packages/*` (library code) + `apps/web` (Next.js 16 reference app). Workspaces are declared in `pnpm-workspace.yaml`. Turborepo orchestrates builds; `^build` in `turbo.json` means dependent packages are built first.
+
+### Dependency graph
+
+```
+core  ←  editor, theme, plugin-sdk, next, wp-import
+core, editor  ←  blocks
+core, blocks  ←  translation  ←  xliff, gettext
+core, editor, blocks  ←  admin
+all of the above, mcp  ←  app  ←  apps/web
+cli  (standalone scaffolder, no workspace deps)
+```
+
+`@nexpress/core` is **server-only**. It imports `pg`, `sharp`, `@node-rs/argon2`, `pg-boss`, `jose`. `apps/web/next.config.ts` declares it in `serverExternalPackages`; all other `@nexpress/*` packages live in `transpilePackages`. Do not import `@nexpress/core` from a client component — it will break the build.
+
+#### Subpath imports (preferred for new code)
+
+`@nexpress/core` exposes domain-bounded subpath entries (Phase 22.6). New code should reach in through the subpath that fits the call site rather than the catch-all root, so the v1 commitment surface is bounded by domain:
+
+| Subpath                             | Domain                                                                  |
+| ----------------------------------- | ----------------------------------------------------------------------- |
+| `@nexpress/core/api-contract`       | client-safe REST error envelope, codes, statuses, details, validators   |
+| `@nexpress/core/auth`               | capability checks, JWT/OAuth, password, sessions, principal             |
+| `@nexpress/core/cache`              | invalidation requests, adapters, results, diagnostics, cache bounds     |
+| `@nexpress/core/bootstrap`          | experimental framework-host singleton/registry wiring                   |
+| `@nexpress/core/community`          | comments, reactions, follows, reports, bans, audit, mentions, digests   |
+| `@nexpress/core/community-contract` | client-safe rows, requests, settings, adapter and wire validators       |
+| `@nexpress/core/content-transfer`   | client-safe v3 full/partial transfer, media, relationship, report rules |
+| `@nexpress/core/discovery`          | client-safe public block, collection, and plugin discovery contracts    |
+| `@nexpress/core/db`                 | connection factory, runtime accessors, schema codegen                   |
+| `@nexpress/core/email`              | email message/adapter contracts, SMTP, templates, runtime configuration |
+| `@nexpress/core/fields`             | client-safe field helpers plus rich-text and block-content contracts    |
+| `@nexpress/core/i18n-contract`      | client-safe config, catalog, override, locale, and Admin wire contracts |
+| `@nexpress/core/i18n`               | locale registry, translations, formatting, per-site overrides           |
+| `@nexpress/core/jobs`               | pg-boss adapter, handlers, worker, heartbeat, pause state, job logs     |
+| `@nexpress/core/jobs-contract`      | client-safe job names, payloads, persisted-row and Admin wire contracts |
+| `@nexpress/core/media`              | media service, processor, ref tracking                                  |
+| `@nexpress/core/media-contract`     | client-safe media records, variants, processing and API validators      |
+| `@nexpress/core/navigation`         | client-safe navigation wire/resolved types and validators               |
+| `@nexpress/core/observability`      | logger, error reporter, `verifyStartupSafety`                           |
+| `@nexpress/core/rate-limit`         | rate-limit contracts, adapters, registry, dispatch, lifecycle           |
+| `@nexpress/core/routes`             | client-safe custom route definitions, registry, and Admin wire contract |
+| `@nexpress/core/revisions`          | client-safe revision snapshot, persisted-row, and API wire contracts    |
+| `@nexpress/core/search`             | search request/result, adapter, cache, reindex, and diagnostics         |
+| `@nexpress/core/seo`                | sitemap, page metadata, Atom feeds, JSON-LD                             |
+| `@nexpress/core/settings`           | client-safe site identity, settings types, and validators               |
+| `@nexpress/core/sites`              | site registry, execution context, memberships, scoped authorization     |
+| `@nexpress/core/storage`            | storage runtime/object contracts, adapters, registry, and lifecycle     |
+| `@nexpress/core/theme`              | client-safe theme token inventory, validators, and merge helpers        |
+
+The root `@nexpress/core` keeps broad domain conveniences, but intentionally
+omits raw bootstrap wiring. Treat the subpaths as the canonical APIs and
+`/bootstrap` as framework-host-only.
+
+### Module system — `.js` extensions in TS imports
+
+All packages set `"module": "NodeNext"` and `"type": "module"`. Relative imports inside packages must use `.js` extensions even in `.ts` source:
+
+```ts
+import { foo } from "./bar.js"; // correct
+import { foo } from "./bar"; // breaks the build
+```
+
+Package-to-package imports use the bare specifier (e.g. `from "@nexpress/core"`) and resolve through each package's `exports` map to `dist/`. That means **consumers need `dist/` to exist** — if a package rebuild hasn't finished, sibling packages will fail to type-check. Run `pnpm build` once after fresh clone; `pnpm dev` keeps dists fresh with `tsup --watch`.
+
+Dev watch reads `NP_DEV_FAST` from `.env` (default `1`); when set, each package's `tsup.config.ts` skips dts emit and sourcemaps during the watch loop (the dts step alone runs a full type emit per package and dominates startup). Sibling packages keep using the `.d.ts` files from the last `pnpm build` — runtime is unaffected, but if you change an exported type's _signature_ during dev, IDE/typecheck won't see it across packages until the next `pnpm build` (or a targeted `pnpm --filter @nexpress/<pkg> build`). `pnpm build` defensively prefixes `NP_DEV_FAST=0`, so the published `dist/` always ships with full dts regardless of `.env`.
+
+### Core service singletons (critical)
+
+`@nexpress/core` uses module-scoped singletons behind domain and host
+subpaths:
+
+- `setDb(db)` / `getDb()` — Drizzle connection (single source of truth shared by the pipeline, media service, and every other consumer)
+- `setStorageAdapter(adapter)` — validated local, S3, or custom adapter
+- `setJobQueue(queue)` / `startWorker()` — pg-boss
+- `loadPlugins(plugins)` — registers hooks/routes/actions
+
+`@nexpress/next` wires these through `createBootstrap()`; the reference app
+adds app-local registrations in `apps/web/src/lib/init-core.ts`. New code uses
+the single intent-based entry point `ensureFor("read" | "plugins" | "worker" | "write")`:
+
+- `await ensureFor("read")` — DB + storage + collections (read-only RSC, GET routes).
+- `await ensureFor("plugins")` — read + plugin loading (render paths that need `runHook` to fire).
+- `await ensureFor("worker")` — plugins + email adapter, without starting a competing job producer; dedicated worker entrypoints only.
+- `await ensureFor("write")` — plugins + email + pg-boss producer (any mutating API route / server action / import).
+
+All app routes use `ensureFor` directly — the old route-level pattern of
+choosing among `ensureCoreServices` / `ensurePluginsLoaded` /
+`ensureJobProducer` / `ensureWriteReady` was retired in #266. The
+`createBootstrap()` result exposes only `getDb`, `ensureFor`, `reloadPlugins`,
+and terminal `shutdown`. Any route or server component touching collections, media, or
+plugins MUST initialize before reading the singletons; otherwise they're null.
+Don't create parallel DB connections from elsewhere.
+
+Raw setters, registry mutation, and plugin hook dispatch live under the
+experimental framework-host boundary `@nexpress/core/bootstrap`; they are not
+exported from the root barrel. Rate limiting stays separate because the proxy
+is a different execution entrypoint.
+
+### Collections = codegen, not runtime
+
+Collections are declared with `defineCollection({ slug, fields, ... })` and registered with `registerCollection()`. The Drizzle schema and TypeScript types are **generated** from these configs:
+
+- `packages/core/src/db/generator.ts` → `generateDrizzleSchema()`
+- `packages/core/src/db/type-generator.ts` → `generateTypeScript()`
+
+Adding or changing a collection's fields requires regenerating the schema and running a migration. The Drizzle schema codegen step (`pnpm schema:gen`, which writes `src/db/generated/collections.ts`) runs automatically inside `pnpm dev` whenever a file under `src/collections/` or `src/nexpress.config.ts` changes (#271). The Postgres migration is still manual (`pnpm db:generate && pnpm db:migrate`) so the SQL gets a human review before it touches the DB. A user project's collections live in `src/collections/` (see the `create-nexpress` scaffold); for this monorepo itself, collections for the reference app live in `apps/web/src/collections/`.
+
+The data pipeline (`packages/core/src/collections/pipeline.ts`) handles access control, hook invocation, validation via generated Zod schemas (`validation.ts`), revision tracking, media-ref tracking, and search-vector builds for every document write.
+
+Collection reads/writes use the exact client-safe contract in
+`@nexpress/core/collection-contract`. Generated main rows are validated before
+groups, child-table arrays, and ordered hasMany joins hydrate into runtime
+documents; REST/Admin/import-export serialize the same shape with canonical ISO
+dates. `_status` is request-only and canonical `status` is the sole stored
+column. Generated `documents.ts` emits runtime plus `*DocumentWire` types. Use
+`npCollectionDocumentToWriteInput()` when a framework workflow needs to save a
+validated runtime document again. Author docs: `docs/collection-documents.md`.
+
+Revision snapshots use the client-safe `@nexpress/core/revisions` contract.
+Normal saves and partial autosaves normalize bounded JSON, validate every
+present collection field, and explicitly serialize API timestamps. Autosave
+locks the document row for atomic dedup/version allocation; pruning never
+reuses version numbers. Detail and restore add live block-definition validation
+at the app boundary, doctor reports malformed/orphan rows, and document deletion
+removes revision history in the same transaction. Author guide:
+`docs/revisions.md`.
+
+### Plugin model (v1)
+
+For original rationale see `docs/design/plugin-system-design.md` (frozen 2026-04-17 snapshot — high-level decisions still apply, code samples may have drifted). v1 plugins are **npm-package + rebuild**, not hot-loadable. A plugin can register hooks (`content:afterCreate`, etc.), actions (custom API handlers), routes, **public-site page routes** (`definePlugin({ pageRoutes: NpPluginPageRouteRegistration[] })` — see `docs/plugin-pages.md`), scheduled tasks, and **page builder blocks** (`definePlugin({ blocks: NpBlockDefinition[] })`) at startup. It **cannot** add collections/fields at runtime — those require codegen + migrate. Plugins run in-process with full Node access; there is no sandbox in v1. Author plugins with `definePlugin()` from `@nexpress/plugin-sdk`.
+
+Plugin-contributed blocks merge into the same process-global registry as the built-ins (`@nexpress/blocks`'s `getSharedRegistry()`). `definePlugin()`, the Next bootstrap, `registerBlock()`, and plugin doctor use the same canonical definition/props-schema validator; malformed blocks and same-plugin duplicates fail before registration. The `@nexpress/next` bootstrap calls `registerBlock` for every configured plugin block right after `loadPlugins`. Admin discovery and public rendering resolve that registry against the current site's active plugin ids and theme id. Re-registering the same source stays idempotent for HMR/reload; cross-source collisions warn and retain registration-order candidates so an inactive last owner falls back to the previous active definition. Author docs: `docs/plugin-blocks.md`.
+
+Plugin page-builder patterns use the same contract shape across
+`@nexpress/blocks/contracts`, `definePlugin()`, the Next bootstrap, the shared
+registry, and plugin doctor. Author contributions use `NpPatternDefinition`
+and may omit `source`; bootstrap validates every recursive block instance and
+referenced block type, assigns `plugin:<id>` / `theme:<id>`, registers all
+blocks before patterns, and derives pattern ids into
+`manifest.provides.patterns`. Author docs: `docs/plugin-patterns.md`.
+
+Plugin page templates and UI translations are definition-level registries.
+Templates validate collection/id metadata and function components;
+translations validate canonical BCP 47 locales plus ICU MessageFormat. Both
+derive catalog inventory, retain source ownership for doctor, and cleanly
+restore overridden values on reload/unload. Config schema/version/migrator and
+setup/teardown callbacks are also validated; lifecycle callbacks resolve to
+void and teardown runs in reverse load order before reload. Author docs:
+`docs/plugin-templates.md`, `docs/plugin-i18n.md`, and `docs/plugin-reload.md`.
+
+Plugin scheduled tasks use one canonical core validator from `definePlugin()`,
+the core host, and plugin doctor. Task ids are safe per-plugin queue segments,
+cron expressions use canonical five-field UTC syntax, handlers are functions
+that resolve to void, and same-plugin duplicate ids are errors. The core host
+repeats validation for SDK-bypassing definitions and validates handler results
+at dispatch. Author docs: `docs/plugin-scheduled-tasks.md`.
+
+Plugin wiring is centralized in `packages/core/src/plugins/host.ts` (registry + `runHook`) and surfaced via `loadPlugins()` / `runHook()` / `getPluginRoutes()` exports. API routes use uppercase `GET`/`POST`/`PUT`/`PATCH`/`DELETE`, canonical static paths, and exact `{ status, body?, headers? }` results; GET registrations also handle HEAD. Definition validation, the core host, and plugin doctor enforce the same contract. See `docs/plugin-api-routes.md`. The catch-all plugin route (`/api/plugins/<id>/<...>` for paths other than `/actions`) is rate-limited at the framework level by `apps/web/src/proxy.ts` (#316) — the conservative default applies to anything matching the catch-all pattern, so plugin authors get a sane floor automatically. A plugin that needs a higher ceiling for a specific endpoint must add its own per-handler rate-limiter on top.
+
+Plugin **page routes** (`pageRoutes` field — #623) let a plugin own public-site URLs end-to-end. `definePlugin()`, the core host, and plugin doctor share the same canonical pattern/handler validation; malformed or same-plugin duplicate routes fail before dispatch. The host catch-all (`apps/web/src/app/(site)/[[...slug]]/page.tsx`) calls `dispatchPluginRoute()` from `@nexpress/next` after the page-slug + slug-redirect + theme-route lookups; a matched plugin component receives `{ params, searchParams, blockCtx }` and renders into the active shell. `locale: "auto"` matches the locale-stripped path, while `locale: "none"` matches only the raw path and does not add automatic hreflang aliases. `surface: "site"` routes use the site shell; `surface: "member"` routes use `impl.members.shell` with the member-surface fallback chain. The flag controls chrome only and is not an auth gate. Server / client boundaries follow the same pattern as `@nexpress/admin`: route components (server) import client widgets via the package's own `./client` subpath (e.g. `@nexpress/plugin-forum/client`), which is marked external in the index entry's tsup config so the bundle preserves the `"use client"` directive. Reference: `packages/plugins/forum/` migrated 2026-05-10. Author docs in `docs/plugin-pages.md`.
+
+The bundled forum is created with one paired `createForum()` result: a
+`forum-boards` registry collection, shared `forum-posts` collection, and plugin
+whose `/boards/:boardKey/:postId` routes, Admin action, build-time skin catalog,
+relationship targets, and row-aware member policy close over those exact slugs.
+Boards are published rows, so adding a board/category/skin selection needs no
+new schema. Member requests can write only board/title/body/category; board
+policy resolves create access and pending status before moderation, while
+pinned/locked/status remain staff-owned. The stable board key plus UUID post id
+avoid Korean-title slug generation. Author docs: `docs/plugin-forum.md`.
+
+### Next.js app structure (`apps/web/src/app`)
+
+Route groups:
+
+- `(site)` — public site. Catch-all `[[...slug]]` renders pages from the content service.
+- `(admin)/admin` — admin UI (Radix + Tailwind v4 via `@nexpress/admin`). Split into `login/` and `(protected)/`.
+- `api/` — REST endpoints. Rate limiting + security headers are applied in
+  `src/proxy.ts`. The default `InMemoryRateLimiter` is per-process; multi-node
+  deployments set `NP_RATE_LIMIT_ADAPTER=custom` and inject a shared adapter
+  with `npCreateProxy()` from that proxy entrypoint. Requests and exact
+  decisions are validated before dispatch / `Retry-After` emission. See
+  `docs/rate-limiting.md`.
+
+Auth is JWT + Argon2 (`packages/core/src/auth`). Staff and member JWTs use
+exact audience/purpose/session-id claims, and each browser has one persisted
+session row containing both access and refresh hashes. Refresh compare-and-swap
+rotates the pair; logout deletes it through either live token's shared session id.
+`tokenVersion` still provides all-device invalidation. Canonical client-safe
+roles, statuses, wire shapes, and validators live at
+`@nexpress/core/auth-contract`; see `docs/authentication.md`. CSRF is enforced
+on state-changing endpoints via `verifyCsrf`.
+
+Role checks go through `can(user, capability)` from `@nexpress/core/auth` (#273). Naming the behavior (`"community.moderate"`, `"content.publish"`) instead of the role hierarchy lets reviewers spot wrong checks at a glance and decouples call sites from future role-table changes. The legacy `hasRole(user, minRole)` / `isStaffMod(user)` helpers were retired — they no longer exist on the public surface. Client UI components (e.g. `AdminShell`) MUST receive resolved capability flags as props from a server parent — calling `can()` from a client component drags `@nexpress/core` into the browser bundle (#343).
+
+The "actor on an operation" is modeled as a single union `NpPrincipal = { kind: "staff"; user } | { kind: "member"; memberId }` (#319). The pipeline, plugin hooks (`NpHookPrincipal` is the same shape under a historical name), and `principalCan()` all consume this union. Adding a new variant requires updating every `switch (principal.kind)` site — exhaustive switches with `_exhaustive: never` (#313) deliberately fail to compile when the union grows.
+
+Member-side write services (comments, reactions, reports, follows) MUST go through `withMemberWrite(memberId, scopes, async () => { ... })` from `@nexpress/core/community` (#311). The wrapper enforces the ban-check gate by structure — adding a new write path without `withMemberWrite` is impossible to do silently. Pre-validation that doesn't write (input shape, target lookup) can run before the call; the wrapper guards the moment between "we know enough to attempt the write" and the first DB mutation.
+
+CSRF on state-changing API routes is applied automatically by `apps/web/src/proxy.ts` (#281); per-handler `requireCsrf()` calls are no longer needed and have been removed. The proxy lists CSRF-exempt path patterns (login, webhook receivers) explicitly — if you add a new public-form endpoint, add it to the exempt list there rather than skipping the proxy.
+
+### Frontend package split — client/server boundary
+
+Packages that contain React UI split exports to keep client-only code out of RSC bundles:
+
+| Package            | Root export (server-safe)                | `./client` export               | `./server` export |
+| ------------------ | ---------------------------------------- | ------------------------------- | ----------------- |
+| `@nexpress/editor` | types + renderRichText                   | NpRichTextEditor, ToolbarPlugin | renderRichText    |
+| `@nexpress/blocks` | types, registry, renderBlocks, blocks/\* | —                               | —                 |
+| `@nexpress/admin`  | types + views                            | AdminShell, all client views    | —                 |
+
+`@nexpress/blocks` is server-safe end-to-end now (registry, renderBlocks, block definitions). The page-builder UI itself lives in `@nexpress/admin/src/blocks/` so it can use admin's Radix/Tailwind primitives directly. The old `@nexpress/blocks/client` export was removed when the editor moved.
+
+Each `./client` bundle is built by tsup with `"use client"` banner injection. Consumers import `@nexpress/editor/client` for interactive components; server code imports the root or `./server`. Admin lazy-loads heavy editors via `React.lazy(() => import("@nexpress/editor/client"))`.
+
+- `@nexpress/theme` — CSS-custom-property generation from design tokens. `NpThemeStyle` component emits `<style>` tag.
+
+### SEO
+
+`@nexpress/core/seo` owns the canonical runtime types and validators for page
+metadata, JSON-LD inputs, sitemap/index entries, Atom entries, URL/path/date
+values, and robots bodies. Core builders and renderers validate their inputs;
+theme `impl.seo` functions are validated at definition time and their resolved
+results are validated again immediately after dispatch. Malformed values fail
+before XML, JSON-LD, `Response`, or cache construction. `@nexpress/theme` uses
+the same Core types rather than structural mirrors. Author guide: `docs/seo.md`.
+
+### Search
+
+`@nexpress/core/search` owns the exact bounded search request, resolved request,
+adapter context, candidate result, public result, and reindex contracts. Public
+search is always current-site, published, and public; trusted Core callers may
+explicitly request `visibility: "all"` or the cross-site `"*"` sentinel, but
+neither scope may enter the public Next cache. External adapters declare
+`audience: "document-v1"`; their exact context identifies every selected
+audience-aware collection and its `public | all` mode. Core validates document
+JSON/site/status/visibility/audience/count invariants and derives
+facets/pagination. Throws and malformed results are diagnosed and fall back to
+Postgres. Optional `indexing: { contract: "document-v1", write,
+replaceCollection }` synchronizes latest persisted state from durable content
+jobs and streams atomic all-site replacement snapshots during reindex;
+synchronization failures remain retryable. Reindex scans both Postgres rows and
+external refs in fixed cursor batches; `search:reindex` serializes one
+collection across workers, reports bounded job progress, and is enqueued by
+Admin or the internal trigger instead of occupying a long HTTP request. Pass `searchAdapter` to
+`createBootstrap()` for owned lifecycle wiring and optional terminal
+`shutdown()`. Author/ops guide: `docs/search.md`.
+
+### Storage
+
+`@nexpress/core/storage` owns the exact `local | s3 | custom` runtime contract.
+Local defaults to `./public/media` served at `/media`; S3 requires bucket and
+region with an optional endpoint. Custom mode requires a programmatic adapter
+through `createBootstrap({ storageAdapter })` (or the host-only
+`@nexpress/core/bootstrap` setter) and a
+non-reserved canonical `kind`. Safe relative keys, exact upload metadata,
+Web-stream/URL/boolean/void results, and optional `shutdown()` are validated at
+the shared operation boundary. Local paths remain confined to their root and
+S3 clients close through the lifecycle hook. Doctor, Admin health, readiness,
+setup, and standalone ops use the same environment parser. Author/operator
+reference: `docs/storage.md`. A MinIO service is defined in
+`docker/docker-compose.yml` under the `s3` profile for local S3 development.
+
+Media JSON uses the canonical client-safe contract from
+`@nexpress/core/media-contract`. `NpMediaRecord`, `NpMediaVariant`, focal
+points, processing options, and Admin API items are exact and fail closed on
+unknown or malformed values. Variant rows persist storage metadata only — URLs
+are always resolved through the active adapter from the stored `storageKey`.
+Author and operator reference: `docs/media.md`.
+
+### Email
+
+Transactional delivery uses the canonical server API from
+`@nexpress/core/email`. `sendEmail()` validates one exact bounded message before
+dispatch and requires adapters to resolve to void. `setEmailAdapter()` validates
+the adapter kind and handler at registration. Runtime modes are exactly `noop`,
+`smtp`, and `custom`; SMTP host/from, base-10 port, exact boolean, and paired
+credentials are parsed once at the first app bootstrap. Programmatic adapters
+must select `NP_EMAIL_ADAPTER=custom`; normal apps pass `emailAdapter` to
+`createBootstrap()`, while lower-level hosts may pre-register one. Auth jobs carry the credential's canonical `expiresAt` and URL, not
+a duplicate raw token, so templates render the actual UTC expiration. Author
+and operator reference: `docs/email.md`.
+
+### Jobs
+
+`pg-boss`-backed queue. Handlers register via `registerJobHandler(name, fn, { parsePayload, resolveSiteId })`; custom names use canonical `namespace:action` syntax and their parser runs before enqueue and again before dispatch. `resolveSiteId` is an additive payload projection that wraps the complete dispatch in the async-local site scope. Built-in names have exact payload contracts, while all jobs use bounded plain JSON data. The pure contract is exported from `@nexpress/core/jobs-contract`; server queue/handler APIs remain in `@nexpress/core/jobs`. The worker is started by the app (not by core) via `startWorker()`.
+
+Job summaries, schedules, worker heartbeats, logs, pause state, Admin responses,
+ops output, and doctor inspection share the same fail-closed parser inventory.
+Malformed persisted rows are errors; do not restore epoch/default/empty fallbacks.
+The queue schema is exactly `pgboss`; worker, producer, Admin, doctor, and ops
+must not point at different schema names. Jobs environment flags and duration
+settings reject malformed values instead of silently choosing defaults.
+
+`startWorker()` owns the full shutdown lifecycle (#318): it installs SIGINT/SIGTERM handlers, drains in-flight jobs, and tears down the pg-boss instance when the process exits. If any setup step throws partway through, it cleans up the partial state (already-armed signal handlers, half-connected pool) so the next call boots cleanly. App code should not install competing SIGINT/SIGTERM handlers that race with the worker's drain.
+
+Phase 20 added an admin Jobs surface (`/admin/jobs`): manual enqueue, pause/resume per queue, archived-job tab, and a worker-health widget driven by the heartbeat record from Phase 19. The admin endpoints are gated by the `admin.manage` capability and live under `apps/web/src/app/api/admin/jobs/`.
+
+### WordPress import (`@nexpress/wp-import`)
+
+A separate package (not part of `@nexpress/core`) that ingests a WXR export end-to-end (Phase 21.1–21.17): WXR XML parsing, HTML → Lexical conversion (including a Gutenberg fence parser), media download + dedup, taxonomy/term mapping, comment threading, custom post types, an audit log, a resume marker for crash recovery, and per-document visibility flags. Drives a long-running pg-boss job; surface state through the standard jobs admin. CLI entry at `packages/wp-import/src/cli/`. Documented in `docs/wordpress-import-guide.md`.
+
+## WHERE TO LOOK
+
+| Task                                             | Location                                                                              | Notes                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Add/modify a collection                          | `apps/web/src/collections/*.ts`                                                       | Drizzle schema codegen reruns automatically in `pnpm dev`; if column shapes changed, also run `pnpm db:generate && pnpm db:migrate`                                                                                                                                                              |
+| Change content pipeline (ACL, hooks, validation) | `packages/core/src/collections/pipeline.ts`                                           | 1043 lines — the critical write path                                                                                                                                                                                                                                                             |
+| Add a block type                                 | `packages/blocks/src/blocks/`                                                         | Register in `registry.ts` `getDefaultBlocks()`                                                                                                                                                                                                                                                   |
+| Modify rich-text rendering (SSR)                 | `packages/editor/src/render-rich-text.tsx`                                            | Server-safe; used by blocks and site pages                                                                                                                                                                                                                                                       |
+| Add editor toolbar features                      | `packages/editor/src/toolbar-plugin.tsx`                                              | Client-only; exports via `./client`                                                                                                                                                                                                                                                              |
+| Add admin UI field type                          | `packages/admin/src/collections/field-renderer.tsx`                                   | Add component in `fields/`, update renderer switch                                                                                                                                                                                                                                               |
+| Add admin UI primitive                           | `packages/admin/src/ui/`                                                              | shadcn pattern: Radix + cva + cn()                                                                                                                                                                                                                                                               |
+| Write a plugin                                   | Copy `packages/plugins/reading-time/src/index.ts`                                     | Use `definePlugin()` from `@nexpress/plugin-sdk`. New plugin packages live under `packages/plugins/<name>/`; the SDK itself stays at `packages/plugin-sdk` (it's not a plugin).                                                                                                                  |
+| Add public routes to a plugin                    | `packages/plugins/forum/src/routes/`                                                  | `pageRoutes` array on `definePlugin`. Server-component routes import client widgets via the package's own `./client` subpath (NOT relative paths — relative bypasses RSC banner). Forum is the reference impl. Docs: `docs/plugin-pages.md`. Dispatcher: `packages/next/src/route-dispatcher.ts` |
+| Change auth flow                                 | `packages/core/src/auth/` + `packages/next/src/auth.ts`                               | JWT sign/verify in core; cookie helpers in next                                                                                                                                                                                                                                                  |
+| Change transactional email                       | `packages/core/src/email/` + `packages/app/src/lib/init-core.ts`                      | Keep message, adapter, SMTP env, template expiry, bootstrap, health, doctor, and auth-job payload contracts aligned. Docs: `docs/email.md`                                                                                                                                                       |
+| Change proxy (rate limits, CSP)                  | `packages/app/src/proxy/index.ts`                                                     | Shared implementation; app/scaffold `src/proxy.ts` files are thin wrappers. Rate-limit contracts live in `packages/core/src/rate-limit/`                                                                                                                                                         |
+| Modify bootstrap / service wiring                | `packages/next/src/bootstrap.ts`                                                      | `createBootstrap()` — the singleton factory                                                                                                                                                                                                                                                      |
+| Change DB schema (system tables)                 | `packages/core/src/db/schema/`                                                        | npUsers, npMedia, npRevisions, npSettings                                                                                                                                                                                                                                                        |
+| Scaffold templates (create-nexpress)             | `packages/cli/templates/` (real .ts files) + `packages/cli/src/templates.ts` (loader) | 7-PR split (#268) moved templates to on-disk files with their own `tsconfig.templates.json`; loader is the 384-line orchestrator. Edit the file, not a string literal                                                                                                                            |
+| Modify worker shutdown / signal handling         | `packages/core/src/jobs/worker.ts`                                                    | Owns SIGINT/SIGTERM, drains in-flight jobs, cleans up partial state on setup failure (#318)                                                                                                                                                                                                      |
+| Run a WordPress import                           | `packages/wp-import/src/`                                                             | `parse/`, `convert/`, `media/`, `apply/`, `cli/`. Long-running pg-boss job; surfaces in `/admin/jobs`                                                                                                                                                                                            |
+| Admin jobs UI (enqueue / pause / archive)        | `apps/web/src/app/(admin)/admin/(protected)/jobs/`                                    | Phase 20.1–20.4. Capability `admin.manage` required                                                                                                                                                                                                                                              |
+| Theme token → CSS mapping                        | `packages/theme/src/generate-css.ts`                                                  | Custom properties under `:root`                                                                                                                                                                                                                                                                  |
+| Docker / deployment                              | `docker/Dockerfile`                                                                   | Multi-stage, uses Next standalone output                                                                                                                                                                                                                                                         |
+
+## Conventions
+
+- **Error types**: throw the matching `NpError` subclass from `@nexpress/core`, including `NpMethodNotAllowedError` and `NpServiceUnavailableError` where applicable. The API layer validates the exact envelope plus fixed framework code/status map from `@nexpress/core/api-contract`; malformed errors fail closed to opaque `INTERNAL_ERROR`. See `docs/api-error-codes.md`.
+- **Type-only imports**: enforced by ESLint (`@typescript-eslint/consistent-type-imports` with inline fix style). Prefer `import { type Foo } from "..."`.
+- **No import cycles**: enforced by `import-x/no-cycle`.
+- **React packages** declare React as a `peerDependency`; do not bundle it.
+- **Formatting**: Prettier — double quotes (`singleQuote: false`), semicolons, trailing commas, 100 char width.
+- **tsup builds**: all packages use `format: ["esm"]`, `dts: true` (except CLI). Multi-entry packages (editor, blocks, admin) produce separate client bundles with `"use client"` banner.
+- `NEXPRESS_DB_PORT` in `.env` must match the port Postgres is bound to in `docker-compose.yml` (default 5433, not 5432).
+
+## PR cadence (for agents)
+
+- **Don't open a PR for every unit task.** Group related work into one branch / one PR. Two reasons: reviewer load scales with PR count (six 10-line PRs are noisier than one 60-line PR), AND **GitHub Actions minutes are billed per run** — every PR triggers CI ×3 jobs on open + a re-run on merge, and every push to `main` additionally fires the Release workflow. A six-PR cluster pays for ~30 workflow runs to land work that one PR would have shipped in 5.
+- A reasonable bundle is everything that lands together to ship a single user-visible outcome (one feature, one bug fix, one cluster of consistent refactors). The Phase 23 / onboarding cluster (#397–#418) is the cautionary precedent — most of those should have been one or two PRs, not twenty-two.
+- Split when (and only when) one of these is true: the changes are independently revertable and one might need to be backed out without the other; the work touches a sensitive surface (security gate, auth flow, billing) that benefits from a focused review; or the bundle has grown past ~800 lines and is genuinely two stories.
+- Don't mistake "I finished a sub-step" for "ready to PR." Keep working on the branch until the user-visible outcome is whole, then open one PR. Mid-work check-ins go in the conversation, not GitHub.
+- **One-line / docs-only changes**: prefer pushing directly to `main` (no PR). Branch protection isn't enforced on this repo, and a PR for a 7-line README edit costs five workflow runs to deliver three lines of value.
+
+## ANTI-PATTERNS (THIS PROJECT)
+
+- **Never import `@nexpress/core` from client components** — it pulls in `pg`, `sharp`, `argon2` and breaks the build. In UI packages, use `import type` only.
+- **Never import `@nexpress/admin` from `(site)/*` routes** — leaks admin bundle to public pages.
+- **Never import `next/cache` directly** — use `revalidateCollection()` from `@nexpress/next`.
+- **Never edit generated files by hand** — `apps/web/src/db/generated/collections.ts` and `apps/web/next-env.d.ts` are generated. Edit source definitions and re-run generators.
+- **Never suppress type errors** — no `as any`, `@ts-ignore`, `@ts-expect-error`. A few `as never` casts exist in admin field editors and plugin host — minimize, don't add more.
+- **Never create parallel DB connections** — call `ensureFor(...)` (or rely on the routes that do) and read from the `getDb()` singleton. One pool per process.
+- **Never run `pnpm db:generate` without reviewing output** — destructive schema changes are not auto-applied.
+- **Never assume `withCurrentSite` crosses a durable queue/process boundary** — its `AsyncLocalStorage` scope safely follows concurrent, nested, awaited, and callback-created async resources in one execution graph. A later pg-boss claim is a different graph, so stamp `siteId` onto the exact payload and register `resolveSiteId` to scope the complete handler dispatch.
+
+## STABILITY (pre-1.0)
+
+What the current pre-1.0 `@nexpress/*` packages commit to. This list began with
+the v0.1 publication contract and is extended as later 0.x surfaces stabilize.
+Anything not on this list is internal-by-default or has not yet earned a
+stability promise — treat it as moveable.
+
+### Stable surface
+
+These are the public APIs we'll honor with semver and migration notes. Breaking them rides a **minor bump pre-1.0** and ships a CHANGELOG line operators can search for.
+
+- **Collection authoring** — `defineCollection({ slug, fields, hooks, access, … })` and the field-config types (`NpTextField`, `NpRichTextField`, `NpRelationshipField`, `NpBlocksField`, `NpArrayField`, `NpGroupField`, `NpRowField`, `NpCollapsibleField`, …). Adding a new field type is non-breaking. Renaming or removing one is a minor with a migration note.
+- **Rich-text content** — `NpRichTextContent` is the NexPress-owned `{ version: 1, document }` wire format. `@nexpress/core/fields` exports the client-safe type, validator, type guard, version constant, and empty-document factory; `@nexpress/editor` re-exports the type. Raw Lexical `{ root }` payloads are rejected before collection writes. Future format changes use a new envelope version plus an explicit migration path. Author docs: `docs/rich-text.md`.
+- **Plugin authoring** — `definePlugin({ manifest, hooks, actions, routes, pageRoutes, scheduled, blocks })`. `actions` is a definition-level `Record<actionId, { kind, handler }>` with `action | metric | status | table` kinds; the compatible setup-time `ctx.actions.register*` methods remain supported. Content hooks use the operation-specific names `content:beforeCreate`, `content:afterCreate`, `content:beforeUpdate`, `content:afterUpdate`, `content:beforeDelete`, `content:afterDelete`, `content:beforePublish`, `content:afterPublish`, and `content:beforeUnpublish`; every phase receives its exact `document` / `documentId` / `originalDocument` / `operation` / `source` / `principal` payload. Auth and media hooks have the same per-name typed-data contract, and lifecycle handlers return void. The single render hook is `render:beforePage`; its typed `NpRenderContribution` return separates `head` from `bodyEnd`. `scheduled` ships typed five-field UTC cron tasks whose handlers return void. `blocks` ships an `NpBlockDefinition[]` registered into the shared block registry at boot.
+- **Bootstrap intent enum** — `ensureFor("read" | "plugins" | "worker" | "write")`. `worker` installs plugins and email delivery without an enqueue-only pg-boss producer; semantics of all four are pinned.
+- **REST error contract** — `@nexpress/core/api-contract` owns the exact bounded `NpApiError` envelope, known `NpErrorCode` inventory and fixed status map, safe extension-code grammar, validation detail array, recursive JSON detail limits, analyzers, guards, and create/require helpers. `NpForbiddenError`, `NpNotFoundError`, `NpValidationError`, `NpAuthError`, `NpConflictError`, `NpMethodNotAllowedError`, `NpRateLimitError`, `NpServiceUnavailableError`, and `NpSiteContextMissingError` emit through `@nexpress/next`'s fail-closed `npErrorResponse()`. The API proxy, auth factories, framework routes, and OpenAPI use the same contract. Author/client docs: [docs/api-error-codes.md](../../api-error-codes.md).
+- **Content transfer contract** — `@nexpress/core/content-transfer` owns the exact bounded v3 `full | partial` envelope, canonical inventories, media/relationship projections, document ordering, and import report. Export derives media only from definition-owned fields and never truncates collections; import preflights active definitions, preserves document UUIDs, orders new relationship targets, and applies all database mutations in one outer transaction. The active collection OpenAPI uses the same envelope. Author/operator docs: [docs/content-transfer.md](../../content-transfer.md).
+- **Capability vocabulary** — `can(user, capability)` and the existing capability strings: `"admin.manage"`, `"content.publish"`, `"content.author"`, `"community.moderate"`. New capability strings will be added; existing ones won't be renamed or removed in 0.x.
+- **Subpath exports** — `@nexpress/core/api-contract`, `/auth`, `/auth-contract`, `/cache`, `/collection-contract`, `/collections`, `/community`, `/community-contract`, `/content-transfer`, `/db`, `/discovery`, `/email`, `/fields`, `/i18n-contract`, `/i18n`, `/jobs`, `/jobs-contract`, `/media`, `/media-contract`, `/navigation`, `/observability`, `/rate-limit`, `/revisions`, `/routes`, `/search`, `/seo`, `/settings`, `/sites`, `/storage`, `/theme`. Symbols inside each are stable per the rules above. `/bootstrap` is the experimental framework-host exception below.
+- **Adapters** — `NpStorageAdapter` (`LocalStorageAdapter`, `S3StorageAdapter`), `NpJobQueue` (with `PgBossAdapter`), `NpLogger` + `setLogger`, `NpErrorReporter` + `setErrorReporter`, `NpEmailAdapter` + `setEmailAdapter` / `sendEmail`, `NpRateLimiterAdapter` + `npCheckRateLimit` / `npShutdownRateLimiter`, `NpSearchAdapter`, and `NpCacheInvalidationAdapter` / `NpCdnPurgeAdapter`. Storage keys/metadata and adapter Web-stream/URL/boolean/void results are exact; storage adapter kinds are canonical lowercase identifiers and may expose void-returning `shutdown()`. Search adapters declare `audience: "document-v1"`, consume the exact framework-derived `public | all` audience scope, and return scoped documents with canonical audiences. Their optional `document-v1` indexing capability consumes exact latest-state mutations and fully streamed atomic collection replacements; successful indexing methods resolve to void. Cache invalidation requests/results are exact and bounded; CDN purge/shutdown resolves to void. Email messages are exact single-recipient objects; rate-limit requests and decisions are exact bounded objects. Adapter kinds are canonical lowercase identifiers, and successful send/shutdown hooks resolve to void. Optional methods (e.g. `NpJobQueue.isHealthy?`) may be promoted to required only with a minor + migration note.
+- **`NpPrincipal` union** — adding a variant is breaking (every `switch (principal.kind)` site needs updating, enforced by `_exhaustive: never`). The existing `"staff"` / `"member"` shape is committed.
+- **Block authoring and content** — `NpBlockDefinition` (`type`, `label`, `defaultProps`, exact `propsSchema`, `acceptsChildren?`, `render(props, children?)`) and the `NpBlockInstance` wire shape (`id`, `type`, `props`, optional exact `layout: { colSpan, mdColSpan?, lgColSpan? }`, optional `children: NpBlockInstance[]`). `NpBlockPropField` is the closed v1 discriminated union for `text`, `textarea`, `number`, `boolean`, `select`, `url`, `richtext`, `image`, `color`, `collection`, and object-only `array`; type-specific metadata/defaults, scalar sibling conditions, and recursive item schemas are validated before registration and across Admin/discovery/OpenAPI. The experimental alias-only `media` field is not part of v1. Every layout span is an integer from 1–12; the built-in grid consumes direct-child layout while every tree transform preserves it. `NpBlockContent` is the stored array type. `@nexpress/core/fields`, `@nexpress/blocks`, and `@nexpress/blocks/contracts` share `npValidateBlockContent` and `isNpBlockContent`; collection writes, generated types, OpenAPI, patterns, Admin JSON/paste/preview, translation, and unknown-block operations use that contract. Instance ids are unique across the whole tree; unknown/inactive block types remain structurally valid so content survives plugin/theme removal. Adding optional fields to the definition or instance is non-breaking. `NpBlockMetadata` (= `NpBlockDefinition` minus `render`) is the serializable subset the admin uses for the picker / props form. The shared registry helpers `registerBlock`, `getRegisteredBlocks`, `getRegisteredBlockMetadata`, `getSharedRegistry` are stable. The lightweight `@nexpress/blocks/contracts` subpath also exports `npValidateBlockDefinition`, `npAnalyzeBlockDefinitions`, and `npBlockPropFieldTypes`. Author docs: `docs/block-content.md` and `docs/plugin-blocks.md`.
+- **Plugin block contribution** — `definePlugin({ blocks: NpBlockDefinition[] })`. Definition, bootstrap, registry, and doctor validation reject malformed definitions/props schemas and same-plugin duplicate types before registration. The bootstrap (`@nexpress/next`) registers every configured plugin block into the process-global shared registry at boot; Admin and public rendering resolve the last-loaded owner active for the current site, falling back to an earlier active owner after a collision. Same-source re-registration is idempotent for HMR/reload; cross-source type collisions remain operator-visible warnings. Author docs: `docs/plugin-blocks.md`.
+- **Plugin page-route contribution** (added 2026-05-11, #623) — `definePlugin({ pageRoutes: NpPluginPageRouteRegistration[] })`. Each entry has a function `component`, optional function `metadata`, plus `surface: "site" | "member"` and `locale: "auto" | "none"` knobs. Definition and host validation reject malformed patterns/handlers and same-plugin duplicates; plugin doctor reports those errors plus cross-plugin conflicts. The catch-all dispatches via `dispatchPluginRoute` (`@nexpress/next`); precedence is page > slug-redirect > theme > plugin > 404. `locale: "none"` uses the raw URL and receives no automatic hreflang aliases. Adding optional fields to the registration type is non-breaking. Author docs: `docs/plugin-pages.md`. Pattern grammar (`/`, `:name`, `:name(regex)`, segment-count match) is stable; glob / catch-all is **not** part of the current pre-1.0 commitment. The `surface: "member"` shell wrap is **stable** as of the v0.2 layout refactor (2026-05-11) — `surface: "member"` plugin routes render with `impl.members.shell` + the F-track fallback chain via `apps/web/src/components/shell-wrap.tsx`, dispatched from the (site) catch-all based on `match.route.surface` (no parallel `(member)` catch-all is needed; a layout-bound dispatch isn't possible in Next.js anyway).
+- **Block server → client metadata bridge** — host apps wrap their admin children with `<BlocksRegistryProvider metadata={getRegisteredBlockMetadata()}>` (called server-side). The page builder reads it via the `useBlocksRegistry()` hook. Without the provider, plugin blocks render correctly on the public site but are absent from the admin's Add-block popover (the registry singleton is module-scoped and the browser instance only has the built-in defaults).
+- **Theme tokens** — `NpThemeTokens` is the closed `colors` / `typography` / `shape` tree; `NpThemeTokensOverlay` is its partial author/plugin/persistence form. `@nexpress/core/theme` exports the canonical inventory, full/overlay validators, analyzers, type guards, defaults, sanitization, and deep-merge helpers. Theme definitions, Admin/API writes, backup import/export, plugin `ctx.theme`, OpenAPI, effective reads, and CSS generation use the same fail-closed contract. New optional keys are additive; renaming/removing groups or keys requires a migration note. Author docs: `docs/theme-tokens.md`.
+- **Navigation trees** — `NpNavItem` is the exact stored `link | collection | page` wire union; `NpResolvedNavItem` is the public-read form with a concrete `url`. `@nexpress/core/navigation` exports both types plus the canonical location/tree analyzers, validators, type guards, patterns, and limits. Theme seed content, Admin/API writes, backup import/export, OpenAPI, cached reads, and public rendering share that contract and fail closed on malformed persisted rows. Author docs: `docs/navigation.md`.
+- **Code-owned custom routes** — `NpCustomRouteDefinition` is the exact bounded author shape and `NpCustomRoute` adds path-derived `kind` plus canonical `source` for Admin/API transport. `npDefineCustomRoutes()` validates complete catalogs during module evaluation; `npRegisterCustomRoutes()` atomically replaces one source and rejects cross-source path collisions. Scaffold bootstrap, Settings → Routes, navigation autocomplete, the protected API, and `routes.contract` doctor diagnostics share the same parser. Author docs: `docs/custom-routes.md`.
+- **Media records and variants** — `NpMediaRecord`, `NpMediaVariant`, `NpMediaVariants`, `NpMediaFocalPoint`, and `NpMediaProcessingOptions` are exact runtime contracts. `@nexpress/core/media-contract` is the client-safe type/validator surface; `@nexpress/core/media` owns server operations and re-exports the contract. Processing, persisted reads, URL resolution, plugin reads, Admin/API payloads, OpenAPI, cleanup, and storage diagnostics share the same fail-closed rules. Variant URLs derive from the stored `storageKey` and active adapter rather than being persisted or inferred. Author docs: `docs/media.md`.
+
+### Experimental — no stability promise
+
+These exist on the published surface but are explicitly NOT covered by the rules above. Use them; expect to migrate when they shift.
+
+- **WordPress import internals** — the CLI surface (`packages/wp-import/src/cli/`) is stable; `parse/` / `convert/` / `media/` / `apply/` modules are not a public API. Importing from them will break.
+- **Generated schema output** — `apps/web/src/db/generated/collections.ts` and friends are codegen artifacts. Don't import from generated paths in user code outside the file Drizzle expects.
+- **Framework-host bootstrap wiring** — `@nexpress/core/bootstrap` exposes raw singleton setters, registry lifecycle, and hook dispatch for integration packages. Application code must use `@nexpress/next` or domain subpaths; individual host symbols may move while this boundary is experimental.
+- **Internal auth helpers** — `signToken`, `verifyToken`, `hashPassword`, `ARGON2_OPTIONS`. Keep using `verifyTokenFull` (which is part of the auth subpath); the lower-level helpers may be removed from the public surface.
+
+### Removed during v0.x hardening
+
+- Raw bootstrap wiring from the `@nexpress/core` root and normal domain subpaths (`setDb`, `setStorageAdapter`, `configureStorageRuntime`, storage shutdown, `setJobQueue`, `loadPlugins`, `runHook`, `runHookAndCollect`, `teardownPlugins`, `resetPlugins`). Use `@nexpress/core/bootstrap` for framework hosts and `@nexpress/core/db` for DB factory/access.
+- `hasRole(user, minRole)` / `isStaffMod(user)` — replaced by `can(user, capability)` (#273).
+- `@nexpress/blocks/client` subpath — the page-builder editor moved into `@nexpress/admin` (#444). `@nexpress/blocks` is server-safe end-to-end now (types, registry, renderBlocks, block definitions). Sites importing `BlockPageEditor` from the old subpath should switch to letting `field-renderer` handle blocks fields automatically.
+- `NpBlockRegistration` (the legacy `component: string` shape exported from `@nexpress/plugin-sdk`) — replaced by the real `NpBlockDefinition` from `@nexpress/blocks` on `NpPluginDefinition.blocks` (#446). The old type stays exported as `@deprecated` for type compatibility but was never wired and has no consumers.
+
+### What this section is NOT
+
+It's not a roadmap. It says what's pinned today, not what 1.0 will look like. The Lexical and theme-token entries are the most likely to evolve before 1.0; the rest of the experimental list is expected to either firm up (move to stable) or shrink (move to internal).
+
+## NOTES
+
+- **CI** — `.github/workflows/ci.yml` runs on every `pull_request`,
+  manual `workflow_dispatch`, and selected `push: main` changes (docs-only
+  and changeset-only pushes are ignored on `main`; PR triggers stay
+  unconditional so required checks are never missing):
+  1. `typecheck + build + test` — install → build → typecheck → `pnpm test`.
+  2. `integration tests (Postgres)` — Postgres 16 service container + `pnpm test:integration` against `TEST_DATABASE_URL` (#275). Covers the pipeline / write-path code that mocked unit tests can't.
+  3. `E2E (Playwright)` — Postgres 16 + Playwright + `next start` against the built bundle. Runs on PRs and manual dispatch, not push-to-main.
+  4. `scaffold smoke (fresh scaffold journey)` — packs the workspace packages, scaffolds a temp project outside the monorepo, installs it, typechecks it, and runs the deploy-readiness journey smoke.
+- **Release** — `.github/workflows/release.yml` runs on `push: main`
+  and manual `workflow_dispatch`. It uses `changesets/action` to open/update
+  the "Version Packages" PR when changesets are queued, and publishes via
+  `pnpm run release` after that PR lands. npm auth uses Trusted Publishing
+  (OIDC, `id-token: write`, `NPM_CONFIG_PROVENANCE=true`), not `NPM_TOKEN`.
+  The workflow also dispatches CI for GITHUB_TOKEN-created Version PRs and
+  mirrors required job conclusions onto the Version PR commit.
+- **Dependabot merges** — Dependabot-authored PRs are the only merge-strategy
+  exception: plan and execute them with `pnpm merge:dependabot -- <pr>` after
+  all four PR checks pass. The helper requires the current exact head and a
+  copied approval token, uses a two-parent `--merge` commit, then waits for the
+  merge SHA's CI and Release push runs. Never squash a Dependabot PR; a
+  bot-authored squash commit can lose the normal post-merge workflow authority.
+  Ordinary and Version Packages PRs remain squash merges.
+- **No pre-commit hooks** — no husky or lint-staged configured.
+- **`@nexpress/next` package name** — not the framework. It's NexPress's Next.js integration helpers (`createBootstrap`, `createAuthHelpers`, `createCollectionHelpers`).
+- **LocalStorageAdapter** is not multi-node safe. Use S3 for production deployments with multiple instances.
+- **Turbo typecheck/test tasks depend on `^build`** — packages must be built before typecheck/test will run. This increases CI time.

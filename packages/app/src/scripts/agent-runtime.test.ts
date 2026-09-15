@@ -49,6 +49,9 @@ function service() {
     errorCode: null,
   });
   return {
+    statusInTransaction: vi
+      .fn<NpAgentRuntimeControlsV1["statusInTransaction"]>()
+      .mockResolvedValue(state()),
     status: vi
       .fn<NpAgentRuntimeControlsV1["status"]>()
       .mockResolvedValue(result("status", "status")),

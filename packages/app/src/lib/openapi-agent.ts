@@ -37,6 +37,18 @@ export function buildAgentHttpOpenApiV1() {
   const utc = { type: "string", format: "date-time" };
   const integer = { type: "integer", minimum: 0, maximum: Number.MAX_SAFE_INTEGER };
   const text = { type: "string", maxLength: 1024 };
+  const usage = object(
+    Object.fromEntries(
+      [
+        "providerCalls",
+        "capabilityCalls",
+        "inputTokens",
+        "cachedInputTokens",
+        "outputTokens",
+        "costMicros",
+      ].map((k) => [k, integer]),
+    ),
+  );
   const run = object({
     schemaVersion: { const: "np.agent-run.v1" },
     id: uuid,
@@ -63,18 +75,7 @@ export function buildAgentHttpOpenApiV1() {
         ].map((k) => [k, integer]),
       ),
     }),
-    usage: object(
-      Object.fromEntries(
-        [
-          "providerCalls",
-          "capabilityCalls",
-          "inputTokens",
-          "cachedInputTokens",
-          "outputTokens",
-          "costMicros",
-        ].map((k) => [k, integer]),
-      ),
-    ),
+    usage: nullable(usage),
     attempt: { type: "integer", minimum: 1, maximum: 2147483647 },
     errorCode: nullable(text),
     errorMessage: nullable(text),
@@ -83,6 +84,13 @@ export function buildAgentHttpOpenApiV1() {
     startedAt: nullable(utc),
     finishedAt: nullable(utc),
   });
+  // Unknown Runtime measurements remain null; Gateway reads always retain numeric usage.
+  run.allOf = [
+    {
+      if: { properties: { origin: { const: "gateway" } } },
+      then: { properties: { usage } },
+    },
+  ];
   const schemas: Record<string, Schema> = {
     NpAgentHttpInvocationRequest: relocate(
       invocation.request,

@@ -131,28 +131,30 @@ export function createAgentRuntimeEventServiceV1(options: NpAgentRuntimeEventSer
         evidence.definition.settings.some((branch) => branch.recipeId === recipe.id),
     );
   }
-  return {
-    async registerTrigger(input: {
-      siteId: string;
-      agentId: string;
-      expectedVersionId: string;
-      trigger: NpAgentTrigger;
-      enabled: boolean;
-    }) {
-      npAssertAgentPreviewEffectsAllowed();
-      canonicalBodyRecord(
-        input,
-        "agent.runtime.trigger.register",
-        ["siteId", "agentId", "expectedVersionId", "trigger", "enabled"],
-        ["siteId", "agentId", "expectedVersionId", "trigger", "enabled"],
-        { seen: new WeakSet<object>() },
-      );
-      canonicalBodySiteId(input.siteId, "agent.runtime.siteId");
-      canonicalBodyUuid(input.agentId, "agent.runtime.agentId");
-      canonicalBodyUuid(input.expectedVersionId, "agent.runtime.versionId");
-      const trigger = npRequireAgentTriggerV1(input.trigger);
-      if (typeof input.enabled !== "boolean") fail();
-      return npWithAgentRuntimeControlTransactionV1(input.siteId, async ({ db }) => {
+  async function registerTrigger(input: {
+    siteId: string;
+    agentId: string;
+    expectedVersionId: string;
+    trigger: NpAgentTrigger;
+    enabled: boolean;
+    db?: Db;
+  }) {
+    npAssertAgentPreviewEffectsAllowed();
+    canonicalBodyRecord(
+      input,
+      "agent.runtime.trigger.register",
+      ["siteId", "agentId", "expectedVersionId", "trigger", "enabled", "db"],
+      ["siteId", "agentId", "expectedVersionId", "trigger", "enabled"],
+      { seen: new WeakSet<object>() },
+    );
+    canonicalBodySiteId(input.siteId, "agent.runtime.siteId");
+    canonicalBodyUuid(input.agentId, "agent.runtime.agentId");
+    canonicalBodyUuid(input.expectedVersionId, "agent.runtime.versionId");
+    const trigger = npRequireAgentTriggerV1(input.trigger);
+    if (typeof input.enabled !== "boolean") fail();
+    return npWithAgentRuntimeControlTransactionV1(
+      input.siteId,
+      async ({ db }) => {
         const time = now();
         const filter = trigger.type === "event" ? trigger.filter : {};
         const row = {
@@ -197,8 +199,13 @@ export function createAgentRuntimeEventServiceV1(options: NpAgentRuntimeEventSer
         if (rows.length >= 100) fail("RUNTIME_TRIGGER_LIMIT");
         await db.insert(npAgentTriggers).values(row);
         return { triggerId: row.id, replayed: false };
-      });
-    },
+      },
+      input.db,
+    );
+  }
+  return {
+    registerTrigger,
+    registerTriggerInTransaction: registerTrigger,
     async record(input: { siteId: string; event: NpAgentEventCanonicalV1; expiresAt?: Date }) {
       npAssertAgentPreviewEffectsAllowed();
       canonicalBodyRecord(

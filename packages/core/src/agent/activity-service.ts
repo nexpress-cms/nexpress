@@ -440,7 +440,9 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
                   costMicros: 0,
                   ...row.usage,
                 }
-              : row.usage,
+              : Object.keys(row.usage).length === 0
+                ? null
+                : row.usage,
           attempt: row.attempt,
           errorCode: row.errorCode === null ? null : "RUN_FAILED",
           errorMessage: row.errorCode === null ? null : "Run did not complete successfully.",
@@ -451,8 +453,8 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
         },
       });
     } catch {
-      // Runtime reservations can have unresolved usage. The current wire shape
-      // requires exact numeric totals, so unprojectable evidence stays unavailable.
+      // Malformed evidence remains unavailable; an exact empty Runtime usage
+      // marker projects as unknown rather than hiding the entire Run.
       throw missing();
     }
   }
