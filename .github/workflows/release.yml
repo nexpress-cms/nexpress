@@ -60,7 +60,8 @@ jobs:
   release:
     name: Version + publish
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Leave room for setup and the full downstream CI gate (up to 30 minutes).
+    timeout-minutes: 45
 
     # `pnpm build` ends with `next build`'s page-data collection step,
     # which imports `nexpress.config.ts` and validates the project contract.
@@ -191,6 +192,8 @@ jobs:
           VERSION_PR_BRANCH: changeset-release/main
           VERSION_PR_BASE: main
           CI_WORKFLOW_FILE: ci.yml
+          # The PostgreSQL job can legitimately outlast the bridge's 15m default.
+          BRIDGE_CI_TIMEOUT_SECONDS: "2100"
         run: node scripts/bridge-version-pr-ci.mjs
 
       # Race guard: the Version PR's merge commit (titled
