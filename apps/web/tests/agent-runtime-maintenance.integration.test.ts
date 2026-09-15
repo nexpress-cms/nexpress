@@ -4,11 +4,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   closeTestDb,
   ensureMigrated,
+  getTestDatabaseUrl,
   registerTestCollections,
   skipIfNoTestDb,
   truncateAll,
 } from "./harness.js";
 import { npWithAgentRuntimeRetentionBudgetV1 } from "../../../packages/core/src/agent/runtime-retention-budget.js";
+import { PgBossAdapter } from "../../../packages/core/src/jobs/pg-boss-adapter.js";
 import { npWithAgentRuntimeControlTransactionV1 } from "../../../packages/core/src/agent/runtime-controls.js";
 import { runtimeFixture, siteId } from "./agent-runtime-service-fixture.js";
 import {
@@ -272,36 +274,41 @@ describe.skipIf(skipIfNoTestDb())("Runtime event maintenance", () => {
     });
   });
 
-  it("retains sources required by a live durable job even after dispatch expiry", async () => {
-    const f = await runtimeFixture();
-    const source = event(siteId);
-    await f.db.insert(npAgentEvents).values(source);
-    // This isolated worker uses the real database query branch with the same
-    // journal fields as pg-boss, without starting a worker or sending a job.
-    await f.db.execute(sql`create schema if not exists pgboss`);
-    await f.db.execute(
-      sql`create table pgboss.job (id uuid primary key, state text not null, data jsonb not null)`,
-    );
-    try {
+  it.each(["first pass", "reused journal"])(
+    "retains live durable job sources after dispatch expiry (%s)",
+    async () => {
+      const f = await runtimeFixture();
+      const source = event(siteId);
+      await f.db.insert(npAgentEvents).values(source);
+      const url = getTestDatabaseUrl();
+      if (!url) throw new Error("TEST_DATABASE_URL not set");
+      const adapter = new PgBossAdapter(url);
       const id = randomUUID();
-      await f.db.execute(
-        sql`insert into pgboss.job (id,state,data) values (${id}::uuid,'active',${JSON.stringify({ siteId, eventId: source.id })}::jsonb)`,
-      );
-      expect(await pruneAgentRuntimeEventsV1({ siteId })).toEqual({
-        examined: 1,
-        pruned: 0,
-        nextCursor: null,
-      });
-      await f.db.execute(sql`update pgboss.job set state='completed' where id=${id}::uuid`);
-      expect(await pruneAgentRuntimeEventsV1({ siteId })).toEqual({
-        examined: 1,
-        pruned: 1,
-        nextCursor: null,
-      });
-    } finally {
-      await f.db.execute(sql`drop table pgboss.job`);
-    }
-  });
+      // Worker databases are reused across test files, so the real journal may
+      // already exist. Producer initialization is idempotent and starts no job
+      // processing. Store one synthetic fact and preserve the shared schema.
+      try {
+        await adapter.startProducer();
+        await f.db.execute(
+          sql`insert into pgboss.job (id,name,state,data) values (${id}::uuid,'search.reindex','active',${JSON.stringify({ siteId, eventId: source.id })}::jsonb)`,
+        );
+        expect(await pruneAgentRuntimeEventsV1({ siteId })).toEqual({
+          examined: 1,
+          pruned: 0,
+          nextCursor: null,
+        });
+        await f.db.execute(sql`update pgboss.job set state='completed' where id=${id}::uuid`);
+        expect(await pruneAgentRuntimeEventsV1({ siteId })).toEqual({
+          examined: 1,
+          pruned: 1,
+          nextCursor: null,
+        });
+      } finally {
+        await adapter.stop();
+        await f.db.execute(sql`delete from pgboss.job where id=${id}::uuid`);
+      }
+    },
+  );
   it("cancels lock contention within the maintenance statement budget and rolls back prior pruning", async () => {
     const f = await runtimeFixture();
     const source = event(siteId);
