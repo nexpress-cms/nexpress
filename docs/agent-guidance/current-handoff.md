@@ -1,68 +1,63 @@
 # Current work handoff
 
-Observed after Nodemailer PR #1433 merged on 2026-09-15 12:49 UTC
-(21:49 KST). Verify Git state and final workflow conclusions before continuing.
+Observed during the grouped dependency update on 2026-09-16 KST.
+Verify Git state and the bundled PR's final checks/merge evidence before continuing.
 
 ## Objective and authorization
 
 - Repository: `/Users/baesw/development/nexpress`.
-- The user authorized the recommended Nodemailer security update, its merge
-  and post-merge verification. [PR #1433](https://github.com/nexpress-cms/nexpress/pull/1433)
-  was merged through the repository's Dependabot workflow.
-- Own package versions, changesets, schema and migrations remain unchanged.
-  Dependency manifests and lockfile changes were authorized for this bundle.
-- No other dependency PR, Version PR, package publication or R5 implementation
-  is authorized by this handoff. No automatic Runtime/provider/worker activation,
-  new credentials, provider calls or external email delivery.
+- The user requested grouped updates, merge and selection of the next task.
+  This bundle combines the remaining sharp/browserslist security fixes with
+  open ordinary dependency updates; Version PR #1366 is excluded.
+- Commit, PR and merge are authorized for this bundle. Own package versions,
+  changesets, application schema and migrations remain unchanged.
+- No package publication, new credentials, external provider calls or automatic
+  Runtime/provider/worker activation is authorized. Further feature work needs
+  the next task's scope; do not infer full R5 completion.
 
 ## Observed checkout
 
-- Implementation baseline: `main` at
-  `85bb8b35c330a64f2b9adf950132f770c4e7b068`.
-- The merge contains prior main `d344b3c6` and reviewed PR head `2fde9d60`.
-  Local main was fast-forwarded before this subsequent documentation update.
-- Verify current HEAD, remote synchronization and ownership of pending changes.
-  Main protection requires a PR and checks, including documentation changes;
-  never rely on bypass privileges or obsolete direct-push guidance.
+- Baseline main: `a39da222d65b12d733bd21da16d145cb185f8102`.
+- Implementation branch: `codex/grouped-dependency-updates`.
+- This handoff is included in the same bundle. Read its PR for the final tested
+  head, merge SHA and post-merge CI/Release results; these were pending at this
+  checkpoint. Verify current HEAD and remote synchronization before acting.
+- Main protection requires a PR and checks. Do not use bypass privileges.
 
 ## Implementation and evidence
 
-- `apps/web/package.json` selects Nodemailer ^9.1.1. The lockfile resolves both
-  the app and Core's optional peer to 9.1.1, with no older Nodemailer entries.
-  Core's public peer range remains unchanged. Compatible Rollup patch entries
-  update from 4.63.1 to 4.63.3 with their platform packages.
-- Self-review found the original app-only update left Core's optional peer at
-  9.0.1. The final lockfile removes it. Frozen installation and explicit runtime
-  resolution checks passed for both app and Core.
-- Local verification: verify 113 tasks and lint 41 tasks passed uncached before
-  the peer correction, then passed from cache on the final lockfile. Core's full
-  1,920 unit tests were rerun without Turbo caching on 9.1.1; all passed.
-  All 25 email tests and a direct app SMTP envelope/text/HTML smoke passed using
-  loopback capture only. Formatting, manifest preservation and diff checks passed.
-- [PR CI 34968856260](https://github.com/nexpress-cms/nexpress/actions/runs/34968856260)
-  passed all four checks on exact head `2fde9d6017e51f2b6190e5d3632427341b25b8e2`:
-  build/typecheck/unit tests, PostgreSQL and explicit Redis, production E2E
-  with isolated native preview, and packed scaffold/extension/first-run checks.
-- Exact-merge [CI 34971192693](https://github.com/nexpress-cms/nexpress/actions/runs/34971192693)
-  and [Release 34971192724](https://github.com/nexpress-cms/nexpress/actions/runs/34971192724)
-  were running at this checkpoint. Inspect their final conclusions and the
-  linked PR's final evidence before claiming the post-merge gate passed.
-- GitHub's refreshed open-alert inventory contains only sharp #67 and
-  browserslist #62 (both High); the four Nodemailer alerts are no longer open.
+- Core sharp range, root override and generated app range/override all select
+  0.35.4. Root and generated apps pin browserslist 4.28.7. Review found the
+  existing sharp-only PR missed the root/scaffold override paths.
+- This supersedes dependency PRs #1409, #1415, #1421, #1423, #1424, #1425,
+  #1426, #1427 and #1443 after the bundled changes are merged and verified.
+- Other updated families: AWS SDK S3, jose, pg-boss, Lexical, lucide-react,
+  Node types, ESLint and pnpm/action-setup. pnpm itself remains 10.33.0.
+  Use the lockfile for resolved versions; caret ranges can resolve newer
+  compatible versions than the original Dependabot PR titles.
+- Frozen install and own-version/changeset/migration preservation checks passed.
+  Native sharp 0.35.4 (libvips 8.18.6, libheif 1.23.2) encoded, resized and
+  decoded PNG, JPEG, WebP and AVIF in a local synthetic-image smoke test.
+- Local verify/lint and full PR CI were in progress at this checkpoint.
+  Final evidence belongs in the bundled PR: build/typecheck/unit tests,
+  PostgreSQL with theme cases, explicit Redis, native preview, production
+  browser and packed scaffold checks. Never count skipped tests as passed.
+- Merge this ordinary combined PR with squash after all four checks pass.
+  Confirm post-merge CI/Release and refreshed GitHub alerts. Close superseded
+  dependency PRs only after confirming their updates are included.
+- Keep the handoff with this bundle rather than creating a separate update PR
+  for each dependency or for final test counts; record final evidence in the PR.
 
 ## Next boundary
 
-- Next candidate: sharp security PR #1409, then browserslist. Recheck current
-  alerts, diff/head/base and all four required checks; do not merge automatically.
-  Dependabot work uses `pnpm merge:dependabot -- <pr>`, its exact-head token and
-  post-merge CI/Release verification when the user authorizes the next bundle.
-- R5 remains open: audit source release lacks an owner, and Action attribution
-  requires the Run reference and fingerprint to be null together. Define the
-  evidence/reference lifecycle and agree on necessary migration scope first.
-  Preserve active work, unresolved usage/outcomes, approvals and rollback
+- If no open security alerts or ordinary dependency PRs remain, return to the
+  R5 evidence lifecycle design: audit source release lacks an owner, and Action
+  attribution couples the Run reference and fingerprint being null together.
+  Agree on lifecycle and necessary migration scope before implementation.
+- Preserve active work, unresolved usage/outcomes, approvals and rollback
   evidence. See the [retention matrix](../design/agentic-platform/r5-runtime-retention-flow.md).
-- Structured manual-input recipes still need executor-owned storage/consumption;
-  existing schema-null recipe/goal admission remains supported. Prior R5 evidence
-  is in the [Runtime Studio flow](../design/agentic-platform/r5-runtime-studio-flow.md).
-- Start the next requested bundle in a fresh task. Reuse current contracts and
-  relevant guidance instead of reloading the full implementation history.
+- Structured manual-input recipes still require executor-owned storage and
+  consumption. Existing schema-null recipe/goal admission remains supported.
+  Prior evidence is in the [Runtime Studio flow](../design/agentic-platform/r5-runtime-studio-flow.md).
+- Start the next requested feature bundle in a fresh task, using current
+  contracts and relevant guidance rather than the full historical conversation.

@@ -231,7 +231,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
         // platforms such as Vercel need sharp's optional native payload
         // present in the app install graph for standalone tracing. Keep
         // this range aligned with @nexpress/core's direct dependency.
-        sharp: "^0.35.3",
+        sharp: "^0.35.4",
         // Pinned to ^16 — `@nexpress/app`'s route handlers use Next 16
         // signatures (notably `revalidateTag(tag, profile)` with the
         // second arg added in 16; `proxy.ts` replacing `middleware.ts`).
@@ -268,7 +268,8 @@ function packageJsonTemplate(config: TemplateConfig): string {
       // graph onto that safe version until Next raises its optional range.
       pnpm: {
         overrides: {
-          sharp: "0.35.3",
+          browserslist: "4.28.7",
+          sharp: "0.35.4",
         },
       },
       // Native-build allowlist for pnpm lives in `pnpm-workspace.yaml`'s
