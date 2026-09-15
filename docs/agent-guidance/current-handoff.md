@@ -1,75 +1,75 @@
 # Current work handoff
 
-Observed after PR #1445 merged on 2026-09-14 17:42 UTC (2026-09-15 02:42 KST).
-Verify Git state and current user authorization before continuing.
+Observed after Next.js security PR #1422 merged on 2026-09-15 10:54 UTC
+(2026-09-15 19:54 KST). Verify Git state and current checks before continuing.
 
 ## Objective and authorization
 
 - Repository: `/Users/baesw/development/nexpress`.
-- Bounded policy simulation, dependency-safe Runtime retention and the local
-  acceptance audit were committed, pushed and squash-merged in
-  [PR #1445](https://github.com/nexpress-cms/nexpress/pull/1445).
-- The user authorized this merge and choosing the next task. No next feature,
-  dependency update, Version PR or release was authorized by that instruction.
-- Package versions, changesets, lockfile, schema and migrations were unchanged.
-  Keep those constraints until the user explicitly changes the next bundle's
-  scope. No automatic Runtime/provider/worker activation, new credentials or
-  provider calls.
+- The user requested the proposed Next.js security task, allowing dependency
+  manifests and lockfile updates while keeping own package versions and
+  changesets unchanged. [PR #1422](https://github.com/nexpress-cms/nexpress/pull/1422)
+  was merged through the repository's Dependabot workflow.
+- No other dependency PR, Version PR, package publication or R5 implementation
+  is authorized by this handoff. No automatic Runtime/provider/worker activation,
+  new credentials or provider calls. Schema and migrations remain unchanged.
 
 ## Observed checkout
 
-- Branch: `main`; merged implementation baseline:
-  `9a87712f618e74742558ceae788d030dcf503e9c`.
-- Checkout was clean and synchronized with `origin/main` after the merge.
-  This handoff is a subsequent documentation-only commit; verify current HEAD
-  and synchronization rather than assuming it is still the merge commit.
+- Merged implementation baseline on `main`:
+  `56431bcdf4ba600a793328666536f4ed3a367d0c`.
+- Verified two parents: prior main `48a056ba` and reviewed PR head `7473e739`.
+  Local main was fast-forwarded to the merge and dependencies installed with
+  `pnpm install --frozen-lockfile`; reference app resolves Next.js 16.3.4.
+- This handoff is a subsequent documentation-only change. Verify current
+  branch/HEAD, remote synchronization and ownership of pending changes.
+- Live main protection requires a PR and status checks, including for docs.
+  Do not rely on older guidance claiming main protection is absent.
 
 ## Implementation and evidence
 
-- Pure simulation owner: `packages/core/src/agent-contract/runtime-policy-simulation.ts`.
-  Existing Runtime service/admission owns the audited non-authorizing operation.
-  Shared App HTTP, Admin UI and reference/scaffold wrappers expose it only
-  through the explicitly installed host. Fifteen Admin operations are installed.
-- Retention owner: `packages/core/src/agent/runtime-retention.ts`, called by the
-  existing maintenance jobs with `runtime-retention-budget.ts`. Seven categories
-  preserve active work, unresolved usage/outcomes and Agent/audit/job references.
-- Detailed scope, review fixes and all local gates:
-  [Runtime Studio flow](../design/agentic-platform/r5-runtime-studio-flow.md#r5-completion-audit-and-current-verification),
+- Fourteen manifests update Next.js from ^16.3.1 to ^16.3.4. The lockfile also
+  updates Next/SWC and compatible Rollup/browser-data transitive dependencies.
+  `baseline-browser-mapping` resolves to 2.11.22. Own package versions and
+  changesets did not change.
+- `.github/workflows/release.yml` now allows 35 minutes for the Version PR CI
+  bridge and 45 minutes for the overall Release job. The previous 15-minute
+  bridge timed out while its downstream CI later passed. Required checks,
+  draft Version PR behavior and release authorization remain unchanged.
+- Local verification: frozen install, 56 repository tests, `pnpm verify
+--concurrency=1` (113 tasks, all uncached), `pnpm lint` (41 tasks, all uncached),
+  formatting and diff checks passed. Web ESLint used the existing command-local
+  8 GiB Node wrapper; no global Node setting or package script was changed.
+- [PR CI 34958552229](https://github.com/nexpress-cms/nexpress/actions/runs/34958552229)
+  passed all four checks on exact head `7473e7392d9fe6a97713f59bee305f1997be8c0d`.
+  This includes PostgreSQL, explicit Redis/native preview, production E2E
+  (69 passed) and packed scaffold/extension/first-run checks.
+- Post-merge [CI 34960479358](https://github.com/nexpress-cms/nexpress/actions/runs/34960479358)
+  and [Release 34960479510](https://github.com/nexpress-cms/nexpress/actions/runs/34960479510)
+  target the exact merge SHA. At this observation CI was running; Release was
+  retried after a GitHub 502 response during Version PR creation/update.
+  Inspect final conclusions before claiming the post-merge gate passed.
+- Documentation-only updates need preservation/link/format checks and
+  `git diff --check`, not another application build.
+
+## Next boundary
+
+- Recheck GitHub dependency alerts after scanner refresh. Next.js 16.3.4 is
+  above the 16.3.3 fix listed by Critical alerts #64/#66; do not confuse a
+  patched lockfile with a confirmed closed GitHub alert.
+- Remaining candidates include sharp, nodemailer and browserslist security
+  updates. Recheck each current diff/head/base and all four required checks;
+  use `pnpm merge:dependabot -- <pr>`, the exact-head approval token and
+  post-merge CI/Release verification when the user authorizes the next bundle.
+- R5 remains open: audit source release lacks an owner, and Action attribution
+  requires the Run reference and fingerprint to be null together. Define the
+  verified evidence/reference lifecycle and agree on necessary migration scope
+  before implementing it. Preserve active work, unresolved usage/outcomes,
+  approvals and rollback evidence. See the
   [retention matrix](../design/agentic-platform/r5-runtime-retention-flow.md).
-- Local acceptance passed: verify 113 tasks, lint 41, Core PostgreSQL 68,
-  Web PostgreSQL 1,433 (theme 5 included), explicit native preview 1, live Redis
-  16, production Playwright 69, packed scaffold 40 packages / 56 stages.
-- [PR CI run 34874219970](https://github.com/nexpress-cms/nexpress/actions/runs/34874219970)
-  passed all four checks on exact head `9899d673e625fb27475f573e5f31dd4d71551563`.
-  This records PR CI; inspect current main CI/Release separately if needed.
-- Handoff/documentation updates need link/format/preservation checks and
-  `git diff --check`, not repeated application builds.
-
-## Recommended next task: dependency security fixes
-
-- GitHub's open alerts at this checkpoint include two Critical Next.js alerts
-  (#64 and #66), both listing 16.3.3 as the first patched version. Prioritize
-  [the existing Next.js 16.3.4 PR #1422](https://github.com/nexpress-cms/nexpress/pull/1422),
-  then review remaining sharp, nodemailer and transitive dependency alerts.
-- This is a recommendation, not authorization to merge another PR. Starting
-  this bundle requires the user to allow dependency manifests and lockfile
-  changes; keep `@nexpress/*` package versions and changesets deferred.
-- Recheck the selected PR's current diff, head, base and all four CI checks.
-  Use the existing `pnpm merge:dependabot -- <pr>` workflow, its exact-head
-  approval token and post-merge CI/Release checks; do not merge a Version PR.
-
-## Subsequent R5 boundary
-
-- Full R5 remains open. Normal audit references retain Runtime source details;
-  there is no normal audit source-release owner. The Action attribution check
-  also requires Run reference and fingerprint to be null together.
-- Define verified evidence retention/source release and its reference matrix
-  before implementation. Preserve audit, approval, rollback and unresolved
-  outcome evidence. Agree on any necessary schema/migration scope first;
-  do not silently detach references or erase immutable attribution.
-- Structured manual-input recipes remain unavailable until their executor owns
-  storage/consumption. Existing schema-null interactive recipe/goal admission
-  is supported; template-specific executors belong to the R6 boundary.
-- Start the next requested bundle in a fresh task using this handoff and the
-  affected design sections. Reuse existing contracts/services and do not reload
-  all historical guidance or repeat completed acceptance without a code change.
+- Structured manual-input recipes still need executor-owned storage/consumption;
+  existing schema-null recipe/goal admission remains supported. Prior R5
+  implementation evidence is in the
+  [Runtime Studio flow](../design/agentic-platform/r5-runtime-studio-flow.md).
+- Start the next requested bundle in a fresh task; reuse relevant current
+  contracts and guidance instead of reloading the full implementation history.

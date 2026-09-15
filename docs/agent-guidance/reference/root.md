@@ -438,7 +438,7 @@ A separate package (not part of `@nexpress/core`) that ingests a WXR export end-
 - A reasonable bundle is everything that lands together to ship a single user-visible outcome (one feature, one bug fix, one cluster of consistent refactors). The Phase 23 / onboarding cluster (#397–#418) is the cautionary precedent — most of those should have been one or two PRs, not twenty-two.
 - Split when (and only when) one of these is true: the changes are independently revertable and one might need to be backed out without the other; the work touches a sensitive surface (security gate, auth flow, billing) that benefits from a focused review; or the bundle has grown past ~800 lines and is genuinely two stories.
 - Don't mistake "I finished a sub-step" for "ready to PR." Keep working on the branch until the user-visible outcome is whole, then open one PR. Mid-work check-ins go in the conversation, not GitHub.
-- **One-line / docs-only changes**: prefer pushing directly to `main` (no PR). Branch protection isn't enforced on this repo, and a PR for a 7-line README edit costs five workflow runs to deliver three lines of value.
+- **Documentation-only changes**: group related updates and use a PR. The active `main` protection requires PRs and status checks; verify current rules rather than relying on older claims that protection is absent. Do not use account bypass privileges to skip those requirements.
 
 ## ANTI-PATTERNS (THIS PROJECT)
 
