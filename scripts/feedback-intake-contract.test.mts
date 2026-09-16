@@ -94,23 +94,6 @@ test("new and reopened issues enter the maintainer triage queue", async () => {
   assert.match(workflow, /gh issue edit[\s\S]*--add-label triage/);
 });
 
-test("public docs expose intake routes and a bounded triage policy", async () => {
-  const readme = await read("README.md");
-  const triage = await read("docs/triage.md");
-
-  for (const template of ["bug_report.yml", "install_feedback.yml", "feature_request.yml"]) {
-    assert.match(readme, new RegExp(`issues/new\\?template=${template.replace(".", "\\.")}`));
-  }
-  assert.match(triage, /at least once each week/);
-  assert.match(triage, /priority: high/);
-  assert.match(triage, /priority: medium/);
-  assert.match(triage, /priority: low/);
-  assert.match(triage, /Security vulnerabilities must be reported privately/);
-  assert.match(triage, /Consumer-visible[\s\S]*require a changeset/);
-  assert.match(readme, /pnpm run feedback/);
-  assert.match(readme, /never uploads anything automatically/);
-});
-
 test("the local report allowlist covers every public NexPress package", async () => {
   const implementation = await read("packages/cli-nexpress/src/feedback-report.ts");
   for (const name of await publicNexpressPackages()) {

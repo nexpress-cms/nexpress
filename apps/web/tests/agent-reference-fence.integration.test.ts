@@ -440,6 +440,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
   it("uses indexed lookups with large retained history and a dense UUID payload", async () => {
     // Seeding 50,000 retained rows is setup, not the guarded-write workload.
     // Keep its CI I/O allowance transaction-local so measured writes retain 5s.
+    const setupStarted = performance.now();
     await observer.query("BEGIN; SET LOCAL statement_timeout='60s'");
     try {
       await observer.query(
@@ -451,6 +452,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
       await observer.query("ROLLBACK");
       throw error;
     }
+    const setupMs = Math.round(performance.now() - setupStarted);
     for (const client of [observer, writer])
       expect((await client.query("SHOW statement_timeout")).rows[0].statement_timeout).toBe("5s");
     const plan = await observer.query(
@@ -458,21 +460,33 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
       [sourceId, "site-a"],
     );
     expect(JSON.stringify(plan.rows)).toContain("np_fence_source_idx");
+    const batchStarted = performance.now();
     await writer.query(
       "INSERT INTO np_audit_events(site_id,payload) SELECT 'site-a',jsonb_build_object('source',$1::text) FROM generate_series(1,1000)",
       [sourceId],
     );
+    const batchMs = Math.round(performance.now() - batchStarted);
     expect((await observer.query("SELECT count(*) FROM np_audit_events")).rows[0].count).toBe(
       "1000",
     );
     // Every connection has a five-second statement timeout. This actual
     // 370KB/10,000-UUID input exposed quadratic full-string regexp_instr work.
+    const denseStarted = performance.now();
     await writer.query("INSERT INTO np_audit_events(site_id,payload) VALUES('site-a',$1)", [
       { dense: `${sourceId} `.repeat(10_000) },
     ]);
+    const denseMs = Math.round(performance.now() - denseStarted);
     expect((await observer.query("SELECT count(*) FROM np_audit_events")).rows[0].count).toBe(
       "1001",
     );
+    console.info("Reference fence retained history", {
+      retainedRows: 50_000,
+      setupMs,
+      batchRows: 1_000,
+      batchMs,
+      denseUuidCount: 10_000,
+      denseMs,
+    });
   }, 120_000);
 
   it.each(["audit", "job"])(
@@ -535,10 +549,12 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
                 rowId,
               ]);
         await expect(update).rejects.toMatchObject({ code: "23514" });
-        // Sweep every offset modulo the 240-character chunk width so both
-        // overlapping identities cross every possible chunk boundary. Multi-byte
-        // prefixes also prove that offsets count characters, not UTF-8 bytes.
-        for (let padding = 0; padding < 240; padding++) {
+        // Both owners call the same SQL scanner. Sweep all character offsets
+        // once through audit; job retains multibyte/chunk-boundary probes as well
+        // as its distinct data/site mapping, INSERT, UPDATE and key checks above.
+        const offsets =
+          owner === "audit" ? Array.from({ length: 240 }, (_, i) => i) : [0, 239, 240, 241];
+        for (const padding of offsets) {
           await expect(insert({ note: `${"한".repeat(padding)}${overlap}` })).rejects.toMatchObject(
             {
               code: "23514",

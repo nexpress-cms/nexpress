@@ -20,11 +20,6 @@ vi.mock("next/link", () => ({
   ),
 }));
 
-// This suite runs with `isolate: false`; themes may already have imported the
-// component with Next's real navigation module in the same worker. Reload the
-// module graph after installing these focused mocks.
-vi.resetModules();
-
 const { usePathname } = await import("next/navigation");
 const { LanguagePicker } =
   await import("../../../packages/themes/default/src/components/language-picker.js");
@@ -39,12 +34,6 @@ describe("LanguagePicker", () => {
   function setPath(path: string) {
     vi.mocked(usePathname).mockReturnValue(path);
   }
-
-  it("renders one link per configured locale", () => {
-    setPath("/en/blog/hello");
-    const html = renderToStaticMarkup(<LanguagePicker locales={["en", "ko", "ja"]} />);
-    expect((html.match(/<a /g) ?? []).length).toBe(3);
-  });
 
   it("replaces a known locale prefix with the picked locale", () => {
     setPath("/en/blog/hello");

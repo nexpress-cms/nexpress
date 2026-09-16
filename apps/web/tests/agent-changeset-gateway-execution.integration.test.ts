@@ -32,6 +32,7 @@ import {
 import { npRequireAgentChangeSetExecutionOutputV1 } from "../../../packages/core/src/agent-contract/installed-capability-contract.js";
 import {
   gatewayExecutionFixture as gatewayFixture,
+  gatewayExecutionEnvironmentFixture as gatewayEnvironment,
   gatewayExecutionRequest as request,
   invokeGatewayExecution as invoke,
   readyGatewayExecution as ready,
@@ -57,13 +58,13 @@ describe.skipIf(skipIfNoTestDb())("Gateway approved ChangeSet execution", () => 
   it.each(["apply", "schedule"] as const)(
     "requests human approval then executes %s under a new invocation key",
     async (operation) => {
-      const f = await gatewayFixture("approved-execute", operation);
+      const f = await gatewayEnvironment("approved-execute", operation);
       const plan = await ready(f);
       const input = {
         changeSetId: plan.id,
         planHash: plan.planHash,
         approvalId: null,
-        ...(operation === "schedule" ? { scheduledFor: f.executionCommand.scheduledFor } : {}),
+        ...(operation === "schedule" ? { scheduledFor: f.scheduledFor } : {}),
       };
       const firstRequest = request(
         `changeset.${operation}`,
@@ -204,7 +205,7 @@ describe.skipIf(skipIfNoTestDb())("Gateway approved ChangeSet execution", () => 
   }, 90_000);
 
   it("allows proposals but refuses approved execution at propose exposure", async () => {
-    const f = await gatewayFixture("propose");
+    const f = await gatewayEnvironment("propose");
     const plan = await ready(f);
     const proposal = await invoke(
       f,
@@ -287,7 +288,7 @@ describe.skipIf(skipIfNoTestDb())("Gateway approved ChangeSet execution", () => 
   it.each(["agent-http", "mcp-http"] as const)(
     "never reuses a real %s service credential across HTTP audiences",
     async (transport) => {
-      const f = await gatewayFixture("approved-execute", "apply", { transport });
+      const f = await gatewayEnvironment("approved-execute", "apply", { transport });
       Object.assign(f.principal.gatewaySettings, {
         agentHttp: "approved-execute",
         mcpHttp: "approved-execute",

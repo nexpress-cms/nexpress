@@ -26,8 +26,10 @@ describe("non-block scaffold generators", () => {
   // Common shape for every kind: same baseline file set, derived names,
   // refusal to overwrite, and the kind label on the result.
   const commonAssertions = (kind: string, generator: typeof scaffoldHookPlugin) => {
-    it(`${kind} — writes baseline file set`, async () => {
-      const result = await generator({ slug: "demo", outDir: workdir });
+    // One generated package supplies these read-only artifact assertions;
+    // regenerating it for its file list, export and README adds no boundary.
+    it(`${kind} — writes a consistently named package with registration guidance`, async () => {
+      const result = await generator({ slug: "my-demo", outDir: workdir });
       expect(result.files.sort()).toEqual([
         "README.md",
         "package.json",
@@ -37,17 +39,9 @@ describe("non-block scaffold generators", () => {
       ]);
       expect(result.kind).toBe(kind);
       expect(result.interactive).toBe(false);
-      expect(result.packageDir.endsWith("demo")).toBe(true);
-    });
-
-    it(`${kind} — derives camelCase export from the slug`, async () => {
-      const result = await generator({ slug: "my-demo", outDir: workdir });
+      expect(result.packageDir.endsWith("my-demo")).toBe(true);
       const source = await readFile(join(result.packageDir, "src/index.tsx"), "utf-8");
       expect(source).toMatch(/export const myDemoPlugin = definePlugin/);
-    });
-
-    it(`${kind} — documents CLI registration for local workspace plugins`, async () => {
-      const result = await generator({ slug: "my-demo", outDir: workdir });
       const readme = await readFile(join(result.packageDir, "README.md"), "utf-8");
       expect(readme).toContain("From your NexPress project root");
       expect(readme).toContain("pnpm --filter my-demo build");

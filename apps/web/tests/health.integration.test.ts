@@ -33,6 +33,7 @@ describe.skipIf(skipIfNoTestDb())("GET /api/health/ready (readiness)", () => {
   it("returns 200 with all probes ok when DB + storage are wired", async () => {
     const response = await readyGET();
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
     const body = (await response.json()) as {
       status: string;
       probes: {
@@ -49,11 +50,6 @@ describe.skipIf(skipIfNoTestDb())("GET /api/health/ready (readiness)", () => {
     // ≠ broken).
     expect(body.probes.queue.ok).toBe(true);
     expect(body.probes.queue.enabled).toBe(false);
-  });
-
-  it("sets Cache-Control: no-store so the probe always reflects current state", async () => {
-    const response = await readyGET();
-    expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
   describe("queue probe — isHealthy round-trip (Phase 22.4)", () => {

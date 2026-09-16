@@ -29,7 +29,6 @@ describe("highlightMatches (Phase 10.7)", () => {
   it("returns the text unchanged when query is empty", () => {
     const html = render(highlightMatches("Hello world", ""));
     expect(html).toBe("Hello world");
-    expect(html).not.toContain("<mark");
   });
 
   it("returns the text unchanged when query is whitespace-only", () => {
@@ -39,7 +38,6 @@ describe("highlightMatches (Phase 10.7)", () => {
 
   it("filters single-char tokens (avoids matching every letter)", () => {
     const html = render(highlightMatches("a banana a", "a"));
-    expect(html).not.toContain("<mark");
     expect(html).toBe("a banana a");
   });
 

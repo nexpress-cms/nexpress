@@ -5,15 +5,19 @@ import {
   npRequireAgentChangeSetExecutionOutputV1,
   type NpAgentChangeSetCapabilityInvocationRequestV1,
 } from "../../../packages/core/src/agent-contract/installed-capability-contract.js";
-import { executionFixture, decideApproval } from "./agent-changeset-execution-fixture.js";
+import {
+  executionEnvironmentFixture,
+  executionFixture,
+  decideApproval,
+} from "./agent-changeset-execution-fixture.js";
 import { command, siteId } from "./agent-changeset-fixture.js";
-export async function gatewayExecutionFixture(
+function gatewayFixtureOptions(
   exposure: "propose" | "approved-execute" = "approved-execute",
   intendedOperation: "apply" | "schedule" = "apply",
   principalControl?: NonNullable<Parameters<typeof executionFixture>[0]>["principalControl"],
   configuration?: Pick<NonNullable<Parameters<typeof executionFixture>[0]>, "draftInput">,
-) {
-  const f = await executionFixture({
+): NonNullable<Parameters<typeof executionFixture>[0]> {
+  return {
     ...configuration,
     principalExposure: exposure,
     intendedOperation,
@@ -22,12 +26,27 @@ export async function gatewayExecutionFixture(
       Promise.resolve(
         npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(`changeset.${intendedOperation}`),
       ),
-  });
-  if (!f.principal) throw new Error("Expected Gateway principal");
-  const principal = f.principal;
-  return { ...f, principal };
+  };
 }
-export type GatewayExecutionFixture = Awaited<ReturnType<typeof gatewayExecutionFixture>>;
+export async function gatewayExecutionEnvironmentFixture(
+  exposure: "propose" | "approved-execute" = "approved-execute",
+  intendedOperation: "apply" | "schedule" = "apply",
+  principalControl?: NonNullable<Parameters<typeof executionFixture>[0]>["principalControl"],
+) {
+  const f = await executionEnvironmentFixture(
+    gatewayFixtureOptions(exposure, intendedOperation, principalControl),
+  );
+  if (!f.principal) throw new Error("Expected Gateway principal");
+  return { ...f, principal: f.principal };
+}
+export async function gatewayExecutionFixture(...args: Parameters<typeof gatewayFixtureOptions>) {
+  const f = await executionFixture(gatewayFixtureOptions(...args));
+  if (!f.principal) throw new Error("Expected Gateway principal");
+  return { ...f, principal: f.principal };
+}
+export type GatewayExecutionEnvironmentFixture = Awaited<
+  ReturnType<typeof gatewayExecutionEnvironmentFixture>
+>;
 export function gatewayExecutionRequest(
   capabilityId: "changeset.apply" | "changeset.schedule" | "changeset.rollback",
   input: unknown,
@@ -47,7 +66,7 @@ export function gatewayExecutionRequest(
   return parsed;
 }
 export async function invokeGatewayExecution(
-  f: GatewayExecutionFixture,
+  f: GatewayExecutionEnvironmentFixture,
   req: NpAgentChangeSetCapabilityInvocationRequestV1,
 ) {
   const result = await f.service.invokeCapability({
@@ -56,7 +75,7 @@ export async function invokeGatewayExecution(
   });
   return { ...result, output: npRequireAgentChangeSetExecutionOutputV1(result.output) };
 }
-export async function readyGatewayExecution(f: GatewayExecutionFixture) {
+export async function readyGatewayExecution(f: GatewayExecutionEnvironmentFixture) {
   const created = await f.service.create({
     actor: f.principal.actor,
     command: await command({
@@ -92,7 +111,10 @@ export async function readyGatewayExecution(f: GatewayExecutionFixture) {
   await f.service.processPreview({ siteId, previewId: preview.previewId });
   return sealed;
 }
-export async function approveGatewayExecution(f: GatewayExecutionFixture, approvalId: string) {
+export async function approveGatewayExecution(
+  f: GatewayExecutionEnvironmentFixture,
+  approvalId: string,
+) {
   const detail = await f.service.approvals!.get({ siteId, actor: f.actor.actor, id: approvalId });
   return decideApproval(f.service.approvals!, f.actor, detail);
 }
