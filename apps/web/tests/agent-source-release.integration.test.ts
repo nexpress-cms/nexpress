@@ -273,6 +273,10 @@ describe.skipIf(skipIfNoTestDb())("Runtime immutable evidence source-release lif
       expect(await f.db.select().from(npAgentSourceReleases)).toHaveLength(0);
       expect((await fingerprint()).rows).toEqual(before.rows);
     },
+    // PostgreSQL constructs, guards and fingerprints up to 69 MiB of fixture
+    // evidence before/after cleanup. Allow CI time for that I/O without changing
+    // the production maintenance statement budget or any preservation assertion.
+    120_000,
   );
 
   it.each(["action", "invocation"] as const)(

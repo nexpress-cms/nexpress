@@ -656,3 +656,9 @@ implementation does not establish full R5 product completion.
 
 Final integration runs use direct package scripts against complete dependency
 builds. The packed scaffold uses isolated dependencies outside the workspace.
+
+PR CI initially exceeded the default 30-second test wall time in the two large
+audit-fixture cases (33 MiB and 3 × 23 MiB). Those cases now allow 120 seconds
+for server-side fixture construction, ingress guards, cleanup and fingerprint
+comparison. The production maintenance statement budget and every preservation
+and cursor assertion are unchanged; no suite is skipped.
