@@ -662,3 +662,9 @@ audit-fixture cases (33 MiB and 3 × 23 MiB). Those cases now allow 120 seconds
 for server-side fixture construction, ingress guards, cleanup and fingerprint
 comparison. The production maintenance statement budget and every preservation
 and cursor assertion are unchanged; no suite is skipped.
+
+A subsequent CI run passed both oversized audit cases but exceeded five seconds
+while seeding 50,000 receipt fixtures for the indexed-lookup test. Fixture seeding
+and ANALYZE now use a transaction-local 60-second allowance. The test explicitly
+checks that both connections retain the original five-second statement budget
+before the measured 1,000 writes and dense 10,000-UUID payload.

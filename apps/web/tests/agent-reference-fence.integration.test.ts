@@ -438,10 +438,21 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
   });
 
   it("uses indexed lookups with large retained history and a dense UUID payload", async () => {
-    await observer.query(
-      "INSERT INTO np_agent_source_releases(site_id,source_id) SELECT 'site-a',gen_random_uuid() FROM generate_series(1,50000)",
-    );
-    await observer.query("ANALYZE np_agent_source_releases");
+    // Seeding 50,000 retained rows is setup, not the guarded-write workload.
+    // Keep its CI I/O allowance transaction-local so measured writes retain 5s.
+    await observer.query("BEGIN; SET LOCAL statement_timeout='60s'");
+    try {
+      await observer.query(
+        "INSERT INTO np_agent_source_releases(site_id,source_id) SELECT 'site-a',gen_random_uuid() FROM generate_series(1,50000)",
+      );
+      await observer.query("ANALYZE np_agent_source_releases");
+      await observer.query("COMMIT");
+    } catch (error) {
+      await observer.query("ROLLBACK");
+      throw error;
+    }
+    for (const client of [observer, writer])
+      expect((await client.query("SHOW statement_timeout")).rows[0].statement_timeout).toBe("5s");
     const plan = await observer.query(
       "EXPLAIN (FORMAT JSON) SELECT EXISTS (SELECT 1 FROM np_agent_source_releases WHERE source_id=$1::uuid AND site_id=$2)",
       [sourceId, "site-a"],
@@ -462,7 +473,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
     expect((await observer.query("SELECT count(*) FROM np_audit_events")).rows[0].count).toBe(
       "1001",
     );
-  });
+  }, 120_000);
 
   it.each(["audit", "job"])(
     "rejects an overlapping released UUID in %s INSERT and UPDATE",
