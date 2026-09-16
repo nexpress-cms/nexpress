@@ -96,6 +96,7 @@ import {
   npMeasureAgentRuntimeBudgetV1,
   npRequireAgentRuntimeUsageKnownV1,
 } from "./runtime-budget.js";
+import { npIsAgentRuntimeAdmissionKeyConsumedV1 } from "./source-release-read.js";
 
 type Db = ReturnType<typeof getDb>;
 type Run = typeof npAgentRuns.$inferSelect;
@@ -966,6 +967,17 @@ export function createAgentRuntimeAdmissionV1(
               ? { scheduledFor: source.scheduledFor }
               : null;
 
+          // Released source evidence permanently consumes the same admission key scope.
+          // It cannot stand in for a live Run or grant replay/execution authority.
+          if (
+            await npIsAgentRuntimeAdmissionKeyConsumedV1({
+              db,
+              siteId: input.siteId,
+              principalId: evidence.principal.id,
+              idempotencyKey: input.idempotencyKey,
+            })
+          )
+            fail("IDEMPOTENCY_KEY_REUSED");
           const [previous] = await db
             .select()
             .from(npAgentRuns)

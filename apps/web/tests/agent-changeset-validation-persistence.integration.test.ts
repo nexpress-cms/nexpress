@@ -30,6 +30,7 @@ import { npCollectAgentHealthSummaryV1 } from "../../../packages/core/src/agent/
 // eslint-disable-next-line import-x/no-relative-packages
 import {
   npInspectAgentSiteDeletionRows,
+  npAgentSiteOwnedTableNamesV1,
   npDeleteAgentSiteRows,
 } from "../../../packages/core/src/agent/site-deletion.js";
 // eslint-disable-next-line import-x/no-relative-packages
@@ -248,7 +249,8 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet validation attempt persistence", ()
     const drift = await npCollectAgentHealthSummaryV1();
     expect(drift.issues.some((issue) => issue.code === "AGENT_ROW_STATE_INVALID")).toBe(true);
     const inventory = await npInspectAgentSiteDeletionRows(f.db, siteId);
-    expect(inventory).toHaveLength(39);
+    expect(inventory).toHaveLength(npAgentSiteOwnedTableNamesV1.length);
+    expect(inventory.some((item) => item.table === "np_agent_reference_fence")).toBe(false);
     expect(inventory.some((row) => row.table === "np_agent_changeset_validation_attempts")).toBe(
       true,
     );

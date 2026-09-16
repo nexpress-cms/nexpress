@@ -61,3 +61,6 @@ export * from "./runtime-event-service.js";
 export * from "./runtime-jobs.js";
 export * from "./runtime-maintenance.js";
 export * from "./runtime-studio-service.js";
+
+// Reviewed migration / diagnostics primitives; do not install services or journals.
+export * from "./reference-fence-sql.js";

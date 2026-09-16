@@ -268,10 +268,20 @@ try {
 
   let agentRows = 0;
   for (const table of expectedTables) {
+    // The framework-global coordination singleton carries no Agent authority.
+    if (table === "np_agent_reference_fence") continue;
     const result = await client.query(`SELECT count(*)::int AS count FROM "${table}"`);
     agentRows += result.rows[0]?.count ?? 0;
   }
   if (agentRows !== 0) fail("fresh scaffold must not seed Agent authority", { agentRows });
+  const fence = await client.query("SELECT id, epoch::text FROM np_agent_reference_fence");
+  if (
+    fence.rows.length !== 1 ||
+    fence.rows[0]?.id !== 1 ||
+    !/^\d+$/u.test(fence.rows[0]?.epoch ?? "")
+  ) {
+    fail("fresh scaffold must contain exactly one valid reference coordination fence");
+  }
 
   const settingResult = await client.query(
     `SELECT key

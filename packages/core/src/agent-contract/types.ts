@@ -302,6 +302,7 @@ export const npAgentCanonicalPurposes = [
   "np.agent-run-limits.v1",
   "np.agent-signal-evidence.v1",
   "np.agent-site-deletion-plan.v1",
+  "np.agent-source-release.v1",
   "np.agent-staff-site-authorization.v1",
   "np.agent-vault-aad.v1",
 ] as const satisfies readonly (keyof NpAgentCanonicalPurposeBodyMapV1)[];
@@ -1661,6 +1662,88 @@ export interface NpAgentVaultAadCanonicalV1 {
   algorithm: NpAgentVaultAlgorithm;
 }
 
+/** Private, bounded facts retained after source detail removal; never execution authority. */
+interface NpAgentSourceReleaseBaseV1 {
+  schemaVersion: "np.agent-source-release.v1";
+  verifierVersion: 1;
+  siteId: string;
+  sourceId: string;
+  releasedAt: string;
+}
+export type NpAgentSourceReleaseCanonicalV1 = NpAgentSourceReleaseBaseV1 &
+  (
+    | {
+        kind: "runtime-run";
+        principalId: string;
+        agentId: string;
+        agentVersionId: string;
+        admissionFingerprint: string;
+        runLimitsHash: string;
+        budgetSnapshotHash: string;
+        state: "succeeded" | "failed" | "cancelled" | "policy_blocked" | "budget_blocked";
+        finishedAt: string;
+        retentionEligibleAt: string;
+        deadlineAt: string;
+        admissionKeyDigest: string;
+      }
+    | {
+        kind: "provider-call";
+        runId: string;
+        runFingerprint: string;
+        reservationId: string;
+        reservationFingerprint: string;
+        requestDigest: string;
+        responseDigest: string;
+        state: "succeeded" | "failed" | "cancelled";
+        dispatchState: "dispatched" | "not-dispatched";
+        usageSource: "provider" | "adapter-estimate" | null;
+        costSource: "provider" | "adapter-estimate" | null;
+        inputTokens: number | null;
+        cachedInputTokens: number | null;
+        outputTokens: number | null;
+        costMicros: number | null;
+        finishedAt: string;
+        reservationFinalizedAt: string;
+      }
+    | {
+        kind: "usage-reservation";
+        runId: string;
+        agentId: string;
+        connectionId: string;
+        model: string;
+        pricingId: string;
+        pricingVersion: number;
+        pricingFingerprint: string;
+        pricingEffectiveAt: string;
+        reservedAt: string;
+        finalizedAt: string;
+        state: "reconciled" | "released";
+        reservedCalls: number;
+        reservedInputTokens: number;
+        reservedOutputTokens: number;
+        reservedCostMicros: number;
+        actualInputTokens: number | null;
+        actualCachedInputTokens: number | null;
+        actualOutputTokens: number | null;
+        actualCostMicros: number | null;
+        actualUsageSource: "provider" | "adapter-estimate" | null;
+        actualCostSource: "provider" | "adapter-estimate" | null;
+        budgetChargeCostMicros: number;
+      }
+    | {
+        kind: "circuit-breaker";
+        scopeKind: "site" | "agent" | "connection" | "subject";
+        scopeRef: string;
+        version: number;
+        state: "closed";
+        failureCount: 0;
+        probeLeaseUntil: null;
+        updatedAt: string;
+      }
+  );
+
+export type NpAgentSourceReleaseV1 = NpAgentSourceReleaseCanonicalV1;
+
 export interface NpAgentCanonicalPurposeBodyMapV1 {
   "np.agent-action.v1": NpAgentActionCanonicalV1;
   "np.agent-approval-decision.v1": NpAgentApprovalDecisionCanonicalV1;
@@ -1692,6 +1775,7 @@ export interface NpAgentCanonicalPurposeBodyMapV1 {
   "np.agent-run-limits.v1": NpAgentRunLimitsCanonicalV1;
   "np.agent-signal-evidence.v1": NpAgentSignalEvidenceCanonicalV1;
   "np.agent-site-deletion-plan.v1": NpAgentSiteDeletionPlanCanonicalV1;
+  "np.agent-source-release.v1": NpAgentSourceReleaseCanonicalV1;
   "np.agent-staff-site-authorization.v1": NpAgentStaffSiteAuthorizationCanonicalV1;
   "np.agent-vault-aad.v1": NpAgentVaultAadCanonicalV1;
 }
@@ -1727,6 +1811,7 @@ export const npAgentCanonicalBodyMaxBytesV1 = {
   "np.agent-run-limits.v1": 16 * 1024,
   "np.agent-signal-evidence.v1": 512 * 1024,
   "np.agent-site-deletion-plan.v1": 16 * 1024 * 1024,
+  "np.agent-source-release.v1": 16 * 1024,
   "np.agent-staff-site-authorization.v1": 64 * 1024,
   "np.agent-vault-aad.v1": 16 * 1024,
 } as const satisfies Record<NpAgentCanonicalPurposeV1, number>;

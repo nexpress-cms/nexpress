@@ -9,8 +9,16 @@ import {
   truncateAll,
 } from "./harness.js";
 import { runtimeFixture, siteId } from "./agent-runtime-service-fixture.js";
+import {
+  npAgentRuns,
+  npAgentSourceReleaseEdges,
+  npAgentSourceReleases,
+} from "../../../packages/core/src/db/schema/agent.js";
 import { npAuditEvents } from "../../../packages/core/src/db/schema/community.js";
 import { npSettings } from "../../../packages/core/src/db/schema/system.js";
+import { createAgentRuntimeExecutionStoreV1 } from "../../../packages/core/src/agent/runtime-execution-store.js";
+import { pruneAgentRuntimeEventsV1 } from "../../../packages/core/src/agent/runtime-maintenance.js";
+import { npRequireAgentSourceReleaseRecordV1 } from "../../../packages/core/src/agent/source-release-read.js";
 import { enqueueJob, setJobQueue } from "../../../packages/core/src/jobs/queue.js";
 import { getJobHandler } from "../../../packages/core/src/jobs/handlers.js";
 
@@ -88,5 +96,70 @@ describe.skipIf(skipIfNoTestDb())("Runtime initial job quota receipt", () => {
       enqueueJob("agent:runExecute", { siteId, runId: randomUUID() }),
     ).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
     expect(f.enqueue).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves the owning quota audit on source release and rejects late enqueue before recount or delivery", async () => {
+    const f = await fixture();
+    // The owning quota service is real; this fixture mocks only the queue transport.
+    await enqueueJob("agent:runExecute", { siteId, runId: f.runId });
+    const store = createAgentRuntimeExecutionStoreV1({
+      admission: f.admission,
+      now: f.options.now,
+    });
+    const { claim } = await store.claim({ siteId, runId: f.runId });
+    if (!claim) throw new Error("Expected live fixture claim");
+    await store.transition({ siteId, runId: f.runId, claim, state: "succeeded" });
+    const audit = await f.db.select().from(npAuditEvents).orderBy(npAuditEvents.id);
+    const quotaAudit = audit.find(
+      (row) => row.action === "agent.runtime.job_admitted" && row.targetId === f.runId,
+    );
+    if (!quotaAudit) throw new Error("Missing owning job quota audit");
+    const [terminalRun] = await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, f.runId));
+    if (!terminalRun) throw new Error("Missing terminal Run");
+    expect(quotaAudit.createdAt.getTime()).toBeGreaterThanOrEqual(terminalRun.queuedAt.getTime());
+    expect(quotaAudit).toMatchObject({
+      siteId,
+      actorKind: "system",
+      targetType: "agent-run",
+      payload: {},
+    });
+    const now = new Date(f.options.now().getTime() + 91 * 86_400_000);
+    expect(await pruneAgentRuntimeEventsV1({ siteId, now })).toEqual({
+      examined: 1,
+      pruned: 1,
+      nextCursor: null,
+    });
+    expect(await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, f.runId))).toEqual([]);
+    const [release] = await f.db
+      .select()
+      .from(npAgentSourceReleases)
+      .where(eq(npAgentSourceReleases.sourceId, f.runId));
+    if (!release) throw new Error("Missing committed Run source release");
+    await expect(npRequireAgentSourceReleaseRecordV1(release)).resolves.toMatchObject({
+      kind: "runtime-run",
+      sourceId: f.runId,
+    });
+    expect(
+      await f.db
+        .select()
+        .from(npAgentSourceReleaseEdges)
+        .where(eq(npAgentSourceReleaseEdges.sourceReleaseId, release.id)),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          siteId,
+          ownerKind: "runtime-audit",
+          ownerId: quotaAudit.id,
+          edgeCode: "audit-target",
+        }),
+      ]),
+    );
+    expect(await f.db.select().from(npAuditEvents).orderBy(npAuditEvents.id)).toEqual(audit);
+    await expect(enqueueJob("agent:runExecute", { siteId, runId: f.runId })).rejects.toMatchObject({
+      code: "SERVICE_UNAVAILABLE",
+    });
+    expect(f.countSiteEnqueues).toHaveBeenCalledOnce();
+    expect(f.enqueue).toHaveBeenCalledOnce();
+    expect(await f.db.select().from(npAuditEvents).orderBy(npAuditEvents.id)).toEqual(audit);
   });
 });

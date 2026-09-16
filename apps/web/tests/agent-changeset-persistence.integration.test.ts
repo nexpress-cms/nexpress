@@ -19,6 +19,7 @@ import { createAgentGatewayServiceV1 } from "../../../packages/core/src/agent/ga
 // eslint-disable-next-line import-x/no-relative-packages
 import {
   npInspectAgentSiteDeletionRows,
+  npAgentSiteOwnedTableNamesV1,
   npDeleteAgentSiteRows,
 } from "../../../packages/core/src/agent/site-deletion.js";
 // eslint-disable-next-line import-x/no-relative-packages
@@ -735,7 +736,10 @@ describe.skipIf(skipIfNoTestDb())("ChangeSet persistence foundation", () => {
     await db.insert(npAgentChangesetOperations).values(operation(row.id));
     await db.insert(npAgentApprovals).values(approval(row.id, user.userId));
     const inventory = await npInspectAgentSiteDeletionRows(db, "changeset-a");
-    expect(inventory).toHaveLength(39);
+    expect(inventory).toHaveLength(npAgentSiteOwnedTableNamesV1.length);
+    expect(inventory.some((item) => item.table === "np_agent_reference_fence")).toBe(false);
+    for (const table of ["np_agent_source_release_edges", "np_agent_source_releases"])
+      expect(inventory.find((item) => item.table === table)?.count).toBe(0);
     for (const table of [
       "np_agent_changesets",
       "np_agent_changeset_operations",

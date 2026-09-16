@@ -20,6 +20,7 @@ import {
 import {
   npDeleteAgentSiteRows,
   npInspectAgentSiteDeletionRows,
+  npAgentSiteOwnedTableNamesV1,
 } from "../../../packages/core/src/agent/site-deletion.js";
 import { npCollectAgentHealthSummaryV1 } from "../../../packages/core/src/agent/contract-diagnostics.js";
 
@@ -139,7 +140,8 @@ describe.skipIf(skipIfNoTestDb())("Rollback persistence and recovery", () => {
     await f.service.reconcilePreviews({ siteId, limit: 100 });
     await npDeleteAgentSiteRows(f.db, siteId);
     const inventory = await npInspectAgentSiteDeletionRows(f.db, siteId);
-    expect(inventory).toHaveLength(39);
+    expect(inventory).toHaveLength(npAgentSiteOwnedTableNamesV1.length);
+    expect(inventory.some((item) => item.table === "np_agent_reference_fence")).toBe(false);
     expect(inventory.every((item) => item.count === 0)).toBe(true);
   });
   it("verifies rollback with its own operation journal and preserves the original result", async () => {

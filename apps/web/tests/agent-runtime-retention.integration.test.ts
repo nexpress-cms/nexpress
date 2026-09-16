@@ -1,14 +1,17 @@
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   npAgentProviderCalls,
   npAgentRuns,
+  npAgentSourceReleases,
   npAgentUsageDaily,
   npAgentUsageReservations,
 } from "../../../packages/core/src/db/schema/agent.js";
 import { npAuditEvents } from "../../../packages/core/src/db/schema/community.js";
+import { createAgentRuntimeExecutionStoreV1 } from "../../../packages/core/src/agent/runtime-execution-store.js";
 import { pruneAgentRuntimeEventsV1 } from "../../../packages/core/src/agent/runtime-maintenance.js";
 import { npDigestAgentProviderResponseCanonical } from "../../../packages/core/src/agent-contract/canonical-provider.js";
+import { npRequireAgentSourceReleaseRecordV1 } from "../../../packages/core/src/agent/source-release-read.js";
 import { npRequireAgentRuntimeProviderDecisionV1 } from "../../../packages/core/src/agent/runtime-provider-evidence.js";
 import type { NpAgentProviderInvokeOutcomeV1 } from "../../../packages/core/src/agent-contract/types.js";
 import { runtimeUsageFixture } from "./agent-runtime-usage-fixture.js";
@@ -75,18 +78,12 @@ async function settled(f: Fixture, ambiguous = false) {
   await f.usage.reconcile({ siteId, providerCallId: request.providerCallId, response });
   return { request, response };
 }
-async function finish(f: Fixture) {
-  await f.db
-    .update(npAgentRuns)
-    .set({ state: "cancelled", finishedAt: f.options.now() })
-    .where(eq(npAgentRuns.id, f.runId));
-}
-async function releaseUsageAudit(f: Fixture) {
-  // The retention service cannot itself rewrite immutable audit. Simulate
-  // release by its owner to exercise the final otherwise-unreferenced closure.
-  await f.db
-    .delete(npAuditEvents)
-    .where(and(eq(npAuditEvents.siteId, siteId), eq(npAuditEvents.action, "agent.runtime.usage")));
+async function finish(f: Fixture, unresolved = false) {
+  const store = createAgentRuntimeExecutionStoreV1({ admission: f.admission, now: f.options.now });
+  if (unresolved) return store.cancel({ siteId, runId: f.runId });
+  const { claim } = await store.claim({ siteId, runId: f.runId });
+  if (!claim) throw new Error("Expected live fixture claim");
+  return store.transition({ siteId, runId: f.runId, claim, state: "succeeded" });
 }
 
 describe.skipIf(skipIfNoTestDb())("Runtime provider and aggregate retention", () => {
@@ -144,7 +141,7 @@ describe.skipIf(skipIfNoTestDb())("Runtime provider and aggregate retention", ()
     expect((await f.call()).requestRedacted).toBeNull();
   });
 
-  it("keeps known call and daily evidence until active and audit dependencies are released", async () => {
+  it("releases settled sources after terminal retention while preserving actual audit", async () => {
     const f = await fixture();
     await settled(f);
     const now = new Date(f.options.now().getTime() + 401 * day);
@@ -154,29 +151,57 @@ describe.skipIf(skipIfNoTestDb())("Runtime provider and aggregate retention", ()
       nextCursor: null,
     });
     await finish(f);
-    expect((await pruneAgentRuntimeEventsV1({ siteId, now })).pruned).toBe(0);
-    expect(await f.db.select().from(npAgentProviderCalls)).toHaveLength(1);
-    await releaseUsageAudit(f);
-    // The call is deleted before its reservation. Their aggregate cannot be
-    // selected until a subsequent pass observes no retained reservation.
+    const audit = await f.db.select().from(npAuditEvents).orderBy(npAuditEvents.id);
     const result = await pruneAgentRuntimeEventsV1({ siteId, now });
-    expect(result.pruned).toBe(2);
+    expect(result.pruned).toBe(3);
     expect(await f.db.select().from(npAgentProviderCalls)).toHaveLength(0);
     expect(await f.db.select().from(npAgentUsageReservations)).toHaveLength(0);
+    expect(await f.db.select().from(npAgentRuns)).toHaveLength(0);
+    const receipts = await f.db.select().from(npAgentSourceReleases);
+    expect(receipts).toHaveLength(3);
+    for (const receipt of receipts)
+      await expect(npRequireAgentSourceReleaseRecordV1(receipt)).resolves.toMatchObject({ siteId });
+    expect(receipts.map((row) => row.sourceKind).sort()).toEqual([
+      "provider-call",
+      "runtime-run",
+      "usage-reservation",
+    ]);
+    expect(await f.db.select().from(npAuditEvents).orderBy(npAuditEvents.id)).toEqual(audit);
     expect(await f.db.select().from(npAgentUsageDaily)).toHaveLength(1);
     expect((await pruneAgentRuntimeEventsV1({ siteId, now })).pruned).toBe(1);
     expect(await f.db.select().from(npAgentUsageDaily)).toHaveLength(0);
+    await expect(f.admission.admit(f.runInput)).rejects.toMatchObject({
+      code: "IDEMPOTENCY_KEY_REUSED",
+    });
+    await expect(
+      f.admission.admit({ ...f.runInput, goal: "Changed historical request" }),
+    ).rejects.toMatchObject({ code: "IDEMPOTENCY_KEY_REUSED" });
+  });
+
+  it("pins a finalized reservation when its call disappeared without a release receipt", async () => {
+    const f = await fixture();
+    const { request } = await settled(f);
+    await finish(f);
+    // Deliberately model incomplete legacy evidence, never the positive cleanup path.
+    await f.db.delete(npAuditEvents).where(eq(npAuditEvents.targetId, request.providerCallId));
+    await f.db
+      .delete(npAgentProviderCalls)
+      .where(eq(npAgentProviderCalls.id, request.providerCallId));
+    await pruneAgentRuntimeEventsV1({
+      siteId,
+      now: new Date(f.options.now().getTime() + 401 * day),
+    });
+    expect(await f.db.select().from(npAgentUsageReservations)).toHaveLength(1);
     expect(await f.db.select().from(npAgentRuns)).toHaveLength(1);
+    expect(await f.db.select().from(npAgentSourceReleases)).toHaveLength(0);
   });
 
   it("retains ambiguous outcomes and unresolved usage regardless of nominal age", async () => {
     const f = await fixture();
     await settled(f, true);
-    await finish(f);
-    await releaseUsageAudit(f);
+    await finish(f, true);
     f.advance(61);
     await f.usage.expire({ siteId });
-    await releaseUsageAudit(f);
     const now = new Date(f.options.now().getTime() + 401 * day);
     await pruneAgentRuntimeEventsV1({ siteId, now });
     expect(await f.db.select().from(npAgentProviderCalls)).toHaveLength(1);

@@ -100,10 +100,12 @@ access loss removes the resource. Reference and scaffold routes remain wrappers.
 ## Remaining boundary
 
 [Dependency-safe Runtime retention](r5-runtime-retention-flow.md) extends the
-existing explicitly registered maintenance sweep. Audit-referenced Run/call
-history and action source references remain protected until their owning
-verified-reference lifecycle can release them. No migration or unverified
-reference detachment is introduced to claim full R5 completion.
+existing explicitly registered maintenance sweep. The subsequent
+[evidence source lifecycle](r5-evidence-source-lifecycle-design.md) adds two
+migrations and verified release receipts for eligible Run/call history and read
+Action references. Audit and canonical evidence remain intact. Unknown references,
+mutation Actions, approvals and rollback evidence remain protected; this does
+not establish full R5 completion.
 
 Structured manual-input recipes remain unavailable until an executor owns their
 canonical storage and consumption. R5 bounded manual admission supports the
@@ -170,7 +172,9 @@ create/read/update and an unrelated built-in maintenance handler. It uses the
 real Run/usage journals; it does not claim a live external provider call or
 fresh-process bootstrap proof.
 
-Current simulation/retention verification on 2026-09-15 KST:
+Historical simulation/retention verification on 2026-09-15 KST (the subsequent
+[evidence lifecycle verification](r5-evidence-source-lifecycle-design.md#verification-evidence)
+records the current source-release bundle):
 
 | Gate                                         | Result                                                                                                  |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------- |

@@ -56,6 +56,7 @@ import type {
   NpAgentRecipeSettingsV1,
   NpAgentRuntimeAdmissionSourcesV1,
 } from "../../agent-contract/runtime-contract.js";
+import type { NpAgentSourceReleaseV1 } from "../../agent-contract/source-release-contract.js";
 import { npAgentEventKinds } from "../../agent-contract/types.js";
 import type { NpAgentVerificationCheckV1 } from "../../agent-contract/changeset-execution-contract.js";
 import { npAuditEvents } from "./community.js";
@@ -1400,6 +1401,113 @@ export const npAgentRuns = pgTable(
   ],
 );
 
+/** Minimal immutable evidence; never executable source replacements. */
+export const npAgentSourceReleases = pgTable(
+  "np_agent_source_releases",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    sourceKind: text("source_kind").notNull(),
+    sourceId: uuid("source_id").notNull(),
+    evidenceBody: jsonb("evidence_body").$type<NpAgentSourceReleaseV1>().notNull(),
+    evidenceDigest: text("evidence_digest").notNull(),
+    principalId: uuid("principal_id"),
+    admissionKeyDigest: text("admission_key_digest"),
+    releasedAt: timestamp("released_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    unique("np_agent_source_releases_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_source_releases_source_unique").on(t.siteId, t.sourceKind, t.sourceId),
+    index("np_agent_source_releases_source_idx").on(t.sourceId, t.siteId),
+    index("np_agent_source_releases_reservation_idx")
+      .on(t.siteId, sql`(${t.evidenceBody}->>'reservationId')`)
+      .where(sql`${t.sourceKind}='provider-call'`),
+    uniqueIndex("np_agent_source_releases_key_unique")
+      .on(t.siteId, t.principalId, t.admissionKeyDigest)
+      .where(sql`${t.sourceKind}='runtime-run'`),
+    foreignKey({
+      name: "np_agent_source_releases_principal_fk",
+      columns: [t.siteId, t.principalId],
+      foreignColumns: [npAgentPrincipals.siteId, npAgentPrincipals.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_source_releases_kind_check",
+      sql`${t.sourceKind} in ('runtime-run','provider-call','usage-reservation','circuit-breaker')`,
+    ),
+    check(
+      "np_agent_source_releases_body_check",
+      sql`(jsonb_typeof(${t.evidenceBody})='object' and octet_length(${t.evidenceBody}::text)<=16384 and ${t.evidenceBody}->>'schemaVersion'='np.agent-source-release.v1' and ${t.evidenceBody}->>'kind'=${t.sourceKind} and ${t.evidenceBody}->>'siteId'=${t.siteId} and ${t.evidenceBody}->>'sourceId'=${t.sourceId}::text and (${t.evidenceBody}->>'releasedAt')::timestamptz=${t.releasedAt} and ${t.evidenceBody}->>'verifierVersion'='1') is true`,
+    ),
+    check(
+      "np_agent_source_releases_key_check",
+      sql`(((${t.sourceKind}='runtime-run') and ${t.principalId} is not null and ${t.admissionKeyDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.evidenceBody}->>'principalId'=${t.principalId}::text and ${t.evidenceBody}->>'admissionKeyDigest'=${t.admissionKeyDigest}) or (${t.sourceKind}<>'runtime-run' and ${t.principalId} is null and ${t.admissionKeyDigest} is null)) is true`,
+    ),
+    check(
+      "np_agent_source_releases_digest_check",
+      sql`${t.evidenceDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$'`,
+    ),
+  ],
+);
+
+export const npAgentSourceReleaseEdges = pgTable(
+  "np_agent_source_release_edges",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    sourceReleaseId: uuid("source_release_id").notNull(),
+    ownerKind: text("owner_kind").notNull(),
+    ownerId: uuid("owner_id").notNull(),
+    edgeCode: text("edge_code").notNull(),
+    ownerEvidenceDigest: text("owner_evidence_digest").notNull(),
+    verifierVersion: integer("verifier_version").notNull().default(1),
+    releasedAt: timestamp("released_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    unique("np_agent_source_release_edges_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_source_release_edges_owner_unique").on(
+      t.siteId,
+      t.sourceReleaseId,
+      t.ownerKind,
+      t.ownerId,
+      t.edgeCode,
+    ),
+    index("np_agent_source_release_edges_owner_idx").on(t.siteId, t.ownerKind, t.ownerId),
+    foreignKey({
+      name: "np_agent_source_release_edges_release_fk",
+      columns: [t.siteId, t.sourceReleaseId],
+      foreignColumns: [npAgentSourceReleases.siteId, npAgentSourceReleases.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_source_release_edges_owner_check",
+      sql`${t.ownerKind} in ('runtime-audit','read-action','read-invocation')`,
+    ),
+    check(
+      "np_agent_source_release_edges_code_check",
+      sql`(${t.ownerKind}='runtime-audit' and ${t.edgeCode} in ('audit-target','audit-run','audit-reservation')) or (${t.ownerKind}='read-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='read-invocation' and ${t.edgeCode}='invocation-authority-run')`,
+    ),
+    check(
+      "np_agent_source_release_edges_digest_check",
+      sql`${t.ownerEvidenceDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and ${t.verifierVersion}=1`,
+    ),
+  ],
+);
+
+/** Singleton epoch provides reference-ingress snapshot fencing, not Runtime activation. */
+export const npAgentReferenceFence = pgTable(
+  "np_agent_reference_fence",
+  {
+    id: integer("id").primaryKey(),
+    epoch: bigint("epoch", { mode: "bigint" })
+      .notNull()
+      .default(sql`0`),
+  },
+  (t) => [check("np_agent_reference_fence_singleton_check", sql`${t.id}=1 and ${t.epoch}>=0`)],
+);
+
 /** One exact capability proposal/execution record. AP-203 writes read rows. */
 export const npAgentActions = pgTable(
   "np_agent_actions",
@@ -1410,6 +1518,7 @@ export const npAgentActions = pgTable(
       .references(() => npSites.id, { onDelete: "restrict" }),
     runId: uuid("run_id"),
     runFingerprint: text("run_fingerprint"),
+    runSourceReleaseId: uuid("run_source_release_id"),
     invocationId: uuid("invocation_id"),
     invocationFingerprint: text("invocation_fingerprint").notNull(),
     executionInvocationId: uuid("execution_invocation_id"),
@@ -1474,6 +1583,11 @@ export const npAgentActions = pgTable(
       foreignColumns: [npAgentRuns.siteId, npAgentRuns.id],
     }).onDelete("restrict"),
     foreignKey({
+      name: "np_agent_actions_run_release_fk",
+      columns: [table.siteId, table.runSourceReleaseId],
+      foreignColumns: [npAgentSourceReleases.siteId, npAgentSourceReleases.id],
+    }).onDelete("restrict"),
+    foreignKey({
       name: "np_agent_actions_invocation_fk",
       columns: [table.siteId, table.invocationId],
       foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
@@ -1503,8 +1617,10 @@ export const npAgentActions = pgTable(
     ),
     check(
       "np_agent_actions_attribution_check",
-      sql`(${table.runId} is null) = (${table.runFingerprint} is null) and
-        (${table.executionInvocationId} is null) = (${table.executionInvocationFingerprint} is null)`,
+      sql`(((${table.runId} is not null and ${table.runFingerprint} is not null and ${table.runSourceReleaseId} is null) or
+        (${table.runId} is null and ${table.runFingerprint} is null and ${table.runSourceReleaseId} is null) or
+        (${table.runId} is null and ${table.runFingerprint} is not null and ${table.runSourceReleaseId} is not null)) and
+        (${table.executionInvocationId} is null) = (${table.executionInvocationFingerprint} is null)) is true`,
     ),
     check(
       "np_agent_actions_output_check",

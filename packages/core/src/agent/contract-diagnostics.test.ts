@@ -23,6 +23,11 @@ function queryClient(
     triggerRows?: Record<string, unknown>[];
     eventRows?: Record<string, unknown>[];
     runtimeAdmissionRows?: Record<string, unknown>[];
+    sourceReleaseRows?: Record<string, unknown>[];
+    releasedAttributionRows?: Record<string, unknown>[];
+    releasedAuditRows?: Record<string, unknown>[];
+    missingReferenceGuards?: number;
+    missingAdmissionKeyIndex?: number;
   } = {},
 ): NpAgentDiagnosticsQueryClientV1 {
   const castRows = <T extends Record<string, unknown>>(rows: Record<string, unknown>[]): T[] =>
@@ -31,6 +36,10 @@ function queryClient(
     Promise.resolve({ rows: castRows<T>(rows) });
   return {
     query: <T extends Record<string, unknown>>(text: string): Promise<{ rows: T[] }> => {
+      if (text.includes("reference_fence_coverage"))
+        return result<T>([{ missing_count: String(options.missingReferenceGuards ?? 0) }]);
+      if (text.includes("source_release_key_index"))
+        return result<T>([{ missing_count: String(options.missingAdmissionKeyIndex ?? 0) }]);
       if (text.includes("to_regclass")) {
         return result<T>([{ missing_count: "0" }]);
       }
@@ -45,6 +54,11 @@ function queryClient(
       if (text.includes("runtime_control_rows")) return result<T>(options.runtimeRows ?? []);
       if (text.includes("runtime_admission_rows"))
         return result<T>(options.runtimeAdmissionRows ?? []);
+      if (text.includes("source_release_rows")) return result<T>(options.sourceReleaseRows ?? []);
+      if (text.includes("source_release_attribution_rows"))
+        return result<T>(options.releasedAttributionRows ?? []);
+      if (text.includes("source_release_audit_rows"))
+        return result<T>(options.releasedAuditRows ?? []);
       if (text.includes("with state_rows")) {
         return result<T>([
           {
@@ -67,6 +81,86 @@ function queryClient(
 }
 
 describe("Agent contract diagnostics", () => {
+  it("detects retained audit digest corruption without returning audit payloads", async () => {
+    const result = await npCollectAgentHealthSummaryV1({
+      client: queryClient({
+        releasedAuditRows: [
+          {
+            id: "018f0f30-cd7b-7cc2-8b16-8c052c259bd1",
+            auditId: "018f0f30-cd7b-7cc2-8b16-8c052c259bd2",
+            siteId: "private-site",
+            actorKind: "system",
+            action: "agent.runtime.admitted",
+            targetType: "agent-run",
+            targetId: "018f0f30-cd7b-7cc2-8b16-8c052c259bd3",
+            payload: { private: "private-audit-body" },
+            createdAt: new Date("2026-09-16T00:00:00Z"),
+            digest: "invalid",
+            version: 1,
+            sameReleaseTime: true,
+          },
+        ],
+      }),
+    });
+    expect(result.issues).toContainEqual({
+      code: "AGENT_RELATION_ORPHANED",
+      count: 1,
+      oldestAgeSeconds: null,
+    });
+    expect(JSON.stringify(result)).not.toContain("private-audit-body");
+  });
+  it("does not accept released Action attribution from a receipt pointer alone", async () => {
+    const result = await npCollectAgentHealthSummaryV1({
+      client: queryClient({
+        releasedAttributionRows: [
+          {
+            id: "018f0f30-cd7b-7cc2-8b16-8c052c259bd1",
+            action: { input_canonical: { private: "retained-action-secret" } },
+            invocation: null,
+            release: null,
+            edges: [],
+          },
+        ],
+      }),
+    });
+    expect(result.issues).toContainEqual({
+      code: "AGENT_RELATION_ORPHANED",
+      count: 1,
+      oldestAgeSeconds: null,
+    });
+    expect(JSON.stringify(result)).not.toContain("retained-action-secret");
+  });
+  it("fails readiness on missing ingress guards and consumed-key uniqueness", async () => {
+    const result = await npCollectAgentHealthSummaryV1({
+      client: queryClient({ missingReferenceGuards: 2, missingAdmissionKeyIndex: 1 }),
+    });
+    expect(result.state).toBe("error");
+    expect(result.issues).toContainEqual({
+      code: "AGENT_SCHEMA_CONSTRAINT_MISSING",
+      count: 3,
+      oldestAgeSeconds: null,
+    });
+  });
+  it("contains malformed release receipts behind aggregate evidence counts", async () => {
+    const result = await npCollectAgentHealthSummaryV1({
+      client: queryClient({
+        sourceReleaseRows: [
+          {
+            id: "018f0f30-cd7b-7cc2-8b16-8c052c259bd1",
+            evidenceBody: { privateBody: "private-receipt-marker" },
+            evidenceDigest: "invalid",
+          },
+        ],
+      }),
+    });
+    expect(result.issues).toContainEqual({
+      code: "AGENT_RELATION_ORPHANED",
+      count: 1,
+      oldestAgeSeconds: null,
+    });
+    expect(JSON.stringify(result)).not.toContain("private-receipt-marker");
+    expect(JSON.stringify(result)).not.toContain("018f0f30-cd7b-7cc2-8b16-8c052c259bd1");
+  });
   it("contains malformed private run-source evidence behind aggregate issue codes", async () => {
     const result = await npCollectAgentHealthSummaryV1({
       client: queryClient({
@@ -282,8 +376,8 @@ describe("Agent contract diagnostics", () => {
     expect(JSON.stringify(result)).not.toContain("private-event");
   });
   it("freezes the complete R1 table inventory and critical constraint inventory", () => {
-    expect(npAgentDiagnosticsSchemaInventoryV1.tables).toHaveLength(40);
-    expect(npAgentDiagnosticsSchemaInventoryV1.constraints).toHaveLength(266);
+    expect(npAgentDiagnosticsSchemaInventoryV1.tables).toHaveLength(43);
+    expect(npAgentDiagnosticsSchemaInventoryV1.constraints).toHaveLength(284);
     expect(npAgentDiagnosticsSchemaInventoryV1.tables).toEqual(
       [...npAgentDiagnosticsSchemaInventoryV1.tables].sort(),
     );
