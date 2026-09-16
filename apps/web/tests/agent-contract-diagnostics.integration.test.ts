@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Client } from "pg";
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -94,6 +95,32 @@ describe.skipIf(skipIfNoTestDb())("Agent contract Doctor and Admin Health diagno
         vault: { state: "not-required", requiredCount: 0, availableCount: 0 },
       },
     });
+  });
+
+  it.each([
+    "ALTER TABLE public.np_audit_events DISABLE TRIGGER np_agent_reference_row_v1",
+    "DELETE FROM public.np_agent_reference_fence",
+    "DROP INDEX public.np_agent_source_releases_key_unique",
+  ])("fails Doctor readiness for lifecycle guard tampering: %s", async (mutation) => {
+    const databaseUrl = getTestDatabaseUrl();
+    if (!databaseUrl) throw new Error("Missing integration database URL.");
+    const client = new Client({ connectionString: databaseUrl });
+    await client.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(mutation);
+      const summary = await npCollectAgentHealthSummaryV1({ client });
+      expect(summary.state).toBe("error");
+      expect(summary.issues).toContainEqual({
+        code: "AGENT_SCHEMA_CONSTRAINT_MISSING",
+        count: 1,
+        oldestAgeSeconds: null,
+      });
+    } finally {
+      await client.query("ROLLBACK");
+      await client.end();
+    }
+    expect((await npCollectAgentHealthSummaryV1()).state).toBe("ok");
   });
 
   it("returns cross-site aggregate counts without frozen identities or config evidence", async () => {

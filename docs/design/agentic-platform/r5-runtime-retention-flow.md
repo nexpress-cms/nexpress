@@ -2,7 +2,9 @@
 
 This extends AP-508's explicitly host-registered `agent:retentionTick` and
 site-stamped `agent:retentionPrune` jobs. It creates no worker, credential,
-provider call, schema, migration, retention setting or automatic activation.
+provider call, retention setting or automatic activation. The subsequent
+source-release lifecycle adds the schema and generated migrations described
+below.
 
 ## Retention and reference matrix
 
@@ -10,6 +12,11 @@ The matrix was defined before implementation against [data-model retention](data
 Nominal age is necessary, never sufficient. The sweep holds the existing site
 Runtime control/quota lock and fences site deletion. It does not authorize any
 capability or infer an external outcome.
+
+In this matrix, a retained reference keeps its source unless its exact owning
+audit/read contract has handed it off to a verified source-release receipt.
+Only the allowlisted historical paths below receive that exception; other
+literal occurrences continue to pin the source.
 
 | Owned data                                                                                                       | Eligibility                                                                                  | Evidence and dependency fences                                                                                                                                                                                                             |
 | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -77,15 +84,20 @@ silently change historical attribution or invalidate canonical evidence.
 
 ## Remaining R5 acceptance boundary
 
-Normal Runtime admission and provider settlement persist audit references.
-Those keep their source rows until the audit/reference owner permits removal.
-There is currently no normal audit pruning service; only site deletion removes
-that audit inventory. Implementing a verified source-release lifecycle is still
-required for routine cleanup of this dependency-bound detail.
-The current Action schema also requires `run_id` and `run_fingerprint` to be
-null together, so it cannot implement the proposed retained fingerprint plus
-nulled Run reference without changing the shared contract. This bundle retains
-that evidence and does not claim full R5 retention or full R5 acceptance.
+The [evidence and source-reference lifecycle](r5-evidence-source-lifecycle-design.md)
+implements typed source/edge receipts for verified terminal Runs, calls,
+reservations and closed breakers. Exact recognized Runtime audit references
+retain their original rows and evidence, while allowing the source detail to
+expire. Verified terminal read Actions retain their fingerprint and canonical
+input, with a receipt pointer replacing the live Run locator. Consumed Run
+admission keys remain unavailable after deletion. A persisted global epoch and
+reference-ingress guards prevent late writers from resurrecting references.
+
+Unknown/global audit, malformed evidence, active work, mutation Actions,
+approvals and rollback owners still pin their sources. There is no normal audit
+pruning service. More than 100 matching owners in a single table conservatively
+retain a source. Structured manual-input recipes remain outside this bundle;
+this implementation does not claim full R5 retention or full R5 acceptance.
 Guardian signals/incidents/containments/notifications are not fabricated.
 
 ## Verification
@@ -98,8 +110,13 @@ provider response verification, call-before-reservation ordering and delayed
 aggregate cleanup, plus real advisory-lock contention that cancels a query
 and rolls back prior deletion.
 
-The final full PostgreSQL run on 2026-09-15 KST passed all 9 Runtime maintenance
-and 4 provider/aggregate retention cases. Core unit verification also passed
-the 3 maintenance and 2 statement-budget tests. The broader build, unit,
-PostgreSQL, Redis, native preview, production browser and packed scaffold
-results are recorded in [the Runtime Studio gate](r5-runtime-studio-flow.md#r5-completion-audit-and-current-verification).
+The 2026-09-15 KST baseline passed all 9 Runtime maintenance and 4
+provider/aggregate retention cases, plus the 3 maintenance and 2
+statement-budget Core unit tests. Its broader results remain in
+[the Runtime Studio gate](r5-runtime-studio-flow.md#r5-completion-audit-and-current-verification).
+The source-release implementation extends this coverage with real canonical
+read Action attribution, immutable receipts and audit edges, consumed-key
+denial, malformed and oversized evidence, concurrent writers and live pg-boss
+partition guards. The current full verification results and remaining product
+boundaries are recorded in
+[the source lifecycle evidence](r5-evidence-source-lifecycle-design.md#verification-evidence).

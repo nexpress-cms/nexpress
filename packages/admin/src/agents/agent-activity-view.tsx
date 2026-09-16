@@ -443,7 +443,7 @@ function ActionRows({ items }: { items: NpAgentActivityActionDetailV1[] }) {
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-neutral-500">
             <span>
-              {item.action.runId ? "Run action" : "Inline invocation"} · sequence{" "}
+              {item.action.runId ? "Run action" : "Run details unavailable"} · sequence{" "}
               {item.action.sequence}
             </span>
             <ActivityTime value={item.action.createdAt} />
@@ -880,7 +880,7 @@ export function AgentActivityActionDetailView({ actionId }: { actionId: string }
                       {action.runId}
                     </Link>
                   ) : (
-                    "Inline invocation · no run was created"
+                    "Run details unavailable"
                   )}
                 </Fact>
                 <Fact label="Invocation">{detail.invocationId ?? "Not recorded"}</Fact>

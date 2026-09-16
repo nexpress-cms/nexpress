@@ -1,4 +1,5 @@
 import { PgBoss, type ConstructorOptions, type Job } from "pg-boss";
+import { NP_AGENT_JOB_REFERENCE_FENCE_INSTALL_SQL_V1 } from "../agent/reference-fence-sql.js";
 import {
   NP_JOB_STATES,
   npNormalizeJobData,
@@ -123,6 +124,7 @@ export class PgBossAdapter implements NpJobQueue {
    */
   async startProducer(): Promise<void> {
     await this.boss.start();
+    await this.ensureReferenceGuards();
     await this.ensureSearchReindexQueue();
   }
 
@@ -133,6 +135,7 @@ export class PgBossAdapter implements NpJobQueue {
    */
   async start(): Promise<void> {
     await this.boss.start();
+    await this.ensureReferenceGuards();
 
     const registerHandlerQueue = async (
       type: NpJobType,
@@ -143,6 +146,7 @@ export class PgBossAdapter implements NpJobQueue {
         await this.ensureSearchReindexQueue();
       } else {
         await this.boss.createQueue(queueName);
+        await this.ensureReferenceGuards();
       }
       const register = async () => {
         await this.boss.work(queueName, async (jobs: Job<unknown>[]) => {
@@ -207,6 +211,7 @@ export class PgBossAdapter implements NpJobQueue {
     for (const schedule of getRegisteredPluginSchedules()) {
       const queueName = npPluginScheduledTaskQueueName(schedule.pluginId, schedule.taskId);
       await this.boss.createQueue(queueName);
+      await this.ensureReferenceGuards();
       const register = async () => {
         await this.boss.work(queueName, async (jobs: Job<unknown>[]) => {
           for (const job of jobs) {
@@ -260,6 +265,7 @@ export class PgBossAdapter implements NpJobQueue {
   private async ensureSearchReindexQueue(): Promise<void> {
     const queueName = toQueueName("search:reindex");
     await this.boss.createQueue(queueName, SEARCH_REINDEX_QUEUE_CREATE_OPTIONS);
+    await this.ensureReferenceGuards();
     const queue = await this.boss.getQueue(queueName);
     if (queue?.policy !== SEARCH_REINDEX_QUEUE_CREATE_OPTIONS.policy) {
       throw new Error(
@@ -270,6 +276,10 @@ export class PgBossAdapter implements NpJobQueue {
     // the mutable retry and long-running expiry settings as well. Queue policy
     // is immutable in pg-boss, so it is verified separately above.
     await this.boss.updateQueue(queueName, SEARCH_REINDEX_QUEUE_UPDATE_OPTIONS);
+  }
+
+  private async ensureReferenceGuards(): Promise<void> {
+    await this.boss.getDb().executeSql(NP_AGENT_JOB_REFERENCE_FENCE_INSTALL_SQL_V1);
   }
 
   /**

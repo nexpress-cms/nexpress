@@ -28,6 +28,12 @@ import { npRuntimeRunAdmissionBodyV1 } from "./runtime-admission.js";
 import { npVerifyAgentRuntimeAdmissionSourcesV1 } from "./runtime-admission-sources.js";
 import { npDigestAgentRunAdmissionCanonical } from "../agent-contract/canonical-run-admission.js";
 import { npDigestAgentRunLimitsCanonical } from "../agent-contract/canonical-bodies.js";
+import {
+  npRequireAgentSourceReleaseRecordV1,
+  npSourceReleaseOwnerDigestV1,
+  npVerifyAgentReleaseReadAttributionV1,
+} from "./source-release-read.js";
+import { npAgentReferenceFenceCoverageSqlV1 } from "./reference-fence-sql.js";
 
 const AGENT_TABLES = [
   "np_agent_actions",
@@ -60,9 +66,12 @@ const AGENT_TABLES = [
   "np_agent_preview_viewer_launches",
   "np_agent_principals",
   "np_agent_provider_calls",
+  "np_agent_reference_fence",
   "np_agent_runs",
   "np_agent_service_tokens",
   "np_agent_site_deletion_sagas",
+  "np_agent_source_release_edges",
+  "np_agent_source_releases",
   "np_agent_triggers",
   "np_agent_usage_daily",
   "np_agent_usage_reservations",
@@ -74,6 +83,24 @@ const AGENT_TABLES = [
 
 /** Critical state and same-site constraints whose absence weakens fail-closed diagnostics. */
 const AGENT_CONSTRAINTS = [
+  "np_agent_source_releases_site_id_id_unique",
+  "np_agent_source_releases_source_unique",
+  "np_agent_source_releases_site_id_np_sites_id_fk",
+  "np_agent_source_releases_principal_fk",
+  "np_agent_source_releases_kind_check",
+  "np_agent_source_releases_body_check",
+  "np_agent_source_releases_key_check",
+  "np_agent_source_releases_digest_check",
+  "np_agent_source_release_edges_site_id_id_unique",
+  "np_agent_source_release_edges_owner_unique",
+  "np_agent_source_release_edges_site_id_np_sites_id_fk",
+  "np_agent_source_release_edges_release_fk",
+  "np_agent_source_release_edges_owner_check",
+  "np_agent_source_release_edges_code_check",
+  "np_agent_source_release_edges_digest_check",
+  "np_agent_reference_fence_singleton_check",
+  "np_agent_actions_run_release_fk",
+  "np_agent_actions_attribution_check",
   "np_agents_status_check",
   "np_agents_template_check",
   "np_agents_version_check",
@@ -728,6 +755,24 @@ const ISSUE_SUMMARY_SQL = `
         union all select a.created_at from public.np_agent_actions a
           left join public.np_agent_runs r on r.id = a.run_id
           where a.run_id is not null and r.id is null
+        union all select a.created_at from public.np_agent_actions a
+          left join public.np_agent_source_releases r on r.id=a.run_source_release_id and r.site_id=a.site_id
+          left join public.np_agent_invocations i on i.id=a.invocation_id and i.site_id=a.site_id
+          where a.run_source_release_id is not null and (
+            a.run_id is not null or r.id is null or r.source_kind<>'runtime-run'
+            or a.run_fingerprint is distinct from r.evidence_body->>'admissionFingerprint'
+            or i.id is null or i.principal_id is distinct from r.principal_id
+            or not exists (select 1 from public.np_agent_source_release_edges e
+              where e.site_id=a.site_id and e.source_release_id=r.id
+                and e.owner_kind='read-action' and e.owner_id=a.id and e.edge_code='action-run'))
+        union all select a.created_at from public.np_agent_actions a
+          where a.run_id is null and (a.run_fingerprint is null)<>(a.run_source_release_id is null)
+        union all select e.released_at from public.np_agent_source_release_edges e
+          left join public.np_agent_source_releases r on r.id=e.source_release_id and r.site_id=e.site_id
+          where r.id is null
+            or (e.owner_kind='runtime-audit' and not exists (select 1 from public.np_audit_events a where a.id=e.owner_id and a.site_id=e.site_id))
+            or (e.owner_kind='read-action' and not exists (select 1 from public.np_agent_actions a where a.id=e.owner_id and a.site_id=e.site_id and a.run_source_release_id=e.source_release_id))
+            or (e.owner_kind='read-invocation' and not exists (select 1 from public.np_agent_invocations i where i.id=e.owner_id and i.site_id=e.site_id))
         union all select r.queued_at from public.np_agent_runs r
           left join public.np_agent_principals p on p.id = r.principal_id where p.id is null
         union all select r.queued_at from public.np_agent_runs r
@@ -1160,6 +1205,210 @@ async function collectRuntimeAdmissionIssues(
     : [];
 }
 
+/** Receipt details stay private; Doctor exposes only invalid-evidence counts. */
+async function collectSourceReleaseIssues(
+  client: NpAgentDiagnosticsQueryClientV1,
+): Promise<RawIssueRow[]> {
+  let after = "00000000-0000-0000-0000-000000000000";
+  let count = 0;
+  for (;;) {
+    const result = await client.query<Record<string, unknown>>(
+      `/* source_release_rows: bounded immutable private evidence */
+      select id, site_id as "siteId", source_kind as "sourceKind", source_id as "sourceId",
+        case when octet_length(evidence_body::text)<=16384 then evidence_body else null end as "evidenceBody",
+        evidence_digest as "evidenceDigest", principal_id as "principalId",
+        admission_key_digest as "admissionKeyDigest", released_at as "releasedAt"
+      from public.np_agent_source_releases where id>$1::uuid order by id limit 32`,
+      [after],
+    );
+    if (!result.rows.length) break;
+    for (const row of result.rows) {
+      if (typeof row.id !== "string" || !/^[0-9a-f-]{36}$/.test(row.id) || row.id <= after)
+        throw new Error("Invalid source-release diagnostic cursor");
+      after = row.id;
+      try {
+        await npRequireAgentSourceReleaseRecordV1(
+          row as unknown as Parameters<typeof npRequireAgentSourceReleaseRecordV1>[0],
+        );
+      } catch {
+        count += 1;
+      }
+    }
+    if (result.rows.length < 32) break;
+  }
+  return count
+    ? [{ code: "AGENT_RELATION_ORPHANED", count: count.toString(), oldest_age_seconds: null }]
+    : [];
+}
+
+async function collectReferenceGuardIssues(
+  client: NpAgentDiagnosticsQueryClientV1,
+): Promise<RawIssueRow[]> {
+  const guards = await client.query<{ missing_count: unknown }>(
+    `/* reference_fence_coverage */ ${npAgentReferenceFenceCoverageSqlV1([
+      ...AGENT_TABLES.filter((name) => name !== "np_agent_reference_fence"),
+      "np_audit_events",
+    ])}`,
+  );
+  const keyIndex = await client.query<{ missing_count: unknown }>(
+    `/* source_release_key_index */
+    select (case when exists (
+      select 1 from pg_index i join pg_class c on c.oid=i.indexrelid
+      where c.relname='np_agent_source_releases_key_unique'
+        and i.indrelid='public.np_agent_source_releases'::regclass
+        and i.indisunique and i.indisvalid and i.indisready
+        and pg_get_indexdef(i.indexrelid) like '%(site_id, principal_id, admission_key_digest)%'
+        and pg_get_expr(i.indpred,i.indrelid)='(source_kind = ''runtime-run''::text)'
+    ) then 0 else 1 end)::text as missing_count`,
+  );
+  const count = integer(guards.rows[0]?.missing_count) + integer(keyIndex.rows[0]?.missing_count);
+  return count ? [issue("AGENT_SCHEMA_CONSTRAINT_MISSING", count)] : [];
+}
+
+function decodeDiagnosticRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Invalid retained attribution evidence");
+  const row = Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [
+      key.replace(/_([a-z])/gu, (_, letter: string) => letter.toUpperCase()),
+      entry,
+    ]),
+  );
+  for (const key of ["releasedAt", "finishedAt", "completedAt"])
+    if (typeof row[key] === "string") row[key] = new Date(row[key]);
+  return row;
+}
+
+async function collectReleasedAttributionIssues(
+  client: NpAgentDiagnosticsQueryClientV1,
+): Promise<RawIssueRow[]> {
+  let after = "00000000-0000-0000-0000-000000000000";
+  let count = 0;
+  for (;;) {
+    const result = await client.query<Record<string, unknown>>(
+      `/* source_release_attribution_rows: bounded read-only verifier inputs */
+      select a.id,
+        case when octet_length(to_jsonb(a)::text)<=4194304 then to_jsonb(a) else null end as action,
+        case when octet_length(to_jsonb(i)::text)<=4194304 then to_jsonb(i) else null end as invocation,
+        case when octet_length(to_jsonb(r)::text)<=32768 then to_jsonb(r) else null end as release,
+        (select coalesce(jsonb_agg(edge), '[]'::jsonb) from (
+          select e.owner_kind, e.owner_id, e.edge_code, e.owner_evidence_digest, e.verifier_version, e.released_at
+          from public.np_agent_source_release_edges e
+          where e.site_id=a.site_id and e.source_release_id=r.id and
+            ((e.owner_kind='read-action' and e.owner_id=a.id and e.edge_code='action-run') or
+             (e.owner_kind='read-invocation' and e.owner_id=i.id and e.edge_code='invocation-authority-run'))
+          limit 3) edge) as edges
+      from public.np_agent_actions a
+      left join public.np_agent_invocations i on i.id=a.invocation_id and i.site_id=a.site_id
+      left join public.np_agent_source_releases r on r.id=a.run_source_release_id and r.site_id=a.site_id
+      where a.run_source_release_id is not null and a.id>$1::uuid order by a.id limit 8`,
+      [after],
+    );
+    if (!result.rows.length) break;
+    for (const row of result.rows) {
+      if (typeof row.id !== "string" || !/^[0-9a-f-]{36}$/.test(row.id) || row.id <= after)
+        throw new Error("Invalid retained attribution cursor");
+      after = row.id;
+      try {
+        type Proof = Parameters<typeof npVerifyAgentReleaseReadAttributionV1>[0];
+        const action = decodeDiagnosticRecord(row.action) as unknown as Proof["action"];
+        const invocation = decodeDiagnosticRecord(row.invocation) as unknown as Proof["invocation"];
+        const release = decodeDiagnosticRecord(row.release) as unknown as Parameters<
+          typeof npRequireAgentSourceReleaseRecordV1
+        >[0];
+        const body = await npRequireAgentSourceReleaseRecordV1(release);
+        if (
+          body.kind !== "runtime-run" ||
+          action.runId !== null ||
+          action.runSourceReleaseId !== release.id
+        )
+          throw new Error("Invalid released attribution");
+        const proof = await npVerifyAgentReleaseReadAttributionV1({
+          action,
+          invocation,
+          runId: body.sourceId,
+          runFingerprint: body.admissionFingerprint,
+          principalId: body.principalId,
+          agentVersionId: body.agentVersionId,
+          deadlineAt: body.deadlineAt,
+        });
+        if (!proof || !Array.isArray(row.edges) || row.edges.length !== 2)
+          throw new Error("Invalid retained attribution proof");
+        const edges = row.edges.map(decodeDiagnosticRecord);
+        for (const [kind, ownerId, code, digest] of [
+          ["read-action", action.id, "action-run", proof.actionDigest],
+          ["read-invocation", invocation.id, "invocation-authority-run", proof.invocationDigest],
+        ]) {
+          if (
+            edges.filter(
+              (edge) =>
+                edge.ownerKind === kind &&
+                edge.ownerId === ownerId &&
+                edge.edgeCode === code &&
+                edge.ownerEvidenceDigest === digest &&
+                edge.verifierVersion === 1 &&
+                edge.releasedAt instanceof Date &&
+                edge.releasedAt.getTime() === release.releasedAt.getTime(),
+            ).length !== 1
+          )
+            throw new Error("Invalid retained attribution edge");
+        }
+      } catch {
+        count += 1;
+      }
+    }
+    if (result.rows.length < 8) break;
+  }
+  return count ? [issue("AGENT_RELATION_ORPHANED", count)] : [];
+}
+
+async function collectReleasedAuditIssues(
+  client: NpAgentDiagnosticsQueryClientV1,
+): Promise<RawIssueRow[]> {
+  let after = "00000000-0000-0000-0000-000000000000";
+  let count = 0;
+  for (;;) {
+    const result = await client.query<Record<string, unknown>>(
+      `/* source_release_audit_rows: original audit projection, no rewriting */
+      select e.id, e.owner_evidence_digest as digest, e.verifier_version as version,
+        a.id as "auditId", a.site_id as "siteId", a.actor_kind as "actorKind", a.action,
+        a.target_type as "targetType", a.target_id as "targetId", a.created_at as "createdAt",
+        case when octet_length(a.payload::text)<=65536 then a.payload else null end as payload,
+        e.released_at=r.released_at as "sameReleaseTime"
+      from public.np_agent_source_release_edges e
+      left join public.np_audit_events a on a.id=e.owner_id and a.site_id=e.site_id
+      left join public.np_agent_source_releases r on r.id=e.source_release_id and r.site_id=e.site_id
+      where e.owner_kind='runtime-audit' and e.id>$1::uuid order by e.id limit 32`,
+      [after],
+    );
+    if (!result.rows.length) break;
+    for (const row of result.rows) {
+      if (typeof row.id !== "string" || !/^[0-9a-f-]{36}$/.test(row.id) || row.id <= after)
+        throw new Error("Invalid retained audit cursor");
+      after = row.id;
+      try {
+        if (!(row.createdAt instanceof Date) || row.version !== 1 || row.sameReleaseTime !== true)
+          throw new Error("Invalid retained audit attribution");
+        const digest = npSourceReleaseOwnerDigestV1({
+          id: row.auditId,
+          siteId: row.siteId,
+          actorKind: row.actorKind,
+          action: row.action,
+          targetType: row.targetType,
+          targetId: row.targetId,
+          payload: row.payload,
+          createdAt: row.createdAt.toISOString(),
+        });
+        if (digest !== row.digest) throw new Error("Invalid retained audit digest");
+      } catch {
+        count += 1;
+      }
+    }
+    if (result.rows.length < 32) break;
+  }
+  return count ? [issue("AGENT_RELATION_ORPHANED", count)] : [];
+}
+
 /** Only fixed row projections are read; malformed private source evidence becomes a count. */
 async function collectRuntimeEventIssues(
   client: NpAgentDiagnosticsQueryClientV1,
@@ -1283,6 +1532,10 @@ export async function npCollectAgentHealthSummaryV1(
     const runtimeIssues = await collectRuntimeSettingIssues(client);
     runtimeIssues.push(...(await collectRuntimeAdmissionIssues(client)));
     runtimeIssues.push(...(await collectRuntimeEventIssues(client)));
+    runtimeIssues.push(...(await collectSourceReleaseIssues(client)));
+    runtimeIssues.push(...(await collectReleasedAttributionIssues(client)));
+    runtimeIssues.push(...(await collectReleasedAuditIssues(client)));
+    runtimeIssues.push(...(await collectReferenceGuardIssues(client)));
     const issues = parseIssues([...schemaIssues, ...issueResult.rows, ...runtimeIssues]);
     const providers = readiness(
       parseRequiredAdapters(providerResult.rows),

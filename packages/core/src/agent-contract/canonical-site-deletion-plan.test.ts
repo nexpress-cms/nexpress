@@ -181,6 +181,11 @@ describe("Agent site-deletion-plan canonical body", () => {
       }),
       siteDeletionPlan({
         rowInventory: [
+          { table: "np_agent_reference_fence", count: 1, identityDigest: rowIdentityDigestA },
+        ],
+      }),
+      siteDeletionPlan({
+        rowInventory: [
           {
             table: "np_agent_site_deletion_sagas",
             count: 1,

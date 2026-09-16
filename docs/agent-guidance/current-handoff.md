@@ -1,63 +1,61 @@
 # Current work handoff
 
-Observed during the grouped dependency update on 2026-09-16 KST.
-Verify Git state and the bundled PR's final checks/merge evidence before continuing.
+Observed while preparing the R5 evidence source lifecycle merge on 2026-09-16 KST.
+Verify current Git state and the PR's final merge/check results before continuing.
 
 ## Objective and authorization
 
-- Repository: `/Users/baesw/development/nexpress`.
-- The user requested grouped updates, merge and selection of the next task.
-  This bundle combines the remaining sharp/browserslist security fixes with
-  open ordinary dependency updates; Version PR #1366 is excluded.
-- Commit, PR and merge are authorized for this bundle. Own package versions,
-  changesets, application schema and migrations remain unchanged.
-- No package publication, new credentials, external provider calls or automatic
-  Runtime/provider/worker activation is authorized. Further feature work needs
-  the next task's scope; do not infer full R5 completion.
+- User authorized committing, pushing and merging this coherent lifecycle bundle,
+  then selecting the next task. Implementation of the next bundle is not started.
+- Necessary schema/migration changes are authorized. Own package versions,
+  changesets and lockfile remain unchanged.
+- No new credentials, external provider calls or automatic Runtime/provider/worker
+  activation. No package publication or Version PR merge is authorized.
 
 ## Observed checkout
 
-- Baseline main: `a39da222d65b12d733bd21da16d145cb185f8102`.
-- Implementation branch: `codex/grouped-dependency-updates`.
-- This handoff is included in the same bundle. Read its PR for the final tested
-  head, merge SHA and post-merge CI/Release results; these were pending at this
-  checkpoint. Verify current HEAD and remote synchronization before acting.
-- Main protection requires a PR and checks. Do not use bypass privileges.
+- Repository: `/Users/baesw/development/nexpress`; implementation worktree:
+  `/Users/baesw/.codex/worktrees/9755/nexpress`.
+- Baseline: `71a0f5effd4f6ea2726fd5f438c4424621557890`.
+- Branch: `codex/r5-evidence-source-lifecycle`. All pending changes belong to this
+  bundle. Main was clean and synchronized when preparation began.
+- This checkpoint is included in the same PR. Its final head, squash merge SHA
+  and CI/Release results must be read from GitHub; do not treat them as verified
+  merely because this handoff describes the intended merge.
+- Main rules require a PR and checks. Wait for all four PR jobs; do not bypass.
 
 ## Implementation and evidence
 
-- Core sharp range, root override and generated app range/override all select
-  0.35.4. Root and generated apps pin browserslist 4.28.7. Review found the
-  existing sharp-only PR missed the root/scaffold override paths.
-- This supersedes dependency PRs #1409, #1415, #1421, #1423, #1424, #1425,
-  #1426, #1427 and #1443 after the bundled changes are merged and verified.
-- Other updated families: AWS SDK S3, jose, pg-boss, Lexical, lucide-react,
-  Node types, ESLint and pnpm/action-setup. pnpm itself remains 10.33.0.
-  Use the lockfile for resolved versions; caret ranges can resolve newer
-  compatible versions than the original Dependabot PR titles.
-- Frozen install and own-version/changeset/migration preservation checks passed.
-  Native sharp 0.35.4 (libvips 8.18.6, libheif 1.23.2) encoded, resized and
-  decoded PNG, JPEG, WebP and AVIF in a local synthetic-image smoke test.
-- Local verify/lint and full PR CI were in progress at this checkpoint.
-  Final evidence belongs in the bundled PR: build/typecheck/unit tests,
-  PostgreSQL with theme cases, explicit Redis, native preview, production
-  browser and packed scaffold checks. Never count skipped tests as passed.
-- Merge this ordinary combined PR with squash after all four checks pass.
-  Confirm post-merge CI/Release and refreshed GitHub alerts. Close superseded
-  dependency PRs only after confirming their updates are included.
-- Keep the handoff with this bundle rather than creating a separate update PR
-  for each dependency or for final test counts; record final evidence in the PR.
+- Typed source-release receipts preserve audit/canonical evidence while allowing
+  verified expired Run/call/reservation/closed-breaker source details to be pruned.
+- Read Actions keep immutable attribution; Activity resolves released history with
+  current access checks. Admission keys remain consumed after Run deletion.
+- Generated migrations 0049/0050 add receipt/edge/fence tables, guarded source
+  references and the nullable Action receipt pointer. Pg-boss partition guards,
+  diagnostics, site deletion and scaffold generation share the same protocol.
+- See [implementation and full evidence](../design/agentic-platform/r5-evidence-source-lifecycle-design.md)
+  and [retention boundaries](../design/agentic-platform/r5-runtime-retention-flow.md).
+- Local verification: verify 113 tasks, lint 41 tasks, Core unit 1,962, Core
+  PostgreSQL 68, Web PostgreSQL 1,478 including explicit native preview and theme,
+  Redis 16, production browser 71, packed scaffold 40 packages / 60 stages.
+- Web evidence combines the complete run with the corrected 29-test rerun and
+  explicit native preview; it is not a second fully green whole-suite run.
+  The implementation document records test-only lint exclusions and the extra
+  lint attempt's memory failure. Original product-source lint passed.
+- Upgrade failure rolls back both migrations; successful upgrade preserves legacy
+  audit bytes. Versions/changesets/lockfile and existing migrations are unchanged.
 
 ## Next boundary
 
-- If no open security alerts or ordinary dependency PRs remain, return to the
-  R5 evidence lifecycle design: audit source release lacks an owner, and Action
-  attribution couples the Run reference and fingerprint being null together.
-  Agree on lifecycle and necessary migration scope before implementation.
-- Preserve active work, unresolved usage/outcomes, approvals and rollback
-  evidence. See the [retention matrix](../design/agentic-platform/r5-runtime-retention-flow.md).
-- Structured manual-input recipes still require executor-owned storage and
-  consumption. Existing schema-null recipe/goal admission remains supported.
-  Prior evidence is in the [Runtime Studio flow](../design/agentic-platform/r5-runtime-studio-flow.md).
-- Start the next requested feature bundle in a fresh task, using current
-  contracts and relevant guidance rather than the full historical conversation.
+- Recommended next bundle: executor-owned structured manual-input support.
+  Define bounded canonical storage and schema/version/digest bindings, validate
+  during admission, consume from the existing executor, then enable compatible
+  Studio recipes. Preserve replay identity, redaction and current authority checks.
+- Start with the [Runtime Studio manual-input boundary](../design/agentic-platform/r5-runtime-studio-flow.md#activation-and-manual-admission)
+  and [R5 roadmap](../design/agentic-platform/implementation-roadmap.md#r5--durable-provider-backed-agent-runtime).
+  Inspect installed recipes and executor ownership before extending contracts.
+- Keep unknown/global references, mutation Actions, approvals and rollback evidence
+  protected. No generic audit cleanup or full R5 completion claim.
+- The existing schema-null recipe/goal path remains supported. R6 template-specific
+  Publisher/Moderator/Operator execution is separate from this proposed bundle.
+- Begin the next implementation in a fresh task when the user requests it.

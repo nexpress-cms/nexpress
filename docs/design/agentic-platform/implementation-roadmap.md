@@ -569,10 +569,13 @@ ignored structured inputs. Status and usage preserve unavailable/unknown states.
 See [the Runtime Studio flow](r5-runtime-studio-flow.md) for the implemented
 boundary and verification checkpoints. Bounded synthetic policy simulation now
 uses the real policy evaluator with exact non-authorizing output. The existing
-maintenance sweep adds dependency-safe retention; audit-source release and the
-full R5 acceptance gate remain open (see the
-[retention matrix](r5-runtime-retention-flow.md)). This work adds no automatic worker,
-provider activation, migration, seed, package version or changeset.
+maintenance sweep adds dependency-safe retention. The
+[evidence source lifecycle](r5-evidence-source-lifecycle-design.md) now adds
+verified source-release receipts and reference guards through two migrations,
+while preserving audit and canonical evidence. Unknown references, mutation,
+approval and rollback owners remain protected; full R5 acceptance remains open.
+This work adds no automatic worker/provider activation, seed, package version
+or changeset. See the [retention matrix](r5-runtime-retention-flow.md).
 
 Outcome: one configured agent can run a bounded event/manual/scheduled workflow
 with budget and policy enforcement.

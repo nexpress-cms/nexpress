@@ -38,9 +38,9 @@ function action(): NpAgentActionCanonicalV1 {
 }
 
 describe("Agent canonical purpose registry", () => {
-  it("closes analyzer, included, excluded, and size registries over the same 32 purposes", () => {
+  it("closes analyzer, included, excluded, and size registries over the same 33 purposes", () => {
     const expected = [...npAgentCanonicalPurposes];
-    expect(expected).toHaveLength(32);
+    expect(expected).toHaveLength(33);
     expect(expected).toEqual([...expected].sort());
     expect(Object.keys(npAgentCanonicalPurposeAnalyzersV1)).toEqual(expected);
     expect(Object.keys(npAgentCanonicalPurposeIncludedKeysV1)).toEqual(expected);

@@ -23,6 +23,8 @@ import {
   npAgentConnectionSecretVersions,
   npAgentConnections,
   npAgentActions,
+  npAgentSourceReleaseEdges,
+  npAgentSourceReleases,
   npAgentPreviewViewerLaunches,
   npAgentPreviewRenderSessions,
   npAgentPreviewArtifactUploads,
@@ -64,6 +66,7 @@ interface NpAgentSiteOwnedTableDescriptor {
  * from the frozen inventory and is handled only by the future saga commit.
  */
 export const npAgentSiteDeletionOrderV1 = Object.freeze([
+  "np_agent_source_release_edges",
   "np_agent_preview_viewer_launches",
   "np_agent_preview_render_sessions",
   "np_agent_preview_artifact_uploads",
@@ -82,6 +85,7 @@ export const npAgentSiteDeletionOrderV1 = Object.freeze([
   "np_agent_usage_daily",
   "np_agent_events",
   "np_agent_actions",
+  "np_agent_source_releases",
   "np_agent_runs",
   "np_agent_triggers",
   "np_agent_policies",
@@ -111,6 +115,16 @@ const descriptors: Record<
   NpAgentSiteOwnedTableName,
   Omit<NpAgentSiteOwnedTableDescriptor, "tableName">
 > = {
+  np_agent_source_release_edges: {
+    table: npAgentSourceReleaseEdges,
+    id: npAgentSourceReleaseEdges.id,
+    siteId: npAgentSourceReleaseEdges.siteId,
+  },
+  np_agent_source_releases: {
+    table: npAgentSourceReleases,
+    id: npAgentSourceReleases.id,
+    siteId: npAgentSourceReleases.siteId,
+  },
   np_agents: { table: npAgents, id: npAgents.id, siteId: npAgents.siteId },
   np_agent_versions: {
     table: npAgentVersions,

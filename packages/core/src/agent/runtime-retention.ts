@@ -1,4 +1,8 @@
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
+import {
+  npLockAgentSourceReleaseFenceV1,
+  npPrepareAgentSourceReleaseV1,
+} from "./source-release.js";
 import { NpAgentContractError } from "../agent-contract/contract.js";
 import { npAgentRuns } from "../db/schema/agent.js";
 import type { NpAgentRuntimeSettingsV1 } from "../agent-contract/runtime-contract.js";
@@ -150,7 +154,9 @@ export async function npPruneAgentRuntimeRetentionV1(options: {
     await beforeStatement();
     const jobTable = await db.execute(sql`select to_regclass('pgboss.job') is not null as present`);
     const hasJobs = jobTable.rows[0]?.present === true;
+    await npLockAgentSourceReleaseFenceV1(db, beforeStatement);
     for (const source of sources) {
+      const retentionDeadlines = new Map<string, Date>();
       let eligibleIds = ids;
       if (source.category === "runs") {
         await beforeStatement();
@@ -172,6 +178,7 @@ export async function npPruneAgentRuntimeRetentionV1(options: {
               agentId: run.agentId,
               versionId: run.agentVersionId,
               active: false,
+              noWait: true,
             });
             await beforeStatement();
             const policy = await npResolveAgentRuntimePolicyV1({
@@ -190,8 +197,15 @@ export async function npPruneAgentRuntimeRetentionV1(options: {
             if (
               run.finishedAt.getTime() + policy.effective.retentionDays.runDetails * 86_400_000 <=
               now.getTime()
-            )
+            ) {
               eligibleIds.push(run.id);
+              retentionDeadlines.set(
+                run.id,
+                new Date(
+                  run.finishedAt.getTime() + policy.effective.retentionDays.runDetails * 86_400_000,
+                ),
+              );
+            }
           } catch (error) {
             // Invalid retained policy/canonical evidence remains for Doctor;
             // a protected identity must not pin the cursor forever.
@@ -211,17 +225,63 @@ export async function npPruneAgentRuntimeRetentionV1(options: {
         sql`, `,
       );
       await beforeStatement();
-      const result = await db.execute(
-        source.category === "diagnostics"
-          ? sql`update np_agent_provider_calls t
-              set request_redacted=null, response_redacted=null
-              where t.site_id=${siteId} and t.id in (${selected}) and ${source.eligible}
-              returning t.id`
-          : sql`delete from ${sql.identifier(source.table)} t
-              where t.site_id=${siteId} and t.id in (${selected}) and ${source.eligible}
-              and ${unreferenced(source.table, hasJobs)} returning t.id`,
-      );
-      pruned += result.rows.length;
+      const releaseKind =
+        source.category === "calls"
+          ? "provider-call"
+          : source.category === "reservations"
+            ? "usage-reservation"
+            : source.category === "runs"
+              ? "runtime-run"
+              : source.category === "breakers"
+                ? "circuit-breaker"
+                : null;
+      if (releaseKind) {
+        const eligible = await db.execute(sql`select t.id from ${sql.identifier(source.table)} t
+          where t.site_id=${siteId} and t.id in (${selected}) and ${source.eligible} order by t.id for update nowait`);
+        for (const candidate of eligible.rows) {
+          if (typeof candidate.id !== "string")
+            throw new NpAgentGatewayError(
+              "RUNTIME_MAINTENANCE_INVALID",
+              409,
+              "Agent maintenance is unavailable.",
+            );
+          const ready = await npPrepareAgentSourceReleaseV1({
+            db,
+            siteId,
+            id: candidate.id,
+            kind: releaseKind,
+            now,
+            retentionEligibleAt: retentionDeadlines.get(candidate.id),
+            beforeStatement,
+          });
+          if (!ready) continue;
+          await beforeStatement();
+          const deleted = await db.execute(sql`delete from ${sql.identifier(source.table)} t
+            where t.site_id=${siteId} and t.id=${candidate.id}::uuid and ${source.eligible} returning t.id`);
+          if (deleted.rows.length !== 1)
+            throw new NpAgentGatewayError(
+              "RUNTIME_MAINTENANCE_INVALID",
+              409,
+              "Agent maintenance is unavailable.",
+            );
+          pruned += 1;
+        }
+      } else {
+        // Even diagnostic updates/deletes must not wait on a row held by a writer
+        // which will subsequently need our exclusive reference fence.
+        await db.execute(sql`select t.id from ${sql.identifier(source.table)} t
+          where t.site_id=${siteId} and t.id in (${selected}) and ${source.eligible}
+          order by t.id for update nowait`);
+        await beforeStatement();
+        const result = await db.execute(
+          source.category === "diagnostics"
+            ? sql`update np_agent_provider_calls t set request_redacted=null, response_redacted=null
+              where t.site_id=${siteId} and t.id in (${selected}) and ${source.eligible} returning t.id`
+            : sql`delete from ${sql.identifier(source.table)} t where t.site_id=${siteId}
+              and t.id in (${selected}) and ${source.eligible} and ${unreferenced(source.table, hasJobs)} returning t.id`,
+        );
+        pruned += result.rows.length;
+      }
     }
   }
   return {

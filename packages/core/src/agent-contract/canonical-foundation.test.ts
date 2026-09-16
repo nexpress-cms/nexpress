@@ -19,7 +19,7 @@ const decoder = new TextDecoder();
 
 describe("Agent canonical JSON foundation", () => {
   it("locks the exhaustive purpose, size, and HMAC owner inventories", () => {
-    expect(npAgentCanonicalPurposes).toHaveLength(32);
+    expect(npAgentCanonicalPurposes).toHaveLength(33);
     expect(new Set(npAgentCanonicalPurposes).size).toBe(npAgentCanonicalPurposes.length);
     expect([...npAgentCanonicalPurposes].sort()).toEqual(npAgentCanonicalPurposes);
     expect(Object.keys(npAgentCanonicalBodyMaxBytesV1)).toEqual(npAgentCanonicalPurposes);

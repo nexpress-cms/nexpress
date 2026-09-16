@@ -1,3 +1,8 @@
+import {
+  npAgentSourceReleaseCanonicalIncludedKeysV1,
+  npAgentSourceReleaseCanonicalExcludedKeysV1,
+  npAnalyzeAgentSourceReleaseCanonical,
+} from "./source-release-contract.js";
 import { npRequireAgentContractResult } from "./contract.js";
 import {
   npAgentActionCanonicalExcludedKeysV1,
@@ -182,6 +187,7 @@ export const npAgentCanonicalPurposeAnalyzersV1 = {
   "np.agent-run-limits.v1": npAnalyzeAgentRunLimitsCanonical,
   "np.agent-signal-evidence.v1": npAnalyzeAgentSignalEvidenceCanonical,
   "np.agent-site-deletion-plan.v1": npAnalyzeAgentSiteDeletionPlanCanonical,
+  "np.agent-source-release.v1": npAnalyzeAgentSourceReleaseCanonical,
   "np.agent-staff-site-authorization.v1": npAnalyzeAgentStaffSiteAuthorizationCanonical,
   "np.agent-vault-aad.v1": npAnalyzeAgentVaultAadCanonical,
 } as const satisfies NpAgentCanonicalPurposeAnalyzerMapV1;
@@ -217,6 +223,7 @@ export const npAgentCanonicalPurposeIncludedKeysV1 = {
   "np.agent-run-limits.v1": npAgentRunLimitsCanonicalIncludedKeysV1,
   "np.agent-signal-evidence.v1": npAgentSignalEvidenceCanonicalIncludedKeysV1,
   "np.agent-site-deletion-plan.v1": npAgentSiteDeletionPlanCanonicalIncludedKeysV1,
+  "np.agent-source-release.v1": npAgentSourceReleaseCanonicalIncludedKeysV1,
   "np.agent-staff-site-authorization.v1": npAgentStaffSiteAuthorizationCanonicalIncludedKeysV1,
   "np.agent-vault-aad.v1": npAgentVaultAadCanonicalIncludedKeysV1,
 } as const satisfies Record<NpAgentCanonicalPurposeV1, readonly string[]>;
@@ -252,6 +259,7 @@ export const npAgentCanonicalPurposeExcludedKeysV1 = {
   "np.agent-run-limits.v1": npAgentRunLimitsCanonicalExcludedKeysV1,
   "np.agent-signal-evidence.v1": npAgentSignalEvidenceCanonicalExcludedKeysV1,
   "np.agent-site-deletion-plan.v1": npAgentSiteDeletionPlanCanonicalExcludedKeysV1,
+  "np.agent-source-release.v1": npAgentSourceReleaseCanonicalExcludedKeysV1,
   "np.agent-staff-site-authorization.v1": npAgentStaffSiteAuthorizationCanonicalExcludedKeysV1,
   "np.agent-vault-aad.v1": npAgentVaultAadCanonicalExcludedKeysV1,
 } as const satisfies Record<NpAgentCanonicalPurposeV1, readonly string[]>;

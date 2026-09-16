@@ -115,6 +115,9 @@ function parseTableName(value: unknown, path: string): string {
   if (value === SITE_DELETION_MARKER_TABLE) {
     failCanonicalBody("invalid-field", path, "must exclude the site-deletion marker table");
   }
+  if (value === "np_agent_reference_fence") {
+    failCanonicalBody("invalid-field", path, "must exclude framework-global coordination records");
+  }
   return value;
 }
 

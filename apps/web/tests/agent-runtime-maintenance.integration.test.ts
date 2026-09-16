@@ -18,6 +18,8 @@ import {
   npAgentRuns,
   npAgentCircuitBreakers,
   npAgentVersions,
+  npAgentSourceReleases,
+  npAgentSourceReleaseEdges,
 } from "../../../packages/core/src/db/schema/agent.js";
 import { npAuditEvents } from "../../../packages/core/src/db/schema/community.js";
 import { npSites } from "../../../packages/core/src/db/schema/system.js";
@@ -133,7 +135,7 @@ describe.skipIf(skipIfNoTestDb())("Runtime event maintenance", () => {
     ).toHaveLength(1);
   });
 
-  it("retains audited terminal Runs and prunes only after their last reference is gone", async () => {
+  it("releases an expired terminal Run while preserving its actual admission audit and consumed key", async () => {
     const f = await runtimeFixture();
     const { runId } = await f.admission.admit(f.runInput);
     const finishedAt = f.options.now();
@@ -141,16 +143,24 @@ describe.skipIf(skipIfNoTestDb())("Runtime event maintenance", () => {
       .update(npAgentRuns)
       .set({ state: "cancelled", finishedAt })
       .where(eq(npAgentRuns.id, runId));
-    const now = new Date(finishedAt.getTime() + 90 * 86_400_000);
-    expect(await pruneAgentRuntimeEventsV1({ siteId, now })).toEqual({
-      examined: 1,
-      pruned: 0,
-      nextCursor: null,
-    });
-    // Simulate the owning audit lifecycle having released its evidence.
-    await f.db
-      .delete(npAuditEvents)
+    const [run] = await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, runId));
+    if (!run) throw new Error("Run fixture missing");
+    const originalAudit = await f.db
+      .select()
+      .from(npAuditEvents)
       .where(and(eq(npAuditEvents.siteId, siteId), eq(npAuditEvents.targetId, runId)));
+    expect(originalAudit).toHaveLength(1);
+    expect(originalAudit[0]).toMatchObject({
+      action: "agent.runtime.admitted",
+      targetType: "agent-run",
+      payload: {
+        runId,
+        admissionFingerprint: run.admissionFingerprint,
+        actorFingerprint: f.options.deploymentAuthority.fingerprint,
+      },
+    });
+    expect(run.runtimeAdmissionSources?.runtimeAuthority).toBeDefined();
+    const now = new Date(finishedAt.getTime() + 90 * 86_400_000);
     expect(await pruneAgentRuntimeEventsV1({ siteId, now: new Date(now.getTime() - 1) })).toEqual({
       examined: 1,
       pruned: 0,
@@ -162,6 +172,58 @@ describe.skipIf(skipIfNoTestDb())("Runtime event maintenance", () => {
       nextCursor: null,
     });
     expect(await f.db.select().from(npAgentRuns)).toHaveLength(0);
+    expect(
+      await f.db.select().from(npAuditEvents).where(eq(npAuditEvents.id, originalAudit[0]!.id)),
+    ).toEqual(originalAudit);
+    const releases = await f.db.select().from(npAgentSourceReleases);
+    expect(releases).toHaveLength(1);
+    expect(releases[0]).toMatchObject({
+      sourceKind: "runtime-run",
+      sourceId: runId,
+      principalId: run.principalId,
+      evidenceBody: { admissionFingerprint: run.admissionFingerprint },
+    });
+    const edges = await f.db.select().from(npAgentSourceReleaseEdges);
+    expect(edges).toHaveLength(2);
+    expect(edges.map((edge) => edge.edgeCode).sort()).toEqual(["audit-run", "audit-target"]);
+    await expect(f.admission.admit(f.runInput)).rejects.toMatchObject({
+      code: "IDEMPOTENCY_KEY_REUSED",
+    });
+  });
+
+  it("keeps terminal Runs pinned by unknown nested audit references without emitting receipts", async () => {
+    const f = await runtimeFixture();
+    const { runId } = await f.admission.admit(f.runInput);
+    const finishedAt = f.options.now();
+    await f.db
+      .update(npAgentRuns)
+      .set({ state: "cancelled", finishedAt })
+      .where(eq(npAgentRuns.id, runId));
+    const [unknown] = await f.db
+      .insert(npAuditEvents)
+      .values({
+        siteId,
+        actorKind: "system",
+        action: "test.required-evidence",
+        payload: { evidence: [{ originalRunId: runId }] },
+      })
+      .returning();
+    expect(
+      await pruneAgentRuntimeEventsV1({
+        siteId,
+        now: new Date(finishedAt.getTime() + 90 * 86_400_000),
+      }),
+    ).toEqual({
+      examined: 1,
+      pruned: 0,
+      nextCursor: null,
+    });
+    expect(await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, runId))).toHaveLength(1);
+    expect(await f.db.select().from(npAgentSourceReleases)).toHaveLength(0);
+    expect(await f.db.select().from(npAgentSourceReleaseEdges)).toHaveLength(0);
+    expect(
+      await f.db.select().from(npAuditEvents).where(eq(npAuditEvents.id, unknown!.id)),
+    ).toEqual([unknown]);
   });
 
   it("traverses same-UUID categories together and preserves unhealthy breakers", async () => {
@@ -221,9 +283,11 @@ describe.skipIf(skipIfNoTestDb())("Runtime event maintenance", () => {
       .update(npAgentRuns)
       .set({ state: "cancelled", finishedAt })
       .where(eq(npAgentRuns.id, runId));
-    await f.db
-      .delete(npAuditEvents)
+    const originalAudit = await f.db
+      .select()
+      .from(npAuditEvents)
       .where(and(eq(npAuditEvents.siteId, siteId), eq(npAuditEvents.targetId, runId)));
+    expect(originalAudit).toHaveLength(1);
     await npWithAgentRuntimeControlTransactionV1(siteId, ({ db, settings, revision }) => {
       settings.defaultPolicyRules.retentionDays.runDetails = 1;
       return f.controls.updateInTransaction({
@@ -272,6 +336,10 @@ describe.skipIf(skipIfNoTestDb())("Runtime event maintenance", () => {
       pruned: 1,
       nextCursor: null,
     });
+    expect(await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, runId))).toHaveLength(0);
+    expect(
+      await f.db.select().from(npAuditEvents).where(eq(npAuditEvents.id, originalAudit[0]!.id)),
+    ).toEqual(originalAudit);
   });
 
   it.each(["first pass", "reused journal"])(

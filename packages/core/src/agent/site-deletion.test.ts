@@ -40,6 +40,8 @@ const expectedTables = [
   "np_agent_provider_calls",
   "np_agent_runs",
   "np_agent_service_tokens",
+  "np_agent_source_release_edges",
+  "np_agent_source_releases",
   "np_agent_triggers",
   "np_agent_usage_daily",
   "np_agent_usage_reservations",
@@ -55,7 +57,16 @@ describe("Agent site deletion foundation", () => {
     expect(new Set(npAgentSiteDeletionOrderV1)).toEqual(new Set(expectedTables));
     expect(npAgentSiteDeletionOrderV1).toHaveLength(expectedTables.length);
     expect(npAgentSiteOwnedTableNamesV1).not.toContain(NP_AGENT_SITE_DELETION_MARKER_TABLE);
+    expect(npAgentSiteOwnedTableNamesV1).not.toContain("np_agent_reference_fence");
     expect(NP_AGENT_SITE_DELETION_MARKER_TABLE).toBe("np_agent_site_deletion_sagas");
+  });
+
+  it("deletes release edges before Actions and receipts before principals", () => {
+    const position = (name: (typeof npAgentSiteDeletionOrderV1)[number]) =>
+      npAgentSiteDeletionOrderV1.indexOf(name);
+    expect(position("np_agent_source_release_edges")).toBeLessThan(position("np_agent_actions"));
+    expect(position("np_agent_actions")).toBeLessThan(position("np_agent_source_releases"));
+    expect(position("np_agent_source_releases")).toBeLessThan(position("np_agent_principals"));
   });
 
   it("locks independent empty and populated sdri1 golden vectors", () => {

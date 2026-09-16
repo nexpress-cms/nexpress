@@ -188,6 +188,8 @@ export async function npRequireAgentRuntimeVersionV1(input: {
   agentId: string;
   versionId?: string;
   active?: boolean;
+  /** Retention must not wait on authority rows while holding the reference fence. */
+  noWait?: true;
 }): Promise<NpAgentRuntimeVersionEvidenceV1> {
   const [agent] = await input.db
     .select()
@@ -201,7 +203,7 @@ export async function npRequireAgentRuntimeVersionV1(input: {
     .where(
       and(eq(npAgentPrincipals.siteId, input.siteId), eq(npAgentPrincipals.id, agent.principalId)),
     )
-    .for("update")
+    .for("update", input.noWait ? { noWait: true } : undefined)
     .limit(1);
   const versionId = input.versionId ?? agent.activeVersionId;
   if (!versionId || !principal || principal.kind !== "runtime")

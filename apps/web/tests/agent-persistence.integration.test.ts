@@ -19,6 +19,7 @@ import {
 import {
   npBuildAgentSiteDeletionRowIdentityDigest,
   npInspectAgentSiteDeletionRows,
+  npAgentSiteOwnedTableNamesV1,
 } from "../../../packages/core/src/agent/site-deletion.js";
 import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./harness.js";
 
@@ -258,7 +259,8 @@ describe.skipIf(skipIfNoTestDb())("Agent persistence and site deletion foundatio
     await seedPendingNotificationConnection("agent-a");
 
     const inventory = await npInspectAgentSiteDeletionRows(db, "agent-a");
-    expect(inventory).toHaveLength(39);
+    expect(inventory).toHaveLength(npAgentSiteOwnedTableNamesV1.length);
+    expect(inventory.some((item) => item.table === "np_agent_reference_fence")).toBe(false);
     expect(inventory.map((row) => row.table)).toEqual(
       [...inventory.map((row) => row.table)].sort(),
     );
@@ -315,7 +317,9 @@ describe.skipIf(skipIfNoTestDb())("Agent persistence and site deletion foundatio
       requesterFingerprint: "staff:test",
     });
 
-    expect(await npInspectAgentSiteDeletionRows(db, "agent-saga")).toHaveLength(39);
+    expect(await npInspectAgentSiteDeletionRows(db, "agent-saga")).toHaveLength(
+      npAgentSiteOwnedTableNamesV1.length,
+    );
     await expect(deleteSite("agent-saga", { cascade: true })).rejects.toMatchObject({
       errors: [
         {

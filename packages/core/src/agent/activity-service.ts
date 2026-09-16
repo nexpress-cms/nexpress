@@ -20,6 +20,7 @@ import {
 } from "../agent-contract/installed-capability-contract.js";
 import { npDigestAgentActionCanonical } from "../agent-contract/canonical-action.js";
 import { npDigestAgentInvocationRequestCanonical } from "../agent-contract/canonical-idempotency-request.js";
+import { npResolveReleasedAgentActionPrincipalV1 } from "./source-release-read.js";
 import { npAgentChangeSetActionTargetsV1 } from "./changeset-resources.js";
 import type { NpAgentChangeSetActorV1, NpAgentChangeSetServiceV1 } from "./changeset-service.js";
 import { getCollectionConfig, findDocuments } from "../collections/index.js";
@@ -283,7 +284,20 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     }
   }
   async function actionOwner(row: Action, inv: Invocation | null) {
-    if (!row.runId) return inv?.principalId ?? null;
+    if (row.runSourceReleaseId !== null) {
+      if (row.runId !== null || !row.runFingerprint || !inv) return null;
+      try {
+        const principalId = await npResolveReleasedAgentActionPrincipalV1({
+          db: getDb(),
+          action: row,
+        });
+        return principalId === inv.principalId ? principalId : null;
+      } catch {
+        return null;
+      }
+    }
+    if (!row.runId) return row.runFingerprint === null ? (inv?.principalId ?? null) : null;
+    if (!row.runFingerprint) return null;
     const [run] = await getDb()
       .select({ principalId: npAgentRuns.principalId })
       .from(npAgentRuns)
@@ -301,7 +315,8 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       schemaVersion: "np.agent-activity-action.v1",
       principalId,
       invocationId: row.invocationId,
-      evidence: inv && inv.expiresAt <= now() ? "expired" : "redacted",
+      evidence:
+        row.runSourceReleaseId !== null || (inv && inv.expiresAt <= now()) ? "expired" : "redacted",
       inputHash: row.inputHash,
       outputHash: row.outputHash,
       auditEventId: row.auditEventId,

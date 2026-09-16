@@ -39,6 +39,8 @@ import type {
   NpAgentProviderResponseCanonicalV1,
   NpAgentProviderUsageV1,
   NpAgentRunLimitsV1,
+  NpAgentModelPricingV1,
+  NpAgentRecipeDefinitionCanonicalV1,
 } from "../agent-contract/types.js";
 import {
   npRuntimeRunAdmissionBodyV1,
@@ -275,12 +277,24 @@ async function findCall(db: Db, siteId: string, id: string): Promise<Call> {
   return call;
 }
 
-async function retained(db: Db, call: Call) {
+/** Shared owning proof for settlement and detail retention; never dispatches a provider. */
+export async function npRequireAgentRuntimeRetainedCallV1(input: {
+  db: Db;
+  call: Call;
+  /** Maintenance holds the global reference fence and must not wait on source owners. */
+  noWait?: true;
+}): Promise<{
+  run: Run;
+  reservation: Reservation;
+  pricing: NpAgentModelPricingV1;
+  recipe: NpAgentRecipeDefinitionCanonicalV1;
+}> {
+  const { db, call } = input;
   const [run] = await db
     .select()
     .from(npAgentRuns)
     .where(and(eq(npAgentRuns.siteId, call.siteId), eq(npAgentRuns.id, call.runId)))
-    .for("update")
+    .for("update", input.noWait ? { noWait: true } : undefined)
     .limit(1);
   const [reservation] = await db
     .select()
@@ -291,7 +305,7 @@ async function retained(db: Db, call: Call) {
         eq(npAgentUsageReservations.id, call.usageReservationId),
       ),
     )
-    .for("update")
+    .for("update", input.noWait ? { noWait: true } : undefined)
     .limit(1);
   if (!run || !reservation || run.origin !== "runtime" || !run.agentId || !run.agentVersionId)
     fail();
@@ -301,6 +315,7 @@ async function retained(db: Db, call: Call) {
     agentId: run.agentId,
     versionId: run.agentVersionId,
     active: false,
+    ...(input.noWait ? { noWait: true as const } : {}),
   });
   if (
     run.agentConfigHash !== evidence.version.configHash ||
@@ -601,7 +616,7 @@ export function createAgentRuntimeUsageV1(
             call.requestDigest !== requestDigest
           )
             fail("RUNTIME_IDEMPOTENCY_CONFLICT");
-          const { reservation } = await retained(db, call);
+          const { reservation } = await npRequireAgentRuntimeRetainedCallV1({ db, call });
           if (!dispatch) return receipt(call, reservation, true);
           if (
             call.state !== "reserved" ||
@@ -796,7 +811,10 @@ export function createAgentRuntimeUsageV1(
             response.dispatchState !== "not-dispatched")
         )
           fail("RUNTIME_DISPATCH_UNAVAILABLE");
-        const { reservation, pricing, recipe } = await retained(db, call);
+        const { reservation, pricing, recipe } = await npRequireAgentRuntimeRetainedCallV1({
+          db,
+          call,
+        });
         const observedAt = new Date(response.observedAt),
           current = nowAt(now);
         if (
@@ -976,7 +994,7 @@ export function createAgentRuntimeUsageV1(
             .limit(1);
           if (!found) fail();
           const call = await findCall(db, input.siteId, found.id);
-          const { reservation } = await retained(db, call);
+          const { reservation } = await npRequireAgentRuntimeRetainedCallV1({ db, call });
           if (!["reserved", "in_flight", "ambiguous"].includes(call.state)) fail();
           const undispatched = call.state === "reserved" && call.dispatchState === "not-dispatched";
           if (call.state !== "ambiguous") {
