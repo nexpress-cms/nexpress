@@ -9,7 +9,7 @@ import {
 } from "../../../packages/core/src/db/schema/agent.js";
 import { npRequireAgentChangeSetExecutionOutputV1 } from "../../../packages/core/src/agent-contract/installed-capability-contract.js";
 import {
-  gatewayExecutionFixture,
+  gatewayExecutionEnvironmentFixture,
   gatewayExecutionRequest,
   readyGatewayExecution,
   approveGatewayExecution,
@@ -32,7 +32,7 @@ describe.skipIf(skipIfNoTestDb())("Gateway durable MCP execution task", () => {
   it.each(["stdio", "mcp-http"] as const)(
     "binds %s approval/result and atomically cancels scheduled work",
     async (transport) => {
-      const f = await gatewayExecutionFixture("approved-execute", "schedule", {
+      const f = await gatewayExecutionEnvironmentFixture("approved-execute", "schedule", {
         transport,
         tasks: ({ admission, getService, now }) =>
           createAgentMcpTaskServiceV1({
@@ -50,7 +50,7 @@ describe.skipIf(skipIfNoTestDb())("Gateway durable MCP execution task", () => {
         changeSetId: plan.id,
         planHash: plan.planHash,
         approvalId: null,
-        scheduledFor: f.executionCommand.scheduledFor,
+        scheduledFor: f.scheduledFor,
       });
       const invoke = (request: typeof proposed, taskRequest?: { requestedTtlMs: number | null }) =>
         f.service.invokeCapability({

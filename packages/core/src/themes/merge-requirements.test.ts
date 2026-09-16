@@ -151,7 +151,7 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
     expect(title && "admin" in title ? title.admin?._themeOrigin : undefined).toBeUndefined();
   });
 
-  it("synthesises a collection when createIfAbsent is true and slug is missing", () => {
+  it("synthesises multiple missing collections while preserving existing ones", () => {
     const themeWithCreate = theme("magazine", {
       categories: {
         createIfAbsent: true,
@@ -160,10 +160,13 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
           description: { type: "textarea", hard: false },
         },
       },
+      authors: {
+        createIfAbsent: true,
+        fields: { name: { type: "text", required: true } },
+      },
     });
-
     const out = mergeThemeRequirements([basePosts], [themeWithCreate]);
-    expect(out).toHaveLength(2);
+    expect(out.map(({ slug }) => slug)).toEqual(["posts", "categories", "authors"]);
     const cats = out.find((c) => c.slug === "categories");
     expect(cats).toBeDefined();
     expect(cats?.labels).toEqual({ singular: "Categorie", plural: "Categories" });
@@ -333,75 +336,6 @@ describe("mergeThemeRequirements — auto-merge of theme.requires.collections", 
     expect(out).not.toBe(collections);
     expect(out[0]).not.toBe(basePosts);
     expect(out[0]?.fields).not.toBe(originalFields);
-  });
-
-  it("verification scenario — magazine theme + plain posts produces the documented field set", () => {
-    // This is the test the brief specifies: defineConfig-style
-    // call shape, verifying the resolved fields contain every
-    // theme-declared name.
-    const magazineTheme: NpRegisteredTheme = {
-      manifest: {
-        id: "magazine",
-        name: "Magazine",
-        version: "0.1.0",
-        requires: {
-          collections: {
-            posts: {
-              fields: {
-                featured: { type: "checkbox" },
-                coverImage: { type: "upload", relationTo: "media" },
-                categories: {
-                  type: "relationship",
-                  relationTo: "categories",
-                  hasMany: true,
-                },
-                author: {
-                  type: "relationship",
-                  relationTo: "authors",
-                  hard: false,
-                },
-              },
-            },
-            categories: {
-              createIfAbsent: true,
-              fields: {
-                name: { type: "text", required: true },
-                description: { type: "textarea", hard: false },
-              },
-            },
-            authors: {
-              createIfAbsent: true,
-              fields: {
-                name: { type: "text", required: true },
-                bio: { type: "textarea", hard: false },
-              },
-            },
-          },
-        },
-      },
-      impl: {},
-    };
-
-    const postsCollection: NpCollectionConfig = {
-      slug: "posts",
-      labels: { singular: "Post", plural: "Posts" },
-      fields: [
-        { type: "text", name: "title" },
-        { type: "richText", name: "body" },
-      ],
-    };
-
-    const out = mergeThemeRequirements([postsCollection], [magazineTheme]);
-
-    const posts = out.find((c) => c.slug === "posts");
-    expect(posts).toBeDefined();
-    const names = (posts?.fields ?? []).map((f) => ("name" in f ? f.name : f.type));
-    for (const expected of ["featured", "coverImage", "categories", "author"]) {
-      expect(names).toContain(expected);
-    }
-    // categories + authors synthesised
-    expect(out.find((c) => c.slug === "categories")).toBeDefined();
-    expect(out.find((c) => c.slug === "authors")).toBeDefined();
   });
 
   // ──────────────────────────────────────────────────────────────

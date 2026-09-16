@@ -127,12 +127,13 @@ describe("setup-server.ts end-to-end (spawn)", () => {
   });
 
   describe("non-interactive mode", () => {
-    it("writes a complete .env with default config", async () => {
+    it("writes a complete .env with custom DB port and supplied test database", async () => {
       const result = await runWizard({
         envPath,
         env: {
           NP_SETUP_NONINTERACTIVE: "1",
           DATABASE_URL: "postgres://nexpress:nexpress@localhost:6137/testproj",
+          TEST_DATABASE_URL: "postgres://nexpress:nexpress@localhost:6137/testproj_test",
           NP_SECRET: TEST_SECRET,
           SITE_URL: "http://localhost:3000",
           NP_SETUP_RUN_MIGRATIONS: "false",
@@ -144,28 +145,11 @@ describe("setup-server.ts end-to-end (spawn)", () => {
       expect(result.envContent).not.toBeNull();
       expect(result.envContent).toMatch(/DATABASE_URL=postgres:\/\/.*:6137\/testproj/);
       expect(result.envContent).toMatch(new RegExp(`^NP_SECRET=${TEST_SECRET}$`, "m"));
+      // Compose and the application must keep using the same non-default port (#829).
+      expect(result.envContent).toMatch(/^NEXPRESS_DB_PORT=6137$/m);
+      expect(result.envContent).toMatch(/^TEST_DATABASE_URL=postgres:\/\/.*:6137\/testproj_test$/m);
       expect(result.envContent).toMatch(/^NP_COMMUNITY_REALTIME_MAX_STREAMS=200$/m);
       expect(result.envContent).toMatch(/^NP_COMMUNITY_REALTIME_MAX_SITE_STREAMS=50$/m);
-    });
-
-    it("writes NEXPRESS_DB_PORT line when DATABASE_URL port != 5433", async () => {
-      // Regression for #829: scaffolds that pick a non-default port
-      // must have BOTH `DATABASE_URL` and `NEXPRESS_DB_PORT` in `.env`,
-      // otherwise `docker compose` (which reads NEXPRESS_DB_PORT) and
-      // the app (which reads DATABASE_URL) disagree on which port to
-      // bind / connect to.
-      const result = await runWizard({
-        envPath,
-        env: {
-          NP_SETUP_NONINTERACTIVE: "1",
-          DATABASE_URL: "postgres://nexpress:nexpress@localhost:5500/testproj",
-          NP_SECRET: TEST_SECRET,
-          NP_SETUP_RUN_MIGRATIONS: "false",
-          NP_SETUP_CREATE_ADMIN: "false",
-        },
-      });
-      expect(result.code, result.stderr).toBe(0);
-      expect(result.envContent).toMatch(/^NEXPRESS_DB_PORT=5500$/m);
     });
 
     it("omits NEXPRESS_DB_PORT line when DATABASE_URL port == 5433 (default)", async () => {
@@ -186,25 +170,7 @@ describe("setup-server.ts end-to-end (spawn)", () => {
       expect(result.envContent).not.toMatch(/^NEXPRESS_DB_PORT=/m);
     });
 
-    it("preserves TEST_DATABASE_URL when provided via env", async () => {
-      // Regression for #829's side-fix: CLI mode dropped this line
-      // on rewrite. Non-interactive mode picks it up from process.env.
-      const result = await runWizard({
-        envPath,
-        env: {
-          NP_SETUP_NONINTERACTIVE: "1",
-          DATABASE_URL: "postgres://nexpress:nexpress@localhost:5433/testproj",
-          TEST_DATABASE_URL: "postgres://nexpress:nexpress@localhost:5433/testproj_test",
-          NP_SECRET: TEST_SECRET,
-          NP_SETUP_RUN_MIGRATIONS: "false",
-          NP_SETUP_CREATE_ADMIN: "false",
-        },
-      });
-      expect(result.code, result.stderr).toBe(0);
-      expect(result.envContent).toMatch(/TEST_DATABASE_URL=postgres:\/\/.*:5433\/testproj_test/);
-    });
-
-    it("uses existing .env values as non-interactive defaults", async () => {
+    it("preserves existing .env defaults and realtime capacity, backing up exact prior contents", async () => {
       writeFileSync(
         envPath,
         [
@@ -214,11 +180,16 @@ describe("setup-server.ts end-to-end (spawn)", () => {
           "SITE_URL=http://localhost:4010",
           "NP_SETUP_RUN_MIGRATIONS=false",
           "NP_SETUP_CREATE_ADMIN=false",
+          "NP_COMMUNITY_REALTIME_MAX_STREAMS=120",
+          "NP_COMMUNITY_REALTIME_MAX_SITE_STREAMS=30",
+          "# Operator-owned settings must survive in the exact backup.",
+          "EXISTING=value",
           "",
         ].join("\n"),
         "utf8",
       );
 
+      const original = readFileSync(envPath, "utf8");
       const result = await runWizard({
         envPath,
         env: {
@@ -232,31 +203,9 @@ describe("setup-server.ts end-to-end (spawn)", () => {
       );
       expect(result.envContent).toMatch(/^NEXPRESS_DB_PORT=6138$/m);
       expect(result.envContent).toMatch(/^SITE_URL=http:\/\/localhost:4010$/m);
-    });
-
-    it("preserves valid community realtime capacity across setup rewrites", async () => {
-      writeFileSync(
-        envPath,
-        [
-          "DATABASE_URL=postgres://nexpress:nexpress@localhost:6138/existingproj",
-          `NP_SECRET=${TEST_SECRET}`,
-          "SITE_URL=http://localhost:3000",
-          "NP_COMMUNITY_REALTIME_MAX_STREAMS=120",
-          "NP_COMMUNITY_REALTIME_MAX_SITE_STREAMS=30",
-        ].join("\n"),
-      );
-      const result = await runWizard({
-        envPath,
-        env: {
-          NP_SETUP_NONINTERACTIVE: "1",
-          NP_SETUP_RUN_MIGRATIONS: "false",
-          NP_SETUP_CREATE_ADMIN: "false",
-        },
-      });
-
-      expect(result.code, result.stderr).toBe(0);
       expect(result.envContent).toMatch(/^NP_COMMUNITY_REALTIME_MAX_STREAMS=120$/m);
       expect(result.envContent).toMatch(/^NP_COMMUNITY_REALTIME_MAX_SITE_STREAMS=30$/m);
+      expect(readFileSync(`${envPath}.bak`, "utf8")).toBe(original);
     });
 
     it("exits non-zero with a helpful error when DATABASE_URL is missing", async () => {
@@ -272,52 +221,10 @@ describe("setup-server.ts end-to-end (spawn)", () => {
       // Both the validation message AND the env-var helper block.
       expect(result.stderr).toMatch(/DATABASE_URL/);
     });
-
-    it("rewriting an existing .env backs up the prior file to .env.bak", async () => {
-      writeFileSync(envPath, "EXISTING=value\n", "utf8");
-
-      const result = await runWizard({
-        envPath,
-        env: {
-          NP_SETUP_NONINTERACTIVE: "1",
-          DATABASE_URL: "postgres://nexpress:nexpress@localhost:5433/testproj",
-          NP_SECRET: TEST_SECRET,
-          NP_SETUP_RUN_MIGRATIONS: "false",
-          NP_SETUP_CREATE_ADMIN: "false",
-        },
-      });
-
-      expect(result.code, result.stderr).toBe(0);
-      const bakPath = `${envPath}.bak`;
-      expect(existsSync(bakPath)).toBe(true);
-      expect(readFileSync(bakPath, "utf8")).toMatch(/^EXISTING=value$/m);
-    });
   });
 
-  describe("module load (no @/-alias crashes)", () => {
-    it("starts cleanly under non-interactive mode (no ERR_MODULE_NOT_FOUND)", async () => {
-      // Belt-and-braces: the scaffold-smoke CI job already runs the
-      // dist'd scripts in a packed scaffold, but this catches a
-      // regression where editing the source breaks module load
-      // BEFORE a publish happens.
-      const result = await runWizard({
-        envPath,
-        env: {
-          NP_SETUP_NONINTERACTIVE: "1",
-          DATABASE_URL: "postgres://nexpress:nexpress@localhost:5433/testproj",
-          NP_SECRET: TEST_SECRET,
-          NP_SETUP_RUN_MIGRATIONS: "false",
-          NP_SETUP_CREATE_ADMIN: "false",
-        },
-      });
-      // Even if the script errors for some other reason, the stderr
-      // must not carry the import-resolution failure signature.
-      expect(result.stderr).not.toMatch(
-        /ERR_MODULE_NOT_FOUND|ERR_PACKAGE_PATH_NOT_EXPORTED|Cannot find package|Cannot find module/,
-      );
-    });
-  });
-
+  // Successful real-script runs above also protect module resolution (#834).
+  // Keep CLI and HTTP modes separate: they exercise different startup branches.
   describe("HTTP mode", () => {
     it("prints copy-pasteable setup mode fallbacks", async () => {
       const result = await runWizard({

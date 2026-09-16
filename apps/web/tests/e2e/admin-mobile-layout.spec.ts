@@ -76,8 +76,10 @@ test.describe("admin mobile layout", () => {
       await signInAsE2EAdmin(page);
       await page.setViewportSize(viewport);
 
-      for (const route of ADMIN_ROUTES) {
-        await assertAdminRouteHasNoMobileOverflow(page, route);
+      // Keep every route/width content check. The common Admin shell
+      // drawer lifecycle is exercised once per width on the dashboard.
+      for (const [routeIndex, route] of ADMIN_ROUTES.entries()) {
+        await assertAdminRouteHasNoMobileOverflow(page, route, routeIndex === 0);
       }
     });
   }
@@ -755,13 +757,25 @@ test.describe("admin mobile layout", () => {
     );
     await expectTouchTarget(page.getByRole("button", { name: /^Save Theme$/ }), "theme save");
 
+    const navigationResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/navigation" &&
+        response.request().method() === "GET",
+    );
     await activateSettingsTab(page, "Navigation", /^Navigation structure$/);
-    // The heading and toolbar mount before the initial navigation data.
+    expect((await navigationResponse).status()).toBe(200);
+    // Wait for successfully rendered data, whether empty or populated. A
+    // failed load also enables Save, so that alone is not a readiness signal.
     await expect(
-      page.getByText(
-        "No navigation items in this location yet. Add your first link to get started.",
-        { exact: true },
-      ),
+      page
+        .getByText(
+          "No navigation items in this location yet. Add your first link to get started.",
+          {
+            exact: true,
+          },
+        )
+        .or(page.getByLabel("Label", { exact: true }).first())
+        .first(),
     ).toBeVisible();
     await expectNoHorizontalOverflow(page, "admin settings navigation tab", {
       ignoreClosedSidebar: true,
@@ -1186,6 +1200,7 @@ async function activateSettingsTab(
 async function assertAdminRouteHasNoMobileOverflow(
   page: Page,
   route: (typeof ADMIN_ROUTES)[number],
+  exerciseDrawer: boolean,
 ): Promise<void> {
   const response = await page.goto(route.path, { waitUntil: "domcontentloaded" });
   expect(response?.status(), `admin ${route.label} ${route.path}`).toBe(200);
@@ -1197,6 +1212,8 @@ async function assertAdminRouteHasNoMobileOverflow(
   await expectNoHorizontalOverflow(page, `admin ${route.label} closed`, {
     ignoreClosedSidebar: true,
   });
+
+  if (!exerciseDrawer) return;
 
   const openSidebar = page.locator('[data-np-admin-sidebar][data-open="true"]');
   await expect(async () => {

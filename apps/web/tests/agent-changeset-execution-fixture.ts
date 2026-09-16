@@ -98,20 +98,7 @@ function binding(
   };
 }
 
-export async function executionFixture({
-  intendedOperation = "apply",
-  document = false,
-  deferVerification = false,
-  convergenceFails = false,
-  distinctApprover = false,
-  principalExposure,
-  draftInput,
-  deferRollback = false,
-  rollbackWindowSeconds,
-  inspectPostCommitEffect,
-  resolveExecutionBinding,
-  principalControl,
-}: {
+interface ExecutionFixtureOptions {
   principalControl?: Parameters<typeof principalFixture>[5];
   resolveExecutionBinding?: NonNullable<
     NpAgentChangeSetServiceOptionsV1["approvals"]
@@ -130,7 +117,21 @@ export async function executionFixture({
   inspectPostCommitEffect?: NonNullable<
     NpAgentChangeSetServiceOptionsV1["execution"]
   >["inspectPostCommitEffect"];
-} = {}) {
+}
+
+// Prepare authority, storage and dispatch seams without manufacturing an
+// unrelated approved ChangeSet for tests that propose their own Gateway plan.
+export async function executionEnvironmentFixture({
+  intendedOperation = "apply",
+  deferVerification = false,
+  convergenceFails = false,
+  principalExposure,
+  deferRollback = false,
+  rollbackWindowSeconds,
+  inspectPostCommitEffect,
+  resolveExecutionBinding,
+  principalControl,
+}: ExecutionFixtureOptions = {}) {
   let time = new Date();
   let paused = false;
   const scheduledFor =
@@ -224,8 +225,45 @@ export async function executionFixture({
     : null;
   const service = principal?.service ?? f.service;
   const creator = principal?.actor ?? f.actor;
+  return {
+    ...f,
+    service,
+    principal,
+    creator,
+    seedContext: f,
+    scheduledFor,
+    applyJobs,
+    verifyJobs,
+    rollbackJobs,
+    verifyConvergence,
+    advance(seconds: number) {
+      time = new Date(time.getTime() + seconds * 1000);
+    },
+    pause() {
+      paused = true;
+    },
+    async seo() {
+      return (
+        await f.db
+          .select()
+          .from(npSettings)
+          .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "seo")))
+      )[0];
+    },
+  };
+}
+
+export async function executionFixture(options: ExecutionFixtureOptions = {}) {
+  const {
+    intendedOperation = "apply",
+    document = false,
+    distinctApprover = false,
+    draftInput,
+  } = options;
+  const f = await executionEnvironmentFixture(options);
+  const { service, creator, scheduledFor } = f;
   const value: NpAgentChangeSetDraftInputV1 = draftInput
-    ? await draftInput(f)
+    ? await draftInput(f.seedContext)
     : document
       ? draft()
       : {
@@ -303,30 +341,10 @@ export async function executionFixture({
   };
   return {
     ...f,
-    service,
-    principal,
     approver,
     id: created.id,
     approved,
     executionCommand,
-    applyJobs,
-    verifyJobs,
-    rollbackJobs,
-    verifyConvergence,
-    advance(seconds: number) {
-      time = new Date(time.getTime() + seconds * 1000);
-    },
-    pause() {
-      paused = true;
-    },
-    async seo() {
-      return (
-        await f.db
-          .select()
-          .from(npSettings)
-          .where(and(eq(npSettings.siteId, siteId), eq(npSettings.key, "seo")))
-      )[0];
-    },
     async execution() {
       return (
         await f.db

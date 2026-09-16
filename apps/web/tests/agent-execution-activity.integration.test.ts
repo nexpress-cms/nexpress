@@ -6,7 +6,7 @@ import { createAgentMcpGatewayV1 } from "../../../packages/core/src/agent/mcp-ga
 import { npCollectAgentHealthSummaryV1 } from "../../../packages/core/src/agent/contract-diagnostics.js";
 import { npAgentActions } from "../../../packages/core/src/db/schema/agent.js";
 import {
-  gatewayExecutionFixture,
+  gatewayExecutionEnvironmentFixture,
   readyGatewayExecution,
   gatewayExecutionRequest,
   invokeGatewayExecution,
@@ -22,7 +22,7 @@ import {
 } from "./harness.js";
 
 async function fixture() {
-  const f = await gatewayExecutionFixture();
+  const f = await gatewayExecutionEnvironmentFixture();
   const plan = await readyGatewayExecution(f);
   const result = await invokeGatewayExecution(
     f,
@@ -121,10 +121,19 @@ describe.skipIf(skipIfNoTestDb())("Gateway execution Activity item authority", (
     }
   }, 90_000);
 
-  it.each(["input", "invocation", "run", "targets"] as const)(
-    "rejects a tampered %s link and exposes only aggregate diagnostics",
-    async (kind) => {
-      const f = await fixture();
+  it("rejects each tampered link and exposes only aggregate diagnostics", async () => {
+    const f = await fixture();
+    const original = {
+      inputCanonical: f.action.inputCanonical,
+      invocationFingerprint: f.action.invocationFingerprint,
+      runFingerprint: f.action.runFingerprint,
+      targetRefs: f.action.targetRefs,
+    };
+    for (const kind of ["input", "invocation", "run", "targets"] as const) {
+      // Each mutation starts from real, currently readable Gateway evidence.
+      expect((await f.activity.getAction({ ...f.read, id: f.action.id })).action.id, kind).toBe(
+        f.action.id,
+      );
       const digest = `cj1:sha256:${"Z".repeat(43)}`;
       const patch =
         kind === "input"
@@ -135,24 +144,37 @@ describe.skipIf(skipIfNoTestDb())("Gateway execution Activity item authority", (
               ? { runFingerprint: digest }
               : { targetRefs: [{ kind: "navigation" as const, location: "primary" }] };
       await f.db.update(npAgentActions).set(patch).where(eq(npAgentActions.id, f.action.id));
-      await expect(f.activity.getAction({ ...f.read, id: f.action.id })).rejects.toMatchObject({
-        code: "ACTIVITY_NOT_FOUND",
-        status: 404,
-      });
-      await expect(f.activity.getRun({ ...f.read, id: f.action.runId! })).rejects.toMatchObject({
-        code: "ACTIVITY_NOT_FOUND",
-        status: 404,
-      });
-      expect((await f.activity.listActions(f.read)).items).toEqual([]);
-      if (kind !== "targets") {
-        const summary = await npCollectAgentHealthSummaryV1();
-        expect(summary.issues.some((issue) => issue.code === "AGENT_EXECUTION_DIVERGED")).toBe(
-          true,
-        );
-        expect(JSON.stringify(summary)).not.toContain(f.action.id);
-        expect(JSON.stringify(summary)).not.toContain(f.plan.id);
+      try {
+        await expect(
+          f.activity.getAction({ ...f.read, id: f.action.id }),
+          kind,
+        ).rejects.toMatchObject({
+          code: "ACTIVITY_NOT_FOUND",
+          status: 404,
+        });
+        await expect(
+          f.activity.getRun({ ...f.read, id: f.action.runId! }),
+          kind,
+        ).rejects.toMatchObject({
+          code: "ACTIVITY_NOT_FOUND",
+          status: 404,
+        });
+        expect((await f.activity.listActions(f.read)).items, kind).toEqual([]);
+        if (kind !== "targets") {
+          const summary = await npCollectAgentHealthSummaryV1();
+          expect(summary.issues.some((issue) => issue.code === "AGENT_EXECUTION_DIVERGED")).toBe(
+            true,
+          );
+          expect(JSON.stringify(summary)).not.toContain(f.action.id);
+          expect(JSON.stringify(summary)).not.toContain(f.plan.id);
+        }
+      } finally {
+        await f.db.update(npAgentActions).set(original).where(eq(npAgentActions.id, f.action.id));
       }
-    },
-    90_000,
-  );
+      expect(
+        (await f.db.select().from(npAgentActions).where(eq(npAgentActions.id, f.action.id)))[0],
+        kind,
+      ).toEqual(f.action);
+    }
+  }, 90_000);
 });

@@ -1,7 +1,9 @@
 # Testing
 
-NexPress has two tiers of tests. Choose the right one for the code you're
-writing.
+Choose the lowest test layer that can detect the regression: unit tests for
+pure contracts, PostgreSQL integration for persistence and transaction behavior,
+browser tests for rendering and interaction, and packed scaffolds for consumer
+installation and generated-project behavior.
 
 ## Unit tests (`pnpm test`)
 
@@ -15,13 +17,38 @@ Use unit tests for:
 - Logic that can be verified against mocks (hook ordering, payload shape,
   capability checks).
 
-Current size (post-Phase 19): roughly **230+ unit tests** across
-`@nexpress/core`, `@nexpress/next`, `@nexpress/plugin-sdk`,
-`@nexpress/plugin-oauth-github`, `@nexpress/plugin-oauth-google`, and
-`create-nexpress`. Plus ~350 integration tests under
-`packages/core/src/integration/` and `apps/web/tests/` (gated on
-`TEST_DATABASE_URL`). Run `pnpm test` for current totals — file counts
-drift quickly.
+Use runner output for current counts. A parameterized test count is not a count
+of independent guarantees: one lifecycle case can retain several labeled checks
+while paying for one fixture. Record registered cases, exercised inputs, and
+fixture work separately when comparing changes.
+
+## Keeping tests useful
+
+- Assert observable results and effects. Source-text checks belong only to
+  contracts that are themselves structural, such as browser-safe entrypoints,
+  reference/scaffold wrapper parity, or package metadata. Do not pin incidental
+  formatting, helper names, or documentation prose.
+- Keep each boundary at its owning layer. A pure parser matrix needs no database
+  or browser, but SQL constraints, transaction rollback, persisted authorization,
+  site isolation, and packed module resolution need their real environment.
+- Share an expensive fixture only when cases cannot contaminate each other.
+  Label each input and verify rejected writes leave the fixture unchanged;
+  restore deliberately tampered data before the next probe. Keep independent
+  scenarios separate when their setup or state transition differs.
+- Keep route/viewport checks where layout can differ. Exercise a shared shell
+  interaction once per relevant shell and viewport instead of repeating it on
+  every route. Preserve page-specific interaction and accessibility checks.
+- Separate performance fixture construction from the measured operation. Keep
+  cardinalities that exercise the intended scale or boundary; reducing a large
+  fixture is not evidence that the production operation became faster.
+- Compare targeted before/after runs under the same conditions and report
+  fixture counts and wall time alongside runner time. Build caches, concurrent
+  machine load, retries, and CI versus local hardware are separate effects.
+  Run final gates once after the bundle settles; rerun only affected checks
+  when a later change or failure requires it.
+
+The [September 2026 cleanup evidence](agent-guidance/history/test-cleanup-2026-09.md)
+records consolidation decisions, retained guarantees and measured results.
 
 ## Integration tests (`pnpm test:integration`)
 
@@ -144,11 +171,11 @@ describe.skipIf(skipIfNoTestDb())("my thing", () => {
 > `ls apps/web/tests/`. The categories (pipeline / CLI / API) still
 > describe the structure — it's only the per-file detail that drifts.
 
-**Core pipeline (30+ tests, `packages/core/src/integration/`):**
+**Core pipeline (`packages/core/src/integration/`):**
 
 | File                                         | Covers                                                                                                                                                                                                                               |
 | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `plugin-storage.integration.test.ts` (6)     | ctx.storage set/get/delete/list/has + TTL expiry via `np_plugin_storage`                                                                                                                                                             |
+| `plugin-storage.integration.test.ts`         | ctx.storage lifecycle, plugin/prefix isolation, append ordering, fractional TTL persistence and expiry via `np_plugin_storage`                                                                                                       |
 | `plugin-persistence.integration.test.ts` (5) | syncPluginRegistrations / updatePluginState upsert + idempotence                                                                                                                                                                     |
 | `reset-token.integration.test.ts` (5)        | create→consume flow: password hash rotates, tokenVersion bumps, sessions delete                                                                                                                                                      |
 | `pipeline.integration.test.ts`               | saveDocument create/partial-update, exact storage hydration, site-stamped save/delete follow-up jobs, monotonic revision pruning, findDocuments round-trip, and transactional document/revision deletion                             |
@@ -166,7 +193,7 @@ losing its void wrapper. The generated tsconfig must declare consumer-local
 source roots, and `typecheck` / `build` must run schema codegen first so an
 ignored `src/db/generated/*.ts` file cannot disappear in a clean clone.
 
-**API routes (18+ tests, `apps/web/tests/`):**
+**API routes (`apps/web/tests/`):**
 
 | File                                                    | Covers                                                                                                                                                                                              |
 | ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

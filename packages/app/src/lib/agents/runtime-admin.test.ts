@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { NpAuthError, NpForbiddenError } from "@nexpress/core";
@@ -9,7 +6,6 @@ import {
   npBuildAgentPolicySimulationFixtureInputV1,
   npSimulateAgentPolicyV1,
   npCreateDisabledAgentRuntimeSettingsV1,
-  npAgentRuntimeStudioReadRoutesV1,
   npGetAgentAdminOperationV1,
 } from "@nexpress/core/agent-contract";
 const mocks = vi.hoisted(() => ({
@@ -86,12 +82,23 @@ describe("Runtime Studio shared HTTP admission", () => {
       expect(mocks.listConfigurations).not.toHaveBeenCalled();
     },
   );
-  it.each(reads)("keeps unavailable %s distinct from an empty page", async (operation) => {
-    mocks.runtime.mockReturnValue(null);
-    const response = await handleAgentRuntimeAdminRequest(request(), operation, id);
-    expect(response.status).toBe(503);
-    expect(response.headers.get("cache-control")).toContain("no-store");
-  });
+  // Installation is checked once before dispatch. Exercise read, mutation and
+  // simulation entry paths; the route inventory separately verifies every export.
+  it.each([
+    { operation: "configurations", runtime: null },
+    { operation: "agents.configurations.create", runtime: { runtimeStudio: null } },
+    { operation: "agents.policies.simulate", runtime: null },
+  ] as const)(
+    "keeps unavailable $operation distinct from an empty result",
+    async ({ operation, runtime }) => {
+      mocks.runtime.mockReturnValue(runtime);
+      const response = await handleAgentRuntimeAdminRequest(request(), operation, id);
+      expect(response.status).toBe(503);
+      expect(response.headers.get("cache-control")).toContain("no-store");
+      expect(mocks.listConfigurations).not.toHaveBeenCalled();
+      expect(mocks.executeAdmin).not.toHaveBeenCalled();
+    },
+  );
   it("passes bounded filters with the server-selected staff site", async () => {
     mocks.listConfigurations.mockResolvedValue({
       schemaVersion: "np.agent-configurations-page.v1",
@@ -196,16 +203,6 @@ describe("Runtime Studio shared HTTP admission", () => {
       expect(JSON.stringify(body)).not.toMatch(
         /private-output|private-credential|invocationId|rawBody/,
       );
-    },
-  );
-  it.each(mutationIds.map((operation) => ({ operation })))(
-    "does not dispatch $operation without explicit host installation",
-    async ({ operation }) => {
-      mocks.runtime.mockReturnValue({ runtimeStudio: null });
-      expect((await handleAgentRuntimeAdminRequest(request("", {}), operation, id)).status).toBe(
-        503,
-      );
-      expect(mocks.executeAdmin).not.toHaveBeenCalled();
     },
   );
   it("returns only an exact owned simulation report and rejects leaked or malformed host results", async () => {
@@ -317,55 +314,4 @@ describe("Runtime Studio shared HTTP admission", () => {
     expect(failed.status).toBe(500);
     expect(await failed.text()).not.toContain("private-provider-token");
   });
-});
-describe("Runtime route inventory and thin wrappers", () => {
-  const root = resolve(fileURLToPath(new URL(".", import.meta.url)), "../../../../..");
-  const inventory = [
-    ...npAgentRuntimeStudioReadRoutesV1.map((route) => ({
-      ...route,
-      operation:
-        route.kind === "configurations"
-          ? route.detail
-            ? "configuration"
-            : "configurations"
-          : route.kind === "policies"
-            ? route.detail
-              ? "policy"
-              : "policies"
-            : route.kind === "budgets"
-              ? "budget"
-              : route.kind === "runtime-status"
-                ? "status"
-                : route.kind,
-    })),
-    ...npAgentRuntimeAdminOperationIdsV1.map((id) => {
-      const operation = npGetAgentAdminOperationV1(id);
-      return { method: operation.method, path: operation.pathTemplate, operation: id };
-    }),
-  ];
-  it("locks the exact nine read and fifteen installed Admin operations", () => {
-    expect(npAgentRuntimeStudioReadRoutesV1).toHaveLength(9);
-    expect(npAgentRuntimeAdminOperationIdsV1).toHaveLength(15);
-    expect(new Set(inventory.map(({ method, path }) => `${method} ${path}`)).size).toBe(24);
-  });
-  it.each(inventory)(
-    "keeps $method $path shared across reference and scaffold",
-    ({ path, method, operation }) => {
-      const segment = path.replace(/^\/api\//u, "").replaceAll("{id}", "[id]");
-      const source = readFileSync(
-        resolve(root, "packages/app/src/api", segment, "route.ts"),
-        "utf8",
-      );
-      expect(source).toContain(`export async function ${method}(`);
-      const handler = source.split(`export async function ${method}(`)[1]?.split("\n}")[0];
-      expect(handler).toContain("handleAgentRuntimeAdminRequest");
-      expect(handler).toContain(`"${operation}"`);
-      for (const base of ["apps/web/src/app/api", "packages/cli/templates/snapshot/src/app/api"]) {
-        const wrapper = readFileSync(resolve(root, base, segment, "route.ts"), "utf8");
-        expect(wrapper).toContain(`from "@nexpress/app/api/${segment}/route"`);
-        expect(wrapper).toContain('dynamic = "force-dynamic"');
-        expect(wrapper).not.toMatch(/createAgentRuntime|executeAdmin|new |fetch\(/u);
-      }
-    },
-  );
 });

@@ -122,23 +122,30 @@ describe.skipIf(skipIfNoTestDb())("Runtime persistence foundation", () => {
     ).rejects.toThrow();
   });
 
-  it.each([
-    { rowVersion: 0 },
-    { version: 0 },
-    { status: "unknown" },
-    { autonomy: "automatic" },
-    { policyMode: "ignore-site" },
-    { model: "unpaired" },
-    { modelConnectionId: randomUUID() },
-    { status: "active", activatedAt: null },
-    { status: "retired", activatedAt: at, retiredAt: null },
-    { recipeRegistryFingerprint: "invalid" },
-    { configHash: "invalid" },
-  ])("rejects malformed version projection %#", async (change) => {
+  it("rejects malformed version projections without changing the valid row", async () => {
     const f = await npCreateRuntimePersistenceFixture();
-    await expect(
-      f.db.update(npAgentVersions).set(change).where(eq(npAgentVersions.id, f.versionId)),
-    ).rejects.toThrow();
+    const original = await f.db.select().from(npAgentVersions);
+    // Rejected autocommit statements roll back independently. Keep every SQL
+    // constraint probe, sharing only its unchanged valid fixture.
+    for (const change of [
+      { rowVersion: 0 },
+      { version: 0 },
+      { status: "unknown" },
+      { autonomy: "automatic" },
+      { policyMode: "ignore-site" },
+      { model: "unpaired" },
+      { modelConnectionId: randomUUID() },
+      { status: "active", activatedAt: null },
+      { status: "retired", activatedAt: at, retiredAt: null },
+      { recipeRegistryFingerprint: "invalid" },
+      { configHash: "invalid" },
+    ]) {
+      await expect(
+        f.db.update(npAgentVersions).set(change).where(eq(npAgentVersions.id, f.versionId)),
+        JSON.stringify(change),
+      ).rejects.toThrow();
+      expect(await f.db.select().from(npAgentVersions), JSON.stringify(change)).toEqual(original);
+    }
   });
 
   it("serializes policy version/active uniqueness separately for site and Agent", async () => {
@@ -201,27 +208,33 @@ describe.skipIf(skipIfNoTestDb())("Runtime persistence foundation", () => {
     });
   });
 
-  it.each([
-    { agentId: null },
-    { agentVersionId: null },
-    { agentConfigHash: null },
-    { recipeId: null },
-    { recipeVersion: null },
-    { recipeFingerprint: null },
-    { responseSchemaDigest: null },
-    { runtimeAdmissionSources: null },
-    { connectionId: randomUUID() },
-    { pricingId: "unpaired" },
-    { instructionTemplateId: "unpaired" },
-    { instructionTemplateVersion: 1 },
-    { manualInputSchemaDigest: "invalid" },
-    { leaseUntil: later },
-    { deadlineAt: new Date(at.getTime() + 86401000) },
-  ])("rejects a partial or inconsistent runtime admission %#", async (change) => {
+  it("rejects partial or inconsistent runtime admissions without retaining a run", async () => {
     const f = await npCreateRuntimePersistenceFixture();
-    await expect(
-      f.db.insert(npAgentRuns).values(npRuntimePersistenceRun(f, change)),
-    ).rejects.toThrow();
+    // Rejected autocommit statements roll back independently. Keep every SQL
+    // constraint probe, sharing only its unchanged valid fixture.
+    for (const change of [
+      { agentId: null },
+      { agentVersionId: null },
+      { agentConfigHash: null },
+      { recipeId: null },
+      { recipeVersion: null },
+      { recipeFingerprint: null },
+      { responseSchemaDigest: null },
+      { runtimeAdmissionSources: null },
+      { connectionId: randomUUID() },
+      { pricingId: "unpaired" },
+      { instructionTemplateId: "unpaired" },
+      { instructionTemplateVersion: 1 },
+      { manualInputSchemaDigest: "invalid" },
+      { leaseUntil: later },
+      { deadlineAt: new Date(at.getTime() + 86401000) },
+    ]) {
+      await expect(
+        f.db.insert(npAgentRuns).values(npRuntimePersistenceRun(f, change)),
+        JSON.stringify(change),
+      ).rejects.toThrow();
+      expect(await f.db.select().from(npAgentRuns), JSON.stringify(change)).toEqual([]);
+    }
   });
 
   it("supports provider-optional instruction evidence without a connection", async () => {

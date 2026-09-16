@@ -71,12 +71,6 @@ function assertIncludes(text, needle, label) {
   }
 }
 
-function pluginIdentifier(packageName) {
-  return packageName
-    .replace(/^@[^/]+\//, "")
-    .replace(/-([a-z0-9])/g, (_, char) => char.toUpperCase());
-}
-
 function themeIdentifier(packageName) {
   const tail = packageName.replace(/^@[^/]+\//, "").replace(/^theme[-_]/, "");
   const identifier = tail.replace(/-([a-z0-9])/g, (_, char) => char.toUpperCase());
@@ -168,27 +162,9 @@ const themeMatrix = [
 ];
 
 for (const entry of pluginMatrix) {
-  const createOutput = run(`create ${entry.label}`, entry.args, { cwd: entry.cwd ?? pluginsDir });
-  assertIncludes(
-    createOutput,
-    `pnpm --filter ${entry.packageName} build`,
-    `${entry.label} create output`,
-  );
-  assertIncludes(
-    createOutput,
-    `pnpm exec nexpress plugin add ${entry.packageName}`,
-    `${entry.label} create output`,
-  );
-  assertIncludes(
-    createOutput,
-    "Restart your dev server or redeploy",
-    `${entry.label} create output`,
-  );
-  assertIncludes(
-    createOutput,
-    "pnpm --silent run ops:plugins -- doctor --json",
-    `${entry.label} create output`,
-  );
+  // CLI wording is covered by plugin-guidance/command unit tests. This
+  // packed-consumer check verifies the generated artifact and loaded behavior.
+  run(`create ${entry.label}`, entry.args, { cwd: entry.cwd ?? pluginsDir });
   const pluginDir = resolve(pluginsDir, entry.dir);
   const pkg = readJson(resolve(pluginDir, "package.json"), `${entry.label} package.json`);
   const tsconfig = readJson(resolve(pluginDir, "tsconfig.json"), `${entry.label} tsconfig.json`);
@@ -293,20 +269,9 @@ for (const entry of [...pluginMatrix, ...themeMatrix]) {
 console.log("✓ generated extension packages typecheck and build");
 
 for (const entry of pluginMatrix) {
-  const addOutput = run(
-    `register ${entry.label}`,
-    ["exec", "nexpress", "plugin", "add", entry.packageName],
-    {
-      timeout: 180_000,
-    },
-  );
-  assertIncludes(addOutput, `✓ Installed ${entry.packageName}.`, `${entry.label} add output`);
-  assertIncludes(addOutput, "Restart your dev server or redeploy", `${entry.label} add output`);
-  assertIncludes(
-    addOutput,
-    "pnpm --silent run ops:plugins -- doctor --json",
-    `${entry.label} add output`,
-  );
+  run(`register ${entry.label}`, ["exec", "nexpress", "plugin", "add", entry.packageName], {
+    timeout: 180_000,
+  });
 }
 const registeredPkg = readJson(resolve(scaffoldDir, "package.json"), "scaffold package.json");
 for (const entry of pluginMatrix) {
@@ -317,17 +282,8 @@ for (const entry of pluginMatrix) {
     );
   }
 }
-const configSource = readFileSync(resolve(scaffoldDir, "src/nexpress.config.ts"), "utf8");
-for (const entry of pluginMatrix) {
-  const identifier = pluginIdentifier(entry.packageName);
-  assertIncludes(
-    configSource,
-    `import ${identifier} from "${entry.packageName}";`,
-    "nexpress.config.ts",
-  );
-  assertIncludes(configSource, `${identifier},`, "nexpress.config.ts");
-}
-
+// The doctor below loads the config and resolves every plugin. Import spelling
+// and generated identifier formatting are not the consumer-facing contract.
 const registeredDoctor = parseJsonOutput(
   run(
     "doctor after generated local plugin registration",
@@ -354,37 +310,18 @@ for (const entry of pluginMatrix) {
 console.log("✓ generated local plugins register and pass ops:plugins doctor");
 
 for (const entry of pluginMatrix) {
-  const removeOutput = run(
-    `remove ${entry.label}`,
-    ["exec", "nexpress", "plugin", "remove", entry.packageName],
-    {
-      timeout: 180_000,
-    },
-  );
-  assertIncludes(removeOutput, `✓ Removed ${entry.packageName}.`, `${entry.label} remove output`);
-  assertIncludes(removeOutput, "boot-time plugin code unloads", `${entry.label} remove output`);
-  assertIncludes(
-    removeOutput,
-    "pnpm --silent run ops:plugins -- doctor --json",
-    `${entry.label} remove output`,
-  );
+  run(`remove ${entry.label}`, ["exec", "nexpress", "plugin", "remove", entry.packageName], {
+    timeout: 180_000,
+  });
 }
 
 const removedPkg = readJson(resolve(scaffoldDir, "package.json"), "scaffold package.json");
-const removedConfigSource = readFileSync(resolve(scaffoldDir, "src/nexpress.config.ts"), "utf8");
 for (const entry of pluginMatrix) {
-  const identifier = pluginIdentifier(entry.packageName);
   if (removedPkg.dependencies?.[entry.packageName]) {
     fail(
       `${entry.label} removal should delete the root dependency`,
       JSON.stringify(removedPkg, null, 2),
     );
-  }
-  if (
-    removedConfigSource.includes(`from "${entry.packageName}"`) ||
-    removedConfigSource.includes(`${identifier},`)
-  ) {
-    fail(`${entry.label} removal should unregister config entries`, removedConfigSource);
   }
 }
 

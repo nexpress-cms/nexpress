@@ -141,8 +141,10 @@ test.describe("bundled theme mobile layout", () => {
       for (const viewport of theme.viewports ?? MOBILE_VIEWPORTS) {
         await page.setViewportSize(viewport);
 
-        for (const route of theme.routes) {
-          await assertRouteHasNoMobileOverflow(page, theme, route, viewport);
+        // Route content is checked at every width. The shared theme drawer
+        // needs one open/Escape/close cycle per width, on the home route.
+        for (const [routeIndex, route] of theme.routes.entries()) {
+          await assertRouteHasNoMobileOverflow(page, theme, route, viewport, routeIndex === 0);
         }
       }
     });
@@ -171,6 +173,7 @@ async function assertRouteHasNoMobileOverflow(
   theme: ThemeScenario,
   route: RouteCheck,
   viewport: ViewportSize,
+  exerciseDrawer: boolean,
 ): Promise<void> {
   const response = await page.goto(route.path, { waitUntil: "domcontentloaded" });
   expect(response?.status(), `${theme.id} ${route.label} ${route.path}`).toBe(200);
@@ -191,6 +194,7 @@ async function assertRouteHasNoMobileOverflow(
   } else if (!(await toggle.isVisible())) {
     return;
   }
+  if (!exerciseDrawer) return;
   await toggle.click();
   await page.waitForTimeout(250);
   await expectNoHorizontalOverflow(page, `${theme.id} ${route.label} drawer open`);
