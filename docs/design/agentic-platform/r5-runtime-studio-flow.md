@@ -43,13 +43,51 @@ trigger rows are not silently rewritten. Saving an ordinary draft does not
 persist an unactivated trigger plan.
 
 Run now uses an enabled registered manual trigger for the active version and a
-compatible installed interactive recipe. Its existing `inputJson` field accepts
-only the exact recipe id and bounded goal. The shared Admin transaction calls
-Runtime admission with the same database transaction; the admitted Run is the
-durable outbox. Goal and idempotency are frozen in canonical admission. Prompt,
-scope, model, target and unsupported structured-input extensions are rejected.
-Recipes needing a non-null manual input schema are not offered by Run now until
-their existing executor has an owned storage/consumption contract.
+compatible installed interactive recipe. `inputJson` accepts the exact recipe id,
+bounded goal and, only for a supported structured recipe, an `input` object.
+The shared Admin transaction calls Runtime admission with the same database
+transaction; the admitted Run is the durable outbox. Goal, canonical input and
+idempotency are frozen in admission. Prompt, scope, model, target and unsupported
+schema extensions are rejected. Catalog eligibility compares the complete active
+recipe with its installed definition, preventing a stale schema from becoming a
+form for another execution contract.
+
+## Structured manual input storage and execution
+
+Ownership: the coordinator owns canonical admission, Run persistence, admission,
+retention integrity and generated migration; separate owners handle the pure
+manual schema/Studio UI and executor context. No bundled R6 recipe is added:
+recipes remain explicit host inventory, and only the existing interactive
+capability executor is supported.
+
+The new optional `input` envelope member accepts a closed flat object with at
+most sixteen bounded string, integer or boolean fields. Unsupported schemas and
+authority fields are rejected. A recipe must have a provider instruction and
+manual support. The Run owns canonical input and its digest in the admission
+transaction; admission evidence binds only that digest, alongside existing
+recipe/version/schema bindings. The Run remains the durable outbox and unchanged
+retries retain identical input. Legacy absent-input canonical bytes remain
+unchanged.
+
+Only structured runs add goal and input to redacted, sensitive-approved untrusted
+provider evidence; admission requires the effective provider ceiling to permit
+that class. They cannot change instructions, provider/model, tools, scope, targets
+or current capability/item ACLs. Existing schema-null goal-only behavior remains
+unchanged (the legacy goal is retained admission metadata, not provider context).
+
+History and audit exclude raw input. New structured Admin invocation request
+journals retain only a request digest; legacy goal-only request identities are
+unchanged. Input follows its owning Run's verified
+retention and source-release lifecycle; it has no independent expiry or authority
+as a reference. Literal IDs in input remain conservative dependencies under the
+existing reference traversal. Integrity failure retains the Run instead of
+releasing its source. Studio's staff audit target and Admin invocation result
+references currently have no source-release owner, so they indefinitely pin the
+Run and its input even after policy/replay expiry. Direct host admissions without
+these protected references can expire normally. Provider decisions and Action
+inputs may contain model-derived text and retain their existing evidence
+lifetimes. This is not a promise to erase every derived copy. Full R5 retention
+and R6 remain outside this bundle.
 
 ## Operational truth and redaction
 
@@ -107,11 +145,13 @@ Action references. Audit and canonical evidence remain intact. Unknown reference
 mutation Actions, approvals and rollback evidence remain protected; this does
 not establish full R5 completion.
 
-Structured manual-input recipes remain unavailable until an executor owns their
-canonical storage and consumption. R5 bounded manual admission supports the
-installed schema-null interactive recipe and bounded goal. Template-specific
-Publisher/Moderator/Operator execution belongs to R6; the fixture metadata alone
-does not fabricate that support. Historical-fact simulation remains unavailable.
+Structured manual input supports only the documented flat schema subset through
+the existing provider-backed interactive executor. Nested objects, arrays,
+references and authority-setting fields are unavailable. No concrete recipe is
+installed automatically. Schema-null recipes retain the existing bounded-goal
+path. Template-specific Publisher/Moderator/Operator execution belongs to R6;
+fixture metadata alone does not fabricate that support. Historical-fact
+simulation remains unavailable.
 
 ## Self-review corrections
 
@@ -223,3 +263,36 @@ passed all four checks on exact PR head `9899d673e625fb27475f573e5f31dd4d7155156
 typecheck/build/test, PostgreSQL integration, production Playwright and packed
 fresh scaffold. This is PR acceptance evidence, not a full R5 product completion
 claim or evidence of a later main-branch CI/Release run.
+
+## Structured manual-input verification (2026-09-17)
+
+This bounded bundle adds the schema-driven form, admission digest and Run-owned
+input, then exercises the real executor with a local provider fixture. It does
+not install R6 recipes or activate a provider or worker.
+
+- Workspace `pnpm verify --concurrency=2`: 113 tasks passed, including Core 1,968,
+  Admin 151, App 555 and reference Web 174 unit tests.
+- PostgreSQL Core: 64 passed. The initial full Web run passed 1,416 cases and
+  exposed a replay error-order regression, nine sitemap origin mismatches in the
+  test environment, and a reference-fence cleanup hook timeout. The replay guard
+  was restored without weakening the existing assertion. All 64 cases in the
+  five affected/related files passed the corrected rerun, bringing ordinary Web
+  coverage to 1,426 passing cases across the full and corrected runs.
+- Workspace lint passed: 40 non-Web tasks plus Web ESLint/scripts. Web used an
+  8 GiB heap after the repository default 6 GiB exhausted memory; repository
+  configuration was unchanged.
+- Explicit live Redis: 16 passed. Explicit native preview: 1 passed; this is the
+  one deliberately skipped case in the ordinary PostgreSQL run.
+- Production Playwright: 72 passed against the isolated migrated database,
+  including structured empty strings, zero/false, omitted optional fields,
+  unknown-outcome retry identity, edited input and Activity result navigation.
+- Fresh packed scaffold: 40 packages passed installation, typecheck, generated
+  migrations, foundation/Doctor, production build, extension build/registration,
+  module-resolution smoke and first-run/operations journeys. Module smoke used an
+  intentionally unreachable database and checked resolution, not DB readiness.
+
+The four new PostgreSQL cases cover atomic rollback, replay/site isolation,
+input tampering, actual executor consumption/redaction/result, journal digest
+projection and retention. Direct host Runs without protected owners can expire;
+Studio Runs remain pinned by staff-audit and invocation-result references. This
+is a verified limitation, not completed input erasure or full R5 retention.

@@ -500,3 +500,102 @@ test("Policy simulation discards stale and inaccessible evidence", async ({ page
     page.getByRole("alert").filter({ hasText: "no longer have access" }).first(),
   ).toBeVisible();
 });
+
+test("Structured manual runs preserve scalar input and retry identity through the result link", async ({
+  page,
+}) => {
+  const triggerId = "44444444-4444-4444-8444-444444444444";
+  const runId = "55555555-5555-4555-8555-555555555555";
+  const writes: Array<{ inputJson: string; idempotencyKey: string }> = [];
+  await page.route("**/api/admin/agents/capabilities", (route) =>
+    route.fulfill({
+      json: {
+        ...catalog,
+        recipes: [
+          {
+            ...catalog.recipes[0],
+            providerMode: "required",
+            manualInputSchema: {
+              $schema: "https://json-schema.org/draft/2020-12/schema",
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                topic: { type: "string", maxLength: 2000 },
+                count: { type: "integer", minimum: 0, maximum: 3 },
+                include: { type: "boolean" },
+                note: { type: "string", maxLength: 2000 },
+              },
+              required: ["topic", "count", "include"],
+            },
+          },
+        ],
+      },
+    }),
+  );
+  await page.route("**/api/admin/agents/triggers?**", (route) =>
+    route.fulfill({
+      json: {
+        schemaVersion: "np.agent-triggers-page.v1",
+        items: [
+          {
+            schemaVersion: "np.agent-trigger-detail.v1",
+            agentId: id,
+            agentVersionId: versionId,
+            definition: { type: "manual", id: triggerId },
+            enabled: true,
+            nextRunAt: null,
+            createdAt: at,
+            updatedAt: at,
+          },
+        ],
+        nextCursor: null,
+      },
+    }),
+  );
+  await page.route(`**/api/admin/agents/configurations/${id}`, (route) =>
+    route.fulfill({
+      json: {
+        ...agent,
+        status: "active",
+        versionStatus: "active",
+        draftVersionId: null,
+        activeVersion: { id: versionId, configHash: digest },
+        manualRecipeIds: ["operator.worker-not-draining"],
+        availableActions: ["agents.configurations.run"],
+      },
+    }),
+  );
+  await page.route(`**/api/admin/agents/configurations/${id}/runs`, async (route) => {
+    writes.push(route.request().postDataJSON() as { inputJson: string; idempotencyKey: string });
+    if (writes.length < 3) await route.fulfill({ status: 502, body: "Temporary failure" });
+    else await route.fulfill({ json: { resourceId: runId, replayed: false } });
+  });
+  await signInAsE2EAdmin(page);
+  await page.goto(`/admin/agents/configurations/${id}`);
+  await page.getByRole("button", { name: "Run now", exact: true }).click();
+  await expect(page.getByLabel("topic (required)", { exact: true })).toHaveValue("");
+  await page.getByLabel("count (required)", { exact: true }).fill("0");
+  await page.getByLabel("include (required)", { exact: true }).selectOption({ label: "false" });
+  await page.getByLabel("Run goal", { exact: true }).fill("Inspect the requested evidence.");
+  const confirm = page.getByRole("button", { name: "Confirm", exact: true });
+  await confirm.click();
+  await expect(page.locator("form").getByRole("alert")).toContainText("502");
+  expect(writes).toHaveLength(1);
+  expect(JSON.parse(writes[0].inputJson)).toEqual({
+    recipeId: "operator.worker-not-draining",
+    goal: "Inspect the requested evidence.",
+    input: { topic: "", count: 0, include: false },
+  });
+  await confirm.click();
+  await expect.poll(() => writes.length).toBe(2);
+  await expect(confirm).toBeEnabled();
+  expect(writes[1]).toEqual(writes[0]);
+  await page.getByLabel("topic (required)", { exact: true }).fill("  Edited evidence  ");
+  await confirm.click();
+  await expect(page).toHaveURL(new RegExp(`/admin/agents/activity/${runId}$`));
+  expect(writes).toHaveLength(3);
+  expect(writes[2].idempotencyKey).not.toBe(writes[0].idempotencyKey);
+  expect(JSON.parse(writes[2].inputJson)).toMatchObject({
+    input: { topic: "  Edited evidence  ", count: 0, include: false },
+  });
+});

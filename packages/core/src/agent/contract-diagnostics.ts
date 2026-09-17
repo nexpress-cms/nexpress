@@ -1,3 +1,5 @@
+import type { NpAgentJsonObject } from "../agent-contract/types.js";
+import { npDigestAgentRuntimeManualInputV1 } from "../agent-contract/runtime-manual-input.js";
 import { createHash } from "node:crypto";
 import { npAnalyzeAgentRuntimeJobStateV1 } from "../agent-contract/runtime-job-state-contract.js";
 import { npRequireAgentTriggerV1 } from "../agent-contract/runtime-trigger-contract.js";
@@ -188,6 +190,7 @@ const AGENT_CONSTRAINTS = [
   "np_agent_runs_connection_config_fk",
   "np_agent_runs_runtime_admission_sources_check",
   "np_agent_runs_runtime_shape_check",
+  "np_agent_runs_manual_input_check",
   "np_agent_runs_provider_shape_check",
   "np_agent_runs_instruction_check",
   "np_agent_runs_runtime_time_check",
@@ -1158,7 +1161,7 @@ async function collectRuntimeAdmissionIssues(
         causal_event_id as "causalEventId", causal_action_id as "causalActionId",
         recipe_id as "recipeId", recipe_version as "recipeVersion", recipe_fingerprint as "recipeFingerprint",
         instruction_template_id as "instructionTemplateId", instruction_template_version as "instructionTemplateVersion",
-        instruction_digest as "instructionDigest", response_schema_digest as "responseSchemaDigest", manual_input_schema_digest as "manualInputSchemaDigest",
+        instruction_digest as "instructionDigest", response_schema_digest as "responseSchemaDigest", manual_input_schema_digest as "manualInputSchemaDigest", case when manual_input is null or octet_length(manual_input::text)<=16384 then manual_input else '{"invalid":true}'::jsonb end as "manualInput", manual_input_digest as "manualInputDigest",
         case when octet_length(goal)<=8192 then goal else null end as goal,
         case when event_ref is null or octet_length(event_ref::text)<=524288 then event_ref else '{"invalid":true}'::jsonb end as "eventRef",
         case when octet_length(policy_refs::text)<=524288 then policy_refs else null end as "policyRefs",
@@ -1181,6 +1184,13 @@ async function collectRuntimeAdmissionIssues(
       try {
         // The query selects every field this existing reconstruction reads.
         // Private result/error/provider fields are deliberately not fetched.
+        if (
+          row.manualInput != null
+            ? (await npDigestAgentRuntimeManualInputV1(row.manualInput as NpAgentJsonObject)) !==
+              row.manualInputDigest
+            : row.manualInputDigest != null
+        )
+          throw new Error("Invalid runtime manual input evidence");
         const admission = npRuntimeRunAdmissionBodyV1(
           row as unknown as Parameters<typeof npRuntimeRunAdmissionBodyV1>[0],
         );

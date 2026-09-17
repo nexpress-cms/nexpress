@@ -1,4 +1,8 @@
 import {
+  npIsAgentRuntimeManualRecipeSupportedV1,
+  npRequireAgentRuntimeManualInputV1,
+} from "../agent-contract/runtime-manual-input.js";
+import {
   npRequireAgentPolicySimulationFixtureJsonV1,
   npDigestAgentPolicySimulationFixtureV1,
   npSimulateAgentPolicyV1,
@@ -1105,22 +1109,23 @@ export function createAgentRuntimeServiceV1(
                 if (!options.admission) safeError("RUNTIME_OPERATION_UNAVAILABLE", 404);
                 if (agent.status !== "active" || !version || version.status !== "active")
                   safeError("RUNTIME_VERSION_CONFLICT");
-                let parsed: unknown;
+                let manual: Record<string, unknown>;
+                let goal: string;
                 try {
-                  parsed = JSON.parse(raw.inputJson as string);
+                  const parsed: unknown = JSON.parse(raw.inputJson as string);
+                  manual = canonicalBodyRecord(
+                    cloneCanonicalRuntimeInput(parsed, "agent.runtime.manual", 16384),
+                    "agent.runtime.manual",
+                    ["recipeId", "goal", "input"],
+                    ["recipeId", "goal"],
+                    { seen: new WeakSet<object>() },
+                  );
+                  goal = canonicalRuntimeText(manual.goal, "agent.runtime.manual.goal", 2000, {
+                    requireTrimmed: true,
+                  });
                 } catch {
-                  safeError("RUNTIME_DEFINITION_INVALID", 400);
+                  safeError("RUNTIME_MANUAL_INPUT_INVALID", 400);
                 }
-                const manual = canonicalBodyRecord(
-                  cloneCanonicalRuntimeInput(parsed, "agent.runtime.manual", 8192),
-                  "agent.runtime.manual",
-                  ["recipeId", "goal"],
-                  ["recipeId", "goal"],
-                  { seen: new WeakSet<object>() },
-                );
-                const goal = canonicalRuntimeText(manual.goal, "agent.runtime.manual.goal", 2000, {
-                  requireTrimmed: true,
-                });
                 const evidence = await npRequireAgentRuntimeVersionV1({
                   db,
                   siteId: input.siteId,
@@ -1134,10 +1139,19 @@ export function createAgentRuntimeServiceV1(
                   !recipe ||
                   recipe.task !== "interactive-capability" ||
                   !recipe.triggerKinds.includes("manual") ||
-                  recipe.manualInputSchema !== null ||
+                  !npIsAgentRuntimeManualRecipeSupportedV1(recipe) ||
                   !evidence.definition.settings.some((entry) => entry.recipeId === recipe.id)
                 )
                   safeError("RUNTIME_RECIPE_UNAVAILABLE");
+                let structuredInput: NpAgentJsonObject | undefined;
+                try {
+                  if (recipe.manualInputSchema !== null)
+                    structuredInput = npRequireAgentRuntimeManualInputV1(recipe, manual.input);
+                  else if (Object.hasOwn(manual, "input"))
+                    safeError("RUNTIME_MANUAL_INPUT_INVALID", 400);
+                } catch {
+                  safeError("RUNTIME_MANUAL_INPUT_INVALID", 400);
+                }
                 canonicalBodyUuid(raw.triggerId, "agent.runtime.manual.triggerId");
                 const [trigger] = await db
                   .select()
@@ -1177,6 +1191,7 @@ export function createAgentRuntimeServiceV1(
                   idempotencyKey: invocationId,
                   source: { triggerId: trigger.id },
                   goal,
+                  ...(structuredInput === undefined ? {} : { input: structuredInput }),
                 });
                 return result(run.runId, { id: run.runId, runId: run.runId, state: "queued" });
               }

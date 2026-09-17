@@ -73,5 +73,13 @@ describe("Runtime Studio client boundary", () => {
       runtimeErrorMessage(new AgentStudioApiError("private", 409, "RUNTIME_VERSION_CONFLICT")),
     ).toContain("review the current version");
     expect(runtimeErrorMessage(new Error("private credential"))).not.toContain("private");
+    expect(
+      runtimeErrorMessage(new AgentStudioApiError("private", 400, "RUNTIME_MANUAL_INPUT_INVALID")),
+    ).toContain("recipe input fields");
+    expect(
+      runtimeErrorMessage(
+        new AgentStudioApiError("private", 409, "RUNTIME_MANUAL_INPUT_POLICY_DENIED"),
+      ),
+    ).toContain("sensitive-approved");
   });
 });

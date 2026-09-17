@@ -96,8 +96,17 @@ reference-ingress guards prevent late writers from resurrecting references.
 Unknown/global audit, malformed evidence, active work, mutation Actions,
 approvals and rollback owners still pin their sources. There is no normal audit
 pruning service. More than 100 matching owners in a single table conservatively
-retain a source. Structured manual-input recipes remain outside this bundle;
-this implementation does not claim full R5 retention or full R5 acceptance.
+retain a source. Structured manual input now lives on its owning Run: execution-integrity checks
+verify the stored payload against its admission-bound digest before source release.
+The payload expires only with eligible Run deletion; it is absent from release
+receipts, audit and Activity. Generic literal-reference scanning and ingress
+fences include the new JSON column, so embedded IDs cannot evade existing
+conservative dependency retention. Studio Run staff-audit targets and Admin
+invocation result references have no current release owner, so these Run/input
+rows remain protected indefinitely, including after replay expiry. Structured
+Admin request journals retain a digest rather than duplicating the input JSON.
+Provider/Action-derived text follows its existing evidence owner. This does not
+claim full R5 retention or full R5 acceptance.
 Guardian signals/incidents/containments/notifications are not fabricated.
 
 ## Verification

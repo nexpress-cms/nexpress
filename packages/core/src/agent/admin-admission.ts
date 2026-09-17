@@ -304,6 +304,28 @@ function redactedInvocationInput(
   command: NpAgentJsonObject,
   key: { id: string; key: Uint8Array } | null,
 ): NpAgentJsonObject {
+  // Structured manual payloads belong only to the Run. Keep legacy goal-only
+  // request bytes unchanged so existing Admin idempotency records still replay.
+  if (operationId === "agents.configurations.run" && typeof command.inputJson === "string") {
+    let envelope: unknown;
+    try {
+      envelope = JSON.parse(command.inputJson);
+    } catch {
+      throw new NpAgentGatewayError("RUNTIME_MANUAL_INPUT_INVALID", 400, "Invalid manual input.");
+    }
+    if (
+      envelope &&
+      typeof envelope === "object" &&
+      !Array.isArray(envelope) &&
+      Object.hasOwn(envelope, "input")
+    ) {
+      const { inputJson, ...safe } = command;
+      return {
+        ...safe,
+        manualInputRequestDigest: sha256Canonical("np.agent-runtime-manual-request.v1", inputJson),
+      };
+    }
+  }
   // Intent secrets use the existing keyed request projection, never plaintext journals.
   if (operationId.startsWith("agents.approvals.") && typeof command.challenge === "string") {
     if (!key)

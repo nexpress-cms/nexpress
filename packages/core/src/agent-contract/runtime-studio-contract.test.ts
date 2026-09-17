@@ -369,3 +369,36 @@ describe("Runtime Studio read boundary", () => {
     ).toMatchInlineSnapshot(`"88d191bcbd3fda0f5bb23d9fe23c3fc54683b064ab9384290b21056c2a6dd057"`);
   });
 });
+
+it("accepts legacy catalog recipes and exposes only validated bounded manual schemas", () => {
+  const recipe = {
+    id: "publisher.stale-content",
+    version: 1,
+    allowedTemplates: ["publisher"],
+    providerMode: "required",
+    triggerKinds: ["manual"],
+    capabilityIds: ["content.query"],
+  };
+  expect(npAnalyzeAgentRuntimeStudioCatalogV1({ ...catalog(), recipes: [recipe] }).ok).toBe(true);
+  const manualInputSchema = {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    additionalProperties: false,
+    properties: { topic: { type: "string", maxLength: 100 } },
+    required: ["topic"],
+  };
+  const result = npAnalyzeAgentRuntimeStudioCatalogV1({
+    ...catalog(),
+    recipes: [{ ...recipe, manualInputSchema }],
+  });
+  expect(result.ok).toBe(true);
+  if (result.ok) expect(result.value.recipes[0]?.manualInputSchema).toEqual(manualInputSchema);
+  expect(
+    npAnalyzeAgentRuntimeStudioCatalogV1({
+      ...catalog(),
+      recipes: [
+        { ...recipe, manualInputSchema: { ...manualInputSchema, additionalProperties: true } },
+      ],
+    }).ok,
+  ).toBe(false);
+});

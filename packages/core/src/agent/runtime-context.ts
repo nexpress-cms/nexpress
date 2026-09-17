@@ -1,5 +1,9 @@
 import type { NpAgentRuntimeChangeSetReferencesV1 } from "./changeset-service.js";
 import {
+  npRequireAgentRuntimeManualInputV1,
+  npDigestAgentRuntimeManualInputV1,
+} from "../agent-contract/runtime-manual-input.js";
+import {
   canonicalBodyRecord,
   canonicalBodyArray,
   canonicalBodyInteger,
@@ -439,6 +443,29 @@ async function build(
   trustedContext.sort(
     (left, right) => left.kind.localeCompare(right.kind) || left.id.localeCompare(right.id),
   );
+  const untrustedEvidence = [...sources.untrusted];
+  if (run.manualInput != null) {
+    const manualInput = npRequireAgentRuntimeManualInputV1(recipe, run.manualInput);
+    const digest = await npDigestAgentRuntimeManualInputV1(manualInput);
+    if (
+      digest !== run.manualInputDigest ||
+      hash("np.agent-runtime-schema.v1", recipe.manualInputSchema) !== run.manualInputSchemaDigest
+    )
+      unavailable();
+    untrustedEvidence.push({
+      id: "manual-input",
+      kind: "content",
+      digest,
+      observedAt: run.queuedAt.toISOString(),
+      classification: classification(digest, "sensitive-approved"),
+      text: redactText(serializeAgentCanonicalJson({ goal: run.goal, input: manualInput })),
+    });
+  } else if (run.manualInputDigest != null) {
+    unavailable();
+  }
+  untrustedEvidence.sort(
+    (left, right) => left.kind.localeCompare(right.kind) || left.id.localeCompare(right.id),
+  );
   const remaining = Math.floor((run.deadlineAt.getTime() - context.now.getTime()) / 1_000);
   const leaseRemaining = run.leaseUntil
     ? Math.floor((run.leaseUntil.getTime() - context.now.getTime()) / 1_000)
@@ -479,7 +506,7 @@ async function build(
     task: recipe.task,
     instruction: { ...recipe.instruction, classification: classification(instructionDigest) },
     trustedContext,
-    untrustedEvidence: sources.untrusted,
+    untrustedEvidence,
     classificationManifestDigest: instructionDigest,
     responseSchema: recipe.responseSchema,
     responseSchemaDigest,
@@ -494,7 +521,7 @@ async function build(
     dataClass: "internal-redacted",
     dataClassCeiling: run.providerDataClassCeiling,
   };
-  for (const source of [...trustedContext, ...sources.untrusted])
+  for (const source of [...trustedContext, ...untrustedEvidence])
     if (
       npAgentProviderDataClassRank[source.classification.dataClass] >
       npAgentProviderDataClassRank[request.dataClass]

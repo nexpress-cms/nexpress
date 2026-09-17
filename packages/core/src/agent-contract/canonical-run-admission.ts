@@ -83,6 +83,7 @@ export const npAgentRunAdmissionCanonicalIncludedKeysV1 = [
   "admittedAt",
   "deadlineAt",
   "runtimeAuthority",
+  "manualInputDigest",
 ] as const satisfies readonly (keyof NpAgentRunAdmissionCanonicalV1)[];
 
 export const npAgentRunAdmissionCanonicalExcludedKeysV1 = [
@@ -513,7 +514,9 @@ function parseRunAdmissionCanonical(value: unknown): NpAgentRunAdmissionCanonica
     preflight,
     path,
     npAgentRunAdmissionCanonicalIncludedKeysV1,
-    npAgentRunAdmissionCanonicalIncludedKeysV1.filter((key) => key !== "runtimeAuthority"),
+    npAgentRunAdmissionCanonicalIncludedKeysV1.filter(
+      (key) => key !== "runtimeAuthority" && key !== "manualInputDigest",
+    ),
     state,
   );
   if (record.schemaVersion !== PURPOSE) {
@@ -575,6 +578,22 @@ function parseRunAdmissionCanonical(value: unknown): NpAgentRunAdmissionCanonica
     );
   }
 
+  const manualInputDigest = Object.hasOwn(record, "manualInputDigest")
+    ? canonicalBodySha256Digest(record.manualInputDigest, `${path}.manualInputDigest`)
+    : undefined;
+  if (
+    manualInputDigest !== undefined &&
+    (origin !== "runtime" ||
+      triggerId === null ||
+      recipe?.manualInputSchemaDigest == null ||
+      connection === null)
+  )
+    failCanonicalBody(
+      "invalid-field",
+      `${path}.manualInputDigest`,
+      "requires structured Runtime manual admission",
+    );
+
   const admittedAt = canonicalBodyUtc(record.admittedAt, `${path}.admittedAt`);
   const deadlineAt = canonicalBodyUtc(record.deadlineAt, `${path}.deadlineAt`);
   const duration = Date.parse(deadlineAt) - Date.parse(admittedAt);
@@ -589,6 +608,7 @@ function parseRunAdmissionCanonical(value: unknown): NpAgentRunAdmissionCanonica
   const result: NpAgentRunAdmissionCanonicalV1 = {
     schemaVersion: PURPOSE,
     ...(runtimeAuthority === undefined ? {} : { runtimeAuthority }),
+    ...(manualInputDigest === undefined ? {} : { manualInputDigest }),
     siteId: canonicalBodySiteId(record.siteId, `${path}.siteId`),
     origin,
     principalId: canonicalBodyUuid(record.principalId, `${path}.principalId`),

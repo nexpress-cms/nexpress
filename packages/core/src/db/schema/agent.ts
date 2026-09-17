@@ -1215,6 +1215,8 @@ export const npAgentRuns = pgTable(
     instructionDigest: text("instruction_digest"),
     responseSchemaDigest: text("response_schema_digest"),
     manualInputSchemaDigest: text("manual_input_schema_digest"),
+    manualInput: jsonb("manual_input").$type<NpAgentJsonObject>(),
+    manualInputDigest: text("manual_input_digest"),
     state: text("state").notNull(),
     goal: text("goal").notNull(),
     eventRef: jsonb("event_ref").$type<NpAgentJsonObject>(),
@@ -1341,6 +1343,14 @@ export const npAgentRuns = pgTable(
     check(
       "np_agent_runs_runtime_admission_sources_check",
       sql`((${table.origin}='gateway' and ${table.runtimeAdmissionSources} is null) or (${table.origin}='runtime' and ${table.runtimeAdmissionSources}->>'schemaVersion'='np.agent-runtime-admission-sources.v1' and ${table.runtimeAdmissionSources}->'frameworkPolicy'->>'schemaVersion'='np.agent-policy.v1' and ${table.runtimeAdmissionSources}->'frameworkPolicy'->>'instructions'='' and ${table.runtimeAdmissionSources}->'frameworkPolicy'->'rules'->>'schemaVersion'='np.agent-policy-rules.v1' and ${table.runtimeAdmissionSources}->>'frameworkPolicyVersion' ~ '^[1-9][0-9]{0,9}$' and (${table.runtimeAdmissionSources}->>'frameworkPolicyVersion')::numeric<=2147483647 and ${table.runtimeAdmissionSources}->'sitePolicy'->>'schemaVersion'='np.agent-policy.v1' and ${table.runtimeAdmissionSources}->'sitePolicy'->>'instructions'='' and ${table.runtimeAdmissionSources}->'sitePolicy'->'rules'->>'schemaVersion'='np.agent-policy-rules.v1' and ${table.runtimeAdmissionSources}->'deploymentBudget'->>'schemaVersion'='np.agent-budget.v1' and ${table.runtimeAdmissionSources}->'siteBudget'->>'schemaVersion'='np.agent-budget.v1' and octet_length(${table.runtimeAdmissionSources}::text)<=1048576)) is true`,
+    ),
+    check(
+      "np_agent_runs_manual_input_check",
+      sql`((${table.manualInput} is null and ${table.manualInputDigest} is null) or
+        (${table.origin}='runtime' and ${table.manualInput} is not null and jsonb_typeof(${table.manualInput})='object'
+        and octet_length(${table.manualInput}::text)<=16384 and ${table.manualInputDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$'
+        and ${table.manualInputSchemaDigest} is not null and ${table.triggerId} is not null
+        and ${table.connectionId} is not null and ${table.providerDataClassCeiling}='sensitive-approved')) is true`,
     ),
     check(
       "np_agent_runs_runtime_shape_check",

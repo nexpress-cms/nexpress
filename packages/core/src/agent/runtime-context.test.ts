@@ -9,6 +9,8 @@ import {
 } from "./runtime-context.js";
 import { npIsAgentRuntimeDocumentEvidenceReaderV1 } from "./read-capability-executors.js";
 import type { NpAgentRuntimeAdmissionV1 } from "./runtime-admission.js";
+import { providerRequest } from "./provider-inference-fixture.js";
+import { npDigestAgentRuntimeManualInputV1 } from "../agent-contract/runtime-manual-input.js";
 
 const reference = {
   kind: "document",
@@ -16,6 +18,167 @@ const reference = {
   documentId: "018f0f30-cd7b-7cc2-8b16-8c052c259bd1",
   projection: "bounded-text",
 };
+
+async function manualContextFixture() {
+  const request = providerRequest();
+  const hash = (domain: string, value: unknown) =>
+    `cj1:sha256:${createHash("sha256").update(domain).update("\0").update(serializeAgentCanonicalJson(value)).digest("base64url")}`;
+  const instructionDigest = `cj1:sha256:${createHash("sha256").update(request.instruction.text).digest("base64url")}`;
+  const schema = {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    type: "object",
+    additionalProperties: false,
+    properties: { topic: { type: "string", maxLength: 256 } },
+    required: ["topic"],
+  };
+  const manualInput = { topic: "Review user@example.test with sk-private123456" };
+  const current = {
+    siteId: request.siteId,
+    now: new Date("2026-09-12T00:00:00.000Z"),
+    run: {
+      id: request.runId,
+      state: "running",
+      attempt: 1,
+      admissionFingerprint: request.recipe.fingerprint,
+      leaseUntil: new Date("2026-09-12T00:05:00.000Z"),
+      deadlineAt: new Date("2026-09-12T00:10:00.000Z"),
+      queuedAt: new Date("2026-09-11T23:59:00.000Z"),
+      recipeId: request.recipe.id,
+      recipeVersion: 1,
+      recipeFingerprint: request.recipe.fingerprint,
+      providerDataClassCeiling: "sensitive-approved",
+      instructionDigest,
+      responseSchemaDigest: hash("np.agent-runtime-schema.v1", request.responseSchema),
+      manualInputSchemaDigest: hash("np.agent-runtime-schema.v1", schema),
+      manualInput,
+      manualInputDigest: await npDigestAgentRuntimeManualInputV1(manualInput),
+      goal: "Check staff@example.test",
+    },
+    evidence: {
+      principal: {},
+      version: {},
+      definition: { model: request.model },
+      registry: {
+        recipes: [
+          {
+            id: request.recipe.id,
+            version: 1,
+            task: "interactive-capability",
+            providerMode: "required",
+            triggerKinds: ["manual"],
+            capabilityIds: [],
+            instruction: {
+              templateId: request.instruction.templateId,
+              templateVersion: request.instruction.templateVersion,
+              text: request.instruction.text,
+              digest: instructionDigest,
+            },
+            manualInputSchema: schema,
+            responseSchema: request.responseSchema,
+          },
+        ],
+      },
+    },
+    policy: { instructions: [], effective: { providerDataMaximum: "sensitive-approved" } },
+    settings: {},
+    limits: { ...request.limits, maxWallClockSeconds: 300 },
+    connection: {
+      id: request.connection.id,
+      provider: request.provider,
+      activeSecretVersionId: request.connection.secretVersionId,
+      credentialVersion: request.connection.credentialVersion,
+    },
+    connectionSnapshot: {
+      id: request.connection.configSnapshotId,
+      version: request.connection.configVersion,
+      configHash: request.connection.configHash,
+      adapterId: request.connection.adapterId,
+      adapterContractVersion: request.connection.adapterContractVersion,
+      adapterFingerprint: request.connection.adapterFingerprint,
+    },
+    pricing: request.pricing,
+  } as unknown as NpAgentRuntimeRunContextV1;
+  const admission = {
+    admit: vi.fn(),
+    withRunAuthority: vi.fn(),
+    withCurrentRun: vi.fn((_input, execute) => execute(current)),
+  } as NpAgentRuntimeAdmissionV1;
+  return {
+    current,
+    service: createAgentRuntimeContextV1({ admission }),
+    input: {
+      siteId: request.siteId,
+      runId: request.runId,
+      providerCallId: request.providerCallId,
+      sequence: 1,
+      retryOfId: null,
+      idempotencyKey: request.idempotencyKey,
+    },
+  };
+}
+
+describe("Retained structured manual input", () => {
+  it("consumes redacted untrusted input and rebuilds the same request for verification", async () => {
+    const { current, service, input } = await manualContextFixture();
+    const request = await service.prepare(input);
+    expect(request.untrustedEvidence).toEqual([
+      {
+        id: "manual-input",
+        kind: "content",
+        digest: current.run.manualInputDigest,
+        observedAt: current.run.queuedAt.toISOString(),
+        classification: {
+          sourceDigest: current.run.manualInputDigest,
+          dataClass: "sensitive-approved",
+          classifierId: "framework.runtime-context",
+          classifierVersion: 1,
+        },
+        text: '{"goal":"Check [redacted email]","input":{"topic":"Review [redacted email] with [redacted credential]"}}',
+      },
+    ]);
+    expect(request.dataClass).toBe("sensitive-approved");
+    expect(request.trustedContext).toEqual([]);
+    expect(request.tools).toEqual([]);
+    expect(await service.verifyRequest(current, request)).toBe(true);
+    current.run.manualInput = { topic: "changed after preparation" };
+    expect(await service.verifyRequest(current, request)).toBe(false);
+  });
+
+  it("rejects modified digest, schema binding and insufficient provider ceilings", async () => {
+    const mutations: ((current: NpAgentRuntimeRunContextV1) => void)[] = [
+      (current) => {
+        current.run.manualInputDigest = current.run.instructionDigest;
+      },
+      (current) => {
+        current.run.manualInputSchemaDigest = current.run.instructionDigest;
+      },
+      (current) => {
+        current.run.providerDataClassCeiling = "internal-redacted";
+      },
+      (current) => {
+        current.policy.effective.providerDataMaximum = "internal-redacted";
+      },
+    ];
+    for (const mutate of mutations) {
+      const { current, service, input } = await manualContextFixture();
+      mutate(current);
+      await expect(service.prepare(input)).rejects.toMatchObject({
+        code: "RUNTIME_PROVIDER_INPUT_UNAVAILABLE",
+      });
+    }
+  });
+
+  it("preserves the schema-null goal-only context", async () => {
+    const { current, service, input } = await manualContextFixture();
+    current.run.manualInput = null;
+    current.run.manualInputDigest = null;
+    current.run.manualInputSchemaDigest = null;
+    current.evidence.registry.recipes[0].manualInputSchema = null;
+    const request = await service.prepare(input);
+    expect(request.untrustedEvidence).toEqual([]);
+    expect(request.dataClass).toBe("internal-redacted");
+  });
+});
 
 describe("Runtime context source boundary", () => {
   it("reuses the closed evidence owner without exposing arbitrary selectors", () => {
