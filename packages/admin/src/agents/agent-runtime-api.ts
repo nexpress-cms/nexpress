@@ -24,6 +24,10 @@ export async function runtimeRequest<T>(
 
 export function runtimeErrorMessage(error: unknown): string {
   if (error instanceof AgentStudioApiError) {
+    if (error.code === "RUNTIME_MANUAL_INPUT_INVALID")
+      return "Check the goal and recipe input fields. Input must match the supported schema and fit the size limit.";
+    if (error.code === "RUNTIME_MANUAL_INPUT_POLICY_DENIED")
+      return "Structured input requires sensitive-approved provider data permission. Review the Agent, site policy and connection before running.";
     if (error.code === "RECENT_REAUTHENTICATION_REQUIRED")
       return "Recent staff-primary reauthentication is required. Reauthenticate and reload.";
     if ([401, 403, 404].includes(error.status))

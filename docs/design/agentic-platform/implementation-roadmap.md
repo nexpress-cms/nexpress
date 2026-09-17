@@ -564,8 +564,11 @@ per-Agent lifecycle controls, bounded manual admission and the existing Runtime
 Activity detail. One explicitly installed `runtimeStudio` facade reuses the
 existing services and fourteen Admin mutation operations. Activation optionally
 binds exact trigger definitions and compare-only reviewed policy references;
-manual input is exactly a selected recipe and bounded goal, with no silently
-ignored structured inputs. Status and usage preserve unavailable/unknown states.
+manual input preserves selected recipe and bounded goal, and supports a bounded
+closed flat scalar input schema for compatible installed interactive recipes.
+Canonical Run storage, digest-bound admission, untrusted executor consumption
+and Run-owned retention form one path; unsupported schemas remain unavailable.
+No R6 recipe is fabricated. Status and usage preserve unavailable/unknown states.
 See [the Runtime Studio flow](r5-runtime-studio-flow.md) for the implemented
 boundary and verification checkpoints. Bounded synthetic policy simulation now
 uses the real policy evaluator with exact non-authorizing output. The existing

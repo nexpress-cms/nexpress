@@ -793,6 +793,8 @@ export interface NpAgentRuntimeAuthorityEvidenceV1 {
 }
 
 export interface NpAgentRunAdmissionCanonicalV1 {
+  /** Present only for structured manual input; raw input stays execution-owned. */
+  manualInputDigest?: string;
   /** Optional only for retained legacy admissions; new Runtime runs bind current authority. */
   runtimeAuthority?: NpAgentRuntimeAuthorityEvidenceV1;
   schemaVersion: "np.agent-run-admission.v1";

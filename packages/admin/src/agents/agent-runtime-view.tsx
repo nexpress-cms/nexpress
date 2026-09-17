@@ -15,6 +15,7 @@ import {
   npAgentConfigurationStatusesV1,
   npAgentRecipeTemplates,
   npAgentAutonomyModes,
+  npRequireAgentRuntimeManualSchemaV1,
   type NpAgentConfigurationDefinitionV1,
   type NpAgentRuntimeStudioCatalogV1,
   type NpAgentRuntimeStudioConfigurationV1,
@@ -22,6 +23,7 @@ import {
   type NpAgentTrigger,
   type NpAgentRuntimeStudioEffectiveV1,
 } from "@nexpress/core/agent-contract";
+import { runtimeManualInput } from "./agent-runtime-manual-input.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentStudioApiError } from "./agent-studio-api.js";
 import { runtimeRequest, runtimeErrorMessage, useRuntimeResource } from "./agent-runtime-api.js";
@@ -689,6 +691,7 @@ function RuntimeAgentActions({
   const [action, setAction] = React.useState<NpAgentRuntimeAdminOperationIdV1 | null>(null);
   const [reason, setReason] = React.useState("");
   const [goal, setGoal] = React.useState("");
+  const [manualValues, setManualValues] = React.useState<Record<string, string>>({});
   const [triggerId, setTriggerId] = React.useState(manualTriggers[0]?.id ?? "");
   const [recipeId, setRecipeId] = React.useState(agent.manualRecipeIds[0] ?? "");
   const [key, setKey] = React.useState(() => crypto.randomUUID());
@@ -698,6 +701,10 @@ function RuntimeAgentActions({
   const [plan, setPlan] = React.useState<Array<{ definition: NpAgentTrigger; enabled: boolean }>>(
     [],
   );
+  const selectedSchema = catalog?.recipes.find(
+    (recipe) => recipe.id === recipeId,
+  )?.manualInputSchema;
+  const manualSchema = selectedSchema ? npRequireAgentRuntimeManualSchemaV1(selectedSchema) : null;
   const labels: Partial<Record<NpAgentRuntimeAdminOperationIdV1, string>> = {
     "agents.configurations.activate": "Activate reviewed version",
     "agents.configurations.pause": "Pause Agent",
@@ -713,6 +720,7 @@ function RuntimeAgentActions({
     const suffix = action.split(".").at(-1)!;
     try {
       const base = { expectedVersion: agent.rowVersion, idempotencyKey: key };
+      const structuredInput = manualSchema ? runtimeManualInput(manualSchema, manualValues) : null;
       const body =
         suffix === "pause" || suffix === "archive"
           ? { ...base, reason: reason.trim() }
@@ -721,7 +729,11 @@ function RuntimeAgentActions({
                 ...base,
                 configHash: agent.activeVersion?.configHash ?? agent.configHash,
                 triggerId: triggerId || manualTriggers[0]?.id,
-                inputJson: JSON.stringify({ recipeId, goal: goal.trim() }),
+                inputJson: JSON.stringify({
+                  recipeId,
+                  goal: goal.trim(),
+                  ...(manualSchema ? { input: structuredInput } : {}),
+                }),
               }
             : {
                 ...base,
@@ -767,7 +779,8 @@ function RuntimeAgentActions({
                   (!review?.ready ||
                     review.versionId !==
                       (id.endsWith("resume") ? agent.activeVersion?.id : agent.versionId))) ||
-                (id.endsWith("run") && (!manualTriggers.length || !agent.manualRecipeIds.length))
+                (id.endsWith("run") &&
+                  (!catalog || !manualTriggers.length || !agent.manualRecipeIds.length))
               }
               onClick={() => {
                 setAction(id);
@@ -814,6 +827,7 @@ function RuntimeAgentActions({
                   options={choices(agent.manualRecipeIds)}
                   onChange={(next) => {
                     setRecipeId(next);
+                    setManualValues({});
                     setKey(crypto.randomUUID());
                   }}
                 />
@@ -829,6 +843,72 @@ function RuntimeAgentActions({
                     setKey(crypto.randomUUID());
                   }}
                 />
+                {manualSchema
+                  ? Object.entries(manualSchema.properties).map(([name, field]) => {
+                      const required = manualSchema.required.includes(name);
+                      const change = (value: string) => {
+                        setManualValues((current) => ({ ...current, [name]: value }));
+                        setKey(crypto.randomUUID());
+                      };
+                      const values =
+                        field.enum ?? (field.type === "boolean" ? [true, false] : null);
+                      return (
+                        <div key={name} className="space-y-2">
+                          <Label htmlFor={`runtime-manual-${name}`}>
+                            {name}
+                            {required ? " (required)" : " (optional)"}
+                          </Label>
+                          {values ? (
+                            <select
+                              id={`runtime-manual-${name}`}
+                              className="w-full rounded-md border p-2"
+                              required={required}
+                              value={
+                                manualValues[name] === undefined
+                                  ? ""
+                                  : String(
+                                      values.findIndex(
+                                        (value) => String(value) === manualValues[name],
+                                      ),
+                                    )
+                              }
+                              onChange={(event) => {
+                                if (event.target.value !== "")
+                                  change(String(values[Number(event.target.value)]));
+                                else {
+                                  setManualValues((current) => {
+                                    const next = { ...current };
+                                    delete next[name];
+                                    return next;
+                                  });
+                                  setKey(crypto.randomUUID());
+                                }
+                              }}
+                            >
+                              <option value="">Choose a value</option>
+                              {values.map((value, index) => (
+                                <option key={String(value)} value={String(index)}>
+                                  {value === "" ? "(empty string)" : String(value)}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <Input
+                              id={`runtime-manual-${name}`}
+                              required={required && field.type !== "string"}
+                              type={field.type === "integer" ? "number" : "text"}
+                              step={field.type === "integer" ? 1 : undefined}
+                              min={field.minimum}
+                              max={field.maximum}
+                              maxLength={field.maxLength}
+                              value={manualValues[name] ?? ""}
+                              onChange={(event) => change(event.target.value)}
+                            />
+                          )}
+                        </div>
+                      );
+                    })
+                  : null}
                 <Label htmlFor="runtime-manual-goal">Run goal</Label>
                 <Textarea
                   id="runtime-manual-goal"

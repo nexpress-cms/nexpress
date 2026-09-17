@@ -195,6 +195,7 @@ describe("Agent run-admission canonical body", () => {
       "admittedAt",
       "deadlineAt",
       "runtimeAuthority",
+      "manualInputDigest",
     ]);
     expect(npAgentRunAdmissionCanonicalExcludedKeysV1).toEqual([
       "admissionHash",

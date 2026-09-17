@@ -1,3 +1,4 @@
+import { npDigestAgentRuntimeManualInputV1 } from "../agent-contract/runtime-manual-input.js";
 import { and, eq, inArray } from "drizzle-orm";
 import type { NpAgentCapabilityAdmissionServiceV1 } from "./capability-admission.js";
 import type { getDb } from "../db/runtime.js";
@@ -61,6 +62,12 @@ function identity(input: Identity): void {
 export async function npRequireAgentRuntimeExecutionIntegrityV1(run: Run): Promise<void> {
   try {
     if (run.origin !== "runtime" || !run.agentId || !run.agentVersionId) fail();
+    if (
+      run.manualInput != null
+        ? (await npDigestAgentRuntimeManualInputV1(run.manualInput)) !== run.manualInputDigest
+        : run.manualInputDigest != null
+    )
+      fail();
     const body = npRuntimeRunAdmissionBodyV1(run);
     const limits = npRequireAgentRunLimitsCanonical(run.runLimits);
     const budget = npRequireAgentBudgetSnapshotCanonical(run.budgetSnapshot);

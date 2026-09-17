@@ -1,3 +1,4 @@
+import { npRequireAgentRuntimeManualSchemaV1 } from "./runtime-manual-input.js";
 import { npRequireAgentRunAdmissionPolicyRefsV1 } from "./canonical-run-admission.js";
 import { npRequireAgentPolicyRulesV1 } from "./canonical-notification-policy.js";
 import {
@@ -513,7 +514,7 @@ export interface NpAgentRuntimeStudioCatalogV1 {
     Pick<
       NpAgentRecipeDefinitionCanonicalV1,
       "id" | "version" | "allowedTemplates" | "providerMode" | "triggerKinds" | "capabilityIds"
-    >
+    > & { manualInputSchema?: NpAgentRecipeDefinitionCanonicalV1["manualInputSchema"] }
   >;
   scopes: NpAgentScope[];
   connections: Array<{ id: string; alias: string; models: string[] }>;
@@ -540,15 +541,30 @@ export function npAnalyzeAgentRuntimeStudioCatalogV1(value: unknown) {
     const r = exact(value, fields.catalog);
     const recipes: NpAgentRuntimeStudioCatalogV1["recipes"] = boundedArray(r.recipes, 8).map(
       (value): NpAgentRuntimeStudioCatalogV1["recipes"][number] => {
-        const recipe = exact(value, [
-          "id",
-          "version",
-          "allowedTemplates",
-          "providerMode",
-          "triggerKinds",
-          "capabilityIds",
-        ]);
+        const recipe = canonicalBodyRecord(
+          value,
+          "recipe",
+          [
+            "id",
+            "version",
+            "allowedTemplates",
+            "providerMode",
+            "triggerKinds",
+            "capabilityIds",
+            "manualInputSchema",
+          ],
+          ["id", "version", "allowedTemplates", "providerMode", "triggerKinds", "capabilityIds"],
+          { seen: new WeakSet() },
+        );
         return {
+          ...(recipe.manualInputSchema === undefined
+            ? {}
+            : {
+                manualInputSchema:
+                  recipe.manualInputSchema === null
+                    ? null
+                    : npRequireAgentRuntimeManualSchemaV1(recipe.manualInputSchema),
+              }),
           id: canonicalBodyEnum(recipe.id, "id", new Set(npAgentRecipeIds)),
           version: canonicalBodyInteger(recipe.version, "version", 1, 1) as 1,
           allowedTemplates: enumList(recipe.allowedTemplates, npAgentRecipeTemplates, 5),

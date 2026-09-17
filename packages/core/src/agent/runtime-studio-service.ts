@@ -1,3 +1,4 @@
+import { npIsAgentRuntimeManualRecipeSupportedV1 } from "../agent-contract/runtime-manual-input.js";
 import { createHash } from "node:crypto";
 import { and, desc, eq, ilike, lt, or, sql, type SQL } from "drizzle-orm";
 import type { getDb } from "../db/runtime.js";
@@ -182,9 +183,15 @@ export function createAgentRuntimeStudioServiceV1(options: NpAgentRuntimeStudioS
               active.registry.recipes.some(
                 (recipe) =>
                   recipe.id === branch.recipeId &&
-                  recipe.triggerKinds.includes("manual") &&
-                  recipe.manualInputSchema === null &&
-                  recipe.task === "interactive-capability",
+                  npIsAgentRuntimeManualRecipeSupportedV1(recipe) &&
+                  options.service
+                    .getDefinitionInventory()
+                    .recipes.recipes.some(
+                      (installed) =>
+                        installed.id === recipe.id &&
+                        serializeAgentCanonicalJson(installed) ===
+                          serializeAgentCanonicalJson(recipe),
+                    ),
               ),
             )
             .map((branch) => branch.recipeId);
@@ -568,16 +575,17 @@ export function createAgentRuntimeStudioServiceV1(options: NpAgentRuntimeStudioS
                 capabilities.some((capability) => capability.id === id),
               ),
             )
-            .map(
-              ({ id, version, allowedTemplates, providerMode, triggerKinds, capabilityIds }) => ({
-                id,
-                version,
-                allowedTemplates,
-                providerMode,
-                triggerKinds,
-                capabilityIds,
-              }),
-            );
+            .map((recipe) => ({
+              id: recipe.id,
+              version: recipe.version,
+              allowedTemplates: recipe.allowedTemplates,
+              providerMode: recipe.providerMode,
+              triggerKinds: recipe.triggerKinds,
+              capabilityIds: recipe.capabilityIds,
+              manualInputSchema: npIsAgentRuntimeManualRecipeSupportedV1(recipe)
+                ? recipe.manualInputSchema
+                : null,
+            }));
           const connections: Array<{ id: string; alias: string; models: string[] }> = [];
           if (options.providerRegistry) {
             const rows = await db

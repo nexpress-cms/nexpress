@@ -1,4 +1,8 @@
 import {
+  npRequireAgentRuntimeManualInputV1,
+  npDigestAgentRuntimeManualInputV1,
+} from "../agent-contract/runtime-manual-input.js";
+import {
   npRequireAgentEventCanonical,
   npDigestAgentEventCanonical,
 } from "../agent-contract/canonical-events.js";
@@ -153,6 +157,7 @@ export interface NpAgentRuntimeAdmissionV1 {
     source?: { triggerId: string; eventId?: string; scheduledFor?: string };
     /** Bounded manual goal only; it never overrides retained instructions or settings. */
     goal?: string;
+    input?: NpAgentJsonObject;
     db?: Db;
   }): Promise<{ runId: string; replayed: boolean }>;
   /** Retained requester authority, including nonterminal approval/retry waits. No lease is granted. */
@@ -173,6 +178,7 @@ export function npRuntimeRunAdmissionBodyV1(run: Run): NpAgentRunAdmissionCanoni
     : null;
   return npRequireAgentRunAdmissionCanonical({
     ...(sources?.runtimeAuthority ? { runtimeAuthority: sources.runtimeAuthority } : {}),
+    ...(run.manualInputDigest == null ? {} : { manualInputDigest: run.manualInputDigest }),
     schemaVersion: "np.agent-run-admission.v1",
     siteId: run.siteId,
     origin: run.origin,
@@ -554,6 +560,11 @@ export function createAgentRuntimeAdmissionV1(
     )
       fail("RUNTIME_ADMISSION_INVALID");
     if (recipe.task !== "interactive-capability") fail("RUNTIME_TARGET_ADMISSION_UNAVAILABLE");
+    if (run.manualInput != null) {
+      const validated = npRequireAgentRuntimeManualInputV1(recipe, run.manualInput);
+      if ((await npDigestAgentRuntimeManualInputV1(validated)) !== run.manualInputDigest)
+        fail("RUNTIME_ADMISSION_INVALID");
+    } else if (run.manualInputDigest != null) fail("RUNTIME_ADMISSION_INVALID");
     if (
       run.responseSchemaDigest !== hash("np.agent-runtime-schema.v1", recipe.responseSchema) ||
       run.manualInputSchemaDigest !==
@@ -735,11 +746,16 @@ export function createAgentRuntimeAdmissionV1(
           "source",
           "db",
           "goal",
+          "input",
         ],
         ["siteId", "agentId", "expectedVersionId", "recipeId", "idempotencyKey"],
         { seen: new WeakSet<object>() },
       );
       const outerDb = input.db;
+      const requestedInput =
+        input.input === undefined
+          ? undefined
+          : cloneCanonicalRuntimeInput(input.input, "agent.runtime.input", 8192);
       const manualGoal =
         input.goal === undefined
           ? undefined
@@ -771,7 +787,7 @@ export function createAgentRuntimeAdmissionV1(
         cloneCanonicalRuntimeInput(
           Object.fromEntries(
             Object.entries(input).filter(
-              ([key]) => key !== "db" && key !== "source" && key !== "goal",
+              ([key]) => key !== "db" && key !== "source" && key !== "goal" && key !== "input",
             ),
           ),
           "agent.runtime.admit",
@@ -990,10 +1006,31 @@ export function createAgentRuntimeAdmissionV1(
               ),
             )
             .limit(1);
+          if (previous && previous.recipeId !== input.recipeId) fail("IDEMPOTENCY_KEY_REUSED");
+          const recipe = evidence.registry.recipes.find((entry) => entry.id === input.recipeId);
+          if (
+            !recipe ||
+            !evidence.definition.settings.some((entry) => entry.recipeId === recipe.id)
+          )
+            fail("RUNTIME_RECIPE_UNAVAILABLE");
+          let manualInput: NpAgentJsonObject | null = null;
+          if (
+            requestedInput !== undefined ||
+            (trigger?.kind === "manual" && recipe.manualInputSchema !== null)
+          ) {
+            if (trigger?.kind !== "manual" || manualGoal === undefined)
+              fail("RUNTIME_TRIGGER_UNAVAILABLE");
+            manualInput = npRequireAgentRuntimeManualInputV1(recipe, requestedInput);
+          }
+          const manualInputDigest =
+            manualInput === null ? null : await npDigestAgentRuntimeManualInputV1(manualInput);
           if (manualGoal !== undefined && trigger?.kind !== "manual")
             fail("RUNTIME_TRIGGER_UNAVAILABLE");
           if (previous) {
             if (
+              (previous.manualInputDigest ?? null) !== manualInputDigest ||
+              serializeAgentCanonicalJson(previous.manualInput ?? null) !==
+                serializeAgentCanonicalJson(manualInput) ||
               previous.goal !== (manualGoal ?? `Run ${input.recipeId}`) ||
               previous.agentVersionId !== evidence.version.id ||
               previous.recipeId !== input.recipeId ||
@@ -1020,12 +1057,6 @@ export function createAgentRuntimeAdmissionV1(
           if (!settings.enabled || settings.emergencyPause.paused) fail("RUNTIME_PAUSED");
           await options.controls.requireReadyInTransaction({ db, siteId: input.siteId });
           let now = nowFn();
-          const recipe = evidence.registry.recipes.find((entry) => entry.id === input.recipeId);
-          if (
-            !recipe ||
-            !evidence.definition.settings.some((branch) => branch.recipeId === recipe.id)
-          )
-            fail("RUNTIME_RECIPE_UNAVAILABLE");
           if (
             trigger &&
             !recipe.triggerKinds.includes(trigger.kind as "event" | "schedule" | "manual")
@@ -1052,6 +1083,11 @@ export function createAgentRuntimeAdmissionV1(
             providerDataMaximum: provider.canonical?.dataClassCeiling,
             frameworkPolicy,
           });
+          if (
+            manualInput !== null &&
+            (!provider.canonical || policy.effective.providerDataMaximum !== "sensitive-approved")
+          )
+            fail("RUNTIME_MANUAL_INPUT_POLICY_DENIED");
           if (provider.canonical)
             provider.canonical.dataClassCeiling = policy.effective.providerDataMaximum;
           const sources = npRequireAgentRuntimeAdmissionSourcesV1({
@@ -1134,6 +1170,7 @@ export function createAgentRuntimeAdmissionV1(
           const id = randomUUID();
           const deadlineAt = new Date(now.getTime() + runLimits.maxWallClockSeconds * 1000);
           const body = npRequireAgentRunAdmissionCanonical({
+            ...(manualInputDigest === null ? {} : { manualInputDigest }),
             schemaVersion: "np.agent-run-admission.v1",
             runtimeAuthority: resolvedAuthority.runtimeAuthority,
             siteId: input.siteId,
@@ -1201,6 +1238,8 @@ export function createAgentRuntimeAdmissionV1(
             instructionDigest: body.recipe!.instructionDigest,
             responseSchemaDigest: body.recipe!.responseSchemaDigest,
             manualInputSchemaDigest: body.recipe!.manualInputSchemaDigest,
+            manualInput,
+            manualInputDigest,
             state: "queued",
             goal: body.goal,
             policyRefs: policy.refs.map(object),
