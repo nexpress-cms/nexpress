@@ -4,6 +4,7 @@ import {
   npEnsureAgentReferenceMigrationV1,
   npEnsureAgentReferenceMigrationV2,
   npEnsureAgentReferenceMigrationV3,
+  npEnsureAgentReferenceMigrationV4,
 } from "./agent-reference-migration.js";
 import { npEnsureAgentLifecycleConstraintMigrationV1 } from "./agent-migration-contract.js";
 
@@ -78,6 +79,17 @@ export async function generateMigrations(): Promise<void> {
         "--custom",
         "--name",
         "agent-cancelled-changeset-source-reference-lifecycle",
+      ]),
+  });
+  await npEnsureAgentReferenceMigrationV4({
+    createCustomMigration: () =>
+      run(pnpm, [
+        "exec",
+        "drizzle-kit",
+        "generate",
+        "--custom",
+        "--name",
+        "agent-validated-changeset-source-reference-lifecycle",
       ]),
   });
 }

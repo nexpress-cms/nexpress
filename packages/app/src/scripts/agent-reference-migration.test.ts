@@ -9,6 +9,8 @@ import {
   npAgentReferenceMigrationSqlV2,
   npEnsureAgentReferenceMigrationV3,
   npAgentReferenceMigrationSqlV3,
+  npEnsureAgentReferenceMigrationV4,
+  npAgentReferenceMigrationSqlV4,
 } from "./agent-reference-migration.js";
 const directories: string[] = [];
 async function folder() {
@@ -131,4 +133,43 @@ it("preserves the shipped Studio reference migration bytes", async () => {
     "utf8",
   );
   expect(npAgentReferenceMigrationSqlV2()).toBe(shipped);
+});
+
+it("preserves the shipped cancelled ChangeSet reference migration bytes", async () => {
+  const shipped = await readFile(
+    new URL(
+      "../../../../apps/web/drizzle/0055_agent-cancelled-changeset-source-reference-lifecycle.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  expect(npAgentReferenceMigrationSqlV3()).toBe(shipped);
+});
+
+it("appends validated evidence guards while preserving all installed generations", async () => {
+  const migrationsFolder = await folder();
+  const previous = [
+    npAgentReferenceMigrationSqlV1(),
+    npAgentReferenceMigrationSqlV2(),
+    npAgentReferenceMigrationSqlV3(),
+  ];
+  for (const [index, body] of previous.entries())
+    await writeFile(join(migrationsFolder, `000${index + 1}.sql`), body);
+  const createCustomMigration = vi.fn(async () => {
+    await writeFile(join(migrationsFolder, "0004.sql"), "-- generated shell\n");
+  });
+  const options = { migrationsFolder, createCustomMigration };
+  await npEnsureAgentReferenceMigrationV4(options);
+  for (const [index, body] of previous.entries())
+    expect(await readFile(join(migrationsFolder, `000${index + 1}.sql`), "utf8")).toBe(body);
+  expect(await readFile(join(migrationsFolder, "0004.sql"), "utf8")).toBe(
+    npAgentReferenceMigrationSqlV4(),
+  );
+  await npEnsureAgentReferenceMigrationV4(options);
+  expect(createCustomMigration).toHaveBeenCalledTimes(1);
+  await writeFile(
+    join(migrationsFolder, "0004.sql"),
+    npAgentReferenceMigrationSqlV4().replace("FOR SHARE", "FOR KEY SHARE"),
+  );
+  await expect(npEnsureAgentReferenceMigrationV4(options)).rejects.toThrow("differs");
 });

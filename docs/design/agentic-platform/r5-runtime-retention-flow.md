@@ -278,3 +278,81 @@ and passed. Browser-generated upload media was preserved outside the repository.
 These results cover cancelled, unvalidated Runtime draft-create sources only.
 Validation/preview owners, executed mutations, general evidence pruning and full
 R5 acceptance remain open.
+
+## Validated cancelled proposal source reference matrix
+
+The next bounded extension retains completed current-generation validation and
+preview evidence for cancelled/expired Runtime proposals. Source release remains
+non-authorizing and does not delete canonical evidence or application content.
+
+| Owner                                                                                 | Required proof or blocker                                                                                                         | Retained evidence                                                          |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Runtime create/validate/preview Action and invocation                                 | Exact installed descriptor, request/Action/output hashes, requester Run binding, completed invocation and elapsed replay deadline | Action locator becomes receipt; original invocation, keys and audit remain |
+| Current validation attempt and operations                                             | Exact draft/generation, terminal result, sealed plan/snapshots/base integrity; no lost historical plan                            | Original attempt authority and result; immutable operations/snapshots      |
+| Preview                                                                               | Frozen contract/routes/manifest and admitting invocation; completed terminal lifecycle                                            | Original preview authority, digests and summaries                          |
+| Artifacts and upload journals                                                         | All effects resolved and objects confirmed absent; unknown/pending operations block                                               | Existing receipts, manifests and operation evidence                        |
+| Render/viewer sessions and jobs                                                       | No active work or expiry/skew window; inspect ChangeSet/attempt/preview/child IDs                                                 | Retained terminal records; late writes/jobs rejected                       |
+| Approval/execution/rollback, unknown references or unavailable historical generations | No new owner; keep source pinned                                                                                                  | Existing evidence unchanged                                                |
+
+Each requester Run is distinct from the proposal's creator Run and from an
+optional preview lifecycle Run. Only verified paths for the source being released
+may be exempted. Non-null preview lifecycle Run or independent job references
+remain outside this owner. Current item ACLs and consumed keys remain authoritative
+after release.
+
+## Validated cancelled proposal source acceptance (2026-09-18 KST)
+
+Implemented the matrix above for the retained current validation generation.
+Cleanup, historical attribution and Doctor share bounded relational evidence
+loading and the same plan/preview verifiers. Each source Run receives its own
+receipt and edges; creator and requester Runs can be released independently.
+V4 guards freeze the linked Action, invocation, audit and preview child journals
+as soon as any related source is released, including evidence owned by another
+requester Run. Current item ACLs and consumed admission keys still apply.
+
+Generated migrations 0056/0057 widen two edge CHECK constraints, add two reverse
+lookup indexes and install V4 guards. Previous migration bytes and V1/V2/V3 SQL
+remain unchanged. There are no package version, changeset or lockfile changes.
+
+Final code acceptance passed all 113 workspace tasks, including 2,078 Core unit
+cases, and all 41 package lint scopes. The migration generator passed 9 cases.
+PostgreSQL acceptance covers Core 64 and Web 1,439 ordinary cases across the full
+and corrected runs, including theme coverage. The new five real Runtime journeys
+cover validated cancellation, preview expiry, unresolved effects/sessions/jobs,
+independent creator/requester releases, immutable evidence, current ACLs and
+approval-history pinning. Native preview was explicitly enabled and passed its
+one case after the ordinary suite skipped it. Live Redis passed 16 cases and
+production browser passed all 73.
+
+Fresh packed scaffold passed 40 packages / 60 stages: exact packaged-dist checks,
+isolated installation/typecheck, generated migrations, Agent foundation/Doctor,
+production build, seven extension packages, five runtime module probes and
+first-run journeys. Runtime probes intentionally used an unreachable database;
+expected connection failures were accepted only after excluding module-resolution
+errors. No scaffold gate was skipped.
+
+The first full Web run passed 1,420 cases, failed 19 and skipped native preview.
+Five files encountered test/hook timeouts or subsequent cleanup deadlocks while
+other verification jobs overlapped. The sites registry's first three cases failed
+in afterEach because a reused worker retained another suite's preview fixtures;
+its initial truncate now isolates the suite without recreating the default site
+or weakening the migration-seed assertion. All six affected files passed 61 cases
+in a sequential rerun. Time limits, production budgets and fixture cardinalities
+were unchanged. The final test-only isolation edit passed formatting and the Web
+typecheck; integration tests are excluded by the existing ESLint/TS project
+configuration, so a forced per-file ESLint invocation was not an applicable gate.
+
+Self-review restored live creator configuration binding, narrowed untyped
+persisted authority fields, protected cross-requester evidence before its own
+release, and pinned independent preview job locators. Fixture corrections used
+canonical capability ordering, fresh current staff sessions after the 91-day
+clock advance, and the real preview capture completion path. Browser upload
+artifacts were preserved outside the repository. Logs and runner scripts are
+under `/tmp/np-validated-retention-*` and the fresh scaffold is under
+`/tmp/nexpress-validated-retention-scaffold`.
+
+Earlier ready generations lacking their original sealed plan, non-null preview
+lifecycle Run/job references, reserved failed previews without a successful
+manifest, unresolved effects, active work and approval/execution/rollback history
+remain pinned. This completes the bounded extension, not general evidence
+pruning or full R5 acceptance.

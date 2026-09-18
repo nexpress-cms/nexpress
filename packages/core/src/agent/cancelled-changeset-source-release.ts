@@ -1,11 +1,10 @@
 import { createHash } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
-import type { getDb } from "../db/runtime.js";
 import {
   type npAgentActions,
   type npAgentInvocations,
   type npAgentChangesets,
-  npAgentChangesetOperations,
+  type npAgentChangesetValidationAttempts,
+  type npAgentChangesetPreviews,
 } from "../db/schema/agent.js";
 import type { npAuditEvents } from "../db/schema/community.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
@@ -14,13 +13,13 @@ import { npDigestAgentInvocationRequestCanonical } from "../agent-contract/canon
 import { npDigestAgentAuthorizationContextCanonical } from "../agent-contract/canonical-authorization-context.js";
 import { npBuildAgentChangeSetCapabilityDefinitionCanonicalV1 } from "../agent-contract/installed-capability-contract.js";
 import { npDigestAgentChangeSetDraftInputV1 } from "../agent-contract/changeset-wire-contract.js";
-import { npDigestAgentChangeSetProposalCanonical } from "../agent-contract/canonical-changeset.js";
 import {
   npAgentReleaseActionDigestV1,
   npSourceReleaseOwnerDigestV1,
 } from "./source-release-read.js";
 
-type Db = ReturnType<typeof getDb>;
+import { npVerifyAgentChangeSetPlanEvidenceV1 } from "./changeset-plan-evidence.js";
+
 type Action = typeof npAgentActions.$inferSelect;
 type Invocation = typeof npAgentInvocations.$inferSelect;
 type ChangeSet = typeof npAgentChangesets.$inferSelect;
@@ -35,7 +34,7 @@ const digest = (row: object, excluded: string[] = []) => {
   return npSourceReleaseOwnerDigestV1(body);
 };
 
-/** Exact draft-create proof only. No execution or authority is inferred from cancellation. */
+/** Exact Runtime proposal-capability attribution; relational lifecycle safety is checked separately. */
 export async function npVerifyCancelledChangeSetAttributionV1(input: {
   action: Action;
   invocation: Invocation;
@@ -49,15 +48,62 @@ export async function npVerifyCancelledChangeSetAttributionV1(input: {
   releasedAt: Date;
   agentId?: string;
   agentConfigHash?: string;
+  planEvidence?: Omit<
+    Parameters<typeof npVerifyAgentChangeSetPlanEvidenceV1>[0],
+    "changeSet" | "execution"
+  >;
+  validation?: typeof npAgentChangesetValidationAttempts.$inferSelect;
+  preview?: typeof npAgentChangesetPreviews.$inferSelect;
 }) {
   const { action: a, invocation: i, changeSet: c, audit, releasedAt } = input;
   try {
-    const definition = npBuildAgentChangeSetCapabilityDefinitionCanonicalV1("changeset.create");
+    const capability = a.capabilityId;
+    if (
+      capability !== "changeset.create" &&
+      capability !== "changeset.validate" &&
+      capability !== "changeset.preview"
+    )
+      return null;
+    const create = capability === "changeset.create";
+    const generation =
+      capability === "changeset.validate"
+        ? input.validation
+        : capability === "changeset.preview"
+          ? input.preview
+          : undefined;
+    if (
+      !create &&
+      (!generation ||
+        generation.siteId !== c.siteId ||
+        generation.changesetId !== c.id ||
+        generation.admittingInvocationId !== i.id)
+    )
+      return null;
+    const definition = npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(capability);
     const fingerprint = await npDigestAgentCapabilityRegistryCanonical(
       definition,
       definition.capabilities,
     );
     const output = { changeSetId: c.id };
+    const invocationOutput = create
+      ? output
+      : capability === "changeset.validate"
+        ? { ...output, attemptId: generation!.id }
+        : { ...output, previewId: generation!.id };
+    if (c.validationGeneration !== 0) {
+      if (
+        !input.planEvidence ||
+        !(await npVerifyAgentChangeSetPlanEvidenceV1({ changeSet: c, ...input.planEvidence }))
+      )
+        return null;
+    } else if (
+      c.sealedPlanBody !== null ||
+      c.planHash !== null ||
+      c.baseFingerprint !== null ||
+      c.riskSummary !== null ||
+      c.rollbackWindowSeconds !== null
+    )
+      return null;
     const authority = {
       schemaVersion: "np.agent-authorization-context.v1",
       siteId: c.siteId,
@@ -87,46 +133,41 @@ export async function npVerifyCancelledChangeSetAttributionV1(input: {
       c.createdByUserId !== null ||
       c.actorDeletedAt !== null ||
       !same(c.policyRefs, []) ||
-      c.principalId !== input.principalId ||
-      c.agentVersionId !== input.agentVersionId ||
-      !c.agentId ||
-      !c.agentConfigHash ||
-      (input.agentId !== undefined && c.agentId !== input.agentId) ||
-      (input.agentConfigHash !== undefined && c.agentConfigHash !== input.agentConfigHash) ||
-      c.runFingerprint !== input.runFingerprint ||
-      c.invocationId !== i.id ||
-      c.invocationFingerprint !== i.requestHash ||
-      c.sourceOperationId !== "changeset.create" ||
-      c.actorFingerprint !== i.actorFingerprint ||
+      (create &&
+        (c.principalId !== input.principalId ||
+          c.agentVersionId !== input.agentVersionId ||
+          !c.agentId ||
+          !c.agentConfigHash ||
+          (input.agentId !== undefined && c.agentId !== input.agentId) ||
+          (input.agentConfigHash !== undefined && c.agentConfigHash !== input.agentConfigHash) ||
+          c.runFingerprint !== input.runFingerprint ||
+          c.invocationId !== i.id ||
+          c.invocationFingerprint !== i.requestHash ||
+          c.sourceOperationId !== "changeset.create" ||
+          c.actorFingerprint !== i.actorFingerprint)) ||
       c.state !== "cancelled" ||
       !["OPERATOR_CANCELLED", "CHANGESET_EXPIRED"].includes(c.cancellationCode ?? "") ||
       c.updatedAt > releasedAt ||
       c.updatedAt < c.createdAt ||
-      c.validationGeneration !== 0 ||
-      c.sealedPlanBody !== null ||
-      c.planHash !== null ||
-      c.baseFingerprint !== null ||
-      c.riskSummary !== null ||
-      c.rollbackWindowSeconds !== null ||
       c.rollbackEligibleUntil !== null ||
       c.scheduledFor !== null ||
       c.appliedAt !== null ||
       c.verifiedAt !== null ||
       c.rolledBackAt !== null ||
       (c.cancellationCode === "CHANGESET_EXPIRED" && c.expiresAt > c.updatedAt) ||
-      (c.runId !== input.runId && !(c.runId === null && c.runSourceReleaseId !== null)) ||
+      (create && c.runId !== input.runId && !(c.runId === null && c.runSourceReleaseId !== null)) ||
       (a.runId !== input.runId && !(a.runId === null && a.runSourceReleaseId !== null)) ||
       a.runFingerprint !== input.runFingerprint ||
       a.invocationId !== i.id ||
       a.invocationFingerprint !== i.requestHash ||
       a.auditEventId !== audit.id ||
-      a.capabilityId !== "changeset.create" ||
+      a.capabilityId !== capability ||
       a.capabilityContractVersion !== 1 ||
       a.capabilityFingerprint !== fingerprint ||
       !same(a.capabilityDefinitionBody, definition) ||
-      a.effectProfileId !== "changeset.draft-create" ||
+      a.effectProfileId !== (create ? "changeset.draft-create" : "domain.read") ||
       a.effectContractVersion !== 1 ||
-      a.risk !== "reversible" ||
+      a.risk !== (create ? "reversible" : "read") ||
       a.state !== "succeeded" ||
       !same(a.inputRedacted, {}) ||
       [
@@ -177,7 +218,7 @@ export async function npVerifyCancelledChangeSetAttributionV1(input: {
       i.oneTimeResourceId !== null ||
       i.oneTimeRecoveryOperationId !== null ||
       i.operationKind !== "capability" ||
-      i.operationId !== "changeset.create" ||
+      i.operationId !== capability ||
       i.contractVersion !== 1 ||
       i.contractFingerprint !== fingerprint ||
       i.effectProfileId !== a.effectProfileId ||
@@ -194,8 +235,8 @@ export async function npVerifyCancelledChangeSetAttributionV1(input: {
       i.expiresAt <= i.requestedAt ||
       i.resultKind !== "changeset" ||
       i.resultId !== c.id ||
-      !same(i.outputRedacted, output) ||
-      i.outputHash !== hash("np.agent-changeset-result.v1", output) ||
+      !same(i.outputRedacted, invocationOutput) ||
+      i.outputHash !== hash("np.agent-changeset-result.v1", invocationOutput) ||
       i.auditEventId !== audit.id ||
       i.requestBody.siteId !== c.siteId ||
       i.requestBody.actorKind !== i.actorKind ||
@@ -212,11 +253,27 @@ export async function npVerifyCancelledChangeSetAttributionV1(input: {
       (await npDigestAgentInvocationRequestCanonical(i.requestBody)) !== i.requestHash ||
       !same(i.requestBody.input, a.inputCanonical) ||
       (await npAgentReleaseActionDigestV1(a)) !== a.inputHash ||
-      (await npDigestAgentChangeSetDraftInputV1(i.requestBody.input)) !== c.sourceInputHash ||
-      hash("np.agent-changeset-source-idempotency.v1", i.idempotencyKey) !==
-        c.sourceIdempotencyFingerprint ||
+      (create &&
+        ((await npDigestAgentChangeSetDraftInputV1(i.requestBody.input)) !== c.sourceInputHash ||
+          hash("np.agent-changeset-source-idempotency.v1", i.idempotencyKey) !==
+            c.sourceIdempotencyFingerprint)) ||
+      (!create &&
+        (!same(generation!.authorizationContextBody, authority) ||
+          !same(generation!.authorityRef, authority.authorityRef) ||
+          generation!.authorizationContextFingerprint !== i.authorizationContextFingerprint ||
+          generation!.requesterKind !== "principal" ||
+          generation!.requesterId !== input.principalId ||
+          generation!.requesterFingerprint !== i.actorFingerprint)) ||
+      (capability === "changeset.validate" &&
+        !same(i.requestBody.input, {
+          changeSetId: c.id,
+          draftVersion: input.validation!.draftVersion,
+          draftHash: input.validation!.draftHash,
+        })) ||
+      (capability === "changeset.preview" &&
+        !same(i.requestBody.input, { changeSetId: c.id, planHash: input.preview!.planHash })) ||
       audit.actorKind !== "agent-principal" ||
-      audit.action !== "agents.changesets.create" ||
+      audit.action !== `agents.${capability.replace("changeset.", "changesets.")}` ||
       audit.targetType !== "agent-changeset" ||
       audit.targetId !== c.id ||
       audit.createdAt > releasedAt ||
@@ -236,80 +293,4 @@ export async function npVerifyCancelledChangeSetAttributionV1(input: {
   } catch {
     return null;
   }
-}
-
-/** Relational work can name only the ChangeSet, so a Run-literal scan is insufficient. */
-export async function npCancelledChangeSetDependenciesSafeV1(
-  db: Db,
-  c: ChangeSet,
-  beforeStatement: () => Promise<void>,
-) {
-  await beforeStatement();
-  const blockers = await db.execute(sql`select
-    exists(select 1 from np_agent_approvals where site_id=${c.siteId} and (target_id=${c.id}::uuid or target_changeset_id=${c.id}::uuid)) or
-    exists(select 1 from np_agent_changeset_executions where site_id=${c.siteId} and changeset_id=${c.id}::uuid) or
-    exists(select 1 from np_agent_changeset_rollback_plans where site_id=${c.siteId} and changeset_id=${c.id}::uuid) or
-    exists(select 1 from np_agent_changeset_rollback_operations where site_id=${c.siteId} and changeset_id=${c.id}::uuid) or
-    exists(select 1 from np_agent_changeset_validation_attempts where site_id=${c.siteId} and changeset_id=${c.id}::uuid) or
-    exists(select 1 from np_agent_changeset_previews where site_id=${c.siteId} and changeset_id=${c.id}::uuid)
-    as blocked`);
-  if (blockers.rows[0]?.blocked !== false) return false;
-  await beforeStatement();
-  const bounded = await db.execute(sql`select count(*) <= 500 and
-    coalesce(sum(octet_length(to_jsonb(o)::text)),0) <= 8388608 as safe
-    from np_agent_changeset_operations o where site_id=${c.siteId} and changeset_id=${c.id}::uuid`);
-  if (bounded.rows[0]?.safe !== true) return false;
-  await beforeStatement();
-  const ops = await db
-    .select()
-    .from(npAgentChangesetOperations)
-    .where(
-      and(
-        eq(npAgentChangesetOperations.siteId, c.siteId),
-        eq(npAgentChangesetOperations.changesetId, c.id),
-      ),
-    )
-    .orderBy(npAgentChangesetOperations.ordinal)
-    .limit(501);
-  if (
-    ops.length > 500 ||
-    ops.some(
-      (o, n) =>
-        o.ordinal !== n + 1 ||
-        o.state !== "draft" ||
-        o.beforeHash !== null ||
-        o.beforeSnapshot !== null ||
-        o.snapshotHash !== null ||
-        o.afterHash !== null ||
-        o.resultDigest !== null ||
-        o.issues.length !== 0,
-    )
-  )
-    return false;
-  if (
-    (await npDigestAgentChangeSetProposalCanonical({
-      schemaVersion: "np.agent-changeset-proposal.v1",
-      siteId: c.siteId,
-      changeSetId: c.id,
-      draftVersion: c.draftVersion,
-      title: c.title,
-      summary: c.summary,
-      operations: ops.map((o) => ({
-        ordinal: o.ordinal,
-        operation: o.input,
-        canonicalResourceKey: o.resourceKey,
-      })),
-    })) !== c.draftHash
-  )
-    return false;
-  await beforeStatement();
-  const jobs = await db.execute(sql`select to_regclass('pgboss.job') is not null as present`);
-  if (jobs.rows[0]?.present === true) {
-    await beforeStatement();
-    const pending =
-      await db.execute(sql`select 1 from pgboss.job where state::text in ('created','retry','active')
-      and (data->>'siteId'=${c.siteId} or data->>'siteId' is null) and position(${c.id} in data::text)>0 limit 1`);
-    if (pending.rows.length) return false;
-  }
-  return true;
 }

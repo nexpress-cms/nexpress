@@ -13,6 +13,10 @@ import {
 describe.skipIf(skipIfNoTestDb())("sites registry contracts", () => {
   beforeAll(async () => {
     await ensureMigrated();
+    // Reused workers may retain another suite's active preview/storage fixtures.
+    // Reset those fixtures before this suite exercises production site deletion;
+    // truncateAll preserves the seeded default row and does not create it.
+    await truncateAll();
     registerTestCollections();
     const { ensureFor } = await import("@/lib/init-core");
     await ensureFor("read");
