@@ -90,11 +90,15 @@ jobs:
   # mismatches, FK violations, transaction-isolation issues, or pg-boss
   # interactions, so a green `pnpm test` was misleading. This job runs the
   # integration suite against a Postgres service container.
-  integration:
-    name: integration tests (Postgres)
+  integration-partitions:
+    name: PostgreSQL partition ${{ matrix.partition }}/2
+    strategy:
+      fail-fast: false
+      matrix:
+        partition: [1, 2]
     runs-on: ubuntu-latest
-    # The foundation gate took 19m38s before the execution/recovery cases.
-    # Keep the full PostgreSQL and Redis suites within one bounded job.
+    # Each partition owns an independent runner and database. Preserve the
+    # existing budget while reducing the longest job, not test coverage.
     timeout-minutes: 30
 
     services:
@@ -147,15 +151,50 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Integration tests
-        # Sequential by design — see docs/testing.md "Behaviour".
-        # Preserve the active test output if a task times out before Turbo flushes it.
-        run: pnpm test:integration --log-order=stream
-
-      - name: Redis integration tests
+      - name: Run assigned integration tests
         env:
           TEST_REDIS_URL: redis://127.0.0.1:6379
-        run: pnpm --filter @nexpress/rate-limiter-redis test
+        run: node scripts/integration-partitions.mjs ${{ matrix.partition }} --output "$RUNNER_TEMP/np-integration"
+
+      - name: Upload successful coverage inventory
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-partition-${{ matrix.partition }}
+          overwrite: true
+          path: ${{ runner.temp }}/np-integration/${{ matrix.partition }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  # Preserve the context consumed by branch rules, Version PR bridging and the
+  # Dependabot merge helper. Missing/skipped/cancelled partitions must fail it.
+  integration:
+    name: integration tests (Postgres)
+    needs: [integration-partitions]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Require every partition to succeed
+        env:
+          PARTITION_RESULT: ${{ needs.integration-partitions.result }}
+        run: test "$PARTITION_RESULT" = success
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Download and verify exact coverage
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name integration-partition-1 --dir "$RUNNER_TEMP/np-integration"
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --name integration-partition-2 --dir "$RUNNER_TEMP/np-integration"
+          node scripts/integration-partitions.mjs --check-results "$RUNNER_TEMP/np-integration"
 
   # Phase 23.6 — golden-path E2E coverage. Runs Playwright against
   # a built `next start` so the run shape matches production output

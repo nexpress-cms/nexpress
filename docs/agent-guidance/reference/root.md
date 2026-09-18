@@ -508,7 +508,7 @@ It's not a roadmap. It says what's pinned today, not what 1.0 will look like. Th
   and changeset-only pushes are ignored on `main`; PR triggers stay
   unconditional so required checks are never missing):
   1. `typecheck + build + test` — install → build → typecheck → `pnpm test`.
-  2. `integration tests (Postgres)` — Postgres 16 service container + `pnpm test:integration` against `TEST_DATABASE_URL` (#275). Covers the pipeline / write-path code that mocked unit tests can't.
+  2. `integration tests (Postgres)` — aggregates two independent Postgres 16 partitions with exact Web file coverage, Core once and Redis once. Covers the pipeline / write-path code that mocked unit tests cannot. Local `pnpm test:integration` remains unchanged; see `docs/testing.md`.
   3. `E2E (Playwright)` — Postgres 16 + Playwright + `next start` against the built bundle. Runs on PRs and manual dispatch, not push-to-main.
   4. `scaffold smoke (fresh scaffold journey)` — packs the workspace packages, scaffolds a temp project outside the monorepo, installs it, typechecks it, and runs the deploy-readiness journey smoke.
 - **Release** — `.github/workflows/release.yml` runs on `push: main`
