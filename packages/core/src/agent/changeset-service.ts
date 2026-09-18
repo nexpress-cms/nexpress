@@ -1,3 +1,4 @@
+import { npVerifyAgentChangeSetPlanEvidenceV1 } from "./changeset-plan-evidence.js";
 import { npReadCancelledChangeSetReleaseV1 } from "./cancelled-changeset-history.js";
 import {
   npAgentAutonomyAllowsV1,
@@ -857,22 +858,6 @@ export function createAgentChangeSetServiceV1(
             }),
       );
     }
-    // Canonical draft identity is checked again on every read; denormalized payloads never win.
-    const proposal = npRequireAgentChangeSetProposalCanonical({
-      schemaVersion: "np.agent-changeset-proposal.v1",
-      siteId: row.siteId,
-      changeSetId: row.id,
-      draftVersion: row.draftVersion,
-      title: row.title,
-      summary: row.summary,
-      operations: ops.map((op) => ({
-        ordinal: op.ordinal,
-        operation: op.input,
-        canonicalResourceKey: op.resourceKey,
-      })),
-    });
-    if ((await npDigestAgentChangeSetProposalCanonical(proposal)) !== row.draftHash)
-      throw missing();
     if (
       ![
         "draft",
@@ -976,189 +961,16 @@ export function createAgentChangeSetServiceV1(
         digest: attempt.resultDigest,
         completedAt: attempt.finishedAt?.toISOString() ?? null,
       };
-      if (attempt.state === "invalid") {
-        if (
-          attempt.resultDigest !==
-          hash("np.agent-changeset-validation-result.v1", {
-            generation: attempt.generation,
-            draftHash: attempt.draftHash,
-            issues: attempt.issues,
-          })
-        )
-          throw missing();
-        for (const op of ops) {
-          const relevant = attempt.issues.filter(
-            (issue) => issue.operationOrdinal === null || issue.operationOrdinal === op.ordinal,
-          );
-          if (
-            serializeAgentCanonicalJson(op.issues) !== serializeAgentCanonicalJson(relevant) ||
-            op.state !== (relevant.length ? "invalid" : "draft")
-          )
-            throw missing();
-        }
-      }
     }
-    if (row.sealedPlanBody !== null) {
-      const sealed = npRequireAgentChangeSetPlanCanonical(row.sealedPlanBody);
-      if (
-        sealed.planKind !== "changeset" ||
-        sealed.siteId !== row.siteId ||
-        sealed.changeSetId !== row.id ||
-        !attempt ||
-        attempt.state !== "ready" ||
-        ![
-          "ready",
-          "approval_pending",
-          "approved",
-          "rejected",
-          "cancelled",
-          "scheduled",
-          "applying",
-          "applied",
-          "apply_failed",
-          "verifying",
-          "verified",
-          "verification_failed",
-          "rolling_back",
-          "rolled_back",
-          "rollback_failed",
-        ].includes(row.state)
-      )
-        throw missing();
-      const body = sealed.body;
-      if (
-        (await npDigestAgentChangeSetPlanCanonical(sealed)) !== row.planHash ||
-        body.draftVersion !== row.draftVersion ||
-        body.draftHash !== row.draftHash ||
-        body.validationGeneration !== row.validationGeneration ||
-        body.baseFingerprint !== row.baseFingerprint ||
-        body.expiresAt !== row.expiresAt.toISOString() ||
-        body.rollbackWindowSeconds !== row.rollbackWindowSeconds ||
-        body.operations.length !== ops.length ||
-        serializeAgentCanonicalJson(body.risk) !== serializeAgentCanonicalJson(row.riskSummary) ||
-        serializeAgentCanonicalJson(body.risk) !==
-          serializeAgentCanonicalJson(attempt.riskSummary) ||
-        attempt.issues.length !== 0 ||
-        attempt.resultDigest !==
-          hash("np.agent-changeset-validation-result.v1", {
-            generation: attempt.generation,
-            draftHash: attempt.draftHash,
-            planHash: row.planHash,
-            issues: [],
-          })
-      )
-        throw missing();
-      let bytes = 0;
-      const bases = [];
-      for (let index = 0; index < ops.length; index++) {
-        const op = ops[index];
-        const planned = body.operations[index];
-        const snapshot = op.beforeSnapshot;
-        if (
-          op.state !==
-            (execution?.committedAt
-              ? execution.verificationState === "passed"
-                ? "verified"
-                : "applied"
-              : "valid") ||
-          op.issues.length !== 0 ||
-          (!execution?.committedAt && (op.afterHash !== null || op.resultDigest !== null)) ||
-          planned.ordinal !== op.ordinal ||
-          serializeAgentCanonicalJson(planned.operation) !==
-            serializeAgentCanonicalJson(op.input) ||
-          serializeAgentCanonicalJson(planned.canonicalResourceKey) !==
-            serializeAgentCanonicalJson(op.resourceKey) ||
-          serializeAgentCanonicalJson(op.baseVersion) !==
-            serializeAgentCanonicalJson(op.input.base) ||
-          op.beforeHash !== planned.beforeHash ||
-          op.snapshotHash !== planned.snapshotHash ||
-          !snapshot ||
-          snapshot.siteId !== row.siteId ||
-          snapshot.changeSetId !== row.id ||
-          snapshot.operationOrdinal !== op.ordinal ||
-          serializeAgentCanonicalJson(snapshot.canonicalResourceKey) !==
-            serializeAgentCanonicalJson(op.resourceKey) ||
-          (await npDigestAgentChangeSetSnapshotCanonical(snapshot)) !== planned.snapshotHash
-        )
-          throw missing();
-        bytes += Buffer.byteLength(serializeAgentCanonicalJson(snapshot));
-        if (bytes > npAgentChangeSetLimits.aggregateSnapshotBytes) throw missing();
-        const absentCreate =
-          planned.operation.kind === "document" && planned.operation.operation === "create";
-        if (
-          snapshot.presence === "present" &&
-          serializeAgentCanonicalJson(snapshot.base) !==
-            serializeAgentCanonicalJson(planned.operation.base)
-        )
-          throw missing();
-        if (
-          snapshot.presence === "absent" &&
-          !absentCreate &&
-          !(
-            planned.operation.kind === "setting" &&
-            planned.operation.operation === "replace" &&
-            planned.operation.base === null
-          ) &&
-          !(
-            planned.operation.kind === "theme_tokens" &&
-            planned.operation.base?.version === "absent" &&
-            planned.operation.base.digest === planned.beforeHash
-          )
-        )
-          throw missing();
-        if (
-          snapshot.presence === "present"
-            ? snapshot.base?.digest !== planned.beforeHash
-            : absentCreate
-              ? planned.beforeHash !== null
-              : planned.beforeHash !==
-                hash("np.agent-changeset-resource.v1", {
-                  siteId: row.siteId,
-                  canonicalResourceKey: op.resourceKey,
-                  presence: "absent",
-                  value: null,
-                })
-        )
-          throw missing();
-        bases.push({
-          ordinal: op.ordinal,
-          canonicalResourceKey: op.resourceKey,
-          presence: snapshot.presence,
-          base: snapshot.base,
-          snapshotHash: op.snapshotHash,
-        });
-      }
-      if (
-        body.baseFingerprint !== hash("np.agent-changeset-bases.v1", { siteId: row.siteId, bases })
-      )
-        throw missing();
-    } else {
-      if (
-        row.planHash !== null ||
-        row.baseFingerprint !== null ||
-        row.riskSummary !== null ||
-        row.rollbackWindowSeconds !== null ||
-        row.state === "ready" ||
-        attempt?.state === "ready"
-      )
-        throw missing();
-      if (
-        ops.some(
-          (op) =>
-            op.beforeSnapshot !== null ||
-            op.snapshotHash !== null ||
-            op.beforeHash !== null ||
-            op.afterHash !== null ||
-            op.resultDigest !== null,
-        )
-      )
-        throw missing();
-      if (
-        ["draft", "validating"].includes(row.state) &&
-        ops.some((op) => op.state !== "draft" || op.issues.length !== 0)
-      )
-        throw missing();
-    }
+    if (
+      !(await npVerifyAgentChangeSetPlanEvidenceV1({
+        changeSet: row,
+        operations: ops,
+        attempt,
+        execution,
+      }))
+    )
+      throw missing();
     let name = "Deleted staff";
     const actorId = row.principalId ?? row.createdByUserId ?? row.actorFingerprint;
     if (row.principalId) {

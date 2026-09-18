@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { npDigestAgentEventCanonical } from "../agent-contract/canonical-events.js";
 import { npCreateAgentRuntimeJobStateV1 } from "../agent-contract/runtime-job-state-contract.js";
 import { describe, expect, it, vi } from "vitest";
+import * as cancelledLifecycle from "./cancelled-changeset-lifecycle.js";
 import * as cancelledAttribution from "./cancelled-changeset-source-release.js";
 import {
   npRequireAgentSourceReleaseV1,
@@ -31,6 +32,7 @@ function queryClient(
     sourceReleaseRows?: Record<string, unknown>[];
     releasedAttributionRows?: Record<string, unknown>[];
     releasedAuditRows?: Record<string, unknown>[];
+    lifecycleEdges?: Record<string, unknown>[];
     missingReferenceGuards?: number;
     missingAdmissionKeyIndex?: number;
   } = {},
@@ -62,6 +64,8 @@ function queryClient(
       if (text.includes("source_release_rows")) return result<T>(options.sourceReleaseRows ?? []);
       if (text.includes("source_release_attribution_rows"))
         return result<T>(options.releasedAttributionRows ?? []);
+      if (text.includes("source_release_lifecycle_edges"))
+        return result<T>(options.lifecycleEdges ?? []);
       if (text.includes("source_release_audit_rows"))
         return result<T>(options.releasedAuditRows ?? []);
       if (text.includes("with state_rows")) {
@@ -183,6 +187,144 @@ describe("Agent contract diagnostics", () => {
               agentId: id(3),
             }),
           );
+      } finally {
+        proof.mockRestore();
+      }
+    },
+  );
+  it.each([
+    "valid",
+    "requester-only release",
+    "missing lifecycle edge",
+    "wrong digest",
+    "wrong time",
+    "wrong verifier",
+    "failed lifecycle",
+    "wrong locator",
+    "missing action",
+  ])(
+    "checks complete validated lifecycle once across released create and validate Actions: %s",
+    async (variant) => {
+      const id = (n: number) => `018f0f30-cd7b-7cc2-8b16-${n.toString().padStart(12, "0")}`;
+      const digest = `cj1:sha256:${"a".repeat(43)}`;
+      const releasedAt = "2026-09-18T00:00:00.000Z";
+      const body = npRequireAgentSourceReleaseV1({
+        schemaVersion: "np.agent-source-release.v1",
+        verifierVersion: 1,
+        kind: "runtime-run",
+        siteId: "site-a",
+        sourceId: id(1),
+        releasedAt,
+        principalId: id(2),
+        agentId: id(3),
+        agentVersionId: id(4),
+        admissionFingerprint: digest,
+        runLimitsHash: digest,
+        budgetSnapshotHash: digest,
+        state: "succeeded",
+        finishedAt: "2026-09-01T00:00:00.000Z",
+        retentionEligibleAt: "2026-09-02T00:00:00.000Z",
+        deadlineAt: "2026-09-01T01:00:00.000Z",
+        admissionKeyDigest: digest,
+      });
+      const releaseDigest = await npDigestAgentSourceReleaseV1(body);
+      const proof = vi.spyOn(cancelledLifecycle, "npReadCancelledChangeSetLifecycleV1");
+      try {
+        const edges = [
+          ["changeset-action", id(5), "action-run"],
+          ["changeset-invocation", id(6), "invocation-authority-run"],
+          ["changeset-source", id(7), "changeset-run"],
+          ["changeset-audit", id(8), "audit-changeset"],
+          ["changeset-action", id(10), "action-run"],
+          ["changeset-invocation", id(11), "invocation-authority-run"],
+          ["changeset-validation", id(12), "validation-authority-run"],
+          ["changeset-preview", id(13), "preview-authority-run"],
+        ].map(([owner_kind, owner_id, edge_code]) => ({
+          owner_kind,
+          owner_id,
+          edge_code,
+          owner_evidence_digest: digest,
+          verifier_version: 1,
+          released_at: releasedAt,
+        }));
+        if (variant === "requester-only release") edges.splice(0, 4);
+        type Lifecycle = NonNullable<
+          Awaited<ReturnType<typeof cancelledLifecycle.npReadCancelledChangeSetLifecycleV1>>
+        >;
+        proof.mockResolvedValue(
+          variant === "failed lifecycle"
+            ? null
+            : ({
+                creator: variant !== "requester-only release",
+                actions: (variant === "requester-only release"
+                  ? [10]
+                  : variant === "missing action"
+                    ? [5]
+                    : [5, 10]
+                ).map((n) => ({
+                  id: id(n),
+                  runId: null,
+                  runSourceReleaseId: variant === "wrong locator" ? id(14) : id(9),
+                })),
+                validationIds: [id(12)],
+                previewIds: [id(13)],
+                edges: edges.map((edge) => ({
+                  kind: edge.owner_kind,
+                  id: edge.owner_id,
+                  code: edge.edge_code,
+                  digest: edge.owner_evidence_digest,
+                })),
+              } as unknown as Lifecycle),
+        );
+        if (variant === "missing lifecycle edge") edges.pop();
+        if (variant === "wrong digest") edges[6].owner_evidence_digest = "corrupt";
+        if (variant === "wrong time") edges[6].released_at = "2026-09-17T00:00:00.000Z";
+        if (variant === "wrong verifier") edges[6].verifier_version = 2;
+        const result = await npCollectAgentHealthSummaryV1({
+          client: queryClient({
+            lifecycleEdges: edges,
+            releasedAttributionRows: (variant === "requester-only release" ? [10] : [5, 10]).map(
+              (n) => ({
+                id: id(n),
+                action: {
+                  id: id(n),
+                  capability_id: n === 5 ? "changeset.create" : "changeset.validate",
+                  run_id: null,
+                  run_source_release_id: id(9),
+                },
+                invocation: { id: id(n === 5 ? 6 : 11) },
+                changeset: {
+                  id: id(7),
+                  run_id: variant === "requester-only release" ? id(15) : null,
+                  run_source_release_id: variant === "requester-only release" ? null : id(9),
+                  validation_generation: 1,
+                  title: "private-retained-title",
+                },
+                audit: { id: id(8) },
+                release: {
+                  id: id(9),
+                  site_id: "site-a",
+                  source_id: id(1),
+                  source_kind: "runtime-run",
+                  evidence_body: body,
+                  evidence_digest: releaseDigest,
+                  released_at: releasedAt,
+                  principal_id: id(2),
+                  admission_key_digest: digest,
+                },
+                edges,
+              }),
+            ),
+          }),
+        });
+        expect(result.issues.some((issue) => issue.code === "AGENT_RELATION_ORPHANED")).toBe(
+          !["valid", "requester-only release"].includes(variant),
+        );
+        expect(JSON.stringify(result)).not.toContain("private-retained-title");
+        expect(proof).toHaveBeenCalledTimes(1);
+        expect(proof).toHaveBeenCalledWith(
+          expect.objectContaining({ source: body, releasedAt: new Date(releasedAt) }),
+        );
       } finally {
         proof.mockRestore();
       }

@@ -858,6 +858,7 @@ export const npAgentInvocations = pgTable(
       .where(sql`${table.idempotencyKey} is not null`),
     index("np_agent_invocations_site_state_idx").on(table.siteId, table.state, table.requestedAt),
     index("np_agent_invocations_principal_idx").on(table.siteId, table.principalId),
+    index("np_agent_invocations_audit_idx").on(table.siteId, table.auditEventId),
     index("np_agent_invocations_expiry_idx").on(table.siteId, table.expiresAt),
     foreignKey({
       name: "np_agent_invocations_principal_fk",
@@ -1493,11 +1494,11 @@ export const npAgentSourceReleaseEdges = pgTable(
     }).onDelete("restrict"),
     check(
       "np_agent_source_release_edges_owner_check",
-      sql`${t.ownerKind} in ('runtime-audit','read-action','read-invocation','studio-audit','admin-invocation','changeset-action','changeset-invocation','changeset-source','changeset-audit')`,
+      sql`${t.ownerKind} in ('runtime-audit','read-action','read-invocation','studio-audit','admin-invocation','changeset-action','changeset-invocation','changeset-source','changeset-audit','changeset-validation','changeset-preview')`,
     ),
     check(
       "np_agent_source_release_edges_code_check",
-      sql`(${t.ownerKind}='runtime-audit' and ${t.edgeCode} in ('audit-target','audit-run','audit-reservation')) or (${t.ownerKind}='read-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='read-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='studio-audit' and ${t.edgeCode}='audit-target') or (${t.ownerKind}='admin-invocation' and ${t.edgeCode}='invocation-result') or (${t.ownerKind}='changeset-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='changeset-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='changeset-source' and ${t.edgeCode}='changeset-run') or (${t.ownerKind}='changeset-audit' and ${t.edgeCode}='audit-changeset')`,
+      sql`(${t.ownerKind}='runtime-audit' and ${t.edgeCode} in ('audit-target','audit-run','audit-reservation')) or (${t.ownerKind}='read-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='read-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='studio-audit' and ${t.edgeCode}='audit-target') or (${t.ownerKind}='admin-invocation' and ${t.edgeCode}='invocation-result') or (${t.ownerKind}='changeset-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='changeset-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='changeset-source' and ${t.edgeCode}='changeset-run') or (${t.ownerKind}='changeset-audit' and ${t.edgeCode}='audit-changeset') or (${t.ownerKind}='changeset-validation' and ${t.edgeCode}='validation-authority-run') or (${t.ownerKind}='changeset-preview' and ${t.edgeCode}='preview-authority-run')`,
     ),
     check(
       "np_agent_source_release_edges_digest_check",
@@ -2342,6 +2343,7 @@ export const npAgentChangesets = pgTable(
     ),
     index("np_agent_changesets_site_state_idx").on(t.siteId, t.state, t.createdAt),
     index("np_agent_changesets_principal_idx").on(t.siteId, t.principalId, t.createdAt),
+    index("np_agent_changesets_invocation_idx").on(t.siteId, t.invocationId),
     index("np_agent_changesets_expiry_idx").on(t.siteId, t.state, t.expiresAt),
     foreignKey({
       name: "np_agent_changesets_principal_fk",

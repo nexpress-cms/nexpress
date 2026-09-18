@@ -151,7 +151,10 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       )
     )
       return false;
-    if (row.capabilityId === "changeset.create" && row.runSourceReleaseId !== null) {
+    if (
+      ["changeset.create", "changeset.validate", "changeset.preview"].includes(row.capabilityId) &&
+      row.runSourceReleaseId !== null
+    ) {
       if (!options.changesets || typeof row.outputRedacted?.changeSetId !== "string") return false;
       try {
         const detail = await options.changesets.get({

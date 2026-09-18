@@ -1,3 +1,4 @@
+import { PgDialect } from "drizzle-orm/pg-core";
 import type { NpAgentJsonObject } from "../agent-contract/types.js";
 import { npDigestAgentRuntimeManualInputV1 } from "../agent-contract/runtime-manual-input.js";
 import { createHash } from "node:crypto";
@@ -35,6 +36,7 @@ import {
   npSourceReleaseOwnerDigestV1,
   npVerifyAgentReleaseReadAttributionV1,
 } from "./source-release-read.js";
+import { npReadCancelledChangeSetLifecycleV1 } from "./cancelled-changeset-lifecycle.js";
 import { npVerifyCancelledChangeSetAttributionV1 } from "./cancelled-changeset-source-release.js";
 import { npAgentReferenceFenceCoverageSqlV1 } from "./reference-fence-sql.js";
 
@@ -780,6 +782,8 @@ const ISSUE_SUMMARY_SQL = `
             or (e.owner_kind in ('read-invocation','changeset-invocation') and not exists (select 1 from public.np_agent_invocations i where i.id=e.owner_id and i.site_id=e.site_id))
             or (e.owner_kind='changeset-audit' and not exists (select 1 from public.np_audit_events a where a.id=e.owner_id and a.site_id=e.site_id))
             or (e.owner_kind='changeset-source' and not exists (select 1 from public.np_agent_changesets c where c.id=e.owner_id and c.site_id=e.site_id and c.run_source_release_id=e.source_release_id))
+            or (e.owner_kind='changeset-validation' and (e.edge_code<>'validation-authority-run' or not exists (select 1 from public.np_agent_changeset_validation_attempts v where v.id=e.owner_id and v.site_id=e.site_id and v.authority_ref->>'runId'=r.source_id::text and v.authority_ref->>'kind'='runtime-run')))
+            or (e.owner_kind='changeset-preview' and (e.edge_code<>'preview-authority-run' or not exists (select 1 from public.np_agent_changeset_previews p where p.id=e.owner_id and p.site_id=e.site_id and p.authority_ref->>'runId'=r.source_id::text and p.authority_ref->>'kind'='runtime-run')))
         union all select c.created_at from public.np_agent_changesets c
           left join public.np_agent_source_releases r on r.id=c.run_source_release_id and r.site_id=c.site_id
           where c.run_source_release_id is not null and (
@@ -791,12 +795,16 @@ const ISSUE_SUMMARY_SQL = `
             or not exists (select 1 from public.np_agent_source_release_edges e
               where e.site_id=c.site_id and e.source_release_id=r.id and e.owner_id=c.id
                 and e.owner_kind='changeset-source' and e.edge_code='changeset-run')
-            or exists (select 1 from public.np_agent_approvals p where p.site_id=c.site_id and p.target_id=c.id)
+            or exists (select 1 from public.np_agent_approvals p where p.site_id=c.site_id and (p.target_id=c.id or p.target_changeset_id=c.id))
             or exists (select 1 from public.np_agent_changeset_executions x where x.site_id=c.site_id and x.changeset_id=c.id)
             or exists (select 1 from public.np_agent_changeset_rollback_plans p where p.site_id=c.site_id and p.changeset_id=c.id)
             or exists (select 1 from public.np_agent_changeset_rollback_operations o where o.site_id=c.site_id and o.changeset_id=c.id)
-            or exists (select 1 from public.np_agent_changeset_validation_attempts v where v.site_id=c.site_id and v.changeset_id=c.id)
-            or exists (select 1 from public.np_agent_changeset_previews p where p.site_id=c.site_id and p.changeset_id=c.id))
+            or exists (select 1 from public.np_agent_changeset_validation_attempts v where v.site_id=c.site_id and v.changeset_id=c.id
+              and v.authority_ref->>'kind'='runtime-run' and v.authority_ref->>'runId'=r.source_id::text
+              and not exists (select 1 from public.np_agent_source_release_edges e where e.site_id=v.site_id and e.source_release_id=r.id and e.owner_id=v.id and e.owner_kind='changeset-validation' and e.edge_code='validation-authority-run'))
+            or exists (select 1 from public.np_agent_changeset_previews p where p.site_id=c.site_id and p.changeset_id=c.id
+              and p.authority_ref->>'kind'='runtime-run' and p.authority_ref->>'runId'=r.source_id::text
+              and not exists (select 1 from public.np_agent_source_release_edges e where e.site_id=p.site_id and e.source_release_id=r.id and e.owner_id=p.id and e.owner_kind='changeset-preview' and e.edge_code='preview-authority-run')))
         union all select r.queued_at from public.np_agent_runs r
           left join public.np_agent_principals p on p.id = r.principal_id where p.id is null
         union all select r.queued_at from public.np_agent_runs r
@@ -1325,6 +1333,8 @@ function decodeDiagnosticRecord(value: unknown): Record<string, unknown> {
 async function collectReleasedAttributionIssues(
   client: NpAgentDiagnosticsQueryClientV1,
 ): Promise<RawIssueRow[]> {
+  const dialect = new PgDialect();
+  const lifecycleCache = new Map<string, Set<string> | null>();
   let after = "00000000-0000-0000-0000-000000000000";
   let count = 0;
   for (;;) {
@@ -1348,7 +1358,7 @@ async function collectReleasedAttributionIssues(
       from public.np_agent_actions a
       left join public.np_agent_invocations i on i.id=a.invocation_id and i.site_id=a.site_id
       left join public.np_agent_source_releases r on r.id=a.run_source_release_id and r.site_id=a.site_id
-      left join public.np_agent_changesets c on c.id=i.result_id and c.site_id=a.site_id
+      left join public.np_agent_changesets c on c.id::text=coalesce(a.output_redacted->>'changeSetId',i.result_id::text) and c.site_id=a.site_id
       left join public.np_audit_events audit on audit.id=i.audit_event_id and audit.site_id=a.site_id
       where a.run_source_release_id is not null and a.id>$1::uuid order by a.id limit 8`,
       [after],
@@ -1381,6 +1391,81 @@ async function collectReleasedAttributionIssues(
           agentVersionId: body.agentVersionId,
           deadlineAt: body.deadlineAt,
         };
+        if (
+          ["changeset.create", "changeset.validate", "changeset.preview"].includes(
+            action.capabilityId,
+          )
+        ) {
+          type LifecycleInput = Parameters<typeof npReadCancelledChangeSetLifecycleV1>[0];
+          const changeSet = decodeDiagnosticRecord(
+            row.changeset,
+          ) as unknown as LifecycleInput["changeSet"];
+          if (
+            action.capabilityId !== "changeset.create" ||
+            Number(changeSet.validationGeneration) > 0
+          ) {
+            const key = `${release.id}:${changeSet.id}`;
+            if (!lifecycleCache.has(key)) {
+              if (lifecycleCache.size >= 128) lifecycleCache.clear();
+              lifecycleCache.set(key, null);
+              const proof = await npReadCancelledChangeSetLifecycleV1({
+                query: (statement) => {
+                  const query = dialect.sqlToQuery(statement);
+                  return client.query(query.sql, query.params);
+                },
+                changeSet,
+                source: body,
+                releasedAt: release.releasedAt,
+              });
+              if (
+                !proof ||
+                proof.edges.length === 0 ||
+                proof.edges.length > 1024 ||
+                proof.actions.some(
+                  (a) => a.runId !== null || a.runSourceReleaseId !== release.id,
+                ) ||
+                (proof.creator &&
+                  (changeSet.runId !== null || changeSet.runSourceReleaseId !== release.id))
+              )
+                throw new Error("Invalid released ChangeSet lifecycle");
+              const loaded = await client.query<Record<string, unknown>>(
+                `/* source_release_lifecycle_edges: bounded complete owner parity */
+                select owner_kind,owner_id,edge_code,owner_evidence_digest,verifier_version,released_at
+                from public.np_agent_source_release_edges
+                where site_id=$1 and source_release_id=$2::uuid and owner_id=any($3::uuid[])
+                limit $4`,
+                [
+                  body.siteId,
+                  release.id,
+                  [...new Set(proof.edges.map((edge) => edge.id))],
+                  proof.edges.length + 1,
+                ],
+              );
+              if (loaded.rows.length !== proof.edges.length)
+                throw new Error("Invalid released ChangeSet lifecycle edge count");
+              const edges = loaded.rows.map(decodeDiagnosticRecord);
+              for (const expected of proof.edges) {
+                if (
+                  edges.filter(
+                    (edge) =>
+                      edge.ownerKind === expected.kind &&
+                      edge.ownerId === expected.id &&
+                      edge.edgeCode === expected.code &&
+                      edge.ownerEvidenceDigest === expected.digest &&
+                      edge.verifierVersion === 1 &&
+                      edge.releasedAt instanceof Date &&
+                      edge.releasedAt.getTime() === release.releasedAt.getTime(),
+                  ).length !== 1
+                )
+                  throw new Error("Invalid released ChangeSet lifecycle edge");
+              }
+              lifecycleCache.set(key, new Set(proof.actions.map((a) => a.id)));
+            }
+            if (!lifecycleCache.get(key)?.has(action.id))
+              throw new Error("Invalid released ChangeSet lifecycle action");
+            continue;
+          }
+        }
         let expected: string[][];
         if (action.capabilityId === "changeset.create") {
           type ChangeSetProof = Parameters<typeof npVerifyCancelledChangeSetAttributionV1>[0];

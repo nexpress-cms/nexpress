@@ -3,7 +3,7 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   NP_AGENT_JOB_REFERENCE_FENCE_INSTALL_SQL_V1,
-  NP_AGENT_REFERENCE_FENCE_SQL_V3,
+  NP_AGENT_REFERENCE_FENCE_SQL_V4,
   npAgentReferenceFenceCoverageSqlV1,
   npAgentReferenceFenceTriggersSqlV1,
 } from "../../../packages/core/src/agent/reference-fence-sql.js";
@@ -12,7 +12,15 @@ const sourceId = "10000000-0000-4000-8000-000000000001";
 const tables = [
   "np_agent_runs",
   "np_agent_actions",
+  "np_agent_invocations",
   "np_agent_changesets",
+  "np_agent_changeset_validation_attempts",
+  "np_agent_changeset_previews",
+  "np_agent_preview_artifacts",
+  "np_agent_preview_artifact_uploads",
+  "np_agent_preview_viewer_launches",
+  "np_agent_preview_render_sessions",
+
   "np_audit_events",
   "np_agent_source_releases",
   "np_agent_source_release_edges",
@@ -52,13 +60,20 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
       CREATE TABLE np_agent_reference_fence(id integer PRIMARY KEY CHECK(id=1),epoch bigint NOT NULL CHECK(epoch>=0));
       INSERT INTO np_agent_reference_fence VALUES(1,0);
       CREATE TABLE np_agent_runs(id uuid PRIMARY KEY,site_id text NOT NULL,admission_fingerprint text DEFAULT 'fingerprint');
-      CREATE TABLE np_agent_changesets(id uuid PRIMARY KEY,site_id text NOT NULL,run_id uuid,run_fingerprint text,run_source_release_id uuid);
-      CREATE TABLE np_agent_actions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text,run_id uuid,run_fingerprint text,run_source_release_id uuid,input_hash text,sequence integer,idempotency_key text);
+      CREATE TABLE np_agent_changesets(id uuid PRIMARY KEY,site_id text NOT NULL,run_id uuid,run_fingerprint text,run_source_release_id uuid,invocation_id uuid);
+      CREATE TABLE np_agent_actions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text,run_id uuid,run_fingerprint text,run_source_release_id uuid,input_hash text,sequence integer,idempotency_key text,invocation_id uuid);
+      CREATE TABLE np_agent_invocations(id uuid PRIMARY KEY,site_id text,operation_kind text,operation_id text,result_kind text,result_id uuid,audit_event_id uuid,request_body jsonb);
       CREATE TABLE np_audit_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text,payload jsonb,actor_user_id uuid,actor_member_id uuid);
       CREATE TABLE np_agent_source_releases(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text NOT NULL,source_id uuid NOT NULL,source_kind text DEFAULT 'runtime-run',evidence_body jsonb DEFAULT '{"admissionFingerprint":"fingerprint"}');
       CREATE INDEX np_fence_source_idx ON np_agent_source_releases(source_id,site_id);
       CREATE TABLE np_agent_source_release_edges(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text NOT NULL,owner_kind text NOT NULL,owner_id uuid NOT NULL,source_release_id uuid,edge_code text);
-      ${NP_AGENT_REFERENCE_FENCE_SQL_V3}
+      CREATE TABLE np_agent_changeset_validation_attempts(id uuid PRIMARY KEY,site_id text NOT NULL,changeset_id uuid,admitting_invocation_id uuid);
+      CREATE TABLE np_agent_changeset_previews(id uuid PRIMARY KEY,site_id text NOT NULL,changeset_id uuid,admitting_invocation_id uuid);
+      CREATE TABLE np_agent_preview_artifacts(id uuid PRIMARY KEY,site_id text NOT NULL,preview_id uuid);
+      CREATE TABLE np_agent_preview_artifact_uploads(id uuid PRIMARY KEY,site_id text NOT NULL,preview_id uuid);
+      CREATE TABLE np_agent_preview_viewer_launches(id uuid PRIMARY KEY,site_id text NOT NULL,preview_id uuid);
+      CREATE TABLE np_agent_preview_render_sessions(id uuid PRIMARY KEY,site_id text NOT NULL,preview_id uuid);
+      ${NP_AGENT_REFERENCE_FENCE_SQL_V4}
       ${tables.map(npAgentReferenceFenceTriggersSqlV1).join("\n")}
     `);
   });
@@ -232,6 +247,169 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
     });
   });
 
+  it.each(["changeset-validation", "changeset-preview"])(
+    "freezes parent and child evidence and identity-only jobs through %s edges",
+    async (ownerKind) => {
+      const changeSetId = randomUUID(),
+        validationId = randomUUID(),
+        previewId = randomUUID();
+      const children = [
+        "np_agent_preview_artifacts",
+        "np_agent_preview_artifact_uploads",
+        "np_agent_preview_viewer_launches",
+        "np_agent_preview_render_sessions",
+      ];
+      const childIds = children.map(() => randomUUID());
+      await writer.query(
+        "INSERT INTO np_agent_changesets(id,site_id,run_id) VALUES($1,'site-a',$2)",
+        [changeSetId, randomUUID()],
+      );
+      await writer.query(
+        "INSERT INTO np_agent_changeset_validation_attempts(id,site_id,changeset_id) VALUES($1,'site-a',$2)",
+        [validationId, changeSetId],
+      );
+      await writer.query(
+        "INSERT INTO np_agent_changeset_previews(id,site_id,changeset_id) VALUES($1,'site-a',$2)",
+        [previewId, changeSetId],
+      );
+      for (const [index, table] of children.entries())
+        await writer.query(`INSERT INTO ${table} VALUES($1,'site-a',$2)`, [
+          childIds[index],
+          previewId,
+        ]);
+      await writer.query(
+        "INSERT INTO np_agent_source_release_edges(site_id,owner_kind,owner_id) VALUES('site-a',$1,$2)",
+        [ownerKind, ownerKind === "changeset-validation" ? validationId : previewId],
+      );
+      for (const table of [
+        "np_agent_changesets",
+        "np_agent_changeset_validation_attempts",
+        "np_agent_changeset_previews",
+        ...children,
+      ]) {
+        await writer.query(`UPDATE ${table} SET site_id=site_id`);
+        await expect(writer.query(`UPDATE ${table} SET site_id='site-b'`)).rejects.toMatchObject({
+          code: "23514",
+        });
+        await expect(writer.query(`DELETE FROM ${table}`)).rejects.toMatchObject({ code: "23514" });
+      }
+      for (const table of children)
+        await expect(
+          writer.query(`INSERT INTO ${table} VALUES($1,'site-a',$2)`, [randomUUID(), previewId]),
+        ).rejects.toMatchObject({ code: "23514" });
+      await observer.query(
+        "CREATE SCHEMA pgboss; CREATE TABLE pgboss.job(id uuid,name text,state text,data jsonb)",
+      );
+      try {
+        await observer.query(NP_AGENT_JOB_REFERENCE_FENCE_INSTALL_SQL_V1);
+        for (const id of [changeSetId, validationId, previewId, ...childIds]) {
+          for (const siteId of ["site-a", null])
+            await expect(
+              writer.query(
+                "INSERT INTO pgboss.job VALUES(gen_random_uuid(),'evidence','created',$1)",
+                [{ ...(siteId ? { siteId } : {}), identity: id }],
+              ),
+            ).rejects.toMatchObject({ code: "23514" });
+          await writer.query(
+            "INSERT INTO pgboss.job VALUES(gen_random_uuid(),'evidence','created',$1)",
+            [{ siteId: "site-b", identity: id }],
+          );
+        }
+      } finally {
+        await observer.query("DROP SCHEMA pgboss CASCADE");
+      }
+      await writer.query("BEGIN");
+      await writer.query("DELETE FROM np_agent_source_release_edges");
+      for (const table of [
+        ...children,
+        "np_agent_changeset_previews",
+        "np_agent_changeset_validation_attempts",
+        "np_agent_changesets",
+      ])
+        await writer.query(`DELETE FROM ${table}`);
+      await writer.query("DELETE FROM np_sites WHERE id='site-a'");
+      await writer.query("COMMIT");
+    },
+  );
+
+  it("freezes another requester admission proof while permitting its later proved detachment and ordinary reads", async () => {
+    const c = randomUUID(),
+      invocation = randomUUID(),
+      action = randomUUID(),
+      audit = randomUUID(),
+      validation = randomUUID();
+    await writer.query("INSERT INTO np_agent_changesets(id,site_id) VALUES($1,'site-a')", [c]);
+    await writer.query("INSERT INTO np_audit_events(id,site_id,payload) VALUES($1,'site-a','{}')", [
+      audit,
+    ]);
+    await writer.query(
+      "INSERT INTO np_agent_invocations VALUES($1,'site-a','capability','changeset.validate','changeset',$2,$3,'{}')",
+      [invocation, c, audit],
+    );
+    await writer.query(
+      "INSERT INTO np_agent_changeset_validation_attempts VALUES($1,'site-a',$2,$3)",
+      [validation, c, invocation],
+    );
+    await writer.query(
+      "INSERT INTO np_agent_actions(id,site_id,run_id,run_fingerprint,invocation_id) VALUES($1,'site-a',$2,'fingerprint',$3)",
+      [action, sourceId, invocation],
+    );
+    await writer.query(
+      "INSERT INTO np_agent_source_release_edges(site_id,owner_kind,owner_id) VALUES('site-a','changeset-source',$1)",
+      [c],
+    );
+    for (const table of ["np_agent_actions", "np_agent_invocations", "np_audit_events"]) {
+      await writer.query(`UPDATE ${table} SET site_id=site_id`);
+      await expect(writer.query(`UPDATE ${table} SET site_id='site-b'`)).rejects.toMatchObject({
+        code: "23514",
+      });
+      await expect(writer.query(`DELETE FROM ${table}`)).rejects.toMatchObject({ code: "23514" });
+    }
+    await writer.query("UPDATE np_audit_events SET actor_user_id=gen_random_uuid()");
+    await expect(
+      writer.query("UPDATE np_audit_events SET payload='{\"changed\":true}'"),
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      writer.query(
+        "INSERT INTO np_agent_actions(id,site_id,invocation_id) VALUES($1,'site-a',$2)",
+        [randomUUID(), invocation],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      writer.query(
+        "INSERT INTO np_agent_invocations VALUES($1,'site-a','capability','changeset.preview','changeset',$2,null,'{}')",
+        [randomUUID(), c],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+    await writer.query(
+      "INSERT INTO np_agent_invocations VALUES($1,'site-a','capability','changeset.get','changeset',$2,null,'{}')",
+      [randomUUID(), c],
+    );
+    await expect(writer.query("UPDATE np_agent_actions SET run_id=null")).rejects.toMatchObject({
+      code: "23514",
+    });
+    const release = (
+      await writer.query(
+        "INSERT INTO np_agent_source_releases(site_id,source_id) VALUES('site-a',$1) RETURNING id",
+        [sourceId],
+      )
+    ).rows[0].id;
+    await writer.query(
+      "INSERT INTO np_agent_source_release_edges(site_id,owner_kind,owner_id,source_release_id,edge_code) VALUES('site-a','changeset-action',$1,$2,'action-run')",
+      [action, release],
+    );
+    await writer.query(
+      "UPDATE np_agent_actions SET run_id=null,run_source_release_id=$1 WHERE id=$2",
+      [release, action],
+    );
+    await writer.query("BEGIN");
+    await writer.query("DELETE FROM np_agent_source_release_edges");
+    await writer.query(
+      "DELETE FROM np_agent_actions; DELETE FROM np_agent_changeset_validation_attempts; DELETE FROM np_agent_changesets; DELETE FROM np_agent_invocations; DELETE FROM np_audit_events; DELETE FROM np_agent_source_releases; DELETE FROM np_sites WHERE id='site-a'",
+    );
+    await writer.query("COMMIT");
+  });
+
   it.each(["valid", "wrong"])(
     "allows only the proved Action locator transition with a %s deterministic key",
     async (keyKind) => {
@@ -329,11 +507,11 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
       "CREATE OR REPLACE FUNCTION public.np_agent_reference_lock_v1() RETURNS void LANGUAGE plpgsql VOLATILE SET search_path=pg_catalog,public AS $$BEGIN RETURN; END$$",
     );
     expect((await observer.query(query)).rows[0].missing_count).toBe("1");
-    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V3);
+    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V4);
     expect((await observer.query(query)).rows[0].missing_count).toBe("0");
     await observer.query("ALTER FUNCTION public.np_agent_reference_lock_v1() STABLE");
     expect((await observer.query(query)).rows[0].missing_count).toBe("1");
-    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V3);
+    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V4);
   });
 
   it("guards direct old/new job partitions and fences partition attachment", async () => {
