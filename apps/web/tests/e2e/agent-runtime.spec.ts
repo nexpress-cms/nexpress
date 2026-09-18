@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   npCreateInheritedAgentBudgetV1,
   npBuildAgentPolicySimulationFixtureInputV1,
@@ -6,6 +6,15 @@ import {
   npCreateDisabledAgentRuntimeSettingsV1,
 } from "@nexpress/core/agent-contract";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
+
+/** Exercise the real tab order, including intervening controls; never assign DOM focus. */
+async function tabTo(page: Page, control: Locator) {
+  for (let steps = 0; steps < 60; steps++) {
+    if (await control.evaluate((element) => element === document.activeElement)) return;
+    await page.keyboard.press("Tab");
+  }
+  await expect(control).toBeFocused();
+}
 
 const id = "11111111-1111-4111-8111-111111111111";
 const versionId = "22222222-2222-4222-8222-222222222222";
@@ -156,11 +165,23 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
   await expect(
     page.getByRole("button", { name: "Activate reviewed version", exact: true }),
   ).toBeDisabled();
-  await page.getByRole("button", { name: "Review effective configuration", exact: true }).click();
-  await page.getByRole("button", { name: "Activate reviewed version", exact: true }).click();
-  await page.getByRole("button", { name: "Add manual trigger", exact: true }).click();
-  await page.getByLabel("Enable after activation", { exact: true }).check();
-  await page.getByRole("button", { name: "Confirm", exact: true }).click();
+  await tabTo(
+    page,
+    page.getByRole("button", { name: "Review effective configuration", exact: true }),
+  );
+  await page.keyboard.press("Enter");
+  const activate = page.getByRole("button", { name: "Activate reviewed version", exact: true });
+  await expect(activate).toBeEnabled();
+  await tabTo(page, activate);
+  await page.keyboard.press("Enter");
+  await tabTo(page, page.getByRole("button", { name: "Add manual trigger", exact: true }));
+  await page.keyboard.press("Enter");
+  const enableTrigger = page.getByLabel("Enable after activation", { exact: true });
+  await tabTo(page, enableTrigger);
+  await page.keyboard.press("Space");
+  await expect(enableTrigger).toBeChecked();
+  await tabTo(page, page.getByRole("button", { name: "Confirm", exact: true }));
+  await page.keyboard.press("Enter");
   await expect(
     page.locator("form").getByRole("alert").filter({ hasText: "This resource changed." }),
   ).toContainText("changed");
@@ -501,9 +522,9 @@ test("Policy simulation discards stale and inaccessible evidence", async ({ page
   ).toBeVisible();
 });
 
-test("Structured manual runs preserve scalar input and retry identity through the result link", async ({
+test("Structured manual runs preserve keyboard access, scalar input and retry identity through the result link", async ({
   page,
-}) => {
+}, testInfo) => {
   const triggerId = "44444444-4444-4444-8444-444444444444";
   const runId = "55555555-5555-4555-8555-555555555555";
   const writes: Array<{ inputJson: string; idempotencyKey: string }> = [];
@@ -572,13 +593,61 @@ test("Structured manual runs preserve scalar input and retry identity through th
   });
   await signInAsE2EAdmin(page);
   await page.goto(`/admin/agents/configurations/${id}`);
-  await page.getByRole("button", { name: "Run now", exact: true }).click();
-  await expect(page.getByLabel("topic (required)", { exact: true })).toHaveValue("");
-  await page.getByLabel("count (required)", { exact: true }).fill("0");
-  await page.getByLabel("include (required)", { exact: true }).selectOption({ label: "false" });
-  await page.getByLabel("Run goal", { exact: true }).fill("Inspect the requested evidence.");
+  await tabTo(page, page.getByRole("button", { name: "Run now", exact: true }));
+  await page.keyboard.press("Enter");
+  const topic = page.getByRole("textbox", { name: "topic (required)", exact: true });
+  const count = page.getByRole("spinbutton", { name: "count (required)", exact: true });
+  const include = page.getByRole("combobox", { name: "include (required)", exact: true });
+  const goal = page.getByRole("textbox", { name: "Run goal", exact: true });
   const confirm = page.getByRole("button", { name: "Confirm", exact: true });
-  await confirm.click();
+  await expect(topic).toHaveValue("");
+  // Native validation must focus the missing required scalar before any request.
+  await tabTo(page, confirm);
+  await page.keyboard.press("Enter");
+  await expect(count).toBeFocused();
+  expect(writes).toHaveLength(0);
+  await page.keyboard.type("0");
+  await page.keyboard.press("Tab");
+  await expect(include).toBeFocused();
+  await page.keyboard.press("f");
+  await page.keyboard.press("Tab");
+  await expect(include).toHaveValue("1");
+  await tabTo(page, goal);
+  await page.keyboard.type("Inspect the requested evidence.");
+
+  // Layout/media assertions are browser evidence, not human screen-reader or visual review.
+  for (const viewport of [
+    { width: 320, height: 800 },
+    { width: 768, height: 1024 },
+    { width: 1280, height: 900 },
+  ]) {
+    await page.setViewportSize(viewport);
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+      await expect(page.locator("html")).toHaveClass(
+        colorScheme === "dark" ? /dark/ : /^(?!.*\bdark\b)/,
+      );
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+        .toBe(true);
+      for (const control of [topic, count, include, goal, confirm]) {
+        await expect(control).toBeVisible();
+        await control.click({ trial: true });
+        const bounds = await control.boundingBox();
+        expect(bounds).not.toBeNull();
+        expect(bounds!.x).toBeGreaterThanOrEqual(0);
+        expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(viewport.width);
+      }
+      const screenshot = testInfo.outputPath(`manual-input-${viewport.width}-${colorScheme}.png`);
+      await page.screenshot({ path: screenshot, fullPage: true, animations: "disabled" });
+      await testInfo.attach(`manual-input-${viewport.width}-${colorScheme}`, {
+        path: screenshot,
+        contentType: "image/png",
+      });
+    }
+  }
+  await tabTo(page, confirm);
+  await page.keyboard.press("Enter");
   await expect(page.locator("form").getByRole("alert")).toContainText("502");
   expect(writes).toHaveLength(1);
   expect(JSON.parse(writes[0].inputJson)).toEqual({
@@ -586,12 +655,15 @@ test("Structured manual runs preserve scalar input and retry identity through th
     goal: "Inspect the requested evidence.",
     input: { topic: "", count: 0, include: false },
   });
-  await confirm.click();
+  await tabTo(page, confirm);
+  await page.keyboard.press("Enter");
   await expect.poll(() => writes.length).toBe(2);
   await expect(confirm).toBeEnabled();
   expect(writes[1]).toEqual(writes[0]);
-  await page.getByLabel("topic (required)", { exact: true }).fill("  Edited evidence  ");
-  await confirm.click();
+  await tabTo(page, topic);
+  await page.keyboard.type("  Edited evidence  ");
+  await tabTo(page, confirm);
+  await page.keyboard.press("Enter");
   await expect(page).toHaveURL(new RegExp(`/admin/agents/activity/${runId}$`));
   expect(writes).toHaveLength(3);
   expect(writes[2].idempotencyKey).not.toBe(writes[0].idempotencyKey);

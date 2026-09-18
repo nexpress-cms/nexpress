@@ -1,61 +1,62 @@
 # Current work handoff
 
-Observed after local acceptance of PostgreSQL CI partitioning on 2026-09-18 KST.
-Verify Git state and live workflow status before continuing.
+Observed before the authorized R5 acceptance merge on 2026-09-19 KST.
+Verify Git state before relying on these results.
 
 ## Objective and authorization
 
-- User authorized PostgreSQL CI partitioning and asked to continue after local
-  acceptance. Continue through commit, push, PR and hosted CI verification.
-  Wait for a separate merge instruction.
-- Preserve versions, changesets and lockfile. No product/schema changes, provider
-  calls, credentials, automatic activation or publishing. Do not merge Version PR #1366.
+- User authorized the R5 acceptance decision, stale-document reconciliation and
+  confirmed-gap repairs. This bundle is implemented and locally verified.
+- User authorized commit, push, PR and squash merge after exact-head CI, then
+  choosing the next task.
+- Preserve versions, changesets and lockfile. Necessary generated migrations are
+  allowed after review, but this bundle needs none. No provider calls, credentials,
+  automatic Runtime/provider/worker activation or publishing.
+- Do not merge Version PR #1366 or directly push main.
 
 ## Observed checkout
 
-- Worktree: `/Users/baesw/development/nexpress-postgres-ci-partitions`.
-- Branch: `codex/postgres-ci-partitions`; baseline/HEAD `78b31c8b` (PR #1455).
-- This bundle is being committed for PR and hosted CI verification.
-- Primary `/Users/baesw/development/nexpress` remains on main; its documentation-only
-  handoff points here. Do not assume primary contains pending code.
-- Prior PR #1455 CI `35331913087` passed all four checks; PostgreSQL took 28m14s.
-  Merge-head CI `35334340046` passed. Release `35334340127` failed because its
-  Version PR CI `35334403873` PostgreSQL job exceeded its 30-minute limit
-  (30m18s elapsed); other
-  Version PR jobs passed. No Version PR merge or publication was performed here.
+- Pending work: `/Users/baesw/development/nexpress-r5-acceptance`, branch
+  `codex/r5-acceptance`, HEAD `3d293ef329d34756be468143ab032e6f0209846c`.
+- Four existing test files plus documentation are uncommitted; no product changes.
+- Primary `/Users/baesw/development/nexpress` remains on synchronized main at
+  the same commit, with this documentation-only pointer. It does not contain the
+  pending acceptance tests. Remote main was rechecked at this commit.
+- PR #1456 is merged. Exact PR-head CI `35338310266` passed all six checks;
+  merge-head CI `35344430067` and Release `35344430065` succeeded.
+  Version PR merge/publication was not performed by this task.
 
 ## Implementation and evidence
 
-- [Testing guidance](../testing.md#ci-integration-partitions) owns the partition
-  design, baseline timings, local commands and remaining hosted-CI measurement.
-- `.github/workflows/ci.yml` now runs two independent PostgreSQL matrix jobs.
-  Core runs once in partition 1; Redis runs once in partition 2. E2E/native preview
-  and scaffold checks are unchanged. Local `pnpm test:integration` is unchanged.
-- `scripts/integration-partitions.mjs` uses actual Vitest file discovery, measured
-  weights with a new-file fallback, exact selection checks and coverage receipts.
-  Unknown integration owners and missing DB settings fail rather than silently skip.
-- Existing `integration tests (Postgres)` aggregate requires successful matrix
-  jobs and both matching-commit receipts with exact, nonduplicated coverage.
-  Stable artifact names with overwrite permit partial reruns. Version PR and
-  Dependabot required-check names remain unchanged.
-- Four focused script tests and actual discovery passed: 163 Web files, groups
-  83/80, historical weights 1,932,441/1,932,474ms. Weights are not elapsed time.
-- `pnpm verify --concurrency=2` passed: repository tests 59 and 113 cached workspace
-  tasks. Lint passed with 41 cached tasks. No application code changed.
-- Both actual DB partitions passed: Core 64; Web 665 + 784 = 1,449, with only the
-  expected native-preview skip; Redis 16. Aggregate verified all 163 Web files
-  exactly once, Core once and Redis once. Existing native/E2E/scaffold jobs unchanged.
-- Local Web durations were 360.40s / 325.29s, measured sequentially on separate
-  disposable DBs sharing one server. No hosted speedup is claimed.
-- Self-review corrected artifact overwrite for reruns; YAML, format and diff
-  checks passed. Versions, changesets, lockfile and migrations are unchanged.
-- Logs/results: `/tmp/np-ci-partition-*`, `/tmp/np-ci-partitions-*`.
+- [R5 acceptance decision](../design/agentic-platform/r5-acceptance.md) owns the
+  AP-500–AP-508 map, five safety gates, reused evidence and remaining Admin checks.
+- Existing execution-store/recovery tests now prove open/half-open breakers deny
+  actual admission/dispatch without journal writes; exact probe restores them.
+- Existing isolation journey proves actual retention contention preserves data
+  while CMS create/read/update and unrelated maintenance remain available.
+- Existing Studio browser cases prove keyboard activation/manual input, accessible
+  controls, retry identity and 320/768/1280 light/dark form actionability. Settled
+  mobile screenshots were reviewed; this is not a human screen-reader pass.
+- Stale schema-null-only input and indefinite Studio retention descriptions are
+  reconciled with executor-owned input and exact source-release owners.
+- Local build 41 tasks; verify 59 repository tests + 113 workspace tasks; lint 41
+  cached tasks; final Web typecheck; changed PostgreSQL 26 tests, zero skips;
+  focused production browser 8/8 plus affected final capture case 1/1 passed.
+- Unchanged full CI is reused from exact baseline: Core PostgreSQL 64, Web 1,449
+  including theme-render 5, live Redis 16, explicit native preview 1, production
+  browser 73 and packed fresh scaffold. Main E2E workflow skip is not a pass.
+- Self-review, changed-doc links/anchors, formatting and diff checks passed.
+  Logs and screenshots: `/tmp/np-r5-*`. No unresolved production defect found.
 
 ## Next boundary
 
-- Implementation, self-review and local acceptance are complete. Finish the PR
-  and hosted CI verification, then await a separate merge instruction.
-- Hosted timing improvements and artifact transfer require the PR
-  CI run; do not claim measured hosted speedup from the historical weight balance.
-- After a separately authorized merge, refresh this handoff and resume remaining
-  R5 acceptance/retention work. Full R5 remains open.
+- Finish the authorized PR/CI/squash merge, then refresh this handoff and
+  propose the next Admin acceptance bundle; do not start it implicitly.
+- Full R5 remains open for the Admin per-view state inventory, complete keyboard
+  and actual screen-reader workflows, and remaining localized/high-volume/full
+  visual checks. Exact completion criteria are in the acceptance decision.
+- Existing active/approved/unknown/rollback retention pins are intentional;
+  mandatory provider-only/read-action release and structured input are implemented.
+  Do not reopen them as missing features or claim universal evidence erasure.
+- After authorized merge, refresh this handoff; start the next requested coherent
+  Admin acceptance bundle in a fresh thread. Do not fabricate human test results.

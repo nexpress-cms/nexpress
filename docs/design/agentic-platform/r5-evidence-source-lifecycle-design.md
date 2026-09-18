@@ -1,15 +1,18 @@
 # R5 evidence and source-reference lifecycle
 
-Status: implemented in the working tree; verification results are recorded below.
+Historical implementation checkpoint (2026-09-16): implemented in the working
+tree at that time; verification results are recorded below. The
+[current R5 acceptance decision](r5-acceptance.md) and current handoff own present
+completion and authorization status.
 Baseline inspected: `71a0f5effd4f6ea2726fd5f438c4424621557890`, 2026-09-16 KST;
 clean detached worktree at startup. Dependency PR #1448's merge matches local
 HEAD. Its CI/Release results, nine superseded PR closures and zero open security
 alerts are user-supplied handoff evidence, not rechecked by this document.
 Version PR #1366 remains outside this work; its draft status is user-supplied.
 
-The user subsequently authorized this coherent implementation, including schema
-and generated migrations. Commits, PR creation and merge remain outside this
-authorization. Own package versions and changesets remain deferred. No
+At that historical checkpoint, the user authorized this coherent implementation, including schema
+and generated migrations. Commits, PR creation and merge were outside that
+authorization at that time. Own package versions and changesets remain deferred. No
 Runtime/provider/worker activation, credentials, external provider calls or
 publication are part of this bundle.
 
@@ -534,23 +537,27 @@ history, remaining lifecycle work and manual-input boundary explicitly.
 
 ## 9. Structured manual input and R5 completion
 
-The current Run-now contract accepts only the installed schema-null interactive
-recipe id plus bounded goal. `runtime-studio-service.ts` filters out recipes
-with non-null `manualInputSchema`; admission carries a schema digest but that
-is not executor-owned storage or consumption of structured input.
+Run now supports schema-null interactive recipes with a bounded goal, and
+installed interactive recipes with the supported closed flat scalar input schema.
+The [Studio flow](r5-runtime-studio-flow.md#structured-manual-input-storage-and-execution)
+describes its exact limits. Admission persists canonical input on the owning Run,
+binds its digest to immutable admission, and revalidates the installed recipe.
+The executor consumes the redacted payload only as untrusted evidence within the
+effective provider ceiling; it cannot replace authority, tools, targets or model.
 
-This lifecycle bundle does not add fields, UI discovery, persistence or fake
-executor support for structured manual-input recipes. Supporting them requires
-an executor-owned exact canonical input contract, durable storage, size/redaction
-limits, request/idempotency binding, resume/retry consumption and retention tests
-before Studio may advertise them. No silent acceptance/drop of extra keys.
+Structured Admin request journals retain a digest instead of a second raw input
+copy. Eligible Run deletion removes the stored input; release receipts, Activity
+and audit do not reproduce it. Exact Studio admission owners now preserve original
+invocation/audit bytes and consumed keys while permitting source expiry. Unknown
+references, integrity failures and still-required evidence continue to pin it.
+Provider/Action-derived text retains its existing evidence lifetime; no universal
+erasure of derived text is claimed.
 
-R5 bounded manual admission can be assessed using its existing supported
-schema-null recipe/goal path. Publisher/Moderator/Operator template execution
-is R6; catalog fixtures do not prove support. If a later R5 acceptance decision
-requires a structured-input recipe, that decision leaves R5 open until the
-executor work passes its own gates. This design and the current tests neither
-close that requirement nor claim full R5 completion.
+Nested/array/reference schemas and authority-setting fields remain unsupported.
+Publisher/Moderator/Operator recipes belong to R6 and are not fabricated by catalog
+fixtures. The current full R5 decision must evaluate the implemented subset and
+remaining Admin release checks, rather than treating executor-owned input as
+unimplemented or silently dropping those release checks.
 
 ## 10. Self-review and documentation verification
 

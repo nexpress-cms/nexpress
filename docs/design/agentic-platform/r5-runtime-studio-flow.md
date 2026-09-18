@@ -54,9 +54,9 @@ form for another execution contract.
 
 ## Structured manual input storage and execution
 
-Ownership: the coordinator owns canonical admission, Run persistence, admission,
-retention integrity and generated migration; separate owners handle the pure
-manual schema/Studio UI and executor context. No bundled R6 recipe is added:
+Canonical admission and the Run own input persistence and retention integrity;
+the pure schema contract, Studio form and existing executor share that contract.
+No bundled R6 recipe is added:
 recipes remain explicit host inventory, and only the existing interactive
 capability executor is supported.
 
@@ -81,10 +81,11 @@ unchanged. Input follows its owning Run's verified
 retention and source-release lifecycle; it has no independent expiry or authority
 as a reference. Literal IDs in input remain conservative dependencies under the
 existing reference traversal. Integrity failure retains the Run instead of
-releasing its source. Studio's staff audit target and Admin invocation result
-references currently have no source-release owner, so they indefinitely pin the
-Run and its input even after policy/replay expiry. Direct host admissions without
-these protected references can expire normally. Provider decisions and Action
+releasing its source. Studio staff-audit and Admin invocation references now have
+exact source-release owners: after Run policy and replay expiry, verified admission
+evidence permits Run/input deletion while original audit and invocation bytes and
+consumed request keys survive. Unknown references still pin the source. See
+[Studio source expiration](#studio-source-expiration-2026-09-18). Provider decisions and Action
 inputs may contain model-derived text and retain their existing evidence
 lifetimes. This is not a promise to erase every derived copy. Full R5 retention
 and R6 remain outside this bundle.
@@ -142,8 +143,10 @@ existing explicitly registered maintenance sweep. The subsequent
 [evidence source lifecycle](r5-evidence-source-lifecycle-design.md) adds two
 migrations and verified release receipts for eligible Run/call history and read
 Action references. Audit and canonical evidence remain intact. Unknown references,
-mutation Actions, approvals and rollback evidence remain protected; this does
-not establish full R5 completion.
+mutation Actions and approval histories outside the explicitly implemented
+cancelled/closed source owners, and execution/rollback evidence remain protected.
+The [current acceptance decision](r5-acceptance.md) records the exact remaining
+Admin release checks; this does not establish full R5 completion.
 
 Structured manual input supports only the documented flat schema subset through
 the existing provider-backed interactive executor. Nested objects, arrays,
@@ -202,9 +205,11 @@ lockfile, schema or migrations were changed. These results describe the local
 acceptance checkpoint; current integration status is tracked in the
 [current handoff](../../agent-guidance/current-handoff.md).
 
-## R5 completion audit and current verification
+## Historical R5 completion audit and verification
 
-The five roadmap safety gates map to the existing Runtime admission/context/
+The [current acceptance decision](r5-acceptance.md) supersedes the completion
+status of this historical checkpoint. The five roadmap safety gates map to the
+existing Runtime admission/context/
 usage, installed-capability, event/job replay and circuit-breaker suites.
 `agent-runtime-isolation.integration.test.ts` adds the missing direct regression
 that an injected provider failure still permits normal collection pipeline

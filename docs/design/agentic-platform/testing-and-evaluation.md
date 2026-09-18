@@ -1701,8 +1701,8 @@ flow records the results for that slice.
 The [Runtime Studio flow](r5-runtime-studio-flow.md) owns the current AP-507 and
 related AP-508 verification checkpoint; earlier slice totals are not evidence
 for this change. The existing Admin registry fingerprint and exact Runtime
-Studio page/detail analyzers cover the closed read inventory and fourteen
-installed mutations. The activation contract includes optional exact trigger
+Studio page/detail analyzers cover the closed read inventory and fifteen
+installed operations, including non-authorizing policy simulation. The activation contract includes optional exact trigger
 plans and compare-only policy references. Unknown fields, malformed filters,
 unsupported manual inputs and plugin/provider configuration remain outside the
 client-safe boundary.
