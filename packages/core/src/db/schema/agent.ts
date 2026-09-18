@@ -1493,11 +1493,11 @@ export const npAgentSourceReleaseEdges = pgTable(
     }).onDelete("restrict"),
     check(
       "np_agent_source_release_edges_owner_check",
-      sql`${t.ownerKind} in ('runtime-audit','read-action','read-invocation')`,
+      sql`${t.ownerKind} in ('runtime-audit','read-action','read-invocation','studio-audit','admin-invocation')`,
     ),
     check(
       "np_agent_source_release_edges_code_check",
-      sql`(${t.ownerKind}='runtime-audit' and ${t.edgeCode} in ('audit-target','audit-run','audit-reservation')) or (${t.ownerKind}='read-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='read-invocation' and ${t.edgeCode}='invocation-authority-run')`,
+      sql`(${t.ownerKind}='runtime-audit' and ${t.edgeCode} in ('audit-target','audit-run','audit-reservation')) or (${t.ownerKind}='read-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='read-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='studio-audit' and ${t.edgeCode}='audit-target') or (${t.ownerKind}='admin-invocation' and ${t.edgeCode}='invocation-result')`,
     ),
     check(
       "np_agent_source_release_edges_digest_check",

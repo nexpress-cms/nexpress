@@ -143,7 +143,13 @@ describe.skipIf(skipIfNoTestDb())("Runtime immutable evidence source-release lif
     expect(JSON.stringify(detail)).not.toContain(release.id);
     await expect(
       activity.getRun({ siteId, actor: f.actor.actor, id: f.run.id }),
-    ).rejects.toMatchObject({ status: 404, code: "ACTIVITY_NOT_FOUND" });
+    ).resolves.toMatchObject({
+      schemaVersion: "np.agent-activity-run-expired.v1",
+      runId: f.run.id,
+      principalId: f.run.principalId,
+      state: f.run.state,
+      evidence: "expired",
+    });
     const originalCollection = getCollectionConfig("posts");
     registerCollection("posts", getCollectionTable("posts"), {
       ...originalCollection,
@@ -152,6 +158,9 @@ describe.skipIf(skipIfNoTestDb())("Runtime immutable evidence source-release lif
     try {
       await expect(
         activity.getAction({ siteId, actor: f.actor.actor, id: action.id }),
+      ).rejects.toMatchObject({ status: 404, code: "ACTIVITY_NOT_FOUND" });
+      await expect(
+        activity.getRun({ siteId, actor: f.actor.actor, id: f.run.id }),
       ).rejects.toMatchObject({ status: 404, code: "ACTIVITY_NOT_FOUND" });
     } finally {
       registerCollection("posts", getCollectionTable("posts"), originalCollection);

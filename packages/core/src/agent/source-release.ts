@@ -1,3 +1,4 @@
+import { npVerifyAgentReleaseStudioAttributionV1 } from "./studio-source-release.js";
 import { npRequireAgentRuntimeRetainedCallV1 } from "./runtime-usage.js";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
@@ -483,6 +484,46 @@ export async function npPrepareAgentSourceReleaseV1(input: {
           releasedAt: input.now,
         });
     };
+    // Verify the linked Studio admission once; every other literal reference still pins.
+    const studio = async () => {
+      if (
+        b.kind !== "runtime-run" ||
+        !e.run ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(
+          e.run.idempotencyKey,
+        )
+      )
+        return null;
+      const [invocation] = await db
+        .select()
+        .from(npAgentInvocations)
+        .where(
+          and(
+            eq(npAgentInvocations.siteId, siteId),
+            eq(npAgentInvocations.id, e.run.idempotencyKey),
+          ),
+        )
+        .for("update", { noWait: true });
+      if (!invocation?.auditEventId) return null;
+      const [audit] = await db
+        .select()
+        .from(npAuditEvents)
+        .where(and(eq(npAuditEvents.siteId, siteId), eq(npAuditEvents.id, invocation.auditEventId)))
+        .for("update", { noWait: true });
+      if (!audit) return null;
+      const proof = await npVerifyAgentReleaseStudioAttributionV1({
+        run: e.run,
+        invocation,
+        audit,
+        releasedAt: input.now,
+      });
+      return proof ? { invocation, audit, ...proof } : null;
+    };
+    let studioProof: Awaited<ReturnType<typeof studio>> | undefined;
+    const getStudio = async () => {
+      if (studioProof === undefined) studioProof = await studio();
+      return studioProof;
+    };
     for (const name of [...npAgentSiteOwnedTableNamesV1, "np_audit_events"]) {
       await beforeStatement();
       const matches = await db.execute(sql`with matching as materialized (
@@ -509,6 +550,13 @@ export async function npPrepareAgentSourceReleaseV1(input: {
             .where(eq(npAuditEvents.id, raw.id))
             .limit(1);
           if (!a) return false;
+          const studioOwner = a.actorKind === "staff" ? await getStudio() : null;
+          if (studioOwner?.audit.id === a.id) {
+            add("studio-audit", a.id, "audit-target", studioOwner.auditDigest);
+            delete mask.target_id;
+            if (contains(mask, id)) return false;
+            continue;
+          }
           const codes = await auditEdges(db, a, e);
           if (!codes) return false;
           for (const code of codes) {
@@ -535,6 +583,17 @@ export async function npPrepareAgentSourceReleaseV1(input: {
           (name === "np_agent_actions" || name === "np_agent_invocations") &&
           b.kind === "runtime-run"
         ) {
+          if (name === "np_agent_invocations") {
+            const studioOwner = await getStudio();
+            if (studioOwner?.invocation.id === raw.id) {
+              add("admin-invocation", raw.id, "invocation-result", studioOwner.invocationDigest);
+              delete mask.result_id;
+              delete object(mask.output_redacted).id;
+              delete object(mask.output_redacted).runId;
+              if (contains(mask, id)) return false;
+              continue;
+            }
+          }
           const readActions =
             name === "np_agent_actions"
               ? await db

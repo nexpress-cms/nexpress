@@ -296,3 +296,13 @@ input tampering, actual executor consumption/redaction/result, journal digest
 projection and retention. Direct host Runs without protected owners can expire;
 Studio Runs remain pinned by staff-audit and invocation-result references. This
 is a verified limitation, not completed input erasure or full R5 retention.
+
+## Studio source expiration (2026-09-18)
+
+The subsequent [Studio admission reference matrix](r5-runtime-retention-flow.md#studio-admission-reference-matrix)
+replaces the indefinite Studio input-retention limitation recorded in the
+September 17 checkpoint. Verified completed Admin admissions can release terminal
+Run/input sources after both retention and replay deadlines, preserving immutable
+audit/request/result evidence and replay without execution. Activity detail links
+show an explicit expired history projection. Derived provider/Action evidence
+keeps its own lifetime; broader retention and full R5 remain open.

@@ -2,6 +2,7 @@ import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
   NP_AGENT_REFERENCE_FENCE_SQL_V1,
+  NP_AGENT_REFERENCE_FENCE_SQL_V2,
   NP_AGENT_JOB_REFERENCE_FENCE_INSTALL_SQL_V1,
   npAgentReferenceFenceTriggersSqlV1,
   npAgentSiteOwnedTableNamesV1,
@@ -51,5 +52,37 @@ export async function npEnsureAgentReferenceMigrationV1(options: {
   await options.createCustomMigration();
   const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
   if (added.length !== 1) throw new Error("Expected one generated Agent reference migration.");
+  await writeFile(join(folder, added[0]), expected, "utf8");
+}
+
+/** Append the reviewed owner extension without rewriting the installed v1 migration. */
+export function npAgentReferenceMigrationSqlV2(): string {
+  return (
+    "-- NexPress verified Studio source reference lifecycle v2\n" +
+    NP_AGENT_REFERENCE_FENCE_SQL_V2 +
+    "\n"
+  );
+}
+export async function npEnsureAgentReferenceMigrationV2(options: {
+  migrationsFolder?: string;
+  createCustomMigration: () => Promise<void>;
+}): Promise<void> {
+  const folder = resolve(options.migrationsFolder ?? "./drizzle");
+  const files = (await readdir(folder)).filter((f) => f.endsWith(".sql")).sort();
+  const texts = await Promise.all(files.map((f) => readFile(join(folder, f), "utf8")));
+  if (!texts.some((text) => text.includes(marker))) return;
+  const expected = npAgentReferenceMigrationSqlV2();
+  const existing = texts.filter((text) =>
+    text.includes("-- NexPress verified Studio source reference lifecycle v2"),
+  );
+  if (existing.length) {
+    if (existing.length !== 1 || existing[0] !== expected)
+      throw new Error("Agent Studio reference migration differs from its reviewed source.");
+    return;
+  }
+  await options.createCustomMigration();
+  const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
+  if (added.length !== 1)
+    throw new Error("Expected one generated Agent Studio reference migration.");
   await writeFile(join(folder, added[0]), expected, "utf8");
 }

@@ -1,4 +1,4 @@
-import { npRequireAgentActivityRunDetailV1 } from "@nexpress/core/agent-contract";
+import { npRequireAgentActivityRunResourceV1 } from "@nexpress/core/agent-contract";
 import { requireAgentStudioActivityRuntimeV1 } from "@nexpress/core/agents";
 import type { NextRequest } from "next/server";
 
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const { id } = await params;
     const { activity } = requireAgentStudioActivityRuntimeV1();
     const value = await activity.getRun({ siteId, actor, id });
-    return npSuccessResponse(npRequireAgentActivityRunDetailV1(value), {
+    return npSuccessResponse(npRequireAgentActivityRunResourceV1(value), {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (error) {

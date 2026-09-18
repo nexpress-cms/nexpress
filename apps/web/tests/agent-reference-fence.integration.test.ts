@@ -3,7 +3,7 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   NP_AGENT_JOB_REFERENCE_FENCE_INSTALL_SQL_V1,
-  NP_AGENT_REFERENCE_FENCE_SQL_V1,
+  NP_AGENT_REFERENCE_FENCE_SQL_V2,
   npAgentReferenceFenceCoverageSqlV1,
   npAgentReferenceFenceTriggersSqlV1,
 } from "../../../packages/core/src/agent/reference-fence-sql.js";
@@ -56,7 +56,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
       CREATE TABLE np_agent_source_releases(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text NOT NULL,source_id uuid NOT NULL,source_kind text DEFAULT 'runtime-run',evidence_body jsonb DEFAULT '{"admissionFingerprint":"fingerprint"}');
       CREATE INDEX np_fence_source_idx ON np_agent_source_releases(source_id,site_id);
       CREATE TABLE np_agent_source_release_edges(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text NOT NULL,owner_kind text NOT NULL,owner_id uuid NOT NULL,source_release_id uuid,edge_code text);
-      ${NP_AGENT_REFERENCE_FENCE_SQL_V1}
+      ${NP_AGENT_REFERENCE_FENCE_SQL_V2}
       ${tables.map(npAgentReferenceFenceTriggersSqlV1).join("\n")}
     `);
   });
@@ -327,11 +327,11 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
       "CREATE OR REPLACE FUNCTION public.np_agent_reference_lock_v1() RETURNS void LANGUAGE plpgsql VOLATILE SET search_path=pg_catalog,public AS $$BEGIN RETURN; END$$",
     );
     expect((await observer.query(query)).rows[0].missing_count).toBe("1");
-    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V1);
+    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V2);
     expect((await observer.query(query)).rows[0].missing_count).toBe("0");
     await observer.query("ALTER FUNCTION public.np_agent_reference_lock_v1() STABLE");
     expect((await observer.query(query)).rows[0].missing_count).toBe("1");
-    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V1);
+    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V2);
   });
 
   it("guards direct old/new job partitions and fences partition attachment", async () => {

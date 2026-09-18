@@ -460,6 +460,7 @@ describe.skipIf(skipIfNoTestDb())("Runtime Studio current staff projections", ()
         now: f.options.now,
       });
       const detail = await activity.getRun({ ...staff(f), id: f.runId });
+      if (detail.schemaVersion !== "np.agent-activity-run.v1") throw new Error("Expected live Run");
       expect(detail.run.usage).toBeNull();
       expect(detail.run.goal).toBe("[redacted]");
       const serialized = JSON.stringify({ budget, detail });

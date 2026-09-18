@@ -262,7 +262,10 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity", () => {
       f.activity.getAction({ siteId, actor: f.actor, id: stored!.id }),
     ).rejects.toMatchObject({ status: 404, code: "ACTIVITY_NOT_FOUND" });
     registerCollection("posts", getCollectionTable("posts"), original);
-    await f.db.update(npAgentInvocations).set({ expiresAt: new Date(Date.now() + 1_000) });
+    await f.db
+      .update(npAgentInvocations)
+      .set({ expiresAt: new Date(Date.now() + 1_000) })
+      .where(eq(npAgentInvocations.id, stored!.invocationId!));
     f.advance(2_000);
     expect((await f.activity.getAction({ siteId, actor: f.actor, id: stored!.id })).evidence).toBe(
       "expired",
@@ -325,6 +328,7 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity", () => {
     });
     const id = await seedRun(f);
     const detail = await f.activity.getRun({ siteId, actor: f.actor, id });
+    if (detail.schemaVersion !== "np.agent-activity-run.v1") throw new Error("Expected live Run");
     expect(detail.run.agent).toBeNull();
     expect(detail.run.origin).toBe("gateway");
     expect(JSON.stringify(detail)).not.toContain("PRIVATE PROMPT");
@@ -491,7 +495,9 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity", () => {
       .values(
         Array.from({ length: 100 }, (_, i) => ({ ...action!, id: randomUUID(), sequence: i + 2 })),
       );
-    expect((await f.activity.getRun({ siteId, actor: f.actor, id: runId })).run.id).toBe(runId);
+    const detail = await f.activity.getRun({ siteId, actor: f.actor, id: runId });
+    if (detail.schemaVersion !== "np.agent-activity-run.v1") throw new Error("Expected live Run");
+    expect(detail.run.id).toBe(runId);
     await f.db
       .update(npAgentRuns)
       .set({ runLimits: { ...run!.runLimits, maxCapabilityCalls: 100 } })

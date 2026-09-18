@@ -101,9 +101,11 @@ verify the stored payload against its admission-bound digest before source relea
 The payload expires only with eligible Run deletion; it is absent from release
 receipts, audit and Activity. Generic literal-reference scanning and ingress
 fences include the new JSON column, so embedded IDs cannot evade existing
-conservative dependency retention. Studio Run staff-audit targets and Admin
-invocation result references have no current release owner, so these Run/input
-rows remain protected indefinitely, including after replay expiry. Structured
+conservative dependency retention. Studio Run staff-audit targets and Admin invocation results now have explicit
+release owners. After both Run policy retention and the invocation replay
+deadline, an exact linked admission proof permits source Run/input deletion.
+Audit and invocation bytes remain retained, including the consumed request key
+and original result; a replay still returns that result without new execution. Structured
 Admin request journals retain a digest rather than duplicating the input JSON.
 Provider/Action-derived text follows its existing evidence owner. This does not
 claim full R5 retention or full R5 acceptance.
@@ -129,3 +131,67 @@ denial, malformed and oversized evidence, concurrent writers and live pg-boss
 partition guards. The current full verification results and remaining product
 boundaries are recorded in
 [the source lifecycle evidence](r5-evidence-source-lifecycle-design.md#verification-evidence).
+
+## Studio admission reference matrix
+
+| Reference                                                                                 | Release condition                                                                                                                                                                           | Retained evidence                                                                        |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Studio staff audit target                                                                 | Same site and exact linked completed `agents.configurations.run` invocation, canonical request/auth/output/operation fingerprints, exact audit payload and Run admission key/config/trigger | Original audit row plus `studio-audit` / `audit-target` receipt                          |
+| Admin invocation result ID and output `id`/`runId`                                        | Same verified triple; invocation deadline and Run policy retention elapsed                                                                                                                  | Full request/result and scoped key plus `admin-invocation` / `invocation-result` receipt |
+| Other literals in either owner, unknown/global audit, mutation/approval/rollback evidence | No release owner                                                                                                                                                                            | Source remains pinned                                                                    |
+| Staff identity FK metadata                                                                | Existing user deletion may null the staff FK and set its deletion timestamp; immutable canonical identity remains                                                                           | All other invocation bytes stay frozen                                                   |
+
+The migration appends the Studio owner guard upgrade; it never rewrites the
+shipped reference guard migration. Coverage checks require the upgraded function
+bodies before cleanup can release any source. Late references and changes or
+deletion of retained owners remain blocked by the global reference fence.
+
+Activity detail links resolve an expired Run through its verified receipt and
+current staff/retained Action ACL checks. They expose only historical identity,
+terminal state and completion/release timestamps. They do not fabricate usage,
+limits, source input or a live Run, and stop polling. Existing Run lists continue
+to list live source rows; this bundle does not add archive pagination. Request
+replay uses retained invocation evidence and does not re-admit a deleted Run.
+
+## Studio source-expiration verification (2026-09-18)
+
+The uncommitted bundle based on PR #1451 passed final `verify` (113 tasks),
+including Core 2,015, Admin 151, App 557 and Web 174 unit tests, and workspace
+lint (40 package tasks plus Web lint/scripts, using an 8 GiB Web heap).
+Focused new/history units passed 63 cases; migration generation tests passed 5.
+Final Web typecheck and the four-case history mock rerun also passed. Web test
+files are excluded from the configured typed-lint project; a separate ad hoc
+`--no-ignore` attempt could not load them. Their changed behavior was verified
+through the PostgreSQL and browser reruns, with formatting checked separately.
+
+PostgreSQL exercised Core 64 and Web 1,427 ordinary cases across the full run
+and a corrected 42-case rerun of source-release, reference-fence and approval
+resumption. Theme suites were included. The optional native preview case skipped
+in the ordinary run was explicitly enabled and passed. Live Redis passed all 16.
+Production browser coverage passed 73 cases across the full run and an 11-case
+login/Activity rerun, including the expired detail and no-polling behavior.
+Fresh packed scaffold passed 40 packages / 60 stages: installation, typecheck,
+generated migrations, Agent foundation/Doctor, production build, seven extension
+packages, five runtime script module-resolution probes and first-run journeys.
+Runtime probes intentionally used an unreachable DB; expected DB failures were
+accepted only after ruling out missing modules. Versions and lockfile stayed unchanged.
+
+Self-review fixed the expired union's literal type inference and preserved the
+shipped V1 migration bytes while appending V2. An initial fresh-worktree verify
+ran a self-importing package test before its own build; building all 41 packages
+first resolved it. Targeted DB testing found an existing Activity fixture updated
+unrelated invocation deadlines; it now targets its own invocation.
+
+The full PostgreSQL run had eight failed cases and one teardown failure: an
+old deleted-Run 404 expectation, a maintenance statement timeout on the retained
+33 MiB fixture, approval-resumption test timeouts followed by cleanup deadlocks,
+and a reference-fence teardown timeout. The response expectation was updated
+with an additional retained Action ACL-denial assertion. Running those three
+files sequentially passed all 42 cases without changing time limits, production
+budgets or the large fixture cardinalities. Full browser testing found an invalid
+password test sharing the request quota with other specs; its test address is now
+isolated and it asserts HTTP 401 before the error UI. Product rate limits remain
+unchanged. All 11 login/Activity rerun cases passed.
+
+These results cover this Studio source-expiration bundle. They do not establish
+full R5 acceptance, universal source release or deletion of derived evidence.

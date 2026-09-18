@@ -1,6 +1,9 @@
 import { spawn } from "node:child_process";
 
-import { npEnsureAgentReferenceMigrationV1 } from "./agent-reference-migration.js";
+import {
+  npEnsureAgentReferenceMigrationV1,
+  npEnsureAgentReferenceMigrationV2,
+} from "./agent-reference-migration.js";
 import { npEnsureAgentLifecycleConstraintMigrationV1 } from "./agent-migration-contract.js";
 
 function run(command: string, args: string[]): Promise<void> {
@@ -52,6 +55,17 @@ export async function generateMigrations(): Promise<void> {
         "--custom",
         "--name",
         "agent-source-reference-lifecycle",
+      ]),
+  });
+  await npEnsureAgentReferenceMigrationV2({
+    createCustomMigration: () =>
+      run(pnpm, [
+        "exec",
+        "drizzle-kit",
+        "generate",
+        "--custom",
+        "--name",
+        "agent-studio-source-reference-lifecycle",
       ]),
   });
 }

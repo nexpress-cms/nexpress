@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   NP_DEFAULT_SITE_ID,
   createSite,
@@ -40,7 +40,10 @@ const principalPath = `${root}/gateway/principals`;
 const missingId = "11111111-1111-4111-8111-111111111111";
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 const readRoutes = [runs, actions, principals];
-function install(reauthenticated = true) {
+function install(
+  reauthenticated = true,
+  activity = createAgentActivityServiceV1({ cursorHmacKey: new Uint8Array(32).fill(17) }),
+) {
   const gateway = createAgentGatewayServiceV1({
     tokenHashKeyring: { active: { id: "activity-test", key: new Uint8Array(32).fill(19) } },
     environment: "production",
@@ -61,7 +64,7 @@ function install(reauthenticated = true) {
   return setAgentStudioServerRuntimeV1(
     createAgentStudioServerRuntimeV1({
       gateway,
-      activity: createAgentActivityServiceV1({ cursorHmacKey: new Uint8Array(32).fill(17) }),
+      activity,
     }),
   );
 }
@@ -106,6 +109,40 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity Admin routes", () => {
       expect(response.status).toBe(200);
       expect(await response.json()).toMatchObject({ items: [], nextCursor: null });
     }
+  });
+
+  it("returns the exact expired Run detail through staff routing with no-store", async () => {
+    const activity = createAgentActivityServiceV1({ cursorHmacKey: new Uint8Array(32).fill(17) });
+    const expired = {
+      schemaVersion: "np.agent-activity-run-expired.v1" as const,
+      runId: missingId,
+      siteId: NP_DEFAULT_SITE_ID,
+      principalId: "22222222-2222-4222-8222-222222222222",
+      agent: {
+        id: "33333333-3333-4333-8333-333333333333",
+        versionId: "44444444-4444-4444-8444-444444444444",
+      },
+      state: "succeeded" as const,
+      finishedAt: "2026-09-01T00:00:00.000Z",
+      releasedAt: "2026-09-18T00:00:00.000Z",
+      evidence: "expired" as const,
+    };
+    // Storage proof and ACLs are exercised by Runtime retention integration tests.
+    // This boundary verifies authenticated routing and the exact response parser.
+    const getRun = vi.spyOn(activity, "getRun").mockResolvedValue(expired);
+    install(true, activity);
+    const session = await seedUser();
+    const response = await run(
+      buildRequest(`${root}/activity/${missingId}`, { session }),
+      params(missingId),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(await response.json()).toEqual(expired);
+    expect(getRun).toHaveBeenCalledWith(
+      expect.objectContaining({ siteId: NP_DEFAULT_SITE_ID, id: missingId }),
+    );
+    getRun.mockRestore();
   });
 
   it("decodes only bounded exact queries without duplicate or prototype key fallback", async () => {
