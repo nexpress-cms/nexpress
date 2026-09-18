@@ -5,13 +5,18 @@ import {
   type npAgentChangesets,
   type npAgentChangesetValidationAttempts,
   type npAgentChangesetPreviews,
+  type npAgentApprovals,
 } from "../db/schema/agent.js";
 import type { npAuditEvents } from "../db/schema/community.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import { npDigestAgentCapabilityRegistryCanonical } from "../agent-contract/canonical-capability-registry.js";
 import { npDigestAgentInvocationRequestCanonical } from "../agent-contract/canonical-idempotency-request.js";
 import { npDigestAgentAuthorizationContextCanonical } from "../agent-contract/canonical-authorization-context.js";
-import { npBuildAgentChangeSetCapabilityDefinitionCanonicalV1 } from "../agent-contract/installed-capability-contract.js";
+import {
+  npBuildAgentChangeSetCapabilityDefinitionCanonicalV1,
+  npRequireAgentChangeSetExecutionOutputV1,
+} from "../agent-contract/installed-capability-contract.js";
+import { npAgentChangeSetActionTargetsV1 } from "./changeset-action-targets.js";
 import { npDigestAgentChangeSetDraftInputV1 } from "../agent-contract/changeset-wire-contract.js";
 import {
   npAgentReleaseActionDigestV1,
@@ -54,6 +59,8 @@ export async function npVerifyCancelledChangeSetAttributionV1(input: {
   >;
   validation?: typeof npAgentChangesetValidationAttempts.$inferSelect;
   preview?: typeof npAgentChangesetPreviews.$inferSelect;
+  approval?: typeof npAgentApprovals.$inferSelect;
+  creatorRunId?: string;
 }) {
   const { action: a, invocation: i, changeSet: c, audit, releasedAt } = input;
   try {
@@ -61,10 +68,23 @@ export async function npVerifyCancelledChangeSetAttributionV1(input: {
     if (
       capability !== "changeset.create" &&
       capability !== "changeset.validate" &&
-      capability !== "changeset.preview"
+      capability !== "changeset.preview" &&
+      capability !== "changeset.apply" &&
+      capability !== "changeset.schedule"
     )
       return null;
     const create = capability === "changeset.create";
+    const approvalRequest = capability === "changeset.apply" || capability === "changeset.schedule";
+    const approval = input.approval;
+    if (
+      approvalRequest &&
+      (!approval ||
+        approval.capabilityId !== capability ||
+        !input.creatorRunId ||
+        !input.planEvidence ||
+        !c.sealedPlanBody)
+    )
+      return null;
     const generation =
       capability === "changeset.validate"
         ? input.validation
@@ -73,6 +93,7 @@ export async function npVerifyCancelledChangeSetAttributionV1(input: {
           : undefined;
     if (
       !create &&
+      !approvalRequest &&
       (!generation ||
         generation.siteId !== c.siteId ||
         generation.changesetId !== c.id ||
@@ -84,12 +105,62 @@ export async function npVerifyCancelledChangeSetAttributionV1(input: {
       definition,
       definition.capabilities,
     );
-    const output = { changeSetId: c.id };
-    const invocationOutput = create
-      ? output
-      : capability === "changeset.validate"
-        ? { ...output, attemptId: generation!.id }
-        : { ...output, previewId: generation!.id };
+    const requestOutput = approvalRequest
+      ? npRequireAgentChangeSetExecutionOutputV1(a.outputRedacted)
+      : null;
+    if (
+      requestOutput &&
+      (requestOutput.state !== "approval_required" ||
+        requestOutput.runId !== input.runId ||
+        requestOutput.actionId !== a.id ||
+        requestOutput.approvalId !== approval!.id ||
+        requestOutput.proposalHash !== c.planHash ||
+        requestOutput.expiresAt !== approval!.expiresAt.toISOString() ||
+        requestOutput.approvalResource !== `/admin/agents/approvals/${approval!.id}` ||
+        requestOutput.changeSet.id !== c.id ||
+        requestOutput.changeSet.siteId !== c.siteId ||
+        requestOutput.changeSet.state !== "approval_pending" ||
+        requestOutput.changeSet.runId !== input.creatorRunId ||
+        requestOutput.changeSet.agentId !== c.agentId ||
+        requestOutput.changeSet.agentVersionId !== c.agentVersionId ||
+        requestOutput.changeSet.agentConfigHash !== c.agentConfigHash ||
+        requestOutput.changeSet.actor.kind !== "runtime" ||
+        requestOutput.changeSet.actor.id !== c.principalId ||
+        requestOutput.changeSet.planHash !== c.planHash ||
+        requestOutput.changeSet.baseFingerprint !== c.baseFingerprint ||
+        requestOutput.changeSet.draftVersion !== c.draftVersion ||
+        requestOutput.changeSet.draftHash !== c.draftHash ||
+        !same(requestOutput.changeSet.approval, {
+          id: approval!.id,
+          generation: approval!.generation,
+          state: "pending",
+          statementHash: approval!.statementHash,
+          requiredHumanCapabilities: approval!.requiredHumanCapabilities,
+          requiredHumanPredicates: approval!.requiredHumanPredicates,
+          requestedAt: approval!.requestedAt.toISOString(),
+          expiresAt: approval!.expiresAt.toISOString(),
+          decidedAt: null,
+        }) ||
+        requestOutput.changeSet.schedule !== null ||
+        requestOutput.changeSet.execution !== null ||
+        requestOutput.changeSet.verification !== null ||
+        requestOutput.changeSet.rollback !== null)
+    )
+      return null;
+    const output = requestOutput ?? { changeSetId: c.id };
+    const invocationOutput = approvalRequest
+      ? {
+          changeSetId: c.id,
+          resourceId: c.id,
+          approvalId: approval!.id,
+          runId: input.runId,
+          actionId: a.id,
+        }
+      : create
+        ? output
+        : capability === "changeset.validate"
+          ? { ...output, attemptId: generation!.id }
+          : { ...output, previewId: generation!.id };
     if (c.validationGeneration !== 0) {
       if (
         !input.planEvidence ||
@@ -104,6 +175,22 @@ export async function npVerifyCancelledChangeSetAttributionV1(input: {
       c.rollbackWindowSeconds !== null
     )
       return null;
+    const expectedTargets = approvalRequest
+      ? npAgentChangeSetActionTargetsV1(input.planEvidence!.operations.map((o) => o.resourceKey))
+      : [];
+    const expectedScopes = approvalRequest
+      ? [
+          ...new Set([
+            ...definition.capabilities[0].descriptor.requiredScopes,
+            ...c.sealedPlanBody!.body.requiredScopes,
+            ...approval!.requiredScopes,
+          ]),
+        ].sort()
+      : definition.capabilities[0].descriptor.requiredScopes;
+    const expectedVersions = expectedTargets.map((targetRef) => ({
+      targetRef,
+      versionDigest: c.sealedPlanBody!.body.baseFingerprint,
+    }));
     const authority = {
       schemaVersion: "np.agent-authorization-context.v1",
       siteId: c.siteId,
@@ -168,8 +255,8 @@ export async function npVerifyCancelledChangeSetAttributionV1(input: {
       a.effectProfileId !== (create ? "changeset.draft-create" : "domain.read") ||
       a.effectContractVersion !== 1 ||
       a.risk !== (create ? "reversible" : "read") ||
-      a.state !== "succeeded" ||
-      !same(a.inputRedacted, {}) ||
+      a.state !== (approvalRequest ? "approval_pending" : "succeeded") ||
+      !same(a.inputRedacted, approvalRequest ? { changeSetId: c.id } : {}) ||
       [
         a.executionInvocationId,
         a.executionInvocationFingerprint,
@@ -193,16 +280,23 @@ export async function npVerifyCancelledChangeSetAttributionV1(input: {
         a.compensatesActionId,
         a.errorCode,
       ].some((value) => value !== null) ||
-      !a.finishedAt ||
       !a.startedAt ||
-      a.finishedAt > releasedAt ||
+      a.startedAt > releasedAt ||
       a.startedAt < a.createdAt ||
-      a.finishedAt < a.startedAt ||
-      !same(a.requiredScopes, definition.capabilities[0].descriptor.requiredScopes) ||
-      !same(a.targetRefs, []) ||
-      !same(a.targetVersionFacts, []) ||
+      (approvalRequest
+        ? a.finishedAt !== null
+        : !a.finishedAt || a.finishedAt > releasedAt || a.finishedAt < a.startedAt) ||
+      !same(a.requiredScopes, expectedScopes) ||
+      !same(a.targetRefs, expectedTargets) ||
+      !same(a.targetVersionFacts, expectedVersions) ||
       !same(a.outputRedacted, output) ||
-      a.outputHash !== hash("np.agent-runtime-changeset-output.v1", output) ||
+      a.outputHash !==
+        hash(
+          approvalRequest
+            ? "np.agent-execution-projection.v1"
+            : "np.agent-runtime-changeset-output.v1",
+          output,
+        ) ||
       !a.idempotencyKey ||
       a.idempotencyKey !== i.idempotencyKey ||
       i.runId !== input.runId ||
@@ -258,6 +352,7 @@ export async function npVerifyCancelledChangeSetAttributionV1(input: {
           hash("np.agent-changeset-source-idempotency.v1", i.idempotencyKey) !==
             c.sourceIdempotencyFingerprint)) ||
       (!create &&
+        !approvalRequest &&
         (!same(generation!.authorizationContextBody, authority) ||
           !same(generation!.authorityRef, authority.authorityRef) ||
           generation!.authorizationContextFingerprint !== i.authorizationContextFingerprint ||
@@ -272,6 +367,22 @@ export async function npVerifyCancelledChangeSetAttributionV1(input: {
         })) ||
       (capability === "changeset.preview" &&
         !same(i.requestBody.input, { changeSetId: c.id, planHash: input.preview!.planHash })) ||
+      (approvalRequest &&
+        (!same(i.requestBody.input, {
+          changeSetId: c.id,
+          planHash: c.planHash,
+          approvalId: null,
+          ...(capability === "changeset.schedule"
+            ? {
+                scheduledFor:
+                  approval!.statementBody.target.kind === "changeset"
+                    ? approval!.statementBody.target.scheduledFor
+                    : null,
+              }
+            : {}),
+        }) ||
+          approval!.requestedByPrincipalId !== input.principalId ||
+          approval!.requesterFingerprint !== i.actorFingerprint)) ||
       audit.actorKind !== "agent-principal" ||
       audit.action !== `agents.${capability.replace("changeset.", "changesets.")}` ||
       audit.targetType !== "agent-changeset" ||

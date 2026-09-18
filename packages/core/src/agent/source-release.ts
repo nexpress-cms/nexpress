@@ -528,8 +528,8 @@ export async function npPrepareAgentSourceReleaseV1(input: {
       for (const edge of proof.edges) add(edge.kind, edge.id, edge.code, edge.digest);
       for (const a of proof.actions) {
         actions.push(a);
-        cancelledProofs.set(a.invocationId!, true);
       }
+      for (const invocationId of proof.invocationIds) cancelledProofs.set(invocationId, true);
       if (proof.creator) changeSets.push(c);
       return cancelledProofs.get(invocationId) === true;
     };
@@ -676,7 +676,7 @@ export async function npPrepareAgentSourceReleaseV1(input: {
                   .limit(2);
           if (readActions.length !== 1) return false;
           const a = readActions[0];
-          if (a.runId !== id || a.runSourceReleaseId !== null || !a.invocationId) return false;
+          if (!a.invocationId) return false;
           const [i] = await db
             .select()
             .from(npAgentInvocations)
@@ -686,10 +686,24 @@ export async function npPrepareAgentSourceReleaseV1(input: {
             .for("update", { noWait: true });
           if (!i) return false;
           if (
-            ["changeset.create", "changeset.validate", "changeset.preview"].includes(a.capabilityId)
+            [
+              "changeset.create",
+              "changeset.validate",
+              "changeset.preview",
+              "changeset.apply",
+              "changeset.schedule",
+            ].includes(a.capabilityId)
           ) {
             if (!(await getCancelled(i.id))) return false;
-            delete mask.run_id;
+            if (mask.run_id === id) delete mask.run_id;
+            if (["changeset.apply", "changeset.schedule"].includes(a.capabilityId)) {
+              const output = object(mask.output_redacted);
+              if (output.runId === id) delete output.runId;
+              if (name === "np_agent_actions") {
+                const changeSet = object(output.changeSet);
+                if (changeSet.runId === id) delete changeSet.runId;
+              }
+            }
             if (mask.idempotency_key === `runtime:${id}:${a.sequence.toString()}`)
               delete mask.idempotency_key;
             if (name === "np_agent_invocations") {
@@ -699,6 +713,7 @@ export async function npPrepareAgentSourceReleaseV1(input: {
             if (contains(mask, id)) return false;
             continue;
           }
+          if (a.runId !== id || a.runSourceReleaseId !== null) return false;
           const proof = await npVerifyAgentReleaseReadAttributionV1({
             action: a,
             invocation: i,

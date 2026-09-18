@@ -3896,7 +3896,7 @@ export function createAgentChangeSetServiceV1(
         .where(
           and(
             eq(npAgentChangesets.siteId, input.siteId),
-            inArray(npAgentChangesets.state, ["draft", "invalid", "ready"]),
+            inArray(npAgentChangesets.state, ["draft", "invalid", "ready", "rejected"]),
             lte(npAgentChangesets.expiresAt, time),
           ),
         )

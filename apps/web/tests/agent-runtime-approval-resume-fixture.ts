@@ -48,6 +48,7 @@ export async function runtimeApprovalResumeFixture(
   options: {
     provider?: boolean;
     rollback?: boolean;
+    separateRequester?: boolean;
     queuedWork?: {
       kind: "validation" | "preview";
       check: (input: {
@@ -209,10 +210,11 @@ export async function runtimeApprovalResumeFixture(
   const admitted = providerFixture
     ? { runId: providerFixture.runId }
     : await f.admission.admit(f.runInput);
-  const input = { siteId, runId: admitted.runId };
+  let input = { siteId, runId: admitted.runId };
+  const creatorInput = input;
   const acquired = await store.claim(input);
   if (!acquired.claim) throw new Error("Expected Run claim");
-  const claimed = { ...input, claim: acquired.claim };
+  let claimed = { ...input, claim: acquired.claim };
   const invoke = async (
     capabilityId: NpAgentChangeSetCapabilityIdV1,
     args: unknown,
@@ -220,7 +222,7 @@ export async function runtimeApprovalResumeFixture(
   ) =>
     service.invokeRuntimeCapability({
       ...claimed,
-      sequence,
+      sequence: input.runId === creatorInput.runId ? sequence : sequence - 1,
       request: npRequireAgentInstalledCapabilityInvocationRequestV1({
         schemaVersion: "np.agent-invocation-request.v1",
         capabilityId,
@@ -248,6 +250,15 @@ export async function runtimeApprovalResumeFixture(
   );
   if (!("changeSet" in created.output)) throw new Error("Expected ChangeSet");
   const draft = created.output.changeSet;
+  if (options.separateRequester) {
+    if (providerFixture) throw new Error("Separate requester requires the local Runtime fixture");
+    await store.transition({ ...claimed, state: "succeeded" });
+    const requester = await f.admission.admit({ ...f.runInput, idempotencyKey: randomUUID() });
+    input = { siteId, runId: requester.runId };
+    const acquiredRequester = await store.claim(input);
+    if (!acquiredRequester.claim) throw new Error("Expected requester Run claim");
+    claimed = { ...input, claim: acquiredRequester.claim };
+  }
   const validated = await invoke(
     "changeset.validate",
     { changeSetId: draft.id, draftVersion: draft.draftVersion, draftHash: draft.draftHash },
@@ -359,6 +370,7 @@ export async function runtimeApprovalResumeFixture(
     service,
     store,
     input,
+    creatorInput,
     claimed,
     sealed,
     requested,

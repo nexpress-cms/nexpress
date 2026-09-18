@@ -1,14 +1,5 @@
-export { NP_AGENT_REFERENCE_FENCE_SQL_V4 } from "./reference-fence-sql-v4.js";
-export { NP_AGENT_REFERENCE_FENCE_SQL_V3 } from "./reference-fence-sql-v3.js";
-export { NP_AGENT_REFERENCE_FENCE_SQL_V1 } from "./reference-fence-sql-v1.js";
-export { NP_AGENT_REFERENCE_FENCE_SQL_V2 } from "./reference-fence-sql-v2.js";
-
-/**
- * Migration-owned SQL. None of these definitions initialize Agent services or
- * the job journal. Row guards also lock the barrier because PostgreSQL clones
- * row, but not statement, triggers onto newly attached job partitions.
- */
-export const NP_AGENT_REFERENCE_FENCE_SQL_V5 = `
+/** Frozen installed V4 migration; append upgrades in reference-fence-sql.ts. */
+export const NP_AGENT_REFERENCE_FENCE_SQL_V4 = `
 CREATE OR REPLACE FUNCTION public.np_agent_reference_lock_v1()
 RETURNS void LANGUAGE plpgsql VOLATILE SET search_path = pg_catalog, public AS $np$
 DECLARE current_epoch bigint;
@@ -43,7 +34,6 @@ DECLARE
   invocation_metadata_update boolean := false;
   bound_owner boolean := false;
   audit_metadata_update boolean := false;
-  approval_metadata_update boolean := false;
   action_detachment boolean := false;
   changeset_detachment boolean := false;
   has_released_reference boolean := false;
@@ -54,7 +44,6 @@ DECLARE
   scan_from integer := 1;
   match_at integer;
   incoming_id uuid;
-  retained_creator_run uuid;
 BEGIN
   PERFORM public.np_agent_reference_lock_v1();
   IF TG_OP <> 'INSERT' THEN previous_body := to_jsonb(OLD); END IF;
@@ -71,17 +60,6 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  approval_metadata_update := TG_TABLE_SCHEMA='public' AND TG_TABLE_NAME='np_agent_approvals'
-    AND TG_OP='UPDATE'
-    AND (next_body-'requested_by_user_id'-'decided_by_user_id'-'revoked_by_user_id') =
-      (previous_body-'requested_by_user_id'-'decided_by_user_id'-'revoked_by_user_id')
-    AND (next_body->'requested_by_user_id'=previous_body->'requested_by_user_id'
-      OR next_body->'requested_by_user_id'='null'::jsonb)
-    AND (next_body->'decided_by_user_id'=previous_body->'decided_by_user_id'
-      OR next_body->'decided_by_user_id'='null'::jsonb)
-    AND (next_body->'revoked_by_user_id'=previous_body->'revoked_by_user_id'
-      OR next_body->'revoked_by_user_id'='null'::jsonb);
-
   -- Once a cancelled draft source is released, its retained operations stay
   -- immutable and no lifecycle generation can begin using only the ChangeSet
   -- identity (without spelling the former Run identity).
@@ -90,8 +68,7 @@ BEGIN
     'np_agent_changeset_previews','np_agent_changeset_executions',
     'np_agent_changeset_rollback_plans','np_agent_changeset_rollback_operations',
     'np_agent_approvals'
-  ) AND NOT approval_metadata_update
-    AND (TG_OP<>'UPDATE' OR next_body IS DISTINCT FROM previous_body) THEN
+  ) AND (TG_OP<>'UPDATE' OR next_body IS DISTINCT FROM previous_body) THEN
     IF EXISTS (
       SELECT 1 FROM jsonb_array_elements(jsonb_build_array(previous_body,next_body)) b(body)
       JOIN public.np_agent_changesets c ON c.site_id=b.body->>'site_id'
@@ -108,12 +85,7 @@ BEGIN
         OR EXISTS (SELECT 1 FROM public.np_agent_changeset_previews p
           JOIN public.np_agent_source_release_edges e ON e.site_id=p.site_id
             AND e.owner_kind='changeset-preview' AND e.owner_id=p.id
-          WHERE p.site_id=c.site_id AND p.changeset_id=c.id)
-        OR EXISTS (SELECT 1 FROM public.np_agent_approvals a
-          JOIN public.np_agent_source_release_edges e ON e.site_id=a.site_id
-            AND e.owner_kind='changeset-approval' AND e.owner_id=a.id
-          WHERE a.site_id=c.site_id AND a.target_kind='changeset'
-            AND a.target_id=c.id AND a.target_changeset_id=c.id))
+          WHERE p.site_id=c.site_id AND p.changeset_id=c.id))
     ) THEN
       RAISE EXCEPTION USING ERRCODE='23514', MESSAGE='Agent source evidence is retained.';
     END IF;
@@ -139,12 +111,7 @@ BEGIN
         OR EXISTS (SELECT 1 FROM public.np_agent_changeset_previews p
           JOIN public.np_agent_source_release_edges e ON e.site_id=p.site_id
             AND e.owner_kind='changeset-preview' AND e.owner_id=p.id
-          WHERE p.site_id=c.site_id AND p.changeset_id=c.id)
-        OR EXISTS (SELECT 1 FROM public.np_agent_approvals a
-          JOIN public.np_agent_source_release_edges e ON e.site_id=a.site_id
-            AND e.owner_kind='changeset-approval' AND e.owner_id=a.id
-          WHERE a.site_id=c.site_id AND a.target_kind='changeset'
-            AND a.target_id=c.id AND a.target_changeset_id=c.id))
+          WHERE p.site_id=c.site_id AND p.changeset_id=c.id))
     ) THEN
       RAISE EXCEPTION USING ERRCODE='23514', MESSAGE='Agent source evidence is retained.';
     END IF;
@@ -157,7 +124,6 @@ BEGIN
     WHEN 'np_agent_changesets' THEN 'changeset-source'
     WHEN 'np_agent_changeset_validation_attempts' THEN 'changeset-validation'
     WHEN 'np_agent_changeset_previews' THEN 'changeset-preview'
-    WHEN 'np_agent_approvals' THEN 'changeset-approval'
     ELSE NULL END ELSE NULL END;
   bound_owner_kinds := CASE bound_owner_kind
     WHEN 'runtime-audit' THEN ARRAY['runtime-audit','studio-audit','changeset-audit']
@@ -183,12 +149,7 @@ BEGIN
         OR EXISTS (SELECT 1 FROM public.np_agent_changeset_previews p
           JOIN public.np_agent_source_release_edges e ON e.site_id=p.site_id
             AND e.owner_kind='changeset-preview' AND e.owner_id=p.id
-          WHERE p.site_id=c.site_id AND p.changeset_id=c.id)
-        OR EXISTS (SELECT 1 FROM public.np_agent_approvals a
-          JOIN public.np_agent_source_release_edges e ON e.site_id=a.site_id
-            AND e.owner_kind='changeset-approval' AND e.owner_id=a.id
-          WHERE a.site_id=c.site_id AND a.target_kind='changeset'
-            AND a.target_id=c.id AND a.target_changeset_id=c.id))) INTO bound_owner;
+          WHERE p.site_id=c.site_id AND p.changeset_id=c.id))) INTO bound_owner;
   END IF;
   -- A different requester Run can own an admitting invocation. Retaining one
   -- parent freezes the whole linked proof, not only owners with their own edge.
@@ -214,17 +175,6 @@ BEGIN
           ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
           THEN (inv.body->'request_body'->'input'->>'changeSetId')::uuid END
         UNION ALL
-        SELECT CASE WHEN inv.body->'request_body'->'input'->>'targetId'
-          ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-          THEN (inv.body->'request_body'->'input'->>'targetId')::uuid END
-        UNION ALL
-        SELECT a.target_changeset_id FROM public.np_agent_approvals a
-          WHERE a.site_id=inv.body->>'site_id' AND a.target_kind='changeset'
-            AND (a.id=CASE WHEN inv.body->'request_body'->'input'->>'targetId'
-              ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-              THEN (inv.body->'request_body'->'input'->>'targetId')::uuid END
-              OR a.id=(inv.body->>'result_id')::uuid)
-        UNION ALL
         SELECT c0.id FROM public.np_agent_changesets c0
           WHERE c0.site_id=inv.body->>'site_id' AND c0.invocation_id=(inv.body->>'id')::uuid
         UNION ALL
@@ -235,12 +185,8 @@ BEGIN
           WHERE p.site_id=inv.body->>'site_id' AND p.admitting_invocation_id=(inv.body->>'id')::uuid
       ) parent
       JOIN public.np_agent_changesets c ON c.id=parent.id AND c.site_id=inv.body->>'site_id'
-      WHERE ((inv.body->>'operation_kind'='capability'
-        AND inv.body->>'operation_id' IN ('changeset.create','changeset.validate','changeset.preview',
-          'changeset.apply','changeset.schedule'))
-        OR (inv.body->>'operation_kind'='admin' AND inv.body->>'operation_id' IN (
-          'agents.changesets.request_approval','agents.approvals.decision_challenge',
-          'agents.approvals.reject','agents.approvals.approve','agents.approvals.revoke')))
+      WHERE inv.body->>'operation_kind'='capability'
+        AND inv.body->>'operation_id' IN ('changeset.create','changeset.validate','changeset.preview')
         AND (EXISTS (SELECT 1 FROM public.np_agent_source_release_edges e
           WHERE e.site_id=c.site_id AND e.owner_kind='changeset-source' AND e.owner_id=c.id)
         OR EXISTS (SELECT 1 FROM public.np_agent_changeset_validation_attempts v
@@ -250,38 +196,7 @@ BEGIN
         OR EXISTS (SELECT 1 FROM public.np_agent_changeset_previews p
           JOIN public.np_agent_source_release_edges e ON e.site_id=p.site_id
             AND e.owner_kind='changeset-preview' AND e.owner_id=p.id
-          WHERE p.site_id=c.site_id AND p.changeset_id=c.id)
-        OR EXISTS (SELECT 1 FROM public.np_agent_approvals a
-          JOIN public.np_agent_source_release_edges e ON e.site_id=a.site_id
-            AND e.owner_kind='changeset-approval' AND e.owner_id=a.id
-          WHERE a.site_id=c.site_id AND a.target_kind='changeset'
-            AND a.target_id=c.id AND a.target_changeset_id=c.id))
-    ) INTO bound_owner;
-  END IF;
-  IF bound_owner_kind='runtime-audit' AND NOT bound_owner THEN
-    SELECT EXISTS (
-      SELECT 1 FROM jsonb_array_elements(jsonb_build_array(previous_body,next_body)) b(body)
-      JOIN public.np_agent_approvals a ON a.site_id=b.body->>'site_id'
-        AND a.id=CASE WHEN b.body->>'target_id'
-          ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-          THEN (b.body->>'target_id')::uuid END
-      JOIN public.np_agent_changesets c ON c.id=a.target_changeset_id AND c.site_id=a.site_id
-      WHERE b.body->>'target_type'='agent-approval' AND a.target_kind='changeset'
-        AND (EXISTS (SELECT 1 FROM public.np_agent_source_release_edges e
-          WHERE e.site_id=c.site_id AND e.owner_kind='changeset-source' AND e.owner_id=c.id)
-        OR EXISTS (SELECT 1 FROM public.np_agent_changeset_validation_attempts v
-          JOIN public.np_agent_source_release_edges e ON e.site_id=v.site_id
-            AND e.owner_kind='changeset-validation' AND e.owner_id=v.id
-          WHERE v.site_id=c.site_id AND v.changeset_id=c.id)
-        OR EXISTS (SELECT 1 FROM public.np_agent_changeset_previews p
-          JOIN public.np_agent_source_release_edges e ON e.site_id=p.site_id
-            AND e.owner_kind='changeset-preview' AND e.owner_id=p.id
-          WHERE p.site_id=c.site_id AND p.changeset_id=c.id)
-        OR EXISTS (SELECT 1 FROM public.np_agent_approvals a0
-          JOIN public.np_agent_source_release_edges e ON e.site_id=a0.site_id
-            AND e.owner_kind='changeset-approval' AND e.owner_id=a0.id
-          WHERE a0.site_id=c.site_id AND a0.target_kind='changeset'
-            AND a0.target_id=c.id AND a0.target_changeset_id=c.id))
+          WHERE p.site_id=c.site_id AND p.changeset_id=c.id))
     ) INTO bound_owner;
   END IF;
   IF TG_OP='INSERT' AND bound_owner THEN
@@ -304,7 +219,10 @@ BEGIN
       AND previous_body->'actor_deleted_at'='null'::jsonb
       AND next_body->'actor_deleted_at'<>'null'::jsonb
       AND (next_body-'staff_user_id'-'actor_deleted_at')=(previous_body-'staff_user_id'-'actor_deleted_at')
-      AND previous_body->>'operation_kind'='admin';
+      AND EXISTS (SELECT 1 FROM public.np_agent_source_release_edges e
+        WHERE e.site_id=previous_body->>'site_id'
+          AND e.owner_id=(previous_body->>'id')::uuid
+          AND e.owner_kind='admin-invocation');
     IF bound_owner_kind='read-action' AND previous_body->>'run_id' IS NOT NULL
       AND previous_body->>'run_source_release_id' IS NULL
       AND next_body->>'run_id' IS NULL
@@ -344,7 +262,7 @@ BEGIN
           AND e.edge_code='changeset-run'
       ) INTO changeset_detachment;
     END IF;
-    IF NOT audit_metadata_update AND NOT invocation_metadata_update AND NOT approval_metadata_update
+    IF NOT audit_metadata_update AND NOT invocation_metadata_update
       AND NOT action_detachment AND NOT changeset_detachment THEN
       RAISE EXCEPTION USING ERRCODE='23514', MESSAGE='Agent source evidence is immutable.';
     END IF;
@@ -362,8 +280,6 @@ BEGIN
     -- Still reject any new source reference in them; all other bytes are frozen.
     reference_body := jsonb_build_object('actor_user_id',next_body->'actor_user_id',
       'actor_member_id',next_body->'actor_member_id');
-  ELSIF approval_metadata_update THEN
-    reference_body := '{}'::jsonb;
   ELSIF invocation_metadata_update THEN
     reference_body := jsonb_build_object('staff_user_id',next_body->'staff_user_id',
       'actor_deleted_at',next_body->'actor_deleted_at');
@@ -373,39 +289,6 @@ BEGIN
     IF previous_body->>'idempotency_key'=
       'runtime:'||(previous_body->>'run_id')||':'||(previous_body->>'sequence') THEN
       reference_body := reference_body-'idempotency_key';
-    END IF;
-    -- Request-phase projections retain the requester and creator Run identities
-    -- in immutable output. Resolve both exact identities through the closed
-    -- approval receipt; other output UUIDs remain live references.
-    IF previous_body->>'capability_id' IN ('changeset.apply','changeset.schedule')
-      AND previous_body->>'state'='approval_pending'
-      AND previous_body->>'approval_id' IS NULL
-      AND previous_body->'input_canonical'->'approvalId'='null'::jsonb THEN
-      SELECT COALESCE(c.run_id,creator.source_id) INTO retained_creator_run
-        FROM public.np_agent_approvals a
-        JOIN public.np_agent_changesets c ON c.site_id=a.site_id AND c.id=a.target_changeset_id
-        JOIN public.np_agent_source_release_edges e ON e.site_id=a.site_id
-          AND e.owner_kind='changeset-approval' AND e.owner_id=a.id
-          AND e.edge_code='approval-history'
-          AND e.source_release_id=(next_body->>'run_source_release_id')::uuid
-        LEFT JOIN public.np_agent_source_releases creator ON creator.site_id=c.site_id
-          AND creator.id=c.run_source_release_id AND creator.source_kind='runtime-run'
-        WHERE a.site_id=previous_body->>'site_id' AND a.id=CASE WHEN previous_body->'output_redacted'->>'approvalId'
-            ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-            THEN (previous_body->'output_redacted'->>'approvalId')::uuid END
-          AND a.target_kind='changeset' AND a.target_id=c.id
-          AND a.state IN ('rejected','expired') AND c.state='cancelled'
-          AND a.capability_id=previous_body->>'capability_id'
-          AND c.id::text=previous_body->'input_canonical'->>'changeSetId'
-          AND c.id::text=previous_body->'output_redacted'->'changeSet'->>'id';
-      IF retained_creator_run IS NOT NULL THEN
-        IF reference_body->'output_redacted'->>'runId'=previous_body->>'run_id' THEN
-          reference_body := reference_body #- '{output_redacted,runId}';
-        END IF;
-        IF reference_body->'output_redacted'->'changeSet'->>'runId'=retained_creator_run::text THEN
-          reference_body := reference_body #- '{output_redacted,changeSet,runId}';
-        END IF;
-      END IF;
     END IF;
   ELSIF TG_OP='UPDATE' AND NOT changeset_detachment THEN
     -- Looking only at NEW would let a caller erase the final historical UUID.
@@ -441,8 +324,6 @@ BEGIN
         SELECT EXISTS (
           SELECT 1 FROM (
             SELECT id AS changeset_id,site_id FROM public.np_agent_changesets WHERE id=incoming_id
-            UNION ALL SELECT target_changeset_id,site_id FROM public.np_agent_approvals
-              WHERE id=incoming_id AND target_kind='changeset'
             UNION ALL SELECT changeset_id,site_id FROM public.np_agent_changeset_validation_attempts WHERE id=incoming_id
             UNION ALL SELECT changeset_id,site_id FROM public.np_agent_changeset_previews WHERE id=incoming_id
             UNION ALL SELECT p.changeset_id,p.site_id FROM public.np_agent_preview_artifacts child
@@ -468,12 +349,7 @@ BEGIN
         OR EXISTS (SELECT 1 FROM public.np_agent_changeset_previews p
           JOIN public.np_agent_source_release_edges e ON e.site_id=p.site_id
             AND e.owner_kind='changeset-preview' AND e.owner_id=p.id
-          WHERE p.site_id=c.site_id AND p.changeset_id=c.id)
-        OR EXISTS (SELECT 1 FROM public.np_agent_approvals a
-          JOIN public.np_agent_source_release_edges e ON e.site_id=a.site_id
-            AND e.owner_kind='changeset-approval' AND e.owner_id=a.id
-          WHERE a.site_id=c.site_id AND a.target_kind='changeset'
-            AND a.target_id=c.id AND a.target_changeset_id=c.id))
+          WHERE p.site_id=c.site_id AND p.changeset_id=c.id))
         ) INTO has_released_reference;
       END IF;
       EXIT WHEN has_released_reference;
@@ -501,123 +377,3 @@ BEGIN
 END
 $np$;
 `;
-
-function identifier(value: string): string {
-  if (!/^[a-z_][a-z0-9_]*$/u.test(value)) throw new Error("Invalid reference guard table.");
-  return `"${value}"`;
-}
-
-function literal(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`;
-}
-
-/** Compare persisted bodies as well as names: CREATE OR REPLACE keeps the OID. */
-function expectedFunctionRows(): string {
-  const definitions = [
-    ...NP_AGENT_REFERENCE_FENCE_SQL_V5.matchAll(
-      /CREATE OR REPLACE FUNCTION public\.([a-z0-9_]+)\(\)\nRETURNS (void|trigger)[^$]+\$np\$([\s\S]*?)\$np\$;/gu,
-    ),
-  ];
-  if (definitions.length !== 4) throw new Error("Invalid reference guard function inventory.");
-  return definitions
-    .map(
-      (definition) =>
-        `(${literal(definition[1])},${literal(definition[2])},${literal(definition[3])})`,
-    )
-    .join(",");
-}
-
-/** Called only by reviewed migrations with the canonical table inventory. */
-export function npAgentReferenceFenceTriggersSqlV1(tableName: string): string {
-  const table = `public.${identifier(tableName)}`;
-  if (tableName === "np_agent_reference_fence") throw new Error("Cannot guard the fence itself.");
-  const receipt = ["np_agent_source_releases", "np_agent_source_release_edges"].includes(tableName);
-  return `CREATE OR REPLACE TRIGGER np_agent_reference_statement_v1
-BEFORE INSERT OR UPDATE OR DELETE ON ${table}
-FOR EACH STATEMENT EXECUTE FUNCTION public.np_agent_reference_statement_v1();
-CREATE OR REPLACE TRIGGER np_agent_reference_row_v1
-BEFORE INSERT OR UPDATE OR DELETE ON ${table}
-FOR EACH ROW EXECUTE FUNCTION public.np_agent_reference_row_v1();${
-    receipt
-      ? `
-DROP TRIGGER IF EXISTS np_agent_reference_receipt_delete_v1 ON ${table};
-CREATE CONSTRAINT TRIGGER np_agent_reference_receipt_delete_v1
-AFTER DELETE ON ${table} DEFERRABLE INITIALLY DEFERRED
-FOR EACH ROW EXECUTE FUNCTION public.np_agent_reference_receipt_delete_v1();`
-      : ""
-  }`;
-}
-
-/**
- * One atomic pg-boss-owned statement, after its journal/queue creation. It does
- * nothing on an older CMS schema and never creates the journal or framework
- * tables. Parent row guards protect later partitions before this installer
- * supplies their missing statement guards.
- */
-export const NP_AGENT_JOB_REFERENCE_FENCE_INSTALL_SQL_V1 = `DO $np$
-DECLARE target record;
-BEGIN
-  IF to_regclass('public.np_agent_reference_fence') IS NULL OR
-    to_regprocedure('public.np_agent_reference_row_v1()') IS NULL OR
-    to_regclass('pgboss.job') IS NULL THEN RETURN; END IF;
-  LOCK TABLE pgboss.job IN SHARE ROW EXCLUSIVE MODE;
-  CREATE OR REPLACE TRIGGER np_agent_reference_row_v1
-    BEFORE INSERT OR UPDATE OR DELETE ON pgboss.job
-    FOR EACH ROW EXECUTE FUNCTION public.np_agent_reference_row_v1();
-  FOR target IN
-    WITH RECURSIVE family AS (
-      SELECT 'pgboss.job'::regclass::oid AS id
-      UNION SELECT i.inhrelid FROM pg_inherits i JOIN family f ON i.inhparent=f.id
-    ) SELECT n.nspname, c.relname FROM family f
-      JOIN pg_class c ON c.oid=f.id JOIN pg_namespace n ON n.oid=c.relnamespace
-      ORDER BY c.oid
-  LOOP
-    EXECUTE format('CREATE OR REPLACE TRIGGER np_agent_reference_statement_v1
-      BEFORE INSERT OR UPDATE OR DELETE ON %I.%I FOR EACH STATEMENT
-      EXECUTE FUNCTION public.np_agent_reference_statement_v1()', target.nspname, target.relname);
-  END LOOP;
-END
-$np$;`;
-
-/** Caller first checks relation readiness; maintenance also locks job topology. */
-export function npAgentReferenceFenceCoverageSqlV1(tableNames: readonly string[]): string {
-  if (!tableNames.length) throw new Error("Reference guard inventory must not be empty.");
-  for (const name of tableNames) identifier(name);
-  const rows = [...new Set(tableNames)].map((name) => `('public.${name}')`).join(",");
-  return `WITH RECURSIVE job_family AS (
-  SELECT to_regclass('pgboss.job')::oid AS id
-  UNION SELECT i.inhrelid FROM pg_inherits i JOIN job_family f ON i.inhparent=f.id
-), expected AS (
-  SELECT to_regclass(name)::oid AS id FROM (VALUES ${rows}) ordinary(name)
-  UNION SELECT id FROM job_family WHERE id IS NOT NULL
-), missing AS (
-  SELECT 1 FROM expected e CROSS JOIN (VALUES
-    ('np_agent_reference_statement_v1',30),('np_agent_reference_row_v1',31)
-  ) required(name,bits)
-  WHERE e.id IS NULL OR NOT EXISTS (
-    SELECT 1 FROM pg_trigger t WHERE t.tgrelid=e.id AND t.tgname=required.name
-      AND t.tgtype=required.bits AND t.tgenabled IN ('O','A')
-      AND t.tgfoid=to_regprocedure('public.'||required.name||'()')
-  )
-  UNION ALL SELECT 1 WHERE NOT EXISTS (
-    SELECT 1 FROM public.np_agent_reference_fence WHERE id=1 AND epoch>=0
-  )
-  UNION ALL SELECT 1 FROM (VALUES ${expectedFunctionRows()}) functions(name,result,body)
-  WHERE NOT EXISTS (
-    SELECT 1 FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang
-    WHERE p.oid=to_regprocedure('public.'||functions.name||'()')
-      AND p.prosrc=functions.body AND p.prorettype=to_regtype(functions.result)
-      AND p.provolatile='v' AND p.prokind='f' AND NOT p.prosecdef
-      AND NOT p.proleakproof AND p.proparallel='u' AND l.lanname='plpgsql'
-      AND p.proconfig=ARRAY['search_path=pg_catalog, public']::text[]
-  )
-  UNION ALL SELECT 1 FROM (VALUES
-    ('public.np_agent_source_releases'),('public.np_agent_source_release_edges')
-  ) receipts(name) WHERE NOT EXISTS (
-    SELECT 1 FROM pg_trigger t WHERE t.tgrelid=to_regclass(receipts.name)
-      AND t.tgname='np_agent_reference_receipt_delete_v1' AND t.tgtype=9
-      AND t.tgenabled IN ('O','A') AND t.tgdeferrable AND t.tginitdeferred
-      AND t.tgfoid=to_regprocedure('public.np_agent_reference_receipt_delete_v1()')
-  )
-) SELECT count(*)::text AS missing_count FROM missing`;
-}

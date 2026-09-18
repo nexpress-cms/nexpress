@@ -1,59 +1,68 @@
 # Current work handoff
 
-Observed on 2026-09-18 KST. Validated cancelled proposal source retention is
-implemented and verified. Verify Git state before continuing.
+Observed after local acceptance of closed-approval source retention on 2026-09-18 KST.
+Verify Git state and current verification logs before continuing.
 
 ## Objective and authorization
 
-- User authorized extending cancelled/expired proposal source retention through
-  completed Runtime validation/preview evidence, with self-review and verification.
-- User authorized committing, pushing and merging this bundle, then choosing
-  the next task. Implementation of the next bundle needs a fresh instruction.
-- Preserve versions, changesets and lockfile. Necessary generated migrations are
-  allowed after review. No real provider calls, new credentials, automatic
-  Runtime/provider/worker activation or publishing. Do not merge Version PR #1366.
-- Keep related work bundled; do not directly push main or bypass PR rules.
+- User authorized implementing the next coherent bundle after PR #1454 merged.
+- Current scope: release eligible cancelled/expired Runtime proposal source Runs
+  with rejected or never-approved expired approval history, preserving evidence,
+  current ACLs and consumed replay keys. Implementation and local acceptance are complete.
+- User authorized committing, opening a PR and squash-merging this bundle after
+  checks pass, then choosing the next task. Next implementation is not started.
+- Preserve package versions, changesets and lockfile. Necessary generated
+  migrations are allowed. No provider calls, new credentials, automatic
+  Runtime/provider/worker activation or publishing.
+- Do not merge Version PR #1366 or directly push main.
 
 ## Observed checkout
 
-- Worktree: `/Users/baesw/development/nexpress-validated-changeset-retention`.
-- Branch: `codex/validated-changeset-retention`; baseline
-  `73975c8275ddd5d9507a6d6e08f1f6b93a3f1bbd` (PR #1453).
-- This implementation is being committed for PR/merge. The primary main
-  checkout's local post-merge handoff remains preserved. Verify live PR status.
-- PR #1453 exact-head CI passed four checks; merge-head CI `35305723238` and
-  Release `35305723240` subsequently passed.
+- Worktree: `/Users/baesw/development/nexpress-closed-approval-retention`.
+- Branch: `codex/closed-approval-retention`; baseline/HEAD `9acdc097` (PR #1454).
+- Pending changes belong to this bundle; no commit yet.
+- Primary `/Users/baesw/development/nexpress` remains on main with its local
+  documentation-only handoff pointing here. It does not contain this implementation.
+- Prior PR #1454 exact-head CI `35320481161` passed all four checks. Merge-head
+  Release `35322467080` passed. CI `35322467082` passed on attempt 2 after
+  rerunning the PostgreSQL job that hit its 30-minute limit on attempt 1.
 
 ## Implementation and evidence
 
-- Shared `changeset-plan-evidence.ts` preserves existing projection integrity;
-  `cancelled-changeset-lifecycle.ts` verifies bounded Runtime producer evidence
-  and selects receipt edges independently for each source Run.
-- `cancelled-preview-evidence.ts` proves frozen contracts/routes/manifests,
-  resolved storage receipts and terminal session/skew fences without I/O.
-- Source release, historical reads, current Activity ACLs and Doctor reuse these
-  owners. V4 guards freeze cross-requester evidence and reject late writes/jobs.
-- Generated migrations 0056/0057 add two indexes, widen edge checks and install
-  V4 guards. Earlier migration bytes and V1/V2/V3 SQL are preserved.
-- Acceptance: 113 workspace tasks, 41 lint scopes, Core unit 2,078;
-  PostgreSQL Core 64 and Web 1,439 ordinary cases across full/corrected runs;
-  Redis 16, native preview 1, production browser 73, packed scaffold 40/60.
-- Full Web run had 19 failures plus one optional native skip. Six affected files
-  passed all 61 cases sequentially; native was separately enabled and passed.
-  Sites-registry fixture isolation was fixed; other failures were timeouts and
-  subsequent cleanup deadlocks. No timeout or product budget was increased.
-- [Reference matrix and full evidence](../design/agentic-platform/r5-runtime-retention-flow.md#validated-cancelled-proposal-source-reference-matrix)
-  own the detailed scope, self-review and verification limitations.
-- Logs/scripts: `/tmp/np-validated-retention-*`; fresh scaffold:
-  `/tmp/nexpress-validated-retention-scaffold`. Browser media is preserved in
-  `/tmp/np-validated-retention-browser-media`.
+- [Retention flow](../design/agentic-platform/r5-runtime-retention-flow.md) owns
+  the reference matrix and detailed acceptance evidence.
+- Shared lifecycle/attribution proofs validate actual Runtime request projections
+  and closed approval statements/decisions. MAC authentication stays with the
+  approval owner; retention does not grant authority or erase original evidence.
+- Creator/requester Runs have independent receipts. Current item ACLs, replay
+  denial and bounded unknown-reference/active-job blocking remain.
+- Existing proposal expiry now includes rejected proposals while retaining its
+  active/consumed approval blocker. No cancellation contract expansion.
+- V5 guards freeze approval/request/decision/audit evidence and allow only exact
+  verified Run-locator detachment and existing nullable user metadata cleanup.
+- Generated migrations 0058/0059 widen two edge CHECKs and install V5; earlier
+  SQL/snapshots and V1–V4 bodies remain unchanged.
+- Workspace verification: 113 tasks, including Core 2,098 unit tests. PostgreSQL:
+  Core 64 and Web 1,449 passed (theme included); skipped native preview passed
+  separately (1). Redis 16 and production browser 73 passed.
+- Packed scaffold: 40 packages / 60 stages, five runtime script probes; no skips.
+  Full lint: 41 tasks. Full format check and final diff check passed.
+- Focused pure checks 97; generator 11; SQL protocol 28; existing approval resume
+  regression 8; five new actual-producer PostgreSQL journeys passed again after
+  the final request-discovery refinement. Final workspace verification also passed.
+- Actual producer probes corrected rejected-proposal expiry, exact request masks
+  (`approval_id=NULL`, input `approvalId:null`, no `mode`) and independent creator/
+  requester evidence. Self-review corrected complete Runtime authority checks.
+- Temporary verification wrapper/process interruptions are documented in the flow;
+  completed test results were preserved and remaining gates resumed separately.
+  Logs: `/tmp/np-closed-approval-*`; scaffold: `/tmp/nexpress-closed-approval-scaffold`.
 
-## Remaining boundary and next action
+## Next boundary
 
-- Finish the authorized PR/merge using squash after exact-head CI.
-- Earlier ready generations without their canonical plan, independent preview
-  Run/job references, and reserved failed previews without a successful manifest
-  remain pinned. Active/unresolved work, unknown references and all
-  approval/execution/rollback history remain protected. Full R5 stays open.
-- After a later authorized merge, replace this handoff and choose the next
-  coherent boundary in a fresh task; do not silently widen retention ownership.
+- Local implementation, self-review and required verification are complete.
+- Complete the authorized PR/merge after exact-head CI, then refresh this handoff.
+- Active/approved/consumed/revoked approvals, execution/rollback, unsupported
+  request producers and unavailable historical generations remain pinned.
+- General evidence pruning and full R5 acceptance are not completed by this slice.
+- After a user-authorized merge, refresh this file and use a fresh thread for the
+  next requested bundle.

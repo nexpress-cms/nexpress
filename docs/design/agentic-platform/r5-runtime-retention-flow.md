@@ -14,7 +14,7 @@ Runtime control/quota lock and fences site deletion. It does not authorize any
 capability or infer an external outcome.
 
 In this matrix, a retained reference keeps its source unless its exact owning
-audit/read contract has handed it off to a verified source-release receipt.
+historical contract has handed it off to a verified source-release receipt.
 Only the allowlisted historical paths below receive that exception; other
 literal occurrences continue to pin the source.
 
@@ -93,10 +93,9 @@ input, with a receipt pointer replacing the live Run locator. Consumed Run
 admission keys remain unavailable after deletion. A persisted global epoch and
 reference-ingress guards prevent late writers from resurrecting references.
 
-Unknown/global audit, malformed evidence, active work, mutation Actions outside
-the cancelled draft-create owner below, approvals and rollback owners still pin
-their sources. There is no normal audit
-pruning service. More than 100 matching owners in a single table conservatively
+Unknown/global audit, malformed evidence, active work, mutation and approval
+histories outside the bounded cancelled-proposal owners below, and execution/rollback
+owners still pin their sources. There is no normal audit pruning service. More than 100 matching owners in a single table conservatively
 retain a source. Structured manual input now lives on its owning Run: execution-integrity checks
 verify the stored payload against its admission-bound digest before source release.
 The payload expires only with eligible Run deletion; it is absent from release
@@ -356,3 +355,84 @@ lifecycle Run/job references, reserved failed previews without a successful
 manifest, unresolved effects, active work and approval/execution/rollback history
 remain pinned. This completes the bounded extension, not general evidence
 pruning or full R5 acceptance.
+
+## Closed, never-approved proposal source reference matrix
+
+This bounded extension covers cancelled/expired Runtime proposals whose apply or
+schedule request was rejected, or expired without an approval decision. It retains
+all canonical approval and request evidence and grants no execution authority.
+The existing proposal expiry owner also closes rejected proposals after their
+expiry; active or consumed approvals continue to block that transition.
+
+| Owner                                                            | Required proof or blocker                                                                                           | Retained evidence                                                          |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Approval                                                         | Rejected or expired without an approve decision; elapsed expiry; cleared challenge; no consumption/revocation       | Complete statement/decision, MAC/key bytes, fingerprints and digests       |
+| Runtime apply/schedule request                                   | Exact original request, descriptor, Action and invocation projections; source Run terminal; replay deadline elapsed | Original `approval_pending` Action state, request keys and audit           |
+| Creator/requester Runs                                           | Each independently proved; only recognized producer paths exempted                                                  | Separate source receipts and `changeset-approval / approval-history` edges |
+| Plan, validation and preview                                     | Existing current-generation proof and completed cleanup                                                             | Existing canonical plan, snapshots, preview and cleanup evidence           |
+| Approval user metadata                                           | Only old value to NULL is allowed after release                                                                     | Immutable requester/decider fingerprints remain                            |
+| Active/approved/consumed/revoked approval, execution or rollback | No source release under this owner                                                                                  | All live references and evidence remain pinned                             |
+| Unknown producer, literal reference or active job                | No blanket approval or JSON exemption                                                                               | Source remains pinned; late related writes/jobs rejected                   |
+
+The historical proof checks canonical structure, digests and producer bindings; it
+does not authenticate MACs or authorize an operation. MAC authentication remains
+with the existing approval service. Original MAC bytes and complete evidence rows
+are frozen once any related source is released. Staff-created requests and action-
+target approvals without this Runtime producer proof remain outside this owner.
+
+## Closed, never-approved proposal source acceptance (2026-09-18 KST)
+
+Cleanup, historical reads and Doctor share the bounded closed-approval lifecycle
+proof. Both the original request capability and its complete pending approval
+summary must match retained evidence. Request discovery uses the owning operation
+and ChangeSet result binding protected by V5; an unrelated capability mentioning
+an approval ID cannot redefine historical proof. Staff decision journals remain
+separate from Runtime request Actions. Historical MAC bytes are retained; the existing
+approval service still authenticates them on reads.
+
+Self-review and actual producer journeys corrected rejected-proposal expiry,
+request projections with a null Action approval locator, and distinct creator/
+requester Run references in immutable output. V5 permits only their exact proved
+locator transition. Doctor now checks a live Runtime invocation against its
+complete Run authority reference, while detached requests use the complete
+receipt/edge verifier. Gateway invocation binding remains unchanged.
+
+Five actual PostgreSQL journeys cover rejected and never-approved expired
+requests, original evidence and current ACLs, consumed keys and no execution,
+authority/request tampering, unknown references, approval-only active and late
+jobs, concurrent cleanup, previously approved expiry pinning and independent
+creator/requester releases. They passed after the final authority-consistency
+regression. The unchanged default approval fixture also passed its eight existing
+resume cases. No provider was invoked and no execution was created.
+
+Final local verification used the changed worktree, with package versions,
+changesets and the lockfile unchanged. Generated migrations 0058/0059 widen the
+two release-edge CHECK constraints and install V5. Older migrations, snapshots
+and frozen V1–V4 bodies remain unchanged.
+
+- Workspace verification: 113 tasks; Core unit tests: 2,098.
+- PostgreSQL: Core 64 and Web 1,449 passed, including theme coverage. The ordinary
+  suite skipped native preview, which passed separately with browser preview enabled (1).
+- Final focused closed-approval PostgreSQL journeys: 5 passed after the last
+  request-discovery refinement; existing approval-resume regression: 8 passed.
+- Pure focused checks: 97; migration generator: 11; SQL reference protocol: 28.
+- Redis: 16; production browser: 73.
+- Packed scaffold: 40 packages / 60 stages, including seven generated extensions
+  and five runtime script probes; no skipped stages. Unreachable-database probes
+  intentionally accept connection failure while rejecting module-resolution errors.
+- Full lint: 41 tasks; full formatting and final `git diff --check` passed.
+
+The full PostgreSQL test command completed all 37 tasks successfully. Its temporary
+shell wrapper then failed because the wrapper file had been edited while it was
+running; this was not an application-test failure. Remaining gates were resumed
+separately. After the final request-discovery refinement, workspace verification
+and all five affected PostgreSQL journeys passed again. A later process
+interruption lost the scaffold build exit status, so that build and its remaining
+checks were resumed without repacking or reinstalling the already verified packages.
+Detailed logs are under `/tmp/np-closed-approval-*`; the isolated scaffold and its
+step results are under `/tmp/nexpress-closed-approval-scaffold`.
+
+Active, approved, consumed or revoked approvals, execution/rollback evidence,
+unsupported request producers and unavailable historical generations remain
+pinned. This acceptance covers only this bounded retention extension; general
+evidence pruning and full R5 acceptance remain open.

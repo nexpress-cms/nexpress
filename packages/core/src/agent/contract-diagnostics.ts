@@ -744,10 +744,22 @@ const ISSUE_SUMMARY_SQL = `
         left join public.np_agent_invocations invocation on invocation.id=action.invocation_id
         left join public.np_agent_runs run on run.id=action.run_id
        where action.capability_id in ('changeset.apply','changeset.schedule','changeset.rollback')
+         -- Retained request projections are checked by the complete lifecycle/edge
+         -- verifier below; they deliberately preserve their original pending state.
+         and not (action.run_id is null and action.run_source_release_id is not null
+           and action.capability_id in ('changeset.apply','changeset.schedule')
+           and action.state='approval_pending')
          and (invocation.id is null or run.id is null
            or invocation.site_id<>action.site_id or run.site_id<>action.site_id
            or invocation.operation_kind<>'capability' or invocation.operation_id<>action.capability_id
-           or invocation.run_id is distinct from run.id or run.invocation_id is distinct from invocation.id
+           or invocation.run_id is distinct from run.id
+           or (run.origin<>'runtime' and run.invocation_id is distinct from invocation.id)
+           or (run.origin='runtime' and (
+             invocation.authority_ref is distinct from jsonb_build_object(
+               'kind','runtime-run','runId',run.id::text,'principalId',run.principal_id::text,
+               'agentVersionId',run.agent_version_id::text,
+               'deadlineAt',to_char(run.deadline_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+             or invocation.authorization_context_body->'authorityRef' is distinct from invocation.authority_ref))
            or run.principal_id is distinct from invocation.principal_id
            or action.invocation_fingerprint is distinct from invocation.request_hash
            or action.run_fingerprint is distinct from run.admission_fingerprint
@@ -782,6 +794,7 @@ const ISSUE_SUMMARY_SQL = `
             or (e.owner_kind in ('read-invocation','changeset-invocation') and not exists (select 1 from public.np_agent_invocations i where i.id=e.owner_id and i.site_id=e.site_id))
             or (e.owner_kind='changeset-audit' and not exists (select 1 from public.np_audit_events a where a.id=e.owner_id and a.site_id=e.site_id))
             or (e.owner_kind='changeset-source' and not exists (select 1 from public.np_agent_changesets c where c.id=e.owner_id and c.site_id=e.site_id and c.run_source_release_id=e.source_release_id))
+            or (e.owner_kind='changeset-approval' and (e.edge_code<>'approval-history' or not exists (select 1 from public.np_agent_approvals a where a.id=e.owner_id and a.site_id=e.site_id and a.target_kind='changeset' and a.state in ('rejected','expired'))))
             or (e.owner_kind='changeset-validation' and (e.edge_code<>'validation-authority-run' or not exists (select 1 from public.np_agent_changeset_validation_attempts v where v.id=e.owner_id and v.site_id=e.site_id and v.authority_ref->>'runId'=r.source_id::text and v.authority_ref->>'kind'='runtime-run')))
             or (e.owner_kind='changeset-preview' and (e.edge_code<>'preview-authority-run' or not exists (select 1 from public.np_agent_changeset_previews p where p.id=e.owner_id and p.site_id=e.site_id and p.authority_ref->>'runId'=r.source_id::text and p.authority_ref->>'kind'='runtime-run')))
         union all select c.created_at from public.np_agent_changesets c
@@ -795,7 +808,7 @@ const ISSUE_SUMMARY_SQL = `
             or not exists (select 1 from public.np_agent_source_release_edges e
               where e.site_id=c.site_id and e.source_release_id=r.id and e.owner_id=c.id
                 and e.owner_kind='changeset-source' and e.edge_code='changeset-run')
-            or exists (select 1 from public.np_agent_approvals p where p.site_id=c.site_id and (p.target_id=c.id or p.target_changeset_id=c.id))
+            or exists (select 1 from public.np_agent_approvals p where p.site_id=c.site_id and (p.target_id=c.id or p.target_changeset_id=c.id) and not exists (select 1 from public.np_agent_source_release_edges e where e.site_id=p.site_id and e.source_release_id=r.id and e.owner_id=p.id and e.owner_kind='changeset-approval' and e.edge_code='approval-history'))
             or exists (select 1 from public.np_agent_changeset_executions x where x.site_id=c.site_id and x.changeset_id=c.id)
             or exists (select 1 from public.np_agent_changeset_rollback_plans p where p.site_id=c.site_id and p.changeset_id=c.id)
             or exists (select 1 from public.np_agent_changeset_rollback_operations o where o.site_id=c.site_id and o.changeset_id=c.id)
@@ -1392,9 +1405,13 @@ async function collectReleasedAttributionIssues(
           deadlineAt: body.deadlineAt,
         };
         if (
-          ["changeset.create", "changeset.validate", "changeset.preview"].includes(
-            action.capabilityId,
-          )
+          [
+            "changeset.create",
+            "changeset.validate",
+            "changeset.preview",
+            "changeset.apply",
+            "changeset.schedule",
+          ].includes(action.capabilityId)
         ) {
           type LifecycleInput = Parameters<typeof npReadCancelledChangeSetLifecycleV1>[0];
           const changeSet = decodeDiagnosticRecord(

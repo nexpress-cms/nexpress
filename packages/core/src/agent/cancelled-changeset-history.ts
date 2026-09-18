@@ -88,18 +88,24 @@ export async function npReadCancelledChangeSetReleaseV1(input: {
 
 export async function npResolveReleasedActionPrincipalV1(input: { db: Db; action: Action }) {
   const a = input.action;
-  if (!["changeset.create", "changeset.validate", "changeset.preview"].includes(a.capabilityId))
+  if (
+    ![
+      "changeset.create",
+      "changeset.validate",
+      "changeset.preview",
+      "changeset.apply",
+      "changeset.schedule",
+    ].includes(a.capabilityId)
+  )
     return npResolveReleasedAgentActionPrincipalV1(input);
-  if (!a.runSourceReleaseId || typeof a.outputRedacted?.changeSetId !== "string") return null;
+  const changeSetId = ["changeset.apply", "changeset.schedule"].includes(a.capabilityId)
+    ? a.inputCanonical.changeSetId
+    : a.outputRedacted?.changeSetId;
+  if (!a.runSourceReleaseId || typeof changeSetId !== "string") return null;
   const [c] = await input.db
     .select()
     .from(npAgentChangesets)
-    .where(
-      and(
-        eq(npAgentChangesets.siteId, a.siteId),
-        eq(npAgentChangesets.id, a.outputRedacted.changeSetId),
-      ),
-    )
+    .where(and(eq(npAgentChangesets.siteId, a.siteId), eq(npAgentChangesets.id, changeSetId)))
     .limit(1);
   if (!c) return null;
   const result = await history(input.db, c, a.runSourceReleaseId);
