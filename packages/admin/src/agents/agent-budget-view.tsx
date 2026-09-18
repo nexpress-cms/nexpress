@@ -76,14 +76,19 @@ export function AgentBudgetView() {
     }
   };
   return (
-    <AgentStudioFrame active="budgets">
+    <AgentStudioFrame
+      active="budgets"
+      busy={runtime.loading || budget.loading}
+      refreshing={runtime.refreshing || budget.refreshing}
+      observedAt={runtime.observedAt}
+    >
       <div className="flex flex-wrap justify-between gap-3">
         <h2 className="text-lg font-semibold">Budgets and Runtime operations</h2>
         <Button variant="outline" onClick={refresh}>
           Refresh
         </Button>
       </div>
-      <RuntimeNotice loading={runtime.loading} error={runtime.error} />
+      <RuntimeNotice loading={false} error={runtime.error} />
       {status ? (
         <Card>
           <CardHeader>
@@ -207,7 +212,7 @@ export function AgentBudgetView() {
           </CardContent>
         </Card>
       ) : null}
-      <RuntimeNotice loading={budget.loading} error={budget.error} />
+      <RuntimeNotice loading={false} error={budget.error} />
       {budget.value ? (
         <Card>
           <CardHeader>
@@ -244,7 +249,7 @@ export function AgentBudgetView() {
             </Button>
             {editing ? (
               <SiteBudgetEditor
-                key={budget.value.rowVersion}
+                key={`${budget.value.rowVersion}:${budget.generation}`}
                 current={budget.value}
                 onSaved={() => {
                   setEditing(false);

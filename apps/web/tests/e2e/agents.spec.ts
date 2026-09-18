@@ -276,7 +276,7 @@ test.describe("Agent Activity", () => {
       id,
       siteId: "default",
       kind: "external",
-      name: "Activity principal fixture",
+      name: "지역화된긴운영주체이름".repeat(8),
       description: null,
       status: "active",
       scopes: ["site:read"],
@@ -294,12 +294,15 @@ test.describe("Agent Activity", () => {
       updatedAt: "2026-09-01T00:00:00.000Z",
       revokedAt: null as string | null,
     };
+    let invalid = false;
     const commands: Array<Record<string, unknown>> = [];
     await page.route(`**/api/admin/agents/gateway/principals/${id}**`, async (route) => {
       const operation = new URL(route.request().url()).pathname.split("/").at(-1);
       if (route.request().method() === "GET") {
         await route.fulfill({
-          json: { schemaVersion: "np.agent-studio-principal-detail.v1", principal, tokens: [] },
+          json: invalid
+            ? { privateField: "PRIVATE_PRINCIPAL_PAYLOAD" }
+            : { schemaVersion: "np.agent-studio-principal-detail.v1", principal, tokens: [] },
         });
       } else {
         const command = route.request().postDataJSON() as Record<string, unknown>;
@@ -317,6 +320,11 @@ test.describe("Agent Activity", () => {
     });
     await signInViaForm(page);
     await page.goto(`/admin/agents/gateway/${id}`);
+    await page.setViewportSize({ width: 320, height: 900 });
+    await expect(page.getByRole("heading", { name: principal.name, exact: true })).toBeVisible();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
     await page.getByRole("button", { name: "Suspend principal", exact: true }).click();
     await page.getByLabel("Reason", { exact: true }).fill("Review access");
     await page.getByRole("button", { name: "Confirm", exact: true }).click();
@@ -336,6 +344,15 @@ test.describe("Agent Activity", () => {
       "Retire access",
     ]);
     expect(new Set(commands.map((command) => command.idempotencyKey)).size).toBe(3);
+    await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+    invalid = true;
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
+    await expect(page.getByRole("heading", { name: principal.name, exact: true })).toHaveCount(0);
+    await expect(page.getByText("PRIVATE_PRINCIPAL_PAYLOAD")).toHaveCount(0);
+    invalid = false;
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(page.getByRole("heading", { name: principal.name, exact: true })).toBeVisible();
   });
 });
 

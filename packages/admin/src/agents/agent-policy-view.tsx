@@ -37,7 +37,12 @@ export function AgentPolicyListView({ query = "" }: { query?: string }) {
     policyPage,
   );
   return (
-    <AgentStudioFrame active="policies">
+    <AgentStudioFrame
+      active="policies"
+      busy={state.loading}
+      refreshing={state.refreshing}
+      observedAt={state.observedAt}
+    >
       <div className="flex flex-wrap justify-between gap-3">
         <h2 className="text-lg font-semibold">Policies</h2>
         <div className="flex gap-2">
@@ -77,7 +82,7 @@ export function AgentPolicyListView({ query = "" }: { query?: string }) {
           Apply policy filter
         </Button>
       </form>
-      <RuntimeNotice loading={state.loading} error={state.error} />
+      <RuntimeNotice loading={false} error={state.error} />
       {state.value?.items.length === 0 ? <p>No policies match this view.</p> : null}
       <div className="grid gap-4 md:grid-cols-2">
         {state.value?.items.map((policy) => (
@@ -118,9 +123,14 @@ export function AgentPolicyListView({ query = "" }: { query?: string }) {
 export function AgentPolicyCreateView({ agentId }: { agentId?: string }) {
   const catalog = useRuntimeResource(runtimeCatalogPath, npRequireAgentRuntimeStudioCatalogV1);
   return (
-    <AgentStudioFrame active="policies">
+    <AgentStudioFrame
+      active="policies"
+      busy={catalog.loading}
+      refreshing={catalog.refreshing}
+      observedAt={catalog.observedAt}
+    >
       <h2 className="text-lg font-semibold">Create policy draft</h2>
-      <RuntimeNotice loading={catalog.loading} error={catalog.error} />
+      <RuntimeNotice loading={false} error={catalog.error} />
       {catalog.value ? (
         <PolicyEditor
           catalog={catalog.value}
@@ -305,11 +315,16 @@ export function AgentPolicyDetailView({ id }: { id: string }) {
     }
   };
   return (
-    <AgentStudioFrame active="policies">
+    <AgentStudioFrame
+      active="policies"
+      busy={state.loading || catalog.loading}
+      refreshing={state.refreshing}
+      observedAt={state.observedAt}
+    >
       <Link className="text-sm underline" href="/admin/agents/policies">
         Back to policies
       </Link>
-      <RuntimeNotice loading={state.loading} error={state.error} />
+      <RuntimeNotice loading={false} error={state.error} />
       {policy ? (
         <>
           <h2 className="text-lg font-semibold">{policy.definition.name}</h2>
@@ -357,7 +372,7 @@ export function AgentPolicyDetailView({ id }: { id: string }) {
           </div>
           {catalog.value && (editing || duplicate) ? (
             <PolicyEditor
-              key={`${policy.id}:${policy.rowVersion}:${duplicate}`}
+              key={`${policy.id}:${policy.rowVersion}:${duplicate}:${state.generation}`}
               initial={policy.definition}
               catalog={catalog.value}
               current={duplicate ? undefined : policy}
@@ -445,7 +460,7 @@ export function AgentPolicyDetailView({ id }: { id: string }) {
           !duplicate &&
           policy.availableActions.includes("agents.policies.simulate") ? (
             <AgentPolicySimulation
-              key={`${policy.id}:${policy.rowVersion}`}
+              key={`${policy.id}:${policy.rowVersion}:${state.generation}`}
               policy={policy}
               onAccessLost={state.clear}
             />

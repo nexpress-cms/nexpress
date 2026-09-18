@@ -1,7 +1,15 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { npRequireAgentApprovalDetailV1 } from "@nexpress/core/agent-contract";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
+/** Follow the real tab order without assigning DOM focus. */
+async function tabTo(page: Page, control: Locator) {
+  for (let steps = 0; steps < 60; steps++) {
+    if (await control.evaluate((element) => element === document.activeElement)) return;
+    await page.keyboard.press("Tab");
+  }
+  await expect(control).toBeFocused();
+}
 const id = "21111111-1111-4111-8111-111111111111";
 const hash = `cj1:sha256:${"a".repeat(43)}`;
 function item(state: "pending" | "approved" = "pending", version = 1) {
@@ -145,15 +153,33 @@ test.describe("Agent approval review", () => {
       await route.fulfill({ json: detail(approved ? "approved" : "pending", approved ? 3 : 1) });
     });
     await page.goto(`/admin/agents/approvals/${id}`);
-    await page.getByRole("button", { name: "Approve", exact: true }).click();
+    const approve = page.getByRole("button", { name: "Approve", exact: true });
+    await tabTo(page, approve);
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("heading", { name: "Approve approval", exact: true }),
+    ).toBeFocused();
     const confirm = page.getByRole("button", { name: "Confirm approve", exact: true });
     await expect(confirm).toBeDisabled();
-    await page.getByLabel("Type this one-time confirmation value").fill(code);
-    await page.getByLabel("Human reason (optional)").fill("Reviewed exact plan");
-    await confirm.click();
+    await page.keyboard.press("Tab");
+    const challenge = page.getByLabel("Type this one-time confirmation value");
+    await expect(challenge).toBeFocused();
+    await expect(challenge).toHaveAccessibleDescription(code);
+    await page.keyboard.type(code);
+    await page.keyboard.press("Tab");
+    await expect(page.getByLabel("Human reason (optional)")).toBeFocused();
+    await page.keyboard.type("Reviewed exact plan");
+    await tabTo(page, confirm);
+    await page.keyboard.press("Enter");
+    const uncertain = page
+      .getByRole("alert")
+      .filter({ hasText: "The decision response is uncertain." });
+    await expect(uncertain).toHaveCount(1);
+    await expect(uncertain).toBeFocused();
     await expect(page.getByLabel("Human reason (optional)")).toBeDisabled();
     await expect(confirm).toBeEnabled();
-    await confirm.click();
+    await tabTo(page, confirm);
+    await page.keyboard.press("Enter");
     await expect(page.getByText("approved", { exact: true })).toBeVisible();
     expect(commands).toHaveLength(3);
     expect(commands[2]).toEqual(commands[1]);
@@ -377,7 +403,14 @@ test.describe("Agent approval review", () => {
       await route.fulfill({ json: detail("pending", version) });
     });
     await page.goto(`/admin/agents/approvals/${id}`);
-    await page.getByRole("button", { name: "Reject", exact: true }).click();
+    const reject = page.getByRole("button", { name: "Reject", exact: true });
+    await tabTo(page, reject);
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { name: "Reject approval", exact: true })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(reject).toBeFocused();
+    await page.keyboard.press("Enter");
     await page.getByLabel("Type this one-time confirmation value").fill(code);
     await page.getByRole("button", { name: "Confirm reject", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);

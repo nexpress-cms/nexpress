@@ -306,6 +306,13 @@ function DecisionControls({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [clock, setClock] = React.useState(0);
+  const decisionRef = React.useRef<HTMLElement>(null);
+  const invokerRef = React.useRef<HTMLButtonElement>(null);
+  const headingRef = React.useRef<HTMLHeadingElement>(null);
+  const errorRef = React.useRef<HTMLParagraphElement>(null);
+  React.useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
   React.useEffect(() => {
     if (!challenge) return;
     const tick = () => setClock(Date.now());
@@ -406,8 +413,12 @@ function DecisionControls({
     }
   }
   return (
-    <section className="space-y-3" aria-label="Approval decision">
-      {error && <p role="alert">{error}</p>}
+    <section ref={decisionRef} tabIndex={-1} className="space-y-3" aria-label="Approval decision">
+      {error && !challenge && (
+        <p ref={errorRef} tabIndex={-1} role="alert">
+          {error}
+        </p>
+      )}
       {!item.allowedDecisions.length && (
         <p>No decisions are currently available to this staff session.</p>
       )}
@@ -417,7 +428,8 @@ function DecisionControls({
             disabled={busy}
             key={purpose}
             variant={purpose === "approve" ? "default" : "outline"}
-            onClick={() => {
+            onClick={(event) => {
+              invokerRef.current = event.currentTarget;
               void start(purpose);
             }}
           >
@@ -431,9 +443,23 @@ function DecisionControls({
           if (!open && !busy) close();
         }}
       >
-        <DialogContent>
+        <DialogContent
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            headingRef.current?.focus();
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            if (errorRef.current) errorRef.current.focus();
+            else if (invokerRef.current?.isConnected && !invokerRef.current.disabled)
+              invokerRef.current.focus();
+            else decisionRef.current?.focus();
+          }}
+        >
           <DialogHeader>
-            <DialogTitle>{pending ? labels[pending.purpose] : "Decision"} approval</DialogTitle>
+            <DialogTitle ref={headingRef} tabIndex={-1}>
+              {pending ? labels[pending.purpose] : "Decision"} approval
+            </DialogTitle>
             <DialogDescription>
               Confirm the exact server statement. This decision does not execute content changes.
             </DialogDescription>
@@ -445,7 +471,11 @@ function DecisionControls({
               }}
               className="space-y-3"
             >
-              {error && <p role="alert">{error}</p>}
+              {error && (
+                <p ref={errorRef} tabIndex={-1} role="alert">
+                  {error}
+                </p>
+              )}
               <p className="break-all text-xs">Statement: {item.statementHash}</p>
               <p>
                 Expires <Time value={challenge.expiresAt} />
@@ -457,9 +487,12 @@ function DecisionControls({
                 </p>
               )}
               <Label htmlFor="approval-challenge">Type this one-time confirmation value</Label>
-              <code className="block break-all select-text">{challenge.challenge}</code>
+              <code id="approval-challenge-value" className="block break-all select-text">
+                {challenge.challenge}
+              </code>
               <Input
                 id="approval-challenge"
+                aria-describedby="approval-challenge-value"
                 autoComplete="off"
                 spellCheck={false}
                 value={typed}
