@@ -29,7 +29,9 @@ import {
   npAgentRuns,
   npAgentSourceReleases,
   npAgentInvocations,
+  npAgentSourceReleaseEdges,
 } from "../../../packages/core/src/db/schema/agent.js";
+import { npAuditEvents } from "../../../packages/core/src/db/schema/community.js";
 import { runtimeUsageFixture } from "./agent-runtime-usage-fixture.js";
 import { siteId } from "./agent-runtime-service-fixture.js";
 import {
@@ -267,7 +269,8 @@ describe.skipIf(skipIfNoTestDb())("Runtime structured manual input persistence",
       });
       const detail = await activity.getRun({ siteId, actor: f.actor.actor, id: admitted.runId });
       expect(JSON.stringify(detail)).not.toContain(f.input.input.note);
-      expect(detail.run).not.toHaveProperty("manualInput");
+      expect(detail.schemaVersion).toBe("np.agent-activity-run.v1");
+      expect(detail).not.toHaveProperty("run.manualInput");
       await f.db
         .update(npAgentRuns)
         .set({ manualInput: { ...f.input.input, limit: 5 } })
@@ -423,17 +426,170 @@ describe.skipIf(skipIfNoTestDb())("Runtime structured manual input persistence",
         worker.context.dispose();
         await worker.provider.shutdown();
       }
-      await pruneAgentRuntimeEventsV1({
-        siteId,
-        now: new Date(f.options.now().getTime() + 401 * 86_400_000),
-      });
-      // Existing staff audit and Admin invocation owners still pin Studio Runs.
-      // Their replay deadline does not authorize deleting the Run or its input.
-      const [retained] = await f.db
+      const retainedRun = async () =>
+        (await f.db.select().from(npAgentRuns).where(eq(npAgentRuns.id, admitted.resourceId)))[0];
+      const sweepAt = new Date(f.options.now().getTime() + 401 * 86_400_000);
+      const sweep = () => pruneAgentRuntimeEventsV1({ siteId, now: sweepAt });
+      const [audit] = await f.db
         .select()
-        .from(npAgentRuns)
-        .where(eq(npAgentRuns.id, admitted.resourceId));
-      expect(retained!.manualInput).toEqual(envelope.input);
+        .from(npAuditEvents)
+        .where(eq(npAuditEvents.id, invocation!.auditEventId!));
+      expect(audit).toBeDefined();
+      const otherAudit = (await f.db.select().from(npAuditEvents)).find(
+        (row) => row.id !== audit!.id,
+      )!;
+      // One executed fixture exercises independent refusal reasons; restore each owner
+      // before the next case so an earlier defect cannot mask a later one.
+      const invocationCases: Array<Partial<typeof npAgentInvocations.$inferInsert>> = [
+        { expiresAt: new Date(sweepAt.getTime() + 1) },
+        { requestHash: `cj1:sha256:${"A".repeat(43)}` },
+        { actorFingerprint: `cj1:sha256:${"A".repeat(43)}` },
+        { outputHash: `cj1:sha256:${"A".repeat(43)}` },
+        { outputRedacted: { unexpected: "unverified output" } },
+        { auditEventId: otherAudit.id },
+      ];
+      for (const patch of invocationCases) {
+        await f.db
+          .update(npAgentInvocations)
+          .set(patch)
+          .where(eq(npAgentInvocations.id, invocation!.id));
+        await sweep();
+        expect((await retainedRun())?.manualInput, JSON.stringify(patch)).toEqual(envelope.input);
+        expect(
+          await f.db
+            .select()
+            .from(npAgentSourceReleases)
+            .where(eq(npAgentSourceReleases.sourceId, admitted.resourceId)),
+        ).toEqual([]);
+        await f.db
+          .update(npAgentInvocations)
+          .set(invocation!)
+          .where(eq(npAgentInvocations.id, invocation!.id));
+        expect(
+          await f.db
+            .select()
+            .from(npAgentInvocations)
+            .where(eq(npAgentInvocations.id, invocation!.id)),
+        ).toEqual([invocation]);
+      }
+      await f.db
+        .update(npAuditEvents)
+        .set({ payload: { ...audit!.payload, outcome: "unknown" } })
+        .where(eq(npAuditEvents.id, audit!.id));
+      await sweep();
+      expect((await retainedRun())?.manualInput).toEqual(envelope.input);
+      await f.db
+        .update(npAuditEvents)
+        .set({ payload: audit!.payload })
+        .where(eq(npAuditEvents.id, audit!.id));
+      const [unknown] = await f.db
+        .insert(npAuditEvents)
+        .values({
+          actorKind: "system",
+          siteId,
+          action: "fixture.unknown.reference",
+          targetType: "agent-run",
+          targetId: admitted.resourceId,
+        })
+        .returning();
+      await sweep();
+      expect((await retainedRun())?.manualInput).toEqual(envelope.input);
+      await f.db.delete(npAuditEvents).where(eq(npAuditEvents.id, unknown!.id));
+      await sweep();
+      expect(await retainedRun()).toBeUndefined();
+      const [release] = await f.db
+        .select()
+        .from(npAgentSourceReleases)
+        .where(eq(npAgentSourceReleases.sourceId, admitted.resourceId));
+      expect(release).toBeDefined();
+      await expect(npRequireAgentSourceReleaseRecordV1(release!)).resolves.toMatchObject({
+        siteId,
+      });
+      const edges = await f.db
+        .select()
+        .from(npAgentSourceReleaseEdges)
+        .where(eq(npAgentSourceReleaseEdges.sourceReleaseId, release!.id));
+      expect(edges.map((edge) => edge.ownerKind)).toEqual(
+        expect.arrayContaining(["studio-audit", "admin-invocation"]),
+      );
+      expect(JSON.stringify(release)).not.toContain(envelope.input.note);
+      expect(
+        await f.db
+          .select()
+          .from(npAgentInvocations)
+          .where(eq(npAgentInvocations.id, invocation!.id)),
+      ).toEqual([invocation]);
+      expect(
+        await f.db.select().from(npAuditEvents).where(eq(npAuditEvents.id, audit!.id)),
+      ).toEqual([audit]);
+      expect(await f.manualService.executeAdmin(request)).toEqual({ ...admitted, replayed: true });
+      expect(await retainedRun()).toBeUndefined();
+      expect(f.invoke).toHaveBeenCalledTimes(1);
+      const activity = createAgentActivityServiceV1({
+        cursorHmacKey: new Uint8Array(32).fill(85),
+        now: f.options.now,
+      });
+      const detail = await activity.getRun({
+        siteId,
+        actor: f.actor.actor,
+        id: admitted.resourceId,
+      });
+      expect(detail).toMatchObject({
+        schemaVersion: "np.agent-activity-run-expired.v1",
+        runId: admitted.resourceId,
+        evidence: "expired",
+        state: "succeeded",
+      });
+      expect(detail).not.toHaveProperty("run");
+      expect(JSON.stringify(detail)).not.toContain(envelope.input.note);
+      expect(JSON.stringify(detail)).not.toContain(envelope.goal);
+      await expect(
+        activity.getRun({ siteId: "other-site", actor: f.actor.actor, id: admitted.resourceId }),
+      ).rejects.toThrow();
+      await expect(
+        f.db
+          .update(npAgentInvocations)
+          .set({ outputRedacted: { changed: true } })
+          .where(eq(npAgentInvocations.id, invocation!.id)),
+      ).rejects.toThrow();
+      await expect(
+        f.db.delete(npAgentInvocations).where(eq(npAgentInvocations.id, invocation!.id)),
+      ).rejects.toThrow();
+      await expect(
+        f.db
+          .update(npAuditEvents)
+          .set({ payload: { changed: true } })
+          .where(eq(npAuditEvents.id, audit!.id)),
+      ).rejects.toThrow();
+      await expect(
+        f.db.delete(npAuditEvents).where(eq(npAuditEvents.id, audit!.id)),
+      ).rejects.toThrow();
+      expect(
+        await f.db
+          .select()
+          .from(npAgentInvocations)
+          .where(eq(npAgentInvocations.id, invocation!.id)),
+      ).toEqual([invocation]);
+      expect(
+        await f.db.select().from(npAuditEvents).where(eq(npAuditEvents.id, audit!.id)),
+      ).toEqual([audit]);
+      await f.db
+        .update(npAgentInvocations)
+        .set({ staffUserId: null, actorDeletedAt: sweepAt })
+        .where(eq(npAgentInvocations.id, invocation!.id));
+      await expect(npRequireAgentSourceReleaseRecordV1(release!)).resolves.toMatchObject({
+        siteId,
+      });
+      expect(
+        await activity.getRun({ siteId, actor: f.actor.actor, id: admitted.resourceId }),
+      ).toEqual(detail);
+      await sweep();
+      expect(
+        await f.db
+          .select()
+          .from(npAgentSourceReleases)
+          .where(eq(npAgentSourceReleases.sourceId, admitted.resourceId)),
+      ).toEqual([release]);
     } finally {
       await f.dispose();
     }

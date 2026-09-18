@@ -50,6 +50,92 @@ export interface NpAgentActivityRunDetailV1 {
   evidence: "redacted" | "expired";
   auditEventIds: string[];
 }
+/** A receipt-backed historical identity, never a reconstructed execution Run. */
+export interface NpAgentActivityExpiredRunV1 {
+  schemaVersion: "np.agent-activity-run-expired.v1";
+  runId: string;
+  siteId: string;
+  principalId: string;
+  agent: { id: string; versionId: string };
+  state: "succeeded" | "failed" | "cancelled" | "policy_blocked" | "budget_blocked";
+  finishedAt: string;
+  releasedAt: string;
+  evidence: "expired";
+}
+export type NpAgentActivityRunResourceV1 = NpAgentActivityRunDetailV1 | NpAgentActivityExpiredRunV1;
+
+export function npAnalyzeAgentActivityRunResourceV1(value: unknown) {
+  return analyzeCanonicalBody("agent.activity.runResource", (): NpAgentActivityRunResourceV1 => {
+    const cloned = cloneCanonicalRuntimeInput(value, "agent.activity.runResource", 512 * 1024);
+    const r = canonicalBodyRecord(
+      cloned,
+      "agent.activity.runResource",
+      [
+        "schemaVersion",
+        "run",
+        "invocationId",
+        "evidence",
+        "auditEventIds",
+        "runId",
+        "siteId",
+        "principalId",
+        "agent",
+        "state",
+        "finishedAt",
+        "releasedAt",
+      ],
+      ["schemaVersion"],
+      { seen: new WeakSet() },
+    );
+    if (r.schemaVersion === "np.agent-activity-run.v1")
+      return npRequireAgentActivityRunDetailV1(cloned);
+    const keys = [
+      "schemaVersion",
+      "runId",
+      "siteId",
+      "principalId",
+      "agent",
+      "state",
+      "finishedAt",
+      "releasedAt",
+      "evidence",
+    ];
+    canonicalBodyRecord(cloned, "agent.activity.expiredRun", keys, keys, { seen: new WeakSet() });
+    const agent = canonicalBodyRecord(r.agent, "agent", ["id", "versionId"], ["id", "versionId"], {
+      seen: new WeakSet(),
+    });
+    const finishedAt = canonicalBodyUtc(r.finishedAt, "finishedAt");
+    const releasedAt = canonicalBodyUtc(r.releasedAt, "releasedAt");
+    if (releasedAt < finishedAt)
+      failCanonicalBody("invalid-field", "releasedAt", "must not precede completion");
+    return {
+      schemaVersion: canonicalBodyEnum<"np.agent-activity-run-expired.v1">(
+        r.schemaVersion,
+        "schemaVersion",
+        new Set(["np.agent-activity-run-expired.v1"] as const),
+      ),
+      runId: canonicalBodyUuid(r.runId, "runId"),
+      siteId: canonicalRuntimeText(r.siteId, "siteId", 128, { requireTrimmed: true }),
+      principalId: canonicalBodyUuid(r.principalId, "principalId"),
+      agent: {
+        id: canonicalBodyUuid(agent.id, "agent.id"),
+        versionId: canonicalBodyUuid(agent.versionId, "agent.versionId"),
+      },
+      state: canonicalBodyEnum(
+        r.state,
+        "state",
+        new Set(["succeeded", "failed", "cancelled", "policy_blocked", "budget_blocked"] as const),
+      ),
+      finishedAt,
+      releasedAt,
+      evidence: canonicalBodyEnum<"expired">(r.evidence, "evidence", new Set(["expired"] as const)),
+    };
+  });
+}
+export function npRequireAgentActivityRunResourceV1(value: unknown) {
+  return npRequireAgentContractResult(npAnalyzeAgentActivityRunResourceV1(value));
+}
+
 export interface NpAgentActivityActionDetailV1 {
   schemaVersion: "np.agent-activity-action.v1";
   action: NpAgentActionProjectionV1;

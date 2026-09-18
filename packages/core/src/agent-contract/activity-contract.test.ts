@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   npAnalyzeAgentActivityQueryV1,
+  npAnalyzeAgentActivityRunResourceV1,
   npAnalyzeAgentActivityRunsPageV1,
   npAnalyzeAgentActivityRunDetailV1,
   npAgentActivityContractV1,
@@ -84,5 +85,55 @@ describe("Activity closed contract", () => {
       "GET /api/admin/agents/activity/actions",
       "GET /api/admin/agents/activity/actions/{id}",
     ]);
+  });
+});
+
+const expiredRun = {
+  schemaVersion: "np.agent-activity-run-expired.v1",
+  runId: "11111111-1111-4111-8111-111111111111",
+  siteId: "history",
+  principalId: "22222222-2222-4222-8222-222222222222",
+  agent: {
+    id: "33333333-3333-4333-8333-333333333333",
+    versionId: "44444444-4444-4444-8444-444444444444",
+  },
+  state: "succeeded",
+  finishedAt: "2026-09-01T00:00:00.000Z",
+  releasedAt: "2026-09-18T00:00:00.000Z",
+  evidence: "expired",
+};
+describe("expired Run detail resource", () => {
+  it("accepts retained facts only and leaves live list items unchanged", () => {
+    expect(npAnalyzeAgentActivityRunResourceV1(expiredRun).ok).toBe(true);
+    expect(npAnalyzeAgentActivityRunDetailV1(expiredRun).ok).toBe(false);
+    expect(
+      npAnalyzeAgentActivityRunsPageV1({
+        schemaVersion: "np.agent-activity-runs.v1",
+        items: [expiredRun],
+        nextCursor: null,
+      }).ok,
+    ).toBe(false);
+  });
+  it.each([
+    { state: "running" },
+    { evidence: "redacted" },
+    { input: { secret: "source" } },
+    { usage: { inputTokens: 0 } },
+    { runLimitsHash: "private" },
+    { goal: "source" },
+    { releasedAt: "2026-08-01T00:00:00.000Z" },
+  ])("rejects unsupported historical facts %j", (extra) => {
+    expect(npAnalyzeAgentActivityRunResourceV1({ ...expiredRun, ...extra }).ok).toBe(false);
+  });
+  it("does not invoke getters while determining the resource variant", () => {
+    const getter = vi.fn(() => expiredRun.schemaVersion);
+    expect(
+      npAnalyzeAgentActivityRunResourceV1({
+        get schemaVersion() {
+          return getter();
+        },
+      }).ok,
+    ).toBe(false);
+    expect(getter).not.toHaveBeenCalled();
   });
 });

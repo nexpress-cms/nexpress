@@ -1,3 +1,4 @@
+import { npReadReleasedRunHistoryV1 } from "./released-run-history.js";
 import { createAgentCursorCodecV1 } from "./cursor.js";
 import { and, eq, desc, gt, lt, lte, gte, or, type SQL } from "drizzle-orm";
 import { npUsers } from "../db/schema/system.js";
@@ -513,7 +514,18 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       .from(npAgentRuns)
       .where(and(eq(npAgentRuns.siteId, input.siteId), eq(npAgentRuns.id, input.id)))
       .limit(1);
-    if (!row || !(await runVisible(row, visibility))) throw missing();
+    if (!row) {
+      const detail = await npReadReleasedRunHistoryV1({
+        db: getDb(),
+        siteId: input.siteId,
+        runId: input.id,
+        actionVisible: (action) => actionVisible(action, visibility),
+      });
+      if (!detail) throw missing();
+      await assertSameStaff(input, auth);
+      return detail;
+    }
+    if (!(await runVisible(row, visibility))) throw missing();
     row = await refreshRun(row);
     if (!(await runVisible(row, visibility))) throw missing();
     const detail = runDetail(row, await invocation(input.siteId, row.invocationId));

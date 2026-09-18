@@ -44,8 +44,10 @@ test.describe("admin sign-in / sign-out", () => {
     await expect(page).toHaveURL(/\/admin\/login$/);
   });
 
-  test("rejects an invalid password without redirecting", async ({ page, context }) => {
+  test("rejects an invalid password without redirecting", async ({ page, context }, testInfo) => {
     await context.clearCookies();
+    // Keep the invalid-credential case independent of other specs' login quotas.
+    await context.setExtraHTTPHeaders({ "x-forwarded-for": `10.126.0.${testInfo.retry + 1}` });
     await page.goto("/admin/login");
 
     // Use a non-existent email so the lockout counter on the
@@ -55,7 +57,12 @@ test.describe("admin sign-in / sign-out", () => {
     // same UI error.
     await page.locator("#email").fill("nobody-here@example.com");
     await page.locator("#password").fill("definitely-not-the-password");
+    const login = page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/api/auth/login") && response.request().method() === "POST",
+    );
     await page.getByRole("button", { name: "Sign in" }).click();
+    expect((await login).status()).toBe(401);
 
     // The form surfaces the error inline rather than redirecting.
     await expect(page.locator("text=/Invalid|failed/i")).toBeVisible({ timeout: 5_000 });

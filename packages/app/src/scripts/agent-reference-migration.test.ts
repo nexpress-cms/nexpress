@@ -5,6 +5,8 @@ import { afterEach, expect, it, vi } from "vitest";
 import {
   npAgentReferenceMigrationSqlV1,
   npEnsureAgentReferenceMigrationV1,
+  npEnsureAgentReferenceMigrationV2,
+  npAgentReferenceMigrationSqlV2,
 } from "./agent-reference-migration.js";
 const directories: string[] = [];
 async function folder() {
@@ -56,4 +58,37 @@ it("generates one exact reviewed lifecycle migration, replays and rejects tamper
     npAgentReferenceMigrationSqlV1().replace("FOR SHARE", "FOR KEY SHARE"),
   );
   await expect(npEnsureAgentReferenceMigrationV1(options)).rejects.toThrow("differs");
+});
+
+it("appends the Studio guard upgrade without rewriting the original migration", async () => {
+  const migrationsFolder = await folder();
+  const original = npAgentReferenceMigrationSqlV1();
+  await writeFile(join(migrationsFolder, "0001.sql"), original);
+  const createCustomMigration = vi.fn(async () => {
+    await writeFile(join(migrationsFolder, "0002.sql"), "-- generated shell\n");
+  });
+  const options = { migrationsFolder, createCustomMigration };
+  await npEnsureAgentReferenceMigrationV2(options);
+  expect(await readFile(join(migrationsFolder, "0001.sql"), "utf8")).toBe(original);
+  expect(await readFile(join(migrationsFolder, "0002.sql"), "utf8")).toBe(
+    npAgentReferenceMigrationSqlV2(),
+  );
+  await npEnsureAgentReferenceMigrationV2(options);
+  expect(createCustomMigration).toHaveBeenCalledTimes(1);
+  await writeFile(
+    join(migrationsFolder, "0002.sql"),
+    npAgentReferenceMigrationSqlV2().replace("FOR SHARE", "FOR KEY SHARE"),
+  );
+  await expect(npEnsureAgentReferenceMigrationV2(options)).rejects.toThrow("differs");
+});
+
+it("preserves the already shipped reference migration bytes", async () => {
+  const shipped = await readFile(
+    new URL(
+      "../../../../apps/web/drizzle/0050_agent-source-reference-lifecycle.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  expect(npAgentReferenceMigrationSqlV1()).toBe(shipped);
 });

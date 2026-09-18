@@ -451,3 +451,51 @@ test("Agent Activity shows recorded Gateway and Runtime facts without inventing 
   await page.clock.fastForward(30_000);
   expect(gatewayReads).toBe(3);
 });
+
+test("Agent Activity identifies an expired Run without polling or inventing execution facts", async ({
+  page,
+}) => {
+  const runId = "88888888-8888-4888-8888-888888888888";
+  let reads = 0;
+  let corrupt = false;
+  await page.route(`**/api/admin/agents/activity/${runId}`, async (route) => {
+    reads++;
+    await route.fulfill({
+      json: {
+        schemaVersion: "np.agent-activity-run-expired.v1",
+        runId,
+        siteId: "default",
+        principalId: "11111111-1111-4111-8111-111111111111",
+        agent: {
+          id: "44444444-4444-4444-8444-444444444444",
+          versionId: "55555555-5555-4555-8555-555555555555",
+        },
+        state: "succeeded",
+        finishedAt: "2026-09-01T00:00:02.000Z",
+        releasedAt: "2026-09-18T00:00:00.000Z",
+        evidence: "expired",
+        ...(corrupt ? { input: "private-source-input-must-not-render" } : {}),
+      },
+    });
+  });
+  await signInViaForm(page);
+  await page.clock.install();
+  await page.goto(`/admin/agents/activity/${runId}`);
+  await expect(page.getByText("Run retention expired", { exact: true })).toBeVisible();
+  await expect(page.getByText(runId, { exact: true })).toBeVisible();
+  await expect(page.getByText("succeeded", { exact: true })).toBeVisible();
+  await expect(page.getByText("Recorded usage", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Recorded timeline", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("No visible actions for this run.", { exact: true })).toHaveCount(0);
+  await page.clock.fastForward(30_000);
+  expect(reads).toBe(1);
+  corrupt = true;
+  await page.reload();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "The Activity response could not be validated." }),
+  ).toBeVisible();
+  await expect(page.getByText("Run retention expired", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByText("private-source-input-must-not-render", { exact: false }),
+  ).toHaveCount(0);
+});

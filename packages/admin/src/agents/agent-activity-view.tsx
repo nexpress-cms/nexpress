@@ -12,13 +12,12 @@ import {
   npAnalyzeAgentActivityPrincipalsPageV1,
   npAnalyzeAgentActivityRunsPageV1,
   npRequireAgentActivityActionDetailV1,
-  npRequireAgentActivityRunDetailV1,
+  npRequireAgentActivityRunResourceV1,
   npRequireAgentContractResult,
   type NpAgentActivityActionDetailV1,
   type NpAgentActivityActionsPageV1,
   type NpAgentActivityKindV1,
   type NpAgentActivityPrincipalsPageV1,
-  type NpAgentActivityRunDetailV1,
   type NpAgentActivityRunsPageV1,
 } from "@nexpress/core/agent-contract";
 import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
@@ -663,9 +662,12 @@ function RunActions({ runId }: { runId: string }) {
 export function AgentActivityRunDetailView({ runId }: { runId: string }) {
   const resource = useActivity(
     `${apiPaths.runs}/${encodeURIComponent(runId)}`,
-    npRequireAgentActivityRunDetailV1,
+    npRequireAgentActivityRunResourceV1,
   );
-  const detail: NpAgentActivityRunDetailV1 | null = resource.value;
+  const detail =
+    resource.value?.schemaVersion === "np.agent-activity-run.v1" ? resource.value : null;
+  const expired =
+    resource.value?.schemaVersion === "np.agent-activity-run-expired.v1" ? resource.value : null;
   const run = detail?.run;
   useAgentPolling(
     runId,
@@ -692,6 +694,35 @@ export function AgentActivityRunDetailView({ runId }: { runId: string }) {
         </p>
       ) : null}
       {resource.error ? <ActivityError error={resource.error} retry={resource.refresh} /> : null}
+      {expired ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Run retention expired</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-4 text-[13px]">
+              The Run and its source input were removed after retention expired. Retained history
+              confirms the identity and final state shown below.
+            </p>
+            <dl className="grid gap-4 sm:grid-cols-2">
+              <Fact label="Run">{expired.runId}</Fact>
+              <Fact label="Final state">
+                <StateBadge state={expired.state} />
+              </Fact>
+              <Fact label="Site">{expired.siteId}</Fact>
+              <Fact label="Principal">{expired.principalId}</Fact>
+              <Fact label="Agent">{expired.agent.id}</Fact>
+              <Fact label="Agent version">{expired.agent.versionId}</Fact>
+              <Fact label="Finished">
+                <ActivityTime value={expired.finishedAt} />
+              </Fact>
+              <Fact label="Source removed">
+                <ActivityTime value={expired.releasedAt} />
+              </Fact>
+            </dl>
+          </CardContent>
+        </Card>
+      ) : null}
       {detail && run ? (
         <>
           <div className="flex flex-wrap items-start justify-between gap-3">

@@ -135,9 +135,9 @@ describe.skipIf(skipIfNoTestDb())("Runtime provider usage ledger", () => {
       cursorHmacKey: new Uint8Array(32).fill(61),
       now: f.options.now,
     });
-    expect(
-      (await activity.getRun({ siteId, actor: f.actor.actor, id: f.runId })).run.usage?.costMicros,
-    ).toBe(0);
+    const detail = await activity.getRun({ siteId, actor: f.actor.actor, id: f.runId });
+    if (detail.schemaVersion !== "np.agent-activity-run.v1") throw new Error("Expected live Run");
+    expect(detail.run.usage?.costMicros).toBe(0);
     const first = await f.usage.reserve({ siteId, runId: f.runId, request });
     expect(await f.usage.reserve({ siteId, runId: f.runId, request })).toEqual({
       ...first,
