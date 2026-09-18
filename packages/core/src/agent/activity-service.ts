@@ -21,7 +21,7 @@ import {
 } from "../agent-contract/installed-capability-contract.js";
 import { npDigestAgentActionCanonical } from "../agent-contract/canonical-action.js";
 import { npDigestAgentInvocationRequestCanonical } from "../agent-contract/canonical-idempotency-request.js";
-import { npResolveReleasedAgentActionPrincipalV1 } from "./source-release-read.js";
+import { npResolveReleasedActionPrincipalV1 } from "./cancelled-changeset-history.js";
 import { npAgentChangeSetActionTargetsV1 } from "./changeset-resources.js";
 import type { NpAgentChangeSetActorV1, NpAgentChangeSetServiceV1 } from "./changeset-service.js";
 import { getCollectionConfig, findDocuments } from "../collections/index.js";
@@ -151,6 +151,18 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
       )
     )
       return false;
+    if (row.capabilityId === "changeset.create" && row.runSourceReleaseId !== null) {
+      if (!options.changesets || typeof row.outputRedacted?.changeSetId !== "string") return false;
+      try {
+        const detail = await options.changesets.get({
+          actor: visibility.actor,
+          id: row.outputRedacted.changeSetId,
+        });
+        return detail.siteId === row.siteId && detail.id === row.outputRedacted.changeSetId;
+      } catch {
+        return false;
+      }
+    }
     if (["changeset.apply", "changeset.schedule", "changeset.rollback"].includes(row.capabilityId))
       return changeSetActionVisible(row, visibility);
     // Read capabilities historically have no targetRefs. Their exact selector still gates visibility.
@@ -288,7 +300,7 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     if (row.runSourceReleaseId !== null) {
       if (row.runId !== null || !row.runFingerprint || !inv) return null;
       try {
-        const principalId = await npResolveReleasedAgentActionPrincipalV1({
+        const principalId = await npResolveReleasedActionPrincipalV1({
           db: getDb(),
           action: row,
         });

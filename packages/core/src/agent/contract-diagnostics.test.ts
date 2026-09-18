@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
 import { npDigestAgentEventCanonical } from "../agent-contract/canonical-events.js";
 import { npCreateAgentRuntimeJobStateV1 } from "../agent-contract/runtime-job-state-contract.js";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as cancelledAttribution from "./cancelled-changeset-source-release.js";
+import {
+  npRequireAgentSourceReleaseV1,
+  npDigestAgentSourceReleaseV1,
+} from "../agent-contract/source-release-contract.js";
 import { npCreateDisabledAgentRuntimeSettingsV1 } from "../agent-contract/runtime-contract.js";
 
 import { createAgentFakeProviderAdapterV1 } from "./provider-fake.js";
@@ -81,6 +86,108 @@ function queryClient(
 }
 
 describe("Agent contract diagnostics", () => {
+  it.each(["valid", "missing audit", "wrong digest", "extra edge", "wrong release"])(
+    "checks all cancelled ChangeSet receipt owners: %s",
+    async (variant) => {
+      const id = (n: number) => `018f0f30-cd7b-7cc2-8b16-${n.toString().padStart(12, "0")}`;
+      const digest = `cj1:sha256:${"a".repeat(43)}`;
+      const releasedAt = "2026-09-18T00:00:00.000Z";
+      const body = npRequireAgentSourceReleaseV1({
+        schemaVersion: "np.agent-source-release.v1",
+        verifierVersion: 1,
+        kind: "runtime-run",
+        siteId: "site-a",
+        sourceId: id(1),
+        releasedAt,
+        principalId: id(2),
+        agentId: id(3),
+        agentVersionId: id(4),
+        admissionFingerprint: digest,
+        runLimitsHash: digest,
+        budgetSnapshotHash: digest,
+        state: "succeeded",
+        finishedAt: "2026-09-01T00:00:00.000Z",
+        retentionEligibleAt: "2026-09-02T00:00:00.000Z",
+        deadlineAt: "2026-09-01T01:00:00.000Z",
+        admissionKeyDigest: digest,
+      });
+      const proof = vi
+        .spyOn(cancelledAttribution, "npVerifyCancelledChangeSetAttributionV1")
+        .mockResolvedValue({
+          actionDigest: digest,
+          invocationDigest: digest,
+          changeSetDigest: digest,
+          auditDigest: digest,
+        });
+      try {
+        const edges = [
+          ["changeset-action", id(5), "action-run"],
+          ["changeset-invocation", id(6), "invocation-authority-run"],
+          ["changeset-source", id(7), "changeset-run"],
+          ["changeset-audit", id(8), "audit-changeset"],
+        ].map(([owner_kind, owner_id, edge_code]) => ({
+          owner_kind,
+          owner_id,
+          edge_code,
+          owner_evidence_digest: digest,
+          verifier_version: 1,
+          released_at: releasedAt,
+        }));
+        if (variant === "missing audit") edges.pop();
+        if (variant === "wrong digest") edges[3].owner_evidence_digest = "corrupt";
+        if (variant === "extra edge") edges.push({ ...edges[0] });
+        const result = await npCollectAgentHealthSummaryV1({
+          client: queryClient({
+            releasedAttributionRows: [
+              {
+                id: id(5),
+                action: {
+                  id: id(5),
+                  capability_id: "changeset.create",
+                  run_id: null,
+                  run_source_release_id: id(9),
+                },
+                invocation: { id: id(6) },
+                changeset: {
+                  id: id(7),
+                  run_id: null,
+                  run_source_release_id: variant === "wrong release" ? id(10) : id(9),
+                  title: "private-retained-title",
+                },
+                audit: { id: id(8) },
+                release: {
+                  id: id(9),
+                  site_id: "site-a",
+                  source_id: id(1),
+                  source_kind: "runtime-run",
+                  evidence_body: body,
+                  evidence_digest: await npDigestAgentSourceReleaseV1(body),
+                  released_at: releasedAt,
+                  principal_id: id(2),
+                  admission_key_digest: digest,
+                },
+                edges,
+              },
+            ],
+          }),
+        });
+        expect(result.issues.some((issue) => issue.code === "AGENT_RELATION_ORPHANED")).toBe(
+          variant !== "valid",
+        );
+        expect(JSON.stringify(result)).not.toContain("private-retained-title");
+        if (variant === "valid")
+          expect(proof).toHaveBeenCalledWith(
+            expect.objectContaining({
+              releasedAt: new Date(releasedAt),
+              runId: id(1),
+              agentId: id(3),
+            }),
+          );
+      } finally {
+        proof.mockRestore();
+      }
+    },
+  );
   it("detects retained audit digest corruption without returning audit payloads", async () => {
     const result = await npCollectAgentHealthSummaryV1({
       client: queryClient({
@@ -377,7 +484,7 @@ describe("Agent contract diagnostics", () => {
   });
   it("freezes the complete R1 table inventory and critical constraint inventory", () => {
     expect(npAgentDiagnosticsSchemaInventoryV1.tables).toHaveLength(43);
-    expect(npAgentDiagnosticsSchemaInventoryV1.constraints).toHaveLength(285);
+    expect(npAgentDiagnosticsSchemaInventoryV1.constraints).toHaveLength(286);
     expect(npAgentDiagnosticsSchemaInventoryV1.tables).toEqual(
       [...npAgentDiagnosticsSchemaInventoryV1.tables].sort(),
     );

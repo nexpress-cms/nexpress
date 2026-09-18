@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { getDb } from "../db/runtime.js";
 import {
   npAgentActions,
@@ -9,10 +9,8 @@ import {
   npRequireAgentActivityRunResourceV1,
   type NpAgentActivityExpiredRunV1,
 } from "../agent-contract/activity-contract.js";
-import {
-  npRequireAgentSourceReleaseRecordV1,
-  npResolveReleasedAgentActionPrincipalV1,
-} from "./source-release-read.js";
+import { npRequireAgentSourceReleaseRecordV1 } from "./source-release-read.js";
+import { npResolveReleasedActionPrincipalV1 } from "./cancelled-changeset-history.js";
 
 /** Retained receipts prove identity; current action visibility still controls disclosure. */
 export async function npReadReleasedRunHistoryV1(input: {
@@ -44,7 +42,7 @@ export async function npReadReleasedRunHistoryV1(input: {
         and(
           eq(npAgentSourceReleaseEdges.siteId, input.siteId),
           eq(npAgentSourceReleaseEdges.sourceReleaseId, release.id),
-          eq(npAgentSourceReleaseEdges.ownerKind, "read-action"),
+          inArray(npAgentSourceReleaseEdges.ownerKind, ["read-action", "changeset-action"]),
         ),
       )
       .limit(101);
@@ -63,8 +61,7 @@ export async function npReadReleasedRunHistoryV1(input: {
       if (
         edges.filter((edge) => edge.ownerId === action.id && edge.edgeCode === "action-run")
           .length !== 1 ||
-        (await npResolveReleasedAgentActionPrincipalV1({ db: input.db, action })) !==
-          body.principalId ||
+        (await npResolveReleasedActionPrincipalV1({ db: input.db, action })) !== body.principalId ||
         !(await input.actionVisible(action))
       )
         return null;

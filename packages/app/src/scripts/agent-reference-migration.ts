@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 import {
   NP_AGENT_REFERENCE_FENCE_SQL_V1,
   NP_AGENT_REFERENCE_FENCE_SQL_V2,
+  NP_AGENT_REFERENCE_FENCE_SQL_V3,
   NP_AGENT_JOB_REFERENCE_FENCE_INSTALL_SQL_V1,
   npAgentReferenceFenceTriggersSqlV1,
   npAgentSiteOwnedTableNamesV1,
@@ -84,5 +85,39 @@ export async function npEnsureAgentReferenceMigrationV2(options: {
   const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
   if (added.length !== 1)
     throw new Error("Expected one generated Agent Studio reference migration.");
+  await writeFile(join(folder, added[0]), expected, "utf8");
+}
+
+/** Append the reviewed owner extension without rewriting the installed v1/v2 migrations. */
+export function npAgentReferenceMigrationSqlV3(): string {
+  return (
+    "-- NexPress verified cancelled ChangeSet source reference lifecycle v3\n" +
+    NP_AGENT_REFERENCE_FENCE_SQL_V3.trimEnd() +
+    "\n"
+  );
+}
+export async function npEnsureAgentReferenceMigrationV3(options: {
+  migrationsFolder?: string;
+  createCustomMigration: () => Promise<void>;
+}): Promise<void> {
+  const folder = resolve(options.migrationsFolder ?? "./drizzle");
+  const files = (await readdir(folder)).filter((f) => f.endsWith(".sql")).sort();
+  const texts = await Promise.all(files.map((f) => readFile(join(folder, f), "utf8")));
+  if (!texts.some((text) => text.includes(marker))) return;
+  const expected = npAgentReferenceMigrationSqlV3();
+  const existing = texts.filter((text) =>
+    text.includes("-- NexPress verified cancelled ChangeSet source reference lifecycle v3"),
+  );
+  if (existing.length) {
+    if (existing.length !== 1 || existing[0] !== expected)
+      throw new Error(
+        "Agent cancelled ChangeSet reference migration differs from its reviewed source.",
+      );
+    return;
+  }
+  await options.createCustomMigration();
+  const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
+  if (added.length !== 1)
+    throw new Error("Expected one generated Agent cancelled ChangeSet reference migration.");
   await writeFile(join(folder, added[0]), expected, "utf8");
 }

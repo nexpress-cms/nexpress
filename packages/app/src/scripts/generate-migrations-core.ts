@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import {
   npEnsureAgentReferenceMigrationV1,
   npEnsureAgentReferenceMigrationV2,
+  npEnsureAgentReferenceMigrationV3,
 } from "./agent-reference-migration.js";
 import { npEnsureAgentLifecycleConstraintMigrationV1 } from "./agent-migration-contract.js";
 
@@ -66,6 +67,17 @@ export async function generateMigrations(): Promise<void> {
         "--custom",
         "--name",
         "agent-studio-source-reference-lifecycle",
+      ]),
+  });
+  await npEnsureAgentReferenceMigrationV3({
+    createCustomMigration: () =>
+      run(pnpm, [
+        "exec",
+        "drizzle-kit",
+        "generate",
+        "--custom",
+        "--name",
+        "agent-cancelled-changeset-source-reference-lifecycle",
       ]),
   });
 }

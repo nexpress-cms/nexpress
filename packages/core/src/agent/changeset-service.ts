@@ -1,3 +1,4 @@
+import { npReadCancelledChangeSetReleaseV1 } from "./cancelled-changeset-history.js";
 import {
   npAgentAutonomyAllowsV1,
   type NpAgentRuntimePermissionV1,
@@ -1178,6 +1179,10 @@ export function createAgentChangeSetServiceV1(
         .limit(1);
       name = user?.name ?? "Deleted staff";
     }
+    const releasedSource = row.runSourceReleaseId
+      ? await npReadCancelledChangeSetReleaseV1({ db, changeSet: row })
+      : null;
+    if (row.runSourceReleaseId && !releasedSource) throw missing();
     return npRequireAgentChangeSetWire({
       schemaVersion: "np.agent-changeset.v1",
       id: row.id,
@@ -1189,7 +1194,7 @@ export function createAgentChangeSetServiceV1(
       agentId: row.agentId,
       agentVersionId: row.agentVersionId,
       agentConfigHash: row.agentConfigHash,
-      runId: row.runId,
+      runId: releasedSource?.body.sourceId ?? row.runId,
       planHash: row.planHash,
       baseFingerprint: row.baseFingerprint,
       draftVersion: row.draftVersion,
