@@ -86,6 +86,68 @@ The default `pnpm test` excludes `*.integration.test.ts` from the core
 package so unit tests stay parallel and fast — run integration suites
 with `pnpm test:integration` (or per-package `pnpm test:integration`).
 
+### CI integration partitions
+
+CI keeps the local `pnpm test:integration` command unchanged. Its PostgreSQL
+coverage runs on two independent runners, each with its own PostgreSQL 16 and
+Redis 7 containers. After the usual full build, `scripts/integration-partitions.mjs`
+uses Vitest's configured file discovery and splits Web files by descending
+historical duration, assigning each next file to the lighter group. The timing
+seed in `scripts/integration-durations.json` comes from PR #1455; it is a weight,
+not an allowlist or a wall-time prediction. New files use the median known weight,
+and removed files are ignored. Core runs once in partition 1 and Redis once in
+partition 2. Worker isolation, fixture cleanup, timeouts and native-preview gating
+remain unchanged; the E2E job still explicitly enables native preview.
+
+The runner requires database settings (and Redis for partition 2), rejects new
+unassigned integration package owners, and verifies that Vitest's actual file
+selection matches each planned group exactly. It emits a coverage receipt only
+after all assigned commands pass. The existing required check
+`integration tests (Postgres)` waits for both jobs, rejects any non-success result,
+and verifies both receipts belong to the current commit and cover the same complete
+Web inventory exactly once. Missing artifacts fail the gate. Stable artifact names
+with replacement support partial job reruns. Version PR bridging and Dependabot
+continue to consume the unchanged aggregate check name.
+
+Inspect the plan without database connections:
+
+```bash
+node scripts/integration-partitions.mjs --plan
+```
+
+To reproduce a partition locally, build dependencies first and set `DATABASE_URL`,
+`TEST_DATABASE_URL`, `NP_SECRET`, `SITE_URL`, `TEST_REDIS_URL` (partition 2), and
+`GITHUB_SHA` to the tested commit. Use a disposable database for each partition:
+
+```bash
+node scripts/integration-partitions.mjs 1 --output /tmp/np-integration-results
+node scripts/integration-partitions.mjs 2 --output /tmp/np-integration-results
+node scripts/integration-partitions.mjs --check-results /tmp/np-integration-results
+```
+
+The original PR #1455 integration job took 28m14s, including 4m56s before tests;
+Web tests took 1,322.69s. The initial partition plan covers 163 files (83/80), with
+summed historical weights of 1,932,441/1,932,474ms. Two runners repeat the build,
+trading additional setup minutes for a shorter critical path. Actual hosted-run
+improvement must be measured after this workflow change runs in CI.
+
+Local acceptance on 2026-09-18 used the actual runner twice against separate
+throwaway databases on the same local PostgreSQL server, sequentially to avoid
+adding storage contention. Partition 1 passed Core 64 and Web 665 cases (82 files,
+plus the expected native-preview skip); partition 2 passed Web 784 cases (80 files)
+and Redis 16. The aggregate accepted all 163 Web files exactly once and each other
+package once. Web elapsed times were 360.40s and 325.29s; these local figures are
+not a hosted-CI speedup measurement. Native preview, production browser and packed
+scaffold jobs were unchanged and were not needlessly rerun for this CI-only change.
+
+The four runner regression tests passed, including incomplete/duplicate coverage,
+wrong commits/package ownership, unsuccessful statuses, missing database settings,
+and child failure/termination. Repository checks passed 59 tests; workspace
+verification reused all 113 unchanged application task results; lint reused all
+41 task results. Workflow YAML, formatting and diff checks passed. Self-review
+fixed artifact replacement for job reruns. Logs and receipts are under
+`/tmp/np-ci-partition-*` and `/tmp/np-ci-partitions-*`.
+
 ### One-time setup
 
 1. Start the dev Postgres container:
@@ -129,7 +191,7 @@ with `pnpm test:integration` (or per-package `pnpm test:integration`).
   export `TEST_REDIS_URL=redis://localhost:6379`, then run
   `pnpm --filter @nexpress/rate-limiter-redis test`. When
   `TEST_REDIS_URL` is unset, that package's Redis integration test is
-  skipped. CI provisions Redis 7 in the integration job and runs this package
+  skipped. CI provisions Redis 7 in partition 2 and runs this package
   directly with `TEST_REDIS_URL`, so its three live cases always execute there.
 - Built-in theme shell/header/footer rendering uses the async React stream
   boundary and real persisted navigation. The five restored theme-render cases
