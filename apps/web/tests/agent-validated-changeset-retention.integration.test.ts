@@ -292,18 +292,16 @@ async function refreshViewerSession(f: Awaited<ReturnType<typeof proposal>>) {
     .where(eq(npSessions.id, f.actor.actor.sessionId));
   const id = randomUUID();
   const current = f.options.now();
-  await f.db
-    .insert(npSessions)
-    .values({
-      ...original,
-      id,
-      accessTokenHash: randomUUID(),
-      refreshTokenHash: randomUUID(),
-      createdAt: current,
-      updatedAt: current,
-      accessExpiresAt: new Date(current.getTime() + day),
-      refreshExpiresAt: new Date(current.getTime() + 7 * day),
-    });
+  await f.db.insert(npSessions).values({
+    ...original,
+    id,
+    accessTokenHash: randomUUID(),
+    refreshTokenHash: randomUUID(),
+    createdAt: current,
+    updatedAt: current,
+    accessExpiresAt: new Date(current.getTime() + day),
+    refreshExpiresAt: new Date(current.getTime() + 7 * day),
+  });
   f.actor.actor.sessionId = id;
 }
 
