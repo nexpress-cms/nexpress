@@ -19,7 +19,12 @@ import {
 import { Copy, KeyRound } from "lucide-react";
 
 import { AgentStudioFrame } from "./agent-studio-frame.js";
-import { AgentStudioApiError, loadAgentStudioOverview, responseError } from "./agent-studio-api.js";
+import {
+  AgentStudioApiError,
+  loadAgentStudioOverview,
+  principalAccessLostMessage,
+  responseError,
+} from "./agent-studio-api.js";
 import { AgentPrincipalControls } from "./agent-principal-controls.js";
 import { Badge } from "../ui/badge.js";
 import { Button } from "../ui/button.js";
@@ -52,14 +57,22 @@ function boundExposure(
 }
 
 export function AgentPrincipalDetailView({ principalId }: { principalId: string }) {
+  return <AgentPrincipalDetailViewContent key={principalId} principalId={principalId} />;
+}
+
+function AgentPrincipalDetailViewContent({ principalId }: { principalId: string }) {
   const router = useRouter();
-  const [detail, setDetail] = React.useState<NpAgentStudioPrincipalDetailV1 | null>(null);
+  const [loadedDetail, setDetail] = React.useState<NpAgentStudioPrincipalDetailV1 | null>(null);
+  const detail = loadedDetail?.principal.id === principalId ? loadedDetail : null;
+  const request = React.useRef<AbortController | null>(null);
+  const [observedAt, setObservedAt] = React.useState<number | undefined>(undefined);
   const [gatewaySettings, setGatewaySettings] = React.useState<NpAgentGatewaySettingsV1 | null>(
     null,
   );
   const [oneTime, setOneTime] = React.useState<NpAgentStudioOneTimeTokenV1 | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
   const [tokenName, setTokenName] = React.useState("Local client");
   const [transport, setTransport] = React.useState<NpAgentServiceTokenTransportV1>("stdio");
   const [exposure, setExposure] = React.useState<NpAgentEnabledGatewayExposureMode>("read");
@@ -67,17 +80,34 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
   const [scopes, setScopes] = React.useState<NpAgentScope[]>(["site:read"]);
 
   const load = React.useCallback(async () => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    setLoading(true);
     setError(null);
     try {
       const [response, overview] = await Promise.all([
         npFetch(`/api/admin/agents/gateway/principals/${encodeURIComponent(principalId)}`, {
           cache: "no-store",
+          signal: controller.signal,
         }),
-        loadAgentStudioOverview(),
+        loadAgentStudioOverview(controller.signal),
       ]);
       if (!response.ok) throw await responseError(response);
-      const value = npRequireAgentStudioPrincipalDetailV1(await response.json());
+      let value: NpAgentStudioPrincipalDetailV1;
+      try {
+        value = npRequireAgentStudioPrincipalDetailV1(await response.json());
+        if (value.principal.id !== principalId) throw new Error("Principal mismatch");
+      } catch {
+        throw new AgentStudioApiError(
+          "The principal response could not be validated.",
+          502,
+          "STUDIO_CONTRACT_ERROR",
+        );
+      }
+      if (controller.signal.aborted || request.current !== controller) return;
       setDetail(value);
+      setObservedAt(Date.now());
       setGatewaySettings(overview.gatewaySettings);
       const enabled = TRANSPORTS.filter(
         (candidate) => overview.gatewaySettings[candidate.setting] !== "disabled",
@@ -93,12 +123,20 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
           : ["site:read"],
       );
     } catch (caught) {
-      if (caught instanceof AgentStudioApiError && [401, 403, 404].includes(caught.status)) {
-        setDetail(null);
-        setGatewaySettings(null);
-        setOneTime(null);
-      }
-      setError(caught instanceof Error ? caught.message : "Could not load principal.");
+      if (controller.signal.aborted || request.current !== controller) return;
+      setObservedAt(undefined);
+      setDetail(null);
+      setGatewaySettings(null);
+      setOneTime(null);
+      setError(
+        caught instanceof AgentStudioApiError && [401, 403, 404].includes(caught.status)
+          ? principalAccessLostMessage(caught)
+          : caught instanceof AgentStudioApiError && caught.code === "STUDIO_CONTRACT_ERROR"
+            ? "The principal response could not be validated."
+            : "Could not load principal. Retry to retrieve current information.",
+      );
+    } finally {
+      if (!controller.signal.aborted && request.current === controller) setLoading(false);
     }
   }, [principalId]);
 
@@ -113,8 +151,15 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
       npAgentGatewayExposureRank[candidate] <= npAgentGatewayExposureRank[selectedCeiling],
   );
   React.useEffect(() => {
-    const timer = window.setTimeout(() => void load(), 0);
-    return () => window.clearTimeout(timer);
+    const timer = window.setTimeout(() => {
+      setOneTime(null);
+      setObservedAt(undefined);
+      void load();
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      request.current?.abort();
+    };
   }, [load]);
 
   const createToken = async (event: React.FormEvent) => {
@@ -178,21 +223,37 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
   };
 
   return (
-    <AgentStudioFrame active="connections">
+    <AgentStudioFrame
+      active="connections"
+      busy={loading}
+      refreshing={detail !== null}
+      observedAt={detail ? observedAt : undefined}
+    >
       {error ? (
-        <p
+        <div
           role="alert"
           className="rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-[13px] text-red-900"
         >
-          {error}
-        </p>
+          <p>{error}</p>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={loading}
+            onClick={() => void load()}
+          >
+            Retry
+          </Button>
+        </div>
       ) : null}
       {detail ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-[18px] font-semibold">{detail.principal.name}</h2>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="min-w-0 break-words text-[18px] font-semibold [overflow-wrap:anywhere]">
+                  {detail.principal.name}
+                </h2>
                 <Badge variant={detail.principal.status === "active" ? "brand" : "destructive"}>
                   {detail.principal.status}
                 </Badge>
@@ -204,9 +265,18 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
                     : "Runtime principal")}
               </p>
             </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={loading || submitting}
+              onClick={() => void load()}
+            >
+              Refresh
+            </Button>
             <AgentPrincipalControls
               principal={detail.principal}
-              disabled={submitting || error !== null}
+              disabled={submitting || loading || error !== null}
               onChanged={async () => {
                 setOneTime(null);
                 await load();
@@ -361,7 +431,11 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
                     Remote HTTP tokens require an existing canonical HTTPS site origin and never
                     open another listener or port.
                   </p>
-                  <Button type="submit" size="sm" disabled={submitting}>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={submitting || loading || error !== null}
+                  >
                     {submitting ? "Creating…" : "Create token"}
                   </Button>
                 </form>
@@ -402,7 +476,7 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
                             type="button"
                             size="sm"
                             variant="ghost"
-                            disabled={submitting}
+                            disabled={submitting || loading || error !== null}
                             onClick={() => void revokeToken(token.id, token.rowVersion)}
                           >
                             Revoke
@@ -430,8 +504,6 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
             Back to connections
           </Button>
         </div>
-      ) : !error ? (
-        <p className="text-[13px] text-neutral-500">Loading Gateway principal…</p>
       ) : null}
     </AgentStudioFrame>
   );

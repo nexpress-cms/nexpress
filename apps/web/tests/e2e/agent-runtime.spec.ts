@@ -1,9 +1,20 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
-  npCreateInheritedAgentBudgetV1,
+  id,
+  versionId,
+  principalId,
+  digest,
+  at,
+  budget,
+  definition,
+  agent,
+  readiness,
+  catalog,
+} from "./fixtures/runtime-studio.js";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
+import {
+  npCreateDisabledAgentRuntimeSettingsV1,
   npBuildAgentPolicySimulationFixtureInputV1,
   npSimulateAgentPolicyV1,
-  npCreateDisabledAgentRuntimeSettingsV1,
 } from "@nexpress/core/agent-contract";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 
@@ -15,83 +26,6 @@ async function tabTo(page: Page, control: Locator) {
   }
   await expect(control).toBeFocused();
 }
-
-const id = "11111111-1111-4111-8111-111111111111";
-const versionId = "22222222-2222-4222-8222-222222222222";
-const principalId = "33333333-3333-4333-8333-333333333333";
-const digest = `cj1:sha256:${"A".repeat(43)}`;
-const at = "2026-09-14T00:00:00.000Z";
-const budget = npCreateInheritedAgentBudgetV1();
-const definition = {
-  schemaVersion: "np.agent-configuration-definition.v1",
-  name: "Worker observer",
-  template: "operator",
-  modelConnectionId: null,
-  model: null,
-  scopes: ["site:read"],
-  autonomy: "observe",
-  capabilityModes: [{ capabilityId: "site.inspect", mode: "observe" }],
-  policyMode: "site",
-  budget,
-  settings: [
-    {
-      recipeId: "operator.worker-not-draining",
-      recipeVersion: 1,
-      staleAfterSeconds: 60,
-      minimumPendingJobs: 1,
-      checkIds: ["jobs.worker"],
-    },
-  ],
-};
-const agent = {
-  schemaVersion: "np.agent-configuration.v1",
-  id,
-  principalId,
-  status: "draft",
-  rowVersion: 1,
-  versionId,
-  version: 1,
-  versionStatus: "draft",
-  activeVersion: null,
-  draftVersionId: versionId,
-  manualRecipeIds: [],
-  configHash: digest,
-  definition,
-  availableActions: [
-    "agents.configurations.activate",
-    "agents.configurations.archive",
-    "agents.configurations.update",
-  ],
-  createdAt: at,
-  updatedAt: at,
-};
-const readiness = {
-  doctor: "ready",
-  policy: "ready",
-  budget: "ready",
-  vault: "not-required",
-  integrityKey: "ready",
-  worker: "ready",
-};
-const catalog = {
-  schemaVersion: "np.agent-runtime-catalog.v1",
-  recipes: [
-    {
-      id: "operator.worker-not-draining",
-      version: 1,
-      allowedTemplates: ["operator"],
-      providerMode: "forbidden",
-      triggerKinds: ["manual"],
-      capabilityIds: ["site.inspect"],
-    },
-  ],
-  scopes: ["site:read"],
-  connections: [],
-  capabilities: [{ id: "site.inspect", modes: ["observe"] }],
-  effectiveBudget: budget,
-  defaultPolicyRules: npCreateDisabledAgentRuntimeSettingsV1().defaultPolicyRules,
-  selfDelegation: { userId: principalId },
-};
 
 test("Runtime management stays unavailable without a host and new writes retain CSRF", async ({
   page,
@@ -116,6 +50,9 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
 }) => {
   const requests: string[] = [];
   const writes: Record<string, unknown>[] = [];
+  let delayedDecision: Route | undefined;
+  let delayedRead: Route | undefined;
+  let holdRead = false;
   await page.route("**/api/admin/agents/capabilities", (route) => route.fulfill({ json: catalog }));
   await page.route("**/api/admin/agents/triggers?**", (route) =>
     route.fulfill({
@@ -126,6 +63,10 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
     const url = new URL(route.request().url());
     if (route.request().method() === "POST") {
       writes.push(route.request().postDataJSON() as Record<string, unknown>);
+      if (writes.length === 2) {
+        delayedDecision = route;
+        return;
+      }
       await route.fulfill({
         status: 409,
         json: { status: 409, error: { code: "CONFLICT", message: "Resource changed." } },
@@ -144,8 +85,10 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
           readiness,
         },
       });
-    } else if (url.pathname.endsWith(`/${id}`)) await route.fulfill({ json: agent });
-    else {
+    } else if (url.pathname.endsWith(`/${id}`)) {
+      if (holdRead) delayedRead = route;
+      else await route.fulfill({ json: agent });
+    } else {
       requests.push(url.search);
       await route.fulfill({
         json: {
@@ -193,6 +136,32 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
     triggers: [{ definition: { type: "manual" }, enabled: true }],
   });
   await expect(page.getByRole("button", { name: "Confirm", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
+  await expect(activate).toBeDisabled();
+  await page.getByRole("button", { name: "Review effective configuration", exact: true }).click();
+  await expect(activate).toBeEnabled();
+  await activate.click();
+  const confirm = page.getByRole("button", { name: "Confirm", exact: true });
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect.poll(() => delayedDecision !== undefined).toBe(true);
+  // A late mutation denial must settle the newer refresh generation, not leave it loading.
+  holdRead = true;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect.poll(() => delayedRead !== undefined).toBe(true);
+  await expect(page.getByRole("status").filter({ hasText: "Refreshing" })).toBeVisible();
+  await delayedDecision!.fulfill({
+    status: 403,
+    json: { status: 403, error: { code: "FORBIDDEN", message: "Access denied." } },
+  });
+  await expect(page.getByRole("alert").filter({ hasText: "no longer have access" })).toBeVisible();
+  await expect(page.locator('fieldset[aria-busy="true"]')).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Worker observer", exact: true })).toHaveCount(0);
+  // Even an older successful response may not restore the cleared evidence.
+  await delayedRead!.fulfill({ json: agent });
+  await expect(page.getByRole("heading", { name: "Worker observer", exact: true })).toHaveCount(0);
+  expect(writes).toHaveLength(2);
 });
 
 test("Runtime budget and operations show unknown measurements without inventing zero", async ({

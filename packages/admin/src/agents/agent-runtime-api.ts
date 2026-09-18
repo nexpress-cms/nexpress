@@ -45,17 +45,29 @@ export function useRuntimeResource<T>(path: string, parse: (value: unknown) => T
     revision: number;
     value: T | null;
     error: string | null;
+    observedAt: number | undefined;
   } | null>(null);
+  const request = React.useRef<{ path: string; controller: AbortController } | null>(null);
   const [revision, setRevision] = React.useState(0);
+  const generation = React.useRef(0);
   React.useEffect(() => {
     const controller = new AbortController();
+    request.current = { path, controller };
     let current = true;
     void runtimeRequest(path, parse, { signal: controller.signal })
       .then((value) => {
-        if (current) setResult({ path, revision, value, error: null });
+        if (current && !controller.signal.aborted)
+          setResult({ path, revision, value, error: null, observedAt: Date.now() });
       })
       .catch((error: unknown) => {
-        if (current) setResult({ path, revision, value: null, error: runtimeErrorMessage(error) });
+        if (current && !controller.signal.aborted)
+          setResult({
+            path,
+            revision,
+            value: null,
+            error: runtimeErrorMessage(error),
+            observedAt: undefined,
+          });
       });
     return () => {
       current = false;
@@ -63,13 +75,26 @@ export function useRuntimeResource<T>(path: string, parse: (value: unknown) => T
     };
   }, [path, parse, revision]);
   return {
-    value: result?.path === path && result.revision === revision ? result.value : null,
+    value: result?.path === path ? result.value : null,
+    observedAt: result?.path === path ? result.observedAt : undefined,
+    refreshing: result?.path === path && result.value !== null && result.revision !== revision,
     error: result?.path === path && result.revision === revision ? result.error : null,
     loading: result?.path !== path || result.revision !== revision,
-    reload: React.useCallback(() => setRevision((value) => value + 1), []),
+    generation: revision,
+    reload: React.useCallback(() => setRevision(++generation.current), []),
     clear: React.useCallback(
-      (message: string) => setResult({ path, revision, value: null, error: message }),
-      [path, revision],
+      (message: string) => {
+        if (request.current?.path !== path) return;
+        request.current.controller.abort();
+        setResult({
+          path,
+          revision: generation.current,
+          value: null,
+          error: message,
+          observedAt: undefined,
+        });
+      },
+      [path],
     ),
   };
 }

@@ -1,6 +1,14 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
+/** Traverse the actual keyboard order; never assign DOM focus. */
+async function tabTo(page: Page, control: Locator) {
+  for (let steps = 0; steps < 60; steps++) {
+    if (await control.evaluate((element) => element === document.activeElement)) return;
+    await page.keyboard.press("Tab");
+  }
+  await expect(control).toBeFocused();
+}
 const id = "11111111-1111-4111-8111-111111111111";
 const hash = `cj1:sha256:${"a".repeat(43)}`;
 function draft() {
@@ -402,6 +410,7 @@ for (const action of ["prepare", "request_approval", "execute", "cancel"] as con
     );
     await signInAsE2EAdmin(page);
     const at = "2026-09-08T00:00:00.000Z";
+    const restoredTitle = `<script>Restored title</script> ${"되돌리기검증용긴문서제목".repeat(12)}`;
     const approval = {
       id,
       generation: 1,
@@ -451,7 +460,7 @@ for (const action of ["prepare", "request_approval", "execute", "cancel"] as con
                     {
                       path: "title",
                       before: { presence: "present", value: "Applied" },
-                      after: { presence: "present", value: "<script>Restored title</script>" },
+                      after: { presence: "present", value: restoredTitle },
                     },
                   ],
                 },
@@ -519,7 +528,7 @@ for (const action of ["prepare", "request_approval", "execute", "cancel"] as con
     await page.goto(`/admin/agents/changesets/${id}`);
     if (action !== "prepare")
       await expect(
-        page.getByText('After: "<script>Restored title</script>"', { exact: true }),
+        page.getByText(`After: ${JSON.stringify(restoredTitle)}`, { exact: true }),
       ).toBeVisible();
     const labels = {
       prepare: "Prepare rollback plan",
@@ -530,14 +539,43 @@ for (const action of ["prepare", "request_approval", "execute", "cancel"] as con
     for (const other of ["prepare", "request_approval", "execute", "cancel"] as const)
       if (other !== action)
         await expect(page.getByRole("button", { name: labels[other], exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: labels[action], exact: true }).click();
+    const control = page.getByRole("button", { name: labels[action], exact: true });
+    // Distribute responsive/theme checks across the existing binding cases.
+    const width =
+      action === "prepare" || action === "execute" ? 320 : action === "cancel" ? 768 : 1280;
+    await page.setViewportSize({ width, height: 900 });
+    await page.emulateMedia({
+      colorScheme: action === "execute" || action === "cancel" ? "dark" : "light",
+      reducedMotion: "reduce",
+    });
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+      .toBe(true);
+    if (action !== "prepare") {
+      const facts = page.getByRole("region", { name: "Rollback plan facts" });
+      await expect(facts).toBeVisible();
+      const bounds = await facts.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+    }
+    const screenshot = testInfo.outputPath(`rollback-${action}-${width}.png`);
+    await page.screenshot({ path: screenshot, fullPage: true, animations: "disabled" });
+    await testInfo.attach(`rollback-${action}-${width}`, {
+      path: screenshot,
+      contentType: "image/png",
+    });
+    await tabTo(page, control);
+    await page.keyboard.press("Enter");
     if (action === "execute") {
       await expect(
         page.getByRole("alert").filter({ hasText: "Rollback request could not be confirmed" }),
       ).toBeVisible();
-      await page.getByRole("button", { name: "Refresh", exact: true }).click();
+      await tabTo(page, page.getByRole("button", { name: "Refresh", exact: true }));
+      await page.keyboard.press("Enter");
       await expect(page.getByRole("region", { name: "Rollback plan facts" })).toBeVisible();
-      await page.getByRole("button", { name: labels[action], exact: true }).click();
+      await tabTo(page, control);
+      await page.keyboard.press("Enter");
       expect(attempts).toHaveLength(2);
       expect(attempts[0]).toEqual(attempts[1]);
     }

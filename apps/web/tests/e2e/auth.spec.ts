@@ -14,9 +14,11 @@ test.describe("admin sign-in / sign-out", () => {
   test("logs an admin in via the form, lands them on /admin, and signs them out", async ({
     page,
     context,
-  }) => {
+  }, testInfo) => {
     // Bypass cached state from a previous run.
     await context.clearCookies();
+    // Isolate the form login and logout from other specs' shared auth quotas.
+    await context.setExtraHTTPHeaders({ "x-forwarded-for": `10.127.0.${testInfo.retry + 1}` });
 
     await signInViaForm(page);
     await expect(page).toHaveURL(/\/admin$/);

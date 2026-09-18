@@ -1,7 +1,10 @@
 # R5 acceptance decision
 
 Reviewed on 2026-09-18 KST against `3d293ef329d34756be468143ab032e6f0209846c`
-(PR #1456) plus the acceptance-only working changes described below.
+(PR #1456) plus the acceptance-only changes later merged in PR #1457.
+The subsequent [Admin acceptance inventory and repairs](admin-acceptance.md)
+records the 20 shipped routes, current UI corrections and the exact remaining
+release checks; the evidence below retains its historical scope.
 
 ## Decision and scope
 

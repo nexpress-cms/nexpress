@@ -15,6 +15,7 @@ import {
 
 import { AgentStudioFrame, type AgentStudioSection } from "./agent-studio-frame.js";
 import {
+  AgentStudioApiError,
   loadAgentOauthClients,
   loadAgentStudioOverview,
   responseError,
@@ -64,27 +65,59 @@ export function AgentStudioView({ section }: { section: AgentStudioSection }) {
   const [overview, setOverview] = React.useState<NpAgentStudioOverviewV1 | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
+  const [observedAt, setObservedAt] = React.useState<number>();
+  const request = React.useRef<AbortController | null>(null);
 
   const reload = React.useCallback(async () => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
     setLoading(true);
     setError(null);
     try {
-      setOverview(await loadAgentStudioOverview());
+      const value = await loadAgentStudioOverview(controller.signal);
+      if (controller.signal.aborted) return;
+      setOverview(value);
+      setObservedAt(Date.now());
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load Agent Studio.");
+      if (controller.signal.aborted) return;
+      setOverview(null);
+      setObservedAt(undefined);
+      setError(
+        caught instanceof AgentStudioApiError && [401, 403, 404].includes(caught.status)
+          ? "Agent Studio is unavailable or you no longer have access."
+          : caught instanceof AgentStudioApiError
+            ? `${caught.message} (${caught.code})`
+            : "Could not load Agent Studio.",
+      );
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, []);
 
   React.useEffect(() => {
     const timer = window.setTimeout(() => void reload(), 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      request.current?.abort();
+    };
   }, [reload]);
 
   return (
-    <AgentStudioFrame active={section}>
-      {loading ? <p className="text-[13px] text-neutral-500">Loading Agent Studio…</p> : null}
+    <AgentStudioFrame
+      active={section}
+      busy={loading}
+      refreshing={loading && overview !== null}
+      observedAt={observedAt}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">
+          {section === "overview" ? "Overview" : "Connections"}
+        </h2>
+        <Button type="button" variant="outline" onClick={() => void reload()}>
+          Refresh
+        </Button>
+      </div>
       {error ? (
         <div
           role="alert"
@@ -175,9 +208,11 @@ function ConnectionsContent({
 }) {
   return (
     <Tabs defaultValue="providers" className="space-y-4">
-      <TabsList>
+      <TabsList className="grid h-auto w-full grid-cols-2 sm:w-fit">
         <TabsTrigger value="providers">Provider outbound</TabsTrigger>
-        <TabsTrigger value="gateway">Gateway inbound</TabsTrigger>
+        <TabsTrigger value="gateway" className="min-w-0 whitespace-normal">
+          Gateway inbound
+        </TabsTrigger>
       </TabsList>
       <TabsContent value="providers" className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -342,7 +377,7 @@ function OauthClientsPanel({ disabled }: { disabled: boolean }) {
 
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between gap-3">
+      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
         <div>
           <CardTitle className="text-[14px]">Registered public OAuth clients</CardTitle>
           <p className="mt-1 text-[12px] text-neutral-500">

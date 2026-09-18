@@ -42,10 +42,20 @@ export async function responseError(response: Response): Promise<AgentStudioApiE
   );
 }
 
-export async function loadAgentStudioOverview(): Promise<NpAgentStudioOverviewV1> {
-  const response = await npFetch("/api/admin/agents/overview", { cache: "no-store" });
+export async function loadAgentStudioOverview(
+  signal?: AbortSignal,
+): Promise<NpAgentStudioOverviewV1> {
+  const response = await npFetch("/api/admin/agents/overview", { cache: "no-store", signal });
   if (!response.ok) throw await responseError(response);
-  return npRequireAgentStudioOverviewV1(await response.json());
+  try {
+    return npRequireAgentStudioOverviewV1(await response.json());
+  } catch {
+    throw new AgentStudioApiError(
+      "The Agent Studio response could not be validated.",
+      502,
+      "STUDIO_CONTRACT_ERROR",
+    );
+  }
 }
 
 export async function loadAgentOauthClients(): Promise<NpAgentOauthClientV1[]> {

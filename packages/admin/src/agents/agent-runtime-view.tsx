@@ -82,7 +82,12 @@ export function AgentRuntimeListView({ query = "" }: { query?: string }) {
     new URLSearchParams(query).get("connectionId") ?? "all",
   );
   return (
-    <AgentStudioFrame active="configurations">
+    <AgentStudioFrame
+      active="configurations"
+      busy={state.loading || catalog.loading}
+      refreshing={state.refreshing}
+      observedAt={state.observedAt}
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Runtime Agents</h2>
         <div className="flex gap-2">
@@ -160,7 +165,7 @@ export function AgentRuntimeListView({ query = "" }: { query?: string }) {
           Apply filters
         </Button>
       </form>
-      <RuntimeNotice loading={state.loading} error={state.error} />
+      <RuntimeNotice loading={false} error={state.error} />
       {state.value?.items.length === 0 ? (
         <p>No Agents match this view. Create a draft to configure a supported recipe.</p>
       ) : null}
@@ -168,7 +173,7 @@ export function AgentRuntimeListView({ query = "" }: { query?: string }) {
         {state.value?.items.map((agent) => (
           <Card key={agent.id}>
             <CardHeader>
-              <CardTitle>
+              <CardTitle className="leading-snug">
                 <Link className="underline" href={`/admin/agents/configurations/${agent.id}`}>
                   {agent.definition.name}
                 </Link>
@@ -229,9 +234,14 @@ function initialDefinition(
 export function AgentRuntimeCreateView() {
   const catalog = useRuntimeResource(runtimeCatalogPath, npRequireAgentRuntimeStudioCatalogV1);
   return (
-    <AgentStudioFrame active="configurations">
+    <AgentStudioFrame
+      active="configurations"
+      busy={catalog.loading}
+      refreshing={catalog.refreshing}
+      observedAt={catalog.observedAt}
+    >
       <h2 className="text-lg font-semibold">Create Agent draft</h2>
-      <RuntimeNotice loading={catalog.loading} error={catalog.error} />
+      <RuntimeNotice loading={false} error={catalog.error} />
       {catalog.value ? (
         catalog.value.recipes.length ? (
           <RuntimeConfigurationEditor
@@ -525,11 +535,16 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
     }
   };
   return (
-    <AgentStudioFrame active="configurations">
+    <AgentStudioFrame
+      active="configurations"
+      busy={state.loading || catalog.loading || triggers.loading}
+      refreshing={state.refreshing || triggers.refreshing}
+      observedAt={state.observedAt}
+    >
       <Link className="text-sm underline" href="/admin/agents/configurations">
         Back to Agents
       </Link>
-      <RuntimeNotice loading={state.loading} error={state.error} />
+      <RuntimeNotice loading={false} error={state.error} />
       {agent ? (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -576,7 +591,7 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
           </div>
           {editing && catalog.value ? (
             <RuntimeConfigurationEditor
-              key={`${agent.id}:${agent.rowVersion}`}
+              key={`${agent.id}:${agent.rowVersion}:${state.generation}`}
               catalog={catalog.value}
               initial={agent.definition}
               current={agent}
@@ -619,7 +634,7 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
             </Card>
           ) : null}
           <RuntimeAgentActions
-            key={`${agent.id}:${agent.rowVersion}`}
+            key={`${agent.id}:${agent.rowVersion}:${state.generation}`}
             agent={agent}
             review={review?.rowVersion === agent.rowVersion ? review : null}
             catalog={catalog.value}
@@ -641,7 +656,7 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
               <CardTitle>Registered triggers</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <RuntimeNotice loading={triggers.loading} error={triggers.error} />
+              <RuntimeNotice loading={false} error={triggers.error} />
               {triggers.value?.items.length === 0 ? (
                 <p>No triggers are registered. Add a trigger in the explicit activation review.</p>
               ) : null}
