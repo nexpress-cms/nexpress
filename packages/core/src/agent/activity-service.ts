@@ -152,16 +152,25 @@ export function createAgentActivityServiceV1(options: NpAgentActivityServiceOpti
     )
       return false;
     if (
-      ["changeset.create", "changeset.validate", "changeset.preview"].includes(row.capabilityId) &&
+      [
+        "changeset.create",
+        "changeset.validate",
+        "changeset.preview",
+        "changeset.apply",
+        "changeset.schedule",
+      ].includes(row.capabilityId) &&
       row.runSourceReleaseId !== null
     ) {
-      if (!options.changesets || typeof row.outputRedacted?.changeSetId !== "string") return false;
+      const changeSetId = ["changeset.apply", "changeset.schedule"].includes(row.capabilityId)
+        ? row.inputCanonical.changeSetId
+        : row.outputRedacted?.changeSetId;
+      if (!options.changesets || typeof changeSetId !== "string") return false;
       try {
         const detail = await options.changesets.get({
           actor: visibility.actor,
-          id: row.outputRedacted.changeSetId,
+          id: changeSetId,
         });
-        return detail.siteId === row.siteId && detail.id === row.outputRedacted.changeSetId;
+        return detail.siteId === row.siteId && detail.id === changeSetId;
       } catch {
         return false;
       }

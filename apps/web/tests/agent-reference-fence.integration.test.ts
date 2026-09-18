@@ -3,7 +3,7 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   NP_AGENT_JOB_REFERENCE_FENCE_INSTALL_SQL_V1,
-  NP_AGENT_REFERENCE_FENCE_SQL_V4,
+  NP_AGENT_REFERENCE_FENCE_SQL_V5,
   npAgentReferenceFenceCoverageSqlV1,
   npAgentReferenceFenceTriggersSqlV1,
 } from "../../../packages/core/src/agent/reference-fence-sql.js";
@@ -14,6 +14,7 @@ const tables = [
   "np_agent_actions",
   "np_agent_invocations",
   "np_agent_changesets",
+  "np_agent_approvals",
   "np_agent_changeset_validation_attempts",
   "np_agent_changeset_previews",
   "np_agent_preview_artifacts",
@@ -60,10 +61,11 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
       CREATE TABLE np_agent_reference_fence(id integer PRIMARY KEY CHECK(id=1),epoch bigint NOT NULL CHECK(epoch>=0));
       INSERT INTO np_agent_reference_fence VALUES(1,0);
       CREATE TABLE np_agent_runs(id uuid PRIMARY KEY,site_id text NOT NULL,admission_fingerprint text DEFAULT 'fingerprint');
-      CREATE TABLE np_agent_changesets(id uuid PRIMARY KEY,site_id text NOT NULL,run_id uuid,run_fingerprint text,run_source_release_id uuid,invocation_id uuid);
-      CREATE TABLE np_agent_actions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text,run_id uuid,run_fingerprint text,run_source_release_id uuid,input_hash text,sequence integer,idempotency_key text,invocation_id uuid);
-      CREATE TABLE np_agent_invocations(id uuid PRIMARY KEY,site_id text,operation_kind text,operation_id text,result_kind text,result_id uuid,audit_event_id uuid,request_body jsonb);
-      CREATE TABLE np_audit_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text,payload jsonb,actor_user_id uuid,actor_member_id uuid);
+      CREATE TABLE np_agent_approvals(id uuid PRIMARY KEY,site_id text NOT NULL,target_kind text,target_id uuid,target_changeset_id uuid,requested_by_user_id uuid,decided_by_user_id uuid,revoked_by_user_id uuid,statement_body jsonb,decision_body jsonb,challenge_hash text,state text,capability_id text);
+      CREATE TABLE np_agent_changesets(id uuid PRIMARY KEY,site_id text NOT NULL,run_id uuid,run_fingerprint text,run_source_release_id uuid,invocation_id uuid,state text);
+      CREATE TABLE np_agent_actions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text,run_id uuid,run_fingerprint text,run_source_release_id uuid,input_hash text,sequence integer,idempotency_key text,invocation_id uuid,state text,capability_id text,approval_id uuid,output_redacted jsonb,input_canonical jsonb);
+      CREATE TABLE np_agent_invocations(id uuid PRIMARY KEY,site_id text,operation_kind text,operation_id text,result_kind text,result_id uuid,audit_event_id uuid,request_body jsonb,staff_user_id uuid,actor_deleted_at timestamptz);
+      CREATE TABLE np_audit_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text,payload jsonb,actor_user_id uuid,actor_member_id uuid,target_type text,target_id text);
       CREATE TABLE np_agent_source_releases(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text NOT NULL,source_id uuid NOT NULL,source_kind text DEFAULT 'runtime-run',evidence_body jsonb DEFAULT '{"admissionFingerprint":"fingerprint"}');
       CREATE INDEX np_fence_source_idx ON np_agent_source_releases(source_id,site_id);
       CREATE TABLE np_agent_source_release_edges(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text NOT NULL,owner_kind text NOT NULL,owner_id uuid NOT NULL,source_release_id uuid,edge_code text);
@@ -73,7 +75,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
       CREATE TABLE np_agent_preview_artifact_uploads(id uuid PRIMARY KEY,site_id text NOT NULL,preview_id uuid);
       CREATE TABLE np_agent_preview_viewer_launches(id uuid PRIMARY KEY,site_id text NOT NULL,preview_id uuid);
       CREATE TABLE np_agent_preview_render_sessions(id uuid PRIMARY KEY,site_id text NOT NULL,preview_id uuid);
-      ${NP_AGENT_REFERENCE_FENCE_SQL_V4}
+      ${NP_AGENT_REFERENCE_FENCE_SQL_V5}
       ${tables.map(npAgentReferenceFenceTriggersSqlV1).join("\n")}
     `);
   });
@@ -461,6 +463,252 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
     },
   );
 
+  it.each([false, true])(
+    "detaches an immutable approval request with creator already released=%s",
+    async (creatorReleased) => {
+      const changeSetId = randomUUID(),
+        approvalId = randomUUID(),
+        actionId = randomUUID();
+      const creatorRunId = creatorReleased ? randomUUID() : sourceId;
+      const creatorReceipt = creatorReleased ? randomUUID() : null;
+      await observer.query(
+        "INSERT INTO np_agent_changesets(id,site_id,run_id,run_source_release_id,state) VALUES($1,'site-a',$2,$3,'cancelled')",
+        [changeSetId, creatorReleased ? null : sourceId, creatorReceipt],
+      );
+      await observer.query(
+        "INSERT INTO np_agent_approvals(id,site_id,target_kind,target_id,target_changeset_id,state,capability_id) VALUES($1,'site-a','changeset',$2,$2,'expired','changeset.schedule')",
+        [approvalId, changeSetId],
+      );
+      const output = {
+        approvalId,
+        runId: sourceId,
+        changeSet: { id: changeSetId, runId: creatorRunId },
+      };
+      await observer.query(
+        "INSERT INTO np_agent_actions(id,site_id,run_id,run_fingerprint,sequence,idempotency_key,state,capability_id,approval_id,output_redacted,input_canonical) VALUES($1,'site-a',$2,'fingerprint',4,$3,'approval_pending','changeset.schedule',null,$4,$5)",
+        [
+          actionId,
+          sourceId,
+          `runtime:${sourceId}:4`,
+          output,
+          { changeSetId, planHash: "cj1:sha256:" + "A".repeat(43), approvalId: null },
+        ],
+      );
+      if (creatorReleased)
+        await observer.query(
+          "INSERT INTO np_agent_source_releases(id,site_id,source_id) VALUES($1,'site-a',$2)",
+          [creatorReceipt, creatorRunId],
+        );
+      await lockCleaner();
+      const releaseId = (
+        await cleaner.query(
+          "INSERT INTO np_agent_source_releases(site_id,source_id) VALUES('site-a',$1) RETURNING id",
+          [sourceId],
+        )
+      ).rows[0].id;
+      await cleaner.query(
+        "INSERT INTO np_agent_source_release_edges(site_id,owner_kind,owner_id,source_release_id,edge_code) VALUES('site-a','changeset-action',$1,$3,'action-run'),('site-a','changeset-approval',$2,$3,'approval-history')",
+        [actionId, approvalId, releaseId],
+      );
+      await cleaner.query("SAVEPOINT mutation");
+      await expect(
+        cleaner.query(
+          "UPDATE np_agent_actions SET run_id=null,run_source_release_id=$1,output_redacted=output_redacted||'{\"changed\":true}' WHERE id=$2",
+          [releaseId, actionId],
+        ),
+      ).rejects.toMatchObject({ code: "23514" });
+      await cleaner.query("ROLLBACK TO SAVEPOINT mutation");
+      await cleaner.query(
+        "UPDATE np_agent_actions SET run_id=null,run_source_release_id=$1 WHERE id=$2",
+        [releaseId, actionId],
+      );
+      await cleaner.query("COMMIT");
+      const row = (
+        await observer.query(
+          "SELECT run_id,run_source_release_id,output_redacted FROM np_agent_actions WHERE id=$1",
+          [actionId],
+        )
+      ).rows[0];
+      expect(row).toEqual({
+        run_id: null,
+        run_source_release_id: releaseId,
+        output_redacted: output,
+      });
+    },
+  );
+
+  it("freezes a closed approval and its independently owned admission history", async () => {
+    const changeSetId = randomUUID(),
+      approvalId = randomUUID(),
+      requestId = randomUUID();
+    const decisionId = randomUUID(),
+      expiryAuditId = randomUUID(),
+      requestAuditId = randomUUID();
+    const actionId = randomUUID(),
+      staffId = randomUUID();
+    await observer.query(
+      "INSERT INTO np_agent_changesets(id,site_id,run_id) VALUES($1,'site-a',$2)",
+      [changeSetId, sourceId],
+    );
+    await observer.query(
+      "INSERT INTO np_agent_approvals(id,site_id,target_kind,target_id,target_changeset_id,requested_by_user_id,decided_by_user_id,state,statement_body,decision_body) VALUES($1,'site-a','changeset',$2,$2,$3,$3,'rejected','{}','{}')",
+      [approvalId, changeSetId, staffId],
+    );
+    await observer.query(
+      "INSERT INTO np_audit_events(id,site_id,target_type,target_id,payload) VALUES($1,'site-a','agent-approval',$2,'{}'),($3,'site-a','agent-changeset',$4,'{}')",
+      [expiryAuditId, approvalId, requestAuditId, changeSetId],
+    );
+    await observer.query(
+      "INSERT INTO np_agent_invocations(id,site_id,operation_kind,operation_id,result_kind,result_id,audit_event_id,request_body) VALUES($1,'site-a','capability','changeset.apply','changeset',$2,$3,$4)",
+      [
+        requestId,
+        changeSetId,
+        requestAuditId,
+        { input: { changeSetId, mode: "request_approval" } },
+      ],
+    );
+    await observer.query(
+      "INSERT INTO np_agent_actions(id,site_id,invocation_id,input_hash) VALUES($1,'site-a',$2,'original')",
+      [actionId, requestId],
+    );
+    await observer.query(
+      "INSERT INTO np_agent_invocations(id,site_id,operation_kind,operation_id,result_kind,result_id,request_body,staff_user_id) VALUES($1,'site-a','admin','agents.approvals.reject','admin_resource',$2,$3,$4)",
+      [decisionId, approvalId, { input: { targetId: approvalId } }, staffId],
+    );
+    await observer.query(
+      "INSERT INTO np_agent_source_release_edges(site_id,owner_kind,owner_id,edge_code) VALUES('site-a','changeset-source',$1,'changeset-run')",
+      [changeSetId],
+    );
+    for (const [table, id] of [
+      ["np_agent_approvals", approvalId],
+      ["np_agent_actions", actionId],
+      ["np_agent_invocations", requestId],
+      ["np_agent_invocations", decisionId],
+      ["np_audit_events", expiryAuditId],
+      ["np_audit_events", requestAuditId],
+    ]) {
+      await expect(writer.query(`DELETE FROM ${table} WHERE id=$1`, [id])).rejects.toMatchObject({
+        code: "23514",
+      });
+    }
+    await expect(
+      writer.query("UPDATE np_agent_approvals SET challenge_hash='changed' WHERE id=$1", [
+        approvalId,
+      ]),
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      writer.query("UPDATE np_agent_actions SET input_hash='changed' WHERE id=$1", [actionId]),
+    ).rejects.toMatchObject({ code: "23514" });
+    await writer.query(
+      "UPDATE np_agent_approvals SET requested_by_user_id=null,decided_by_user_id=null WHERE id=$1",
+      [approvalId],
+    );
+    await expect(
+      writer.query("UPDATE np_agent_approvals SET requested_by_user_id=$1 WHERE id=$2", [
+        staffId,
+        approvalId,
+      ]),
+    ).rejects.toMatchObject({ code: "23514" });
+    await writer.query(
+      "UPDATE np_agent_invocations SET staff_user_id=null,actor_deleted_at=now() WHERE id=$1",
+      [decisionId],
+    );
+    await expect(
+      writer.query("UPDATE np_agent_invocations SET actor_deleted_at=now() WHERE id=$1", [
+        decisionId,
+      ]),
+    ).rejects.toMatchObject({ code: "23514" });
+    await writer.query("UPDATE np_agent_approvals SET state=state WHERE id=$1", [approvalId]);
+    await writer.query("UPDATE np_audit_events SET actor_user_id=null WHERE id=$1", [
+      expiryAuditId,
+    ]);
+  });
+
+  it("protects the parent from an approval-only receipt and rejects late approval writers", async () => {
+    const changeSetId = randomUUID(),
+      approvalId = randomUUID();
+    await observer.query(
+      "INSERT INTO np_agent_changesets(id,site_id,run_id) VALUES($1,'site-a',$2)",
+      [changeSetId, sourceId],
+    );
+    await observer.query(
+      "INSERT INTO np_agent_approvals(id,site_id,target_kind,target_id,target_changeset_id,state,capability_id) VALUES($1,'site-a','changeset',$2,$2,'expired','changeset.schedule')",
+      [approvalId, changeSetId],
+    );
+    await observer.query(
+      "INSERT INTO np_agent_source_release_edges(site_id,owner_kind,owner_id,edge_code) VALUES('site-a','changeset-approval',$1,'approval-history')",
+      [approvalId],
+    );
+    await expect(
+      writer.query("DELETE FROM np_agent_changesets WHERE id=$1", [changeSetId]),
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      writer.query(
+        "INSERT INTO np_agent_approvals(id,site_id,target_kind,target_id,target_changeset_id,state) VALUES(gen_random_uuid(),'site-a','changeset',$1,$1,'pending')",
+        [changeSetId],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      writer.query(
+        "INSERT INTO np_agent_invocations(id,site_id,operation_kind,operation_id,request_body) VALUES(gen_random_uuid(),'site-a','admin','agents.changesets.request_approval',$1)",
+        [{ input: { targetId: changeSetId } }],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      writer.query(
+        "INSERT INTO np_agent_invocations(id,site_id,operation_kind,operation_id,request_body) VALUES(gen_random_uuid(),'site-a','admin','agents.approvals.decision_challenge',$1)",
+        [{ input: { targetId: approvalId } }],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+    await expect(
+      writer.query(
+        "INSERT INTO np_audit_events(site_id,target_type,target_id,payload) VALUES('site-a','agent-approval',$1,'{}')",
+        [approvalId],
+      ),
+    ).rejects.toMatchObject({ code: "23514" });
+    await writer.query(
+      "INSERT INTO np_agent_invocations(id,site_id,operation_kind,operation_id,request_body) VALUES(gen_random_uuid(),'site-a','admin','agents.approvals.get',$1)",
+      [{ input: { targetId: approvalId } }],
+    );
+  });
+
+  it("rejects an approval-only job waiting behind a committed receipt", async () => {
+    const changeSetId = randomUUID(),
+      approvalId = randomUUID();
+    await observer.query("INSERT INTO np_agent_changesets(id,site_id) VALUES($1,'site-a')", [
+      changeSetId,
+    ]);
+    await observer.query(
+      "INSERT INTO np_agent_approvals(id,site_id,target_kind,target_id,target_changeset_id,state,capability_id) VALUES($1,'site-a','changeset',$2,$2,'expired','changeset.schedule')",
+      [approvalId, changeSetId],
+    );
+    await observer.query(
+      "CREATE SCHEMA pgboss; CREATE TABLE pgboss.job(id uuid,name text,state text,data jsonb)",
+    );
+    try {
+      await observer.query(NP_AGENT_JOB_REFERENCE_FENCE_INSTALL_SQL_V1);
+      const pid = await writerPid();
+      await lockCleaner();
+      await cleaner.query(
+        "INSERT INTO np_agent_source_release_edges(site_id,owner_kind,owner_id,edge_code) VALUES('site-a','changeset-approval',$1,'approval-history')",
+        [approvalId],
+      );
+      const pending = writer
+        .query("INSERT INTO pgboss.job VALUES(gen_random_uuid(),'approval','created',$1)", [
+          { approvalId },
+        ])
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
+      await waitForPid(pid);
+      await cleaner.query("COMMIT");
+      expect(await pending).toMatchObject({ code: "23514" });
+    } finally {
+      await observer.query("DROP SCHEMA pgboss CASCADE");
+    }
+  });
+
   it("makes receipt deletion contingent on committed whole-site deletion", async () => {
     await lockCleaner();
     await releaseSource();
@@ -507,11 +755,11 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
       "CREATE OR REPLACE FUNCTION public.np_agent_reference_lock_v1() RETURNS void LANGUAGE plpgsql VOLATILE SET search_path=pg_catalog,public AS $$BEGIN RETURN; END$$",
     );
     expect((await observer.query(query)).rows[0].missing_count).toBe("1");
-    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V4);
+    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V5);
     expect((await observer.query(query)).rows[0].missing_count).toBe("0");
     await observer.query("ALTER FUNCTION public.np_agent_reference_lock_v1() STABLE");
     expect((await observer.query(query)).rows[0].missing_count).toBe("1");
-    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V4);
+    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V5);
   });
 
   it("guards direct old/new job partitions and fences partition attachment", async () => {

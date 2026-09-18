@@ -11,6 +11,8 @@ import {
   npAgentReferenceMigrationSqlV3,
   npEnsureAgentReferenceMigrationV4,
   npAgentReferenceMigrationSqlV4,
+  npEnsureAgentReferenceMigrationV5,
+  npAgentReferenceMigrationSqlV5,
 } from "./agent-reference-migration.js";
 const directories: string[] = [];
 async function folder() {
@@ -172,4 +174,44 @@ it("appends validated evidence guards while preserving all installed generations
     npAgentReferenceMigrationSqlV4().replace("FOR SHARE", "FOR KEY SHARE"),
   );
   await expect(npEnsureAgentReferenceMigrationV4(options)).rejects.toThrow("differs");
+});
+
+it("appends closed approval evidence guards while preserving all installed generations", async () => {
+  const migrationsFolder = await folder();
+  const previous = [
+    npAgentReferenceMigrationSqlV1(),
+    npAgentReferenceMigrationSqlV2(),
+    npAgentReferenceMigrationSqlV3(),
+    npAgentReferenceMigrationSqlV4(),
+  ];
+  for (const [index, body] of previous.entries())
+    await writeFile(join(migrationsFolder, `000${index + 1}.sql`), body);
+  const createCustomMigration = vi.fn(async () => {
+    await writeFile(join(migrationsFolder, "0005.sql"), "-- generated shell\n");
+  });
+  const options = { migrationsFolder, createCustomMigration };
+  await npEnsureAgentReferenceMigrationV5(options);
+  for (const [index, body] of previous.entries())
+    expect(await readFile(join(migrationsFolder, `000${index + 1}.sql`), "utf8")).toBe(body);
+  expect(await readFile(join(migrationsFolder, "0005.sql"), "utf8")).toBe(
+    npAgentReferenceMigrationSqlV5(),
+  );
+  await npEnsureAgentReferenceMigrationV5(options);
+  expect(createCustomMigration).toHaveBeenCalledTimes(1);
+  await writeFile(
+    join(migrationsFolder, "0005.sql"),
+    npAgentReferenceMigrationSqlV5().replace("FOR SHARE", "FOR KEY SHARE"),
+  );
+  await expect(npEnsureAgentReferenceMigrationV5(options)).rejects.toThrow("differs");
+});
+
+it("preserves the shipped validated ChangeSet reference migration bytes", async () => {
+  const shipped = await readFile(
+    new URL(
+      "../../../../apps/web/drizzle/0057_agent-validated-changeset-source-reference-lifecycle.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  expect(npAgentReferenceMigrationSqlV4()).toBe(shipped);
 });

@@ -10,14 +10,20 @@ import type {
   npAgentPreviewArtifactUploads,
   npAgentPreviewViewerLaunches,
   npAgentPreviewRenderSessions,
+  npAgentApprovals,
+  npAgentSourceReleases,
 } from "../db/schema/agent.js";
 import type { npAuditEvents } from "../db/schema/community.js";
 import type { NpAgentSourceReleaseCanonicalV1 } from "../agent-contract/source-release-contract.js";
 import { npDigestAgentAuthorizationContextCanonical } from "../agent-contract/canonical-authorization-context.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
-import { npSourceReleaseOwnerDigestV1 } from "./source-release-read.js";
+import {
+  npRequireAgentSourceReleaseRecordV1,
+  npSourceReleaseOwnerDigestV1,
+} from "./source-release-read.js";
 import { npVerifyCancelledChangeSetAttributionV1 } from "./cancelled-changeset-source-release.js";
 import { npVerifyAgentChangeSetPlanEvidenceV1 } from "./changeset-plan-evidence.js";
+import { npVerifyClosedApprovalEvidenceV1 } from "./closed-approval-evidence.js";
 import { npVerifyCancelledPreviewEvidenceV1 } from "./cancelled-preview-evidence.js";
 
 type ChangeSet = typeof npAgentChangesets.$inferSelect;
@@ -36,6 +42,7 @@ export type NpCancelledReleaseProofV1 = {
   validationIds: string[];
   previewIds: string[];
   creator: boolean;
+  invocationIds: string[];
 };
 const same = (a: unknown, b: unknown) =>
   serializeAgentCanonicalJson(a) === serializeAgentCanonicalJson(b);
@@ -92,6 +99,7 @@ export async function npReadCancelledChangeSetLifecycleV1(input: {
       !["OPERATOR_CANCELLED", "CHANGESET_EXPIRED"].includes(c.cancellationCode ?? "")
     )
       return null;
+    let creatorRunId = c.runId;
     if (c.runId !== null) {
       const creator = await query(
         sql`select agent_id,agent_config_hash,agent_version_id,principal_id,admission_fingerprint from np_agent_runs where site_id=${c.siteId} and id=${c.runId}::uuid limit 1`,
@@ -106,14 +114,36 @@ export async function npReadCancelledChangeSetLifecycleV1(input: {
         run.admission_fingerprint !== c.runFingerprint
       )
         return null;
+    } else if (c.runSourceReleaseId) {
+      const rows = await load<typeof npAgentSourceReleases.$inferSelect>(
+        "np_agent_source_releases",
+        sql`site_id=${c.siteId} and id=${c.runSourceReleaseId}::uuid`,
+        1,
+      );
+      if (!rows || rows.length !== 1) return null;
+      const creatorReceipt = await npRequireAgentSourceReleaseRecordV1(rows[0]);
+      if (
+        creatorReceipt.kind !== "runtime-run" ||
+        creatorReceipt.admissionFingerprint !== c.runFingerprint ||
+        creatorReceipt.principalId !== c.principalId ||
+        creatorReceipt.agentId !== c.agentId ||
+        creatorReceipt.agentVersionId !== c.agentVersionId
+      )
+        return null;
+      creatorRunId = creatorReceipt.sourceId;
     }
+    if (!creatorRunId) return null;
     const where = sql`site_id=${c.siteId} and changeset_id=${c.id}::uuid`;
     const blockers = await query(sql`select
-      exists(select 1 from np_agent_approvals where site_id=${c.siteId} and (target_id=${c.id}::uuid or target_changeset_id=${c.id}::uuid)) or
       exists(select 1 from np_agent_changeset_executions where ${where}) or
       exists(select 1 from np_agent_changeset_rollback_plans where ${where}) or
       exists(select 1 from np_agent_changeset_rollback_operations where ${where}) as blocked`);
     if (blockers.rows[0]?.blocked !== false) return null;
+    const approvals = await load<typeof npAgentApprovals.$inferSelect>(
+      "np_agent_approvals",
+      sql`site_id=${c.siteId} and (target_id=${c.id}::uuid or target_changeset_id=${c.id}::uuid)`,
+    );
+    if (!approvals) return null;
     const operations = await load<typeof npAgentChangesetOperations.$inferSelect>(
       "np_agent_changeset_operations",
       where,
@@ -211,10 +241,39 @@ export async function npReadCancelledChangeSetLifecycleV1(input: {
         ...[...artifacts, ...uploads, ...viewerLaunches, ...renderSessions].map((row) => row.id),
       );
     }
+    for (const approval of approvals) {
+      if (
+        !(await npVerifyClosedApprovalEvidenceV1({ changeSet: c, approval, previews, releasedAt }))
+      )
+        return null;
+      allIds.push(approval.id);
+    }
+    // Request-phase producers must be Runtime capabilities. Staff decision/challenge
+    // journals remain preserved by the approval fence, not mistaken for request Actions.
+    // Discover only parent-bound request results that the relational fence freezes;
+    // an unrelated capability merely mentioning an approval cannot redefine this proof.
+    const approvalInvocations = approvals.length
+      ? await load<Invocation>(
+          "np_agent_invocations",
+          sql`site_id=${c.siteId} and result_id=${c.id}::uuid and (
+            (operation_kind='capability' and operation_id in ('changeset.apply','changeset.schedule') and result_kind='changeset') or
+            (operation_kind='admin' and operation_id='agents.changesets.request_approval' and result_kind='admin_resource')
+          ) and output_redacted->>'approvalId' in (${sql.join(
+            approvals.map((a) => sql`${a.id}`),
+            sql`,`,
+          )})`,
+        )
+      : [];
+    if (
+      !approvalInvocations ||
+      approvals.some((a) => !approvalInvocations.some((i) => i.outputRedacted?.approvalId === a.id))
+    )
+      return null;
     const invocationIds = [
       c.invocationId,
       ...validations.map((v) => v.admittingInvocationId),
       ...previews.map((p) => p.admittingInvocationId),
+      ...approvalInvocations.map((i) => i.id),
     ];
     if (new Set(invocationIds).size !== invocationIds.length || invocationIds.length > 100)
       return null;
@@ -263,10 +322,12 @@ export async function npReadCancelledChangeSetLifecycleV1(input: {
         return null;
       const validation = validations.find((v) => v.admittingInvocationId === invocation.id);
       const preview = previews.find((p) => p.admittingInvocationId === invocation.id);
-      if (invocation.id !== c.invocationId && !validation && !preview) return null;
+      const approval = approvals.find((a) => a.id === invocation.outputRedacted?.approvalId);
+      if (invocation.id !== c.invocationId && !validation && !preview && !approval) return null;
       if (
         (validation && action.capabilityId !== "changeset.validate") ||
         (preview && action.capabilityId !== "changeset.preview") ||
+        (approval && !["changeset.apply", "changeset.schedule"].includes(action.capabilityId)) ||
         (invocation.id === c.invocationId && action.capabilityId !== "changeset.create")
       )
         return null;
@@ -285,6 +346,8 @@ export async function npReadCancelledChangeSetLifecycleV1(input: {
         planEvidence: { operations, attempt },
         validation,
         preview,
+        approval,
+        creatorRunId,
         ...(current && action.capabilityId === "changeset.create" ? { agentId: b.agentId } : {}),
       });
       if (!proof) return null;
@@ -321,6 +384,17 @@ export async function npReadCancelledChangeSetLifecycleV1(input: {
       }
     }
     if (!selected.length) return null;
+    for (const approval of approvals) {
+      const body = JSON.parse(JSON.stringify(approval)) as Record<string, unknown>;
+      for (const field of ["requestedByUserId", "decidedByUserId", "revokedByUserId"])
+        delete body[field];
+      edges.push({
+        kind: "changeset-approval",
+        id: approval.id,
+        code: "approval-history",
+        digest: npSourceReleaseOwnerDigestV1(body),
+      });
+    }
     const jobs = await query(sql`select to_regclass('pgboss.job') is not null as present`);
     if (jobs.rows[0]?.present === true) {
       const pending = await query(
@@ -331,7 +405,7 @@ export async function npReadCancelledChangeSetLifecycleV1(input: {
       );
       if (pending.rows.length) return null;
     }
-    return { actions: selected, edges, validationIds, previewIds, creator };
+    return { actions: selected, edges, validationIds, previewIds, creator, invocationIds };
   } catch {
     return null;
   }

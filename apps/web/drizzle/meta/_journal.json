@@ -407,6 +407,20 @@
       "when": 1789707053151,
       "tag": "0057_agent-validated-changeset-source-reference-lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1789719799233,
+      "tag": "0058_fluffy_mephisto",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1789720688713,
+      "tag": "0059_agent-closed-approval-changeset-source-reference-lifecycle",
+      "breakpoints": true
     }
   ]
 }
