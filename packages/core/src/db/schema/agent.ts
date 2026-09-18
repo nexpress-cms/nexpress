@@ -1493,11 +1493,11 @@ export const npAgentSourceReleaseEdges = pgTable(
     }).onDelete("restrict"),
     check(
       "np_agent_source_release_edges_owner_check",
-      sql`${t.ownerKind} in ('runtime-audit','read-action','read-invocation','studio-audit','admin-invocation')`,
+      sql`${t.ownerKind} in ('runtime-audit','read-action','read-invocation','studio-audit','admin-invocation','changeset-action','changeset-invocation','changeset-source','changeset-audit')`,
     ),
     check(
       "np_agent_source_release_edges_code_check",
-      sql`(${t.ownerKind}='runtime-audit' and ${t.edgeCode} in ('audit-target','audit-run','audit-reservation')) or (${t.ownerKind}='read-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='read-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='studio-audit' and ${t.edgeCode}='audit-target') or (${t.ownerKind}='admin-invocation' and ${t.edgeCode}='invocation-result')`,
+      sql`(${t.ownerKind}='runtime-audit' and ${t.edgeCode} in ('audit-target','audit-run','audit-reservation')) or (${t.ownerKind}='read-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='read-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='studio-audit' and ${t.edgeCode}='audit-target') or (${t.ownerKind}='admin-invocation' and ${t.edgeCode}='invocation-result') or (${t.ownerKind}='changeset-action' and ${t.edgeCode}='action-run') or (${t.ownerKind}='changeset-invocation' and ${t.edgeCode}='invocation-authority-run') or (${t.ownerKind}='changeset-source' and ${t.edgeCode}='changeset-run') or (${t.ownerKind}='changeset-audit' and ${t.edgeCode}='audit-changeset')`,
     ),
     check(
       "np_agent_source_release_edges_digest_check",
@@ -2304,6 +2304,7 @@ export const npAgentChangesets = pgTable(
     agentConfigHash: text("agent_config_hash"),
     runId: uuid("run_id"),
     runFingerprint: text("run_fingerprint"),
+    runSourceReleaseId: uuid("run_source_release_id"),
     invocationId: uuid("invocation_id"),
     invocationFingerprint: text("invocation_fingerprint"),
     title: text("title").notNull(),
@@ -2353,6 +2354,11 @@ export const npAgentChangesets = pgTable(
       foreignColumns: [npAgentRuns.siteId, npAgentRuns.id],
     }).onDelete("restrict"),
     foreignKey({
+      name: "np_agent_changesets_run_release_fk",
+      columns: [t.siteId, t.runSourceReleaseId],
+      foreignColumns: [npAgentSourceReleases.siteId, npAgentSourceReleases.id],
+    }).onDelete("restrict"),
+    foreignKey({
       name: "np_agent_changesets_invocation_fk",
       columns: [t.siteId, t.invocationId],
       foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
@@ -2375,7 +2381,7 @@ export const npAgentChangesets = pgTable(
     ),
     check(
       "np_agent_changesets_attribution_check",
-      sql`((${t.runId} is null or ${t.runFingerprint} is not null) and (${t.invocationId} is null or ${t.invocationFingerprint} is not null)) is true`,
+      sql`((${t.runId} is null or ${t.runFingerprint} is not null) and (${t.runSourceReleaseId} is null or (${t.runId} is null and ${t.runFingerprint} is not null)) and (${t.invocationId} is null or ${t.invocationFingerprint} is not null)) is true`,
     ),
     check(
       "np_agent_changesets_text_check",

@@ -3,7 +3,7 @@ import pg from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   NP_AGENT_JOB_REFERENCE_FENCE_INSTALL_SQL_V1,
-  NP_AGENT_REFERENCE_FENCE_SQL_V2,
+  NP_AGENT_REFERENCE_FENCE_SQL_V3,
   npAgentReferenceFenceCoverageSqlV1,
   npAgentReferenceFenceTriggersSqlV1,
 } from "../../../packages/core/src/agent/reference-fence-sql.js";
@@ -12,6 +12,7 @@ const sourceId = "10000000-0000-4000-8000-000000000001";
 const tables = [
   "np_agent_runs",
   "np_agent_actions",
+  "np_agent_changesets",
   "np_audit_events",
   "np_agent_source_releases",
   "np_agent_source_release_edges",
@@ -50,13 +51,14 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
       CREATE TABLE np_sites(id text PRIMARY KEY);
       CREATE TABLE np_agent_reference_fence(id integer PRIMARY KEY CHECK(id=1),epoch bigint NOT NULL CHECK(epoch>=0));
       INSERT INTO np_agent_reference_fence VALUES(1,0);
-      CREATE TABLE np_agent_runs(id uuid PRIMARY KEY,site_id text NOT NULL);
+      CREATE TABLE np_agent_runs(id uuid PRIMARY KEY,site_id text NOT NULL,admission_fingerprint text DEFAULT 'fingerprint');
+      CREATE TABLE np_agent_changesets(id uuid PRIMARY KEY,site_id text NOT NULL,run_id uuid,run_fingerprint text,run_source_release_id uuid);
       CREATE TABLE np_agent_actions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text,run_id uuid,run_fingerprint text,run_source_release_id uuid,input_hash text,sequence integer,idempotency_key text);
       CREATE TABLE np_audit_events(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text,payload jsonb,actor_user_id uuid,actor_member_id uuid);
       CREATE TABLE np_agent_source_releases(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text NOT NULL,source_id uuid NOT NULL,source_kind text DEFAULT 'runtime-run',evidence_body jsonb DEFAULT '{"admissionFingerprint":"fingerprint"}');
       CREATE INDEX np_fence_source_idx ON np_agent_source_releases(source_id,site_id);
       CREATE TABLE np_agent_source_release_edges(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),site_id text NOT NULL,owner_kind text NOT NULL,owner_id uuid NOT NULL,source_release_id uuid,edge_code text);
-      ${NP_AGENT_REFERENCE_FENCE_SQL_V2}
+      ${NP_AGENT_REFERENCE_FENCE_SQL_V3}
       ${tables.map(npAgentReferenceFenceTriggersSqlV1).join("\n")}
     `);
   });
@@ -67,7 +69,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
     await observer.query(`TRUNCATE ${tables.join(",")},np_sites;
       INSERT INTO np_sites VALUES('site-a'),('site-b');
       INSERT INTO np_agent_reference_fence VALUES(1,0) ON CONFLICT(id) DO UPDATE SET epoch=0;
-      INSERT INTO np_agent_runs VALUES('${sourceId}','site-a');`);
+      INSERT INTO np_agent_runs(id,site_id) VALUES('${sourceId}','site-a');`);
   });
 
   afterAll(async () => {
@@ -190,7 +192,7 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
     ).rejects.toMatchObject({ code: "23514" });
     expect((await observer.query("SELECT count(*) FROM np_audit_events")).rows[0].count).toBe("1");
     await expect(
-      writer.query("INSERT INTO np_agent_runs VALUES($1,'site-a')", [sourceId]),
+      writer.query("INSERT INTO np_agent_runs(id,site_id) VALUES($1,'site-a')", [sourceId]),
     ).rejects.toMatchObject({ code: "23514" });
   });
 
@@ -327,11 +329,11 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
       "CREATE OR REPLACE FUNCTION public.np_agent_reference_lock_v1() RETURNS void LANGUAGE plpgsql VOLATILE SET search_path=pg_catalog,public AS $$BEGIN RETURN; END$$",
     );
     expect((await observer.query(query)).rows[0].missing_count).toBe("1");
-    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V2);
+    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V3);
     expect((await observer.query(query)).rows[0].missing_count).toBe("0");
     await observer.query("ALTER FUNCTION public.np_agent_reference_lock_v1() STABLE");
     expect((await observer.query(query)).rows[0].missing_count).toBe("1");
-    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V2);
+    await observer.query(NP_AGENT_REFERENCE_FENCE_SQL_V3);
   });
 
   it("guards direct old/new job partitions and fences partition attachment", async () => {

@@ -379,6 +379,20 @@
       "when": 1789690323604,
       "tag": "0053_agent-studio-source-reference-lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1789696324855,
+      "tag": "0054_melted_rattler",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1789696328263,
+      "tag": "0055_agent-cancelled-changeset-source-reference-lifecycle",
+      "breakpoints": true
     }
   ]
 }

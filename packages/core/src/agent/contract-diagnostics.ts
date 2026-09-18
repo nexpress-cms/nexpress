@@ -35,6 +35,7 @@ import {
   npSourceReleaseOwnerDigestV1,
   npVerifyAgentReleaseReadAttributionV1,
 } from "./source-release-read.js";
+import { npVerifyCancelledChangeSetAttributionV1 } from "./cancelled-changeset-source-release.js";
 import { npAgentReferenceFenceCoverageSqlV1 } from "./reference-fence-sql.js";
 
 const AGENT_TABLES = [
@@ -102,6 +103,7 @@ const AGENT_CONSTRAINTS = [
   "np_agent_source_release_edges_digest_check",
   "np_agent_reference_fence_singleton_check",
   "np_agent_actions_run_release_fk",
+  "np_agent_changesets_run_release_fk",
   "np_agent_actions_attribution_check",
   "np_agents_status_check",
   "np_agents_template_check",
@@ -767,15 +769,34 @@ const ISSUE_SUMMARY_SQL = `
             or i.id is null or i.principal_id is distinct from r.principal_id
             or not exists (select 1 from public.np_agent_source_release_edges e
               where e.site_id=a.site_id and e.source_release_id=r.id
-                and e.owner_kind='read-action' and e.owner_id=a.id and e.edge_code='action-run'))
+                and e.owner_kind in ('read-action','changeset-action') and e.owner_id=a.id and e.edge_code='action-run'))
         union all select a.created_at from public.np_agent_actions a
           where a.run_id is null and (a.run_fingerprint is null)<>(a.run_source_release_id is null)
         union all select e.released_at from public.np_agent_source_release_edges e
           left join public.np_agent_source_releases r on r.id=e.source_release_id and r.site_id=e.site_id
           where r.id is null
             or (e.owner_kind='runtime-audit' and not exists (select 1 from public.np_audit_events a where a.id=e.owner_id and a.site_id=e.site_id))
-            or (e.owner_kind='read-action' and not exists (select 1 from public.np_agent_actions a where a.id=e.owner_id and a.site_id=e.site_id and a.run_source_release_id=e.source_release_id))
-            or (e.owner_kind='read-invocation' and not exists (select 1 from public.np_agent_invocations i where i.id=e.owner_id and i.site_id=e.site_id))
+            or (e.owner_kind in ('read-action','changeset-action') and not exists (select 1 from public.np_agent_actions a where a.id=e.owner_id and a.site_id=e.site_id and a.run_source_release_id=e.source_release_id))
+            or (e.owner_kind in ('read-invocation','changeset-invocation') and not exists (select 1 from public.np_agent_invocations i where i.id=e.owner_id and i.site_id=e.site_id))
+            or (e.owner_kind='changeset-audit' and not exists (select 1 from public.np_audit_events a where a.id=e.owner_id and a.site_id=e.site_id))
+            or (e.owner_kind='changeset-source' and not exists (select 1 from public.np_agent_changesets c where c.id=e.owner_id and c.site_id=e.site_id and c.run_source_release_id=e.source_release_id))
+        union all select c.created_at from public.np_agent_changesets c
+          left join public.np_agent_source_releases r on r.id=c.run_source_release_id and r.site_id=c.site_id
+          where c.run_source_release_id is not null and (
+            c.run_id is not null or r.id is null or r.source_kind<>'runtime-run'
+            or c.run_fingerprint is distinct from r.evidence_body->>'admissionFingerprint'
+            or c.principal_id is distinct from r.principal_id or c.state<>'cancelled'
+            or not exists (select 1 from public.np_agent_actions a where a.site_id=c.site_id
+              and a.invocation_id=c.invocation_id and a.run_source_release_id=r.id and a.capability_id='changeset.create')
+            or not exists (select 1 from public.np_agent_source_release_edges e
+              where e.site_id=c.site_id and e.source_release_id=r.id and e.owner_id=c.id
+                and e.owner_kind='changeset-source' and e.edge_code='changeset-run')
+            or exists (select 1 from public.np_agent_approvals p where p.site_id=c.site_id and p.target_id=c.id)
+            or exists (select 1 from public.np_agent_changeset_executions x where x.site_id=c.site_id and x.changeset_id=c.id)
+            or exists (select 1 from public.np_agent_changeset_rollback_plans p where p.site_id=c.site_id and p.changeset_id=c.id)
+            or exists (select 1 from public.np_agent_changeset_rollback_operations o where o.site_id=c.site_id and o.changeset_id=c.id)
+            or exists (select 1 from public.np_agent_changeset_validation_attempts v where v.site_id=c.site_id and v.changeset_id=c.id)
+            or exists (select 1 from public.np_agent_changeset_previews p where p.site_id=c.site_id and p.changeset_id=c.id))
         union all select r.queued_at from public.np_agent_runs r
           left join public.np_agent_principals p on p.id = r.principal_id where p.id is null
         union all select r.queued_at from public.np_agent_runs r
@@ -1284,7 +1305,19 @@ function decodeDiagnosticRecord(value: unknown): Record<string, unknown> {
       entry,
     ]),
   );
-  for (const key of ["releasedAt", "finishedAt", "completedAt"])
+  for (const key of [
+    "releasedAt",
+    "finishedAt",
+    "completedAt",
+    "createdAt",
+    "updatedAt",
+    "expiresAt",
+    "requestedAt",
+    "startedAt",
+    "appliedAt",
+    "verifiedAt",
+    "rolledBackAt",
+  ])
     if (typeof row[key] === "string") row[key] = new Date(row[key]);
   return row;
 }
@@ -1301,16 +1334,22 @@ async function collectReleasedAttributionIssues(
         case when octet_length(to_jsonb(a)::text)<=4194304 then to_jsonb(a) else null end as action,
         case when octet_length(to_jsonb(i)::text)<=4194304 then to_jsonb(i) else null end as invocation,
         case when octet_length(to_jsonb(r)::text)<=32768 then to_jsonb(r) else null end as release,
+        case when octet_length(to_jsonb(c)::text)<=4194304 then to_jsonb(c) else null end as changeset,
+        case when octet_length(to_jsonb(audit)::text)<=4194304 then to_jsonb(audit) else null end as audit,
         (select coalesce(jsonb_agg(edge), '[]'::jsonb) from (
           select e.owner_kind, e.owner_id, e.edge_code, e.owner_evidence_digest, e.verifier_version, e.released_at
           from public.np_agent_source_release_edges e
           where e.site_id=a.site_id and e.source_release_id=r.id and
-            ((e.owner_kind='read-action' and e.owner_id=a.id and e.edge_code='action-run') or
-             (e.owner_kind='read-invocation' and e.owner_id=i.id and e.edge_code='invocation-authority-run'))
-          limit 3) edge) as edges
+            ((e.owner_kind in ('read-action','changeset-action') and e.owner_id=a.id and e.edge_code='action-run') or
+             (e.owner_kind in ('read-invocation','changeset-invocation') and e.owner_id=i.id and e.edge_code='invocation-authority-run') or
+             (e.owner_kind='changeset-source' and e.owner_id=c.id and e.edge_code='changeset-run') or
+             (e.owner_kind='changeset-audit' and e.owner_id=audit.id and e.edge_code='audit-changeset'))
+          limit 5) edge) as edges
       from public.np_agent_actions a
       left join public.np_agent_invocations i on i.id=a.invocation_id and i.site_id=a.site_id
       left join public.np_agent_source_releases r on r.id=a.run_source_release_id and r.site_id=a.site_id
+      left join public.np_agent_changesets c on c.id=i.result_id and c.site_id=a.site_id
+      left join public.np_audit_events audit on audit.id=i.audit_event_id and audit.site_id=a.site_id
       where a.run_source_release_id is not null and a.id>$1::uuid order by a.id limit 8`,
       [after],
     );
@@ -1333,7 +1372,7 @@ async function collectReleasedAttributionIssues(
           action.runSourceReleaseId !== release.id
         )
           throw new Error("Invalid released attribution");
-        const proof = await npVerifyAgentReleaseReadAttributionV1({
+        const common = {
           action,
           invocation,
           runId: body.sourceId,
@@ -1341,14 +1380,47 @@ async function collectReleasedAttributionIssues(
           principalId: body.principalId,
           agentVersionId: body.agentVersionId,
           deadlineAt: body.deadlineAt,
-        });
-        if (!proof || !Array.isArray(row.edges) || row.edges.length !== 2)
-          throw new Error("Invalid retained attribution proof");
+        };
+        let expected: string[][];
+        if (action.capabilityId === "changeset.create") {
+          type ChangeSetProof = Parameters<typeof npVerifyCancelledChangeSetAttributionV1>[0];
+          const changeSet = decodeDiagnosticRecord(
+            row.changeset,
+          ) as unknown as ChangeSetProof["changeSet"];
+          const audit = decodeDiagnosticRecord(row.audit) as unknown as ChangeSetProof["audit"];
+          if (changeSet.runId !== null || changeSet.runSourceReleaseId !== release.id)
+            throw new Error("Invalid released ChangeSet attribution");
+          const proof = await npVerifyCancelledChangeSetAttributionV1({
+            ...common,
+            changeSet,
+            audit,
+            releasedAt: release.releasedAt,
+            agentId: body.agentId,
+          });
+          if (!proof) throw new Error("Invalid released ChangeSet proof");
+          expected = [
+            ["changeset-action", action.id, "action-run", proof.actionDigest],
+            [
+              "changeset-invocation",
+              invocation.id,
+              "invocation-authority-run",
+              proof.invocationDigest,
+            ],
+            ["changeset-source", changeSet.id, "changeset-run", proof.changeSetDigest],
+            ["changeset-audit", audit.id, "audit-changeset", proof.auditDigest],
+          ];
+        } else {
+          const proof = await npVerifyAgentReleaseReadAttributionV1(common);
+          if (!proof) throw new Error("Invalid released read attribution proof");
+          expected = [
+            ["read-action", action.id, "action-run", proof.actionDigest],
+            ["read-invocation", invocation.id, "invocation-authority-run", proof.invocationDigest],
+          ];
+        }
+        if (!Array.isArray(row.edges) || row.edges.length !== expected.length)
+          throw new Error("Invalid retained attribution edges");
         const edges = row.edges.map(decodeDiagnosticRecord);
-        for (const [kind, ownerId, code, digest] of [
-          ["read-action", action.id, "action-run", proof.actionDigest],
-          ["read-invocation", invocation.id, "invocation-authority-run", proof.invocationDigest],
-        ]) {
+        for (const [kind, ownerId, code, digest] of expected) {
           if (
             edges.filter(
               (edge) =>

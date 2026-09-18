@@ -93,8 +93,9 @@ input, with a receipt pointer replacing the live Run locator. Consumed Run
 admission keys remain unavailable after deletion. A persisted global epoch and
 reference-ingress guards prevent late writers from resurrecting references.
 
-Unknown/global audit, malformed evidence, active work, mutation Actions,
-approvals and rollback owners still pin their sources. There is no normal audit
+Unknown/global audit, malformed evidence, active work, mutation Actions outside
+the cancelled draft-create owner below, approvals and rollback owners still pin
+their sources. There is no normal audit
 pruning service. More than 100 matching owners in a single table conservatively
 retain a source. Structured manual input now lives on its owning Run: execution-integrity checks
 verify the stored payload against its admission-bound digest before source release.
@@ -200,3 +201,80 @@ Playwright and fresh scaffold. PR #1452 squash-merged as
 
 These results cover this Studio source-expiration bundle. They do not establish
 full R5 acceptance, universal source release or deletion of derived evidence.
+
+## Cancelled draft-create source reference matrix
+
+This bounded owner covers Runtime `changeset.create` followed by explicit
+operator cancellation or eligibility expiry, before any validation, preview,
+approval, execution or rollback generation. It preserves the original proposal,
+request, output, audit and consumed keys. It does not authorize a capability or
+infer safety from a terminal state alone.
+
+| Reference                                                                                                           | Release condition                                                                                                                                  | Retained evidence                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Draft-create Action Run locator                                                                                     | Exact installed create capability, canonical Action/input/output and linked creator invocation; terminal Action and expired invocation deadline    | Original Action bytes except live Run locator replaced by receipt; `changeset-action` / `action-run`                       |
+| Runtime creator invocation                                                                                          | Exact original request, authorization, output and Run identity; same verified Action/ChangeSet/audit                                               | Original invocation including historical Run and authority references; `changeset-invocation` / `invocation-authority-run` |
+| Runtime-created cancelled ChangeSet                                                                                 | Exact creator source input/idempotency/fingerprints, canonical current draft, no generations/recovery facts and no active job naming the ChangeSet | Original draft and source fingerprints; live Run locator replaced by receipt; `changeset-source` / `changeset-run`         |
+| Creator audit                                                                                                       | Exact same-site producer action, payload and ChangeSet target                                                                                      | Immutable original audit; `changeset-audit` / `audit-changeset`                                                            |
+| Validation/preview generations, any approval/execution/rollback history, unknown references or unresolved Run usage | No new release owner                                                                                                                               | Source remains pinned                                                                                                      |
+
+All four owners are verified together under the existing reference fence before
+any receipt or detachment is written. Remaining literal references still pin,
+including unexpected Run IDs inside inputs, outputs, keys or draft operations.
+Arbitrary request keys are preserved; only an exact existing
+`runtime:<Run>:<sequence>` key receives a historical-reference exemption.
+Run policy retention and terminal integrity checks remain unchanged. Proposal
+cancellation may happen after its proposing Run completed.
+
+Receipt-backed ChangeSet projections preserve the historical Run link; Activity
+uses the current ChangeSet facade for item visibility. Receipt identity never
+grants authority to replay a Runtime capability. DB guards freeze retained
+owners and prevent late lifecycle generations or operation changes after source
+release, while preserving atomic whole-site deletion. Historical V1/V2 migration
+bytes remain unchanged; schema and V3 guard installation append migrations.
+
+Terminal Runtime validation/preview history remains outside this owner even
+when its own generation is finished. This is not general pre-execution,
+mutation, derived-evidence or full R5 retention completion.
+
+## Cancelled draft-create verification (2026-09-18)
+
+Final `verify` passed all 113 tasks, including Core 2,042, Admin 151, App 559
+and Web 174 unit cases. Workspace lint passed all 40 package tasks plus Web
+lint/scripts. Focused proof tests passed 22 cases, existing read/history/Doctor
+units 61 and migration generation 7. Generated migrations 0054/0055 append the
+schema and V3 guards; prior V1/V2 SQL remains byte-identical.
+
+PostgreSQL passed Core 64 and Web 1,431 ordinary cases across the full run and
+an affected 28-case sequential rerun. Theme suites were included. The four new
+real Runtime journeys cover operator cancellation, expiry, retained dependency
+chains and approval history, including immutable evidence, current item ACLs,
+late ChangeSet-only jobs, Doctor and consumed admission keys. The optional native
+preview case skipped in the ordinary run was explicitly enabled and passed.
+Live Redis passed 16 and production browser passed all 73 cases.
+
+Fresh packed scaffold passed 40 packages / 60 stages, with exact packaged dist
+checks, isolated installation/typecheck, generated migrations, Agent foundation
+and Doctor, production build, seven extension packages, five runtime module
+probes and first-run journeys. Runtime probes intentionally used an unreachable
+DB; expected connection failures were accepted only after ruling out module
+resolution errors. Package versions and lockfile remained unchanged.
+
+Self-review added bounded row/operation reads and exact producer defaults.
+The real delegated fixture exposed an existing admission audit comparison bug:
+the producer records the deployment authority fingerprint, while source release
+compared the principal authority fingerprint. It now compares the exact
+admission-bound deployment fingerprint; no additional reference mask or authority
+is granted. The minimal reference-fence fixture was upgraded from V2 to V3.
+
+The full PostgreSQL run recorded two approval-resumption test timeouts, one
+subsequent cleanup deadlock and a reference-fence teardown timeout. Both affected
+files passed all 28 cases when run sequentially, without changing time limits,
+production budgets or fixture cardinalities. The initial lint found two type-only
+imports, which were corrected. An overlapping Core rebuild then removed dist
+files while App lint scanned imports; the final lint ran against completed builds
+and passed. Browser-generated upload media was preserved outside the repository.
+
+These results cover cancelled, unvalidated Runtime draft-create sources only.
+Validation/preview owners, executed mutations, general evidence pruning and full
+R5 acceptance remain open.

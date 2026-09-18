@@ -7,6 +7,8 @@ import {
   npEnsureAgentReferenceMigrationV1,
   npEnsureAgentReferenceMigrationV2,
   npAgentReferenceMigrationSqlV2,
+  npEnsureAgentReferenceMigrationV3,
+  npAgentReferenceMigrationSqlV3,
 } from "./agent-reference-migration.js";
 const directories: string[] = [];
 async function folder() {
@@ -91,4 +93,42 @@ it("preserves the already shipped reference migration bytes", async () => {
     "utf8",
   );
   expect(npAgentReferenceMigrationSqlV1()).toBe(shipped);
+});
+
+it("appends cancelled ChangeSet guards while preserving both installed generations", async () => {
+  const migrationsFolder = await folder();
+  await writeFile(join(migrationsFolder, "0001.sql"), npAgentReferenceMigrationSqlV1());
+  await writeFile(join(migrationsFolder, "0002.sql"), npAgentReferenceMigrationSqlV2());
+  const createCustomMigration = vi.fn(async () => {
+    await writeFile(join(migrationsFolder, "0003.sql"), "-- generated shell\n");
+  });
+  const options = { migrationsFolder, createCustomMigration };
+  await npEnsureAgentReferenceMigrationV3(options);
+  expect(await readFile(join(migrationsFolder, "0001.sql"), "utf8")).toBe(
+    npAgentReferenceMigrationSqlV1(),
+  );
+  expect(await readFile(join(migrationsFolder, "0002.sql"), "utf8")).toBe(
+    npAgentReferenceMigrationSqlV2(),
+  );
+  expect(await readFile(join(migrationsFolder, "0003.sql"), "utf8")).toBe(
+    npAgentReferenceMigrationSqlV3(),
+  );
+  await npEnsureAgentReferenceMigrationV3(options);
+  expect(createCustomMigration).toHaveBeenCalledTimes(1);
+  await writeFile(
+    join(migrationsFolder, "0003.sql"),
+    npAgentReferenceMigrationSqlV3().replace("FOR SHARE", "FOR KEY SHARE"),
+  );
+  await expect(npEnsureAgentReferenceMigrationV3(options)).rejects.toThrow("differs");
+});
+
+it("preserves the shipped Studio reference migration bytes", async () => {
+  const shipped = await readFile(
+    new URL(
+      "../../../../apps/web/drizzle/0053_agent-studio-source-reference-lifecycle.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  expect(npAgentReferenceMigrationSqlV2()).toBe(shipped);
 });

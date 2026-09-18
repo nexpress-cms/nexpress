@@ -1,3 +1,7 @@
+import {
+  npVerifyCancelledChangeSetAttributionV1,
+  npCancelledChangeSetDependenciesSafeV1,
+} from "./cancelled-changeset-source-release.js";
 import { npVerifyAgentReleaseStudioAttributionV1 } from "./studio-source-release.js";
 import { npRequireAgentRuntimeRetainedCallV1 } from "./runtime-usage.js";
 import { randomUUID } from "node:crypto";
@@ -5,6 +9,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { getDb } from "../db/runtime.js";
 import {
   npAgentActions,
+  npAgentChangesets,
   npAgentInvocations,
   npAgentRuns,
   npAgentProviderCalls,
@@ -332,7 +337,7 @@ async function auditEdges(
       p.admissionFingerprint === b.admissionFingerprint &&
       e.run &&
       p.actorFingerprint ===
-        npRuntimeRunAdmissionBodyV1(e.run).runtimeAuthority?.authorityFingerprint
+        npRuntimeRunAdmissionBodyV1(e.run).runtimeAuthority?.deploymentAuthorityFingerprint
     )
       codes.push("audit-target", "audit-run");
     if (
@@ -462,6 +467,7 @@ export async function npPrepareAgentSourceReleaseV1(input: {
     const releaseId = randomUUID();
     const edges: Edge[] = [];
     const actions: Action[] = [];
+    const changeSets: (typeof npAgentChangesets.$inferSelect)[] = [];
     const add = (
       ownerKind: string,
       ownerId: string,
@@ -483,6 +489,96 @@ export async function npPrepareAgentSourceReleaseV1(input: {
           verifierVersion: 1,
           releasedAt: input.now,
         });
+    };
+    const cancelledProofs = new Map<string, boolean>();
+    const getCancelled = async (invocationId: string): Promise<boolean> => {
+      if (cancelledProofs.has(invocationId)) return cancelledProofs.get(invocationId)!;
+      cancelledProofs.set(invocationId, false);
+      if (b.kind !== "runtime-run" || !e.run) return false;
+      await beforeStatement();
+      const linkedActions = await db
+        .select()
+        .from(npAgentActions)
+        .where(
+          and(
+            eq(npAgentActions.siteId, siteId),
+            sql`octet_length(to_jsonb(${npAgentActions})::text)<=${MAX_REFERENCE_BYTES}`,
+            eq(npAgentActions.invocationId, invocationId),
+          ),
+        )
+        .limit(2);
+      await beforeStatement();
+      const linkedSets = await db
+        .select()
+        .from(npAgentChangesets)
+        .where(
+          and(
+            eq(npAgentChangesets.siteId, siteId),
+            sql`octet_length(to_jsonb(${npAgentChangesets})::text)<=${MAX_REFERENCE_BYTES}`,
+            eq(npAgentChangesets.invocationId, invocationId),
+          ),
+        )
+        .limit(2);
+      if (linkedActions.length !== 1 || linkedSets.length !== 1) return false;
+      const a = linkedActions[0],
+        c = linkedSets[0];
+      if (
+        a.runId !== id ||
+        a.runSourceReleaseId !== null ||
+        c.runId !== id ||
+        c.runSourceReleaseId !== null
+      )
+        return false;
+      await beforeStatement();
+      const [i] = await db
+        .select()
+        .from(npAgentInvocations)
+        .where(
+          and(
+            eq(npAgentInvocations.siteId, siteId),
+            sql`octet_length(to_jsonb(${npAgentInvocations})::text)<=${MAX_REFERENCE_BYTES}`,
+            eq(npAgentInvocations.id, invocationId),
+          ),
+        )
+        .for("update", { noWait: true });
+      if (!i) return false;
+      await beforeStatement();
+      const [audit] = await db
+        .select()
+        .from(npAuditEvents)
+        .where(
+          and(
+            eq(npAuditEvents.siteId, siteId),
+            sql`octet_length(to_jsonb(${npAuditEvents})::text)<=${MAX_REFERENCE_BYTES}`,
+            eq(npAuditEvents.id, i.auditEventId),
+          ),
+        )
+        .for("update", { noWait: true });
+      if (!audit) return false;
+      const proof = await npVerifyCancelledChangeSetAttributionV1({
+        action: a,
+        invocation: i,
+        changeSet: c,
+        audit,
+        runId: id,
+        runFingerprint: b.admissionFingerprint,
+        principalId: b.principalId,
+        agentVersionId: b.agentVersionId,
+        agentId: e.run.agentId!,
+        agentConfigHash: e.run.agentConfigHash!,
+        deadlineAt: b.deadlineAt,
+        releasedAt: input.now,
+      });
+      if (!proof || !(await npCancelledChangeSetDependenciesSafeV1(db, c, beforeStatement)))
+        return false;
+      add("changeset-action", a.id, "action-run", proof.actionDigest);
+      add("changeset-invocation", i.id, "invocation-authority-run", proof.invocationDigest);
+      add("changeset-source", c.id, "changeset-run", proof.changeSetDigest);
+      add("changeset-audit", audit.id, "audit-changeset", proof.auditDigest);
+      actions.push(a);
+      changeSets.push(c);
+      cancelledProofs.set(invocationId, true);
+      return true;
     };
     // Verify the linked Studio admission once; every other literal reference still pins.
     const studio = async () => {
@@ -579,6 +675,10 @@ export async function npPrepareAgentSourceReleaseV1(input: {
           if (checked.kind === "provider-call" || checked.kind === "usage-reservation")
             delete body.runId;
           if (checked.kind === "provider-call") delete body.reservationId;
+        } else if (name === "np_agent_changesets" && b.kind === "runtime-run") {
+          if (typeof raw.invocation_id !== "string" || !(await getCancelled(raw.invocation_id)))
+            return false;
+          delete mask.run_id;
         } else if (
           (name === "np_agent_actions" || name === "np_agent_invocations") &&
           b.kind === "runtime-run"
@@ -619,6 +719,18 @@ export async function npPrepareAgentSourceReleaseV1(input: {
             )
             .for("update", { noWait: true });
           if (!i) return false;
+          if (a.capabilityId === "changeset.create") {
+            if (!(await getCancelled(i.id))) return false;
+            delete mask.run_id;
+            if (mask.idempotency_key === `runtime:${id}:${a.sequence.toString()}`)
+              delete mask.idempotency_key;
+            if (name === "np_agent_invocations") {
+              delete object(mask.authority_ref).runId;
+              delete object(object(mask.authorization_context_body).authorityRef).runId;
+            }
+            if (contains(mask, id)) return false;
+            continue;
+          }
           const proof = await npVerifyAgentReleaseReadAttributionV1({
             action: a,
             invocation: i,
@@ -686,6 +798,23 @@ export async function npPrepareAgentSourceReleaseV1(input: {
           ),
         )
         .returning({ id: npAgentActions.id });
+      if (changed.length !== 1) invalid();
+    }
+    for (const c of changeSets) {
+      await beforeStatement();
+      const changed = await db
+        .update(npAgentChangesets)
+        .set({ runId: null, runSourceReleaseId: releaseId })
+        .where(
+          and(
+            eq(npAgentChangesets.siteId, siteId),
+            eq(npAgentChangesets.id, c.id),
+            eq(npAgentChangesets.runId, id),
+            eq(npAgentChangesets.state, "cancelled"),
+            eq(npAgentChangesets.draftHash, c.draftHash),
+          ),
+        )
+        .returning({ id: npAgentChangesets.id });
       if (changed.length !== 1) invalid();
     }
     return true;
