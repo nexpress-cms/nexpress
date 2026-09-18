@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { npAgentRuns } from "../../../packages/core/src/db/schema/agent.js";
@@ -165,6 +166,11 @@ describe.skipIf(skipIfNoTestDb())("runtime execution claim persistence", () => {
     expect(row.scopeKind).toBe("agent");
     expect(row.reasonCode).toBe("RUNTIME_POLICY_LOOP");
     expect(row.failureCount).toBe(1);
+    const runs = await f.db.select().from(npAgentRuns);
+    await expect(
+      f.admission.admit({ ...f.runInput, idempotencyKey: randomUUID() }),
+    ).rejects.toMatchObject({ code: "RUNTIME_BREAKER_OPEN" });
+    expect(await f.db.select().from(npAgentRuns)).toEqual(runs);
   });
   it("budget exhaustion does not install a permanent Agent policy breaker", async () => {
     const f = await fixture();

@@ -562,7 +562,7 @@ The current AP-507 management and related AP-508 visibility slice adds bounded
 Agents, Triggers, Policies and Budgets views, effective configuration review,
 per-Agent lifecycle controls, bounded manual admission and the existing Runtime
 Activity detail. One explicitly installed `runtimeStudio` facade reuses the
-existing services and fourteen Admin mutation operations. Activation optionally
+existing services and fifteen installed Admin operations. Activation optionally
 binds exact trigger definitions and compare-only reviewed policy references;
 manual input preserves selected recipe and bounded goal, and supports a bounded
 closed flat scalar input schema for compatible installed interactive recipes.
@@ -575,8 +575,12 @@ uses the real policy evaluator with exact non-authorizing output. The existing
 maintenance sweep adds dependency-safe retention. The
 [evidence source lifecycle](r5-evidence-source-lifecycle-design.md) now adds
 verified source-release receipts and reference guards through two migrations,
-while preserving audit and canonical evidence. Unknown references, mutation,
-approval and rollback owners remain protected; full R5 acceptance remains open.
+while preserving audit and canonical evidence. The later cancelled-proposal and
+closed, never-approved request owners release only their exact verified source
+references. Unknown references, live/approved execution and rollback owners remain
+protected. The [current R5 acceptance decision](r5-acceptance.md) separates those
+intentional retention boundaries from outstanding Admin release checks; full R5
+acceptance remains open.
 This work adds no automatic worker/provider activation, seed, package version
 or changeset. See the [retention matrix](r5-runtime-retention-flow.md).
 

@@ -472,10 +472,13 @@ connection, policy, scope, budget, worker, and safety validation as activation
 before returning that immutable version to `active`. **Run now** is available
 only for an active Agent with one enabled registered manual trigger. Its exact
 request contains that `triggerId`, a bounded server-visible goal, caller-stable
-idempotency key; the implemented `inputJson` is exactly `{recipeId, goal}`.
-Only an installed `interactive-capability` recipe with `manualInputSchema: null`
-is currently offered. Structured manual inputs remain unavailable until their
-canonical persistence and executor consumption exist; they are never ignored.
+idempotency key. The implemented `inputJson` retains `{recipeId, goal}` for a
+schema-null recipe and adds exact `input` only for a supported installed
+`interactive-capability` recipe. Structured input supports a closed flat object
+of at most sixteen bounded string, integer or boolean fields; unsupported schemas
+remain unavailable. Canonical Run storage, digest-bound admission, redacted
+untrusted executor consumption and Run-owned retention are implemented together;
+input never grants authority. See the [current Runtime Studio contract](r5-runtime-studio-flow.md#structured-manual-input-storage-and-execution).
 The request cannot add a prompt, capability, scope, event, model, or target
 outside the active version. Admission returns the existing safe mutation
 receipt with the admitted Run id; the shared Activity facade reads the Run.

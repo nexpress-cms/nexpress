@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
+  npAgentRuns,
   npAgentProviderCalls,
   npAgentCircuitBreakers,
   npAgentUsageReservations,
@@ -214,10 +216,40 @@ describe.skipIf(skipIfNoTestDb())("runtime lease recovery and connection breaker
       providerCallId: request.providerCallId,
       response: await f.response(request, failure(request)),
     });
+    // Already reserved work must observe a breaker opened by a different Run.
+    const waiting = await f.admission.admit({ ...f.runInput, idempotencyKey: randomUUID() });
+    const waitingInput = { siteId, runId: waiting.runId };
+    const waitingStore = createAgentRuntimeExecutionStoreV1({
+      admission: f.admission,
+      now: f.options.now,
+      leaseSeconds: 60,
+    });
+    const waitingRequest = await f.request({ runId: waiting.runId });
+    const claim = (await waitingStore.claim(waitingInput)).claim!;
+    await f.usage.reserve({ ...waitingInput, claim, request: waitingRequest });
+    const journal = async () => ({
+      runs: await f.db.select().from(npAgentRuns).orderBy(npAgentRuns.id),
+      calls: await f.db.select().from(npAgentProviderCalls).orderBy(npAgentProviderCalls.id),
+      reservations: await f.db
+        .select()
+        .from(npAgentUsageReservations)
+        .orderBy(npAgentUsageReservations.id),
+    });
+    const before = await journal();
+    const expectBlocked = async () => {
+      await expect(
+        f.admission.admit({ ...f.runInput, idempotencyKey: randomUUID() }),
+      ).rejects.toMatchObject({ code: "RUNTIME_BREAKER_OPEN" });
+      await expect(
+        f.usage.beginDispatch({ ...waitingInput, claim, request: waitingRequest }),
+      ).rejects.toMatchObject({ code: "RUNTIME_BREAKER_OPEN" });
+      expect(await journal()).toEqual(before);
+    };
     const input = { siteId, providerCallId: request.providerCallId };
     expect(await f.breakers.observeCall(input)).toEqual({ state: "open", replayed: false });
     expect(await f.breakers.observeCall(input)).toEqual({ state: "open", replayed: true });
     expect(await f.breakers.claimProbe({ siteId, connectionId: f.connectionId })).toBeNull();
+    await expectBlocked();
     f.advance(21);
     const probes = await Promise.all([
       f.breakers.claimProbe({ siteId, connectionId: f.connectionId }),
@@ -225,9 +257,20 @@ describe.skipIf(skipIfNoTestDb())("runtime lease recovery and connection breaker
     ]);
     expect(probes.filter(Boolean)).toHaveLength(1);
     const probe = probes.find(Boolean)!;
+    await expectBlocked();
     expect(await f.breakers.settleProbe({ siteId, probe, succeeded: true })).toEqual({
       state: "closed",
     });
+    await expect(
+      f.admission.admit({ ...f.runInput, idempotencyKey: randomUUID() }),
+    ).resolves.toMatchObject({ replayed: false });
+    await f.usage.beginDispatch({ ...waitingInput, claim, request: waitingRequest });
+    expect(
+      await f.db
+        .select({ state: npAgentProviderCalls.state })
+        .from(npAgentProviderCalls)
+        .where(eq(npAgentProviderCalls.id, waitingRequest.providerCallId)),
+    ).toEqual([{ state: "in_flight" }]);
     await expect(f.breakers.settleProbe({ siteId, probe, succeeded: true })).rejects.toBeDefined();
   });
   it("authentication breakers cannot automatically half-open", async () => {

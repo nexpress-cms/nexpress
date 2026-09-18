@@ -108,7 +108,9 @@ Audit and invocation bytes remain retained, including the consumed request key
 and original result; a replay still returns that result without new execution. Structured
 Admin request journals retain a digest rather than duplicating the input JSON.
 Provider/Action-derived text follows its existing evidence owner. This does not
-claim full R5 retention or full R5 acceptance.
+claim universal evidence erasure or full R5 acceptance. See the
+[current acceptance decision](r5-acceptance.md) for the mandatory release
+lifecycles, intentional evidence pins and remaining Admin release checks.
 Guardian signals/incidents/containments/notifications are not fabricated.
 
 ## Verification
@@ -124,7 +126,7 @@ and rolls back prior deletion.
 The 2026-09-15 KST baseline passed all 9 Runtime maintenance and 4
 provider/aggregate retention cases, plus the 3 maintenance and 2
 statement-budget Core unit tests. Its broader results remain in
-[the Runtime Studio gate](r5-runtime-studio-flow.md#r5-completion-audit-and-current-verification).
+[the Runtime Studio gate](r5-runtime-studio-flow.md#historical-r5-completion-audit-and-verification).
 The source-release implementation extends this coverage with real canonical
 read Action attribution, immutable receipts and audit edges, consumed-key
 denial, malformed and oversized evidence, concurrent writers and live pg-boss
