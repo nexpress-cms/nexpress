@@ -1,68 +1,70 @@
 # Current work handoff
 
-Observed on 2026-09-18 KST. Studio Run/input retention implementation is complete;
-local acceptance and self-review are complete. The user has authorized this bundle's
-commit, push, PR and squash merge; verify GitHub for its final state.
+Observed after PR #1452 merged on 2026-09-18 KST. Verify Git state and current
+user authorization before continuing.
 
 ## Objective and authorization
 
-- Implement explicit release ownership for Studio staff-audit and Admin
-  invocation results, preserving replay evidence and expired detail navigation.
-- Implementation, necessary generated migrations and verification are authorized.
-  The current user request additionally authorizes commit, push, PR and merge.
-- Preserve package versions, changesets and lockfile. No credentials, real
-  provider calls, automatic activation, worker installation or R6 recipe work.
-- User is remote and dislikes repeated approvals. This bundle uses the existing
-  unrestricted task with an isolated Git worktree, not a new restricted task.
+- Studio Run/input source expiration and expired Activity detail are complete
+  within the boundary linked below. Commit, push, PR and squash merge were authorized.
+- The user asked to merge and choose the next task. The next bundle is proposed
+  below; wait for a new instruction before implementing it.
+- Preserve package versions, changesets and lockfile. Necessary generated
+  migrations are allowed. No credentials, real provider calls, automatic
+  Runtime/provider/worker activation or package publishing.
+- User is remote and dislikes repeated approvals. Reuse an appropriately
+  authorized task; do not create a restricted replacement for authorized work.
 
 ## Observed checkout
 
-- Worktree: `/Users/baesw/development/nexpress-studio-run-retention`.
-- Branch: `codex/studio-run-retention`; baseline
-  `7e8f3796cc3adcda1cc0d33a462eb2252f33d3cb` (PR #1451).
-- All pending changes in this initially clean worktree belong to this bundle.
-  Main remains separate; verify Git state before acting.
-- PR #1451 is merged. Its post-merge CI `35288707857` and Release `35288707881`
-  both passed. No PR exists for the current uncommitted bundle.
+- Repository: `/Users/baesw/development/nexpress`; branch `main`.
+- Implementation baseline: `3132673bc0288fcbc6e06c535b3494cd3fe9ef33` (PR #1452), synchronized with origin/main
+  before this subsequent documentation-only handoff commit.
+- PR #1452 squash-merged exact head `8b11e8f6a412f6a27df571fbc5e0de6ef776e529`.
+- The implementation worktree is `/Users/baesw/development/nexpress-studio-run-retention`,
+  branch `codex/studio-run-retention`; its work was committed and pushed.
+- Verify current HEAD, cleanliness and remote synchronization before acting.
 
 ## Implementation and evidence
 
-- `studio-source-release.ts` verifies linked Run/invocation/audit evidence,
-  canonical fingerprints, exact result/target paths and expiry. The existing
-  source-release transaction masks only those verified references.
-- Audit/request/result/key bytes remain retained. Source Run/input deletion
-  cannot re-admit a consumed Runtime key. Admin replay keeps the original result.
-- Generated `0052_rapid_blockbuster.sql` extends two edge constraints;
-  `0053_agent-studio-source-reference-lifecycle.sql` appends upgraded guards.
-  The original migration SQL stays byte-identical. Snapshot changes are bounded.
-- Activity detail uses a receipt-backed expired union with current staff and
-  retained Action ACL checks. It exposes no source input, invented usage or live
-  execution controls; lists retain existing live-source pagination.
+- `studio-source-release.ts` verifies exact linked Run/invocation/audit evidence;
+  `source-release.ts` masks only verified references under the existing fence.
+- Audit/request/result/key bytes remain retained. Expiration cannot re-admit a
+  consumed Runtime key; Admin replay preserves the original result.
+- Generated migrations 0052/0053 extend owner constraints and append V2 guards;
+  historical V1 migration SQL remains byte-identical.
+- `released-run-history.ts` and Activity detail expose a receipt-backed expired
+  resource with current staff/retained Action ACL checks, no source input,
+  invented usage, live controls or polling. Lists retain live-source pagination.
 - [Reference matrix and behavior](../design/agentic-platform/r5-runtime-retention-flow.md#studio-admission-reference-matrix)
-  owns the feature boundary; final verification belongs there.
-- Passed: verify 113 tasks; workspace lint; Core PostgreSQL 64; Web PostgreSQL
-  1,427 ordinary cases across the full run and corrected 42-case rerun; theme
-  suites included; explicit native preview 1; Redis 16; production browser 73
-  across full/corrected runs; fresh packed scaffold 40 packages / 60 stages.
-- [Exact evidence and initial failures](../design/agentic-platform/r5-runtime-retention-flow.md#studio-source-expiration-verification-2026-09-18)
-  distinguishes full-run failures, corrected reruns and the explicitly enabled
-  optional preview gate. Final Web typecheck passed.
-- Self-review fixed union inference and historical migration preservation.
-  Tests now scope invocation expiry updates, expect the new expired projection,
-  verify retained Action ACL denial and isolate invalid-login request quotas.
-  Large retention fixtures, production budgets and product rate limits remain intact.
+  and [full verification evidence](../design/agentic-platform/r5-runtime-retention-flow.md#studio-source-expiration-verification-2026-09-18)
+  own detailed boundaries, local results and corrected initial failures.
+- Local gate passed: verify 113 tasks; workspace lint; Core PostgreSQL 64;
+  Web PostgreSQL 1,427 ordinary cases across full/corrected runs, including theme;
+  explicit native preview 1; Redis 16; production browser 73 across full/corrected
+  runs; fresh packed scaffold 40 packages / 60 stages. Self-review is complete.
+- PR CI `35293022348` passed all four checks on the exact head above: typecheck/
+  build/test, PostgreSQL, production browser and fresh scaffold.
+- Post-merge CI `35294615210` and Release `35294615270` were still running
+  at this checkpoint; check their final state before the next bundle.
+- This documentation-only checkpoint does not change tested implementation.
+  Check links, formatting and `git diff --check`; do not repeat application builds.
 
-## Next boundary
+## Proposed next bundle
 
-- Complete the authorized squash merge after all four exact-head checks pass.
-  Logs/scripts use `/tmp/np-studio-retention-*`.
-- Recommended next bundle: release eligible terminal mutation Run references
-  owned by completed Actions/ChangeSets, approvals and rollback evidence. Define
-  the exact retention/reference matrix first; preserve still-usable approval,
-  rollback and unresolved-outcome evidence. Add explicit historical projections
-  where sources can expire. Start implementation only on a fresh user request.
-- Unknown/global audit, mutation Actions, approvals, rollback, active work and
-  unresolved usage still pin source data. Derived provider/Action evidence keeps
-  its own lifetime. This is not full R5 retention or full R5 completion.
-- Do not merge Version PR #1366 or publish packages. After an authorized bundle
-  merge, refresh this file and use a fresh thread for the next requested bundle.
+- Release Run/input sources for Runtime ChangeSets cancelled or expired before
+  execution. Begin with the retention/reference matrix and existing cancellation
+  reconciliation, source-release owners, reference fences and Activity projections.
+- Limit eligibility to expired retention/invocation deadlines, terminal linked
+  Actions/invocations and no approval, execution or rollback generation/history.
+- Preserve original request/output, audit payload, proposal/plan, fingerprints
+  and consumed keys. Release only exact verified live locators through receipts.
+- Active validation/preview/upload, jobs/leases/retries, unresolved usage/outcomes,
+  pending effects, recovery snapshots and unknown references must keep sources pinned.
+- Acceptance: proposal → pre-execution cancel/expiry → source expiration →
+  retained ChangeSet/audit/replay history; verify no reexecution, current authority,
+  site isolation, late-reference fences and negative preservation cases.
+- Exclude executed mutation/approval/rollback release, general audit pruning,
+  derived-evidence deletion and R6 recipes. Full R5 retention/acceptance remains open.
+- Do not merge Version PR #1366. Start the next bundle in a fresh thread when
+  requested; refresh this file after the next authorized merge.

@@ -155,7 +155,7 @@ replay uses retained invocation evidence and does not re-admit a deleted Run.
 
 ## Studio source-expiration verification (2026-09-18)
 
-The uncommitted bundle based on PR #1451 passed final `verify` (113 tasks),
+The bundle merged in PR #1452 passed final `verify` (113 tasks),
 including Core 2,015, Admin 151, App 557 and Web 174 unit tests, and workspace
 lint (40 package tasks plus Web lint/scripts, using an 8 GiB Web heap).
 Focused new/history units passed 63 cases; migration generation tests passed 5.
@@ -192,6 +192,11 @@ budgets or the large fixture cardinalities. Full browser testing found an invali
 password test sharing the request quota with other specs; its test address is now
 isolated and it asserts HTTP 401 before the error UI. Product rate limits remain
 unchanged. All 11 login/Activity rerun cases passed.
+
+PR CI `35293022348` passed all four checks on exact head
+`8b11e8f6a412f6a27df571fbc5e0de6ef776e529`: typecheck/build/test, PostgreSQL,
+Playwright and fresh scaffold. PR #1452 squash-merged as
+`3132673bc0288fcbc6e06c535b3494cd3fe9ef33` on 2026-09-18.
 
 These results cover this Studio source-expiration bundle. They do not establish
 full R5 acceptance, universal source release or deletion of derived evidence.
