@@ -93,20 +93,37 @@ test("connection keyboard creation preserves retry identity and clears invalid o
     await ready;
     await route.fulfill({ json: overview });
   });
+  await page.clock.install();
+  const retryAt = new Date(Date.now() + 60_000).toUTCString();
   const creates: Record<string, unknown>[] = [];
   await page.route("**/api/admin/agents/connections", async (route) => {
     creates.push(route.request().postDataJSON() as Record<string, unknown>);
     await route.fulfill(
-      creates.length === 1
+      creates.length === 2
         ? {
-            status: 503,
-            json: { status: 503, error: { code: "SERVICE_UNAVAILABLE", message: "Unavailable" } },
+            status: 429,
+            headers: { "Retry-After": retryAt },
+            json: {
+              error: { code: "RATE_LIMITED", message: "Wait for the server retry deadline." },
+            },
           }
-        : { json: connection },
+        : creates.length === 1
+          ? {
+              status: 503,
+              json: { status: 503, error: { code: "SERVICE_UNAVAILABLE", message: "Unavailable" } },
+            }
+          : { json: connection },
     );
   });
-  let detail: "valid" | "invalid" = "valid";
+  let detail: "valid" | "invalid" | "expired" = "valid";
   await page.route(`**/api/admin/agents/connections/${id}`, async (route) => {
+    if (detail === "expired") {
+      await route.fulfill({
+        status: 401,
+        json: { error: { code: "UNAUTHENTICATED", message: "Session expired" } },
+      });
+      return;
+    }
     await route.fulfill({
       json: detail === "valid" ? connection : { ...connection, privatePayload: "must-not-render" },
     });
@@ -145,8 +162,18 @@ test("connection keyboard creation preserves retry identity and clears invalid o
   await tabTo(page, page.getByLabel("API key (write only)"));
   await page.keyboard.insertText("fixture-credential-never-rendered");
   await activate(page, page.getByRole("button", { name: "Save connection" }));
-  await expect(page).toHaveURL(new RegExp(`/connections/${id}$`));
+  await expect(page.getByRole("status").filter({ hasText: "Wait before retrying" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save connection" })).toBeDisabled();
+  await expect(page.getByLabel("API key (write only)")).toHaveValue("");
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Keyboard connection");
+  await page.clock.fastForward(61_000);
+  await expect(page.getByRole("button", { name: "Save connection" })).toBeEnabled();
   expect(creates).toHaveLength(2);
+  await page.getByLabel("API key (write only)").fill("fixture-credential-never-rendered");
+  await activate(page, page.getByRole("button", { name: "Save connection" }));
+  await expect(page).toHaveURL(new RegExp(`/connections/${id}$`));
+  expect(creates).toHaveLength(3);
+  expect(creates[2]).toEqual(creates[0]);
   expect(creates[1]).toEqual(creates[0]);
   await expect(page.getByRole("heading", { name: "Keyboard connection" })).toBeVisible();
   await expect(page.getByText("fixture-credential-never-rendered")).toHaveCount(0);
@@ -169,4 +196,11 @@ test("connection keyboard creation preserves retry identity and clears invalid o
   expect(revokes[1]).toEqual(revokes[0]);
   await expect(page.getByRole("heading", { name: "Keyboard connection" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Revoke", exact: true })).toHaveCount(0);
+  detail = "expired";
+  await activate(page, page.getByRole("button", { name: "Reload connection" }));
+  await expect(page.getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute(
+    "href",
+    /admin\/login/,
+  );
+  await expect(page.getByRole("heading", { name: "Keyboard connection" })).toHaveCount(0);
 });

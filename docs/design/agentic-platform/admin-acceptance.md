@@ -72,6 +72,10 @@ error notice and restore a meaningful focus target on close. These repairs do
 not change sealed facts, allowed decisions, challenge semantics or execution
 bindings.
 
+The subsequent [error-recovery bundle](admin-error-recovery.md) owns 401 login
+recovery, server 429 wait handling and partial-read retries. The following gaps
+record the PR #1458 boundary; use that follow-up's verification for later repairs.
+
 ## State applicability and remaining gaps
 
 The [design state contract](admin-agent-studio.md#13-loading-empty-error-and-stale-states)

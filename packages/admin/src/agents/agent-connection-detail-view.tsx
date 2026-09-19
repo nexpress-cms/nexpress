@@ -7,6 +7,7 @@ import {
   type NpAgentConnectionV1,
 } from "@nexpress/core/agent-contract";
 
+import { useAgentRetryBlocked } from "./agent-recovery.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentStudioApiError, responseError } from "./agent-studio-api.js";
 import { Badge } from "../ui/badge.js";
@@ -22,6 +23,8 @@ function AgentConnectionDetailViewContent({ connectionId }: { connectionId: stri
   const router = useRouter();
   const [connection, setConnection] = React.useState<NpAgentConnectionV1 | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>();
+  const retryBlocked = useAgentRetryBlocked(failure);
   const [submitting, setSubmitting] = React.useState(false);
 
   const [loading, setLoading] = React.useState(true);
@@ -50,6 +53,7 @@ function AgentConnectionDetailViewContent({ connectionId }: { connectionId: stri
         if (current.current !== generation) return;
         setConnection(null);
         setReceivedAt(null);
+        setFailure(caught);
         setError(connectionError(caught));
       } finally {
         if (current.current === generation) setLoading(false);
@@ -64,6 +68,8 @@ function AgentConnectionDetailViewContent({ connectionId }: { connectionId: stri
     if (error) alertRef.current?.focus();
   }, [error]);
   const reload = () => {
+    if (retryBlocked) return;
+    setFailure(undefined);
     setLoading(true);
     setError(null);
     requestReload();
@@ -72,6 +78,7 @@ function AgentConnectionDetailViewContent({ connectionId }: { connectionId: stri
   const visible = connection?.id === connectionId ? connection : null;
   const revoke = async () => {
     if (
+      retryBlocked ||
       !visible ||
       loading ||
       submitting ||
@@ -113,6 +120,7 @@ function AgentConnectionDetailViewContent({ connectionId }: { connectionId: stri
       if (caught instanceof AgentStudioApiError && [401, 403, 404, 409].includes(caught.status)) {
         retry.current = null;
       }
+      setFailure(caught);
       setError(connectionError(caught));
     } finally {
       if (current.current === generation) setSubmitting(false);
@@ -122,6 +130,7 @@ function AgentConnectionDetailViewContent({ connectionId }: { connectionId: stri
   return (
     <AgentStudioFrame
       active="connections"
+      recovery={failure}
       busy={loading}
       refreshing={visible !== null}
       observedAt={receivedAt ? Date.parse(receivedAt) : undefined}
@@ -250,6 +259,8 @@ function AgentConnectionDetailViewContent({ connectionId }: { connectionId: stri
 
 function connectionError(error: unknown): string {
   if (error instanceof AgentStudioApiError) {
+    if (error.status === 403 && error.code === "RECENT_REAUTHENTICATION_REQUIRED")
+      return "Recent staff-primary reauthentication is required. Reauthenticate and reload.";
     if ([401, 403, 404].includes(error.status))
       return "This connection is unavailable or you no longer have access. Sign in again if your session expired.";
     if (error.status === 409)

@@ -1,4 +1,5 @@
 "use client";
+import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
 import * as React from "react";
 import Link from "next/link";
 import {
@@ -89,16 +90,18 @@ export function AgentChangeSetRollback({
 }: {
   review: NpAgentChangeSetReviewV1;
   onChanged: () => void;
-  onLost: (message: string) => void;
+  onLost: (message: string, error?: unknown) => void;
   idempotencyKeys?: React.RefObject<Record<string, string>>;
 }) {
+  const [failure, setFailure] = React.useState<unknown>(null);
+  const blocked = useAgentRetryBlocked(failure);
   const [busy, setBusy] = React.useState(false),
     [error, setError] = React.useState<string | null>(null);
   const localKeys = React.useRef<Record<string, string>>({});
   const keys = idempotencyKeys ?? localKeys;
   const { changeSet, rollbackDetail: detail, rollbackActions: actions } = review;
   async function submit(action: "prepare" | "request_approval" | "execute" | "cancel") {
-    if (busy || !actions.includes(action)) return;
+    if (blocked || busy || !actions.includes(action)) return;
     const binding = JSON.stringify([
       action,
       changeSet.id,
@@ -178,60 +181,70 @@ export function AgentChangeSetRollback({
         throw new Error("ChangeSet mismatch");
       onChanged();
     } catch (caught) {
+      setFailure(caught);
       const message =
         caught instanceof AgentStudioApiError && caught.code === "RECENT_REAUTHENTICATION_REQUIRED"
           ? "Recent staff-primary reauthentication is required. Reauthenticate and reload."
           : "Rollback request could not be confirmed. Refresh current evidence before continuing; an unknown response does not prove that no compensation committed.";
       setError(message);
-      if (caught instanceof AgentStudioApiError && [401, 403, 404, 409].includes(caught.status))
-        onLost(message);
+      if (
+        caught instanceof AgentStudioApiError &&
+        [401, 403, 404, 409, 429].includes(caught.status)
+      )
+        onLost(message, caught);
     } finally {
       setBusy(false);
     }
   }
   return (
-    <section className="space-y-3" aria-labelledby="changeset-rollback-heading">
-      <h2 id="changeset-rollback-heading" className="text-lg font-semibold">
-        Rollback compensation
-      </h2>
-      <p>
-        Compensation creates new revisions and preserves audit history. Later resource changes block
-        execution. Delivered external effects may remain.
-      </p>
-      {error && <p role="alert">{error}</p>}
-      {actions.length === 0 && <p>No rollback actions are currently available.</p>}
-      {actions.includes("prepare") && (
-        <Button disabled={busy} onClick={() => void submit("prepare")}>
-          Prepare rollback plan
-        </Button>
-      )}
-      {actions.includes("request_approval") && (
-        <Button disabled={busy} onClick={() => void submit("request_approval")}>
-          Request rollback approval
-        </Button>
-      )}
-      {actions.includes("execute") && (
-        <Button disabled={busy} onClick={() => void submit("execute")}>
-          Execute approved rollback
-        </Button>
-      )}
-      {actions.includes("cancel") && (
-        <Button disabled={busy} variant="outline" onClick={() => void submit("cancel")}>
-          Cancel rollback plan
-        </Button>
-      )}
-      {detail ? (
-        <>
-          <AgentRollbackReviewFacts detail={detail} />
-          {detail.approval && (
-            <Link className="underline" href={`/admin/agents/approvals/${detail.approval.id}`}>
-              Review rollback approval · {detail.approval.state}
-            </Link>
-          )}
-        </>
-      ) : (
-        <p>No rollback plan evidence is loaded.</p>
-      )}
-    </section>
+    <AgentRecoveryBoundary error={failure}>
+      <section className="space-y-3" aria-labelledby="changeset-rollback-heading">
+        <h2 id="changeset-rollback-heading" className="text-lg font-semibold">
+          Rollback compensation
+        </h2>
+        <p>
+          Compensation creates new revisions and preserves audit history. Later resource changes
+          block execution. Delivered external effects may remain.
+        </p>
+        {error && <p role="alert">{error}</p>}
+        {actions.length === 0 && <p>No rollback actions are currently available.</p>}
+        {actions.includes("prepare") && (
+          <Button disabled={busy || blocked} onClick={() => void submit("prepare")}>
+            Prepare rollback plan
+          </Button>
+        )}
+        {actions.includes("request_approval") && (
+          <Button disabled={busy || blocked} onClick={() => void submit("request_approval")}>
+            Request rollback approval
+          </Button>
+        )}
+        {actions.includes("execute") && (
+          <Button disabled={busy || blocked} onClick={() => void submit("execute")}>
+            Execute approved rollback
+          </Button>
+        )}
+        {actions.includes("cancel") && (
+          <Button
+            disabled={busy || blocked}
+            variant="outline"
+            onClick={() => void submit("cancel")}
+          >
+            Cancel rollback plan
+          </Button>
+        )}
+        {detail ? (
+          <>
+            <AgentRollbackReviewFacts detail={detail} />
+            {detail.approval && (
+              <Link className="underline" href={`/admin/agents/approvals/${detail.approval.id}`}>
+                Review rollback approval · {detail.approval.state}
+              </Link>
+            )}
+          </>
+        ) : (
+          <p>No rollback plan evidence is loaded.</p>
+        )}
+      </section>
+    </AgentRecoveryBoundary>
   );
 }

@@ -84,9 +84,11 @@ test.describe("Agent Activity", () => {
     const releasedRunId = "88888888-8888-4888-8888-888888888888";
     const principalId = "11111111-1111-4111-8111-111111111111";
     const detail = expiredReadAction(actionId, principalId);
-    let denied = false;
+    let denied: false | 403 | 429 | 401 = false;
+    let reads = 0;
     let missingRunReads = 0;
     await page.route("**/api/admin/agents/activity**", async (route) => {
+      reads++;
       const path = new URL(route.request().url()).pathname;
       if (path.endsWith(`/${releasedRunId}`)) {
         missingRunReads++;
@@ -99,9 +101,10 @@ test.describe("Agent Activity", () => {
         });
       } else if (denied) {
         await route.fulfill({
-          status: 403,
+          status: denied,
+          headers: denied === 429 ? { "Retry-After": "5" } : {},
           json: {
-            status: 403,
+            status: denied,
             error: { code: "ACTIVITY_FORBIDDEN", message: "Activity permission is required." },
           },
         });
@@ -137,7 +140,19 @@ test.describe("Agent Activity", () => {
       page.getByRole("heading", { name: "Safe evidence projection", exact: true }),
     ).toHaveCount(0);
     await expect(page.getByText(detail.inputHash, { exact: true }).first()).toBeVisible();
-    denied = true;
+    await page.clock.install();
+    denied = 429;
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    const retry = page.getByRole("button", { name: "Retry", exact: true });
+    await expect(retry).toBeDisabled();
+    const heldReads = reads;
+    await page.clock.fastForward(5_000);
+    await expect(retry).toBeEnabled();
+    expect(reads).toBe(heldReads);
+    denied = false;
+    await retry.click();
+    await expect(page.getByRole("heading", { name: "site.inspect", exact: true })).toBeVisible();
+    denied = 403;
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(
       page.getByRole("alert").filter({ hasText: "You do not have access to this Activity." }),
@@ -145,6 +160,13 @@ test.describe("Agent Activity", () => {
     await expect(page.getByRole("heading", { name: "site.inspect", exact: true })).toHaveCount(0);
     await expect(page.getByText(actionId, { exact: true })).toHaveCount(0);
     await expect(page.getByText(detail.inputHash, { exact: true })).toHaveCount(0);
+    denied = 401;
+    await page.reload();
+    await expect(page.getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute(
+      "href",
+      "/admin/login",
+    );
+    await expect(page.getByRole("button", { name: "Refresh", exact: true })).toHaveCount(0);
   });
 
   test("rejects unexpected private receipt fields in retained Activity responses", async ({

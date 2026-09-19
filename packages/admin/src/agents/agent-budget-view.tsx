@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
 import {
   npRequireAgentRuntimeStudioBudgetV1,
   npRequireAgentRuntimeStudioOverviewV1,
@@ -10,7 +11,13 @@ import {
 } from "@nexpress/core/agent-contract";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentStudioApiError } from "./agent-studio-api.js";
-import { runtimeRequest, runtimeErrorMessage, useRuntimeResource } from "./agent-runtime-api.js";
+import {
+  runtimeRecoveryFailure,
+  runtimeAccessLost,
+  runtimeRequest,
+  runtimeErrorMessage,
+  useRuntimeResource,
+} from "./agent-runtime-api.js";
 import { RuntimeBudgetFields, runtimeBudgetLabels } from "./agent-runtime-fields.js";
 import { RuntimeNotice, parseRuntimeAck } from "./agent-runtime-view.js";
 import { Button } from "../ui/button.js";
@@ -34,8 +41,17 @@ export function AgentBudgetView() {
   const [busy, setBusy] = React.useState(false);
   const [stale, setStale] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>(null);
+  const retryBlocked = useAgentRetryBlocked(failure);
   const [message, setMessage] = React.useState<string | null>(null);
+  const clearEvidence = (message: string, caught?: unknown) => {
+    setFailure(caught);
+    runtime.clear(message, caught);
+    budget.clear(message, caught);
+  };
   const refresh = () => {
+    if (retryBlocked) return;
+    setFailure(null);
     budget.reload();
     runtime.reload();
     setAction(null);
@@ -44,6 +60,8 @@ export function AgentBudgetView() {
   const status = runtime.value?.status;
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (retryBlocked) return;
+    setFailure(null);
     if (!status || !action) return;
     setBusy(true);
     setError(null);
@@ -64,11 +82,12 @@ export function AgentBudgetView() {
       );
       refresh();
     } catch (caught) {
+      setFailure(caught);
       const text = runtimeErrorMessage(caught);
       setError(text);
-      if (caught instanceof AgentStudioApiError && [401, 403, 404].includes(caught.status)) {
-        runtime.clear(text);
-        budget.clear(text);
+      if (runtimeAccessLost(caught)) {
+        runtime.clear(text, caught);
+        budget.clear(text, caught);
       }
       if (caught instanceof AgentStudioApiError && caught.status === 409) setStale(true);
     } finally {
@@ -78,6 +97,7 @@ export function AgentBudgetView() {
   return (
     <AgentStudioFrame
       active="budgets"
+      recovery={runtimeRecoveryFailure(failure, runtime.failure, budget.failure)}
       busy={runtime.loading || budget.loading}
       refreshing={runtime.refreshing || budget.refreshing}
       observedAt={runtime.observedAt}
@@ -89,6 +109,7 @@ export function AgentBudgetView() {
         </Button>
       </div>
       <RuntimeNotice loading={false} error={runtime.error} />
+      {runtime.error ? <Button onClick={runtime.reload}>Retry Runtime status</Button> : null}
       {status ? (
         <Card>
           <CardHeader>
@@ -213,6 +234,7 @@ export function AgentBudgetView() {
         </Card>
       ) : null}
       <RuntimeNotice loading={false} error={budget.error} />
+      {budget.error ? <Button onClick={budget.reload}>Retry site budget</Button> : null}
       {budget.value ? (
         <Card>
           <CardHeader>
@@ -251,6 +273,7 @@ export function AgentBudgetView() {
               <SiteBudgetEditor
                 key={`${budget.value.rowVersion}:${budget.generation}`}
                 current={budget.value}
+                onAccessLost={clearEvidence}
                 onSaved={() => {
                   setEditing(false);
                   refresh();
@@ -278,10 +301,12 @@ export function AgentBudgetView() {
 }
 
 function SiteBudgetEditor({
+  onAccessLost,
   current,
   onSaved,
 }: {
   current: NpAgentRuntimeStudioBudgetV1;
+  onAccessLost: (message: string, failure?: unknown) => void;
   onSaved: () => void;
 }) {
   const [value, setValue] = React.useState<NpAgentBudgetV1>(current.siteCeiling);
@@ -290,8 +315,12 @@ function SiteBudgetEditor({
   const [busy, setBusy] = React.useState(false);
   const [stale, setStale] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>(null);
+  const retryBlocked = useAgentRetryBlocked(failure);
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (retryBlocked) return;
+    setFailure(null);
     setError(null);
     try {
       const definition = await npBuildAgentRuntimeStudioDefinitionInputV1(value);
@@ -311,46 +340,50 @@ function SiteBudgetEditor({
       });
       onSaved();
     } catch (caught) {
+      setFailure(caught);
       setError(runtimeErrorMessage(caught));
+      if (runtimeAccessLost(caught)) onAccessLost(runtimeErrorMessage(caught), caught);
       if (caught instanceof AgentStudioApiError && caught.status === 409) setStale(true);
     } finally {
       setBusy(false);
     }
   };
   return (
-    <form onSubmit={(event) => void submit(event)} className="space-y-4">
-      <fieldset disabled={busy || stale} className="space-y-4">
-        <RuntimeBudgetFields
-          ceiling={current.deploymentCeiling}
-          value={value}
-          onChange={(next) => {
-            setValue(next);
-            setKey(crypto.randomUUID());
-            setReviewing(false);
-          }}
-        />
-        {reviewing ? (
-          <section className="space-y-2">
-            <h3 className="font-medium">Review proposed ceiling changes</h3>
-            <p className="text-sm">
-              The server rechecks deployment bounds and the current revision. Lower limits retain
-              existing reservations and block subsequent admissions as needed.
-            </p>
-            {(Object.keys(runtimeBudgetLabels) as (keyof typeof runtimeBudgetLabels)[])
-              .filter((key) => current.siteCeiling[key] !== value[key])
-              .map((key) => (
-                <p className="text-sm" key={key}>
-                  {runtimeBudgetLabels[key]}: {current.siteCeiling[key] ?? "Inherit"} →{" "}
-                  {value[key] ?? "Inherit"}
-                </p>
-              ))}
-          </section>
-        ) : null}
-        <Button type="submit">
-          {busy ? "Saving…" : reviewing ? "Confirm budget update" : "Review budget changes"}
-        </Button>
-      </fieldset>
-      {error ? <p role="alert">{error}</p> : null}
-    </form>
+    <AgentRecoveryBoundary error={failure}>
+      <form onSubmit={(event) => void submit(event)} className="space-y-4">
+        <fieldset disabled={busy || stale} className="space-y-4">
+          <RuntimeBudgetFields
+            ceiling={current.deploymentCeiling}
+            value={value}
+            onChange={(next) => {
+              setValue(next);
+              setKey(crypto.randomUUID());
+              setReviewing(false);
+            }}
+          />
+          {reviewing ? (
+            <section className="space-y-2">
+              <h3 className="font-medium">Review proposed ceiling changes</h3>
+              <p className="text-sm">
+                The server rechecks deployment bounds and the current revision. Lower limits retain
+                existing reservations and block subsequent admissions as needed.
+              </p>
+              {(Object.keys(runtimeBudgetLabels) as (keyof typeof runtimeBudgetLabels)[])
+                .filter((key) => current.siteCeiling[key] !== value[key])
+                .map((key) => (
+                  <p className="text-sm" key={key}>
+                    {runtimeBudgetLabels[key]}: {current.siteCeiling[key] ?? "Inherit"} →{" "}
+                    {value[key] ?? "Inherit"}
+                  </p>
+                ))}
+            </section>
+          ) : null}
+          <Button type="submit">
+            {busy ? "Saving…" : reviewing ? "Confirm budget update" : "Review budget changes"}
+          </Button>
+        </fieldset>
+        {error ? <p role="alert">{error}</p> : null}
+      </form>
+    </AgentRecoveryBoundary>
   );
 }

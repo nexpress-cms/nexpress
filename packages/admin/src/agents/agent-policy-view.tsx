@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -16,7 +17,13 @@ import {
 import { AgentPolicySimulation } from "./agent-policy-simulation.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentStudioApiError } from "./agent-studio-api.js";
-import { runtimeRequest, runtimeErrorMessage, useRuntimeResource } from "./agent-runtime-api.js";
+import {
+  runtimeRecoveryFailure,
+  runtimeAccessLost,
+  runtimeRequest,
+  runtimeErrorMessage,
+  useRuntimeResource,
+} from "./agent-runtime-api.js";
 import { RuntimeSelect } from "./agent-runtime-fields.js";
 import { RuntimePolicyFields } from "./agent-policy-fields.js";
 import { RuntimeNotice, parseRuntimeAck, runtimeCatalogPath } from "./agent-runtime-view.js";
@@ -39,6 +46,7 @@ export function AgentPolicyListView({ query = "" }: { query?: string }) {
   return (
     <AgentStudioFrame
       active="policies"
+      recovery={state.failure}
       busy={state.loading}
       refreshing={state.refreshing}
       observedAt={state.observedAt}
@@ -125,6 +133,7 @@ export function AgentPolicyCreateView({ agentId }: { agentId?: string }) {
   return (
     <AgentStudioFrame
       active="policies"
+      recovery={catalog.failure}
       busy={catalog.loading}
       refreshing={catalog.refreshing}
       observedAt={catalog.observedAt}
@@ -152,11 +161,13 @@ function PolicyEditor({
   catalog,
   current,
   onSaved,
+  onAccessLost,
 }: {
   initial: NpAgentPolicyDefinitionV1;
   catalog: NpAgentRuntimeStudioCatalogV1;
   current?: NpAgentRuntimeStudioPolicyV1;
   onSaved?: () => void;
+  onAccessLost?: (message: string, failure?: unknown) => void;
 }) {
   const router = useRouter();
   const [definition, setDefinition] = React.useState(initial);
@@ -165,12 +176,16 @@ function PolicyEditor({
   const [stale, setStale] = React.useState(false);
   const [accessLost, setAccessLost] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>(null);
+  const retryBlocked = useAgentRetryBlocked(failure);
   const update = (next: NpAgentPolicyDefinitionV1) => {
     setDefinition(next);
     setKey(crypto.randomUUID());
   };
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (retryBlocked) return;
+    setFailure(null);
     setBusy(true);
     setError(null);
     let requestAttempted = false;
@@ -198,70 +213,80 @@ function PolicyEditor({
       if (current && onSaved) onSaved();
       else router.push(`/admin/agents/policies/${result.resourceId}`);
     } catch (caught) {
+      setFailure(caught);
       setError(
         requestAttempted
           ? runtimeErrorMessage(caught)
           : "The draft is invalid. Check required recipe or policy fields, capability modes, scopes and numeric limits before saving.",
       );
-      if (caught instanceof AgentStudioApiError && [401, 403, 404].includes(caught.status))
+      if (runtimeAccessLost(caught)) {
         setAccessLost(true);
+        onAccessLost?.(runtimeErrorMessage(caught), caught);
+      }
       if (caught instanceof AgentStudioApiError && caught.status === 409) setStale(true);
     } finally {
       setBusy(false);
     }
   };
-  if (accessLost) return <RuntimeNotice loading={false} error={error} />;
+  if (accessLost)
+    return (
+      <AgentRecoveryBoundary error={failure}>
+        <RuntimeNotice loading={false} error={error} />
+      </AgentRecoveryBoundary>
+    );
   return (
-    <form className="space-y-6" onSubmit={(event) => void submit(event)}>
-      <fieldset disabled={busy || stale} className="space-y-6">
-        <div className="space-y-2">
-          <Label htmlFor="runtime-policy-name">Policy name</Label>
-          <Input
-            id="runtime-policy-name"
-            required
-            maxLength={120}
-            value={definition.name}
-            onChange={(event) => update({ ...definition, name: event.target.value })}
-          />
-          <p className="text-sm">
-            Applies to {definition.agentId ? `Agent ${definition.agentId}` : "the current site"}.
-          </p>
-        </div>
-        <section className="space-y-4 rounded-lg border p-4" aria-label="Enforced policy rules">
-          <h3 className="font-semibold">Enforced rules</h3>
-          <p className="text-sm text-neutral-500">
-            These structured rules authorize or block actions, within all existing deployment and
-            staff authority ceilings.
-          </p>
-          <RuntimePolicyFields
-            value={definition.rules}
-            availableModes={catalog.capabilities.flatMap((capability) =>
-              capability.modes.map((mode) => ({ capabilityId: capability.id, mode })),
-            )}
-            onChange={(rules) => update({ ...definition, rules })}
-          />
-        </section>
-        <section
-          className="space-y-3 rounded-lg border p-4"
-          aria-label="Non-authorizing Agent guidance"
-        >
-          <h3 className="font-semibold">Agent guidance</h3>
-          <p className="text-sm text-neutral-500">
-            Guidance is untrusted context. It cannot grant a scope, capability or approval.
-          </p>
-          <Label htmlFor="runtime-policy-guidance">Guidance (Markdown text)</Label>
-          <Textarea
-            id="runtime-policy-guidance"
-            rows={8}
-            maxLength={262_144}
-            value={definition.instructions}
-            onChange={(event) => update({ ...definition, instructions: event.target.value })}
-          />
-        </section>
-        <Button type="submit">{busy ? "Saving draft…" : "Save policy draft"}</Button>
-      </fieldset>
-      {error ? <p role="alert">{error}</p> : null}
-    </form>
+    <AgentRecoveryBoundary error={failure}>
+      <form className="space-y-6" onSubmit={(event) => void submit(event)}>
+        <fieldset disabled={busy || stale} className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="runtime-policy-name">Policy name</Label>
+            <Input
+              id="runtime-policy-name"
+              required
+              maxLength={120}
+              value={definition.name}
+              onChange={(event) => update({ ...definition, name: event.target.value })}
+            />
+            <p className="text-sm">
+              Applies to {definition.agentId ? `Agent ${definition.agentId}` : "the current site"}.
+            </p>
+          </div>
+          <section className="space-y-4 rounded-lg border p-4" aria-label="Enforced policy rules">
+            <h3 className="font-semibold">Enforced rules</h3>
+            <p className="text-sm text-neutral-500">
+              These structured rules authorize or block actions, within all existing deployment and
+              staff authority ceilings.
+            </p>
+            <RuntimePolicyFields
+              value={definition.rules}
+              availableModes={catalog.capabilities.flatMap((capability) =>
+                capability.modes.map((mode) => ({ capabilityId: capability.id, mode })),
+              )}
+              onChange={(rules) => update({ ...definition, rules })}
+            />
+          </section>
+          <section
+            className="space-y-3 rounded-lg border p-4"
+            aria-label="Non-authorizing Agent guidance"
+          >
+            <h3 className="font-semibold">Agent guidance</h3>
+            <p className="text-sm text-neutral-500">
+              Guidance is untrusted context. It cannot grant a scope, capability or approval.
+            </p>
+            <Label htmlFor="runtime-policy-guidance">Guidance (Markdown text)</Label>
+            <Textarea
+              id="runtime-policy-guidance"
+              rows={8}
+              maxLength={262_144}
+              value={definition.instructions}
+              onChange={(event) => update({ ...definition, instructions: event.target.value })}
+            />
+          </section>
+          <Button type="submit">{busy ? "Saving draft…" : "Save policy draft"}</Button>
+        </fieldset>
+        {error ? <p role="alert">{error}</p> : null}
+      </form>
+    </AgentRecoveryBoundary>
   );
 }
 
@@ -278,11 +303,15 @@ export function AgentPolicyDetailView({ id }: { id: string }) {
   const [busy, setBusy] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>(null);
+  const retryBlocked = useAgentRetryBlocked(failure);
   const [challenge, setChallenge] = React.useState("");
   const [stale, setStale] = React.useState(false);
   const policy = state.value;
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (retryBlocked) return;
+    setFailure(null);
     if (!policy || !action) return;
     setBusy(true);
     setError(null);
@@ -305,10 +334,10 @@ export function AgentPolicyDetailView({ id }: { id: string }) {
       setAction(null);
       state.reload();
     } catch (caught) {
+      setFailure(caught);
       const text = runtimeErrorMessage(caught);
       setError(text);
-      if (caught instanceof AgentStudioApiError && [401, 403, 404].includes(caught.status))
-        state.clear(text);
+      if (runtimeAccessLost(caught)) state.clear(text, caught);
       if (caught instanceof AgentStudioApiError && caught.status === 409) setStale(true);
     } finally {
       setBusy(false);
@@ -317,6 +346,7 @@ export function AgentPolicyDetailView({ id }: { id: string }) {
   return (
     <AgentStudioFrame
       active="policies"
+      recovery={runtimeRecoveryFailure(failure, state.failure, catalog.failure)}
       busy={state.loading || catalog.loading}
       refreshing={state.refreshing}
       observedAt={state.observedAt}
@@ -325,6 +355,13 @@ export function AgentPolicyDetailView({ id }: { id: string }) {
         Back to policies
       </Link>
       <RuntimeNotice loading={false} error={state.error} />
+      {state.error ? <Button onClick={state.reload}>Retry policy</Button> : null}
+      {catalog.error ? (
+        <>
+          <RuntimeNotice loading={false} error={catalog.error} />
+          <Button onClick={catalog.reload}>Retry policy catalog</Button>
+        </>
+      ) : null}
       {policy ? (
         <>
           <h2 className="text-lg font-semibold">{policy.definition.name}</h2>
@@ -337,6 +374,8 @@ export function AgentPolicyDetailView({ id }: { id: string }) {
             <Button
               variant="outline"
               onClick={() => {
+                if (retryBlocked) return;
+                setFailure(null);
                 state.reload();
                 setStale(false);
                 setAction(null);
@@ -376,6 +415,7 @@ export function AgentPolicyDetailView({ id }: { id: string }) {
               initial={policy.definition}
               catalog={catalog.value}
               current={duplicate ? undefined : policy}
+              onAccessLost={state.clear}
               onSaved={() => {
                 setEditing(false);
                 state.reload();

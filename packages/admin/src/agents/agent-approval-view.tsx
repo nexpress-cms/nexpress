@@ -1,6 +1,7 @@
 "use client";
 import { AgentRollbackReviewFacts } from "./agent-changeset-rollback.js";
 
+import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -116,119 +117,121 @@ export function AgentApprovalListView({ queryString = "" }: { queryString?: stri
   const next = new URLSearchParams(queryString);
   if (result.value?.nextCursor) next.set("cursor", result.value.nextCursor);
   return (
-    <div className="space-y-6">
-      <h1 className="text-[22px] font-semibold">Agent Approvals</h1>
-      <p>
-        Current-site human decisions, ordered by soonest expiry, highest risk, then approval ID.
-      </p>
-      <form
-        key={queryString}
-        onSubmit={filter}
-        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
-      >
-        {Object.entries(filterOptions).map(([key, options]) => (
-          <div key={key}>
-            <Label htmlFor={`approval-filter-${key}`}>{filterLabels[key]}</Label>
-            <select
-              className="block w-full rounded border p-2"
-              id={`approval-filter-${key}`}
-              name={key}
-              defaultValue={query.get(key) ?? (key === "state" ? "pending" : "")}
-            >
-              {key !== "state" && <option value="">Any</option>}
-              {options.map((value) => (
-                <option key={value} value={value}>
-                  {value.replaceAll("_", " ")}
-                </option>
-              ))}
-            </select>
-          </div>
-        ))}
-        {[
-          "requesterId",
-          "requiredHumanCapability",
-          "createdAfter",
-          "createdBefore",
-          "expiresAfter",
-          "expiresBefore",
-          "limit",
-        ].map((key) => (
-          <div key={key}>
-            <Label htmlFor={`approval-filter-${key}`}>{filterLabels[key]}</Label>
-            <Input
-              id={`approval-filter-${key}`}
-              name={key}
-              defaultValue={query.get(key) ?? (key === "limit" ? "25" : "")}
-              type={key === "limit" ? "number" : "text"}
-              min={key === "limit" ? 1 : undefined}
-              max={key === "limit" ? 100 : undefined}
-              maxLength={key === "requesterId" ? 36 : 128}
-            />
-          </div>
-        ))}
-        <Button type="submit">Apply filters</Button>
-      </form>
-      {filterError && <p role="alert">{filterError}</p>}
-      <Button variant="outline" onClick={result.refresh}>
-        Refresh
-      </Button>
-      {result.loading && <p role="status">Loading approvals…</p>}
-      {result.error && <p role="status">{result.error}</p>}
-      {result.value && result.value.items.length === 0 && (
+    <AgentRecoveryBoundary error={result.failure} retry={result.refresh}>
+      <div className="space-y-6">
+        <h1 className="text-[22px] font-semibold">Agent Approvals</h1>
         <p>
-          {!result.value.nextCursor &&
-          !query.has("cursor") &&
-          [...query.keys()].every((key) => key === "state" || key === "limit") &&
-          (query.get("state") ?? "pending") === "pending"
-            ? "Nothing is waiting for your decision"
-            : "No authorized approvals on this page match these filters."}
+          Current-site human decisions, ordered by soonest expiry, highest risk, then approval ID.
         </p>
-      )}
-      {result.value?.items.map((item) => (
-        <article className="space-y-2 rounded border p-4" key={item.approval.id}>
-          <h2 className="font-semibold">
-            <Link className="underline" href={`/admin/agents/approvals/${item.approval.id}`}>
-              Approval request · {item.intendedOperation ?? item.target.kind}
-            </Link>
-          </h2>
+        <form
+          key={queryString}
+          onSubmit={filter}
+          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+        >
+          {Object.entries(filterOptions).map(([key, options]) => (
+            <div key={key}>
+              <Label htmlFor={`approval-filter-${key}`}>{filterLabels[key]}</Label>
+              <select
+                className="block w-full rounded border p-2"
+                id={`approval-filter-${key}`}
+                name={key}
+                defaultValue={query.get(key) ?? (key === "state" ? "pending" : "")}
+              >
+                {key !== "state" && <option value="">Any</option>}
+                {options.map((value) => (
+                  <option key={value} value={value}>
+                    {value.replaceAll("_", " ")}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+          {[
+            "requesterId",
+            "requiredHumanCapability",
+            "createdAfter",
+            "createdBefore",
+            "expiresAfter",
+            "expiresBefore",
+            "limit",
+          ].map((key) => (
+            <div key={key}>
+              <Label htmlFor={`approval-filter-${key}`}>{filterLabels[key]}</Label>
+              <Input
+                id={`approval-filter-${key}`}
+                name={key}
+                defaultValue={query.get(key) ?? (key === "limit" ? "25" : "")}
+                type={key === "limit" ? "number" : "text"}
+                min={key === "limit" ? 1 : undefined}
+                max={key === "limit" ? 100 : undefined}
+                maxLength={key === "requesterId" ? 36 : 128}
+              />
+            </div>
+          ))}
+          <Button type="submit">Apply filters</Button>
+        </form>
+        {filterError && <p role="alert">{filterError}</p>}
+        <Button variant="outline" onClick={result.refresh}>
+          Refresh
+        </Button>
+        {result.loading && <p role="status">Loading approvals…</p>}
+        {result.error && <p role="status">{result.error}</p>}
+        {result.value && result.value.items.length === 0 && (
           <p>
-            <Badge>{item.approval.state}</Badge> · Risk: {item.risk} · {item.target.kind}
+            {!result.value.nextCursor &&
+            !query.has("cursor") &&
+            [...query.keys()].every((key) => key === "state" || key === "limit") &&
+            (query.get("state") ?? "pending") === "pending"
+              ? "Nothing is waiting for your decision"
+              : "No authorized approvals on this page match these filters."}
           </p>
-          <p>
-            <Target item={item} />
-          </p>
-          <p>
-            Requester: {item.requester.kind} · {item.requester.id ?? "Redacted"}
-          </p>
-          <p>
-            Required staff capabilities:{" "}
-            {item.approval.requiredHumanCapabilities.join(", ") || "None"}
-          </p>
-          <p>
-            Requested <Time value={item.approval.requestedAt} /> · Expires{" "}
-            <Time value={item.approval.expiresAt} />
-          </p>
-          <p>
-            Operations: {item.reviewSummary.operationCount} · Targets:{" "}
-            {item.reviewSummary.targetCount}
-          </p>
-          <p>
-            Recorded preview state: {item.reviewSummary.previewState ?? "No preview recorded"}. This
-            metadata does not verify live preview availability.
-          </p>
-          <p>
-            Recorded check count: {item.reviewSummary.checksRun ?? "Unavailable"}. A count does not
-            indicate passing checks.
-          </p>
-          <p>Rollback plan: {item.reviewSummary.rollbackPlan}.</p>
-        </article>
-      ))}
-      {result.value?.nextCursor && (
-        <Link className="underline" href={`/admin/agents/approvals?${next}`}>
-          Next page
-        </Link>
-      )}
-    </div>
+        )}
+        {result.value?.items.map((item) => (
+          <article className="space-y-2 rounded border p-4" key={item.approval.id}>
+            <h2 className="font-semibold">
+              <Link className="underline" href={`/admin/agents/approvals/${item.approval.id}`}>
+                Approval request · {item.intendedOperation ?? item.target.kind}
+              </Link>
+            </h2>
+            <p>
+              <Badge>{item.approval.state}</Badge> · Risk: {item.risk} · {item.target.kind}
+            </p>
+            <p>
+              <Target item={item} />
+            </p>
+            <p>
+              Requester: {item.requester.kind} · {item.requester.id ?? "Redacted"}
+            </p>
+            <p>
+              Required staff capabilities:{" "}
+              {item.approval.requiredHumanCapabilities.join(", ") || "None"}
+            </p>
+            <p>
+              Requested <Time value={item.approval.requestedAt} /> · Expires{" "}
+              <Time value={item.approval.expiresAt} />
+            </p>
+            <p>
+              Operations: {item.reviewSummary.operationCount} · Targets:{" "}
+              {item.reviewSummary.targetCount}
+            </p>
+            <p>
+              Recorded preview state: {item.reviewSummary.previewState ?? "No preview recorded"}.
+              This metadata does not verify live preview availability.
+            </p>
+            <p>
+              Recorded check count: {item.reviewSummary.checksRun ?? "Unavailable"}. A count does
+              not indicate passing checks.
+            </p>
+            <p>Rollback plan: {item.reviewSummary.rollbackPlan}.</p>
+          </article>
+        ))}
+        {result.value?.nextCursor && (
+          <Link className="underline" href={`/admin/agents/approvals?${next}`}>
+            Next page
+          </Link>
+        )}
+      </div>
+    </AgentRecoveryBoundary>
   );
 }
 
@@ -237,7 +240,7 @@ function ApprovalPreview({
   onLost,
 }: {
   review: NpAgentChangeSetReviewV1;
-  onLost: () => void;
+  onLost: (error?: unknown) => void;
 }) {
   const changeSet = review.changeSet;
   const [preview, setPreview] = React.useState<NpAgentPreviewDetailWireV1 | null>(null);
@@ -260,10 +263,10 @@ function ApprovalPreview({
           throw new Error("Preview mismatch");
         if (!controller.signal.aborted) setPreview(value);
       })
-      .catch(() => {
+      .catch((caught: unknown) => {
         if (!controller.signal.aborted) {
           setError(true);
-          onLost();
+          onLost(caught);
         }
       });
     return () => controller.abort();
@@ -290,7 +293,7 @@ function DecisionControls({
 }: {
   detail: NpAgentApprovalDetailV1;
   onChanged: () => void;
-  onLost: () => void;
+  onLost: (error?: unknown) => void;
 }) {
   const item = detail.item;
   const [pending, setPending] = React.useState<{
@@ -305,6 +308,8 @@ function DecisionControls({
   );
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>(null);
+  const blocked = useAgentRetryBlocked(failure);
   const [clock, setClock] = React.useState(0);
   const decisionRef = React.useRef<HTMLElement>(null);
   const invokerRef = React.useRef<HTMLButtonElement>(null);
@@ -331,6 +336,12 @@ function DecisionControls({
     setSubmittedReason(undefined);
   }
   function failed(caught: unknown, preserveDecision = false) {
+    setFailure(caught);
+    if (caught instanceof AgentStudioApiError && caught.status === 429) {
+      onLost(caught);
+      setError(approvalError(caught));
+      return;
+    }
     if (preserveDecision && (!(caught instanceof AgentStudioApiError) || caught.status >= 500)) {
       setError(
         "The decision response is uncertain. Retry this exact decision or close and reload its current state.",
@@ -341,9 +352,10 @@ function DecisionControls({
     setError(approvalError(caught));
     if (caught instanceof AgentStudioApiError && caught.status === 409) onChanged();
     else if (caught instanceof AgentStudioApiError && [401, 403, 404].includes(caught.status))
-      onLost();
+      onLost(caught);
   }
   async function start(purpose: NpAgentApprovalDecisionPurposeV1) {
+    if (blocked) return;
     setBusy(true);
     setError(null);
     setChallenge(null);
@@ -377,6 +389,7 @@ function DecisionControls({
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (
+      blocked ||
       !pending ||
       !challenge ||
       typed !== challenge.challenge ||
@@ -413,124 +426,135 @@ function DecisionControls({
     }
   }
   return (
-    <section ref={decisionRef} tabIndex={-1} className="space-y-3" aria-label="Approval decision">
-      {error && !challenge && (
-        <p ref={errorRef} tabIndex={-1} role="alert">
-          {error}
-        </p>
-      )}
-      {!item.allowedDecisions.length && (
-        <p>No decisions are currently available to this staff session.</p>
-      )}
-      <div className="flex gap-3">
-        {item.allowedDecisions.map((purpose) => (
-          <Button
-            disabled={busy}
-            key={purpose}
-            variant={purpose === "approve" ? "default" : "outline"}
-            onClick={(event) => {
-              invokerRef.current = event.currentTarget;
-              void start(purpose);
-            }}
-          >
-            {labels[purpose]}
-          </Button>
-        ))}
-      </div>
-      <Dialog
-        open={!!challenge}
-        onOpenChange={(open) => {
-          if (!open && !busy) close();
-        }}
-      >
-        <DialogContent
-          onOpenAutoFocus={(event) => {
-            event.preventDefault();
-            headingRef.current?.focus();
-          }}
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            if (errorRef.current) errorRef.current.focus();
-            else if (invokerRef.current?.isConnected && !invokerRef.current.disabled)
-              invokerRef.current.focus();
-            else decisionRef.current?.focus();
+    <AgentRecoveryBoundary error={failure}>
+      <section ref={decisionRef} tabIndex={-1} className="space-y-3" aria-label="Approval decision">
+        {error && !challenge && (
+          <p ref={errorRef} tabIndex={-1} role="alert">
+            {error}
+          </p>
+        )}
+        {!item.allowedDecisions.length && (
+          <p>No decisions are currently available to this staff session.</p>
+        )}
+        <div className="flex gap-3">
+          {item.allowedDecisions.map((purpose) => (
+            <Button
+              disabled={busy || blocked}
+              key={purpose}
+              variant={purpose === "approve" ? "default" : "outline"}
+              onClick={(event) => {
+                invokerRef.current = event.currentTarget;
+                void start(purpose);
+              }}
+            >
+              {labels[purpose]}
+            </Button>
+          ))}
+        </div>
+        <Dialog
+          open={!!challenge}
+          onOpenChange={(open) => {
+            if (!open && !busy) close();
           }}
         >
-          <DialogHeader>
-            <DialogTitle ref={headingRef} tabIndex={-1}>
-              {pending ? labels[pending.purpose] : "Decision"} approval
-            </DialogTitle>
-            <DialogDescription>
-              Confirm the exact server statement. This decision does not execute content changes.
-            </DialogDescription>
-          </DialogHeader>
-          {pending && challenge && (
-            <form
-              onSubmit={(event) => {
-                void submit(event);
-              }}
-              className="space-y-3"
-            >
-              {error && (
-                <p ref={errorRef} tabIndex={-1} role="alert">
-                  {error}
-                </p>
-              )}
-              <p className="break-all text-xs">Statement: {item.statementHash}</p>
-              <p>
-                Expires <Time value={challenge.expiresAt} />
-              </p>
-              {pending.purpose === "approve" && challenge.reauthentication.mode === "recent" && (
+          <DialogContent
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              headingRef.current?.focus();
+            }}
+            onCloseAutoFocus={(event) => {
+              event.preventDefault();
+              if (errorRef.current) errorRef.current.focus();
+              else if (invokerRef.current?.isConnected && !invokerRef.current.disabled)
+                invokerRef.current.focus();
+              else decisionRef.current?.focus();
+            }}
+          >
+            <DialogHeader>
+              <DialogTitle ref={headingRef} tabIndex={-1}>
+                {pending ? labels[pending.purpose] : "Decision"} approval
+              </DialogTitle>
+              <DialogDescription>
+                Confirm the exact server statement. This decision does not execute content changes.
+              </DialogDescription>
+            </DialogHeader>
+            {failure instanceof AgentStudioApiError && failure.status === 429 ? (
+              <AgentRecoveryBoundary error={failure}>{null}</AgentRecoveryBoundary>
+            ) : null}
+            {pending && challenge && (
+              <form
+                onSubmit={(event) => {
+                  void submit(event);
+                }}
+                className="space-y-3"
+              >
+                {error && (
+                  <p ref={errorRef} tabIndex={-1} role="alert">
+                    {error}
+                  </p>
+                )}
+                <p className="break-all text-xs">Statement: {item.statementHash}</p>
                 <p>
-                  Requires staff-primary reauthentication within{" "}
-                  {challenge.reauthentication.maxAgeSeconds} seconds in this session.
+                  Expires <Time value={challenge.expiresAt} />
                 </p>
-              )}
-              <Label htmlFor="approval-challenge">Type this one-time confirmation value</Label>
-              <code id="approval-challenge-value" className="block break-all select-text">
-                {challenge.challenge}
-              </code>
-              <Input
-                id="approval-challenge"
-                aria-describedby="approval-challenge-value"
-                autoComplete="off"
-                spellCheck={false}
-                value={typed}
-                maxLength={43}
-                onChange={(event) => setTyped(event.target.value)}
-                disabled={busy}
-              />
-              <Label htmlFor="approval-reason">Human reason (optional)</Label>
-              <Textarea
-                id="approval-reason"
-                maxLength={2000}
-                value={reason}
-                onChange={(event) => setReason(event.target.value)}
-                disabled={busy || submittedReason !== undefined}
-              />
-              {clock >= Date.parse(challenge.expiresAt) && (
-                <p role="alert">This challenge expired. Close and start a new decision.</p>
-              )}
-              <DialogFooter>
-                <Button type="button" variant="outline" disabled={busy} onClick={close}>
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={
-                    busy ||
-                    typed !== challenge.challenge ||
-                    clock >= Date.parse(challenge.expiresAt)
-                  }
-                >
-                  Confirm {pending.purpose}
-                </Button>
-              </DialogFooter>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
-    </section>
+                {pending.purpose === "approve" && challenge.reauthentication.mode === "recent" && (
+                  <p>
+                    Requires staff-primary reauthentication within{" "}
+                    {challenge.reauthentication.maxAgeSeconds} seconds in this session.
+                  </p>
+                )}
+                <Label htmlFor="approval-challenge">Type this one-time confirmation value</Label>
+                <code id="approval-challenge-value" className="block break-all select-text">
+                  {challenge.challenge}
+                </code>
+                <Input
+                  id="approval-challenge"
+                  aria-describedby="approval-challenge-value"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={typed}
+                  maxLength={43}
+                  onChange={(event) => setTyped(event.target.value)}
+                  disabled={busy || blocked}
+                />
+                <Label htmlFor="approval-reason">Human reason (optional)</Label>
+                <Textarea
+                  id="approval-reason"
+                  maxLength={2000}
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                  disabled={busy || blocked || submittedReason !== undefined}
+                />
+                {clock >= Date.parse(challenge.expiresAt) && (
+                  <p role="alert">This challenge expired. Close and start a new decision.</p>
+                )}
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy || blocked}
+                    onClick={close}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={
+                      busy ||
+                      blocked ||
+                      typed !== challenge.challenge ||
+                      clock >= Date.parse(challenge.expiresAt)
+                    }
+                  >
+                    Confirm {pending.purpose}
+                  </Button>
+                </DialogFooter>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
+      </section>
+    </AgentRecoveryBoundary>
   );
 }
 
@@ -546,140 +570,149 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
   const result = useAgentReviewRead(`${base}/${encodeURIComponent(id)}`, parse, approvalError);
   const [notice, setNotice] = React.useState<string | null>(null);
   const clear = result.clear;
-  const onLost = React.useCallback(() => {
-    clear();
-    setNotice("Approval evidence is unavailable. Reload to check current authority.");
-  }, [clear]);
+  const onLost = React.useCallback(
+    (caught?: unknown) => {
+      clear(caught);
+      setNotice(
+        caught instanceof AgentStudioApiError && caught.status === 429
+          ? null
+          : "Approval evidence is unavailable. Reload to check current authority.",
+      );
+    },
+    [clear],
+  );
   const detail = result.value;
   return (
-    <div className="space-y-6">
-      <h1 className="text-[22px] font-semibold">Approval review</h1>
-      <Link className="underline" href="/admin/agents/approvals">
-        Back to approvals
-      </Link>
-      <Button
-        className="ml-3"
-        variant="outline"
-        onClick={() => {
-          setNotice(null);
-          result.refresh();
-        }}
-      >
-        Refresh
-      </Button>
-      {result.loading && <p role="status">Loading approval…</p>}
-      {result.error && <p role="alert">{result.error}</p>}
-      {notice && <p role="alert">{notice}</p>}
-      {detail && (
-        <>
-          <section className="space-y-3">
-            <h2 className="text-lg font-semibold">Server approval facts</h2>
-            <p>
-              <Badge>{detail.item.approval.state}</Badge> · Risk: {detail.item.risk}
-            </p>
-            <dl className="grid gap-2 text-sm">
-              <dt>Approval</dt>
-              <dd>
-                {detail.item.approval.id} · Version {detail.item.version} · Generation{" "}
-                {detail.item.approval.generation}
-              </dd>
-              <dt>Target</dt>
-              <dd>
-                <Target item={detail.item} />
-              </dd>
-              <dt>Intended operation</dt>
-              <dd>
-                {detail.item.intendedOperation ?? detail.item.target.kind}
-                {detail.item.scheduledFor && (
-                  <>
-                    {" "}
-                    · <Time value={detail.item.scheduledFor} />
-                  </>
-                )}
-              </dd>
-              <dt>Statement hash</dt>
-              <dd className="break-all">{detail.item.statementHash}</dd>
-              <dt>Capability and scopes</dt>
-              <dd>
-                {detail.item.capabilityId} · {detail.item.requiredScopes.join(", ")}
-              </dd>
-              <dt>Capability contract</dt>
-              <dd className="break-all">
-                Version {detail.item.capabilityContractVersion} ·{" "}
-                {detail.item.capabilityFingerprint}
-              </dd>
-              <dt>Bound policy hashes</dt>
-              <dd className="break-all">
-                {detail.item.policyHashes.join(", ") || "No additional policy hashes"}
-              </dd>
-              <dt>Live preview requirement</dt>
-              <dd>
-                {detail.item.requiresLivePreview
-                  ? "Fresh bound preview required"
-                  : "Not required by this statement"}
-              </dd>
-              <dt>Approve reauthentication</dt>
-              <dd>
-                {detail.item.reauthentication.mode === "recent"
-                  ? `Staff-primary within ${detail.item.reauthentication.maxAgeSeconds} seconds`
-                  : "No additional recent reauthentication required"}
-              </dd>
-              <dt>Required human capabilities</dt>
-              <dd>{detail.item.approval.requiredHumanCapabilities.join(", ") || "None"}</dd>
-              <dt>Additional human requirements</dt>
-              <dd>{detail.item.approval.requiredHumanPredicates.join(", ") || "None"}</dd>
-              <dt>Requester</dt>
-              <dd>
-                {detail.item.requester.kind} · {detail.item.requester.id ?? "Redacted"}
-              </dd>
-              <dt>Approval expires</dt>
-              <dd>
-                <Time value={detail.item.approval.expiresAt} />
-              </dd>
-            </dl>
-            <p>
-              Approval records a human decision. Execute the approved operation from the current
-              ChangeSet review after its authority and evidence checks.
-            </p>
-          </section>
-          {detail.rollbackReview && <AgentRollbackReviewFacts detail={detail.rollbackReview} />}
-          {detail.review ? (
-            <>
-              <AgentChangeSetReviewFacts review={detail.review} />
-              <section className="space-y-2">
-                <h2 className="text-lg font-semibold">Validation and preview</h2>
-                <p>
-                  Validation: {detail.review.changeSet.validation?.state ?? "Unavailable"} ·
-                  Generation {detail.review.changeSet.validation?.generation ?? "Unavailable"}
-                </p>
-                <p>Operation count: {detail.review.changeSet.operations.length}</p>
-                <p>
-                  Rollback plan:{" "}
-                  {detail.review.changeSet.rollback
-                    ? "Recorded; review required"
-                    : "No rollback plan recorded"}
-                </p>
-                <ApprovalPreview
-                  key={`${id}:${detail.item.version}:${detail.review.changeSet.preview?.previewId ?? "none"}`}
-                  review={detail.review}
-                  onLost={onLost}
-                />
-              </section>
-            </>
-          ) : !detail.rollbackReview ? (
-            <p>
-              Target evidence is redacted or unavailable. No runtime or execution evidence is
-              inferred.
-            </p>
-          ) : null}
-          <DecisionControls
-            key={`${id}:${detail.item.version}:${detail.item.statementHash}`}
-            detail={detail}
-            onChanged={result.refresh}
-            onLost={onLost}
-          />
-        </>
-      )}
-    </div>
+    <AgentRecoveryBoundary error={result.failure} retry={result.refresh}>
+      <div className="space-y-6">
+        <h1 className="text-[22px] font-semibold">Approval review</h1>
+        <Link className="underline" href="/admin/agents/approvals">
+          Back to approvals
+        </Link>
+        <Button
+          className="ml-3"
+          variant="outline"
+          onClick={() => {
+            setNotice(null);
+            result.refresh();
+          }}
+        >
+          Refresh
+        </Button>
+        {result.loading && <p role="status">Loading approval…</p>}
+        {result.error && <p role="alert">{result.error}</p>}
+        {notice && <p role="alert">{notice}</p>}
+        {detail && (
+          <>
+            <section className="space-y-3">
+              <h2 className="text-lg font-semibold">Server approval facts</h2>
+              <p>
+                <Badge>{detail.item.approval.state}</Badge> · Risk: {detail.item.risk}
+              </p>
+              <dl className="grid gap-2 text-sm">
+                <dt>Approval</dt>
+                <dd>
+                  {detail.item.approval.id} · Version {detail.item.version} · Generation{" "}
+                  {detail.item.approval.generation}
+                </dd>
+                <dt>Target</dt>
+                <dd>
+                  <Target item={detail.item} />
+                </dd>
+                <dt>Intended operation</dt>
+                <dd>
+                  {detail.item.intendedOperation ?? detail.item.target.kind}
+                  {detail.item.scheduledFor && (
+                    <>
+                      {" "}
+                      · <Time value={detail.item.scheduledFor} />
+                    </>
+                  )}
+                </dd>
+                <dt>Statement hash</dt>
+                <dd className="break-all">{detail.item.statementHash}</dd>
+                <dt>Capability and scopes</dt>
+                <dd>
+                  {detail.item.capabilityId} · {detail.item.requiredScopes.join(", ")}
+                </dd>
+                <dt>Capability contract</dt>
+                <dd className="break-all">
+                  Version {detail.item.capabilityContractVersion} ·{" "}
+                  {detail.item.capabilityFingerprint}
+                </dd>
+                <dt>Bound policy hashes</dt>
+                <dd className="break-all">
+                  {detail.item.policyHashes.join(", ") || "No additional policy hashes"}
+                </dd>
+                <dt>Live preview requirement</dt>
+                <dd>
+                  {detail.item.requiresLivePreview
+                    ? "Fresh bound preview required"
+                    : "Not required by this statement"}
+                </dd>
+                <dt>Approve reauthentication</dt>
+                <dd>
+                  {detail.item.reauthentication.mode === "recent"
+                    ? `Staff-primary within ${detail.item.reauthentication.maxAgeSeconds} seconds`
+                    : "No additional recent reauthentication required"}
+                </dd>
+                <dt>Required human capabilities</dt>
+                <dd>{detail.item.approval.requiredHumanCapabilities.join(", ") || "None"}</dd>
+                <dt>Additional human requirements</dt>
+                <dd>{detail.item.approval.requiredHumanPredicates.join(", ") || "None"}</dd>
+                <dt>Requester</dt>
+                <dd>
+                  {detail.item.requester.kind} · {detail.item.requester.id ?? "Redacted"}
+                </dd>
+                <dt>Approval expires</dt>
+                <dd>
+                  <Time value={detail.item.approval.expiresAt} />
+                </dd>
+              </dl>
+              <p>
+                Approval records a human decision. Execute the approved operation from the current
+                ChangeSet review after its authority and evidence checks.
+              </p>
+            </section>
+            {detail.rollbackReview && <AgentRollbackReviewFacts detail={detail.rollbackReview} />}
+            {detail.review ? (
+              <>
+                <AgentChangeSetReviewFacts review={detail.review} />
+                <section className="space-y-2">
+                  <h2 className="text-lg font-semibold">Validation and preview</h2>
+                  <p>
+                    Validation: {detail.review.changeSet.validation?.state ?? "Unavailable"} ·
+                    Generation {detail.review.changeSet.validation?.generation ?? "Unavailable"}
+                  </p>
+                  <p>Operation count: {detail.review.changeSet.operations.length}</p>
+                  <p>
+                    Rollback plan:{" "}
+                    {detail.review.changeSet.rollback
+                      ? "Recorded; review required"
+                      : "No rollback plan recorded"}
+                  </p>
+                  <ApprovalPreview
+                    key={`${id}:${detail.item.version}:${detail.review.changeSet.preview?.previewId ?? "none"}`}
+                    review={detail.review}
+                    onLost={onLost}
+                  />
+                </section>
+              </>
+            ) : !detail.rollbackReview ? (
+              <p>
+                Target evidence is redacted or unavailable. No runtime or execution evidence is
+                inferred.
+              </p>
+            ) : null}
+            <DecisionControls
+              key={`${id}:${detail.item.version}:${detail.item.statementHash}`}
+              detail={detail}
+              onChanged={result.refresh}
+              onLost={onLost}
+            />
+          </>
+        )}
+      </div>
+    </AgentRecoveryBoundary>
   );
 }

@@ -22,6 +22,7 @@ import {
 } from "@nexpress/core/agent-contract";
 import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
 
+import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
 import { AgentStudioApiError, responseError } from "./agent-studio-api.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { npFetch } from "../lib/api-client.js";
@@ -123,10 +124,12 @@ function useActivity<T>(path: string, parse: (value: unknown) => T) {
       controller.abort();
     };
   }, [path, parse, revision]);
+  const blocked = useAgentRetryBlocked(result?.path === path ? result.error : null);
   const refresh = React.useCallback(() => {
+    if (blocked) return;
     setLoading(true);
     setRevision((current) => current + 1);
-  }, []);
+  }, [blocked]);
   // A route/filter change must never borrow another request's visible record or error.
   const matches = result?.path === path && result.parse === parse;
   return {
@@ -160,17 +163,20 @@ function ActivityNavigation({ section }: { section: NpAgentActivityKindV1 }) {
 }
 
 function ActivityError({ error, retry }: { error: AgentStudioApiError; retry: () => void }) {
+  if (error.status === 401 || error.status === 429) return null;
   const denied = [401, 403, 404].includes(error.status);
   const title =
-    error.status === 401
-      ? "Sign in to view Activity."
-      : error.status === 403
-        ? "You do not have access to this Activity."
-        : error.status === 404
-          ? "This Activity record is unavailable."
-          : error.status === 503
-            ? "Agent Activity is unavailable."
-            : error.message;
+    error.status === 403 && error.code === "RECENT_REAUTHENTICATION_REQUIRED"
+      ? "Recent staff-primary reauthentication is required. Reauthenticate and reload."
+      : error.status === 401
+        ? "Sign in to view Activity."
+        : error.status === 403
+          ? "You do not have access to this Activity."
+          : error.status === 404
+            ? "This Activity record is unavailable."
+            : error.status === 503
+              ? "Agent Activity is unavailable."
+              : error.message;
   return (
     <div
       role={error.status === 503 ? "status" : "alert"}
@@ -561,60 +567,66 @@ export function AgentActivityView({
   const expectedSchema = `np.agent-activity-${section}.v1`;
   const page = resource.value?.schemaVersion === expectedSchema ? resource.value : null;
   return (
-    <AgentStudioFrame active="activity">
-      <Link href="/admin/agents/changesets" className="underline">
-        ChangeSets
-      </Link>
-      <ActivityNavigation section={section} />
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-[18px] font-semibold capitalize">{section}</h2>
-          <p className="mt-1 text-[12.5px] text-neutral-500">
-            Authorized activity for the current site. Runtime identities appear only when stored
-            evidence exists.
-          </p>
+    <AgentRecoveryBoundary error={resource.error} retry={resource.refresh}>
+      <AgentStudioFrame active="activity">
+        <Link href="/admin/agents/changesets" className="underline">
+          ChangeSets
+        </Link>
+        <ActivityNavigation section={section} />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-[18px] font-semibold capitalize">{section}</h2>
+            <p className="mt-1 text-[12.5px] text-neutral-500">
+              Authorized activity for the current site. Runtime identities appear only when stored
+              evidence exists.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={resource.loading}
+            onClick={resource.refresh}
+          >
+            <RefreshCw className="size-3.5" />
+            Refresh
+          </Button>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={resource.loading}
-          onClick={resource.refresh}
-        >
-          <RefreshCw className="size-3.5" />
-          Refresh
-        </Button>
-      </div>
-      <ActivityFilters key={queryString} section={section} queryString={queryString} />
-      {resource.loading ? (
-        <p role="status" className="text-[13px] text-neutral-500">
-          {resource.value ? "Refreshing Activity…" : "Loading Activity…"}
-        </p>
-      ) : null}
-      {resource.error ? <ActivityError error={resource.error} retry={resource.refresh} /> : null}
-      {resource.value && !page ? (
-        <ActivityError
-          error={
-            new AgentStudioApiError(
-              "Unexpected Activity page contract.",
-              502,
-              "ACTIVITY_CONTRACT_ERROR",
-            )
-          }
-          retry={resource.refresh}
-        />
-      ) : null}
-      {page ? (
-        page.items.length ? (
-          <>
-            <PageRows page={page} />
-            <Pagination section={section} queryString={queryString} nextCursor={page.nextCursor} />
-          </>
-        ) : (
-          <EmptyActivity section={section} />
-        )
-      ) : null}
-    </AgentStudioFrame>
+        <ActivityFilters key={queryString} section={section} queryString={queryString} />
+        {resource.loading ? (
+          <p role="status" className="text-[13px] text-neutral-500">
+            {resource.value ? "Refreshing Activity…" : "Loading Activity…"}
+          </p>
+        ) : null}
+        {resource.error ? <ActivityError error={resource.error} retry={resource.refresh} /> : null}
+        {resource.value && !page ? (
+          <ActivityError
+            error={
+              new AgentStudioApiError(
+                "Unexpected Activity page contract.",
+                502,
+                "ACTIVITY_CONTRACT_ERROR",
+              )
+            }
+            retry={resource.refresh}
+          />
+        ) : null}
+        {page ? (
+          page.items.length ? (
+            <>
+              <PageRows page={page} />
+              <Pagination
+                section={section}
+                queryString={queryString}
+                nextCursor={page.nextCursor}
+              />
+            </>
+          ) : (
+            <EmptyActivity section={section} />
+          )
+        ) : null}
+      </AgentStudioFrame>
+    </AgentRecoveryBoundary>
   );
 }
 
@@ -633,29 +645,33 @@ function RunActions({ runId }: { runId: string }) {
   const page =
     resource.value?.schemaVersion === "np.agent-activity-actions.v1" ? resource.value : null;
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-[15px]">Actions</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {resource.loading ? (
-          <p role="status" className="text-[13px] text-neutral-500">
-            Loading run actions…
-          </p>
-        ) : null}
-        {resource.error ? <ActivityError error={resource.error} retry={resource.refresh} /> : null}
-        {page ? (
-          page.items.length ? (
-            <>
-              <ActionRows items={page.items} />
-              <Pagination section="actions" queryString={query} nextCursor={page.nextCursor} />
-            </>
-          ) : (
-            <p className="text-[13px] text-neutral-500">No visible actions for this run.</p>
-          )
-        ) : null}
-      </CardContent>
-    </Card>
+    <AgentRecoveryBoundary error={resource.error} retry={resource.refresh}>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-[15px]">Actions</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {resource.loading ? (
+            <p role="status" className="text-[13px] text-neutral-500">
+              Loading run actions…
+            </p>
+          ) : null}
+          {resource.error ? (
+            <ActivityError error={resource.error} retry={resource.refresh} />
+          ) : null}
+          {page ? (
+            page.items.length ? (
+              <>
+                <ActionRows items={page.items} />
+                <Pagination section="actions" queryString={query} nextCursor={page.nextCursor} />
+              </>
+            ) : (
+              <p className="text-[13px] text-neutral-500">No visible actions for this run.</p>
+            )
+          ) : null}
+        </CardContent>
+      </Card>
+    </AgentRecoveryBoundary>
   );
 }
 
@@ -680,167 +696,171 @@ export function AgentActivityRunDetailView({ runId }: { runId: string }) {
     resource.refresh,
   );
   return (
-    <AgentStudioFrame active="activity">
-      <ActivityNavigation section="runs" />
-      <Button asChild variant="ghost" size="sm">
-        <Link href={activityHref("runs")}>
-          <ArrowLeft className="size-3.5" />
-          Back to runs
-        </Link>
-      </Button>
-      {resource.loading ? (
-        <p role="status" className="text-[13px]">
-          Loading run…
-        </p>
-      ) : null}
-      {resource.error ? <ActivityError error={resource.error} retry={resource.refresh} /> : null}
-      {expired ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Run retention expired</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="mb-4 text-[13px]">
-              The Run and its source input were removed after retention expired. Retained history
-              confirms the identity and final state shown below.
-            </p>
-            <dl className="grid gap-4 sm:grid-cols-2">
-              <Fact label="Run">{expired.runId}</Fact>
-              <Fact label="Final state">
-                <StateBadge state={expired.state} />
-              </Fact>
-              <Fact label="Site">{expired.siteId}</Fact>
-              <Fact label="Principal">{expired.principalId}</Fact>
-              <Fact label="Agent">{expired.agent.id}</Fact>
-              <Fact label="Agent version">{expired.agent.versionId}</Fact>
-              <Fact label="Finished">
-                <ActivityTime value={expired.finishedAt} />
-              </Fact>
-              <Fact label="Source removed">
-                <ActivityTime value={expired.releasedAt} />
-              </Fact>
-            </dl>
-          </CardContent>
-        </Card>
-      ) : null}
-      {detail && run ? (
-        <>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-[18px] font-semibold">{run.goal}</h2>
-              <p className="mt-1 break-all font-mono text-[11px] text-neutral-500">{run.id}</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <StateBadge state={run.state} />
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={resource.loading}
-                onClick={resource.refresh}
-              >
-                Refresh
-              </Button>
-            </div>
-          </div>
-          <EvidenceNotice evidence={detail.evidence} />
+    <AgentRecoveryBoundary error={resource.error} retry={resource.refresh}>
+      <AgentStudioFrame active="activity">
+        <ActivityNavigation section="runs" />
+        <Button asChild variant="ghost" size="sm">
+          <Link href={activityHref("runs")}>
+            <ArrowLeft className="size-3.5" />
+            Back to runs
+          </Link>
+        </Button>
+        {resource.loading ? (
+          <p role="status" className="text-[13px]">
+            Loading run…
+          </p>
+        ) : null}
+        {resource.error ? <ActivityError error={resource.error} retry={resource.refresh} /> : null}
+        {expired ? (
           <Card>
             <CardHeader>
-              <CardTitle className="text-[15px]">Run identity</CardTitle>
+              <CardTitle>Run retention expired</CardTitle>
             </CardHeader>
             <CardContent>
-              <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <Fact label="Site">{run.siteId}</Fact>
-                <Fact label="Origin">{run.origin === "gateway" ? "Gateway" : "Runtime"}</Fact>
-                <Fact label="Principal">
-                  <Link
-                    className="underline"
-                    href={`/admin/agents/gateway/${encodeURIComponent(run.principalId)}`}
-                  >
-                    {run.principalId}
-                  </Link>
+              <p className="mb-4 text-[13px]">
+                The Run and its source input were removed after retention expired. Retained history
+                confirms the identity and final state shown below.
+              </p>
+              <dl className="grid gap-4 sm:grid-cols-2">
+                <Fact label="Run">{expired.runId}</Fact>
+                <Fact label="Final state">
+                  <StateBadge state={expired.state} />
                 </Fact>
-                <Fact label="Invocation">{detail.invocationId ?? "Not recorded"}</Fact>
-                <Fact label="Root run">{run.rootRunId}</Fact>
-                <Fact label="Attempt">{run.attempt}</Fact>
-                {run.origin === "runtime" && run.agent ? (
-                  <>
-                    <Fact label="Agent">{run.agent.id}</Fact>
-                    <Fact label="Agent version">{run.agent.versionId}</Fact>
-                  </>
-                ) : null}
-                <Fact label="Parent run">{run.parentRunId ?? "None"}</Fact>
-                <Fact label="Deadline">
-                  <ActivityTime value={run.deadlineAt} />
+                <Fact label="Site">{expired.siteId}</Fact>
+                <Fact label="Principal">{expired.principalId}</Fact>
+                <Fact label="Agent">{expired.agent.id}</Fact>
+                <Fact label="Agent version">{expired.agent.versionId}</Fact>
+                <Fact label="Finished">
+                  <ActivityTime value={expired.finishedAt} />
+                </Fact>
+                <Fact label="Source removed">
+                  <ActivityTime value={expired.releasedAt} />
                 </Fact>
               </dl>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-[15px]">Recorded timeline</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ol className="space-y-3 text-[13px]">
-                <li>
-                  <span className="font-medium">Queued</span> ·{" "}
-                  <ActivityTime value={run.queuedAt} />
-                </li>
-                {run.startedAt ? (
-                  <li>
-                    <span className="font-medium">Started</span> ·{" "}
-                    <ActivityTime value={run.startedAt} />
-                  </li>
-                ) : null}
-                {run.finishedAt ? (
-                  <li>
-                    <span className="font-medium">{run.state}</span> ·{" "}
-                    <ActivityTime value={run.finishedAt} />
-                  </li>
-                ) : null}
-              </ol>
-              {run.errorCode ? <p className="mt-3 font-mono text-[12px]">{run.errorCode}</p> : null}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-[15px]">Recorded usage</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl className="grid gap-4 sm:grid-cols-3">
-                <Fact label="Capability calls">{run.usage?.capabilityCalls ?? "Unknown"}</Fact>
-                {run.origin === "runtime" ? (
-                  <>
-                    <Fact label="Provider calls">{run.usage?.providerCalls ?? "Unknown"}</Fact>
-                    <Fact label="Input tokens">{run.usage?.inputTokens ?? "Unknown"}</Fact>
-                    <Fact label="Cached input tokens">
-                      {run.usage?.cachedInputTokens ?? "Unknown"}
-                    </Fact>
-                    <Fact label="Output tokens">{run.usage?.outputTokens ?? "Unknown"}</Fact>
-                    <Fact label="Cost (micros)">{run.usage?.costMicros ?? "Unknown"}</Fact>
-                  </>
-                ) : null}
-              </dl>
-            </CardContent>
-          </Card>
-          {detail.auditEventIds.length ? (
+        ) : null}
+        {detail && run ? (
+          <>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-[18px] font-semibold">{run.goal}</h2>
+                <p className="mt-1 break-all font-mono text-[11px] text-neutral-500">{run.id}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <StateBadge state={run.state} />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={resource.loading}
+                  onClick={resource.refresh}
+                >
+                  Refresh
+                </Button>
+              </div>
+            </div>
+            <EvidenceNotice evidence={detail.evidence} />
             <Card>
               <CardHeader>
-                <CardTitle className="text-[15px]">Audit references</CardTitle>
+                <CardTitle className="text-[15px]">Run identity</CardTitle>
               </CardHeader>
               <CardContent>
-                <ul className="space-y-1 break-all font-mono text-[11px]">
-                  {detail.auditEventIds.map((id) => (
-                    <li key={id}>{id}</li>
-                  ))}
-                </ul>
+                <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <Fact label="Site">{run.siteId}</Fact>
+                  <Fact label="Origin">{run.origin === "gateway" ? "Gateway" : "Runtime"}</Fact>
+                  <Fact label="Principal">
+                    <Link
+                      className="underline"
+                      href={`/admin/agents/gateway/${encodeURIComponent(run.principalId)}`}
+                    >
+                      {run.principalId}
+                    </Link>
+                  </Fact>
+                  <Fact label="Invocation">{detail.invocationId ?? "Not recorded"}</Fact>
+                  <Fact label="Root run">{run.rootRunId}</Fact>
+                  <Fact label="Attempt">{run.attempt}</Fact>
+                  {run.origin === "runtime" && run.agent ? (
+                    <>
+                      <Fact label="Agent">{run.agent.id}</Fact>
+                      <Fact label="Agent version">{run.agent.versionId}</Fact>
+                    </>
+                  ) : null}
+                  <Fact label="Parent run">{run.parentRunId ?? "None"}</Fact>
+                  <Fact label="Deadline">
+                    <ActivityTime value={run.deadlineAt} />
+                  </Fact>
+                </dl>
               </CardContent>
             </Card>
-          ) : null}
-          <RunActions key={run.id} runId={run.id} />
-        </>
-      ) : null}
-    </AgentStudioFrame>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-[15px]">Recorded timeline</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ol className="space-y-3 text-[13px]">
+                  <li>
+                    <span className="font-medium">Queued</span> ·{" "}
+                    <ActivityTime value={run.queuedAt} />
+                  </li>
+                  {run.startedAt ? (
+                    <li>
+                      <span className="font-medium">Started</span> ·{" "}
+                      <ActivityTime value={run.startedAt} />
+                    </li>
+                  ) : null}
+                  {run.finishedAt ? (
+                    <li>
+                      <span className="font-medium">{run.state}</span> ·{" "}
+                      <ActivityTime value={run.finishedAt} />
+                    </li>
+                  ) : null}
+                </ol>
+                {run.errorCode ? (
+                  <p className="mt-3 font-mono text-[12px]">{run.errorCode}</p>
+                ) : null}
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-[15px]">Recorded usage</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl className="grid gap-4 sm:grid-cols-3">
+                  <Fact label="Capability calls">{run.usage?.capabilityCalls ?? "Unknown"}</Fact>
+                  {run.origin === "runtime" ? (
+                    <>
+                      <Fact label="Provider calls">{run.usage?.providerCalls ?? "Unknown"}</Fact>
+                      <Fact label="Input tokens">{run.usage?.inputTokens ?? "Unknown"}</Fact>
+                      <Fact label="Cached input tokens">
+                        {run.usage?.cachedInputTokens ?? "Unknown"}
+                      </Fact>
+                      <Fact label="Output tokens">{run.usage?.outputTokens ?? "Unknown"}</Fact>
+                      <Fact label="Cost (micros)">{run.usage?.costMicros ?? "Unknown"}</Fact>
+                    </>
+                  ) : null}
+                </dl>
+              </CardContent>
+            </Card>
+            {detail.auditEventIds.length ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-[15px]">Audit references</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-1 break-all font-mono text-[11px]">
+                    {detail.auditEventIds.map((id) => (
+                      <li key={id}>{id}</li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            ) : null}
+            <RunActions key={run.id} runId={run.id} />
+          </>
+        ) : null}
+      </AgentStudioFrame>
+    </AgentRecoveryBoundary>
   );
 }
 
@@ -852,130 +872,132 @@ export function AgentActivityActionDetailView({ actionId }: { actionId: string }
   const detail: NpAgentActivityActionDetailV1 | null = resource.value;
   const action = detail?.action;
   return (
-    <AgentStudioFrame active="activity">
-      <ActivityNavigation section="actions" />
-      <Button asChild variant="ghost" size="sm">
-        <Link href={activityHref("actions")}>
-          <ArrowLeft className="size-3.5" />
-          Back to actions
-        </Link>
-      </Button>
-      {resource.loading ? (
-        <p role="status" className="text-[13px]">
-          Loading action…
-        </p>
-      ) : null}
-      {resource.error ? <ActivityError error={resource.error} retry={resource.refresh} /> : null}
-      {detail && action ? (
-        <>
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-[18px] font-semibold">{action.capabilityId}</h2>
-              <p className="mt-1 break-all font-mono text-[11px] text-neutral-500">{action.id}</p>
+    <AgentRecoveryBoundary error={resource.error} retry={resource.refresh}>
+      <AgentStudioFrame active="activity">
+        <ActivityNavigation section="actions" />
+        <Button asChild variant="ghost" size="sm">
+          <Link href={activityHref("actions")}>
+            <ArrowLeft className="size-3.5" />
+            Back to actions
+          </Link>
+        </Button>
+        {resource.loading ? (
+          <p role="status" className="text-[13px]">
+            Loading action…
+          </p>
+        ) : null}
+        {resource.error ? <ActivityError error={resource.error} retry={resource.refresh} /> : null}
+        {detail && action ? (
+          <>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-[18px] font-semibold">{action.capabilityId}</h2>
+                <p className="mt-1 break-all font-mono text-[11px] text-neutral-500">{action.id}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <StateBadge state={action.state} />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={resource.loading}
+                  onClick={resource.refresh}
+                >
+                  Refresh
+                </Button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <StateBadge state={action.state} />
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={resource.loading}
-                onClick={resource.refresh}
-              >
-                Refresh
-              </Button>
-            </div>
-          </div>
-          <EvidenceNotice evidence={detail.evidence} />
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-[15px]">Action facts</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <Fact label="Site">{action.siteId}</Fact>
-                <Fact label="Principal">
-                  <Link
-                    className="underline"
-                    href={`/admin/agents/gateway/${encodeURIComponent(detail.principalId)}`}
-                  >
-                    {detail.principalId}
-                  </Link>
-                </Fact>
-                <Fact label="Run">
-                  {action.runId ? (
-                    <Link
-                      className="underline"
-                      href={`/admin/agents/activity/${encodeURIComponent(action.runId)}`}
-                    >
-                      {action.runId}
-                    </Link>
-                  ) : (
-                    "Run details unavailable"
-                  )}
-                </Fact>
-                <Fact label="Invocation">{detail.invocationId ?? "Not recorded"}</Fact>
-                <Fact label="Sequence">{action.sequence}</Fact>
-                <Fact label="Capability version">{action.capabilityContractVersion}</Fact>
-                <Fact label="Risk">{action.risk}</Fact>
-                <Fact label="Effect">
-                  {action.effectProfile.id} v{action.effectProfile.contractVersion}
-                </Fact>
-                <Fact label="Verification">{action.verificationState ?? "Not applicable"}</Fact>
-                <Fact label="Created">
-                  <ActivityTime value={action.createdAt} />
-                </Fact>
-                <Fact label="Started">
-                  <ActivityTime value={action.startedAt} />
-                </Fact>
-                <Fact label="Finished">
-                  <ActivityTime value={action.finishedAt} />
-                </Fact>
-                <Fact label="Required scopes">{action.requiredScopes.join(", ")}</Fact>
-                <Fact label="Approval">{action.approvalId ?? "None recorded"}</Fact>
-                <Fact label="Safe error">{action.errorCode ?? "None"}</Fact>
-              </dl>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-[15px]">Retained hashes and audit</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <dl className="grid gap-4 sm:grid-cols-2">
-                <Fact label="Input hash">{detail.inputHash}</Fact>
-                <Fact label="Output hash">{detail.outputHash ?? "Not recorded"}</Fact>
-                <Fact label="Proposal hash">{action.proposalHash}</Fact>
-                <Fact label="Capability fingerprint">{action.capabilityFingerprint}</Fact>
-                <Fact label="Audit reference">{detail.auditEventId ?? "Not recorded"}</Fact>
-              </dl>
-            </CardContent>
-          </Card>
-          {detail.evidence === "redacted" ? (
+            <EvidenceNotice evidence={detail.evidence} />
             <Card>
               <CardHeader>
-                <CardTitle className="text-[15px]">Safe evidence projection</CardTitle>
+                <CardTitle className="text-[15px]">Action facts</CardTitle>
               </CardHeader>
-              <CardContent className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <h3 className="mb-2 text-[12px] font-medium">Input metadata</h3>
-                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-neutral-50 p-3 text-[11px] dark:bg-neutral-900">
-                    {JSON.stringify(action.inputRedacted, null, 2)}
-                  </pre>
-                </div>
-                <div>
-                  <h3 className="mb-2 text-[12px] font-medium">Output metadata</h3>
-                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-neutral-50 p-3 text-[11px] dark:bg-neutral-900">
-                    {action.outputRedacted === null
-                      ? "No output recorded"
-                      : JSON.stringify(action.outputRedacted, null, 2)}
-                  </pre>
-                </div>
+              <CardContent>
+                <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <Fact label="Site">{action.siteId}</Fact>
+                  <Fact label="Principal">
+                    <Link
+                      className="underline"
+                      href={`/admin/agents/gateway/${encodeURIComponent(detail.principalId)}`}
+                    >
+                      {detail.principalId}
+                    </Link>
+                  </Fact>
+                  <Fact label="Run">
+                    {action.runId ? (
+                      <Link
+                        className="underline"
+                        href={`/admin/agents/activity/${encodeURIComponent(action.runId)}`}
+                      >
+                        {action.runId}
+                      </Link>
+                    ) : (
+                      "Run details unavailable"
+                    )}
+                  </Fact>
+                  <Fact label="Invocation">{detail.invocationId ?? "Not recorded"}</Fact>
+                  <Fact label="Sequence">{action.sequence}</Fact>
+                  <Fact label="Capability version">{action.capabilityContractVersion}</Fact>
+                  <Fact label="Risk">{action.risk}</Fact>
+                  <Fact label="Effect">
+                    {action.effectProfile.id} v{action.effectProfile.contractVersion}
+                  </Fact>
+                  <Fact label="Verification">{action.verificationState ?? "Not applicable"}</Fact>
+                  <Fact label="Created">
+                    <ActivityTime value={action.createdAt} />
+                  </Fact>
+                  <Fact label="Started">
+                    <ActivityTime value={action.startedAt} />
+                  </Fact>
+                  <Fact label="Finished">
+                    <ActivityTime value={action.finishedAt} />
+                  </Fact>
+                  <Fact label="Required scopes">{action.requiredScopes.join(", ")}</Fact>
+                  <Fact label="Approval">{action.approvalId ?? "None recorded"}</Fact>
+                  <Fact label="Safe error">{action.errorCode ?? "None"}</Fact>
+                </dl>
               </CardContent>
             </Card>
-          ) : null}
-        </>
-      ) : null}
-    </AgentStudioFrame>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-[15px]">Retained hashes and audit</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <dl className="grid gap-4 sm:grid-cols-2">
+                  <Fact label="Input hash">{detail.inputHash}</Fact>
+                  <Fact label="Output hash">{detail.outputHash ?? "Not recorded"}</Fact>
+                  <Fact label="Proposal hash">{action.proposalHash}</Fact>
+                  <Fact label="Capability fingerprint">{action.capabilityFingerprint}</Fact>
+                  <Fact label="Audit reference">{detail.auditEventId ?? "Not recorded"}</Fact>
+                </dl>
+              </CardContent>
+            </Card>
+            {detail.evidence === "redacted" ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-[15px]">Safe evidence projection</CardTitle>
+                </CardHeader>
+                <CardContent className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <h3 className="mb-2 text-[12px] font-medium">Input metadata</h3>
+                    <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-neutral-50 p-3 text-[11px] dark:bg-neutral-900">
+                      {JSON.stringify(action.inputRedacted, null, 2)}
+                    </pre>
+                  </div>
+                  <div>
+                    <h3 className="mb-2 text-[12px] font-medium">Output metadata</h3>
+                    <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-neutral-50 p-3 text-[11px] dark:bg-neutral-900">
+                      {action.outputRedacted === null
+                        ? "No output recorded"
+                        : JSON.stringify(action.outputRedacted, null, 2)}
+                    </pre>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+          </>
+        ) : null}
+      </AgentStudioFrame>
+    </AgentRecoveryBoundary>
   );
 }

@@ -1,3 +1,4 @@
+import { AgentRecoveryBoundary } from "./agent-recovery.js";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { Activity, Bot, Cable, KeyRound } from "lucide-react";
@@ -13,12 +14,14 @@ export function AgentStudioFrame({
   busy = false,
   refreshing = false,
   observedAt,
+  recovery,
 }: {
   active: AgentStudioSection;
   children: ReactNode;
   busy?: boolean;
   refreshing?: boolean;
   observedAt?: number;
+  recovery?: unknown;
 }) {
   return (
     <div className="min-w-0 space-y-6 [overflow-wrap:anywhere]">
@@ -106,9 +109,11 @@ export function AgentStudioFrame({
           . Refresh to check current server facts.
         </p>
       ) : null}
-      <fieldset disabled={busy} aria-busy={busy} className="min-w-0 space-y-6">
-        {children}
-      </fieldset>
+      <AgentRecoveryBoundary error={recovery}>
+        <fieldset disabled={busy} aria-busy={busy} className="min-w-0 space-y-6">
+          {children}
+        </fieldset>
+      </AgentRecoveryBoundary>
       <p className="flex items-start gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-[12.5px] text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900/40 dark:text-neutral-300">
         <KeyRound className="mt-0.5 size-3.5 shrink-0" aria-hidden />
         Provider credentials authorize NexPress to call an external provider. Gateway credentials
