@@ -4,7 +4,7 @@ import { agent, catalog } from "./fixtures/runtime-studio.js";
 
 test("Studio refresh retains marked evidence then clears failed or invalid responses", async ({
   page,
-}) => {
+}, testInfo) => {
   let release = () => {};
   let gate = new Promise<void>((resolve) => {
     release = resolve;
@@ -18,6 +18,7 @@ test("Studio refresh retains marked evidence then clears failed or invalid respo
     if (status !== 200)
       return route.fulfill({
         status,
+        headers: status === 429 ? { "Retry-After": "30" } : {},
         json: { error: { code: "HTTP_ERROR", message: "Safe failure" }, status },
       });
     if (malformed) return route.fulfill({ json: { privateExtra: "PRIVATE_UNVALIDATED_VALUE" } });
@@ -41,6 +42,7 @@ test("Studio refresh retains marked evidence then clears failed or invalid respo
   release();
   await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
   await page.clock.install();
+  await page.clock.pauseAt(new Date((await page.evaluate(() => Date.now())) + 1_000));
   for (const failure of [403, 404, 429, 502, "contract"] as const) {
     status = failure === "contract" ? 200 : failure;
     malformed = failure === "contract";
@@ -49,6 +51,26 @@ test("Studio refresh retains marked evidence then clears failed or invalid respo
     await expect(empty).toHaveCount(0);
     await expect(page.getByText("PRIVATE_UNVALIDATED_VALUE")).toHaveCount(0);
     const stopped = reads;
+    if (failure === 429) {
+      await expect(page.getByText("Wait before retrying:", { exact: false })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeDisabled();
+      await page.setViewportSize({ width: 320, height: 900 });
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+        .toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath("rate-limit-320.png"),
+        fullPage: true,
+        animations: "disabled",
+      });
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.clock.fastForward(29_000);
+      expect(reads).toBe(stopped);
+      await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeDisabled();
+      await page.clock.fastForward(1_000);
+      await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeEnabled();
+    }
     await page.clock.fastForward(60_000);
     expect(reads).toBe(stopped);
     status = 200;
@@ -56,6 +78,27 @@ test("Studio refresh retains marked evidence then clears failed or invalid respo
     await page.getByRole("button", { name: "Retry", exact: true }).click();
     await expect(empty).toBeVisible();
   }
+  status = 401;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
+  await expect(empty).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+  const stopped = reads;
+  await page.clock.fastForward(60_000);
+  expect(reads).toBe(stopped);
+  await page.setViewportSize({ width: 320, height: 900 });
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("session-lost-320.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.context().clearCookies();
+  await page.getByRole("link", { name: "Sign in", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/login$/);
+  await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
 });
 
 test("Runtime shared read states preserve bounded large lists and fail closed", async ({

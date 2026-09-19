@@ -45,6 +45,7 @@ export function useRuntimeResource<T>(path: string, parse: (value: unknown) => T
     revision: number;
     value: T | null;
     error: string | null;
+    failure: unknown;
     observedAt: number | undefined;
   } | null>(null);
   const request = React.useRef<{ path: string; controller: AbortController } | null>(null);
@@ -57,7 +58,7 @@ export function useRuntimeResource<T>(path: string, parse: (value: unknown) => T
     void runtimeRequest(path, parse, { signal: controller.signal })
       .then((value) => {
         if (current && !controller.signal.aborted)
-          setResult({ path, revision, value, error: null, observedAt: Date.now() });
+          setResult({ path, revision, value, error: null, failure: null, observedAt: Date.now() });
       })
       .catch((error: unknown) => {
         if (current && !controller.signal.aborted)
@@ -66,6 +67,7 @@ export function useRuntimeResource<T>(path: string, parse: (value: unknown) => T
             revision,
             value: null,
             error: runtimeErrorMessage(error),
+            failure: error,
             observedAt: undefined,
           });
       });
@@ -79,11 +81,21 @@ export function useRuntimeResource<T>(path: string, parse: (value: unknown) => T
     observedAt: result?.path === path ? result.observedAt : undefined,
     refreshing: result?.path === path && result.value !== null && result.revision !== revision,
     error: result?.path === path && result.revision === revision ? result.error : null,
+    failure: result?.path === path && result.revision === revision ? result.failure : null,
     loading: result?.path !== path || result.revision !== revision,
     generation: revision,
-    reload: React.useCallback(() => setRevision(++generation.current), []),
+    reload: React.useCallback(() => {
+      const failure = result?.path === path ? result.failure : null;
+      if (
+        failure instanceof AgentStudioApiError &&
+        failure.status === 429 &&
+        (failure.retryAt ?? 0) > Date.now()
+      )
+        return;
+      setRevision(++generation.current);
+    }, [path, result]),
     clear: React.useCallback(
-      (message: string) => {
+      (message: string, failure?: unknown) => {
         if (request.current?.path !== path) return;
         request.current.controller.abort();
         setResult({
@@ -91,10 +103,32 @@ export function useRuntimeResource<T>(path: string, parse: (value: unknown) => T
           revision: generation.current,
           value: null,
           error: message,
+          failure,
           observedAt: undefined,
         });
       },
       [path],
     ),
   };
+}
+
+export function runtimeRecoveryFailure(...failures: unknown[]): unknown {
+  const unauthenticated = failures.find(
+    (failure) => failure instanceof AgentStudioApiError && failure.status === 401,
+  );
+  if (unauthenticated) return unauthenticated;
+  let throttled: AgentStudioApiError | undefined;
+  for (const failure of failures) {
+    if (
+      failure instanceof AgentStudioApiError &&
+      failure.status === 429 &&
+      (failure.retryAt ?? 0) > Date.now() &&
+      (failure.retryAt ?? 0) > (throttled?.retryAt ?? 0)
+    )
+      throttled = failure;
+  }
+  return throttled ?? failures.find((failure) => failure != null);
+}
+export function runtimeAccessLost(error: unknown): boolean {
+  return error instanceof AgentStudioApiError && [401, 403, 404].includes(error.status);
 }

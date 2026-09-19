@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -26,7 +27,13 @@ import {
 import { runtimeManualInput } from "./agent-runtime-manual-input.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentStudioApiError } from "./agent-studio-api.js";
-import { runtimeRequest, runtimeErrorMessage, useRuntimeResource } from "./agent-runtime-api.js";
+import {
+  runtimeRecoveryFailure,
+  runtimeAccessLost,
+  runtimeRequest,
+  runtimeErrorMessage,
+  useRuntimeResource,
+} from "./agent-runtime-api.js";
 import { RuntimeBudgetFields, RuntimeSelect } from "./agent-runtime-fields.js";
 import { RuntimeCapabilityModes } from "./agent-policy-fields.js";
 import { RuntimeEventTriggerFields } from "./agent-trigger-fields.js";
@@ -84,6 +91,7 @@ export function AgentRuntimeListView({ query = "" }: { query?: string }) {
   return (
     <AgentStudioFrame
       active="configurations"
+      recovery={runtimeRecoveryFailure(state.failure, catalog.failure)}
       busy={state.loading || catalog.loading}
       refreshing={state.refreshing}
       observedAt={state.observedAt}
@@ -236,6 +244,7 @@ export function AgentRuntimeCreateView() {
   return (
     <AgentStudioFrame
       active="configurations"
+      recovery={catalog.failure}
       busy={catalog.loading}
       refreshing={catalog.refreshing}
       observedAt={catalog.observedAt}
@@ -264,16 +273,20 @@ function RuntimeConfigurationEditor({
   initial,
   current,
   onSaved,
+  onAccessLost,
 }: {
   catalog: NpAgentRuntimeStudioCatalogV1;
   initial: NpAgentConfigurationDefinitionV1;
   current?: NpAgentRuntimeStudioConfigurationV1;
   onSaved?: () => void;
+  onAccessLost?: (message: string, failure?: unknown) => void;
 }) {
   const router = useRouter();
   const [definition, setDefinition] = React.useState(initial);
   const [key, setKey] = React.useState(() => crypto.randomUUID());
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>(null);
+  const retryBlocked = useAgentRetryBlocked(failure);
   const [busy, setBusy] = React.useState(false);
   const [stale, setStale] = React.useState(false);
   const [accessLost, setAccessLost] = React.useState(false);
@@ -293,6 +306,8 @@ function RuntimeConfigurationEditor({
   const connection = catalog.connections.find((entry) => entry.id === definition.modelConnectionId);
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (retryBlocked) return;
+    setFailure(null);
     setBusy(true);
     setError(null);
     let requestAttempted = false;
@@ -322,182 +337,192 @@ function RuntimeConfigurationEditor({
       if (current && onSaved) onSaved();
       else router.push(`/admin/agents/configurations/${result.resourceId}`);
     } catch (caught) {
+      setFailure(caught);
       setError(
         requestAttempted
           ? runtimeErrorMessage(caught)
           : "The draft is invalid. Check required recipe or policy fields, capability modes, scopes and numeric limits before saving.",
       );
-      if (caught instanceof AgentStudioApiError && [401, 403, 404].includes(caught.status))
+      if (runtimeAccessLost(caught)) {
         setAccessLost(true);
+        onAccessLost?.(runtimeErrorMessage(caught), caught);
+      }
       if (caught instanceof AgentStudioApiError && caught.status === 409) setStale(true);
     } finally {
       setBusy(false);
     }
   };
-  if (accessLost) return <RuntimeNotice loading={false} error={error} />;
+  if (accessLost)
+    return (
+      <AgentRecoveryBoundary error={failure}>
+        <RuntimeNotice loading={false} error={error} />
+      </AgentRecoveryBoundary>
+    );
   return (
-    <form className="space-y-6" onSubmit={(event) => void submit(event)}>
-      <fieldset disabled={busy || stale} className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="runtime-agent-name">Agent name</Label>
-            <Input
-              id="runtime-agent-name"
-              required
-              maxLength={120}
-              value={definition.name}
-              onChange={(event) => update({ ...definition, name: event.target.value })}
+    <AgentRecoveryBoundary error={failure}>
+      <form className="space-y-6" onSubmit={(event) => void submit(event)}>
+        <fieldset disabled={busy || stale} className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="runtime-agent-name">Agent name</Label>
+              <Input
+                id="runtime-agent-name"
+                required
+                maxLength={120}
+                value={definition.name}
+                onChange={(event) => update({ ...definition, name: event.target.value })}
+              />
+            </div>
+            <RuntimeSelect
+              label="Template"
+              value={definition.template}
+              options={choices(
+                npAgentRecipeTemplates.filter((template) =>
+                  selected.every((recipe) => recipe.allowedTemplates.includes(template)),
+                ),
+              )}
+              onChange={(template) => update({ ...definition, template })}
             />
           </div>
-          <RuntimeSelect
-            label="Template"
-            value={definition.template}
-            options={choices(
-              npAgentRecipeTemplates.filter((template) =>
-                selected.every((recipe) => recipe.allowedTemplates.includes(template)),
-              ),
-            )}
-            onChange={(template) => update({ ...definition, template })}
-          />
-        </div>
-        <fieldset className="space-y-3">
-          <legend className="font-medium">Installed recipes</legend>
-          {catalog.recipes.map((recipe) => (
-            <label className="flex items-start gap-2 text-sm" key={recipe.id}>
-              <input
-                type="checkbox"
-                checked={selected.includes(recipe)}
-                onChange={(event) => {
-                  const settings = [
-                    ...definition.settings.filter((entry) => entry.recipeId !== recipe.id),
-                    ...(event.target.checked ? [runtimeRecipeDraft(recipe.id)] : []),
-                  ].sort((a, b) => a.recipeId.localeCompare(b.recipeId));
-                  update({ ...definition, settings });
-                }}
-              />
-              <span>
-                {recipe.id} · provider {recipe.providerMode} · triggers:{" "}
-                {recipe.triggerKinds.join(", ")}
-              </span>
-            </label>
-          ))}
-        </fieldset>
-        {definition.settings.map((settings) => (
-          <RuntimeRecipeFields
-            key={settings.recipeId}
-            value={settings}
-            onChange={(next) =>
-              update({
-                ...definition,
-                settings: definition.settings.map((entry) =>
-                  entry.recipeId === next.recipeId ? next : entry,
-                ),
-              })
-            }
-          />
-        ))}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <RuntimeSelect
-            label="Provider connection"
-            value={definition.modelConnectionId ?? "deterministic"}
-            options={[
-              ...(selected.every((recipe) => recipe.providerMode !== "required")
-                ? [{ value: "deterministic", label: "Deterministic only" }]
-                : []),
-              ...catalog.connections.map((entry) => ({ value: entry.id, label: entry.alias })),
-            ]}
-            onChange={(id) => {
-              const next = catalog.connections.find((entry) => entry.id === id);
-              update({
-                ...definition,
-                modelConnectionId: next?.id ?? null,
-                model: next?.models[0] ?? null,
-              });
-            }}
-          />
-          {connection ? (
-            <RuntimeSelect
-              label="Model"
-              value={definition.model ?? ""}
-              options={choices(connection.models)}
-              onChange={(model) => update({ ...definition, model })}
-            />
-          ) : null}
-          <RuntimeSelect
-            label="Agent autonomy ceiling"
-            value={definition.autonomy}
-            options={choices(npAgentAutonomyModes)}
-            onChange={(autonomy) => update({ ...definition, autonomy })}
-          />
-          <RuntimeSelect
-            label="Policy resolution"
-            value={definition.policyMode}
-            options={[
-              { value: "site", label: "Site policy" },
-              { value: "site_and_agent", label: "Site and Agent policy" },
-            ]}
-            onChange={(policyMode) => update({ ...definition, policyMode })}
-          />
-        </div>
-        <fieldset className="space-y-2">
-          <legend className="font-medium">Available scopes</legend>
-          <p className="text-sm text-neutral-500">
-            Scopes remain bounded by live deployment authority and any explicit staff delegation.
-          </p>
-          {!current && catalog.selfDelegation ? (
-            <label className="flex gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={delegated}
-                onChange={(event) => {
-                  setDelegated(event.target.checked);
-                  setKey(crypto.randomUUID());
-                }}
-              />
-              Explicitly delegate my current staff authority to this Agent
-            </label>
-          ) : null}
-          <div className="grid gap-2 sm:grid-cols-2">
-            {catalog.scopes.map((scope) => (
-              <label className="flex gap-2 text-sm" key={scope}>
+          <fieldset className="space-y-3">
+            <legend className="font-medium">Installed recipes</legend>
+            {catalog.recipes.map((recipe) => (
+              <label className="flex items-start gap-2 text-sm" key={recipe.id}>
                 <input
                   type="checkbox"
-                  checked={definition.scopes.includes(scope)}
-                  onChange={(event) =>
-                    update({
-                      ...definition,
-                      scopes: [
-                        ...definition.scopes.filter((entry) => entry !== scope),
-                        ...(event.target.checked ? [scope] : []),
-                      ].sort(),
-                    })
-                  }
+                  checked={selected.includes(recipe)}
+                  onChange={(event) => {
+                    const settings = [
+                      ...definition.settings.filter((entry) => entry.recipeId !== recipe.id),
+                      ...(event.target.checked ? [runtimeRecipeDraft(recipe.id)] : []),
+                    ].sort((a, b) => a.recipeId.localeCompare(b.recipeId));
+                    update({ ...definition, settings });
+                  }}
                 />
-                {scope}
+                <span>
+                  {recipe.id} · provider {recipe.providerMode} · triggers:{" "}
+                  {recipe.triggerKinds.join(", ")}
+                </span>
               </label>
             ))}
+          </fieldset>
+          {definition.settings.map((settings) => (
+            <RuntimeRecipeFields
+              key={settings.recipeId}
+              value={settings}
+              onChange={(next) =>
+                update({
+                  ...definition,
+                  settings: definition.settings.map((entry) =>
+                    entry.recipeId === next.recipeId ? next : entry,
+                  ),
+                })
+              }
+            />
+          ))}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <RuntimeSelect
+              label="Provider connection"
+              value={definition.modelConnectionId ?? "deterministic"}
+              options={[
+                ...(selected.every((recipe) => recipe.providerMode !== "required")
+                  ? [{ value: "deterministic", label: "Deterministic only" }]
+                  : []),
+                ...catalog.connections.map((entry) => ({ value: entry.id, label: entry.alias })),
+              ]}
+              onChange={(id) => {
+                const next = catalog.connections.find((entry) => entry.id === id);
+                update({
+                  ...definition,
+                  modelConnectionId: next?.id ?? null,
+                  model: next?.models[0] ?? null,
+                });
+              }}
+            />
+            {connection ? (
+              <RuntimeSelect
+                label="Model"
+                value={definition.model ?? ""}
+                options={choices(connection.models)}
+                onChange={(model) => update({ ...definition, model })}
+              />
+            ) : null}
+            <RuntimeSelect
+              label="Agent autonomy ceiling"
+              value={definition.autonomy}
+              options={choices(npAgentAutonomyModes)}
+              onChange={(autonomy) => update({ ...definition, autonomy })}
+            />
+            <RuntimeSelect
+              label="Policy resolution"
+              value={definition.policyMode}
+              options={[
+                { value: "site", label: "Site policy" },
+                { value: "site_and_agent", label: "Site and Agent policy" },
+              ]}
+              onChange={(policyMode) => update({ ...definition, policyMode })}
+            />
           </div>
+          <fieldset className="space-y-2">
+            <legend className="font-medium">Available scopes</legend>
+            <p className="text-sm text-neutral-500">
+              Scopes remain bounded by live deployment authority and any explicit staff delegation.
+            </p>
+            {!current && catalog.selfDelegation ? (
+              <label className="flex gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={delegated}
+                  onChange={(event) => {
+                    setDelegated(event.target.checked);
+                    setKey(crypto.randomUUID());
+                  }}
+                />
+                Explicitly delegate my current staff authority to this Agent
+              </label>
+            ) : null}
+            <div className="grid gap-2 sm:grid-cols-2">
+              {catalog.scopes.map((scope) => (
+                <label className="flex gap-2 text-sm" key={scope}>
+                  <input
+                    type="checkbox"
+                    checked={definition.scopes.includes(scope)}
+                    onChange={(event) =>
+                      update({
+                        ...definition,
+                        scopes: [
+                          ...definition.scopes.filter((entry) => entry !== scope),
+                          ...(event.target.checked ? [scope] : []),
+                        ].sort(),
+                      })
+                    }
+                  />
+                  {scope}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <RuntimeCapabilityModes
+            value={definition.capabilityModes}
+            available={modes}
+            onChange={(capabilityModes) => update({ ...definition, capabilityModes })}
+          />
+          <RuntimeBudgetFields
+            value={definition.budget}
+            ceiling={catalog.effectiveBudget}
+            onChange={(budget) => update({ ...definition, budget })}
+          />
+          <p className="text-sm text-neutral-500">
+            Save writes only a draft. Review current readiness and policy hashes before the separate
+            activation step. Trigger changes are reviewed and saved with activation.
+          </p>
+          <Button type="submit" disabled={!selected.length}>
+            {busy ? "Saving draft…" : "Save draft"}
+          </Button>
         </fieldset>
-        <RuntimeCapabilityModes
-          value={definition.capabilityModes}
-          available={modes}
-          onChange={(capabilityModes) => update({ ...definition, capabilityModes })}
-        />
-        <RuntimeBudgetFields
-          value={definition.budget}
-          ceiling={catalog.effectiveBudget}
-          onChange={(budget) => update({ ...definition, budget })}
-        />
-        <p className="text-sm text-neutral-500">
-          Save writes only a draft. Review current readiness and policy hashes before the separate
-          activation step. Trigger changes are reviewed and saved with activation.
-        </p>
-        <Button type="submit" disabled={!selected.length}>
-          {busy ? "Saving draft…" : "Save draft"}
-        </Button>
-      </fieldset>
-      {error ? <p role="alert">{error}</p> : null}
-    </form>
+        {error ? <p role="alert">{error}</p> : null}
+      </form>
+    </AgentRecoveryBoundary>
   );
 }
 
@@ -514,13 +539,19 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
   const [editing, setEditing] = React.useState(false);
   const [review, setReview] = React.useState<NpAgentRuntimeStudioEffectiveV1 | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>(null);
+  const retryBlocked = useAgentRetryBlocked(failure);
   const agent = state.value;
   const refresh = () => {
+    if (retryBlocked) return;
+    setFailure(null);
     setReview(null);
     state.reload();
     triggers.reload();
   };
   const loadReview = async (active = false) => {
+    if (retryBlocked) return;
+    setFailure(null);
     setError(null);
     setReview(null);
     try {
@@ -531,12 +562,15 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
         ),
       );
     } catch (caught) {
+      setFailure(caught);
       setError(runtimeErrorMessage(caught));
+      if (runtimeAccessLost(caught)) state.clear(runtimeErrorMessage(caught), caught);
     }
   };
   return (
     <AgentStudioFrame
       active="configurations"
+      recovery={runtimeRecoveryFailure(failure, state.failure, catalog.failure, triggers.failure)}
       busy={state.loading || catalog.loading || triggers.loading}
       refreshing={state.refreshing || triggers.refreshing}
       observedAt={state.observedAt}
@@ -545,6 +579,13 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
         Back to Agents
       </Link>
       <RuntimeNotice loading={false} error={state.error} />
+      {state.error ? <Button onClick={state.reload}>Retry Agent</Button> : null}
+      {catalog.error ? (
+        <>
+          <RuntimeNotice loading={false} error={catalog.error} />
+          <Button onClick={catalog.reload}>Retry Runtime catalog</Button>
+        </>
+      ) : null}
       {agent ? (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -595,6 +636,7 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
               catalog={catalog.value}
               initial={agent.definition}
               current={agent}
+              onAccessLost={state.clear}
               onSaved={() => {
                 setEditing(false);
                 refresh();
@@ -657,6 +699,7 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
             </CardHeader>
             <CardContent className="space-y-3">
               <RuntimeNotice loading={false} error={triggers.error} />
+              {triggers.error ? <Button onClick={triggers.reload}>Retry triggers</Button> : null}
               {triggers.value?.items.length === 0 ? (
                 <p>No triggers are registered. Add a trigger in the explicit activation review.</p>
               ) : null}
@@ -700,7 +743,7 @@ function RuntimeAgentActions({
   catalog: NpAgentRuntimeStudioCatalogV1 | null;
   manualTriggers: NpAgentTrigger[];
   onChanged: () => void;
-  onAccessLost: (message: string) => void;
+  onAccessLost: (message: string, failure?: unknown) => void;
 }) {
   const router = useRouter();
   const [action, setAction] = React.useState<NpAgentRuntimeAdminOperationIdV1 | null>(null);
@@ -712,6 +755,8 @@ function RuntimeAgentActions({
   const [key, setKey] = React.useState(() => crypto.randomUUID());
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>(null);
+  const retryBlocked = useAgentRetryBlocked(failure);
   const [stale, setStale] = React.useState(false);
   const [plan, setPlan] = React.useState<Array<{ definition: NpAgentTrigger; enabled: boolean }>>(
     [],
@@ -729,6 +774,8 @@ function RuntimeAgentActions({
   };
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (retryBlocked) return;
+    setFailure(null);
     if (!action) return;
     setBusy(true);
     setError(null);
@@ -770,199 +817,205 @@ function RuntimeAgentActions({
       if (suffix === "run") router.push(`/admin/agents/activity/${result.resourceId}`);
       else onChanged();
     } catch (caught) {
+      setFailure(caught);
       const message = runtimeErrorMessage(caught);
       setError(message);
-      if (caught instanceof AgentStudioApiError && [401, 403, 404].includes(caught.status))
-        onAccessLost(message);
+      if (runtimeAccessLost(caught)) onAccessLost(message, caught);
       if (caught instanceof AgentStudioApiError && caught.status === 409) setStale(true);
     } finally {
       setBusy(false);
     }
   };
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {agent.availableActions
-          .filter((id) => labels[id])
-          .map((id) => (
-            <Button
-              key={id}
-              variant={id.endsWith("archive") ? "destructive" : "outline"}
-              disabled={
-                busy ||
-                ((id.endsWith("activate") || id.endsWith("resume")) &&
-                  (!review?.ready ||
-                    review.versionId !==
-                      (id.endsWith("resume") ? agent.activeVersion?.id : agent.versionId))) ||
-                (id.endsWith("run") &&
-                  (!catalog || !manualTriggers.length || !agent.manualRecipeIds.length))
-              }
-              onClick={() => {
-                setAction(id);
-                setKey(crypto.randomUUID());
-                setError(null);
-                setStale(false);
-              }}
-            >
-              {labels[id]}
-            </Button>
-          ))}
-      </div>
-      {action ? (
-        <form onSubmit={(event) => void submit(event)} className="space-y-4 rounded-lg border p-4">
-          <h3 className="font-medium">{labels[action]}</h3>
-          <fieldset disabled={busy || stale} className="space-y-4">
-            <p className="text-sm text-neutral-500">
-              The server rechecks current authority, version and dependencies. Recent staff-primary
-              reauthentication may be required. An unknown outcome keeps the same request key.
-            </p>
-            {action.endsWith("pause") || action.endsWith("archive") ? (
-              <div className="space-y-2">
-                <Label htmlFor="runtime-agent-reason">Reason</Label>
-                <Textarea
-                  id="runtime-agent-reason"
-                  maxLength={2000}
-                  value={reason}
-                  onChange={(event) => {
-                    setReason(event.target.value);
-                    setKey(crypto.randomUUID());
-                  }}
-                />
-                <p className="text-sm">
-                  New admission stops; existing work reaches its recorded safe boundary. Archive
-                  preserves history and cannot be resumed.
-                </p>
-              </div>
-            ) : null}
-            {action.endsWith("run") ? (
-              <>
-                <RuntimeSelect
-                  label="Manual recipe"
-                  value={recipeId}
-                  options={choices(agent.manualRecipeIds)}
-                  onChange={(next) => {
-                    setRecipeId(next);
-                    setManualValues({});
-                    setKey(crypto.randomUUID());
-                  }}
-                />
-                <RuntimeSelect
-                  label="Manual trigger"
-                  value={triggerId || manualTriggers[0]?.id || ""}
-                  options={manualTriggers.map((trigger) => ({
-                    value: trigger.id,
-                    label: trigger.id,
-                  }))}
-                  onChange={(next) => {
-                    setTriggerId(next);
-                    setKey(crypto.randomUUID());
-                  }}
-                />
-                {manualSchema
-                  ? Object.entries(manualSchema.properties).map(([name, field]) => {
-                      const required = manualSchema.required.includes(name);
-                      const change = (value: string) => {
-                        setManualValues((current) => ({ ...current, [name]: value }));
-                        setKey(crypto.randomUUID());
-                      };
-                      const values =
-                        field.enum ?? (field.type === "boolean" ? [true, false] : null);
-                      return (
-                        <div key={name} className="space-y-2">
-                          <Label htmlFor={`runtime-manual-${name}`}>
-                            {name}
-                            {required ? " (required)" : " (optional)"}
-                          </Label>
-                          {values ? (
-                            <select
-                              id={`runtime-manual-${name}`}
-                              className="w-full rounded-md border p-2"
-                              required={required}
-                              value={
-                                manualValues[name] === undefined
-                                  ? ""
-                                  : String(
-                                      values.findIndex(
-                                        (value) => String(value) === manualValues[name],
-                                      ),
-                                    )
-                              }
-                              onChange={(event) => {
-                                if (event.target.value !== "")
-                                  change(String(values[Number(event.target.value)]));
-                                else {
-                                  setManualValues((current) => {
-                                    const next = { ...current };
-                                    delete next[name];
-                                    return next;
-                                  });
-                                  setKey(crypto.randomUUID());
-                                }
-                              }}
-                            >
-                              <option value="">Choose a value</option>
-                              {values.map((value, index) => (
-                                <option key={String(value)} value={String(index)}>
-                                  {value === "" ? "(empty string)" : String(value)}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <Input
-                              id={`runtime-manual-${name}`}
-                              required={required && field.type !== "string"}
-                              type={field.type === "integer" ? "number" : "text"}
-                              step={field.type === "integer" ? 1 : undefined}
-                              min={field.minimum}
-                              max={field.maximum}
-                              maxLength={field.maxLength}
-                              value={manualValues[name] ?? ""}
-                              onChange={(event) => change(event.target.value)}
-                            />
-                          )}
-                        </div>
-                      );
-                    })
-                  : null}
-                <Label htmlFor="runtime-manual-goal">Run goal</Label>
-                <Textarea
-                  id="runtime-manual-goal"
-                  required
-                  maxLength={2000}
-                  value={goal}
-                  onChange={(event) => {
-                    setGoal(event.target.value);
-                    setKey(crypto.randomUUID());
-                  }}
-                />
-                <p className="text-sm">
-                  The goal cannot add a prompt, capability, scope, model or target beyond the active
-                  recipe.
-                </p>
-              </>
-            ) : null}
-            {action.endsWith("activate") && catalog ? (
-              <RuntimeTriggerPlan
-                catalog={catalog}
-                agent={agent}
-                plan={plan}
-                onChange={(next) => {
-                  setPlan(next);
+    <AgentRecoveryBoundary error={failure}>
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          {agent.availableActions
+            .filter((id) => labels[id])
+            .map((id) => (
+              <Button
+                key={id}
+                variant={id.endsWith("archive") ? "destructive" : "outline"}
+                disabled={
+                  busy ||
+                  ((id.endsWith("activate") || id.endsWith("resume")) &&
+                    (!review?.ready ||
+                      review.versionId !==
+                        (id.endsWith("resume") ? agent.activeVersion?.id : agent.versionId))) ||
+                  (id.endsWith("run") &&
+                    (!catalog || !manualTriggers.length || !agent.manualRecipeIds.length))
+                }
+                onClick={() => {
+                  setAction(id);
                   setKey(crypto.randomUUID());
+                  setError(null);
+                  setStale(false);
                 }}
-              />
-            ) : null}
-            <div className="flex gap-2">
-              <Button type="submit">{busy ? "Submitting…" : "Confirm"}</Button>
-              <Button type="button" variant="ghost" onClick={() => setAction(null)}>
-                Cancel
+              >
+                {labels[id]}
               </Button>
-            </div>
-          </fieldset>
-          {error ? <p role="alert">{error}</p> : null}
-        </form>
-      ) : null}
-    </div>
+            ))}
+        </div>
+        {action ? (
+          <form
+            onSubmit={(event) => void submit(event)}
+            className="space-y-4 rounded-lg border p-4"
+          >
+            <h3 className="font-medium">{labels[action]}</h3>
+            <fieldset disabled={busy || stale} className="space-y-4">
+              <p className="text-sm text-neutral-500">
+                The server rechecks current authority, version and dependencies. Recent
+                staff-primary reauthentication may be required. An unknown outcome keeps the same
+                request key.
+              </p>
+              {action.endsWith("pause") || action.endsWith("archive") ? (
+                <div className="space-y-2">
+                  <Label htmlFor="runtime-agent-reason">Reason</Label>
+                  <Textarea
+                    id="runtime-agent-reason"
+                    maxLength={2000}
+                    value={reason}
+                    onChange={(event) => {
+                      setReason(event.target.value);
+                      setKey(crypto.randomUUID());
+                    }}
+                  />
+                  <p className="text-sm">
+                    New admission stops; existing work reaches its recorded safe boundary. Archive
+                    preserves history and cannot be resumed.
+                  </p>
+                </div>
+              ) : null}
+              {action.endsWith("run") ? (
+                <>
+                  <RuntimeSelect
+                    label="Manual recipe"
+                    value={recipeId}
+                    options={choices(agent.manualRecipeIds)}
+                    onChange={(next) => {
+                      setRecipeId(next);
+                      setManualValues({});
+                      setKey(crypto.randomUUID());
+                    }}
+                  />
+                  <RuntimeSelect
+                    label="Manual trigger"
+                    value={triggerId || manualTriggers[0]?.id || ""}
+                    options={manualTriggers.map((trigger) => ({
+                      value: trigger.id,
+                      label: trigger.id,
+                    }))}
+                    onChange={(next) => {
+                      setTriggerId(next);
+                      setKey(crypto.randomUUID());
+                    }}
+                  />
+                  {manualSchema
+                    ? Object.entries(manualSchema.properties).map(([name, field]) => {
+                        const required = manualSchema.required.includes(name);
+                        const change = (value: string) => {
+                          setManualValues((current) => ({ ...current, [name]: value }));
+                          setKey(crypto.randomUUID());
+                        };
+                        const values =
+                          field.enum ?? (field.type === "boolean" ? [true, false] : null);
+                        return (
+                          <div key={name} className="space-y-2">
+                            <Label htmlFor={`runtime-manual-${name}`}>
+                              {name}
+                              {required ? " (required)" : " (optional)"}
+                            </Label>
+                            {values ? (
+                              <select
+                                id={`runtime-manual-${name}`}
+                                className="w-full rounded-md border p-2"
+                                required={required}
+                                value={
+                                  manualValues[name] === undefined
+                                    ? ""
+                                    : String(
+                                        values.findIndex(
+                                          (value) => String(value) === manualValues[name],
+                                        ),
+                                      )
+                                }
+                                onChange={(event) => {
+                                  if (event.target.value !== "")
+                                    change(String(values[Number(event.target.value)]));
+                                  else {
+                                    setManualValues((current) => {
+                                      const next = { ...current };
+                                      delete next[name];
+                                      return next;
+                                    });
+                                    setKey(crypto.randomUUID());
+                                  }
+                                }}
+                              >
+                                <option value="">Choose a value</option>
+                                {values.map((value, index) => (
+                                  <option key={String(value)} value={String(index)}>
+                                    {value === "" ? "(empty string)" : String(value)}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <Input
+                                id={`runtime-manual-${name}`}
+                                required={required && field.type !== "string"}
+                                type={field.type === "integer" ? "number" : "text"}
+                                step={field.type === "integer" ? 1 : undefined}
+                                min={field.minimum}
+                                max={field.maximum}
+                                maxLength={field.maxLength}
+                                value={manualValues[name] ?? ""}
+                                onChange={(event) => change(event.target.value)}
+                              />
+                            )}
+                          </div>
+                        );
+                      })
+                    : null}
+                  <Label htmlFor="runtime-manual-goal">Run goal</Label>
+                  <Textarea
+                    id="runtime-manual-goal"
+                    required
+                    maxLength={2000}
+                    value={goal}
+                    onChange={(event) => {
+                      setGoal(event.target.value);
+                      setKey(crypto.randomUUID());
+                    }}
+                  />
+                  <p className="text-sm">
+                    The goal cannot add a prompt, capability, scope, model or target beyond the
+                    active recipe.
+                  </p>
+                </>
+              ) : null}
+              {action.endsWith("activate") && catalog ? (
+                <RuntimeTriggerPlan
+                  catalog={catalog}
+                  agent={agent}
+                  plan={plan}
+                  onChange={(next) => {
+                    setPlan(next);
+                    setKey(crypto.randomUUID());
+                  }}
+                />
+              ) : null}
+              <div className="flex gap-2">
+                <Button type="submit">{busy ? "Submitting…" : "Confirm"}</Button>
+                <Button type="button" variant="ghost" onClick={() => setAction(null)}>
+                  Cancel
+                </Button>
+              </div>
+            </fieldset>
+            {error ? <p role="alert">{error}</p> : null}
+          </form>
+        ) : null}
+      </div>
+    </AgentRecoveryBoundary>
   );
 }
 

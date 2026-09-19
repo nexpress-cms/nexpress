@@ -15,6 +15,7 @@ import {
   type NpAgentStudioOverviewV1,
 } from "@nexpress/core/agent-contract";
 
+import { useAgentRetryBlocked } from "./agent-recovery.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentStudioApiError, loadAgentStudioOverview, responseError } from "./agent-studio-api.js";
 import { Button } from "../ui/button.js";
@@ -68,6 +69,8 @@ export function AgentConnectionCreateView() {
   const [configJson, setConfigJson] = React.useState("{}");
   const [credential, setCredential] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>();
+  const retryBlocked = useAgentRetryBlocked(failure);
   const [submitting, setSubmitting] = React.useState(false);
 
   const [loading, setLoading] = React.useState(true);
@@ -99,6 +102,7 @@ export function AgentConnectionCreateView() {
         if (current.current !== generation) return;
         setOverview(null);
         setCredential("");
+        setFailure(caught);
         setError(createError(caught));
       })
       .finally(() => {
@@ -112,6 +116,8 @@ export function AgentConnectionCreateView() {
     if (error) alertRef.current?.focus();
   }, [error]);
   const reload = () => {
+    if (retryBlocked) return;
+    setFailure(undefined);
     setLoading(true);
     setError(null);
     requestReload();
@@ -131,7 +137,7 @@ export function AgentConnectionCreateView() {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!adapter || loading || submitting) return;
+    if (!adapter || loading || submitting || retryBlocked) return;
     const generation = current.current;
     setSubmitting(true);
     setError(null);
@@ -188,6 +194,7 @@ export function AgentConnectionCreateView() {
         setOverview(null);
         retry.current = null;
       }
+      setFailure(caught);
       setError(createError(caught));
     } finally {
       if (current.current === generation) setSubmitting(false);
@@ -195,7 +202,12 @@ export function AgentConnectionCreateView() {
   };
 
   return (
-    <AgentStudioFrame active="connections" busy={loading} refreshing={overview !== null}>
+    <AgentStudioFrame
+      active="connections"
+      recovery={failure}
+      busy={loading}
+      refreshing={overview !== null}
+    >
       <Card className="max-w-3xl">
         <CardHeader>
           <CardTitle className="text-[16px]">Add provider connection</CardTitle>
@@ -369,6 +381,8 @@ export function AgentConnectionCreateView() {
 
 function createError(error: unknown): string {
   if (error instanceof AgentStudioApiError) {
+    if (error.status === 403 && error.code === "RECENT_REAUTHENTICATION_REQUIRED")
+      return "Recent staff-primary reauthentication is required. Reauthenticate and reload.";
     if ([401, 403, 404].includes(error.status))
       return "Connection management is unavailable or you no longer have access. Sign in again if your session expired.";
     if (error.status === 409)

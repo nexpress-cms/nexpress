@@ -13,6 +13,7 @@ import {
   type NpAgentStudioOverviewV1,
 } from "@nexpress/core/agent-contract";
 
+import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
 import { AgentStudioFrame, type AgentStudioSection } from "./agent-studio-frame.js";
 import {
   AgentStudioApiError,
@@ -64,11 +65,37 @@ function Empty({ children }: { children: React.ReactNode }) {
 export function AgentStudioView({ section }: { section: AgentStudioSection }) {
   const [overview, setOverview] = React.useState<NpAgentStudioOverviewV1 | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>();
+  const failureRef = React.useRef<unknown>(undefined);
   const [loading, setLoading] = React.useState(true);
   const [observedAt, setObservedAt] = React.useState<number>();
   const request = React.useRef<AbortController | null>(null);
 
+  const onChildFailure = React.useCallback((caught: unknown) => {
+    if (!(caught instanceof AgentStudioApiError) || ![401, 403, 404].includes(caught.status))
+      return;
+    request.current?.abort();
+    failureRef.current = caught;
+    setFailure(caught);
+    setOverview(null);
+    setObservedAt(undefined);
+    setLoading(false);
+    setError(
+      caught.code === "RECENT_REAUTHENTICATION_REQUIRED"
+        ? "Recent staff-primary reauthentication is required. Reauthenticate and reload."
+        : "Agent Studio is unavailable or you no longer have access.",
+    );
+  }, []);
+
   const reload = React.useCallback(async () => {
+    const previous = failureRef.current;
+    if (
+      previous instanceof AgentStudioApiError &&
+      (previous.status === 401 || (previous.retryAt !== undefined && previous.retryAt > Date.now()))
+    )
+      return;
+    failureRef.current = undefined;
+    setFailure(undefined);
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
@@ -81,14 +108,20 @@ export function AgentStudioView({ section }: { section: AgentStudioSection }) {
       setObservedAt(Date.now());
     } catch (caught) {
       if (controller.signal.aborted) return;
+      failureRef.current = caught;
+      setFailure(caught);
       setOverview(null);
       setObservedAt(undefined);
       setError(
-        caught instanceof AgentStudioApiError && [401, 403, 404].includes(caught.status)
-          ? "Agent Studio is unavailable or you no longer have access."
-          : caught instanceof AgentStudioApiError
-            ? `${caught.message} (${caught.code})`
-            : "Could not load Agent Studio.",
+        caught instanceof AgentStudioApiError &&
+          caught.status === 403 &&
+          caught.code === "RECENT_REAUTHENTICATION_REQUIRED"
+          ? "Recent staff-primary reauthentication is required. Reauthenticate and reload."
+          : caught instanceof AgentStudioApiError && [401, 403, 404].includes(caught.status)
+            ? "Agent Studio is unavailable or you no longer have access."
+            : caught instanceof AgentStudioApiError
+              ? `${caught.message} (${caught.code})`
+              : "Could not load Agent Studio.",
       );
     } finally {
       if (!controller.signal.aborted) setLoading(false);
@@ -106,6 +139,7 @@ export function AgentStudioView({ section }: { section: AgentStudioSection }) {
   return (
     <AgentStudioFrame
       active={section}
+      recovery={failure}
       busy={loading}
       refreshing={loading && overview !== null}
       observedAt={observedAt}
@@ -135,7 +169,7 @@ export function AgentStudioView({ section }: { section: AgentStudioSection }) {
           {section === "overview" ? (
             <OverviewContent overview={overview} />
           ) : (
-            <ConnectionsContent overview={overview} onChanged={reload} />
+            <ConnectionsContent overview={overview} onChanged={reload} onFailure={onChildFailure} />
           )}
         </>
       ) : null}
@@ -202,7 +236,9 @@ function OverviewContent({ overview }: { overview: NpAgentStudioOverviewV1 }) {
 function ConnectionsContent({
   overview,
   onChanged,
+  onFailure,
 }: {
+  onFailure: (failure: unknown) => void;
   overview: NpAgentStudioOverviewV1;
   onChanged: () => Promise<void>;
 }) {
@@ -258,10 +294,14 @@ function ConnectionsContent({
             Site-scoped authority for external MCP, Agent HTTP, or local stdio clients.
           </p>
         </div>
-        <OauthClientsPanel disabled={overview.runtime.gateway.state !== "ready"} />
+        <OauthClientsPanel
+          disabled={overview.runtime.gateway.state !== "ready"}
+          onFailure={onFailure}
+        />
         <PrincipalCreateForm
           disabled={overview.runtime.gateway.state !== "ready"}
           onCreated={onChanged}
+          onFailure={onFailure}
         />
         {overview.principals.length === 0 ? (
           <Empty>No external Gateway principals for this site.</Empty>
@@ -289,33 +329,66 @@ function ConnectionsContent({
   );
 }
 
-function OauthClientsPanel({ disabled }: { disabled: boolean }) {
+function OauthClientsPanel({
+  disabled,
+  onFailure,
+}: {
+  disabled: boolean;
+  onFailure: (failure: unknown) => void;
+}) {
   const [clients, setClients] = React.useState<NpAgentOauthClientV1[]>([]);
   const [name, setName] = React.useState("");
   const [redirects, setRedirects] = React.useState("http://127.0.0.1:3000/callback");
   const [transports, setTransports] = React.useState<NpAgentOauthClientTransportV1[]>(["mcp-http"]);
   const [open, setOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>();
+  const failureRef = React.useRef<unknown>(undefined);
+  const retryBlocked = useAgentRetryBlocked(failure);
+  const request = React.useRef<AbortController | null>(null);
+  const retry = React.useRef<{ fingerprint: string; key: string } | null>(null);
+  const revokeRetry = React.useRef<{ fingerprint: string; key: string } | null>(null);
   const [busy, setBusy] = React.useState(false);
 
   const reload = React.useCallback(async () => {
+    const previous = failureRef.current;
+    if (
+      previous instanceof AgentStudioApiError &&
+      (previous.status === 401 || (previous.retryAt !== undefined && previous.retryAt > Date.now()))
+    )
+      return;
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
     try {
-      setClients(await loadAgentOauthClients());
+      const value = await loadAgentOauthClients(controller.signal);
+      if (controller.signal.aborted) return;
+      setClients(value);
+      failureRef.current = undefined;
+      setFailure(undefined);
       setError(null);
     } catch (caught) {
+      if (controller.signal.aborted) return;
+      failureRef.current = caught;
+      setFailure(caught);
+      onFailure(caught);
       setClients([]);
       setError(caught instanceof Error ? caught.message : "Could not load OAuth clients.");
     }
-  }, []);
+  }, [onFailure]);
 
   React.useEffect(() => {
     if (disabled) return;
     const timer = window.setTimeout(() => void reload(), 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      request.current?.abort();
+    };
   }, [disabled, reload]);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (disabled || busy || retryBlocked) return;
     setBusy(true);
     setError(null);
     try {
@@ -327,11 +400,18 @@ function OauthClientsPanel({ disabled }: { disabled: boolean }) {
             .filter(Boolean),
         ),
       ].sort();
+      const fingerprint = JSON.stringify({
+        name,
+        redirectUris,
+        transports: [...transports].sort(),
+      });
+      if (retry.current?.fingerprint !== fingerprint)
+        retry.current = { fingerprint, key: crypto.randomUUID() };
       const response = await npFetch("/api/admin/agents/gateway/oauth-clients", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: retry.current.key,
           name,
           redirectUris,
           transports: [...transports].sort(),
@@ -339,10 +419,16 @@ function OauthClientsPanel({ disabled }: { disabled: boolean }) {
       });
       if (!response.ok) throw await responseError(response);
       npRequireAgentOauthClientV1(await response.json());
+      retry.current = null;
       setName("");
       setOpen(false);
+      failureRef.current = undefined;
+      setFailure(undefined);
       await reload();
     } catch (caught) {
+      failureRef.current = caught;
+      setFailure(caught);
+      onFailure(caught);
       setError(caught instanceof Error ? caught.message : "Could not register OAuth client.");
     } finally {
       setBusy(false);
@@ -350,6 +436,10 @@ function OauthClientsPanel({ disabled }: { disabled: boolean }) {
   };
 
   const revoke = async (client: NpAgentOauthClientV1) => {
+    if (disabled || busy || retryBlocked) return;
+    const fingerprint = `${client.id}:${client.rowVersion}`;
+    if (revokeRetry.current?.fingerprint !== fingerprint)
+      revokeRetry.current = { fingerprint, key: crypto.randomUUID() };
     setBusy(true);
     setError(null);
     try {
@@ -359,7 +449,7 @@ function OauthClientsPanel({ disabled }: { disabled: boolean }) {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            idempotencyKey: crypto.randomUUID(),
+            idempotencyKey: revokeRetry.current.key,
             expectedVersion: client.rowVersion,
             reason: "Revoked from Agent Studio",
           }),
@@ -367,8 +457,14 @@ function OauthClientsPanel({ disabled }: { disabled: boolean }) {
       );
       if (!response.ok) throw await responseError(response);
       npRequireAgentOauthClientV1(await response.json());
+      revokeRetry.current = null;
+      failureRef.current = undefined;
+      setFailure(undefined);
       await reload();
     } catch (caught) {
+      failureRef.current = caught;
+      setFailure(caught);
+      onFailure(caught);
       setError(caught instanceof Error ? caught.message : "Could not revoke OAuth client.");
     } finally {
       setBusy(false);
@@ -376,153 +472,178 @@ function OauthClientsPanel({ disabled }: { disabled: boolean }) {
   };
 
   return (
-    <Card>
-      <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
-        <div>
-          <CardTitle className="text-[14px]">Registered public OAuth clients</CardTitle>
-          <p className="mt-1 text-[12px] text-neutral-500">
-            Exact redirect URIs only. Client secrets are never issued.
-          </p>
-        </div>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={disabled || busy}
-          onClick={() => setOpen((value) => !value)}
-        >
-          <Plus className="size-3.5" /> Register client
-        </Button>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {error ? (
-          <p role="alert" className="text-[12px] text-red-700 dark:text-red-300">
-            {error}
-          </p>
-        ) : null}
-        {open ? (
-          <form
-            className="space-y-3 rounded-lg border p-3"
-            onSubmit={(event) => void submit(event)}
+    <AgentRecoveryBoundary error={failure} retry={() => void reload()}>
+      <Card>
+        <CardHeader className="flex-row flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle className="text-[14px]">Registered public OAuth clients</CardTitle>
+            <p className="mt-1 text-[12px] text-neutral-500">
+              Exact redirect URIs only. Client secrets are never issued.
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={disabled || busy}
+            onClick={() => setOpen((value) => !value)}
           >
-            <div className="grid gap-2">
-              <Label htmlFor="oauth-name">Client name</Label>
-              <Input
-                id="oauth-name"
-                required
-                maxLength={120}
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="oauth-redirects">Redirect URIs, one per line</Label>
-              <Textarea
-                id="oauth-redirects"
-                required
-                value={redirects}
-                onChange={(event) => setRedirects(event.target.value)}
-              />
-            </div>
-            <fieldset className="space-y-2">
-              <legend className="text-[12.5px] font-medium">Transports</legend>
-              {(["agent-http", "mcp-http"] as const).map((transport) => (
-                <label
-                  key={transport}
-                  className="mr-4 inline-flex items-center gap-2 text-[12.5px]"
-                >
-                  <input
-                    type="checkbox"
-                    checked={transports.includes(transport)}
-                    onChange={(event) =>
-                      setTransports((current) =>
-                        event.target.checked
-                          ? [...new Set([...current, transport])].sort()
-                          : current.filter((value) => value !== transport),
-                      )
-                    }
-                  />
-                  {transport}
-                </label>
-              ))}
-            </fieldset>
-            <Button type="submit" size="sm" disabled={busy || transports.length === 0}>
-              Register public client
-            </Button>
-          </form>
-        ) : null}
-        {clients.length === 0 ? (
-          <Empty>No registered OAuth clients for this site.</Empty>
-        ) : (
-          clients.map((client) => (
-            <div
-              key={client.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2.5"
+            <Plus className="size-3.5" /> Register client
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {error ? (
+            <p role="alert" className="text-[12px] text-red-700 dark:text-red-300">
+              {error}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy || retryBlocked}
+                onClick={() => void reload()}
+              >
+                Reload OAuth clients
+              </Button>
+            </p>
+          ) : null}
+          {open ? (
+            <form
+              className="space-y-3 rounded-lg border p-3"
+              onSubmit={(event) => void submit(event)}
             >
-              <div className="min-w-0">
-                <p className="truncate text-[13px] font-medium">{client.name}</p>
-                <p className="truncate font-mono text-[11px] text-neutral-500">{client.clientId}</p>
-                <p className="text-[11px] text-neutral-500">
-                  {client.transports.join(", ")} · {client.redirectUris.length.toString()} redirect
-                  URI(s)
-                </p>
-                <ul className="mt-1 space-y-0.5">
-                  {client.redirectUris.map((redirectUri) => (
-                    <li
-                      key={redirectUri}
-                      className="break-all font-mono text-[10.5px] text-neutral-500"
-                    >
-                      {redirectUri}
-                    </li>
-                  ))}
-                </ul>
+              <div className="grid gap-2">
+                <Label htmlFor="oauth-name">Client name</Label>
+                <Input
+                  id="oauth-name"
+                  required
+                  maxLength={120}
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                />
               </div>
-              <div className="flex items-center gap-2">
-                <Badge variant={stateTone(client.status)}>{client.status}</Badge>
-                {client.status === "active" ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    disabled={busy}
-                    onClick={() => void revoke(client)}
+              <div className="grid gap-2">
+                <Label htmlFor="oauth-redirects">Redirect URIs, one per line</Label>
+                <Textarea
+                  id="oauth-redirects"
+                  required
+                  value={redirects}
+                  onChange={(event) => setRedirects(event.target.value)}
+                />
+              </div>
+              <fieldset className="space-y-2">
+                <legend className="text-[12.5px] font-medium">Transports</legend>
+                {(["agent-http", "mcp-http"] as const).map((transport) => (
+                  <label
+                    key={transport}
+                    className="mr-4 inline-flex items-center gap-2 text-[12.5px]"
                   >
-                    Revoke
-                  </Button>
-                ) : null}
+                    <input
+                      type="checkbox"
+                      checked={transports.includes(transport)}
+                      onChange={(event) =>
+                        setTransports((current) =>
+                          event.target.checked
+                            ? [...new Set([...current, transport])].sort()
+                            : current.filter((value) => value !== transport),
+                        )
+                      }
+                    />
+                    {transport}
+                  </label>
+                ))}
+              </fieldset>
+              <Button type="submit" size="sm" disabled={busy || transports.length === 0}>
+                Register public client
+              </Button>
+            </form>
+          ) : null}
+          {clients.length === 0 && !error ? (
+            <Empty>No registered OAuth clients for this site.</Empty>
+          ) : (
+            clients.map((client) => (
+              <div
+                key={client.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2.5"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-[13px] font-medium">{client.name}</p>
+                  <p className="truncate font-mono text-[11px] text-neutral-500">
+                    {client.clientId}
+                  </p>
+                  <p className="text-[11px] text-neutral-500">
+                    {client.transports.join(", ")} · {client.redirectUris.length.toString()}{" "}
+                    redirect URI(s)
+                  </p>
+                  <ul className="mt-1 space-y-0.5">
+                    {client.redirectUris.map((redirectUri) => (
+                      <li
+                        key={redirectUri}
+                        className="break-all font-mono text-[10.5px] text-neutral-500"
+                      >
+                        {redirectUri}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant={stateTone(client.status)}>{client.status}</Badge>
+                  {client.status === "active" ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() => void revoke(client)}
+                    >
+                      Revoke
+                    </Button>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          ))
-        )}
-      </CardContent>
-    </Card>
+            ))
+          )}
+        </CardContent>
+      </Card>
+    </AgentRecoveryBoundary>
   );
 }
 
 function PrincipalCreateForm({
   disabled,
   onCreated,
+  onFailure,
 }: {
   disabled: boolean;
   onCreated: () => Promise<void>;
+  onFailure: (failure: unknown) => void;
 }) {
   const [open, setOpen] = React.useState(false);
   const [name, setName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [scopes, setScopes] = React.useState<NpAgentScope[]>(["site:read"]);
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>();
+  const retryBlocked = useAgentRetryBlocked(failure);
+  const retry = React.useRef<{ fingerprint: string; key: string } | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (disabled || submitting || retryBlocked) return;
     setSubmitting(true);
     setError(null);
     try {
+      const fingerprint = JSON.stringify({
+        name,
+        description: description || null,
+        scopes: [...scopes].sort(),
+      });
+      if (retry.current?.fingerprint !== fingerprint)
+        retry.current = { fingerprint, key: crypto.randomUUID() };
       const response = await npFetch("/api/admin/agents/gateway/principals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          idempotencyKey: crypto.randomUUID(),
+          idempotencyKey: retry.current.key,
           name,
           description: description || null,
           scopes: [...scopes].sort(),
@@ -530,12 +651,16 @@ function PrincipalCreateForm({
       });
       if (!response.ok) throw await responseError(response);
       npRequireAgentPrincipalV1(await response.json());
+      retry.current = null;
+      setFailure(undefined);
       setName("");
       setDescription("");
       setScopes(["site:read"]);
       setOpen(false);
       await onCreated();
     } catch (caught) {
+      setFailure(caught);
+      onFailure(caught);
       setError(caught instanceof Error ? caught.message : "Could not create principal.");
     } finally {
       setSubmitting(false);
@@ -556,68 +681,70 @@ function PrincipalCreateForm({
       </Button>
     );
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-[14px]">New Gateway principal</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form className="space-y-4" onSubmit={(event) => void submit(event)}>
-          <div className="grid gap-2">
-            <Label htmlFor="principal-name">Name</Label>
-            <Input
-              id="principal-name"
-              required
-              maxLength={120}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="principal-description">Description</Label>
-            <Textarea
-              id="principal-description"
-              maxLength={4096}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-          <fieldset className="space-y-2">
-            <legend className="text-[12.5px] font-medium">Scopes</legend>
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {npAgentScopes.map((scope) => (
-                <label key={scope} className="flex items-center gap-2 text-[12.5px]">
-                  <input
-                    type="checkbox"
-                    checked={scopes.includes(scope)}
-                    disabled={scope === "site:read"}
-                    onChange={(e) =>
-                      setScopes((current) =>
-                        e.target.checked
-                          ? [...current, scope].sort()
-                          : current.filter((item) => item !== scope),
-                      )
-                    }
-                  />
-                  {scope}
-                </label>
-              ))}
+    <AgentRecoveryBoundary error={failure}>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-[14px]">New Gateway principal</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form className="space-y-4" onSubmit={(event) => void submit(event)}>
+            <div className="grid gap-2">
+              <Label htmlFor="principal-name">Name</Label>
+              <Input
+                id="principal-name"
+                required
+                maxLength={120}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
             </div>
-          </fieldset>
-          {error ? (
-            <p role="alert" className="text-[12.5px] text-red-600">
-              {error}
-            </p>
-          ) : null}
-          <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={submitting}>
-              {submitting ? "Creating…" : "Create"}
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+            <div className="grid gap-2">
+              <Label htmlFor="principal-description">Description</Label>
+              <Textarea
+                id="principal-description"
+                maxLength={4096}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
+            <fieldset className="space-y-2">
+              <legend className="text-[12.5px] font-medium">Scopes</legend>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {npAgentScopes.map((scope) => (
+                  <label key={scope} className="flex items-center gap-2 text-[12.5px]">
+                    <input
+                      type="checkbox"
+                      checked={scopes.includes(scope)}
+                      disabled={scope === "site:read"}
+                      onChange={(e) =>
+                        setScopes((current) =>
+                          e.target.checked
+                            ? [...current, scope].sort()
+                            : current.filter((item) => item !== scope),
+                        )
+                      }
+                    />
+                    {scope}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            {error ? (
+              <p role="alert" className="text-[12.5px] text-red-600">
+                {error}
+              </p>
+            ) : null}
+            <div className="flex gap-2">
+              <Button type="submit" size="sm" disabled={submitting}>
+                {submitting ? "Creating…" : "Create"}
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </AgentRecoveryBoundary>
   );
 }

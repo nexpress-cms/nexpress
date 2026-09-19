@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
 import { AgentChangeSetRollback } from "./agent-changeset-rollback.js";
 import { useAgentPolling } from "./use-agent-polling.js";
 import { AgentChangeSetExecution } from "./agent-changeset-execution.js";
@@ -54,12 +55,12 @@ async function read<T>(
 }
 function errorMessage(error: unknown): string {
   if (error instanceof AgentStudioApiError) {
+    if (error.code === "RECENT_REAUTHENTICATION_REQUIRED")
+      return "Reauthenticate and reload before continuing.";
     if ([401, 403, 404].includes(error.status))
       return "This ChangeSet is unavailable or you no longer have access.";
     if (error.status === 409)
       return "The proposal changed. Reload and review the current facts before trying again.";
-    if (error.code === "RECENT_REAUTHENTICATION_REQUIRED")
-      return "Reauthenticate and reload before continuing.";
   }
   return "The ChangeSet response could not be loaded or validated.";
 }
@@ -68,38 +69,62 @@ export function useAgentReviewRead<T>(
   parse: (value: unknown) => T,
   formatError: (error: unknown) => string = errorMessage,
 ) {
-  const [revision, refresh] = React.useReducer((n: number) => n + 1, 0);
-  // Background reads retain mounted mutation controls and their in-flight state.
-  const [backgroundRevision, refreshBackground] = React.useReducer((n: number) => n + 1, 0);
+  const [revision, setRevision] = React.useState(0);
+  const generation = React.useRef(0);
+  const [backgroundRevision, incrementBackground] = React.useReducer((n: number) => n + 1, 0);
+  const request = React.useRef<{ path: string; controller: AbortController } | null>(null);
   const [stored, setStored] = React.useState<{
     path: string;
     revision: number;
     value: T | null;
     error: string | null;
+    failure?: unknown;
   } | null>(null);
+  const failure = stored?.path === path ? stored.failure : undefined;
+  const waiting = useAgentRetryBlocked(failure);
+  const blocked = waiting || (failure instanceof AgentStudioApiError && failure.status === 401);
   React.useEffect(() => {
     const controller = new AbortController();
+    request.current = { path, controller };
     void read(path, parse, controller.signal)
       .then((value) => {
         if (!controller.signal.aborted) setStored({ path, revision, value, error: null });
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted)
-          setStored({ path, revision, value: null, error: formatError(error) });
+          setStored({ path, revision, value: null, error: formatError(error), failure: error });
       });
     return () => controller.abort();
   }, [path, parse, revision, backgroundRevision, formatError]);
   const clear = React.useCallback(
-    () => setStored({ path, revision, value: null, error: null }),
-    [path, revision],
+    (caught?: unknown) => {
+      if (request.current?.path !== path) return;
+      request.current.controller.abort();
+      setStored((previous) => ({
+        path,
+        revision: generation.current,
+        value:
+          caught instanceof AgentStudioApiError && caught.status === 429 && previous?.path === path
+            ? previous.value
+            : null,
+        error: null,
+        failure: caught,
+      }));
+    },
+    [path],
   );
   const current = stored?.path === path && stored.revision === revision ? stored : null;
   return {
     value: current?.value ?? null,
     error: current?.error ?? null,
+    failure,
     loading: current === null,
-    refresh,
-    refreshBackground,
+    refresh: React.useCallback(() => {
+      if (!blocked) setRevision(++generation.current);
+    }, [blocked]),
+    refreshBackground: React.useCallback(() => {
+      if (!blocked) incrementBackground();
+    }, [blocked]),
     clear,
   };
 }
@@ -139,7 +164,7 @@ function ProposalEditor({
 }: {
   changeSet?: NpAgentChangeSetWire;
   onSaved: (value: NpAgentChangeSetWire) => void;
-  onLost?: () => void;
+  onLost?: (error?: unknown) => void;
 }) {
   const initial = changeSet
     ? {
@@ -150,9 +175,12 @@ function ProposalEditor({
     : { title: "", summary: null, operations: [] };
   const [source, setSource] = React.useState(() => JSON.stringify(initial, null, 2));
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>(null);
+  const blocked = useAgentRetryBlocked(failure);
   const [busy, setBusy] = React.useState(false);
   const requestKey = React.useRef<{ source: string; key: string } | null>(null);
   async function save() {
+    if (blocked) return;
     setBusy(true);
     setError(null);
     try {
@@ -173,46 +201,50 @@ function ProposalEditor({
       if (!response.ok) throw await responseError(response);
       onSaved(npRequireAgentChangeSetWire(await response.json()));
     } catch (error) {
+      setFailure(error);
+      if (error instanceof AgentStudioApiError && error.status === 429) onLost?.(error);
       setError(errorMessage(error));
       if (error instanceof AgentStudioApiError && [401, 403, 404, 409].includes(error.status)) {
         setSource("");
-        onLost?.();
+        onLost?.(error);
       }
     } finally {
       setBusy(false);
     }
   }
   return (
-    <details>
-      <summary className="cursor-pointer font-medium">
-        {changeSet ? "Edit draft proposal" : "Create a draft proposal"}
-      </summary>
-      <p className="my-2 text-sm">
-        Structured proposal JSON uses the existing ChangeSet operation contract. Saving a proposal
-        does not write target content.
-      </p>
-      <label className="block" htmlFor="changeset-proposal">
-        Proposal JSON
-      </label>
-      <textarea
-        id="changeset-proposal"
-        value={source}
-        onChange={(event) => setSource(event.target.value)}
-        maxLength={npAgentChangeSetLimits.adminProposalCharacters}
-        rows={16}
-        className="w-full rounded border bg-transparent p-3 font-mono text-xs"
-        disabled={busy}
-      />
-      <Button
-        onClick={() => {
-          void save();
-        }}
-        disabled={busy}
-      >
-        {busy ? "Saving…" : "Save draft"}
-      </Button>
-      {error && <p role="alert">{error}</p>}
-    </details>
+    <AgentRecoveryBoundary error={failure}>
+      <details>
+        <summary className="cursor-pointer font-medium">
+          {changeSet ? "Edit draft proposal" : "Create a draft proposal"}
+        </summary>
+        <p className="my-2 text-sm">
+          Structured proposal JSON uses the existing ChangeSet operation contract. Saving a proposal
+          does not write target content.
+        </p>
+        <label className="block" htmlFor="changeset-proposal">
+          Proposal JSON
+        </label>
+        <textarea
+          id="changeset-proposal"
+          value={source}
+          onChange={(event) => setSource(event.target.value)}
+          maxLength={npAgentChangeSetLimits.adminProposalCharacters}
+          rows={16}
+          className="w-full rounded border bg-transparent p-3 font-mono text-xs"
+          disabled={busy}
+        />
+        <Button
+          onClick={() => {
+            void save();
+          }}
+          disabled={busy}
+        >
+          {busy ? "Saving…" : "Save draft"}
+        </Button>
+        {error && <p role="alert">{error}</p>}
+      </details>
+    </AgentRecoveryBoundary>
   );
 }
 export function AgentChangeSetListView({ queryString = "" }: { queryString?: string }) {
@@ -238,96 +270,98 @@ export function AgentChangeSetListView({ queryString = "" }: { queryString?: str
     router.push(`/admin/agents/changesets${query.size ? `?${query.toString()}` : ""}`);
   }
   return (
-    <Frame>
-      <div className="flex items-center gap-3">
-        <Button variant="outline" onClick={result.refresh}>
-          Refresh
-        </Button>
-        <span className="text-sm">Newest first · bounded authorized history</span>
-      </div>
-      <form key={queryString} onSubmit={filter} className="flex flex-wrap items-end gap-3">
-        <label>
-          State
-          <select
-            name="states"
-            multiple
-            defaultValue={filters.get("states")?.split(",") ?? []}
-            className="ml-2 rounded border bg-transparent p-2"
-          >
-            {npAgentChangeSetStates.map((state) => (
-              <option key={state}>{state}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Requester
-          <select
-            name="actorKinds"
-            multiple
-            defaultValue={filters.get("actorKinds")?.split(",") ?? []}
-            className="ml-2 rounded border bg-transparent p-2"
-          >
-            {["external", "runtime", "staff"].map((kind) => (
-              <option key={kind}>{kind}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Created after (UTC)
-          <input
-            name="createdAfter"
-            placeholder="2026-09-01T00:00:00.000Z"
-            defaultValue={filters.get("createdAfter") ?? ""}
-            className="block rounded border bg-transparent p-2"
-          />
-        </label>
-        <label>
-          Created before (UTC)
-          <input
-            name="createdBefore"
-            placeholder="2026-09-30T00:00:00.000Z"
-            defaultValue={filters.get("createdBefore") ?? ""}
-            className="block rounded border bg-transparent p-2"
-          />
-        </label>
-        <Button type="submit">Apply filters</Button>
-      </form>
-      {result.loading && <p role="status">Loading ChangeSets…</p>}
-      {result.error && <p role="status">ChangeSet history is unavailable. {result.error}</p>}
-      {result.value && (
-        <>
-          <div className="space-y-3">
-            {result.value.items.map((item) => (
-              <Card key={item.id}>
-                <CardContent className="space-y-2 p-4">
-                  <Link
-                    href={`/admin/agents/changesets/${item.id}`}
-                    className="font-medium underline"
-                  >
-                    {item.title}
-                  </Link>
-                  <div className="flex flex-wrap gap-3 text-sm">
-                    <Badge>{item.state}</Badge>
-                    <span>{item.operations.length} operations</span>
-                    <span>{item.actor.name}</span>
-                    <Time value={item.createdAt} />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          {result.value.items.length === 0 && (
-            <p role="status">No authorized ChangeSets on this page.</p>
-          )}
-          {result.value.nextCursor && (
-            <Link className="underline" href={`/admin/agents/changesets?${nextPage.toString()}`}>
-              Next page
-            </Link>
-          )}
-        </>
-      )}
-      <ProposalEditor onSaved={(item) => router.push(`/admin/agents/changesets/${item.id}`)} />
-    </Frame>
+    <AgentRecoveryBoundary error={result.failure} retry={result.refresh}>
+      <Frame>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" onClick={result.refresh}>
+            Refresh
+          </Button>
+          <span className="text-sm">Newest first · bounded authorized history</span>
+        </div>
+        <form key={queryString} onSubmit={filter} className="flex flex-wrap items-end gap-3">
+          <label>
+            State
+            <select
+              name="states"
+              multiple
+              defaultValue={filters.get("states")?.split(",") ?? []}
+              className="ml-2 rounded border bg-transparent p-2"
+            >
+              {npAgentChangeSetStates.map((state) => (
+                <option key={state}>{state}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Requester
+            <select
+              name="actorKinds"
+              multiple
+              defaultValue={filters.get("actorKinds")?.split(",") ?? []}
+              className="ml-2 rounded border bg-transparent p-2"
+            >
+              {["external", "runtime", "staff"].map((kind) => (
+                <option key={kind}>{kind}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Created after (UTC)
+            <input
+              name="createdAfter"
+              placeholder="2026-09-01T00:00:00.000Z"
+              defaultValue={filters.get("createdAfter") ?? ""}
+              className="block rounded border bg-transparent p-2"
+            />
+          </label>
+          <label>
+            Created before (UTC)
+            <input
+              name="createdBefore"
+              placeholder="2026-09-30T00:00:00.000Z"
+              defaultValue={filters.get("createdBefore") ?? ""}
+              className="block rounded border bg-transparent p-2"
+            />
+          </label>
+          <Button type="submit">Apply filters</Button>
+        </form>
+        {result.loading && <p role="status">Loading ChangeSets…</p>}
+        {result.error && <p role="status">ChangeSet history is unavailable. {result.error}</p>}
+        {result.value && (
+          <>
+            <div className="space-y-3">
+              {result.value.items.map((item) => (
+                <Card key={item.id}>
+                  <CardContent className="space-y-2 p-4">
+                    <Link
+                      href={`/admin/agents/changesets/${item.id}`}
+                      className="font-medium underline"
+                    >
+                      {item.title}
+                    </Link>
+                    <div className="flex flex-wrap gap-3 text-sm">
+                      <Badge>{item.state}</Badge>
+                      <span>{item.operations.length} operations</span>
+                      <span>{item.actor.name}</span>
+                      <Time value={item.createdAt} />
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            {result.value.items.length === 0 && (
+              <p role="status">No authorized ChangeSets on this page.</p>
+            )}
+            {result.value.nextCursor && (
+              <Link className="underline" href={`/admin/agents/changesets?${nextPage.toString()}`}>
+                Next page
+              </Link>
+            )}
+          </>
+        )}
+        <ProposalEditor onSaved={(item) => router.push(`/admin/agents/changesets/${item.id}`)} />
+      </Frame>
+    </AgentRecoveryBoundary>
   );
 }
 export function AgentChangeSetPreview({
@@ -337,7 +371,7 @@ export function AgentChangeSetPreview({
 }: {
   changeSet: NpAgentChangeSetWire;
   preview: NpAgentPreviewDetailWireV1;
-  onLost: () => void;
+  onLost: (error?: unknown) => void;
 }) {
   const [error, setError] = React.useState<string | null>(null);
   const [now, setNow] = React.useState(() => Date.now());
@@ -384,7 +418,7 @@ export function AgentChangeSetPreview({
         .catch((error: unknown) => {
           if (!controller.signal.aborted) {
             setError(errorMessage(error));
-            onLost();
+            onLost(error);
           }
         });
     return () => controller.abort();
@@ -584,6 +618,7 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
     id,
     result.value,
     Boolean(
+      !result.failure &&
       changeSet &&
       (["validating", "scheduled", "applying", "applied", "verifying", "rolling_back"].includes(
         changeSet.state,
@@ -595,10 +630,13 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
     result.refreshBackground,
   );
   const clear = result.clear;
-  const clearEvidence = React.useCallback(() => {
-    setPreview(null);
-    clear();
-  }, [clear]);
+  const clearEvidence = React.useCallback(
+    (caught?: unknown) => {
+      if (!(caught instanceof AgentStudioApiError && caught.status === 429)) setPreview(null);
+      clear(caught);
+    },
+    [clear],
+  );
   React.useEffect(() => {
     if (!changeSet?.preview) return;
     const controller = new AbortController();
@@ -613,7 +651,7 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
           setMutationError(errorMessage(error));
-          clear();
+          clear(error);
         }
       });
     return () => controller.abort();
@@ -642,123 +680,125 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
       else npRequireAgentChangeSetWire(await response.json());
       result.refresh();
     } catch (error) {
-      result.clear();
+      result.clear(error);
       setMutationError(errorMessage(error));
     } finally {
       setBusy(false);
     }
   }
   return (
-    <Frame>
-      <Link className="underline" href="/admin/agents/changesets">
-        Back to ChangeSets
-      </Link>
-      <Button
-        className="ml-3"
-        variant="outline"
-        onClick={() => {
-          setPreview(null);
-          setMutationError(null);
-          result.refresh();
-        }}
-      >
-        Refresh
-      </Button>
-      {result.loading && <p role="status">Loading ChangeSet…</p>}
-      {result.error && <p role="alert">{result.error}</p>}
-      {mutationError && <p role="alert">{mutationError}</p>}
-      {result.value && changeSet && (
-        <>
-          <nav aria-label="ChangeSet stages" className="flex flex-wrap gap-4">
-            <a href="#proposal">Proposal</a>
-            <a href="#validation">Validation</a>
-            <a href="#preview">Preview</a>
-          </nav>
-          <AgentChangeSetReviewFacts review={result.value} />
-          <section id="validation" className="space-y-3">
-            <h2 className="text-lg font-semibold">Validation</h2>
-            <p>
-              {changeSet.validation?.state ?? "Not validated"}
-              {changeSet.validation ? ` · Generation ${changeSet.validation.generation}` : ""}
-            </p>
-            {changeSet.operations
-              .flatMap((operation) => operation.issues)
-              .map((issue, index) => (
-                <p key={`${issue.code}:${index}`}>
-                  {issue.severity}: {issue.message} · Operation {issue.operationOrdinal ?? "all"} ·{" "}
-                  {issue.path}
-                </p>
-              ))}
-            <Button
-              disabled={busy || !["draft", "invalid"].includes(changeSet.state)}
-              onClick={() => {
-                void mutate("validate");
-              }}
-            >
-              Validate proposal
-            </Button>
-          </section>
-          <section id="preview" className="space-y-3">
-            <h2 className="text-lg font-semibold">Preview</h2>
-            <Button
-              disabled={busy || changeSet.state !== "ready" || !changeSet.planHash}
-              onClick={() => {
-                void mutate("preview");
-              }}
-            >
-              Generate preview
-            </Button>
-            {preview &&
-            preview.changeSetId === changeSet.id &&
-            preview.previewId === changeSet.preview?.previewId &&
-            preview.planHash === changeSet.planHash ? (
-              <AgentChangeSetPreview
-                key={`${preview.previewId}:${preview.generation}:${preview.state}`}
+    <AgentRecoveryBoundary error={result.failure} retry={result.refresh}>
+      <Frame>
+        <Link className="underline" href="/admin/agents/changesets">
+          Back to ChangeSets
+        </Link>
+        <Button
+          className="ml-3"
+          variant="outline"
+          onClick={() => {
+            setPreview(null);
+            setMutationError(null);
+            result.refresh();
+          }}
+        >
+          Refresh
+        </Button>
+        {result.loading && <p role="status">Loading ChangeSet…</p>}
+        {result.error && <p role="alert">{result.error}</p>}
+        {mutationError && <p role="alert">{mutationError}</p>}
+        {result.value && changeSet && (
+          <>
+            <nav aria-label="ChangeSet stages" className="flex flex-wrap gap-4">
+              <a href="#proposal">Proposal</a>
+              <a href="#validation">Validation</a>
+              <a href="#preview">Preview</a>
+            </nav>
+            <AgentChangeSetReviewFacts review={result.value} />
+            <section id="validation" className="space-y-3">
+              <h2 className="text-lg font-semibold">Validation</h2>
+              <p>
+                {changeSet.validation?.state ?? "Not validated"}
+                {changeSet.validation ? ` · Generation ${changeSet.validation.generation}` : ""}
+              </p>
+              {changeSet.operations
+                .flatMap((operation) => operation.issues)
+                .map((issue, index) => (
+                  <p key={`${issue.code}:${index}`}>
+                    {issue.severity}: {issue.message} · Operation {issue.operationOrdinal ?? "all"}{" "}
+                    · {issue.path}
+                  </p>
+                ))}
+              <Button
+                disabled={busy || !["draft", "invalid"].includes(changeSet.state)}
+                onClick={() => {
+                  void mutate("validate");
+                }}
+              >
+                Validate proposal
+              </Button>
+            </section>
+            <section id="preview" className="space-y-3">
+              <h2 className="text-lg font-semibold">Preview</h2>
+              <Button
+                disabled={busy || changeSet.state !== "ready" || !changeSet.planHash}
+                onClick={() => {
+                  void mutate("preview");
+                }}
+              >
+                Generate preview
+              </Button>
+              {preview &&
+              preview.changeSetId === changeSet.id &&
+              preview.previewId === changeSet.preview?.previewId &&
+              preview.planHash === changeSet.planHash ? (
+                <AgentChangeSetPreview
+                  key={`${preview.previewId}:${preview.generation}:${preview.state}`}
+                  changeSet={changeSet}
+                  preview={preview}
+                  onLost={clearEvidence}
+                />
+              ) : (
+                <p>No current preview evidence is loaded.</p>
+              )}
+            </section>
+            {["draft", "invalid"].includes(changeSet.state) && (
+              <ProposalEditor
+                key={changeSet.draftVersion}
                 changeSet={changeSet}
-                preview={preview}
-                onLost={clearEvidence}
+                onSaved={result.refresh}
+                onLost={(caught) => {
+                  setMutationError("Reload to review current authorized facts.");
+                  clear(caught);
+                }}
               />
-            ) : (
-              <p>No current preview evidence is loaded.</p>
             )}
-          </section>
-          {["draft", "invalid"].includes(changeSet.state) && (
-            <ProposalEditor
-              key={changeSet.draftVersion}
+            <AgentApprovalRequest
+              key={`${changeSet.id}:${changeSet.draftVersion}`}
               changeSet={changeSet}
-              onSaved={result.refresh}
-              onLost={() => {
-                setMutationError("Reload to review current authorized facts.");
-                clear();
+              onChanged={result.refresh}
+              onLost={clearEvidence}
+            />
+            <AgentChangeSetRollback
+              idempotencyKeys={rollbackKeys}
+              review={result.value}
+              onChanged={result.refresh}
+              onLost={(message, caught) => {
+                setMutationError(message);
+                clearEvidence(caught);
               }}
             />
-          )}
-          <AgentApprovalRequest
-            key={`${changeSet.id}:${changeSet.draftVersion}`}
-            changeSet={changeSet}
-            onChanged={result.refresh}
-            onLost={clearEvidence}
-          />
-          <AgentChangeSetRollback
-            idempotencyKeys={rollbackKeys}
-            review={result.value}
-            onChanged={result.refresh}
-            onLost={(message) => {
-              setMutationError(message);
-              clearEvidence();
-            }}
-          />
-          <AgentChangeSetExecution
-            idempotencyKeys={executionKeys}
-            review={result.value}
-            onChanged={result.refresh}
-            onLost={(message) => {
-              setMutationError(message);
-              clearEvidence();
-            }}
-          />
-        </>
-      )}
-    </Frame>
+            <AgentChangeSetExecution
+              idempotencyKeys={executionKeys}
+              review={result.value}
+              onChanged={result.refresh}
+              onLost={(message, caught) => {
+                setMutationError(message);
+                clearEvidence(caught);
+              }}
+            />
+          </>
+        )}
+      </Frame>
+    </AgentRecoveryBoundary>
   );
 }

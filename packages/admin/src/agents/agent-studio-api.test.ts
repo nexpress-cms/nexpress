@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AgentStudioApiError,
+  agentRetryAt,
   principalAccessLostMessage,
   responseError,
 } from "./agent-studio-api.js";
@@ -55,5 +56,33 @@ describe("Principal authorization-loss guidance", () => {
         new AgentStudioApiError("opaque upstream message", status, "ACTIVITY_FORBIDDEN"),
       ),
     ).toBe("This principal is unavailable or you no longer have access.");
+  });
+});
+
+describe("Agent Studio server retry deadlines", () => {
+  const now = Date.parse("2026-09-19T00:00:00Z");
+  it("accepts seconds and HTTP dates without creating a deadline for other failures", () => {
+    const response = (value: string, status = 429) =>
+      new Response(null, { status, headers: { "Retry-After": value } });
+    expect(agentRetryAt(response("30"), now)).toBe(now + 30_000);
+    expect(agentRetryAt(response("Sat, 19 Sep 2026 00:01:00 GMT"), now)).toBe(now + 60_000);
+    expect(agentRetryAt(response("Fri, 18 Sep 2026 00:00:00 GMT"), now)).toBe(now);
+    expect(agentRetryAt(response("30", 403), now)).toBeUndefined();
+    for (const value of ["-1", "1.5", "Infinity", "999999999999999999999", "2026-09-20", "garbage"])
+      expect(agentRetryAt(response(value), now)).toBeUndefined();
+  });
+  it("preserves the safe error envelope and deadline together", async () => {
+    const error = await responseError(
+      Response.json(
+        { status: 429, error: { code: "RATE_LIMITED", message: "Please wait." } },
+        { status: 429, headers: { "Retry-After": "Sat, 19 Sep 2099 00:01:00 GMT" } },
+      ),
+    );
+    expect(error).toMatchObject({
+      status: 429,
+      code: "RATE_LIMITED",
+      message: "Please wait.",
+      retryAt: Date.parse("Sat, 19 Sep 2099 00:01:00 GMT"),
+    });
   });
 });

@@ -1,54 +1,57 @@
 # Current work handoff
 
-Observed 2026-09-19 KST. Verify Git state before relying on this record.
+Observed 2026-09-19 KST. Verify Git state before continuing.
 
 ## Objective and authorization
 
-- User authorized the Admin acceptance inventory and confirmed UI repairs after
-  PR #1457. This bundle is implemented; final verification is recorded below.
-- User authorized commit, push, PR and squash merge after passing exact-head CI,
-  then choosing the next task.
-- Preserve versions, changesets and lockfile. No migration is needed. No provider
-  calls, new credentials, automatic activation, publishing or Version PR #1366
-  merge. Necessary migrations are allowed in future work after review.
+- User authorized the Admin error-recovery bundle after PR #1458, including
+  implementation, self-review and verification. This bundle is complete locally.
+- User now authorizes commit, push, PR and squash merge after passing CI, then
+  selecting the next bundle. Next implementation is not started by that request.
+- Preserve versions, changesets and lockfile. No migration is needed. Necessary
+  future migrations are allowed after review. No provider calls, new credentials,
+  automatic activation, publishing or Version PR #1366 merge.
 
 ## Observed checkout
 
-- Pending implementation: `/Users/baesw/development/nexpress-admin-acceptance`,
-  branch `codex/admin-acceptance`, baseline `55a0d271309723c44373ec7175f073521ba62f28`.
-- Admin views, browser tests and acceptance documentation are uncommitted.
-  A fresh checkout does not contain these changes.
-- Primary `/Users/baesw/development/nexpress` remains on main at that baseline;
-  its only modification is this documentation pointer.
-- PR #1457 is merged. PR CI `35364371255`, merge CI `35366080290` and Release
-  `35366080281` succeeded. This does not authorize Version PR publication.
+- Pending work: `/Users/baesw/development/nexpress-admin-acceptance`, branch
+  `codex/admin-error-recovery`, baseline `b34dc7a68ff96f0facc3b9dd6db10898f9c071cf`.
+- The prior completed worktree was reused on a new branch to avoid duplicating
+  installed dependencies. All current Admin/test/doc changes are uncommitted.
+- Primary `/Users/baesw/development/nexpress` remains on main at the baseline,
+  with only this documentation pointer changed. A fresh checkout lacks pending work.
+- PR #1458 exact-head CI `35372125515`, merge CI `35374408041`, and Release
+  `35374408080` all succeeded. No Version PR merge/publication was performed.
 
 ## Implementation and evidence
 
-- [Admin acceptance record](../design/agentic-platform/admin-acceptance.md) owns
-  the 20-route inventory, direct versus shared evidence and remaining gaps.
-- Shared Runtime reads retain validated data during refresh, disable controls,
-  show receipt time and reject late responses after access loss. Explicit refresh
-  clears simulation evidence and resets editors even at the same row version.
-- Overview/connection/principal reads clear rejected evidence and bind targets.
-  Connection create/revoke preserve unchanged retry identity; entered secrets
-  are cleared. Approval dialog/error/return focus and challenge description fixed.
-- Long localized Agent titles and mobile Connections layout repaired. Existing
-  browser journeys were extended; only three new browser cases were added.
-- Final workspace build 41, verify 59 repository checks / 113 tasks and lint 41
-  passed. Production browser 76/76 passed without retries/skips. Packed scaffold
-  40 packages / 60 baseline stages plus 7 final-Admin consumer stages passed.
-  Final mobile/desktop list captures show corrected long-title line spacing.
-- Unchanged DB/Redis/theme/native preview evidence is reused from PR #1457 and
-  the exact preceding baseline; no claim that these ran anew for this UI bundle.
-- Self-review found and fixed same-version simulation refresh retention. Auth
-  quota and principal-response injection timing were isolated in test fixtures.
+- [Error recovery](../design/agentic-platform/admin-error-recovery.md) owns current
+  behavior and verification. [Admin acceptance](../design/agentic-platform/admin-acceptance.md)
+  owns the broader 20-route inventory and remaining gaps.
+- Internal error metadata preserves valid 429 Retry-After deadlines. Shared
+  recovery UI hides sensitive children on 401 and links to the existing login;
+  429 retains mounted drafts, blocks premature retry and never replays requests.
+- Runtime, connection/Gateway, Activity, Approval and ChangeSet owners propagate
+  typed failures. Dialog portals guard their own submissions. All prior 403
+  invalidation remains; recent reauthentication is distinguished by safe copy.
+- Partial budget/Runtime reads retry independently; healthy budget drafts survive.
+  Review invalidation aborts pending reads and uses the current generation, so old
+  mutation closures or late GETs cannot restore evidence or stick in loading.
+- Build 41 tasks, final verify 59 repository checks / 113 tasks, lint 41 passed.
+  Production browser 77/77 and packed consumer 7 stages passed. All ten Admin
+  dist files match build/tarball/installed consumer; 39 unchanged packages reuse
+  the verified baseline. The recovery record distinguishes reused integration gates.
+- Browser diagnostics fixed an invalid cancel-state fixture, a moving test-clock
+  boundary and duplicated reauthentication announcements. Do not weaken assertions.
+- Initial packed consumer build stopped on ENOSPC. Only this task's regenerable
+  completed artifacts were cleaned; failed logs were preserved before sequential
+  retry. See `/tmp/np-admin-recovery-*` for logs and exact artifact evidence.
 
 ## Next boundary
 
-- Review this coherent bundle and follow the user's commit/PR/merge instruction.
-- Full R5/Admin acceptance stays open for the named state/fixture gaps, remaining
-  complete per-surface visuals and actual screen-reader workflows. Automated
-  keyboard and accessible-name assertions are not human assistive-technology proof.
+- Implementation, self-review and scoped verification are complete. Create one
+  bundled PR, verify exact-head CI, then squash merge under current authorization.
+- Full R5/Admin acceptance still requires actual screen-reader workflows and
+  unresolved per-surface/state/visual evidence. Do not infer a human test pass.
 - After authorized merge, replace this handoff and use a fresh thread for the
-  next requested bundle. Do not reopen completed retention/input implementation.
+  next requested bundle. Do not reopen completed Runtime retention/input work.

@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
 import * as React from "react";
 import {
   npRequireAgentChangeSetReviewV1,
@@ -22,17 +23,20 @@ export function AgentChangeSetExecution({
 }: {
   review: NpAgentChangeSetReviewV1;
   onChanged: () => void;
-  onLost: (message: string) => void;
+  onLost: (message: string, error?: unknown) => void;
   idempotencyKeys?: React.RefObject<Record<string, string>>;
 }) {
   const { changeSet, executionDetail: detail, executionActions: actions } = review;
   const [scheduledFor, setScheduledFor] = React.useState("");
   const [reason, setReason] = React.useState("");
+  const [failure, setFailure] = React.useState<unknown>(null);
+  const blocked = useAgentRetryBlocked(failure);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const localKeys = React.useRef<Record<string, string>>({});
   const keys = idempotencyKeys ?? localKeys;
   async function submit(operation: "apply" | "schedule" | "cancel") {
+    if (blocked) return;
     if (!actions.includes(operation) || busy) return;
     setError(null);
     let time: string | undefined;
@@ -97,125 +101,133 @@ export function AgentChangeSetExecution({
       if (result.changeSet.id !== changeSet.id) throw new Error("Mismatched ChangeSet");
       onChanged();
     } catch (caught) {
+      setFailure(caught);
       const message =
         caught instanceof AgentStudioApiError && caught.code === "RECENT_REAUTHENTICATION_REQUIRED"
           ? "Recent staff-primary reauthentication is required. Reauthenticate and reload."
           : "Execution request could not be confirmed. Refresh the current evidence before continuing; an unknown result must not be treated as a failed effect.";
       setError(message);
-      if (caught instanceof AgentStudioApiError && [401, 403, 404, 409].includes(caught.status))
-        onLost(message);
+      if (
+        caught instanceof AgentStudioApiError &&
+        [401, 403, 404, 409, 429].includes(caught.status)
+      )
+        onLost(message, caught);
     } finally {
       setBusy(false);
     }
   }
   return (
-    <section className="space-y-3" aria-labelledby="changeset-execution-heading">
-      <h2 id="changeset-execution-heading" className="text-lg font-semibold">
-        Execution and verification
-      </h2>
-      <p>
-        Applying commits the approved plan. Scheduled execution rechecks authority and the approved
-        time when dispatched by the host.
-      </p>
-      {error && <p role="alert">{error}</p>}
-      {actions.length === 0 && <p>No execution actions are currently available.</p>}
-      {actions.includes("apply") && (
-        <Button disabled={busy} onClick={() => void submit("apply")}>
-          Apply approved plan
-        </Button>
-      )}
-      {actions.includes("schedule") && (
-        <form
-          className="space-y-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submit("schedule");
-          }}
-        >
-          <Label htmlFor="execution-scheduled-for">Approved schedule time (local time)</Label>
-          <Input
-            id="execution-scheduled-for"
-            type="datetime-local"
-            required
-            disabled={busy}
-            value={scheduledFor}
-            onChange={(event) => setScheduledFor(event.target.value)}
-          />
-          <p>The submitted UTC instant must match the signed approval exactly.</p>
-          <Button disabled={busy} type="submit">
-            Schedule approved plan
+    <AgentRecoveryBoundary error={failure}>
+      <section className="space-y-3" aria-labelledby="changeset-execution-heading">
+        <h2 id="changeset-execution-heading" className="text-lg font-semibold">
+          Execution and verification
+        </h2>
+        <p>
+          Applying commits the approved plan. Scheduled execution rechecks authority and the
+          approved time when dispatched by the host.
+        </p>
+        {error && <p role="alert">{error}</p>}
+        {actions.length === 0 && <p>No execution actions are currently available.</p>}
+        {actions.includes("apply") && (
+          <Button disabled={busy || blocked} onClick={() => void submit("apply")}>
+            Apply approved plan
           </Button>
-        </form>
-      )}
-      {actions.includes("cancel") && (
-        <form
-          className="space-y-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submit("cancel");
-          }}
-        >
-          <Label htmlFor="execution-cancel-reason">Cancellation reason (optional)</Label>
-          <Input
-            id="execution-cancel-reason"
-            maxLength={2000}
-            disabled={busy}
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-          />
-          <p>Cancellation does not undo committed content.</p>
-          <Button disabled={busy} type="submit" variant="outline">
-            Cancel ChangeSet
-          </Button>
-        </form>
-      )}
-      {!detail ? (
-        <p>No execution evidence has been recorded.</p>
-      ) : (
-        <div className="space-y-3">
-          <dl className="grid gap-1">
-            <dt>Execution state</dt>
-            <dd>{detail.execution.state}</dd>
-            <dt>Started</dt>
-            <dd>{detail.execution.startedAt}</dd>
-            <dt>Scheduled</dt>
-            <dd>{detail.scheduledFor ?? "Not scheduled"}</dd>
-            <dt>Committed</dt>
-            <dd>{detail.committedAt ?? "No commit recorded"}</dd>
-            <dt>Finished</dt>
-            <dd>{detail.execution.finishedAt ?? "Not finished"}</dd>
-            <dt>Verification</dt>
-            <dd>{detail.verification?.state ?? "No verification recorded"}</dd>
-            <dt>Safe error code</dt>
-            <dd>{detail.errorCode ?? "None"}</dd>
-            <dt>Rollback eligibility window</dt>
-            <dd>
-              {detail.rollbackEligibleUntil ?? "Unavailable"} (eligibility is rechecked when
-              preparing compensation)
-            </dd>
-          </dl>
-          {detail.verification && (
-            <p>
-              Required passed: {detail.verification.requiredPassed}; required failed:{" "}
-              {detail.verification.requiredFailed}; advisory warnings:{" "}
-              {detail.verification.advisoryWarnings}.
-            </p>
-          )}
-          {detail.checks.length === 0 ? (
-            <p>No verification checks have been recorded.</p>
-          ) : (
-            <ul className="space-y-2">
-              {detail.checks.map((check) => (
-                <li key={check.checkId}>
-                  <strong>{check.checkId}</strong>: {check.status} ·{" "}
-                  {check.required ? "required" : "advisory"} · severity {check.severity} · next
-                  action {check.nextAction}. Evidence references: {check.evidenceRefs.length}.
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </section>
+        )}
+        {actions.includes("schedule") && (
+          <form
+            className="space-y-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (blocked) return;
+              void submit("schedule");
+            }}
+          >
+            <Label htmlFor="execution-scheduled-for">Approved schedule time (local time)</Label>
+            <Input
+              id="execution-scheduled-for"
+              type="datetime-local"
+              required
+              disabled={busy || blocked}
+              value={scheduledFor}
+              onChange={(event) => setScheduledFor(event.target.value)}
+            />
+            <p>The submitted UTC instant must match the signed approval exactly.</p>
+            <Button disabled={busy || blocked} type="submit">
+              Schedule approved plan
+            </Button>
+          </form>
+        )}
+        {actions.includes("cancel") && (
+          <form
+            className="space-y-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (blocked) return;
+              void submit("cancel");
+            }}
+          >
+            <Label htmlFor="execution-cancel-reason">Cancellation reason (optional)</Label>
+            <Input
+              id="execution-cancel-reason"
+              maxLength={2000}
+              disabled={busy || blocked}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+            <p>Cancellation does not undo committed content.</p>
+            <Button disabled={busy || blocked} type="submit" variant="outline">
+              Cancel ChangeSet
+            </Button>
+          </form>
+        )}
+        {!detail ? (
+          <p>No execution evidence has been recorded.</p>
+        ) : (
+          <div className="space-y-3">
+            <dl className="grid gap-1">
+              <dt>Execution state</dt>
+              <dd>{detail.execution.state}</dd>
+              <dt>Started</dt>
+              <dd>{detail.execution.startedAt}</dd>
+              <dt>Scheduled</dt>
+              <dd>{detail.scheduledFor ?? "Not scheduled"}</dd>
+              <dt>Committed</dt>
+              <dd>{detail.committedAt ?? "No commit recorded"}</dd>
+              <dt>Finished</dt>
+              <dd>{detail.execution.finishedAt ?? "Not finished"}</dd>
+              <dt>Verification</dt>
+              <dd>{detail.verification?.state ?? "No verification recorded"}</dd>
+              <dt>Safe error code</dt>
+              <dd>{detail.errorCode ?? "None"}</dd>
+              <dt>Rollback eligibility window</dt>
+              <dd>
+                {detail.rollbackEligibleUntil ?? "Unavailable"} (eligibility is rechecked when
+                preparing compensation)
+              </dd>
+            </dl>
+            {detail.verification && (
+              <p>
+                Required passed: {detail.verification.requiredPassed}; required failed:{" "}
+                {detail.verification.requiredFailed}; advisory warnings:{" "}
+                {detail.verification.advisoryWarnings}.
+              </p>
+            )}
+            {detail.checks.length === 0 ? (
+              <p>No verification checks have been recorded.</p>
+            ) : (
+              <ul className="space-y-2">
+                {detail.checks.map((check) => (
+                  <li key={check.checkId}>
+                    <strong>{check.checkId}</strong>: {check.status} ·{" "}
+                    {check.required ? "required" : "advisory"} · severity {check.severity} · next
+                    action {check.nextAction}. Evidence references: {check.evidenceRefs.length}.
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </section>
+    </AgentRecoveryBoundary>
   );
 }

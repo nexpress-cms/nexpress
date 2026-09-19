@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
 import * as React from "react";
 import Link from "next/link";
 import {
@@ -20,16 +21,19 @@ export function AgentApprovalRequest({
 }: {
   changeSet: NpAgentChangeSetWire;
   onChanged: () => void;
-  onLost: () => void;
+  onLost: (error?: unknown) => void;
 }) {
   const [operation, setOperation] = React.useState<"apply" | "schedule">("apply");
   const [scheduledFor, setScheduledFor] = React.useState("");
+  const [failure, setFailure] = React.useState<unknown>(null);
+  const blocked = useAgentRetryBlocked(failure);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [approvalId, setApprovalId] = React.useState<string | null>(null);
   const keys = React.useRef<Record<string, string>>({});
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (blocked) return;
     if (!changeSet.planHash || changeSet.state !== "ready") return;
     const time = operation === "schedule" ? new Date(scheduledFor) : null;
     if (time && !Number.isFinite(time.getTime())) {
@@ -76,78 +80,84 @@ export function AgentApprovalRequest({
       setApprovalId(result.item.approval.id);
       onChanged();
     } catch (caught) {
+      setFailure(caught);
       setError(
         caught instanceof AgentStudioApiError && caught.status === 409
           ? "The sealed facts changed. Review the current proposal before requesting approval again."
           : "Approval could not be requested. Reload to check current authority and evidence.",
       );
-      if (caught instanceof AgentStudioApiError && [401, 403, 404, 409].includes(caught.status))
-        onLost();
+      if (
+        caught instanceof AgentStudioApiError &&
+        [401, 403, 404, 409, 429].includes(caught.status)
+      )
+        onLost(caught);
     } finally {
       setBusy(false);
     }
   }
   return (
-    <section className="space-y-3" aria-labelledby="request-approval-heading">
-      <h2 id="request-approval-heading" className="text-lg font-semibold">
-        Human approval
-      </h2>
-      <p>
-        Request a decision for this exact sealed plan. Approval does not apply content or schedule
-        execution.
-      </p>
-      {changeSet.approval && (
+    <AgentRecoveryBoundary error={failure}>
+      <section className="space-y-3" aria-labelledby="request-approval-heading">
+        <h2 id="request-approval-heading" className="text-lg font-semibold">
+          Human approval
+        </h2>
         <p>
-          <Link className="underline" href={`/admin/agents/approvals/${changeSet.approval.id}`}>
-            Review approval
-          </Link>{" "}
-          · {changeSet.approval.state}
+          Request a decision for this exact sealed plan. Approval does not apply content or schedule
+          execution.
         </p>
-      )}
-      {approvalId && (
-        <p role="status">
-          <Link className="underline" href={`/admin/agents/approvals/${approvalId}`}>
-            Open requested approval
-          </Link>
-        </p>
-      )}
-      {error && <p role="alert">{error}</p>}
-      {changeSet.state === "ready" && (
-        <form
-          onSubmit={(event) => {
-            void submit(event);
-          }}
-          className="space-y-3"
-        >
-          <Label htmlFor="approval-intended-operation">Intended operation</Label>
-          <select
-            id="approval-intended-operation"
-            value={operation}
-            disabled={busy}
-            onChange={(event) => setOperation(event.target.value as "apply" | "schedule")}
-            className="rounded border p-2"
+        {changeSet.approval && (
+          <p>
+            <Link className="underline" href={`/admin/agents/approvals/${changeSet.approval.id}`}>
+              Review approval
+            </Link>{" "}
+            · {changeSet.approval.state}
+          </p>
+        )}
+        {approvalId && (
+          <p role="status">
+            <Link className="underline" href={`/admin/agents/approvals/${approvalId}`}>
+              Open requested approval
+            </Link>
+          </p>
+        )}
+        {error && <p role="alert">{error}</p>}
+        {changeSet.state === "ready" && (
+          <form
+            onSubmit={(event) => {
+              void submit(event);
+            }}
+            className="space-y-3"
           >
-            <option value="apply">Apply</option>
-            <option value="schedule">Schedule</option>
-          </select>
-          {operation === "schedule" && (
-            <div>
-              <Label htmlFor="approval-intended-time">Intended schedule time (local time)</Label>
-              <Input
-                id="approval-intended-time"
-                type="datetime-local"
-                required
-                value={scheduledFor}
-                disabled={busy}
-                onChange={(event) => setScheduledFor(event.target.value)}
-              />
-            </div>
-          )}
-          <Button type="submit" disabled={busy || !changeSet.planHash}>
-            Request approval
-          </Button>
-        </form>
-      )}
-    </section>
+            <Label htmlFor="approval-intended-operation">Intended operation</Label>
+            <select
+              id="approval-intended-operation"
+              value={operation}
+              disabled={busy || blocked}
+              onChange={(event) => setOperation(event.target.value as "apply" | "schedule")}
+              className="rounded border p-2"
+            >
+              <option value="apply">Apply</option>
+              <option value="schedule">Schedule</option>
+            </select>
+            {operation === "schedule" && (
+              <div>
+                <Label htmlFor="approval-intended-time">Intended schedule time (local time)</Label>
+                <Input
+                  id="approval-intended-time"
+                  type="datetime-local"
+                  required
+                  value={scheduledFor}
+                  disabled={busy || blocked}
+                  onChange={(event) => setScheduledFor(event.target.value)}
+                />
+              </div>
+            )}
+            <Button type="submit" disabled={busy || blocked || !changeSet.planHash}>
+              Request approval
+            </Button>
+          </form>
+        )}
+      </section>
+    </AgentRecoveryBoundary>
   );
 }

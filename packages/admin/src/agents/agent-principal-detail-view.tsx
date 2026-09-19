@@ -18,6 +18,7 @@ import {
 } from "@nexpress/core/agent-contract";
 import { Copy, KeyRound } from "lucide-react";
 
+import { useAgentRetryBlocked } from "./agent-recovery.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import {
   AgentStudioApiError,
@@ -71,6 +72,11 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
   );
   const [oneTime, setOneTime] = React.useState<NpAgentStudioOneTimeTokenV1 | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>();
+  const failureRef = React.useRef<unknown>(undefined);
+  const retryBlocked = useAgentRetryBlocked(failure);
+  const tokenRetry = React.useRef<{ fingerprint: string; key: string } | null>(null);
+  const revokeRetry = React.useRef<{ fingerprint: string; key: string } | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [tokenName, setTokenName] = React.useState("Local client");
@@ -79,7 +85,31 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
   const [expiresAt, setExpiresAt] = React.useState(defaultExpiry);
   const [scopes, setScopes] = React.useState<NpAgentScope[]>(["site:read"]);
 
+  const reportFailure = React.useCallback((caught: unknown) => {
+    failureRef.current = caught;
+    setFailure(caught);
+    if (caught instanceof AgentStudioApiError && [401, 403, 404].includes(caught.status)) {
+      request.current?.abort();
+      setLoading(false);
+      setDetail(null);
+      setGatewaySettings(null);
+      setOneTime(null);
+      setObservedAt(undefined);
+      tokenRetry.current = null;
+      revokeRetry.current = null;
+    }
+  }, []);
+
   const load = React.useCallback(async () => {
+    const previousFailure = failureRef.current;
+    if (
+      previousFailure instanceof AgentStudioApiError &&
+      (previousFailure.status === 401 ||
+        (previousFailure.retryAt !== undefined && previousFailure.retryAt > Date.now()))
+    )
+      return;
+    failureRef.current = undefined;
+    setFailure(undefined);
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
@@ -90,6 +120,9 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
         npFetch(`/api/admin/agents/gateway/principals/${encodeURIComponent(principalId)}`, {
           cache: "no-store",
           signal: controller.signal,
+        }).then(async (response) => {
+          if (!response.ok) throw await responseError(response);
+          return response;
         }),
         loadAgentStudioOverview(controller.signal),
       ]);
@@ -124,6 +157,8 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
       );
     } catch (caught) {
       if (controller.signal.aborted || request.current !== controller) return;
+      reportFailure(caught);
+      setLoading(false);
       setObservedAt(undefined);
       setDetail(null);
       setGatewaySettings(null);
@@ -138,7 +173,7 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
     } finally {
       if (!controller.signal.aborted && request.current === controller) setLoading(false);
     }
-  }, [principalId]);
+  }, [principalId, reportFailure]);
 
   const enabledTransports = gatewaySettings
     ? TRANSPORTS.filter((candidate) => gatewaySettings[candidate.setting] !== "disabled")
@@ -164,31 +199,43 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
 
   const createToken = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!detail) return;
+    if (!detail || loading || submitting || retryBlocked) return;
+    const requestAtStart = request.current;
     setSubmitting(true);
     setError(null);
     setOneTime(null);
     try {
+      const body = {
+        expectedVersion: detail.principal.rowVersion,
+        name: tokenName,
+        scopes: [...scopes].sort(),
+        transport,
+        exposure,
+        expiresAt: new Date(expiresAt).toISOString(),
+      };
+      const fingerprint = JSON.stringify(body);
+      if (tokenRetry.current?.fingerprint !== fingerprint)
+        tokenRetry.current = { fingerprint, key: crypto.randomUUID() };
       const response = await npFetch(
         `/api/admin/agents/gateway/principals/${encodeURIComponent(principalId)}/tokens`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            idempotencyKey: crypto.randomUUID(),
-            expectedVersion: detail.principal.rowVersion,
-            name: tokenName,
-            scopes: [...scopes].sort(),
-            transport,
-            exposure,
-            expiresAt: new Date(expiresAt).toISOString(),
+            idempotencyKey: tokenRetry.current.key,
+            ...body,
           }),
         },
       );
       if (!response.ok) throw await responseError(response);
-      setOneTime(npRequireAgentStudioOneTimeTokenV1(await response.json()));
+      const value = npRequireAgentStudioOneTimeTokenV1(await response.json());
+      if (requestAtStart?.signal.aborted) return;
+      setOneTime(value);
+      tokenRetry.current = null;
       await load();
     } catch (caught) {
+      if (requestAtStart?.signal.aborted) return;
+      reportFailure(caught);
       setError(caught instanceof Error ? caught.message : "Could not create token.");
     } finally {
       setSubmitting(false);
@@ -196,7 +243,12 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
   };
 
   const revokeToken = async (tokenId: string, expectedVersion: number) => {
-    if (!window.confirm("Revoke this service token?")) return;
+    if (loading || submitting || retryBlocked || !window.confirm("Revoke this service token?"))
+      return;
+    const fingerprint = `${tokenId}:${expectedVersion}`;
+    if (revokeRetry.current?.fingerprint !== fingerprint)
+      revokeRetry.current = { fingerprint, key: crypto.randomUUID() };
+    const requestAtStart = request.current;
     setSubmitting(true);
     setError(null);
     try {
@@ -206,7 +258,7 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            idempotencyKey: crypto.randomUUID(),
+            idempotencyKey: revokeRetry.current.key,
             expectedVersion,
             reason: "Revoked in Agent Studio",
           }),
@@ -214,8 +266,12 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
       );
       if (!response.ok) throw await responseError(response);
       npRequireAgentServiceTokenV1(await response.json());
+      if (requestAtStart?.signal.aborted) return;
+      revokeRetry.current = null;
       await load();
     } catch (caught) {
+      if (requestAtStart?.signal.aborted) return;
+      reportFailure(caught);
       setError(caught instanceof Error ? caught.message : "Could not revoke token.");
     } finally {
       setSubmitting(false);
@@ -225,6 +281,7 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
   return (
     <AgentStudioFrame
       active="connections"
+      recovery={failure}
       busy={loading}
       refreshing={detail !== null}
       observedAt={detail ? observedAt : undefined}
@@ -276,12 +333,18 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
             </Button>
             <AgentPrincipalControls
               principal={detail.principal}
-              disabled={submitting || loading || error !== null}
+              disabled={
+                submitting ||
+                loading ||
+                (error !== null &&
+                  !(failure instanceof AgentStudioApiError && failure.status === 429))
+              }
               onChanged={async () => {
                 setOneTime(null);
                 await load();
               }}
-              onAccessLost={(message) => {
+              onAccessLost={(message, caught) => {
+                reportFailure(caught);
                 setDetail(null);
                 setOneTime(null);
                 setGatewaySettings(null);
@@ -434,7 +497,12 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
                   <Button
                     type="submit"
                     size="sm"
-                    disabled={submitting || loading || error !== null}
+                    disabled={
+                      submitting ||
+                      loading ||
+                      (error !== null &&
+                        !(failure instanceof AgentStudioApiError && failure.status === 429))
+                    }
                   >
                     {submitting ? "Creating…" : "Create token"}
                   </Button>
@@ -476,7 +544,12 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
                             type="button"
                             size="sm"
                             variant="ghost"
-                            disabled={submitting || loading || error !== null}
+                            disabled={
+                              submitting ||
+                              loading ||
+                              (error !== null &&
+                                !(failure instanceof AgentStudioApiError && failure.status === 429))
+                            }
                             onClick={() => void revokeToken(token.id, token.rowVersion)}
                           >
                             Revoke

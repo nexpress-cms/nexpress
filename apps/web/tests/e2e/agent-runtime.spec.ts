@@ -167,8 +167,24 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
 test("Runtime budget and operations show unknown measurements without inventing zero", async ({
   page,
 }) => {
-  await page.route("**/api/admin/agents/budgets", (route) =>
-    route.fulfill({
+  let budgetReads = 0;
+  let runtimeReads = 0;
+  const writes: unknown[] = [];
+  await page.clock.install();
+  await page.route("**/api/admin/agents/budgets", (route) => {
+    if (route.request().method() === "PATCH") {
+      writes.push(route.request().postDataJSON());
+      return route.fulfill({
+        status: writes.length === 1 ? 429 : 401,
+        headers: writes.length === 1 ? { "Retry-After": "2" } : {},
+        json: {
+          status: writes.length === 1 ? 429 : 401,
+          error: { code: "TEST_RECOVERY", message: "Budget request unavailable" },
+        },
+      });
+    }
+    budgetReads++;
+    return route.fulfill({
       json: {
         schemaVersion: "np.agent-runtime-budget.v1",
         rowVersion: 1,
@@ -178,10 +194,19 @@ test("Runtime budget and operations show unknown measurements without inventing 
         measurement: "unavailable",
         usage: null,
       },
-    }),
-  );
-  await page.route("**/api/admin/agents/runtime-status", (route) =>
-    route.fulfill({
+    });
+  });
+  await page.route("**/api/admin/agents/runtime-status", (route) => {
+    runtimeReads++;
+    if (runtimeReads === 1)
+      return route.fulfill({
+        status: 503,
+        json: {
+          status: 503,
+          error: { code: "UNAVAILABLE", message: "Runtime status temporarily unavailable" },
+        },
+      });
+    return route.fulfill({
       json: {
         schemaVersion: "np.agent-runtime-overview.v1",
         status: {
@@ -195,19 +220,40 @@ test("Runtime budget and operations show unknown measurements without inventing 
         },
         operations: null,
       },
-    }),
-  );
+    });
+  });
   await signInAsE2EAdmin(page);
   await page.goto("/admin/agents/budgets");
   await expect(
     page.getByText("Measurement unavailable; configured hard limits fail closed.", { exact: true }),
   ).toBeVisible();
+  await page.getByRole("button", { name: "Edit site budget", exact: true }).click();
+  await page.getByLabel("Concurrent runs", { exact: true }).fill("2");
+  await page.getByRole("button", { name: "Retry Runtime status", exact: true }).click();
+  await expect(page.getByLabel("Concurrent runs", { exact: true })).toHaveValue("2");
+  expect(budgetReads).toBe(1);
   await expect(
     page.getByRole("button", { name: "Review site Runtime resume", exact: true }),
   ).toBeDisabled();
   await expect(
     page.getByText("Operations evidence is unavailable. Counts are unknown.", { exact: true }),
   ).toBeVisible();
+  expect(runtimeReads).toBe(2);
+  await page.getByRole("button", { name: "Review budget changes", exact: true }).click();
+  const confirm = page.getByRole("button", { name: "Confirm budget update", exact: true });
+  await confirm.click();
+  await expect(page.getByText("Wait before retrying:", { exact: false })).toBeVisible();
+  await expect(confirm).toBeDisabled();
+  await expect(page.getByLabel("Concurrent runs", { exact: true })).toHaveValue("2");
+  await page.clock.runFor(2100);
+  await expect(confirm).toBeEnabled();
+  expect(writes).toHaveLength(1);
+  await confirm.click();
+  await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
+  expect(writes).toHaveLength(2);
+  expect(writes[1]).toEqual(writes[0]);
+  await expect(page.getByText("Site ceiling and usage", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Site Runtime", { exact: true })).toHaveCount(0);
 });
 
 test("Runtime typed draft creation requires explicit self-delegation and never activates implicitly", async ({

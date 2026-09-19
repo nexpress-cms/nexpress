@@ -67,7 +67,9 @@ test.describe("Agent ChangeSet review", () => {
   }, testInfo) => {
     await isolateE2ERateLimitBucket(page.context(), 209 + testInfo.retry);
     await signInAsE2EAdmin(page);
-    await page.clock.install();
+    const clockStart = new Date();
+    await page.clock.install({ time: clockStart });
+    await page.clock.pauseAt(new Date(clockStart.getTime() + 1_000));
     let reads = 0;
     let releaseSecond: (() => void) | undefined;
     const secondRead = new Promise<void>((resolve) => {
@@ -76,10 +78,14 @@ test.describe("Agent ChangeSet review", () => {
     await page.route(`**/api/admin/agents/changesets/${id}`, async (route) => {
       reads++;
       if (reads === 2) await secondRead;
-      if (reads === 3) {
+      if (reads >= 3) {
         await route.fulfill({
-          status: 404,
-          json: { status: 404, error: { code: "NOT_FOUND", message: "Not found" } },
+          status: reads === 3 ? 429 : 401,
+          headers: reads === 3 ? { "Retry-After": "30" } : {},
+          json: {
+            status: reads === 3 ? 429 : 401,
+            error: { code: "RECOVERY_REQUIRED", message: "Read recovery required" },
+          },
         });
         return;
       }
@@ -121,11 +127,91 @@ test.describe("Agent ChangeSet review", () => {
     await page.clock.fastForward(1);
     await expect.poll(() => reads).toBe(3);
     await expect(page.getByText("Review fixture proposal", { exact: true })).toHaveCount(0);
-    await page.clock.fastForward(30_000);
+    const retry = page.getByRole("button", { name: "Retry", exact: true });
+    await expect(retry).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeDisabled();
+    for (const width of [320, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+        .toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath(`review-rate-limit-${width}.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+    await page.clock.fastForward(29_999);
     expect(reads).toBe(3);
+    await expect(retry).toBeDisabled();
+    await page.clock.fastForward(1);
+    await expect(retry).toBeEnabled();
+    expect(reads).toBe(3);
+    await retry.click();
+    await expect(page.getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute(
+      "href",
+      "/admin/login",
+    );
+    await expect(page.getByText("Review fixture proposal", { exact: true })).toHaveCount(0);
+    await page.clock.fastForward(30_000);
+    expect(reads).toBe(4);
     await page.goto("/admin/agents");
     await page.clock.fastForward(30_000);
-    expect(reads).toBe(3);
+    expect(reads).toBe(4);
+  });
+  test("late refresh reads cannot restore review evidence after mutation authentication loss", async ({
+    page,
+  }, testInfo) => {
+    await isolateE2ERateLimitBucket(page.context(), 215 + testInfo.retry);
+    await signInAsE2EAdmin(page);
+    await page.clock.install();
+    let reads = 0;
+    let mutations = 0;
+    let release: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let releaseMutation: (() => void) | undefined;
+    const mutation = new Promise<void>((resolve) => {
+      releaseMutation = resolve;
+    });
+    const review = {
+      schemaVersion: "np.agent-changeset-review.v1",
+      changeSet: draft(),
+      requiredStaffCapabilities: ["content.author"],
+      operations: [{ ordinal: 1, evidence: "not_validated", fields: [] }],
+      executionDetail: null,
+      executionActions: ["cancel"],
+      rollbackDetail: null,
+      rollbackActions: [],
+    };
+    await page.route("**/api/admin/agents/changesets**", async (route) => {
+      if (route.request().method() === "POST") {
+        mutations++;
+        await mutation;
+        await route.fulfill({
+          status: 401,
+          json: { status: 401, error: { code: "UNAUTHORIZED", message: "Sign in required" } },
+        });
+        return;
+      }
+      reads++;
+      if (reads === 2) await pending;
+      await route.fulfill({ json: review });
+    });
+    await page.goto(`/admin/agents/changesets/${id}`);
+    await expect(page.getByText("Review fixture proposal", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Cancel ChangeSet", exact: true }).click();
+    await expect.poll(() => mutations).toBe(1);
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await expect.poll(() => reads).toBe(2);
+    releaseMutation?.();
+    await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
+    release?.();
+    await page.clock.fastForward(30_000);
+    await expect(page.getByText("Review fixture proposal", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
+    expect(reads).toBe(2);
   });
   test("distinguishes unavailable runtime from empty history", async ({ page }, testInfo) => {
     await isolateE2ERateLimitBucket(page.context(), 180 + testInfo.retry * 3);

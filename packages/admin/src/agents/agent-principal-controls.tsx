@@ -12,6 +12,7 @@ import {
   principalAccessLostMessage,
   responseError,
 } from "./agent-studio-api.js";
+import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
 import { npFetch } from "../lib/api-client.js";
 import { Button } from "../ui/button.js";
 import {
@@ -41,7 +42,7 @@ export function AgentPrincipalControls({
   principal: NpAgentPrincipalV1;
   disabled: boolean;
   onChanged: () => Promise<void>;
-  onAccessLost: (message: string) => void;
+  onAccessLost: (message: string, failure: AgentStudioApiError) => void;
 }) {
   const [request, setRequest] = React.useState<{
     action: PrincipalAction;
@@ -50,6 +51,8 @@ export function AgentPrincipalControls({
   } | null>(null);
   const [reason, setReason] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
+  const [failure, setFailure] = React.useState<unknown>();
+  const retryBlocked = useAgentRetryBlocked(failure);
   const [busy, setBusy] = React.useState(false);
   const open = (action: PrincipalAction) => {
     setRequest({
@@ -61,7 +64,7 @@ export function AgentPrincipalControls({
   };
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!request) return;
+    if (!request || busy || disabled || retryBlocked) return;
     setBusy(true);
     setError(null);
     try {
@@ -83,9 +86,10 @@ export function AgentPrincipalControls({
       setReason("");
       await onChanged();
     } catch (caught) {
+      setFailure(caught);
       if (caught instanceof AgentStudioApiError && [401, 403, 404].includes(caught.status)) {
         setRequest(null);
-        onAccessLost(principalAccessLostMessage(caught));
+        onAccessLost(principalAccessLostMessage(caught), caught);
       } else {
         setError(caught instanceof Error ? caught.message : "Could not update principal.");
         if (caught instanceof AgentStudioApiError && caught.status === 409) await onChanged();
@@ -105,7 +109,7 @@ export function AgentPrincipalControls({
         type="button"
         variant="outline"
         size="sm"
-        disabled={disabled || busy}
+        disabled={disabled || busy || retryBlocked}
         onClick={() => open(principal.status === "suspended" ? "resume" : "suspend")}
       >
         {principal.status === "suspended" ? labels.resume : labels.suspend}
@@ -114,7 +118,7 @@ export function AgentPrincipalControls({
         type="button"
         variant="destructive"
         size="sm"
-        disabled={disabled || busy}
+        disabled={disabled || busy || retryBlocked}
         onClick={() => open("revoke")}
       >
         {labels.revoke}
@@ -136,58 +140,60 @@ export function AgentPrincipalControls({
                   : "Suspend inbound access for this principal. Existing action history remains available."}
             </DialogDescription>
           </DialogHeader>
-          <form className="space-y-4" onSubmit={(event) => void submit(event)}>
-            {request?.action !== "resume" ? (
-              <div className="space-y-2">
-                <Label htmlFor="principal-change-reason">Reason</Label>
-                <Textarea
-                  id="principal-change-reason"
-                  required
-                  maxLength={2000}
-                  value={reason}
-                  onChange={(event) => {
-                    setReason(event.target.value);
-                    setRequest((current) =>
-                      current ? { ...current, idempotencyKey: crypto.randomUUID() } : null,
-                    );
-                  }}
-                />
-              </div>
-            ) : null}
-            <p className="text-[12px] text-neutral-500">
-              {requiresReauthentication ? "Recent primary authentication is required. " : ""}
-              The server rechecks permission and the current principal version before applying a
-              change.
-            </p>
-            {error ? (
-              <p role="alert" className="text-[13px] text-red-700 dark:text-red-300">
-                {error}
+          <AgentRecoveryBoundary error={failure}>
+            <form className="space-y-4" onSubmit={(event) => void submit(event)}>
+              {request?.action !== "resume" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="principal-change-reason">Reason</Label>
+                  <Textarea
+                    id="principal-change-reason"
+                    required
+                    maxLength={2000}
+                    value={reason}
+                    onChange={(event) => {
+                      setReason(event.target.value);
+                      setRequest((current) =>
+                        current ? { ...current, idempotencyKey: crypto.randomUUID() } : null,
+                      );
+                    }}
+                  />
+                </div>
+              ) : null}
+              <p className="text-[12px] text-neutral-500">
+                {requiresReauthentication ? "Recent primary authentication is required. " : ""}
+                The server rechecks permission and the current principal version before applying a
+                change.
               </p>
-            ) : null}
-            {request && request.expectedVersion !== principal.rowVersion ? (
-              <p role="alert" className="text-[13px]">
-                This principal changed. Close this dialog, review its current state, and start the
-                action again.
-              </p>
-            ) : null}
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={busy}
-                onClick={() => setRequest(null)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                variant={request?.action === "revoke" ? "destructive" : "default"}
-                disabled={busy || !request || request.expectedVersion !== principal.rowVersion}
-              >
-                {busy ? "Saving…" : "Confirm"}
-              </Button>
-            </DialogFooter>
-          </form>
+              {error ? (
+                <p role="alert" className="text-[13px] text-red-700 dark:text-red-300">
+                  {error}
+                </p>
+              ) : null}
+              {request && request.expectedVersion !== principal.rowVersion ? (
+                <p role="alert" className="text-[13px]">
+                  This principal changed. Close this dialog, review its current state, and start the
+                  action again.
+                </p>
+              ) : null}
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => setRequest(null)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  variant={request?.action === "revoke" ? "destructive" : "default"}
+                  disabled={busy || !request || request.expectedVersion !== principal.rowVersion}
+                >
+                  {busy ? "Saving…" : "Confirm"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </AgentRecoveryBoundary>
         </DialogContent>
       </Dialog>
     </div>
