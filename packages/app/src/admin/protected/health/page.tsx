@@ -19,6 +19,7 @@ import { getAuthRuntimeConfig } from "../../../lib/auth-helpers";
 import { getDb } from "../../../lib/db";
 import { gatherSystemHealth, type Check } from "../../../lib/system-health";
 import { CopyCommandButton } from "../ops-actions";
+import { AgentHealth } from "./agent-health";
 
 /**
  * Admin runtime diagnostics. The GUI half of `pnpm run doctor` (#404,
@@ -121,6 +122,8 @@ export default async function AdminHealthPage() {
           helper={summary.errorCount > 0 ? "needs attention" : "none reported"}
         />
       </div>
+
+      <AgentHealth summary={summary.agents} />
 
       <HealthActionQueue summary={summary} />
 
