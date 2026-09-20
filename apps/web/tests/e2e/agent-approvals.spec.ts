@@ -113,6 +113,10 @@ test.describe("Agent approval review", () => {
       231 + testInfo.retry * 3 + testInfo.repeatEachIndex * (testInfo.project.retries + 1) * 3,
     );
     await signInAsE2EAdmin(page);
+    let releaseRead = () => {};
+    let readGate = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
     let approved = false;
     const commands: unknown[] = [];
     const code = "A".repeat(43);
@@ -150,10 +154,28 @@ test.describe("Agent approval review", () => {
         await route.fulfill({ json: detail("approved", 3) });
         return;
       }
+      await readGate;
       await route.fulfill({ json: detail(approved ? "approved" : "pending", approved ? 3 : 1) });
     });
     await page.goto(`/admin/agents/approvals/${id}`);
+    await expect(page.getByRole("heading", { name: "Approval review", exact: true })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Loading approval" })).toBeVisible();
+    await expect(page.locator('[aria-hidden="true"] .h-24')).toBeVisible();
+    releaseRead();
     const approve = page.getByRole("button", { name: "Approve", exact: true });
+    await expect(approve).toBeVisible();
+    await expect(page.getByText("Browser receipt time;", { exact: false })).toBeVisible();
+    readGate = new Promise<void>((resolve) => {
+      releaseRead = resolve;
+    });
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: "authorizing controls are unavailable" }),
+    ).toBeVisible();
+    await expect(approve).toHaveCount(0);
+    await expect(page.getByText("Server approval facts", { exact: true })).toHaveCount(0);
+    releaseRead();
+    await expect(approve).toBeVisible();
     await tabTo(page, approve);
     await page.keyboard.press("Enter");
     await expect(
@@ -423,4 +445,68 @@ test.describe("Agent approval review", () => {
     ).toBeVisible();
     await expect(page.getByRole("heading", { name: "Server approval facts" })).toHaveCount(0);
   });
+});
+
+test("approvals delayed bounded queue remains readable across viewports", async ({
+  page,
+}, testInfo) => {
+  let release = () => {};
+  let gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const items = Array.from({ length: 25 }, (_, index) => {
+    const rowId = `21111111-1111-4111-8111-${String(index + 1).padStart(12, "0")}`;
+    return {
+      ...item(),
+      approval: { ...item().approval, id: rowId },
+      requester: { kind: "staff", id: rowId },
+    };
+  });
+  await page.route("**/api/admin/agents/approvals", async (route) => {
+    await gate;
+    await route.fulfill({
+      json: { schemaVersion: "np.agent-approval-page.v1", items, nextCursor: null },
+    });
+  });
+  await signInAsE2EAdmin(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/admin/agents/approvals");
+  await expect(page.getByRole("status").filter({ hasText: "Loading approvals" })).toBeVisible();
+  await expect(page.locator('[aria-hidden="true"] .h-24')).toBeVisible();
+  release();
+  const rows = page.getByRole("link", { name: "Approval request · apply", exact: true });
+  await expect(rows).toHaveCount(25);
+  for (const width of [320, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate(
+        (value) => document.documentElement.classList.toggle("dark", value === "dark"),
+        theme,
+      );
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+        .toBe(true);
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      await page.screenshot({
+        path: testInfo.outputPath(`approvals-${width}-${theme}.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+  }
+  gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "authorizing controls are unavailable" }),
+  ).toBeVisible();
+  await expect(rows).toHaveCount(0);
+  release();
+  await expect(rows).toHaveCount(25);
 });

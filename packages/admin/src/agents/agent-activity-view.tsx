@@ -22,6 +22,7 @@ import {
 } from "@nexpress/core/agent-contract";
 import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
 
+import { AgentReadState } from "./agent-read-state.js";
 import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
 import { AgentStudioApiError, responseError } from "./agent-studio-api.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
@@ -89,6 +90,7 @@ function useActivity<T>(path: string, parse: (value: unknown) => T) {
     parse: (value: unknown) => T;
     value: T | null;
     error: AgentStudioApiError | null;
+    observedAt?: number;
   } | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [revision, setRevision] = React.useState(0);
@@ -98,7 +100,7 @@ function useActivity<T>(path: string, parse: (value: unknown) => T) {
     void readActivity(path, parse, controller.signal)
       .then((value) => {
         if (current) {
-          setResult({ path, parse, value, error: null });
+          setResult({ path, parse, value, error: null, observedAt: Date.now() });
           setLoading(false);
         }
       })
@@ -137,6 +139,7 @@ function useActivity<T>(path: string, parse: (value: unknown) => T) {
     error: matches && !loading ? result.error : null,
     loading: loading || !matches,
     refresh,
+    observedAt: matches ? result.observedAt : undefined,
   };
 }
 
@@ -162,7 +165,15 @@ function ActivityNavigation({ section }: { section: NpAgentActivityKindV1 }) {
   );
 }
 
-function ActivityError({ error, retry }: { error: AgentStudioApiError; retry: () => void }) {
+function ActivityError({
+  error,
+  retry,
+  runActions = false,
+}: {
+  error: AgentStudioApiError;
+  retry: () => void;
+  runActions?: boolean;
+}) {
   if (error.status === 401 || error.status === 429) return null;
   const denied = [401, 403, 404].includes(error.status);
   const title =
@@ -175,7 +186,9 @@ function ActivityError({ error, retry }: { error: AgentStudioApiError; retry: ()
           : error.status === 404
             ? "This Activity record is unavailable."
             : error.status === 503
-              ? "Agent Activity is unavailable."
+              ? runActions
+                ? "Run actions are unavailable."
+                : "Agent Activity is unavailable."
               : error.message;
   return (
     <div
@@ -184,7 +197,11 @@ function ActivityError({ error, retry }: { error: AgentStudioApiError; retry: ()
     >
       <p className="font-medium">{title}</p>
       {error.status === 503 ? (
-        <p>The host Activity service is not available. No run or action history can be loaded.</p>
+        <p>
+          {runActions
+            ? "The actions read is unavailable. This does not describe the separately loaded run facts."
+            : "The host Activity service is not available. No run or action history can be loaded."}
+        </p>
       ) : null}
       <p className="font-mono text-[11px]">{error.code}</p>
       {error.status === 401 ? (
@@ -239,7 +256,7 @@ function EvidenceNotice({ evidence }: { evidence: "redacted" | "expired" }) {
 function EmptyActivity({ section }: { section: NpAgentActivityKindV1 }) {
   return (
     <div className="rounded-lg border border-dashed border-neutral-300 p-8 text-center dark:border-neutral-700">
-      <p className="text-[14px] font-medium">
+      <p className="min-w-0 break-words text-[14px] font-medium [overflow-wrap:anywhere]">
         {section === "runs"
           ? "No Agent runs match these filters."
           : section === "actions"
@@ -390,6 +407,7 @@ function ActivityFilters({
             id="activity-from"
             name="from"
             type="datetime-local"
+            className="[color-scheme:light] dark:[color-scheme:dark]"
             defaultValue={localDate(query.get("from"))}
           />
         </div>
@@ -399,6 +417,7 @@ function ActivityFilters({
             id="activity-to"
             name="to"
             type="datetime-local"
+            className="[color-scheme:light] dark:[color-scheme:dark]"
             defaultValue={localDate(query.get("to"))}
           />
         </div>
@@ -418,7 +437,7 @@ function ActivityFilters({
           </select>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" size="sm">
           Apply filters
         </Button>
@@ -443,7 +462,9 @@ function ActionRows({ items }: { items: NpAgentActivityActionDetailV1[] }) {
           className="block rounded-lg border border-neutral-200 p-3 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[14px] font-medium">{item.action.capabilityId}</span>
+            <span className="min-w-0 break-words text-[14px] font-medium [overflow-wrap:anywhere]">
+              {item.action.capabilityId}
+            </span>
             <StateBadge state={item.action.state} />
           </div>
           <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-neutral-500">
@@ -476,7 +497,9 @@ function PageRows({ page }: { page: ActivityPage }) {
             className="block rounded-lg border border-neutral-200 p-3 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[14px] font-medium">{principal.name}</span>
+              <span className="min-w-0 break-words text-[14px] font-medium [overflow-wrap:anywhere]">
+                {principal.name}
+              </span>
               <StateBadge state={principal.status} />
             </div>
             <p className="mt-1 text-[12px] text-neutral-500">
@@ -498,7 +521,9 @@ function PageRows({ page }: { page: ActivityPage }) {
           className="block rounded-lg border border-neutral-200 p-3 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-[14px] font-medium">{run.goal}</span>
+            <span className="min-w-0 break-words text-[14px] font-medium [overflow-wrap:anywhere]">
+              {run.goal}
+            </span>
             <StateBadge state={run.state} />
           </div>
           <p className="mt-1 text-[12px] text-neutral-500">
@@ -592,12 +617,15 @@ export function AgentActivityView({
             Refresh
           </Button>
         </div>
-        <ActivityFilters key={queryString} section={section} queryString={queryString} />
-        {resource.loading ? (
-          <p role="status" className="text-[13px] text-neutral-500">
-            {resource.value ? "Refreshing Activity…" : "Loading Activity…"}
-          </p>
-        ) : null}
+        <fieldset disabled={resource.loading} className="min-w-0">
+          <ActivityFilters key={queryString} section={section} queryString={queryString} />
+        </fieldset>
+        <AgentReadState
+          label="Activity"
+          loading={resource.loading}
+          refreshing={resource.loading && Boolean(page)}
+          observedAt={resource.observedAt}
+        />
         {resource.error ? <ActivityError error={resource.error} retry={resource.refresh} /> : null}
         {resource.value && !page ? (
           <ActivityError
@@ -647,17 +675,32 @@ function RunActions({ runId }: { runId: string }) {
   return (
     <AgentRecoveryBoundary error={resource.error} retry={resource.refresh}>
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-wrap items-start justify-between gap-2">
           <CardTitle className="text-[15px]">Actions</CardTitle>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={resource.loading}
+            onClick={resource.refresh}
+          >
+            Refresh run actions
+          </Button>
         </CardHeader>
         <CardContent className="space-y-3">
-          {resource.loading ? (
-            <p role="status" className="text-[13px] text-neutral-500">
-              Loading run actions…
-            </p>
-          ) : null}
+          <AgentReadState
+            label="Run actions"
+            loading={resource.loading}
+            refreshing={resource.loading && Boolean(page)}
+            observedAt={resource.observedAt}
+          />
           {resource.error ? (
-            <ActivityError error={resource.error} retry={resource.refresh} />
+            <>
+              <p className="text-[13px] text-neutral-500">
+                Run actions could not be loaded. The run facts above were received separately.
+              </p>
+              <ActivityError error={resource.error} retry={resource.refresh} runActions />
+            </>
           ) : null}
           {page ? (
             page.items.length ? (
@@ -705,11 +748,13 @@ export function AgentActivityRunDetailView({ runId }: { runId: string }) {
             Back to runs
           </Link>
         </Button>
-        {resource.loading ? (
-          <p role="status" className="text-[13px]">
-            Loading run…
-          </p>
-        ) : null}
+        <h2 className="text-[18px] font-semibold">Run activity</h2>
+        <AgentReadState
+          label="Run"
+          loading={resource.loading}
+          refreshing={resource.loading && Boolean(detail || expired)}
+          observedAt={resource.observedAt}
+        />
         {resource.error ? <ActivityError error={resource.error} retry={resource.refresh} /> : null}
         {expired ? (
           <Card>
@@ -744,10 +789,12 @@ export function AgentActivityRunDetailView({ runId }: { runId: string }) {
           <>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-[18px] font-semibold">{run.goal}</h2>
+                <h2 className="break-words text-[18px] font-semibold [overflow-wrap:anywhere]">
+                  {run.goal}
+                </h2>
                 <p className="mt-1 break-all font-mono text-[11px] text-neutral-500">{run.id}</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <StateBadge state={run.state} />
                 <Button
                   type="button"
@@ -881,20 +928,24 @@ export function AgentActivityActionDetailView({ actionId }: { actionId: string }
             Back to actions
           </Link>
         </Button>
-        {resource.loading ? (
-          <p role="status" className="text-[13px]">
-            Loading action…
-          </p>
-        ) : null}
+        <h2 className="text-[18px] font-semibold">Action activity</h2>
+        <AgentReadState
+          label="Action"
+          loading={resource.loading}
+          refreshing={resource.loading && Boolean(detail)}
+          observedAt={resource.observedAt}
+        />
         {resource.error ? <ActivityError error={resource.error} retry={resource.refresh} /> : null}
         {detail && action ? (
           <>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <h2 className="text-[18px] font-semibold">{action.capabilityId}</h2>
+                <h2 className="break-words text-[18px] font-semibold [overflow-wrap:anywhere]">
+                  {action.capabilityId}
+                </h2>
                 <p className="mt-1 break-all font-mono text-[11px] text-neutral-500">{action.id}</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <StateBadge state={action.state} />
                 <Button
                   type="button"

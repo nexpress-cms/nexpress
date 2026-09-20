@@ -245,7 +245,9 @@ function ConnectionsContent({
   return (
     <Tabs defaultValue="providers" className="space-y-4">
       <TabsList className="grid h-auto w-full grid-cols-2 sm:w-fit">
-        <TabsTrigger value="providers">Provider outbound</TabsTrigger>
+        <TabsTrigger value="providers" className="min-w-0 whitespace-normal">
+          Provider outbound
+        </TabsTrigger>
         <TabsTrigger value="gateway" className="min-w-0 whitespace-normal">
           Gateway inbound
         </TabsTrigger>
@@ -276,12 +278,19 @@ function ConnectionsContent({
                 className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white px-3 py-3 transition-colors hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950 dark:hover:bg-neutral-900"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-[13.5px] font-medium">{connection.name}</p>
-                  <p className="truncate text-[12px] text-neutral-500">
+                  <p className="break-words text-[13.5px] font-medium leading-snug">
+                    {connection.name}
+                  </p>
+                  <p className="break-words text-[12px] text-neutral-500">
                     {connection.provider} · {connection.kind} · {connection.authKind}
                   </p>
                 </div>
-                <Badge variant={stateTone(connection.status)}>{connection.status}</Badge>
+                <Badge
+                  className="shrink-0 whitespace-nowrap"
+                  variant={stateTone(connection.status)}
+                >
+                  {connection.status}
+                </Badge>
               </Link>
             ))}
           </div>
@@ -314,12 +323,16 @@ function ConnectionsContent({
                 className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-neutral-200 bg-white px-3 py-3 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950 dark:hover:bg-neutral-900"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-[13.5px] font-medium">{principal.name}</p>
-                  <p className="truncate text-[12px] text-neutral-500">
+                  <p className="break-words text-[13.5px] font-medium leading-snug">
+                    {principal.name}
+                  </p>
+                  <p className="break-words text-[12px] text-neutral-500">
                     {principal.scopes.join(", ")}
                   </p>
                 </div>
-                <Badge variant={stateTone(principal.status)}>{principal.status}</Badge>
+                <Badge className="shrink-0 whitespace-nowrap" variant={stateTone(principal.status)}>
+                  {principal.status}
+                </Badge>
               </Link>
             ))}
           </div>
@@ -336,6 +349,8 @@ function OauthClientsPanel({
   disabled: boolean;
   onFailure: (failure: unknown) => void;
 }) {
+  const [loading, setLoading] = React.useState(!disabled);
+  const [loaded, setLoaded] = React.useState(false);
   const [clients, setClients] = React.useState<NpAgentOauthClientV1[]>([]);
   const [name, setName] = React.useState("");
   const [redirects, setRedirects] = React.useState("http://127.0.0.1:3000/callback");
@@ -360,10 +375,12 @@ function OauthClientsPanel({
     request.current?.abort();
     const controller = new AbortController();
     request.current = controller;
+    setLoading(true);
     try {
       const value = await loadAgentOauthClients(controller.signal);
       if (controller.signal.aborted) return;
       setClients(value);
+      setLoaded(true);
       failureRef.current = undefined;
       setFailure(undefined);
       setError(null);
@@ -374,6 +391,8 @@ function OauthClientsPanel({
       onFailure(caught);
       setClients([]);
       setError(caught instanceof Error ? caught.message : "Could not load OAuth clients.");
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [onFailure]);
 
@@ -492,6 +511,16 @@ function OauthClientsPanel({
           </Button>
         </CardHeader>
         <CardContent className="space-y-3">
+          {disabled ? (
+            <p role="status" className="text-[12px] text-neutral-500">
+              OAuth client listing is unavailable until the Gateway control plane is ready.
+            </p>
+          ) : null}
+          {loading && !disabled ? (
+            <p role="status" className="min-h-12 text-[12px] text-neutral-500">
+              {loaded ? "Refreshing OAuth clients…" : "Loading OAuth clients…"}
+            </p>
+          ) : null}
           {error ? (
             <p role="alert" className="text-[12px] text-red-700 dark:text-red-300">
               {error}
@@ -556,7 +585,7 @@ function OauthClientsPanel({
               </Button>
             </form>
           ) : null}
-          {clients.length === 0 && !error ? (
+          {clients.length === 0 && !error && !loading && loaded ? (
             <Empty>No registered OAuth clients for this site.</Empty>
           ) : (
             clients.map((client) => (

@@ -63,6 +63,10 @@ export function AgentPrincipalDetailView({ principalId }: { principalId: string 
 
 function AgentPrincipalDetailViewContent({ principalId }: { principalId: string }) {
   const router = useRouter();
+  const headingRef = React.useRef<HTMLHeadingElement>(null);
+  const errorRef = React.useRef<HTMLDivElement>(null);
+  const createTokenRef = React.useRef<HTMLButtonElement>(null);
+  const [copyStatus, setCopyStatus] = React.useState<string | null>(null);
   const [loadedDetail, setDetail] = React.useState<NpAgentStudioPrincipalDetailV1 | null>(null);
   const detail = loadedDetail?.principal.id === principalId ? loadedDetail : null;
   const request = React.useRef<AbortController | null>(null);
@@ -72,6 +76,9 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
   );
   const [oneTime, setOneTime] = React.useState<NpAgentStudioOneTimeTokenV1 | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
   const [failure, setFailure] = React.useState<unknown>();
   const failureRef = React.useRef<unknown>(undefined);
   const retryBlocked = useAgentRetryBlocked(failure);
@@ -203,6 +210,7 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
     const requestAtStart = request.current;
     setSubmitting(true);
     setError(null);
+    setCopyStatus(null);
     setOneTime(null);
     try {
       const body = {
@@ -268,6 +276,8 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
       npRequireAgentServiceTokenV1(await response.json());
       if (requestAtStart?.signal.aborted) return;
       revokeRetry.current = null;
+      setOneTime(null);
+      setCopyStatus(null);
       await load();
     } catch (caught) {
       if (requestAtStart?.signal.aborted) return;
@@ -288,6 +298,8 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
     >
       {error ? (
         <div
+          ref={errorRef}
+          tabIndex={-1}
           role="alert"
           className="rounded-lg border border-red-300 bg-red-50 px-3 py-2.5 text-[13px] text-red-900"
         >
@@ -308,7 +320,11 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="min-w-0 break-words text-[18px] font-semibold [overflow-wrap:anywhere]">
+                <h2
+                  ref={headingRef}
+                  tabIndex={-1}
+                  className="min-w-0 break-words text-[18px] font-semibold [overflow-wrap:anywhere]"
+                >
                   {detail.principal.name}
                 </h2>
                 <Badge variant={detail.principal.status === "active" ? "brand" : "destructive"}>
@@ -332,6 +348,7 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
               Refresh
             </Button>
             <AgentPrincipalControls
+              onDialogClosed={() => headingRef.current?.focus()}
               principal={detail.principal}
               disabled={
                 submitting ||
@@ -385,12 +402,37 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
                     size="icon"
                     variant="outline"
                     aria-label="Copy token"
-                    onClick={() => void navigator.clipboard.writeText(oneTime.value)}
+                    onClick={() => {
+                      void (async () => {
+                        try {
+                          await navigator.clipboard.writeText(oneTime.value);
+                          setCopyStatus("Token copied to clipboard.");
+                        } catch {
+                          setCopyStatus(
+                            "Could not copy the token. Select and copy the visible token manually.",
+                          );
+                        }
+                      })();
+                    }}
                   >
                     <Copy className="size-4" />
                   </Button>
                 </div>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setOneTime(null)}>
+                {copyStatus ? (
+                  <p role="status" className="text-[12px]">
+                    {copyStatus}
+                  </p>
+                ) : null}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setOneTime(null);
+                    setCopyStatus(null);
+                    createTokenRef.current?.focus();
+                  }}
+                >
                   I saved it
                 </Button>
               </CardContent>
@@ -421,6 +463,7 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
                       <Input
                         id="token-expiry"
                         type="datetime-local"
+                        className="[color-scheme:light] dark:[color-scheme:dark]"
                         required
                         value={expiresAt}
                         onChange={(e) => setExpiresAt(e.target.value)}
@@ -430,7 +473,7 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
                       <Label htmlFor="token-transport">Transport</Label>
                       <select
                         id="token-transport"
-                        className="h-10 rounded-lg border border-neutral-200 bg-transparent px-3 text-[13px] sm:h-8 dark:border-neutral-800"
+                        className="h-10 min-w-0 w-full rounded-lg border border-neutral-200 bg-transparent px-3 text-[13px] sm:h-8 dark:border-neutral-800"
                         value={transport}
                         onChange={(e) => {
                           const next = e.target.value as NpAgentServiceTokenTransportV1;
@@ -454,7 +497,7 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
                       <Label htmlFor="token-exposure">Exposure</Label>
                       <select
                         id="token-exposure"
-                        className="h-10 rounded-lg border border-neutral-200 bg-transparent px-3 text-[13px] sm:h-8 dark:border-neutral-800"
+                        className="h-10 min-w-0 w-full rounded-lg border border-neutral-200 bg-transparent px-3 text-[13px] sm:h-8 dark:border-neutral-800"
                         value={exposure}
                         onChange={(e) =>
                           setExposure(e.target.value as NpAgentEnabledGatewayExposureMode)
@@ -495,6 +538,7 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
                     open another listener or port.
                   </p>
                   <Button
+                    ref={createTokenRef}
                     type="submit"
                     size="sm"
                     disabled={
@@ -530,8 +574,10 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
                       className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2.5 dark:border-neutral-800"
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-[13px] font-medium">{token.name}</p>
-                        <p className="truncate text-[11.5px] text-neutral-500">
+                        <p className="break-words text-[13px] font-medium leading-snug">
+                          {token.name}
+                        </p>
+                        <p className="break-words text-[11.5px] text-neutral-500">
                           {token.transport} · {token.exposureMode} · expires {token.expiresAt}
                         </p>
                       </div>

@@ -1,6 +1,16 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
+import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 import { signInViaForm } from "./fixtures/auth-helpers.js";
+
+async function activateWithKeyboard(page: Page, control: Locator) {
+  for (let step = 0; step < 80; step++) {
+    if (await control.evaluate((element) => element === document.activeElement)) break;
+    await page.keyboard.press("Tab");
+  }
+  await expect(control).toBeFocused();
+  await page.keyboard.press("Enter");
+}
 
 function expiredReadAction(id: string, principalId: string) {
   const digest = `cj1:sha256:${"A".repeat(43)}`;
@@ -291,7 +301,11 @@ test.describe("Agent Activity", () => {
 
   test("uses a reviewed reason and fresh versions for principal suspension, resumption, and revocation", async ({
     page,
-  }) => {
+  }, testInfo) => {
+    await isolateE2ERateLimitBucket(
+      page.context(),
+      245 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+    );
     const id = "11111111-1111-4111-8111-111111111111";
     const principal = {
       schemaVersion: "np.agent-principal.v1",
@@ -318,6 +332,7 @@ test.describe("Agent Activity", () => {
     };
     let invalid = false;
     const commands: Array<Record<string, unknown>> = [];
+    const attempts: Array<Record<string, unknown>> = [];
     await page.route(`**/api/admin/agents/gateway/principals/${id}**`, async (route) => {
       const operation = new URL(route.request().url()).pathname.split("/").at(-1);
       if (route.request().method() === "GET") {
@@ -328,6 +343,17 @@ test.describe("Agent Activity", () => {
         });
       } else {
         const command = route.request().postDataJSON() as Record<string, unknown>;
+        attempts.push(command);
+        if (attempts.length === 1) {
+          await route.fulfill({
+            status: 503,
+            json: {
+              status: 503,
+              error: { code: "SERVICE_UNAVAILABLE", message: "Principal change unavailable" },
+            },
+          });
+          return;
+        }
         commands.push(command);
         expect(command.expectedVersion).toBe(principal.rowVersion);
         expect(command.idempotencyKey).toEqual(expect.any(String));
@@ -347,15 +373,62 @@ test.describe("Agent Activity", () => {
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
       .toBe(true);
-    await page.getByRole("button", { name: "Suspend principal", exact: true }).click();
-    await page.getByLabel("Reason", { exact: true }).fill("Review access");
-    await page.getByRole("button", { name: "Confirm", exact: true }).click();
-    await page.getByRole("button", { name: "Resume principal", exact: true }).click();
+    const suspend = page.getByRole("button", { name: "Suspend principal", exact: true });
+    await activateWithKeyboard(page, suspend);
+    await expect(
+      page.getByRole("dialog").getByRole("heading", { name: "Suspend principal" }),
+    ).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(suspend).toBeFocused();
+    await activateWithKeyboard(page, suspend);
+    for (const width of [320, 768, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const colorScheme of ["light", "dark"] as const) {
+        await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+        await expect
+          .poll(() => page.evaluate(() => document.documentElement.classList.contains("dark")))
+          .toBe(colorScheme === "dark");
+        // Tailwind's neutral token may serialize as lab(), not rgb().
+        const expectedBackground = await page.evaluate((theme) => {
+          const probe = document.createElement("span");
+          probe.style.backgroundColor = theme === "dark" ? "var(--color-neutral-950)" : "#fff";
+          document.body.append(probe);
+          const color = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          return color;
+        }, colorScheme);
+        await expect(page.getByRole("dialog")).toHaveCSS("background-color", expectedBackground);
+        await expect
+          .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+          .toBe(true);
+        await page.screenshot({
+          path: testInfo.outputPath(`gateway-dialog-${width}-${colorScheme}.png`),
+          animations: "disabled",
+        });
+      }
+    }
+    await page.keyboard.press("Tab");
+    await expect(page.getByLabel("Reason", { exact: true })).toBeFocused();
+    await page.keyboard.insertText("Review access");
+    await activateWithKeyboard(page, page.getByRole("button", { name: "Confirm", exact: true }));
+    await expect(page.getByRole("dialog").getByRole("alert")).toBeFocused();
+    await expect(page.getByLabel("Reason", { exact: true })).toHaveValue("Review access");
+    await activateWithKeyboard(page, page.getByRole("button", { name: "Confirm", exact: true }));
+    expect(attempts[1]).toEqual(attempts[0]);
+    await activateWithKeyboard(
+      page,
+      page.getByRole("button", { name: "Resume principal", exact: true }),
+    );
     await expect(page.getByLabel("Reason", { exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Confirm", exact: true }).click();
-    await page.getByRole("button", { name: "Revoke principal", exact: true }).click();
-    await page.getByLabel("Reason", { exact: true }).fill("Retire access");
-    await page.getByRole("button", { name: "Confirm", exact: true }).click();
+    await activateWithKeyboard(page, page.getByRole("button", { name: "Confirm", exact: true }));
+    await activateWithKeyboard(
+      page,
+      page.getByRole("button", { name: "Revoke principal", exact: true }),
+    );
+    await page.keyboard.press("Tab");
+    await expect(page.getByLabel("Reason", { exact: true })).toBeFocused();
+    await page.keyboard.insertText("Retire access");
+    await activateWithKeyboard(page, page.getByRole("button", { name: "Confirm", exact: true }));
     await expect(page.getByRole("button", { name: "Revoke principal", exact: true })).toHaveCount(
       0,
     );

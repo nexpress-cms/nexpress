@@ -38,7 +38,9 @@ export function AgentPrincipalControls({
   disabled,
   onChanged,
   onAccessLost,
+  onDialogClosed,
 }: {
+  onDialogClosed: () => void;
   principal: NpAgentPrincipalV1;
   disabled: boolean;
   onChanged: () => Promise<void>;
@@ -49,8 +51,14 @@ export function AgentPrincipalControls({
     expectedVersion: number;
     idempotencyKey: string;
   } | null>(null);
+  const headingRef = React.useRef<HTMLHeadingElement>(null);
+  const invokerRef = React.useRef<HTMLButtonElement | null>(null);
+  const errorRef = React.useRef<HTMLParagraphElement>(null);
   const [reason, setReason] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (error) errorRef.current?.focus();
+  }, [error]);
   const [failure, setFailure] = React.useState<unknown>();
   const retryBlocked = useAgentRetryBlocked(failure);
   const [busy, setBusy] = React.useState(false);
@@ -110,7 +118,10 @@ export function AgentPrincipalControls({
         variant="outline"
         size="sm"
         disabled={disabled || busy || retryBlocked}
-        onClick={() => open(principal.status === "suspended" ? "resume" : "suspend")}
+        onClick={(event) => {
+          invokerRef.current = event.currentTarget;
+          open(principal.status === "suspended" ? "resume" : "suspend");
+        }}
       >
         {principal.status === "suspended" ? labels.resume : labels.suspend}
       </Button>
@@ -119,7 +130,10 @@ export function AgentPrincipalControls({
         variant="destructive"
         size="sm"
         disabled={disabled || busy || retryBlocked}
-        onClick={() => open("revoke")}
+        onClick={(event) => {
+          invokerRef.current = event.currentTarget;
+          open("revoke");
+        }}
       >
         {labels.revoke}
       </Button>
@@ -129,9 +143,22 @@ export function AgentPrincipalControls({
           if (!value && !busy) setRequest(null);
         }}
       >
-        <DialogContent>
+        <DialogContent
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            headingRef.current?.focus();
+          }}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            if (invokerRef.current?.isConnected && !invokerRef.current.disabled)
+              invokerRef.current.focus();
+            else onDialogClosed();
+          }}
+        >
           <DialogHeader>
-            <DialogTitle>{request ? labels[request.action] : "Principal access"}</DialogTitle>
+            <DialogTitle ref={headingRef} tabIndex={-1}>
+              {request ? labels[request.action] : "Principal access"}
+            </DialogTitle>
             <DialogDescription>
               {request?.action === "resume"
                 ? "The server will recheck current authority, scopes, and live credentials before resuming access."
@@ -165,7 +192,12 @@ export function AgentPrincipalControls({
                 change.
               </p>
               {error ? (
-                <p role="alert" className="text-[13px] text-red-700 dark:text-red-300">
+                <p
+                  ref={errorRef}
+                  tabIndex={-1}
+                  role="alert"
+                  className="text-[13px] text-red-700 dark:text-red-300"
+                >
                   {error}
                 </p>
               ) : null}

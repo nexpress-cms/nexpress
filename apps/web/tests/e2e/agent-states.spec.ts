@@ -140,6 +140,9 @@ test("Runtime shared read states preserve bounded large lists and fail closed", 
     for (const colorScheme of ["light", "dark"] as const) {
       await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
       await expect
+        .poll(() => page.evaluate(() => document.documentElement.classList.contains("dark")))
+        .toBe(colorScheme === "dark");
+      await expect
         .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
         .toBe(true);
       await cards.first().click({ trial: true });
@@ -170,4 +173,119 @@ test("Runtime shared read states preserve bounded large lists and fail closed", 
     await expect(cards).toHaveCount(0);
     await expect(page.getByText("UNVALIDATED_RUNTIME_VALUE")).toHaveCount(0);
   }
+});
+
+test("Policy list distinguishes delayed, populated, empty and failed reads across responsive layouts", async ({
+  page,
+}, testInfo) => {
+  let phase: "populated" | "empty" | "forbidden" | "unavailable" | "contract" = "populated";
+  let release = () => {};
+  let gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let reads = 0;
+  const items = Array.from({ length: 50 }, (_, index) => ({
+    schemaVersion: "np.agent-policy-detail.v1",
+    id: `11111111-1111-4111-8111-${String(index + 1).padStart(12, "0")}`,
+    rowVersion: 1,
+    version: 1,
+    status: "draft",
+    contentHash: `cj1:sha256:${"A".repeat(43)}`,
+    definition: {
+      schemaVersion: "np.agent-policy-definition.v1",
+      agentId: null,
+      name: `${"긴 한국어 정책 이름을 검토합니다 ".repeat(3)}${index}`,
+      instructions: "",
+      rules: catalog.defaultPolicyRules,
+    },
+    availableActions: ["agents.policies.simulate", "agents.policies.validate"],
+    createdAt: "2026-09-19T00:00:00.000Z",
+  }));
+  await page.route("**/api/admin/agents/policies*", async (route) => {
+    reads++;
+    await gate;
+    if (phase === "forbidden" || phase === "unavailable") {
+      const status = phase === "forbidden" ? 403 : 503;
+      return route.fulfill({
+        status,
+        json: {
+          status,
+          error: {
+            code: phase === "forbidden" ? "FORBIDDEN" : "SERVICE_UNAVAILABLE",
+            message: "Policy read unavailable",
+          },
+        },
+      });
+    }
+    return route.fulfill({
+      json:
+        phase === "contract"
+          ? { items, privateField: "UNVALIDATED_POLICY" }
+          : {
+              schemaVersion: "np.agent-policies-page.v1",
+              items: phase === "empty" ? [] : items,
+              nextCursor: null,
+            },
+    });
+  });
+  await signInAsE2EAdmin(page);
+  await page.goto("/admin/agents/policies");
+  await expect(page.getByRole("heading", { name: "Policies", exact: true })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Loading" })).toBeVisible();
+  await expect(page.getByText("No policies match this view.")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Apply policy filter" })).toBeDisabled();
+  release();
+  const cards = page.getByRole("link", { name: /긴 한국어 정책/ });
+  await expect(cards).toHaveCount(50);
+  for (const width of [320, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.classList.contains("dark")))
+        .toBe(colorScheme === "dark");
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+        .toBe(true);
+      await cards.last().click({ trial: true });
+      await cards.first().scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: testInfo.outputPath(`policy-list-${width}-${colorScheme}.png`),
+        animations: "disabled",
+      });
+    }
+  }
+  gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Refreshing" })).toBeVisible();
+  await expect(cards).toHaveCount(50);
+  await expect(page.getByRole("button", { name: "Apply policy filter" })).toBeDisabled();
+  release();
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+  await page.clock.install();
+  for (const next of ["empty", "unavailable", "contract", "forbidden"] as const) {
+    phase = next;
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    if (next === "empty")
+      await expect(page.getByText("No policies match this view.")).toBeVisible();
+    else await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
+    await expect(cards).toHaveCount(0);
+    await expect(page.getByText("UNVALIDATED_POLICY")).toHaveCount(0);
+    const stopped = reads;
+    await page.clock.fastForward(60_000);
+    expect(reads).toBe(stopped);
+  }
+  phase = "populated";
+  const refresh = page.getByRole("button", { name: "Refresh", exact: true });
+  for (
+    let step = 0;
+    step < 80 && !(await refresh.evaluate((element) => element === document.activeElement));
+    step++
+  )
+    await page.keyboard.press("Tab");
+  await expect(refresh).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(cards).toHaveCount(50);
 });

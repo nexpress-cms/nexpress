@@ -1,5 +1,6 @@
 "use client";
 
+import { AgentReadState } from "./agent-read-state.js";
 import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
 import { AgentChangeSetRollback } from "./agent-changeset-rollback.js";
 import { useAgentPolling } from "./use-agent-polling.js";
@@ -72,10 +73,16 @@ export function useAgentReviewRead<T>(
   const [revision, setRevision] = React.useState(0);
   const generation = React.useRef(0);
   const [backgroundRevision, incrementBackground] = React.useReducer((n: number) => n + 1, 0);
-  const request = React.useRef<{ path: string; controller: AbortController } | null>(null);
+  const request = React.useRef<{
+    path: string;
+    controller: AbortController;
+    backgroundRevision: number;
+  } | null>(null);
   const [stored, setStored] = React.useState<{
     path: string;
     revision: number;
+    backgroundRevision: number;
+    observedAt?: number;
     value: T | null;
     error: string | null;
     failure?: unknown;
@@ -85,14 +92,29 @@ export function useAgentReviewRead<T>(
   const blocked = waiting || (failure instanceof AgentStudioApiError && failure.status === 401);
   React.useEffect(() => {
     const controller = new AbortController();
-    request.current = { path, controller };
+    request.current = { path, controller, backgroundRevision };
     void read(path, parse, controller.signal)
       .then((value) => {
-        if (!controller.signal.aborted) setStored({ path, revision, value, error: null });
+        if (!controller.signal.aborted)
+          setStored({
+            path,
+            revision,
+            backgroundRevision,
+            observedAt: Date.now(),
+            value,
+            error: null,
+          });
       })
       .catch((error: unknown) => {
         if (!controller.signal.aborted)
-          setStored({ path, revision, value: null, error: formatError(error), failure: error });
+          setStored({
+            path,
+            revision,
+            backgroundRevision,
+            value: null,
+            error: formatError(error),
+            failure: error,
+          });
       });
     return () => controller.abort();
   }, [path, parse, revision, backgroundRevision, formatError]);
@@ -100,9 +122,15 @@ export function useAgentReviewRead<T>(
     (caught?: unknown) => {
       if (request.current?.path !== path) return;
       request.current.controller.abort();
+      const clearedBackgroundRevision = request.current.backgroundRevision;
       setStored((previous) => ({
         path,
         revision: generation.current,
+        backgroundRevision: clearedBackgroundRevision,
+        observedAt:
+          caught instanceof AgentStudioApiError && caught.status === 429
+            ? previous?.observedAt
+            : undefined,
         value:
           caught instanceof AgentStudioApiError && caught.status === 429 && previous?.path === path
             ? previous.value
@@ -119,6 +147,13 @@ export function useAgentReviewRead<T>(
     error: current?.error ?? null,
     failure,
     loading: current === null,
+    busy: current === null || current.backgroundRevision !== backgroundRevision,
+    refreshing:
+      current !== null &&
+      current.value !== null &&
+      current.backgroundRevision !== backgroundRevision,
+    invalidating: current === null && stored?.path === path && stored.value !== null,
+    observedAt: current?.observedAt,
     refresh: React.useCallback(() => {
       if (!blocked) setRevision(++generation.current);
     }, [blocked]),
@@ -273,7 +308,7 @@ export function AgentChangeSetListView({ queryString = "" }: { queryString?: str
     <AgentRecoveryBoundary error={result.failure} retry={result.refresh}>
       <Frame>
         <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={result.refresh}>
+          <Button variant="outline" disabled={result.busy} onClick={result.refresh}>
             Refresh
           </Button>
           <span className="text-sm">Newest first · bounded authorized history</span>
@@ -325,7 +360,13 @@ export function AgentChangeSetListView({ queryString = "" }: { queryString?: str
           </label>
           <Button type="submit">Apply filters</Button>
         </form>
-        {result.loading && <p role="status">Loading ChangeSets…</p>}
+        <AgentReadState
+          loading={result.busy}
+          refreshing={result.refreshing}
+          invalidating={result.invalidating}
+          observedAt={result.observedAt}
+          label="ChangeSets"
+        />
         {result.error && <p role="status">ChangeSet history is unavailable. {result.error}</p>}
         {result.value && (
           <>
@@ -626,7 +667,7 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
         ["queued", "rendering"].includes(changeSet.preview?.state ?? "") ||
         ["preparing", "executing"].includes(changeSet.rollback?.state ?? "")),
     ),
-    result.loading,
+    result.busy,
     result.refreshBackground,
   );
   const clear = result.clear;
@@ -694,6 +735,7 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
         </Link>
         <Button
           className="ml-3"
+          disabled={result.busy}
           variant="outline"
           onClick={() => {
             setPreview(null);
@@ -703,7 +745,13 @@ export function AgentChangeSetDetailView({ id }: { id: string }) {
         >
           Refresh
         </Button>
-        {result.loading && <p role="status">Loading ChangeSet…</p>}
+        <AgentReadState
+          loading={result.busy}
+          refreshing={result.refreshing}
+          invalidating={result.invalidating}
+          observedAt={result.observedAt}
+          label="ChangeSet"
+        />
         {result.error && <p role="alert">{result.error}</p>}
         {mutationError && <p role="alert">{mutationError}</p>}
         {result.value && changeSet && (
