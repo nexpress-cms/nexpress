@@ -16,6 +16,10 @@ Activity/review loading and refresh, additional connection/policy/Gateway fixtur
 and the remaining assistive-technology boundary. Historical gaps below describe
 the PR #1458 checkpoint; use the later records for current supported behavior.
 
+The [assistive-technology acceptance record](admin-assistive-technology-acceptance.md)
+reconciles remaining requirements and consolidates the actual screen-reader run.
+It also identifies success-path fixture gaps without claiming new product failures.
+
 ## Shipped route inventory
 
 Paths below are relative to `/admin/agents`. Page wrappers live in

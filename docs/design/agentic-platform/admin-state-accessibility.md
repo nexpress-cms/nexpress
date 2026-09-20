@@ -84,6 +84,10 @@ applicable Gateway/token flows, including failure/recovery. Full Admin/R5 remain
 open for that evidence and unsupported server-state requirements above. Completed
 retention/manual-input work is not reopened.
 
+The later [assistive-technology record](admin-assistive-technology-acceptance.md)
+records environment inspection, the unresolved speech-observation gate and one
+consolidated workflow checklist. It does not replace this bundle's browser evidence.
+
 ## Verification
 
 Final code gates: `pnpm verify --concurrency=1` passed 59 repository checks and
