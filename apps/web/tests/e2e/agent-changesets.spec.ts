@@ -120,6 +120,11 @@ test.describe("Agent ChangeSet review", () => {
     await expect.poll(() => reads).toBe(2);
     await expect(page.getByText("Review fixture proposal", { exact: true })).toBeVisible();
     await expect(page.getByText("Loading ChangeSet…", { exact: true })).toHaveCount(0);
+    await expect(
+      page.getByRole("status").filter({ hasText: "Refreshing ChangeSet" }),
+    ).toBeVisible();
+    await expect(page.getByText("Browser receipt time;", { exact: false })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeDisabled();
     releaseSecond?.();
     await expect(page.getByText("Second poll completed", { exact: true })).toBeVisible();
     await page.clock.fastForward(3_999);
@@ -693,3 +698,67 @@ for (const action of ["prepare", "request_approval", "execute", "cancel"] as con
     );
   });
 }
+
+test("ChangeSets delayed bounded queue remains readable across viewports", async ({
+  page,
+}, testInfo) => {
+  let release = () => {};
+  let gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const items = Array.from({ length: 25 }, (_, index) => {
+    const rowId = `21111111-1111-4111-8111-${String(index + 1).padStart(12, "0")}`;
+    return {
+      ...draft(),
+      id: rowId,
+      title: `한국어 검토 제안과 긴 변경 사항 설명 ${index + 1} `.repeat(3),
+    };
+  });
+  await page.route("**/api/admin/agents/changesets", async (route) => {
+    await gate;
+    await route.fulfill({
+      json: { schemaVersion: "np.agent-changesets.v1", items, nextCursor: null },
+    });
+  });
+  await signInAsE2EAdmin(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/admin/agents/changesets");
+  await expect(page.getByRole("status").filter({ hasText: "Loading ChangeSets" })).toBeVisible();
+  await expect(page.locator('[aria-hidden="true"] .h-24')).toBeVisible();
+  release();
+  const rows = page.getByRole("link", { name: /한국어 검토 제안/ });
+  await expect(rows).toHaveCount(25);
+  for (const width of [320, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const theme of ["light", "dark"] as const) {
+      await page.evaluate(
+        (value) => document.documentElement.classList.toggle("dark", value === "dark"),
+        theme,
+      );
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+        .toBe(true);
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      await page.screenshot({
+        path: testInfo.outputPath(`changesets-${width}-${theme}.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+  }
+  gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "authorizing controls are unavailable" }),
+  ).toBeVisible();
+  await expect(rows).toHaveCount(0);
+  release();
+  await expect(rows).toHaveCount(25);
+});

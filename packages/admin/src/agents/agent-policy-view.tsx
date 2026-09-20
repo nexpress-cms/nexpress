@@ -53,7 +53,7 @@ export function AgentPolicyListView({ query = "" }: { query?: string }) {
     >
       <div className="flex flex-wrap justify-between gap-3">
         <h2 className="text-lg font-semibold">Policies</h2>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={state.reload}>
             Refresh
           </Button>
@@ -96,7 +96,7 @@ export function AgentPolicyListView({ query = "" }: { query?: string }) {
         {state.value?.items.map((policy) => (
           <Card key={policy.id}>
             <CardHeader>
-              <CardTitle>
+              <CardTitle className="break-words leading-snug">
                 <Link className="underline" href={`/admin/agents/policies/${policy.id}`}>
                   {policy.definition.name}
                 </Link>

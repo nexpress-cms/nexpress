@@ -11,6 +11,11 @@ loading, refresh, failure and keyboard operation. It does not install providers,
 activate Agents, change authority, or add an incident-response product ahead of
 its implementation phase.
 
+The later [state and accessibility bundle](admin-state-accessibility.md) records
+Activity/review loading and refresh, additional connection/policy/Gateway fixtures,
+and the remaining assistive-technology boundary. Historical gaps below describe
+the PR #1458 checkpoint; use the later records for current supported behavior.
+
 ## Shipped route inventory
 
 Paths below are relative to `/admin/agents`. Page wrappers live in

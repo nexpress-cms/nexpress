@@ -1,6 +1,7 @@
 "use client";
 import { AgentRollbackReviewFacts } from "./agent-changeset-rollback.js";
 
+import { AgentReadState } from "./agent-read-state.js";
 import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
 import * as React from "react";
 import Link from "next/link";
@@ -118,7 +119,7 @@ export function AgentApprovalListView({ queryString = "" }: { queryString?: stri
   if (result.value?.nextCursor) next.set("cursor", result.value.nextCursor);
   return (
     <AgentRecoveryBoundary error={result.failure} retry={result.refresh}>
-      <div className="space-y-6">
+      <div className="min-w-0 space-y-6 [overflow-wrap:anywhere]">
         <h1 className="text-[22px] font-semibold">Agent Approvals</h1>
         <p>
           Current-site human decisions, ordered by soonest expiry, highest risk, then approval ID.
@@ -171,10 +172,16 @@ export function AgentApprovalListView({ queryString = "" }: { queryString?: stri
           <Button type="submit">Apply filters</Button>
         </form>
         {filterError && <p role="alert">{filterError}</p>}
-        <Button variant="outline" onClick={result.refresh}>
+        <Button variant="outline" disabled={result.busy} onClick={result.refresh}>
           Refresh
         </Button>
-        {result.loading && <p role="status">Loading approvals…</p>}
+        <AgentReadState
+          loading={result.busy}
+          refreshing={result.refreshing}
+          invalidating={result.invalidating}
+          observedAt={result.observedAt}
+          label="approvals"
+        />
         {result.error && <p role="status">{result.error}</p>}
         {result.value && result.value.items.length === 0 && (
           <p>
@@ -584,13 +591,14 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
   const detail = result.value;
   return (
     <AgentRecoveryBoundary error={result.failure} retry={result.refresh}>
-      <div className="space-y-6">
+      <div className="min-w-0 space-y-6 [overflow-wrap:anywhere]">
         <h1 className="text-[22px] font-semibold">Approval review</h1>
         <Link className="underline" href="/admin/agents/approvals">
           Back to approvals
         </Link>
         <Button
           className="ml-3"
+          disabled={result.busy}
           variant="outline"
           onClick={() => {
             setNotice(null);
@@ -599,7 +607,13 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
         >
           Refresh
         </Button>
-        {result.loading && <p role="status">Loading approval…</p>}
+        <AgentReadState
+          loading={result.busy}
+          refreshing={result.refreshing}
+          invalidating={result.invalidating}
+          observedAt={result.observedAt}
+          label="approval"
+        />
         {result.error && <p role="alert">{result.error}</p>}
         {notice && <p role="alert">{notice}</p>}
         {detail && (

@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   npRequireAgentConnectionV1,
+  npRequireAgentServiceTokenV1,
   npRequireAgentStudioOverviewV1,
 } from "@nexpress/core/agent-contract";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
@@ -203,4 +204,261 @@ test("connection keyboard creation preserves retry identity and clears invalid o
     /admin\/login/,
   );
   await expect(page.getByRole("heading", { name: "Keyboard connection" })).toHaveCount(0);
+});
+
+test("connection list and Gateway OAuth partial reads remain usable with bounded localized data", async ({
+  page,
+}, testInfo) => {
+  const connections = Array.from({ length: 50 }, (_, index) => ({
+    ...connection,
+    id: `11111111-1111-4111-8111-${String(index + 1).padStart(12, "0")}`,
+    name: `${"긴 한국어 연결 이름과 공급자 검토 ".repeat(3)}${index}`,
+  }));
+  await page.route("**/api/admin/agents/overview", (route) =>
+    route.fulfill({ json: { ...overview, connections } }),
+  );
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let failed = true;
+  let reads = 0;
+  await page.route("**/api/admin/agents/gateway/oauth-clients", async (route) => {
+    reads++;
+    await gate;
+    await route.fulfill(
+      failed
+        ? {
+            status: 503,
+            json: {
+              status: 503,
+              error: { code: "SERVICE_UNAVAILABLE", message: "OAuth client list unavailable" },
+            },
+          }
+        : { json: [] },
+    );
+  });
+  await signInAsE2EAdmin(page);
+  await page.goto("/admin/agents/connections");
+  const cards = page.getByRole("link", { name: /긴 한국어 연결/ });
+  await expect(cards).toHaveCount(50);
+  for (const width of [320, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.classList.contains("dark")))
+        .toBe(colorScheme === "dark");
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+        .toBe(true);
+      await cards.last().click({ trial: true });
+      await cards.first().scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: testInfo.outputPath(`connections-${width}-${colorScheme}.png`),
+        animations: "disabled",
+      });
+    }
+  }
+  await tabTo(page, page.getByRole("tab", { name: "Provider outbound" }));
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("tab", { name: "Gateway inbound" })).toBeFocused();
+  await expect(page.getByRole("status").filter({ hasText: "Loading OAuth clients" })).toBeVisible();
+  await expect(page.getByText("No registered OAuth clients for this site.")).toHaveCount(0);
+  release();
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "OAuth client list unavailable",
+  );
+  await expect(page.getByRole("button", { name: "Create principal", exact: true })).toBeEnabled();
+  await page.clock.install();
+  const stopped = reads;
+  await page.clock.fastForward(60_000);
+  expect(reads).toBe(stopped);
+  await page.setViewportSize({ width: 320, height: 900 });
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("gateway-oauth-partial-320.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+  failed = false;
+  await activate(page, page.getByRole("button", { name: "Reload OAuth clients" }));
+  await expect(page.getByText("No registered OAuth clients for this site.")).toBeVisible();
+  expect(reads).toBe(stopped + 1);
+});
+
+test("Gateway token keyboard issue, one-time disclosure and revocation preserve recovery identity", async ({
+  page,
+}, testInfo) => {
+  const tokenId = "22222222-2222-4222-8222-222222222222";
+  const principal = {
+    schemaVersion: "np.agent-principal.v1",
+    id,
+    siteId: "default",
+    kind: "external",
+    name: "키보드로 검토하는 외부 Gateway 운영 주체",
+    description: null,
+    status: "active",
+    scopes: ["site:read"],
+    authority: { kind: "user", userId: id, fingerprint: digest, deletedAt: null },
+    rowVersion: 1,
+    tokenVersion: 1,
+    autonomy: null,
+    gatewayExposureCeiling: "read",
+    createdAt: at,
+    updatedAt: at,
+    revokedAt: null,
+  };
+  const token = {
+    schemaVersion: "np.agent-service-token.v1",
+    id: tokenId,
+    siteId: "default",
+    principalId: id,
+    name: "긴 한국어 서비스 토큰 이름과 제한된 접근 검토 ".repeat(3).trim(),
+    prefix: `npst1_${tokenId}`,
+    status: "active_head",
+    scopes: ["site:read"],
+    transport: "stdio",
+    exposureMode: "read",
+    audience: "urn:nexpress:agent-gateway:stdio",
+    rowVersion: 1,
+    expiresAt: "2030-09-27T00:00:00.000Z",
+    lastUsedAt: null,
+    createdAt: at,
+    overlapExpiresAt: null,
+    revokedAt: null as string | null,
+  };
+  npRequireAgentServiceTokenV1(token);
+  const secret = `${token.prefix}_${"A".repeat(43)}`;
+  let issued = false;
+  let expired = false;
+  const creates: Record<string, unknown>[] = [];
+  const revokes: Record<string, unknown>[] = [];
+  await page.route("**/api/admin/agents/overview", (route) =>
+    route.fulfill({
+      json: {
+        ...overview,
+        gatewaySettings: { ...overview.gatewaySettings, stdio: "read" },
+        principals: [principal],
+      },
+    }),
+  );
+  await page.route(`**/api/admin/agents/gateway/principals/${id}`, (route) =>
+    route.fulfill(
+      expired
+        ? {
+            status: 401,
+            json: { status: 401, error: { code: "UNAUTHENTICATED", message: "Session expired" } },
+          }
+        : {
+            json: {
+              schemaVersion: "np.agent-studio-principal-detail.v1",
+              principal,
+              tokens: issued ? [token] : [],
+            },
+          },
+    ),
+  );
+  await page.route(`**/api/admin/agents/gateway/principals/${id}/tokens`, (route) => {
+    creates.push(route.request().postDataJSON() as Record<string, unknown>);
+    if (creates.length === 1)
+      return route.fulfill({
+        status: 503,
+        json: {
+          status: 503,
+          error: { code: "SERVICE_UNAVAILABLE", message: "Token issue unavailable" },
+        },
+      });
+    issued = true;
+    return route.fulfill({
+      json: { schemaVersion: "np.agent-studio-one-time-token.v1", token, value: secret },
+    });
+  });
+  await page.route(
+    `**/api/admin/agents/gateway/principals/${id}/tokens/${tokenId}/revoke`,
+    (route) => {
+      revokes.push(route.request().postDataJSON() as Record<string, unknown>);
+      if (revokes.length === 1)
+        return route.fulfill({
+          status: 503,
+          json: {
+            status: 503,
+            error: { code: "SERVICE_UNAVAILABLE", message: "Token revoke unavailable" },
+          },
+        });
+      token.status = "revoked";
+      token.rowVersion++;
+      token.revokedAt = at;
+      return route.fulfill({ json: token });
+    },
+  );
+  await signInAsE2EAdmin(page);
+  await page.goto(`/admin/agents/gateway/${id}`);
+  await expect(page.getByText("No tokens issued.", { exact: true })).toBeVisible();
+  await tabTo(page, page.getByLabel("Name", { exact: true }));
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.insertText(token.name);
+  await activate(page, page.getByRole("button", { name: "Create token", exact: true }));
+  await expect(page.getByRole("main").getByRole("alert")).toBeFocused();
+  await expect(page.getByText(secret, { exact: true })).toHaveCount(0);
+  await activate(page, page.getByRole("button", { name: "Retry", exact: true }));
+  await expect(page.getByRole("button", { name: "Create token", exact: true })).toBeEnabled();
+  await activate(page, page.getByRole("button", { name: "Create token", exact: true }));
+  await expect(page.getByRole("heading", { name: "Copy this token now" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+  expect(creates).toHaveLength(2);
+  expect(creates[1]).toEqual(creates[0]);
+  expect(creates[1]).toMatchObject({
+    expectedVersion: 1,
+    scopes: ["site:read"],
+    transport: "stdio",
+    exposure: "read",
+  });
+  expect(page.url()).not.toContain(secret);
+  for (const width of [320, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.classList.contains("dark")))
+        .toBe(colorScheme === "dark");
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+        .toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath(`gateway-token-${width}-${colorScheme}.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+  }
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await activate(page, page.getByRole("button", { name: "Copy token", exact: true }));
+  await expect(
+    page.getByRole("status").filter({ hasText: "Token copied to clipboard." }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(secret);
+  await activate(page, page.getByRole("button", { name: "I saved it", exact: true }));
+  await expect(page.getByRole("button", { name: "Create token", exact: true })).toBeFocused();
+  await expect(page.getByText(secret, { exact: true })).toHaveCount(0);
+  await activate(page, page.getByRole("button", { name: "Refresh", exact: true }));
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+  await expect(page.getByText(secret, { exact: true })).toHaveCount(0);
+  page.on("dialog", (dialog) => void dialog.accept());
+  await activate(page, page.getByRole("button", { name: "Revoke", exact: true }));
+  await expect(page.getByRole("main").getByRole("alert")).toBeFocused();
+  await activate(page, page.getByRole("button", { name: "Retry", exact: true }));
+  await expect(page.getByRole("button", { name: "Revoke", exact: true })).toBeEnabled();
+  await activate(page, page.getByRole("button", { name: "Revoke", exact: true }));
+  await expect(page.getByRole("button", { name: "Revoke", exact: true })).toHaveCount(0);
+  expect(revokes).toHaveLength(2);
+  expect(revokes[1]).toEqual(revokes[0]);
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+  expired = true;
+  await activate(page, page.getByRole("button", { name: "Refresh", exact: true }));
+  await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
+  await expect(page.getByText(token.name, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(secret, { exact: true })).toHaveCount(0);
 });
