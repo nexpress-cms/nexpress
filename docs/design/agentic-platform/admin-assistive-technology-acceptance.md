@@ -38,6 +38,10 @@ captured evidence. Repeatedly launching the same inaccessible panel would not
 supply that evidence. The outstanding input is one consolidated run by an operator
 who can hear VoiceOver or capture its actual output, using the scenarios below.
 
+See [Agent diagnostic presentation](admin-agent-diagnostics.md) for the follow-up
+Health/Doctor display and its explicit limits. It does not close actual AT or
+unavailable heartbeat, retention and budget measurement requirements.
+
 ## Requirement reconciliation
 
 | Requirement                                                                                     | Existing evidence and scope                                                                                                                                                           | Remaining work / verdict                                                                                                                             |

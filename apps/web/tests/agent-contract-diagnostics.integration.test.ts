@@ -217,8 +217,14 @@ describe.skipIf(skipIfNoTestDb())("Agent contract Doctor and Admin Health diagno
     expect(checks.filter((check) => check.id === "agents.contract")).toEqual([
       expect.objectContaining({
         state: "ok",
-        detail: expect.stringContaining("exact state, tenant, pointer, expiry, and journal"),
+        detail: expect.stringContaining("Providers: not-required · required 0 · available 0"),
       }),
     ]);
+    const detail = checks.find((check) => check.id === "agents.contract")?.detail;
+    expect(detail).toContain("Vault: not-required · required 0 · available 0");
+    expect(detail).toContain(
+      "No state counts returned. This does not establish runtime availability.",
+    );
+    expect(detail).toContain("Worker heartbeat and queue consumer liveness are not measured");
   });
 });

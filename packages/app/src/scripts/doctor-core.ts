@@ -103,6 +103,7 @@ import { findFreePort } from "./setup-server-ports.js";
 import { checkSiteQuotaUsage } from "./site-quota-check.js";
 import { checkCommunityRealtimeRetention } from "./community-realtime-check.js";
 import { npCheckCommunityRealtimeCapacityConfig } from "../lib/community-realtime-capacity.js";
+import { formatAgentHealthDetail } from "../lib/agent-health-presentation.js";
 
 type DoctorEnv = Record<string, string | undefined>;
 
@@ -251,13 +252,11 @@ async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult> {
       },
     });
     if (summary.issueCount === 0) {
-      const rows = summary.states.reduce((total, current) => total + current.count, 0);
-      const runtimeReadiness = `providers ${summary.readiness.providers.state} · vault ${summary.readiness.vault.state}`;
       return {
         id: "agents.contract",
         state: summary.state,
         label: "Agent persistence contracts",
-        detail: `${rows.toString()} rows · exact state, tenant, pointer, expiry, and journal invariants valid · ${runtimeReadiness}`,
+        detail: formatAgentHealthDetail(summary),
         ...(summary.state === "warn"
           ? {
               hint: "Persisted Agent state is valid, but this Doctor runtime cannot confirm one or more frozen provider or Vault adapters.",
@@ -271,9 +270,7 @@ async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult> {
       id: "agents.contract",
       state: "error",
       label: "Agent persistence contracts",
-      detail: `${summary.issueCount.toString()} blocking issue(s) · ${summary.issues
-        .map((current) => `${current.code}:${current.count.toString()}`)
-        .join(", ")}`,
+      detail: formatAgentHealthDetail(summary),
       hint: "Resolve the stable Agent issue codes before enabling Agent access. Doctor intentionally omits row ids, credentials, locators, and keyed digests.",
     };
   } catch {
