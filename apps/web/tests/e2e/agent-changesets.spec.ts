@@ -1,4 +1,10 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import {
+  npRequireAgentApprovalDetailV1,
+  npRequireAgentApprovalChallengeOutputV1,
+  npRequireAgentChangeSetReviewV1,
+} from "@nexpress/core/agent-contract";
+import { agentLifecycleCheckpoint } from "./fixtures/agent-lifecycle-checkpoint.js";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 /** Traverse the actual keyboard order; never assign DOM focus. */
@@ -761,4 +767,384 @@ test("ChangeSets delayed bounded queue remains readable across viewports", async
   await expect(rows).toHaveCount(0);
   release();
   await expect(rows).toHaveCount(25);
+});
+
+test("rollback succeeds through preparation, human approval and verified compensation", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    246 + testInfo.retry + testInfo.repeatEachIndex * 2,
+  );
+  await signInAsE2EAdmin(page);
+  const planId = "31111111-1111-4111-8111-111111111111";
+  const approvalId = "41111111-1111-4111-8111-111111111111";
+  const executionId = "51111111-1111-4111-8111-111111111111";
+  const rollbackHash = `cj1:sha256:${"b".repeat(43)}`;
+  const statementHash = `cj1:sha256:${"c".repeat(43)}`;
+  const at = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
+  const code = `${"R".repeat(42)}Q`;
+  const challengeOutput = npRequireAgentApprovalChallengeOutputV1({
+    schemaVersion: "np.agent-approval-challenge.v1",
+    approvalId,
+    approvalVersion: 2,
+    purpose: "approve",
+    challengeGeneration: 1,
+    challenge: code,
+    reauthentication: { mode: "none" },
+    expiresAt,
+  });
+  let stage = 0;
+  let approvalVersion = 1;
+  const commands: { path: string; body: Record<string, unknown> }[] = [];
+  let release = () => {};
+  let gate: Promise<void>;
+  function hold() {
+    gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+  }
+  function approval() {
+    return {
+      id: approvalId,
+      generation: 1,
+      state: stage === 4 ? "consumed" : stage === 3 ? "approved" : "pending",
+      statementHash,
+      requiredHumanCapabilities: ["content.publish"],
+      requiredHumanPredicates: [],
+      requestedAt: at,
+      expiresAt,
+      decidedAt: stage >= 3 ? at : null,
+    };
+  }
+  function review() {
+    const summary = {
+      rollbackPlanId: planId,
+      generation: 1,
+      state:
+        stage === 4
+          ? "verified"
+          : stage === 3
+            ? "approved"
+            : stage === 2
+              ? "approval_pending"
+              : "ready",
+      planHash: rollbackHash,
+      approvalId: stage >= 2 ? approvalId : null,
+      operationCount: 1,
+      createdAt: at,
+      expiresAt,
+      finishedAt: stage === 4 ? at : null,
+      terminalReason: null,
+    };
+    return npRequireAgentChangeSetReviewV1({
+      schemaVersion: "np.agent-changeset-review.v1",
+      changeSet: {
+        ...draft(),
+        state: stage === 4 ? "rolled_back" : "applied",
+        planHash: hash,
+        baseFingerprint: hash,
+        risk: { level: "low", reasonCodes: [], approvalMode: "human", reversible: true },
+        validation: { state: "valid", generation: 1, issueCount: 0, digest: hash, completedAt: at },
+        operations: draft().operations.map((op) => ({
+          ...op,
+          state: "applied",
+          afterHash: hash,
+          resultDigest: hash,
+        })),
+        execution: {
+          executionId: id,
+          state: "succeeded",
+          resultDigest: hash,
+          startedAt: at,
+          finishedAt: at,
+        },
+        rollback: stage > 0 ? summary : null,
+        createdAt: at,
+        updatedAt: at,
+        expiresAt,
+      },
+      requiredStaffCapabilities: ["content.publish"],
+      operations: [{ ordinal: 1, evidence: "available", fields: [] }],
+      executionDetail: null,
+      executionActions: [],
+      rollbackActions:
+        stage === 0
+          ? ["prepare"]
+          : stage === 1
+            ? ["request_approval", "cancel"]
+            : stage === 3
+              ? ["execute", "cancel"]
+              : [],
+      rollbackDetail:
+        stage === 0
+          ? null
+          : {
+              schemaVersion: "np.agent-rollback-detail.v1",
+              changeSetId: id,
+              summary: { ...summary },
+              version: stage + 1,
+              compensatesExecutionId: id,
+              originalPlanHash: hash,
+              appliedResultDigest: hash,
+              baseFingerprint: rollbackHash,
+              risk: { level: "low", reasonCodes: [], approvalMode: "human", reversible: true },
+              requiredScopes: ["changeset:apply"],
+              requiredHumanCapabilities: ["content.publish"],
+              requiredHumanPredicates: [],
+              policyHashes: [],
+              operations: [
+                {
+                  review: {
+                    ordinal: 1,
+                    evidence: "available",
+                    fields: [
+                      {
+                        path: "title",
+                        before: { presence: "present", value: "Applied title" },
+                        after: { presence: "present", value: "Original title" },
+                      },
+                    ],
+                  },
+                  originalOperationOrdinal: 1,
+                  rollbackClass: "full",
+                  residualCodes: [],
+                },
+              ],
+              approval: stage >= 2 ? approval() : null,
+              execution:
+                stage === 4
+                  ? {
+                      executionId,
+                      state: "succeeded",
+                      resultDigest: rollbackHash,
+                      startedAt: at,
+                      finishedAt: at,
+                    }
+                  : null,
+              verification:
+                stage === 4
+                  ? {
+                      state: "passed",
+                      requiredPassed: 1,
+                      requiredFailed: 0,
+                      advisoryWarnings: 0,
+                      digest: rollbackHash,
+                      completedAt: at,
+                    }
+                  : null,
+              checks: [],
+            },
+    });
+  }
+  function approvalDetail() {
+    return npRequireAgentApprovalDetailV1({
+      schemaVersion: "np.agent-approval-detail.v1",
+      review: null,
+      rollbackReview: review().rollbackDetail,
+      item: {
+        schemaVersion: "np.agent-approval-list-item.v1",
+        approval: approval(),
+        version: approvalVersion,
+        target: {
+          kind: "changeset_rollback",
+          changeSetId: id,
+          rollbackPlanId: planId,
+          planHash: rollbackHash,
+        },
+        intendedOperation: null,
+        scheduledFor: null,
+        statementHash,
+        reauthentication: { mode: "none" },
+        allowedDecisions:
+          stage === 2 ? ["approve", "reject", "revoke"] : stage === 3 ? ["revoke"] : [],
+        risk: "reversible",
+        capabilityId: "changeset.rollback",
+        capabilityContractVersion: 1,
+        capabilityFingerprint: hash,
+        policyHashes: [],
+        requiresLivePreview: false,
+        reviewSummary: {
+          operationCount: 1,
+          targetCount: 1,
+          previewState: null,
+          checksRun: null,
+          rollbackPlan: "available",
+        },
+        requiredScopes: ["changeset:apply"],
+        requester: { kind: "staff", id },
+      },
+    });
+  }
+  // Validate every server projection before navigation, including terminal evidence.
+  for (stage = 0; stage <= 4; stage++) {
+    review();
+    if (stage >= 2) approvalDetail();
+  }
+  stage = 0;
+  const unexpectedRequests: string[] = [];
+  await page.route("**/api/admin/agents/**", async (route) => {
+    unexpectedRequests.push(
+      `${route.request().method()} ${new URL(route.request().url()).pathname}`,
+    );
+    await route.abort();
+  });
+  await page.route("**/api/admin/agents/changesets/**", async (route) => {
+    if (route.request().method() === "POST") {
+      const path = new URL(route.request().url()).pathname;
+      commands.push({ path, body: route.request().postDataJSON() });
+      await gate;
+      if (path.endsWith("/request-approval")) {
+        stage = 2;
+        await route.fulfill({ json: approvalDetail() });
+      } else {
+        stage = path.endsWith("/execute") ? 4 : 1;
+        await route.fulfill({ json: review() });
+      }
+    } else await route.fulfill({ json: review() });
+  });
+  await page.route("**/api/admin/agents/approvals/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (route.request().method() !== "POST") {
+      await route.fulfill({ json: approvalDetail() });
+      return;
+    }
+    commands.push({ path, body: route.request().postDataJSON() });
+    if (path.endsWith("/decision-challenge")) {
+      approvalVersion = 2;
+      await route.fulfill({ json: challengeOutput });
+    } else {
+      await gate;
+      stage = 3;
+      approvalVersion = 3;
+      await route.fulfill({ json: approvalDetail() });
+    }
+  });
+  await page.goto(`/admin/agents/changesets/${id}`);
+  const facts = page.getByRole("region", { name: "Rollback plan facts" });
+  const prepare = page.getByRole("button", { name: "Prepare rollback plan", exact: true });
+  hold();
+  await tabTo(page, prepare);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => commands.length).toBe(1);
+  await expect(prepare).toBeDisabled();
+  await expect(facts).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  expect(commands).toHaveLength(1);
+  release();
+  await expect(facts.getByRole("heading", { name: "Compensation plan · ready" })).toBeVisible();
+  await expect(prepare).toHaveCount(0);
+  await agentLifecycleCheckpoint(page, "rollback-prepared");
+  const request = page.getByRole("button", { name: "Request rollback approval", exact: true });
+  hold();
+  await tabTo(page, request);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => commands.length).toBe(2);
+  await expect(request).toBeDisabled();
+  await expect(page.getByRole("link", { name: /Review rollback approval/ })).toHaveCount(0);
+  release();
+  const approvalLink = page.getByRole("link", {
+    name: "Review rollback approval · pending",
+    exact: true,
+  });
+  await expect(approvalLink).toBeVisible();
+  await expect(request).toHaveCount(0);
+  await tabTo(page, approvalLink);
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`/admin/agents/approvals/${approvalId}$`));
+  const approve = page.getByRole("button", { name: "Approve", exact: true });
+  await tabTo(page, approve);
+  await page.keyboard.press("Enter");
+  const confirm = page.getByRole("button", { name: "Confirm approve", exact: true });
+  await expect(confirm).toBeDisabled();
+  await page.getByLabel("Type this one-time confirmation value").fill(code);
+  await page.getByLabel("Human reason (optional)").fill("Reviewed original title compensation");
+  hold();
+  await tabTo(page, confirm);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => commands.length).toBe(4);
+  await expect(confirm).toBeDisabled();
+  await expect(page.getByText("approved", { exact: true })).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  expect(commands).toHaveLength(4);
+  release();
+  await expect(page.getByText("approved", { exact: true })).toBeVisible();
+  await expect(confirm).toHaveCount(0);
+  await expect(approve).toHaveCount(0);
+  await agentLifecycleCheckpoint(page, "rollback-approved");
+  await page.goto(`/admin/agents/changesets/${id}`);
+  const execute = page.getByRole("button", { name: "Execute approved rollback", exact: true });
+  await expect(facts.getByRole("heading", { name: "Compensation plan · approved" })).toBeVisible();
+  hold();
+  await tabTo(page, execute);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => commands.length).toBe(5);
+  await expect(execute).toBeDisabled();
+  await expect(facts.getByRole("heading", { name: "Compensation plan · verified" })).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  expect(commands).toHaveLength(5);
+  release();
+  await expect(facts.getByRole("heading", { name: "Compensation plan · verified" })).toBeVisible();
+  await expect(facts.getByText("succeeded", { exact: true })).toBeVisible();
+  await expect(facts.getByText("passed", { exact: true })).toBeVisible();
+  await expect(page.getByText("rolled_back", { exact: true })).toBeVisible();
+  for (const name of [
+    "Prepare rollback plan",
+    "Request rollback approval",
+    "Execute approved rollback",
+    "Cancel rollback plan",
+  ])
+    await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Review rollback approval · consumed", exact: true }),
+  ).toBeVisible();
+  await agentLifecycleCheckpoint(page, "rollback-verified");
+  const screenshot = testInfo.outputPath("rollback-verified.png");
+  await page.screenshot({ path: screenshot, fullPage: true, animations: "disabled" });
+  await testInfo.attach("rollback-verified", { path: screenshot, contentType: "image/png" });
+  expect(unexpectedRequests).toEqual([]);
+  expect(commands.map(({ path }) => path)).toEqual([
+    `/api/admin/agents/changesets/${id}/rollback-plans`,
+    `/api/admin/agents/changesets/${id}/rollback-plans/${planId}/request-approval`,
+    `/api/admin/agents/approvals/${approvalId}/decision-challenge`,
+    `/api/admin/agents/approvals/${approvalId}/approve`,
+    `/api/admin/agents/changesets/${id}/rollback-plans/${planId}/execute`,
+  ]);
+  expect(commands[0].body).toEqual({
+    schemaVersion: "np.agent-rollback-plan-create-input.v1",
+    expectedVersion: 1,
+    planHash: hash,
+    idempotencyKey: expect.any(String),
+  });
+  expect(commands[1].body).toEqual({
+    schemaVersion: "np.agent-rollback-plan-request-approval-input.v1",
+    expectedVersion: 2,
+    planHash: rollbackHash,
+    idempotencyKey: expect.any(String),
+  });
+  expect(commands[2].body).toEqual({
+    schemaVersion: "np.agent-approval-challenge-request.v1",
+    expectedApprovalVersion: 1,
+    statementHash,
+    purpose: "approve",
+    idempotencyKey: expect.any(String),
+  });
+  expect(commands[3].body).toEqual({
+    schemaVersion: "np.agent-approval-decision-input.v1",
+    expectedApprovalVersion: 2,
+    statementHash,
+    challengeGeneration: 1,
+    challenge: code,
+    reason: "Reviewed original title compensation",
+    idempotencyKey: expect.any(String),
+  });
+  expect(commands[4].body).toEqual({
+    schemaVersion: "np.agent-rollback-plan-execute-input.v1",
+    expectedVersion: 4,
+    planHash: rollbackHash,
+    approvalId,
+    statementHash,
+    idempotencyKey: expect.any(String),
+  });
 });

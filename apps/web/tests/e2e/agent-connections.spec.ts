@@ -1,9 +1,14 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import {
   npRequireAgentConnectionV1,
   npRequireAgentServiceTokenV1,
   npRequireAgentStudioOverviewV1,
 } from "@nexpress/core/agent-contract";
+import {
+  agentLifecycleCheckpoint,
+  isAgentLifecycleInteractive,
+} from "./fixtures/agent-lifecycle-checkpoint.js";
+import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 
 async function tabTo(page: Page, control: Locator) {
@@ -461,4 +466,96 @@ test("Gateway token keyboard issue, one-time disclosure and revocation preserve 
   await expect(page.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
   await expect(page.getByText(token.name, { exact: true })).toHaveCount(0);
   await expect(page.getByText(secret, { exact: true })).toHaveCount(0);
+});
+
+test("connection successful revocation waits for confirmed server state and stays terminal", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    240 + testInfo.retry + testInfo.repeatEachIndex * 2,
+  );
+  await signInAsE2EAdmin(page);
+  const revoked = npRequireAgentConnectionV1({
+    ...connection,
+    status: "revoked",
+    credential: { state: "absent" },
+    updatedAt: "2026-09-20T00:00:00.000Z",
+  });
+  let state = connection;
+  let detailReads = 0;
+  let pending: Route | undefined;
+  const writes: Record<string, unknown>[] = [];
+  const unexpected: string[] = [];
+  await page.route("**/api/admin/agents/**", async (route) => {
+    unexpected.push(`${route.request().method()} ${new URL(route.request().url()).pathname}`);
+    await route.abort();
+  });
+  await page.route(`**/api/admin/agents/connections/${id}`, async (route) => {
+    expect(route.request().method()).toBe("GET");
+    detailReads++;
+    await route.fulfill({ json: state });
+  });
+  await page.route(`**/api/admin/agents/connections/${id}/revoke`, (route) => {
+    expect(route.request().method()).toBe("POST");
+    writes.push(route.request().postDataJSON() as Record<string, unknown>);
+    pending = route;
+  });
+  await page.goto(`/admin/agents/connections/${id}`);
+  const main = page.getByRole("main");
+  const revoke = page.getByRole("button", { name: "Revoke", exact: true });
+  await expect(revoke).toBeEnabled();
+  expect(detailReads).toBe(1);
+  await agentLifecycleCheckpoint(
+    page,
+    "Connection ready: Resume, then CANCEL the native confirmation in interactive mode.",
+  );
+  if (!isAgentLifecycleInteractive()) {
+    page.once("dialog", async (dialog) => {
+      expect(dialog.type()).toBe("confirm");
+      expect(dialog.message()).toBe(`Revoke ${connection.name}? This is terminal.`);
+      await dialog.dismiss();
+    });
+  }
+  await activate(page, revoke);
+  await expect(revoke).toBeEnabled();
+  expect(writes).toHaveLength(0);
+  await expect(main.getByText("ready", { exact: true })).toBeVisible();
+  await agentLifecycleCheckpoint(
+    page,
+    "Connection cancellation retained ready state: Resume, then ACCEPT the native confirmation.",
+  );
+  if (!isAgentLifecycleInteractive()) page.once("dialog", (dialog) => void dialog.accept());
+  await activate(page, revoke);
+  await expect.poll(() => pending !== undefined).toBe(true);
+  await expect(page.getByRole("button", { name: "Revoking…", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeDisabled();
+  await expect(main.getByText("ready", { exact: true })).toBeVisible();
+  await expect(main.getByText("revoked", { exact: true })).toHaveCount(0);
+  expect(writes).toHaveLength(1);
+  expect(writes[0]).toEqual({
+    expectedVersion: connection.configVersion,
+    idempotencyKey: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    reason: "Revoked in Agent Studio",
+  });
+  await agentLifecycleCheckpoint(
+    page,
+    "Connection revocation pending: old returned state remains; no second submission is available.",
+  );
+  state = revoked;
+  await pending!.fulfill({ json: revoked });
+  await expect(main.getByText("revoked", { exact: true })).toBeVisible();
+  await expect(main.getByText("Credential: absent", { exact: true })).toBeVisible();
+  await expect(revoke).toBeDisabled();
+  await activate(page, page.getByRole("button", { name: "Refresh", exact: true }));
+  await expect.poll(() => detailReads).toBe(2);
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeEnabled();
+  await expect(main.getByText("revoked", { exact: true })).toBeVisible();
+  await expect(revoke).toBeDisabled();
+  expect(writes).toHaveLength(1);
+  expect(unexpected).toEqual([]);
+  await agentLifecycleCheckpoint(
+    page,
+    "Connection revoked: terminal state survives readback, credential absent, Revoke disabled.",
+  );
 });

@@ -10,6 +10,11 @@ not new failures reproduced during this assessment.
 provides a consolidated execution checklist and identifies missing evidence. It
 does not turn automated keyboard checks into speech results or close full Admin/R5.
 
+The later [success-lifecycle bundle](admin-success-lifecycle.md) supplies the three
+synthetic success paths and local observation checkpoints identified below. The
+preparation gaps in this original investigation are historical; actual AT output
+remains unverified until separately observed.
+
 ## Environment investigation
 
 | Observation                        | Result                                                                                                                                                                                                                                                                           |

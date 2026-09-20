@@ -15,8 +15,15 @@ import {
   npCreateDisabledAgentRuntimeSettingsV1,
   npBuildAgentPolicySimulationFixtureInputV1,
   npSimulateAgentPolicyV1,
+  npRequireAgentRuntimeStudioConfigurationV1,
+  npRequireAgentRuntimeStudioEffectiveV1,
+  npRequireAgentRuntimeStudioMutationResultV1,
+  npRequireAgentRuntimeStudioTriggerV1,
+  npRequireAgentRuntimeAdminInputV1,
 } from "@nexpress/core/agent-contract";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
+import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
+import { agentLifecycleCheckpoint } from "./fixtures/agent-lifecycle-checkpoint.js";
 
 /** Exercise the real tab order, including intervening controls; never assign DOM focus. */
 async function tabTo(page: Page, control: Locator) {
@@ -43,6 +50,166 @@ test("Runtime management stays unavailable without a host and new writes retain 
   });
   expect(response.status()).toBe(403);
   expect(await response.json()).toMatchObject({ error: { code: "CSRF_INVALID" } });
+});
+
+test("Runtime activation waits for acknowledgement and readback before showing active controls", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    243 + testInfo.retry + testInfo.repeatEachIndex * 2,
+  );
+  const draft = npRequireAgentRuntimeStudioConfigurationV1({ ...agent, rowVersion: 7, version: 2 });
+  const review = npRequireAgentRuntimeStudioEffectiveV1({
+    schemaVersion: "np.agent-effective-config.v1",
+    id,
+    rowVersion: draft.rowVersion,
+    versionId,
+    configHash: digest,
+    ready: true,
+    blockers: [],
+    policyRefs: [{ kind: "site-policy", id: "synthetic-site-policy", version: 3, digest }],
+    readiness,
+  });
+  const active = npRequireAgentRuntimeStudioConfigurationV1({
+    ...draft,
+    status: "active",
+    rowVersion: 8,
+    versionStatus: "active",
+    activeVersion: { id: versionId, configHash: digest },
+    draftVersionId: null,
+    manualRecipeIds: ["operator.worker-not-draining"],
+    availableActions: [
+      "agents.configurations.archive",
+      "agents.configurations.pause",
+      "agents.configurations.run",
+    ],
+  });
+  const acknowledgement = npRequireAgentRuntimeStudioMutationResultV1({
+    resourceId: id,
+    replayed: false,
+  });
+  let registeredTrigger: ReturnType<typeof npRequireAgentRuntimeStudioTriggerV1> | null = null;
+  const unexpected: string[] = [];
+  await page.route("**/api/admin/agents/**", async (route) => {
+    unexpected.push(`${route.request().method()} ${new URL(route.request().url()).pathname}`);
+    await route.abort();
+  });
+  const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
+  let activation: Route | undefined;
+  let readback: Route | undefined;
+  let acknowledged = false;
+  let detailReads = 0;
+  await page.route("**/api/admin/agents/capabilities", (route) => route.fulfill({ json: catalog }));
+  await page.route("**/api/admin/agents/triggers?**", (route) =>
+    route.fulfill({
+      json: {
+        schemaVersion: "np.agent-triggers-page.v1",
+        items: acknowledged && registeredTrigger ? [registeredTrigger] : [],
+        nextCursor: null,
+      },
+    }),
+  );
+  await page.route("**/api/admin/agents/configurations**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (route.request().method() === "POST") {
+      writes.push({ path, body: route.request().postDataJSON() as Record<string, unknown> });
+      activation = route;
+    } else if (path.endsWith("/effective")) {
+      await route.fulfill({ json: review });
+    } else if (path.endsWith(`/${id}`)) {
+      detailReads++;
+      if (acknowledged) readback = route;
+      else await route.fulfill({ json: draft });
+    } else {
+      throw new Error(`Unexpected synthetic activation read: ${path}`);
+    }
+  });
+  await signInAsE2EAdmin(page);
+  await page.goto(`/admin/agents/configurations/${id}`);
+  const activate = page.getByRole("button", { name: "Activate reviewed version", exact: true });
+  const draftStatus = page.getByText("draft · operator · version 2 (draft)", { exact: true });
+  const activeStatus = page.getByText("active · operator · version 2 (active)", { exact: true });
+  await expect(draftStatus).toBeVisible();
+  await expect(activate).toBeDisabled();
+  await page.getByRole("button", { name: "Review effective configuration", exact: true }).click();
+  await expect(page.getByText("Resolved policy references: 1", { exact: true })).toBeVisible();
+  await activate.click();
+  await page.getByRole("button", { name: "Add manual trigger", exact: true }).click();
+  const enable = page.getByLabel("Enable after activation", { exact: true });
+  await enable.check();
+  expect(writes).toHaveLength(0);
+  await agentLifecycleCheckpoint(page, "activation-ready");
+  const confirm = page.getByRole("button", { name: "Confirm", exact: true });
+  await tabTo(page, confirm);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => activation !== undefined).toBe(true);
+  const submitting = page.getByRole("button", { name: "Submitting…", exact: true });
+  await expect(submitting).toBeDisabled();
+  await expect(enable).toBeDisabled();
+  await expect(activate).toBeDisabled();
+  await page.keyboard.press("Enter");
+  expect(writes).toHaveLength(1);
+  const submitted = npRequireAgentRuntimeAdminInputV1(
+    "agents.configurations.activate",
+    writes[0].body,
+  );
+  expect(submitted.triggers).toHaveLength(1);
+  const submittedTrigger = submitted.triggers![0];
+  const triggerId = submittedTrigger.definition.id;
+  expect(triggerId).toMatch(
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
+  registeredTrigger = npRequireAgentRuntimeStudioTriggerV1({
+    schemaVersion: "np.agent-trigger-detail.v1",
+    agentId: id,
+    agentVersionId: versionId,
+    definition: submittedTrigger.definition,
+    enabled: submittedTrigger.enabled,
+    nextRunAt: null,
+    createdAt: at,
+    updatedAt: at,
+  });
+  expect(writes[0]).toEqual({
+    path: `/api/admin/agents/configurations/${id}/activate`,
+    body: {
+      expectedVersion: 7,
+      idempotencyKey: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      configHash: review.configHash,
+      reviewedPolicyRefs: review.policyRefs,
+      triggers: [{ definition: { type: "manual", id: triggerId }, enabled: true }],
+    },
+  });
+  await expect(draftStatus).toBeVisible();
+  await expect(activeStatus).toHaveCount(0);
+  expect(detailReads).toBe(1);
+  acknowledged = true;
+  await activation!.fulfill({ json: acknowledgement });
+  await expect.poll(() => readback !== undefined).toBe(true);
+  await expect(page.getByRole("status").filter({ hasText: "Refreshing" })).toBeVisible();
+  await expect(draftStatus).toBeVisible();
+  await expect(activeStatus).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Pause Agent", exact: true })).toHaveCount(0);
+  await readback!.fulfill({ json: active });
+  await expect(activeStatus).toBeVisible();
+  await expect(activate).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Pause Agent", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Run now", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Archive Agent", exact: true })).toBeEnabled();
+  await expect(page.getByText("manual · enabled", { exact: true })).toBeVisible();
+  await expect(page.getByText(triggerId, { exact: true })).toBeVisible();
+  await expect(page.getByText("Effective configuration review", { exact: true })).toHaveCount(0);
+  expect(detailReads).toBe(2);
+  expect(writes).toHaveLength(1);
+  expect(unexpected).toEqual([]);
+  await agentLifecycleCheckpoint(page, "activation-returned-active");
+  const screenshot = testInfo.outputPath("activation-returned-active.png");
+  await page.screenshot({ path: screenshot, fullPage: true, animations: "disabled" });
+  await testInfo.attach("activation-returned-active", {
+    path: screenshot,
+    contentType: "image/png",
+  });
 });
 
 test("Runtime Agent filtering and activation keep the reviewed version and trigger plan", async ({
