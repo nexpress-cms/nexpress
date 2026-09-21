@@ -1,3 +1,7 @@
+import {
+  npIsAgentWorkerQueueName,
+  type NpWorkerSubscriptionV1,
+} from "../jobs-contract/worker-subscription-contract.js";
 import { PgBoss, type ConstructorOptions, type Job } from "pg-boss";
 import { NP_AGENT_JOB_REFERENCE_FENCE_INSTALL_SQL_V1 } from "../agent/reference-fence-sql.js";
 import {
@@ -76,6 +80,49 @@ export class PgBossAdapter implements NpJobQueue {
     register: () => Promise<void>;
   }> = [];
   private paused = false;
+  private subscriptionState: NpWorkerSubscriptionV1["state"] = "unavailable";
+  private readonly subscribedQueues = new Set<string>();
+  private subscriptionGeneration = 0;
+  private subscriptionTransitions = 0;
+
+  getWorkerSubscriptionEvidence(): NpWorkerSubscriptionV1 {
+    const registeredAgentQueues = [
+      ...new Set(
+        this.workRegistrations.map(({ queueName }) => queueName).filter(npIsAgentWorkerQueueName),
+      ),
+    ].sort();
+    return {
+      schemaVersion: "np.worker-subscription.v1",
+      state: this.subscriptionState,
+      registeredAgentQueues,
+      agentQueues:
+        this.subscriptionState === "active"
+          ? [...this.subscribedQueues].filter(npIsAgentWorkerQueueName).sort()
+          : [],
+    };
+  }
+
+  private async withSubscriptionTransition(
+    state: NpWorkerSubscriptionV1["state"],
+    operation: () => Promise<void>,
+  ): Promise<void> {
+    const generation = ++this.subscriptionGeneration;
+    // Overlapping lifecycle operations cannot establish a coherent snapshot.
+    // Invalidate both completions without changing the caller's operation.
+    if (++this.subscriptionTransitions > 1) ++this.subscriptionGeneration;
+    this.subscriptionState = "transitioning";
+    try {
+      await operation();
+      if (generation === this.subscriptionGeneration) this.subscriptionState = state;
+    } catch (error) {
+      if (generation === this.subscriptionGeneration) this.subscriptionState = "unavailable";
+      throw error;
+    } finally {
+      if (--this.subscriptionTransitions === 0 && this.subscriptionState === "transitioning") {
+        this.subscriptionState = "unavailable";
+      }
+    }
+  }
   /**
    * Flips `true` after `start()` runs (full worker mode). `startProducer()`
    * doesn't set it. Used by `reconcilePluginSchedules()` to tell admins
@@ -123,9 +170,12 @@ export class PgBossAdapter implements NpJobQueue {
    * non-worker process (e.g. the Next.js server) so it can enqueue jobs.
    */
   async startProducer(): Promise<void> {
-    await this.boss.start();
-    await this.ensureReferenceGuards();
-    await this.ensureSearchReindexQueue();
+    const state = this.workerStarted ? this.subscriptionState : "producer";
+    await this.withSubscriptionTransition(state, async () => {
+      await this.boss.start();
+      await this.ensureReferenceGuards();
+      await this.ensureSearchReindexQueue();
+    });
   }
 
   /**
@@ -134,6 +184,10 @@ export class PgBossAdapter implements NpJobQueue {
    * this from the dedicated worker process.
    */
   async start(): Promise<void> {
+    await this.withSubscriptionTransition("active", () => this.startSubscriptions());
+  }
+
+  private async startSubscriptions(): Promise<void> {
     await this.boss.start();
     await this.ensureReferenceGuards();
 
@@ -193,8 +247,9 @@ export class PgBossAdapter implements NpJobQueue {
           }
         });
       };
-      this.workRegistrations.push({ queueName, register });
       await register();
+      this.subscribedQueues.add(queueName);
+      this.workRegistrations.push({ queueName, register });
     };
 
     const handlers = getAllJobHandlers();
@@ -256,8 +311,9 @@ export class PgBossAdapter implements NpJobQueue {
           }
         });
       };
-      this.workRegistrations.push({ queueName, register });
       await register();
+      this.subscribedQueues.add(queueName);
+      this.workRegistrations.push({ queueName, register });
     }
     this.workerStarted = true;
   }
@@ -291,10 +347,15 @@ export class PgBossAdapter implements NpJobQueue {
    */
   async pauseProcessing(): Promise<void> {
     if (this.paused) return;
-    for (const { queueName } of this.workRegistrations) {
-      await this.boss.offWork(queueName);
-    }
-    this.paused = true;
+    await this.withSubscriptionTransition("paused", async () => {
+      for (const { queueName } of this.workRegistrations) {
+        if (this.subscribedQueues.has(queueName)) {
+          await this.boss.offWork(queueName);
+          this.subscribedQueues.delete(queueName);
+        }
+      }
+      this.paused = true;
+    });
     getLogger().info("Job processing paused", {
       queues: this.workRegistrations.length,
     });
@@ -303,10 +364,15 @@ export class PgBossAdapter implements NpJobQueue {
   /** Phase 20.2 — re-run every captured `boss.work()` registration. Idempotent. */
   async resumeProcessing(): Promise<void> {
     if (!this.paused) return;
-    for (const { register } of this.workRegistrations) {
-      await register();
-    }
-    this.paused = false;
+    await this.withSubscriptionTransition("active", async () => {
+      for (const { queueName, register } of this.workRegistrations) {
+        if (!this.subscribedQueues.has(queueName)) {
+          await register();
+          this.subscribedQueues.add(queueName);
+        }
+      }
+      this.paused = false;
+    });
     getLogger().info("Job processing resumed", {
       queues: this.workRegistrations.length,
     });
@@ -334,6 +400,9 @@ export class PgBossAdapter implements NpJobQueue {
   }
 
   async stop(): Promise<void> {
+    ++this.subscriptionGeneration;
+    this.subscriptionState = "stopped";
+    this.subscribedQueues.clear();
     await this.boss.stop({ graceful: true, timeout: 30000 });
   }
 

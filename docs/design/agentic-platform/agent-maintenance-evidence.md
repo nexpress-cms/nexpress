@@ -92,9 +92,10 @@ cache was moved aside before checking completed builds again.
 ## Remaining boundary
 
 The subsequent [budget measurement evidence bundle](agent-budget-evidence.md)
-adds actual measurement observations. Agent-specific remote consumer liveness
-and overall maintenance readiness still require evidence from their owning services. Generic
-heartbeats and successful cursor passes cannot prove those properties. Actual
+adds actual measurement observations. [Worker subscription evidence](agent-worker-evidence.md)
+adds versioned observations from the queue owner. End-to-end job progress and
+overall maintenance readiness still require evidence from their owning services.
+Generic heartbeats and successful cursor passes cannot prove those properties. Actual
 spoken assistive-technology acceptance remains open in the
 [operator checklist](admin-assistive-technology-acceptance.md). No provider calls,
 credentials, automatic activation or publication are part of this bundle.

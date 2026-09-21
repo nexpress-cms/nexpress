@@ -1,53 +1,62 @@
 # Current work handoff
 
-Observed 2026-09-21 KST. Verify Git state and active checks before continuing.
+Observed 2026-09-21 KST. Verify Git state before acting.
 
 ## Objective and authorization
 
-- User authorized budget measurement evidence in Health/Doctor after PR #1464.
-  Implementation, self-review and final verification are complete; changes are uncommitted.
-- User now authorizes commit, push, PR and squash merge after exact-head CI,
-  then selection of the next task. Next implementation awaits instruction.
-- Keep versions, changesets and lockfile unchanged. No provider calls, credentials,
-  activation, publication or Version PR #1366 merge.
-- Delegated App presentation and PostgreSQL verification were collected.
+- User authorized the Agent worker subscription evidence implementation after
+  PR #1465. Implementation, self-review and verification are complete and uncommitted.
+- User now authorized commit, push, PR and squash merge of this bundle,
+  then choosing the next task. Next implementation awaits a separate instruction.
+- Keep versions, changesets and lockfile unchanged. No provider calls, new
+  credentials, automatic worker/runtime activation, publication or Version PR #1366 merge.
+- Delegated lifecycle, surfaces and integration lanes returned their results;
+  coordinator reviewed and completed the combined gates.
 
 ## Observed checkout
 
-- Implementation `/Users/baesw/.codex/worktrees/2e7d/nexpress`, branch
-  `codex/agent-budget-evidence`, baseline `36ecadb1369142d554207150f05e3083664b9a69`.
-  Pending uncommitted changes belong to this bundle; a new checkout lacks them.
-- Primary `/Users/baesw/development/nexpress`: main at that baseline, only local
-  handoff modified. Preserve it when synchronizing.
-- PR #1464 exact-head CI `35563124979`, merge CI `35564164095` and Release
-  `35564163731` all passed before starting this bundle.
+- Implementation: `/Users/baesw/.codex/worktrees/agent-worker-evidence/nexpress`,
+  branch `codex/agent-worker-evidence`, HEAD `6217e0a1074e26be1411bd8cff896d87cff3d45b`.
+  All pending code/tests/docs in this worktree belong to this bundle; no commit exists.
+- Primary `/Users/baesw/development/nexpress` remains on main at `6217e0a1`, with
+  only the local handoff updated to point to the implementation worktree.
+  A fresh worktree will not contain these uncommitted changes.
+- Previous PR #1465 is merged. Its exact merge-head CI `35573451301` and
+  Release `35573451153` both passed; this grants no publication authority.
 
 ## Implementation and evidence
 
-- [Budget measurement evidence](../design/agentic-platform/agent-budget-evidence.md)
-  owns requirements, contract, scope, verification and limitations.
-- New aggregate budget health contract samples first 25 configured sites and uses
-  existing usage-known and actual measurement inside existing site control/quota
-  transactions. Measured, unresolved and unavailable counts remain distinct.
-- Doctor wraps its original connected Client; Health uses existing singleton DB.
-  No persistence writes, new pools, accounting changes or activation. No site IDs,
-  per-site amounts, cross-site usage totals or new readiness severity.
-- Scheduling/SQL budgets and original timeout restoration are explicit. Supply
-  root DB handles so each site's locks are released before the next observation.
-- Focused Core 5/5, App 57/57; full Core units 2,109; PostgreSQL 57/57;
-  verify 113/113 tasks; lint 41/41; strict E2E TypeScript; browser 87/87 without
-  retries. Six budget viewport/theme captures were inspected.
-- Fresh packed Core/App consumer 8/8 stages; 434/203 dist files match installed
-  bytes; 38 unchanged package artifacts reused. Corrected fixture count and Doctor
-  generic-type build failures are documented with final logs in the flow.
-- No unresolved product findings remain in this bundle. Unchanged broader gates
-  were reused, not claimed as a new full R5 acceptance.
+- [Worker subscription evidence](../design/agentic-platform/agent-worker-evidence.md)
+  owns the contract, trust boundary, implementation, verification and limitations.
+- Existing pg-boss/worker/heartbeat owners record successful subscriptions and
+  fail closed for lifecycle transitions/partial failures. Host metadata cannot
+  forge the reserved versioned observation. Existing outer contracts and DB schema remain unchanged.
+- The bounded read collector projects aggregate categories from the latest 100
+  heartbeats, preserves unknown versus zero, and uses the original Health/Doctor
+  DB ownership. Shared protected Health/Doctor presentation preserves severity.
+- Final verify 113/113 tasks; lint 41/41; Core units 2,116; PostgreSQL 59/59
+  (Core 8, Web 51); focused lifecycle 24, aggregate contract 2, App 12; strict E2E types.
+- Production browser 86/87 initial passes; the existing mobile collection-list
+  draft-POST wait timed out. Targeted recheck passed unchanged (1/1, 2.6 seconds).
+  Do not describe this as an uninterrupted 87-pass run. Six worker captures
+  inspected at 320/768/1280 light/dark; actual browser snapshot has no workers.
+- Fresh packed Core/App consumer 8/8 stages; 435/203 dist files match installed
+  bytes. Reused 38 unchanged package artifacts. Not a new full 40-package/R5 gate.
+- Detailed logs `/tmp/np-worker-*`; generated browser public files moved to
+  `/tmp/np-worker-generated-public`. Test-only ignored `.env.local` remains in
+  the implementation reference app. Existing Turbo cache is reused by symlink.
+- Source self-review and documentation checks passed. Cold dependency output
+  and cache setup failures were resolved before the completed gates; no test
+  deletions or timeout increases were used to hide them.
 
 ## Next boundary
 
-- Commit and squash merge this bundle after exact-head CI passes.
-- Refresh this handoff after merge; start the next requested bundle in a fresh thread.
-- Measurement success is not remaining capacity, provider availability or Runtime
-  activation readiness. Remote Agent consumer liveness remains separately unproven.
-- Actual spoken AT still requires the [operator checklist](../design/agentic-platform/admin-assistive-technology-acceptance.md).
-  Do not fabricate speech evidence or repeat the failed VoiceOver investigation.
+- On explicit merge request, review this worktree's complete diff, preserve the
+  version constraints, commit the coherent bundle, push/create one PR and wait
+  for exact-head required CI before squash merge. Refresh this handoff after merge.
+- Subscription plus fresh heartbeat is not job progress, provider readiness,
+  authority or all-queue coverage. Stop markers do not prove drain completion.
+- Actual spoken assistive-technology acceptance remains an operator checklist;
+  do not fabricate evidence or claim full R5 acceptance from this bundle.
+- Choose the next coherent bundle after merge; do not start another implementation
+  or lose pending work by moving to a fresh checkout.

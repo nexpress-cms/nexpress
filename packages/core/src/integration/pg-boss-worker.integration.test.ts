@@ -1,4 +1,6 @@
 import { sql } from "drizzle-orm";
+import { npCollectAgentWorkerHealthV1 } from "../agent/worker-health.js";
+import { startHeartbeatLoop } from "../jobs/heartbeat.js";
 import { PgBossAdapter } from "../jobs/pg-boss-adapter.js";
 import { registerBuiltinHandlers } from "../jobs/builtin-handlers.js";
 import { npAuditEvents } from "../db/schema/community.js";
@@ -63,7 +65,7 @@ describe.skipIf(skipIfNoTestDb())("pg-boss worker integration", () => {
     if (!url) throw new Error("TEST_DATABASE_URL not set");
 
     await startWorker(url, {
-      heartbeat: false,
+      heartbeat: true,
       installSignalHandlers: false,
     });
 
@@ -74,6 +76,13 @@ describe.skipIf(skipIfNoTestDb())("pg-boss worker integration", () => {
       "Timed out waiting for pg-boss to run the test handler.",
     );
 
+    await expect.poll(async () => (await npCollectAgentWorkerHealthV1()).sampledWorkers).toBe(1);
+    expect(await npCollectAgentWorkerHealthV1()).toMatchObject({
+      state: "observed",
+      unknownWorkers: 0,
+    });
+    await stopWorker();
+    expect((await npCollectAgentWorkerHealthV1()).stoppedWorkers).toBe(1);
     expect(jobId).not.toBe("");
     expect(result).toEqual({
       token,
@@ -90,8 +99,23 @@ describe.skipIf(skipIfNoTestDb())("pg-boss worker integration", () => {
       resolveSiteId: (data: { siteId: string }) => data.siteId,
     });
     const adapter = new PgBossAdapter(url);
+    let heartbeat: ReturnType<typeof startHeartbeatLoop> | undefined;
     try {
       await adapter.start();
+      expect(adapter.getWorkerSubscriptionEvidence()).toMatchObject({
+        state: "active",
+        agentQueues: ["agent.runExecute"],
+      });
+      heartbeat = startHeartbeatLoop({}, 20, () => adapter.getWorkerSubscriptionEvidence());
+      await expect
+        .poll(async () => (await npCollectAgentWorkerHealthV1()).subscribedWorkers)
+        .toBe(1);
+      await adapter.pauseProcessing();
+      await expect.poll(async () => (await npCollectAgentWorkerHealthV1()).pausedWorkers).toBe(1);
+      await adapter.resumeProcessing();
+      await expect
+        .poll(async () => (await npCollectAgentWorkerHealthV1()).subscribedWorkers)
+        .toBe(1);
       await adapter.pauseProcessing();
       await adapter.scheduleRecurring();
       expect(
@@ -147,8 +171,17 @@ describe.skipIf(skipIfNoTestDb())("pg-boss worker integration", () => {
         await adapter.listJobs({ name: "plugin.scheduledTask", source: "live" }),
       ).toMatchObject({ total: 1 });
     } finally {
+      await heartbeat?.stop();
       await adapter.stop();
     }
+    expect(adapter.getWorkerSubscriptionEvidence()).toMatchObject({
+      state: "stopped",
+      agentQueues: [],
+    });
+    expect(await npCollectAgentWorkerHealthV1()).toMatchObject({
+      subscribedWorkers: 0,
+      stoppedWorkers: 1,
+    });
   });
 });
 
