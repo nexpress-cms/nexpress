@@ -159,7 +159,10 @@ export function AgentStudioView({ section }: { section: AgentStudioSection }) {
         >
           <span>{error}</span>
           <Button type="button" variant="outline" size="sm" onClick={() => void reload()}>
-            Retry
+            {failure instanceof AgentStudioApiError &&
+            failure.diagnostics?.recovery === "retry-read"
+              ? "Retry"
+              : "Reload current state"}
           </Button>
         </div>
       ) : null}

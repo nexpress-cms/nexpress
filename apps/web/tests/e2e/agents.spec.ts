@@ -1,3 +1,4 @@
+import { errorDiagnosticsHeaders } from "./fixtures/error-diagnostics.js";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
@@ -112,7 +113,14 @@ test.describe("Agent Activity", () => {
       } else if (denied) {
         await route.fulfill({
           status: denied,
-          headers: denied === 429 ? { "Retry-After": "5" } : {},
+          headers: {
+            ...errorDiagnosticsHeaders(
+              denied,
+              "ACTIVITY_FORBIDDEN",
+              denied === 429 ? "retry-read" : denied === 401 ? "reauthenticate" : "none",
+            ),
+            ...(denied === 429 ? { "Retry-After": "5" } : {}),
+          },
           json: {
             status: denied,
             error: { code: "ACTIVITY_FORBIDDEN", message: "Activity permission is required." },
@@ -446,7 +454,7 @@ test.describe("Agent Activity", () => {
     await expect(page.getByRole("heading", { name: principal.name, exact: true })).toHaveCount(0);
     await expect(page.getByText("PRIVATE_PRINCIPAL_PAYLOAD")).toHaveCount(0);
     invalid = false;
-    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await page.getByRole("button", { name: "Reload current state", exact: true }).click();
     await expect(page.getByRole("heading", { name: principal.name, exact: true })).toBeVisible();
   });
 });

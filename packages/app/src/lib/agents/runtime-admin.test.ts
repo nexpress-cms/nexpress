@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { npApiErrorDiagnosticsHeader } from "@nexpress/core/api-contract";
 import { NpAuthError, NpForbiddenError } from "@nexpress/core";
 import {
   npAgentRuntimeAdminOperationIdsV1,
@@ -72,6 +73,24 @@ beforeEach(() => {
   });
 });
 describe("Runtime Studio shared HTTP admission", () => {
+  it("declares recovery from the operation contract, never the supplied HTTP method", async () => {
+    mocks.runtime.mockReturnValue(undefined);
+    const read = await handleAgentRuntimeAdminRequest(request("", {}), "configurations");
+    const mutation = await handleAgentRuntimeAdminRequest(
+      request(),
+      "agents.configurations.run",
+      id,
+    );
+    expect(read.status).toBe(503);
+    expect(JSON.parse(read.headers.get(npApiErrorDiagnosticsHeader)!)).toMatchObject({
+      recovery: "retry-read",
+    });
+    expect(mutation.status).toBe(503);
+    expect(JSON.parse(mutation.headers.get(npApiErrorDiagnosticsHeader)!)).toMatchObject({
+      recovery: "check-outcome",
+    });
+    expect(mocks.executeAdmin).not.toHaveBeenCalled();
+  });
   it.each([new NpAuthError(), new NpForbiddenError("agent-studio", "manage")])(
     "checks current staff before resolving installed management",
     async (error) => {

@@ -94,3 +94,28 @@ When adding a known framework code:
 Plugin extension codes are intentionally not added to `NpErrorCode`. Keep them
 stable inside the plugin, follow the uppercase grammar, and document their
 status/details alongside the plugin route or action.
+
+## Optional Agent Studio diagnostics
+
+Agent Studio route errors may include the separately versioned
+`x-np-error-diagnostics` header. Its bounded JSON value contains exactly
+`version: 1`, `status`, `code`, `supportReference` and `recovery`. The error body
+and global REST/OpenAPI error schema remain unchanged. This is a Studio transport
+extension, not a promise for every API or proxy response. Machine Gateway OpenAPI
+operations do not emit it.
+
+The browser-safe `npParseApiErrorDiagnosticsV1` validates metadata against the
+already validated body status/code. Unknown versions, extra fields, invalid
+references and inconsistent recovery declarations are unavailable, never displayed
+as raw text. A support reference is a server-generated UUID v4 submitted with a
+safe diagnostic event to the configured logger. It is neither a request-supplied
+identifier nor evidence of durable log storage. Logger availability and retention
+remain host responsibilities.
+
+Recovery declarations distinguish `retry-read`, `reauthenticate`, `reconcile`,
+`check-outcome` and `none`. They provide guidance, not authority. Only explicitly
+classified read operations can receive `retry-read` for transient failures;
+mutation outcomes require existing state, approval and idempotency rules.
+`Retry-After` bounds waiting independently and never authorizes an automatic replay.
+See [Studio diagnostics](design/agentic-platform/agent-error-diagnostics.md) for
+operation boundaries and validation evidence.

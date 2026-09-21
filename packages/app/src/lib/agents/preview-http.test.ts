@@ -1,3 +1,5 @@
+import { NpError } from "@nexpress/core";
+import { npApiErrorDiagnosticsHeader } from "@nexpress/core/api-contract";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   runtime: vi.fn(),
@@ -394,4 +396,22 @@ describe("native Admin preview launch handler", () => {
       expect.objectContaining({ command, changeSetId: id, previewId: id }),
     );
   });
+});
+
+it("preserves preview cooldown and declares only the read operation retryable", async () => {
+  const error = new NpError("Preview rate limited", "RATE_LIMITED", 429, { retryAfterSeconds: 30 });
+  mocks.staff.mockRejectedValue(error);
+  for (const operation of ["get", "create", "launch"] as const) {
+    const response = await handleAgentPreviewAdminRequest(
+      new NextRequest("https://site.example/api/admin/agents/changesets/preview"),
+      operation,
+      { id, previewId: id },
+    );
+    expect(response.status).toBe(429);
+    expect(response.headers.get("retry-after")).toBe("30");
+    expect(JSON.parse(response.headers.get(npApiErrorDiagnosticsHeader)!)).toMatchObject({
+      recovery: operation === "get" ? "retry-read" : "none",
+    });
+  }
+  expect(mocks.launch).not.toHaveBeenCalled();
 });

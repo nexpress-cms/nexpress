@@ -72,6 +72,7 @@ export function useAgentReviewRead<T>(
 ) {
   const [revision, setRevision] = React.useState(0);
   const generation = React.useRef(0);
+  const invalidatedPath = React.useRef<string | null>(null);
   const [backgroundRevision, incrementBackground] = React.useReducer((n: number) => n + 1, 0);
   const request = React.useRef<{
     path: string;
@@ -86,11 +87,15 @@ export function useAgentReviewRead<T>(
     value: T | null;
     error: string | null;
     failure?: unknown;
+    invalidated?: boolean;
   } | null>(null);
   const failure = stored?.path === path ? stored.failure : undefined;
   const waiting = useAgentRetryBlocked(failure);
   const blocked = waiting || (failure instanceof AgentStudioApiError && failure.status === 401);
   React.useEffect(() => {
+    // A queued polling revision must not restart a read after mutation evidence was cleared.
+    if (invalidatedPath.current === path) return;
+    invalidatedPath.current = null;
     const controller = new AbortController();
     request.current = { path, controller, backgroundRevision };
     void read(path, parse, controller.signal)
@@ -121,6 +126,7 @@ export function useAgentReviewRead<T>(
   const clear = React.useCallback(
     (caught?: unknown) => {
       if (request.current?.path !== path) return;
+      invalidatedPath.current = path;
       request.current.controller.abort();
       const clearedBackgroundRevision = request.current.backgroundRevision;
       setStored((previous) => ({
@@ -137,6 +143,7 @@ export function useAgentReviewRead<T>(
             : null,
         error: null,
         failure: caught,
+        invalidated: true,
       }));
     },
     [path],
@@ -147,19 +154,25 @@ export function useAgentReviewRead<T>(
     error: current?.error ?? null,
     failure,
     loading: current === null,
-    busy: current === null || current.backgroundRevision !== backgroundRevision,
+    busy:
+      !current?.invalidated &&
+      (current === null || current.backgroundRevision !== backgroundRevision),
     refreshing:
       current !== null &&
+      !current.invalidated &&
       current.value !== null &&
       current.backgroundRevision !== backgroundRevision,
     invalidating: current === null && stored?.path === path && stored.value !== null,
     observedAt: current?.observedAt,
     refresh: React.useCallback(() => {
-      if (!blocked) setRevision(++generation.current);
+      if (!blocked) {
+        invalidatedPath.current = null;
+        setRevision(++generation.current);
+      }
     }, [blocked]),
     refreshBackground: React.useCallback(() => {
-      if (!blocked) incrementBackground();
-    }, [blocked]),
+      if (!blocked && invalidatedPath.current !== path) incrementBackground();
+    }, [blocked, path]),
     clear,
   };
 }

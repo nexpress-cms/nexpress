@@ -3,7 +3,12 @@ import {
   npRequireAgentOauthClientV1,
   npRequireAgentStudioOverviewV1,
 } from "@nexpress/core/agent-contract";
-import { npIsApiError } from "@nexpress/core/api-contract";
+import {
+  npIsApiError,
+  npApiErrorDiagnosticsHeader,
+  npParseApiErrorDiagnosticsV1,
+  type NpApiErrorDiagnosticsV1,
+} from "@nexpress/core/api-contract";
 
 import { npFetch } from "../lib/api-client.js";
 
@@ -13,6 +18,7 @@ export class AgentStudioApiError extends Error {
     readonly status: number,
     readonly code: string,
     readonly retryAt?: number,
+    readonly diagnostics?: NpApiErrorDiagnosticsV1,
   ) {
     super(message);
     this.name = "AgentStudioApiError";
@@ -56,7 +62,16 @@ export async function responseError(response: Response): Promise<AgentStudioApiE
     // The stable fallback deliberately ignores non-JSON provider/proxy bodies.
   }
   if (npIsApiError(body) && body.status === response.status) {
-    return new AgentStudioApiError(body.error.message, body.status, body.error.code, retryAt);
+    return new AgentStudioApiError(
+      body.error.message,
+      body.status,
+      body.error.code,
+      retryAt,
+      npParseApiErrorDiagnosticsV1(response.headers.get(npApiErrorDiagnosticsHeader), {
+        status: body.status,
+        code: body.error.code,
+      }) ?? undefined,
+    );
   }
   return new AgentStudioApiError(
     `Request failed (${response.status.toString()})`,

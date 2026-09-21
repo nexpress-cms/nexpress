@@ -351,7 +351,7 @@ function DecisionControls({
     }
     if (preserveDecision && (!(caught instanceof AgentStudioApiError) || caught.status >= 500)) {
       setError(
-        "The decision response is uncertain. Retry this exact decision or close and reload its current state.",
+        "The decision response is uncertain. Keep this dialog open to preserve the original request identity; inspect current approval activity before deciding whether to submit again.",
       );
       return;
     }
@@ -363,6 +363,7 @@ function DecisionControls({
   }
   async function start(purpose: NpAgentApprovalDecisionPurposeV1) {
     if (blocked) return;
+    setFailure(null);
     setBusy(true);
     setError(null);
     setChallenge(null);
@@ -433,7 +434,7 @@ function DecisionControls({
     }
   }
   return (
-    <AgentRecoveryBoundary error={failure}>
+    <AgentRecoveryBoundary error={challenge ? undefined : failure}>
       <section ref={decisionRef} tabIndex={-1} className="space-y-3" aria-label="Approval decision">
         {error && !challenge && (
           <p ref={errorRef} tabIndex={-1} role="alert">
@@ -485,7 +486,7 @@ function DecisionControls({
                 Confirm the exact server statement. This decision does not execute content changes.
               </DialogDescription>
             </DialogHeader>
-            {failure instanceof AgentStudioApiError && failure.status === 429 ? (
+            {challenge && failure instanceof AgentStudioApiError ? (
               <AgentRecoveryBoundary error={failure}>{null}</AgentRecoveryBoundary>
             ) : null}
             {pending && challenge && (

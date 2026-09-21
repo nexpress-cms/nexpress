@@ -1,3 +1,4 @@
+import { errorDiagnosticsHeaders } from "./fixtures/error-diagnostics.js";
 import {
   npRequireAgentContractResult,
   npAnalyzeAgentActivityRunsPageV1,
@@ -131,6 +132,7 @@ test("Activity preserves read-only refresh facts and isolates failed run actions
       if (actionFailure)
         return route.fulfill({
           status: 502,
+          headers: errorDiagnosticsHeaders(502, "ACTIVITY_ACTIONS_FAILED", "retry-read"),
           json: {
             status: 502,
             error: { code: "ACTIVITY_ACTIONS_FAILED", message: "The run actions read failed." },

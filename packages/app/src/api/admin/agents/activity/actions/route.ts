@@ -5,13 +5,13 @@ import {
 import { requireAgentStudioActivityRuntimeV1 } from "@nexpress/core/agents";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "../../../../../lib/api-response";
+import { npSuccessResponse } from "../../../../../lib/api-response";
 import {
-  normalizeAgentStudioError,
   requireAgentStudioAdmin,
   readAgentActivityQuery,
 } from "../../../../../lib/agents/studio-admin";
 import { ensureFor } from "../../../../../lib/init-core";
+import { agentStudioErrorResponse } from "../../../../../lib/agents/studio-error-response";
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
-    return npErrorResponse(normalizeAgentStudioError(error), {
+    return agentStudioErrorResponse(error, "read", {
       headers: { "Cache-Control": "no-store" },
     });
   }

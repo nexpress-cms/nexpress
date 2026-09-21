@@ -208,7 +208,7 @@ function ActivityError({
         <Button asChild size="sm" variant="outline">
           <Link href="/admin/login">Sign in</Link>
         </Button>
-      ) : !denied ? (
+      ) : !denied && error.diagnostics?.recovery === "retry-read" ? (
         <Button type="button" size="sm" variant="outline" onClick={retry}>
           Retry
         </Button>

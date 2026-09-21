@@ -396,7 +396,7 @@ test("Runtime budget and operations show unknown measurements without inventing 
   ).toBeVisible();
   await page.getByRole("button", { name: "Edit site budget", exact: true }).click();
   await page.getByLabel("Concurrent runs", { exact: true }).fill("2");
-  await page.getByRole("button", { name: "Retry Runtime status", exact: true }).click();
+  await page.getByRole("button", { name: "Reload Runtime status", exact: true }).click();
   await expect(page.getByLabel("Concurrent runs", { exact: true })).toHaveValue("2");
   expect(budgetReads).toBe(1);
   await expect(
@@ -409,7 +409,7 @@ test("Runtime budget and operations show unknown measurements without inventing 
   await page.getByRole("button", { name: "Review budget changes", exact: true }).click();
   const confirm = page.getByRole("button", { name: "Confirm budget update", exact: true });
   await confirm.click();
-  await expect(page.getByText("Wait before retrying:", { exact: false })).toBeVisible();
+  await expect(page.getByText("Server wait ends:", { exact: false })).toBeVisible();
   await expect(confirm).toBeDisabled();
   await expect(page.getByLabel("Concurrent runs", { exact: true })).toHaveValue("2");
   await page.clock.runFor(2100);

@@ -974,6 +974,8 @@ Every view implements these states deliberately:
 
 The API error body remains the shipped exact `{ error, status }` envelope.
 Client copy branches on stable safe codes, not provider message strings.
+Optional [Studio diagnostic headers](agent-error-diagnostics.md) carry separately
+versioned support references and recovery declarations without changing that body.
 
 ### 13.2 Surface-specific empty states
 

@@ -355,11 +355,11 @@ export function AgentPolicyDetailView({ id }: { id: string }) {
         Back to policies
       </Link>
       <RuntimeNotice loading={false} error={state.error} />
-      {state.error ? <Button onClick={state.reload}>Retry policy</Button> : null}
+      {state.error ? <Button onClick={state.reload}>Reload policy</Button> : null}
       {catalog.error ? (
         <>
           <RuntimeNotice loading={false} error={catalog.error} />
-          <Button onClick={catalog.reload}>Retry policy catalog</Button>
+          <Button onClick={catalog.reload}>Reload policy catalog</Button>
         </>
       ) : null}
       {policy ? (

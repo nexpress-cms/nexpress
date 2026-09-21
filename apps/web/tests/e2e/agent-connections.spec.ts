@@ -1,3 +1,4 @@
+import { errorDiagnosticsHeaders } from "./fixtures/error-diagnostics.js";
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import {
   npRequireAgentConnectionV1,
@@ -168,7 +169,7 @@ test("connection keyboard creation preserves retry identity and clears invalid o
   await tabTo(page, page.getByLabel("API key (write only)"));
   await page.keyboard.insertText("fixture-credential-never-rendered");
   await activate(page, page.getByRole("button", { name: "Save connection" }));
-  await expect(page.getByRole("status").filter({ hasText: "Wait before retrying" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Server wait ends" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save connection" })).toBeDisabled();
   await expect(page.getByLabel("API key (write only)")).toHaveValue("");
   await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Keyboard connection");
@@ -371,6 +372,7 @@ test("Gateway token keyboard issue, one-time disclosure and revocation preserve 
     if (creates.length === 1)
       return route.fulfill({
         status: 503,
+        headers: errorDiagnosticsHeaders(503, "SERVICE_UNAVAILABLE", "check-outcome"),
         json: {
           status: 503,
           error: { code: "SERVICE_UNAVAILABLE", message: "Token issue unavailable" },
@@ -408,7 +410,14 @@ test("Gateway token keyboard issue, one-time disclosure and revocation preserve 
   await activate(page, page.getByRole("button", { name: "Create token", exact: true }));
   await expect(page.getByRole("main").getByRole("alert")).toBeFocused();
   await expect(page.getByText(secret, { exact: true })).toHaveCount(0);
-  await activate(page, page.getByRole("button", { name: "Retry", exact: true }));
+  await expect(
+    page.getByText("The change outcome may be unknown.", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", { exact: false }),
+  ).toBeVisible();
+  expect(creates).toHaveLength(1);
+  await activate(page, page.getByRole("button", { name: "Reload current state", exact: true }));
   await expect(page.getByRole("button", { name: "Create token", exact: true })).toBeEnabled();
   await activate(page, page.getByRole("button", { name: "Create token", exact: true }));
   await expect(page.getByRole("heading", { name: "Copy this token now" })).toBeVisible();
@@ -454,7 +463,7 @@ test("Gateway token keyboard issue, one-time disclosure and revocation preserve 
   page.on("dialog", (dialog) => void dialog.accept());
   await activate(page, page.getByRole("button", { name: "Revoke", exact: true }));
   await expect(page.getByRole("main").getByRole("alert")).toBeFocused();
-  await activate(page, page.getByRole("button", { name: "Retry", exact: true }));
+  await activate(page, page.getByRole("button", { name: "Reload current state", exact: true }));
   await expect(page.getByRole("button", { name: "Revoke", exact: true })).toBeEnabled();
   await activate(page, page.getByRole("button", { name: "Revoke", exact: true }));
   await expect(page.getByRole("button", { name: "Revoke", exact: true })).toHaveCount(0);

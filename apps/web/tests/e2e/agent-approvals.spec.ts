@@ -1,3 +1,4 @@
+import { errorDiagnosticsHeaders } from "./fixtures/error-diagnostics.js";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { npRequireAgentApprovalDetailV1 } from "@nexpress/core/agent-contract";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
@@ -118,11 +119,24 @@ test.describe("Agent approval review", () => {
       releaseRead = resolve;
     });
     let approved = false;
+    let challengeAttempts = 0;
     const commands: unknown[] = [];
     const code = "A".repeat(43);
     await page.route("**/api/admin/agents/approvals/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       if (path.endsWith("/decision-challenge")) {
+        challengeAttempts++;
+        if (challengeAttempts === 1) {
+          await route.fulfill({
+            status: 503,
+            headers: errorDiagnosticsHeaders(503, "SERVICE_UNAVAILABLE", "check-outcome"),
+            json: {
+              status: 503,
+              error: { code: "SERVICE_UNAVAILABLE", message: "Challenge unavailable" },
+            },
+          });
+          return;
+        }
         commands.push(route.request().postDataJSON());
         await route.fulfill({
           json: {
@@ -144,6 +158,7 @@ test.describe("Agent approval review", () => {
         if (commands.length === 2) {
           await route.fulfill({
             status: 500,
+            headers: errorDiagnosticsHeaders(500, "INTERNAL_ERROR", "check-outcome"),
             json: {
               error: { code: "INTERNAL_ERROR", message: "Internal server error" },
               status: 500,
@@ -179,6 +194,16 @@ test.describe("Agent approval review", () => {
     await tabTo(page, approve);
     await page.keyboard.press("Enter");
     await expect(
+      page.getByText("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", { exact: false }),
+    ).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await tabTo(page, approve);
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("dialog").getByText("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", { exact: false }),
+    ).toHaveCount(0);
+    await expect.poll(() => challengeAttempts).toBe(2);
+    await expect(
       page.getByRole("heading", { name: "Approve approval", exact: true }),
     ).toBeFocused();
     const confirm = page.getByRole("button", { name: "Confirm approve", exact: true });
@@ -198,6 +223,22 @@ test.describe("Agent approval review", () => {
       .filter({ hasText: "The decision response is uncertain." });
     await expect(uncertain).toHaveCount(1);
     await expect(uncertain).toBeFocused();
+    await expect(uncertain).toContainText(
+      "Keep this dialog open to preserve the original request identity",
+    );
+    await expect(
+      page.getByRole("dialog").getByText("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", { exact: false }),
+    ).toBeVisible();
+    await page.setViewportSize({ width: 320, height: 900 });
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath("approval-error-diagnostics-320.png"),
+      fullPage: true,
+      animations: "disabled",
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
     await expect(page.getByLabel("Human reason (optional)")).toBeDisabled();
     await expect(confirm).toBeEnabled();
     await tabTo(page, confirm);
