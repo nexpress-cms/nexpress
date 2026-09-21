@@ -22,6 +22,10 @@ those facts; the UI explicitly names the missing measurements. No design
 requirement is silently waived. Actual AT acceptance remains separately open in
 [the consolidated checklist](admin-assistive-technology-acceptance.md).
 
+The subsequent [maintenance evidence bundle](agent-maintenance-evidence.md) adds
+a separate projection for actual committed retention work and bounded runtime
+observations. The original snapshot and its evidence limits remain unchanged.
+
 ## Implementation
 
 - `packages/app/src/lib/agent-health-presentation.ts` validates and formats the

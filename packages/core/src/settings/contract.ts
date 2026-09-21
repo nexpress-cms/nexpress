@@ -1,3 +1,7 @@
+import {
+  NP_AGENT_MAINTENANCE_RECEIPT_KEY,
+  npRequireAgentMaintenanceReceiptV1,
+} from "../agent-contract/maintenance-evidence-contract.js";
 import type {
   NpAdminSettingsSnapshot,
   NpCreateSiteInput,
@@ -1051,6 +1055,7 @@ export function npAssertSiteQuotaSnapshot(value: unknown): asserts value is NpSi
 }
 
 export function npClassifySettingKey(key: unknown): NpSettingContractKind | null {
+  if (key === NP_AGENT_MAINTENANCE_RECEIPT_KEY) return "agents-maintenance";
   if (key === NP_AGENT_GATEWAY_SETTING_KEY) return "agents-gateway";
   if (key === NP_AGENT_RUNTIME_SETTING_KEY) return "agents-runtime";
   if (key === NP_AGENT_RUNTIME_JOBS_SETTING_KEY) return "agents-runtime-jobs";
@@ -1279,6 +1284,20 @@ export function npAnalyzeSettingValue(key: unknown, value: unknown): NpSettingCo
       : [validation.issue];
   }
   switch (kind) {
+    case "agents-maintenance": {
+      try {
+        npRequireAgentMaintenanceReceiptV1(value);
+        return [];
+      } catch {
+        return [
+          issue(
+            "invalid-field",
+            "settings.agents.runtime.maintenance",
+            "invalid maintenance evidence contract",
+          ),
+        ];
+      }
+    }
     case "agents-runtime":
     case "agents-runtime-jobs":
     case "agents-runtime-control": {

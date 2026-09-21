@@ -140,6 +140,7 @@ export type NpSettingContractKind =
   | "agents-runtime"
   | "agents-runtime-control"
   | "agents-runtime-jobs"
+  | "agents-maintenance"
   | "seo"
   | "site-quotas"
   | "theme-tokens"

@@ -6,7 +6,10 @@ import { npReadEmailRuntimeConfig } from "@nexpress/core/email";
 import { npReadRateLimitRuntimeConfig } from "@nexpress/core/rate-limit";
 import { npReadObservabilityRuntimeConfig } from "@nexpress/core/observability";
 import { npReadStorageRuntimeConfig, type NpStorageRuntimeConfig } from "@nexpress/core/storage";
-import { npCollectAgentHealthSummaryV1 } from "@nexpress/core/agents";
+import {
+  npCollectAgentHealthSummaryV1,
+  npCollectAgentMaintenanceHealthV1,
+} from "@nexpress/core/agents";
 import {
   npAnalyzeCustomRouteDefinitions,
   npGetCustomRouteKind,
@@ -104,6 +107,7 @@ import { checkSiteQuotaUsage } from "./site-quota-check.js";
 import { checkCommunityRealtimeRetention } from "./community-realtime-check.js";
 import { npCheckCommunityRealtimeCapacityConfig } from "../lib/community-realtime-capacity.js";
 import { formatAgentHealthDetail } from "../lib/agent-health-presentation.js";
+import { formatAgentMaintenanceDetail } from "../lib/agent-maintenance-presentation.js";
 
 type DoctorEnv = Record<string, string | undefined>;
 
@@ -251,12 +255,28 @@ async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult> {
           client.query<T>(text, values),
       },
     });
+    let maintenanceDetail =
+      "Agent maintenance evidence: unavailable. This does not change persistence contract severity.";
+    try {
+      maintenanceDetail = formatAgentMaintenanceDetail(
+        await npCollectAgentMaintenanceHealthV1({
+          client: {
+            query: <T extends Record<string, unknown>>(text: string, values?: unknown[]) =>
+              client.query<T>(text, values),
+          },
+          runtime: false,
+        }),
+      );
+    } catch {
+      // Optional evidence must not change the existing persistence readiness result.
+    }
+    const detail = `${formatAgentHealthDetail(summary)}\n\n${maintenanceDetail}`;
     if (summary.issueCount === 0) {
       return {
         id: "agents.contract",
         state: summary.state,
         label: "Agent persistence contracts",
-        detail: formatAgentHealthDetail(summary),
+        detail,
         ...(summary.state === "warn"
           ? {
               hint: "Persisted Agent state is valid, but this Doctor runtime cannot confirm one or more frozen provider or Vault adapters.",
@@ -270,7 +290,7 @@ async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult> {
       id: "agents.contract",
       state: "error",
       label: "Agent persistence contracts",
-      detail: formatAgentHealthDetail(summary),
+      detail,
       hint: "Resolve the stable Agent issue codes before enabling Agent access. Doctor intentionally omits row ids, credentials, locators, and keyed digests.",
     };
   } catch {

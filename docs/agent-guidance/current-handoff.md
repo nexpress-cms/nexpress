@@ -1,61 +1,55 @@
 # Current work handoff
 
-Observed 2026-09-20 KST. Verify Git state before continuing.
+Observed 2026-09-21 KST. Verify Git state and ongoing checks before continuing.
 
 ## Objective and authorization
 
-- User authorized Admin Health/Doctor Agent diagnostic presentation after PR #1462.
-  Existing safe evidence now has detailed UI/CLI presentation and explicit limits.
-- User now authorizes commit, push, PR and squash merge after CI, then selection
-  of the next task. Further implementation awaits instruction. Delegated edits
-  and review were collected by the coordinator.
-- Keep versions, changesets and lockfile unchanged. No provider calls, operational
-  credentials, automatic activation, publication or Version PR #1366 merge.
+- User authorized the Agent maintenance execution evidence bundle after PR #1463.
+  Implementation and final verification are complete; changes remain uncommitted.
+- User now authorizes commit, push, PR and squash merge after exact-head CI,
+  then selecting the next task. Next implementation awaits instruction.
+- Keep versions, changesets and lockfile unchanged. No provider calls, credentials,
+  automatic worker/runtime activation, publication or Version PR #1366 merge.
+- Delegated atomic persistence and App presentation work was collected and reviewed.
 
 ## Observed checkout
 
 - Implementation: `/Users/baesw/.codex/worktrees/2e7d/nexpress`, branch
-  `codex/admin-agent-diagnostics`, baseline `7b095e2ac989da54adc50a5d6ef0ee74a3bd9d08`.
-- Worktree was clean before reuse; no old squash head was replayed. Pending changes
-  belong to this bundle; a fresh checkout lacks them.
-- Primary `/Users/baesw/development/nexpress`: main at that baseline, with only this
-  local handoff pointer modified. Preserve it when synchronizing.
-- PR #1462 CI `35510998694`, merge CI `35511770571` and Release `35511770584`
-  were all verified successful. No package publication was requested.
+  `codex/agent-maintenance-evidence`, baseline `6aa447492e7e0d9023c35e36aefb8f6be25970d0`.
+  Pending uncommitted changes belong to this bundle; a new checkout lacks them.
+- Primary `/Users/baesw/development/nexpress`: main at that baseline; only the
+  local handoff pointer is modified. Preserve it when synchronizing.
+- PR #1463 exact-head CI `35516543834`, merge CI `35517465569` and Release
+  `35517465570` were all verified successful before starting this bundle.
 
 ## Implementation and evidence
 
-- [Agent diagnostic presentation](../design/agentic-platform/admin-agent-diagnostics.md)
-  owns requirement mapping, implementation, exact verification and limitations.
-- Shared app helper `src/lib/agent-health-presentation.ts` validates the existing
-  `NpAgentHealthSummaryV1`. Protected Health renders adapter readiness, stable
-  issue counts/ages, native disclosure of persisted state groups and snapshot time.
-- Doctor's `agents.contract` detail uses the same validated facts; check ID,
-  severity, failure paths and JSON structure remain unchanged.
-- No collector, schema, authority, site scope, route or worker behavior changed.
-  Existing host-wide diagnostic semantics remain admin-only and aggregate-only.
-- Focused units 51/51; verify 113/113 tasks (107 cached); lint 41/41 (40 cached);
-  strict E2E TypeScript; PostgreSQL diagnostics 13/13; browser 87/87 without retries.
-- Six Health captures at 320/768/1280 light/dark were inspected. Actual browser
-  snapshot is empty; populated/error variants are covered by server-render tests.
-- Packed-app consumer 7/7 stages passed; 203 dist files and changed sources match
-  installed bytes. Artifact paths and 39 unchanged package reuse are in the flow.
-  Broader unchanged PostgreSQL/Redis/theme/native-preview evidence is reused.
-- Self-review fixed fixture count/age meaning, React test import, Next source
-  resolution and one mock async lint violation. Corrected affected gates passed.
+- [Maintenance execution evidence](../design/agentic-platform/agent-maintenance-evidence.md)
+  owns the contract, scope, verification results and limitations.
+- Separate versioned `agents.runtime.maintenance` receipt; existing v1 cursor,
+  job payload, tables and migrations remain unchanged.
+- Retention batch pruning, cursor advancement and receipt share one bounded
+  transaction. Legacy cursor tails cannot claim an entire sweep; rollback
+  preserves earlier successful evidence. Reading never creates a receipt.
+- Read-only Health/Doctor projection separates current-process registration,
+  generic heartbeat, host-wide retained failures and sampled committed receipts.
+  First 100 receipt-bearing sites only; no identifiers or private cursor exposed.
+- Existing readiness check IDs/severity and explicit host activation are preserved.
+- Focused Core/App units 28/54; full Core units 2,104; PostgreSQL 53/53;
+  verify 113/113 tasks; lint 41/41; strict E2E TypeScript; production browser
+  87/87 without retries. Six maintenance viewport/theme captures were inspected.
+- Fresh packed Core/App consumer: 8/8 stages; 434/203 dist files match installed
+  bytes, with 38 unchanged package artifacts reused. Detailed logs, corrected
+  execution failures and unchanged-gate reuse are recorded in the flow document.
+- Self-review corrected unobserved queue support to unavailable; unknown data
+  remains distinct from zero and no receipt failure can preserve partial deletes.
 
 ## Next boundary
 
-- Commit/PR/merge this coherent bundle when requested. Refresh this handoff after
-  merge and begin the next requested bundle in a fresh thread.
-- Admin Studio §20.10 remains bounded by actual evidence: worker heartbeat/consumer
-  liveness, retention readiness/last maintenance completion, and budget measurement
-  readiness are not supplied by this summary. Do not derive them from record counts.
-- Future authoritative measurement work needs explicit owner/contract mapping;
-  do not add a universal timestamp, synthetic heartbeat or automatic activation.
-- Actual AT remains a separate consolidated gate: an operator with observable
-  speech/captions must execute the six-workflow checklist in
-  [AT acceptance](../design/agentic-platform/admin-assistive-technology-acceptance.md).
-  DOM/keyboard assertions and screenshots do not prove spoken output.
-- Do not reopen completed retention/manual-input implementation or invent incident
-  support to close an acceptance requirement.
+- Commit and squash merge this bundle after exact-head CI passes.
+- After merge, refresh this handoff and use a fresh thread for the next bundle.
+- Agent-specific remote consumer liveness and budget measurement readiness remain
+  unprovided. Generic heartbeat or a successful cursor pass does not prove them.
+- Actual spoken AT acceptance still needs an operator run of the
+  [six-workflow checklist](../design/agentic-platform/admin-assistive-technology-acceptance.md).
+  Do not repeat the failed VoiceOver investigation or fabricate spoken evidence.

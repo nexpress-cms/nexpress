@@ -11,6 +11,21 @@ test("Health shows the real Agent snapshot with keyboard-accessible counts and e
   const diagnostics = page.getByRole("region", { name: "Agent diagnostics", exact: true });
   await expect(diagnostics).toBeVisible();
   await expect(diagnostics.getByText(/Snapshot status:/)).toBeVisible();
+  const maintenance = page.getByRole("region", { name: "Agent maintenance evidence", exact: true });
+  await expect(maintenance).toBeVisible();
+  for (const label of [
+    "Process registration",
+    "Generic worker heartbeat",
+    "Retained queue failures",
+    "Committed retention receipts",
+    "Evidence limits",
+  ])
+    await expect(maintenance.getByRole("heading", { name: label, exact: true })).toBeVisible();
+  await expect(
+    maintenance.getByText(
+      "A completed sweep records cursor traversal, not deletion of all eligible data. Active work and required evidence remain protected.",
+    ),
+  ).toBeVisible();
   const generated = diagnostics.locator("time");
   const timestamp = await generated.getAttribute("datetime");
   expect(timestamp).toBeTruthy();
@@ -43,6 +58,15 @@ test("Health shows the real Agent snapshot with keyboard-accessible counts and e
       expect(
         await diagnostics.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
       ).toBe(true);
+      expect(
+        await maintenance.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+      ).toBe(true);
+      const maintenancePath = testInfo.outputPath(`agent-maintenance-${width}-${theme}.png`);
+      await maintenance.screenshot({ path: maintenancePath, animations: "disabled" });
+      await testInfo.attach(`agent-maintenance-${width}-${theme}`, {
+        path: maintenancePath,
+        contentType: "image/png",
+      });
       const path = testInfo.outputPath(`agent-health-${width}-${theme}.png`);
       await diagnostics.screenshot({ path, animations: "disabled" });
       await testInfo.attach(`agent-health-${width}-${theme}`, { path, contentType: "image/png" });

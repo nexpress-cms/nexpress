@@ -64,3 +64,5 @@ export * from "./runtime-studio-service.js";
 
 // Reviewed migration / diagnostics primitives; do not install services or journals.
 export * from "./reference-fence-sql.js";
+
+export * from "./maintenance-evidence.js";

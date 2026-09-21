@@ -17,7 +17,7 @@ import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
 import type { NpAgentRuntimeEventServiceV1 } from "./runtime-event-service.js";
 import type { createAgentRuntimeExecutorV1 } from "./runtime-executor.js";
-import { pruneAgentRuntimeEventsV1 } from "./runtime-maintenance.js";
+import { npPruneAgentRuntimeJobV1 } from "./runtime-maintenance-job.js";
 
 type Db = ReturnType<typeof getDb>;
 type State = ReturnType<typeof npCreateAgentRuntimeJobStateV1>;
@@ -199,22 +199,7 @@ export function createAgentRuntimeJobsV1(options: NpAgentRuntimeJobsOptionsV1) {
     });
   });
   const prune = safe<NpBuiltinJobPayloadMap["agent:retentionPrune"]>(async ({ siteId }) => {
-    const cursor = await npWithAgentRuntimeControlTransactionV1(
-      siteId,
-      async ({ db }) => (await state(db, siteId)).cursors.retention,
-    );
-    const result = await pruneAgentRuntimeEventsV1({
-      siteId,
-      ...(cursor ? { cursor } : {}),
-      limit: BATCH,
-      now: now(),
-    });
-    if (cursor || result.nextCursor || result.examined)
-      await npWithAgentRuntimeControlTransactionV1(siteId, async ({ db }) => {
-        const current = await state(db, siteId);
-        current.cursors.retention = result.nextCursor;
-        await save(db, siteId, current, now());
-      });
+    await npPruneAgentRuntimeJobV1({ siteId, now });
   });
   const retention = safe<NpBuiltinJobPayloadMap["agent:retentionTick"]>(async () => {
     await fanout("retentionSites", (siteId) => enqueue("agent:retentionPrune", { siteId }));
