@@ -60,3 +60,5 @@ export * from "./runtime-studio-contract.js";
 export * from "./source-release-contract.js";
 
 export * from "./runtime-manual-input.js";
+
+export * from "./maintenance-evidence-contract.js";

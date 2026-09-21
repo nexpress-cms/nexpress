@@ -22,8 +22,14 @@ import {
 } from "@nexpress/core/observability";
 import { getSearchAdapterDiagnostics } from "@nexpress/core/search";
 import { getI18nRuntimeDiagnostics } from "@nexpress/core/i18n";
-import { npCollectAgentHealthSummaryV1 } from "@nexpress/core/agents";
-import type { NpAgentHealthSummaryV1 } from "@nexpress/core/agent-contract";
+import {
+  npCollectAgentHealthSummaryV1,
+  npCollectAgentMaintenanceHealthV1,
+} from "@nexpress/core/agents";
+import type {
+  NpAgentHealthSummaryV1,
+  NpAgentMaintenanceHealthV1,
+} from "@nexpress/core/agent-contract";
 import {
   getCommunityRuntimeDiagnostics,
   npGetCommunityRealtimeOutboxStats,
@@ -70,6 +76,7 @@ export interface HealthSummary {
   errorCount: number;
   warnCount: number;
   agents: NpAgentHealthSummaryV1;
+  agentMaintenance: NpAgentMaintenanceHealthV1;
 }
 
 const FRAMEWORK_TABLES = ["np_users", "np_settings", "np_navigation", "np_sites"] as const;
@@ -800,7 +807,10 @@ export function checkSecret(): Check {
 
 export async function gatherSystemHealth(): Promise<HealthSummary> {
   const checks: Check[] = [];
-  const agents = await npCollectAgentHealthSummaryV1();
+  const [agents, agentMaintenance] = await Promise.all([
+    npCollectAgentHealthSummaryV1(),
+    npCollectAgentMaintenanceHealthV1(),
+  ]);
   checks.push(await checkDatabase());
   checks.push(await checkMigrations());
   checks.push(await checkStorageAdapter());
@@ -824,6 +834,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
     errorCount: checks.filter((c) => c.state === "error").length,
     warnCount: checks.filter((c) => c.state === "warn").length,
     agents,
+    agentMaintenance,
   };
 }
 

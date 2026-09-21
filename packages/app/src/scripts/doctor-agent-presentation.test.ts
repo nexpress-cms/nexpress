@@ -4,9 +4,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { npRequireAgentHealthSummaryV1 } from "@nexpress/core/agent-contract";
 
-const { collectAgentSummary } = vi.hoisted(() => ({ collectAgentSummary: vi.fn() }));
+const { collectAgentSummary, collectMaintenance } = vi.hoisted(() => ({
+  collectAgentSummary: vi.fn(),
+  collectMaintenance: vi.fn(),
+}));
 vi.mock("@nexpress/core/agents", () => ({
   npCollectAgentHealthSummaryV1: collectAgentSummary,
+  npCollectAgentMaintenanceHealthV1: collectMaintenance,
 }));
 vi.mock("pg", () => ({
   default: {
@@ -21,11 +25,13 @@ vi.mock("pg", () => ({
 }));
 
 import { formatAgentHealthDetail } from "../lib/agent-health-presentation.js";
+import { formatAgentMaintenanceDetail } from "../lib/agent-maintenance-presentation.js";
 import { collectDoctorChecks } from "./doctor-core.js";
 
 const temporaryDirectories: string[] = [];
 afterEach(async () => {
   collectAgentSummary.mockReset();
+  collectMaintenance.mockReset();
   await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true })));
 });
 
@@ -56,6 +62,29 @@ describe("Doctor Agent health presentation", () => {
         },
       });
       collectAgentSummary.mockResolvedValueOnce(summary);
+      const maintenance = {
+        schemaVersion: "np.agent-maintenance-health.v1" as const,
+        generatedAt: "2026-09-21T00:00:00.000Z",
+        registration: "unknown" as const,
+        workers: {
+          state: "unavailable" as const,
+          aliveCount: null,
+          totalCount: null,
+          newestHeartbeat: null,
+        },
+        queue: { state: "unavailable" as const, retainedFailures: null },
+        receipts: {
+          state: "never-recorded" as const,
+          sampledSites: 0,
+          hasMore: false,
+          completedSweepSites: 0,
+          latestBatch: null,
+          latestSweepAt: null,
+        },
+      };
+      if (state === "ok")
+        collectMaintenance.mockRejectedValueOnce(new Error("must-not-leak-private-locator"));
+      else collectMaintenance.mockResolvedValueOnce(maintenance);
       const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-agent-presentation-"));
       temporaryDirectories.push(cwd);
       const checks = await collectDoctorChecks({
@@ -65,14 +94,19 @@ describe("Doctor Agent health presentation", () => {
         i18nConfig: { locales: ["en"], defaultLocale: "en" },
       });
       expect(collectAgentSummary).toHaveBeenCalledTimes(1);
+      expect(collectMaintenance).toHaveBeenCalledExactlyOnceWith({
+        client: { query: expect.any(Function) },
+        runtime: false,
+      });
       const check = checks.find((candidate) => candidate.id === "agents.contract");
       expect(check).toEqual({
         id: "agents.contract",
         state,
         label: "Agent persistence contracts",
-        detail: formatAgentHealthDetail(summary),
+        detail: `${formatAgentHealthDetail(summary)}\n\n${state === "ok" ? "Agent maintenance evidence: unavailable. This does not change persistence contract severity." : formatAgentMaintenanceDetail(maintenance)}`,
         hint: expect.any(String),
       });
+      expect(check?.detail).not.toContain("must-not-leak-private-locator");
       expect(check?.detail).toContain(summary.generatedAt);
       expect(check?.detail).toContain("7201");
       expect(check?.detail).toContain("invocation");

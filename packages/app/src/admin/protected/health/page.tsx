@@ -20,6 +20,7 @@ import { getDb } from "../../../lib/db";
 import { gatherSystemHealth, type Check } from "../../../lib/system-health";
 import { CopyCommandButton } from "../ops-actions";
 import { AgentHealth } from "./agent-health";
+import { AgentMaintenance } from "./agent-maintenance";
 
 /**
  * Admin runtime diagnostics. The GUI half of `pnpm run doctor` (#404,
@@ -124,6 +125,7 @@ export default async function AdminHealthPage() {
       </div>
 
       <AgentHealth summary={summary.agents} />
+      <AgentMaintenance summary={summary.agentMaintenance} />
 
       <HealthActionQueue summary={summary} />
 
