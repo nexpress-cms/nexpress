@@ -68,3 +68,5 @@ export * from "./reference-fence-sql.js";
 export * from "./maintenance-evidence.js";
 
 export * from "./budget-health.js";
+
+export { npCollectAgentWorkerHealthV1 } from "./worker-health.js";

@@ -89,8 +89,9 @@ the same original handle and transaction semantics.
 ## Remaining boundary
 
 Measurement success does not establish full Runtime readiness or remaining budget.
-Agent-specific remote consumer liveness and actual spoken assistive-technology
-acceptance remain separate. See [maintenance evidence](agent-maintenance-evidence.md)
+Agent-specific subscription observations are covered separately by
+[worker evidence](agent-worker-evidence.md). End-to-end job progress and actual
+spoken assistive-technology acceptance remain separate. See [maintenance evidence](agent-maintenance-evidence.md)
 and [the operator checklist](admin-assistive-technology-acceptance.md).
 
 Versions, changesets, lockfile, schemas and migrations remain unchanged. No provider

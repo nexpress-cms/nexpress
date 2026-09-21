@@ -1,3 +1,7 @@
+import {
+  NP_WORKER_SUBSCRIPTION_META_KEY,
+  npRequireWorkerSubscriptionV1,
+} from "../jobs-contract/worker-subscription-contract.js";
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
 
@@ -20,11 +24,10 @@ import { npReadJobDurationMs, npRequireJobDurationMs } from "./runtime-config.js
  * Phase 19 — worker liveness signal.
  *
  * The worker process upserts its row every
- * `WORKER_HEARTBEAT_INTERVAL_MS` so admins can tell whether the
- * pg-boss queue actually has a draining process attached.
- * Without this the only signal was "Pending stays high while
- * Completed doesn't grow," which a stuck DB or a stopped
- * worker look identical from outside.
+ * `WORKER_HEARTBEAT_INTERVAL_MS` to report process freshness.
+ * A generic heartbeat does not establish queue subscriptions or job
+ * progress. Optional versioned subscription metadata is sampled from
+ * the owning adapter; older rows and custom producers remain unknown.
  *
  * Stale rows (no heartbeat in `WORKER_STALE_THRESHOLD_MS`) are
  * reported `unhealthy`; the row stays in place until an
@@ -89,6 +92,16 @@ export async function recordHeartbeat(
   workerId: string,
   meta: Record<string, unknown> = {},
 ): Promise<void> {
+  await writeHeartbeat(workerId, withoutSubscription(meta));
+}
+
+function withoutSubscription(meta: Record<string, unknown>): NpJobData {
+  const clean = npNormalizeJobData(meta, "worker.meta");
+  delete clean[NP_WORKER_SUBSCRIPTION_META_KEY];
+  return clean;
+}
+
+async function writeHeartbeat(workerId: string, meta: NpJobData): Promise<void> {
   const now = new Date();
   const heartbeat = npRequireWorkerHeartbeat({
     id: workerId,
@@ -177,9 +190,10 @@ interface HeartbeatLoopHandle {
 export function startHeartbeatLoop(
   meta: Record<string, unknown> = {},
   intervalMs: number = WORKER_HEARTBEAT_INTERVAL_MS,
+  subscriptionSource?: () => unknown,
 ): HeartbeatLoopHandle {
   const canonicalInterval = npRequireJobDurationMs(intervalMs, "worker.heartbeatIntervalMs");
-  const canonicalMeta = npNormalizeJobData(meta, "worker.meta");
+  const canonicalMeta = withoutSubscription(meta);
   const workerId = generateWorkerId();
   const log = getLogger();
   let stopped = false;
@@ -188,7 +202,17 @@ export function startHeartbeatLoop(
 
   const beat = async (): Promise<void> => {
     try {
-      await recordHeartbeat(workerId, canonicalMeta);
+      const currentMeta = { ...canonicalMeta };
+      if (subscriptionSource) {
+        try {
+          currentMeta[NP_WORKER_SUBSCRIPTION_META_KEY] = npNormalizeJobData(
+            npRequireWorkerSubscriptionV1(subscriptionSource()),
+          );
+        } catch {
+          // Missing or invalid owner evidence must never preserve a previous positive snapshot.
+        }
+      }
+      await writeHeartbeat(workerId, currentMeta);
     } catch (err) {
       log.warn("worker heartbeat failed", {
         workerId,

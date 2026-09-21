@@ -126,7 +126,10 @@ export async function startWorker(
     const heartbeatOpt = options?.heartbeat ?? true;
     if (heartbeatOpt !== false) {
       const meta = typeof heartbeatOpt === "object" ? (heartbeatOpt.meta ?? {}) : {};
-      heartbeatHandle = startHeartbeatLoop(meta);
+      const heartbeatAdapter = workerAdapter;
+      heartbeatHandle = startHeartbeatLoop(meta, undefined, () =>
+        heartbeatAdapter.getWorkerSubscriptionEvidence(),
+      );
       // Phase 20.2 — multi-pod pause sync. Each tick reads the
       // persisted flag and applies any divergence to the local
       // adapter, so an operator pause on one pod propagates to

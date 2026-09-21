@@ -12,6 +12,7 @@ import {
   npCollectAgentHealthSummaryV1,
   npCollectAgentMaintenanceHealthV1,
   npCollectAgentBudgetHealthV1,
+  npCollectAgentWorkerHealthV1,
 } from "@nexpress/core/agents";
 import {
   npAnalyzeCustomRouteDefinitions,
@@ -111,6 +112,7 @@ import { checkCommunityRealtimeRetention } from "./community-realtime-check.js";
 import { npCheckCommunityRealtimeCapacityConfig } from "../lib/community-realtime-capacity.js";
 import { formatAgentHealthDetail } from "../lib/agent-health-presentation.js";
 import { formatAgentMaintenanceDetail } from "../lib/agent-maintenance-presentation.js";
+import { formatAgentWorkerDetail } from "../lib/agent-worker-presentation.js";
 import { formatAgentBudgetDetail } from "../lib/agent-budget-presentation.js";
 
 type DoctorEnv = Record<string, string | undefined>;
@@ -274,17 +276,24 @@ async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult> {
     } catch {
       // Optional evidence must not change the existing persistence readiness result.
     }
+    // loadPg constructed this actual Client; keep its query-config, row-mode and
+    // transaction behavior intact instead of wrapping its narrow interface.
+    const db = drizzle<Record<string, unknown>, Client>(client as unknown as Client);
     let budgetDetail =
       "Agent budget measurement evidence: unavailable. This does not change persistence contract severity.";
     try {
-      // loadPg constructed this actual Client; keep its query-config, row-mode and
-      // transaction behavior intact instead of wrapping its narrow interface.
-      const db = drizzle<Record<string, unknown>, Client>(client as unknown as Client);
       budgetDetail = formatAgentBudgetDetail(await npCollectAgentBudgetHealthV1({ db }));
     } catch {
       // Measurement availability is informational, not a new readiness blocker.
     }
-    const detail = `${formatAgentHealthDetail(summary)}\n\n${maintenanceDetail}\n\n${budgetDetail}`;
+    let workerDetail =
+      "Agent worker subscription evidence: unavailable. This does not change persistence contract severity.";
+    try {
+      workerDetail = formatAgentWorkerDetail(await npCollectAgentWorkerHealthV1({ db }));
+    } catch {
+      // Subscription evidence does not change persistence contract severity.
+    }
+    const detail = `${formatAgentHealthDetail(summary)}\n\n${maintenanceDetail}\n\n${budgetDetail}\n\n${workerDetail}`;
     if (summary.issueCount === 0) {
       return {
         id: "agents.contract",

@@ -37,6 +37,19 @@ test("Health shows the real Agent snapshot with keyboard-accessible counts and e
   await expect(
     budget.getByRole("heading", { name: "Measurement limits", exact: true }),
   ).toBeVisible();
+  const workers = page.getByRole("region", { name: "Agent worker subscriptions", exact: true });
+  await expect(workers).toBeVisible();
+  for (const label of [
+    "Workers with fresh Agent subscriptions",
+    "Paused Agent workers",
+    "Inactive workers",
+    "Stale worker evidence",
+    "Workers marked stopped",
+    "Workers with unknown evidence",
+  ])
+    await expect(workers.getByText(label, { exact: true })).toBeVisible();
+  await expect(workers.getByText(/do not prove job progress/)).toBeVisible();
+  const workerTimestamp = await workers.locator("time").getAttribute("datetime");
   const budgetTimestamp = await budget.locator("time").getAttribute("datetime");
   const generated = diagnostics.locator("time");
   const timestamp = await generated.getAttribute("datetime");
@@ -76,6 +89,15 @@ test("Health shows the real Agent snapshot with keyboard-accessible counts and e
       expect(
         await budget.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
       ).toBe(true);
+      expect(
+        await workers.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+      ).toBe(true);
+      const workerPath = testInfo.outputPath(`agent-worker-${width}-${theme}.png`);
+      await workers.screenshot({ path: workerPath, animations: "disabled" });
+      await testInfo.attach(`agent-worker-${width}-${theme}`, {
+        path: workerPath,
+        contentType: "image/png",
+      });
       const budgetPath = testInfo.outputPath(`agent-budget-${width}-${theme}.png`);
       await budget.screenshot({ path: budgetPath, animations: "disabled" });
       await testInfo.attach(`agent-budget-${width}-${theme}`, {
@@ -96,6 +118,7 @@ test("Health shows the real Agent snapshot with keyboard-accessible counts and e
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole("link", { name: "Refresh", exact: true }).click();
   await expect(generated).not.toHaveAttribute("datetime", timestamp!);
+  await expect(workers.locator("time")).not.toHaveAttribute("datetime", workerTimestamp!);
   await expect(budget.locator("time")).not.toHaveAttribute("datetime", budgetTimestamp!);
   await expect(diagnostics.locator("details")).not.toHaveAttribute("open", "");
 });
