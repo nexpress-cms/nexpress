@@ -1,3 +1,4 @@
+import { errorDiagnosticsHeaders } from "./fixtures/error-diagnostics.js";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   npRequireAgentApprovalDetailV1,
@@ -87,7 +88,14 @@ test.describe("Agent ChangeSet review", () => {
       if (reads >= 3) {
         await route.fulfill({
           status: reads === 3 ? 429 : 401,
-          headers: reads === 3 ? { "Retry-After": "30" } : {},
+          headers: {
+            ...errorDiagnosticsHeaders(
+              reads === 3 ? 429 : 401,
+              "RECOVERY_REQUIRED",
+              reads === 3 ? "retry-read" : "reauthenticate",
+            ),
+            ...(reads === 3 ? { "Retry-After": "30" } : {}),
+          },
           json: {
             status: reads === 3 ? 429 : 401,
             error: { code: "RECOVERY_REQUIRED", message: "Read recovery required" },

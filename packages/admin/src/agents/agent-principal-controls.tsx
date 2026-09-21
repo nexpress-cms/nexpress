@@ -63,6 +63,7 @@ export function AgentPrincipalControls({
   const retryBlocked = useAgentRetryBlocked(failure);
   const [busy, setBusy] = React.useState(false);
   const open = (action: PrincipalAction) => {
+    setFailure(undefined);
     setRequest({
       action,
       expectedVersion: principal.rowVersion,

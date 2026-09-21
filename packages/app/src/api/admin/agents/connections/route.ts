@@ -3,12 +3,10 @@ import { requireAgentStudioConnectionRuntimeV1 } from "@nexpress/core/agents";
 import { readJsonBody } from "@nexpress/next";
 import type { NextRequest } from "next/server";
 
-import { npErrorResponse, npSuccessResponse } from "../../../../lib/api-response";
-import {
-  normalizeAgentStudioError,
-  requireAgentStudioAdmin,
-} from "../../../../lib/agents/studio-admin";
+import { npSuccessResponse } from "../../../../lib/api-response";
+import { requireAgentStudioAdmin } from "../../../../lib/agents/studio-admin";
 import { ensureFor } from "../../../../lib/init-core";
+import { agentStudioErrorResponse } from "../../../../lib/agents/studio-error-response";
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,7 +22,7 @@ export async function POST(request: NextRequest) {
     });
     return npSuccessResponse(npRequireAgentConnectionV1(result.output), { status: 201 });
   } catch (error) {
-    return npErrorResponse(normalizeAgentStudioError(error));
+    return agentStudioErrorResponse(error, "mutation");
   }
 }
 

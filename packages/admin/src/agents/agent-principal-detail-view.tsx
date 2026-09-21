@@ -175,7 +175,7 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
           ? principalAccessLostMessage(caught)
           : caught instanceof AgentStudioApiError && caught.code === "STUDIO_CONTRACT_ERROR"
             ? "The principal response could not be validated."
-            : "Could not load principal. Retry to retrieve current information.",
+            : "Could not load principal. Reload to retrieve current information.",
       );
     } finally {
       if (!controller.signal.aborted && request.current === controller) setLoading(false);
@@ -311,7 +311,7 @@ function AgentPrincipalDetailViewContent({ principalId }: { principalId: string 
             disabled={loading}
             onClick={() => void load()}
           >
-            Retry
+            Reload current state
           </Button>
         </div>
       ) : null}

@@ -15,9 +15,10 @@ import {
   npAgentPreviewNonce,
 } from "@nexpress/core/agents";
 import type { NextRequest } from "next/server";
-import { npErrorResponse, npSuccessResponse } from "../api-response";
+import { npSuccessResponse } from "../api-response";
 import { ensureFor } from "../init-core";
-import { requireAgentOauthStaff, normalizeAgentStudioError } from "./studio-admin";
+import { agentStudioErrorResponse } from "./studio-error-response";
+import { requireAgentOauthStaff } from "./studio-admin";
 
 export function readChangeSetQuery(request: NextRequest) {
   const invalid = () =>
@@ -227,6 +228,10 @@ export async function handleAgentChangeSetAdminRequest(
     return npSuccessResponse(npRequireAgentChangeSetWire(result), { headers });
   } catch (error) {
     if (operation === "artifact") return new Response("Not found", { status: 404, headers });
-    return npErrorResponse(normalizeAgentStudioError(error), { headers });
+    return agentStudioErrorResponse(
+      error,
+      operation === "list" || operation === "get" ? "read" : "mutation",
+      { headers },
+    );
   }
 }

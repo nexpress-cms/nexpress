@@ -16,9 +16,10 @@ import {
 } from "@nexpress/core/agents";
 import { withCurrentSite } from "@nexpress/core/sites";
 import type { NextRequest } from "next/server";
-import { npErrorResponse, npSuccessResponse } from "../api-response";
+import { npSuccessResponse } from "../api-response";
 import { ensureFor } from "../init-core";
-import { requireAgentOauthStaff, normalizeAgentStudioError } from "./studio-admin";
+import { agentStudioErrorResponse } from "./studio-error-response";
+import { requireAgentOauthStaff } from "./studio-admin";
 import { readExactOauthForm } from "./oauth-http";
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
@@ -247,9 +248,13 @@ export async function handleAgentPreviewAdminRequest(
       headers: { "cache-control": "private, no-store" },
     });
   } catch (error) {
-    const response = npErrorResponse(normalizeAgentStudioError(error), {
-      headers: { "cache-control": "private, no-store" },
-    });
+    const response = await agentStudioErrorResponse(
+      error,
+      operation === "get" ? "read" : "mutation",
+      {
+        headers: { "cache-control": "private, no-store" },
+      },
+    );
     if (
       error instanceof NpError &&
       error.code === "RATE_LIMITED" &&

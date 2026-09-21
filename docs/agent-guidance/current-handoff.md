@@ -1,62 +1,59 @@
 # Current work handoff
 
-Observed 2026-09-21 KST. Verify Git state before acting.
+Observed 2026-09-21 KST. Verify Git state before continuing.
 
 ## Objective and authorization
 
-- User authorized the Agent worker subscription evidence implementation after
-  PR #1465. Implementation, self-review and verification are complete and uncommitted.
-- User now authorized commit, push, PR and squash merge of this bundle,
-  then choosing the next task. Next implementation awaits a separate instruction.
-- Keep versions, changesets and lockfile unchanged. No provider calls, new
-  credentials, automatic worker/runtime activation, publication or Version PR #1366 merge.
-- Delegated lifecycle, surfaces and integration lanes returned their results;
-  coordinator reviewed and completed the combined gates.
+- User requested Agent Studio error diagnostics/recovery after worker evidence
+  PR #1466. Implementation, self-review and validation are complete as one bundle.
+- The user authorized commit, push, PR and squash merge for this bundle on
+  2026-09-21, followed by selecting the next task.
+- Keep versions, changesets and lockfile unchanged. No provider calls, credentials,
+  automatic worker/runtime activation, publication or Version PR #1366 merge.
 
 ## Observed checkout
 
-- Implementation: `/Users/baesw/.codex/worktrees/agent-worker-evidence/nexpress`,
-  branch `codex/agent-worker-evidence`, HEAD `6217e0a1074e26be1411bd8cff896d87cff3d45b`.
-  All pending code/tests/docs in this worktree belong to this bundle; no commit exists.
-- Primary `/Users/baesw/development/nexpress` remains on main at `6217e0a1`, with
-  only the local handoff updated to point to the implementation worktree.
-  A fresh worktree will not contain these uncommitted changes.
-- Previous PR #1465 is merged. Its exact merge-head CI `35573451301` and
-  Release `35573451153` both passed; this grants no publication authority.
+- Primary `/Users/baesw/development/nexpress`: main at
+  `e90871636b68b4c59e26b3738e93ff6fb7deeb53`; only this handoff modified.
+- Implementation: `/Users/baesw/.codex/worktrees/agent-error-diagnostics/nexpress`,
+  branch `codex/agent-error-diagnostics`, same base, uncommitted completed bundle.
+- Previous PR #1466 merge CI 35584075905 and Release 35584075807 both passed.
+- Do not assume primary main or a fresh worktree contains the pending code.
 
 ## Implementation and evidence
 
-- [Worker subscription evidence](../design/agentic-platform/agent-worker-evidence.md)
-  owns the contract, trust boundary, implementation, verification and limitations.
-- Existing pg-boss/worker/heartbeat owners record successful subscriptions and
-  fail closed for lifecycle transitions/partial failures. Host metadata cannot
-  forge the reserved versioned observation. Existing outer contracts and DB schema remain unchanged.
-- The bounded read collector projects aggregate categories from the latest 100
-  heartbeats, preserves unknown versus zero, and uses the original Health/Doctor
-  DB ownership. Shared protected Health/Doctor presentation preserves severity.
-- Final verify 113/113 tasks; lint 41/41; Core units 2,116; PostgreSQL 59/59
-  (Core 8, Web 51); focused lifecycle 24, aggregate contract 2, App 12; strict E2E types.
-- Production browser 86/87 initial passes; the existing mobile collection-list
-  draft-POST wait timed out. Targeted recheck passed unchanged (1/1, 2.6 seconds).
-  Do not describe this as an uninterrupted 87-pass run. Six worker captures
-  inspected at 320/768/1280 light/dark; actual browser snapshot has no workers.
-- Fresh packed Core/App consumer 8/8 stages; 435/203 dist files match installed
-  bytes. Reused 38 unchanged package artifacts. Not a new full 40-package/R5 gate.
-- Detailed logs `/tmp/np-worker-*`; generated browser public files moved to
-  `/tmp/np-worker-generated-public`. Test-only ignored `.env.local` remains in
-  the implementation reference app. Existing Turbo cache is reused by symlink.
-- Source self-review and documentation checks passed. Cold dependency output
-  and cache setup failures were resolved before the completed gates; no test
-  deletions or timeout increases were used to hide them.
+- Flow in the implementation worktree:
+  `docs/design/agentic-platform/agent-error-diagnostics.md`.
+- Core pure `api-contract/error-diagnostics.ts`: optional exact versioned header,
+  status/code binding, bounded UUID/reference/recovery parser. API body unchanged.
+- App `studio-error-response.ts`: server-generated reference and safe logger event;
+  operation-aware guidance across existing Studio routes/factories. Logger
+  submission does not guarantee durable storage. No request/provider data copied.
+- Admin shared recovery rendering distinguishes declared read retry, reauthentication,
+  reconciliation, uncertain mutation outcome and unavailable metadata. Existing
+  auth, CAS, signed approval and unchanged-request idempotency semantics survive.
+- Review fixed approval copy that could discard retry identity, old diagnostic
+  state on new actions, and queued background reads restoring cleared review facts.
+  The last case now stops reads until explicit refresh and clears busy presentation.
+- Final verify 113/113; lint 41/41; reviewed build 41/41. Core units 2,122,
+  Admin 166, App 585. PostgreSQL 50/50 includes enabled native preview browser.
+- Final production browser 87/87, retries disabled, includes bundled themes.
+  Three narrow diagnostic captures inspected. Initial failures and fixes are in flow.
+- Fresh packed consumer: final Core/Admin/App bytes match 436/10/203 dist files;
+  final relink/install/typecheck/build/journey passed. 37 unchanged artifacts reused.
+  An intermediate ENOSPC was resolved using only obsolete task-owned output/cache.
+- Logs: `/tmp/np-diagnostics-verify-final.log`,
+  `/tmp/np-diagnostics-lint-reviewed.log`, `/tmp/np-diagnostics-pg.log`,
+  `/tmp/np-diagnostics-browser-final.log`, and
+  `/tmp/np-diagnostics-scaffold-final/summary-reviewed.json`.
+- Redis was unaffected and not rerun; default unit gate skips three opt-in cases.
+  No new full R5/Core PostgreSQL/40-package gate or spoken AT acceptance claimed.
 
 ## Next boundary
 
-- On explicit merge request, review this worktree's complete diff, preserve the
-  version constraints, commit the coherent bundle, push/create one PR and wait
-  for exact-head required CI before squash merge. Refresh this handoff after merge.
-- Subscription plus fresh heartbeat is not job progress, provider readiness,
-  authority or all-queue coverage. Stop markers do not prove drain completion.
-- Actual spoken assistive-technology acceptance remains an operator checklist;
-  do not fabricate evidence or claim full R5 acceptance from this bundle.
-- Choose the next coherent bundle after merge; do not start another implementation
-  or lose pending work by moving to a fresh checkout.
+- Review the final diff, commit/push this authorized complete bundle,
+  create a coherent PR, verify exact-head CI, and squash merge.
+- Preserve this worktree until merged. Refresh this handoff after merge and choose
+  the next coherent bundle from current Admin/R5 requirements.
+- Do not reopen completed retention/manual-input work or repeat the unsuccessful
+  VoiceOver investigation. Spoken AT remains the existing operator checklist.

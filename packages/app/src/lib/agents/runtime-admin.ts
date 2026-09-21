@@ -21,9 +21,10 @@ import {
 } from "@nexpress/core/agent-contract";
 import { getOptionalAgentStudioServerRuntimeV1 } from "@nexpress/core/agents";
 import type { NextRequest } from "next/server";
-import { npSuccessResponse, npErrorResponse } from "../api-response";
+import { npSuccessResponse } from "../api-response";
 import { ensureFor } from "../init-core";
-import { requireAgentStudioAdmin, normalizeAgentStudioError } from "./studio-admin";
+import { agentStudioErrorResponse } from "./studio-error-response";
+import { requireAgentStudioAdmin } from "./studio-admin";
 import { readAgentAdminJsonBody } from "./changeset-admin";
 
 type Read =
@@ -174,6 +175,10 @@ export async function handleAgentRuntimeAdminRequest(
           : 200,
     });
   } catch (error) {
-    return npErrorResponse(normalizeAgentStudioError(error), { headers });
+    return agentStudioErrorResponse(
+      error,
+      Object.hasOwn(readOutputs, operation) ? "read" : "mutation",
+      { headers },
+    );
   }
 }

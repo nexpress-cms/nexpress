@@ -109,7 +109,7 @@ export function AgentBudgetView() {
         </Button>
       </div>
       <RuntimeNotice loading={false} error={runtime.error} />
-      {runtime.error ? <Button onClick={runtime.reload}>Retry Runtime status</Button> : null}
+      {runtime.error ? <Button onClick={runtime.reload}>Reload Runtime status</Button> : null}
       {status ? (
         <Card>
           <CardHeader>
@@ -234,7 +234,7 @@ export function AgentBudgetView() {
         </Card>
       ) : null}
       <RuntimeNotice loading={false} error={budget.error} />
-      {budget.error ? <Button onClick={budget.reload}>Retry site budget</Button> : null}
+      {budget.error ? <Button onClick={budget.reload}>Reload site budget</Button> : null}
       {budget.value ? (
         <Card>
           <CardHeader>

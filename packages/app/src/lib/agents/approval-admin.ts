@@ -10,9 +10,10 @@ import {
 } from "@nexpress/core/agent-contract";
 import { getOptionalAgentStudioServerRuntimeV1 } from "@nexpress/core/agents";
 import type { NextRequest } from "next/server";
-import { npErrorResponse, npSuccessResponse } from "../api-response";
+import { npSuccessResponse } from "../api-response";
 import { ensureFor } from "../init-core";
-import { requireAgentOauthStaff, normalizeAgentStudioError } from "./studio-admin";
+import { agentStudioErrorResponse } from "./studio-error-response";
+import { requireAgentOauthStaff } from "./studio-admin";
 import { readAgentAdminJsonBody } from "./changeset-admin";
 
 const invalid = () =>
@@ -109,6 +110,10 @@ export async function handleAgentApprovalAdminRequest(
       { headers },
     );
   } catch (error) {
-    return npErrorResponse(normalizeAgentStudioError(error), { headers });
+    return agentStudioErrorResponse(
+      error,
+      operation === "list" || operation === "get" ? "read" : "mutation",
+      { headers },
+    );
   }
 }

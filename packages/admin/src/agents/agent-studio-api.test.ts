@@ -86,3 +86,51 @@ describe("Agent Studio server retry deadlines", () => {
     });
   });
 });
+
+describe("Agent Studio versioned diagnostic transport", () => {
+  const diagnostics = {
+    version: 1,
+    status: 503,
+    code: "SERVICE_UNAVAILABLE",
+    supportReference: "12345678-1234-4234-8234-123456789abc",
+    recovery: "check-outcome",
+  };
+  const body = { status: 503, error: { code: "SERVICE_UNAVAILABLE", message: "Unavailable" } };
+  it("attaches server declarations only to their validated matching envelope", async () => {
+    const error = await responseError(
+      Response.json(body, {
+        status: 503,
+        headers: { "x-np-error-diagnostics": JSON.stringify(diagnostics) },
+      }),
+    );
+    expect(error.diagnostics).toEqual(diagnostics);
+    expect(error.status).toBe(503);
+    expect(error.code).toBe("SERVICE_UNAVAILABLE");
+  });
+  it.each([
+    "private provider diagnostic",
+    JSON.stringify({ ...diagnostics, status: 500 }),
+    JSON.stringify({ ...diagnostics, code: "INTERNAL_ERROR" }),
+    JSON.stringify({ ...diagnostics, secret: "private provider diagnostic" }),
+    JSON.stringify({ ...diagnostics, recovery: "retry-mutation" }),
+  ])("discards malformed, mismatched or expanded diagnostics", async (header) => {
+    const error = await responseError(
+      Response.json(body, {
+        status: 503,
+        headers: { "x-np-error-diagnostics": header },
+      }),
+    );
+    expect(error.diagnostics).toBeUndefined();
+    expect(error.message).toBe("Unavailable");
+  });
+  it("does not trust valid metadata accompanying an opaque response", async () => {
+    const error = await responseError(
+      new Response("private proxy text", {
+        status: 503,
+        headers: { "x-np-error-diagnostics": JSON.stringify(diagnostics) },
+      }),
+    );
+    expect(error.diagnostics).toBeUndefined();
+    expect(error.message).toBe("Request failed (503)");
+  });
+});

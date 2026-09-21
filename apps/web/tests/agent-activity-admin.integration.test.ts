@@ -1,3 +1,7 @@
+import {
+  npApiErrorDiagnosticsHeader,
+  npParseApiErrorDiagnosticsV1,
+} from "@nexpress/core/api-contract";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   NP_DEFAULT_SITE_ID,
@@ -97,12 +101,25 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity Admin routes", () => {
     for (const route of readRoutes) {
       const response = await route(buildRequest(root));
       expect(response.status).toBe(401);
-      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(
+        npParseApiErrorDiagnosticsV1(response.headers.get(npApiErrorDiagnosticsHeader), {
+          status: 401,
+          code: "UNAUTHORIZED",
+        }),
+      ).toMatchObject({ recovery: "reauthenticate" });
+      expect(response.headers.get("cache-control")).toContain("no-store");
     }
     const editor = await seedUser({ role: "editor" });
     expect((await runs(buildRequest(root, { session: editor }))).status).toBe(403);
     const admin = await seedUser();
-    expect((await runs(buildRequest(root, { session: admin }))).status).toBe(503);
+    const unavailable = await runs(buildRequest(root, { session: admin }));
+    expect(unavailable.status).toBe(503);
+    expect(
+      npParseApiErrorDiagnosticsV1(unavailable.headers.get(npApiErrorDiagnosticsHeader), {
+        status: 503,
+        code: "SERVICE_UNAVAILABLE",
+      }),
+    ).toMatchObject({ recovery: "retry-read" });
     install();
     for (const route of readRoutes) {
       const response = await route(buildRequest(root, { session: admin }));
@@ -137,7 +154,7 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity Admin routes", () => {
       params(missingId),
     );
     expect(response.status).toBe(200);
-    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("cache-control")).toContain("no-store");
     expect(await response.json()).toEqual(expired);
     expect(getRun).toHaveBeenCalledWith(
       expect.objectContaining({ siteId: NP_DEFAULT_SITE_ID, id: missingId }),
@@ -170,7 +187,7 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity Admin routes", () => {
     ]) {
       const response = await runs(buildRequest(`${root}/activity?${query}`, { session }));
       expect(response.status, query).toBe(400);
-      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("cache-control")).toContain("no-store");
     }
     expect(
       (await actions(buildRequest(`${root}/activity/actions?origin=gateway`, { session }))).status,
@@ -208,7 +225,7 @@ describe.skipIf(skipIfNoTestDb())("Agent Activity Admin routes", () => {
     for (const route of [run, action]) {
       const response = await route(buildRequest(root, { session }), params(missingId));
       expect(response.status).toBe(404);
-      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.get("cache-control")).toContain("no-store");
       expect(JSON.stringify(await response.json())).not.toContain(missingId);
     }
   });

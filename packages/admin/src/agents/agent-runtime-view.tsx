@@ -579,11 +579,11 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
         Back to Agents
       </Link>
       <RuntimeNotice loading={false} error={state.error} />
-      {state.error ? <Button onClick={state.reload}>Retry Agent</Button> : null}
+      {state.error ? <Button onClick={state.reload}>Reload Agent</Button> : null}
       {catalog.error ? (
         <>
           <RuntimeNotice loading={false} error={catalog.error} />
-          <Button onClick={catalog.reload}>Retry Runtime catalog</Button>
+          <Button onClick={catalog.reload}>Reload Runtime catalog</Button>
         </>
       ) : null}
       {agent ? (
@@ -699,7 +699,7 @@ export function AgentRuntimeDetailView({ id }: { id: string }) {
             </CardHeader>
             <CardContent className="space-y-3">
               <RuntimeNotice loading={false} error={triggers.error} />
-              {triggers.error ? <Button onClick={triggers.reload}>Retry triggers</Button> : null}
+              {triggers.error ? <Button onClick={triggers.reload}>Reload triggers</Button> : null}
               {triggers.value?.items.length === 0 ? (
                 <p>No triggers are registered. Add a trigger in the explicit activation review.</p>
               ) : null}
