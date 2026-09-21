@@ -26,6 +26,18 @@ test("Health shows the real Agent snapshot with keyboard-accessible counts and e
       "A completed sweep records cursor traversal, not deletion of all eligible data. Active work and required evidence remain protected.",
     ),
   ).toBeVisible();
+  const budget = page.getByRole("region", { name: "Agent budget measurement", exact: true });
+  await expect(budget).toBeVisible();
+  for (const label of [
+    "Successfully measured sites",
+    "Sites with unresolved usage",
+    "Sites with unavailable measurement",
+  ])
+    await expect(budget.getByText(label, { exact: true })).toBeVisible();
+  await expect(
+    budget.getByRole("heading", { name: "Measurement limits", exact: true }),
+  ).toBeVisible();
+  const budgetTimestamp = await budget.locator("time").getAttribute("datetime");
   const generated = diagnostics.locator("time");
   const timestamp = await generated.getAttribute("datetime");
   expect(timestamp).toBeTruthy();
@@ -61,6 +73,15 @@ test("Health shows the real Agent snapshot with keyboard-accessible counts and e
       expect(
         await maintenance.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
       ).toBe(true);
+      expect(
+        await budget.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+      ).toBe(true);
+      const budgetPath = testInfo.outputPath(`agent-budget-${width}-${theme}.png`);
+      await budget.screenshot({ path: budgetPath, animations: "disabled" });
+      await testInfo.attach(`agent-budget-${width}-${theme}`, {
+        path: budgetPath,
+        contentType: "image/png",
+      });
       const maintenancePath = testInfo.outputPath(`agent-maintenance-${width}-${theme}.png`);
       await maintenance.screenshot({ path: maintenancePath, animations: "disabled" });
       await testInfo.attach(`agent-maintenance-${width}-${theme}`, {
@@ -75,5 +96,6 @@ test("Health shows the real Agent snapshot with keyboard-accessible counts and e
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByRole("link", { name: "Refresh", exact: true }).click();
   await expect(generated).not.toHaveAttribute("datetime", timestamp!);
+  await expect(budget.locator("time")).not.toHaveAttribute("datetime", budgetTimestamp!);
   await expect(diagnostics.locator("details")).not.toHaveAttribute("open", "");
 });
