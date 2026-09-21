@@ -47,15 +47,15 @@
     "react-dom": "^19.0.0"
   },
   "dependencies": {
-    "@lexical/code": "^0.50.0",
-    "@lexical/link": "^0.50.0",
-    "@lexical/list": "^0.50.0",
-    "@lexical/react": "^0.50.0",
-    "@lexical/rich-text": "^0.50.0",
-    "@lexical/selection": "^0.50.0",
-    "@lexical/utils": "^0.50.0",
+    "@lexical/code": "^0.51.0",
+    "@lexical/link": "^0.51.0",
+    "@lexical/list": "^0.51.0",
+    "@lexical/react": "^0.51.0",
+    "@lexical/rich-text": "^0.51.0",
+    "@lexical/selection": "^0.51.0",
+    "@lexical/utils": "^0.51.0",
     "@nexpress/core": "workspace:*",
-    "lexical": "^0.50.0",
+    "lexical": "^0.51.0",
     "lucide-react": "^1.45.0"
   },
   "devDependencies": {
