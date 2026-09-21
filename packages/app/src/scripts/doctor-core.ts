@@ -1,3 +1,5 @@
+import { drizzle } from "drizzle-orm/node-postgres";
+import type { Client } from "pg";
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -9,6 +11,7 @@ import { npReadStorageRuntimeConfig, type NpStorageRuntimeConfig } from "@nexpre
 import {
   npCollectAgentHealthSummaryV1,
   npCollectAgentMaintenanceHealthV1,
+  npCollectAgentBudgetHealthV1,
 } from "@nexpress/core/agents";
 import {
   npAnalyzeCustomRouteDefinitions,
@@ -108,6 +111,7 @@ import { checkCommunityRealtimeRetention } from "./community-realtime-check.js";
 import { npCheckCommunityRealtimeCapacityConfig } from "../lib/community-realtime-capacity.js";
 import { formatAgentHealthDetail } from "../lib/agent-health-presentation.js";
 import { formatAgentMaintenanceDetail } from "../lib/agent-maintenance-presentation.js";
+import { formatAgentBudgetDetail } from "../lib/agent-budget-presentation.js";
 
 type DoctorEnv = Record<string, string | undefined>;
 
@@ -270,7 +274,17 @@ async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult> {
     } catch {
       // Optional evidence must not change the existing persistence readiness result.
     }
-    const detail = `${formatAgentHealthDetail(summary)}\n\n${maintenanceDetail}`;
+    let budgetDetail =
+      "Agent budget measurement evidence: unavailable. This does not change persistence contract severity.";
+    try {
+      // loadPg constructed this actual Client; keep its query-config, row-mode and
+      // transaction behavior intact instead of wrapping its narrow interface.
+      const db = drizzle<Record<string, unknown>, Client>(client as unknown as Client);
+      budgetDetail = formatAgentBudgetDetail(await npCollectAgentBudgetHealthV1({ db }));
+    } catch {
+      // Measurement availability is informational, not a new readiness blocker.
+    }
+    const detail = `${formatAgentHealthDetail(summary)}\n\n${maintenanceDetail}\n\n${budgetDetail}`;
     if (summary.issueCount === 0) {
       return {
         id: "agents.contract",

@@ -91,8 +91,9 @@ cache was moved aside before checking completed builds again.
 
 ## Remaining boundary
 
-Agent-specific remote consumer liveness, overall maintenance readiness and budget
-measurement readiness still require evidence from their owning services. Generic
+The subsequent [budget measurement evidence bundle](agent-budget-evidence.md)
+adds actual measurement observations. Agent-specific remote consumer liveness
+and overall maintenance readiness still require evidence from their owning services. Generic
 heartbeats and successful cursor passes cannot prove those properties. Actual
 spoken assistive-technology acceptance remains open in the
 [operator checklist](admin-assistive-technology-acceptance.md). No provider calls,
