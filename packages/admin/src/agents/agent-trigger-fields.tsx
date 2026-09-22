@@ -148,6 +148,7 @@ function TriggerFilter({
               {value.op === "in" ? (
                 <RuntimeStringList
                   label={`${label} allowed values`}
+                  commitOnChange={false}
                   value={value.values.map(String)}
                   onChange={(next) =>
                     onChange({

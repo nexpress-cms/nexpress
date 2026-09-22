@@ -1,52 +1,51 @@
 # Current work handoff
 
-Observed 2026-09-22 KST. Verify Git state before continuing.
+Observed 2026-09-23 KST. Verify Git and checks before continuing.
 
 ## Objective and authorization
 
-- The user authorized the operator guide and R5 acceptance reconciliation after
-  PR #1478. Documentation, review and scoped validation are complete.
-- The user authorized commit, push, PR and squash merge on 2026-09-22,
-  followed by choosing the next task.
+- The user authorized Agent and policy form acceptance implementation after
+  PR #1479. Code, self-review and verification are complete in this checkout.
+- The user authorized committing, pushing, opening a PR and merging this bundle,
+  then selecting the next work. Require green CI on the exact PR head.
 - Keep versions, changesets and lockfile unchanged. No provider calls, credentials,
   automatic worker/runtime activation, publication or Version PR #1366 merge.
 
 ## Observed checkout
 
-- `/Users/baesw/development/nexpress`: `codex/studio-operator-guide`, based on
-  `7603200b1a52111bb03ce78a3311a11d557912e6` (PR #1478); uncommitted docs only.
-- The prior local post-merge handoff was carried into this branch and replaced here.
-- PR #1478 exact-head CI 35694278882, merge CI 35695613276 and Release
-  35695613252 are verified successful. This bundle changes no application code.
-- Do not assume another checkout contains these pending documents.
+- `/Users/baesw/development/nexpress`, branch `codex/agent-policy-form-acceptance`.
+- HEAD and verified origin/main baseline: `d582608de664312efc174a580e9ff616228f4c9f`.
+- Pending Admin implementation, existing E2E extensions and acceptance documents
+  belong to this bundle. The prior local post-merge handoff is replaced here.
+- PR #1479 merge Release run `35720331020` completed successfully.
+- No PR exists for this bundle; do not confuse old PR CI with current changes.
 
 ## Implementation and evidence
 
-- New live [Agent Studio operator guide](../agent-studio.md) covers explicit host
-  installation, returned-state review, independent read times, safe recovery,
-  Health/Doctor sample limits and actual accessibility acceptance boundaries.
-- Gateway/integration guides and docs indexes point to it. The index distinguishes
-  frozen proposals from maintained implementation/evidence records.
-- R5 and AT tables reflect existing success lifecycle, diagnostics, read timing
-  and maintenance/budget/worker observations; old fixture gaps are historical.
-- Historical test counts and VoiceOver investigation remain intact. Existing
-  inbound anchors to renamed historical sections remain available.
-- Separate ownership review found no factual, authority or evidence overclaims.
-  Scoped formatting, local links/anchors, historical preservation and whitespace
-  checks pass. No new app build, unit, DB, Redis, browser or AT run is claimed.
-- The current [R5 decision](../design/agentic-platform/r5-acceptance.md) records
-  the baseline CI evidence and documentation-only reconciliation limits.
+- [Form acceptance](../design/agentic-platform/admin-form-acceptance.md) records
+  scope, fixes, evidence and limitations.
+- Shared Admin list fields commit policy/recipe changes during typing, preserving
+  raw text and unchanged canonical retry identity. Numeric event-trigger lists
+  preserve their prior blur-time conversion; equal recreated arrays retain text.
+- Configuration and policy editors focus failed-save alerts; inheritance controls
+  name the resource, list hints are associated, narrow form sizing is explicit.
+- Two existing creation journeys and one existing activation journey are extended;
+  one policy edit-conflict case verifies PATCH CAS and stale submission blocking.
+- Final `pnpm verify`: 113 tasks passed, 104 cached. `pnpm lint`: 41 passed,
+  40 cached. Redis opt-in unit tests: 13 passed / 3 skipped as before.
+- Browser: 85/88 in full run; three test assumptions corrected and focused rerun
+  3/3 passed, no retries. All 88 cases covered across those runs; details in flow.
+- Forty local tarballs: fresh consumer installation/typecheck/build and operational
+  journey passed. Ten Admin output files match tarball and installation exactly.
+- Six form captures inspected; formatting, 24 local link targets and whitespace
+  checks passed. E2E files are excluded by ESLint. Logs use `/tmp/np-form-*`.
+- Reviewer found the numeric-trigger consumer regression during implementation;
+  the final code preserves its input conversion boundary and adds browser checks.
 
 ## Next boundary
 
-- On user authorization, commit/push this documentation bundle, create a PR,
-  verify required exact-head CI and squash merge. Then replace this handoff.
-- Do not implement activation, revocation or rollback success fixtures again;
-  they already exist. Do not reopen retention/manual-input work.
-- Full R5 stays open: actual spoken AT workflows are unverified; source freshness/
-  cache age, complete readiness and evidence beyond recorded visual/state coverage
-  remain explicit boundaries. No requirement has been waived by documentation.
-- A consolidated human AT run uses the existing checklist/checkpoints; do not
-  repeat the unsuccessful VoiceOver investigation or treat DOM snapshots as speech.
-- Select subsequent work from a concrete uncovered requirement; documentation
-  reconciliation alone neither completes R5 nor authorizes new product phases.
+- Complete the authorized PR/CI/squash merge and replace this handoff afterward.
+- Full R5, real spoken AT, exhaustive visual/state coverage and complete readiness
+  remain open. This UI bundle is not a new PostgreSQL/Redis/native-preview gate.
+- After merge, refresh this handoff and select a coherent next bundle; use a fresh
+  thread when requested and preserve any pending work.

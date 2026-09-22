@@ -24,7 +24,7 @@ import {
   runtimeErrorMessage,
   useRuntimeResource,
 } from "./agent-runtime-api.js";
-import { RuntimeSelect } from "./agent-runtime-fields.js";
+import { RuntimeFormError, RuntimeSelect } from "./agent-runtime-fields.js";
 import { RuntimePolicyFields } from "./agent-policy-fields.js";
 import { RuntimeNotice, parseRuntimeAck, runtimeCatalogPath } from "./agent-runtime-view.js";
 import { Button } from "../ui/button.js";
@@ -236,8 +236,11 @@ function PolicyEditor({
     );
   return (
     <AgentRecoveryBoundary error={failure}>
-      <form className="space-y-6" onSubmit={(event) => void submit(event)}>
-        <fieldset disabled={busy || stale} className="space-y-6">
+      <form
+        className="min-w-0 space-y-6 [overflow-wrap:anywhere]"
+        onSubmit={(event) => void submit(event)}
+      >
+        <fieldset disabled={busy || stale} className="min-w-0 space-y-6">
           <div className="space-y-2">
             <Label htmlFor="runtime-policy-name">Policy name</Label>
             <Input
@@ -284,7 +287,7 @@ function PolicyEditor({
           </section>
           <Button type="submit">{busy ? "Saving draft…" : "Save policy draft"}</Button>
         </fieldset>
-        {error ? <p role="alert">{error}</p> : null}
+        {error ? <RuntimeFormError message={error} /> : null}
       </form>
     </AgentRecoveryBoundary>
   );

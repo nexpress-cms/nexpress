@@ -22,23 +22,49 @@ export function RuntimeStringList({
   value,
   onChange,
   nullable = false,
+  commitOnChange = true,
 }: {
   label: string;
   value: string[] | null;
   onChange: (value: string[] | null) => void;
   nullable?: boolean;
+  /** Numeric trigger filters normalize only after a complete value is entered. */
+  commitOnChange?: boolean;
 }) {
   const id = React.useId();
   const [draft, setDraft] = React.useState({ source: value, text: value?.join(", ") ?? "" });
-  const text = draft.source === value ? draft.text : (value?.join(", ") ?? "");
+  const sameSource =
+    draft.source === value ||
+    (draft.source !== null &&
+      value !== null &&
+      draft.source.length === value.length &&
+      draft.source.every((item, index) => item === value[index]));
+  const text = sameSource ? draft.text : (value?.join(", ") ?? "");
+  const commit = (text: string) => {
+    const next = [
+      ...new Set(
+        text
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean),
+      ),
+    ].sort();
+    const changed =
+      value === null ||
+      next.length !== value.length ||
+      next.some((item, index) => item !== value[index]);
+    setDraft({ source: changed ? next : value, text });
+    if (changed) onChange(next);
+  };
   return (
-    <div className="space-y-1.5">
+    <div className="min-w-0 space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
       {nullable ? (
         <label className="flex gap-2 text-sm">
           <input
             type="checkbox"
             checked={value === null}
+            aria-label={`No additional restriction for ${label}`}
             onChange={(event) => onChange(event.target.checked ? null : [])}
           />
           No additional restriction
@@ -49,21 +75,16 @@ export function RuntimeStringList({
         value={text}
         disabled={value === null}
         placeholder="Comma-separated identifiers"
-        onChange={(event) => setDraft({ source: value, text: event.target.value })}
-        onBlur={() =>
-          onChange(
-            [
-              ...new Set(
-                text
-                  .split(",")
-                  .map((item) => item.trim())
-                  .filter(Boolean),
-              ),
-            ].sort(),
-          )
-        }
+        aria-describedby={`${id}-hint`}
+        onChange={(event) => {
+          if (commitOnChange) commit(event.target.value);
+          else setDraft({ source: value, text: event.target.value });
+        }}
+        onBlur={() => {
+          if (!commitOnChange) commit(text);
+        }}
       />
-      <p className="text-xs text-neutral-500">
+      <p id={`${id}-hint`} className="text-xs text-neutral-500">
         {value === null
           ? "Inherited rules and item authorization still apply."
           : "An empty list permits no matching resources."}
@@ -191,6 +212,7 @@ export function RuntimePolicyFields({
                 <input
                   type="checkbox"
                   checked={value.resources[key] === null}
+                  aria-label={`No additional restriction for ${key}`}
                   onChange={(event) =>
                     onChange({
                       ...value,
