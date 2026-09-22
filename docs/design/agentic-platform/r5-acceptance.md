@@ -1,6 +1,7 @@
 # R5 acceptance decision
 
-Reviewed on 2026-09-18 KST against `3d293ef329d34756be468143ab032e6f0209846c`
+Current acceptance reconciled on 2026-09-22 KST at PR #1478 (`7603200b`).
+The original Runtime audit was reviewed on 2026-09-18 KST against `3d293ef329d34756be468143ab032e6f0209846c`
 (PR #1456) plus the acceptance-only changes later merged in PR #1457.
 The subsequent [Admin acceptance inventory and repairs](admin-acceptance.md)
 records the 20 shipped routes, current UI corrections and the exact remaining
@@ -15,16 +16,22 @@ backend feature: open/half-open breakers must stop actual subsequent admission
 and dispatch, and actual retention contention must leave CMS work available.
 Existing integration journeys now exercise those boundaries directly.
 
-**Full R5 acceptance remains open.** The exhaustive view-state inventory,
-complete keyboard/screen-reader journeys and remaining visual variants in
-[Admin release acceptance](admin-agent-studio.md#20-admin-release-acceptance)
-have not all been demonstrated. Accessible-name assertions and automated
-viewport checks do not substitute for actual screen-reader or visual review.
+**Full R5 acceptance remains open.** The shipped-route inventory and later
+[Admin state evidence](admin-state-accessibility.md) now cover bounded loading,
+refresh, failure, keyboard and visual scenarios; the
+[success lifecycles](admin-success-lifecycle.md) add activation, connection
+revocation and full rollback presentation. Actual screen-reader workflows remain
+not verified, and this evidence is not an exhaustive pass for every applicable
+state and visual variant in
+[Admin release acceptance](admin-agent-studio.md#20-admin-release-acceptance).
+Accessible-name assertions and automated viewport checks do not substitute for
+actual screen-reader or visual review.
 The remaining work is specified below; this is not a claim of complete R5 or
 permission to begin R6.
 
-No production service, public contract, schema, migration, package version,
-changeset, lockfile or activation behavior changes in this bundle. Provider
+This reconciliation changes documentation only. The original acceptance audit
+also made no production service, public contract, schema, migration, package
+version, changeset, lockfile or activation changes. Provider
 responses in acceptance tests use injected fixtures; no external provider is
 called. Existing historical results retain their original dates and scope.
 
@@ -87,22 +94,27 @@ silently included in the R5 implementation claim.
 
 ## Remaining Admin acceptance work
 
-These are evidence gaps, not claims that every listed UI behavior is broken.
-Use the existing shared surfaces and fixture infrastructure to close them as
-one Admin acceptance bundle, fixing only observed defects.
+The table distinguishes implemented evidence from still-unverified requirements.
+Do not repeat completed work or add a test for every route/state combination to
+make the table appear complete. Use the existing owners when a concrete gap or
+product defect is established.
 
-| Open requirement                    | Concrete completion evidence                                                                                                                                                                                                                                                                                                                      |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| §20.3 complete state inventory      | Map each shipped view to loading, empty, populated, stale, degraded, forbidden, contract-error, conflict and safe mutation-error coverage. Mark a state inapplicable only with an explicit contract reason; fill uncovered applicable states at their owning layer. Existing selective error/conflict cases are not the full inventory.           |
-| §20.6 complete accessible workflows | Record keyboard-only and actual screen-reader completion of the shipped connection, activation, approval, rollback and incident-response paths applicable to the phase. The new Runtime activation/manual-input browser assertions cover only their automated keyboard/control subset. Do not fabricate an incident workflow from a future phase. |
-| §20.7 full visual variants          | Inspect applicable views at 320 px, tablet and desktop, light/dark, reduced motion, long localized copy and high data volume. The new automated Run-now form containment checks cover a shared form subset; they do not establish all-view visual acceptance or localized/high-volume checks.                                                     |
+| Requirement                     | Current evidence                                                                                                                                                                                                                                                                                                                                                                    | Remaining boundary                                                                                                                                                                                                                                                    |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §20.3 state inventory           | The [20-route inventory](admin-acceptance.md#shipped-route-inventory), [state follow-up](admin-state-accessibility.md#applicable-state-boundary), [diagnostics](agent-error-diagnostics.md) and [read observation](studio-read-observation.md) document loading, empty, retained or invalidating refresh, independent failures, access loss, contract errors and mutation recovery. | Coverage is bounded to the documented shared owners and fixtures. No exhaustive per-view/state pass is claimed. Source freshness/cache age remain unsupported; projection and receipt times do not supply those facts.                                                |
+| §20.6 accessible workflows      | Existing keyboard/focus cases and [successful activation, revocation and rollback](admin-success-lifecycle.md) provide synthetic outcomes and optional local checkpoints.                                                                                                                                                                                                           | All six [actual AT workflows](admin-assistive-technology-acceptance.md#one-consolidated-run) remain not verified. Observe utterances, focus and timing in one consolidated operator run. Incident response is a future-phase workflow, not a missing shipped fixture. |
+| §20.7 visual variants           | The [state/accessibility record](admin-state-accessibility.md#browser-and-assistive-technology-evidence) contains 320/768/1280, light/dark, reduced-motion, bounded volume and long-copy inspections; later flows record their own inspected states.                                                                                                                                | Those inspections are not a manual pass for every state or every localization. Preserve their recorded scope and assess any uncovered applicable variant explicitly.                                                                                                  |
+| §13 diagnostics and read timing | Safe optional support correlation/recovery declarations and independent browser receipt/available Runtime projection times are shipped.                                                                                                                                                                                                                                             | Missing metadata stays unavailable; server projection time is not source freshness. Submitted diagnostic events do not guarantee durable support lookup.                                                                                                              |
+| §20.10 Health/Doctor            | [Maintenance](agent-maintenance-evidence.md), [budget](agent-budget-evidence.md) and [worker](agent-worker-evidence.md) observations distinguish receipts, measurement and subscription evidence, including unknown/unavailable states.                                                                                                                                             | Bounded samples, generic heartbeats and subscription observations do not prove end-to-end progress, coverage of every required queue or overall maintenance readiness. Complete Health/Doctor acceptance is not established by those observations alone.              |
 
 The other Admin requirements have existing owning contract, authorization,
 secret-exclusion, sealed-fact, polling, audit, diagnostics and wrapper tests.
 Their feature-flow evidence remains applicable; this audit does not relabel
 untested human workflows as passed because automated CI is green.
 
-## Verification for this bundle
+<a id="verification-for-this-bundle"></a>
+
+## Historical verification — PR #1457 acceptance audit
 
 The production tree, dependency lockfile and workflow inputs are unchanged from
 the baseline. `git diff` confirms PR #1456 head
@@ -148,3 +160,14 @@ Self-review corrected a stale section anchor. Changed Markdown file links and
 anchors, scoped formatting and `git diff --check` pass. Inspection confirms
 only four existing test files and acceptance/handoff documentation changed;
 no production, generated, package or secret material was added.
+
+## Current reconciliation verification
+
+Current behavior is anchored to PR #1478 (`7603200b`):
+[exact-head CI](https://github.com/nexpress-cms/nexpress/actions/runs/35694278882),
+[merge CI](https://github.com/nexpress-cms/nexpress/actions/runs/35695613276) and
+[Release workflow](https://github.com/nexpress-cms/nexpress/actions/runs/35695613252)
+succeeded. Feature-flow results retain their own dates, scopes and reuse limits;
+this is not a new combined full R5 gate. Documentation reconciliation checks
+formatting, local links and whitespace only. No new application build, DB,
+browser or AT run is claimed, and no release/publication authority is implied.

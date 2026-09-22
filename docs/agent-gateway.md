@@ -14,6 +14,10 @@ published a newer era, but NexPress keeps this revision deliberately because
 the R2 capability and task contracts were frozen against it. A protocol-era
 upgrade is a separate compatibility change.
 
+For staff operation, returned-state review, Health/Doctor evidence and failure
+recovery, see the [Agent Studio operator guide](agent-studio.md). Gateway
+transport setup remains the scope of this page.
+
 ## Host requirements
 
 All Gateway transports are disabled by default. Local MCP requires all of the

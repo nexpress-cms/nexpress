@@ -5,6 +5,13 @@ Implementation based on PR #1459 squash `e7d3e664`, preserving the
 [Admin acceptance](admin-acceptance.md) contracts. No public API, permission,
 Runtime/provider activation, schema, version, changeset or lockfile changes.
 
+Current operator instructions are in the [Studio guide](../../agent-studio.md).
+The original verification below remains a dated checkpoint. Subsequent
+[success journeys](admin-success-lifecycle.md), [diagnostic recovery](agent-error-diagnostics.md),
+[read observation](studio-read-observation.md) and Health/Doctor
+[maintenance](agent-maintenance-evidence.md), [budget](agent-budget-evidence.md)
+and [worker](agent-worker-evidence.md) records extend that evidence.
+
 ## Supported presentation
 
 Activity lists and Run/Action details use a static, motion-free read skeleton,
@@ -75,13 +82,14 @@ journey checks issue failure/recovery, exact retry payload, one-time disclosure,
 clipboard acknowledgement, explicit hiding, no redisclosure after refresh,
 revocation recovery and authentication-loss clearing.
 
-VoiceOver is installed on this macOS host and was not running during inspection.
+At the recorded inspection, VoiceOver was installed on the macOS host and was not running.
 Available tools provide DOM/accessibility snapshots and keyboard/UI control but
 no captured screen-reader speech stream. No actual VoiceOver announcement or
 complete human screen-reader journey was verified. A human check must record
 browser/AT versions and complete connection, activation, approval, rollback and
 applicable Gateway/token flows, including failure/recovery. Full Admin/R5 remains
-open for that evidence and unsupported server-state requirements above. Completed
+open for that evidence and the requirement boundaries in the
+[current R5 decision](r5-acceptance.md). Completed
 retention/manual-input work is not reopened.
 
 The later [assistive-technology record](admin-assistive-technology-acceptance.md)
