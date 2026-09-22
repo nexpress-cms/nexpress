@@ -24,7 +24,12 @@ requirement is silently waived. Actual AT acceptance remains separately open in
 
 The subsequent [maintenance evidence bundle](agent-maintenance-evidence.md) adds
 a separate projection for actual committed retention work and bounded runtime
-observations. The original snapshot and its evidence limits remain unchanged.
+observations. The later [budget measurement](agent-budget-evidence.md) and
+[worker subscription](agent-worker-evidence.md) projections supply their own
+bounded evidence as well. The table above describes the original summary, not
+the complete current Health output. Its evidence limits remain unchanged; use
+the [operator guide](../../agent-studio.md#read-health-and-doctor-evidence) for
+current interpretation.
 
 ## Implementation
 

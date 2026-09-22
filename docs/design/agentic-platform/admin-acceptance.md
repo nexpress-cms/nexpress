@@ -17,8 +17,10 @@ and the remaining assistive-technology boundary. Historical gaps below describe
 the PR #1458 checkpoint; use the later records for current supported behavior.
 
 The [assistive-technology acceptance record](admin-assistive-technology-acceptance.md)
-reconciles remaining requirements and consolidates the actual screen-reader run.
-It also identifies success-path fixture gaps without claiming new product failures.
+reconciles remaining requirements and consolidates the pending screen-reader checklist.
+It retains the original success-path fixture gaps as history; the later
+[success lifecycle record](admin-success-lifecycle.md) supplies those fixtures.
+Actual screen-reader observation remains separate and unverified.
 
 ## Shipped route inventory
 
