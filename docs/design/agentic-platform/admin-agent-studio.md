@@ -976,6 +976,8 @@ The API error body remains the shipped exact `{ error, status }` envelope.
 Client copy branches on stable safe codes, not provider message strings.
 Optional [Studio diagnostic headers](agent-error-diagnostics.md) carry separately
 versioned support references and recovery declarations without changing that body.
+[Read observation](studio-read-observation.md) distinguishes browser receipt and
+existing server projection times without inventing freshness or cache-age evidence.
 
 ### 13.2 Surface-specific empty states
 

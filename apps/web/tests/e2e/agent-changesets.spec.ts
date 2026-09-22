@@ -137,7 +137,7 @@ test.describe("Agent ChangeSet review", () => {
     await expect(
       page.getByRole("status").filter({ hasText: "Refreshing ChangeSet" }),
     ).toBeVisible();
-    await expect(page.getByText("Browser receipt time;", { exact: false })).toBeVisible();
+    await expect(page.getByText("Browser receipt time", { exact: false })).toBeVisible();
     await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeDisabled();
     releaseSecond?.();
     await expect(page.getByText("Second poll completed", { exact: true })).toBeVisible();

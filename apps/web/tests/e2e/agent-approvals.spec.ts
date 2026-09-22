@@ -179,7 +179,7 @@ test.describe("Agent approval review", () => {
     releaseRead();
     const approve = page.getByRole("button", { name: "Approve", exact: true });
     await expect(approve).toBeVisible();
-    await expect(page.getByText("Browser receipt time;", { exact: false })).toBeVisible();
+    await expect(page.getByText("Browser receipt time", { exact: false })).toBeVisible();
     readGate = new Promise<void>((resolve) => {
       releaseRead = resolve;
     });

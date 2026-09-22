@@ -333,9 +333,11 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
 
 test("Runtime budget and operations show unknown measurements without inventing zero", async ({
   page,
-}) => {
+}, testInfo) => {
   let budgetReads = 0;
   let runtimeReads = 0;
+  let failBudgetRead = false;
+  let malformedRuntimeTime = false;
   const writes: unknown[] = [];
   await page.clock.install();
   await page.route("**/api/admin/agents/budgets", (route) => {
@@ -351,6 +353,14 @@ test("Runtime budget and operations show unknown measurements without inventing 
       });
     }
     budgetReads++;
+    if (failBudgetRead)
+      return route.fulfill({
+        status: 503,
+        json: {
+          status: 503,
+          error: { code: "UNAVAILABLE", message: "Site budget temporarily unavailable" },
+        },
+      });
     return route.fulfill({
       json: {
         schemaVersion: "np.agent-runtime-budget.v1",
@@ -383,7 +393,7 @@ test("Runtime budget and operations show unknown measurements without inventing 
           enabled: true,
           paused: true,
           readiness: { ...readiness, budget: "unavailable" },
-          generatedAt: at,
+          generatedAt: malformedRuntimeTime ? "not-a-timestamp" : at,
         },
         operations: null,
       },
@@ -394,6 +404,21 @@ test("Runtime budget and operations show unknown measurements without inventing 
   await expect(
     page.getByText("Measurement unavailable; configured hard limits fail closed.", { exact: true }),
   ).toBeVisible();
+  const budgetObservation = page.getByRole("region", {
+    name: "Site budget observation",
+    exact: true,
+  });
+  const runtimeObservation = page.getByRole("region", {
+    name: "Runtime status observation",
+    exact: true,
+  });
+  await expect(budgetObservation.getByText(/^Last received /)).toBeVisible();
+  await expect(budgetObservation.locator("time")).toHaveCount(1);
+  const initialBudgetReceipt = await budgetObservation.locator("time").getAttribute("datetime");
+  await expect(
+    budgetObservation.getByText("Server projection time unavailable.", { exact: true }),
+  ).toBeVisible();
+  await page.clock.runFor(1000);
   await page.getByRole("button", { name: "Edit site budget", exact: true }).click();
   await page.getByLabel("Concurrent runs", { exact: true }).fill("2");
   await page.getByRole("button", { name: "Reload Runtime status", exact: true }).click();
@@ -406,6 +431,75 @@ test("Runtime budget and operations show unknown measurements without inventing 
     page.getByText("Operations evidence is unavailable. Counts are unknown.", { exact: true }),
   ).toBeVisible();
   expect(runtimeReads).toBe(2);
+  await expect(runtimeObservation.getByText(/^Server projection generated /)).toBeVisible();
+  await expect(runtimeObservation.locator("time").nth(1)).toHaveAttribute("datetime", at);
+  await expect(runtimeObservation.locator("time").first()).not.toHaveAttribute(
+    "datetime",
+    initialBudgetReceipt!,
+  );
+  await expect(budgetObservation.locator("time")).toHaveAttribute(
+    "datetime",
+    initialBudgetReceipt!,
+  );
+  const initialRuntimeReceipt = await runtimeObservation
+    .locator("time")
+    .first()
+    .getAttribute("datetime");
+  await page.getByRole("button", { name: "Close budget editor", exact: true }).click();
+  const previousViewport = page.viewportSize();
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.clock.runFor(400);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("runtime-budget-observations-320.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+  if (previousViewport) await page.setViewportSize(previousViewport);
+
+  // The two responses are independent: one failed refresh cannot erase the other's evidence.
+  failBudgetRead = true;
+  await page.clock.runFor(1000);
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(
+    page.getByText("Site budget temporarily unavailable", { exact: true }),
+  ).toBeVisible();
+  await expect(runtimeObservation.locator("time")).toHaveCount(2);
+  await expect(runtimeObservation.locator("time").nth(1)).toHaveAttribute("datetime", at);
+  await expect(budgetObservation.locator("time")).toHaveCount(0);
+  await expect(runtimeObservation.locator("time").first()).not.toHaveAttribute(
+    "datetime",
+    initialRuntimeReceipt!,
+  );
+  const runtimeReceipt = await runtimeObservation.locator("time").first().getAttribute("datetime");
+  failBudgetRead = false;
+  await page.clock.runFor(1000);
+  await page.getByRole("button", { name: "Reload site budget", exact: true }).click();
+  await expect(budgetObservation.locator("time")).toHaveCount(1);
+  await expect(budgetObservation.locator("time")).not.toHaveAttribute(
+    "datetime",
+    initialBudgetReceipt!,
+  );
+  await expect(runtimeObservation.locator("time").first()).toHaveAttribute(
+    "datetime",
+    runtimeReceipt!,
+  );
+
+  // Invalid server timestamps fail contract validation instead of looking like fresh facts.
+  malformedRuntimeTime = true;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(
+    page.getByText("The Runtime response could not be validated.", { exact: true }),
+  ).toBeVisible();
+  await expect(runtimeObservation.locator("time")).toHaveCount(0);
+  await expect(budgetObservation.locator("time")).toHaveCount(1);
+  malformedRuntimeTime = false;
+  await page.getByRole("button", { name: "Reload Runtime status", exact: true }).click();
+  await expect(runtimeObservation.locator("time").nth(1)).toHaveAttribute("datetime", at);
+  await page.getByRole("button", { name: "Edit site budget", exact: true }).click();
+  await page.getByLabel("Concurrent runs", { exact: true }).fill("2");
   await page.getByRole("button", { name: "Review budget changes", exact: true }).click();
   const confirm = page.getByRole("button", { name: "Confirm budget update", exact: true });
   await confirm.click();
