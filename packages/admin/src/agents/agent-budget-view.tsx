@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AgentReadObservation } from "./agent-read-observation.js";
 import { AgentRecoveryBoundary, useAgentRetryBlocked } from "./agent-recovery.js";
 import {
   npRequireAgentRuntimeStudioBudgetV1,
@@ -100,7 +101,6 @@ export function AgentBudgetView() {
       recovery={runtimeRecoveryFailure(failure, runtime.failure, budget.failure)}
       busy={runtime.loading || budget.loading}
       refreshing={runtime.refreshing || budget.refreshing}
-      observedAt={runtime.observedAt}
     >
       <div className="flex flex-wrap justify-between gap-3">
         <h2 className="text-lg font-semibold">Budgets and Runtime operations</h2>
@@ -108,6 +108,12 @@ export function AgentBudgetView() {
           Refresh
         </Button>
       </div>
+      <AgentReadObservation
+        label="Runtime status"
+        receivedAt={runtime.observedAt}
+        generatedAt={status?.generatedAt}
+        refreshing={runtime.refreshing}
+      />
       <RuntimeNotice loading={false} error={runtime.error} />
       {runtime.error ? <Button onClick={runtime.reload}>Reload Runtime status</Button> : null}
       {status ? (
@@ -121,8 +127,7 @@ export function AgentBudgetView() {
               {status.paused ? "Emergency paused" : "Not emergency paused"}
             </p>
             <p className="text-sm text-neutral-500">
-              Observed {status.generatedAt}. Readiness is server evidence; this view does not start
-              providers or install a worker.
+              Readiness is server evidence; this view does not start providers or install a worker.
             </p>
             <dl className="grid gap-3 sm:grid-cols-3">
               {Object.entries(status.readiness).map(([name, value]) => (
@@ -233,6 +238,11 @@ export function AgentBudgetView() {
           </CardContent>
         </Card>
       ) : null}
+      <AgentReadObservation
+        label="Site budget"
+        receivedAt={budget.observedAt}
+        refreshing={budget.refreshing}
+      />
       <RuntimeNotice loading={false} error={budget.error} />
       {budget.error ? <Button onClick={budget.reload}>Reload site budget</Button> : null}
       {budget.value ? (

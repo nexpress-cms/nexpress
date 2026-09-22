@@ -38,17 +38,17 @@ The browser fixture uses only synthetic token material and mocked endpoints.
 
 ## Applicable state boundary
 
-| Requested state                   | Supported interpretation                                                                                                        |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Initial loading / refreshing      | Static skeleton, retained read-only values, explicit invalidating review refresh, background polling status.                    |
-| Empty / missing                   | Authorized empty lists remain distinct from missing or forbidden details and absent installed services.                         |
-| Stale / freshness                 | Only exact local receipt time is available. No server cache-age, freshness verdict or heartbeat is inferred.                    |
-| Partial failure                   | Independently owned Run actions, OAuth clients and existing budget/Runtime reads identify their own failure and recovery.       |
-| Contract / safe API errors        | Validated error code/message plus optional [server diagnostics](agent-error-diagnostics.md); absent metadata stays unavailable. |
-| Authentication / forbidden / 429  | Existing fail-closed clearing, login link, polling stop and exact supported Retry-After wait.                                   |
-| Conflict / mutation error         | Existing CAS/review invalidation and unchanged-request retry semantics; no fictional mutation on a read-only list.              |
-| Provider / worker / budget health | Only returned contract facts. A missing host or unknown measurement is not a synthetic health verdict.                          |
-| Incident response                 | No shipped incident route. Its future product gate is not represented by a fixture.                                             |
+| Requested state                   | Supported interpretation                                                                                                                                          |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Initial loading / refreshing      | Static skeleton, retained read-only values, explicit invalidating review refresh, background polling status.                                                      |
+| Empty / missing                   | Authorized empty lists remain distinct from missing or forbidden details and absent installed services.                                                           |
+| Stale / freshness                 | Shared [read observation](studio-read-observation.md) distinguishes receipt and existing Runtime projection times; no cache-age or freshness verdict is inferred. |
+| Partial failure                   | Independently owned Run actions, OAuth clients and existing budget/Runtime reads identify their own failure and recovery.                                         |
+| Contract / safe API errors        | Validated error code/message plus optional [server diagnostics](agent-error-diagnostics.md); absent metadata stays unavailable.                                   |
+| Authentication / forbidden / 429  | Existing fail-closed clearing, login link, polling stop and exact supported Retry-After wait.                                                                     |
+| Conflict / mutation error         | Existing CAS/review invalidation and unchanged-request retry semantics; no fictional mutation on a read-only list.                                                |
+| Provider / worker / budget health | Only returned contract facts. A missing host or unknown measurement is not a synthetic health verdict.                                                            |
+| Incident response                 | No shipped incident route. Its future product gate is not represented by a fixture.                                                                               |
 
 ## Browser and assistive-technology evidence
 

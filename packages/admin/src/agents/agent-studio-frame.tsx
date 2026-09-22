@@ -1,3 +1,4 @@
+import { AgentReadObservation } from "./agent-read-observation.js";
 import { AgentRecoveryBoundary } from "./agent-recovery.js";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -100,15 +101,7 @@ export function AgentStudioFrame({
           ) : null}
         </div>
       ) : null}
-      {observedAt ? (
-        <p className="text-xs text-neutral-500">
-          Last received{" "}
-          <time dateTime={new Date(observedAt).toISOString()}>
-            {new Date(observedAt).toISOString()}
-          </time>
-          . Refresh to check current server facts.
-        </p>
-      ) : null}
+      <AgentReadObservation receivedAt={observedAt} refreshing={refreshing} label={active} />
       <AgentRecoveryBoundary error={recovery}>
         <fieldset disabled={busy} aria-busy={busy} className="min-w-0 space-y-6">
           {children}
