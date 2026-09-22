@@ -6,6 +6,24 @@ import { Input } from "../ui/input.js";
 import { Label } from "../ui/label.js";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select.js";
 
+/** Mounted after each failed attempt so even an identical retry error receives focus. */
+export function RuntimeFormError({ message }: { message: string }) {
+  const notice = React.useRef<HTMLParagraphElement>(null);
+  React.useEffect(() => {
+    notice.current?.focus();
+  }, []);
+  return (
+    <p
+      ref={notice}
+      role="alert"
+      tabIndex={-1}
+      className="break-words rounded-lg border border-red-200 p-3 text-sm text-red-700 outline-offset-4 dark:text-red-300"
+    >
+      {message}
+    </p>
+  );
+}
+
 export function RuntimeSelect<T extends string>({
   label,
   value,
@@ -21,7 +39,7 @@ export function RuntimeSelect<T extends string>({
 }) {
   const id = React.useId();
   return (
-    <div className="space-y-1.5">
+    <div className="min-w-0 space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
       <Select
         value={value}
@@ -65,7 +83,7 @@ export function RuntimeNumber({
 }) {
   const id = React.useId();
   return (
-    <div className="space-y-1.5">
+    <div className="min-w-0 space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}

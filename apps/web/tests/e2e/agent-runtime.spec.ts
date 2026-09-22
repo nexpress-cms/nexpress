@@ -10,7 +10,7 @@ import {
   readiness,
   catalog,
 } from "./fixtures/runtime-studio.js";
-import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route, type TestInfo } from "@playwright/test";
 import {
   npCreateDisabledAgentRuntimeSettingsV1,
   npBuildAgentPolicySimulationFixtureInputV1,
@@ -32,6 +32,39 @@ async function tabTo(page: Page, control: Locator) {
     await page.keyboard.press("Tab");
   }
   await expect(control).toBeFocused();
+}
+
+/** Sample each layout owner without multiplying every workflow by every media combination. */
+async function inspectDraftFormLayout(page: Page, testInfo: TestInfo, name: string) {
+  for (const sample of [
+    { width: 320, height: 800, colorScheme: "light" },
+    { width: 768, height: 1024, colorScheme: "dark" },
+    { width: 1280, height: 900, colorScheme: "light" },
+  ] as const) {
+    await page.setViewportSize({ width: sample.width, height: sample.height });
+    await page.emulateMedia({ colorScheme: sample.colorScheme, reducedMotion: "reduce" });
+    await expect(page.locator("html")).toHaveClass(
+      sample.colorScheme === "dark" ? /dark/ : /^(?!.*\bdark\b)/,
+    );
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+      .toBe(true);
+    const outsideViewport = await page.locator("form").evaluate((form) =>
+      [...form.querySelectorAll("input, textarea, button")]
+        .filter((element) => {
+          const bounds = element.getBoundingClientRect();
+          return bounds.width > 0 && (bounds.x < 0 || bounds.right > window.innerWidth);
+        })
+        .map((element) => element.getAttribute("id") ?? element.textContent),
+    );
+    expect(outsideViewport).toEqual([]);
+    const screenshot = testInfo.outputPath(`${name}-${sample.width}-${sample.colorScheme}.png`);
+    await page.screenshot({ path: screenshot, fullPage: true, animations: "disabled" });
+    await testInfo.attach(`${name}-${sample.width}-${sample.colorScheme}`, {
+      path: screenshot,
+      contentType: "image/png",
+    });
+  }
 }
 
 test("Runtime management stays unavailable without a host and new writes retain CSRF", async ({
@@ -220,7 +253,17 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
   let delayedDecision: Route | undefined;
   let delayedRead: Route | undefined;
   let holdRead = false;
-  await page.route("**/api/admin/agents/capabilities", (route) => route.fulfill({ json: catalog }));
+  await page.route("**/api/admin/agents/capabilities", (route) =>
+    route.fulfill({
+      json: {
+        ...catalog,
+        recipes: catalog.recipes.map((recipe) => ({
+          ...recipe,
+          triggerKinds: ["manual", "event"],
+        })),
+      },
+    }),
+  );
   await page.route("**/api/admin/agents/triggers?**", (route) =>
     route.fulfill({
       json: { schemaVersion: "np.agent-triggers-page.v1", items: [], nextCursor: null },
@@ -290,6 +333,30 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
   await tabTo(page, enableTrigger);
   await page.keyboard.press("Space");
   await expect(enableTrigger).toBeChecked();
+  await page.getByRole("button", { name: "Add event trigger", exact: true }).click();
+  await page.getByRole("combobox", { name: "Registered event kind", exact: true }).click();
+  await page.getByRole("option", { name: "security.edge.signal", exact: true }).click();
+  await page.getByRole("combobox", { name: "Event filter operator", exact: true }).click();
+  await page.getByRole("option", { name: "in", exact: true }).click();
+  const allowedValues = page.getByRole("textbox", {
+    name: "Event filter allowed values",
+    exact: true,
+  });
+  await tabTo(page, allowedValues);
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.type("public, internal");
+  await expect(allowedValues).toHaveValue("public, internal");
+  await page.keyboard.press("Tab");
+  await page.getByRole("combobox", { name: "Event filter field", exact: true }).click();
+  await page.getByRole("option", { name: "payload.count", exact: true }).click();
+  await tabTo(page, allowedValues);
+  await page.keyboard.press("ControlOrMeta+A");
+  // Numeric conversion must wait for a complete token, not replace an intermediate `1e`.
+  await page.keyboard.type("1e");
+  await expect(allowedValues).toHaveValue("1e");
+  await page.keyboard.type("2, 3");
+  await expect(allowedValues).toHaveValue("1e2, 3");
+  await page.keyboard.press("Tab");
   await tabTo(page, page.getByRole("button", { name: "Confirm", exact: true }));
   await page.keyboard.press("Enter");
   await expect(
@@ -300,7 +367,18 @@ test("Runtime Agent filtering and activation keep the reviewed version and trigg
     expectedVersion: 1,
     configHash: digest,
     reviewedPolicyRefs: [],
-    triggers: [{ definition: { type: "manual" }, enabled: true }],
+    triggers: [
+      { definition: { type: "manual" }, enabled: true },
+      {
+        definition: {
+          type: "event",
+          eventKind: "security.edge.signal",
+          filter: { op: "in", field: "payload.count", values: [100, 3] },
+          coalesceSeconds: 0,
+        },
+        enabled: false,
+      },
+    ],
   });
   await expect(page.getByRole("button", { name: "Confirm", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
@@ -519,7 +597,7 @@ test("Runtime budget and operations show unknown measurements without inventing 
 
 test("Runtime typed draft creation requires explicit self-delegation and never activates implicitly", async ({
   page,
-}) => {
+}, testInfo) => {
   const writes: Array<{ path: string; body: Record<string, unknown> }> = [];
   await page.route("**/api/admin/agents/capabilities", (route) => route.fulfill({ json: catalog }));
   await page.route("**/api/admin/agents/triggers?**", (route) =>
@@ -545,15 +623,43 @@ test("Runtime typed draft creation requires explicit self-delegation and never a
     { exact: true },
   );
   await expect(delegation).not.toBeChecked();
-  await page.getByLabel("Agent name", { exact: true }).fill("Worker observer");
-  await page.getByLabel("Registered check IDs", { exact: true }).fill("jobs.worker");
-  await page.getByLabel("site:read", { exact: true }).check();
-  await page.getByRole("combobox", { name: "site.inspect", exact: true }).click();
-  await page.getByRole("option", { name: "Observe only", exact: true }).click();
-  await page.getByRole("button", { name: "Save draft", exact: true }).click();
-  await expect(
-    page.locator("form").getByRole("alert").filter({ hasText: "Request failed (502)" }),
-  ).toHaveText("Request failed (502)");
+  const name = page.getByLabel("Agent name", { exact: true });
+  const checks = page.getByLabel("Registered check IDs", { exact: true });
+  const scope = page.getByLabel("site:read", { exact: true });
+  const mode = page.getByRole("combobox", { name: "site.inspect", exact: true });
+  const save = page.getByRole("button", { name: "Save draft", exact: true });
+  await tabTo(page, name);
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.press("Backspace");
+  await tabTo(page, save);
+  await page.keyboard.press("Enter");
+  await expect(name).toBeFocused();
+  expect(writes).toHaveLength(0);
+  await page.keyboard.type("Worker observer");
+  await tabTo(page, checks);
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.type("jobs.worker");
+  await tabTo(page, scope);
+  await page.keyboard.press("Space");
+  await expect(scope).toBeChecked();
+  await tabTo(page, mode);
+  await page.keyboard.press("Enter");
+  const observe = page.getByRole("option", { name: "Observe only", exact: true });
+  await expect(page.getByRole("option", { name: "Never", exact: true })).toBeFocused();
+  await page.keyboard.press("o");
+  await expect(observe).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(mode).toContainText("Observe only");
+  await tabTo(page, save);
+  await page.keyboard.press("Enter");
+  const failure = page.locator("form").getByRole("alert");
+  await expect(failure).toHaveText("Request failed (502)");
+  await expect(failure).toBeFocused();
+  await expect(name).toHaveValue("Worker observer");
+  await expect(checks).toHaveValue("jobs.worker");
+  await expect(scope).toBeChecked();
+  await expect(delegation).not.toBeChecked();
+  await inspectDraftFormLayout(page, testInfo, "agent-draft-failed-save");
   expect(writes).toHaveLength(1);
   expect(writes[0].body).not.toHaveProperty("authority");
   const savedDefinition = JSON.parse(writes[0].body.definitionJson as string) as Record<
@@ -571,8 +677,11 @@ test("Runtime typed draft creation requires explicit self-delegation and never a
   });
   expect(savedDefinition).not.toHaveProperty("enabled");
   expect(writes[0].body).not.toHaveProperty("triggers");
-  await delegation.check();
-  await page.getByRole("button", { name: "Save draft", exact: true }).click();
+  await tabTo(page, delegation);
+  await page.keyboard.press("Space");
+  await expect(delegation).toBeChecked();
+  await tabTo(page, save);
+  await page.keyboard.press("Enter");
   await expect(page).toHaveURL(new RegExp(`/admin/agents/configurations/${id}$`));
   expect(writes).toHaveLength(2);
   expect(writes[1].body).toMatchObject({ authority: { kind: "user", userId: principalId } });
@@ -585,7 +694,7 @@ test("Runtime typed draft creation requires explicit self-delegation and never a
 
 test("Agent override policy creation binds the target and retries the exact typed draft safely", async ({
   page,
-}) => {
+}, testInfo) => {
   const policyId = "44444444-4444-4444-8444-444444444444";
   const bodies: string[] = [];
   const guidance =
@@ -631,14 +740,47 @@ test("Agent override policy creation binds the target and retries the exact type
   await page.getByRole("link", { name: "Create Agent policy", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/admin/agents/policies/new\\?agentId=${id}$`));
   await expect(page.getByText(`Applies to Agent ${id}.`, { exact: true })).toBeVisible();
-  await page.getByLabel("Policy name", { exact: true }).fill("Worker review policy");
-  await page.getByLabel("Guidance (Markdown text)", { exact: true }).fill(guidance);
-  await page.getByRole("button", { name: "Save policy draft", exact: true }).click();
-  await expect(
-    page.locator("form").getByRole("alert").filter({ hasText: "Request failed (502)" }),
-  ).toHaveText("Request failed (502)");
+  const name = page.getByLabel("Policy name", { exact: true });
+  const guidanceInput = page.getByLabel("Guidance (Markdown text)", { exact: true });
+  const inheritCollections = page.getByRole("checkbox", {
+    name: "No additional restriction for collections",
+    exact: true,
+  });
+  const collections = page.getByRole("textbox", { name: "collections", exact: true });
+  const save = page.getByRole("button", { name: "Save policy draft", exact: true });
+  await tabTo(page, name);
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.type("Worker review policy");
+  await tabTo(page, guidanceInput);
+  await page.keyboard.type(guidance);
+  await tabTo(page, inheritCollections);
+  await page.keyboard.press("Space");
+  await expect(inheritCollections).not.toBeChecked();
+  await page.keyboard.press("Tab");
+  await expect(collections).toBeFocused();
+  await expect(collections).toHaveAccessibleDescription(
+    "An empty list permits no matching resources.",
+  );
+  await page.keyboard.type("pages, posts");
+  // Enter must submit the latest list before a blur can commit it.
+  await page.keyboard.press("Enter");
+  const failure = page.locator("form").getByRole("alert");
+  await expect(failure).toHaveText("Request failed (502)");
+  await expect(failure).toBeFocused();
+  await expect(name).toHaveValue("Worker review policy");
+  await expect(guidanceInput).toHaveValue(guidance);
+  await expect(collections).toHaveValue("pages, posts");
   expect(bodies).toHaveLength(1);
-  await page.getByRole("button", { name: "Save policy draft", exact: true }).click();
+  await inspectDraftFormLayout(page, testInfo, "policy-draft-failed-save");
+  // Visiting an unchanged list must not rotate the retry identity.
+  await tabTo(page, collections);
+  // Tab selects the text; ArrowRight collapses it to the end on macOS and Linux.
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.type(", ");
+  await expect(collections).toHaveValue("pages, posts, ");
+  await page.keyboard.press("Tab");
+  await tabTo(page, save);
+  await page.keyboard.press("Enter");
   await expect(page).toHaveURL(new RegExp(`/admin/agents/policies/${policyId}$`));
   await expect(
     page.getByRole("heading", { name: "Worker review policy", exact: true }),
@@ -654,12 +796,75 @@ test("Agent override policy creation binds the target and retries the exact type
     agentId: id,
     name: "Worker review policy",
     instructions: guidance,
-    rules: catalog.defaultPolicyRules,
+    rules: {
+      ...catalog.defaultPolicyRules,
+      resources: { ...catalog.defaultPolicyRules.resources, collections: ["pages", "posts"] },
+    },
   });
   expect(command.definitionHash).toMatch(/^cj1:sha256:[A-Za-z0-9_-]{43}$/u);
   expect(command.idempotencyKey).toBeTruthy();
   await expect(page.getByText(guidance, { exact: true })).toBeVisible();
   await expect(page.locator('[data-runtime-untrusted="marker"]')).toHaveCount(0);
+});
+
+test("Policy draft editing binds the read version and retains unsaved input after a conflict", async ({
+  page,
+}) => {
+  const writes: Array<Record<string, unknown>> = [];
+  await page.route("**/api/admin/agents/capabilities", (route) => route.fulfill({ json: catalog }));
+  await page.route(`**/api/admin/agents/policies/${id}`, async (route) => {
+    if (route.request().method() === "PATCH") {
+      writes.push(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill({ status: 409, body: "The policy draft changed." });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        schemaVersion: "np.agent-policy-detail.v1",
+        id,
+        rowVersion: 7,
+        version: 3,
+        status: "draft",
+        contentHash: digest,
+        definition: {
+          schemaVersion: "np.agent-policy-definition.v1",
+          agentId: null,
+          name: "Existing site policy",
+          instructions: "Existing guidance",
+          rules: catalog.defaultPolicyRules,
+        },
+        availableActions: ["agents.policies.update"],
+        createdAt: at,
+      },
+    });
+  });
+  await signInAsE2EAdmin(page);
+  await page.goto(`/admin/agents/policies/${id}`);
+  await tabTo(page, page.getByRole("button", { name: "Edit draft", exact: true }));
+  await page.keyboard.press("Enter");
+  const name = page.getByLabel("Policy name", { exact: true });
+  const guidance = page.getByLabel("Guidance (Markdown text)", { exact: true });
+  const save = page.getByRole("button", { name: "Save policy draft", exact: true });
+  await expect(name).toHaveValue("Existing site policy");
+  await tabTo(page, guidance);
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.type("Keep this unsaved operator guidance.");
+  await tabTo(page, save);
+  await page.keyboard.press("Enter");
+  const failure = page.locator("form").getByRole("alert");
+  await expect(failure).toContainText("This resource changed. Reload, review the current version");
+  await expect(failure).toBeFocused();
+  await expect(guidance).toHaveValue("Keep this unsaved operator guidance.");
+  await expect(guidance).toBeDisabled();
+  await expect(save).toBeDisabled();
+  await page.keyboard.press("Enter");
+  expect(writes).toHaveLength(1);
+  expect(writes[0]).toMatchObject({ expectedVersion: 7, configHash: digest });
+  expect(JSON.parse(writes[0].definitionJson as string)).toMatchObject({
+    agentId: null,
+    name: "Existing site policy",
+    instructions: "Keep this unsaved operator guidance.",
+  });
 });
 
 test("Policy simulation displays bounded non-authorizing facts and preserves unknown-outcome retry identity", async ({

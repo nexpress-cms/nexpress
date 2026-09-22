@@ -34,7 +34,7 @@ import {
   runtimeErrorMessage,
   useRuntimeResource,
 } from "./agent-runtime-api.js";
-import { RuntimeBudgetFields, RuntimeSelect } from "./agent-runtime-fields.js";
+import { RuntimeBudgetFields, RuntimeFormError, RuntimeSelect } from "./agent-runtime-fields.js";
 import { RuntimeCapabilityModes } from "./agent-policy-fields.js";
 import { RuntimeEventTriggerFields } from "./agent-trigger-fields.js";
 import { RuntimeRecipeFields, runtimeRecipeDraft } from "./agent-recipe-fields.js";
@@ -360,8 +360,11 @@ function RuntimeConfigurationEditor({
     );
   return (
     <AgentRecoveryBoundary error={failure}>
-      <form className="space-y-6" onSubmit={(event) => void submit(event)}>
-        <fieldset disabled={busy || stale} className="space-y-6">
+      <form
+        className="min-w-0 space-y-6 [overflow-wrap:anywhere]"
+        onSubmit={(event) => void submit(event)}
+      >
+        <fieldset disabled={busy || stale} className="min-w-0 space-y-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="runtime-agent-name">Agent name</Label>
@@ -520,7 +523,7 @@ function RuntimeConfigurationEditor({
             {busy ? "Saving draft…" : "Save draft"}
           </Button>
         </fieldset>
-        {error ? <p role="alert">{error}</p> : null}
+        {error ? <RuntimeFormError message={error} /> : null}
       </form>
     </AgentRecoveryBoundary>
   );

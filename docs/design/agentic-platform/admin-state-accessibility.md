@@ -96,6 +96,10 @@ The later [assistive-technology record](admin-assistive-technology-acceptance.md
 records environment inspection, the unresolved speech-observation gate and one
 consolidated workflow checklist. It does not replace this bundle's browser evidence.
 
+The later [Agent and policy form acceptance](admin-form-acceptance.md) covers
+keyboard draft creation, unchanged retry identity and edit conflicts in the
+shared configuration/policy form owners.
+
 ## Verification
 
 Final code gates: `pnpm verify --concurrency=1` passed 59 repository checks and
