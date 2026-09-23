@@ -1,3 +1,4 @@
+import { NP_AGENT_WORKER_QUEUE_NAMES } from "@nexpress/core/jobs-contract";
 import { expect, test } from "@playwright/test";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
@@ -49,6 +50,16 @@ test("Health shows the real Agent snapshot with keyboard-accessible counts and e
   ])
     await expect(workers.getByText(label, { exact: true })).toBeVisible();
   await expect(workers.getByText(/do not prove job progress/)).toBeVisible();
+  const queues = workers.getByRole("region", {
+    name: "Queue subscription observations",
+    exact: true,
+  });
+  await expect(queues).toBeVisible();
+  for (const queue of NP_AGENT_WORKER_QUEUE_NAMES) {
+    const observation = queues.getByRole("region", { name: queue, exact: true });
+    await expect(observation).toBeVisible();
+    await expect(observation.locator("dd")).toHaveCount(4);
+  }
   const workerTimestamp = await workers.locator("time").getAttribute("datetime");
   const budgetTimestamp = await budget.locator("time").getAttribute("datetime");
   const generated = diagnostics.locator("time");

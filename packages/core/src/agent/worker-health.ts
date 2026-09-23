@@ -4,12 +4,15 @@ import { npWorkerHeartbeats } from "../db/schema/system.js";
 import { npRequireWorkerHeartbeat } from "../jobs-contract/contract.js";
 import {
   NP_WORKER_SUBSCRIPTION_META_KEY,
+  NP_AGENT_WORKER_QUEUE_NAMES,
   npRequireWorkerSubscriptionV1,
 } from "../jobs-contract/worker-subscription-contract.js";
 import { WORKER_STALE_THRESHOLD_MS } from "../jobs/heartbeat.js";
 import {
   NP_AGENT_WORKER_HEALTH_SAMPLE_LIMIT,
-  npRequireAgentWorkerHealthV1,
+  npRequireAgentWorkerHealthV2,
+  type NpAgentWorkerHealthV2,
+  type NpAgentWorkerQueueObservationV1,
   type NpAgentWorkerHealthV1,
 } from "../agent-contract/worker-health-contract.js";
 
@@ -45,13 +48,13 @@ function category(value: unknown, now: Date): Category {
 }
 
 /**
- * Aggregate-only subscription observations from the most recent bounded heartbeat sample.
+ * Aggregate and per-queue subscription observations from the most recent bounded heartbeat sample.
  * Use a root DB handle (including Doctor's original Client), not a parent transaction.
  * No queue, worker, provider or runtime initialization occurs here.
  */
-export async function npCollectAgentWorkerHealthV1(
+export async function npCollectAgentWorkerHealthV2(
   options: { db?: Db; now?: Date } = {},
-): Promise<NpAgentWorkerHealthV1> {
+): Promise<NpAgentWorkerHealthV2> {
   const now = options.now ?? new Date();
   const result: NpAgentWorkerHealthV1 = {
     schemaVersion: "np.agent-worker-health.v1",
@@ -66,6 +69,13 @@ export async function npCollectAgentWorkerHealthV1(
     stoppedWorkers: null,
     unknownWorkers: null,
   };
+  let queues: NpAgentWorkerQueueObservationV1[] = NP_AGENT_WORKER_QUEUE_NAMES.map((queue) => ({
+    queue,
+    subscribedWorkers: null,
+    pausedRegisteredWorkers: null,
+    staleRegisteredWorkers: null,
+    stoppedRegisteredWorkers: null,
+  }));
   try {
     const db = options.db ?? getDb();
     const rows = await db.transaction(async (tx) => {
@@ -101,7 +111,29 @@ export async function npCollectAgentWorkerHealthV1(
       stoppedWorkers: 0,
       unknownWorkers: 0,
     };
-    for (const row of sample) counts[category(row, now)]++;
+    const observedQueues = NP_AGENT_WORKER_QUEUE_NAMES.map((queue) => ({
+      queue,
+      subscribedWorkers: 0,
+      pausedRegisteredWorkers: 0,
+      staleRegisteredWorkers: 0,
+      stoppedRegisteredWorkers: 0,
+    }));
+    for (const row of sample) {
+      const kind = category(row, now);
+      counts[kind]++;
+      // Unknown/legacy evidence cannot be assigned to a queue, even if it names one.
+      if (kind === "unknownWorkers" || kind === "inactiveWorkers") continue;
+      const evidence = npRequireWorkerSubscriptionV1(row.meta[NP_WORKER_SUBSCRIPTION_META_KEY]);
+      for (const queue of observedQueues) {
+        if (kind === "subscribedWorkers" && evidence.agentQueues.includes(queue.queue))
+          queue.subscribedWorkers++;
+        if (!evidence.registeredAgentQueues.includes(queue.queue)) continue;
+        if (kind === "pausedWorkers") queue.pausedRegisteredWorkers++;
+        if (kind === "staleWorkers") queue.staleRegisteredWorkers++;
+        if (kind === "stoppedWorkers") queue.stoppedRegisteredWorkers++;
+      }
+    }
+    queues = observedQueues;
     Object.assign(result, {
       state: "observed",
       sampledWorkers: sample.length,
@@ -111,5 +143,16 @@ export async function npCollectAgentWorkerHealthV1(
   } catch {
     // A failed read is unknown; it is not an observed empty sample.
   }
-  return npRequireAgentWorkerHealthV1(result);
+  return npRequireAgentWorkerHealthV2({
+    schemaVersion: "np.agent-worker-health.v2",
+    summary: result,
+    queues,
+  });
+}
+
+/** Compatibility reader: retain the exact v1 aggregate envelope and semantics. */
+export async function npCollectAgentWorkerHealthV1(
+  options: { db?: Db; now?: Date } = {},
+): Promise<NpAgentWorkerHealthV1> {
+  return (await npCollectAgentWorkerHealthV2(options)).summary;
 }

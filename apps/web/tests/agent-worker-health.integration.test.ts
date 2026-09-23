@@ -10,7 +10,10 @@ import {
   skipIfNoTestDb,
   truncateAll,
 } from "./harness.js";
-import { npCollectAgentWorkerHealthV1 } from "../../../packages/core/src/agent/worker-health.js";
+import {
+  npCollectAgentWorkerHealthV1,
+  npCollectAgentWorkerHealthV2,
+} from "../../../packages/core/src/agent/worker-health.js";
 import { getDb, resetDb, setDb } from "../../../packages/core/src/db/runtime.js";
 import { npWorkerHeartbeats } from "../../../packages/core/src/db/schema/system.js";
 import {
@@ -19,6 +22,7 @@ import {
   WORKER_STALE_THRESHOLD_MS,
 } from "../../../packages/core/src/jobs/heartbeat.js";
 import {
+  NP_AGENT_WORKER_QUEUE_NAMES,
   NP_WORKER_SUBSCRIPTION_META_KEY,
   type NpWorkerSubscriptionV1,
 } from "../../../packages/core/src/jobs-contract/worker-subscription-contract.js";
@@ -26,12 +30,15 @@ import {
 const now = new Date("2026-09-21T08:00:00.000Z");
 const agentQueue = "agent.runExecute";
 
-function subscription(state: NpWorkerSubscriptionV1["state"]): NpWorkerSubscriptionV1 {
+function subscription(
+  state: NpWorkerSubscriptionV1["state"],
+  queues: string[] = [agentQueue],
+): NpWorkerSubscriptionV1 {
   return {
     schemaVersion: "np.worker-subscription.v1",
     state,
-    registeredAgentQueues: state === "producer" ? [] : [agentQueue],
-    agentQueues: state === "active" ? [agentQueue] : [],
+    registeredAgentQueues: state === "producer" ? [] : queues,
+    agentQueues: state === "active" ? queues : [],
   };
 }
 
@@ -73,18 +80,24 @@ describe.skipIf(skipIfNoTestDb())("Agent worker Health observations", () => {
   it("separates persisted subscription states from legacy, malformed and future observations", async () => {
     const db = await getTestDb();
     await db.insert(npWorkerHeartbeats).values([
-      worker("private-active", subscription("active")),
-      worker("private-paused", subscription("paused")),
+      worker("private-active", {
+        ...subscription("active", ["agent.eventDispatch", agentQueue]),
+        registeredAgentQueues: ["agent.eventDispatch", "agent.retentionPrune", agentQueue],
+      }),
+      worker("private-event-only", subscription("active", ["agent.eventDispatch"])),
+      worker("private-paused", subscription("paused", ["agent.retentionPrune", agentQueue])),
       worker("private-producer", subscription("producer")),
       worker("private-unrelated", {
         ...subscription("active"),
         registeredAgentQueues: [],
         agentQueues: [],
       }),
-      worker("private-stale", subscription("active"), {
+      worker("private-stale", subscription("active", ["agent.eventDispatch", agentQueue]), {
         lastSeenAt: new Date(now.getTime() - WORKER_STALE_THRESHOLD_MS),
       }),
-      worker("private-stopped", subscription("active"), { status: "stopped" }),
+      worker("private-stopped", subscription("active", ["agent.retentionPrune"]), {
+        status: "stopped",
+      }),
       worker("private-legacy", undefined),
       worker("private-malformed", { ...subscription("active"), agentQueues: ["mail.send"] }),
       worker("private-future", subscription("active"), {
@@ -98,19 +111,32 @@ describe.skipIf(skipIfNoTestDb())("Agent worker Health observations", () => {
     const result = await npCollectAgentWorkerHealthV1({ now });
     expect(result).toMatchObject({
       state: "observed",
-      sampledWorkers: 12,
+      sampledWorkers: 13,
       hasMore: false,
-      subscribedWorkers: 1,
+      subscribedWorkers: 2,
       pausedWorkers: 1,
       inactiveWorkers: 2,
       staleWorkers: 1,
       stoppedWorkers: 1,
       unknownWorkers: 6,
     });
+    const detailed = await npCollectAgentWorkerHealthV2({ now });
+    expect(detailed.schemaVersion).toBe("np.agent-worker-health.v2");
+    expect(detailed.summary).toEqual(result);
+    expect(detailed.queues).toEqual(
+      NP_AGENT_WORKER_QUEUE_NAMES.map((queue) => ({
+        queue,
+        subscribedWorkers: queue === "agent.eventDispatch" ? 2 : queue === agentQueue ? 1 : 0,
+        pausedRegisteredWorkers: ["agent.retentionPrune", agentQueue].includes(queue) ? 1 : 0,
+        staleRegisteredWorkers: ["agent.eventDispatch", agentQueue].includes(queue) ? 1 : 0,
+        stoppedRegisteredWorkers: queue === "agent.retentionPrune" ? 1 : 0,
+      })),
+    );
     const wire = JSON.stringify(result);
     expect(wire).not.toContain("private-");
     expect(wire).not.toContain(agentQueue);
     expect(wire).not.toContain("hostname");
+    expect(JSON.stringify(detailed)).not.toMatch(/private-|hostname|mail\.send/);
     expect(await db.select().from(npWorkerHeartbeats).orderBy(npWorkerHeartbeats.id)).toEqual(
       before,
     );
@@ -129,7 +155,9 @@ describe.skipIf(skipIfNoTestDb())("Agent worker Health observations", () => {
       }),
     ]);
     const before = await db.select().from(npWorkerHeartbeats).orderBy(npWorkerHeartbeats.id);
-    expect(await npCollectAgentWorkerHealthV1({ now })).toMatchObject({
+    const detailed = await npCollectAgentWorkerHealthV2({ now });
+    expect(detailed.summary).toEqual(await npCollectAgentWorkerHealthV1({ now }));
+    expect(detailed.summary).toMatchObject({
       state: "observed",
       sampledWorkers: 100,
       hasMore: true,
@@ -140,6 +168,15 @@ describe.skipIf(skipIfNoTestDb())("Agent worker Health observations", () => {
       stoppedWorkers: 0,
       unknownWorkers: 0,
     });
+    expect(detailed.queues).toEqual(
+      NP_AGENT_WORKER_QUEUE_NAMES.map((queue) => ({
+        queue,
+        subscribedWorkers: queue === agentQueue ? 100 : 0,
+        pausedRegisteredWorkers: 0,
+        staleRegisteredWorkers: 0,
+        stoppedRegisteredWorkers: 0,
+      })),
+    );
     expect(await db.select().from(npWorkerHeartbeats).orderBy(npWorkerHeartbeats.id)).toEqual(
       before,
     );
@@ -155,7 +192,18 @@ describe.skipIf(skipIfNoTestDb())("Agent worker Health observations", () => {
       const db = drizzle(observer);
       for (const timeout of ["50ms", "1500ms"]) {
         await observer.query("select set_config('statement_timeout',$1,false)", [timeout]);
-        expect(await npCollectAgentWorkerHealthV1({ db, now })).toMatchObject({
+        const detailed = await npCollectAgentWorkerHealthV2({ db, now });
+        expect(detailed.summary).toEqual(await npCollectAgentWorkerHealthV1({ db, now }));
+        expect(detailed.queues).toEqual(
+          NP_AGENT_WORKER_QUEUE_NAMES.map((queue) => ({
+            queue,
+            subscribedWorkers: null,
+            pausedRegisteredWorkers: null,
+            staleRegisteredWorkers: null,
+            stoppedRegisteredWorkers: null,
+          })),
+        );
+        expect(detailed.summary).toMatchObject({
           state: "unavailable",
           sampledWorkers: null,
           hasMore: null,
@@ -167,13 +215,23 @@ describe.skipIf(skipIfNoTestDb())("Agent worker Health observations", () => {
         );
       }
       await holder.query("rollback");
-      expect(await npCollectAgentWorkerHealthV1({ db, now })).toMatchObject({
+      const recovered = await npCollectAgentWorkerHealthV2({ db, now });
+      expect(recovered.summary).toMatchObject({
         state: "observed",
         sampledWorkers: 0,
         hasMore: false,
         subscribedWorkers: 0,
         unknownWorkers: 0,
       });
+      expect(recovered.queues).toEqual(
+        NP_AGENT_WORKER_QUEUE_NAMES.map((queue) => ({
+          queue,
+          subscribedWorkers: 0,
+          pausedRegisteredWorkers: 0,
+          staleRegisteredWorkers: 0,
+          stoppedRegisteredWorkers: 0,
+        })),
+      );
       expect((await observer.query("show statement_timeout")).rows[0]?.statement_timeout).toBe(
         "1500ms",
       );
@@ -189,12 +247,19 @@ describe.skipIf(skipIfNoTestDb())("Agent worker Health observations", () => {
     const client = await connectedClient();
     try {
       resetDb(original);
-      expect(await npCollectAgentWorkerHealthV1({ now })).toMatchObject({
+      const unavailable = await npCollectAgentWorkerHealthV2({ now });
+      expect(unavailable.summary).toEqual(await npCollectAgentWorkerHealthV1({ now }));
+      expect(unavailable.queues.every((queue) => queue.subscribedWorkers === null)).toBe(true);
+      expect(unavailable.summary).toMatchObject({
         state: "unavailable",
         sampledWorkers: null,
         subscribedWorkers: null,
       });
-      expect(await npCollectAgentWorkerHealthV1({ db: drizzle(client), now })).toMatchObject({
+      const observed = await npCollectAgentWorkerHealthV2({ db: drizzle(client), now });
+      expect(observed.summary).toEqual(
+        await npCollectAgentWorkerHealthV1({ db: drizzle(client), now }),
+      );
+      expect(observed.summary).toMatchObject({
         state: "observed",
         sampledWorkers: 0,
         subscribedWorkers: 0,
@@ -213,25 +278,46 @@ describe.skipIf(skipIfNoTestDb())("Agent worker Health observations", () => {
     await recordHeartbeat("private-generic", {
       [NP_WORKER_SUBSCRIPTION_META_KEY]: subscription("active"),
     });
-    let evidence: unknown = subscription("active");
+    let evidence: unknown = subscription("active", ["agent.eventDispatch", agentQueue]);
     const loop = startHeartbeatLoop(
       { [NP_WORKER_SUBSCRIPTION_META_KEY]: subscription("active") },
       20,
       () => evidence,
     );
     try {
+      const queueCounts = async () =>
+        (await npCollectAgentWorkerHealthV2()).queues.filter(
+          (queue) => queue.queue === "agent.eventDispatch" || queue.queue === agentQueue,
+        );
       await expect
-        .poll(async () => (await npCollectAgentWorkerHealthV1()).subscribedWorkers)
-        .toBe(1);
+        .poll(queueCounts)
+        .toEqual([
+          expect.objectContaining({ queue: "agent.eventDispatch", subscribedWorkers: 1 }),
+          expect.objectContaining({ queue: agentQueue, subscribedWorkers: 1 }),
+        ]);
       expect(await npCollectAgentWorkerHealthV1()).toMatchObject({
         sampledWorkers: 2,
         unknownWorkers: 1,
       });
       evidence = subscription("paused");
-      await expect.poll(async () => (await npCollectAgentWorkerHealthV1()).pausedWorkers).toBe(1);
+      await expect.poll(queueCounts).toEqual([
+        expect.objectContaining({
+          queue: "agent.eventDispatch",
+          subscribedWorkers: 0,
+          pausedRegisteredWorkers: 0,
+        }),
+        expect.objectContaining({
+          queue: agentQueue,
+          subscribedWorkers: 0,
+          pausedRegisteredWorkers: 1,
+        }),
+      ]);
       evidence = undefined;
       await expect.poll(async () => (await npCollectAgentWorkerHealthV1()).unknownWorkers).toBe(2);
-      expect((await npCollectAgentWorkerHealthV1()).subscribedWorkers).toBe(0);
+      expect(await queueCounts()).toEqual([
+        expect.objectContaining({ subscribedWorkers: 0, pausedRegisteredWorkers: 0 }),
+        expect.objectContaining({ subscribedWorkers: 0, pausedRegisteredWorkers: 0 }),
+      ]);
       evidence = subscription("active");
       await expect
         .poll(async () => (await npCollectAgentWorkerHealthV1()).subscribedWorkers)
@@ -239,7 +325,12 @@ describe.skipIf(skipIfNoTestDb())("Agent worker Health observations", () => {
     } finally {
       await loop.stop();
     }
-    expect(await npCollectAgentWorkerHealthV1()).toMatchObject({
+    const stopped = await npCollectAgentWorkerHealthV2();
+    expect(stopped.queues.find((queue) => queue.queue === agentQueue)).toMatchObject({
+      subscribedWorkers: 0,
+      stoppedRegisteredWorkers: 1,
+    });
+    expect(stopped.summary).toMatchObject({
       sampledWorkers: 2,
       subscribedWorkers: 0,
       stoppedWorkers: 1,

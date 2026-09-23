@@ -12,7 +12,7 @@ import {
   npCollectAgentHealthSummaryV1,
   npCollectAgentMaintenanceHealthV1,
   npCollectAgentBudgetHealthV1,
-  npCollectAgentWorkerHealthV1,
+  npCollectAgentWorkerHealthV2,
 } from "@nexpress/core/agents";
 import {
   npAnalyzeCustomRouteDefinitions,
@@ -289,7 +289,7 @@ async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult> {
     let workerDetail =
       "Agent worker subscription evidence: unavailable. This does not change persistence contract severity.";
     try {
-      workerDetail = formatAgentWorkerDetail(await npCollectAgentWorkerHealthV1({ db }));
+      workerDetail = formatAgentWorkerDetail(await npCollectAgentWorkerHealthV2({ db }));
     } catch {
       // Subscription evidence does not change persistence contract severity.
     }
