@@ -26,7 +26,9 @@ test("Health queue investigation preserves scope through lifecycle tabs and refr
       url.searchParams.get("source") === source &&
       (url.searchParams.get("name") === "agent.runExecute" || !url.searchParams.has("name"));
     const jobs =
-      supported && matches && ["created", "active", "completed", "failed"].includes(state ?? "")
+      supported &&
+      matches &&
+      ["created", "retry", "active", "completed", "failed"].includes(state ?? "")
         ? [
             {
               id: `investigation-${state}`,
@@ -37,12 +39,15 @@ test("Health queue investigation preserves scope through lifecycle tabs and refr
               retryCount: 0,
               output: null,
               createdOn: new Date().toISOString(),
-              startedOn: null,
+              ...(state === "created" ? { startAfter: "2099-01-01T12:00:00.000Z" } : {}),
+              startedOn: state === "active" ? new Date().toISOString() : null,
               completedOn: terminal ? new Date().toISOString() : null,
             },
           ]
         : [];
-    await route.fulfill({ json: { supported, jobs, total: jobs.length } });
+    await route.fulfill({
+      json: { supported, jobs, total: supported && state === "created" ? 101 : jobs.length },
+    });
     if (state === "created" && heldPending) releasedPending = true;
   });
   await page.goto("/admin/health");
@@ -51,6 +56,20 @@ test("Health queue investigation preserves scope through lifecycle tabs and refr
   await link.click();
   await expect(page).toHaveURL(/\/admin\/jobs\?name=agent\.runExecute$/);
   await expect(page.getByText("investigation-created", { exact: true })).toBeVisible();
+  await expect(page.getByText("Showing 2 of 102 reported matches", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Scheduled not before/)).toContainText("2099");
+  await expect(page.getByText("Retry not before Unknown", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Up to 100 newest jobs per state/)).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 900 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("jobs-timing-320.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
   // A slow Pending refresh must not overwrite a later Active selection.
   let releasePending: (() => void) | undefined;
   holdPending = new Promise<void>((resolve) => {
@@ -60,6 +79,8 @@ test("Health queue investigation preserves scope through lifecycle tabs and refr
   await expect.poll(() => heldPending).toBe(true);
   await page.getByRole("tab", { name: "Active", exact: true }).click();
   await expect(page.getByText("investigation-active", { exact: true })).toBeVisible();
+  await expect(page.getByText("Showing 1 of 1 reported matches", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Last started/)).not.toContainText("Not recorded");
   releasePending?.();
   await expect.poll(() => releasedPending).toBe(true);
   await expect(page.getByText("investigation-created", { exact: true })).toHaveCount(0);

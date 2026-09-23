@@ -74,6 +74,7 @@ export interface JobsViewProps {
 export function JobsView({ searchCollections = [], queueName }: JobsViewProps) {
   const [tab, setTab] = useState<Tab>("pending");
   const [jobs, setJobs] = useState<JobSummary[] | null>(null);
+  const [reportedTotal, setReportedTotal] = useState(0);
   const [supported, setSupported] = useState<boolean>(true);
   const [failure, setFailure] = useState<{ context: string; message: string } | null>(null);
   const [loadedContext, setLoadedContext] = useState<string | null>(null);
@@ -141,6 +142,7 @@ export function JobsView({ searchCollections = [], queueName }: JobsViewProps) {
               (a, b) => new Date(b.createdOn).getTime() - new Date(a.createdOn).getTime(),
             );
             setJobs(merged);
+            setReportedTotal(results.reduce((total, result) => total + result.total, 0));
           }
           setLoadedContext(context);
         } catch {
@@ -362,6 +364,7 @@ export function JobsView({ searchCollections = [], queueName }: JobsViewProps) {
             {!error && (!currentSnapshot || supported) ? (
               <JobList
                 jobs={currentSnapshot ? jobs : null}
+                reportedTotal={reportedTotal}
                 tab={key}
                 busyJobId={busyJobId}
                 onRetry={(id) => void retry(id)}
@@ -877,12 +880,14 @@ function EnqueuePanel({
 
 function JobList({
   jobs,
+  reportedTotal,
   tab,
   busyJobId,
   onRetry,
   onCancel,
 }: {
   jobs: JobSummary[] | null;
+  reportedTotal: number;
   tab: StateTab;
   busyJobId: string | null;
   onRetry: (id: string) => void;
@@ -898,23 +903,23 @@ function JobList({
       </Card>
     );
   }
-  if (jobs.length === 0) {
-    return (
-      <Card className="min-w-0 border-dashed border-border/60 bg-muted/20">
-        <CardContent className="break-words text-center text-[13px] text-muted-foreground">
-          No jobs in this bucket.
-        </CardContent>
-      </Card>
-    );
-  }
   return (
     <Card className="min-w-0">
       <CardHeader className="border-b-0 pb-0">
         <CardTitle className="text-sm font-medium text-muted-foreground">
-          {jobs.length} job{jobs.length === 1 ? "" : "s"}
+          Showing {jobs.length} of {reportedTotal} reported matches
         </CardTitle>
+        <p className="break-words text-xs text-muted-foreground">
+          Up to 100 newest jobs per state for the selected queue and creation-time window. Counts
+          and rows are sampled separately and may change during refresh.
+        </p>
       </CardHeader>
       <CardContent className="min-w-0 divide-y divide-border/60 p-0">
+        {jobs.length === 0 ? (
+          <p className="px-5 py-4 text-sm text-muted-foreground">
+            {reportedTotal === 0 ? "No jobs in this bucket." : "No rows returned in this response."}
+          </p>
+        ) : null}
         {jobs.map((job) => (
           <div key={job.id} className="min-w-0 space-y-2 px-5 py-4">
             <div className="grid min-w-0 gap-3 sm:flex sm:items-start sm:justify-between">
@@ -931,9 +936,21 @@ function JobList({
                 <p className="break-all font-mono text-[11px] text-muted-foreground">{job.id}</p>
                 <p className="break-words text-[11px] text-muted-foreground">
                   Created {new Date(job.createdOn).toLocaleString()}
-                  {job.completedOn
-                    ? ` · Finished ${new Date(job.completedOn).toLocaleString()}`
-                    : null}
+                  {job.state === "created" || job.state === "retry" ? (
+                    <span className="block">
+                      {job.state === "retry" ? "Retry not before" : "Scheduled not before"}{" "}
+                      {job.startAfter ? new Date(job.startAfter).toLocaleString() : "Unknown"}
+                    </span>
+                  ) : null}
+                  <span className="block">
+                    Last started{" "}
+                    {job.startedOn ? new Date(job.startedOn).toLocaleString() : "Not recorded"}
+                  </span>
+                  {job.completedOn ? (
+                    <span className="block">
+                      Finished {new Date(job.completedOn).toLocaleString()}
+                    </span>
+                  ) : null}
                 </p>
               </div>
               <div className="grid min-w-0 grid-cols-2 gap-2 sm:flex sm:items-center">

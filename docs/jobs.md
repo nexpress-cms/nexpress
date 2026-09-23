@@ -348,7 +348,17 @@ silently become an unfiltered query. "Show all queues" clears the active filter.
 Scheduled registrations/handlers use the same queue name; the worker-health
 card remains host-wide. Health does not prefetch Jobs or initialize a producer
 through these links. The list is bounded to 100 rows per state, newest first,
-and the time window filters creation time, not due time.
+and the time window filters creation time, not due time. The list shows returned
+rows alongside reported matches across the requested states; counts and rows are
+sampled separately, so this is not an atomic snapshot or complete history.
+
+Pending rows show the stored "Scheduled not before" or "Retry not before" time,
+separately from creation and last-started times. A past not-before time is not proof
+that a worker can execute the job: dependencies, concurrency, priority and queue
+policy may still delay it. Missing timing remains unknown. `NpJobSummary.startAfter`
+is an optional canonical ISO timestamp or null, so existing adapters may omit it;
+the pg-boss adapter reads it from the existing `start_after` column. No schema or
+execution-policy change is involved.
 
 A worker-health card sits above the tabs (Phase 20.4 / 23.5):
 

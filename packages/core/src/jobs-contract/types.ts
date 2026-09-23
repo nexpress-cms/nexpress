@@ -199,6 +199,8 @@ export interface NpJobSummary {
   retryCount: number;
   output: string | null;
   createdOn: string;
+  /** Stored earliest start; absent/null when the adapter does not expose it. Not execution proof. */
+  startAfter?: string | null;
   startedOn: string | null;
   completedOn: string | null;
   source: NpJobSource;

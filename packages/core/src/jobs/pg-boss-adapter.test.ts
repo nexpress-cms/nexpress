@@ -217,6 +217,7 @@ describe("PgBossAdapter persisted job contracts", () => {
       retry_count: 1,
       output: "failed",
       created_on: new Date("2026-07-01T00:00:00.000Z"),
+      start_after: new Date("2026-07-01T00:00:00.000Z"),
       started_on: null,
       completed_on: null,
       source: "archive",

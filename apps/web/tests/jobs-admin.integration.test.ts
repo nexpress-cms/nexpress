@@ -182,26 +182,48 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
         insert into pgboss.job (name, state, data, created_on)
         values
           ('agent.runExecute', 'created', '{"siteId":"default","runId":"00000000-0000-4000-8000-000000000001"}', now()),
+          ('agent.runExecute', 'retry', '{"siteId":"default","runId":"00000000-0000-4000-8000-000000000001"}', now()),
           ('agent.runExecute', 'active', '{"siteId":"default","runId":"00000000-0000-4000-8000-000000000001"}', now()),
           ('agent.runExecute', 'completed', '{"siteId":"default","runId":"00000000-0000-4000-8000-000000000001"}', now()),
           ('agent.runExecute', 'failed', '{"siteId":"default","runId":"00000000-0000-4000-8000-000000000001"}', now()),
           ('agent.runExecute', 'failed', '{"siteId":"default","runId":"00000000-0000-4000-8000-000000000001"}', now() - interval '2 days'),
           ('unrelated.queue', 'failed', '{"siteId":"default","runId":"00000000-0000-4000-8000-000000000001"}', now())
       `);
+      await db.execute(sql`
+        update pgboss.job set start_after = created_on + interval '1 hour',
+          started_on = case when state = 'retry' then created_on + interval '1 minute' else started_on end
+        where name = 'agent.runExecute'
+      `);
       setJobQueue(adapter);
       const { GET } = await import("@/app/api/admin/jobs/route");
       const list = async (query: Record<string, string>) => {
         const { status, body } = await readJson<{
-          jobs: Array<{ name: string; state: string; source: string }>;
+          jobs: Array<{
+            name: string;
+            state: string;
+            source: string;
+            createdOn: string;
+            startAfter?: string | null;
+            startedOn: string | null;
+          }>;
           total: number;
         }>(await GET(buildRequest("/api/admin/jobs", { session: admin, query })));
         expect(status, JSON.stringify(body)).toBe(200);
         return body;
       };
       const live = await list({ name: "agent.runExecute", source: "live" });
-      expect(live.total).toBe(2);
-      expect(live.jobs.map((job) => job.state).sort()).toEqual(["active", "created"]);
+      expect(live.total).toBe(3);
+      expect(live.jobs.map((job) => job.state).sort()).toEqual(["active", "created", "retry"]);
       expect(live.jobs.every((job) => job.source === "live")).toBe(true);
+      for (const job of live.jobs) {
+        expect(job.startAfter).toBe(new Date(Date.parse(job.createdOn) + 3_600_000).toISOString());
+      }
+      const retry = live.jobs.find((job) => job.state === "retry");
+      expect(retry?.startedOn).toBe(new Date(Date.parse(retry!.createdOn) + 60_000).toISOString());
+      const limited = await list({ name: "agent.runExecute", source: "live", limit: "1" });
+      expect(limited.jobs).toHaveLength(1);
+      expect(limited.total).toBe(3);
+
       const completed = await list({
         name: "agent.runExecute",
         state: "completed",
