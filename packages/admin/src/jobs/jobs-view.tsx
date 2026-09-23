@@ -17,12 +17,10 @@ import {
   npRequireCancelJobWire,
   npRequireEnqueueJobWire,
   npRequireJobListWire,
-  npRequireJobLogsWire,
   npRequireJobsHealthWire,
   npRequireRetryAllJobsWire,
   npRequireRetryJobWire,
   npRequireScheduleListWire,
-  type NpJobLogWireEntry,
   type NpJobSummary,
   type NpJobsHealthWire,
   type NpRecentJobFailure,
@@ -34,6 +32,7 @@ import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs.js";
 import { PageHeader } from "../layout/page-header.js";
+import { JobLogsSection } from "./job-logs-section.js";
 import { jobListUrls, type JobsStateTab } from "./jobs-query.js";
 
 /**
@@ -56,7 +55,6 @@ type JobSummary = NpJobSummary;
 type StuckJobsBlock = NonNullable<NpJobsHealthWire["stuck"]>;
 type WorkerHealthResponse = NpJobsHealthWire;
 type RecentJobFailure = NpRecentJobFailure;
-type JobLogEntry = NpJobLogWireEntry;
 type StateTab = JobsStateTab;
 type Tab = StateTab | "scheduled";
 
@@ -1001,128 +999,11 @@ function JobList({
                 {JSON.stringify(job.data, null, 2)}
               </pre>
             </details>
-            <JobLogsSection jobId={job.id} />
+            <JobLogsSection key={job.id} jobId={job.id} />
           </div>
         ))}
       </CardContent>
     </Card>
-  );
-}
-
-/**
- * Phase 20.3b — collapsible logs panel per job. Lazy-fetches
- * `/api/admin/jobs/{id}/logs` only when the operator expands the
- * row, so the jobs list itself stays cheap. Reuses the pattern of
- * the existing "Payload" details element above so the row's
- * visual weight stays consistent.
- *
- * Each entry renders as `[HH:mm:ss.SSS] [level] message`. Context
- * payloads (when present) collapse into a nested `<details>`
- * summary so wide objects don't blow out the row's width.
- */
-function JobLogsSection({ jobId }: { jobId: string }) {
-  const [open, setOpen] = useState(false);
-  const [state, setState] = useState<
-    | { kind: "idle" }
-    | { kind: "loading" }
-    | { kind: "loaded"; total: number; entries: JobLogEntry[] }
-    | { kind: "error"; message: string }
-  >({ kind: "idle" });
-
-  useEffect(() => {
-    if (!open || state.kind !== "idle") return;
-    let cancelled = false;
-    const frame = window.requestAnimationFrame(() => {
-      setState({ kind: "loading" });
-      void (async () => {
-        try {
-          const res = await npFetch(`/api/admin/jobs/${encodeURIComponent(jobId)}/logs?limit=500`);
-          if (!res.ok) {
-            throw new Error(`HTTP ${res.status}`);
-          }
-          const data = npRequireJobLogsWire(await readResponseJson(res));
-          if (!cancelled) {
-            setState({ kind: "loaded", total: data.total, entries: data.entries });
-          }
-        } catch (err) {
-          if (!cancelled) {
-            setState({
-              kind: "error",
-              message: err instanceof Error ? err.message : "Failed to load logs",
-            });
-          }
-        }
-      })();
-    });
-    return () => {
-      cancelled = true;
-      window.cancelAnimationFrame(frame);
-    };
-  }, [open, jobId, state.kind]);
-
-  return (
-    <details
-      className="min-w-0 text-[11px]"
-      open={open}
-      onToggle={(event) => {
-        const nowOpen = event.currentTarget.open;
-        setOpen(nowOpen);
-        // Self-review fix — reset to idle on collapse so the next
-        // expand re-fetches. Without this, a still-running job's
-        // log stream stays frozen at the first-expand snapshot.
-        if (!nowOpen && state.kind !== "idle") {
-          setState({ kind: "idle" });
-        }
-      }}
-    >
-      <summary className="inline-flex min-h-10 cursor-pointer items-center break-words text-muted-foreground hover:text-foreground sm:min-h-0">
-        Logs
-        {state.kind === "loaded" ? (
-          <span className="ml-2 text-[10px] opacity-70">
-            ({state.total}
-            {state.entries.length < state.total ? ` · showing ${state.entries.length}` : ""})
-          </span>
-        ) : null}
-      </summary>
-      <div className="mt-1 min-w-0">
-        {state.kind === "loading" ? (
-          <div className="flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-muted/10 p-3 text-muted-foreground">
-            <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
-            Loading logs…
-          </div>
-        ) : state.kind === "error" ? (
-          <div className="break-words rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive">
-            {state.message}
-          </div>
-        ) : state.kind === "loaded" ? (
-          state.entries.length === 0 ? (
-            <div className="break-words rounded-lg border border-border/60 bg-muted/10 p-3 text-muted-foreground">
-              No log entries for this job.
-            </div>
-          ) : (
-            <ol className="max-h-64 min-w-0 space-y-1 overflow-auto rounded-lg border border-border/60 bg-muted/10 p-3 font-mono text-[11px]">
-              {state.entries.map((entry) => (
-                <li key={entry.id} className="flex min-w-0 flex-wrap items-baseline gap-2">
-                  <span className="shrink-0 opacity-60">{formatLogTime(entry.createdAt)}</span>
-                  <LogLevelBadge level={entry.level} />
-                  <span className="min-w-0 whitespace-pre-wrap break-words">{entry.message}</span>
-                  {entry.context && Object.keys(entry.context).length > 0 ? (
-                    <details className="ml-0 min-w-0 w-full sm:ml-6">
-                      <summary className="inline-flex min-h-10 cursor-pointer items-center opacity-70 hover:opacity-100 sm:min-h-0">
-                        context
-                      </summary>
-                      <pre className="mt-1 overflow-auto whitespace-pre-wrap break-words rounded border border-border/40 bg-background/40 p-2 text-[10px]">
-                        {JSON.stringify(entry.context, null, 2)}
-                      </pre>
-                    </details>
-                  ) : null}
-                </li>
-              ))}
-            </ol>
-          )
-        ) : null}
-      </div>
-    </details>
   );
 }
 
@@ -1139,36 +1020,6 @@ function readApiError(value: unknown, fallback: string): string {
   const error = value.error;
   if (typeof error !== "object" || error === null || !("message" in error)) return fallback;
   return typeof error.message === "string" && error.message.length > 0 ? error.message : fallback;
-}
-
-const LOG_TIME_FORMATTER = new Intl.DateTimeFormat(undefined, {
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  fractionalSecondDigits: 3,
-  hour12: false,
-});
-
-function formatLogTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return LOG_TIME_FORMATTER.format(date);
-}
-
-function LogLevelBadge({ level }: { level: JobLogEntry["level"] }) {
-  const tone =
-    level === "error"
-      ? "bg-destructive/10 text-destructive"
-      : level === "warn"
-        ? "bg-amber-500/15 text-amber-900 dark:text-amber-100"
-        : level === "debug"
-          ? "bg-muted text-muted-foreground"
-          : "bg-blue-50 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100";
-  return (
-    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${tone}`}>
-      {level}
-    </span>
-  );
 }
 
 function StateBadge({ state }: { state: JobSummary["state"] }) {
