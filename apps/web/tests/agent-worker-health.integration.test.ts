@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   closeTestDb,
   ensureMigrated,
@@ -75,6 +75,7 @@ describe.skipIf(skipIfNoTestDb())("Agent worker Health observations", () => {
     registerTestCollections();
   });
   beforeEach(truncateAll);
+  afterEach(() => vi.useRealTimers());
   afterAll(closeTestDb);
 
   it("separates persisted subscription states from legacy, malformed and future observations", async () => {
@@ -274,6 +275,11 @@ describe.skipIf(skipIfNoTestDb())("Agent worker Health observations", () => {
   });
 
   it("persists only current owner evidence and never promotes host metadata to a subscription", async () => {
+    // Keep real interval/DB scheduling, but make each observation use the same clock.
+    // Otherwise a concurrent heartbeat can be newer than the reader's captured now,
+    // correctly becoming unknown between the poll and the following assertion.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(now);
     // Generic heartbeat callers cannot forge the reserved owner evidence field.
     await recordHeartbeat("private-generic", {
       [NP_WORKER_SUBSCRIPTION_META_KEY]: subscription("active"),

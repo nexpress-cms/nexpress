@@ -4,6 +4,9 @@ This extends [worker evidence](agent-worker-evidence.md) with per-queue visibili
 in Health and Doctor. It does not establish required queue coverage, processing
 progress, provider readiness, authority or complete R5 acceptance.
 
+The follow-up [queue backlog observations](agent-queue-backlog-evidence.md) add
+retained pg-boss counts and ages with independent availability and explicit limits.
+
 ## Contract and ownership
 
 The existing exact `np.agent-worker-health.v1` aggregate and

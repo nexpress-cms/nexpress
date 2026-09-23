@@ -5,20 +5,28 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NP_AGENT_WORKER_QUEUE_NAMES } from "@nexpress/core/jobs-contract";
 import { npRequireAgentHealthSummaryV1 } from "@nexpress/core/agent-contract";
 
-const { collectAgentSummary, collectMaintenance, collectBudget, collectWorkers, clients } =
-  vi.hoisted(() => ({
-    collectAgentSummary: vi.fn(),
-    collectMaintenance: vi.fn(),
-    collectBudget: vi.fn(),
-    collectWorkers: vi.fn(),
-    clients: [] as object[],
-  }));
+const {
+  collectAgentSummary,
+  collectMaintenance,
+  collectBudget,
+  collectWorkers,
+  collectBacklog,
+  clients,
+} = vi.hoisted(() => ({
+  collectAgentSummary: vi.fn(),
+  collectMaintenance: vi.fn(),
+  collectBudget: vi.fn(),
+  collectWorkers: vi.fn(),
+  collectBacklog: vi.fn(),
+  clients: [] as object[],
+}));
 vi.mock("@nexpress/core/agents", () => ({
   npCollectAgentHealthSummaryV1: collectAgentSummary,
   npCollectAgentMaintenanceHealthV1: collectMaintenance,
   npCollectAgentBudgetHealthV1: collectBudget,
   npCollectAgentWorkerHealthV2: collectWorkers,
 }));
+vi.mock("@nexpress/core/jobs", () => ({ npCollectAgentQueueBacklogV1: collectBacklog }));
 vi.mock("pg", () => ({
   default: {
     Client: class {
@@ -38,6 +46,7 @@ import { formatAgentHealthDetail } from "../lib/agent-health-presentation.js";
 import { formatAgentMaintenanceDetail } from "../lib/agent-maintenance-presentation.js";
 import { formatAgentWorkerDetail } from "../lib/agent-worker-presentation.js";
 import { formatAgentBudgetDetail } from "../lib/agent-budget-presentation.js";
+import { formatAgentQueueBacklogDetail } from "../lib/agent-queue-backlog-presentation.js";
 import { collectDoctorChecks } from "./doctor-core.js";
 
 const temporaryDirectories: string[] = [];
@@ -46,6 +55,7 @@ afterEach(async () => {
   collectMaintenance.mockReset();
   collectBudget.mockReset();
   collectWorkers.mockReset();
+  collectBacklog.mockReset();
   clients.length = 0;
   await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true })));
 });
@@ -140,6 +150,25 @@ describe("Doctor Agent health presentation", () => {
       if (state === "ok")
         collectWorkers.mockRejectedValueOnce(new Error("must-not-leak-worker-failure"));
       else collectWorkers.mockResolvedValueOnce(workers);
+      const backlog = {
+        schemaVersion: "np.agent-queue-backlog.v1",
+        source: "pg-boss",
+        generatedAt: "2026-09-23T00:00:00.000Z",
+        state: "observed",
+        queues: NP_AGENT_WORKER_QUEUE_NAMES.map((queue) => ({
+          queue,
+          createdReady: 0,
+          createdScheduled: 1,
+          retryReady: 0,
+          retryScheduled: 0,
+          active: 0,
+          oldestReadyAgeSeconds: null,
+          oldestActiveAgeSeconds: null,
+        })),
+      };
+      if (state === "ok")
+        collectBacklog.mockRejectedValueOnce(new Error("must-not-leak-backlog-failure"));
+      else collectBacklog.mockResolvedValueOnce(backlog);
       const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-agent-presentation-"));
       temporaryDirectories.push(cwd);
       const checks = await collectDoctorChecks({
@@ -157,6 +186,7 @@ describe("Doctor Agent health presentation", () => {
       const budgetDb = collectBudget.mock.calls[0]?.[0]?.db;
       expect(clients).toContain(budgetDb.$client);
       expect(collectWorkers).toHaveBeenCalledExactlyOnceWith({ db: budgetDb });
+      expect(collectBacklog).toHaveBeenCalledExactlyOnceWith({ db: budgetDb });
       expect(typeof budgetDb.transaction).toBe("function");
       // The exact client passed to the budget collector also serves existing
       // contract queries, and remains the actual client rather than a shim.
@@ -169,12 +199,13 @@ describe("Doctor Agent health presentation", () => {
         id: "agents.contract",
         state,
         label: "Agent persistence contracts",
-        detail: `${formatAgentHealthDetail(summary)}\n\n${state === "ok" ? "Agent maintenance evidence: unavailable. This does not change persistence contract severity." : formatAgentMaintenanceDetail(maintenance)}\n\n${state !== "error" ? "Agent budget measurement evidence: unavailable. This does not change persistence contract severity." : formatAgentBudgetDetail(budget)}\n\n${state === "ok" ? "Agent worker subscription evidence: unavailable. This does not change persistence contract severity." : formatAgentWorkerDetail(workers)}`,
+        detail: `${formatAgentHealthDetail(summary)}\n\n${state === "ok" ? "Agent maintenance evidence: unavailable. This does not change persistence contract severity." : formatAgentMaintenanceDetail(maintenance)}\n\n${state !== "error" ? "Agent budget measurement evidence: unavailable. This does not change persistence contract severity." : formatAgentBudgetDetail(budget)}\n\n${state === "ok" ? "Agent worker subscription evidence: unavailable. This does not change persistence contract severity." : formatAgentWorkerDetail(workers)}\n\n${state === "ok" ? "Agent queue backlog evidence: unavailable. This does not change persistence contract severity." : formatAgentQueueBacklogDetail(backlog)}`,
         hint: expect.any(String),
       });
       expect(check?.detail).not.toContain("must-not-leak-private-locator");
       expect(check?.detail).not.toContain("must-not-leak-budget-failure");
       expect(check?.detail).not.toContain("must-not-leak-worker-failure");
+      expect(check?.detail).not.toContain("must-not-leak-backlog-failure");
       expect(check?.detail).toContain(summary.generatedAt);
       expect(check?.detail).toContain("7201");
       expect(check?.detail).toContain("invocation");

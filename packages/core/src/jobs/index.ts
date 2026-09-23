@@ -1,4 +1,5 @@
 export * from "../jobs-contract/index.js";
+export { npCollectAgentQueueBacklogV1 } from "./agent-queue-backlog.js";
 export * from "./handlers.js";
 export {
   NpJobPayloadValidationError,

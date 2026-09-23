@@ -1,5 +1,7 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
+import { npCollectAgentQueueBacklogV1 } from "@nexpress/core/jobs";
+import type { NpAgentQueueBacklogV1 } from "@nexpress/core/jobs-contract";
 
 import {
   getAllPluginIds,
@@ -84,6 +86,7 @@ export interface HealthSummary {
   agentMaintenance: NpAgentMaintenanceHealthV1;
   agentBudget: NpAgentBudgetHealthV1;
   agentWorkers: NpAgentWorkerHealthV1 | NpAgentWorkerHealthV2;
+  agentQueueBacklog?: NpAgentQueueBacklogV1;
 }
 
 const FRAMEWORK_TABLES = ["np_users", "np_settings", "np_navigation", "np_sites"] as const;
@@ -814,12 +817,14 @@ export function checkSecret(): Check {
 
 export async function gatherSystemHealth(): Promise<HealthSummary> {
   const checks: Check[] = [];
-  const [agents, agentMaintenance, agentBudget, agentWorkers] = await Promise.all([
-    npCollectAgentHealthSummaryV1(),
-    npCollectAgentMaintenanceHealthV1(),
-    npCollectAgentBudgetHealthV1(),
-    npCollectAgentWorkerHealthV2(),
-  ]);
+  const [agents, agentMaintenance, agentBudget, agentWorkers, agentQueueBacklog] =
+    await Promise.all([
+      npCollectAgentHealthSummaryV1(),
+      npCollectAgentMaintenanceHealthV1(),
+      npCollectAgentBudgetHealthV1(),
+      npCollectAgentWorkerHealthV2(),
+      npCollectAgentQueueBacklogV1(),
+    ]);
   checks.push(await checkDatabase());
   checks.push(await checkMigrations());
   checks.push(await checkStorageAdapter());
@@ -846,6 +851,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
     agentMaintenance,
     agentBudget,
     agentWorkers,
+    agentQueueBacklog,
   };
 }
 

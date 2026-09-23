@@ -60,6 +60,15 @@ test("Health shows the real Agent snapshot with keyboard-accessible counts and e
     await expect(observation).toBeVisible();
     await expect(observation.locator("dd")).toHaveCount(4);
   }
+  const backlog = page.getByRole("region", { name: "Agent queue backlog", exact: true });
+  await expect(backlog).toBeVisible();
+  for (const queue of NP_AGENT_WORKER_QUEUE_NAMES) {
+    const observation = backlog.getByRole("region", { name: `${queue} backlog`, exact: true });
+    await expect(observation.locator("dd")).toHaveCount(7);
+  }
+  await expect(backlog.getByText(/scheduled work is not overdue work/)).toBeVisible();
+  await expect(backlog.getByText(/Ages do not prove progress or a stuck job/)).toBeVisible();
+  const backlogTimestamp = await backlog.locator("time").getAttribute("datetime");
   const workerTimestamp = await workers.locator("time").getAttribute("datetime");
   const budgetTimestamp = await budget.locator("time").getAttribute("datetime");
   const generated = diagnostics.locator("time");
@@ -103,6 +112,15 @@ test("Health shows the real Agent snapshot with keyboard-accessible counts and e
       expect(
         await workers.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
       ).toBe(true);
+      expect(
+        await backlog.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+      ).toBe(true);
+      const backlogPath = testInfo.outputPath(`agent-backlog-${width}-${theme}.png`);
+      await backlog.screenshot({ path: backlogPath, animations: "disabled" });
+      await testInfo.attach(`agent-backlog-${width}-${theme}`, {
+        path: backlogPath,
+        contentType: "image/png",
+      });
       const workerPath = testInfo.outputPath(`agent-worker-${width}-${theme}.png`);
       await workers.screenshot({ path: workerPath, animations: "disabled" });
       await testInfo.attach(`agent-worker-${width}-${theme}`, {
@@ -130,6 +148,7 @@ test("Health shows the real Agent snapshot with keyboard-accessible counts and e
   await page.getByRole("link", { name: "Refresh", exact: true }).click();
   await expect(generated).not.toHaveAttribute("datetime", timestamp!);
   await expect(workers.locator("time")).not.toHaveAttribute("datetime", workerTimestamp!);
+  await expect(backlog.locator("time")).not.toHaveAttribute("datetime", backlogTimestamp!);
   await expect(budget.locator("time")).not.toHaveAttribute("datetime", budgetTimestamp!);
   await expect(diagnostics.locator("details")).not.toHaveAttribute("open", "");
 });
