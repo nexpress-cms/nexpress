@@ -33,9 +33,9 @@ plus advisory locks for safe concurrent claims.
 
 Tables (in the `pgboss.*` schema):
 
-- `pgboss.job` — pending / active / retry rows
-- `pgboss.archive` — completed / failed / expired rows
-  (auto-rolled from `job` after `keepUntil`)
+- `pgboss.job` — retained live and terminal rows. The adapter exposes logical
+  `live` (created/retry/active) and `archive` (terminal) sources; these are not
+  separate physical tables in the installed pg-boss version.
 - `pgboss.schedule` — registered cron entries
 - `pgboss.subscription`, `pgboss.queue` — pg-boss internals
 
@@ -331,8 +331,8 @@ labels framework, plugin, and custom schedule rows separately.
 - **Failed** — `failed`, `cancelled`, `expired`. Each row
   shows the last error inline; per-row Retry button +
   bulk "Retry all failed" header button.
-- **Archive** — terminal rows rolled into `pgboss.archive`; retry creates a
-  fresh live row without mutating the archive.
+- **Archive** — all retained terminal rows, including completed and failed work.
+  Retry creates a fresh job without mutating the retained original.
 - **Scheduled** — registered cron schedules and the list
   of known handler contracts. The "Run a handler" form
   enqueues a one-off job (see §9).
@@ -340,6 +340,15 @@ labels framework, plugin, and custom schedule rows separately.
 Top-right toggle switches the five state tabs between
 "All time" and "Last 24 h" (forwarded to the API as
 `?since=...`).
+
+Health's Agent queue cards link explicitly to `/admin/jobs?name=<queue>`.
+The validated exact queue filter stays active across tabs, time window changes,
+manual refresh and row-action refresh. Invalid or repeated queue filters do not
+silently become an unfiltered query. "Show all queues" clears the active filter.
+Scheduled registrations/handlers use the same queue name; the worker-health
+card remains host-wide. Health does not prefetch Jobs or initialize a producer
+through these links. The list is bounded to 100 rows per state, newest first,
+and the time window filters creation time, not due time.
 
 A worker-health card sits above the tabs (Phase 20.4 / 23.5):
 
@@ -350,8 +359,7 @@ A worker-health card sits above the tabs (Phase 20.4 / 23.5):
   operators can jump from "the queue needs attention" to the likely
   handler / payload without opening each row first.
 - **Stuck-job warning** — a red `AlertTriangle` pill appears when
-  the count of `failed` or `expired` jobs (UNION across
-  `pgboss.job` and `pgboss.archive`) crosses the configured
+  the count of retained `failed` or `expired` jobs crosses the configured
   threshold. Defaults are `failed: 10` and `expired: 50`; override
   from `nexpress.config.ts`:
 
@@ -404,8 +412,10 @@ Common one-off runs:
 
 ## 10. Bulk Retry
 
-Failed tab → "Retry all failed" button (visible when there's
-at least one failed job).
+Failed tab → "Retry all failed" button (visible when retained terminal rows
+are listed and no queue filter is selected). This action spans all queues,
+not just the visible page or time window. It is hidden in a queue-filtered view;
+individual row retry/cancel actions keep their existing authorization.
 
 Each call retries up to 200 jobs. The response includes
 `{ retried, failed, total, remaining }`; if `remaining > 0`
@@ -427,11 +437,12 @@ the endpoint directly if needed.
 - Confirm `NP_ENABLE_JOBS=1` is set in the worker env
 - Confirm `NP_ENABLE_JOBS=1` is also set in the web/API env
   for routes that enqueue work such as WordPress import Apply
-- Watch the Pending tab — if jobs are stuck in `created`
-  for a long time, the worker isn't draining
+- Inspect Pending jobs and distinguish future scheduling/retry backoff from
+  due work. A long creation age alone does not establish stalled processing.
 - `GET /api/admin/jobs/health` (editor+) returns the live
   heartbeat snapshot — `aliveCount: 0` plus stale
-  `newestHeartbeat` confirms a dead worker (Phase 19).
+  `newestHeartbeat` means no fresh heartbeat was observed; confirm the actual
+  process and deployment before concluding that a worker is dead.
   `pause.paused: true` (Phase 20.2) means the worker is
   alive but the operator paused the queue.
 - `/admin/import/wordpress` also surfaces the same worker
@@ -459,8 +470,9 @@ the endpoint directly if needed.
 
 - Fix the upstream issue first (don't retry into a still-
   broken dependency)
-- Use Failed tab → "Retry all failed" repeatedly until the
-  backlog is empty
+- Inspect affected jobs and retry explicitly after fixing the cause. The
+  unfiltered Failed tab offers "Retry all failed" across all queues; a filtered
+  view offers only the existing per-row actions.
 - Watch Active / Completed to confirm jobs are draining
 
 **Misconfigured cron**
@@ -475,7 +487,7 @@ the endpoint directly if needed.
 - Typically means the handler crashed without releasing the
   lock, or the worker was killed mid-job. pg-boss has a
   built-in expiration that flips long-running active jobs
-  to `failed`; default is 15 minutes. Check
+  through retry/terminal transitions according to its configured policy. Check
   `pgboss.job.expire_in`.
 
 **Investigating a single failure**
@@ -561,14 +573,10 @@ whole operator workflow rather than one endpoint in isolation.
   so `boss.work()` loops are installed in the worker process.
   `boss.schedule()` via `getBoss()` still works as the application-local
   escape hatch.
-- **Dead-letter queue inspection** — Phase 20.4. The admin
-  Jobs page has a dedicated **Archive** tab that reads from
-  `pgboss.archive` only, with a banner explaining that
-  retrying an archived row re-enqueues a fresh row in
-  `pgboss.job` (the archive itself is read-only). Other tabs
-  pin `?source=live` so a row that pg-boss has already
-  rolled out doesn't double up under both Failed (live) and
-  Archive.
+- **Retained terminal inspection** — the Archive tab includes all retained
+  terminal states. Completed and Failed also request logical `source=archive`;
+  Pending and Active use `source=live`. These views intentionally overlap by
+  terminal category and do not promise history beyond retention.
 - **Worker health widget** — Phase 20.4. A small card above
   the tabs surfaces `aliveCount / totalCount`, the most
   recent heartbeat age, and the global queue-paused pill.
