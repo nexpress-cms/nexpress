@@ -109,6 +109,11 @@ The owning evidence records explain collection scope and limits:
 [worker subscriptions](design/agentic-platform/agent-worker-evidence.md) and
 [queue observations](design/agentic-platform/agent-worker-queue-evidence.md).
 
+Queue backlog evidence in Health and Doctor shows retained live pg-boss counts
+and ages for the known Agent queues. It separates due work from future
+scheduling and retry backoff, without asserting progress or current adapter
+readiness. See [the queue backlog evidence flow](design/agentic-platform/agent-queue-backlog-evidence.md).
+
 ## Acceptance and accessibility
 
 Synthetic browser journeys already cover successful activation, connection

@@ -21,6 +21,7 @@ import { gatherSystemHealth, type Check } from "../../../lib/system-health";
 import { CopyCommandButton } from "../ops-actions";
 import { AgentHealth } from "./agent-health";
 import { AgentMaintenance } from "./agent-maintenance";
+import { AgentQueueBacklog } from "./agent-queue-backlog";
 import { AgentWorker } from "./agent-worker";
 import { AgentBudget } from "./agent-budget";
 
@@ -130,6 +131,7 @@ export default async function AdminHealthPage() {
       <AgentMaintenance summary={summary.agentMaintenance} />
       <AgentBudget summary={summary.agentBudget} />
       <AgentWorker summary={summary.agentWorkers} />
+      <AgentQueueBacklog summary={summary.agentQueueBacklog} />
 
       <HealthActionQueue summary={summary} />
 

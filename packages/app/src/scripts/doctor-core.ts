@@ -112,6 +112,8 @@ import { checkCommunityRealtimeRetention } from "./community-realtime-check.js";
 import { npCheckCommunityRealtimeCapacityConfig } from "../lib/community-realtime-capacity.js";
 import { formatAgentHealthDetail } from "../lib/agent-health-presentation.js";
 import { formatAgentMaintenanceDetail } from "../lib/agent-maintenance-presentation.js";
+import { npCollectAgentQueueBacklogV1 } from "@nexpress/core/jobs";
+import { formatAgentQueueBacklogDetail } from "../lib/agent-queue-backlog-presentation.js";
 import { formatAgentWorkerDetail } from "../lib/agent-worker-presentation.js";
 import { formatAgentBudgetDetail } from "../lib/agent-budget-presentation.js";
 
@@ -293,7 +295,14 @@ async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult> {
     } catch {
       // Subscription evidence does not change persistence contract severity.
     }
-    const detail = `${formatAgentHealthDetail(summary)}\n\n${maintenanceDetail}\n\n${budgetDetail}\n\n${workerDetail}`;
+    let backlogDetail =
+      "Agent queue backlog evidence: unavailable. This does not change persistence contract severity.";
+    try {
+      backlogDetail = formatAgentQueueBacklogDetail(await npCollectAgentQueueBacklogV1({ db }));
+    } catch {
+      // Persisted queue observations cannot change persistence contract severity.
+    }
+    const detail = `${formatAgentHealthDetail(summary)}\n\n${maintenanceDetail}\n\n${budgetDetail}\n\n${workerDetail}\n\n${backlogDetail}`;
     if (summary.issueCount === 0) {
       return {
         id: "agents.contract",
