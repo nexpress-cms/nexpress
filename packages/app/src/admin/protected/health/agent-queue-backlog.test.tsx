@@ -48,8 +48,11 @@ describe("Agent queue backlog presentation", () => {
       expect(output).toContain("Ages do not prove progress or a stuck job");
       expect(output).toContain("not tenant-specific");
     }
-    for (const queue of NP_AGENT_WORKER_QUEUE_NAMES)
+    for (const queue of NP_AGENT_WORKER_QUEUE_NAMES) {
       expect(html).toContain(`aria-label="${queue} backlog"`);
+      expect(html).toContain(`href="/admin/jobs?name=${encodeURIComponent(queue)}"`);
+      expect(html).toContain(`aria-label="Inspect ${queue} jobs"`);
+    }
     expect(html).not.toMatch(/<button|<form/);
   });
 

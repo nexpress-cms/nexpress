@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Ban,
@@ -23,7 +23,6 @@ import {
   npRequireRetryJobWire,
   npRequireScheduleListWire,
   type NpJobLogWireEntry,
-  type NpJobState,
   type NpJobSummary,
   type NpJobsHealthWire,
   type NpRecentJobFailure,
@@ -35,6 +34,7 @@ import { Button } from "../ui/button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs.js";
 import { PageHeader } from "../layout/page-header.js";
+import { jobListUrls, type JobsStateTab } from "./jobs-query.js";
 
 /**
  * Phase 13 — admin background-jobs view. One tab per state:
@@ -45,13 +45,10 @@ import { PageHeader } from "../layout/page-header.js";
  * 24 h") on the state tabs so operators can spot recent
  * incidents without paging through history.
  *
- * The endpoint reports a `supported: false` flag when the
- * site runs without pg-boss (NP_ENABLE_JOBS=0); the UI shows
- * an empty-state in that case rather than 500ing on every
- * tab fetch.
+ * Optional listing support is reported by the active adapter;
+ * unsupported observations do not establish whether jobs are enabled.
  */
 
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 type WindowMode = "all" | "24h";
 
 type ScheduleSummary = NpScheduleSummary;
@@ -60,21 +57,8 @@ type StuckJobsBlock = NonNullable<NpJobsHealthWire["stuck"]>;
 type WorkerHealthResponse = NpJobsHealthWire;
 type RecentJobFailure = NpRecentJobFailure;
 type JobLogEntry = NpJobLogWireEntry;
-
-type StateTab = "pending" | "active" | "completed" | "failed" | "archive";
+type StateTab = JobsStateTab;
 type Tab = StateTab | "scheduled";
-
-const STATE_BUCKETS: Record<StateTab, NpJobState[]> = {
-  pending: ["created", "retry"],
-  active: ["active"],
-  completed: ["completed"],
-  failed: ["failed", "cancelled", "expired"],
-  // Phase 20.4 — Archive: rolled-out rows in pgboss.archive. The
-  // bucket spans every state because pg-boss archives completed
-  // jobs alongside failed ones; the `source=archive` query
-  // narrows to the `pgboss.archive` table.
-  archive: ["completed", "failed", "cancelled", "expired"],
-};
 
 const STATE_TABS: StateTab[] = ["pending", "active", "completed", "failed", "archive"];
 
@@ -83,14 +67,17 @@ function isStateTab(tab: Tab): tab is StateTab {
 }
 
 export interface JobsViewProps {
+  queueName?: string;
   searchCollections?: readonly { slug: string; label: string }[];
 }
 
-export function JobsView({ searchCollections = [] }: JobsViewProps) {
+export function JobsView({ searchCollections = [], queueName }: JobsViewProps) {
   const [tab, setTab] = useState<Tab>("pending");
   const [jobs, setJobs] = useState<JobSummary[] | null>(null);
   const [supported, setSupported] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{ context: string; message: string } | null>(null);
+  const [loadedContext, setLoadedContext] = useState<string | null>(null);
+  const [bulkRetrying, setBulkRetrying] = useState(false);
   const [busyJobId, setBusyJobId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [windowMode, setWindowMode] = useState<WindowMode>("all");
@@ -98,71 +85,81 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
   const [handlers, setHandlers] = useState<string[]>([]);
   const [schedulesSupported, setSchedulesSupported] = useState<boolean>(true);
 
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refresh = () => setRefreshKey((value) => value + 1);
+  const context = JSON.stringify([tab, windowMode, queueName ?? null, refreshKey]);
+  const activeContext = useRef<string | null>(context);
+  useLayoutEffect(() => {
+    activeContext.current = context;
+    return () => {
+      activeContext.current = null;
+    };
+  }, [context]);
+  const currentSnapshot = loadedContext === context;
+  const error = failure?.context === context ? failure.message : null;
+  function setError(message: string | null) {
+    if (activeContext.current === context) {
+      setFailure(message === null ? null : { context, message });
+    }
+  }
+
   useEffect(() => {
-    if (tab === "scheduled") {
-      void loadSchedules();
-    } else {
-      void load(tab, windowMode);
-    }
-  }, [tab, windowMode]);
-
-  async function load(activeTab: StateTab, mode: WindowMode) {
-    setRefreshing(true);
-    setError(null);
-    try {
-      const states = STATE_BUCKETS[activeTab];
-      const sinceParam =
-        mode === "24h"
-          ? `&since=${encodeURIComponent(new Date(Date.now() - ONE_DAY_MS).toISOString())}`
-          : "";
-      // Phase 20.4 — Archive tab pins `source=archive`; other tabs
-      // pin `source=live` so finished rows that pg-boss has
-      // already rolled out of `pgboss.job` don't double up under
-      // both Failed (live) and Archive.
-      const sourceParam = activeTab === "archive" ? "&source=archive" : "&source=live";
-      // Fetch each state in this bucket and merge — pg-boss
-      // doesn't have a single "any-of-these-states" filter, so
-      // we round-trip per state. Buckets have 1-3 states max.
-      const results = await Promise.all(
-        states.map(async (state) => {
-          const res = await npFetch(
-            `/api/admin/jobs?state=${encodeURIComponent(state)}&limit=100${sinceParam}${sourceParam}`,
-          );
-          const body = await readResponseJson(res);
-          if (!res.ok) throw new Error(readApiError(body, "Unable to load jobs."));
-          return npRequireJobListWire(body);
-        }),
-      );
-      const supportedFlags = results.map((result) => result.supported);
-      setSupported(supportedFlags.every(Boolean));
-      const merged = results.flatMap((result) => result.jobs);
-      // Sort newest first across the merged buckets.
-      merged.sort((a, b) => new Date(b.createdOn).getTime() - new Date(a.createdOn).getTime());
-      setJobs(merged);
-    } catch {
-      setError("Unable to load jobs.");
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
-  async function loadSchedules() {
-    setRefreshing(true);
-    setError(null);
-    try {
-      const res = await npFetch("/api/admin/jobs/schedules");
-      const body = await readResponseJson(res);
-      if (!res.ok) throw new Error(readApiError(body, "Unable to load schedules."));
-      const schedules = npRequireScheduleListWire(body);
-      setSchedulesSupported(schedules.supported);
-      setSchedules(schedules.schedules);
-      setHandlers(schedules.handlers);
-    } catch {
-      setError("Unable to load schedules.");
-    } finally {
-      setRefreshing(false);
-    }
-  }
+    const controller = new AbortController();
+    const { signal } = controller;
+    const frame = window.requestAnimationFrame(() => {
+      setRefreshing(true);
+      setFailure(null);
+      setJobs(null);
+      setSchedules(null);
+      setHandlers([]);
+      void (async () => {
+        try {
+          if (tab === "scheduled") {
+            const res = await npFetch("/api/admin/jobs/schedules", { signal });
+            const body = await readResponseJson(res);
+            if (!res.ok) throw new Error(readApiError(body, "Unable to load schedules."));
+            const result = npRequireScheduleListWire(body);
+            if (signal.aborted) return;
+            setSchedulesSupported(result.supported);
+            setSchedules(
+              result.schedules.filter((entry) => !queueName || entry.name === queueName),
+            );
+            setHandlers(result.handlers.filter((name) => !queueName || name === queueName));
+          } else {
+            const results = await Promise.all(
+              jobListUrls(tab, windowMode, queueName).map(async (url) => {
+                const res = await npFetch(url, { signal });
+                const body = await readResponseJson(res);
+                if (!res.ok) throw new Error(readApiError(body, "Unable to load jobs."));
+                return npRequireJobListWire(body);
+              }),
+            );
+            if (signal.aborted) return;
+            setSupported(results.every((result) => result.supported));
+            const merged = results.flatMap((result) => result.jobs);
+            merged.sort(
+              (a, b) => new Date(b.createdOn).getTime() - new Date(a.createdOn).getTime(),
+            );
+            setJobs(merged);
+          }
+          setLoadedContext(context);
+        } catch {
+          if (!signal.aborted) {
+            setFailure({
+              context,
+              message: tab === "scheduled" ? "Unable to load schedules." : "Unable to load jobs.",
+            });
+          }
+        } finally {
+          if (!signal.aborted) setRefreshing(false);
+        }
+      })();
+    });
+    return () => {
+      controller.abort();
+      window.cancelAnimationFrame(frame);
+    };
+  }, [tab, windowMode, queueName, refreshKey, context]);
 
   async function retry(id: string) {
     setBusyJobId(id);
@@ -179,7 +176,7 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
         return;
       }
       npRequireRetryJobWire(body);
-      if (isStateTab(tab)) await load(tab, windowMode);
+      refresh();
     } catch {
       setError("Unable to retry job.");
     } finally {
@@ -202,7 +199,7 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
         return;
       }
       npRequireCancelJobWire(body);
-      if (isStateTab(tab)) await load(tab, windowMode);
+      refresh();
     } catch {
       setError("Unable to cancel job.");
     } finally {
@@ -211,7 +208,7 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
   }
 
   async function retryAllFailed() {
-    setRefreshing(true);
+    setBulkRetrying(true);
     setError(null);
     try {
       const res = await npFetch("/api/admin/jobs/retry-all?state=failed", {
@@ -225,11 +222,11 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
         return;
       }
       npRequireRetryAllJobsWire(body);
-      if (isStateTab(tab)) await load(tab, windowMode);
+      refresh();
     } catch {
       setError("Bulk retry failed.");
     } finally {
-      setRefreshing(false);
+      setBulkRetrying(false);
     }
   }
 
@@ -276,14 +273,8 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
               variant="outline"
               size="sm"
               className="min-h-10 w-full sm:min-h-0 sm:w-auto"
-              onClick={() => {
-                if (tab === "scheduled") {
-                  void loadSchedules();
-                } else {
-                  void load(tab, windowMode);
-                }
-              }}
-              disabled={refreshing}
+              onClick={refresh}
+              disabled={refreshing || bulkRetrying}
             >
               {refreshing ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -296,12 +287,21 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
         }
       />
 
-      {!supported ? (
+      {queueName ? (
+        <p className="min-w-0 break-words text-sm text-muted-foreground">
+          Queue: <code className="break-all">{queueName}</code>. Job lists and registered schedules
+          are filtered to this queue.{" "}
+          <a href="/admin/jobs" className="underline">
+            Show all queues
+          </a>
+        </p>
+      ) : null}
+
+      {isStateTab(tab) && currentSnapshot && !supported ? (
         <Card className="min-w-0 border-amber-500/30/60 bg-amber-500/10">
           <CardContent className="break-words text-[13px] text-amber-900 dark:text-amber-100">
-            <strong className="font-semibold">Background jobs disabled.</strong> This site is
-            running without pg-boss. Set <code>NP_ENABLE_JOBS=1</code> and restart the worker to
-            surface queued jobs here.
+            <strong className="font-semibold">Job listing unavailable.</strong> The active queue
+            adapter does not expose job listings.
           </CardContent>
         </Card>
       ) : null}
@@ -312,7 +312,12 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
         </div>
       ) : null}
 
-      <WorkerHealthCard />
+      <div className="min-w-0 space-y-2">
+        <p className="text-xs text-muted-foreground">
+          Worker health covers all queues on this host.
+        </p>
+        <WorkerHealthCard />
+      </div>
 
       <Tabs
         value={tab}
@@ -330,13 +335,17 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
 
         {STATE_TABS.map((key) => (
           <TabsContent key={key} value={key} className="min-w-0 space-y-3">
-            {key === "failed" && jobs && jobs.length > 0 ? (
-              <div className="flex min-w-0 justify-end">
+            {key === "failed" && !queueName && currentSnapshot && jobs && jobs.length > 0 ? (
+              <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Bulk retry covers all failed jobs across queues and time ranges, including jobs
+                  not shown here.
+                </p>
                 <Button
                   size="sm"
                   variant="outline"
                   className="min-h-10 w-full sm:min-h-0 sm:w-auto"
-                  disabled={refreshing}
+                  disabled={refreshing || bulkRetrying}
                   onClick={() => void retryAllFailed()}
                 >
                   <Play className="size-3" />
@@ -346,30 +355,29 @@ export function JobsView({ searchCollections = [] }: JobsViewProps) {
             ) : null}
             {key === "archive" ? (
               <p className="break-words text-xs text-muted-foreground">
-                Rows pg-boss has rolled out of <code>pgboss.job</code> after their{" "}
-                <code>keepUntil</code> window. Read-only — retrying an archived job re-enqueues a
-                fresh row in <code>pgboss.job</code>.
+                Retained completed, failed, cancelled, and expired jobs. This tab is read-only; use
+                Failed to retry eligible jobs.
               </p>
             ) : null}
-            <JobList
-              jobs={jobs}
-              tab={key}
-              busyJobId={busyJobId}
-              onRetry={(id) => void retry(id)}
-              onCancel={(id) => void cancel(id)}
-            />
+            {!error && (!currentSnapshot || supported) ? (
+              <JobList
+                jobs={currentSnapshot ? jobs : null}
+                tab={key}
+                busyJobId={busyJobId}
+                onRetry={(id) => void retry(id)}
+                onCancel={(id) => void cancel(id)}
+              />
+            ) : null}
           </TabsContent>
         ))}
 
         <TabsContent value="scheduled" className="min-w-0 space-y-4">
           <SchedulesPanel
-            supported={schedulesSupported}
-            schedules={schedules}
-            handlers={handlers}
+            supported={!currentSnapshot || schedulesSupported}
+            schedules={currentSnapshot ? schedules : null}
+            handlers={currentSnapshot ? handlers : []}
             searchCollections={searchCollections}
-            onEnqueued={() => {
-              void loadSchedules();
-            }}
+            onEnqueued={refresh}
           />
         </TabsContent>
       </Tabs>
@@ -875,7 +883,7 @@ function JobList({
   onCancel,
 }: {
   jobs: JobSummary[] | null;
-  tab: keyof typeof STATE_BUCKETS;
+  tab: StateTab;
   busyJobId: string | null;
   onRetry: (id: string) => void;
   onCancel: (id: string) => void;

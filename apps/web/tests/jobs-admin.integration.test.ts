@@ -1,11 +1,15 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { NpConflictError } from "@nexpress/core";
+import { sql } from "drizzle-orm";
+import { PgBossAdapter } from "../../../packages/core/src/jobs/pg-boss-adapter.js";
 import { setJobQueue } from "@nexpress/core/bootstrap";
 
 import {
   buildRequest,
   closeTestDb,
   ensureMigrated,
+  getTestDb,
+  getTestDatabaseUrl,
   readJson,
   registerTestCollections,
   seedUser,
@@ -160,6 +164,71 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
     }>(res);
     expect(body.jobs?.length).toBe(1);
     expect(body.jobs?.[0]?.state).toBe("failed");
+  });
+
+  it("GET preserves queue, lifecycle source and time filters against retained pg-boss rows", async () => {
+    const admin = await seedUser({ role: "admin" });
+    const connectionString = getTestDatabaseUrl();
+    if (!connectionString) throw new Error("TEST_DATABASE_URL not set");
+    const db = await getTestDb();
+    const adapter = new PgBossAdapter(connectionString, { supervise: false, schedule: false });
+    try {
+      await db.execute(sql`drop schema if exists pgboss cascade`);
+      // Fixture storage only: no worker subscriptions or execution.
+      await adapter.startProducer();
+      await adapter.getBoss().createQueue("agent.runExecute");
+      await adapter.getBoss().createQueue("unrelated.queue");
+      await db.execute(sql`
+        insert into pgboss.job (name, state, data, created_on)
+        values
+          ('agent.runExecute', 'created', '{"siteId":"default","runId":"00000000-0000-4000-8000-000000000001"}', now()),
+          ('agent.runExecute', 'active', '{"siteId":"default","runId":"00000000-0000-4000-8000-000000000001"}', now()),
+          ('agent.runExecute', 'completed', '{"siteId":"default","runId":"00000000-0000-4000-8000-000000000001"}', now()),
+          ('agent.runExecute', 'failed', '{"siteId":"default","runId":"00000000-0000-4000-8000-000000000001"}', now()),
+          ('agent.runExecute', 'failed', '{"siteId":"default","runId":"00000000-0000-4000-8000-000000000001"}', now() - interval '2 days'),
+          ('unrelated.queue', 'failed', '{"siteId":"default","runId":"00000000-0000-4000-8000-000000000001"}', now())
+      `);
+      setJobQueue(adapter);
+      const { GET } = await import("@/app/api/admin/jobs/route");
+      const list = async (query: Record<string, string>) => {
+        const { status, body } = await readJson<{
+          jobs: Array<{ name: string; state: string; source: string }>;
+          total: number;
+        }>(await GET(buildRequest("/api/admin/jobs", { session: admin, query })));
+        expect(status, JSON.stringify(body)).toBe(200);
+        return body;
+      };
+      const live = await list({ name: "agent.runExecute", source: "live" });
+      expect(live.total).toBe(2);
+      expect(live.jobs.map((job) => job.state).sort()).toEqual(["active", "created"]);
+      expect(live.jobs.every((job) => job.source === "live")).toBe(true);
+      const completed = await list({
+        name: "agent.runExecute",
+        state: "completed",
+        source: "archive",
+      });
+      expect(completed.total).toBe(1);
+      expect(completed.jobs[0]).toMatchObject({ state: "completed", source: "archive" });
+      const recentFailed = await list({
+        name: "agent.runExecute",
+        state: "failed",
+        source: "archive",
+        since: new Date(Date.now() - 86_400_000).toISOString(),
+      });
+      expect(recentFailed.total).toBe(1);
+      expect(recentFailed.jobs[0]).toMatchObject({
+        name: "agent.runExecute",
+        state: "failed",
+        source: "archive",
+      });
+      expect(
+        (await list({ name: "agent.runExecute", state: "failed", source: "live" })).total,
+      ).toBe(0);
+    } finally {
+      setJobQueue(null);
+      await adapter.stop();
+      await db.execute(sql`drop schema if exists pgboss cascade`);
+    }
   });
 
   it("GET rejects unknown filters instead of silently widening the query", async () => {

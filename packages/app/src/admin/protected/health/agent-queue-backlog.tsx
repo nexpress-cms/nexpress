@@ -42,6 +42,13 @@ export function AgentQueueBacklog({ summary }: { summary: unknown }) {
             className="min-w-0 rounded-lg border border-neutral-200 p-3 dark:border-neutral-800"
           >
             <h3 className="break-all text-sm font-medium">{queue.queue}</h3>
+            <a
+              href={`/admin/jobs?name=${encodeURIComponent(queue.queue)}`}
+              className="mt-2 inline-block text-sm underline underline-offset-4"
+              aria-label={`Inspect ${queue.queue} jobs`}
+            >
+              Inspect jobs
+            </a>
             <dl className="mt-2 space-y-2">
               {queue.rows.map((row) => (
                 <div key={row.label} className="grid min-w-0 grid-cols-2 gap-3 text-sm">

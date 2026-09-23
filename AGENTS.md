@@ -52,4 +52,4 @@
 
 ## Task boundaries
 
-After a coherent bundle is merged, replace the [handoff](docs/agent-guidance/current-handoff.md) using the [template](docs/agent-guidance/handoff-template.md). Start the next bundle in a fresh thread when the user requests it. Preserve uncommitted work and explicit constraints; never assume a new worktree contains pending changes. Do not fork the entire old conversation merely to carry implementation history.
+Update the [handoff](docs/agent-guidance/current-handoff.md) using the [template](docs/agent-guidance/handoff-template.md) only when transitioning sessions; do not rewrite it after every bundle or merge. Start the next bundle in a fresh thread when the user requests it. Preserve uncommitted work and explicit constraints; never assume a new worktree contains pending changes. Do not fork the entire old conversation merely to carry implementation history.
