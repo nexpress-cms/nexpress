@@ -6,6 +6,9 @@ This bundle follows PR #1465 at `6217e0a1`. It extends the bounded observations 
 [budget measurement](agent-budget-evidence.md). Existing readiness and admission
 semantics remain unchanged.
 
+The later [queue observation bundle](agent-worker-queue-evidence.md) adds per-queue
+counts from the same bounded sample while retaining this exact v1 aggregate.
+
 ## Ownership and compatibility
 
 The pg-boss adapter records successful queue subscriptions and removals through its

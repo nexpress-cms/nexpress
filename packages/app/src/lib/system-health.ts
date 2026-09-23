@@ -26,13 +26,14 @@ import {
   npCollectAgentHealthSummaryV1,
   npCollectAgentMaintenanceHealthV1,
   npCollectAgentBudgetHealthV1,
-  npCollectAgentWorkerHealthV1,
+  npCollectAgentWorkerHealthV2,
 } from "@nexpress/core/agents";
 import type {
   NpAgentHealthSummaryV1,
   NpAgentMaintenanceHealthV1,
   NpAgentBudgetHealthV1,
   NpAgentWorkerHealthV1,
+  NpAgentWorkerHealthV2,
 } from "@nexpress/core/agent-contract";
 import {
   getCommunityRuntimeDiagnostics,
@@ -82,7 +83,7 @@ export interface HealthSummary {
   agents: NpAgentHealthSummaryV1;
   agentMaintenance: NpAgentMaintenanceHealthV1;
   agentBudget: NpAgentBudgetHealthV1;
-  agentWorkers: NpAgentWorkerHealthV1;
+  agentWorkers: NpAgentWorkerHealthV1 | NpAgentWorkerHealthV2;
 }
 
 const FRAMEWORK_TABLES = ["np_users", "np_settings", "np_navigation", "np_sites"] as const;
@@ -817,7 +818,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
     npCollectAgentHealthSummaryV1(),
     npCollectAgentMaintenanceHealthV1(),
     npCollectAgentBudgetHealthV1(),
-    npCollectAgentWorkerHealthV1(),
+    npCollectAgentWorkerHealthV2(),
   ]);
   checks.push(await checkDatabase());
   checks.push(await checkMigrations());

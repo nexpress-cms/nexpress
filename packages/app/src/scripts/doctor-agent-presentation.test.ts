@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NP_AGENT_WORKER_QUEUE_NAMES } from "@nexpress/core/jobs-contract";
 import { npRequireAgentHealthSummaryV1 } from "@nexpress/core/agent-contract";
 
 const { collectAgentSummary, collectMaintenance, collectBudget, collectWorkers, clients } =
@@ -16,7 +17,7 @@ vi.mock("@nexpress/core/agents", () => ({
   npCollectAgentHealthSummaryV1: collectAgentSummary,
   npCollectAgentMaintenanceHealthV1: collectMaintenance,
   npCollectAgentBudgetHealthV1: collectBudget,
-  npCollectAgentWorkerHealthV1: collectWorkers,
+  npCollectAgentWorkerHealthV2: collectWorkers,
 }));
 vi.mock("pg", () => ({
   default: {
@@ -112,7 +113,7 @@ describe("Doctor Agent health presentation", () => {
       if (state !== "error")
         collectBudget.mockRejectedValueOnce(new Error("must-not-leak-budget-failure"));
       else collectBudget.mockResolvedValueOnce(budget);
-      const workers = {
+      const workerSummary = {
         schemaVersion: "np.agent-worker-health.v1" as const,
         generatedAt: "2026-09-21T00:00:00.000Z",
         state: "observed" as const,
@@ -124,6 +125,17 @@ describe("Doctor Agent health presentation", () => {
         staleWorkers: 0,
         stoppedWorkers: 0,
         unknownWorkers: 1,
+      };
+      const workers = {
+        schemaVersion: "np.agent-worker-health.v2" as const,
+        summary: workerSummary,
+        queues: NP_AGENT_WORKER_QUEUE_NAMES.map((queue) => ({
+          queue,
+          subscribedWorkers: queue === "agent.runExecute" ? 1 : 0,
+          pausedRegisteredWorkers: queue === "agent.eventDispatch" ? 1 : 0,
+          staleRegisteredWorkers: 0,
+          stoppedRegisteredWorkers: 0,
+        })),
       };
       if (state === "ok")
         collectWorkers.mockRejectedValueOnce(new Error("must-not-leak-worker-failure"));

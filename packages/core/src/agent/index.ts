@@ -69,4 +69,4 @@ export * from "./maintenance-evidence.js";
 
 export * from "./budget-health.js";
 
-export { npCollectAgentWorkerHealthV1 } from "./worker-health.js";
+export { npCollectAgentWorkerHealthV1, npCollectAgentWorkerHealthV2 } from "./worker-health.js";
