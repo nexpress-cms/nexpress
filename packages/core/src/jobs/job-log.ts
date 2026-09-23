@@ -118,7 +118,7 @@ export async function listJobLogs(
     .select()
     .from(npJobLogs)
     .where(eq(npJobLogs.jobId, canonicalId))
-    .orderBy(orderBy)
+    .orderBy(orderBy, options.order === "desc" ? desc(npJobLogs.id) : asc(npJobLogs.id))
     .limit(limit)
     .offset(offset)) as Array<{
     id: string;

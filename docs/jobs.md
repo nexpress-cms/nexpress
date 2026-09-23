@@ -539,9 +539,17 @@ whole operator workflow rather than one endpoint in isolation.
   `/admin/jobs` now has a collapsible "Logs" section that
   lazy-fetches `GET /api/admin/jobs/{id}/logs` (admin-only,
   paged via `?limit=` / `?offset=`; the UI asks for 500, max 1000).
-  Entries render as `[time] [level] message` with
+  Entries render as `[date/time] [level] message` with
   per-entry collapsible context payloads. Empty state shows
-  "No log entries for this job."
+  "No log entries for this job." Opening a panel fetches one page; Previous/Next
+  navigates 500 entries at a time, oldest first, through the existing bounded
+  offset API (maximum offset 100,000). Equal timestamps use the log id as a
+  deterministic tie-break. Only one page stays visible; there is no automatic
+  polling or unbounded accumulation. Refresh returns to the first page; Retry
+  repeats the failed page. Closing a panel cancels its request, and reopening
+  fetches the first page again. Obsolete or mismatched-job responses are discarded.
+  Page counts and entries are independent observations: concurrent inserts or
+  retention can shift offset pages; this is not a frozen complete history.
 - **Per-job log capture** — Phase 20.3a. `np_job_logs` table
   - `recordJobLog(level, message, context?)` helper. The
     pg-boss adapter wraps every handler invocation in an
