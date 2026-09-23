@@ -264,6 +264,21 @@ describe("job runtime contract", () => {
       ],
     };
     expect(npAnalyzeJobListWire(valid).ok).toBe(true);
+    // Existing adapters may omit timing; explicit unknown and canonical times are additive.
+    for (const startAfter of [null, "2026-07-13T02:00:00.000Z"]) {
+      const result = npAnalyzeJobListWire({
+        ...valid,
+        jobs: [{ ...valid.jobs[0], startAfter }],
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.value.jobs[0]?.startAfter).toBe(startAfter);
+    }
+    for (const startAfter of ["tomorrow", "2026-07-13", 0]) {
+      expect(npAnalyzeJobListWire({ ...valid, jobs: [{ ...valid.jobs[0], startAfter }] }).ok).toBe(
+        false,
+      );
+    }
+
     expect(npAnalyzeJobListWire({ ...valid, extra: true }).ok).toBe(false);
     expect(
       npAnalyzeJobListWire({

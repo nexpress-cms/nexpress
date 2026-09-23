@@ -691,18 +691,23 @@ export function npRequireJobQueueName(value: unknown, path = "job.name"): string
 }
 
 function parseJobSummary(value: unknown, path: string): NpJobSummary {
-  const input = exactRecord(value, path, [
-    "id",
-    "name",
-    "state",
-    "data",
-    "retryCount",
-    "output",
-    "createdOn",
-    "startedOn",
-    "completedOn",
-    "source",
-  ]);
+  const input = optionalRecord(
+    value,
+    path,
+    [
+      "id",
+      "name",
+      "state",
+      "data",
+      "retryCount",
+      "output",
+      "createdOn",
+      "startedOn",
+      "completedOn",
+      "source",
+    ],
+    ["startAfter"],
+  );
   if (typeof input.state !== "string" || !JOB_STATES.has(input.state)) {
     fail(`${path}.state`, "must be a supported job state");
   }
@@ -734,6 +739,9 @@ function parseJobSummary(value: unknown, path: string): NpJobSummary {
     retryCount: nonNegativeInteger(input.retryCount, `${path}.retryCount`),
     output,
     createdOn,
+    ...(input.startAfter === undefined
+      ? {}
+      : { startAfter: nullableIso(input.startAfter, `${path}.startAfter`) }),
     startedOn,
     completedOn,
     source: input.source as NpJobSummary["source"],
