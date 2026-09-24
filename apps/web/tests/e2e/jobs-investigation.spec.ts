@@ -542,3 +542,154 @@ test("Worker health keeps loading visible, labels retained refresh data and reco
   await expect(card.getByText("Workers: 0 alive / 1 total", { exact: true })).toBeVisible();
   expect(requests).toBe(7);
 });
+
+test("Jobs mutations stay serialized and bind outcomes to the submitted view and handler", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    140 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const listRequests: string[] = [];
+  await page.route("**/api/admin/jobs?*", async (route) => {
+    const state = new URL(route.request().url()).searchParams.get("state");
+    listRequests.push(state ?? "");
+    const jobs = (state === "failed" ? [1, 2] : state === "created" ? [1] : []).map((index) => ({
+      id: `mutation-${state}-${index}`,
+      name: "media.cleanup",
+      state,
+      source: state === "failed" ? "archive" : "live",
+      data: {},
+      retryCount: 0,
+      output: null,
+      createdOn: "2026-09-24T00:00:00.000Z",
+      startedOn: null,
+      completedOn: null,
+    }));
+    await route.fulfill({ json: { supported: true, jobs, total: jobs.length } });
+  });
+  await page.route("**/api/admin/jobs/schedules", (route) =>
+    route.fulfill({
+      json: {
+        supported: true,
+        schedules: [],
+        handlers: ["media:cleanup", "system:sessionCleanup"],
+      },
+    }),
+  );
+  let releaseRetry: (() => void) | undefined;
+  const retryGate = new Promise<void>((resolve) => {
+    releaseRetry = resolve;
+  });
+  let retryRequests = 0;
+  await page.route("**/api/admin/jobs/*/retry", async (route) => {
+    retryRequests += 1;
+    await retryGate;
+    await route.fulfill({ json: { id: "mutation-failed-1" } });
+  });
+  let releaseEnqueue: (() => void) | undefined;
+  let enqueueGate = Promise.resolve();
+  let enqueueMode: "success" | "mismatch" | "network" = "success";
+  const submissions: unknown[] = [];
+  await page.route("**/api/admin/jobs/enqueue", async (route) => {
+    submissions.push(route.request().postDataJSON());
+    const mode = enqueueMode;
+    await enqueueGate;
+    if (mode === "network") {
+      await route.abort("failed");
+      return;
+    }
+    await route.fulfill({
+      json: {
+        id: "manual-cleanup-job",
+        type: mode === "mismatch" ? "system:sessionCleanup" : "media:cleanup",
+        data: {},
+      },
+    });
+  });
+  function holdEnqueue() {
+    enqueueGate = new Promise<void>((resolve) => {
+      releaseEnqueue = resolve;
+    });
+  }
+  const unknownOutcome = page.getByText(
+    "The request result could not be confirmed. Refresh and inspect jobs before submitting again.",
+    { exact: true },
+  );
+  await page.goto("/admin/jobs");
+  await page.getByRole("tab", { name: "Failed", exact: true }).click();
+  const retries = page.getByRole("button", { name: "Retry", exact: true });
+  await expect(retries).toHaveCount(2);
+  await retries.first().click();
+  await expect.poll(() => retryRequests).toBe(1);
+  await expect(retries.first()).toBeDisabled();
+  await expect(retries.last()).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Retry all failed", exact: true })).toBeDisabled();
+  await expect(page.getByRole("status").filter({ hasText: "mutation-failed-1" })).toBeVisible();
+  await page.getByRole("tab", { name: "Pending", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeDisabled();
+  await page.getByRole("tab", { name: "Scheduled", exact: true }).click();
+  await expect(page.getByLabel("Handler", { exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Enqueue", exact: true })).toBeDisabled();
+  await page.getByRole("tab", { name: "Pending", exact: true }).click();
+  await expect(page.getByText("mutation-created-1", { exact: true })).toBeVisible();
+  const beforeRetryCompletion = listRequests.length;
+  releaseRetry?.();
+  await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeEnabled();
+  expect(listRequests.length).toBe(beforeRetryCompletion);
+  expect(retryRequests).toBe(1);
+
+  await page.getByRole("tab", { name: "Scheduled", exact: true }).click();
+  const handler = page.getByLabel("Handler", { exact: true });
+  const payload = page.getByLabel("Payload (JSON)", { exact: true });
+  const enqueue = page.getByRole("button", { name: "Enqueue", exact: true });
+  await handler.selectOption("media:cleanup");
+  await payload.fill("{}");
+  holdEnqueue();
+  await enqueue.click();
+  await expect.poll(() => submissions.length).toBe(1);
+  await expect(handler).toBeDisabled();
+  await expect(payload).toBeDisabled();
+  await expect(enqueue).toBeDisabled();
+  await expect(page.getByRole("status").filter({ hasText: "media:cleanup" })).toBeVisible();
+  expect(submissions[0]).toEqual({ type: "media:cleanup", data: {} });
+  releaseEnqueue?.();
+  const success = page.getByText("Enqueued media:cleanup (job id manual-cleanup-job).", {
+    exact: true,
+  });
+  await expect(success).toBeVisible();
+  await expect(payload).toBeEnabled();
+  await payload.fill("{ }");
+  await expect(success).toHaveCount(0);
+
+  enqueueMode = "mismatch";
+  await enqueue.click();
+  await expect(unknownOutcome).toBeVisible();
+  await expect(success).toHaveCount(0);
+  expect(submissions.length).toBe(2);
+  enqueueMode = "network";
+  await payload.fill("{}");
+  await enqueue.click();
+  await expect.poll(() => submissions.length).toBe(3);
+  await expect(unknownOutcome).toBeVisible();
+  await expect(enqueue).toBeEnabled();
+  await expect(success).toHaveCount(0);
+
+  enqueueMode = "success";
+  holdEnqueue();
+  await enqueue.click();
+  await expect.poll(() => submissions.length).toBe(4);
+  await page.getByRole("tab", { name: "Pending", exact: true }).click();
+  await expect(page.getByText("mutation-created-1", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeDisabled();
+  const beforeEnqueueCompletion = listRequests.length;
+  releaseEnqueue?.();
+  await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeEnabled();
+  expect(listRequests.length).toBe(beforeEnqueueCompletion);
+  await expect(unknownOutcome).toHaveCount(0);
+  await expect(success).toHaveCount(0);
+  await page.getByRole("tab", { name: "Scheduled", exact: true }).click();
+  await expect(handler).toHaveValue("");
+  await expect(success).toHaveCount(0);
+});

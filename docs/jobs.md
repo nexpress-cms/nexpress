@@ -456,6 +456,18 @@ the endpoint directly if needed.
 
 ---
 
+Jobs serializes manual enqueue, row retry/cancel and bulk retry within the open
+view. While a request is pending, all mutation controls are disabled and its
+handler or job id remains visible, including after a tab change. Navigation
+remains available. A late result cannot refresh a different tab/filter or replace
+its messages; leaving the view does not claim to cancel server work.
+
+Manual enqueue freezes the submitted inputs until the request settles. Its success
+message names the submitted handler and returned job id, and editing the form clears
+that message. Network errors, server failures and invalid success responses leave
+the outcome unconfirmed: inspect/refresh jobs before deciding whether to submit
+again. There is no automatic mutation retry or new idempotency guarantee.
+
 ## 11. Operations Playbook
 
 **Worker silently stopped processing**
