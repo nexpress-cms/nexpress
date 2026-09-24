@@ -373,7 +373,13 @@ execution-policy change is involved.
 
 A worker-health card sits above the tabs (Phase 20.4 / 23.5):
 
-- Worker liveness (alive count, last heartbeat age).
+- Worker liveness (alive count, last heartbeat age at browser receipt). The card
+  remains visible while loading or unavailable, with explicit retry after a
+  failed read. During refresh the previous snapshot is clearly marked as such;
+  HTTP, access and invalid-response failures remove its counts and failure details.
+  The displayed receipt time is the browser clock, not proof of source freshness
+  or worker progress. Reads happen on mount and explicit refresh/retry only;
+  leaving the view aborts pending requests and obsolete responses are ignored.
 - Pause pill when `getJobsPauseState().paused` is true.
 - **Recent failures** — the same card lists the most recent failed,
   expired, or retrying jobs with their latest captured log message, so
