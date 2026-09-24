@@ -38,4 +38,30 @@ describe("Jobs investigation queries", () => {
       expect(params.get("limit")).toBe("100");
     }
   });
+  it("pages one state while retaining the selected queue and frozen time window", () => {
+    const now = Date.parse("2026-09-24T12:00:00Z");
+    const requests = [0, 100, 100_000].map((offset) => {
+      const urls = jobListUrls("failed", "24h", "agent.runExecute", now, {
+        state: "expired",
+        offset,
+      });
+      expect(urls).toHaveLength(1);
+      return new URL(urls[0], "https://example.test").searchParams;
+    });
+    expect(requests.map((params) => params.get("offset"))).toEqual(["0", "100", "100000"]);
+    for (const params of requests) {
+      expect(params.get("state")).toBe("expired");
+      expect(params.get("source")).toBe("archive");
+      expect(params.get("name")).toBe("agent.runExecute");
+      expect(params.get("since")).toBe("2026-09-23T12:00:00.000Z");
+    }
+    expect(() =>
+      jobListUrls("pending", "all", undefined, now, { state: "failed", offset: 0 }),
+    ).toThrow("Invalid job page");
+    for (const offset of [-1, 0.5, 100_001]) {
+      expect(() =>
+        jobListUrls("active", "all", undefined, now, { state: "active", offset }),
+      ).toThrow("Invalid job page");
+    }
+  });
 });

@@ -199,6 +199,7 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
       const list = async (query: Record<string, string>) => {
         const { status, body } = await readJson<{
           jobs: Array<{
+            id: string;
             name: string;
             state: string;
             source: string;
@@ -223,6 +224,28 @@ describe.skipIf(skipIfNoTestDb())("admin jobs (Phase 13)", () => {
       const limited = await list({ name: "agent.runExecute", source: "live", limit: "1" });
       expect(limited.jobs).toHaveLength(1);
       expect(limited.total).toBe(3);
+
+      // Traverse retained rows with exact state/source scope, including the empty end page.
+      const failedPages = [];
+      for (const offset of [0, 1, 2]) {
+        const result = await list({
+          name: "agent.runExecute",
+          state: "failed",
+          source: "archive",
+          limit: "1",
+          offset: String(offset),
+        });
+        expect(result.total).toBe(2);
+        expect(result.jobs).toHaveLength(offset < 2 ? 1 : 0);
+        failedPages.push(...result.jobs);
+      }
+      expect(new Set(failedPages.map((job) => job.id)).size).toBe(2);
+      expect(failedPages.every((job) => job.state === "failed" && job.source === "archive")).toBe(
+        true,
+      );
+      expect(Date.parse(failedPages[0]!.createdOn)).toBeGreaterThan(
+        Date.parse(failedPages[1]!.createdOn),
+      );
 
       const completed = await list({
         name: "agent.runExecute",

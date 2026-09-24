@@ -2,7 +2,7 @@ import type { NpJobState } from "@nexpress/core/jobs-contract";
 
 export type JobsStateTab = "pending" | "active" | "completed" | "failed" | "archive";
 
-const STATE_BUCKETS: Record<JobsStateTab, NpJobState[]> = {
+export const JOB_STATE_BUCKETS: Record<JobsStateTab, NpJobState[]> = {
   pending: ["created", "retry"],
   active: ["active"],
   completed: ["completed"],
@@ -16,13 +16,25 @@ export function jobListUrls(
   windowMode: "all" | "24h",
   queueName?: string,
   now = Date.now(),
+  page?: { state: NpJobState; offset: number },
 ): string[] {
-  return STATE_BUCKETS[tab].map((state) => {
+  const states = JOB_STATE_BUCKETS[tab];
+  if (
+    page &&
+    (!states.includes(page.state) ||
+      !Number.isInteger(page.offset) ||
+      page.offset < 0 ||
+      page.offset > 100_000)
+  ) {
+    throw new Error("Invalid job page");
+  }
+  return (page ? [page.state] : states).map((state) => {
     const params = new URLSearchParams({
       state,
       limit: "100",
       source: tab === "pending" || tab === "active" ? "live" : "archive",
     });
+    if (page) params.set("offset", String(page.offset));
     if (windowMode === "24h") {
       params.set("since", new Date(now - 24 * 60 * 60 * 1000).toISOString());
     }

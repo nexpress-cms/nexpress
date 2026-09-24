@@ -21,6 +21,7 @@ import {
   npRequireRetryAllJobsWire,
   npRequireRetryJobWire,
   npRequireScheduleListWire,
+  type NpJobState,
   type NpJobSummary,
   type NpJobsHealthWire,
   type NpRecentJobFailure,
@@ -33,7 +34,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs.js";
 import { PageHeader } from "../layout/page-header.js";
 import { JobLogsSection } from "./job-logs-section.js";
-import { jobListUrls, type JobsStateTab } from "./jobs-query.js";
+import { JOB_STATE_BUCKETS, jobListUrls, type JobsStateTab } from "./jobs-query.js";
 
 /**
  * Phase 13 — admin background-jobs view. One tab per state:
@@ -69,7 +70,11 @@ export interface JobsViewProps {
   searchCollections?: readonly { slug: string; label: string }[];
 }
 
-export function JobsView({ searchCollections = [], queueName }: JobsViewProps) {
+export function JobsView(props: JobsViewProps) {
+  return <JobsViewContent key={props.queueName ?? ""} {...props} />;
+}
+
+function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
   const [tab, setTab] = useState<Tab>("pending");
   const [jobs, setJobs] = useState<JobSummary[] | null>(null);
   const [reportedTotal, setReportedTotal] = useState(0);
@@ -85,8 +90,36 @@ export function JobsView({ searchCollections = [], queueName }: JobsViewProps) {
   const [schedulesSupported, setSchedulesSupported] = useState<boolean>(true);
 
   const [refreshKey, setRefreshKey] = useState(0);
-  const refresh = () => setRefreshKey((value) => value + 1);
-  const context = JSON.stringify([tab, windowMode, queueName ?? null, refreshKey]);
+  const filterContext = JSON.stringify([tab, windowMode, queueName ?? null]);
+  const [navigation, setNavigation] = useState<{
+    state: NpJobState | "all";
+    offset: number;
+    now: number;
+  }>(() => ({ state: "all", offset: 0, now: Date.now() }));
+  const states = isStateTab(tab) ? JOB_STATE_BUCKETS[tab] : [];
+  const selectedState = states.length === 1 ? states[0] : navigation.state;
+  const offset = navigation.offset;
+  const pageState = selectedState === "all" ? undefined : selectedState;
+  const refresh = () => {
+    setNavigation((value) => ({ ...value, offset: 0, now: Date.now() }));
+    setRefreshKey((value) => value + 1);
+  };
+  const retryPage = () => setRefreshKey((value) => value + 1);
+  function changeWindow(mode: WindowMode) {
+    setWindowMode(mode);
+    setNavigation((value) => ({
+      ...value,
+      offset: 0,
+      now: Date.now(),
+    }));
+  }
+  const context = JSON.stringify([
+    filterContext,
+    selectedState,
+    offset,
+    navigation.now,
+    refreshKey,
+  ]);
   const activeContext = useRef<string | null>(context);
   useLayoutEffect(() => {
     activeContext.current = context;
@@ -126,11 +159,29 @@ export function JobsView({ searchCollections = [], queueName }: JobsViewProps) {
             setHandlers(result.handlers.filter((name) => !queueName || name === queueName));
           } else {
             const results = await Promise.all(
-              jobListUrls(tab, windowMode, queueName).map(async (url) => {
+              jobListUrls(
+                tab,
+                windowMode,
+                queueName,
+                navigation.now,
+                pageState ? { state: pageState, offset } : undefined,
+              ).map(async (url) => {
                 const res = await npFetch(url, { signal });
                 const body = await readResponseJson(res);
                 if (!res.ok) throw new Error(readApiError(body, "Unable to load jobs."));
-                return npRequireJobListWire(body);
+                const result = npRequireJobListWire(body);
+                const requestedState = new URL(url, "https://jobs.invalid").searchParams.get(
+                  "state",
+                );
+                if (
+                  result.jobs.length > 100 ||
+                  result.jobs.some(
+                    (job) => job.state !== requestedState || (queueName && job.name !== queueName),
+                  )
+                ) {
+                  throw new Error("Invalid job page");
+                }
+                return result;
               }),
             );
             if (signal.aborted) return;
@@ -159,7 +210,7 @@ export function JobsView({ searchCollections = [], queueName }: JobsViewProps) {
       controller.abort();
       window.cancelAnimationFrame(frame);
     };
-  }, [tab, windowMode, queueName, refreshKey, context]);
+  }, [tab, windowMode, queueName, refreshKey, context, navigation.now, pageState, offset]);
 
   async function retry(id: string) {
     setBusyJobId(id);
@@ -245,7 +296,7 @@ export function JobsView({ searchCollections = [], queueName }: JobsViewProps) {
               <div className="col-span-2 inline-flex min-h-12 min-w-0 rounded-lg bg-neutral-100 p-1 text-[12.5px] dark:bg-neutral-900 sm:col-span-1 sm:min-h-0 sm:h-8">
                 <button
                   type="button"
-                  onClick={() => setWindowMode("all")}
+                  onClick={() => changeWindow("all")}
                   aria-pressed={windowMode === "all"}
                   className={`min-h-10 flex-1 rounded-md px-3 transition-colors sm:min-h-0 sm:flex-none sm:px-2.5 ${
                     windowMode === "all"
@@ -257,7 +308,7 @@ export function JobsView({ searchCollections = [], queueName }: JobsViewProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setWindowMode("24h")}
+                  onClick={() => changeWindow("24h")}
                   aria-pressed={windowMode === "24h"}
                   className={`min-h-10 flex-1 rounded-md px-3 transition-colors sm:min-h-0 sm:flex-none sm:px-2.5 ${
                     windowMode === "24h"
@@ -308,7 +359,12 @@ export function JobsView({ searchCollections = [], queueName }: JobsViewProps) {
 
       {error ? (
         <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {error}
+          <p role="alert">{error}</p>
+          {!currentSnapshot && isStateTab(tab) ? (
+            <Button variant="outline" size="sm" className="mt-2 min-h-10" onClick={retryPage}>
+              Retry page
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -321,7 +377,10 @@ export function JobsView({ searchCollections = [], queueName }: JobsViewProps) {
 
       <Tabs
         value={tab}
-        onValueChange={(value) => setTab(value as Tab)}
+        onValueChange={(value) => {
+          setTab(value as Tab);
+          setNavigation({ state: "all", offset: 0, now: Date.now() });
+        }}
         className="min-w-0 space-y-6"
       >
         <TabsList className="grid h-auto w-full grid-cols-3 items-stretch gap-2 md:h-9 md:w-auto md:grid-cols-6 md:items-center">
@@ -335,6 +394,87 @@ export function JobsView({ searchCollections = [], queueName }: JobsViewProps) {
 
         {STATE_TABS.map((key) => (
           <TabsContent key={key} value={key} className="min-w-0 space-y-3">
+            {JOB_STATE_BUCKETS[key].length > 1 ? (
+              <label className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+                Job state
+                <select
+                  className="min-h-10 max-w-full rounded-md border border-border bg-background px-3"
+                  value={selectedState}
+                  onChange={(event) => {
+                    const state = event.target.value;
+                    const selected =
+                      state === "all"
+                        ? "all"
+                        : JOB_STATE_BUCKETS[key].find((entry) => entry === state);
+                    if (selected) {
+                      setNavigation((value) => ({
+                        ...value,
+                        state: selected,
+                        offset: 0,
+                        now: Date.now(),
+                      }));
+                    }
+                  }}
+                >
+                  <option value="all">All states (latest)</option>
+                  {JOB_STATE_BUCKETS[key].map((state) => (
+                    <option key={state} value={state}>
+                      {state}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {pageState ? (
+              <div className="flex min-w-0 flex-wrap items-center gap-2" aria-label="Job pages">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-10"
+                  disabled={
+                    offset === 0 ||
+                    (!currentSnapshot && !error) ||
+                    bulkRetrying ||
+                    busyJobId !== null
+                  }
+                  onClick={() =>
+                    setNavigation((value) => ({
+                      ...value,
+                      offset: Math.max(0, value.offset - 100),
+                    }))
+                  }
+                >
+                  Previous jobs
+                </Button>
+                <span className="text-sm" role="status">
+                  Page {offset / 100 + 1}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-10"
+                  disabled={
+                    !currentSnapshot ||
+                    !supported ||
+                    jobs?.length !== 100 ||
+                    offset + 100 >= reportedTotal ||
+                    offset >= 100_000 ||
+                    bulkRetrying ||
+                    busyJobId !== null
+                  }
+                  onClick={() =>
+                    setNavigation((value) => ({ ...value, offset: value.offset + 100 }))
+                  }
+                >
+                  Next jobs
+                </Button>
+                {offset === 100_000 ? (
+                  <p className="w-full text-xs text-muted-foreground">
+                    The job navigation limit has been reached.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             {key === "failed" && !queueName && currentSnapshot && jobs && jobs.length > 0 ? (
               <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
                 <p className="text-xs text-muted-foreground">
@@ -363,6 +503,7 @@ export function JobsView({ searchCollections = [], queueName }: JobsViewProps) {
               <JobList
                 jobs={currentSnapshot ? jobs : null}
                 reportedTotal={reportedTotal}
+                paged={pageState !== undefined}
                 tab={key}
                 busyJobId={busyJobId}
                 onRetry={(id) => void retry(id)}
@@ -879,6 +1020,7 @@ function EnqueuePanel({
 function JobList({
   jobs,
   reportedTotal,
+  paged,
   tab,
   busyJobId,
   onRetry,
@@ -886,6 +1028,7 @@ function JobList({
 }: {
   jobs: JobSummary[] | null;
   reportedTotal: number;
+  paged: boolean;
   tab: StateTab;
   busyJobId: string | null;
   onRetry: (id: string) => void;
@@ -908,8 +1051,11 @@ function JobList({
           Showing {jobs.length} of {reportedTotal} reported matches
         </CardTitle>
         <p className="break-words text-xs text-muted-foreground">
-          Up to 100 newest jobs per state for the selected queue and creation-time window. Counts
-          and rows are sampled separately and may change during refresh.
+          {paged
+            ? "Up to 100 jobs per page, newest first, for the selected state, queue and creation-time window."
+            : "Up to 100 newest jobs per state for the selected queue and creation-time window. Select a job state to browse older jobs."}{" "}
+          Counts and rows are sampled separately. New jobs, state changes and retention can shift
+          pages. Refresh returns to the first page and renews the time window.
         </p>
       </CardHeader>
       <CardContent className="min-w-0 divide-y divide-border/60 p-0">

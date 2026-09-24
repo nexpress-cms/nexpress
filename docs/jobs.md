@@ -347,10 +347,21 @@ manual refresh and row-action refresh. Invalid or repeated queue filters do not
 silently become an unfiltered query. "Show all queues" clears the active filter.
 Scheduled registrations/handlers use the same queue name; the worker-health
 card remains host-wide. Health does not prefetch Jobs or initialize a producer
-through these links. The list is bounded to 100 rows per state, newest first,
-and the time window filters creation time, not due time. The list shows returned
-rows alongside reported matches across the requested states; counts and rows are
+through these links. Multi-state tabs initially show up to 100 newest rows per
+state. Select **Job state** to browse one state with **Previous jobs** and
+**Next jobs**, 100 rows per page, up to the existing offset limit of 100,000.
+Active and Completed each contain one state and support paging directly. The
+combined latest overview is not a globally paginated timeline.
+
+The time window filters creation time, not due time. Its cutoff stays fixed while
+paging or using **Retry page** after a load failure. Refresh and successful row
+mutations return to the first page and renew the time window. Changing the time
+window keeps the selected state and resets the page; changing tabs or queues
+resets the state selection and page. Stale requests cannot replace the current
+list, and failed reads hide previous rows. Only the current page is retained.
+The list shows returned rows alongside reported matches; counts and rows are
 sampled separately, so this is not an atomic snapshot or complete history.
+New jobs, lifecycle changes and retention can shift offsets between requests.
 
 Pending rows show the stored "Scheduled not before" or "Retry not before" time,
 separately from creation and last-started times. A past not-before time is not proof
