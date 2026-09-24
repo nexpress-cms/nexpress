@@ -21,6 +21,7 @@ import {
   npRequireRetryAllJobsWire,
   npRequireRetryJobWire,
   npRequireScheduleListWire,
+  type NpEnqueueJobWire,
   type NpJobState,
   type NpJobSummary,
   type NpJobsHealthWire,
@@ -81,8 +82,12 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
   const [supported, setSupported] = useState<boolean>(true);
   const [failure, setFailure] = useState<{ context: string; message: string } | null>(null);
   const [loadedContext, setLoadedContext] = useState<string | null>(null);
-  const [bulkRetrying, setBulkRetrying] = useState(false);
-  const [busyJobId, setBusyJobId] = useState<string | null>(null);
+  const mutationLock = useRef(false);
+  const [pendingMutation, setPendingMutation] = useState<{ label: string; jobId?: string } | null>(
+    null,
+  );
+  const mutationBusy = pendingMutation !== null;
+  const busyJobId = pendingMutation?.jobId ?? null;
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [windowMode, setWindowMode] = useState<WindowMode>("all");
   const [schedules, setSchedules] = useState<ScheduleSummary[] | null>(null);
@@ -212,72 +217,100 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
     };
   }, [tab, windowMode, queueName, refreshKey, context, navigation.now, pageState, offset]);
 
-  async function retry(id: string) {
-    setBusyJobId(id);
+  async function mutate<T>({
+    url,
+    body = {},
+    parse,
+    label,
+    fallback,
+    jobId,
+  }: {
+    url: string;
+    body?: unknown;
+    parse: (value: unknown) => T;
+    label: string;
+    fallback: string;
+    jobId?: string;
+  }): Promise<T | undefined> {
+    // The ref also blocks a second event before React commits the disabled controls.
+    if (mutationLock.current) return;
+    mutationLock.current = true;
+    setPendingMutation({ label, jobId });
     setError(null);
     try {
-      const res = await npFetch(`/api/admin/jobs/${encodeURIComponent(id)}/retry`, {
+      const response = await npFetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: "{}",
+        body: JSON.stringify(body),
       });
-      const body = await readResponseJson(res);
-      if (!res.ok) {
-        setError(readApiError(body, "Unable to retry job."));
+      const responseBody = await readResponseJson(response);
+      if (!response.ok) {
+        setError(
+          response.status >= 500
+            ? "The request result could not be confirmed. Refresh and inspect jobs before submitting again."
+            : readApiError(responseBody, fallback),
+        );
         return;
       }
-      npRequireRetryJobWire(body);
-      refresh();
+      const result = parse(responseBody);
+      if (activeContext.current === context) return result;
     } catch {
-      setError("Unable to retry job.");
+      setError(
+        "The request result could not be confirmed. Refresh and inspect jobs before submitting again.",
+      );
     } finally {
-      setBusyJobId(null);
+      mutationLock.current = false;
+      if (activeContext.current !== null) setPendingMutation(null);
     }
+  }
+
+  async function retry(id: string) {
+    const result = await mutate({
+      url: `/api/admin/jobs/${encodeURIComponent(id)}/retry`,
+      parse: npRequireRetryJobWire,
+      label: `Retrying job ${id}…`,
+      fallback: "Unable to retry job.",
+      jobId: id,
+    });
+    if (result && activeContext.current === context) refresh();
   }
 
   async function cancel(id: string) {
-    setBusyJobId(id);
-    setError(null);
-    try {
-      const res = await npFetch(`/api/admin/jobs/${encodeURIComponent(id)}/cancel`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      const body = await readResponseJson(res);
-      if (!res.ok) {
-        setError(readApiError(body, "Unable to cancel job."));
-        return;
-      }
-      npRequireCancelJobWire(body);
-      refresh();
-    } catch {
-      setError("Unable to cancel job.");
-    } finally {
-      setBusyJobId(null);
-    }
+    const result = await mutate({
+      url: `/api/admin/jobs/${encodeURIComponent(id)}/cancel`,
+      parse: npRequireCancelJobWire,
+      label: `Cancelling job ${id}…`,
+      fallback: "Unable to cancel job.",
+      jobId: id,
+    });
+    if (result && activeContext.current === context) refresh();
   }
 
   async function retryAllFailed() {
-    setBulkRetrying(true);
-    setError(null);
-    try {
-      const res = await npFetch("/api/admin/jobs/retry-all?state=failed", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: "{}",
-      });
-      const body = await readResponseJson(res);
-      if (!res.ok) {
-        setError(readApiError(body, "Bulk retry failed."));
-        return;
-      }
-      npRequireRetryAllJobsWire(body);
+    const result = await mutate({
+      url: "/api/admin/jobs/retry-all?state=failed",
+      parse: npRequireRetryAllJobsWire,
+      label: "Retrying all failed jobs…",
+      fallback: "Bulk retry failed.",
+    });
+    if (result && activeContext.current === context) refresh();
+  }
+
+  async function enqueue(type: string, data: unknown) {
+    const result = await mutate({
+      url: "/api/admin/jobs/enqueue",
+      body: { type, data },
+      parse: (value) => {
+        const result = npRequireEnqueueJobWire(value);
+        if (result.type !== type) throw new Error("Mismatched enqueue result");
+        return result;
+      },
+      label: `Enqueuing ${type}…`,
+      fallback: "Enqueue failed.",
+    });
+    if (result && activeContext.current === context) {
       refresh();
-    } catch {
-      setError("Bulk retry failed.");
-    } finally {
-      setBulkRetrying(false);
+      return result;
     }
   }
 
@@ -325,7 +358,7 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
               size="sm"
               className="min-h-10 w-full sm:min-h-0 sm:w-auto"
               onClick={refresh}
-              disabled={refreshing || bulkRetrying}
+              disabled={refreshing || mutationBusy}
             >
               {refreshing ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -357,6 +390,11 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
         </Card>
       ) : null}
 
+      {pendingMutation ? (
+        <p role="status" className="break-words text-sm text-muted-foreground">
+          {pendingMutation.label}
+        </p>
+      ) : null}
       {error ? (
         <div className="break-words rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           <p role="alert">{error}</p>
@@ -434,7 +472,7 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
                   disabled={
                     offset === 0 ||
                     (!currentSnapshot && !error) ||
-                    bulkRetrying ||
+                    mutationBusy ||
                     busyJobId !== null
                   }
                   onClick={() =>
@@ -459,7 +497,7 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
                     jobs?.length !== 100 ||
                     offset + 100 >= reportedTotal ||
                     offset >= 100_000 ||
-                    bulkRetrying ||
+                    mutationBusy ||
                     busyJobId !== null
                   }
                   onClick={() =>
@@ -485,7 +523,7 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
                   size="sm"
                   variant="outline"
                   className="min-h-10 w-full sm:min-h-0 sm:w-auto"
-                  disabled={refreshing || bulkRetrying}
+                  disabled={refreshing || mutationBusy}
                   onClick={() => void retryAllFailed()}
                 >
                   <Play className="size-3" />
@@ -506,6 +544,7 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
                 paged={pageState !== undefined}
                 tab={key}
                 busyJobId={busyJobId}
+                mutationBusy={mutationBusy}
                 onRetry={(id) => void retry(id)}
                 onCancel={(id) => void cancel(id)}
               />
@@ -519,7 +558,8 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
             schedules={currentSnapshot ? schedules : null}
             handlers={currentSnapshot ? handlers : []}
             searchCollections={searchCollections}
-            onEnqueued={refresh}
+            onEnqueue={enqueue}
+            mutationBusy={mutationBusy}
           />
         </TabsContent>
       </Tabs>
@@ -740,13 +780,15 @@ function SchedulesPanel({
   supported,
   schedules,
   handlers,
-  onEnqueued,
+  onEnqueue,
+  mutationBusy,
   searchCollections,
 }: {
   supported: boolean;
   schedules: ScheduleSummary[] | null;
   handlers: string[];
-  onEnqueued: () => void;
+  onEnqueue: (type: string, data: unknown) => Promise<NpEnqueueJobWire | undefined>;
+  mutationBusy: boolean;
   searchCollections: readonly { slug: string; label: string }[];
 }) {
   return (
@@ -854,7 +896,8 @@ function SchedulesPanel({
 
       <EnqueuePanel
         handlers={handlers}
-        onEnqueued={onEnqueued}
+        onEnqueue={onEnqueue}
+        mutationBusy={mutationBusy}
         searchCollections={searchCollections}
       />
     </div>
@@ -891,23 +934,32 @@ function scheduleKind(schedule: ScheduleSummary): {
 
 function EnqueuePanel({
   handlers,
-  onEnqueued,
+  onEnqueue,
+  mutationBusy,
   searchCollections,
 }: {
   handlers: string[];
-  onEnqueued: () => void;
+  onEnqueue: (type: string, data: unknown) => Promise<NpEnqueueJobWire | undefined>;
+  mutationBusy: boolean;
   searchCollections: readonly { slug: string; label: string }[];
 }) {
   const [type, setType] = useState<string>("");
   const [dataText, setDataText] = useState<string>("{}");
   const [searchCollection, setSearchCollection] = useState<string>("");
-  const [busy, setBusy] = useState<boolean>(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isSearchReindex = type === "search:reindex";
 
+  const mounted = useRef(false);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   async function submit() {
-    setBusy(true);
+    if (mutationBusy || !handlers.includes(type)) return;
     setMessage(null);
     setError(null);
     let data: unknown = isSearchReindex ? { collection: searchCollection } : {};
@@ -916,29 +968,11 @@ function EnqueuePanel({
         data = JSON.parse(dataText);
       } catch {
         setError("Payload is not valid JSON.");
-        setBusy(false);
         return;
       }
     }
-    try {
-      const res = await npFetch("/api/admin/jobs/enqueue", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, data }),
-      });
-      const body = await readResponseJson(res);
-      if (!res.ok) {
-        setError(readApiError(body, "Enqueue failed."));
-        return;
-      }
-      const result = npRequireEnqueueJobWire(body);
-      setMessage(`Enqueued (job id ${result.id}).`);
-      onEnqueued();
-    } catch {
-      setError("Enqueue failed.");
-    } finally {
-      setBusy(false);
-    }
+    const result = await onEnqueue(type, data);
+    if (mounted.current && result) setMessage(`Enqueued ${type} (job id ${result.id}).`);
   }
 
   return (
@@ -963,6 +997,7 @@ function EnqueuePanel({
               Handler
             </label>
             <select
+              disabled={mutationBusy}
               id="np-job-enqueue-type"
               value={type}
               onChange={(event) => {
@@ -997,9 +1032,14 @@ function EnqueuePanel({
                 Searchable collection
               </label>
               <select
+                disabled={mutationBusy}
                 id="np-job-reindex-collection"
                 value={searchCollection}
-                onChange={(event) => setSearchCollection(event.target.value)}
+                onChange={(event) => {
+                  setSearchCollection(event.target.value);
+                  setMessage(null);
+                  setError(null);
+                }}
                 className="flex h-10 w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-3 text-[13px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 sm:h-8 sm:px-2.5"
               >
                 <option value="">
@@ -1026,9 +1066,14 @@ function EnqueuePanel({
                 Payload (JSON)
               </label>
               <textarea
+                disabled={mutationBusy}
                 id="np-job-enqueue-data"
                 value={dataText}
-                onChange={(event) => setDataText(event.target.value)}
+                onChange={(event) => {
+                  setDataText(event.target.value);
+                  setMessage(null);
+                  setError(null);
+                }}
                 rows={3}
                 spellCheck={false}
                 className="min-h-28 w-full min-w-0 rounded-lg border border-neutral-200/80 bg-white px-3 py-2.5 font-mono text-[12px] outline-none transition-colors focus-visible:border-[var(--np-color-brand)] focus-visible:ring-[3px] focus-visible:ring-[var(--np-color-brand-ring)] dark:border-neutral-800 dark:bg-neutral-950 sm:min-h-0 sm:px-2.5 sm:py-2"
@@ -1037,18 +1082,26 @@ function EnqueuePanel({
             </div>
           )}
         </div>
-        {error ? <p className="break-words text-xs text-destructive">{error}</p> : null}
+        {error ? (
+          <p role="alert" className="break-words text-xs text-destructive">
+            {error}
+          </p>
+        ) : null}
         {message ? (
-          <p className="break-words text-xs text-emerald-700 dark:text-emerald-400">{message}</p>
+          <p role="status" className="break-words text-xs text-emerald-700 dark:text-emerald-400">
+            {message}
+          </p>
         ) : null}
         <div className="flex min-w-0 justify-end">
           <Button
             size="sm"
             className="min-h-10 w-full sm:min-h-0 sm:w-auto"
-            disabled={busy || !type || (isSearchReindex && !searchCollection)}
+            disabled={
+              mutationBusy || !handlers.includes(type) || (isSearchReindex && !searchCollection)
+            }
             onClick={() => void submit()}
           >
-            {busy ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}
+            <Play className="size-3" />
             Enqueue
           </Button>
         </div>
@@ -1063,6 +1116,7 @@ function JobList({
   paged,
   tab,
   busyJobId,
+  mutationBusy,
   onRetry,
   onCancel,
 }: {
@@ -1071,6 +1125,7 @@ function JobList({
   paged: boolean;
   tab: StateTab;
   busyJobId: string | null;
+  mutationBusy: boolean;
   onRetry: (id: string) => void;
   onCancel: (id: string) => void;
 }) {
@@ -1143,7 +1198,7 @@ function JobList({
                     size="sm"
                     variant="outline"
                     className="min-h-10 w-full sm:min-h-0 sm:w-auto"
-                    disabled={busyJobId === job.id}
+                    disabled={mutationBusy}
                     onClick={() => onRetry(job.id)}
                   >
                     {busyJobId === job.id ? (
@@ -1159,7 +1214,7 @@ function JobList({
                     size="sm"
                     variant="outline"
                     className="min-h-10 w-full sm:min-h-0 sm:w-auto"
-                    disabled={busyJobId === job.id}
+                    disabled={mutationBusy}
                     onClick={() => onCancel(job.id)}
                   >
                     {busyJobId === job.id ? (
