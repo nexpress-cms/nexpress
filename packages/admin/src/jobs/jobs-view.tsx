@@ -527,49 +527,105 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
   );
 }
 
-/**
- * Phase 20.4 — small worker liveness card surfaced above the
- * tabs. Polls `/api/admin/jobs/health` once on mount and on
- * Refresh; not a live socket because the heartbeat tick is
- * 30 s — refresh-on-demand is plenty.
- */
+/** Explicit read observations; retained values never imply a fresh heartbeat. */
 function WorkerHealthCard() {
-  const [data, setData] = useState<WorkerHealthResponse | null>(null);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [renderedAt, setRenderedAt] = useState<number>(() => Date.now());
+  const [request, setRequest] = useState(0);
+  const [result, setResult] = useState<
+    | { request: number; kind: "loaded"; data: WorkerHealthResponse; receivedAt: number }
+    | { request: number; kind: "error"; message: string }
+    | null
+  >(null);
+  const refreshing = result?.request !== request;
+  const observation = result?.kind === "loaded" ? result : null;
+  const error = !refreshing && result?.kind === "error" ? result.message : null;
 
-  async function load() {
-    setRefreshing(true);
-    setError(null);
-    try {
-      const res = await npFetch("/api/admin/jobs/health");
-      if (!res.ok) {
-        // editor-gated route; non-200 means no role or no queue.
-        setError("Worker health unavailable.");
-        setData(null);
-        return;
-      }
-      setData(npRequireJobsHealthWire(await readResponseJson(res)));
-      setRenderedAt(Date.now());
-    } catch {
-      setError("Worker health unavailable.");
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
-  // The lint rule wants external-system sync; this is a fetch-on-
-  // mount → setState pattern, which is the canonical client-
-  // component shape until we move to Suspense + a data layer.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void load();
-  }, []);
+    const controller = new AbortController();
+    const { signal } = controller;
+    void (async () => {
+      try {
+        const response = await npFetch("/api/admin/jobs/health", { signal });
+        if (!response.ok) {
+          if (!signal.aborted)
+            setResult({
+              request,
+              kind: "error",
+              message:
+                response.status === 401 || response.status === 403
+                  ? "Access to worker health is unavailable."
+                  : "Worker health unavailable.",
+            });
+          return;
+        }
+        const data = npRequireJobsHealthWire(await readResponseJson(response));
+        if (!signal.aborted) setResult({ request, kind: "loaded", data, receivedAt: Date.now() });
+      } catch {
+        if (!signal.aborted)
+          setResult({ request, kind: "error", message: "Worker health unavailable." });
+      }
+    })();
+    return () => controller.abort();
+  }, [request]);
 
-  if (error || !data) {
-    return null;
-  }
+  return (
+    <section aria-label="Worker health" className="min-w-0">
+      <Card className="min-w-0">
+        <CardContent className="min-w-0 space-y-3 p-4 text-sm">
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <h2 className="font-medium">Worker health</h2>
+            <Button
+              variant="outline"
+              size="sm"
+              className="min-h-10"
+              disabled={refreshing}
+              onClick={() => setRequest((value) => value + 1)}
+            >
+              {refreshing ? (
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+              ) : (
+                <RefreshCw className="h-3 w-3" aria-hidden />
+              )}
+              {error ? "Retry worker health" : "Refresh worker health"}
+            </Button>
+          </div>
+          {refreshing ? (
+            <p role="status" className="break-words text-xs text-muted-foreground">
+              {observation
+                ? "Previously received data — refresh in progress."
+                : "Loading worker health…"}
+            </p>
+          ) : null}
+          {error ? (
+            <p role="alert" className="break-words text-destructive">
+              {error}
+            </p>
+          ) : null}
+          {observation ? (
+            <>
+              <p className="break-words text-xs text-muted-foreground">
+                Received{" "}
+                <time dateTime={new Date(observation.receivedAt).toISOString()}>
+                  {new Date(observation.receivedAt).toISOString()}
+                </time>{" "}
+                (browser time). Heartbeat age is measured at receipt. These observations do not
+                establish current worker progress. Refresh to check again.
+              </p>
+              <WorkerHealthSnapshot data={observation.data} renderedAt={observation.receivedAt} />
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
+    </section>
+  );
+}
+
+function WorkerHealthSnapshot({
+  data,
+  renderedAt,
+}: {
+  data: WorkerHealthResponse;
+  renderedAt: number;
+}) {
   const alive = data.aliveCount;
   const total = data.totalCount;
   const newest = data.newestHeartbeat ? new Date(data.newestHeartbeat) : null;
@@ -583,83 +639,67 @@ function WorkerHealthCard() {
   const recentFailures = data.recentFailures.slice(0, 3);
 
   return (
-    <Card className="min-w-0">
-      <CardContent className="min-w-0 p-4 text-sm">
-        <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex min-w-0 items-center gap-3">
-            <span
-              className={`inline-flex h-2.5 w-2.5 rounded-full ${
-                alive > 0 ? "bg-emerald-500" : "bg-rose-500"
-              }`}
-              aria-hidden
-            />
-            <div className="min-w-0">
-              <p className="break-words font-medium text-foreground">
-                Workers: {alive} alive / {total} total
-              </p>
-              <p className="break-words text-xs text-muted-foreground">
-                {newest
-                  ? `Last heartbeat ${formatAge(ageMs ?? 0)} ago`
-                  : "No heartbeats recorded yet."}
-              </p>
-            </div>
-          </div>
-          <div className="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
-            {paused ? (
-              <span className="break-words rounded-md border border-amber-500/30/60 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-100">
-                Queue paused
-              </span>
-            ) : null}
-            {showStuckWarning && stuck ? (
-              <span
-                className="inline-flex min-w-0 items-center gap-1 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300"
-                title={stuckTooltip(stuck)}
-              >
-                <AlertTriangle className="h-3 w-3" aria-hidden />
-                <span className="min-w-0 break-words">
-                  {stuckLabel(stuck, failedOverThreshold, expiredOverThreshold)}
-                </span>
-              </span>
-            ) : null}
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label="Refresh worker health"
-              className="min-h-10 min-w-10 sm:min-h-0 sm:min-w-0"
-              onClick={() => void load()}
-              disabled={refreshing}
-            >
-              {refreshing ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3 w-3" />
-              )}
-            </Button>
+    <div className="min-w-0">
+      <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className={`inline-flex h-2.5 w-2.5 rounded-full ${
+              alive > 0 ? "bg-emerald-500" : "bg-rose-500"
+            }`}
+            aria-hidden
+          />
+          <div className="min-w-0">
+            <p className="break-words font-medium text-foreground">
+              Workers: {alive} alive / {total} total
+            </p>
+            <p className="break-words text-xs text-muted-foreground">
+              {newest
+                ? `Last heartbeat ${formatAge(ageMs ?? 0)} ago`
+                : "No heartbeats recorded yet."}
+            </p>
           </div>
         </div>
-        {recentFailures.length > 0 ? (
-          <div className="mt-3 min-w-0 border-t border-border/60 pt-3">
-            <p className="break-words text-xs font-medium text-muted-foreground">Recent failures</p>
-            <ul className="mt-2 min-w-0 space-y-2">
-              {recentFailures.map((failure) => (
-                <li key={failure.id} className="min-w-0 space-y-1">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <StateBadge state={failure.state} />
-                    <code className="min-w-0 break-all font-mono text-xs">{failure.name}</code>
-                    <span className="break-words text-[11px] text-muted-foreground">
-                      {failure.logCount.toString()} log{failure.logCount === 1 ? "" : "s"}
-                    </span>
-                  </div>
-                  <p className="min-w-0 break-words text-xs text-muted-foreground">
-                    {recentFailureSummary(failure)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-      </CardContent>
-    </Card>
+        <div className="flex min-w-0 flex-wrap items-center gap-2 md:justify-end">
+          {paused ? (
+            <span className="break-words rounded-md border border-amber-500/30/60 bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-900 dark:text-amber-100">
+              Queue paused
+            </span>
+          ) : null}
+          {showStuckWarning && stuck ? (
+            <span
+              className="inline-flex min-w-0 items-center gap-1 rounded-md border border-rose-500/40 bg-rose-500/10 px-2 py-0.5 text-xs font-medium text-rose-700 dark:text-rose-300"
+              title={stuckTooltip(stuck)}
+            >
+              <AlertTriangle className="h-3 w-3" aria-hidden />
+              <span className="min-w-0 break-words">
+                {stuckLabel(stuck, failedOverThreshold, expiredOverThreshold)}
+              </span>
+            </span>
+          ) : null}
+        </div>
+      </div>
+      {recentFailures.length > 0 ? (
+        <div className="mt-3 min-w-0 border-t border-border/60 pt-3">
+          <p className="break-words text-xs font-medium text-muted-foreground">Recent failures</p>
+          <ul className="mt-2 min-w-0 space-y-2">
+            {recentFailures.map((failure) => (
+              <li key={failure.id} className="min-w-0 space-y-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <StateBadge state={failure.state} />
+                  <code className="min-w-0 break-all font-mono text-xs">{failure.name}</code>
+                  <span className="break-words text-[11px] text-muted-foreground">
+                    {failure.logCount.toString()} log{failure.logCount === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <p className="min-w-0 break-words text-xs text-muted-foreground">
+                  {recentFailureSummary(failure)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

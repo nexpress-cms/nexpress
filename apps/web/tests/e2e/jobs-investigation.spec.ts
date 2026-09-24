@@ -1,3 +1,4 @@
+import { npRequireJobsHealthWire } from "@nexpress/core/jobs-contract";
 import { expect, test } from "@playwright/test";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
@@ -409,4 +410,135 @@ test("Jobs list pages preserve scope, retry the same window and discard obsolete
     fullPage: true,
     animations: "disabled",
   });
+});
+
+test("Worker health keeps loading visible, labels retained refresh data and recovers safely", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    150 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  await page.route("**/api/admin/jobs?*", (route) =>
+    route.fulfill({ json: { supported: true, jobs: [], total: 0 } }),
+  );
+  function health(alive: boolean) {
+    return npRequireJobsHealthWire({
+      workers: [
+        {
+          id: "browser-worker",
+          status: "running",
+          startedAt: "2026-09-24T00:00:00.000Z",
+          lastSeenAt: "2026-09-24T00:01:00.000Z",
+          meta: {},
+          alive,
+          lastSeenAgoMs: alive ? 1000 : 120000,
+        },
+      ],
+      aliveCount: alive ? 1 : 0,
+      totalCount: 1,
+      newestHeartbeat: "2026-09-24T00:01:00.000Z",
+      pause: {
+        paused: false,
+        changedAt: "2026-09-24T00:00:00.000Z",
+        changedByUserId: null,
+        reason: null,
+      },
+      stuck: null,
+      recentFailures: [],
+    });
+  }
+  function gate() {
+    let release = () => {};
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return { promise, release };
+  }
+  const initial = gate();
+  const refreshing = gate();
+  const obsolete = gate();
+  let mode: "initial" | "refresh" | "denied" | "malformed" | "obsolete" | "current" = "initial";
+  let requests = 0;
+  let obsoleteReleased = false;
+  await page.route("**/api/admin/jobs/health", async (route) => {
+    requests += 1;
+    const responseMode = mode;
+    if (responseMode === "initial") await initial.promise;
+    if (responseMode === "refresh") await refreshing.promise;
+    if (responseMode === "obsolete") await obsolete.promise;
+    if (responseMode === "denied") {
+      await route.fulfill({ status: 403, json: { error: "Private worker diagnostic" } });
+    } else {
+      await route.fulfill({
+        json:
+          responseMode === "malformed"
+            ? { ...health(true), aliveCount: 99 }
+            : health(responseMode !== "current"),
+      });
+    }
+    if (responseMode === "obsolete") obsoleteReleased = true;
+  });
+
+  await page.goto("/admin/jobs?name=agent.runExecute");
+  const card = page.getByRole("region", { name: "Worker health", exact: true });
+  const refresh = card.getByRole("button", { name: "Refresh worker health", exact: true });
+  const retry = card.getByRole("button", { name: "Retry worker health", exact: true });
+  await expect(card.getByRole("status")).toHaveText("Loading worker health…");
+  await expect(refresh).toBeDisabled();
+  await expect.poll(() => requests).toBe(1);
+  initial.release();
+  await expect(card.getByText("Workers: 1 alive / 1 total", { exact: true })).toBeVisible();
+  await expect(card.locator("time[dateTime]")).not.toHaveCount(0);
+
+  mode = "refresh";
+  await refresh.click();
+  await expect.poll(() => requests).toBe(2);
+  await expect(
+    card.getByText("Previously received data — refresh in progress.", { exact: true }),
+  ).toBeVisible();
+  await expect(card.getByText("Workers: 1 alive / 1 total", { exact: true })).toBeVisible();
+  await expect(refresh).toBeDisabled();
+  refreshing.release();
+  await expect(refresh).toBeEnabled();
+
+  mode = "denied";
+  await refresh.click();
+  await expect(card.getByRole("alert")).toHaveText("Access to worker health is unavailable.");
+  await expect(card.getByText(/^Workers:/)).toHaveCount(0);
+  await expect(page.getByText("Private worker diagnostic", { exact: true })).toHaveCount(0);
+  await expect(retry).toBeEnabled();
+  mode = "current";
+  await retry.focus();
+  await page.keyboard.press("Enter");
+  await expect(card.getByText("Workers: 0 alive / 1 total", { exact: true })).toBeVisible();
+
+  mode = "malformed";
+  await refresh.click();
+  await expect(card.getByRole("alert")).toHaveText("Worker health unavailable.");
+  await expect(card.getByText(/^Workers:/)).toHaveCount(0);
+  await page.setViewportSize({ width: 320, height: 900 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("worker-health-retry-320.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+
+  mode = "obsolete";
+  await retry.click();
+  await expect.poll(() => requests).toBe(6);
+  await expect(card.getByRole("status")).toHaveText("Loading worker health…");
+  mode = "current";
+  await page.getByRole("link", { name: "Show all queues", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/jobs$/);
+  await expect(card.getByText("Workers: 0 alive / 1 total", { exact: true })).toBeVisible();
+  obsolete.release();
+  await expect.poll(() => obsoleteReleased).toBe(true);
+  await expect(card.getByText("Workers: 1 alive / 1 total", { exact: true })).toHaveCount(0);
+  await expect(card.getByText("Workers: 0 alive / 1 total", { exact: true })).toBeVisible();
+  expect(requests).toBe(7);
 });
