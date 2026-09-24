@@ -266,7 +266,7 @@ test("Jobs logs load slowly, page, refresh, retry and discard obsolete responses
   await expect.poll(() => requests.length).toBe(beforeRetry + 1);
   const beforeReopen = requests.length;
   await summary.press("Enter");
-  await expect(page.getByText("Loading logs…", { exact: true })).not.toBeVisible();
+  await expect(page.getByText("Loading logs…", { exact: true })).toHaveCount(0);
   mode = "current";
   await summary.press("Enter");
   await expect(page.getByText("current log response", { exact: true })).toBeVisible();
@@ -277,4 +277,136 @@ test("Jobs logs load slowly, page, refresh, retry and discard obsolete responses
   await expect(page.getByText("obsolete log response", { exact: true })).toHaveCount(0);
   await expect(page.getByText("current log response", { exact: true })).toBeVisible();
   expect(requests.every((url) => url.searchParams.get("limit") === "500")).toBe(true);
+});
+
+test("Jobs list pages preserve scope, retry the same window and discard obsolete responses", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(page.context(), 170 + testInfo.retry);
+  await signInAsE2EAdmin(page);
+  const now = Date.now();
+  await page.clock.setFixedTime(now);
+  const requests: URL[] = [];
+  let mode: "normal" | "denied" | "held" = "normal";
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let heldRequested = false;
+  let heldReleased = false;
+  await page.route("**/api/admin/jobs?*", async (route) => {
+    const url = new URL(route.request().url());
+    requests.push(url);
+    const state = url.searchParams.get("state") ?? "created";
+    const offset = Number(url.searchParams.get("offset") ?? "0");
+    const requestMode = mode;
+    if (requestMode === "held") {
+      heldRequested = true;
+      await held;
+    }
+    if (requestMode === "denied") {
+      await route.fulfill({ status: 403, json: { error: "Private paging diagnostic" } });
+      return;
+    }
+    const source = ["created", "retry", "active"].includes(state) ? "live" : "archive";
+    const jobs = Array.from({ length: offset === 0 ? 100 : 1 }, (_, index) => ({
+      id: `page-${state}-${offset + index + 1}${requestMode === "held" ? "-obsolete" : ""}`,
+      name: url.searchParams.get("name") ?? "agent.runExecute",
+      state,
+      source,
+      data: { siteId: "default", runId: "00000000-0000-4000-8000-000000000001" },
+      retryCount: 0,
+      output: null,
+      createdOn: "2026-09-23T00:00:00.000Z",
+      startedOn: null,
+      completedOn: null,
+    }));
+    await route.fulfill({ json: { supported: true, jobs, total: 101 } });
+    if (requestMode === "held") heldReleased = true;
+  });
+  await page.goto("/admin/jobs?name=agent.runExecute");
+  await expect(
+    page.getByText("Showing 200 of 202 reported matches", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next jobs", exact: true })).toHaveCount(0);
+  await page.getByRole("combobox", { name: "Job state", exact: true }).selectOption("created");
+  await expect(
+    page.getByText("Showing 100 of 101 reported matches", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Last 24 h", exact: true }).click();
+  await expect(page.getByText("Page 1", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next jobs", exact: true })).toBeEnabled();
+  const cutoff = requests.at(-1)!.searchParams.get("since");
+  expect(cutoff).toBe(new Date(now - 86_400_000).toISOString());
+  await page.clock.setFixedTime(now + 60_000);
+  await page.getByRole("button", { name: "Next jobs", exact: true }).click();
+  await expect(page.getByText("page-created-101", { exact: true })).toBeVisible();
+  await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
+  expect(requests.at(-1)!.searchParams.get("offset")).toBe("100");
+  expect(requests.at(-1)!.searchParams.get("since")).toBe(cutoff);
+  await expect(page.getByRole("button", { name: "Next jobs", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Previous jobs", exact: true }).click();
+  await expect(page.getByText("page-created-1", { exact: true })).toBeVisible();
+  expect(requests.at(-1)!.searchParams.get("since")).toBe(cutoff);
+
+  mode = "denied";
+  await page.getByRole("button", { name: "Next jobs", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Retry page", exact: true })).toBeVisible();
+  await expect(page.getByText("page-created-1", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Private paging diagnostic", { exact: true })).toHaveCount(0);
+  mode = "normal";
+  await page.getByRole("button", { name: "Retry page", exact: true }).click();
+  await expect(page.getByText("page-created-101", { exact: true })).toBeVisible();
+  expect(requests.at(-1)!.searchParams.get("offset")).toBe("100");
+  expect(requests.at(-1)!.searchParams.get("since")).toBe(cutoff);
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByText("page-created-1", { exact: true })).toBeVisible();
+  expect(Number(requests.at(-1)!.searchParams.get("offset") ?? "0")).toBe(0);
+  expect(requests.at(-1)!.searchParams.get("since")).toBe(
+    new Date(now + 60_000 - 86_400_000).toISOString(),
+  );
+
+  await page.getByRole("button", { name: "Next jobs", exact: true }).click();
+  await expect(page.getByText("page-created-101", { exact: true })).toBeVisible();
+  await page.getByRole("combobox", { name: "Job state", exact: true }).selectOption("retry");
+  await expect(page.getByText("page-retry-1", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Next jobs", exact: true }).click();
+  await expect(page.getByText("page-retry-101", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "All time", exact: true }).click();
+  await expect(page.getByText("page-retry-1", { exact: true })).toBeVisible();
+  expect(requests.at(-1)!.searchParams.has("since")).toBe(false);
+
+  mode = "held";
+  await page.getByRole("button", { name: "Next jobs", exact: true }).click();
+  await expect.poll(() => heldRequested).toBe(true);
+  mode = "normal";
+  await page.getByRole("tab", { name: "Active", exact: true }).click();
+  await expect(page.getByText("page-active-1", { exact: true })).toBeVisible();
+  release();
+  await expect.poll(() => heldReleased).toBe(true);
+  await expect(page.getByText("page-retry-101-obsolete", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Page 1", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Next jobs", exact: true })).toBeEnabled();
+  expect(requests.every((url) => url.searchParams.get("name") === "agent.runExecute")).toBe(true);
+  expect(requests.every((url) => url.searchParams.get("limit") === "100")).toBe(true);
+  await page.getByRole("button", { name: "Next jobs", exact: true }).click();
+  await expect(page.getByText("page-active-101", { exact: true })).toBeVisible();
+  await page.goto("/admin/jobs?name=other.queue");
+  await page.getByRole("combobox", { name: "Job state", exact: true }).selectOption("created");
+  await expect(page.getByText("page-created-1", { exact: true })).toBeVisible();
+  expect(requests.at(-1)!.searchParams.get("name")).toBe("other.queue");
+  expect(Number(requests.at(-1)!.searchParams.get("offset") ?? "0")).toBe(0);
+  await page.getByRole("button", { name: "Next jobs", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("page-created-101", { exact: true })).toBeVisible();
+  await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 900 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("jobs-list-pages-320.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
 });
