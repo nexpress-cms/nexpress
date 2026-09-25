@@ -1,6 +1,6 @@
 # R5 acceptance decision
 
-Current acceptance reconciled on 2026-09-22 KST at PR #1478 (`7603200b`).
+Current acceptance reconciled on 2026-09-25 KST at PR #1490 (`ba7da8d7`).
 The original Runtime audit was reviewed on 2026-09-18 KST against `3d293ef329d34756be468143ab032e6f0209846c`
 (PR #1456) plus the acceptance-only changes later merged in PR #1457.
 The subsequent [Admin acceptance inventory and repairs](admin-acceptance.md)
@@ -112,6 +112,69 @@ Run-owner terminal results and current unfinished deadline/lease facts in Health
 and Doctor. Their host-wide retained scope, unknown states and investigation
 links do not establish external effects, complete history or full readiness.
 
+### State and visual disposition at this baseline
+
+A shared-owner review found stale evidence descriptions, not a reproduced new UI
+failure. The [route inventory](admin-acceptance.md#shipped-route-inventory) now
+reflects the existing Policy-list delayed/empty/503/403/contract/recovery journey
+and Budget's two independent read failure/recovery paths. Their owning fixtures
+are `agent-states.spec.ts` and `agent-runtime.spec.ts`; they are not new tests in
+this pass. Shared loading, invalidation, retry-wait and request-cancellation
+behavior is implemented in `AgentStudioFrame` and `useRuntimeResource`.
+
+The remaining work is finite evidence collection, not a request to add every
+route/state combination:
+
+- Reuse already inspected list layouts at 320/768/1280 in both themes. Policy
+  error assertions do not imply that every error-state screenshot was inspected.
+- In one consolidated visual session, inspect the distinct detail/decision and
+  Budget-editor layouts in uncovered narrow/dark states. Existing creation-form
+  evidence samples 320-light, 768-dark and 1280-light; activation/rollback success
+  readbacks were inspected at desktop size; Budget observation was inspected at
+  320px. Record exactly which additional states are observed. See
+  [forms](admin-form-acceptance.md#verification),
+  [success readbacks](admin-success-lifecycle.md#verification) and
+  [read observation](studio-read-observation.md).
+- Complete AT-01–06 using the existing consolidated operator checklist and
+  synthetic fixtures, recording actual utterances, focus and timing. No new AT
+  attempt was made here; the historical inability to capture speech is not a
+  freshly measured environment result.
+- Keep source freshness/cache age explicitly unavailable until its source owner
+  supplies a contract. Receipt/projection timestamps cannot satisfy that claim.
+  Incident-response acceptance applies when that route ships; read-only lists
+  do not need invented mutation/conflict actions.
+
+These observations narrow what remains; they do not waive §20.3, §20.6 or §20.7,
+or promote bounded samples to full acceptance. Only a reproduced defect warrants
+an implementation change and its affected regression check.
+
+### Health and Doctor requirement crosswalk
+
+The eight subjects in §20.10 are present in the shipped shared Health and Doctor
+owners. This establishes the available diagnostic surfaces, not complete
+operational readiness. The earlier table's general readiness boundary must not
+be read as eight missing features or permission to infer readiness from counts.
+
+| Required subject   | Current authoritative observation                                                                                                                                                   | Unestablished claim                                                                 |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| Vault              | [Contract diagnostics](../../../packages/core/src/agent/contract-diagnostics.ts) compares required adapters with an explicitly supplied registry; an absent registry stays unknown. | Credential usability and an operational vault on another host.                      |
+| Adapters           | The same owner reports required/available provider adapter counts and declared readiness.                                                                                           | A successful live provider request.                                                 |
+| Runtime            | [Retained Run outcomes](agent-runtime-outcome-evidence.md), state counts and Runtime contract issues.                                                                               | End-to-end external effects or progress of every Run.                               |
+| Queues             | [Queue subscriptions](agent-worker-queue-evidence.md) and [retained backlog](agent-queue-backlog-evidence.md), each with independent observation scope.                             | Coverage of a required queue set or successful processing from subscriptions alone. |
+| Stale runs         | Run-owner deadline/lease observations and existing diagnostic issue codes.                                                                                                          | Worker death or authorization to recover a Run from age alone.                      |
+| Approvals          | Existing approval state/issue counts; sealed review remains in the authorized Approval owner.                                                                                       | Permission to decide an approval from aggregate Health facts.                       |
+| Retention          | [Committed batch/sweep receipts](agent-maintenance-evidence.md), local registration and retained failures.                                                                          | Complete eligible-record deletion or overall maintenance readiness.                 |
+| Budget measurement | [Budget observations](agent-budget-evidence.md) distinguish measured, unresolved and unavailable sites and report sample truncation.                                                | Spare capacity or a cross-site spend total.                                         |
+
+`gatherSystemHealth` and Doctor reuse these collectors and shared presentation
+modules. The Runtime outcome contract, collector and three PostgreSQL journeys
+were inspected in this reconciliation; the feature flow retains their executed
+verification. No missing production implementation was established by this
+crosswalk. Declaring overall readiness would require an explicit host-owned
+required configuration/queue set and evidence of its operation; the current
+aggregate observations do not provide that verdict. This is an open acceptance
+boundary, not a proposed new readiness heuristic.
+
 The other Admin requirements have existing owning contract, authorization,
 secret-exclusion, sealed-fact, polling, audit, diagnostics and wrapper tests.
 Their feature-flow evidence remains applicable; this audit does not relabel
@@ -166,13 +229,28 @@ anchors, scoped formatting and `git diff --check` pass. Inspection confirms
 only four existing test files and acceptance/handoff documentation changed;
 no production, generated, package or secret material was added.
 
-## Current reconciliation verification
+## Prior reconciliation verification — PR #1478
 
-Current behavior is anchored to PR #1478 (`7603200b`):
+The preceding 2026-09-22 documentation reconciliation used PR #1478 (`7603200b`):
 [exact-head CI](https://github.com/nexpress-cms/nexpress/actions/runs/35694278882),
 [merge CI](https://github.com/nexpress-cms/nexpress/actions/runs/35695613276) and
-[Release workflow](https://github.com/nexpress-cms/nexpress/actions/runs/35695613252)
-succeeded. Feature-flow results retain their own dates, scopes and reuse limits;
-this is not a new combined full R5 gate. Documentation reconciliation checks
-formatting, local links and whitespace only. No new application build, DB,
-browser or AT run is claimed, and no release/publication authority is implied.
+[Release](https://github.com/nexpress-cms/nexpress/actions/runs/35695613252) succeeded.
+That documentation-only pass checked formatting, local links and whitespace;
+it did not execute a new full R5 gate.
+
+## Current reconciliation verification
+
+The implementation baseline is PR #1490 (`ba7da8d7`). Its
+[exact-head CI](https://github.com/nexpress-cms/nexpress/actions/runs/36145351255)
+passed typecheck/build/test, both PostgreSQL partitions and their aggregate,
+production E2E and fresh scaffold checks. These are results for that implementation
+bundle; they do not verify actual assistive-technology output or form a newly
+executed full R5 gate in this documentation reconciliation.
+
+This pass inspects the existing requirement, shared owners and owning fixtures,
+updates the Health/Doctor crosswalk and operator instructions, and preserves
+historical evidence rather than rerunning unchanged application suites.
+Documentation validation covers formatting, local links/anchors and whitespace.
+No new build, PostgreSQL, Redis, theme, native-preview, browser or AT run is claimed.
+The handoff, versions, changesets, lockfile, migrations and runtime behavior are
+unchanged by this pass.
