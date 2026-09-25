@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -22,7 +23,6 @@ import {
   npRequireRetryJobWire,
   npRequireScheduleListWire,
   type NpEnqueueJobWire,
-  type NpJobState,
   type NpJobSummary,
   type NpJobsHealthWire,
   type NpRecentJobFailure,
@@ -35,7 +35,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs.js";
 import { PageHeader } from "../layout/page-header.js";
 import { JobLogsSection } from "./job-logs-section.js";
-import { JOB_STATE_BUCKETS, jobListUrls, type JobsStateTab } from "./jobs-query.js";
+import {
+  JOB_STATE_BUCKETS,
+  jobListUrls,
+  jobsLocationUrl,
+  parseJobsLocation,
+  type JobsLocation,
+  type JobsStateTab,
+} from "./jobs-query.js";
 
 /**
  * Phase 13 — admin background-jobs view. One tab per state:
@@ -72,11 +79,31 @@ export interface JobsViewProps {
 }
 
 export function JobsView(props: JobsViewProps) {
-  return <JobsViewContent key={props.queueName ?? ""} {...props} />;
+  const searchParams = useSearchParams();
+  let location: JobsLocation;
+  try {
+    location = parseJobsLocation(new URLSearchParams(searchParams.toString()));
+    // Hosts may supply a queue directly; browser navigation always serializes it.
+    location.queueName ??= props.queueName;
+  } catch {
+    return (
+      <section className="space-y-4">
+        <PageHeader title="Jobs" />
+        <p role="alert">The investigation link is invalid. No jobs were requested.</p>
+        <a className="text-sm underline" href="/admin/jobs">
+          Reset investigation
+        </a>
+      </section>
+    );
+  }
+  return <JobsViewContent key={location.queueName ?? ""} {...props} location={location} />;
 }
 
-function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
-  const [tab, setTab] = useState<Tab>("pending");
+function JobsViewContent({
+  searchCollections = [],
+  location,
+}: JobsViewProps & { location: JobsLocation }) {
+  const { tab, windowMode, queueName, offset, now, state: selectedState } = location;
   const [jobs, setJobs] = useState<JobSummary[] | null>(null);
   const [reportedTotal, setReportedTotal] = useState(0);
   const [supported, setSupported] = useState<boolean>(true);
@@ -89,44 +116,33 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
   const mutationBusy = pendingMutation !== null;
   const busyJobId = pendingMutation?.jobId ?? null;
   const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [windowMode, setWindowMode] = useState<WindowMode>("all");
   const [schedules, setSchedules] = useState<ScheduleSummary[] | null>(null);
   const [handlers, setHandlers] = useState<string[]>([]);
   const [schedulesSupported, setSchedulesSupported] = useState<boolean>(true);
 
   const [refreshKey, setRefreshKey] = useState(0);
   const filterContext = JSON.stringify([tab, windowMode, queueName ?? null]);
-  const [navigation, setNavigation] = useState<{
-    state: NpJobState | "all";
-    offset: number;
-    now: number;
-  }>(() => ({ state: "all", offset: 0, now: Date.now() }));
-  const states = isStateTab(tab) ? JOB_STATE_BUCKETS[tab] : [];
-  const selectedState = states.length === 1 ? states[0] : navigation.state;
-  const offset = navigation.offset;
   const pageState = selectedState === "all" ? undefined : selectedState;
+  function navigate(next: JobsLocation, replace = false) {
+    const url = jobsLocationUrl(next);
+    // Next's native history integration updates search params without remounting
+    // the shared mutation lock or fetching a new server component tree.
+    if (replace) window.history.replaceState(null, "", url);
+    else window.history.pushState(null, "", url);
+  }
   const refresh = () => {
-    setNavigation((value) => ({ ...value, offset: 0, now: Date.now() }));
+    navigate({ ...location, offset: 0, now: Date.now() }, true);
     setRefreshKey((value) => value + 1);
   };
   const retryPage = () => setRefreshKey((value) => value + 1);
   function changeWindow(mode: WindowMode) {
-    setWindowMode(mode);
-    setNavigation((value) => ({
-      ...value,
-      offset: 0,
-      now: Date.now(),
-    }));
+    navigate({ ...location, windowMode: mode, offset: 0, now: Date.now() });
   }
-  const context = JSON.stringify([
-    filterContext,
-    selectedState,
-    offset,
-    navigation.now,
-    refreshKey,
-  ]);
+  const context = JSON.stringify([filterContext, selectedState, offset, now, refreshKey]);
+  const visit = useRef(0);
   const activeContext = useRef<string | null>(context);
   useLayoutEffect(() => {
+    visit.current += 1;
     activeContext.current = context;
     return () => {
       activeContext.current = null;
@@ -168,7 +184,7 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
                 tab,
                 windowMode,
                 queueName,
-                navigation.now,
+                now,
                 pageState ? { state: pageState, offset } : undefined,
               ).map(async (url) => {
                 const res = await npFetch(url, { signal });
@@ -215,7 +231,7 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
       controller.abort();
       window.cancelAnimationFrame(frame);
     };
-  }, [tab, windowMode, queueName, refreshKey, context, navigation.now, pageState, offset]);
+  }, [tab, windowMode, queueName, refreshKey, context, now, pageState, offset]);
 
   async function mutate<T>({
     url,
@@ -234,6 +250,9 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
   }): Promise<T | undefined> {
     // The ref also blocks a second event before React commits the disabled controls.
     if (mutationLock.current) return;
+    const startedVisit = visit.current;
+    const isCurrentVisit = () =>
+      visit.current === startedVisit && activeContext.current === context;
     mutationLock.current = true;
     setPendingMutation({ label, jobId });
     setError(null);
@@ -244,6 +263,7 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
         body: JSON.stringify(body),
       });
       const responseBody = await readResponseJson(response);
+      if (!isCurrentVisit()) return;
       if (!response.ok) {
         setError(
           response.status >= 500
@@ -253,8 +273,9 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
         return;
       }
       const result = parse(responseBody);
-      if (activeContext.current === context) return result;
+      if (isCurrentVisit()) return result;
     } catch {
+      if (!isCurrentVisit()) return;
       setError(
         "The request result could not be confirmed. Refresh and inspect jobs before submitting again.",
       );
@@ -371,6 +392,16 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
         }
       />
 
+      {isStateTab(tab) && windowMode === "24h" ? (
+        <p className="min-w-0 break-words text-sm text-muted-foreground">
+          Created since{" "}
+          <time dateTime={new Date(now - 86_400_000).toISOString()}>
+            {new Date(now - 86_400_000).toISOString()}
+          </time>
+          . Refresh to update this cutoff.
+        </p>
+      ) : null}
+
       {queueName ? (
         <p className="min-w-0 break-words text-sm text-muted-foreground">
           Queue: <code className="break-all">{queueName}</code>. Job lists and registered schedules
@@ -416,8 +447,15 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
       <Tabs
         value={tab}
         onValueChange={(value) => {
-          setTab(value as Tab);
-          setNavigation({ state: "all", offset: 0, now: Date.now() });
+          const nextTab = value as Tab;
+          const states = isStateTab(nextTab) ? JOB_STATE_BUCKETS[nextTab] : [];
+          navigate({
+            ...location,
+            tab: nextTab,
+            state: states.length === 1 ? states[0] : "all",
+            offset: 0,
+            now: Date.now(),
+          });
         }}
         className="min-w-0 space-y-6"
       >
@@ -445,12 +483,12 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
                         ? "all"
                         : JOB_STATE_BUCKETS[key].find((entry) => entry === state);
                     if (selected) {
-                      setNavigation((value) => ({
-                        ...value,
+                      navigate({
+                        ...location,
                         state: selected,
                         offset: 0,
                         now: Date.now(),
-                      }));
+                      });
                     }
                   }}
                 >
@@ -475,12 +513,7 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
                     mutationBusy ||
                     busyJobId !== null
                   }
-                  onClick={() =>
-                    setNavigation((value) => ({
-                      ...value,
-                      offset: Math.max(0, value.offset - 100),
-                    }))
-                  }
+                  onClick={() => navigate({ ...location, offset: Math.max(0, offset - 100) })}
                 >
                   Previous jobs
                 </Button>
@@ -500,9 +533,7 @@ function JobsViewContent({ searchCollections = [], queueName }: JobsViewProps) {
                     mutationBusy ||
                     busyJobId !== null
                   }
-                  onClick={() =>
-                    setNavigation((value) => ({ ...value, offset: value.offset + 100 }))
-                  }
+                  onClick={() => navigate({ ...location, offset: offset + 100 })}
                 >
                   Next jobs
                 </Button>

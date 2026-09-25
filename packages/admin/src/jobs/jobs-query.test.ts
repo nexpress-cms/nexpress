@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { jobListUrls } from "./jobs-query.js";
+import { jobListUrls, jobsLocationUrl, parseJobsLocation } from "./jobs-query.js";
 
 describe("Jobs investigation queries", () => {
   it("reads runnable buckets from live and terminal buckets from retained history", () => {
@@ -62,6 +62,90 @@ describe("Jobs investigation queries", () => {
       expect(() =>
         jobListUrls("active", "all", undefined, now, { state: "active", offset }),
       ).toThrow("Invalid job page");
+    }
+  });
+});
+
+describe("Jobs investigation links", () => {
+  it("restores queue, lifecycle, exact state, page and a fixed cutoff", () => {
+    const location = parseJobsLocation(
+      new URLSearchParams({
+        name: "agent.runExecute",
+        tab: "archive",
+        state: "expired",
+        window: "24h",
+        at: "2026-09-25T12:00:00.000Z",
+        offset: "100000",
+      }),
+    );
+    expect(location).toEqual({
+      queueName: "agent.runExecute",
+      tab: "archive",
+      state: "expired",
+      windowMode: "24h",
+      now: Date.parse("2026-09-25T12:00:00.000Z"),
+      offset: 100000,
+    });
+    const restored = parseJobsLocation(
+      new URL(jobsLocationUrl(location), "https://example.test").searchParams,
+    );
+    expect(restored).toEqual(location);
+    const request = new URL(
+      jobListUrls("archive", restored.windowMode, restored.queueName, restored.now, {
+        state: "expired",
+        offset: restored.offset,
+      })[0],
+      "https://example.test",
+    );
+    expect(request.searchParams.get("since")).toBe("2026-09-24T12:00:00.000Z");
+    expect(request.searchParams.get("offset")).toBe("100000");
+    expect(request.searchParams.get("source")).toBe("archive");
+  });
+
+  it("keeps default links compact and infers single-state tabs", () => {
+    const initial = parseJobsLocation(new URLSearchParams());
+    expect(initial).toEqual({
+      queueName: undefined,
+      tab: "pending",
+      state: "all",
+      windowMode: "all",
+      offset: 0,
+      now: 0,
+    });
+    expect(jobsLocationUrl(initial)).toBe("/admin/jobs");
+    expect(parseJobsLocation(new URLSearchParams("tab=active&offset=100")).state).toBe("active");
+    expect(parseJobsLocation(new URLSearchParams("tab=completed")).state).toBe("completed");
+    expect(parseJobsLocation(new URLSearchParams("tab=scheduled")).state).toBe("all");
+  });
+
+  it("rejects ambiguous, incompatible and unbounded conditions instead of broadening scope", () => {
+    for (const query of [
+      "tab=unknown",
+      "tab=constructor",
+      "tab=",
+      "tab=failed&tab=active",
+      "name=one&name=two",
+      "name=",
+      "name=bad%26queue",
+      "source=live",
+      "tab=pending&state=failed",
+      "tab=active&state=all",
+      "tab=scheduled&state=active",
+      "state=created&offset=-100",
+      "state=created&offset=100001",
+      "state=created&offset=100.0",
+      "state=created&offset=0100",
+      "state=created&offset=50",
+      "offset=100",
+      "tab=scheduled&offset=100",
+      "window=day",
+      "window=24h",
+      "window=24h&at=nope",
+      "window=24h&at=2026-09-25",
+      "at=2026-09-25T12%3A00%3A00.000Z",
+      "window=24h&at=2026-09-25T12%3A00%3A00.000Z&at=2026-09-25T12%3A00%3A00.000Z",
+    ]) {
+      expect(() => parseJobsLocation(new URLSearchParams(query)), query).toThrow();
     }
   });
 });
