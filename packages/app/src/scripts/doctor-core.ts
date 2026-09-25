@@ -13,6 +13,7 @@ import {
   npCollectAgentMaintenanceHealthV1,
   npCollectAgentBudgetHealthV1,
   npCollectAgentWorkerHealthV2,
+  npCollectAgentRuntimeOutcomeV1,
 } from "@nexpress/core/agents";
 import {
   npAnalyzeCustomRouteDefinitions,
@@ -114,6 +115,7 @@ import { formatAgentHealthDetail } from "../lib/agent-health-presentation.js";
 import { formatAgentMaintenanceDetail } from "../lib/agent-maintenance-presentation.js";
 import { npCollectAgentQueueBacklogV1 } from "@nexpress/core/jobs";
 import { formatAgentQueueBacklogDetail } from "../lib/agent-queue-backlog-presentation.js";
+import { formatAgentRuntimeOutcomeDetail } from "../lib/agent-runtime-outcome-presentation.js";
 import { formatAgentWorkerDetail } from "../lib/agent-worker-presentation.js";
 import { formatAgentBudgetDetail } from "../lib/agent-budget-presentation.js";
 
@@ -302,7 +304,16 @@ async function checkAgentContracts(env: DoctorEnv): Promise<CheckResult> {
     } catch {
       // Persisted queue observations cannot change persistence contract severity.
     }
-    const detail = `${formatAgentHealthDetail(summary)}\n\n${maintenanceDetail}\n\n${budgetDetail}\n\n${workerDetail}\n\n${backlogDetail}`;
+    let runtimeOutcomeDetail =
+      "Agent Runtime outcome evidence: unavailable. This does not change persistence contract severity.";
+    try {
+      runtimeOutcomeDetail = formatAgentRuntimeOutcomeDetail(
+        await npCollectAgentRuntimeOutcomeV1({ db }),
+      );
+    } catch {
+      // Retained Run observations do not grant readiness or change contract severity.
+    }
+    const detail = `${formatAgentHealthDetail(summary)}\n\n${maintenanceDetail}\n\n${budgetDetail}\n\n${workerDetail}\n\n${backlogDetail}\n\n${runtimeOutcomeDetail}`;
     if (summary.issueCount === 0) {
       return {
         id: "agents.contract",

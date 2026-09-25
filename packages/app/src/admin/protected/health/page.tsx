@@ -22,6 +22,7 @@ import { CopyCommandButton } from "../ops-actions";
 import { AgentHealth } from "./agent-health";
 import { AgentMaintenance } from "./agent-maintenance";
 import { AgentQueueBacklog } from "./agent-queue-backlog";
+import { AgentRuntimeOutcome } from "./agent-runtime-outcome";
 import { AgentWorker } from "./agent-worker";
 import { AgentBudget } from "./agent-budget";
 
@@ -132,6 +133,7 @@ export default async function AdminHealthPage() {
       <AgentBudget summary={summary.agentBudget} />
       <AgentWorker summary={summary.agentWorkers} />
       <AgentQueueBacklog summary={summary.agentQueueBacklog} />
+      <AgentRuntimeOutcome summary={summary.agentRuntimeOutcomes} />
 
       <HealthActionQueue summary={summary} />
 

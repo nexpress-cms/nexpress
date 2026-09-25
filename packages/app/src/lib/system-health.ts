@@ -29,6 +29,7 @@ import {
   npCollectAgentMaintenanceHealthV1,
   npCollectAgentBudgetHealthV1,
   npCollectAgentWorkerHealthV2,
+  npCollectAgentRuntimeOutcomeV1,
 } from "@nexpress/core/agents";
 import type {
   NpAgentHealthSummaryV1,
@@ -36,6 +37,7 @@ import type {
   NpAgentBudgetHealthV1,
   NpAgentWorkerHealthV1,
   NpAgentWorkerHealthV2,
+  NpAgentRuntimeOutcomeV1,
 } from "@nexpress/core/agent-contract";
 import {
   getCommunityRuntimeDiagnostics,
@@ -87,6 +89,7 @@ export interface HealthSummary {
   agentBudget: NpAgentBudgetHealthV1;
   agentWorkers: NpAgentWorkerHealthV1 | NpAgentWorkerHealthV2;
   agentQueueBacklog?: NpAgentQueueBacklogV1;
+  agentRuntimeOutcomes?: NpAgentRuntimeOutcomeV1;
 }
 
 const FRAMEWORK_TABLES = ["np_users", "np_settings", "np_navigation", "np_sites"] as const;
@@ -817,14 +820,21 @@ export function checkSecret(): Check {
 
 export async function gatherSystemHealth(): Promise<HealthSummary> {
   const checks: Check[] = [];
-  const [agents, agentMaintenance, agentBudget, agentWorkers, agentQueueBacklog] =
-    await Promise.all([
-      npCollectAgentHealthSummaryV1(),
-      npCollectAgentMaintenanceHealthV1(),
-      npCollectAgentBudgetHealthV1(),
-      npCollectAgentWorkerHealthV2(),
-      npCollectAgentQueueBacklogV1(),
-    ]);
+  const [
+    agents,
+    agentMaintenance,
+    agentBudget,
+    agentWorkers,
+    agentQueueBacklog,
+    agentRuntimeOutcomes,
+  ] = await Promise.all([
+    npCollectAgentHealthSummaryV1(),
+    npCollectAgentMaintenanceHealthV1(),
+    npCollectAgentBudgetHealthV1(),
+    npCollectAgentWorkerHealthV2(),
+    npCollectAgentQueueBacklogV1(),
+    npCollectAgentRuntimeOutcomeV1(),
+  ]);
   checks.push(await checkDatabase());
   checks.push(await checkMigrations());
   checks.push(await checkStorageAdapter());
@@ -852,6 +862,7 @@ export async function gatherSystemHealth(): Promise<HealthSummary> {
     agentBudget,
     agentWorkers,
     agentQueueBacklog,
+    agentRuntimeOutcomes,
   };
 }
 
