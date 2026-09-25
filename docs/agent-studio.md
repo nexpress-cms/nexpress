@@ -114,6 +114,21 @@ and ages for the known Agent queues. It separates due work from future
 scheduling and retry backoff, without asserting progress or current adapter
 readiness. See [the queue backlog evidence flow](design/agentic-platform/agent-queue-backlog-evidence.md).
 
+Runtime outcomes show retained Run records across all sites: succeeded, failed,
+cancelled, policy-blocked and budget-blocked results finished within the displayed
+inclusive 24-hour window. Current unfinished counts cover all retained history.
+Deadline elapsed compares the stored deadline with the snapshot; lease elapsed
+and missing lease apply only to running/verifying Runs and can overlap deadline
+counts. Removed history is not counted. Unknown is not zero, and these facts do
+not establish a stuck worker, recovery eligibility or external provider effects.
+See [Runtime outcome evidence](design/agentic-platform/agent-runtime-outcome-evidence.md).
+
+Use **Inspect Runtime activity** to open the existing Activity view, or **Inspect
+Runtime jobs** to inspect the `agent.runExecute` queue. Activity uses the current
+site and viewer permissions, so its list need not equal the host-wide count.
+A completed queue job is not a successful Runtime Run. Refresh only collects
+another snapshot; investigation links do not activate or recover work.
+
 ## Acceptance and accessibility
 
 Synthetic browser journeys already cover successful activation, connection
