@@ -353,6 +353,16 @@ state. Select **Job state** to browse one state with **Previous jobs** and
 Active and Completed each contain one state and support paging directly. The
 combined latest overview is not a globally paginated timeline.
 
+The address preserves the queue (`name`), `tab`, exact `state`, time `window`
+and page `offset`. A `window=24h` link also carries a canonical ISO `at` timestamp:
+its creation-time cutoff is exactly 24 hours before that reference. Copying the
+address, reloading, and browser back/forward restore those conditions; they do
+not preserve a snapshot of rows. Filter and page changes create history entries;
+**Refresh** replaces the current entry with page one and a renewed reference.
+Unknown, repeated, incompatible or out-of-range conditions show an invalid-link
+message before Jobs reads begin. **Reset investigation** explicitly starts over.
+Links contain filter values only, never job payloads or operation results.
+
 The time window filters creation time, not due time. Its cutoff stays fixed while
 paging or using **Retry page** after a load failure. Refresh and successful row
 mutations return to the first page and renew the time window. Changing the time

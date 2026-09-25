@@ -1,4 +1,4 @@
-import { npRequireJobsHealthWire } from "@nexpress/core/jobs-contract";
+import { npRequireJobListWire, npRequireJobsHealthWire } from "@nexpress/core/jobs-contract";
 import { expect, test } from "@playwright/test";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
@@ -412,6 +412,131 @@ test("Jobs list pages preserve scope, retry the same window and discard obsolete
   });
 });
 
+test("Jobs investigation links restore scope, cutoff and page across reload and history", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    130 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const now = Date.now();
+  const at = new Date(now).toISOString();
+  const since = new Date(now - 86_400_000).toISOString();
+  await page.clock.setFixedTime(now);
+  const requests: URL[] = [];
+  let jobsReads = 0;
+  page.on("request", (request) => {
+    if (/^\/api\/admin\/jobs(?:\/|$)/.test(new URL(request.url()).pathname)) jobsReads += 1;
+  });
+  await page.route("**/api/admin/jobs?*", async (route) => {
+    const url = new URL(route.request().url());
+    requests.push(url);
+    const state = url.searchParams.get("state") ?? "created";
+    const offset = Number(url.searchParams.get("offset") ?? "0");
+    const jobs = [
+      {
+        id: `linked-${state}-${offset + 1}`,
+        name: url.searchParams.get("name") ?? "agent.runExecute",
+        state,
+        source: ["created", "retry", "active"].includes(state) ? "live" : "archive",
+        data: { siteId: "default", runId: "00000000-0000-4000-8000-000000000001" },
+        retryCount: 0,
+        output: null,
+        createdOn: at,
+        startedOn: null,
+        completedOn: null,
+      },
+    ];
+    await route.fulfill({ json: npRequireJobListWire({ supported: true, jobs, total: 101 }) });
+  });
+  const query = new URLSearchParams({
+    name: "agent.runExecute",
+    tab: "failed",
+    state: "expired",
+    window: "24h",
+    offset: "100",
+    at,
+  });
+  await page.goto(`/admin/jobs?${query}`);
+  const copiedLink = page.url();
+  async function expectSecondPage() {
+    await expect(page.getByRole("tab", { name: "Failed", exact: true })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    await expect(page.getByRole("combobox", { name: "Job state", exact: true })).toHaveValue(
+      "expired",
+    );
+    await expect(page.getByText("linked-expired-101", { exact: true })).toBeVisible();
+    await expect(page.getByText("Page 2", { exact: true })).toBeVisible();
+    expect(requests.at(-1)!.searchParams.get("name")).toBe("agent.runExecute");
+    expect(requests.at(-1)!.searchParams.get("state")).toBe("expired");
+    expect(requests.at(-1)!.searchParams.get("source")).toBe("archive");
+    expect(requests.at(-1)!.searchParams.get("offset")).toBe("100");
+    expect(requests.at(-1)!.searchParams.get("since")).toBe(since);
+  }
+  await expectSecondPage();
+  await expect(
+    page.getByText(`Created since ${since}. Refresh to update this cutoff.`, { exact: true }),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 900 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("jobs-linked-320.png"),
+    fullPage: true,
+    animations: "disabled",
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.reload();
+  await expectSecondPage();
+  await page.getByRole("button", { name: "Previous jobs", exact: true }).click();
+  await expect(page.getByText("linked-expired-1", { exact: true })).toBeVisible();
+  const firstPageLink = page.url();
+  expect(Number(new URL(firstPageLink).searchParams.get("offset") ?? "0")).toBe(0);
+  expect(new URL(firstPageLink).searchParams.get("at")).toBe(at);
+  await page.goBack();
+  await expectSecondPage();
+  await page.goForward();
+  await expect(page).toHaveURL(firstPageLink);
+  await expect(page.getByText("linked-expired-1", { exact: true })).toBeVisible();
+
+  // A copied address restores the exact investigation in a fresh document.
+  await page.goto(copiedLink);
+  await expectSecondPage();
+  await page.getByRole("tab", { name: "Active", exact: true }).click();
+  await expect(page.getByText("linked-active-1", { exact: true })).toBeVisible();
+  await expect.poll(() => new URL(page.url()).searchParams.get("tab")).toBe("active");
+  await page.goBack();
+  await expectSecondPage();
+  await page.goForward();
+  await expect(page.getByText("linked-active-1", { exact: true })).toBeVisible();
+  await page.goto(copiedLink);
+  await expectSecondPage();
+  await page.clock.setFixedTime(now + 60_000);
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByText("linked-expired-1", { exact: true })).toBeVisible();
+  expect(Number(new URL(page.url()).searchParams.get("offset") ?? "0")).toBe(0);
+  expect(new URL(page.url()).searchParams.get("at")).toBe(new Date(now + 60_000).toISOString());
+  expect(requests.at(-1)!.searchParams.get("since")).toBe(
+    new Date(now + 60_000 - 86_400_000).toISOString(),
+  );
+
+  // A missing cutoff must not silently broaden a shared last-24-hours query.
+  const beforeInvalid = jobsReads;
+  query.delete("at");
+  await page.goto(`/admin/jobs?${query}`);
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "The investigation link is invalid. No jobs were requested.",
+  );
+  expect(jobsReads).toBe(beforeInvalid);
+  await page.getByRole("link", { name: "Reset investigation", exact: true }).click();
+  await expect(page.getByText("linked-created-1", { exact: true })).toBeVisible();
+  expect(requests.at(-1)!.searchParams.has("since")).toBe(false);
+});
+
 test("Worker health keeps loading visible, labels retained refresh data and recovers safely", async ({
   page,
 }, testInfo) => {
@@ -632,11 +757,16 @@ test("Jobs mutations stay serialized and bind outcomes to the submitted view and
   await page.getByRole("tab", { name: "Scheduled", exact: true }).click();
   await expect(page.getByLabel("Handler", { exact: true })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Enqueue", exact: true })).toBeDisabled();
-  await page.getByRole("tab", { name: "Pending", exact: true }).click();
+  // Return to the same URL before completion: an earlier visit still must not
+  // refresh this visit or regain authority to publish its result here.
+  await page.goBack();
   await expect(page.getByText("mutation-created-1", { exact: true })).toBeVisible();
+  await page.goBack();
+  await expect(retries).toHaveCount(2);
+  await expect(retries.first()).toBeDisabled();
   const beforeRetryCompletion = listRequests.length;
   releaseRetry?.();
-  await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeEnabled();
+  await expect(retries.first()).toBeEnabled();
   expect(listRequests.length).toBe(beforeRetryCompletion);
   expect(retryRequests).toBe(1);
 
