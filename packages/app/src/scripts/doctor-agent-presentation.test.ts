@@ -11,6 +11,7 @@ const {
   collectBudget,
   collectWorkers,
   collectBacklog,
+  collectOutcomes,
   clients,
 } = vi.hoisted(() => ({
   collectAgentSummary: vi.fn(),
@@ -18,6 +19,7 @@ const {
   collectBudget: vi.fn(),
   collectWorkers: vi.fn(),
   collectBacklog: vi.fn(),
+  collectOutcomes: vi.fn(),
   clients: [] as object[],
 }));
 vi.mock("@nexpress/core/agents", () => ({
@@ -25,6 +27,7 @@ vi.mock("@nexpress/core/agents", () => ({
   npCollectAgentMaintenanceHealthV1: collectMaintenance,
   npCollectAgentBudgetHealthV1: collectBudget,
   npCollectAgentWorkerHealthV2: collectWorkers,
+  npCollectAgentRuntimeOutcomeV1: collectOutcomes,
 }));
 vi.mock("@nexpress/core/jobs", () => ({ npCollectAgentQueueBacklogV1: collectBacklog }));
 vi.mock("pg", () => ({
@@ -47,6 +50,7 @@ import { formatAgentMaintenanceDetail } from "../lib/agent-maintenance-presentat
 import { formatAgentWorkerDetail } from "../lib/agent-worker-presentation.js";
 import { formatAgentBudgetDetail } from "../lib/agent-budget-presentation.js";
 import { formatAgentQueueBacklogDetail } from "../lib/agent-queue-backlog-presentation.js";
+import { formatAgentRuntimeOutcomeDetail } from "../lib/agent-runtime-outcome-presentation.js";
 import { collectDoctorChecks } from "./doctor-core.js";
 
 const temporaryDirectories: string[] = [];
@@ -56,6 +60,7 @@ afterEach(async () => {
   collectBudget.mockReset();
   collectWorkers.mockReset();
   collectBacklog.mockReset();
+  collectOutcomes.mockReset();
   clients.length = 0;
   await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true })));
 });
@@ -169,6 +174,26 @@ describe("Doctor Agent health presentation", () => {
       if (state === "ok")
         collectBacklog.mockRejectedValueOnce(new Error("must-not-leak-backlog-failure"));
       else collectBacklog.mockResolvedValueOnce(backlog);
+      const outcomes = {
+        schemaVersion: "np.agent-runtime-outcome.v1",
+        source: "runtime-records",
+        generatedAt: "2026-09-25T00:00:00.000Z",
+        windowStart: "2026-09-24T00:00:00.000Z",
+        state: "observed",
+        outcomes: ["succeeded", "failed", "cancelled", "policy_blocked", "budget_blocked"].map(
+          (outcome) => ({ state: outcome, count: 0, lastFinishedAt: null }),
+        ),
+        active: {
+          unfinished: 2,
+          deadlineElapsed: 1,
+          executing: 1,
+          leaseElapsed: 0,
+          leaseMissing: 1,
+        },
+      };
+      if (state === "ok")
+        collectOutcomes.mockRejectedValueOnce(new Error("must-not-leak-runtime-record"));
+      else collectOutcomes.mockResolvedValueOnce(outcomes);
       const cwd = await mkdtemp(join(tmpdir(), "nexpress-doctor-agent-presentation-"));
       temporaryDirectories.push(cwd);
       const checks = await collectDoctorChecks({
@@ -187,6 +212,7 @@ describe("Doctor Agent health presentation", () => {
       expect(clients).toContain(budgetDb.$client);
       expect(collectWorkers).toHaveBeenCalledExactlyOnceWith({ db: budgetDb });
       expect(collectBacklog).toHaveBeenCalledExactlyOnceWith({ db: budgetDb });
+      expect(collectOutcomes).toHaveBeenCalledExactlyOnceWith({ db: budgetDb });
       expect(typeof budgetDb.transaction).toBe("function");
       // The exact client passed to the budget collector also serves existing
       // contract queries, and remains the actual client rather than a shim.
@@ -199,13 +225,14 @@ describe("Doctor Agent health presentation", () => {
         id: "agents.contract",
         state,
         label: "Agent persistence contracts",
-        detail: `${formatAgentHealthDetail(summary)}\n\n${state === "ok" ? "Agent maintenance evidence: unavailable. This does not change persistence contract severity." : formatAgentMaintenanceDetail(maintenance)}\n\n${state !== "error" ? "Agent budget measurement evidence: unavailable. This does not change persistence contract severity." : formatAgentBudgetDetail(budget)}\n\n${state === "ok" ? "Agent worker subscription evidence: unavailable. This does not change persistence contract severity." : formatAgentWorkerDetail(workers)}\n\n${state === "ok" ? "Agent queue backlog evidence: unavailable. This does not change persistence contract severity." : formatAgentQueueBacklogDetail(backlog)}`,
+        detail: `${formatAgentHealthDetail(summary)}\n\n${state === "ok" ? "Agent maintenance evidence: unavailable. This does not change persistence contract severity." : formatAgentMaintenanceDetail(maintenance)}\n\n${state !== "error" ? "Agent budget measurement evidence: unavailable. This does not change persistence contract severity." : formatAgentBudgetDetail(budget)}\n\n${state === "ok" ? "Agent worker subscription evidence: unavailable. This does not change persistence contract severity." : formatAgentWorkerDetail(workers)}\n\n${state === "ok" ? "Agent queue backlog evidence: unavailable. This does not change persistence contract severity." : formatAgentQueueBacklogDetail(backlog)}\n\n${state === "ok" ? "Agent Runtime outcome evidence: unavailable. This does not change persistence contract severity." : formatAgentRuntimeOutcomeDetail(outcomes)}`,
         hint: expect.any(String),
       });
       expect(check?.detail).not.toContain("must-not-leak-private-locator");
       expect(check?.detail).not.toContain("must-not-leak-budget-failure");
       expect(check?.detail).not.toContain("must-not-leak-worker-failure");
       expect(check?.detail).not.toContain("must-not-leak-backlog-failure");
+      expect(check?.detail).not.toContain("must-not-leak-runtime-record");
       expect(check?.detail).toContain(summary.generatedAt);
       expect(check?.detail).toContain("7201");
       expect(check?.detail).toContain("invocation");

@@ -264,6 +264,13 @@ persisted frozen adapter that the current runtime cannot confirm is reported as
 `unknown`; malformed or stranded persistence is blocking and appears under the
 single Doctor id `agents.contract`.
 
+Health and Doctor also show [retained Runtime outcomes](design/agentic-platform/agent-runtime-outcome-evidence.md)
+through `np.agent-runtime-outcome.v1`: the preceding 24 hours of retained terminal
+results and current unfinished deadline/lease counts across all sites. These
+read-only observations preserve unknown values and do not change the persistence
+check's severity. Health links to existing Activity and Jobs investigations;
+Activity remains restricted to its current site and viewer permissions.
+
 ### Admin mutation ops API
 
 Remote mutation is intentionally off unless the operator sets

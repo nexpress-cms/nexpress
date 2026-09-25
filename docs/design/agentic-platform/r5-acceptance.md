@@ -107,6 +107,11 @@ product defect is established.
 | §13 diagnostics and read timing | Safe optional support correlation/recovery declarations and independent browser receipt/available Runtime projection times are shipped.                                                                                                                                                                                                                                             | Missing metadata stays unavailable; server projection time is not source freshness. Submitted diagnostic events do not guarantee durable support lookup.                                                                                                              |
 | §20.10 Health/Doctor            | [Maintenance](agent-maintenance-evidence.md), [budget](agent-budget-evidence.md) and [worker](agent-worker-evidence.md) observations distinguish receipts, measurement and subscription evidence, including unknown/unavailable states.                                                                                                                                             | Bounded samples, generic heartbeats and subscription observations do not prove end-to-end progress, coverage of every required queue or overall maintenance readiness. Complete Health/Doctor acceptance is not established by those observations alone.              |
 
+[Retained Runtime outcomes](agent-runtime-outcome-evidence.md) additionally expose
+Run-owner terminal results and current unfinished deadline/lease facts in Health
+and Doctor. Their host-wide retained scope, unknown states and investigation
+links do not establish external effects, complete history or full readiness.
+
 The other Admin requirements have existing owning contract, authorization,
 secret-exclusion, sealed-fact, polling, audit, diagnostics and wrapper tests.
 Their feature-flow evidence remains applicable; this audit does not relabel
