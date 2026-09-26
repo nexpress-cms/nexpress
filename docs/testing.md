@@ -35,8 +35,33 @@ checkout and a separate checkout with no build output after a frozen
 `--ignore-scripts` install. Real Git fixtures cover mixed commits, code-to-doc
 renames, document renames, modes and symlinks; result tests reject missing,
 skipped, failed or cancelled required full work. Actionlint 1.7.12 accepted the
-workflow. These local results do not measure hosted-CI speed: confirm routing and
-elapsed time on the first documentation-only PR after this workflow lands.
+workflow. The hosted checks below separately verify routing and elapsed time;
+local installation/test timings are not substituted for Actions timings.
+
+### Hosted route verification
+
+After changing CI routing, verify both outcomes on a documentation-only PR:
+
+- An intentional formatting error must fail documentation validation and every required result gate, while application jobs remain skipped.
+- Correct the same change and require all named gates to succeed before merging the evidence update.
+
+On 2026-09-26, [PR #1493](https://github.com/nexpress-cms/nexpress/pull/1493)
+passed the full route before the workflow was merged. The documentation-only
+[verification PR #1494](https://github.com/nexpress-cms/nexpress/pull/1494) then
+exercised both branches of the result gates:
+
+- [Intentional format failure](https://github.com/nexpress-cms/nexpress/actions/runs/36236749703):
+  Prettier rejected `docs/testing.md`; all four named result gates failed and the
+  application jobs stayed skipped. No failed head was merged.
+- [Corrected document](https://github.com/nexpress-cms/nexpress/actions/runs/36236831760):
+  formatting and all 62 repository tests passed; all four named gates succeeded,
+  while full application jobs stayed skipped. Workflow creation to completion
+  was 40 seconds (10:47:13–10:47:53 UTC).
+
+The preceding documentation PR #1492 took
+[17 minutes 3 seconds](https://github.com/nexpress-cms/nexpress/actions/runs/36208290554)
+with the old full pipeline. This is one observed hosted comparison, including
+scheduling/setup time, not a guaranteed latency or controlled benchmark.
 
 ## Unit tests (`pnpm test`)
 
