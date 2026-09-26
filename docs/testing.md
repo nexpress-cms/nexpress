@@ -5,6 +5,39 @@ pure contracts, PostgreSQL integration for persistence and transaction behavior,
 browser tests for rendering and interaction, and packed scaffolds for consumer
 installation and generated-project behavior.
 
+## Documentation-only PR checks
+
+CI still starts for every pull request and preserves the required check names.
+A classifier reads the complete merge-base-to-head Git diff, without the changed
+files API's pagination limit. Only regular, non-executable Markdown under `docs/`
+and root `README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` or `AGENTS.md` use the
+fast path. Renames are evaluated as deletion plus addition. Package/scaffold
+Markdown, changesets, scripts, workflows, configuration, symlinks and executable
+mode changes require full CI. Empty diffs, missing history, ambiguous merge bases
+and invalid event data also select full CI. Manual dispatch and push runs retain
+full verification; existing push-to-main path exclusions are unchanged.
+
+The documentation path installs frozen dependencies with lifecycle scripts
+disabled, checks retained changed Markdown with the locked Prettier version, and
+runs `pnpm test:repo`. This preserves documentation-currentness and release
+contract checks without building packages, starting databases or running browser
+and scaffold suites. Deleted documents still undergo repository contract checks.
+
+The four existing result names report success only after documentation validation
+or their corresponding full job succeeds. Scope/validation failure or cancellation
+cannot become a green required check. Full PostgreSQL runs still require both
+partitions and exact coverage receipts; only a validated documentation-only PR
+may intentionally skip them. Gate logs explicitly distinguish these paths.
+Version PR dispatch and Dependabot's named-result checks retain their contracts.
+
+Local verification of this change: 62 repository tests passed both in the working
+checkout and a separate checkout with no build output after a frozen
+`--ignore-scripts` install. Real Git fixtures cover mixed commits, code-to-doc
+renames, document renames, modes and symlinks; result tests reject missing,
+skipped, failed or cancelled required full work. Actionlint 1.7.12 accepted the
+workflow. These local results do not measure hosted-CI speed: confirm routing and
+elapsed time on the first documentation-only PR after this workflow lands.
+
 ## Unit tests (`pnpm test`)
 
 Live next to the source they test as `<name>.test.ts`. Run with `pnpm test`
