@@ -1,5 +1,16 @@
 # @nexpress/xliff
 
+## 0.4.7
+
+### Patch Changes
+
+- ab284fc: Refresh the supported runtime dependency versions for S3 storage, JWT handling, PostgreSQL, XML parsing, and CSS tooling while applying the patched Nano ID security floor.
+- Updated dependencies [1eed8ca]
+- Updated dependencies [ab284fc]
+- Updated dependencies [d785c92]
+  - @nexpress/core@0.4.7
+  - @nexpress/translation@0.4.7
+
 ## 0.4.6
 
 ### Patch Changes
