@@ -38,6 +38,13 @@ skipped, failed or cancelled required full work. Actionlint 1.7.12 accepted the
 workflow. These local results do not measure hosted-CI speed: confirm routing and
 elapsed time on the first documentation-only PR after this workflow lands.
 
+### Hosted route verification
+
+After changing CI routing, verify both outcomes on a documentation-only PR:
+
+-    An intentional formatting error must fail documentation validation and every required result gate, while application jobs remain skipped.
+-    Correct the same change and require all named gates to succeed before merging the evidence update.
+
 ## Unit tests (`pnpm test`)
 
 Live next to the source they test as `<name>.test.ts`. Run with `pnpm test`
