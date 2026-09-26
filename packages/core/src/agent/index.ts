@@ -72,3 +72,5 @@ export * from "./budget-health.js";
 export { npCollectAgentWorkerHealthV1, npCollectAgentWorkerHealthV2 } from "./worker-health.js";
 
 export { npCollectAgentRuntimeOutcomeV1 } from "./runtime-outcome-health.js";
+
+export * from "./incident-service.js";

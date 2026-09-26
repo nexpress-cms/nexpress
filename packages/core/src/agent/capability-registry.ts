@@ -15,6 +15,7 @@ import {
   type NpAgentReadCapabilityInputMapV1,
   type NpAgentReadCapabilityOutputMapV1,
   type NpAgentScope,
+  type NpAgentPolicyRulesV1,
   type NpAgentTargetRef,
 } from "../agent-contract/index.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
@@ -46,6 +47,8 @@ export interface NpAgentReadRequirementContextV1 {
   requestedAt: string;
   /** Authoritative live Runtime staff projection; never supplied by a provider. */
   staffUser?: NpAuthUser | null;
+  /** Effective Runtime resource ceiling, supplied only by Runtime admission. */
+  runtimeResources?: NpAgentPolicyRulesV1["resources"];
 }
 
 export interface NpAgentReadDerivedRequirementsV1 {
@@ -212,16 +215,22 @@ function coreRequirements<C extends NpAgentReadCapabilityIdV1>(
   return defaultRequirements();
 }
 
-export type NpAgentReadCapabilityExecutorsV1 = {
+type ReadExecutors = {
   [C in NpAgentReadCapabilityIdV1]: (
     input: NpAgentReadCapabilityInputMapV1[C],
     context: NpAgentReadCapabilityContextV1,
   ) => NpAgentReadCapabilityOutputMapV1[C] | Promise<NpAgentReadCapabilityOutputMapV1[C]>;
 };
 
+export type NpAgentReadCapabilityExecutorsV1 = Pick<
+  ReadExecutors,
+  "content.query" | "schema.get" | "site.inspect"
+> &
+  Partial<Pick<ReadExecutors, "incident.get" | "incident.list">>;
+
 function definition<C extends NpAgentReadCapabilityIdV1>(
   id: C,
-  execute: NpAgentReadCapabilityExecutorsV1[C],
+  execute: ReadExecutors[C],
 ): NpAgentReadCapabilityDefinitionV1<C> {
   return {
     descriptor: npAgentReadCapabilityDescriptorsV1[id],
@@ -292,7 +301,28 @@ export async function createAgentReadCapabilityRegistryV1(
         context: NpAgentReadRequirementContextV1,
       ) => mergedRequirements("site.inspect", input, context, siteRequirements),
     },
-  ].map((definitionValue) => deepFreeze(definitionValue));
+  ];
+  const incidentGet = executors["incident.get"];
+  if (incidentGet)
+    definitions.push({
+      ...definition("incident.get", incidentGet),
+      deriveRequirements: (
+        input: NpAgentReadCapabilityInputMapV1["incident.get"],
+        context: NpAgentReadRequirementContextV1,
+      ) => mergedRequirements("incident.get", input, context, requirementResolvers["incident.get"]),
+    });
+  const incidentList = executors["incident.list"];
+  if (incidentList)
+    definitions.push({
+      ...definition("incident.list", incidentList),
+      deriveRequirements: (
+        input: NpAgentReadCapabilityInputMapV1["incident.list"],
+        context: NpAgentReadRequirementContextV1,
+      ) =>
+        mergedRequirements("incident.list", input, context, requirementResolvers["incident.list"]),
+    });
+  definitions.sort((a, b) => a.descriptor.id.localeCompare(b.descriptor.id));
+  definitions.forEach(deepFreeze);
   const canonicalEntries = definitions.map((definitionValue) =>
     deepFreeze(canonicalEntry(definitionValue)),
   );
@@ -334,7 +364,7 @@ export async function createAgentReadCapabilityRegistryV1(
     canonicalEntries,
   );
   return Object.freeze({
-    ids: Object.freeze([...npAgentReadCapabilityIdsV1]),
+    ids: Object.freeze([...entries.keys()]),
     canonical,
     registryFingerprint,
     get<C extends NpAgentReadCapabilityIdV1>(id: C): NpAgentReadCapabilityRegistryEntryV1<C> {

@@ -68,3 +68,5 @@ export * from "./budget-health-contract.js";
 export * from "./worker-health-contract.js";
 
 export * from "./runtime-outcome-contract.js";
+
+export * from "./incident-contract.js";

@@ -632,6 +632,10 @@ Gate:
 - false-positive and usefulness thresholds in the evaluation doc are met on
   versioned fixtures.
 
+The [AP-600 foundation flow](r6-incident-foundation-flow.md) records the shared
+persistence and explicitly installed read boundary. It does not close R5
+assistive-technology acceptance or the R6 recipe gate.
+
 ### R7 — Guardian and application security orchestration
 
 Outcome: application signals are correlated into incidents, with narrowly

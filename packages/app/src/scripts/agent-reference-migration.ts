@@ -11,6 +11,15 @@ import {
   npAgentSiteOwnedTableNamesV1,
 } from "@nexpress/core/agents";
 
+// V1 predates Incident persistence; keep its applied SQL immutable.
+const incidentTables = [
+  "np_agent_feedback",
+  "np_agent_incident_signals",
+  "np_agent_incident_timeline",
+  "np_agent_incidents",
+  "np_agent_notifications",
+  "np_agent_signals",
+] as const;
 const marker = "-- NexPress verified source reference lifecycle v1";
 export function npAgentReferenceMigrationSqlV1(): string {
   return (
@@ -19,9 +28,13 @@ export function npAgentReferenceMigrationSqlV1(): string {
     [
       "INSERT INTO public.np_agent_reference_fence (id, epoch) VALUES (1, 0);",
       NP_AGENT_REFERENCE_FENCE_SQL_V1,
-      ...[...npAgentSiteOwnedTableNamesV1, "np_agent_site_deletion_sagas", "np_audit_events"].map(
-        npAgentReferenceFenceTriggersSqlV1,
-      ),
+      ...[
+        ...npAgentSiteOwnedTableNamesV1.filter(
+          (name) => !incidentTables.some((table) => table === name),
+        ),
+        "np_agent_site_deletion_sagas",
+        "np_audit_events",
+      ].map(npAgentReferenceFenceTriggersSqlV1),
       NP_AGENT_JOB_REFERENCE_FENCE_INSTALL_SQL_V1,
     ].join("\n--> statement-breakpoint\n") +
     "\n"
@@ -189,5 +202,43 @@ export async function npEnsureAgentReferenceMigrationV5(options: {
   const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
   if (added.length !== 1)
     throw new Error("Expected one generated Agent closed approval ChangeSet reference migration.");
+  await writeFile(join(folder, added[0]), expected, "utf8");
+}
+
+/** Append trigger coverage for the additive Incident tables, preserving V1. */
+export function npAgentReferenceMigrationSqlV6(): string {
+  return (
+    "-- NexPress verified Incident source reference lifecycle v6\n" +
+    incidentTables.map(npAgentReferenceFenceTriggersSqlV1).join("\n--> statement-breakpoint\n") +
+    "\n"
+  );
+}
+export async function npEnsureAgentReferenceMigrationV6(options: {
+  migrationsFolder?: string;
+  createCustomMigration: () => Promise<void>;
+}): Promise<void> {
+  const folder = resolve(options.migrationsFolder ?? "./drizzle");
+  const files = (await readdir(folder)).filter((f) => f.endsWith(".sql")).sort();
+  const texts = await Promise.all(files.map((f) => readFile(join(folder, f), "utf8")));
+  const chain = texts.join("\n");
+  if (!incidentTables.some((table) => chain.includes(`CREATE TABLE "${table}"`))) return;
+  if (
+    !incidentTables.every((table) => chain.includes(`CREATE TABLE "${table}"`)) ||
+    !texts.some((text) => text.includes(marker))
+  )
+    throw new Error("Agent Incident reference migration inventory is incomplete.");
+  const expected = npAgentReferenceMigrationSqlV6();
+  const existing = texts.filter((text) =>
+    text.includes("-- NexPress verified Incident source reference lifecycle v6"),
+  );
+  if (existing.length) {
+    if (existing.length !== 1 || existing[0] !== expected)
+      throw new Error("Agent Incident reference migration differs from its reviewed source.");
+    return;
+  }
+  await options.createCustomMigration();
+  const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
+  if (added.length !== 1)
+    throw new Error("Expected one generated Agent Incident reference migration.");
   await writeFile(join(folder, added[0]), expected, "utf8");
 }

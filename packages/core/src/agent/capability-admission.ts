@@ -669,6 +669,7 @@ export function createAgentCapabilityAdmissionServiceV1(
         principal,
         requestedAt: context.now.toISOString(),
         staffUser: context.staffUser,
+        runtimeResources: context.policy.effective.resources,
       })) ?? { additionalScopes: [], targetRefs: [], riskFloor: "read", approvalFloor: "none" },
     );
     if (
@@ -686,6 +687,7 @@ export function createAgentCapabilityAdmissionServiceV1(
       abortSignal: new AbortController().signal,
       transaction: context.db,
       staffUser: context.staffUser,
+      runtimeResources: context.policy.effective.resources,
     });
     return { entry, output: entry.definition.parseOutput(current.output), invocation };
   }
@@ -946,7 +948,13 @@ export function createAgentCapabilityAdmissionServiceV1(
         invocationId,
         idempotencyKey: null,
         abortSignal: input.abortSignal ?? new AbortController().signal,
-        ...(runtime ? { transaction: runtime.db, staffUser: runtime.staffUser } : {}),
+        ...(runtime
+          ? {
+              transaction: runtime.db,
+              staffUser: runtime.staffUser,
+              runtimeResources: runtime.policy.effective.resources,
+            }
+          : {}),
       });
       const output = entry.definition.parseOutput(execution.output);
       const outputObject = asJsonObject(output);

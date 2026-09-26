@@ -1,4 +1,18 @@
 import {
+  npAnalyzeAgentIncidentGetInputV1,
+  npAnalyzeAgentIncidentListInputV1,
+  npAnalyzeAgentIncidentOutputV1,
+  npAnalyzeAgentIncidentListOutputV1,
+  npAgentIncidentGetInputSchemaV1,
+  npAgentIncidentListInputSchemaV1,
+  npAgentIncidentOutputSchemaV1,
+  npAgentIncidentListOutputSchemaV1,
+  type NpAgentIncidentGetInputV1,
+  type NpAgentIncidentListInputV1,
+  type NpAgentIncidentOutputV1,
+  type NpAgentIncidentListOutputV1,
+} from "./incident-contract.js";
+import {
   analyzeCanonicalBody,
   canonicalBodyArray,
   canonicalBodyAscii,
@@ -25,7 +39,13 @@ import type {
   NpAgentJsonValue,
 } from "./types.js";
 
-export const npAgentReadCapabilityIdsV1 = ["content.query", "schema.get", "site.inspect"] as const;
+export const npAgentReadCapabilityIdsV1 = [
+  "content.query",
+  "incident.get",
+  "incident.list",
+  "schema.get",
+  "site.inspect",
+] as const;
 export type NpAgentReadCapabilityIdV1 = (typeof npAgentReadCapabilityIdsV1)[number];
 
 export type NpAgentEmptyInputV1 = Record<string, never>;
@@ -94,11 +114,15 @@ export interface NpAgentContentQueryOutputV1 extends NpAgentJsonObject {
 }
 
 export interface NpAgentReadCapabilityInputMapV1 {
+  "incident.get": NpAgentIncidentGetInputV1;
+  "incident.list": NpAgentIncidentListInputV1;
   "site.inspect": NpAgentEmptyInputV1;
   "schema.get": NpAgentSchemaGetInputV1;
   "content.query": NpAgentContentQueryInputV1;
 }
 export interface NpAgentReadCapabilityOutputMapV1 {
+  "incident.get": NpAgentIncidentOutputV1;
+  "incident.list": NpAgentIncidentListOutputV1;
   "site.inspect": NpAgentSiteInspectOutputV1;
   "schema.get": NpAgentSchemaGetOutputV1;
   "content.query": NpAgentContentQueryOutputV1;
@@ -581,7 +605,11 @@ export function npRequireAgentReadCapabilityInputV1<C extends NpAgentReadCapabil
       ? npAnalyzeAgentEmptyInputV1(value)
       : capabilityId === "schema.get"
         ? npAnalyzeAgentSchemaGetInputV1(value)
-        : npAnalyzeAgentContentQueryInputV1(value);
+        : capabilityId === "incident.get"
+          ? npAnalyzeAgentIncidentGetInputV1(value)
+          : capabilityId === "incident.list"
+            ? npAnalyzeAgentIncidentListInputV1(value)
+            : npAnalyzeAgentContentQueryInputV1(value);
   return npRequireAgentContractResult(
     result as NpAgentContractResult<NpAgentReadCapabilityInputMapV1[C]>,
     "Invalid Agent read capability input",
@@ -597,7 +625,11 @@ export function npRequireAgentReadCapabilityOutputV1<C extends NpAgentReadCapabi
       ? npAnalyzeAgentSiteInspectOutputV1(value)
       : capabilityId === "schema.get"
         ? npAnalyzeAgentSchemaGetOutputV1(value)
-        : npAnalyzeAgentContentQueryOutputV1(value);
+        : capabilityId === "incident.get"
+          ? npAnalyzeAgentIncidentOutputV1(value)
+          : capabilityId === "incident.list"
+            ? npAnalyzeAgentIncidentListOutputV1(value)
+            : npAnalyzeAgentContentQueryOutputV1(value);
   return npRequireAgentContractResult(
     result as NpAgentContractResult<NpAgentReadCapabilityOutputMapV1[C]>,
     "Invalid Agent read capability output",
@@ -908,8 +940,8 @@ function descriptor(
   id: NpAgentReadCapabilityIdV1,
   title: string,
   description: string,
-  scope: "site:read" | "schema:read" | "content:read",
-  derivation: "none" | "schema-resource" | "content-query",
+  scope: "site:read" | "schema:read" | "content:read" | "incident:read",
+  derivation: "none" | "schema-resource" | "content-query" | "incident-target",
   inputSchema: NpAgentJsonSchema,
   outputSchema: NpAgentJsonSchema,
 ): NpAgentCapabilityDescriptor {
@@ -952,6 +984,24 @@ export const npAgentReadCapabilityDescriptorsV1 = Object.freeze({
     "content-query",
     CONTENT_INPUT,
     CONTENT_OUTPUT,
+  ),
+  "incident.get": descriptor(
+    "incident.get",
+    "Get incident",
+    "Read one bounded incident after subject authorization.",
+    "incident:read",
+    "incident-target",
+    npAgentIncidentGetInputSchemaV1,
+    npAgentIncidentOutputSchemaV1,
+  ),
+  "incident.list": descriptor(
+    "incident.list",
+    "List incidents",
+    "Read a bounded page filtered by incident and subject visibility.",
+    "incident:read",
+    "incident-target",
+    npAgentIncidentListInputSchemaV1,
+    npAgentIncidentListOutputSchemaV1,
   ),
   "schema.get": descriptor(
     "schema.get",

@@ -357,3 +357,47 @@ it("does not advertise multi-branch rollback as read-only", async () => {
     expect(tools.find((tool) => tool.name === name)?.annotations.readOnlyHint).toBe(false);
   }
 });
+
+it("projects optional Incident selectors and dispatches exact read requests", async () => {
+  const service = admission(["incident.get", "incident.list"]);
+  const invoke = vi.spyOn(service, "invoke");
+  const gateway = createAgentMcpGatewayV1({
+    admission: service,
+    cursorKey: { id: "test", key: new Uint8Array(32).fill(7) },
+  });
+  const inventory = await gateway.listTools(authentication());
+  expect(inventory.tools.map((tool) => tool.name)).toEqual(["query_incidents"]);
+  const input = {
+    statuses: [],
+    categories: [],
+    severities: [],
+    updatedAfter: null,
+    limit: 10,
+    cursor: null,
+  };
+  await gateway.callTool(authentication(), {
+    name: "query_incidents",
+    arguments: { input: { selector: "list", ...input }, idempotencyKey: null },
+    task: null,
+  });
+  expect(invoke).toHaveBeenCalledWith(
+    expect.objectContaining({
+      request: {
+        schemaVersion: "np.agent-invocation-request.v1",
+        capabilityId: "incident.list",
+        arguments: { input, idempotencyKey: null },
+      },
+    }),
+  );
+  await expect(
+    gateway.callTool(authentication(), {
+      name: "query_incidents",
+      arguments: {
+        input: { selector: "by_id", incidentId: "01900000-0000-7000-8000-000000000001", ...input },
+        idempotencyKey: null,
+      },
+      task: null,
+    }),
+  ).rejects.toThrow();
+  expect(invoke).toHaveBeenCalledTimes(1);
+});
