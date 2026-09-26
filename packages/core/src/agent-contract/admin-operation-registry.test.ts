@@ -68,6 +68,7 @@ const expectedOperationIds = [
   "agents.changesets.rollback_plans.create",
   "agents.changesets.rollback_plans.request_approval",
   "agents.changesets.rollback_plans.execute",
+  "agents.incidents.feedback",
   "agents.incidents.transition",
   "agents.incidents.response_plan",
   "agents.incidents.restore",
@@ -97,11 +98,11 @@ function adminInvocation(operationId: string) {
 }
 
 describe("Agent Admin operation registry v1", () => {
-  it("locks all 55 Agent Studio mutation rows in product order", () => {
+  it("locks all 56 Agent Studio mutation rows in product order", () => {
     expect(npAgentAdminOperationIdsV1).toEqual(expectedOperationIds);
-    expect(npAgentAdminOperationRegistryV1).toHaveLength(55);
+    expect(npAgentAdminOperationRegistryV1).toHaveLength(56);
     expect(Object.keys(npAgentAdminOperationsV1)).toEqual(expectedOperationIds);
-    expect(new Set(npAgentAdminOperationIdsV1).size).toBe(55);
+    expect(new Set(npAgentAdminOperationIdsV1).size).toBe(56);
     expect(Object.isFrozen(npAgentAdminOperationIdsV1)).toBe(true);
     expect(Object.isFrozen(npAgentAdminOperationRouteInventoryV1)).toBe(true);
     expect(Object.isFrozen(npAgentAdminOperationRouteInventoryV1[0])).toBe(true);
@@ -109,7 +110,7 @@ describe("Agent Admin operation registry v1", () => {
     const routeKeys = npAgentAdminOperationRegistryV1.map(
       ({ method, pathTemplate }) => `${method} ${pathTemplate}`,
     );
-    expect(new Set(routeKeys).size).toBe(55);
+    expect(new Set(routeKeys).size).toBe(56);
     expect(routeKeys.every((route) => route.includes(" /api/admin/agents/"))).toBe(true);
   });
 
@@ -250,7 +251,7 @@ describe("Agent Admin operation registry v1", () => {
       npDigestAgentAdminOperationContractV1(npAgentAdminOperationRegistryV1[0]),
     ).resolves.toBe("cj1:sha256:5w3d7O1UDEv24p5vldtmuR6qREV8Q6UU4hYYp6aE1nA");
     await expect(npDigestAgentAdminOperationRegistryV1()).resolves.toBe(
-      "cj1:sha256:n1cdSQ1R3jicplrOZs9r0FLwT6MDLI-8y9FILPDtiiM",
+      "cj1:sha256:7QeuSQ18Qw5PqB8n-gxGZBn03b8-qMju5vHs58O-vD4",
     );
 
     await expect(

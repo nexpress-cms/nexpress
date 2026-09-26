@@ -242,3 +242,14 @@ export type {
 
 export { getCommunityRuntimeDiagnostics, resetCommunityRuntimeDiagnostics } from "./diagnostics.js";
 export * from "../community-contract/index.js";
+
+export {
+  npInspectCommunityContentContainmentV1,
+  npQuarantineCommunityContentV1,
+  npRestoreCommunityContentV1,
+} from "./content-containment.js";
+export type {
+  NpCommunityContentTargetV1,
+  NpCommunityContentOriginalStateV1,
+  NpCommunityContentContainmentInputV1,
+} from "./content-containment.js";

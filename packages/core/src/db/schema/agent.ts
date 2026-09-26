@@ -4331,3 +4331,71 @@ export const npAgentFeedback = pgTable(
     ),
   ],
 );
+
+/** AP-601 exact reversible content quarantine. Original state is private restoration
+ * evidence. The action back-reference is a deferred custom lifecycle constraint. */
+export const npAgentContainments = pgTable(
+  "np_agent_containments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    kind: text("kind").notNull(),
+    targetKind: text("target_kind").notNull(),
+    targetRef: jsonb("target_ref").$type<NpAgentJsonObject>().notNull(),
+    targetVersionDigest: text("target_version_digest").notNull(),
+    sourceActionId: uuid("source_action_id").notNull(),
+    restoreActionId: uuid("restore_action_id"),
+    incidentId: uuid("incident_id"),
+    state: text("state").notNull(),
+    originalState: jsonb("original_state").$type<NpAgentJsonObject>().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }),
+    activatedAt: timestamp("activated_at", { withTimezone: true, mode: "date" }),
+    restoredAt: timestamp("restored_at", { withTimezone: true, mode: "date" }),
+    lastErrorCode: text("last_error_code"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("np_agent_containments_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_containments_source_action_unique").on(t.sourceActionId),
+    unique("np_agent_containments_restore_action_unique").on(t.restoreActionId),
+    uniqueIndex("np_agent_containments_active_target_uidx")
+      .on(t.siteId, t.kind, t.targetRef)
+      .where(sql`${t.state} in ('pending','active','restoring')`),
+    index("np_agent_containments_incident_idx").on(t.siteId, t.incidentId),
+    index("np_agent_containments_state_idx").on(t.siteId, t.state, t.updatedAt),
+    foreignKey({
+      name: "np_agent_containments_source_action_fk",
+      columns: [t.siteId, t.sourceActionId],
+      foreignColumns: [npAgentActions.siteId, npAgentActions.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_containments_restore_action_fk",
+      columns: [t.siteId, t.restoreActionId],
+      foreignColumns: [npAgentActions.siteId, npAgentActions.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_containments_incident_fk",
+      columns: [t.siteId, t.incidentId],
+      foreignColumns: [npAgentIncidents.siteId, npAgentIncidents.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_containments_kind_check",
+      sql`(${t.kind}='content_quarantine' and ${t.targetKind} in ('document','comment') and ${t.targetRef}->>'kind'=${t.targetKind}) is true`,
+    ),
+    check(
+      "np_agent_containments_state_check",
+      sql`(${t.state} in ('pending','active','restoring','restored','expired','failed') and (${t.state} not in ('active','restoring','restored','expired') or ${t.activatedAt} is not null) and (${t.state}='restored')=(${t.restoredAt} is not null) and (${t.restoreActionId} is null or ${t.restoreActionId}<>${t.sourceActionId})) is true`,
+    ),
+    check(
+      "np_agent_containments_bounds_check",
+      sql`(jsonb_typeof(${t.targetRef})='object' and octet_length(${t.targetRef}::text)<=4096 and ${t.targetVersionDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and jsonb_typeof(${t.originalState})='object' and octet_length(${t.originalState}::text)<=16384 and (${t.lastErrorCode} is null or ${t.lastErrorCode} ~ '^[A-Z][A-Z0-9_]{0,63}$')) is true`,
+    ),
+    check(
+      "np_agent_containments_time_check",
+      sql`(${t.updatedAt}>=${t.createdAt} and (${t.expiresAt} is null or (${t.expiresAt}>${t.createdAt} and ${t.expiresAt}<=${t.createdAt}+interval '30 days')) and (${t.activatedAt} is null or ${t.activatedAt}>=${t.createdAt}) and (${t.restoredAt} is null or ${t.restoredAt}>=${t.activatedAt})) is true`,
+    ),
+  ],
+);

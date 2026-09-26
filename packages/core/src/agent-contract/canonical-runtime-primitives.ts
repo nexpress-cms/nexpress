@@ -488,6 +488,20 @@ export function parseAgentTargetRef(
   }
   const kind = Object.getOwnPropertyDescriptor(value, "kind")?.value;
   switch (kind) {
+    case "comment": {
+      const record = canonicalBodyRecord(
+        value,
+        path,
+        ["kind", "collection", "commentId"],
+        ["kind", "collection", "commentId"],
+        state,
+      );
+      return {
+        kind,
+        collection: canonicalBodyIdentifier(record.collection, `${path}.collection`, 96),
+        commentId: canonicalBodyUuid(record.commentId, `${path}.commentId`),
+      };
+    }
     case "document": {
       const record = canonicalBodyRecord(
         value,

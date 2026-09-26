@@ -1,3 +1,4 @@
+import { npAgentIncidentFeedbackInputSchemaV1 } from "./incident-feedback-contract.js";
 import {
   npAgentPolicySimulationFixtureJsonV1,
   npAgentPolicySimulationReportSchemaV1,
@@ -579,6 +580,10 @@ export const npAgentAdminOperationRouteInventoryV1 = deepFreeze([
       ...DESTRUCTIVE,
     },
   ),
+  operation("agents.incidents.feedback", "POST", "/api/admin/agents/incidents/{id}/feedback", {
+    capability: "community.moderate",
+    preconditions: ROW,
+  }),
   operation("agents.incidents.transition", "POST", "/api/admin/agents/incidents/{id}/transitions", {
     inputKind: "incident-transition",
     preconditions: ROW,
@@ -873,6 +878,8 @@ function preconditionField(
 }
 
 function buildInputSchema(seed: OperationSeed): NpAgentJsonSchema {
+  if (seed.id === "agents.incidents.feedback")
+    return requireSchema(npAgentIncidentFeedbackInputSchemaV1);
   if (seed.id === "agents.changesets.rollback_plans.create")
     return requireSchema(npAgentRollbackPlanCreateInputSchemaV1);
   if (seed.id === "agents.changesets.rollback_plans.request_approval")

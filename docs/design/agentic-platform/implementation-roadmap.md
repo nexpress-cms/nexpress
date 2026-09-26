@@ -636,6 +636,11 @@ The [AP-600 foundation flow](r6-incident-foundation-flow.md) records the shared
 persistence and explicitly installed read boundary. It does not close R5
 assistive-technology acceptance or the R6 recipe gate.
 
+The [AP-601 Moderator flow](r6-moderator-flow.md) records observed-comment
+detection, approved content quarantine/restore and attributed feedback. Its
+explicit source, Gateway installation and evaluation boundaries remain open;
+local verification does not authorize automatic moderation or close R6.
+
 ### R7 — Guardian and application security orchestration
 
 Outcome: application signals are correlated into incidents, with narrowly

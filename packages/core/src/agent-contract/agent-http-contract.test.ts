@@ -46,7 +46,7 @@ describe("Agent HTTP closed descriptor contract", () => {
       createHash("sha256")
         .update(JSON.stringify({ routes: npAgentHttpRoutesV1, schemas }))
         .digest("hex"),
-    ).toMatchInlineSnapshot(`"6577c2e9caadb62705139c953ebb6a55e7b1a496da6c78131275de9f8f70794a"`);
+    ).toMatchInlineSnapshot(`"b337b1efd058d1ff012bfdd71398cf00aa8bf76b3e00d12b1dc959d4fe8ba0f8"`);
   });
   it("rejects modified, duplicate and unshipped capability descriptors", () => {
     const capabilities = npAgentReadCapabilityIdsV1.map(

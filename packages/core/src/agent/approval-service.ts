@@ -34,6 +34,7 @@ import {
   npRequireAgentApprovalQueryV1,
   type NpAgentApprovalChallengeOutputV1,
   type NpAgentApprovalListItemV1,
+  type NpAgentApprovalActionReviewV1,
 } from "../agent-contract/approval-contract.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import {
@@ -92,7 +93,15 @@ export interface NpAgentApprovalServiceOptionsV1 extends NpAgentAdminAdmissionOp
   integrityKeys: NpAgentApprovalIntegrityKeyring;
   challengeKeys: NpAgentTokenHashKeyring;
   cursorKey: Uint8Array;
+  /** Optional direct-action owner, shared by the existing approval list and decisions. */
+  resolveActionTargets?: () => NpAgentApprovalServiceOptionsV1["targets"] | null;
   targets: {
+    /** Safe action evidence, supplied by the installed direct-action owner. */
+    actionReview?: (input: {
+      siteId: string;
+      target: Extract<NpAgentApprovalTargetV1, { kind: "action" }>;
+      actor: NpAgentAdminActorV1;
+    }) => Promise<NpAgentApprovalActionReviewV1>;
     visible: (input: {
       siteId: string;
       target: NpAgentApprovalTargetV1;
@@ -125,6 +134,12 @@ export interface NpAgentApprovalServiceOptionsV1 extends NpAgentAdminAdmissionOp
 
 export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOptionsV1) {
   const now = options.now ?? (() => new Date());
+  const targetsFor = (target: NpAgentApprovalTargetV1) => {
+    if (target.kind !== "action" || !options.resolveActionTargets) return options.targets;
+    const targets = options.resolveActionTargets();
+    if (!targets) throw missing();
+    return targets;
+  };
   const admin = createAgentAdminAdmissionV1(options);
   const keys = new Map<string, NpAgentApprovalIntegrityKeyV1>();
   for (const key of [options.integrityKeys.active, ...(options.integrityKeys.previous ?? [])]) {
@@ -498,17 +513,22 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
     generation: number;
   }) {
     const s = npRequireAgentApprovalStatementCanonical(input.statement);
-    if (s.target.kind === "action") throw missing();
     const statementHash = await npDigestAgentApprovalStatementCanonical(s);
     await input.db.insert(npAgentApprovals).values({
       id: s.approvalId,
       siteId: s.siteId,
       targetKind: s.target.kind,
-      targetId: s.target.kind === "changeset" ? s.target.changeSetId : s.target.rollbackPlanId,
+      targetId:
+        s.target.kind === "action"
+          ? s.target.actionId
+          : s.target.kind === "changeset"
+            ? s.target.changeSetId
+            : s.target.rollbackPlanId,
+      targetActionId: s.target.kind === "action" ? s.target.actionId : null,
       targetRollbackPlanId: s.target.kind === "changeset_rollback" ? s.target.rollbackPlanId : null,
-      targetChangesetId: s.target.changeSetId,
+      targetChangesetId: s.target.kind === "action" ? null : s.target.changeSetId,
       generation: input.generation,
-      planHash: s.target.planHash,
+      planHash: s.target.kind === "action" ? s.target.proposalHash : s.target.planHash,
       capabilityId: s.capabilityId,
       capabilityContractVersion: s.capabilityContractVersion,
       capabilityFingerprint: s.capabilityFingerprint,
@@ -586,12 +606,23 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
     try {
       const checked = await verify(row);
       await staff(getDb(), input.siteId, input.actor, checked.statement);
-      const reviewSummary = await options.targets.visible({
+      const reviewSummary = await targetsFor(checked.statement.target).visible({
         ...input,
         target: checked.statement.target,
       });
       const projected = await item(row, input.actor, reviewSummary);
-      const review = await options.targets.review({ ...input, target: projected.target });
+      const review =
+        projected.target.kind === "action"
+          ? null
+          : await targetsFor(projected.target).review({ ...input, target: projected.target });
+      const actionReview =
+        projected.target.kind === "action"
+          ? await targetsFor(projected.target).actionReview?.({
+              ...input,
+              target: projected.target,
+            })
+          : undefined;
+      if (projected.target.kind === "action" && !actionReview) throw missing();
       const current = await readRow(input.siteId, input.id);
       if (current.version !== row.version) throw conflict();
       await staff(getDb(), input.siteId, input.actor, row.statementBody);
@@ -600,7 +631,8 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
         item: projected,
         review: projected.target.kind === "changeset_rollback" ? null : review,
         rollbackReview:
-          projected.target.kind === "changeset_rollback" ? review.rollbackDetail : null,
+          projected.target.kind === "changeset_rollback" ? review?.rollbackDetail : null,
+        ...(actionReview ? { actionReview } : {}),
       });
     } catch (error) {
       if (error instanceof NpAgentGatewayError && error.code === "APPROVAL_INTEGRITY_INVALID")
@@ -688,7 +720,7 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
       try {
         const checked = await verify(row);
         await staff(getDb(), input.siteId, input.actor, checked.statement);
-        const reviewSummary = await options.targets.visible({
+        const reviewSummary = await targetsFor(checked.statement.target).visible({
           ...input,
           target: checked.statement.target,
         });
@@ -733,7 +765,7 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
     try {
       const checked = await verify(seed);
       await staff(getDb(), input.siteId, input.actor, checked.statement);
-      return await options.targets.withAuthority({
+      return await targetsFor(checked.statement.target).withAuthority({
         siteId: input.siteId,
         target: checked.statement.target,
         actor: input.actor,
@@ -1032,7 +1064,7 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
     for (const seed of rows) {
       try {
         const checked = await verify(seed);
-        const changed = await options.targets.expire({
+        const changed = await targetsFor(checked.statement.target).expire({
           siteId: input.siteId,
           target: checked.statement.target,
           mutate: async (db, target) => {
@@ -1162,6 +1194,44 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
         ),
       );
   }
+  /** Direct-action owner holds its action lock before consuming the exact single-use approval. */
+  async function consumeAction(input: {
+    db: Db;
+    siteId: string;
+    id: string;
+    actionId: string;
+    proposalHash: string;
+    statementHash: string;
+    consumedAt: Date;
+  }) {
+    const row = await readRow(input.siteId, input.id, input.db, true);
+    const checked = await verify(row);
+    if (
+      row.state !== "approved" ||
+      row.expiresAt <= now() ||
+      row.statementHash !== input.statementHash ||
+      checked.statement.target.kind !== "action" ||
+      checked.statement.target.actionId !== input.actionId ||
+      checked.statement.target.proposalHash !== input.proposalHash
+    )
+      throw conflict();
+    await input.db
+      .update(npAgentApprovals)
+      .set({
+        state: "consumed",
+        consumedAt: input.consumedAt,
+        version: row.version + 1,
+        ...clearedChallenge,
+      })
+      .where(
+        and(
+          eq(npAgentApprovals.id, row.id),
+          eq(npAgentApprovals.siteId, input.siteId),
+          eq(npAgentApprovals.version, row.version),
+        ),
+      );
+    return checked.statement;
+  }
   /** Existing canonical revocation under a domain cancellation/failure transaction. */
   async function invalidateForExecution(input: {
     db: Db;
@@ -1208,7 +1278,7 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
     retiredKeyId?: string,
   ) {
     const statement = npRequireAgentApprovalStatementCanonical(seed.statementBody);
-    return options.targets.expire({
+    return targetsFor(statement.target).expire({
       siteId: seed.siteId,
       target: statement.target,
       mutate: async (db, target) => {
@@ -1325,7 +1395,10 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
         const checked = await verify(row);
         if (row.expiresAt <= now()) continue; // Existing expiry owner has its own bounded scan.
         try {
-          await options.targets.revalidate({ siteId: row.siteId, statement: checked.statement });
+          await targetsFor(checked.statement.target).revalidate({
+            siteId: row.siteId,
+            statement: checked.statement,
+          });
         } catch (error) {
           if (!(error instanceof NpAgentGatewayError)) throw error;
           const authorityCodes = [
@@ -1339,6 +1412,8 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
           const targetCodes = [
             "CHANGESET_CONFLICT",
             "CHANGESET_NOT_FOUND",
+            "MODERATION_CONFLICT",
+            "MODERATION_UNAVAILABLE",
             "PREVIEW_REQUIRED",
             "APPROVAL_CONFLICT",
           ];
@@ -1389,6 +1464,7 @@ export function createAgentApprovalServiceV1(options: NpAgentApprovalServiceOpti
     reconcileExpired,
     reconcile,
     consume,
+    consumeAction,
     invalidateForExecution,
   };
 }

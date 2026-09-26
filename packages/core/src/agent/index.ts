@@ -74,3 +74,13 @@ export { npCollectAgentWorkerHealthV1, npCollectAgentWorkerHealthV2 } from "./wo
 export { npCollectAgentRuntimeOutcomeV1 } from "./runtime-outcome-health.js";
 
 export * from "./incident-service.js";
+export * from "./incident-write-service.js";
+export * from "./moderator-detector.js";
+export * from "./moderation-service.js";
+export * from "./moderation-capability.js";
+export {
+  createAgentModeratorCollectorV1,
+  createAgentModeratorCommentObserverV1,
+  npResolveAgentModeratorCommentEvidenceV1,
+  type NpAgentModeratorCollectionResultV1,
+} from "./moderator-collector.js";

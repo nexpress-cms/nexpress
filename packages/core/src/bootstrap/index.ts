@@ -52,3 +52,9 @@ export {
   resetAgentStudioServerRuntimeV1,
   setAgentStudioServerRuntimeV1,
 } from "../agent/studio-runtime.js";
+
+export {
+  setCommunityModerationObserverV1,
+  resetCommunityModerationObserverV1,
+} from "../community/moderation-observer.js";
+export type { NpCommunityModerationObserverV1 } from "../community/moderation-observer.js";

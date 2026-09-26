@@ -60,6 +60,61 @@ function detail(state: "pending" | "approved" = "pending", version = 1) {
   };
 }
 test.describe("Agent approval review", () => {
+  test("shows the exact restoration target and keeps human approval separate from execution", async ({
+    page,
+  }, testInfo) => {
+    await isolateE2ERateLimitBucket(page.context(), 227 + testInfo.retry);
+    await signInAsE2EAdmin(page);
+    const actionItem = {
+      ...item(),
+      target: { kind: "action", actionId: id, runId: id, agentId: null, proposalHash: hash },
+      capabilityId: "moderation.restore",
+      intendedOperation: null,
+      risk: "sensitive",
+      reauthentication: { mode: "recent", maxAgeSeconds: 300, assurance: "staff-primary" },
+      requester: { kind: "principal", id },
+      requiredScopes: ["moderation:execute"],
+      approval: { ...item().approval, requiredHumanCapabilities: ["community.moderate"] },
+    };
+    const actionDetail = npRequireAgentApprovalDetailV1({
+      ...detail(),
+      item: actionItem,
+      actionReview: {
+        actionId: id,
+        proposalHash: hash,
+        capabilityId: "moderation.restore",
+        target: { kind: "comment", collection: "discussions", id },
+        expectedVersionDigest: hash,
+        containmentId: "31111111-1111-4111-8111-111111111111",
+        incidentId: null,
+        reasonCode: null,
+      },
+    });
+    await page.route(`**/api/admin/agents/approvals/${id}`, (route) =>
+      route.fulfill({ json: actionDetail }),
+    );
+    await page.goto(`/admin/agents/approvals/${id}`);
+    const facts = page.getByRole("region", { name: "Content moderation action" });
+    await expect(facts.getByRole("heading", { name: "Restore content" })).toBeVisible();
+    await expect(facts.getByText(`comment · discussions · ${id}`)).toBeVisible();
+    await expect(facts.getByText("Restoration handle", { exact: true })).toBeVisible();
+    await expect(facts.getByText("31111111-1111-4111-8111-111111111111")).toBeVisible();
+    await expect(page.getByText(/through a separate execution request/)).toBeVisible();
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      const closeNavigation = page.getByRole("button", { name: "Close navigation" }).last();
+      if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+        await closeNavigation.click();
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+        .toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath(`moderation-restore-${width}.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+  });
   test("distinguishes unavailable runtime from an authorized empty queue", async ({
     page,
   }, testInfo) => {

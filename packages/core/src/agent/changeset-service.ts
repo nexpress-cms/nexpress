@@ -254,7 +254,10 @@ export interface NpAgentChangeSetServiceOptionsV1 extends NpAgentAdminAdmissionO
     enqueueVerify?: (job: NpAgentChangeSetVerifyJobPayload) => Promise<void>;
   };
   /** Explicit approval-only installation. Execution is not installed or advertised. */
-  approvals?: Pick<NpAgentApprovalServiceOptionsV1, "integrityKeys" | "challengeKeys"> & {
+  approvals?: Pick<
+    NpAgentApprovalServiceOptionsV1,
+    "integrityKeys" | "challengeKeys" | "resolveActionTargets"
+  > & {
     lifetimeSeconds?: number;
     resolveExecutionBinding: (input: {
       siteId: string;

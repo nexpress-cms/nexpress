@@ -70,3 +70,6 @@ export * from "./worker-health-contract.js";
 export * from "./runtime-outcome-contract.js";
 
 export * from "./incident-contract.js";
+export * from "./incident-feedback-contract.js";
+export * from "./moderator-contract.js";
+export * from "./moderation-capability-contract.js";

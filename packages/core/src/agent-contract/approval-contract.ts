@@ -112,6 +112,45 @@ export interface NpAgentApprovalDetailV1 {
   item: NpAgentApprovalListItemV1;
   review: NpAgentChangeSetReviewV1 | null;
   rollbackReview: NpAgentRollbackDetailV1 | null;
+  actionReview?: NpAgentApprovalActionReviewV1;
+}
+export interface NpAgentApprovalActionReviewV1 {
+  actionId: string;
+  proposalHash: string;
+  capabilityId: "moderation.quarantine" | "moderation.restore";
+  target: { kind: "comment" | "document"; collection: string; id: string };
+  expectedVersionDigest: string;
+  containmentId: string | null;
+  incidentId: string | null;
+  reasonCode: string | null;
+}
+function actionReview(value: unknown): NpAgentApprovalActionReviewV1 {
+  const p = "agent.approval.actionReview";
+  const r = record(value, p, [
+    "actionId",
+    "proposalHash",
+    "capabilityId",
+    "target",
+    "expectedVersionDigest",
+    "containmentId",
+    "incidentId",
+    "reasonCode",
+  ]);
+  const target = record(r.target, p + ".target", ["kind", "collection", "id"]);
+  return {
+    actionId: canonicalBodyUuid(r.actionId, p),
+    proposalHash: canonicalBodySha256Digest(r.proposalHash, p),
+    capabilityId: enumeration(r.capabilityId, p, ["moderation.quarantine", "moderation.restore"]),
+    target: {
+      kind: enumeration(target.kind, p, ["comment", "document"]),
+      collection: canonicalRuntimeText(target.collection, p, 128),
+      id: canonicalRuntimeText(target.id, p, 128),
+    },
+    expectedVersionDigest: canonicalBodySha256Digest(r.expectedVersionDigest, p),
+    containmentId: r.containmentId === null ? null : canonicalBodyUuid(r.containmentId, p),
+    incidentId: r.incidentId === null ? null : canonicalBodyUuid(r.incidentId, p),
+    reasonCode: r.reasonCode === null ? null : canonicalRuntimeText(r.reasonCode, p, 64),
+  };
 }
 export interface NpAgentApprovalPageV1 {
   schemaVersion: "np.agent-approval-page.v1";
@@ -177,7 +216,16 @@ function analyze<T>(
       maximumObjectProperties: 10000,
       maximumStringCharacters: 1_000_000,
     });
-    return parse(record(copy, name, keys), name);
+    return parse(
+      canonicalBodyRecord(
+        copy,
+        name,
+        keys,
+        keys.filter((key) => key !== "actionReview"),
+        state(),
+      ),
+      name,
+    );
   });
 }
 export function npAnalyzeAgentChangeSetRequestApprovalInputV1(v: unknown) {
@@ -452,6 +500,16 @@ export function npAnalyzeAgentApprovalDetailV1(v: unknown) {
     v,
     (r, p): NpAgentApprovalDetailV1 => {
       const item = npRequireAgentApprovalListItemV1(r.item);
+      const action = r.actionReview === undefined ? undefined : actionReview(r.actionReview);
+      if (
+        item.target.kind === "action"
+          ? !action ||
+            action.actionId !== item.target.actionId ||
+            action.proposalHash !== item.target.proposalHash ||
+            action.capabilityId !== item.capabilityId
+          : action !== undefined
+      )
+        failCanonicalBody("invalid-field", p, "Action review must match target");
       const review = r.review === null ? null : npRequireAgentChangeSetReviewV1(r.review);
       const rollbackReview =
         r.rollbackReview === null ? null : npRequireAgentRollbackDetailV1(r.rollbackReview);
@@ -475,9 +533,10 @@ export function npAnalyzeAgentApprovalDetailV1(v: unknown) {
         item,
         review,
         rollbackReview,
+        ...(action ? { actionReview: action } : {}),
       };
     },
-    ["schemaVersion", "item", "review", "rollbackReview"],
+    ["schemaVersion", "item", "review", "rollbackReview", "actionReview"],
   );
 }
 export const npRequireAgentApprovalDetailV1 = (v: unknown) =>
@@ -749,7 +808,22 @@ const approvalDetailSchemaSource = JSON.parse(
       item: approvalItemSchema,
       review: nullable({ $ref: "#/$defs/approvalReview" }),
       rollbackReview: nullable({ $ref: "#/$defs/rollbackDetail" }),
+      actionReview: schema({
+        actionId: approvalUuidSchema,
+        proposalHash: digest,
+        capabilityId: { enum: ["moderation.quarantine", "moderation.restore"] },
+        target: schema({
+          kind: { enum: ["comment", "document"] },
+          collection: { type: "string", minLength: 1, maxLength: 128 },
+          id: { type: "string", minLength: 1, maxLength: 128 },
+        }),
+        expectedVersionDigest: digest,
+        containmentId: nullable(approvalUuidSchema),
+        incidentId: nullable(approvalUuidSchema),
+        reasonCode: nullable({ type: "string", minLength: 1, maxLength: 64 }),
+      }),
     }),
+    required: ["schemaVersion", "item", "review", "rollbackReview"],
     $schema: approvalReviewDialect,
     $defs: {
       ...(approvalReviewDefinitions as Record<string, unknown>),

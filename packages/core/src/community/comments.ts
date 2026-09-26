@@ -1,4 +1,5 @@
-import { and, asc, count, desc, eq, inArray, notInArray, sql, type SQL } from "drizzle-orm";
+import { npWriteObservedCommentV1 } from "./moderation-observer.js";
+import { and, asc, count, desc, eq, inArray, notInArray, isNull, sql, type SQL } from "drizzle-orm";
 
 import { getCollectionConfig } from "../collections/registry.js";
 import { getDocumentById } from "../collections/pipeline.js";
@@ -284,21 +285,30 @@ async function doCreateComment(
     typeof targetDoc.siteId === "string" && targetDoc.siteId.length > 0
       ? targetDoc.siteId
       : ((await getCurrentSiteId()) ?? NP_DEFAULT_SITE_ID);
-  const [row] = (await db
-    .insert(npComments)
-    .values({
-      targetType: input.targetType,
-      targetId: input.targetId,
-      parentId: input.parentId ?? null,
-      memberId: input.memberId,
-      bodyMd: input.bodyMd,
-      bodyHtml: html,
-      status: initialStatus,
-      siteId: targetSiteId,
-    })
-    .returning()) as Array<NpCommentRow>;
-  if (!row) throw new Error("Comment insert returned no row");
-  const checkedRow = npRequireCommentRow(row);
+  const checkedRow = await npWriteObservedCommentV1({
+    siteId: targetSiteId,
+    operation: "create",
+    actorMemberId: input.memberId,
+    spamVerdict: spamVerdict.kind,
+    profanityVerdict: profanityVerdict.kind,
+    write: async (writeDb) => {
+      const [row] = (await writeDb
+        .insert(npComments)
+        .values({
+          targetType: input.targetType,
+          targetId: input.targetId,
+          parentId: input.parentId ?? null,
+          memberId: input.memberId,
+          bodyMd: input.bodyMd,
+          bodyHtml: html,
+          status: initialStatus,
+          siteId: targetSiteId,
+        })
+        .returning()) as Array<NpCommentRow>;
+      if (!row) throw new Error("Comment insert returned no row");
+      return npRequireCommentRow(row);
+    },
+  });
 
   if (flaggedBy.length > 0) {
     // Surface flagged content in the audit log so mods can triage.
@@ -743,13 +753,35 @@ export async function updateComment(input: NpCommentUpdateInput): Promise<NpComm
   if (editFlaggedBy.length > 0) {
     updateValues.status = "pending";
   }
-  const [updated] = (await db
-    .update(npComments)
-    .set(updateValues)
-    .where(eq(npComments.id, input.commentId))
-    .returning()) as NpCommentRow[];
-  if (!updated) throw new Error("Comment update returned no row");
-  const checkedUpdated = npRequireCommentRow(updated);
+  const checkedUpdated = await npWriteObservedCommentV1({
+    siteId: existing.siteId,
+    operation: "update",
+    actorMemberId: input.memberId,
+    spamVerdict: spamVerdict.kind,
+    profanityVerdict: profanityVerdict.kind,
+    write: async (writeDb) => {
+      const [updated] = (await writeDb
+        .update(npComments)
+        .set(updateValues)
+        .where(
+          and(
+            eq(npComments.id, input.commentId),
+            eq(npComments.siteId, existing.siteId),
+            eq(npComments.status, existing.status),
+            eq(npComments.bodyMd, existing.bodyMd),
+            existing.editedAt
+              ? eq(npComments.editedAt, existing.editedAt)
+              : isNull(npComments.editedAt),
+          ),
+        )
+        .returning()) as NpCommentRow[];
+      if (!updated)
+        throw new NpValidationError("Comment changed concurrently", [
+          { field: "comment", message: "Reload the comment before editing." },
+        ]);
+      return npRequireCommentRow(updated);
+    },
+  });
 
   if (editFlaggedBy.length > 0) {
     await recordAuditEvent({

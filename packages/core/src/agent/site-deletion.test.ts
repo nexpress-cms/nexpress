@@ -23,6 +23,7 @@ const expectedTables = [
   "np_agent_connection_operations",
   "np_agent_connection_secret_versions",
   "np_agent_connections",
+  "np_agent_containments",
   "np_agent_events",
   "np_agent_feedback",
   "np_agent_incident_signals",
@@ -70,6 +71,8 @@ describe("Agent site deletion foundation", () => {
   it("deletes release edges before Actions and receipts before principals", () => {
     const position = (name: (typeof npAgentSiteDeletionOrderV1)[number]) =>
       npAgentSiteDeletionOrderV1.indexOf(name);
+    expect(position("np_agent_containments")).toBeLessThan(position("np_agent_incidents"));
+    expect(position("np_agent_containments")).toBeLessThan(position("np_agent_actions"));
     expect(position("np_agent_source_release_edges")).toBeLessThan(position("np_agent_actions"));
     expect(position("np_agent_actions")).toBeLessThan(position("np_agent_source_releases"));
     expect(position("np_agent_source_releases")).toBeLessThan(position("np_agent_principals"));

@@ -56,6 +56,7 @@ const AGENT_TABLES = [
   "np_agent_connection_operations",
   "np_agent_connection_secret_versions",
   "np_agent_connections",
+  "np_agent_containments",
   "np_agent_events",
   "np_agent_feedback",
   "np_agent_incident_signals",
@@ -94,6 +95,19 @@ const AGENT_TABLES = [
 
 /** Critical state and same-site constraints whose absence weakens fail-closed diagnostics. */
 const AGENT_CONSTRAINTS = [
+  "np_agent_containments_site_id_id_unique",
+  "np_agent_containments_site_id_np_sites_id_fk",
+  "np_agent_containments_source_action_unique",
+  "np_agent_containments_restore_action_unique",
+  "np_agent_containments_source_action_fk",
+  "np_agent_containments_restore_action_fk",
+  "np_agent_containments_incident_fk",
+  "np_agent_containments_kind_check",
+  "np_agent_containments_state_check",
+  "np_agent_containments_bounds_check",
+  "np_agent_containments_time_check",
+  "np_agent_actions_containment_fk",
+  "np_agent_actions_approval_fk",
   "np_agent_incidents_site_id_id_unique",
   "np_agent_incidents_assigned_fk",
   "np_agent_incidents_state_check",

@@ -25,6 +25,14 @@ import {
   type NpAgentChangeSetCapabilityInvocationRequestV1,
 } from "../agent-contract/installed-capability-contract.js";
 import type { NpAgentChangeSetCapabilityFacadeV1 } from "./changeset-capability.js";
+import type { NpAgentModerationCapabilityFacadeV1 } from "./moderation-capability.js";
+import {
+  npIsAgentModerationCapabilityIdV1,
+  npBuildAgentModerationCapabilityDefinitionCanonicalV1,
+  type NpAgentModerationCapabilityInvocationResultV1,
+  type NpAgentModerationCapabilityInvocationRequestV1,
+  type NpAgentModerationCapabilityIdV1,
+} from "../agent-contract/moderation-capability-contract.js";
 
 import { and, eq, desc, count } from "drizzle-orm";
 
@@ -95,6 +103,7 @@ export interface NpAgentCapabilityAdmissionOptionsV1 {
   runtimeAdmission?: NpAgentRuntimeAdmissionV1;
   registry: NpAgentReadCapabilityRegistryV1;
   resolveChangeSetCapabilities?: () => NpAgentChangeSetCapabilityFacadeV1 | null;
+  resolveModerationCapabilities?: () => NpAgentModerationCapabilityFacadeV1 | null;
   resolveGatewaySettings: (
     siteId: string,
   ) => NpAgentGatewaySettingsV1 | Promise<NpAgentGatewaySettingsV1>;
@@ -1099,6 +1108,29 @@ export function createAgentCapabilityAdmissionServiceV1(
     }
     return extra;
   }
+  async function moderationEntries() {
+    const facade = options.resolveModerationCapabilities?.();
+    if (!facade) return [];
+    const entries = await Promise.all(facade.ids.map((id) => facade.entry(id)));
+    for (const [index, entry] of entries.entries()) {
+      const id = facade.ids[index];
+      const expected = npBuildAgentModerationCapabilityDefinitionCanonicalV1(id);
+      if (
+        !npIsAgentModerationCapabilityIdV1(id) ||
+        (index > 0 && facade.ids[index - 1] >= id) ||
+        serializeAgentCanonicalJson(entry.definitionCanonical) !==
+          serializeAgentCanonicalJson(expected) ||
+        serializeAgentCanonicalJson(entry.definition) !==
+          serializeAgentCanonicalJson(expected.capabilities[0]) ||
+        serializeAgentCanonicalJson(entry.canonical) !==
+          serializeAgentCanonicalJson(expected.capabilities[0]) ||
+        entry.capabilityFingerprint !==
+          (await npDigestAgentCapabilityRegistryCanonical(expected, expected.capabilities))
+      )
+        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+    }
+    return entries;
+  }
   const service = {
     async sourceEntries(context: Readonly<Omit<NpAgentRuntimeRunContextV1, "db">>) {
       const recipe = context.evidence.registry.recipes.find(
@@ -1206,6 +1238,12 @@ export function createAgentCapabilityAdmissionServiceV1(
       if (!options.runtimeAdmission || !Number.isSafeInteger(input.sequence) || input.sequence < 1)
         throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
       const request = npRequireAgentInstalledCapabilityInvocationRequestV1(input.request);
+      if (npIsAgentModerationCapabilityIdV1(request.capabilityId))
+        throw new NpAgentGatewayError(
+          "CAPABILITY_UNAVAILABLE",
+          404,
+          "Runtime moderation is unavailable.",
+        );
       if (npIsAgentChangeSetCapabilityIdV1(request.capabilityId)) {
         const facade = options.resolveChangeSetCapabilities?.();
         if (!facade || !facade.ids.includes(request.capabilityId))
@@ -1291,6 +1329,7 @@ export function createAgentCapabilityAdmissionServiceV1(
       authorizationContextFingerprint: string;
       requiredScopes: readonly NpAgentScope[];
       minimumExposure: "read" | "propose" | "approved-execute";
+      prepareTransaction?: (db: Db) => Promise<void>;
       resolveTransportAudience: NpAgentGatewayServiceV1["getTransportAudience"];
       mutate: (db: Db, now: Date, authentication: NpAgentCapabilityAuthenticationV1) => Promise<T>;
     }): Promise<T> {
@@ -1384,6 +1423,7 @@ export function createAgentCapabilityAdmissionServiceV1(
       } else throw new NpAgentGatewayError("AUTHORIZATION_CHANGED", 409, "Authorization changed.");
       return service.withCurrentAuthority({
         authentication,
+        prepareTransaction: input.prepareTransaction,
         requiredScopes: input.requiredScopes,
         minimumExposure: input.minimumExposure,
         mutate: async (db, time) => {
@@ -1404,6 +1444,8 @@ export function createAgentCapabilityAdmissionServiceV1(
       authentication: NpAgentCapabilityAuthenticationV1;
       requiredScopes: readonly NpAgentScope[];
       minimumExposure: "read" | "propose" | "approved-execute";
+      /** Server-owned site/quota locks, acquired before principal authority locks. */
+      prepareTransaction?: (db: Db) => Promise<void>;
       mutate: (db: Db, now: Date) => Promise<T>;
     }): Promise<T> {
       const authentication = input.authentication;
@@ -1431,6 +1473,7 @@ export function createAgentCapabilityAdmissionServiceV1(
       await assertExposure();
       return getDb().transaction(
         async (tx) => {
+          await input.prepareTransaction?.(tx);
           await assertCurrentAuthentication(tx, authentication, input.requiredScopes, nowFn);
           const result = await input.mutate(tx, nowFn());
           await assertExposure();
@@ -1454,7 +1497,7 @@ export function createAgentCapabilityAdmissionServiceV1(
         await assertCurrentAuthentication(rawTx, authentication, authentication.scopes, nowFn);
       });
       const transport = descriptorTransport(authentication.authorizationContext.transport);
-      const extra = await changeSetEntries();
+      const extra = [...(await changeSetEntries()), ...(await moderationEntries())];
       const all = [...options.registry.ids.map((id) => options.registry.get(id)), ...extra].sort(
         (a, b) => a.definition.descriptor.id.localeCompare(b.definition.descriptor.id),
       );
@@ -1503,14 +1546,38 @@ export function createAgentCapabilityAdmissionServiceV1(
     }): Promise<
       C extends NpAgentReadCapabilityIdV1
         ? NpAgentReadCapabilityInvocationResultV1<C>
-        : NpAgentChangeSetCapabilityInvocationResultV1 & {
-            task?: NpAgentMcpTaskV1;
-          }
+        : C extends NpAgentModerationCapabilityIdV1
+          ? NpAgentModerationCapabilityInvocationResultV1
+          : NpAgentChangeSetCapabilityInvocationResultV1 & {
+              task?: NpAgentMcpTaskV1;
+            }
     > {
       type Result = C extends NpAgentReadCapabilityIdV1
         ? NpAgentReadCapabilityInvocationResultV1<C>
-        : NpAgentChangeSetCapabilityInvocationResultV1;
+        : C extends NpAgentModerationCapabilityIdV1
+          ? NpAgentModerationCapabilityInvocationResultV1
+          : NpAgentChangeSetCapabilityInvocationResultV1;
       const request = npRequireAgentInstalledCapabilityInvocationRequestV1(input.request);
+      if (npIsAgentModerationCapabilityIdV1(request.capabilityId)) {
+        const facade = options.resolveModerationCapabilities?.();
+        const projection = await service.project({ authentication: input.authentication });
+        if (
+          !facade ||
+          input.taskRequest ||
+          !projection.entries.some(
+            (entry) => entry.definition.descriptor.id === request.capabilityId,
+          )
+        )
+          throw new NpAgentGatewayError(
+            "CAPABILITY_UNAVAILABLE",
+            404,
+            "Capability is unavailable.",
+          );
+        return (await facade.invoke(
+          input.authentication,
+          request as NpAgentModerationCapabilityInvocationRequestV1,
+        )) as Result;
+      }
       if (npIsAgentChangeSetCapabilityIdV1(request.capabilityId)) {
         const facade = options.resolveChangeSetCapabilities?.();
         const projection = await service.project({ authentication: input.authentication });

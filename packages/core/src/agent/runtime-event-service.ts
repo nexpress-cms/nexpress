@@ -206,12 +206,17 @@ export function createAgentRuntimeEventServiceV1(options: NpAgentRuntimeEventSer
   return {
     registerTrigger,
     registerTriggerInTransaction: registerTrigger,
-    async record(input: { siteId: string; event: NpAgentEventCanonicalV1; expiresAt?: Date }) {
+    async record(input: {
+      siteId: string;
+      event: NpAgentEventCanonicalV1;
+      expiresAt?: Date;
+      db?: Db;
+    }) {
       npAssertAgentPreviewEffectsAllowed();
       canonicalBodyRecord(
         input,
         "agent.runtime.event.record",
-        ["siteId", "event", "expiresAt"],
+        ["siteId", "event", "expiresAt", "db"],
         ["siteId", "event"],
         { seen: new WeakSet<object>() },
       );
@@ -224,86 +229,92 @@ export function createAgentRuntimeEventServiceV1(options: NpAgentRuntimeEventSer
       const event = npRequireAgentEventCanonical(input.event);
       if (event.siteId !== input.siteId) fail();
       const eventHash = await npDigestAgentEventCanonical(event);
-      return npWithAgentRuntimeControlTransactionV1(input.siteId, async ({ db }) => {
-        const time = now(),
-          expiresAt = input.expiresAt ?? new Date(time.getTime() + 14 * 86400_000);
-        if (
-          !Number.isFinite(expiresAt.getTime()) ||
-          expiresAt <= time ||
-          expiresAt.getTime() > time.getTime() + 14 * 86400_000
-        )
-          fail();
-        if (event.deduplicationKey) {
-          const [previous] = await db
-            .select()
-            .from(npAgentEvents)
-            .where(
-              and(
-                eq(npAgentEvents.siteId, input.siteId),
-                eq(npAgentEvents.kind, event.kind),
-                eq(npAgentEvents.sourceKind, event.source.kind),
-                eq(npAgentEvents.sourceComponent, event.source.component),
-                eq(npAgentEvents.deduplicationKey, event.deduplicationKey),
-              ),
-            )
-            .limit(1);
-          if (previous) {
-            if (previous.eventHash !== eventHash) fail("IDEMPOTENCY_KEY_REUSED");
-            return { eventId: previous.id, replayed: true };
-          }
-        }
-        const cause = event.causation;
-        if (cause) {
-          const [parent] = await db
-            .select()
-            .from(npAgentRuns)
-            .where(and(eq(npAgentRuns.siteId, input.siteId), eq(npAgentRuns.id, cause.sourceRunId)))
-            .limit(1);
-          const [action] = await db
-            .select()
-            .from(npAgentActions)
-            .where(
-              and(
-                eq(npAgentActions.siteId, input.siteId),
-                eq(npAgentActions.id, cause.sourceActionId),
-                eq(npAgentActions.runId, cause.sourceRunId),
-              ),
-            )
-            .limit(1);
+      return npWithAgentRuntimeControlTransactionV1(
+        input.siteId,
+        async ({ db }) => {
+          const time = now(),
+            expiresAt = input.expiresAt ?? new Date(time.getTime() + 14 * 86400_000);
           if (
-            !parent ||
-            !action ||
-            parent.rootRunId !== cause.rootRunId ||
-            parent.causalDepth !== cause.depth
+            !Number.isFinite(expiresAt.getTime()) ||
+            expiresAt <= time ||
+            expiresAt.getTime() > time.getTime() + 14 * 86400_000
           )
-            fail("RUNTIME_EVENT_LINEAGE_INVALID");
-        }
-        const [inserted] = await db
-          .insert(npAgentEvents)
-          .values({
-            siteId: input.siteId,
-            kind: event.kind,
-            sourceKind: event.source.kind,
-            sourceComponent: event.source.component,
-            subject: event.subject,
-            actor: event.actor,
-            causation: cause,
-            causalRootRunId: cause?.rootRunId,
-            causalRunId: cause?.sourceRunId,
-            causalActionId: cause?.sourceActionId,
-            causalDepth: cause?.depth,
-            correlationId: event.correlationId,
-            deduplicationKey: event.deduplicationKey,
-            eventHash,
-            privacy: event.privacy,
-            payload: event.payload,
-            occurredAt: new Date(event.occurredAt),
-            recordedAt: time,
-            expiresAt,
-          })
-          .returning({ id: npAgentEvents.id });
-        return { eventId: inserted.id, replayed: false };
-      });
+            fail();
+          if (event.deduplicationKey) {
+            const [previous] = await db
+              .select()
+              .from(npAgentEvents)
+              .where(
+                and(
+                  eq(npAgentEvents.siteId, input.siteId),
+                  eq(npAgentEvents.kind, event.kind),
+                  eq(npAgentEvents.sourceKind, event.source.kind),
+                  eq(npAgentEvents.sourceComponent, event.source.component),
+                  eq(npAgentEvents.deduplicationKey, event.deduplicationKey),
+                ),
+              )
+              .limit(1);
+            if (previous) {
+              if (previous.eventHash !== eventHash) fail("IDEMPOTENCY_KEY_REUSED");
+              return { eventId: previous.id, replayed: true };
+            }
+          }
+          const cause = event.causation;
+          if (cause) {
+            const [parent] = await db
+              .select()
+              .from(npAgentRuns)
+              .where(
+                and(eq(npAgentRuns.siteId, input.siteId), eq(npAgentRuns.id, cause.sourceRunId)),
+              )
+              .limit(1);
+            const [action] = await db
+              .select()
+              .from(npAgentActions)
+              .where(
+                and(
+                  eq(npAgentActions.siteId, input.siteId),
+                  eq(npAgentActions.id, cause.sourceActionId),
+                  eq(npAgentActions.runId, cause.sourceRunId),
+                ),
+              )
+              .limit(1);
+            if (
+              !parent ||
+              !action ||
+              parent.rootRunId !== cause.rootRunId ||
+              parent.causalDepth !== cause.depth
+            )
+              fail("RUNTIME_EVENT_LINEAGE_INVALID");
+          }
+          const [inserted] = await db
+            .insert(npAgentEvents)
+            .values({
+              siteId: input.siteId,
+              kind: event.kind,
+              sourceKind: event.source.kind,
+              sourceComponent: event.source.component,
+              subject: event.subject,
+              actor: event.actor,
+              causation: cause,
+              causalRootRunId: cause?.rootRunId,
+              causalRunId: cause?.sourceRunId,
+              causalActionId: cause?.sourceActionId,
+              causalDepth: cause?.depth,
+              correlationId: event.correlationId,
+              deduplicationKey: event.deduplicationKey,
+              eventHash,
+              privacy: event.privacy,
+              payload: event.payload,
+              occurredAt: new Date(event.occurredAt),
+              recordedAt: time,
+              expiresAt,
+            })
+            .returning({ id: npAgentEvents.id });
+          return { eventId: inserted.id, replayed: false };
+        },
+        input.db,
+      );
     },
     async dispatch(input: { siteId: string; eventId: string }) {
       npAssertAgentPreviewEffectsAllowed();
