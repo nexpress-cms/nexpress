@@ -127,14 +127,13 @@ route/state combination:
 
 - Reuse already inspected list layouts at 320/768/1280 in both themes. Policy
   error assertions do not imply that every error-state screenshot was inspected.
-- In one consolidated visual session, inspect the distinct detail/decision and
-  Budget-editor layouts in uncovered narrow/dark states. Existing creation-form
-  evidence samples 320-light, 768-dark and 1280-light; activation/rollback success
-  readbacks were inspected at desktop size; Budget observation was inspected at
-  320px. Record exactly which additional states are observed. See
-  [forms](admin-form-acceptance.md#verification),
-  [success readbacks](admin-success-lifecycle.md#verification) and
-  [read observation](studio-read-observation.md).
+- The subsequent [narrow/dark detail review](admin-state-accessibility.md#narrow-dark-detail-review--2026-09-26)
+  inspected activation, approval, rollback and Budget edit/review states at
+  320px and 768px in dark mode, including keyboard reachability of the scrolled
+  approval-error controls. This completes that selected review task without
+  claiming every visual combination. Earlier [form](admin-form-acceptance.md#verification),
+  [success-readback](admin-success-lifecycle.md#verification) and
+  [read-observation](studio-read-observation.md) evidence retains its own scope.
 - Complete AT-01–06 using the existing consolidated operator checklist and
   synthetic fixtures, recording actual utterances, focus and timing. No new AT
   attempt was made here; the historical inability to capture speech is not a
