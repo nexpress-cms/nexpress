@@ -23,6 +23,7 @@ import {
   npAgentIncidentSignals,
   npAgentSignals,
   npAgentIncidents,
+  npAgentContainments,
   npAgentConnectionAuthRequests,
   npAgentConnectionConfigVersions,
   npAgentConnectionOperations,
@@ -77,6 +78,7 @@ export const npAgentSiteDeletionOrderV1 = Object.freeze([
   "np_agent_incident_timeline",
   "np_agent_incident_signals",
   "np_agent_signals",
+  "np_agent_containments",
   "np_agent_incidents",
   "np_agent_source_release_edges",
   "np_agent_preview_viewer_launches",
@@ -148,6 +150,11 @@ const descriptors: Record<
     siteId: npAgentIncidentSignals.siteId,
   },
   np_agent_signals: { table: npAgentSignals, id: npAgentSignals.id, siteId: npAgentSignals.siteId },
+  np_agent_containments: {
+    table: npAgentContainments,
+    id: npAgentContainments.id,
+    siteId: npAgentContainments.siteId,
+  },
   np_agent_incidents: {
     table: npAgentIncidents,
     id: npAgentIncidents.id,

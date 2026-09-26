@@ -293,6 +293,56 @@ function ApprovalPreview({
   );
 }
 
+function ApprovalActionFacts({
+  review,
+}: {
+  review: NonNullable<NpAgentApprovalDetailV1["actionReview"]>;
+}) {
+  const restore = review.capabilityId === "moderation.restore";
+  return (
+    <section className="space-y-3" aria-label="Content moderation action">
+      <h2 className="text-lg font-semibold">
+        {restore ? "Restore content" : "Quarantine content"}
+      </h2>
+      <p>
+        {restore
+          ? "Restore the saved original visibility of this exact content. Any intervening edit or visibility change requires a new review."
+          : "Hide this exact content while preserving its body and original visibility for a separately approved restoration."}
+      </p>
+      <dl className="grid gap-2 text-sm">
+        <dt>Content target</dt>
+        <dd>
+          {review.target.kind} · {review.target.collection} · {review.target.id}
+        </dd>
+        <dt>Expected content version</dt>
+        <dd className="break-all">{review.expectedVersionDigest}</dd>
+        {review.reasonCode && (
+          <>
+            <dt>Reason</dt>
+            <dd>{review.reasonCode}</dd>
+          </>
+        )}
+        {review.containmentId && (
+          <>
+            <dt>Restoration handle</dt>
+            <dd>{review.containmentId}</dd>
+          </>
+        )}
+        {review.incidentId && (
+          <>
+            <dt>Incident</dt>
+            <dd>{review.incidentId}</dd>
+          </>
+        )}
+        <dt>Action</dt>
+        <dd>{review.actionId}</dd>
+        <dt>Proposal hash</dt>
+        <dd className="break-all">{review.proposalHash}</dd>
+      </dl>
+    </section>
+  );
+}
+
 function DecisionControls({
   detail,
   onChanged,
@@ -685,10 +735,12 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
                 </dd>
               </dl>
               <p>
-                Approval records a human decision. Execute the approved operation from the current
-                ChangeSet review after its authority and evidence checks.
+                {detail.actionReview
+                  ? "Approval records a human decision. Apply the approved action through a separate execution request, which rechecks current authority and this exact content version."
+                  : "Approval records a human decision. Execute the approved operation from the current ChangeSet review after its authority and evidence checks."}
               </p>
             </section>
+            {detail.actionReview && <ApprovalActionFacts review={detail.actionReview} />}
             {detail.rollbackReview && <AgentRollbackReviewFacts detail={detail.rollbackReview} />}
             {detail.review ? (
               <>
@@ -713,7 +765,7 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
                   />
                 </section>
               </>
-            ) : !detail.rollbackReview ? (
+            ) : !detail.rollbackReview && !detail.actionReview ? (
               <p>
                 Target evidence is redacted or unavailable. No runtime or execution evidence is
                 inferred.

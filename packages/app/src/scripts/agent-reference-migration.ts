@@ -30,7 +30,8 @@ export function npAgentReferenceMigrationSqlV1(): string {
       NP_AGENT_REFERENCE_FENCE_SQL_V1,
       ...[
         ...npAgentSiteOwnedTableNamesV1.filter(
-          (name) => !incidentTables.some((table) => table === name),
+          (name) =>
+            name !== "np_agent_containments" && !incidentTables.some((table) => table === name),
         ),
         "np_agent_site_deletion_sagas",
         "np_audit_events",
@@ -240,5 +241,42 @@ export async function npEnsureAgentReferenceMigrationV6(options: {
   const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
   if (added.length !== 1)
     throw new Error("Expected one generated Agent Incident reference migration.");
+  await writeFile(join(folder, added[0]), expected, "utf8");
+}
+
+/** Add content quarantine references without changing any applied lifecycle SQL. */
+export function npAgentReferenceMigrationSqlV7(): string {
+  return (
+    "-- NexPress verified Moderator containment lifecycle v7\n" +
+    npAgentReferenceFenceTriggersSqlV1("np_agent_containments") +
+    "\n--> statement-breakpoint\n" +
+    'ALTER TABLE "np_agent_actions" ADD CONSTRAINT "np_agent_actions_containment_fk" FOREIGN KEY ("site_id","containment_id") REFERENCES "public"."np_agent_containments"("site_id","id") ON DELETE no action DEFERRABLE INITIALLY DEFERRED;\n' +
+    "--> statement-breakpoint\n" +
+    'ALTER TABLE "np_agent_actions" ADD CONSTRAINT "np_agent_actions_approval_fk" FOREIGN KEY ("site_id","approval_id") REFERENCES "public"."np_agent_approvals"("site_id","id") ON DELETE no action DEFERRABLE INITIALLY DEFERRED;\n'
+  );
+}
+export async function npEnsureAgentReferenceMigrationV7(options: {
+  migrationsFolder?: string;
+  createCustomMigration: () => Promise<void>;
+}): Promise<void> {
+  const folder = resolve(options.migrationsFolder ?? "./drizzle");
+  const files = (await readdir(folder)).filter((f) => f.endsWith(".sql")).sort();
+  const texts = await Promise.all(files.map((f) => readFile(join(folder, f), "utf8")));
+  if (!texts.some((text) => text.includes('CREATE TABLE "np_agent_containments"'))) return;
+  if (!texts.some((text) => text.includes(marker)))
+    throw new Error("Agent Moderator reference migration inventory is incomplete.");
+  const expected = npAgentReferenceMigrationSqlV7();
+  const existing = texts.filter((text) =>
+    text.includes("-- NexPress verified Moderator containment lifecycle v7"),
+  );
+  if (existing.length) {
+    if (existing.length !== 1 || existing[0] !== expected)
+      throw new Error("Agent Moderator reference migration differs from its reviewed source.");
+    return;
+  }
+  await options.createCustomMigration();
+  const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
+  if (added.length !== 1)
+    throw new Error("Expected one generated Agent Moderator reference migration.");
   await writeFile(join(folder, added[0]), expected, "utf8");
 }

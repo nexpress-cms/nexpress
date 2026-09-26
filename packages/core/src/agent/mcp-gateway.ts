@@ -36,6 +36,8 @@ const TOOL_TO_CAPABILITY = Object.freeze({
   apply_changeset: "changeset.apply",
   schedule_changeset: "changeset.schedule",
   rollback_changeset: "changeset.rollback",
+  quarantine_content: "moderation.quarantine",
+  restore_content: "moderation.restore",
 } as const satisfies Record<string, NpAgentInstalledCapabilityIdV1>);
 
 type NpAgentMcpToolNameV1 = keyof typeof TOOL_TO_CAPABILITY;

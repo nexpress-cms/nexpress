@@ -1,4 +1,9 @@
 import {
+  npIsAgentModerationCapabilityIdV1,
+  npRequireAgentModerationCapabilityInvocationResultV1,
+  type NpAgentModerationCapabilityInvocationResultV1,
+} from "./moderation-capability-contract.js";
+import {
   npAgentInstalledCapabilityDescriptorsV1,
   npAgentInstalledCapabilityIdsV1,
   npIsAgentChangeSetCapabilityIdV1,
@@ -193,10 +198,12 @@ export function npBuildAgentHttpInvocationSchemasV1(): {
       schemaVersion: {
         const: npIsAgentChangeSetCapabilityIdV1(id)
           ? "np.agent-changeset-invocation-result.v1"
-          : "np.agent-read-invocation-result.v1",
+          : npIsAgentModerationCapabilityIdV1(id)
+            ? "np.agent-moderation-invocation-result.v1"
+            : "np.agent-read-invocation-result.v1",
       },
       invocationId: { type: "string", format: "uuid" },
-      ...(!npIsAgentChangeSetCapabilityIdV1(id)
+      ...(!npIsAgentChangeSetCapabilityIdV1(id) && !npIsAgentModerationCapabilityIdV1(id)
         ? { actionId: { type: "string", format: "uuid" } }
         : {}),
       capabilityId: { const: id },
@@ -222,11 +229,16 @@ export function npAgentHttpCapabilityMetadataV1(d: NpAgentCapabilityDescriptor) 
 
 export function npRequireAgentInstalledCapabilityInvocationResultV1(
   value: unknown,
-): NpAgentReadCapabilityInvocationResultV1 | NpAgentChangeSetCapabilityInvocationResultV1 {
+):
+  | NpAgentReadCapabilityInvocationResultV1
+  | NpAgentChangeSetCapabilityInvocationResultV1
+  | NpAgentModerationCapabilityInvocationResultV1 {
   const id =
     typeof value === "object" && value !== null
       ? Object.getOwnPropertyDescriptor(value, "capabilityId")?.value
       : undefined;
+  if (typeof id === "string" && npIsAgentModerationCapabilityIdV1(id))
+    return npRequireAgentModerationCapabilityInvocationResultV1(value);
   return typeof id === "string" && npIsAgentChangeSetCapabilityIdV1(id)
     ? npRequireAgentChangeSetCapabilityInvocationResultV1(value)
     : npRequireAgentReadCapabilityInvocationResultV1(value);

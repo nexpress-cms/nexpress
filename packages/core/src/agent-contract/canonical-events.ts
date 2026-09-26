@@ -294,7 +294,7 @@ function parseEventPayload(
       status: canonicalBodyEnum(
         record.status,
         `${path}.status`,
-        new Set(["visible", "quarantined", "hidden", "deleted"]),
+        new Set(["visible", "pending", "quarantined", "hidden", "deleted"]),
       ),
     };
   }

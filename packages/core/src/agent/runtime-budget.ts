@@ -70,6 +70,9 @@ export async function npMeasureAgentRuntimeBudgetV1(input: {
   // remain charged regardless of their original day/month until finalized.
   const retainedSince = new Date(Math.min(monthStart.getTime(), hour.getTime()));
   const selectedRun = agentId ? sql`r.agent_id=${agentId}` : sql`true`;
+  // Gateway and Runtime share the site ceiling. An Agent ceiling only charges
+  // its own Runtime runs; Gateway runs have no Agent identity.
+  const selectedOrigin = agentId ? sql`r.origin='runtime'` : sql`r.origin in ('runtime','gateway')`;
   const selectedReservation = agentId ? sql`u.agent_id=${agentId}` : sql`true`;
   const selectedDaily = agentId ? sql`d.agent_id=${agentId}` : sql`true`;
   try {
@@ -107,7 +110,7 @@ export async function npMeasureAgentRuntimeBudgetV1(input: {
       with runs as (
         select count(*) filter (where r.state in ('queued','running','waiting_approval','waiting_retry','verifying')) as concurrent_runs,
           count(*) filter (where r.queued_at>=${hour} and r.queued_at<=${input.now}) as hourly_runs
-        from public.np_agent_runs r where r.site_id=${siteId} and r.origin='runtime' and ${selectedRun}
+        from public.np_agent_runs r where r.site_id=${siteId} and ${selectedOrigin} and ${selectedRun}
           and (r.state in ('queued','running','waiting_approval','waiting_retry','verifying') or r.queued_at>=${hour})
       ), reservations as (
         select coalesce(sum(u.reserved_calls) filter (where u.state='reserved'),0) as concurrent_calls,
@@ -130,7 +133,7 @@ export async function npMeasureAgentRuntimeBudgetV1(input: {
           and d.usage_date>=${month}::date and d.usage_date<=${day}::date
       ), direct_actions as (
         select count(*) as total from public.np_agent_actions a join public.np_agent_runs r on r.site_id=a.site_id and r.id=a.run_id
-        where a.site_id=${siteId} and r.origin='runtime' and ${selectedRun} and a.effect_profile_id<>'domain.read'
+        where a.site_id=${siteId} and ${selectedOrigin} and ${selectedRun} and a.effect_profile_id<>'domain.read'
           and a.state in ('executing','succeeded','failed','compensated') and coalesce(a.started_at,a.created_at)>=${hour}
       )
       select concurrent_runs::text, hourly_runs::text, concurrent_calls::text, hourly_calls::text,

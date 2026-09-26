@@ -380,6 +380,7 @@ export type NpAgentActorSubjectV1 =
 
 export type NpAgentTargetRef =
   | { kind: "document"; collection: string; documentId: string }
+  | { kind: "comment"; collection: string; commentId: string }
   | { kind: "media"; mediaId: string }
   | { kind: "navigation"; location: string }
   | { kind: "theme_tokens"; themeId: string }

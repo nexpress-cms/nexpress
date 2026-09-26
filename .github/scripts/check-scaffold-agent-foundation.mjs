@@ -37,6 +37,8 @@ const {
 } = await import(pathToFileURL(requireFromScaffold.resolve("@nexpress/core/agent-contract")).href);
 
 const DEFERRED_CONSTRAINTS = [
+  "np_agent_actions_containment_fk",
+  "np_agent_actions_approval_fk",
   "np_agents_active_version_fk",
   "np_agents_draft_version_fk",
   "np_agent_runs_causal_event_fk",

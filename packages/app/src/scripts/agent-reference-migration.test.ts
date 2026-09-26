@@ -15,6 +15,8 @@ import {
   npAgentReferenceMigrationSqlV5,
   npAgentReferenceMigrationSqlV6,
   npEnsureAgentReferenceMigrationV6,
+  npAgentReferenceMigrationSqlV7,
+  npEnsureAgentReferenceMigrationV7,
 } from "./agent-reference-migration.js";
 const directories: string[] = [];
 async function folder() {
@@ -262,4 +264,36 @@ it("preserves V1 bytes and appends Incident trigger coverage only after complete
     npAgentReferenceMigrationSqlV6() + "-- tampered",
   );
   await expect(npEnsureAgentReferenceMigrationV6(options)).rejects.toThrow("differs");
+});
+
+it("preserves Incident lifecycle bytes and appends deferred Moderator containment references", async () => {
+  expect(npAgentReferenceMigrationSqlV6()).toBe(
+    await readFile(
+      new URL(
+        "../../../../apps/web/drizzle/0061_agent-incident-source-reference-lifecycle.sql",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const migrationsFolder = await folder();
+  const createCustomMigration = vi.fn(async () => {
+    await writeFile(join(migrationsFolder, "0002.sql"), "-- generated shell\n");
+  });
+  const options = { migrationsFolder, createCustomMigration };
+  await npEnsureAgentReferenceMigrationV7(options);
+  expect(createCustomMigration).not.toHaveBeenCalled();
+  await writeFile(join(migrationsFolder, "0000.sql"), 'CREATE TABLE "np_agent_containments" ();');
+  await expect(npEnsureAgentReferenceMigrationV7(options)).rejects.toThrow("incomplete");
+  await writeFile(join(migrationsFolder, "0001.sql"), npAgentReferenceMigrationSqlV1());
+  await npEnsureAgentReferenceMigrationV7(options);
+  const generated = await readFile(join(migrationsFolder, "0002.sql"), "utf8");
+  expect(generated).toBe(npAgentReferenceMigrationSqlV7());
+  expect(generated).toContain('"np_agent_actions_containment_fk"');
+  expect(generated).toContain('"np_agent_actions_approval_fk"');
+  expect(generated).toContain("DEFERRABLE INITIALLY DEFERRED");
+  await npEnsureAgentReferenceMigrationV7(options);
+  expect(createCustomMigration).toHaveBeenCalledTimes(1);
+  await writeFile(join(migrationsFolder, "0002.sql"), generated + "-- tampered");
+  await expect(npEnsureAgentReferenceMigrationV7(options)).rejects.toThrow("differs");
 });

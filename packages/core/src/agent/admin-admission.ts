@@ -1,4 +1,8 @@
 import {
+  npRequireAgentIncidentFeedbackInputV1,
+  type NpAgentIncidentFeedbackInputV1,
+} from "../agent-contract/incident-feedback-contract.js";
+import {
   npRequireAgentRollbackPlanCreateInputV1,
   npRequireAgentRollbackPlanRequestApprovalInputV1,
   npRequireAgentRollbackPlanExecuteInputV1,
@@ -75,6 +79,7 @@ import {
 type NpAgentDb = ReturnType<typeof getDb>;
 
 export type NpAgentAdmittedAdminOperationIdV1 =
+  | "agents.incidents.feedback"
   | NpAgentRuntimeAdminOperationIdV1
   | NpAgentGatewayAdminOperationIdV1
   | NpAgentConnectionAdminOperationIdV1
@@ -98,6 +103,7 @@ export type NpAgentAdmittedAdminOperationIdV1 =
 export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
   NpAgentRuntimeAdminInputMapV1 &
   NpAgentConnectionAdminInputMapV1 & {
+    "agents.incidents.feedback": NpAgentIncidentFeedbackInputV1;
     "agents.changesets.rollback_plans.create": NpAgentRollbackPlanCreateInputV1;
     "agents.changesets.rollback_plans.request_approval": NpAgentRollbackPlanRequestApprovalInputV1;
     "agents.changesets.rollback_plans.execute": NpAgentRollbackPlanExecuteInputV1;
@@ -123,6 +129,8 @@ function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
   operationId: I,
   value: unknown,
 ): NpAgentAdmittedAdminInputMapV1[I] {
+  if (operationId === "agents.incidents.feedback")
+    return npRequireAgentIncidentFeedbackInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (RUNTIME_ADMIN_OPERATION_IDS.has(operationId))
     return npRequireAgentRuntimeAdminInputV1(
       operationId as NpAgentRuntimeAdminOperationIdV1,
@@ -672,9 +680,11 @@ export function createAgentAdminAdmissionV1(options: NpAgentAdminAdmissionOption
                     ? "agent-connection"
                     : input.operationId.includes("oauth_clients")
                       ? "agent-oauth-client"
-                      : input.operationId.includes("principal_tokens")
-                        ? "agent-service-token"
-                        : "agent-principal",
+                      : input.operationId.startsWith("agents.incidents.")
+                        ? "agent-incident"
+                        : input.operationId.includes("principal_tokens")
+                          ? "agent-service-token"
+                          : "agent-principal",
             targetId: input.targetId,
             siteId: input.siteId,
             payload: {

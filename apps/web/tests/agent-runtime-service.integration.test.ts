@@ -10,8 +10,19 @@ import {
   npAgentInvocations,
 } from "../../../packages/core/src/db/schema/agent.js";
 import { npSettings } from "../../../packages/core/src/db/schema/system.js";
+import { npComments, npMembers } from "../../../packages/core/src/db/schema/community.js";
 import { npBuildAgentRuntimeDefinitionInputV1 } from "../../../packages/core/src/agent/runtime-service.js";
 import { npWithAgentRuntimeControlTransactionV1 } from "../../../packages/core/src/agent/runtime-controls.js";
+import { npMeasureAgentRuntimeBudgetV1 } from "../../../packages/core/src/agent/runtime-budget.js";
+import { createAgentModerationServiceV1 } from "../../../packages/core/src/agent/moderation-service.js";
+import { createAgentApprovalServiceV1 } from "../../../packages/core/src/agent/approval-service.js";
+import { npResolveAgentBudgetV1 } from "../../../packages/core/src/agent-contract/runtime-budget.js";
+import { npCreateDisabledAgentRuntimeSettingsV1 } from "../../../packages/core/src/agent-contract/runtime-contract.js";
+import { npInspectCommunityContentContainmentV1 } from "../../../packages/core/src/community/content-containment.js";
+import { npCreateEmptyRichTextContent } from "../../../packages/core/src/fields/rich-text.js";
+import { discussionsTable } from "../../../packages/core/src/integration/fixtures.js";
+import { withCurrentSite } from "../../../packages/core/src/sites/context.js";
+import { principalFixture } from "./agent-changeset-fixture.js";
 import {
   runtimeFixture,
   runtimeBudget,
@@ -25,6 +36,107 @@ import {
   closeTestDb,
   skipIfNoTestDb,
 } from "./harness.js";
+
+async function gatewayModerationAdmission(f: Awaited<ReturnType<typeof runtimeFixture>>) {
+  const principal = await principalFixture(
+    f,
+    false,
+    { now: f.options.now },
+    ["moderation:execute"],
+    "approved-execute",
+  );
+  const rules = npCreateDisabledAgentRuntimeSettingsV1().defaultPolicyRules;
+  rules.capabilityModes = [{ capabilityId: "moderation.quarantine", mode: "approved" }];
+  rules.resources.collections = ["discussions"];
+  rules.risk.requirePreviewAtOrAbove = null;
+  rules.automation.moderationTargetsPerRun = 1;
+  const service = createAgentModerationServiceV1({
+    admission: principal.admission,
+    resolveApprovals: () => approvals,
+    resolveTransportAudience: principal.gateway.getTransportAudience,
+    resolveBudget: async () => npResolveAgentBudgetV1(f.options.deploymentBudget),
+    resolvePolicy: async () => ({
+      autonomy: "approved",
+      capabilityModes: rules.capabilityModes,
+      layers: [rules],
+    }),
+    now: f.options.now,
+  });
+  const approvals = createAgentApprovalServiceV1({
+    targets: service.approvalTargets,
+    cursorKey: new Uint8Array(32).fill(46),
+    integrityKeys: {
+      active: {
+        owner: "approval-integrity",
+        id: "budget-moderation-integrity",
+        bytes: new Uint8Array(32).fill(47),
+      },
+    },
+    challengeKeys: {
+      active: { id: "budget-moderation-challenge", key: new Uint8Array(32).fill(48) },
+    },
+    secretRequestDigestKey: { id: "budget-moderation-request", key: new Uint8Array(32).fill(49) },
+    reauthentication: { verify: () => true },
+    now: f.options.now,
+  });
+  const [document] = await f.db
+    .insert(discussionsTable)
+    .values({
+      siteId,
+      title: "Budget admission target",
+      slug: `budget-${randomUUID()}`,
+      body: npCreateEmptyRichTextContent(),
+      status: "published",
+    })
+    .returning();
+  const [member] = await f.db
+    .insert(npMembers)
+    .values({
+      email: `${randomUUID()}@example.com`,
+      handle: `budget-${randomUUID()}`,
+      displayName: "Budget admission author",
+      status: "active",
+    })
+    .returning();
+  const [comment] = await f.db
+    .insert(npComments)
+    .values({
+      siteId,
+      targetType: "discussions",
+      targetId: document.id,
+      memberId: member.id,
+      bodyMd: "Budget admission target",
+      bodyHtml: "<p>Budget admission target</p>",
+      status: "pending",
+    })
+    .returning();
+  const target = { kind: "comment" as const, collection: "discussions", id: comment.id };
+  const inspected = await withCurrentSite(siteId, () =>
+    f.db.transaction((tx) =>
+      npInspectCommunityContentContainmentV1(tx, { siteId, target, user: f.actor.actor.user }),
+    ),
+  );
+  return () =>
+    service.invokeCapability({
+      authentication: principal.authentication,
+      request: {
+        schemaVersion: "np.agent-invocation-request.v1",
+        capabilityId: "moderation.quarantine",
+        arguments: {
+          idempotencyKey: randomUUID(),
+          input: {
+            mode: "propose",
+            proposal: {
+              target,
+              incidentId: null,
+              expectedVersionDigest: inspected.versionDigest,
+              reasonCode: "REPEATED_LINK_SPAM",
+            },
+          },
+        },
+      },
+    });
+}
 
 describe.skipIf(skipIfNoTestDb())("Runtime definition, policy and queued admission", () => {
   beforeAll(ensureMigrated);
@@ -195,6 +307,44 @@ describe.skipIf(skipIfNoTestDb())("Runtime definition, policy and queued admissi
     });
     expect(run.runtimeAdmissionSources?.sitePolicy.rules).toEqual(f.settings.defaultPolicyRules);
   });
+
+  it.each(["maxConcurrentRuns", "runsPerHour"] as const)(
+    "charges Gateway moderation against the shared %s ceiling before Runtime admission",
+    async (dimension) => {
+      const f = await runtimeFixture(runtimeBudget({ [dimension]: 1 }));
+      const propose = await gatewayModerationAdmission(f);
+      const result = await propose();
+      expect(result.output.state).toBe("approval_required");
+      const [site, agent, otherSite] = await Promise.all([
+        npMeasureAgentRuntimeBudgetV1({ db: f.db, siteId, now: f.options.now() }),
+        npMeasureAgentRuntimeBudgetV1({
+          db: f.db,
+          siteId,
+          agentId: f.created.resourceId,
+          now: f.options.now(),
+        }),
+        npMeasureAgentRuntimeBudgetV1({ db: f.db, siteId: "draft-other", now: f.options.now() }),
+      ]);
+      expect(site).toMatchObject({ concurrentRuns: 1, runsRollingHour: 1 });
+      expect(agent).toMatchObject({ concurrentRuns: 0, runsRollingHour: 0 });
+      expect(otherSite).toMatchObject({ concurrentRuns: 0, runsRollingHour: 0 });
+      await expect(f.admission.admit(f.runInput)).rejects.toMatchObject({
+        code: "RUNTIME_BUDGET_EXHAUSTED",
+      });
+      expect(await f.db.select().from(npAgentRuns)).toHaveLength(1);
+    },
+  );
+
+  it.each(["maxConcurrentRuns", "runsPerHour"] as const)(
+    "charges Runtime against the shared %s ceiling before Gateway moderation admission",
+    async (dimension) => {
+      const f = await runtimeFixture(runtimeBudget({ [dimension]: 1 }));
+      const propose = await gatewayModerationAdmission(f);
+      await f.admission.admit(f.runInput);
+      await expect(propose()).rejects.toMatchObject({ code: "RUNTIME_BUDGET_BLOCKED" });
+      expect(await f.db.select().from(npAgentRuns)).toHaveLength(1);
+    },
+  );
 
   it("rechecks pause, readiness, deadline, immutable hashes and same-site target boundaries", async () => {
     const f = await runtimeFixture();

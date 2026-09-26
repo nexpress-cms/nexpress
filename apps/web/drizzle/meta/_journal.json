@@ -435,6 +435,20 @@
       "when": 1790435633132,
       "tag": "0061_agent-incident-source-reference-lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1790438992687,
+      "tag": "0062_agent-moderator-containments",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1790439022249,
+      "tag": "0063_agent-moderator-containment-lifecycle",
+      "breakpoints": true
     }
   ]
 }

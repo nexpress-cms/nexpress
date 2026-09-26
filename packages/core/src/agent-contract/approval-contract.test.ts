@@ -85,6 +85,42 @@ function item(): NpAgentApprovalListItemV1 {
   };
 }
 describe("approval request, challenge and safe review contracts", () => {
+  it("binds action review facts to the signed target and rejects private restoration state", () => {
+    const actionItem = {
+      ...item(),
+      target: { kind: "action", actionId: id, runId: id, agentId: null, proposalHash: hash },
+      capabilityId: "moderation.restore",
+      intendedOperation: null,
+    };
+    const actionReview = {
+      actionId: id,
+      proposalHash: hash,
+      capabilityId: "moderation.restore",
+      target: { kind: "comment", collection: "discussions", id },
+      expectedVersionDigest: hash,
+      containmentId: id,
+      incidentId: null,
+      reasonCode: null,
+    };
+    const detail = {
+      schemaVersion: "np.agent-approval-detail.v1",
+      item: actionItem,
+      review: null,
+      rollbackReview: null,
+      actionReview,
+    };
+    expect(npRequireAgentApprovalDetailV1(detail).actionReview).toEqual(actionReview);
+    for (const invalid of [
+      undefined,
+      { ...actionReview, actionId: "018f0f30-cd7b-7cc2-8b16-8c052c259bd2" },
+      { ...actionReview, proposalHash: `cj1:sha256:${"B".repeat(43)}` },
+      { ...actionReview, capabilityId: "moderation.quarantine" },
+      { ...actionReview, originalState: { body: "private source content" } },
+      { ...actionReview, target: { ...actionReview.target, body: "private source content" } },
+    ])
+      expect(() => npRequireAgentApprovalDetailV1({ ...detail, actionReview: invalid })).toThrow();
+    expect(() => npRequireAgentApprovalDetailV1({ ...detail, item: item() })).toThrow();
+  });
   it("closes decision bodies and binds schedule time to intent", () => {
     expect(npRequireAgentChangeSetRequestApprovalInputV1(request)).toEqual(request);
     expect(
