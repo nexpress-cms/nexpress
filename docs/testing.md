@@ -42,8 +42,8 @@ elapsed time on the first documentation-only PR after this workflow lands.
 
 After changing CI routing, verify both outcomes on a documentation-only PR:
 
--    An intentional formatting error must fail documentation validation and every required result gate, while application jobs remain skipped.
--    Correct the same change and require all named gates to succeed before merging the evidence update.
+- An intentional formatting error must fail documentation validation and every required result gate, while application jobs remain skipped.
+- Correct the same change and require all named gates to succeed before merging the evidence update.
 
 ## Unit tests (`pnpm test`)
 
