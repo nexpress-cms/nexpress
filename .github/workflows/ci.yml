@@ -33,8 +33,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scope:
+    name: Classify changes and validate documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Classify the complete PR diff
+        id: scope
+        run: node scripts/ci-scope.mjs "$RUNNER_TEMP/np-doc-files.json"
+      - uses: pnpm/action-setup@v6.1.0
+        if: steps.scope.outputs.docs_only == 'true'
+        with:
+          version: 10.33.0
+          run_install: false
+      - name: Install locked formatter without lifecycle scripts
+        if: steps.scope.outputs.docs_only == 'true'
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Validate changed documentation
+        if: steps.scope.outputs.docs_only == 'true'
+        run: |
+          node scripts/ci-scope.mjs format "$RUNNER_TEMP/np-doc-files.json"
+          pnpm test:repo
+
   checks:
-    name: typecheck + build + test
+    name: Full typecheck + build + test
+    needs: [scope]
+    if: needs.scope.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -91,6 +125,8 @@ jobs:
   # interactions, so a green `pnpm test` was misleading. This job runs the
   # integration suite against a Postgres service container.
   integration-partitions:
+    needs: [scope]
+    if: needs.scope.outputs.docs_only != 'true'
     name: PostgreSQL partition ${{ matrix.partition }}/2
     strategy:
       fail-fast: false
@@ -166,10 +202,11 @@ jobs:
           retention-days: 7
 
   # Preserve the context consumed by branch rules, Version PR bridging and the
-  # Dependabot merge helper. Missing/skipped/cancelled partitions must fail it.
+  # Dependabot merge helper. Full runs still require exact partition coverage;
+  # only successfully validated documentation may intentionally skip partitions.
   integration:
     name: integration tests (Postgres)
-    needs: [integration-partitions]
+    needs: [scope, integration-partitions]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -177,18 +214,19 @@ jobs:
       actions: read
       contents: read
     steps:
-      - name: Require every partition to succeed
-        env:
-          PARTITION_RESULT: ${{ needs.integration-partitions.result }}
-        run: test "$PARTITION_RESULT" = success
-
       - uses: actions/checkout@v7
-
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+      - name: Require validated docs or every partition
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          DOCS_ONLY: ${{ needs.scope.outputs.docs_only }}
+          FULL_RESULT: ${{ needs.integration-partitions.result }}
+        run: node scripts/ci-scope.mjs gate
 
       - name: Download and verify exact coverage
+        if: needs.scope.outputs.docs_only != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -210,8 +248,9 @@ jobs:
   # merge group / squash-and-rebase changes the diff post-merge
   # enough to warrant verification, flip this back to unconditional.
   e2e:
-    name: E2E (Playwright)
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    name: Full E2E (Playwright)
+    needs: [scope]
+    if: needs.scope.outputs.docs_only != 'true' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
@@ -303,7 +342,9 @@ jobs:
   # vs. tarball, which is the only safe difference until the
   # packages are published).
   scaffold-smoke:
-    name: scaffold smoke (fresh scaffold journey)
+    name: Full scaffold smoke (fresh scaffold journey)
+    needs: [scope]
+    if: needs.scope.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -480,3 +521,57 @@ jobs:
             exit 1
           fi
           echo "✓ pnpm-lock.yaml clean"
+
+  checks-gate:
+    name: typecheck + build + test
+    needs: [scope, checks]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Require validated docs or full check
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          DOCS_ONLY: ${{ needs.scope.outputs.docs_only }}
+          FULL_RESULT: ${{ needs.checks.result }}
+        run: node scripts/ci-scope.mjs gate
+
+  e2e-gate:
+    name: E2E (Playwright)
+    needs: [scope, e2e]
+    if: ${{ always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Require validated docs or full check
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          DOCS_ONLY: ${{ needs.scope.outputs.docs_only }}
+          FULL_RESULT: ${{ needs.e2e.result }}
+        run: node scripts/ci-scope.mjs gate
+
+  scaffold-smoke-gate:
+    name: scaffold smoke (fresh scaffold journey)
+    needs: [scope, scaffold-smoke]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Require validated docs or full check
+        env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          DOCS_ONLY: ${{ needs.scope.outputs.docs_only }}
+          FULL_RESULT: ${{ needs.scaffold-smoke.result }}
+        run: node scripts/ci-scope.mjs gate
