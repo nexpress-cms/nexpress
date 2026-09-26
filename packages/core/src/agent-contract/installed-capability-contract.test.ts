@@ -46,6 +46,8 @@ describe("installed framework capability projection", () => {
       "changeset.schedule",
       "changeset.validate",
       "content.query",
+      "incident.get",
+      "incident.list",
       "schema.get",
       "site.inspect",
     ]);
@@ -83,7 +85,7 @@ describe("installed framework capability projection", () => {
       createHash("sha256")
         .update(JSON.stringify(npAgentInstalledCapabilityDescriptorsV1))
         .digest("hex"),
-    ).toMatchInlineSnapshot(`"d15e6aeb772154c92bda1248bb887e48d6bcfe07524418081cd473c0881440f9"`);
+    ).toMatchInlineSnapshot(`"a3824d157b7d0a4bba2d8b020a943cac3fa4e5ba239e15592ae93782c0ed11df"`);
   });
   it("reuses the whole wire and closes every workflow object", () => {
     expect(Object.keys(npAgentChangeSetWireSchemaV1.properties as object)).toEqual(

@@ -17,6 +17,12 @@ import {
   npAgentUsageDaily,
   npAgentCircuitBreakers,
   npAgentEvents,
+  npAgentNotifications,
+  npAgentFeedback,
+  npAgentIncidentTimeline,
+  npAgentIncidentSignals,
+  npAgentSignals,
+  npAgentIncidents,
   npAgentConnectionAuthRequests,
   npAgentConnectionConfigVersions,
   npAgentConnectionOperations,
@@ -66,6 +72,12 @@ interface NpAgentSiteOwnedTableDescriptor {
  * from the frozen inventory and is handled only by the future saga commit.
  */
 export const npAgentSiteDeletionOrderV1 = Object.freeze([
+  "np_agent_notifications",
+  "np_agent_feedback",
+  "np_agent_incident_timeline",
+  "np_agent_incident_signals",
+  "np_agent_signals",
+  "np_agent_incidents",
   "np_agent_source_release_edges",
   "np_agent_preview_viewer_launches",
   "np_agent_preview_render_sessions",
@@ -115,6 +127,32 @@ const descriptors: Record<
   NpAgentSiteOwnedTableName,
   Omit<NpAgentSiteOwnedTableDescriptor, "tableName">
 > = {
+  np_agent_notifications: {
+    table: npAgentNotifications,
+    id: npAgentNotifications.id,
+    siteId: npAgentNotifications.siteId,
+  },
+  np_agent_feedback: {
+    table: npAgentFeedback,
+    id: npAgentFeedback.id,
+    siteId: npAgentFeedback.siteId,
+  },
+  np_agent_incident_timeline: {
+    table: npAgentIncidentTimeline,
+    id: npAgentIncidentTimeline.id,
+    siteId: npAgentIncidentTimeline.siteId,
+  },
+  np_agent_incident_signals: {
+    table: npAgentIncidentSignals,
+    id: npAgentIncidentSignals.id,
+    siteId: npAgentIncidentSignals.siteId,
+  },
+  np_agent_signals: { table: npAgentSignals, id: npAgentSignals.id, siteId: npAgentSignals.siteId },
+  np_agent_incidents: {
+    table: npAgentIncidents,
+    id: npAgentIncidents.id,
+    siteId: npAgentIncidents.siteId,
+  },
   np_agent_source_release_edges: {
     table: npAgentSourceReleaseEdges,
     id: npAgentSourceReleaseEdges.id,

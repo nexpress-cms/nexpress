@@ -65,6 +65,47 @@ describe("Agent capability registry", () => {
     }).toThrow(TypeError);
   });
 
+  it("advertises Incident reads only after explicit executor installation", async () => {
+    const disabled = await createAgentReadCapabilityRegistryV1(executors);
+    expect(() => disabled.get("incident.get")).toThrow(NpAgentCapabilityRegistryError);
+    const enabled = await createAgentReadCapabilityRegistryV1({
+      ...executors,
+      "incident.get": () => {
+        throw new Error("Not executed by discovery");
+      },
+      "incident.list": () => ({
+        schemaVersion: "np.agent-incident-list.v1",
+        items: [],
+        nextCursor: null,
+      }),
+    });
+    expect(enabled.ids).toEqual([
+      "content.query",
+      "incident.get",
+      "incident.list",
+      "schema.get",
+      "site.inspect",
+    ]);
+    expect(enabled.registryFingerprint).not.toBe(disabled.registryFingerprint);
+    expect(enabled.get("content.query").capabilityFingerprint).toBe(
+      disabled.get("content.query").capabilityFingerprint,
+    );
+    expect(enabled.get("incident.get").definition.descriptor.requiredScopes).toEqual([
+      "incident:read",
+    ]);
+    expect(() =>
+      enabled.get("incident.get").definition.parseInput({ incidentId: "bad" }),
+    ).toThrow();
+    expect(() =>
+      enabled.get("incident.list").definition.parseOutput({
+        schemaVersion: "np.agent-incident-list.v1",
+        items: [],
+        nextCursor: null,
+        evidence: {},
+      }),
+    ).toThrow();
+  });
+
   it("fails closed for unavailable capability ids", async () => {
     const registry = await createAgentReadCapabilityRegistryV1(executors);
     expect(() => registry.get("unknown" as never)).toThrow(NpAgentCapabilityRegistryError);

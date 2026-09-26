@@ -2,7 +2,6 @@ import { npProjectAgentMcpInvocationOutputV1 } from "./changeset-execution-proje
 import type { NpAgentActivityServiceV1 } from "./activity-service.js";
 import { canonicalBodyRecord } from "../agent-contract/canonical-body-validation.js";
 import {
-  npAgentInstalledCapabilityDescriptorsV1,
   npRequireAgentInstalledCapabilityInvocationRequestV1,
   type NpAgentInstalledCapabilityIdV1,
 } from "../agent-contract/installed-capability-contract.js";
@@ -29,6 +28,7 @@ import type {
 const TOOL_TO_CAPABILITY = Object.freeze({
   inspect_site: "site.inspect",
   query_content: "content.query",
+  query_incidents: "incident.get",
   create_changeset: "changeset.create",
   validate_changeset: "changeset.validate",
   preview_changeset: "changeset.preview",
@@ -257,7 +257,19 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
     return projected.entries
       .map((entry) => {
         const descriptor = entry.definition.descriptor;
-        const name = CAPABILITY_TO_TOOL[descriptor.id];
+        const name =
+          descriptor.id === "incident.list" &&
+          !projected.entries.some((item) => item.definition.descriptor.id === "incident.get")
+            ? "query_incidents"
+            : CAPABILITY_TO_TOOL[descriptor.id];
+        const queryFamily = name === "query_incidents" ? "incident" : "changeset";
+        const queryIds =
+          queryFamily === "incident"
+            ? (["incident.get", "incident.list"] as const)
+            : (["changeset.get", "changeset.list"] as const);
+        const queryEntries = projected.entries.filter((item) =>
+          (queryIds as readonly string[]).includes(item.definition.descriptor.id),
+        );
         if (
           !name ||
           (!options.runs &&
@@ -269,7 +281,7 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
           title: descriptor.title,
           description: descriptor.description,
           inputSchema:
-            name === "query_changesets"
+            name === "query_changesets" || name === "query_incidents"
               ? toolInputSchema({
                   $schema: "https://json-schema.org/draft/2020-12/schema",
                   type: "object",
@@ -278,54 +290,47 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
                     selector: { enum: ["by_id", "list"] },
                     ...Object.assign(
                       {},
-                      ...projected.entries
-                        .filter(
-                          (e) =>
-                            e.definition.descriptor.id === "changeset.get" ||
-                            e.definition.descriptor.id === "changeset.list",
-                        )
-                        .map((e) => e.definition.descriptor.inputSchema.properties),
+                      ...queryEntries.map((e) => e.definition.descriptor.inputSchema.properties),
                     ),
                   },
-                  oneOf: projected.entries
-                    .filter(
-                      (e) =>
-                        e.definition.descriptor.id === "changeset.get" ||
-                        e.definition.descriptor.id === "changeset.list",
-                    )
-                    .map((e) => ({
-                      ...e.definition.descriptor.inputSchema,
-                      properties: {
-                        ...(e.definition.descriptor.inputSchema.properties as object),
-                        selector: {
-                          const: e.definition.descriptor.id === "changeset.get" ? "by_id" : "list",
-                        },
+                  oneOf: queryEntries.map((e) => ({
+                    ...e.definition.descriptor.inputSchema,
+                    properties: {
+                      ...(e.definition.descriptor.inputSchema.properties as object),
+                      selector: {
+                        const: e.definition.descriptor.id.endsWith(".get") ? "by_id" : "list",
                       },
-                      required: [
-                        ...(e.definition.descriptor.inputSchema.required as string[]),
-                        "selector",
-                      ],
-                    })),
+                    },
+                    required: [
+                      ...(e.definition.descriptor.inputSchema.required as string[]),
+                      "selector",
+                    ],
+                  })),
                 })
               : toolInputSchema(descriptor.inputSchema, descriptor.idempotency === "required"),
           outputSchema:
-            name === "query_changesets"
+            name === "query_changesets" || name === "query_incidents"
               ? jsonSchema({
                   ...descriptor.outputSchema,
-                  properties: {
-                    ...(npAgentInstalledCapabilityDescriptorsV1["changeset.get"].outputSchema
-                      .properties as object),
-                    ...(npAgentInstalledCapabilityDescriptorsV1["changeset.list"].outputSchema
-                      .properties as object),
-                    schemaVersion: {
-                      enum: ["np.agent-changeset-result.v1", "np.agent-changeset-list.v1"],
+                  $schema: "https://json-schema.org/draft/2020-12/schema",
+                  type: "object",
+                  additionalProperties: false,
+                  properties: Object.assign(
+                    {},
+                    ...queryEntries.map(
+                      (item) => item.definition.descriptor.outputSchema.properties,
+                    ),
+                    {
+                      schemaVersion: {
+                        enum:
+                          queryFamily === "incident"
+                            ? ["np.agent-incident-result.v1", "np.agent-incident-list.v1"]
+                            : ["np.agent-changeset-result.v1", "np.agent-changeset-list.v1"],
+                      },
                     },
-                  },
+                  ),
                   required: [],
-                  oneOf: [
-                    npAgentInstalledCapabilityDescriptorsV1["changeset.get"].outputSchema,
-                    npAgentInstalledCapabilityDescriptorsV1["changeset.list"].outputSchema,
-                  ],
+                  oneOf: queryEntries.map((item) => item.definition.descriptor.outputSchema),
                 })
               : jsonSchema(descriptor.outputSchema),
           annotations: {
@@ -457,7 +462,7 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
       }
       try {
         let args: unknown = input.arguments;
-        if (input.name === "query_changesets") {
+        if (input.name === "query_changesets" || input.name === "query_incidents") {
           const wrapper = canonicalBodyRecord(
             input.arguments,
             "agent.mcp.arguments",
@@ -468,23 +473,41 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
           const selected = canonicalBodyRecord(
             wrapper.input,
             "agent.mcp.query",
-            [
-              "selector",
-              "changeSetId",
-              "states",
-              "actorKinds",
-              "createdAfter",
-              "createdBefore",
-              "limit",
-              "cursor",
-            ],
+            input.name === "query_incidents"
+              ? [
+                  "selector",
+                  "incidentId",
+                  "statuses",
+                  "categories",
+                  "severities",
+                  "updatedAfter",
+                  "limit",
+                  "cursor",
+                ]
+              : [
+                  "selector",
+                  "changeSetId",
+                  "states",
+                  "actorKinds",
+                  "createdAfter",
+                  "createdBefore",
+                  "limit",
+                  "cursor",
+                ],
             ["selector"],
             { seen: new WeakSet<object>() },
           );
           if (selected.selector !== "by_id" && selected.selector !== "list")
             throw new NpAgentMcpGatewayProtocolErrorV1(-32602, "Invalid params");
           const { selector, ...selectedInput } = selected;
-          capabilityId = selector === "by_id" ? "changeset.get" : "changeset.list";
+          capabilityId =
+            input.name === "query_incidents"
+              ? selector === "by_id"
+                ? "incident.get"
+                : "incident.list"
+              : selector === "by_id"
+                ? "changeset.get"
+                : "changeset.list";
           args = { ...wrapper, input: selectedInput };
         }
         const request = npRequireAgentInstalledCapabilityInvocationRequestV1({

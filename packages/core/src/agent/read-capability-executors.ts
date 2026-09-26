@@ -1,3 +1,4 @@
+import type { NpAgentIncidentServiceV1 } from "./incident-service.js";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 import {
@@ -78,6 +79,8 @@ type ReadContext = Pick<
 type NamedField = Exclude<NpFieldConfig, { type: "row" } | { type: "collapsible" }>;
 
 export interface NpAgentCoreReadCapabilityOptionsV1 {
+  /** Explicit host installation; absent services leave Incident capabilities unavailable. */
+  incidentService?: NpAgentIncidentServiceV1;
   cursorHmacKey: { id: string; key: Uint8Array };
   resolveUser: (userId: string) => NpAuthUser | null | Promise<NpAuthUser | null>;
   resolveBlockSchemas: (
@@ -1079,5 +1082,11 @@ export function createAgentCoreReadCapabilityExecutorsV1(
       } satisfies NpAgentSchemaGetOutputV1;
     },
     "content.query": (input, context) => queryContent(input, context, runtimeOptions),
+    ...(runtimeOptions.incidentService
+      ? {
+          "incident.get": runtimeOptions.incidentService.get.bind(runtimeOptions.incidentService),
+          "incident.list": runtimeOptions.incidentService.list.bind(runtimeOptions.incidentService),
+        }
+      : {}),
   };
 }

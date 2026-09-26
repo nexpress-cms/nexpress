@@ -693,3 +693,37 @@ describe("Runtime read identity and document evidence", () => {
     expect(resolveUser).not.toHaveBeenCalled();
   });
 });
+
+it("forwards Incident reads only through an explicitly installed host service", async () => {
+  const get = vi.fn((): Promise<never> => Promise.reject(new Error("owner denied")));
+  const list = vi.fn(() =>
+    Promise.resolve({
+      schemaVersion: "np.agent-incident-list.v1" as const,
+      items: [],
+      nextCursor: null,
+    }),
+  );
+  const options: NpAgentCoreReadCapabilityOptionsV1 = {
+    cursorHmacKey: { id: "test", key: new Uint8Array(32).fill(7) },
+    resolveUser: () => null,
+    resolveBlockSchemas: () => [],
+  };
+  expect(createAgentCoreReadCapabilityExecutorsV1(options)["incident.get"]).toBeUndefined();
+  const installed = createAgentCoreReadCapabilityExecutorsV1({
+    ...options,
+    incidentService: { get, list },
+  });
+  const input = {
+    statuses: [],
+    categories: [],
+    severities: [],
+    updatedAfter: null,
+    limit: 10,
+    cursor: null,
+  };
+  await installed["incident.list"]?.(input, context);
+  expect(list).toHaveBeenCalledWith(input, context);
+  await expect(
+    installed["incident.get"]?.({ incidentId: "01900000-0000-7000-8000-000000000001" }, context),
+  ).rejects.toThrow("owner denied");
+});

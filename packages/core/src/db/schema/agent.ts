@@ -10,6 +10,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -18,6 +19,10 @@ import {
 } from "drizzle-orm/pg-core";
 
 import type {
+  NpAgentEvidenceRef,
+  NpAgentSubject,
+  NpAgentNotificationDeliveryCanonicalV1,
+  NpAgentConnectionDestinationDescriptorV1,
   NpAgentAuthorizationContextCanonicalV1,
   NpAgentPreviewContractCanonicalV1,
   NpAgentPreviewRouteCanonicalV1,
@@ -3966,6 +3971,363 @@ export const npAgentEvents = pgTable(
     check(
       "np_agent_events_time_check",
       sql`${t.expiresAt}>${t.recordedAt} and (${t.dispatchedAt} is null or ${t.dispatchedAt}>=${t.recordedAt})`,
+    ),
+  ],
+);
+
+/** R6 incident foundation. Nullable source links are cleared by their retention owner
+ * before deletion; composite RESTRICT links never clear the owning site identity. */
+export const npAgentIncidents = pgTable(
+  "np_agent_incidents",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    category: text("category").notNull(),
+    status: text("status").notNull(),
+    severity: text("severity").notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    title: text("title").notNull(),
+    summary: text("summary").notNull(),
+    primarySubject: jsonb("primary_subject").$type<NpAgentSubject>(),
+    signalCount: integer("signal_count").default(0).notNull(),
+    eventCount: integer("event_count").default(0).notNull(),
+    assignedAgentId: uuid("assigned_agent_id"),
+    firstObservedAt: timestamp("first_observed_at", { withTimezone: true, mode: "date" }).notNull(),
+    lastObservedAt: timestamp("last_observed_at", { withTimezone: true, mode: "date" }).notNull(),
+    containedAt: timestamp("contained_at", { withTimezone: true, mode: "date" }),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true, mode: "date" }),
+    resolutionCode: text("resolution_code"),
+    versionNumber: integer("version_number").default(1).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("np_agent_incidents_site_id_id_unique").on(t.siteId, t.id),
+    uniqueIndex("np_agent_incidents_active_uidx")
+      .on(t.siteId, t.category, t.fingerprint)
+      .where(sql`${t.status} in ('open','investigating','contained','monitoring')`),
+    index("np_agent_incidents_observed_idx").on(t.siteId, t.lastObservedAt, t.id),
+    index("np_agent_incidents_updated_idx").on(t.siteId, t.updatedAt, t.id),
+    index("np_agent_incidents_status_idx").on(t.siteId, t.status, t.lastObservedAt),
+    foreignKey({
+      name: "np_agent_incidents_assigned_fk",
+      columns: [t.siteId, t.assignedAgentId],
+      foreignColumns: [npAgents.siteId, npAgents.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_incidents_state_check",
+      sql`(${t.category} in ('spam','abuse','authentication','authorization','traffic','integrity','availability','cost','agent-abuse') and ${t.severity} in ('info','low','medium','high','critical') and ${t.status} in ('open','investigating','contained','monitoring','resolved','dismissed') and (${t.status} in ('resolved','dismissed'))=(${t.resolvedAt} is not null) and (${t.status}<>'contained' or ${t.containedAt} is not null)) is true`,
+    ),
+    check(
+      "np_agent_incidents_bounds_check",
+      sql`(length(${t.fingerprint}) between 1 and 256 and length(${t.title}) between 1 and 200 and length(${t.summary}) between 1 and 2000 and ${t.signalCount}>=0 and ${t.eventCount}>=0 and ${t.versionNumber}>0 and (${t.primarySubject} is null or octet_length(${t.primarySubject}::text)<=4096) and (${t.resolutionCode} is null or ${t.resolutionCode} ~ '^[A-Z][A-Z0-9_]{0,63}$')) is true`,
+    ),
+    check(
+      "np_agent_incidents_time_check",
+      sql`(${t.lastObservedAt}>=${t.firstObservedAt} and (${t.containedAt} is null or ${t.containedAt}>=${t.firstObservedAt}) and (${t.resolvedAt} is null or ${t.resolvedAt}>=${t.firstObservedAt})) is true`,
+    ),
+  ],
+);
+export const npAgentSignals = pgTable(
+  "np_agent_signals",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    detectorId: text("detector_id").notNull(),
+    detectorVersion: integer("detector_version").notNull(),
+    category: text("category").notNull(),
+    severity: text("severity").notNull(),
+    confidenceBasis: text("confidence_basis").notNull(),
+    scoreBasisPoints: integer("score_basis_points"),
+    fingerprint: text("fingerprint").notNull(),
+    subject: jsonb("subject").$type<NpAgentSubject>(),
+    evidence: jsonb("evidence").$type<NpAgentEvidenceRef[]>().notNull(),
+    evidenceDigest: text("evidence_digest").notNull(),
+    status: text("status").notNull(),
+    incidentId: uuid("incident_id"),
+    windowStartedAt: timestamp("window_started_at", { withTimezone: true, mode: "date" }).notNull(),
+    windowEndedAt: timestamp("window_ended_at", { withTimezone: true, mode: "date" }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("np_agent_signals_site_id_id_unique").on(t.siteId, t.id),
+    index("np_agent_signals_window_idx").on(t.siteId, t.windowEndedAt),
+    index("np_agent_signals_fingerprint_idx").on(t.siteId, t.fingerprint, t.windowEndedAt),
+    index("np_agent_signals_open_idx")
+      .on(t.siteId, t.createdAt)
+      .where(sql`${t.status}='open'`),
+    index("np_agent_signals_expiry_idx").on(t.siteId, t.expiresAt),
+    foreignKey({
+      name: "np_agent_signals_incident_fk",
+      columns: [t.siteId, t.incidentId],
+      foreignColumns: [npAgentIncidents.siteId, npAgentIncidents.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_signals_state_check",
+      sql`(${t.category} in ('spam','abuse','authentication','authorization','traffic','integrity','availability','cost','agent-abuse') and ${t.severity} in ('info','low','medium','high','critical') and ${t.confidenceBasis} in ('exact-rule','statistical','external') and ${t.status} in ('open','attached','suppressed','resolved') and (${t.status}<>'attached' or ${t.incidentId} is not null)) is true`,
+    ),
+    check(
+      "np_agent_signals_bounds_check",
+      sql`(${t.detectorId} ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' and ${t.detectorVersion}>0 and (${t.scoreBasisPoints} is null or ${t.scoreBasisPoints} between 0 and 10000) and length(${t.fingerprint}) between 1 and 256 and ${t.evidenceDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$' and jsonb_typeof(${t.evidence})='array' and jsonb_array_length(${t.evidence}) between 1 and 100 and octet_length(${t.evidence}::text)<=524288 and (${t.subject} is null or octet_length(${t.subject}::text)<=4096)) is true`,
+    ),
+    check(
+      "np_agent_signals_time_check",
+      sql`(${t.windowEndedAt}>=${t.windowStartedAt} and ${t.expiresAt}>${t.createdAt}) is true`,
+    ),
+  ],
+);
+export const npAgentIncidentSignals = pgTable(
+  "np_agent_incident_signals",
+  {
+    id: uuid("id").defaultRandom().notNull().unique(),
+    siteId: text("site_id").notNull(),
+    incidentId: uuid("incident_id").notNull(),
+    signalId: uuid("signal_id").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.siteId, t.incidentId, t.signalId] }),
+    foreignKey({
+      name: "np_agent_incident_signals_incident_fk",
+      columns: [t.siteId, t.incidentId],
+      foreignColumns: [npAgentIncidents.siteId, npAgentIncidents.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_incident_signals_signal_fk",
+      columns: [t.siteId, t.signalId],
+      foreignColumns: [npAgentSignals.siteId, npAgentSignals.id],
+    }).onDelete("cascade"),
+  ],
+);
+export const npAgentIncidentTimeline = pgTable(
+  "np_agent_incident_timeline",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    incidentId: uuid("incident_id").notNull(),
+    sequence: integer("sequence").notNull(),
+    kind: text("kind").notNull(),
+    sourceKind: text("source_kind").notNull(),
+    sourceId: uuid("source_id"),
+    sourceFingerprint: text("source_fingerprint").notNull(),
+    eventId: uuid("event_id"),
+    signalId: uuid("signal_id"),
+    runId: uuid("run_id"),
+    actionId: uuid("action_id"),
+    approvalId: uuid("approval_id"),
+    providerCallId: uuid("provider_call_id"),
+    auditEventId: uuid("audit_event_id"),
+    summary: text("summary").notNull(),
+    details: jsonb("details").$type<NpAgentJsonObject>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    unique("np_agent_incident_timeline_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_incident_timeline_sequence_unique").on(t.siteId, t.incidentId, t.sequence),
+    foreignKey({
+      name: "np_agent_incident_timeline_incident_fk",
+      columns: [t.siteId, t.incidentId],
+      foreignColumns: [npAgentIncidents.siteId, npAgentIncidents.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_timeline_eventId_fk",
+      columns: [t.siteId, t.eventId],
+      foreignColumns: [npAgentEvents.siteId, npAgentEvents.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_timeline_signalId_fk",
+      columns: [t.siteId, t.signalId],
+      foreignColumns: [npAgentSignals.siteId, npAgentSignals.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_timeline_runId_fk",
+      columns: [t.siteId, t.runId],
+      foreignColumns: [npAgentRuns.siteId, npAgentRuns.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_timeline_actionId_fk",
+      columns: [t.siteId, t.actionId],
+      foreignColumns: [npAgentActions.siteId, npAgentActions.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_timeline_approvalId_fk",
+      columns: [t.siteId, t.approvalId],
+      foreignColumns: [npAgentApprovals.siteId, npAgentApprovals.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_timeline_providerCallId_fk",
+      columns: [t.siteId, t.providerCallId],
+      foreignColumns: [npAgentProviderCalls.siteId, npAgentProviderCalls.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_incident_timeline_kind_check",
+      sql`(${t.kind} in ('observed','correlated','agent_assessment','human_note','state_transition','action','verification','notification') and ${t.sourceKind} in ('system','agent','staff','integration') and (${t.kind}<>'agent_assessment' or (${t.runId} is not null and ${t.providerCallId} is not null))) is true`,
+    ),
+    check(
+      "np_agent_incident_timeline_bounds_check",
+      sql`(${t.sequence}>0 and length(${t.sourceFingerprint}) between 1 and 256 and length(${t.summary}) between 1 and 2000 and jsonb_typeof(${t.details})='object' and octet_length(${t.details}::text)<=16384) is true`,
+    ),
+  ],
+);
+export const npAgentNotifications = pgTable(
+  "np_agent_notifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    channel: text("channel").notNull(),
+    connectionId: uuid("connection_id"),
+    connectionConfigSnapshotId: uuid("connection_config_snapshot_id"),
+    incidentId: uuid("incident_id"),
+    runId: uuid("run_id"),
+    actionId: uuid("action_id"),
+    adapterId: text("adapter_id"),
+    adapterFingerprint: text("adapter_fingerprint"),
+    connectionConfigHash: text("connection_config_hash"),
+    accountSubjectKeyId: text("account_subject_key_id"),
+    accountSubjectDigest: text("account_subject_digest"),
+    destinationKeyId: text("destination_key_id"),
+    destinationFingerprint: text("destination_fingerprint"),
+    adapterIdempotency: text("adapter_idempotency"),
+    adapterContractVersion: integer("adapter_contract_version"),
+    connectionConfigVersion: integer("connection_config_version"),
+    destinationDescriptor:
+      jsonb("destination_descriptor").$type<NpAgentConnectionDestinationDescriptorV1>(),
+    transitionVersion: integer("transition_version").notNull(),
+    deduplicationKey: text("deduplication_key").notNull(),
+    state: text("state").notNull(),
+    payloadRedacted: jsonb("payload_redacted").$type<NpAgentJsonObject>().notNull(),
+    attempts: integer("attempts").default(0).notNull(),
+    providerMessageId: text("provider_message_id"),
+    deliveryDigestBody:
+      jsonb("delivery_digest_body").$type<NpAgentNotificationDeliveryCanonicalV1>(),
+    deliveryResultDigest: text("delivery_result_digest"),
+    lastErrorCode: text("last_error_code"),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true, mode: "date" }),
+    sentAt: timestamp("sent_at", { withTimezone: true, mode: "date" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).defaultNow().notNull(),
+  },
+  (t) => [
+    unique("np_agent_notifications_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_notifications_dedup_unique").on(t.siteId, t.deduplicationKey),
+    index("np_agent_notifications_delivery_idx").on(t.siteId, t.state, t.nextAttemptAt),
+    foreignKey({
+      name: "np_agent_notifications_connectionId_fk",
+      columns: [t.siteId, t.connectionId],
+      foreignColumns: [npAgentConnections.siteId, npAgentConnections.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_notifications_connectionConfigSnapshotId_fk",
+      columns: [
+        t.siteId,
+        t.connectionId,
+        t.connectionConfigSnapshotId,
+        t.connectionConfigVersion,
+        t.connectionConfigHash,
+      ],
+      foreignColumns: [
+        npAgentConnectionConfigVersions.siteId,
+        npAgentConnectionConfigVersions.connectionId,
+        npAgentConnectionConfigVersions.id,
+        npAgentConnectionConfigVersions.version,
+        npAgentConnectionConfigVersions.configHash,
+      ],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_notifications_incidentId_fk",
+      columns: [t.siteId, t.incidentId],
+      foreignColumns: [npAgentIncidents.siteId, npAgentIncidents.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_notifications_runId_fk",
+      columns: [t.siteId, t.runId],
+      foreignColumns: [npAgentRuns.siteId, npAgentRuns.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_notifications_actionId_fk",
+      columns: [t.siteId, t.actionId],
+      foreignColumns: [npAgentActions.siteId, npAgentActions.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_notifications_state_check",
+      sql`(${t.channel} in ('admin','email','slack','webhook','siem') and ${t.state} in ('queued','sending','sent','failed','suppressed') and (${t.state}='sent')=(${t.sentAt} is not null) and (${t.deliveryDigestBody} is null)=(${t.deliveryResultDigest} is null) and (${t.state}<>'sent' or ${t.deliveryResultDigest} is not null)) is true`,
+    ),
+    check(
+      "np_agent_notifications_channel_check",
+      sql`((${t.channel}='admin' and ${t.connectionId} is null and ${t.connectionConfigSnapshotId} is null and ${t.adapterId} is null and ${t.adapterFingerprint} is null and ${t.connectionConfigHash} is null and ${t.accountSubjectKeyId} is null and ${t.accountSubjectDigest} is null and ${t.destinationKeyId} is null and ${t.destinationFingerprint} is null and ${t.adapterIdempotency} is null and ${t.adapterContractVersion} is null and ${t.connectionConfigVersion} is null and ${t.destinationDescriptor} is null and ${t.state}='sent' and ${t.attempts}=0 and ${t.providerMessageId} is null and ${t.lastErrorCode} is null and ${t.nextAttemptAt} is null and ${t.sentAt}=${t.createdAt}) or (${t.channel}<>'admin' and ${t.connectionId} is not null and ${t.connectionConfigSnapshotId} is not null and ${t.adapterId} is not null and ${t.adapterFingerprint} is not null and ${t.connectionConfigHash} is not null and ${t.accountSubjectKeyId} is not null and ${t.accountSubjectDigest} is not null and ${t.destinationKeyId} is not null and ${t.destinationFingerprint} is not null and ${t.adapterIdempotency} is not null and ${t.adapterContractVersion} is not null and ${t.connectionConfigVersion} is not null and ${t.destinationDescriptor} is not null and ${t.adapterIdempotency} in ('enforced','none') and ${t.adapterContractVersion}>0 and ${t.connectionConfigVersion}>0)) is true`,
+    ),
+    check(
+      "np_agent_notifications_bounds_check",
+      sql`(${t.transitionVersion}>0 and ${t.attempts} between 0 and 5 and length(${t.deduplicationKey}) between 1 and 256 and jsonb_typeof(${t.payloadRedacted})='object' and octet_length(${t.payloadRedacted}::text)<=16384 and (${t.providerMessageId} is null or length(${t.providerMessageId}) between 1 and 256) and (${t.deliveryResultDigest} is null or ${t.deliveryResultDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$') and (${t.deliveryDigestBody} is null or octet_length(${t.deliveryDigestBody}::text)<=65536)) is true`,
+    ),
+  ],
+);
+export const npAgentFeedback = pgTable(
+  "np_agent_feedback",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    targetKind: text("target_kind").notNull(),
+    targetId: uuid("target_id"),
+    targetFingerprint: text("target_fingerprint").notNull(),
+    label: text("label").notNull(),
+    detectorId: text("detector_id"),
+    detectorVersion: integer("detector_version"),
+    agentVersionId: uuid("agent_version_id"),
+    providerCallId: uuid("provider_call_id"),
+    policyHashes: text("policy_hashes").array().notNull(),
+    recordedByUserId: uuid("recorded_by_user_id").references(() => npUsers.id, {
+      onDelete: "set null",
+    }),
+    actorFingerprint: text("actor_fingerprint").notNull(),
+    note: text("note"),
+    supersedesId: uuid("supersedes_id"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    unique("np_agent_feedback_site_id_id_unique").on(t.siteId, t.id),
+    foreignKey({
+      name: "np_agent_feedback_supersedes_fk",
+      columns: [t.siteId, t.supersedesId],
+      foreignColumns: [t.siteId, t.id],
+    }).onDelete("restrict"),
+    uniqueIndex("np_agent_feedback_supersedes_uidx")
+      .on(t.siteId, t.supersedesId)
+      .where(sql`${t.supersedesId} is not null`),
+    index("np_agent_feedback_target_idx").on(
+      t.siteId,
+      t.targetKind,
+      t.targetFingerprint,
+      t.createdAt,
+    ),
+    foreignKey({
+      name: "np_agent_feedback_agent_version_fk",
+      columns: [t.siteId, t.agentVersionId],
+      foreignColumns: [npAgentVersions.siteId, npAgentVersions.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_feedback_provider_call_fk",
+      columns: [t.siteId, t.providerCallId],
+      foreignColumns: [npAgentProviderCalls.siteId, npAgentProviderCalls.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_feedback_kind_check",
+      sql`(${t.targetKind} in ('action','run','incident','agent_assessment') and ${t.label} in ('confirmed-spam','false-positive','useful','incorrect')) is true`,
+    ),
+    check(
+      "np_agent_feedback_bounds_check",
+      sql`(length(${t.targetFingerprint}) between 1 and 256 and length(${t.actorFingerprint}) between 1 and 256 and (${t.detectorId} is null)=(${t.detectorVersion} is null) and (${t.detectorVersion} is null or ${t.detectorVersion}>0) and cardinality(${t.policyHashes})<=64 and (${t.note} is null or length(${t.note})<=4096) and (${t.supersedesId} is null or ${t.supersedesId}<>${t.id})) is true`,
     ),
   ],
 );
