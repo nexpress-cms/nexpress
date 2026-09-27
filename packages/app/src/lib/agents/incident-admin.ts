@@ -1,0 +1,115 @@
+import { NpServiceUnavailableError, NpValidationError } from "@nexpress/core";
+import {
+  npRequireAgentIncidentGetInputV1,
+  npRequireAgentIncidentListInputV1,
+  npRequireAgentIncidentListOutputV1,
+  npRequireAgentIncidentStudioDetailV1,
+  npRequireAgentIncidentFeedbackInputV1,
+  npRequireAgentRuntimeStudioMutationResultV1,
+} from "@nexpress/core/agent-contract";
+import { getOptionalAgentStudioServerRuntimeV1 } from "@nexpress/core/agents";
+import type { NextRequest } from "next/server";
+import { npSuccessResponse } from "../api-response";
+import { ensureFor } from "../init-core";
+import { requireAgentStudioAdmin } from "./studio-admin";
+import { agentStudioErrorResponse } from "./studio-error-response";
+import { readAgentAdminJsonBody } from "./changeset-admin";
+
+const invalid = () =>
+  new NpValidationError("Invalid Incident request.", [
+    { field: "request", message: "Use the bounded Incident request contract." },
+  ]);
+
+function query(request: NextRequest, detail: boolean) {
+  if (request.nextUrl.search.length > 8192) throw invalid();
+  const values: Record<string, unknown> = {
+    statuses: [],
+    categories: [],
+    severities: [],
+    updatedAfter: null,
+    limit: 25,
+    cursor: null,
+  };
+  const seen = new Set<string>();
+  for (const [key, value] of request.nextUrl.searchParams) {
+    if (seen.has(key) || !Object.hasOwn(values, key) || (detail && key !== "cursor"))
+      throw invalid();
+    seen.add(key);
+    if (key === "limit") {
+      if (!/^[1-9][0-9]{0,2}$/u.test(value)) throw invalid();
+      values[key] = Number(value);
+    } else if (["statuses", "categories", "severities"].includes(key)) {
+      values[key] = value.split(",");
+    } else values[key] = value;
+  }
+  try {
+    return npRequireAgentIncidentListInputV1(values);
+  } catch {
+    throw invalid();
+  }
+}
+
+/** HTTP decoding only; current visibility and feedback authority belong to the host service. */
+export async function handleAgentIncidentAdminRequest(
+  request: NextRequest,
+  operation: "list" | "detail" | "feedback",
+  id?: string,
+): Promise<Response> {
+  const headers = {
+    "cache-control": "private, no-store",
+    "referrer-policy": "no-referrer",
+    "x-content-type-options": "nosniff",
+  };
+  try {
+    await ensureFor(operation === "feedback" ? "write" : "read");
+    const staff = await requireAgentStudioAdmin(request);
+    const service = getOptionalAgentStudioServerRuntimeV1()?.incidents;
+    if (!service) throw new NpServiceUnavailableError("Incident management is unavailable.");
+    let result: unknown;
+    if (operation === "list") {
+      const page = npRequireAgentIncidentListOutputV1(
+        await service.list({ ...staff, query: query(request, false) }),
+      );
+      if (page.items.some((incident) => incident.siteId !== staff.siteId))
+        throw new Error("Incident list response binding is invalid.");
+      result = page;
+    } else {
+      let incidentId: string;
+      try {
+        incidentId = npRequireAgentIncidentGetInputV1({ incidentId: id }).incidentId;
+      } catch {
+        throw invalid();
+      }
+      if (operation === "detail") {
+        const detail = npRequireAgentIncidentStudioDetailV1(
+          await service.get({ ...staff, incidentId, cursor: query(request, true).cursor }),
+        );
+        if (detail.incident.id !== incidentId || detail.incident.siteId !== staff.siteId)
+          throw new Error("Incident detail response binding is invalid.");
+        result = detail;
+      } else {
+        if (request.nextUrl.search) throw invalid();
+        let command;
+        try {
+          command = npRequireAgentIncidentFeedbackInputV1(
+            await readAgentAdminJsonBody(request, 4096),
+          );
+        } catch {
+          throw invalid();
+        }
+        const completed = await service.feedback({ ...staff, incidentId, command });
+        if (completed.resourceId !== incidentId)
+          throw new Error("Incident feedback response binding is invalid.");
+        result = npRequireAgentRuntimeStudioMutationResultV1({
+          resourceId: completed.resourceId,
+          replayed: completed.replayed,
+        });
+      }
+    }
+    return npSuccessResponse(result, { headers });
+  } catch (error) {
+    return agentStudioErrorResponse(error, operation === "feedback" ? "mutation" : "read", {
+      headers,
+    });
+  }
+}

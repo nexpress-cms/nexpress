@@ -18,14 +18,43 @@ import {
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import type { NpAgentSignalEvidenceCanonicalV1, NpAgentSubject } from "../agent-contract/types.js";
 import type { NpAgentReadCapabilityContextV1 } from "./capability-registry.js";
-import { NpAgentGatewayError, npResolveLiveAgentStaffAuthorizationV1 } from "./admin-admission.js";
+import {
+  NpAgentGatewayError,
+  npResolveLiveAgentStaffAuthorizationV1,
+  npResolveAgentStaffSessionAuthorizationV1,
+  type NpAgentAdminActorV1,
+} from "./admin-admission.js";
 import { createAgentCursorCodecV1 } from "./cursor.js";
 
-type Context = NpAgentReadCapabilityContextV1;
+export interface NpAgentIncidentStaffContextV1 {
+  siteId: string;
+  actor: NpAgentAdminActorV1;
+  transaction?: ReturnType<typeof getDb>;
+}
+type Context = NpAgentReadCapabilityContextV1 | NpAgentIncidentStaffContextV1;
+const isStaff = (context: Context): context is NpAgentIncidentStaffContextV1 => "actor" in context;
+const isRuntime = (context: Context) => !isStaff(context) && context.principal.kind === "runtime";
 type Incident = typeof npAgentIncidents.$inferSelect;
 export interface NpAgentIncidentServiceV1 {
-  get(input: NpAgentIncidentGetInputV1, context: Context): Promise<NpAgentIncidentOutputV1>;
-  list(input: NpAgentIncidentListInputV1, context: Context): Promise<NpAgentIncidentListOutputV1>;
+  get(
+    input: NpAgentIncidentGetInputV1,
+    context: NpAgentReadCapabilityContextV1,
+  ): Promise<NpAgentIncidentOutputV1>;
+  list(
+    input: NpAgentIncidentListInputV1,
+    context: NpAgentReadCapabilityContextV1,
+  ): Promise<NpAgentIncidentListOutputV1>;
+}
+export interface NpAgentIncidentStaffReadServiceV1 {
+  authorize(context: NpAgentIncidentStaffContextV1): Promise<void>;
+  get(
+    input: NpAgentIncidentGetInputV1,
+    context: NpAgentIncidentStaffContextV1,
+  ): Promise<NpAgentIncidentOutputV1>;
+  list(
+    input: NpAgentIncidentListInputV1,
+    context: NpAgentIncidentStaffContextV1,
+  ): Promise<NpAgentIncidentListOutputV1>;
 }
 export interface NpAgentIncidentServiceOptionsV1 {
   cursorHmacKey: Uint8Array;
@@ -35,7 +64,12 @@ export interface NpAgentIncidentServiceOptionsV1 {
   canReadIncident(input: {
     incident: NpAgentIncidentV1;
     signals: readonly NpAgentSignalEvidenceCanonicalV1[];
-    context: Context;
+    context: NpAgentReadCapabilityContextV1;
+  }): boolean | Promise<boolean>;
+  canReadStaffIncident?(input: {
+    incident: NpAgentIncidentV1;
+    signals: readonly NpAgentSignalEvidenceCanonicalV1[];
+    context: NpAgentIncidentStaffContextV1;
   }): boolean | Promise<boolean>;
   now?: () => Date;
 }
@@ -50,19 +84,30 @@ const invalidCursor = () =>
  * this owner adds site isolation, live staff authority and per-item domain visibility. */
 export function createAgentIncidentServiceV1(
   options: NpAgentIncidentServiceOptionsV1,
-): NpAgentIncidentServiceV1 {
+): NpAgentIncidentServiceV1 & { staff: NpAgentIncidentStaffReadServiceV1 } {
   if (typeof options.canReadIncident !== "function")
     throw new Error("Incident visibility owner is required.");
   const codec = createAgentCursorCodecV1(options.cursorHmacKey, "np.agent-incident.cursor");
   const now = options.now ?? (() => new Date());
   async function authority(context: Context) {
+    if (isStaff(context)) {
+      const auth = await npResolveAgentStaffSessionAuthorizationV1(
+        context.transaction ?? getDb(),
+        context.siteId,
+        context.actor,
+        now(),
+      );
+      if (!auth.authority.capabilities.includes("admin.manage") || !options.canReadStaffIncident)
+        throw forbidden();
+      return auth;
+    }
     if (
       context.abortSignal.aborted ||
       context.siteId !== context.principal.siteId ||
       !context.principal.scopes.includes("incident:read")
     )
       throw forbidden();
-    if (context.principal.kind === "runtime" && !context.runtimeResources) throw forbidden();
+    if (isRuntime(context) && !context.runtimeResources) throw forbidden();
     if (context.principal.authority.kind !== "user") return null;
     return npResolveLiveAgentStaffAuthorizationV1(
       context.transaction ?? getDb(),
@@ -72,9 +117,9 @@ export function createAgentIncidentServiceV1(
   }
   async function project(row: Incident, context: Context): Promise<NpAgentIncidentV1 | null> {
     const auth = await authority(context);
-    const resources = context.runtimeResources;
+    const resources = isStaff(context) ? undefined : context.runtimeResources;
     if (
-      context.principal.kind === "runtime" &&
+      isRuntime(context) &&
       resources?.incidentCategories !== null &&
       !resources?.incidentCategories.includes(row.category as NpAgentIncidentV1["category"])
     )
@@ -83,7 +128,7 @@ export function createAgentIncidentServiceV1(
       if (!subject) return true;
       if (subject.kind === "site" && subject.siteId !== context.siteId) return false;
       return !(
-        context.principal.kind === "runtime" &&
+        isRuntime(context) &&
         (subject.kind === "document" || subject.kind === "comment") &&
         resources?.collections !== null &&
         !resources?.collections.includes(subject.collection)
@@ -137,7 +182,7 @@ export function createAgentIncidentServiceV1(
           return null;
         if (!subjectAllowed(canonical.subject)) return null;
         if (
-          context.principal.kind === "runtime" &&
+          isRuntime(context) &&
           resources?.incidentCategories !== null &&
           !resources?.incidentCategories.includes(canonical.category)
         )
@@ -152,7 +197,7 @@ export function createAgentIncidentServiceV1(
         )
           return null;
         if (
-          context.principal.kind === "runtime" &&
+          isRuntime(context) &&
           resources?.collections !== null &&
           canonical.evidence.some(
             (ref) => ref.kind === "revision" && !resources?.collections?.includes(ref.collection),
@@ -185,11 +230,17 @@ export function createAgentIncidentServiceV1(
         updatedAt: row.updatedAt.toISOString(),
       });
       if (
-        (await options.canReadIncident({
-          incident: structuredClone(incident),
-          signals: evidence,
-          context,
-        })) !== true
+        (await (isStaff(context)
+          ? options.canReadStaffIncident?.({
+              incident: structuredClone(incident),
+              signals: evidence,
+              context,
+            })
+          : options.canReadIncident({
+              incident: structuredClone(incident),
+              signals: evidence,
+              context,
+            }))) !== true
       )
         return null;
       if (
@@ -212,8 +263,11 @@ export function createAgentIncidentServiceV1(
       return null;
     }
   }
-  return {
-    async get(value, context) {
+  const service = {
+    async get(
+      value: NpAgentIncidentGetInputV1,
+      context: Context,
+    ): Promise<NpAgentIncidentOutputV1> {
       const input = npRequireAgentIncidentGetInputV1(value);
       await authority(context);
       const [row] = await (context.transaction ?? getDb())
@@ -230,15 +284,20 @@ export function createAgentIncidentServiceV1(
       if (!incident) throw missing();
       return { schemaVersion: "np.agent-incident-result.v1", incident };
     },
-    async list(value, context) {
+    async list(
+      value: NpAgentIncidentListInputV1,
+      context: Context,
+    ): Promise<NpAgentIncidentListOutputV1> {
       const input = npRequireAgentIncidentListInputV1(value);
       const initialAuthority = await authority(context);
       const binding = codec.mac(
         serializeAgentCanonicalJson({
           siteId: context.siteId,
-          principal: context.principal,
+          principal: isStaff(context)
+            ? { userId: context.actor.user.id, sessionId: context.actor.sessionId }
+            : context.principal,
           authority: initialAuthority,
-          runtimeResources: context.runtimeResources ?? null,
+          runtimeResources: isStaff(context) ? null : (context.runtimeResources ?? null),
           filters: { ...input, cursor: null },
         }),
       );
@@ -318,6 +377,15 @@ export function createAgentIncidentServiceV1(
             })
           : null;
       return { schemaVersion: "np.agent-incident-list.v1", items, nextCursor };
+    },
+  };
+  return {
+    ...service,
+    staff: {
+      ...service,
+      authorize: async (context) => {
+        await authority(context);
+      },
     },
   };
 }

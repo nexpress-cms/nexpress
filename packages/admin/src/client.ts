@@ -146,3 +146,5 @@ export {
   AgentPolicyDetailView,
 } from "./agents/agent-policy-view.js";
 export { AgentBudgetView } from "./agents/agent-budget-view.js";
+
+export { AgentIncidentListView, AgentIncidentDetailView } from "./agents/agent-incident-view.js";

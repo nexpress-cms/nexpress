@@ -1,3 +1,6 @@
+import { createAgentIncidentServiceV1 } from "../../../packages/core/src/agent/incident-service.js";
+import { createAgentIncidentStudioServiceV1 } from "../../../packages/core/src/agent/incident-studio-service.js";
+import { createAgentActivityServiceV1 } from "../../../packages/core/src/agent/activity-service.js";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -190,6 +193,8 @@ async function moderationFixture() {
       },
       firstObservedAt: time,
       lastObservedAt: time,
+      createdAt: time,
+      updatedAt: time,
     })
     .returning();
   const target = { kind: "comment" as const, collection: "discussions", id: comment.id };
@@ -425,6 +430,23 @@ describe.skipIf(skipIfNoTestDb())("Moderator reviewed Gateway execution", () => 
         .map((row) => row.actionId)
         .sort(),
     ).toEqual([approval.actionId, restore.actionId].sort());
+    const incidentReads = createAgentIncidentServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(71),
+      canReadIncident: () => false,
+      canReadStaffIncident: () => true,
+    });
+    const studio = createAgentIncidentStudioServiceV1({
+      reads: incidentReads.staff,
+      approvals: f.approvals,
+      activity: createAgentActivityServiceV1({ cursorHmacKey: new Uint8Array(32).fill(72) }),
+      cursorHmacKey: new Uint8Array(32).fill(73),
+    });
+    const detail = await studio.get({ siteId, actor: f.actor.actor, incidentId: f.incident.id });
+    expect(detail.timeline.map((entry) => entry.approvalId).sort()).toEqual(
+      [approval.approvalId, restore.approvalId].sort(),
+    );
+    expect(detail.feedbackAvailable).toBe(false);
+
     expect((await f.db.select().from(npAgentActions)).map((row) => row.state)).toEqual([
       "compensated",
       "compensated",

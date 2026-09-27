@@ -641,6 +641,10 @@ detection, approved content quarantine/restore and attributed feedback. Its
 explicit source, Gateway installation and evaluation boundaries remain open;
 local verification does not authorize automatic moderation or close R6.
 
+The [Incident Studio review flow](r6-incident-studio-flow.md) connects staff
+list/detail review, authorized history links and immutable feedback to these
+owners. It does not close the remaining Incident workflow or recipe gate.
+
 ### R7 — Guardian and application security orchestration
 
 Outcome: application signals are correlated into incidents, with narrowly

@@ -7,7 +7,7 @@ import { Activity, Bot, Cable, KeyRound } from "lucide-react";
 import { cn } from "../ui/utils.js";
 
 export type AgentStudioSection =
-  "overview" | "connections" | "activity" | "configurations" | "policies" | "budgets";
+  "overview" | "connections" | "activity" | "configurations" | "policies" | "budgets" | "incidents";
 
 export function AgentStudioFrame({
   active,
@@ -64,6 +64,12 @@ export function AgentStudioFrame({
             id: "budgets" as const,
             href: "/admin/agents/budgets",
             label: "Budgets",
+            icon: Activity,
+          },
+          {
+            id: "incidents" as const,
+            href: "/admin/agents/incidents",
+            label: "Incidents",
             icon: Activity,
           },
           {
