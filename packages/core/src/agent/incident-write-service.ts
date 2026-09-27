@@ -78,6 +78,8 @@ export interface NpAgentIncidentContainmentEventV1 {
   auditEventId: string;
 }
 export interface NpAgentIncidentWriteServiceV1 {
+  /** Installation readiness only; feedback still checks current staff and target ACLs. */
+  readonly feedbackEnabled: boolean;
   observe(
     candidate: NpAgentModeratorSignalCandidateV1,
     options?: { transaction?: Db },
@@ -145,6 +147,7 @@ export function createAgentIncidentWriteServiceV1(
   const now = options.now ?? (() => new Date());
   const admission = createAgentAdminAdmissionV1({ now });
   return {
+    feedbackEnabled: typeof options.canRecordFeedback === "function",
     async observe(value, supplied = {}) {
       npAssertAgentPreviewEffectsAllowed();
       const candidate = npRequireAgentModeratorSignalCandidateV1(value);

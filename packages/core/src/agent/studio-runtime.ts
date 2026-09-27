@@ -1,3 +1,4 @@
+import type { NpAgentIncidentStudioServiceV1 } from "./incident-studio-service.js";
 import type { NpAgentApprovalServiceV1 } from "./approval-service.js";
 import type { NpAgentRuntimeControlsV1 } from "./runtime-controls.js";
 import type { NpAgentRuntimeStudioServiceV1 } from "./runtime-studio-service.js";
@@ -24,6 +25,7 @@ import type { NpAgentConnectionAuthAdapterRegistryV1 } from "./provider-auth-con
 import { NpServiceUnavailableError } from "../errors.js";
 
 export interface NpAgentStudioServerRuntimeV1 {
+  incidents: NpAgentIncidentStudioServiceV1 | null;
   runtimeStudio: NpAgentRuntimeStudioServiceV1 | null;
   runtimeControls: NpAgentRuntimeControlsV1 | null;
   approvals: NpAgentApprovalServiceV1 | null;
@@ -44,6 +46,7 @@ export interface NpAgentStudioServerRuntimeV1 {
 }
 
 export interface NpAgentStudioServerRuntimeOptionsV1 {
+  incidents?: NpAgentIncidentStudioServiceV1;
   runtimeStudio?: NpAgentRuntimeStudioServiceV1;
   runtimeControls?: NpAgentRuntimeControlsV1;
   approvals?: NpAgentApprovalServiceV1;
@@ -102,6 +105,7 @@ export function createAgentStudioServerRuntimeV1(
     throw new Error("Agent preview runtime requires the ChangeSet service.");
   const adapters = Object.freeze((options.providerRegistry?.list() ?? []).map(adapterProjection));
   return Object.freeze({
+    incidents: options.incidents ?? null,
     runtimeStudio: options.runtimeStudio ?? null,
     runtimeControls: options.runtimeControls ?? null,
     changesets: options.changesets ?? null,
