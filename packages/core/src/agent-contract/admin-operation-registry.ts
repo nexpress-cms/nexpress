@@ -1,3 +1,7 @@
+import {
+  npAgentIncidentResponsePlanInputSchemaV1,
+  npAgentIncidentResponseExecuteInputSchemaV1,
+} from "./incident-response-contract.js";
 import { npAgentIncidentTransitionInputSchemaV1 } from "./incident-workflow-contract.js";
 import { npAgentIncidentFeedbackInputSchemaV1 } from "./incident-feedback-contract.js";
 import {
@@ -140,6 +144,7 @@ export interface NpAgentAdminOperationPreconditionV1 {
     | "expectedDraftVersion"
     | "statementHash"
     | "configHash"
+    | "proposalHash"
     | "planHash";
 }
 
@@ -593,9 +598,26 @@ export const npAgentAdminOperationRouteInventoryV1 = deepFreeze([
     "agents.incidents.response_plan",
     "POST",
     "/api/admin/agents/incidents/{id}/response-plan",
-    { inputKind: "reason", outputKind: "plan", preconditions: ROW },
+    {
+      inputKind: "reason",
+      outputKind: "accepted",
+      preconditions: ROW,
+      capability: "community.moderate",
+    },
+  ),
+  operation(
+    "agents.incidents.response_execute",
+    "POST",
+    "/api/admin/agents/incidents/{id}/response-plan/execute",
+    {
+      inputKind: "approval-request",
+      outputKind: "accepted",
+      preconditions: ROW_PLAN,
+      capability: "community.moderate",
+    },
   ),
   operation("agents.incidents.restore", "POST", "/api/admin/agents/incidents/{id}/restore", {
+    capability: "community.moderate",
     inputKind: "approval-request",
     outputKind: "accepted",
     preconditions: ROW_PLAN,
@@ -875,10 +897,19 @@ function preconditionField(
     if (kind === "row-version") return "expectedApprovalVersion";
     if (kind === "plan-hash") return "statementHash";
   }
+  if (
+    (id === "agents.incidents.response_execute" || id === "agents.incidents.restore") &&
+    kind === "plan-hash"
+  )
+    return "proposalHash";
   return PRECONDITION_FIELDS[kind].field;
 }
 
 function buildInputSchema(seed: OperationSeed): NpAgentJsonSchema {
+  if (seed.id === "agents.incidents.response_plan")
+    return requireSchema(npAgentIncidentResponsePlanInputSchemaV1);
+  if (seed.id === "agents.incidents.response_execute" || seed.id === "agents.incidents.restore")
+    return requireSchema(npAgentIncidentResponseExecuteInputSchemaV1);
   if (seed.id === "agents.incidents.transition")
     return requireSchema(npAgentIncidentTransitionInputSchemaV1);
   if (seed.id === "agents.incidents.feedback")

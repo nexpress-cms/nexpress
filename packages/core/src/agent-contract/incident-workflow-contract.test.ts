@@ -83,6 +83,7 @@ describe("Incident human decision contracts", () => {
       signals: [],
       feedback: [],
       feedbackAvailable: false,
+      response: null,
       nextTimelineCursor: null,
       timeline: Array.from({ length: 50 }, (_, index) => ({
         id: `20000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,

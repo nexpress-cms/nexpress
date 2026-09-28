@@ -1,4 +1,10 @@
 import {
+  npRequireAgentIncidentResponsePlanInputV1,
+  npRequireAgentIncidentResponseExecuteInputV1,
+  type NpAgentIncidentResponsePlanInputV1,
+  type NpAgentIncidentResponseExecuteInputV1,
+} from "../agent-contract/incident-response-contract.js";
+import {
   npRequireAgentIncidentTransitionInputV1,
   type NpAgentIncidentTransitionInputV1,
 } from "../agent-contract/incident-workflow-contract.js";
@@ -83,6 +89,9 @@ import {
 type NpAgentDb = ReturnType<typeof getDb>;
 
 export type NpAgentAdmittedAdminOperationIdV1 =
+  | "agents.incidents.response_plan"
+  | "agents.incidents.response_execute"
+  | "agents.incidents.restore"
   | "agents.incidents.transition"
   | "agents.incidents.feedback"
   | NpAgentRuntimeAdminOperationIdV1
@@ -108,6 +117,9 @@ export type NpAgentAdmittedAdminOperationIdV1 =
 export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
   NpAgentRuntimeAdminInputMapV1 &
   NpAgentConnectionAdminInputMapV1 & {
+    "agents.incidents.response_plan": NpAgentIncidentResponsePlanInputV1;
+    "agents.incidents.response_execute": NpAgentIncidentResponseExecuteInputV1;
+    "agents.incidents.restore": NpAgentIncidentResponseExecuteInputV1;
     "agents.incidents.transition": NpAgentIncidentTransitionInputV1;
     "agents.incidents.feedback": NpAgentIncidentFeedbackInputV1;
     "agents.changesets.rollback_plans.create": NpAgentRollbackPlanCreateInputV1;
@@ -135,6 +147,13 @@ function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
   operationId: I,
   value: unknown,
 ): NpAgentAdmittedAdminInputMapV1[I] {
+  if (operationId === "agents.incidents.response_plan")
+    return npRequireAgentIncidentResponsePlanInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (
+    operationId === "agents.incidents.response_execute" ||
+    operationId === "agents.incidents.restore"
+  )
+    return npRequireAgentIncidentResponseExecuteInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.incidents.transition")
     return npRequireAgentIncidentTransitionInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.incidents.feedback")

@@ -1,4 +1,8 @@
 import {
+  npRequireAgentIncidentResponseV1,
+  type NpAgentIncidentResponseV1,
+} from "./incident-response-contract.js";
+import {
   npRequireAgentIncidentDecisionV1,
   npAgentIncidentTransitionsV1,
   type NpAgentIncidentDecisionV1,
@@ -59,6 +63,7 @@ export interface NpAgentIncidentStudioDetailV1 {
   }>;
   feedbackAvailable: boolean;
   workflow: NpAgentIncidentWorkflowV1 | null;
+  response?: NpAgentIncidentResponseV1 | null;
 }
 /** Exact allowlist: source bodies, raw timeline details and private containment state cannot cross this wire. */
 export function npRequireAgentIncidentStudioDetailV1(
@@ -67,7 +72,13 @@ export function npRequireAgentIncidentStudioDetailV1(
   const state = { seen: new WeakSet<object>() };
   const p = "incident.studio";
   const record = (v: unknown, path: string, keys: string[]) =>
-    canonicalBodyRecord(v, path, keys, keys, state);
+    canonicalBodyRecord(
+      v,
+      path,
+      keys,
+      keys.filter((k) => k !== "response"),
+      state,
+    );
   const nullableId = (v: unknown, path: string) => (v === null ? null : canonicalBodyUuid(v, path));
   const boolean = (v: unknown): boolean => {
     if (typeof v !== "boolean") failCanonicalBody("invalid-field", p, "Expected boolean");
@@ -82,6 +93,7 @@ export function npRequireAgentIncidentStudioDetailV1(
     "feedback",
     "feedbackAvailable",
     "workflow",
+    "response",
   ]);
   const incident = npRequireAgentIncidentV1(row.incident);
   const signals = canonicalBodyArray(row.signals, `${p}.signals`, 100, state).map((v, i) => {
@@ -219,6 +231,7 @@ export function npRequireAgentIncidentStudioDetailV1(
     failCanonicalBody("invalid-field", p, "Invalid decision kind");
   return {
     workflow,
+    response: row.response == null ? null : npRequireAgentIncidentResponseV1(row.response),
     schemaVersion: canonicalBodyEnum(
       row.schemaVersion,
       p,

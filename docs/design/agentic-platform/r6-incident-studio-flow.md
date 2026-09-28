@@ -55,7 +55,9 @@ accepts the current viewer. Real containment entries retain an action ID; its
 approval is resolved and independently authorized through the existing Approval
 service. Generic Activity currently rejects comment targets, so those action
 links remain absent while an authorized moderation approval remains reviewable.
-No incident-specific approval, quarantine or restore executor is introduced.
+The [staff response flow](r6-incident-response-flow.md) connects optional response
+planning and explicit execution to these same owners. No incident-specific
+approval, quarantine or restore executor is introduced.
 
 Feedback offers confirmed-spam and false-positive labels for spam signals. The
 current immutable feedback head is displayed per signal; a correction passes
@@ -93,12 +95,14 @@ The immutable timeline exposes the bounded human decision, including its previou
 and resulting state, category, note and containment disposition. Other raw timeline
 details remain private. Browser commands preserve their exact identity while an
 outcome is unknown; conflicting versions or lost access discard stale review.
-Feedback and transition writes cannot run concurrently from the same detail view.
+Feedback, transition and response writes cannot run concurrently from the same
+detail view.
 
 ## Boundaries
 
-This is the review, feedback and human-decision slice. Assignment, response plans,
-richer evidence viewers, model assessment content,
+This document records the review, feedback and human-decision slice. The
+[response flow](r6-incident-response-flow.md) records staff plan/approval/execution.
+Assignment, richer evidence viewers, model assessment content,
 notification posture and the additional designed filters still need their
 owning services and projections. Comment source collectors, evaluation datasets
 and Runtime approval-resume boundaries remain as recorded in the

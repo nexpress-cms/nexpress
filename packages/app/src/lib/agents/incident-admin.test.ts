@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   feedback: vi.fn(),
   transition: vi.fn(),
+  responsePlan: vi.fn(),
+  responseExecute: vi.fn(),
+  restore: vi.fn(),
 }));
 vi.mock("@nexpress/core/agents", async (original) => ({
   ...(await original<object>()),
@@ -56,6 +59,9 @@ beforeEach(() => {
   });
   mocks.feedback.mockResolvedValue({ resourceId: id, replayed: false, output: "private-output" });
   mocks.transition.mockResolvedValue({ resourceId: id, replayed: false, output: "private-output" });
+  for (const method of [mocks.responsePlan, mocks.responseExecute, mocks.restore]) {
+    method.mockResolvedValue({ resourceId: id, replayed: false, output: "private-output" });
+  }
 });
 describe("Incident Studio HTTP boundary", () => {
   it("checks current staff before resolving installed Incident service", async () => {
@@ -65,7 +71,14 @@ describe("Incident Studio HTTP boundary", () => {
   });
   it("keeps absent installation distinct from empty pages with operation-specific recovery", async () => {
     mocks.runtime.mockReturnValue({ incidents: null });
-    for (const operation of ["list", "feedback", "transition"] as const) {
+    for (const operation of [
+      "list",
+      "feedback",
+      "transition",
+      "response-plan",
+      "response-execute",
+      "restore",
+    ] as const) {
       const response = await handleAgentIncidentAdminRequest(request(), operation, id);
       expect(response.status).toBe(503);
       expect(response.headers.get("cache-control")).toBe("private, no-store");
@@ -188,6 +201,7 @@ describe("Incident Studio HTTP boundary", () => {
       feedback: [],
       feedbackAvailable: false,
       workflow: null,
+      response: null,
     };
     mocks.get.mockResolvedValue(detail);
     const response = await handleAgentIncidentAdminRequest(request(), "detail", id);
@@ -306,4 +320,102 @@ describe("Incident transition HTTP boundary", () => {
       recovery: "check-outcome",
     });
   });
+});
+
+describe("Incident response HTTP boundary", () => {
+  const hash = `cj1:sha256:${"A".repeat(43)}`;
+  const plan = {
+    schemaVersion: "np.agent-incident-response-plan-input.v1",
+    expectedVersion: 2,
+    capabilityId: "moderation.quarantine",
+    proposal: {
+      incidentId: id,
+      target: { kind: "comment", collection: "posts", id },
+      expectedVersionDigest: hash,
+      reasonCode: "REPEATED_LINK_SPAM",
+    },
+    idempotencyKey: "incident-response-plan",
+  };
+  const execute = {
+    schemaVersion: "np.agent-incident-response-execute-input.v1",
+    expectedVersion: 2,
+    actionId: id,
+    approvalId: id,
+    proposalHash: hash,
+    idempotencyKey: "incident-response-execute",
+  };
+  const cases = [
+    ["response-plan", "responsePlan", plan],
+    [
+      "response-plan",
+      "responsePlan",
+      {
+        ...plan,
+        capabilityId: "moderation.restore",
+        proposal: {
+          containmentKind: "content_quarantine",
+          containmentId: id,
+          expectedVersionDigest: hash,
+        },
+      },
+    ],
+    ["response-execute", "responseExecute", execute],
+    ["restore", "restore", execute],
+  ] as const;
+  it.each(cases)(
+    "dispatches %s with exact staff binding and safe acknowledgement",
+    async (operation, method, command) => {
+      const response = await handleAgentIncidentAdminRequest(request("", command), operation, id);
+      expect(response.status).toBe(200);
+      expect(mocks.ensure).toHaveBeenCalledWith("write");
+      expect(mocks[method]).toHaveBeenCalledWith({ ...staff, incidentId: id, command });
+      expect(await response.json()).toEqual({ resourceId: id, replayed: false });
+      mocks[method].mockResolvedValue({
+        resourceId: "20000000-0000-4000-8000-000000000002",
+        replayed: false,
+      });
+      expect(
+        (await handleAgentIncidentAdminRequest(request("", command), operation, id)).status,
+      ).toBe(500);
+    },
+  );
+  it.each(cases)(
+    "rejects authority/query/body injection before %s dispatch",
+    async (operation, method, command) => {
+      for (const [query, body] of [
+        ["", { ...command, siteId: "other" }],
+        ["?cursor=anything", command],
+        ["", { ...command, idempotencyKey: "x".repeat(16385) }],
+      ] as const) {
+        expect(
+          (await handleAgentIncidentAdminRequest(request(query, body), operation, id)).status,
+        ).toBe(400);
+      }
+      expect(mocks[method]).not.toHaveBeenCalled();
+    },
+  );
+  it("rejects mismatched capability proposals before planning", async () => {
+    expect(
+      (
+        await handleAgentIncidentAdminRequest(
+          request("", { ...plan, capabilityId: "moderation.restore" }),
+          "response-plan",
+          id,
+        )
+      ).status,
+    ).toBe(400);
+    expect(mocks.responsePlan).not.toHaveBeenCalled();
+  });
+  it.each(cases)(
+    "preserves safe unknown-outcome recovery for %s",
+    async (operation, method, command) => {
+      mocks[method].mockRejectedValue(new Error("private-response-evidence"));
+      const response = await handleAgentIncidentAdminRequest(request("", command), operation, id);
+      expect(response.status).toBe(500);
+      expect(await response.text()).not.toContain("private-response-evidence");
+      expect(JSON.parse(response.headers.get(npApiErrorDiagnosticsHeader)!)).toMatchObject({
+        recovery: "check-outcome",
+      });
+    },
+  );
 });

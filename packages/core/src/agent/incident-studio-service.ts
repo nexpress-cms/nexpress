@@ -1,3 +1,4 @@
+import type { NpAgentIncidentResponseServiceV1 } from "./incident-response-service.js";
 import {
   npRequireAgentIncidentDecisionV1,
   type NpAgentIncidentTransitionInputV1,
@@ -39,6 +40,9 @@ import { createAgentCursorCodecV1 } from "./cursor.js";
 
 type Staff = Omit<NpAgentIncidentStaffContextV1, "transaction">;
 export interface NpAgentIncidentStudioServiceV1 {
+  responsePlan: NpAgentIncidentResponseServiceV1["responsePlan"];
+  responseExecute: NpAgentIncidentResponseServiceV1["responseExecute"];
+  restore: NpAgentIncidentResponseServiceV1["restore"];
   list(input: Staff & { query: NpAgentIncidentListInputV1 }): Promise<NpAgentIncidentListOutputV1>;
   get(
     input: Staff & { incidentId: string; cursor?: string | null },
@@ -54,6 +58,7 @@ export interface NpAgentIncidentStudioServiceOptionsV1 {
   reads: NpAgentIncidentStaffReadServiceV1;
   writer?: NpAgentIncidentWriteServiceV1;
   workflow?: NpAgentIncidentWorkflowServiceV1;
+  response?: NpAgentIncidentResponseServiceV1;
   activity?: NpAgentActivityServiceV1;
   approvals?: NpAgentApprovalServiceV1;
   cursorHmacKey: Uint8Array;
@@ -342,6 +347,15 @@ export function createAgentIncidentStudioServiceV1(
           .orderBy(asc(npAgentFeedback.id))
           .limit(100)
       : [];
+    let response = null;
+    if (options.response) {
+      try {
+        response = await options.response.get(input);
+      } catch (error) {
+        if (!(error instanceof NpAgentGatewayError) || ![403, 404, 409].includes(error.status))
+          throw error;
+      }
+    }
     let workflow = null;
     if (options.workflow) {
       try {
@@ -371,6 +385,7 @@ export function createAgentIncidentStudioServiceV1(
       schemaVersion: "np.agent-incident-studio-detail.v1",
       incident,
       workflow,
+      response,
       signals: signals.map((s) => ({
         id: s.id,
         detectorId: s.detectorId,
@@ -401,6 +416,33 @@ export function createAgentIncidentStudioServiceV1(
   return {
     get,
     list,
+    responsePlan: (input) => {
+      if (!options.response)
+        throw new NpAgentGatewayError(
+          "INCIDENT_RESPONSE_UNAVAILABLE",
+          503,
+          "Incident response is unavailable.",
+        );
+      return options.response.responsePlan(input);
+    },
+    responseExecute: (input) => {
+      if (!options.response)
+        throw new NpAgentGatewayError(
+          "INCIDENT_RESPONSE_UNAVAILABLE",
+          503,
+          "Incident response is unavailable.",
+        );
+      return options.response.responseExecute(input);
+    },
+    restore: (input) => {
+      if (!options.response)
+        throw new NpAgentGatewayError(
+          "INCIDENT_RESPONSE_UNAVAILABLE",
+          503,
+          "Incident response is unavailable.",
+        );
+      return options.response.restore(input);
+    },
     transition: async (input) => {
       if (!options.workflow)
         throw new NpAgentGatewayError(

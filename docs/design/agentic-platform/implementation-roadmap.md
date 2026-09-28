@@ -643,8 +643,10 @@ local verification does not authorize automatic moderation or close R6.
 
 The [Incident Studio review flow](r6-incident-studio-flow.md) connects staff
 list/detail review, authorized history links, immutable feedback and explicit
-human investigation/closure decisions to these owners. Remaining response-plan,
-assignment and recipe gates stay open.
+human investigation/closure decisions to these owners. The optional
+[staff response flow](r6-incident-response-flow.md) adds explicit planning, existing
+human approval and quarantine/restore execution. Assignment, additional evidence
+viewers and recipe/evaluation gates stay open.
 
 ### R7 — Guardian and application security orchestration
 

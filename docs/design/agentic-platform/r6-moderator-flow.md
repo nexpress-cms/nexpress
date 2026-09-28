@@ -114,7 +114,8 @@ terminal containment pruning owner are not installed here.
   comments without exact source evidence, document/report collectors, and model
   classification are not fabricated. Approved document quarantine/restore is
   supported through its domain owner.
-- These effect capabilities are installed for Gateway use. Runtime source
+- These effect capabilities support explicitly installed Gateway use and the
+  [staff Incident response flow](r6-incident-response-flow.md). Runtime source
   projection does not advertise them and Runtime invocation fails closed until
   the recipe executor owns the corresponding approval resume lifecycle.
 - The host must install the observer/collector, policy/budget sources, Incident
