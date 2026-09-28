@@ -89,3 +89,5 @@ export * from "./incident-studio-service.js";
 export * from "./incident-workflow-service.js";
 
 export * from "./incident-response-service.js";
+
+export * from "./incident-evidence-service.js";

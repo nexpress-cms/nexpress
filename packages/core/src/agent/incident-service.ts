@@ -80,6 +80,28 @@ const forbidden = () =>
 const invalidCursor = () =>
   new NpAgentGatewayError("INCIDENT_CURSOR_INVALID", 400, "Incident cursor is invalid.");
 
+/** Single canonical Signal integrity owner, shared by staff source projections. */
+export async function npReadAgentIncidentSignalEvidenceV1(
+  signal: typeof npAgentSignals.$inferSelect,
+) {
+  const canonical = npRequireAgentSignalEvidenceCanonical({
+    schemaVersion: "np.agent-signal-evidence.v1",
+    siteId: signal.siteId,
+    detectorId: signal.detectorId,
+    detectorVersion: signal.detectorVersion,
+    category: signal.category,
+    window: {
+      startedAt: signal.windowStartedAt.toISOString(),
+      endedAt: signal.windowEndedAt.toISOString(),
+    },
+    subject: signal.subject,
+    evidence: signal.evidence,
+  });
+  if ((await npDigestAgentSignalEvidenceCanonical(canonical)) !== signal.evidenceDigest)
+    throw missing();
+  return canonical;
+}
+
 /** Explicit read-only host installation. Admission owns credential/policy revalidation;
  * this owner adds site isolation, live staff authority and per-item domain visibility. */
 export function createAgentIncidentServiceV1(
@@ -165,21 +187,7 @@ export function createAgentIncidentServiceV1(
     try {
       const evidence: NpAgentSignalEvidenceCanonicalV1[] = [];
       for (const { signal } of signals) {
-        const canonical = npRequireAgentSignalEvidenceCanonical({
-          schemaVersion: "np.agent-signal-evidence.v1",
-          siteId: signal.siteId,
-          detectorId: signal.detectorId,
-          detectorVersion: signal.detectorVersion,
-          category: signal.category,
-          window: {
-            startedAt: signal.windowStartedAt.toISOString(),
-            endedAt: signal.windowEndedAt.toISOString(),
-          },
-          subject: signal.subject,
-          evidence: signal.evidence,
-        });
-        if ((await npDigestAgentSignalEvidenceCanonical(canonical)) !== signal.evidenceDigest)
-          return null;
+        const canonical = await npReadAgentIncidentSignalEvidenceV1(signal);
         if (!subjectAllowed(canonical.subject)) return null;
         if (
           isRuntime(context) &&

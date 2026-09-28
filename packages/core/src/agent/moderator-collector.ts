@@ -167,7 +167,11 @@ function envelope(row: EventRow): NpAgentEventCanonicalV1 {
     payload: row.payload,
   });
 }
-async function currentUser(db: Db, siteId: string, staffUserId: string): Promise<NpAuthUser> {
+export async function npResolveAgentModeratorStaffUserV1(
+  db: Db,
+  siteId: string,
+  staffUserId: string,
+): Promise<NpAuthUser> {
   const live = await npResolveLiveAgentStaffAuthorizationV1(db, siteId, staffUserId);
   if (!live.authority.capabilities.includes("community.moderate")) unavailable();
   const [row] = await db
@@ -187,11 +191,8 @@ async function currentUser(db: Db, siteId: string, staffUserId: string): Promise
     role: live.authority.kind === "super-admin" ? "admin" : live.authority.role,
   });
 }
-async function readFact(
-  db: Db,
-  source: EventRow,
-  user: NpAuthUser,
-): Promise<NpAgentModeratorFactV1 | null> {
+/** Shared retained-source integrity owner. Does not assert that the current comment still matches. */
+export async function npReadAgentModeratorCommentSourceV1(source: EventRow) {
   const event = envelope(source);
   if ((await npDigestAgentEventCanonical(event)) !== source.eventHash) unavailable();
   if (
@@ -200,7 +201,8 @@ async function readFact(
     event.subject?.kind !== "comment" ||
     (event.payload.kind !== "community.content.created" &&
       event.payload.kind !== "community.content.moderated") ||
-    event.payload.targetKind !== "comment"
+    event.payload.targetKind !== "comment" ||
+    (event.payload.status !== "visible" && event.payload.status !== "pending")
   )
     return null;
   const outcome = verdicts(event.payload.verdictCode);
@@ -212,6 +214,23 @@ async function readFact(
     event.actor.memberId !== event.payload.authorMemberId
   )
     return null;
+  return {
+    event: {
+      ...event,
+      subject: event.subject,
+      payload: { ...event.payload, status: event.payload.status },
+    },
+    outcome,
+  };
+}
+async function readFact(
+  db: Db,
+  source: EventRow,
+  user: NpAuthUser,
+): Promise<NpAgentModeratorFactV1 | null> {
+  const checked = await npReadAgentModeratorCommentSourceV1(source);
+  if (!checked) return null;
+  const { event, outcome } = checked;
   let versionDigest: string;
   try {
     ({ versionDigest } = await npInspectCommunityContentContainmentV1(
@@ -282,7 +301,7 @@ export async function npResolveAgentModeratorCommentEvidenceV1(input: {
   canonicalBodyUuid(input.staffUserId, "moderator.staffUserId");
   const siteId = candidate.canonicalEvidence.siteId;
   return withCurrentSite(siteId, async () => {
-    const user = await currentUser(input.db, siteId, input.staffUserId);
+    const user = await npResolveAgentModeratorStaffUserV1(input.db, siteId, input.staffUserId);
     for (const expected of candidate.facts) {
       if (expected.evidence.kind !== "event") return false;
       const [source] = await input.db
@@ -329,7 +348,7 @@ export function createAgentModeratorCollectorV1(options: {
       const settings = npRequireAgentModeratorSettingsV1(input.settings);
       return withCurrentSite(siteId, () =>
         npWithAgentRuntimeControlTransactionV1(siteId, async ({ db }) => {
-          const user = await currentUser(db, siteId, options.staffUserId);
+          const user = await npResolveAgentModeratorStaffUserV1(db, siteId, options.staffUserId);
           const sources = await db
             .select()
             .from(npAgentEvents)
@@ -373,7 +392,7 @@ export function createAgentModeratorCollectorV1(options: {
           const observations: NpAgentIncidentObservationResultV1[] = [];
           for (const candidate of candidates)
             observations.push(await options.incidents.observe(candidate, { transaction: db }));
-          await currentUser(db, siteId, options.staffUserId);
+          await npResolveAgentModeratorStaffUserV1(db, siteId, options.staffUserId);
           return { inspectedEvents: sources.length, acceptedFacts: facts.length, observations };
         }),
       );

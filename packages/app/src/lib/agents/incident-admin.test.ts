@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   ensure: vi.fn(),
   list: vi.fn(),
   get: vi.fn(),
+  evidence: vi.fn(),
   feedback: vi.fn(),
   transition: vi.fn(),
   responsePlan: vi.fn(),
@@ -418,4 +419,66 @@ describe("Incident response HTTP boundary", () => {
       });
     },
   );
+});
+
+describe("Incident evidence HTTP boundary", () => {
+  const evidence = {
+    schemaVersion: "np.agent-incident-evidence.v1",
+    incidentId: id,
+    incidentVersion: 2,
+    items: [],
+    nextCursor: null,
+  };
+  it("decodes only a bounded cursor and returns the exact Incident-bound projection", async () => {
+    mocks.evidence.mockResolvedValue(evidence);
+    const response = await handleAgentIncidentAdminRequest(
+      request("?cursor=sealed-evidence-cursor"),
+      "evidence",
+      id,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(evidence);
+    expect(mocks.ensure).toHaveBeenCalledWith("read");
+    expect(mocks.evidence).toHaveBeenCalledWith({
+      ...staff,
+      incidentId: id,
+      cursor: "sealed-evidence-cursor",
+    });
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    for (const malformed of [
+      { ...evidence, incidentId: "20000000-0000-4000-8000-000000000002" },
+      { ...evidence, rawBody: "private-evidence" },
+    ]) {
+      mocks.evidence.mockResolvedValue(malformed);
+      const rejected = await handleAgentIncidentAdminRequest(request(), "evidence", id);
+      expect(rejected.status).toBe(500);
+      expect(await rejected.text()).not.toContain("private-evidence");
+    }
+  });
+  it("rejects injected filters, duplicate/oversized cursors and invalid IDs before dispatch", async () => {
+    for (const [query, target] of [
+      ["?siteId=other", id],
+      ["?limit=50", id],
+      ["?cursor=one&cursor=two", id],
+      ["?cursor=" + "x".repeat(2049), id],
+      ["", "invalid-id"],
+    ])
+      expect(
+        (await handleAgentIncidentAdminRequest(request(query), "evidence", target)).status,
+      ).toBe(400);
+    expect(mocks.evidence).not.toHaveBeenCalled();
+  });
+  it("keeps denied or missing installation separate from an empty evidence page", async () => {
+    mocks.staff.mockRejectedValueOnce(new NpForbiddenError("incident", "read"));
+    expect((await handleAgentIncidentAdminRequest(request(), "evidence", id)).status).toBe(403);
+    expect(mocks.runtime).not.toHaveBeenCalled();
+    mocks.runtime.mockReturnValue({ incidents: null });
+    const response = await handleAgentIncidentAdminRequest(request(), "evidence", id);
+    expect(response.status).toBe(503);
+    expect(JSON.parse(response.headers.get(npApiErrorDiagnosticsHeader)!)).toMatchObject({
+      recovery: "retry-read",
+    });
+    expect(mocks.evidence).not.toHaveBeenCalled();
+  });
 });

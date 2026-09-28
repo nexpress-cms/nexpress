@@ -1,7 +1,17 @@
 import { expect, test } from "@playwright/test";
-import { npRequireAgentIncidentStudioDetailV1 } from "@nexpress/core/agent-contract";
+import {
+  npRequireAgentIncidentStudioDetailV1,
+  npRequireAgentIncidentEvidenceV1,
+  type NpAgentIncidentEvidenceItemV1,
+} from "@nexpress/core/agent-contract";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
+
+test.beforeEach(async ({ page }) => {
+  await page.route("**/api/admin/agents/incidents/*/evidence*", (route) =>
+    route.fulfill({ status: 503, json: {} }),
+  );
+});
 
 const id = "51111111-1111-4111-8111-111111111111";
 const signalId = "61111111-1111-4111-8111-111111111111";
@@ -591,4 +601,234 @@ test("incident response conflict and access loss remove stale plans before retry
     page.getByRole("alert").filter({ hasText: "unavailable or you no longer have access" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
+});
+
+function evidenceItem(eventId: string): NpAgentIncidentEvidenceItemV1 {
+  return {
+    eventId,
+    signalIds: [signalId],
+    availability: "available",
+    target: { ...responseTarget },
+    observed: {
+      occurredAt: at,
+      retentionExpiresAt: "2026-09-28T00:00:00.000Z",
+      status: "visible",
+      spamVerdict: "flag",
+      profanityVerdict: "pass",
+    },
+    current: { state: "unchanged", status: "visible", editedAt: null, versionDigest: targetDigest },
+    responseEligible: true,
+  };
+}
+function evidencePage(
+  items: NpAgentIncidentEvidenceItemV1[],
+  nextCursor: string | null = null,
+  incidentVersion = 1,
+) {
+  return npRequireAgentIncidentEvidenceV1({
+    schemaVersion: "np.agent-incident-evidence.v1",
+    incidentId: id,
+    incidentVersion,
+    items,
+    nextCursor,
+  });
+}
+
+test("incident evidence separates observed and current facts, pages safely, and selects only an exact response target", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    70 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const result = responseDetail();
+  result.response!.choices.unshift({
+    ...result.response!.choices[0]!,
+    target: { ...responseTarget, id: actionId },
+  });
+  const eligible = evidenceItem(id);
+  const changed = evidenceItem(actionId);
+  changed.current = { ...changed.current!, state: "changed", status: "pending", editedAt: at };
+  changed.responseEligible = false;
+  const deleted = evidenceItem(restoreActionId);
+  deleted.current = { ...deleted.current!, state: "deleted", status: "deleted" };
+  deleted.responseEligible = false;
+  const hidden = evidenceItem(containmentId);
+  hidden.current = { ...hidden.current!, state: "hidden", status: "hidden" };
+  hidden.responseEligible = false;
+  const mismatch = evidenceItem(signalId);
+  mismatch.target = { ...responseTarget, id: "a1111111-1111-4111-8111-111111111111" };
+  mismatch.current = { ...mismatch.current!, versionDigest: `cj1:sha256:${"e".repeat(43)}` };
+  const unavailable: NpAgentIncidentEvidenceItemV1 = {
+    eventId: id,
+    signalIds: [signalId],
+    availability: "unavailable",
+    target: null,
+    observed: null,
+    current: null,
+    responseEligible: false,
+  };
+  const nextCursor = `page2.${"a".repeat(43)}`;
+  const cursors: Array<string | null> = [];
+  const prepared: unknown[] = [];
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({ json: result }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/evidence*`, (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    cursors.push(cursor);
+    return route.fulfill({
+      json: cursor
+        ? evidencePage([unavailable, mismatch])
+        : evidencePage([eligible, changed, deleted, hidden], nextCursor),
+    });
+  });
+  await page.route(`**/api/admin/agents/incidents/${id}/response-plan`, (route) => {
+    prepared.push(route.request().postDataJSON());
+    return route.fulfill({ json: { resourceId: id, replayed: false } });
+  });
+  await page.goto(`/admin/agents/incidents/${id}`);
+  const evidence = page.getByRole("region", { name: "Comment evidence" });
+  const response = page.getByRole("region", { name: "Response plans" });
+  await expect(evidence.getByRole("heading", { name: "Recorded observation" })).toHaveCount(4);
+  await expect(
+    evidence.getByText("Compared with observation: changed", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    evidence.getByText("Compared with observation: deleted", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    evidence.getByText("Compared with observation: hidden", { exact: true }),
+  ).toBeVisible();
+  await expect(evidence.getByText(/References can retain evidence/)).toHaveCount(4);
+  const selects = evidence.getByRole("button", { name: "Select for response plan" });
+  await expect(selects.first()).toBeEnabled();
+  for (let index = 1; index < 4; index++) await expect(selects.nth(index)).toBeDisabled();
+  await selects.first().click();
+  await expect(response.getByRole("combobox", { name: "Response target" })).toHaveText(
+    "Quarantine comment 2",
+  );
+  expect(prepared).toHaveLength(0);
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+      await page.getByRole("button", { name: "Close navigation" }).last().click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await evidence.screenshot({
+      path: testInfo.outputPath(`incident-evidence-${width}.png`),
+      animations: "disabled",
+    });
+  }
+  await evidence.getByRole("button", { name: "Next evidence page" }).click();
+  await expect(
+    evidence.getByText(/Its current state and retention outcome cannot be determined/),
+  ).toBeVisible();
+  await expect(evidence.getByText(/does not match a current response target/)).toBeVisible();
+  await expect(evidence.getByRole("button", { name: "Select for response plan" })).toBeDisabled();
+  await expect(response.getByRole("button", { name: "Prepare response plan" })).toBeDisabled();
+  expect(cursors).toEqual([null, nextCursor]);
+  await evidence.getByRole("button", { name: "First evidence page" }).click();
+  await evidence.getByRole("button", { name: "Select for response plan" }).first().click();
+  await response.getByRole("button", { name: "Prepare response plan" }).click();
+  await expect.poll(() => prepared.length).toBe(1);
+  expect(prepared[0]).toMatchObject({
+    expectedVersion: 1,
+    capabilityId: "moderation.quarantine",
+    proposal: { target: responseTarget, expectedVersionDigest: targetDigest },
+  });
+});
+
+test("incident evidence failure clears its selection, stale generations require review, and access loss clears detail", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    76 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const result = responseDetail();
+  let evidenceStatus = 200;
+  let evidenceVersion = 1;
+  let staleTarget = false;
+  let invalidCursor = false;
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({ json: result }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/evidence*`, (route) => {
+    if (invalidCursor && new URL(route.request().url()).searchParams.has("cursor"))
+      return route.fulfill({
+        status: 400,
+        json: {
+          status: 400,
+          error: {
+            code: "INCIDENT_EVIDENCE_CURSOR_INVALID",
+            message: "Incident evidence cursor is invalid.",
+          },
+        },
+      });
+    return route.fulfill({
+      status: evidenceStatus,
+      json:
+        evidenceStatus === 200
+          ? evidencePage(
+              [
+                {
+                  ...evidenceItem(id),
+                  current: {
+                    ...evidenceItem(id).current!,
+                    versionDigest: staleTarget ? `cj1:sha256:${"e".repeat(43)}` : targetDigest,
+                  },
+                },
+              ],
+              `page2.${"a".repeat(43)}`,
+              evidenceVersion,
+            )
+          : {},
+    });
+  });
+  await page.goto(`/admin/agents/incidents/${id}`);
+  await page.getByRole("button", { name: "Select for response plan" }).click();
+  evidenceStatus = 503;
+  await page.getByRole("button", { name: "Refresh comment evidence" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Comment evidence is unavailable" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Repeated links" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Recorded observation" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Prepare response plan" })).toBeDisabled();
+  evidenceStatus = 200;
+  staleTarget = true;
+  await page.getByRole("button", { name: "Refresh comment evidence" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "This incident or its evidence changed" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
+  staleTarget = false;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.getByRole("button", { name: "Select for response plan" }).click();
+  evidenceVersion = 2;
+  await page.getByRole("button", { name: "Refresh comment evidence" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "This incident or its evidence changed" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
+  evidenceVersion = 1;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.getByRole("button", { name: "Select for response plan" }).click();
+  invalidCursor = true;
+  await page.getByRole("button", { name: "Next evidence page" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "This incident or its evidence changed" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.getByRole("button", { name: "Select for response plan" }).click();
+  evidenceStatus = 403;
+  await page.getByRole("button", { name: "Refresh comment evidence" }).click();
+  await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Current comment" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Prepare response plan" })).toHaveCount(0);
 });

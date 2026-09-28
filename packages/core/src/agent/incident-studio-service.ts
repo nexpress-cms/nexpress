@@ -1,3 +1,4 @@
+import type { NpAgentIncidentEvidenceServiceV1 } from "./incident-evidence-service.js";
 import type { NpAgentIncidentResponseServiceV1 } from "./incident-response-service.js";
 import {
   npRequireAgentIncidentDecisionV1,
@@ -40,6 +41,7 @@ import { createAgentCursorCodecV1 } from "./cursor.js";
 
 type Staff = Omit<NpAgentIncidentStaffContextV1, "transaction">;
 export interface NpAgentIncidentStudioServiceV1 {
+  evidence: NpAgentIncidentEvidenceServiceV1["get"];
   responsePlan: NpAgentIncidentResponseServiceV1["responsePlan"];
   responseExecute: NpAgentIncidentResponseServiceV1["responseExecute"];
   restore: NpAgentIncidentResponseServiceV1["restore"];
@@ -59,6 +61,7 @@ export interface NpAgentIncidentStudioServiceOptionsV1 {
   writer?: NpAgentIncidentWriteServiceV1;
   workflow?: NpAgentIncidentWorkflowServiceV1;
   response?: NpAgentIncidentResponseServiceV1;
+  evidence?: NpAgentIncidentEvidenceServiceV1;
   activity?: NpAgentActivityServiceV1;
   approvals?: NpAgentApprovalServiceV1;
   cursorHmacKey: Uint8Array;
@@ -414,6 +417,15 @@ export function createAgentIncidentStudioServiceV1(
     });
   }
   return {
+    evidence: (input) => {
+      if (!options.evidence)
+        throw new NpAgentGatewayError(
+          "INCIDENT_EVIDENCE_UNAVAILABLE",
+          503,
+          "Incident evidence is unavailable.",
+        );
+      return options.evidence.get(input);
+    },
     get,
     list,
     responsePlan: (input) => {

@@ -1086,6 +1086,7 @@ operations aggregates. The tables below also retain proposed future dependencies
 | `GET /api/admin/agents/changesets/{id}/previews/{previewId}/artifacts/{artifactId}` | private artifact bytes           | Reauthorize site/target/digest/expiry then no-store stream       |
 | `GET /api/admin/agents/incidents`                                                   | `np.agent-incident.v1` list      | Incident queue                                                   |
 | `GET /api/admin/agents/incidents/{id}`                                              | `np.agent-incident-detail.v1`    | Incident evidence/timeline/actions                               |
+| `GET /api/admin/agents/incidents/{id}/evidence`                                     | `np.agent-incident-evidence.v1`  | Bounded comment observation/current-state evidence               |
 | `GET /api/admin/agents/budgets`                                                     | `np.agent-runtime-budget.v1`     | Site and Agent ceilings/usage                                    |
 | `GET /api/admin/agents/runtime-status`                                              | `np.agent-runtime-overview.v1`   | Worker, emergency pause, quota, vault, adapter posture           |
 

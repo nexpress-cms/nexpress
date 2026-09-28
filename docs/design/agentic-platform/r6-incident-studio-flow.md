@@ -102,7 +102,9 @@ detail view.
 
 This document records the review, feedback and human-decision slice. The
 [response flow](r6-incident-response-flow.md) records staff plan/approval/execution.
-Assignment, richer evidence viewers, model assessment content,
+The [comment evidence flow](r6-incident-evidence-flow.md) adds bounded observation
+metadata/current-state review and exact response target selection. Assignment,
+other source evidence viewers, model assessment content,
 notification posture and the additional designed filters still need their
 owning services and projections. Comment source collectors, evaluation datasets
 and Runtime approval-resume boundaries remain as recorded in the

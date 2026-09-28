@@ -78,3 +78,5 @@ export * from "./incident-studio-contract.js";
 export * from "./incident-workflow-contract.js";
 
 export * from "./incident-response-contract.js";
+
+export * from "./incident-evidence-contract.js";
