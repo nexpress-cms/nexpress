@@ -66,6 +66,7 @@ function detail() {
     nextTimelineCursor: null,
     feedback: [],
     feedbackAvailable: true,
+    response: null,
     workflow: {
       availableTransitions: ["investigating", "resolved", "dismissed"],
       containment: {
@@ -368,4 +369,226 @@ test("incident closure conflict discards containment review and requires a fresh
     containmentReviewHash: `cj1:sha256:${"b".repeat(43)}`,
   });
   expect(commands[1]!.idempotencyKey).not.toEqual(commands[0]!.idempotencyKey);
+});
+
+const responseTarget = { kind: "comment" as const, collection: "comments", id: signalId };
+const targetDigest = `cj1:sha256:${"b".repeat(43)}`;
+const actionId = "71111111-1111-4111-8111-111111111111";
+const restoreActionId = "81111111-1111-4111-8111-111111111111";
+const containmentId = "91111111-1111-4111-8111-111111111111";
+function responseDetail() {
+  const value = detail();
+  value.response = {
+    choices: [
+      {
+        capabilityId: "moderation.quarantine",
+        target: responseTarget,
+        expectedVersionDigest: targetDigest,
+        containmentId: null,
+      },
+    ],
+    plans: [],
+    truncated: false,
+  };
+  return value;
+}
+function responsePlan(restore = false) {
+  return {
+    capabilityId: restore ? ("moderation.restore" as const) : ("moderation.quarantine" as const),
+    target: responseTarget,
+    expectedVersionDigest: targetDigest,
+    containmentId: restore ? containmentId : null,
+    actionId: restore ? restoreActionId : actionId,
+    proposalHash: `cj1:sha256:${"c".repeat(43)}`,
+    state: "approval_pending" as const,
+    approvalId: restore ? restoreActionId : actionId,
+    approvalResource: `/admin/agents/approvals/${restore ? restoreActionId : actionId}`,
+    expiresAt: "2030-01-01T00:00:00.000Z",
+    policyHashes: [`cj1:sha256:${"d".repeat(43)}`],
+    reversibility: restore ? ("none" as const) : ("compensatable" as const),
+    canExecute: false,
+  };
+}
+
+test("incident response prepares an exact target, waits for approval, and explicitly quarantines and restores", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    90 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const result = responseDetail();
+  const prepared: unknown[] = [];
+  const executed: unknown[] = [];
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({
+      json: npRequireAgentIncidentStudioDetailV1(JSON.parse(JSON.stringify(result))),
+    }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/response-plan`, (route) => {
+    prepared.push(route.request().postDataJSON());
+    if (prepared.length === 1) return route.abort("failed");
+    const restoring = prepared.length > 2;
+    result.response!.plans.push(responsePlan(restoring));
+    result.incident.versionNumber += 1;
+    return route.fulfill({
+      json: { resourceId: id, replayed: prepared.length === 2 },
+    });
+  });
+  await page.route(`**/api/admin/agents/incidents/${id}/response-plan/execute`, (route) => {
+    executed.push(route.request().postDataJSON());
+    if (executed.length === 1) return route.abort("failed");
+    const plan = result.response!.plans[0]!;
+    plan.state = "succeeded";
+    plan.canExecute = false;
+    result.response!.choices = [
+      {
+        capabilityId: "moderation.restore",
+        target: responseTarget,
+        expectedVersionDigest: targetDigest,
+        containmentId,
+      },
+    ];
+    result.workflow!.containment = {
+      ...result.workflow!.containment,
+      total: 1,
+      active: 1,
+      restored: 0,
+      unresolved: 0,
+    };
+    result.incident.versionNumber += 1;
+    return route.fulfill({ json: { resourceId: id, replayed: true } });
+  });
+  await page.route(`**/api/admin/agents/incidents/${id}/restore`, (route) => {
+    executed.push(route.request().postDataJSON());
+    const plan = result.response!.plans[1]!;
+    plan.state = "succeeded";
+    plan.canExecute = false;
+    result.response!.choices = [];
+    result.workflow!.containment = {
+      ...result.workflow!.containment,
+      total: 1,
+      active: 0,
+      restored: 1,
+      unresolved: 0,
+    };
+    result.incident.versionNumber += 1;
+    return route.fulfill({ json: { resourceId: id, replayed: false } });
+  });
+  await page.goto(`/admin/agents/incidents/${id}`);
+  const response = page.getByRole("region", { name: "Response plans" });
+  await expect(
+    response.getByText(`Current target version: ${targetDigest}`, { exact: true }),
+  ).toBeVisible();
+  await response.getByRole("button", { name: "Prepare response plan" }).click();
+  await expect(response.getByRole("button", { name: "Retry unchanged response" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Record feedback", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeDisabled();
+  await response.getByRole("button", { name: "Retry unchanged response" }).click();
+  await expect(response.getByRole("link", { name: "Review response approval" })).toHaveAttribute(
+    "href",
+    `/admin/agents/approvals/${actionId}`,
+  );
+  expect(prepared[1]).toEqual(prepared[0]);
+  expect(prepared[0]).toMatchObject({
+    expectedVersion: 1,
+    capabilityId: "moderation.quarantine",
+    proposal: {
+      incidentId: id,
+      target: responseTarget,
+      expectedVersionDigest: targetDigest,
+      reasonCode: "HUMAN_REVIEW",
+    },
+  });
+  await expect(
+    response.getByRole("button", { name: "Execute approved quarantine" }),
+  ).toBeDisabled();
+  expect(executed).toHaveLength(0);
+  result.response!.plans[0]!.state = "approved";
+  result.response!.plans[0]!.canExecute = true;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(response.getByRole("button", { name: "Execute approved quarantine" })).toBeEnabled();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+      await page.getByRole("button", { name: "Close navigation" }).last().click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`incident-response-${width}.png`),
+      fullPage: true,
+      animations: "disabled",
+    });
+  }
+  await response.getByRole("button", { name: "Execute approved quarantine" }).click();
+  await response.getByRole("button", { name: "Retry unchanged response" }).click();
+  await expect(
+    response.getByRole("heading", { name: "Quarantine plan · succeeded" }),
+  ).toBeVisible();
+  expect(executed[1]).toEqual(executed[0]);
+  expect(executed[0]).toMatchObject({
+    expectedVersion: 2,
+    actionId,
+    approvalId: actionId,
+    proposalHash: responsePlan().proposalHash,
+  });
+  await response.getByRole("button", { name: "Prepare response plan" }).click();
+  await expect(response.getByRole("button", { name: "Execute approved restore" })).toBeDisabled();
+  expect(prepared[2]).toMatchObject({
+    capabilityId: "moderation.restore",
+    proposal: {
+      containmentKind: "content_quarantine",
+      containmentId,
+      expectedVersionDigest: targetDigest,
+    },
+  });
+  result.response!.plans[1]!.state = "approved";
+  result.response!.plans[1]!.canExecute = true;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await response.getByRole("button", { name: "Execute approved restore" }).click();
+  await expect(response.getByRole("heading", { name: "Restore plan · succeeded" })).toBeVisible();
+  await expect(page.getByText(/Containment: 1 total · 0 active · 1 restored/)).toBeVisible();
+  expect(executed[2]).toMatchObject({
+    expectedVersion: 4,
+    actionId: restoreActionId,
+    approvalId: restoreActionId,
+  });
+});
+
+test("incident response conflict and access loss remove stale plans before retry", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    96 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const result = responseDetail();
+  result.response!.plans = [{ ...responsePlan(), state: "approved", canExecute: true }];
+  let status = 409;
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({
+      json: npRequireAgentIncidentStudioDetailV1(JSON.parse(JSON.stringify(result))),
+    }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/response-plan/execute`, (route) =>
+    route.fulfill({ status, json: {} }),
+  );
+  await page.goto(`/admin/agents/incidents/${id}`);
+  await page.getByRole("button", { name: "Execute approved quarantine" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "This response plan or its target changed" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Review response approval" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Retry unchanged response" })).toHaveCount(0);
+  status = 403;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.getByRole("button", { name: "Execute approved quarantine" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "unavailable or you no longer have access" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
 });

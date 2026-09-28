@@ -14,6 +14,7 @@ import {
   type NpAgentIncidentStudioDetailV1,
   type NpAgentIncidentFeedbackInputV1,
 } from "@nexpress/core/agent-contract";
+import { IncidentResponse } from "./agent-incident-response.js";
 import { IncidentWorkflow } from "./agent-incident-workflow.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentStudioApiError } from "./agent-studio-api.js";
@@ -263,6 +264,23 @@ function IncidentDetail({ id }: { id: string }) {
               </ul>
             )}
           </section>
+          <IncidentResponse
+            detail={detail}
+            disabled={writing || state.loading}
+            onWriting={setWriting}
+            onSuccess={() => {
+              setCursor(null);
+              state.reload();
+            }}
+            onAccessLost={(error) =>
+              state.clear("This incident is unavailable or you no longer have access.", error)
+            }
+            onConflict={() =>
+              state.clear(
+                "This response plan or its target changed. Reload and review the current evidence before preparing or executing a response.",
+              )
+            }
+          />
           <IncidentWorkflow
             detail={detail}
             disabled={writing || state.loading}

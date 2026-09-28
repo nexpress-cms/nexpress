@@ -1198,6 +1198,7 @@ a new generation with a new key and invalidate or supersede the old verifier.
 | `POST /api/admin/agents/changesets/{id}/rollback-plans/{rollbackPlanId}/execute`          | Execute only the exact approved rollback plan                                                         |
 | `POST /api/admin/agents/incidents/{id}/transitions`                                       | Authorized exact state transition and human note                                                      |
 | `POST /api/admin/agents/incidents/{id}/response-plan`                                     | Create deterministic response plan/approval                                                           |
+| `POST /api/admin/agents/incidents/{id}/response-plan/execute`                             | Execute the exact approved quarantine plan                                                            |
 | `POST /api/admin/agents/incidents/{id}/restore`                                           | Restore exact reversible containment                                                                  |
 | `PATCH /api/admin/agents/budgets`                                                         | Update site/per-Agent ceilings with expected version                                                  |
 | `POST /api/admin/agents/runtime/pause`                                                    | Emergency stop for new runtime admission                                                              |

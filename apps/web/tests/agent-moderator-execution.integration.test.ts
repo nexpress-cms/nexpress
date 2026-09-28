@@ -1,3 +1,4 @@
+import { createAgentIncidentResponseServiceV1 } from "../../../packages/core/src/agent/incident-response-service.js";
 import { createAgentIncidentWorkflowServiceV1 } from "../../../packages/core/src/agent/incident-workflow-service.js";
 import { createAgentIncidentServiceV1 } from "../../../packages/core/src/agent/incident-service.js";
 import { createAgentIncidentStudioServiceV1 } from "../../../packages/core/src/agent/incident-studio-service.js";
@@ -109,6 +110,12 @@ async function moderationFixture() {
     resolveTransportAudience: principal.gateway.getTransportAudience,
     resolveBudget: () => Promise.resolve(budget),
     resolvePolicy: () =>
+      Promise.resolve({
+        autonomy: "approved",
+        capabilityModes: rules.capabilityModes,
+        layers: [rules],
+      }),
+    resolveStaffPolicy: () =>
       Promise.resolve({
         autonomy: "approved",
         capabilityModes: rules.capabilityModes,
@@ -350,6 +357,197 @@ describe.skipIf(skipIfNoTestDb())("Moderator reviewed Gateway execution", () => 
   });
   afterAll(closeTestDb);
 
+  it("uses real staff plans, distinct human approval, exact execution and restoration without a Gateway run", async () => {
+    const f = await moderationFixture();
+    const seeded = await seedUser({ role: "admin" });
+    await grantSiteMembership(siteId, seeded.userId, "admin");
+    const [session] = await f.db
+      .select()
+      .from(npSessions)
+      .where(eq(npSessions.userId, seeded.userId));
+    const approver: NpAgentAdminActorV1 = {
+      user: {
+        id: seeded.userId,
+        name: seeded.name,
+        email: seeded.email,
+        role: seeded.role,
+        tokenVersion: 0,
+      },
+      sessionId: session.id,
+    };
+    const reads = createAgentIncidentServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(84),
+      canReadIncident: () => true,
+      canReadStaffIncident: () => true,
+    }).staff;
+    const response = createAgentIncidentResponseServiceV1({
+      reads,
+      moderation: f.service,
+      approvals: f.approvals,
+      resolveTargets: async ({ incident }) =>
+        incident.primarySubject?.kind === "comment"
+          ? [
+              {
+                kind: "comment",
+                collection: incident.primarySubject.collection,
+                id: incident.primarySubject.commentId,
+              },
+            ]
+          : [],
+      now: f.now,
+      admission: {
+        reauthentication: {
+          verify: () => ({
+            reauthenticatedAt: f.now().toISOString(),
+            sessionFactFingerprint: `cj1:sha256:${"A".repeat(43)}`,
+          }),
+        },
+      },
+    });
+    const identity = { siteId, actor: f.actor.actor, incidentId: f.incident.id };
+    const view = await response.get(identity);
+    expect(view.choices).toHaveLength(1);
+    const command = {
+      schemaVersion: "np.agent-incident-response-plan-input.v1" as const,
+      expectedVersion: 1,
+      capabilityId: "moderation.quarantine" as const,
+      proposal: {
+        incidentId: f.incident.id,
+        target: view.choices[0].target,
+        expectedVersionDigest: view.choices[0].expectedVersionDigest,
+        reasonCode: "HUMAN_REVIEW",
+      },
+      idempotencyKey: randomUUID(),
+    };
+    expect(await response.responsePlan({ ...identity, command })).toEqual({
+      resourceId: f.incident.id,
+      replayed: false,
+    });
+    expect(await response.responsePlan({ ...identity, command })).toMatchObject({ replayed: true });
+    const plan = (await response.get(identity)).plans[0];
+    expect(plan.state).toBe("approval_pending");
+    expect(plan.canExecute).toBe(false);
+    expect(await f.db.select().from(npAgentRuns)).toEqual([]);
+    const [action] = await f.db.select().from(npAgentActions);
+    expect(action).toMatchObject({ runId: null, runFingerprint: null });
+    const [inv] = await f.db
+      .select()
+      .from(npAgentInvocations)
+      .where(eq(npAgentInvocations.id, action.invocationId!));
+    expect(inv).toMatchObject({
+      actorKind: "staff",
+      operationKind: "admin",
+      principalId: null,
+      capabilityDefinitionBody: null,
+      effectProfileId: null,
+    });
+    await expect(decide(f, plan.approvalId)).rejects.toThrow();
+    await decide(f, plan.approvalId, "approve", approver);
+    expect((await response.get(identity)).plans[0].canExecute).toBe(true);
+    const execute = {
+      schemaVersion: "np.agent-incident-response-execute-input.v1" as const,
+      expectedVersion: 1,
+      actionId: plan.actionId,
+      approvalId: plan.approvalId,
+      proposalHash: plan.proposalHash,
+      idempotencyKey: randomUUID(),
+    };
+    await expect(
+      response.responsePlan({
+        ...identity,
+        command: {
+          ...command,
+          idempotencyKey: randomUUID(),
+          proposal: {
+            ...command.proposal,
+            target: { ...command.proposal.target, id: randomUUID() },
+          },
+        },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      response.responseExecute({ ...identity, command: { ...execute, expectedVersion: 2 } }),
+    ).rejects.toThrow();
+    f.budget.directActionsPerHour += 1;
+    expect((await response.get(identity)).plans[0].canExecute).toBe(false);
+    await expect(response.responseExecute({ ...identity, command: execute })).rejects.toThrow();
+    f.budget.directActionsPerHour -= 1;
+    await f.db
+      .update(npSiteMemberships)
+      .set({ role: "viewer" })
+      .where(
+        and(eq(npSiteMemberships.siteId, siteId), eq(npSiteMemberships.userId, approver.user.id)),
+      );
+    expect((await response.get(identity)).plans[0].canExecute).toBe(false);
+    await expect(response.responseExecute({ ...identity, command: execute })).rejects.toThrow();
+    await f.db
+      .update(npSiteMemberships)
+      .set({ role: "admin" })
+      .where(
+        and(eq(npSiteMemberships.siteId, siteId), eq(npSiteMemberships.userId, approver.user.id)),
+      );
+    await f.db
+      .update(npComments)
+      .set({ bodyMd: "Changed after approval" })
+      .where(eq(npComments.id, f.comment.id));
+    expect((await response.get(identity)).plans[0].canExecute).toBe(false);
+    await expect(response.responseExecute({ ...identity, command: execute })).rejects.toThrow();
+    await f.db
+      .update(npComments)
+      .set({ bodyMd: f.comment.bodyMd })
+      .where(eq(npComments.id, f.comment.id));
+    expect(
+      (
+        await f.db.select().from(npAgentApprovals).where(eq(npAgentApprovals.id, plan.approvalId))
+      )[0].state,
+    ).toBe("approved");
+    await response.responseExecute({ ...identity, command: execute });
+    expect(await response.responseExecute({ ...identity, command: execute })).toMatchObject({
+      replayed: true,
+    });
+    const restoredView = await response.get(identity);
+    expect(restoredView.choices.some((c) => c.capabilityId === "moderation.quarantine")).toBe(
+      false,
+    );
+    const choice = restoredView.choices.find((c) => c.capabilityId === "moderation.restore")!;
+    expect(choice).toBeDefined();
+    const current = (await reads.get({ incidentId: f.incident.id }, identity)).incident;
+    await response.responsePlan({
+      ...identity,
+      command: {
+        schemaVersion: "np.agent-incident-response-plan-input.v1",
+        expectedVersion: current.versionNumber,
+        capabilityId: "moderation.restore",
+        proposal: {
+          containmentKind: "content_quarantine",
+          containmentId: choice.containmentId!,
+          expectedVersionDigest: choice.expectedVersionDigest,
+        },
+        idempotencyKey: randomUUID(),
+      },
+    });
+    const restoration = (await response.get(identity)).plans.find(
+      (p) => p.capabilityId === "moderation.restore",
+    )!;
+    await decide(f, restoration.approvalId, "approve", approver);
+    await response.restore({
+      ...identity,
+      command: {
+        schemaVersion: "np.agent-incident-response-execute-input.v1",
+        expectedVersion: current.versionNumber,
+        actionId: restoration.actionId,
+        approvalId: restoration.approvalId,
+        proposalHash: restoration.proposalHash,
+        idempotencyKey: randomUUID(),
+      },
+    });
+    expect(
+      (await f.db.select().from(npComments).where(eq(npComments.id, f.comment.id)))[0].status,
+    ).toBe("pending");
+    expect(await f.db.select().from(npAgentRuns)).toEqual([]);
+    await f.db.delete(npSessions).where(eq(npSessions.id, identity.actor.sessionId));
+    await expect(response.responseExecute({ ...identity, command: execute })).rejects.toThrow();
+  });
   it("requires human approval, quarantines and restores pending content with stable replay and retained reviews", async () => {
     const f = await moderationFixture();
     f.budget.providerCallsPerRun = 0;

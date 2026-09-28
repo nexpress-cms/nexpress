@@ -6,6 +6,8 @@ import {
   npRequireAgentIncidentStudioDetailV1,
   npRequireAgentIncidentFeedbackInputV1,
   npRequireAgentIncidentTransitionInputV1,
+  npRequireAgentIncidentResponsePlanInputV1,
+  npRequireAgentIncidentResponseExecuteInputV1,
   npRequireAgentRuntimeStudioMutationResultV1,
 } from "@nexpress/core/agent-contract";
 import { getOptionalAgentStudioServerRuntimeV1 } from "@nexpress/core/agents";
@@ -53,10 +55,17 @@ function query(request: NextRequest, detail: boolean) {
 /** HTTP decoding only; current visibility and mutation authority belong to the host service. */
 export async function handleAgentIncidentAdminRequest(
   request: NextRequest,
-  operation: "list" | "detail" | "feedback" | "transition",
+  operation:
+    | "list"
+    | "detail"
+    | "feedback"
+    | "transition"
+    | "response-plan"
+    | "response-execute"
+    | "restore",
   id?: string,
 ): Promise<Response> {
-  const mutation = operation === "feedback" || operation === "transition";
+  const mutation = operation !== "list" && operation !== "detail";
   const headers = {
     "cache-control": "private, no-store",
     "referrer-policy": "no-referrer",
@@ -93,7 +102,10 @@ export async function handleAgentIncidentAdminRequest(
         if (request.nextUrl.search) throw invalid();
         let body: unknown;
         try {
-          body = await readAgentAdminJsonBody(request, operation === "transition" ? 16384 : 4096);
+          body = await readAgentAdminJsonBody(
+            request,
+            operation === "transition" || operation === "response-plan" ? 16384 : 4096,
+          );
         } catch {
           throw invalid();
         }
@@ -104,18 +116,41 @@ export async function handleAgentIncidentAdminRequest(
             throw invalid();
           }
         };
-        const completed =
-          operation === "transition"
-            ? await service.transition({
+        const dispatch = async () => {
+          switch (operation) {
+            case "transition":
+              return service.transition({
                 ...staff,
                 incidentId,
                 command: decode(npRequireAgentIncidentTransitionInputV1),
-              })
-            : await service.feedback({
+              });
+            case "feedback":
+              return service.feedback({
                 ...staff,
                 incidentId,
                 command: decode(npRequireAgentIncidentFeedbackInputV1),
               });
+            case "response-plan":
+              return service.responsePlan({
+                ...staff,
+                incidentId,
+                command: decode(npRequireAgentIncidentResponsePlanInputV1),
+              });
+            case "response-execute":
+              return service.responseExecute({
+                ...staff,
+                incidentId,
+                command: decode(npRequireAgentIncidentResponseExecuteInputV1),
+              });
+            case "restore":
+              return service.restore({
+                ...staff,
+                incidentId,
+                command: decode(npRequireAgentIncidentResponseExecuteInputV1),
+              });
+          }
+        };
+        const completed = await dispatch();
         if (completed.resourceId !== incidentId)
           throw new Error("Incident mutation response binding is invalid.");
         result = npRequireAgentRuntimeStudioMutationResultV1({
