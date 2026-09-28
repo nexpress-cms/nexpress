@@ -642,8 +642,9 @@ explicit source, Gateway installation and evaluation boundaries remain open;
 local verification does not authorize automatic moderation or close R6.
 
 The [Incident Studio review flow](r6-incident-studio-flow.md) connects staff
-list/detail review, authorized history links and immutable feedback to these
-owners. It does not close the remaining Incident workflow or recipe gate.
+list/detail review, authorized history links, immutable feedback and explicit
+human investigation/closure decisions to these owners. Remaining response-plan,
+assignment and recipe gates stay open.
 
 ### R7 — Guardian and application security orchestration
 

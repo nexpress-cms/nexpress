@@ -1,3 +1,9 @@
+import {
+  npRequireAgentIncidentDecisionV1,
+  npAgentIncidentTransitionsV1,
+  type NpAgentIncidentDecisionV1,
+  type NpAgentIncidentWorkflowV1,
+} from "./incident-workflow-contract.js";
 import { npRequireAgentIncidentV1, type NpAgentIncidentV1 } from "./incident-contract.js";
 import { npAgentIncidentCategories, type NpAgentIncidentCategory } from "./types.js";
 import {
@@ -41,6 +47,7 @@ export interface NpAgentIncidentStudioDetailV1 {
     createdAt: string;
     approvalId: string | null;
     actionId: string | null;
+    decision: NpAgentIncidentDecisionV1 | null;
   }>;
   nextTimelineCursor: string | null;
   feedback: Array<{
@@ -51,6 +58,7 @@ export interface NpAgentIncidentStudioDetailV1 {
     createdAt: string;
   }>;
   feedbackAvailable: boolean;
+  workflow: NpAgentIncidentWorkflowV1 | null;
 }
 /** Exact allowlist: source bodies, raw timeline details and private containment state cannot cross this wire. */
 export function npRequireAgentIncidentStudioDetailV1(
@@ -65,7 +73,7 @@ export function npRequireAgentIncidentStudioDetailV1(
     if (typeof v !== "boolean") failCanonicalBody("invalid-field", p, "Expected boolean");
     return v;
   };
-  const row = record(cloneCanonicalRuntimeInput(value, p, 262144), p, [
+  const row = record(cloneCanonicalRuntimeInput(value, p, 1048576), p, [
     "schemaVersion",
     "incident",
     "signals",
@@ -73,6 +81,7 @@ export function npRequireAgentIncidentStudioDetailV1(
     "nextTimelineCursor",
     "feedback",
     "feedbackAvailable",
+    "workflow",
   ]);
   const incident = npRequireAgentIncidentV1(row.incident);
   const signals = canonicalBodyArray(row.signals, `${p}.signals`, 100, state).map((v, i) => {
@@ -115,7 +124,15 @@ export function npRequireAgentIncidentStudioDetailV1(
     failCanonicalBody("invalid-field", p, "Signal binding is invalid");
   const timeline = canonicalBodyArray(row.timeline, `${p}.timeline`, 50, state).map((v, i) => {
     const path = `${p}.timeline.${i}`;
-    const r = record(v, path, ["id", "sequence", "kind", "createdAt", "approvalId", "actionId"]);
+    const r = record(v, path, [
+      "id",
+      "sequence",
+      "kind",
+      "createdAt",
+      "approvalId",
+      "actionId",
+      "decision",
+    ]);
     return {
       id: canonicalBodyUuid(r.id, path),
       sequence: canonicalBodyInteger(r.sequence, path, 1, 2147483647),
@@ -127,6 +144,7 @@ export function npRequireAgentIncidentStudioDetailV1(
       createdAt: canonicalBodyUtc(r.createdAt, path),
       approvalId: nullableId(r.approvalId, path),
       actionId: nullableId(r.actionId, path),
+      decision: r.decision === null ? null : npRequireAgentIncidentDecisionV1(r.decision),
     };
   });
   if (timeline.some((r, i) => i > 0 && r.sequence <= timeline[i - 1].sequence))
@@ -155,7 +173,52 @@ export function npRequireAgentIncidentStudioDetailV1(
     new Set(feedback.map((entry) => entry.signalId)).size !== feedback.length
   )
     failCanonicalBody("invalid-field", p, "Duplicate retained entries");
+  let workflow: NpAgentIncidentWorkflowV1 | null = null;
+  if (row.workflow !== null) {
+    const w = record(row.workflow, `${p}.workflow`, ["availableTransitions", "containment"]);
+    const availableTransitions = canonicalBodyArray(w.availableTransitions, p, 3, state).map((v) =>
+      canonicalBodyEnum<NpAgentIncidentWorkflowV1["availableTransitions"][number]>(
+        v,
+        p,
+        new Set(npAgentIncidentTransitionsV1),
+      ),
+    );
+    if (
+      new Set(availableTransitions).size !== availableTransitions.length ||
+      (["resolved", "dismissed"].includes(incident.status) && availableTransitions.length > 0) ||
+      (incident.status !== "open" && availableTransitions.includes("investigating"))
+    )
+      failCanonicalBody("invalid-field", p, "Invalid available transitions");
+    const c = record(w.containment, `${p}.containment`, [
+      "reviewHash",
+      "total",
+      "active",
+      "restored",
+      "unresolved",
+      "pendingActions",
+    ]);
+    const reviewHash = canonicalBodyAscii(c.reviewHash, p, 60);
+    if (!/^cj1:sha256:[A-Za-z0-9_-]{43}$/u.test(reviewHash))
+      failCanonicalBody("invalid-field", p, "Invalid review hash");
+    const total = canonicalBodyInteger(c.total, p, 0, 100),
+      active = canonicalBodyInteger(c.active, p, 0, 100),
+      restored = canonicalBodyInteger(c.restored, p, 0, 100),
+      unresolved = canonicalBodyInteger(c.unresolved, p, 0, 100),
+      pendingActions = canonicalBodyInteger(c.pendingActions, p, 0, 100);
+    if (
+      total !== active + restored + unresolved ||
+      (pendingActions > 0 && availableTransitions.some((t) => t !== "investigating"))
+    )
+      failCanonicalBody("invalid-field", p, "Invalid containment summary");
+    workflow = {
+      availableTransitions,
+      containment: { reviewHash, total, active, restored, unresolved, pendingActions },
+    };
+  }
+  if (timeline.some((t) => t.decision !== null && t.kind !== "state_transition"))
+    failCanonicalBody("invalid-field", p, "Invalid decision kind");
   return {
+    workflow,
     schemaVersion: canonicalBodyEnum(
       row.schemaVersion,
       p,

@@ -1,4 +1,8 @@
 import {
+  npRequireAgentIncidentTransitionInputV1,
+  type NpAgentIncidentTransitionInputV1,
+} from "../agent-contract/incident-workflow-contract.js";
+import {
   npRequireAgentIncidentFeedbackInputV1,
   type NpAgentIncidentFeedbackInputV1,
 } from "../agent-contract/incident-feedback-contract.js";
@@ -79,6 +83,7 @@ import {
 type NpAgentDb = ReturnType<typeof getDb>;
 
 export type NpAgentAdmittedAdminOperationIdV1 =
+  | "agents.incidents.transition"
   | "agents.incidents.feedback"
   | NpAgentRuntimeAdminOperationIdV1
   | NpAgentGatewayAdminOperationIdV1
@@ -103,6 +108,7 @@ export type NpAgentAdmittedAdminOperationIdV1 =
 export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
   NpAgentRuntimeAdminInputMapV1 &
   NpAgentConnectionAdminInputMapV1 & {
+    "agents.incidents.transition": NpAgentIncidentTransitionInputV1;
     "agents.incidents.feedback": NpAgentIncidentFeedbackInputV1;
     "agents.changesets.rollback_plans.create": NpAgentRollbackPlanCreateInputV1;
     "agents.changesets.rollback_plans.request_approval": NpAgentRollbackPlanRequestApprovalInputV1;
@@ -129,6 +135,8 @@ function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
   operationId: I,
   value: unknown,
 ): NpAgentAdmittedAdminInputMapV1[I] {
+  if (operationId === "agents.incidents.transition")
+    return npRequireAgentIncidentTransitionInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.incidents.feedback")
     return npRequireAgentIncidentFeedbackInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (RUNTIME_ADMIN_OPERATION_IDS.has(operationId))

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   get: vi.fn(),
   feedback: vi.fn(),
+  transition: vi.fn(),
 }));
 vi.mock("@nexpress/core/agents", async (original) => ({
   ...(await original<object>()),
@@ -54,6 +55,7 @@ beforeEach(() => {
     nextCursor: null,
   });
   mocks.feedback.mockResolvedValue({ resourceId: id, replayed: false, output: "private-output" });
+  mocks.transition.mockResolvedValue({ resourceId: id, replayed: false, output: "private-output" });
 });
 describe("Incident Studio HTTP boundary", () => {
   it("checks current staff before resolving installed Incident service", async () => {
@@ -63,7 +65,7 @@ describe("Incident Studio HTTP boundary", () => {
   });
   it("keeps absent installation distinct from empty pages with operation-specific recovery", async () => {
     mocks.runtime.mockReturnValue({ incidents: null });
-    for (const operation of ["list", "feedback"] as const) {
+    for (const operation of ["list", "feedback", "transition"] as const) {
       const response = await handleAgentIncidentAdminRequest(request(), operation, id);
       expect(response.status).toBe(503);
       expect(response.headers.get("cache-control")).toBe("private, no-store");
@@ -172,11 +174,20 @@ describe("Incident Studio HTTP boundary", () => {
         },
       ],
       timeline: [
-        { id, sequence: 1, kind: "observed", createdAt: time, approvalId: null, actionId: null },
+        {
+          id,
+          sequence: 1,
+          kind: "observed",
+          createdAt: time,
+          approvalId: null,
+          actionId: null,
+          decision: null,
+        },
       ],
       nextTimelineCursor: null,
       feedback: [],
       feedbackAvailable: false,
+      workflow: null,
     };
     mocks.get.mockResolvedValue(detail);
     const response = await handleAgentIncidentAdminRequest(request(), "detail", id);
@@ -231,5 +242,68 @@ describe("Incident Studio HTTP boundary", () => {
     const response = await handleAgentIncidentAdminRequest(request("", command), "feedback", id);
     expect(response.status).toBe(500);
     expect(await response.text()).not.toContain("private-token");
+  });
+});
+
+describe("Incident transition HTTP boundary", () => {
+  const transitionCommand = {
+    schemaVersion: "np.agent-incident-transition-input.v1",
+    expectedVersion: 2,
+    transition: "resolved",
+    resolutionCode: "REMEDIATED",
+    note: "Reviewed the source and retained quarantine.",
+    containmentReviewHash: `cj1:sha256:${"A".repeat(43)}`,
+    containmentDisposition: "retain",
+    idempotencyKey: "incident-transition-attempt",
+  };
+  it("dispatches the exact staff-bound transition and limits its acknowledgement", async () => {
+    const response = await handleAgentIncidentAdminRequest(
+      request("", transitionCommand),
+      "transition",
+      id,
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.ensure).toHaveBeenCalledWith("write");
+    expect(mocks.transition).toHaveBeenCalledWith({
+      ...staff,
+      incidentId: id,
+      command: transitionCommand,
+    });
+    expect(await response.json()).toEqual({ resourceId: id, replayed: false });
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    mocks.transition.mockResolvedValue({
+      resourceId: "20000000-0000-4000-8000-000000000002",
+      replayed: false,
+    });
+    expect(
+      (await handleAgentIncidentAdminRequest(request("", transitionCommand), "transition", id))
+        .status,
+    ).toBe(500);
+  });
+  it("rejects injected authority, query and oversized or unsupported commands before dispatch", async () => {
+    for (const [query, body] of [
+      ["", { ...transitionCommand, siteId: "other" }],
+      ["?cursor=anything", transitionCommand],
+      ["", { ...transitionCommand, transition: "contained" }],
+      ["", { ...transitionCommand, note: "x".repeat(16385) }],
+    ] as const) {
+      expect(
+        (await handleAgentIncidentAdminRequest(request(query, body), "transition", id)).status,
+      ).toBe(400);
+    }
+    expect(mocks.transition).not.toHaveBeenCalled();
+  });
+  it("returns safe mutation recovery for unknown outcomes", async () => {
+    mocks.transition.mockRejectedValue(new Error("private-transition-evidence"));
+    const response = await handleAgentIncidentAdminRequest(
+      request("", transitionCommand),
+      "transition",
+      id,
+    );
+    expect(response.status).toBe(500);
+    expect(await response.text()).not.toContain("private-transition-evidence");
+    expect(JSON.parse(response.headers.get(npApiErrorDiagnosticsHeader)!)).toMatchObject({
+      recovery: "check-outcome",
+    });
   });
 });
