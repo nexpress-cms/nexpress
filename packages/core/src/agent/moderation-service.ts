@@ -281,12 +281,15 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
     }
     if (incidentId !== null) {
       const [incident] = await db
-        .select({ id: npAgentIncidents.id })
+        .select({ id: npAgentIncidents.id, status: npAgentIncidents.status })
         .from(npAgentIncidents)
         .where(and(eq(npAgentIncidents.siteId, siteId), eq(npAgentIncidents.id, incidentId)))
         .limit(1);
       if (
         !incident ||
+        (fresh &&
+          capabilityId === "moderation.quarantine" &&
+          ["resolved", "dismissed"].includes(incident.status)) ||
         !options.incidents ||
         (await options.canReadIncident?.({ db, siteId, incidentId, user: viewer })) !== true
       )

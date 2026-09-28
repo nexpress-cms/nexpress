@@ -1,3 +1,4 @@
+import { npAgentIncidentTransitionInputSchemaV1 } from "./incident-workflow-contract.js";
 import { npAgentIncidentFeedbackInputSchemaV1 } from "./incident-feedback-contract.js";
 import {
   npAgentPolicySimulationFixtureJsonV1,
@@ -878,6 +879,8 @@ function preconditionField(
 }
 
 function buildInputSchema(seed: OperationSeed): NpAgentJsonSchema {
+  if (seed.id === "agents.incidents.transition")
+    return requireSchema(npAgentIncidentTransitionInputSchemaV1);
   if (seed.id === "agents.incidents.feedback")
     return requireSchema(npAgentIncidentFeedbackInputSchemaV1);
   if (seed.id === "agents.changesets.rollback_plans.create")

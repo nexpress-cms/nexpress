@@ -1,7 +1,7 @@
-# R6 Incident review in Agent Studio
+# R6 Incident review and human decisions in Agent Studio
 
-This bundle connects the existing Incident read and feedback owners to staff
-Admin review. It does not close AP-601, R6 evaluation, or R5 spoken
+The Studio connects the existing Incident read and feedback owners to staff
+Admin review and explicitly installed human workflow decisions. It does not close AP-601, R6 evaluation, or R5 spoken
 assistive-technology acceptance.
 
 ## Ownership and installation
@@ -17,8 +17,13 @@ assistive-technology acceptance.
   Writer presence alone does not enable feedback: its `feedbackEnabled` flag
   reflects installation of the existing feedback visibility owner. Actual writes
   still validate current target ACLs, session authority, CAS and idempotency.
+- `agent/incident-workflow-service.ts` is installed separately as Studio's
+  optional `workflow` owner. Its staff reader must retain current evidence ACLs;
+  `canReviewContainment` authorizes actual retained targets, and `canReviewAction`
+  is required when pending moderation actions exist. Missing or denied target
+  review disables the workflow summary rather than exposing hidden counts.
 - `agent-contract/incident-studio-contract.ts` is the exact browser-safe detail
-  projection. Private source bodies, timeline details, actor fingerprints and
+  projection. Private source bodies, raw timeline details, actor fingerprints and
   containment original state are excluded. Unknown deterministic scores remain
   null; they are not model confidence.
 - Shared App handlers own HTTP decoding and response binding. Reference and
@@ -60,10 +65,40 @@ versions or lost access discard stale evidence. Feedback does not dismiss an
 incident or change containment. Polling pauses while a write outcome is pending
 and stops on terminal state/access loss.
 
+## Human investigation and closure
+
+The optional Incident workflow service owns `agents.incidents.transition` through
+existing staff admission. An open Incident can move to `investigating`; unresolved
+Incidents can be resolved or dismissed. Terminal Incidents cannot be reopened by
+the client. Each decision requires a bounded human note. Resolution categories
+are `REMEDIATED` or `NO_FURTHER_ACTION`; dismissal categories are `FALSE_POSITIVE`,
+`DUPLICATE` or `OUT_OF_SCOPE`. Dismissal records an Incident disposition, not a
+replacement signal-feedback label, and retains the original signals.
+
+Before closing, the server supplies a bounded review of retained containment and
+pending moderation work. Active, restored and unresolved containment are distinct;
+expired or failed records do not imply that the original content was restored.
+Current target visibility is required before exposing this review. Missing review
+ownership or unavailable evidence does not become a zero count.
+
+Closure binds the exact reviewed facts and Incident version. Changed facts require
+fresh review. The human explicitly retains active quarantine, or acknowledges the
+remaining summary when no active quarantine is present. A state transition does
+not restore content, execute moderation, or bypass an approval. Pending moderation
+work must be settled before closure through the existing approval/expiry owner, and closed Incidents cannot acquire a new
+quarantine through a previously prepared command. Approved restoration remains
+owned by the existing moderation executor.
+
+The immutable timeline exposes the bounded human decision, including its previous
+and resulting state, category, note and containment disposition. Other raw timeline
+details remain private. Browser commands preserve their exact identity while an
+outcome is unknown; conflicting versions or lost access discard stale review.
+Feedback and transition writes cannot run concurrently from the same detail view.
+
 ## Boundaries
 
-This is the review/feedback slice. Assignment, state transitions, response plans,
-containment summaries, richer evidence viewers, model assessment content,
+This is the review, feedback and human-decision slice. Assignment, response plans,
+richer evidence viewers, model assessment content,
 notification posture and the additional designed filters still need their
 owning services and projections. Comment source collectors, evaluation datasets
 and Runtime approval-resume boundaries remain as recorded in the
@@ -72,6 +107,8 @@ worker, collector or credential and makes no external provider call. It changes
 no schema, package version, changeset or lockfile.
 
 ## Verification
+
+### Review and feedback slice
 
 Local verification on 2026-09-27 KST:
 
@@ -114,3 +151,47 @@ Local verification on 2026-09-27 KST:
 Logs use `/tmp/np-incident-studio-*`. Redis, theme-specific integration, native
 preview and spoken assistive-technology gates were not rerun for this review
 surface; this evidence does not claim the complete R5/R6 acceptance gate.
+
+### Human investigation and closure slice
+
+Local verification on 2026-09-27 KST:
+
+- `pnpm verify --concurrency=2`: 113 tasks passed, including Core 2,167,
+  App 615 and Web 174 unit cases. An initial run loaded the old registry golden
+  before its update; the complete rerun passed. After the final equivalent note
+  validation cleanup, the affected 13 contract cases, Core typecheck/build and
+  Web production build passed again.
+- PostgreSQL: 31 cases across six files passed without skips: human workflow,
+  Moderator execution, Studio review, Incident read, Incident Gateway and
+  Moderator incident/feedback. New coverage exercises immutable decisions,
+  terminal replay with current ACL/session checks, distinct concurrent decisions,
+  stale containment review without an Incident version change, pending action
+  review, retained quarantine after closure, approved restore after closure and
+  concurrent closure versus a new quarantine proposal. The moderation fixture
+  and workflow share the existing frozen clock; the initial clock mismatch was
+  corrected without weakening persisted time validation.
+- Pure contracts and the Admin operation registry: 13 cases passed, including
+  invalid state/reason combinations, unsupported authority fields, exact review
+  bounds and Unicode decision notes. The registry fingerprint changed with the
+  now-concrete transition input; a bounded JSON Schema branch was corrected.
+- `pnpm lint`: 41 tasks passed. The final note control-character check uses
+  explicit character codes rather than a lint-rejected control-character regex.
+
+- Production browser: all five Incident scenarios passed without retries or
+  skips. The real uninstalled read boundary remains 503/no-store; installed UI
+  fixtures cover investigation/closure, the explicit current-review checkbox,
+  network/429 exact-command retries, conflict re-review and access-loss cleanup.
+  Four captures at 390px and 1280px were inspected, including the closure form.
+  These fixtures do not claim a fully installed host's end-to-end execution.
+- Packed consumer: 40 public packages installed into a fresh project outside
+  the workspace. Typecheck, fresh schema generation/migration, Agent foundation
+  checks, production build and the operational scaffold journey passed. Installed
+  Core, App HTTP handler and Admin bundle bytes matched the verified producer.
+- Formatting, transition wrapper parity, secret/generated-file review and
+  `git diff --check` passed. Final browser-test capture changes passed Web lint.
+  Versions, changesets, lockfile and migrations remain unchanged.
+
+Redis, theme-specific integration, native preview and spoken assistive-technology
+checks were not repeated for this state-decision surface. This slice does not
+claim full R5/R6 acceptance. Logs use
+`/tmp/np-incident-workflow-*`; the existing handoff remains unchanged.

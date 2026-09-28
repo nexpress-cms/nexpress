@@ -1,3 +1,4 @@
+import { createAgentIncidentWorkflowServiceV1 } from "../../../packages/core/src/agent/incident-workflow-service.js";
 import { createAgentIncidentServiceV1 } from "../../../packages/core/src/agent/incident-service.js";
 import { createAgentIncidentStudioServiceV1 } from "../../../packages/core/src/agent/incident-studio-service.js";
 import { createAgentActivityServiceV1 } from "../../../packages/core/src/agent/activity-service.js";
@@ -235,6 +236,7 @@ async function moderationFixture() {
     incident,
     quarantineRequest,
     invoke,
+    now: () => time,
     advance: (seconds: number) => {
       time = new Date(time.getTime() + seconds * 1000);
     },
@@ -459,6 +461,206 @@ describe.skipIf(skipIfNoTestDb())("Moderator reviewed Gateway execution", () => 
           and(eq(npAuditEvents.targetId, f.comment.id), eq(npAuditEvents.action, "comment.hide")),
         ),
     ).toHaveLength(1);
+  });
+
+  it("requires current containment review and visibility to close, prevents new quarantine, and preserves approved restoration after closure", async () => {
+    const f = await moderationFixture();
+    let visible = true;
+    const reads = createAgentIncidentServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(76),
+      canReadIncident: () => false,
+      canReadStaffIncident: () => true,
+    }).staff;
+    const workflow = createAgentIncidentWorkflowServiceV1({
+      reads,
+      now: f.now,
+      canReviewContainment: () => visible,
+      canReviewAction: () => visible,
+    });
+    const input = { siteId, actor: f.actor.actor, incidentId: f.incident.id };
+    const initial = await workflow.get(input);
+    const approval = required(await f.invoke(f.quarantineRequest));
+    const pending = await workflow.get(input);
+    expect(pending.containment).toMatchObject({ total: 0, pendingActions: 1 });
+    expect(pending.availableTransitions).toEqual(["investigating"]);
+    const closeCommand = {
+      schemaVersion: "np.agent-incident-transition-input.v1" as const,
+      expectedVersion: 1,
+      transition: "resolved" as const,
+      resolutionCode: "REMEDIATED" as const,
+      note: "Reviewed remaining containment; retain until approved restoration.",
+      containmentReviewHash: initial.containment.reviewHash,
+      containmentDisposition: "retain" as const,
+      idempotencyKey: randomUUID(),
+    };
+    await expect(workflow.transition({ ...input, command: closeCommand })).rejects.toMatchObject({
+      code: "INCIDENT_TRANSITION_INVALID",
+    });
+    const noActionOwner = createAgentIncidentWorkflowServiceV1({
+      reads,
+      canReviewContainment: () => true,
+    });
+    await expect(noActionOwner.get(input)).rejects.toMatchObject({
+      code: "INCIDENT_WORKFLOW_FORBIDDEN",
+    });
+    await decide(f, approval.approvalId);
+    const execute = execution("moderation.quarantine", approval);
+    const quarantined = await f.invoke(execute);
+    if (quarantined.output.state !== "succeeded") throw new Error("Quarantine failed");
+    const containmentId = quarantined.output.containmentId;
+    const [containment] = await f.db
+      .select()
+      .from(npAgentContainments)
+      .where(eq(npAgentContainments.id, containmentId));
+    const review = await workflow.get(input);
+    expect(review.containment).toMatchObject({
+      total: 1,
+      active: 1,
+      restored: 0,
+      unresolved: 0,
+      pendingActions: 0,
+    });
+    // The retained row changes without an Incident version bump; the digest must still reject the old review.
+    await f.db
+      .update(npAgentContainments)
+      .set({ expiresAt: new Date(containment.createdAt.getTime() + 86400000) })
+      .where(eq(npAgentContainments.id, containment.id));
+    await expect(
+      workflow.transition({
+        ...input,
+        command: {
+          ...closeCommand,
+          expectedVersion: 2,
+          containmentReviewHash: review.containment.reviewHash,
+        },
+      }),
+    ).rejects.toMatchObject({ code: "INCIDENT_CONTAINMENT_REVIEW_STALE" });
+    visible = false;
+    await expect(workflow.get(input)).rejects.toMatchObject({
+      code: "INCIDENT_WORKFLOW_FORBIDDEN",
+    });
+    visible = true;
+    const current = await workflow.get(input);
+    await expect(
+      workflow.transition({
+        ...input,
+        command: {
+          ...closeCommand,
+          expectedVersion: 2,
+          containmentReviewHash: current.containment.reviewHash,
+          containmentDisposition: "acknowledge",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "INCIDENT_CONTAINMENT_REVIEW_REQUIRED" });
+    const closed = {
+      ...input,
+      command: {
+        ...closeCommand,
+        expectedVersion: 2,
+        containmentReviewHash: current.containment.reviewHash,
+      },
+    };
+    await workflow.transition(closed);
+    expect((await workflow.transition(closed)).replayed).toBe(true);
+    visible = false;
+    await expect(workflow.transition(closed)).rejects.toMatchObject({
+      code: "INCIDENT_WORKFLOW_FORBIDDEN",
+    });
+    visible = true;
+    expect(
+      (
+        await f.db
+          .select()
+          .from(npAgentContainments)
+          .where(eq(npAgentContainments.id, containment.id))
+      )[0].state,
+    ).toBe("active");
+    expect(
+      (await f.db.select().from(npComments).where(eq(npComments.id, f.comment.id)))[0].status,
+    ).toBe("hidden");
+    expect(await f.invoke(execute)).toEqual(quarantined);
+    const restore = required(
+      await f.invoke({
+        schemaVersion: "np.agent-invocation-request.v1",
+        capabilityId: "moderation.restore",
+        arguments: {
+          idempotencyKey: randomUUID(),
+          input: {
+            mode: "propose",
+            proposal: {
+              containmentKind: "content_quarantine",
+              containmentId: containment.id,
+              expectedVersionDigest: containment.targetVersionDigest,
+            },
+          },
+        },
+      }),
+    );
+    expect((await workflow.get(input)).containment.pendingActions).toBe(1);
+    await decide(f, restore.approvalId);
+    expect((await f.invoke(execution("moderation.restore", restore))).output.state).toBe(
+      "compensated",
+    );
+    expect((await workflow.get(input)).containment).toMatchObject({
+      total: 1,
+      active: 0,
+      restored: 1,
+      unresolved: 0,
+      pendingActions: 0,
+    });
+    expect(
+      (await f.db.select().from(npAgentIncidents).where(eq(npAgentIncidents.id, f.incident.id)))[0]
+        .status,
+    ).toBe("resolved");
+    // Restored content has its original version; only the terminal Incident guard rejects a fresh proposal.
+    const fresh = structuredClone(f.quarantineRequest);
+    fresh.arguments.idempotencyKey = randomUUID();
+    await expect(f.invoke(fresh)).rejects.toThrow();
+  });
+
+  it("serializes closure against a concurrent quarantine proposal", async () => {
+    const f = await moderationFixture();
+    const reads = createAgentIncidentServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(77),
+      canReadIncident: () => false,
+      canReadStaffIncident: () => true,
+    }).staff;
+    const workflow = createAgentIncidentWorkflowServiceV1({
+      reads,
+      now: f.now,
+      canReviewContainment: () => true,
+      canReviewAction: () => true,
+    });
+    const input = { siteId, actor: f.actor.actor, incidentId: f.incident.id };
+    const review = await workflow.get(input);
+    const results = await Promise.allSettled([
+      workflow.transition({
+        ...input,
+        command: {
+          schemaVersion: "np.agent-incident-transition-input.v1",
+          expectedVersion: 1,
+          transition: "dismissed",
+          resolutionCode: "OUT_OF_SCOPE",
+          note: "Reviewed current evidence.",
+          containmentReviewHash: review.containment.reviewHash,
+          containmentDisposition: "acknowledge",
+          idempotencyKey: randomUUID(),
+        },
+      }),
+      f.invoke(f.quarantineRequest),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const [incident] = await f.db
+      .select()
+      .from(npAgentIncidents)
+      .where(eq(npAgentIncidents.id, f.incident.id));
+    const actions = await f.db.select().from(npAgentActions);
+    if (incident.status === "dismissed") expect(actions).toHaveLength(0);
+    else {
+      expect(incident.status).toBe("open");
+      expect(actions).toHaveLength(1);
+    }
+    expect(await f.db.select().from(npAgentContainments)).toHaveLength(0);
   });
 
   it.each(["revoked", "expired", "policy-changed", "budget-changed", "target-edited"] as const)(

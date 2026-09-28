@@ -85,3 +85,5 @@ export {
   type NpAgentModeratorCollectionResultV1,
 } from "./moderator-collector.js";
 export * from "./incident-studio-service.js";
+
+export * from "./incident-workflow-service.js";

@@ -5,6 +5,7 @@ import {
   npRequireAgentIncidentListOutputV1,
   npRequireAgentIncidentStudioDetailV1,
   npRequireAgentIncidentFeedbackInputV1,
+  npRequireAgentIncidentTransitionInputV1,
   npRequireAgentRuntimeStudioMutationResultV1,
 } from "@nexpress/core/agent-contract";
 import { getOptionalAgentStudioServerRuntimeV1 } from "@nexpress/core/agents";
@@ -49,19 +50,20 @@ function query(request: NextRequest, detail: boolean) {
   }
 }
 
-/** HTTP decoding only; current visibility and feedback authority belong to the host service. */
+/** HTTP decoding only; current visibility and mutation authority belong to the host service. */
 export async function handleAgentIncidentAdminRequest(
   request: NextRequest,
-  operation: "list" | "detail" | "feedback",
+  operation: "list" | "detail" | "feedback" | "transition",
   id?: string,
 ): Promise<Response> {
+  const mutation = operation === "feedback" || operation === "transition";
   const headers = {
     "cache-control": "private, no-store",
     "referrer-policy": "no-referrer",
     "x-content-type-options": "nosniff",
   };
   try {
-    await ensureFor(operation === "feedback" ? "write" : "read");
+    await ensureFor(mutation ? "write" : "read");
     const staff = await requireAgentStudioAdmin(request);
     const service = getOptionalAgentStudioServerRuntimeV1()?.incidents;
     if (!service) throw new NpServiceUnavailableError("Incident management is unavailable.");
@@ -89,17 +91,33 @@ export async function handleAgentIncidentAdminRequest(
         result = detail;
       } else {
         if (request.nextUrl.search) throw invalid();
-        let command;
+        let body: unknown;
         try {
-          command = npRequireAgentIncidentFeedbackInputV1(
-            await readAgentAdminJsonBody(request, 4096),
-          );
+          body = await readAgentAdminJsonBody(request, operation === "transition" ? 16384 : 4096);
         } catch {
           throw invalid();
         }
-        const completed = await service.feedback({ ...staff, incidentId, command });
+        const decode = <T>(parser: (value: unknown) => T): T => {
+          try {
+            return parser(body);
+          } catch {
+            throw invalid();
+          }
+        };
+        const completed =
+          operation === "transition"
+            ? await service.transition({
+                ...staff,
+                incidentId,
+                command: decode(npRequireAgentIncidentTransitionInputV1),
+              })
+            : await service.feedback({
+                ...staff,
+                incidentId,
+                command: decode(npRequireAgentIncidentFeedbackInputV1),
+              });
         if (completed.resourceId !== incidentId)
-          throw new Error("Incident feedback response binding is invalid.");
+          throw new Error("Incident mutation response binding is invalid.");
         result = npRequireAgentRuntimeStudioMutationResultV1({
           resourceId: completed.resourceId,
           replayed: completed.replayed,
@@ -108,7 +126,7 @@ export async function handleAgentIncidentAdminRequest(
     }
     return npSuccessResponse(result, { headers });
   } catch (error) {
-    return agentStudioErrorResponse(error, operation === "feedback" ? "mutation" : "read", {
+    return agentStudioErrorResponse(error, mutation ? "mutation" : "read", {
       headers,
     });
   }

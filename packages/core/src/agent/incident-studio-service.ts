@@ -1,3 +1,8 @@
+import {
+  npRequireAgentIncidentDecisionV1,
+  type NpAgentIncidentTransitionInputV1,
+} from "../agent-contract/incident-workflow-contract.js";
+import type { NpAgentIncidentWorkflowServiceV1 } from "./incident-workflow-service.js";
 import { createHash } from "node:crypto";
 import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
@@ -38,6 +43,9 @@ export interface NpAgentIncidentStudioServiceV1 {
   get(
     input: Staff & { incidentId: string; cursor?: string | null },
   ): Promise<NpAgentIncidentStudioDetailV1>;
+  transition(
+    input: Staff & { incidentId: string; command: NpAgentIncidentTransitionInputV1 },
+  ): Promise<{ resourceId: string; replayed: boolean }>;
   feedback(
     input: Staff & { incidentId: string; command: NpAgentIncidentFeedbackInputV1 },
   ): Promise<{ resourceId: string; replayed: boolean }>;
@@ -45,6 +53,7 @@ export interface NpAgentIncidentStudioServiceV1 {
 export interface NpAgentIncidentStudioServiceOptionsV1 {
   reads: NpAgentIncidentStaffReadServiceV1;
   writer?: NpAgentIncidentWriteServiceV1;
+  workflow?: NpAgentIncidentWorkflowServiceV1;
   activity?: NpAgentActivityServiceV1;
   approvals?: NpAgentApprovalServiceV1;
   cursorHmacKey: Uint8Array;
@@ -288,6 +297,17 @@ export function createAgentIncidentStudioServiceV1(
         createdAt: row.createdAt.toISOString(),
         approvalId,
         actionId,
+        decision:
+          row.kind === "state_transition" &&
+          row.details.schemaVersion === "np.agent-incident-transition-entry.v1"
+            ? npRequireAgentIncidentDecisionV1({
+                fromStatus: row.details.fromStatus,
+                toStatus: row.details.toStatus,
+                resolutionCode: row.details.resolutionCode,
+                note: row.details.note,
+                containmentDisposition: row.details.containmentDisposition,
+              })
+            : null,
       });
     }
     const fingerprints = new Map(
@@ -322,6 +342,22 @@ export function createAgentIncidentStudioServiceV1(
           .orderBy(asc(npAgentFeedback.id))
           .limit(100)
       : [];
+    let workflow = null;
+    if (options.workflow) {
+      try {
+        workflow = await options.workflow.get(input);
+      } catch (error) {
+        if (
+          !(error instanceof NpAgentGatewayError) ||
+          ![
+            "INCIDENT_WORKFLOW_FORBIDDEN",
+            "INCIDENT_WORKFLOW_LIMIT_REACHED",
+            "INCIDENT_WORKFLOW_UNAVAILABLE",
+          ].includes(error.code)
+        )
+          throw error;
+      }
+    }
     // Reread all evidence and item ACLs after composing related records; do not return a mixed generation.
     const current = await options.reads.get({ incidentId: incident.id }, input);
     if (
@@ -334,6 +370,7 @@ export function createAgentIncidentStudioServiceV1(
     return npRequireAgentIncidentStudioDetailV1({
       schemaVersion: "np.agent-incident-studio-detail.v1",
       incident,
+      workflow,
       signals: signals.map((s) => ({
         id: s.id,
         detectorId: s.detectorId,
@@ -364,6 +401,15 @@ export function createAgentIncidentStudioServiceV1(
   return {
     get,
     list,
+    transition: async (input) => {
+      if (!options.workflow)
+        throw new NpAgentGatewayError(
+          "INCIDENT_WORKFLOW_DISABLED",
+          403,
+          "Incident workflow is unavailable.",
+        );
+      return options.workflow.transition(input);
+    },
     feedback: async (input) => {
       if (!options.writer)
         throw new NpAgentGatewayError(

@@ -14,6 +14,7 @@ import {
   type NpAgentIncidentStudioDetailV1,
   type NpAgentIncidentFeedbackInputV1,
 } from "@nexpress/core/agent-contract";
+import { IncidentWorkflow } from "./agent-incident-workflow.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentStudioApiError } from "./agent-studio-api.js";
 import { runtimeAccessLost, runtimeRequest, useRuntimeResource } from "./agent-runtime-api.js";
@@ -262,7 +263,25 @@ function IncidentDetail({ id }: { id: string }) {
               </ul>
             )}
           </section>
+          <IncidentWorkflow
+            detail={detail}
+            disabled={writing || state.loading}
+            onWriting={setWriting}
+            onSuccess={() => {
+              setCursor(null);
+              state.reload();
+            }}
+            onAccessLost={(error) =>
+              state.clear("This incident is unavailable or you no longer have access.", error)
+            }
+            onConflict={() =>
+              state.clear(
+                "This incident or its containment changed. Reload and review the current evidence before making a decision.",
+              )
+            }
+          />
           <IncidentFeedback
+            disabled={writing || state.loading}
             detail={detail}
             onWriting={setWriting}
             onSuccess={() => {
@@ -296,6 +315,23 @@ function IncidentDetail({ id }: { id: string }) {
                     <p>
                       #{entry.sequence} · <time dateTime={entry.createdAt}>{entry.createdAt}</time>
                     </p>
+                    {entry.decision ? (
+                      <div className="space-y-1 break-words">
+                        <p>
+                          Human decision: {entry.decision.fromStatus} → {entry.decision.toStatus}
+                        </p>
+                        {entry.decision.resolutionCode ? (
+                          <p>Reason: {entry.decision.resolutionCode.replaceAll("_", " ")}</p>
+                        ) : null}
+                        <p className="whitespace-pre-wrap">{entry.decision.note}</p>
+                        {entry.decision.containmentDisposition ? (
+                          <p>
+                            Containment disposition: {entry.decision.containmentDisposition}. No
+                            automatic restoration.
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="flex flex-wrap gap-4">
                       {entry.approvalId ? (
                         <Link
@@ -343,12 +379,14 @@ function IncidentDetail({ id }: { id: string }) {
 
 function IncidentFeedback({
   detail,
+  disabled,
   onWriting,
   onSuccess,
   onAccessLost,
   onConflict,
 }: {
   detail: NpAgentIncidentStudioDetailV1;
+  disabled: boolean;
   onWriting: (value: boolean) => void;
   onSuccess: () => void;
   onAccessLost: (error: unknown) => void;
@@ -375,7 +413,7 @@ function IncidentFeedback({
       !detail.feedback.some((later) => later.supersedesId === item.id),
   );
   async function submit() {
-    if (request.current || blocked) return;
+    if (request.current || blocked || (disabled && !command)) return;
     const controller = new AbortController();
     request.current = controller;
     try {
@@ -469,10 +507,13 @@ function IncidentFeedback({
               void submit();
             }}
           >
-            <fieldset disabled={busy || command !== null} className="flex flex-wrap gap-3">
+            <fieldset
+              disabled={disabled || busy || command !== null}
+              className="flex flex-wrap gap-3"
+            >
               <RuntimeSelect
                 label="Feedback signal"
-                disabled={busy || command !== null}
+                disabled={disabled || busy || command !== null}
                 value={signalId}
                 onChange={setSignalId}
                 options={feedbackSignals.map((signal) => ({
@@ -482,7 +523,7 @@ function IncidentFeedback({
               />
               <RuntimeSelect
                 label="Feedback classification"
-                disabled={busy || command !== null}
+                disabled={disabled || busy || command !== null}
                 value={label}
                 onChange={setLabel}
                 options={[
@@ -497,7 +538,7 @@ function IncidentFeedback({
                 preserve its history.
               </p>
             ) : null}
-            <Button type="submit" disabled={busy || blocked || !signalId}>
+            <Button type="submit" disabled={busy || blocked || !signalId || (disabled && !command)}>
               {busy
                 ? "Recording feedback…"
                 : command
