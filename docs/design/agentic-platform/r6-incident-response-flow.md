@@ -65,7 +65,9 @@ executes a plan.
 Host source ownership remains explicit. Historical comments without retained
 canonical evidence and uninstalled source collectors are not fabricated. Runtime
 moderation invocation remains disabled until its recipe executor owns approval
-resume. Assignment, richer evidence viewers, notifications, model assessment and
+resume. The [comment evidence owner](r6-incident-evidence-flow.md) supplies a trusted
+resolver for retained canonical comment observations. Assignment, other source
+evidence viewers, notifications, model assessment and
 the remaining recipe/evaluation gates remain separate.
 
 This work adds no automatic Runtime, provider, worker, credential or external

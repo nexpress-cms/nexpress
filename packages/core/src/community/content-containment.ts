@@ -299,6 +299,18 @@ export async function npInspectCommunityContentContainmentV1(
   return { versionDigest: version(input, loaded) };
 }
 
+/** Server-only source review seam; the same content owner checks current parent and staff ACLs.
+ * The caller must separately bind the retained observation's original document before projection. */
+export async function npInspectCommunityCommentEvidenceV1(
+  tx: NpTransaction,
+  input: NpCommunityContentContainmentInputV1,
+): Promise<{ versionDigest: string; comment: NpCommentRow }> {
+  if (input.target.kind !== "comment") conflict();
+  const loaded = await load(tx, input);
+  if (!loaded.comment) conflict();
+  return { versionDigest: version(input, loaded), comment: loaded.comment };
+}
+
 /** Wrap the caller's entire transaction in withDeferredPostCommit, never only this callback. */
 export async function npQuarantineCommunityContentV1(
   tx: NpTransaction,

@@ -4,6 +4,7 @@ import {
   npRequireAgentIncidentListInputV1,
   npRequireAgentIncidentListOutputV1,
   npRequireAgentIncidentStudioDetailV1,
+  npRequireAgentIncidentEvidenceV1,
   npRequireAgentIncidentFeedbackInputV1,
   npRequireAgentIncidentTransitionInputV1,
   npRequireAgentIncidentResponsePlanInputV1,
@@ -58,6 +59,7 @@ export async function handleAgentIncidentAdminRequest(
   operation:
     | "list"
     | "detail"
+    | "evidence"
     | "feedback"
     | "transition"
     | "response-plan"
@@ -65,7 +67,7 @@ export async function handleAgentIncidentAdminRequest(
     | "restore",
   id?: string,
 ): Promise<Response> {
-  const mutation = operation !== "list" && operation !== "detail";
+  const mutation = operation !== "list" && operation !== "detail" && operation !== "evidence";
   const headers = {
     "cache-control": "private, no-store",
     "referrer-policy": "no-referrer",
@@ -91,7 +93,14 @@ export async function handleAgentIncidentAdminRequest(
       } catch {
         throw invalid();
       }
-      if (operation === "detail") {
+      if (operation === "evidence") {
+        const evidence = npRequireAgentIncidentEvidenceV1(
+          await service.evidence({ ...staff, incidentId, cursor: query(request, true).cursor }),
+        );
+        if (evidence.incidentId !== incidentId)
+          throw new Error("Incident evidence response binding is invalid.");
+        result = evidence;
+      } else if (operation === "detail") {
         const detail = npRequireAgentIncidentStudioDetailV1(
           await service.get({ ...staff, incidentId, cursor: query(request, true).cursor }),
         );

@@ -24,6 +24,8 @@ type PendingResponse = {
 
 export function IncidentResponse({
   detail,
+  choiceIndex,
+  onChoiceChange,
   disabled,
   onWriting,
   onSuccess,
@@ -31,6 +33,8 @@ export function IncidentResponse({
   onAccessLost,
 }: {
   detail: NpAgentIncidentStudioDetailV1;
+  choiceIndex: string;
+  onChoiceChange: (index: string) => void;
   disabled: boolean;
   onWriting: (value: boolean) => void;
   onSuccess: () => void;
@@ -38,7 +42,6 @@ export function IncidentResponse({
   onAccessLost: (error: unknown) => void;
 }) {
   const response = detail.response;
-  const [choiceIndex, setChoiceIndex] = React.useState("0");
   const [reason, setReason] = React.useState("HUMAN_REVIEW");
   const [command, setCommand] = React.useState<PendingResponse | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -46,7 +49,7 @@ export function IncidentResponse({
   const [message, setMessage] = React.useState<string | null>(null);
   const request = React.useRef<AbortController | null>(null);
   const blocked = useAgentRetryBlocked(failure);
-  const choice = response?.choices[Number(choiceIndex)] ?? response?.choices[0];
+  const choice = choiceIndex === "" ? undefined : response?.choices[Number(choiceIndex)];
   const root = `/api/admin/agents/incidents/${encodeURIComponent(detail.incident.id)}`;
   const locked = disabled || busy || command !== null;
   React.useEffect(() => () => request.current?.abort(), []);
@@ -162,7 +165,7 @@ export function IncidentResponse({
           {response.truncated ? (
             <p>Only a bounded set of response targets and plans is shown.</p>
           ) : null}
-          {choice ? (
+          {response.choices.length > 0 ? (
             <form
               className="space-y-3"
               onSubmit={(event) => {
@@ -174,21 +177,26 @@ export function IncidentResponse({
                 <RuntimeSelect
                   label="Response target"
                   disabled={locked}
-                  value={String(response.choices.indexOf(choice))}
-                  onChange={setChoiceIndex}
-                  options={response.choices.map((item, index) => ({
-                    value: String(index),
-                    label: `${item.capabilityId === "moderation.quarantine" ? "Quarantine" : "Restore"} ${item.target.kind} ${index + 1}`,
-                  }))}
+                  value={choiceIndex || "none"}
+                  onChange={(value) => onChoiceChange(value === "none" ? "" : value)}
+                  options={[
+                    { value: "none", label: "Select a response target" },
+                    ...response.choices.map((item, index) => ({
+                      value: String(index),
+                      label: `${item.capabilityId === "moderation.quarantine" ? "Quarantine" : "Restore"} ${item.target.kind} ${index + 1}`,
+                    })),
+                  ]}
                 />
-                <div className="space-y-1 break-all text-sm">
-                  <p>
-                    Target: {choice.target.kind} · {choice.target.collection} · {choice.target.id}
-                  </p>
-                  <p>Current target version: {choice.expectedVersionDigest}</p>
-                  {choice.containmentId ? <p>Containment: {choice.containmentId}</p> : null}
-                </div>
-                {choice.capabilityId === "moderation.quarantine" ? (
+                {choice ? (
+                  <div className="space-y-1 break-all text-sm">
+                    <p>
+                      Target: {choice.target.kind} · {choice.target.collection} · {choice.target.id}
+                    </p>
+                    <p>Current target version: {choice.expectedVersionDigest}</p>
+                    {choice.containmentId ? <p>Containment: {choice.containmentId}</p> : null}
+                  </div>
+                ) : null}
+                {choice?.capabilityId === "moderation.quarantine" ? (
                   <RuntimeSelect
                     label="Quarantine reason"
                     disabled={locked}
@@ -207,6 +215,7 @@ export function IncidentResponse({
                 disabled={
                   locked ||
                   blocked ||
+                  !choice ||
                   (choice.capabilityId === "moderation.quarantine" &&
                     !/^[A-Z][A-Z0-9_]{0,63}$/.test(reason.trim()))
                 }

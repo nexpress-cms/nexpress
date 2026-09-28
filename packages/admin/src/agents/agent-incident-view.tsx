@@ -14,6 +14,7 @@ import {
   type NpAgentIncidentStudioDetailV1,
   type NpAgentIncidentFeedbackInputV1,
 } from "@nexpress/core/agent-contract";
+import { IncidentEvidence } from "./agent-incident-evidence.js";
 import { IncidentResponse } from "./agent-incident-response.js";
 import { IncidentWorkflow } from "./agent-incident-workflow.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
@@ -183,6 +184,28 @@ function IncidentDetail({ id }: { id: string }) {
   const path = `${root}/${encodeURIComponent(id)}${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`;
   const state = useRuntimeResource(path, npRequireAgentIncidentStudioDetailV1);
   const detail = state.value;
+  const [responseSelection, setResponseSelection] = React.useState<{
+    detail: NpAgentIncidentStudioDetailV1;
+    index: string;
+    fromEvidence: boolean;
+  } | null>(null);
+  const clearEvidenceSelection = React.useCallback(() => {
+    setResponseSelection((selection) =>
+      selection?.fromEvidence ? { ...selection, index: "", fromEvidence: false } : selection,
+    );
+  }, []);
+  const clearDetail = state.clear;
+  const evidenceAccessLost = React.useCallback(
+    (error: unknown) => {
+      clearDetail("This incident is unavailable or you no longer have access.", error);
+    },
+    [clearDetail],
+  );
+  const evidenceConflict = React.useCallback(() => {
+    clearDetail(
+      "This incident or its evidence changed. Refresh and review the current evidence before continuing.",
+    );
+  }, [clearDetail]);
   useAgentPolling(
     path,
     detail,
@@ -264,8 +287,20 @@ function IncidentDetail({ id }: { id: string }) {
               </ul>
             )}
           </section>
+          {!writing && !state.loading ? (
+            <IncidentEvidence
+              key={`${state.generation}:${detail.incident.versionNumber}`}
+              detail={detail}
+              onSelect={(index) => setResponseSelection({ detail, index, fromEvidence: true })}
+              onClearSelection={clearEvidenceSelection}
+              onAccessLost={evidenceAccessLost}
+              onConflict={evidenceConflict}
+            />
+          ) : null}
           <IncidentResponse
             detail={detail}
+            choiceIndex={responseSelection?.detail === detail ? responseSelection.index : "0"}
+            onChoiceChange={(index) => setResponseSelection({ detail, index, fromEvidence: false })}
             disabled={writing || state.loading}
             onWriting={setWriting}
             onSuccess={() => {
