@@ -1,4 +1,10 @@
 import {
+  npRequireAgentIncidentSeverityChangeV1,
+  npAgentIncidentSeverityOrderV1,
+  type NpAgentIncidentSeverityChangeV1,
+  type NpAgentIncidentEscalationSeverityV1,
+} from "./incident-severity-contract.js";
+import {
   npRequireAgentIncidentAssignmentEntryV1,
   type NpAgentIncidentAssignmentEntryV1,
 } from "./incident-assignment-contract.js";
@@ -56,7 +62,9 @@ export interface NpAgentIncidentStudioDetailV1 {
     approvalId: string | null;
     actionId: string | null;
     decision: NpAgentIncidentDecisionV1 | null;
+    severityChange?: NpAgentIncidentSeverityChangeV1;
     assignment?: NpAgentIncidentAssignmentEntryV1 | null;
+    containmentFailure?: { outcome: "rolled_back"; reasonCode: "CONTAINMENT_VERIFICATION_FAILED" };
   }>;
   nextTimelineCursor: string | null;
   feedback: Array<{
@@ -81,7 +89,14 @@ export function npRequireAgentIncidentStudioDetailV1(
       v,
       path,
       keys,
-      keys.filter((k) => k !== "response" && k !== "assignment"),
+      keys.filter(
+        (k) =>
+          k !== "response" &&
+          k !== "assignment" &&
+          k !== "containmentFailure" &&
+          k !== "severityChange" &&
+          k !== "availableSeverities",
+      ),
       state,
     );
   const nullableId = (v: unknown, path: string) => (v === null ? null : canonicalBodyUuid(v, path));
@@ -150,10 +165,43 @@ export function npRequireAgentIncidentStudioDetailV1(
       "actionId",
       "decision",
       "assignment",
+      "containmentFailure",
+      "severityChange",
     ]);
     if (r.assignment != null && (r.kind !== "human_note" || r.decision !== null))
       failCanonicalBody("invalid-field", path, "Invalid assignment timeline binding");
+    let containmentFailure:
+      { outcome: "rolled_back"; reasonCode: "CONTAINMENT_VERIFICATION_FAILED" } | undefined;
+    if (r.containmentFailure !== undefined) {
+      const failure = record(r.containmentFailure, path, ["outcome", "reasonCode"]);
+      if (
+        failure.outcome !== "rolled_back" ||
+        failure.reasonCode !== "CONTAINMENT_VERIFICATION_FAILED" ||
+        r.kind !== "action" ||
+        (r.actionId === null && r.approvalId === null) ||
+        r.decision !== null
+      )
+        failCanonicalBody("invalid-field", path, "Invalid containment failure binding");
+      containmentFailure = {
+        outcome: "rolled_back",
+        reasonCode: "CONTAINMENT_VERIFICATION_FAILED",
+      };
+    }
+    const severityChange =
+      r.severityChange === undefined
+        ? undefined
+        : npRequireAgentIncidentSeverityChangeV1(r.severityChange);
+    if (
+      severityChange &&
+      (r.kind !== "human_note" ||
+        r.decision !== null ||
+        r.assignment != null ||
+        r.containmentFailure !== undefined)
+    )
+      failCanonicalBody("invalid-field", path, "Invalid severity timeline binding");
     return {
+      ...(severityChange ? { severityChange } : {}),
+      ...(containmentFailure ? { containmentFailure } : {}),
       id: canonicalBodyUuid(r.id, path),
       sequence: canonicalBodyInteger(r.sequence, path, 1, 2147483647),
       kind: canonicalBodyEnum<(typeof npAgentIncidentTimelineKindsV1)[number]>(
@@ -201,7 +249,11 @@ export function npRequireAgentIncidentStudioDetailV1(
     failCanonicalBody("invalid-field", p, "Duplicate retained entries");
   let workflow: NpAgentIncidentWorkflowV1 | null = null;
   if (row.workflow !== null) {
-    const w = record(row.workflow, `${p}.workflow`, ["availableTransitions", "containment"]);
+    const w = record(row.workflow, `${p}.workflow`, [
+      "availableTransitions",
+      "availableSeverities",
+      "containment",
+    ]);
     const availableTransitions = canonicalBodyArray(w.availableTransitions, p, 3, state).map((v) =>
       canonicalBodyEnum<NpAgentIncidentWorkflowV1["availableTransitions"][number]>(
         v,
@@ -236,7 +288,29 @@ export function npRequireAgentIncidentStudioDetailV1(
       (pendingActions > 0 && availableTransitions.some((t) => t !== "investigating"))
     )
       failCanonicalBody("invalid-field", p, "Invalid containment summary");
+    const availableSeverities =
+      w.availableSeverities === undefined
+        ? undefined
+        : canonicalBodyArray(w.availableSeverities, p, 4, state).map((v) =>
+            canonicalBodyEnum<NpAgentIncidentEscalationSeverityV1>(
+              v,
+              p,
+              new Set(["low", "medium", "high", "critical"]),
+            ),
+          );
+    if (
+      availableSeverities &&
+      (new Set(availableSeverities).size !== availableSeverities.length ||
+        availableSeverities.some(
+          (severity) =>
+            npAgentIncidentSeverityOrderV1.indexOf(severity) <=
+            npAgentIncidentSeverityOrderV1.indexOf(incident.severity),
+        ) ||
+        (["resolved", "dismissed"].includes(incident.status) && availableSeverities.length > 0))
+    )
+      failCanonicalBody("invalid-field", p, "Invalid available severities");
     workflow = {
+      ...(availableSeverities === undefined ? {} : { availableSeverities }),
       availableTransitions,
       containment: { reviewHash, total, active, restored, unresolved, pendingActions },
     };

@@ -1,4 +1,8 @@
 import {
+  npRequireAgentIncidentSeverityInputV1,
+  type NpAgentIncidentSeverityInputV1,
+} from "../agent-contract/incident-severity-contract.js";
+import {
   npRequireAgentIncidentAssignmentInputV1,
   type NpAgentIncidentAssignmentInputV1,
 } from "../agent-contract/incident-assignment-contract.js";
@@ -97,6 +101,7 @@ export type NpAgentAdmittedAdminOperationIdV1 =
   | "agents.incidents.response_execute"
   | "agents.incidents.restore"
   | "agents.incidents.assign"
+  | "agents.incidents.escalate"
   | "agents.incidents.transition"
   | "agents.incidents.feedback"
   | NpAgentRuntimeAdminOperationIdV1
@@ -126,6 +131,7 @@ export type NpAgentAdmittedAdminInputMapV1 = NpAgentGatewayAdminInputMapV1 &
     "agents.incidents.response_execute": NpAgentIncidentResponseExecuteInputV1;
     "agents.incidents.restore": NpAgentIncidentResponseExecuteInputV1;
     "agents.incidents.assign": NpAgentIncidentAssignmentInputV1;
+    "agents.incidents.escalate": NpAgentIncidentSeverityInputV1;
     "agents.incidents.transition": NpAgentIncidentTransitionInputV1;
     "agents.incidents.feedback": NpAgentIncidentFeedbackInputV1;
     "agents.changesets.rollback_plans.create": NpAgentRollbackPlanCreateInputV1;
@@ -162,6 +168,8 @@ function requireAdmittedAdminInput<I extends NpAgentAdmittedAdminOperationIdV1>(
     return npRequireAgentIncidentResponseExecuteInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.incidents.assign")
     return npRequireAgentIncidentAssignmentInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
+  if (operationId === "agents.incidents.escalate")
+    return npRequireAgentIncidentSeverityInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.incidents.transition")
     return npRequireAgentIncidentTransitionInputV1(value) as NpAgentAdmittedAdminInputMapV1[I];
   if (operationId === "agents.incidents.feedback")

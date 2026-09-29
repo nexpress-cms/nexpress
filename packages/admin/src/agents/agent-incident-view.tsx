@@ -1,5 +1,7 @@
 "use client";
 
+import { IncidentSeverity } from "./agent-incident-severity.js";
+
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -306,7 +308,7 @@ function IncidentDetail({ id }: { id: string }) {
           </section>
           {!writing && !state.loading ? (
             <IncidentEvidence
-              key={`${state.generation}:${detail.incident.versionNumber}`}
+              key={`evidence:${state.generation}:${detail.incident.versionNumber}`}
               detail={detail}
               onSelect={(index) => setResponseSelection({ detail, index, fromEvidence: true })}
               onClearSelection={clearEvidenceSelection}
@@ -316,7 +318,7 @@ function IncidentDetail({ id }: { id: string }) {
           ) : null}
           {!state.loading ? (
             <IncidentAssignment
-              key={`${state.generation}:${detail.incident.versionNumber}`}
+              key={`assignment:${state.generation}:${detail.incident.versionNumber}`}
               detail={detail}
               disabled={writing}
               onWriting={setWriting}
@@ -344,6 +346,24 @@ function IncidentDetail({ id }: { id: string }) {
             onConflict={() =>
               state.clear(
                 "This response plan or its target changed. Reload and review the current evidence before preparing or executing a response.",
+              )
+            }
+          />
+          <IncidentSeverity
+            key={`${detail.incident.id}:${detail.incident.versionNumber}`}
+            detail={detail}
+            disabled={writing || state.loading}
+            onWriting={setWriting}
+            onSuccess={() => {
+              setCursor(null);
+              state.reload();
+            }}
+            onAccessLost={(error) =>
+              state.clear("This incident is unavailable or you no longer have access.", error)
+            }
+            onConflict={() =>
+              state.clear(
+                "This incident changed. Reload and review the current severity and evidence before raising severity.",
               )
             }
           />
@@ -407,6 +427,21 @@ function IncidentDetail({ id }: { id: string }) {
                       <p className="break-all">
                         Assigned Agent: {entry.assignment.fromAgentId ?? "Unassigned"} →{" "}
                         {entry.assignment.toAgentId ?? "Unassigned"}
+                      </p>
+                    ) : null}
+                    {entry.severityChange ? (
+                      <div className="space-y-1 break-words">
+                        <p>
+                          Human severity change: {entry.severityChange.fromSeverity} →{" "}
+                          {entry.severityChange.toSeverity}
+                        </p>
+                        <p className="whitespace-pre-wrap">{entry.severityChange.note}</p>
+                      </div>
+                    ) : null}
+                    {entry.containmentFailure ? (
+                      <p>
+                        Quarantine verification failed. The attempted content changes were rolled
+                        back.
                       </p>
                     ) : null}
                     {entry.decision ? (

@@ -1,3 +1,5 @@
+import { createAgentIncidentNotificationsServiceV1 } from "../../../packages/core/src/agent/incident-notifications-service.js";
+import type { NpAgentIncidentSeverityInputV1 } from "../../../packages/core/src/agent-contract/incident-severity-contract.js";
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -5,6 +7,7 @@ import {
   npAgentIncidents,
   npAgentIncidentTimeline,
   npAgentInvocations,
+  npAgentNotifications,
 } from "../../../packages/core/src/db/schema/agent.js";
 import { npSessions } from "../../../packages/core/src/db/schema/system.js";
 import { createAgentIncidentServiceV1 } from "../../../packages/core/src/agent/incident-service.js";
@@ -42,7 +45,7 @@ describe.skipIf(skipIfNoTestDb())("Incident human workflow", () => {
     registerTestCollections();
   });
   afterAll(closeTestDb);
-  async function setup() {
+  async function setup(options: { failNotification?: boolean } = {}) {
     const f = await fixture();
     let visible = true;
     const time = new Date();
@@ -68,9 +71,19 @@ describe.skipIf(skipIfNoTestDb())("Incident human workflow", () => {
         return visible;
       },
     }).staff;
+    const notifications = createAgentIncidentNotificationsServiceV1({
+      reads,
+      cursorHmacKey: new Uint8Array(32).fill(78),
+    });
     const workflow = createAgentIncidentWorkflowServiceV1({
       reads,
       canReviewContainment: () => true,
+      notifications: {
+        record: async (input) => {
+          await notifications.record(input);
+          if (options.failNotification) throw new Error("Notification unavailable");
+        },
+      },
     });
     // Studio's ordinary reads do not require a transaction; the workflow reader above intentionally does.
     const studioReads = createAgentIncidentServiceV1({
@@ -89,12 +102,114 @@ describe.skipIf(skipIfNoTestDb())("Incident human workflow", () => {
       incident,
       workflow,
       studio,
+      notifications,
       input,
       hide: () => {
         visible = false;
       },
     };
   }
+  const severityCommand = (
+    expectedVersion: number,
+    severity: NpAgentIncidentSeverityInputV1["severity"] = "high",
+  ): NpAgentIncidentSeverityInputV1 => ({
+    schemaVersion: "np.agent-incident-severity-input.v1",
+    expectedVersion,
+    severity,
+    note: "Additional evidence requires staff attention.",
+    idempotencyKey: randomUUID(),
+  });
+  it("raises severity with an immutable staff judgment and historical notification, retaining status and exact replay", async () => {
+    const x = await setup();
+    expect((await x.workflow.get(x.input)).availableSeverities).toEqual(["high", "critical"]);
+    const request = { ...x.input, command: severityCommand(1) };
+    await x.studio.escalate(request);
+    const [stored] = await x.f.db.select().from(npAgentIncidents);
+    expect(stored).toEqual({
+      ...x.incident,
+      severity: "high",
+      versionNumber: 2,
+      updatedAt: expect.any(Date),
+    });
+    const detail = await x.studio.get(x.input);
+    expect(detail.timeline[0].severityChange).toEqual({
+      fromSeverity: "medium",
+      toSeverity: "high",
+      note: request.command.note,
+    });
+    expect(detail.workflow?.availableSeverities).toEqual(["critical"]);
+    expect((await x.notifications.list(x.input)).items[0]).toMatchObject({
+      transition: "escalated",
+      incidentVersion: 2,
+      severity: "high",
+      status: "open",
+      summary: "Incident severity escalated.",
+    });
+    await x.workflow.transition({ ...x.input, command: command(2) });
+    expect(await x.studio.escalate(request)).toMatchObject({ replayed: true });
+    expect((await x.notifications.list(x.input)).items[0].status).toBe("open");
+    await expect(
+      x.studio.escalate({ ...request, command: { ...request.command, note: "Changed same key" } }),
+    ).rejects.toThrow();
+    expect(await x.f.db.select().from(npAgentNotifications)).toHaveLength(1);
+    x.hide();
+    await expect(x.studio.escalate(request)).rejects.toThrow();
+  });
+  it("rejects stale, equal, lower, terminal and foreign-site changes while serializing competing escalations", async () => {
+    const x = await setup();
+    for (const severity of ["low", "medium"] as const)
+      await expect(
+        x.workflow.escalate({ ...x.input, command: severityCommand(1, severity) }),
+      ).rejects.toMatchObject({ code: "INCIDENT_SEVERITY_INVALID" });
+    await expect(
+      x.workflow.escalate({ ...x.input, siteId: "foreign-site", command: severityCommand(1) }),
+    ).rejects.toThrow();
+    const results = await Promise.allSettled(
+      ["high", "critical"].map((severity) =>
+        x.workflow.escalate({
+          ...x.input,
+          command: severityCommand(1, severity as "high" | "critical"),
+        }),
+      ),
+    );
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    await expect(
+      x.workflow.escalate({ ...x.input, command: severityCommand(1, "critical") }),
+    ).rejects.toMatchObject({ code: "INCIDENT_VERSION_CONFLICT" });
+    const review = await x.workflow.get(x.input);
+    await x.workflow.transition({
+      ...x.input,
+      command: command(2, {
+        transition: "resolved",
+        resolutionCode: "REMEDIATED",
+        containmentDisposition: "acknowledge",
+        containmentReviewHash: review.containment.reviewHash,
+      }),
+    });
+    expect((await x.workflow.get(x.input)).availableSeverities).toEqual([]);
+    await expect(
+      x.workflow.escalate({ ...x.input, command: severityCommand(3, "critical") }),
+    ).rejects.toMatchObject({ code: "INCIDENT_SEVERITY_INVALID" });
+  });
+  it("keeps severity and notification atomic and rejects forged history", async () => {
+    const failed = await setup({ failNotification: true });
+    await expect(
+      failed.workflow.escalate({ ...failed.input, command: severityCommand(1) }),
+    ).rejects.toThrow("Notification unavailable");
+    expect((await failed.f.db.select().from(npAgentIncidents))[0].severity).toBe("medium");
+    expect(await failed.f.db.select().from(npAgentIncidentTimeline)).toEqual([]);
+    expect(await failed.f.db.select().from(npAgentNotifications)).toEqual([]);
+    await truncateAll();
+    const x = await setup();
+    await x.workflow.escalate({ ...x.input, command: severityCommand(1) });
+    const [entry] = await x.f.db.select().from(npAgentIncidentTimeline);
+    await x.f.db
+      .update(npAgentIncidentTimeline)
+      .set({ details: { ...entry.details, note: "Forged staff note" } })
+      .where(eq(npAgentIncidentTimeline.id, entry.id));
+    expect((await x.studio.get(x.input)).timeline).toEqual([]);
+  });
+
   it("records immutable staff decisions, replays terminal commands exactly, and rejects new changes to terminal incidents", async () => {
     const x = await setup();
     const started = { ...x.input, command: command(1) };

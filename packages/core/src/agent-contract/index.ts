@@ -76,6 +76,7 @@ export * from "./moderation-capability-contract.js";
 export * from "./incident-studio-contract.js";
 
 export * from "./incident-workflow-contract.js";
+export * from "./incident-severity-contract.js";
 
 export * from "./incident-response-contract.js";
 

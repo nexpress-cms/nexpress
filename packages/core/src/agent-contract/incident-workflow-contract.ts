@@ -1,3 +1,4 @@
+import type { NpAgentIncidentEscalationSeverityV1 } from "./incident-severity-contract.js";
 import { npRequireAgentContractResult } from "./contract.js";
 import {
   analyzeCanonicalBody,
@@ -31,6 +32,7 @@ export interface NpAgentIncidentTransitionInputV1 {
 }
 export interface NpAgentIncidentWorkflowV1 {
   availableTransitions: NpAgentIncidentTransitionV1[];
+  availableSeverities?: NpAgentIncidentEscalationSeverityV1[];
   containment: {
     reviewHash: string;
     total: number;

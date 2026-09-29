@@ -1,3 +1,9 @@
+import {
+  getCollectionConfig,
+  getCollectionTable,
+  registerCollection,
+} from "../../../packages/core/src/collections/registry.js";
+import { createAgentIncidentNotificationsServiceV1 } from "../../../packages/core/src/agent/incident-notifications-service.js";
 import { createAgentIncidentResponseServiceV1 } from "../../../packages/core/src/agent/incident-response-service.js";
 import { createAgentIncidentWorkflowServiceV1 } from "../../../packages/core/src/agent/incident-workflow-service.js";
 import { createAgentIncidentServiceV1 } from "../../../packages/core/src/agent/incident-service.js";
@@ -13,6 +19,7 @@ import {
   npAgentIncidents,
   npAgentIncidentTimeline,
   npAgentInvocations,
+  npAgentNotifications,
   npAgentRuns,
 } from "../../../packages/core/src/db/schema/agent.js";
 import {
@@ -61,10 +68,24 @@ import {
   truncateAll,
 } from "./harness.js";
 
-async function moderationFixture() {
+async function moderationFixture(
+  options: {
+    notifications?: boolean;
+    failNotification?: boolean;
+    denyFailureRead?: boolean;
+    documentTarget?: boolean;
+  } = {},
+) {
   let time = new Date();
   let failTimeline = false;
   const f = await fixture();
+  if (options.documentTarget) {
+    const config = getCollectionConfig("discussions");
+    registerCollection("discussions", getCollectionTable("discussions"), {
+      ...config,
+      community: { ...config.community, reports: true, moderation: { hiddenField: "locked" } },
+    });
+  }
   const principal = await principalFixture(
     f,
     false,
@@ -97,8 +118,27 @@ async function moderationFixture() {
     resolveGatewaySettings: () => principal.gatewaySettings,
     now: () => time,
   });
+  const reads = createAgentIncidentServiceV1({
+    cursorHmacKey: new Uint8Array(32).fill(71),
+    canReadIncident: () => true,
+    canReadStaffIncident: () => true,
+  });
+  const notifications = createAgentIncidentNotificationsServiceV1({
+    reads: reads.staff,
+    cursorHmacKey: new Uint8Array(32).fill(72),
+    canReviewAction: () => !options.denyFailureRead,
+    now: () => time,
+  });
   const incidents = createAgentIncidentWriteServiceV1({
     resolveEvidence: () => false,
+    notifications: options.notifications
+      ? {
+          record: async (input) => {
+            await notifications.record(input);
+            if (options.failNotification) throw new Error("Notification persistence unavailable");
+          },
+        }
+      : undefined,
     now: () => time,
   });
   const service = createAgentModerationServiceV1({
@@ -123,6 +163,7 @@ async function moderationFixture() {
       }),
     canReadIncident: () => Promise.resolve(true),
     incidents: {
+      appendFailedContainmentEvent: incidents.appendFailedContainmentEvent,
       appendContainmentEvent: (input) =>
         failTimeline
           ? Promise.reject(new Error("Incident timeline persistence failed"))
@@ -189,7 +230,7 @@ async function moderationFixture() {
       siteId,
       category: "spam",
       status: "open",
-      severity: "medium",
+      severity: options.notifications ? "high" : "medium",
       fingerprint: `moderation-${randomUUID()}`,
       title: "Repeated links under review",
       summary: "Bounded evidence review.",
@@ -205,7 +246,9 @@ async function moderationFixture() {
       updatedAt: time,
     })
     .returning();
-  const target = { kind: "comment" as const, collection: "discussions", id: comment.id };
+  const target = options.documentTarget
+    ? { kind: "document" as const, collection: "discussions", id: document.id }
+    : { kind: "comment" as const, collection: "discussions", id: comment.id };
   const inspected = await withCurrentSite(siteId, () =>
     f.db.transaction((tx) =>
       npInspectCommunityContentContainmentV1(tx, { siteId, target, user: f.actor.actor.user }),
@@ -232,6 +275,8 @@ async function moderationFixture() {
   }
   return {
     ...f,
+    notifications,
+    incidents,
     principal,
     admission,
     approvals,
@@ -356,6 +401,310 @@ describe.skipIf(skipIfNoTestDb())("Moderator reviewed Gateway execution", () => 
     registerTestCollections();
   });
   afterAll(closeTestDb);
+
+  it.each([false, true])(
+    "persists only confirmed rolled-back quarantine failure, with isolated notification failure=%s",
+    async (failNotification) => {
+      const f = await moderationFixture({
+        notifications: true,
+        failNotification,
+        documentTarget: true,
+      });
+      const approval = required(await f.invoke(f.quarantineRequest));
+      await decide(f, approval.approvalId);
+      const execute = execution("moderation.quarantine", approval);
+      const config = getCollectionConfig("discussions");
+      const originalHooks = config.hooks;
+      let deferredCalls = 0;
+      config.hooks = {
+        beforeUpdate: [({ data }) => ({ ...data, title: "Unexpected hook mutation" })],
+        afterUpdate: [
+          ({ data }) => {
+            deferredCalls++;
+            return data;
+          },
+        ],
+      };
+      try {
+        const result = await f.invoke(execute);
+        expect(result.output).toMatchObject({
+          state: "failed",
+          containmentId: null,
+          actionId: approval.actionId,
+        });
+        expect(
+          (
+            await f.db.select().from(discussionsTable).where(eq(discussionsTable.id, f.document.id))
+          )[0],
+        ).toMatchObject({ title: f.document.title, status: "published" });
+        expect(deferredCalls).toBe(0);
+        expect(await f.db.select().from(npAgentContainments)).toEqual([]);
+        const [action] = await f.db
+          .select()
+          .from(npAgentActions)
+          .where(eq(npAgentActions.id, approval.actionId));
+        expect(action).toMatchObject({
+          state: "failed",
+          errorCode: "CONTAINMENT_VERIFICATION_FAILED",
+          verificationState: "failed",
+          containmentId: null,
+        });
+        expect(
+          (
+            await f.db
+              .select()
+              .from(npAgentApprovals)
+              .where(eq(npAgentApprovals.id, approval.approvalId))
+          )[0].state,
+        ).toBe("consumed");
+        const [timeline] = await f.db.select().from(npAgentIncidentTimeline);
+        expect(timeline).toMatchObject({
+          actionId: action.id,
+          kind: "action",
+          details: {
+            schemaVersion: "np.agent-incident-containment-failure-entry.v1",
+            outcome: "rolled_back",
+            transitionVersion: 2,
+          },
+        });
+        const feed = await f.notifications.list({ siteId, actor: f.actor.actor });
+        expect(feed.items).toHaveLength(failNotification ? 0 : 1);
+        if (!failNotification)
+          expect(feed.items[0]).toMatchObject({
+            transition: "containment_failed",
+            severity: "high",
+            status: "open",
+          });
+        expect(await f.invoke(execute)).toEqual(result);
+        expect(await f.db.select().from(npAgentIncidentTimeline)).toHaveLength(1);
+        expect(await f.db.select().from(npAgentNotifications)).toHaveLength(
+          failNotification ? 0 : 1,
+        );
+        await expect(f.invoke(execution("moderation.quarantine", approval))).rejects.toThrow();
+      } finally {
+        config.hooks = originalHooks;
+      }
+    },
+  );
+
+  it("records an Admin failure with replay and an authorized typed Incident timeline", async () => {
+    const f = await moderationFixture({ notifications: true, documentTarget: true });
+    const seeded = await seedUser({ role: "admin" });
+    await grantSiteMembership(siteId, seeded.userId, "admin");
+    const [session] = await f.db
+      .select()
+      .from(npSessions)
+      .where(eq(npSessions.userId, seeded.userId));
+    const approver: NpAgentAdminActorV1 = {
+      user: {
+        id: seeded.userId,
+        name: seeded.name,
+        email: seeded.email,
+        role: seeded.role,
+        tokenVersion: 0,
+      },
+      sessionId: session.id,
+    };
+    const reads = createAgentIncidentServiceV1({
+      cursorHmacKey: new Uint8Array(32).fill(83),
+      canReadIncident: () => true,
+      canReadStaffIncident: () => true,
+    }).staff;
+    const response = createAgentIncidentResponseServiceV1({
+      reads,
+      moderation: f.service,
+      approvals: f.approvals,
+      resolveTargets: async () => [
+        { kind: "document", collection: "discussions", id: f.document.id },
+      ],
+      now: f.now,
+      admission: {
+        reauthentication: {
+          verify: () => ({
+            reauthenticatedAt: f.now().toISOString(),
+            sessionFactFingerprint: `cj1:sha256:${"A".repeat(43)}`,
+          }),
+        },
+      },
+    });
+    const identity = { siteId, actor: f.actor.actor, incidentId: f.incident.id };
+    await f.db
+      .update(npAgentIncidents)
+      .set({ severity: "medium" })
+      .where(eq(npAgentIncidents.id, f.incident.id));
+    const workflow = createAgentIncidentWorkflowServiceV1({
+      reads,
+      canReviewContainment: () => true,
+      notifications: f.notifications,
+      now: f.now,
+    });
+    await workflow.escalate({
+      ...identity,
+      command: {
+        schemaVersion: "np.agent-incident-severity-input.v1",
+        expectedVersion: 1,
+        severity: "high",
+        note: "Staff reviewed escalation evidence.",
+        idempotencyKey: randomUUID(),
+      },
+    });
+    const choice = (await response.get(identity)).choices[0];
+    await response.responsePlan({
+      ...identity,
+      command: {
+        schemaVersion: "np.agent-incident-response-plan-input.v1",
+        expectedVersion: 2,
+        capabilityId: "moderation.quarantine",
+        proposal: {
+          incidentId: f.incident.id,
+          target: choice.target,
+          expectedVersionDigest: choice.expectedVersionDigest,
+          reasonCode: "HUMAN_REVIEW",
+        },
+        idempotencyKey: randomUUID(),
+      },
+    });
+    const plan = (await response.get(identity)).plans[0];
+    await decide(f, plan.approvalId, "approve", approver);
+    const command = {
+      schemaVersion: "np.agent-incident-response-execute-input.v1" as const,
+      expectedVersion: 2,
+      actionId: plan.actionId,
+      approvalId: plan.approvalId,
+      proposalHash: plan.proposalHash,
+      idempotencyKey: randomUUID(),
+    };
+    const config = getCollectionConfig("discussions"),
+      originalHooks = config.hooks;
+    config.hooks = { beforeUpdate: [({ data }) => ({ ...data, title: "Unexpected mutation" })] };
+    try {
+      expect(await response.responseExecute({ ...identity, command })).toMatchObject({
+        replayed: false,
+      });
+      expect(await response.responseExecute({ ...identity, command })).toMatchObject({
+        replayed: true,
+      });
+      expect((await response.get(identity)).plans[0]).toMatchObject({
+        state: "failed",
+        canExecute: false,
+      });
+      const studio = createAgentIncidentStudioServiceV1({
+        reads,
+        approvals: f.approvals,
+        cursorHmacKey: new Uint8Array(32).fill(84),
+      });
+      expect(
+        (await studio.get(identity)).timeline.find((entry) => entry.kind === "action")
+          ?.containmentFailure,
+      ).toEqual({
+        outcome: "rolled_back",
+        reasonCode: "CONTAINMENT_VERIFICATION_FAILED",
+      });
+      const hidden = createAgentIncidentStudioServiceV1({
+        reads,
+        cursorHmacKey: new Uint8Array(32).fill(85),
+      });
+      expect(
+        (await hidden.get(identity)).timeline.filter((entry) => entry.kind === "action"),
+      ).toEqual([]);
+      expect(
+        (await f.notifications.list({ siteId, actor: f.actor.actor })).items
+          .map((item) => item.transition)
+          .sort(),
+      ).toEqual(["containment_failed", "escalated"]);
+      const [entry] = await f.db
+        .select()
+        .from(npAgentIncidentTimeline)
+        .where(eq(npAgentIncidentTimeline.actionId, plan.actionId));
+      await f.db
+        .update(npAgentIncidentTimeline)
+        .set({
+          details: { ...entry.details, executionInvocationId: randomUUID() },
+        })
+        .where(eq(npAgentIncidentTimeline.id, entry.id));
+      expect(
+        (await f.notifications.list({ siteId, actor: f.actor.actor })).items.filter(
+          (item) => item.transition === "containment_failed",
+        ),
+      ).toEqual([]);
+      expect(
+        (await studio.get(identity)).timeline.filter((entry) => entry.kind === "action"),
+      ).toEqual([]);
+      await f.db
+        .update(npAgentIncidentTimeline)
+        .set({ details: entry.details })
+        .where(eq(npAgentIncidentTimeline.id, entry.id));
+      await f.db
+        .update(npAgentActions)
+        .set({ verificationEvidence: [{ outcome: "unknown" }] })
+        .where(eq(npAgentActions.id, plan.actionId));
+      expect(
+        (await studio.get(identity)).timeline.filter((entry) => entry.kind === "action"),
+      ).toEqual([]);
+      await expect(
+        f.db.transaction((db) =>
+          f.incidents.appendFailedContainmentEvent({
+            db,
+            siteId,
+            incidentId: f.incident.id,
+            actionId: plan.actionId,
+            auditEventId: entry.auditEventId!,
+          }),
+        ),
+      ).rejects.toThrow();
+    } finally {
+      config.hooks = originalHooks;
+    }
+  });
+
+  it("keeps denied action targets out of failed-containment notifications", async () => {
+    const f = await moderationFixture({
+      notifications: true,
+      denyFailureRead: true,
+      documentTarget: true,
+    });
+    const approval = required(await f.invoke(f.quarantineRequest));
+    await decide(f, approval.approvalId);
+    const config = getCollectionConfig("discussions"),
+      originalHooks = config.hooks;
+    config.hooks = { beforeUpdate: [({ data }) => ({ ...data, title: "Unexpected mutation" })] };
+    try {
+      expect((await f.invoke(execution("moderation.quarantine", approval))).output.state).toBe(
+        "failed",
+      );
+      expect(await f.db.select().from(npAgentNotifications)).toHaveLength(1);
+      expect((await f.notifications.list({ siteId, actor: f.actor.actor })).items).toEqual([]);
+    } finally {
+      config.hooks = originalHooks;
+    }
+  });
+
+  it("does not classify unknown hook errors or rejected approvals as failed containment", async () => {
+    const f = await moderationFixture({ notifications: true, documentTarget: true });
+    const approval = required(await f.invoke(f.quarantineRequest));
+    await decide(f, approval.approvalId);
+    const config = getCollectionConfig("discussions"),
+      originalHooks = config.hooks;
+    config.hooks = {
+      beforeUpdate: [
+        () => {
+          throw new Error("Unknown host error");
+        },
+      ],
+    };
+    try {
+      await expect(f.invoke(execution("moderation.quarantine", approval))).rejects.toThrow(
+        "Unknown host error",
+      );
+    } finally {
+      config.hooks = originalHooks;
+    }
+    await assertUntouched(f);
+    await decide(f, approval.approvalId, "revoke");
+    await expect(f.invoke(execution("moderation.quarantine", approval))).rejects.toThrow();
+    expect(await f.db.select().from(npAgentIncidentTimeline)).toEqual([]);
+    expect(await f.db.select().from(npAgentNotifications)).toEqual([]);
+  });
 
   it("uses real staff plans, distinct human approval, exact execution and restoration without a Gateway run", async () => {
     const f = await moderationFixture();

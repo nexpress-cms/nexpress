@@ -68,6 +68,18 @@ type LoadedTarget = {
   comment: NpCommentRow | null;
 };
 
+/** Internal post-write verification marker; callers must confirm rollback before recording failure. */
+export class NpCommunityContainmentVerificationError extends NpValidationError {
+  constructor() {
+    super("Content containment conflict", [
+      {
+        field: "target",
+        message: "The exact content state is no longer eligible for this action.",
+      },
+    ]);
+  }
+}
+
 function conflict(): never {
   throw new NpValidationError("Content containment conflict", [
     { field: "target", message: "The exact content state is no longer eligible for this action." },
@@ -352,10 +364,11 @@ export async function npQuarantineCommunityContentV1(
       result.doc[state.hiddenField] !== true ||
       !unchangedDocumentContent(loaded.document, result.doc, loaded.config, state.hiddenField)
     )
-      conflict();
+      throw new NpCommunityContainmentVerificationError();
   }
   const installed = await load(tx, input);
-  if (loaded.comment && installed.comment?.status !== "hidden") conflict();
+  if (loaded.comment && installed.comment?.status !== "hidden")
+    throw new NpCommunityContainmentVerificationError();
   await audit(tx, input, loaded.comment ? "comment.hide" : "document.unpublish", input.reasonCode);
   if (loaded.comment) {
     const comment = loaded.comment;

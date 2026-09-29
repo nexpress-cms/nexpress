@@ -24,6 +24,24 @@ describe("Incident Admin notification wire", () => {
       npRequireAgentIncidentNotificationsV1({ ...page([]), nextCursor: "opaque.cursor" }).items,
     ).toEqual([]);
   });
+  it("accepts exact failed-containment metadata only at high or critical severity", () => {
+    const failed = {
+      ...item,
+      transition: "containment_failed",
+      status: "investigating",
+      summary: "Incident containment failed.",
+    };
+    expect(npRequireAgentIncidentNotificationsV1(page([failed])).items[0]).toEqual(failed);
+    for (const change of [
+      { severity: "medium" },
+      { status: "failed" },
+      { summary: "Database error details" },
+      { actionId: incidentId },
+    ])
+      expect(() =>
+        npRequireAgentIncidentNotificationsV1(page([{ ...failed, ...change }])),
+      ).toThrow();
+  });
   it("rejects private fields, injected navigation and contradictory unsupported transitions", () => {
     for (const change of [
       { body: "private" },

@@ -10,6 +10,7 @@ import {
   npRequireAgentIncidentAssignmentInputV1,
   npRequireAgentIncidentFeedbackInputV1,
   npRequireAgentIncidentTransitionInputV1,
+  npRequireAgentIncidentSeverityInputV1,
   npRequireAgentIncidentResponsePlanInputV1,
   npRequireAgentIncidentResponseExecuteInputV1,
   npRequireAgentRuntimeStudioMutationResultV1,
@@ -68,6 +69,7 @@ export async function handleAgentIncidentAdminRequest(
     | "assign"
     | "feedback"
     | "transition"
+    | "escalate"
     | "response-plan"
     | "response-execute"
     | "restore",
@@ -133,7 +135,7 @@ export async function handleAgentIncidentAdminRequest(
         try {
           body = await readAgentAdminJsonBody(
             request,
-            operation === "transition" || operation === "response-plan" ? 16384 : 4096,
+            ["transition", "escalate", "response-plan"].includes(operation) ? 16384 : 4096,
           );
         } catch {
           throw invalid();
@@ -152,6 +154,12 @@ export async function handleAgentIncidentAdminRequest(
                 ...staff,
                 incidentId,
                 command: decode(npRequireAgentIncidentAssignmentInputV1),
+              });
+            case "escalate":
+              return service.escalate({
+                ...staff,
+                incidentId,
+                command: decode(npRequireAgentIncidentSeverityInputV1),
               });
             case "transition":
               return service.transition({
