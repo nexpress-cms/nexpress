@@ -69,6 +69,7 @@ const expectedOperationIds = [
   "agents.changesets.rollback_plans.request_approval",
   "agents.changesets.rollback_plans.execute",
   "agents.incidents.feedback",
+  "agents.incidents.assign",
   "agents.incidents.transition",
   "agents.incidents.response_plan",
   "agents.incidents.response_execute",
@@ -99,11 +100,11 @@ function adminInvocation(operationId: string) {
 }
 
 describe("Agent Admin operation registry v1", () => {
-  it("locks all 57 Agent Studio mutation rows in product order", () => {
+  it("locks all 58 Agent Studio mutation rows in product order", () => {
     expect(npAgentAdminOperationIdsV1).toEqual(expectedOperationIds);
-    expect(npAgentAdminOperationRegistryV1).toHaveLength(57);
+    expect(npAgentAdminOperationRegistryV1).toHaveLength(58);
     expect(Object.keys(npAgentAdminOperationsV1)).toEqual(expectedOperationIds);
-    expect(new Set(npAgentAdminOperationIdsV1).size).toBe(57);
+    expect(new Set(npAgentAdminOperationIdsV1).size).toBe(58);
     expect(Object.isFrozen(npAgentAdminOperationIdsV1)).toBe(true);
     expect(Object.isFrozen(npAgentAdminOperationRouteInventoryV1)).toBe(true);
     expect(Object.isFrozen(npAgentAdminOperationRouteInventoryV1[0])).toBe(true);
@@ -111,7 +112,7 @@ describe("Agent Admin operation registry v1", () => {
     const routeKeys = npAgentAdminOperationRegistryV1.map(
       ({ method, pathTemplate }) => `${method} ${pathTemplate}`,
     );
-    expect(new Set(routeKeys).size).toBe(57);
+    expect(new Set(routeKeys).size).toBe(58);
     expect(routeKeys.every((route) => route.includes(" /api/admin/agents/"))).toBe(true);
   });
 
@@ -252,7 +253,7 @@ describe("Agent Admin operation registry v1", () => {
       npDigestAgentAdminOperationContractV1(npAgentAdminOperationRegistryV1[0]),
     ).resolves.toBe("cj1:sha256:5w3d7O1UDEv24p5vldtmuR6qREV8Q6UU4hYYp6aE1nA");
     await expect(npDigestAgentAdminOperationRegistryV1()).resolves.toBe(
-      "cj1:sha256:KBRSfhKTA4ic3XMZhk0EMgpo7p2MmzjUMenxZsAajk8",
+      "cj1:sha256:Mmae1-M3sHzBuljLZisMaIkuEdNEk-VpZAja8Fy9--M",
     );
 
     await expect(

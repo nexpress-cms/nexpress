@@ -2,12 +2,16 @@ import { expect, test } from "@playwright/test";
 import {
   npRequireAgentIncidentStudioDetailV1,
   npRequireAgentIncidentEvidenceV1,
+  npRequireAgentIncidentAssignmentV1,
   type NpAgentIncidentEvidenceItemV1,
 } from "@nexpress/core/agent-contract";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/admin/agents/incidents/*/assignment", (route) =>
+    route.fulfill({ status: 503, json: {} }),
+  );
   await page.route("**/api/admin/agents/incidents/*/evidence*", (route) =>
     route.fulfill({ status: 503, json: {} }),
   );
@@ -831,4 +835,168 @@ test("incident evidence failure clears its selection, stale generations require 
   await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Current comment" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Prepare response plan" })).toHaveCount(0);
+});
+
+const assignedAgentId = "a1111111-1111-4111-8111-111111111111";
+function assignmentProjection(result: ReturnType<typeof detail>) {
+  return npRequireAgentIncidentAssignmentV1({
+    schemaVersion: "np.agent-incident-assignment.v1",
+    incidentId: id,
+    incidentVersion: result.incident.versionNumber,
+    assignedAgentId: result.incident.assignedAgentId,
+    current: result.incident.assignedAgentId
+      ? { id: assignedAgentId, name: "Comment moderator", status: "paused", eligible: true }
+      : null,
+    candidates: [{ id: assignedAgentId, name: "Comment moderator", status: "paused" }],
+    canAssign: true,
+  });
+}
+
+test("incident assignment retries one identity then records assign and unassign without starting a run", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    48 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const result = detail();
+  const commands: { agentId: string | null; expectedVersion: number; idempotencyKey: string }[] =
+    [];
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({ json: result }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/assignment`, (route) => {
+    if (route.request().method() === "GET")
+      return route.fulfill({ json: assignmentProjection(result) });
+    const command = route.request().postDataJSON();
+    commands.push(command);
+    if (commands.length === 1) return route.abort("failed");
+    const fromAgentId = result.incident.assignedAgentId;
+    result.incident.assignedAgentId = command.agentId;
+    result.incident.versionNumber += 1;
+    result.timeline.push({
+      id: commands.length === 2 ? assignedAgentId : "b1111111-1111-4111-8111-111111111111",
+      sequence: result.timeline.length + 1,
+      kind: "human_note",
+      createdAt: at,
+      approvalId: null,
+      actionId: null,
+      decision: null,
+      assignment: { fromAgentId, toAgentId: command.agentId },
+    });
+    return route.fulfill({ json: { resourceId: id, replayed: commands.length === 2 } });
+  });
+  let executionRequests = 0;
+  await page.route("**/api/admin/agents/*/runs", (route) => {
+    executionRequests += 1;
+    return route.abort();
+  });
+  await page.goto(`/admin/agents/incidents/${id}`);
+  await expect(page.getByText("Current assignment: Unassigned", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Assign selected Agent" })).toBeDisabled();
+  await page.getByRole("combobox", { name: "Assignment candidate" }).click();
+  await page
+    .getByRole("option", { name: `Comment moderator · paused · ${assignedAgentId}`, exact: true })
+    .click();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+      await page.getByRole("button", { name: "Close navigation" }).last().click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await page
+      .getByRole("heading", { name: "Assigned Agent", exact: true })
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: testInfo.outputPath(`incident-assignment-${width}.png`),
+      fullPage: true,
+      animations: "disabled",
+    });
+  }
+  await page.getByRole("button", { name: "Assign selected Agent" }).click();
+  await expect(page.getByRole("button", { name: "Retry unchanged assignment" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Assignment candidate" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Record feedback", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Record incident decision" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Retry unchanged assignment" }).click();
+  await expect(
+    page.getByText("Current assignment: Comment moderator · paused", { exact: true }),
+  ).toBeVisible();
+  expect(commands[1]).toEqual(commands[0]);
+  await expect(page.getByText("Human decision · Agent assignment", { exact: true })).toBeVisible();
+  expect(commands[0]).toMatchObject({ expectedVersion: 1, agentId: assignedAgentId });
+  await expect(
+    page.getByText(`Assigned Agent: Unassigned → ${assignedAgentId}`, { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Unassign Agent" }).click();
+  await expect(page.getByText("Current assignment: Unassigned", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(`Assigned Agent: ${assignedAgentId} → Unassigned`, { exact: true }),
+  ).toBeVisible();
+  expect(commands).toHaveLength(3);
+  expect(commands[2]).toMatchObject({ expectedVersion: 2, agentId: null });
+  expect(commands[2]!.idempotencyKey).not.toBe(commands[0]!.idempotencyKey);
+  expect(executionRequests).toBe(0);
+});
+
+test("incident assignment conceals unavailable configuration and clears stale or denied reads", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    54 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const result = detail();
+  result.incident.assignedAgentId = assignedAgentId;
+  let mode: "unavailable" | "missing-agent" | "stale" | "conflict" | "denied" = "unavailable";
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({ json: result }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/assignment`, (route) => {
+    if (mode === "unavailable") return route.fulfill({ status: 503, json: {} });
+    if (mode === "denied") return route.fulfill({ status: 403, json: {} });
+    if (route.request().method() === "POST") return route.fulfill({ status: 409, json: {} });
+    const projection = assignmentProjection(result);
+    projection.current = null;
+    projection.candidates = [];
+    if (mode === "stale") projection.incidentVersion += 1;
+    return route.fulfill({ json: projection });
+  });
+  await page.goto(`/admin/agents/incidents/${id}`);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Agent assignment is unavailable" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Repeated links" })).toBeVisible();
+  mode = "missing-agent";
+  await page.getByRole("button", { name: "Refresh Agent candidates" }).click();
+  await expect(
+    page.getByText("Current assignment: Assigned Agent configuration is unavailable.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Unassign Agent" })).toBeEnabled();
+  mode = "stale";
+  await page.getByRole("button", { name: "Refresh Agent candidates" }).click();
+  await expect(
+    page.getByText("This incident or its Agent assignment changed.", { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
+  mode = "conflict";
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Unassign Agent" })).toBeEnabled();
+  await page.getByRole("button", { name: "Unassign Agent" }).click();
+  await expect(
+    page.getByText("This incident or its Agent assignment changed.", { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry unchanged assignment" })).toHaveCount(0);
+  mode = "denied";
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(
+    page.getByText("This incident is unavailable or you no longer have access.", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
 });

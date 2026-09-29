@@ -1,4 +1,8 @@
 import {
+  npRequireAgentIncidentAssignmentEntryV1,
+  type NpAgentIncidentAssignmentEntryV1,
+} from "./incident-assignment-contract.js";
+import {
   npRequireAgentIncidentResponseV1,
   type NpAgentIncidentResponseV1,
 } from "./incident-response-contract.js";
@@ -52,6 +56,7 @@ export interface NpAgentIncidentStudioDetailV1 {
     approvalId: string | null;
     actionId: string | null;
     decision: NpAgentIncidentDecisionV1 | null;
+    assignment?: NpAgentIncidentAssignmentEntryV1 | null;
   }>;
   nextTimelineCursor: string | null;
   feedback: Array<{
@@ -76,7 +81,7 @@ export function npRequireAgentIncidentStudioDetailV1(
       v,
       path,
       keys,
-      keys.filter((k) => k !== "response"),
+      keys.filter((k) => k !== "response" && k !== "assignment"),
       state,
     );
   const nullableId = (v: unknown, path: string) => (v === null ? null : canonicalBodyUuid(v, path));
@@ -144,7 +149,10 @@ export function npRequireAgentIncidentStudioDetailV1(
       "approvalId",
       "actionId",
       "decision",
+      "assignment",
     ]);
+    if (r.assignment != null && (r.kind !== "human_note" || r.decision !== null))
+      failCanonicalBody("invalid-field", path, "Invalid assignment timeline binding");
     return {
       id: canonicalBodyUuid(r.id, path),
       sequence: canonicalBodyInteger(r.sequence, path, 1, 2147483647),
@@ -157,6 +165,12 @@ export function npRequireAgentIncidentStudioDetailV1(
       approvalId: nullableId(r.approvalId, path),
       actionId: nullableId(r.actionId, path),
       decision: r.decision === null ? null : npRequireAgentIncidentDecisionV1(r.decision),
+      ...(r.assignment === undefined
+        ? {}
+        : {
+            assignment:
+              r.assignment === null ? null : npRequireAgentIncidentAssignmentEntryV1(r.assignment),
+          }),
     };
   });
   if (timeline.some((r, i) => i > 0 && r.sequence <= timeline[i - 1].sequence))
