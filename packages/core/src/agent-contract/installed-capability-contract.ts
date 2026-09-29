@@ -1,4 +1,16 @@
 import {
+  npAgentOperatorCapabilityIdsV1,
+  npAgentOperatorCapabilityDescriptorsV1,
+  npIsAgentOperatorCapabilityIdV1,
+  npRequireAgentOperatorCapabilityInputV1,
+  npRequireAgentOperatorCapabilityOutputV1,
+  npRequireAgentOperatorCapabilityInvocationRequestV1,
+  type NpAgentOperatorCapabilityIdV1,
+  type NpAgentOperatorCapabilityInputMapV1,
+  type NpAgentOperatorCapabilityOutputMapV1,
+  type NpAgentOperatorCapabilityInvocationRequestV1,
+} from "./operator-capability-contract.js";
+import {
   npAgentModerationCapabilityIdsV1,
   npAgentModerationCapabilityDescriptorsV1,
   npIsAgentModerationCapabilityIdV1,
@@ -76,6 +88,7 @@ export const npAgentInstalledCapabilityIdsV1 = [
   ...npAgentChangeSetCapabilityIdsV1,
   ...npAgentReadCapabilityIdsV1,
   ...npAgentModerationCapabilityIdsV1,
+  ...npAgentOperatorCapabilityIdsV1,
 ] as const;
 export type NpAgentInstalledCapabilityIdV1 = (typeof npAgentInstalledCapabilityIdsV1)[number];
 export interface NpAgentChangeSetApplyCapabilityInputV1 {
@@ -235,12 +248,14 @@ export interface NpAgentInstalledCapabilityInputMapV1
   extends
     NpAgentReadCapabilityInputMapV1,
     NpAgentChangeSetCapabilityInputMapV1,
-    NpAgentModerationCapabilityInputMapV1 {}
+    NpAgentModerationCapabilityInputMapV1,
+    NpAgentOperatorCapabilityInputMapV1 {}
 export interface NpAgentInstalledCapabilityOutputMapV1
   extends
     NpAgentReadCapabilityOutputMapV1,
     NpAgentChangeSetCapabilityOutputMapV1,
-    NpAgentModerationCapabilityOutputMapV1 {}
+    NpAgentModerationCapabilityOutputMapV1,
+    NpAgentOperatorCapabilityOutputMapV1 {}
 export type NpAgentChangeSetCapabilityInvocationRequestV1 = {
   [C in NpAgentChangeSetCapabilityIdV1]: {
     schemaVersion: "np.agent-invocation-request.v1";
@@ -254,7 +269,8 @@ export type NpAgentChangeSetCapabilityInvocationRequestV1 = {
 export type NpAgentInstalledCapabilityInvocationRequestV1 =
   | NpAgentReadCapabilityInvocationRequestV1
   | NpAgentChangeSetCapabilityInvocationRequestV1
-  | NpAgentModerationCapabilityInvocationRequestV1;
+  | NpAgentModerationCapabilityInvocationRequestV1
+  | NpAgentOperatorCapabilityInvocationRequestV1;
 export interface NpAgentChangeSetCapabilityInvocationResultV1 {
   schemaVersion: "np.agent-changeset-invocation-result.v1";
   invocationId: string;
@@ -418,6 +434,7 @@ export const npAgentInstalledCapabilityDescriptorsV1 = Object.freeze({
   ...npAgentReadCapabilityDescriptorsV1,
   ...npAgentChangeSetCapabilityDescriptorsV1,
   ...npAgentModerationCapabilityDescriptorsV1,
+  ...npAgentOperatorCapabilityDescriptorsV1,
 });
 export function npBuildAgentChangeSetCapabilityDefinitionCanonicalV1(
   id: NpAgentChangeSetCapabilityIdV1,
@@ -511,6 +528,11 @@ export function npRequireAgentInstalledCapabilityInputV1<C extends NpAgentInstal
   id: C,
   value: unknown,
 ): NpAgentInstalledCapabilityInputMapV1[C] {
+  if (npIsAgentOperatorCapabilityIdV1(id))
+    return npRequireAgentOperatorCapabilityInputV1(
+      id,
+      value,
+    ) as NpAgentInstalledCapabilityInputMapV1[C];
   if (npIsAgentModerationCapabilityIdV1(id))
     return npRequireAgentModerationCapabilityInputV1(
       id,
@@ -543,6 +565,8 @@ export function npRequireAgentInstalledCapabilityInvocationRequestV1(
         p + ".capabilityId",
         new Set(npAgentInstalledCapabilityIdsV1),
       );
+      if (npIsAgentOperatorCapabilityIdV1(id))
+        return npRequireAgentOperatorCapabilityInvocationRequestV1(value);
       if (npIsAgentModerationCapabilityIdV1(id))
         return npRequireAgentModerationCapabilityInvocationRequestV1(value);
       if (!npIsAgentChangeSetCapabilityIdV1(id))
@@ -681,6 +705,11 @@ export function npRequireAgentInstalledCapabilityOutputV1<C extends NpAgentInsta
   id: C,
   value: unknown,
 ): NpAgentInstalledCapabilityOutputMapV1[C] {
+  if (npIsAgentOperatorCapabilityIdV1(id))
+    return npRequireAgentOperatorCapabilityOutputV1<NpAgentOperatorCapabilityIdV1>(
+      id,
+      value,
+    ) as NpAgentInstalledCapabilityOutputMapV1[C];
   if (npIsAgentModerationCapabilityIdV1(id))
     return npRequireAgentModerationCapabilityOutputV1(
       id,

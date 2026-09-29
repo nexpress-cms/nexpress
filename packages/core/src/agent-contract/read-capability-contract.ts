@@ -1,4 +1,12 @@
 import {
+  npAnalyzeAgentOpsStatusInputV1,
+  npAnalyzeAgentOpsStatusOutputV1,
+  npAgentOpsStatusInputSchemaV1,
+  npAgentOpsStatusOutputSchemaV1,
+  type NpAgentOpsStatusInputV1,
+  type NpAgentOpsStatusOutputV1,
+} from "./operator-capability-contract.js";
+import {
   npAnalyzeAgentIncidentGetInputV1,
   npAnalyzeAgentIncidentListInputV1,
   npAnalyzeAgentIncidentOutputV1,
@@ -43,6 +51,7 @@ export const npAgentReadCapabilityIdsV1 = [
   "content.query",
   "incident.get",
   "incident.list",
+  "ops.status",
   "schema.get",
   "site.inspect",
 ] as const;
@@ -114,6 +123,7 @@ export interface NpAgentContentQueryOutputV1 extends NpAgentJsonObject {
 }
 
 export interface NpAgentReadCapabilityInputMapV1 {
+  "ops.status": NpAgentOpsStatusInputV1;
   "incident.get": NpAgentIncidentGetInputV1;
   "incident.list": NpAgentIncidentListInputV1;
   "site.inspect": NpAgentEmptyInputV1;
@@ -121,6 +131,7 @@ export interface NpAgentReadCapabilityInputMapV1 {
   "content.query": NpAgentContentQueryInputV1;
 }
 export interface NpAgentReadCapabilityOutputMapV1 {
+  "ops.status": NpAgentOpsStatusOutputV1;
   "incident.get": NpAgentIncidentOutputV1;
   "incident.list": NpAgentIncidentListOutputV1;
   "site.inspect": NpAgentSiteInspectOutputV1;
@@ -609,7 +620,9 @@ export function npRequireAgentReadCapabilityInputV1<C extends NpAgentReadCapabil
           ? npAnalyzeAgentIncidentGetInputV1(value)
           : capabilityId === "incident.list"
             ? npAnalyzeAgentIncidentListInputV1(value)
-            : npAnalyzeAgentContentQueryInputV1(value);
+            : capabilityId === "ops.status"
+              ? npAnalyzeAgentOpsStatusInputV1(value)
+              : npAnalyzeAgentContentQueryInputV1(value);
   return npRequireAgentContractResult(
     result as NpAgentContractResult<NpAgentReadCapabilityInputMapV1[C]>,
     "Invalid Agent read capability input",
@@ -629,7 +642,9 @@ export function npRequireAgentReadCapabilityOutputV1<C extends NpAgentReadCapabi
           ? npAnalyzeAgentIncidentOutputV1(value)
           : capabilityId === "incident.list"
             ? npAnalyzeAgentIncidentListOutputV1(value)
-            : npAnalyzeAgentContentQueryOutputV1(value);
+            : capabilityId === "ops.status"
+              ? npAnalyzeAgentOpsStatusOutputV1(value)
+              : npAnalyzeAgentContentQueryOutputV1(value);
   return npRequireAgentContractResult(
     result as NpAgentContractResult<NpAgentReadCapabilityOutputMapV1[C]>,
     "Invalid Agent read capability output",
@@ -940,8 +955,8 @@ function descriptor(
   id: NpAgentReadCapabilityIdV1,
   title: string,
   description: string,
-  scope: "site:read" | "schema:read" | "content:read" | "incident:read",
-  derivation: "none" | "schema-resource" | "content-query" | "incident-target",
+  scope: "site:read" | "schema:read" | "content:read" | "incident:read" | "ops:read",
+  derivation: "none" | "schema-resource" | "content-query" | "incident-target" | "ops-selection",
   inputSchema: NpAgentJsonSchema,
   outputSchema: NpAgentJsonSchema,
 ): NpAgentCapabilityDescriptor {
@@ -1002,6 +1017,15 @@ export const npAgentReadCapabilityDescriptorsV1 = Object.freeze({
     "incident-target",
     npAgentIncidentListInputSchemaV1,
     npAgentIncidentListOutputSchemaV1,
+  ),
+  "ops.status": descriptor(
+    "ops.status",
+    "Get operations status",
+    "Read bounded operational checks from explicitly installed site collectors.",
+    "ops:read",
+    "ops-selection",
+    npAgentOpsStatusInputSchemaV1,
+    npAgentOpsStatusOutputSchemaV1,
   ),
   "schema.get": descriptor(
     "schema.get",

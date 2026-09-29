@@ -449,6 +449,20 @@
       "when": 1790439022249,
       "tag": "0063_agent-moderator-containment-lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1790671810239,
+      "tag": "0064_agent-operator-plan-artifacts",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1790672515929,
+      "tag": "0065_agent-operator-source-reference-lifecycle",
+      "breakpoints": true
     }
   ]
 }

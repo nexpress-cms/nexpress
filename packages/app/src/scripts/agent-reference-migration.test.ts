@@ -17,6 +17,8 @@ import {
   npEnsureAgentReferenceMigrationV6,
   npAgentReferenceMigrationSqlV7,
   npEnsureAgentReferenceMigrationV7,
+  npAgentReferenceMigrationSqlV8,
+  npEnsureAgentReferenceMigrationV8,
 } from "./agent-reference-migration.js";
 const directories: string[] = [];
 async function folder() {
@@ -296,4 +298,25 @@ it("preserves Incident lifecycle bytes and appends deferred Moderator containmen
   expect(createCustomMigration).toHaveBeenCalledTimes(1);
   await writeFile(join(migrationsFolder, "0002.sql"), generated + "-- tampered");
   await expect(npEnsureAgentReferenceMigrationV7(options)).rejects.toThrow("differs");
+});
+
+it("requires and preserves Operator plan reference fencing", async () => {
+  const migrationsFolder = await folder();
+  const createCustomMigration = vi.fn(async () => {
+    await writeFile(join(migrationsFolder, "0002.sql"), "-- generated shell\n");
+  });
+  const options = { migrationsFolder, createCustomMigration };
+  await npEnsureAgentReferenceMigrationV8(options);
+  expect(createCustomMigration).not.toHaveBeenCalled();
+  await writeFile(join(migrationsFolder, "0000.sql"), 'CREATE TABLE "np_agent_operator_plans" ();');
+  await expect(npEnsureAgentReferenceMigrationV8(options)).rejects.toThrow("incomplete");
+  await writeFile(join(migrationsFolder, "0001.sql"), npAgentReferenceMigrationSqlV1());
+  await npEnsureAgentReferenceMigrationV8(options);
+  const generated = await readFile(join(migrationsFolder, "0002.sql"), "utf8");
+  expect(generated).toBe(npAgentReferenceMigrationSqlV8());
+  expect(generated).toContain('"np_agent_operator_plans"');
+  await npEnsureAgentReferenceMigrationV8(options);
+  expect(createCustomMigration).toHaveBeenCalledTimes(1);
+  await writeFile(join(migrationsFolder, "0002.sql"), generated + "-- tampered");
+  await expect(npEnsureAgentReferenceMigrationV8(options)).rejects.toThrow("differs");
 });

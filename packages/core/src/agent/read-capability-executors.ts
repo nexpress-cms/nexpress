@@ -81,6 +81,8 @@ type NamedField = Exclude<NpFieldConfig, { type: "row" } | { type: "collapsible"
 export interface NpAgentCoreReadCapabilityOptionsV1 {
   /** Explicit host installation; absent services leave Incident capabilities unavailable. */
   incidentService?: NpAgentIncidentServiceV1;
+  /** Explicit host-owned, site-authorized and redacted operational status collector. */
+  opsStatus?: NpAgentReadCapabilityExecutorsV1["ops.status"];
   cursorHmacKey: { id: string; key: Uint8Array };
   resolveUser: (userId: string) => NpAuthUser | null | Promise<NpAuthUser | null>;
   resolveBlockSchemas: (
@@ -1082,6 +1084,7 @@ export function createAgentCoreReadCapabilityExecutorsV1(
       } satisfies NpAgentSchemaGetOutputV1;
     },
     "content.query": (input, context) => queryContent(input, context, runtimeOptions),
+    ...(runtimeOptions.opsStatus ? { "ops.status": runtimeOptions.opsStatus } : {}),
     ...(runtimeOptions.incidentService
       ? {
           "incident.get": runtimeOptions.incidentService.get.bind(runtimeOptions.incidentService),

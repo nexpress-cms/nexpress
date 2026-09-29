@@ -95,3 +95,5 @@ export * from "./incident-evidence-service.js";
 export * from "./incident-assignment-service.js";
 
 export * from "./incident-notifications-service.js";
+export * from "./operator-service.js";
+export * from "./operator-capability.js";

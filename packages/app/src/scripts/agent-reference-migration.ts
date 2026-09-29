@@ -31,7 +31,9 @@ export function npAgentReferenceMigrationSqlV1(): string {
       ...[
         ...npAgentSiteOwnedTableNamesV1.filter(
           (name) =>
-            name !== "np_agent_containments" && !incidentTables.some((table) => table === name),
+            name !== "np_agent_containments" &&
+            name !== "np_agent_operator_plans" &&
+            !incidentTables.some((table) => table === name),
         ),
         "np_agent_site_deletion_sagas",
         "np_audit_events",
@@ -278,5 +280,39 @@ export async function npEnsureAgentReferenceMigrationV7(options: {
   const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
   if (added.length !== 1)
     throw new Error("Expected one generated Agent Moderator reference migration.");
+  await writeFile(join(folder, added[0]), expected, "utf8");
+}
+
+/** Append Operator artifact coverage without changing applied lifecycle SQL. */
+export function npAgentReferenceMigrationSqlV8(): string {
+  return (
+    "-- NexPress verified Operator plan source reference lifecycle v8\n" +
+    npAgentReferenceFenceTriggersSqlV1("np_agent_operator_plans") +
+    "\n"
+  );
+}
+export async function npEnsureAgentReferenceMigrationV8(options: {
+  migrationsFolder?: string;
+  createCustomMigration: () => Promise<void>;
+}): Promise<void> {
+  const folder = resolve(options.migrationsFolder ?? "./drizzle");
+  const files = (await readdir(folder)).filter((f) => f.endsWith(".sql")).sort();
+  const texts = await Promise.all(files.map((f) => readFile(join(folder, f), "utf8")));
+  if (!texts.some((text) => text.includes('CREATE TABLE "np_agent_operator_plans"'))) return;
+  if (!texts.some((text) => text.includes(marker)))
+    throw new Error("Agent Operator plan reference migration inventory is incomplete.");
+  const expected = npAgentReferenceMigrationSqlV8();
+  const existing = texts.filter((text) =>
+    text.includes("-- NexPress verified Operator plan source reference lifecycle v8"),
+  );
+  if (existing.length) {
+    if (existing.length !== 1 || existing[0] !== expected)
+      throw new Error("Agent Operator plan reference migration differs from its reviewed source.");
+    return;
+  }
+  await options.createCustomMigration();
+  const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
+  if (added.length !== 1)
+    throw new Error("Expected one generated Agent Operator plan reference migration.");
   await writeFile(join(folder, added[0]), expected, "utf8");
 }

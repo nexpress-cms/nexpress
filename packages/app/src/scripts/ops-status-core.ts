@@ -1,3 +1,4 @@
+import type { NpOpsStatusV1 } from "@nexpress/core/agent-contract";
 import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -46,15 +47,7 @@ export interface OpsStatusSummary {
   warnings: number;
 }
 
-export interface OpsStatusJson {
-  schemaVersion: "np.ops.v1";
-  ok: boolean;
-  status: "ready" | "attention" | "blocked";
-  summary: OpsStatusSummary;
-  nextCommand: string | null;
-  projectNextCommand: string | null;
-  checks: CheckResult[];
-}
+export type OpsStatusJson = NpOpsStatusV1;
 
 interface RenderOptions {
   color: boolean;

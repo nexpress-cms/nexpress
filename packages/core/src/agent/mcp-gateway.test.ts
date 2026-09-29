@@ -1,3 +1,4 @@
+import type { NpAgentAuditRunOutputV1 } from "../agent-contract/operator-capability-contract.js";
 import {
   npAgentInstalledCapabilityDescriptorsV1,
   type NpAgentInstalledCapabilityIdV1,
@@ -282,7 +283,7 @@ it("advertises execution-only authority and preserves the real admitted task pro
   const task = {
     taskId: "npt1_01990000-0000-7000-8000-000000000001",
     status: "working" as const,
-    statusMessage: "Operation in progress",
+    statusMessage: "Operation in progress" as const,
     createdAt: "2026-09-11T00:00:00.000Z",
     lastUpdatedAt: "2026-09-11T00:00:00.000Z",
     ttl: 3600000,
@@ -400,4 +401,82 @@ it("projects optional Incident selectors and dispatches exact read requests", as
     }),
   ).rejects.toThrow();
   expect(invoke).toHaveBeenCalledTimes(1);
+});
+
+it("routes queued Operator audit through admission and preserves optional durable tasks", async () => {
+  const service = admission(["audit.run", "ops.plan", "ops.status"]);
+  const output: NpAgentAuditRunOutputV1 = {
+    schemaVersion: "np.agent-audit.v1" as const,
+    auditId: "01990000-0000-7000-8000-000000000005",
+    state: "queued" as const,
+    checks: [],
+    digest: null,
+  };
+  const task = {
+    taskId: "npt1_01990000-0000-7000-8000-000000000001",
+    status: "working" as const,
+    statusMessage: "Operation in progress" as const,
+    createdAt: "2026-09-29T00:00:00.000Z",
+    lastUpdatedAt: "2026-09-29T00:00:00.000Z",
+    ttl: 3600000,
+    pollInterval: 2000,
+  };
+  const invokeSpy = vi.spyOn(service, "invoke").mockResolvedValue({
+    schemaVersion: "np.agent-operator-invocation-result.v1",
+    capabilityId: "audit.run",
+    invocationId: "01990000-0000-7000-8000-000000000002",
+    output,
+    task,
+  });
+  const unavailable = (): Promise<never> => Promise.reject(new Error("Task reads not used"));
+  const gateway = createAgentMcpGatewayV1({
+    admission: service,
+    cursorKey: { id: "test", key: new Uint8Array(32).fill(7) },
+    tasks: { get: unavailable, list: unavailable, result: unavailable, cancel: unavailable },
+  });
+  const tools = (await gateway.listTools(authentication())).tools;
+  expect(tools.map((tool) => [tool.name, tool.execution.taskSupport])).toEqual([
+    ["get_ops_status", "forbidden"],
+    ["plan_ops_action", "forbidden"],
+    ["run_site_audit", "optional"],
+  ]);
+  const argumentsValue = {
+    input: { families: ["jobs"], collections: [], maxTargets: 10 },
+    idempotencyKey: "audit-task",
+  };
+  expect(
+    await gateway.callTool(authentication(), {
+      name: "run_site_audit",
+      arguments: argumentsValue,
+      task: { ttlMs: null },
+    }),
+  ).toEqual({
+    task,
+    _meta: { "io.modelcontextprotocol/related-task": { taskId: task.taskId } },
+  });
+  expect(invokeSpy).toHaveBeenLastCalledWith(
+    expect.objectContaining({ taskRequest: { requestedTtlMs: null } }),
+  );
+  expect(
+    await gateway.callTool(authentication(), {
+      name: "run_site_audit",
+      arguments: argumentsValue,
+      task: null,
+    }),
+  ).toMatchObject({
+    isError: false,
+    structuredContent: { state: "queued", checks: [], digest: null },
+  });
+  const called = invokeSpy.mock.calls.length;
+  await expect(
+    gateway.callTool(authentication(), {
+      name: "plan_ops_action",
+      arguments: {
+        input: { action: "migration.plan", target: { kind: "site" } },
+        idempotencyKey: "plan",
+      },
+      task: { ttlMs: null },
+    }),
+  ).rejects.toMatchObject({ mcpCode: -32601 });
+  expect(invokeSpy).toHaveBeenCalledTimes(called);
 });

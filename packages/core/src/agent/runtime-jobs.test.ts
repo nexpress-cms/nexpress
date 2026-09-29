@@ -2,7 +2,6 @@ import type { NpJobData } from "../jobs-contract/types.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const eventId = "018f0f30-cd7b-7cc2-8b16-8c052c259bd1";
-beforeEach(() => vi.resetModules());
 async function fixture() {
   const [{ createAgentRuntimeJobsV1 }, handlers, context] = await Promise.all([
     import("./runtime-jobs.js"),
@@ -32,8 +31,13 @@ async function fixture() {
   return { createAgentRuntimeJobsV1, handlers, context, dispatch, process, options };
 }
 describe("explicit Runtime job registration", () => {
-  it("does not register on import or construction and repeated registration is idempotent", async () => {
-    const f = await fixture();
+  let f: Awaited<ReturnType<typeof fixture>>;
+  beforeEach(async () => {
+    vi.resetModules();
+    // Fresh imports are fixture setup; the test deadline measures handler behavior.
+    f = await fixture();
+  });
+  it("does not register on import or construction and repeated registration is idempotent", () => {
     expect(f.handlers.getJobHandler("agent:eventDispatch")).toBeUndefined();
     const jobs = f.createAgentRuntimeJobsV1(f.options);
     expect(f.handlers.getJobHandler("agent:runExecute")).toBeUndefined();
@@ -45,8 +49,7 @@ describe("explicit Runtime job registration", () => {
     expect(f.dispatch).not.toHaveBeenCalled();
     expect(f.process).not.toHaveBeenCalled();
   });
-  it("rejects registration conflicts before installing any sibling handler", async () => {
-    const f = await fixture();
+  it("rejects registration conflicts before installing any sibling handler", () => {
     f.handlers.registerJobHandler("agent:runExecute", () => Promise.resolve());
     expect(() => f.createAgentRuntimeJobsV1(f.options).register()).toThrow(
       "Agent runtime job is unavailable.",
@@ -54,14 +57,12 @@ describe("explicit Runtime job registration", () => {
     expect(f.handlers.getJobHandler("agent:eventDispatch")).toBeUndefined();
     expect(f.handlers.getAllJobHandlers().size).toBe(1);
   });
-  it("rejects invalid explicit coordination site with a stable error", async () => {
-    const f = await fixture();
+  it("rejects invalid explicit coordination site with a stable error", () => {
     expect(() =>
       f.createAgentRuntimeJobsV1({ ...f.options, coordinationSiteId: "_system" }),
     ).toThrow("Agent runtime job is unavailable.");
   });
   it("rejects extra authority, malformed identifiers and nonempty global tick payloads before host dispatch", async () => {
-    const f = await fixture();
     f.createAgentRuntimeJobsV1(f.options).register();
     const dispatch = f.handlers.getJobHandler("agent:eventDispatch")!;
     const payloads: NpJobData[] = [
@@ -79,7 +80,6 @@ describe("explicit Runtime job registration", () => {
     expect(f.dispatch).not.toHaveBeenCalled();
   });
   it("pins host calls to payload site despite an ambient different site", async () => {
-    const f = await fixture();
     f.createAgentRuntimeJobsV1(f.options).register();
     const seen: Array<string | null> = [];
     f.dispatch.mockImplementation(async () => {
@@ -100,7 +100,6 @@ describe("explicit Runtime job registration", () => {
     expect(f.process).toHaveBeenCalledWith({ siteId: "site-c", runId: eventId });
   });
   it("does not persist host error details through generic job failure messages", async () => {
-    const f = await fixture();
     f.createAgentRuntimeJobsV1(f.options).register();
     f.dispatch.mockRejectedValue(new Error("private-provider-body"));
     f.process.mockRejectedValue(new Error("credential-locator"));
