@@ -1,3 +1,4 @@
+import type { NpAgentIncidentNotificationsServiceV1 } from "./incident-notifications-service.js";
 import type { NpAgentIncidentAssignmentServiceV1 } from "./incident-assignment-service.js";
 import { npRequireAgentIncidentAssignmentEntryV1 } from "../agent-contract/incident-assignment-contract.js";
 import type { NpAgentIncidentEvidenceServiceV1 } from "./incident-evidence-service.js";
@@ -43,6 +44,7 @@ import { createAgentCursorCodecV1 } from "./cursor.js";
 
 type Staff = Omit<NpAgentIncidentStaffContextV1, "transaction">;
 export interface NpAgentIncidentStudioServiceV1 {
+  notifications: NpAgentIncidentNotificationsServiceV1["list"];
   assignment: NpAgentIncidentAssignmentServiceV1["get"];
   assign: NpAgentIncidentAssignmentServiceV1["assign"];
   evidence: NpAgentIncidentEvidenceServiceV1["get"];
@@ -67,6 +69,7 @@ export interface NpAgentIncidentStudioServiceOptionsV1 {
   response?: NpAgentIncidentResponseServiceV1;
   evidence?: NpAgentIncidentEvidenceServiceV1;
   assignment?: NpAgentIncidentAssignmentServiceV1;
+  notifications?: NpAgentIncidentNotificationsServiceV1;
   activity?: NpAgentActivityServiceV1;
   approvals?: NpAgentApprovalServiceV1;
   cursorHmacKey: Uint8Array;
@@ -432,6 +435,15 @@ export function createAgentIncidentStudioServiceV1(
     });
   }
   return {
+    notifications: (input) => {
+      if (!options.notifications)
+        throw new NpAgentGatewayError(
+          "INCIDENT_NOTIFICATIONS_UNAVAILABLE",
+          503,
+          "Incident notifications are unavailable.",
+        );
+      return options.notifications.list(input);
+    },
     assignment: (input) => {
       if (!options.assignment)
         throw new NpAgentGatewayError(

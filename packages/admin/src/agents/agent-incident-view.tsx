@@ -14,6 +14,7 @@ import {
   type NpAgentIncidentStudioDetailV1,
   type NpAgentIncidentFeedbackInputV1,
 } from "@nexpress/core/agent-contract";
+import { IncidentNotifications } from "./agent-incident-notifications.js";
 import { IncidentAssignment } from "./agent-incident-assignment.js";
 import { IncidentEvidence } from "./agent-incident-evidence.js";
 import { IncidentResponse } from "./agent-incident-response.js";
@@ -47,6 +48,13 @@ function IncidentList({ query }: { query: string }) {
     severities: params.get("severities") || "all",
   });
   const state = useRuntimeResource(`${root}?${normalized}`, npRequireAgentIncidentListOutputV1);
+  const clearList = state.clear;
+  const notificationsAccessLost = React.useCallback(
+    (error: unknown) => {
+      clearList("Incident information is unavailable or you no longer have access.", error);
+    },
+    [clearList],
+  );
   return (
     <AgentStudioFrame
       active="incidents"
@@ -65,6 +73,9 @@ function IncidentList({ query }: { query: string }) {
         Review correlated signals and record human feedback. Feedback does not approve or execute
         containment.
       </p>
+      {!runtimeAccessLost(state.failure) ? (
+        <IncidentNotifications onAccessLost={notificationsAccessLost} />
+      ) : null}
       <form
         className="flex flex-wrap items-end gap-3"
         onSubmit={(event) => {

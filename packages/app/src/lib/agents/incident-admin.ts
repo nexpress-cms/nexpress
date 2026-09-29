@@ -5,6 +5,7 @@ import {
   npRequireAgentIncidentListOutputV1,
   npRequireAgentIncidentStudioDetailV1,
   npRequireAgentIncidentEvidenceV1,
+  npRequireAgentIncidentNotificationsV1,
   npRequireAgentIncidentAssignmentV1,
   npRequireAgentIncidentAssignmentInputV1,
   npRequireAgentIncidentFeedbackInputV1,
@@ -60,6 +61,7 @@ export async function handleAgentIncidentAdminRequest(
   request: NextRequest,
   operation:
     | "list"
+    | "notifications"
     | "detail"
     | "evidence"
     | "assignment"
@@ -71,7 +73,9 @@ export async function handleAgentIncidentAdminRequest(
     | "restore",
   id?: string,
 ): Promise<Response> {
-  const mutation = !["list", "detail", "evidence", "assignment"].includes(operation);
+  const mutation = !["list", "detail", "evidence", "assignment", "notifications"].includes(
+    operation,
+  );
   const headers = {
     "cache-control": "private, no-store",
     "referrer-policy": "no-referrer",
@@ -83,7 +87,11 @@ export async function handleAgentIncidentAdminRequest(
     const service = getOptionalAgentStudioServerRuntimeV1()?.incidents;
     if (!service) throw new NpServiceUnavailableError("Incident management is unavailable.");
     let result: unknown;
-    if (operation === "list") {
+    if (operation === "notifications") {
+      result = npRequireAgentIncidentNotificationsV1(
+        await service.notifications({ ...staff, cursor: query(request, true).cursor }),
+      );
+    } else if (operation === "list") {
       const page = npRequireAgentIncidentListOutputV1(
         await service.list({ ...staff, query: query(request, false) }),
       );
