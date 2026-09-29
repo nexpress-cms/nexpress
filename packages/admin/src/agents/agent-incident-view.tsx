@@ -14,6 +14,7 @@ import {
   type NpAgentIncidentStudioDetailV1,
   type NpAgentIncidentFeedbackInputV1,
 } from "@nexpress/core/agent-contract";
+import { IncidentAssignment } from "./agent-incident-assignment.js";
 import { IncidentEvidence } from "./agent-incident-evidence.js";
 import { IncidentResponse } from "./agent-incident-response.js";
 import { IncidentWorkflow } from "./agent-incident-workflow.js";
@@ -206,6 +207,11 @@ function IncidentDetail({ id }: { id: string }) {
       "This incident or its evidence changed. Refresh and review the current evidence before continuing.",
     );
   }, [clearDetail]);
+  const assignmentConflict = React.useCallback(() => {
+    clearDetail(
+      "This incident or its Agent assignment changed. Refresh and review the current assignment before continuing.",
+    );
+  }, [clearDetail]);
   useAgentPolling(
     path,
     detail,
@@ -297,6 +303,20 @@ function IncidentDetail({ id }: { id: string }) {
               onConflict={evidenceConflict}
             />
           ) : null}
+          {!state.loading ? (
+            <IncidentAssignment
+              key={`${state.generation}:${detail.incident.versionNumber}`}
+              detail={detail}
+              disabled={writing}
+              onWriting={setWriting}
+              onSuccess={() => {
+                setCursor(null);
+                state.reload();
+              }}
+              onAccessLost={evidenceAccessLost}
+              onConflict={assignmentConflict}
+            />
+          ) : null}
           <IncidentResponse
             detail={detail}
             choiceIndex={responseSelection?.detail === detail ? responseSelection.index : "0"}
@@ -364,10 +384,20 @@ function IncidentDetail({ id }: { id: string }) {
               <ol className="space-y-2">
                 {detail.timeline.map((entry) => (
                   <li key={entry.id} className="space-y-1 rounded-lg border p-3 text-sm">
-                    <p className="font-medium">{timelineLabels[entry.kind] ?? entry.kind}</p>
+                    <p className="font-medium">
+                      {entry.assignment
+                        ? "Human decision · Agent assignment"
+                        : (timelineLabels[entry.kind] ?? entry.kind)}
+                    </p>
                     <p>
                       #{entry.sequence} · <time dateTime={entry.createdAt}>{entry.createdAt}</time>
                     </p>
+                    {entry.assignment ? (
+                      <p className="break-all">
+                        Assigned Agent: {entry.assignment.fromAgentId ?? "Unassigned"} →{" "}
+                        {entry.assignment.toAgentId ?? "Unassigned"}
+                      </p>
+                    ) : null}
                     {entry.decision ? (
                       <div className="space-y-1 break-words">
                         <p>

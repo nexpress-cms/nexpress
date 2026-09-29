@@ -1,3 +1,5 @@
+import type { NpAgentIncidentAssignmentServiceV1 } from "./incident-assignment-service.js";
+import { npRequireAgentIncidentAssignmentEntryV1 } from "../agent-contract/incident-assignment-contract.js";
 import type { NpAgentIncidentEvidenceServiceV1 } from "./incident-evidence-service.js";
 import type { NpAgentIncidentResponseServiceV1 } from "./incident-response-service.js";
 import {
@@ -41,6 +43,8 @@ import { createAgentCursorCodecV1 } from "./cursor.js";
 
 type Staff = Omit<NpAgentIncidentStaffContextV1, "transaction">;
 export interface NpAgentIncidentStudioServiceV1 {
+  assignment: NpAgentIncidentAssignmentServiceV1["get"];
+  assign: NpAgentIncidentAssignmentServiceV1["assign"];
   evidence: NpAgentIncidentEvidenceServiceV1["get"];
   responsePlan: NpAgentIncidentResponseServiceV1["responsePlan"];
   responseExecute: NpAgentIncidentResponseServiceV1["responseExecute"];
@@ -62,6 +66,7 @@ export interface NpAgentIncidentStudioServiceOptionsV1 {
   workflow?: NpAgentIncidentWorkflowServiceV1;
   response?: NpAgentIncidentResponseServiceV1;
   evidence?: NpAgentIncidentEvidenceServiceV1;
+  assignment?: NpAgentIncidentAssignmentServiceV1;
   activity?: NpAgentActivityServiceV1;
   approvals?: NpAgentApprovalServiceV1;
   cursorHmacKey: Uint8Array;
@@ -305,6 +310,16 @@ export function createAgentIncidentStudioServiceV1(
         createdAt: row.createdAt.toISOString(),
         approvalId,
         actionId,
+        ...(row.kind === "human_note" &&
+        row.sourceKind === "staff" &&
+        row.details.schemaVersion === "np.agent-incident-assignment-entry.v1"
+          ? {
+              assignment: npRequireAgentIncidentAssignmentEntryV1({
+                fromAgentId: row.details.fromAgentId,
+                toAgentId: row.details.toAgentId,
+              }),
+            }
+          : {}),
         decision:
           row.kind === "state_transition" &&
           row.details.schemaVersion === "np.agent-incident-transition-entry.v1"
@@ -417,6 +432,24 @@ export function createAgentIncidentStudioServiceV1(
     });
   }
   return {
+    assignment: (input) => {
+      if (!options.assignment)
+        throw new NpAgentGatewayError(
+          "INCIDENT_ASSIGNMENT_UNAVAILABLE",
+          503,
+          "Incident assignment is unavailable.",
+        );
+      return options.assignment.get(input);
+    },
+    assign: (input) => {
+      if (!options.assignment)
+        throw new NpAgentGatewayError(
+          "INCIDENT_ASSIGNMENT_UNAVAILABLE",
+          503,
+          "Incident assignment is unavailable.",
+        );
+      return options.assignment.assign(input);
+    },
     evidence: (input) => {
       if (!options.evidence)
         throw new NpAgentGatewayError(

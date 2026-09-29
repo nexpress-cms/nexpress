@@ -5,6 +5,8 @@ import {
   npRequireAgentIncidentListOutputV1,
   npRequireAgentIncidentStudioDetailV1,
   npRequireAgentIncidentEvidenceV1,
+  npRequireAgentIncidentAssignmentV1,
+  npRequireAgentIncidentAssignmentInputV1,
   npRequireAgentIncidentFeedbackInputV1,
   npRequireAgentIncidentTransitionInputV1,
   npRequireAgentIncidentResponsePlanInputV1,
@@ -60,6 +62,8 @@ export async function handleAgentIncidentAdminRequest(
     | "list"
     | "detail"
     | "evidence"
+    | "assignment"
+    | "assign"
     | "feedback"
     | "transition"
     | "response-plan"
@@ -67,7 +71,7 @@ export async function handleAgentIncidentAdminRequest(
     | "restore",
   id?: string,
 ): Promise<Response> {
-  const mutation = operation !== "list" && operation !== "detail" && operation !== "evidence";
+  const mutation = !["list", "detail", "evidence", "assignment"].includes(operation);
   const headers = {
     "cache-control": "private, no-store",
     "referrer-policy": "no-referrer",
@@ -93,7 +97,15 @@ export async function handleAgentIncidentAdminRequest(
       } catch {
         throw invalid();
       }
-      if (operation === "evidence") {
+      if (operation === "assignment") {
+        if (request.nextUrl.search) throw invalid();
+        const assignment = npRequireAgentIncidentAssignmentV1(
+          await service.assignment({ ...staff, incidentId }),
+        );
+        if (assignment.incidentId !== incidentId)
+          throw new Error("Incident assignment response binding is invalid.");
+        result = assignment;
+      } else if (operation === "evidence") {
         const evidence = npRequireAgentIncidentEvidenceV1(
           await service.evidence({ ...staff, incidentId, cursor: query(request, true).cursor }),
         );
@@ -127,6 +139,12 @@ export async function handleAgentIncidentAdminRequest(
         };
         const dispatch = async () => {
           switch (operation) {
+            case "assign":
+              return service.assign({
+                ...staff,
+                incidentId,
+                command: decode(npRequireAgentIncidentAssignmentInputV1),
+              });
             case "transition":
               return service.transition({
                 ...staff,

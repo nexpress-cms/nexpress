@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   get: vi.fn(),
   evidence: vi.fn(),
+  assignment: vi.fn(),
+  assign: vi.fn(),
   feedback: vi.fn(),
   transition: vi.fn(),
   responsePlan: vi.fn(),
@@ -480,5 +482,88 @@ describe("Incident evidence HTTP boundary", () => {
       recovery: "retry-read",
     });
     expect(mocks.evidence).not.toHaveBeenCalled();
+  });
+});
+
+describe("Incident assignment HTTP boundary", () => {
+  const assignment = {
+    schemaVersion: "np.agent-incident-assignment.v1",
+    incidentId: id,
+    incidentVersion: 2,
+    assignedAgentId: null,
+    current: null,
+    candidates: [],
+    canAssign: true,
+  };
+  const assign = {
+    schemaVersion: "np.agent-incident-assignment-input.v1",
+    expectedVersion: 2,
+    agentId: id,
+    idempotencyKey: "incident-assignment-attempt",
+  };
+  it("binds candidate reads to current staff and Incident, rejects private or mismatched output", async () => {
+    mocks.assignment.mockResolvedValue(assignment);
+    const response = await handleAgentIncidentAdminRequest(request(), "assignment", id);
+    expect(response.status).toBe(200);
+    expect(mocks.ensure).toHaveBeenCalledWith("read");
+    expect(mocks.assignment).toHaveBeenCalledWith({ ...staff, incidentId: id });
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    for (const result of [
+      { ...assignment, incidentId: "10000000-0000-4000-8000-000000000002" },
+      { ...assignment, privateConfig: "do-not-expose" },
+    ]) {
+      mocks.assignment.mockResolvedValue(result);
+      const invalid = await handleAgentIncidentAdminRequest(request(), "assignment", id);
+      expect(invalid.status).toBe(500);
+      expect(await invalid.text()).not.toContain("do-not-expose");
+    }
+  });
+  it("passes exact assign and unassign commands through existing write admission", async () => {
+    mocks.assign.mockResolvedValue({ resourceId: id, replayed: true, privateConfig: "hidden" });
+    for (const agentId of [id, null]) {
+      const command = { ...assign, agentId };
+      const response = await handleAgentIncidentAdminRequest(request("", command), "assign", id);
+      expect(response.status).toBe(200);
+      expect(mocks.ensure).toHaveBeenCalledWith("write");
+      expect(mocks.assign).toHaveBeenLastCalledWith({ ...staff, incidentId: id, command });
+      expect(await response.text()).not.toContain("privateConfig");
+    }
+    mocks.assign.mockResolvedValue({
+      resourceId: "10000000-0000-4000-8000-000000000002",
+      replayed: false,
+    });
+    expect((await handleAgentIncidentAdminRequest(request("", assign), "assign", id)).status).toBe(
+      500,
+    );
+  });
+  it("rejects query injection, malformed identity and extra authority before dispatch", async () => {
+    for (const [query, incidentId] of [
+      ["?siteId=foreign", id],
+      ["?cursor=unused", id],
+      ["", "invalid"],
+    ]) {
+      expect(
+        (await handleAgentIncidentAdminRequest(request(query), "assignment", incidentId)).status,
+      ).toBe(400);
+    }
+    for (const body of [
+      { ...assign, actor: { role: "admin" } },
+      { ...assign, expectedVersion: 0 },
+      { ...assign, agentId: "invalid" },
+    ]) {
+      expect((await handleAgentIncidentAdminRequest(request("", body), "assign", id)).status).toBe(
+        400,
+      );
+    }
+    expect(mocks.assignment).not.toHaveBeenCalled();
+    expect(mocks.assign).not.toHaveBeenCalled();
+  });
+  it("keeps denied access and absent installation distinct from an empty candidate list", async () => {
+    mocks.staff.mockRejectedValue(new NpForbiddenError("agent-studio", "manage"));
+    expect((await handleAgentIncidentAdminRequest(request(), "assignment", id)).status).toBe(403);
+    expect(mocks.assignment).not.toHaveBeenCalled();
+    mocks.staff.mockResolvedValue(staff);
+    mocks.runtime.mockReturnValue(null);
+    expect((await handleAgentIncidentAdminRequest(request(), "assignment", id)).status).toBe(503);
   });
 });

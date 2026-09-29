@@ -80,3 +80,5 @@ export * from "./incident-workflow-contract.js";
 export * from "./incident-response-contract.js";
 
 export * from "./incident-evidence-contract.js";
+
+export * from "./incident-assignment-contract.js";
