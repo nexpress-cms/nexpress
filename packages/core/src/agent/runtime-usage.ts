@@ -1,3 +1,4 @@
+import { npMeasureAgentRuntimeRunUsageV1 } from "./runtime-usage-capacity.js";
 import { npRequireAgentRuntimeProviderFailureV1 } from "./runtime-provider-evidence.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
 import { npBuildAgentRuntimeClassificationManifestV1 } from "./runtime-context.js";
@@ -432,23 +433,14 @@ async function perRunCapacity(
   limits: NpAgentRunLimitsV1,
   includeNew = true,
 ): Promise<void> {
-  const rows = await db.execute<Record<string, string>>(sql`
-    select count(*)::text as turns,
-      coalesce(sum(case when state='reconciled' then actual_input_tokens when state='released' then 0 else reserved_input_tokens end),0)::text as input,
-      coalesce(sum(case when state='reconciled' then actual_output_tokens when state='released' then 0 else reserved_output_tokens end),0)::text as output,
-      coalesce(sum(case when state='reconciled' then actual_cost_micros when state='released' then 0 else reserved_cost_micros end),0)::text as cost
-    from public.np_agent_usage_reservations where site_id=${run.siteId} and run_id=${run.id}
-  `);
-  const row = rows.rows[0];
-  if (!row) fail("RUNTIME_BUDGET_UNAVAILABLE");
+  const row = await npMeasureAgentRuntimeRunUsageV1({ db, siteId: run.siteId, runId: run.id });
   for (const [value, additional, ceiling] of [
     [row.turns, includeNew ? 1 : 0, limits.maxProviderCalls],
     [row.input, includeNew ? request.limits.maxInputTokens : 0, limits.maxInputTokens],
     [row.output, includeNew ? request.limits.maxOutputTokens : 0, limits.maxOutputTokens],
     [row.cost, includeNew ? cost : 0, limits.maxCostMicros],
   ] as const) {
-    if (!/^\d+$/.test(value)) fail("RUNTIME_BUDGET_UNAVAILABLE");
-    if (BigInt(value) + BigInt(additional) > BigInt(ceiling)) fail("RUNTIME_BUDGET_BLOCKED");
+    if (value + BigInt(additional) > BigInt(ceiling)) fail("RUNTIME_BUDGET_BLOCKED");
   }
 }
 

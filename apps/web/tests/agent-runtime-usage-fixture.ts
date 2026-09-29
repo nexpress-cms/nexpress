@@ -84,6 +84,7 @@ export async function runtimeUsageFixture(
     dataClassCeiling?: NpAgentProviderDataClass;
     documentCollection?: string;
     providerInference?: NpAgentConnectionAuthAdapterV1["inference"];
+    responseSchema?: NpAgentJsonSchema;
   } = {},
 ) {
   const f = await runtimeFixture(options.budget ?? runtimeBudget());
@@ -205,7 +206,7 @@ export async function runtimeUsageFixture(
     digest: instructionDigest,
     text: usageInstruction,
   };
-  recipes.recipes[0]!.responseSchema = usageResponseSchema;
+  recipes.recipes[0]!.responseSchema = options.responseSchema ?? usageResponseSchema;
   recipes.recipes[0]!.capabilityIds = modes.map((entry) => entry.capabilityId);
   if (options.documentCollection) {
     const recipe = recipes.recipes[0]!;
@@ -385,7 +386,7 @@ export async function runtimeUsageFixture(
           trustedContext: [],
           untrustedEvidence: [],
           classificationManifestDigest: runtimeFingerprint,
-          responseSchema: usageResponseSchema,
+          responseSchema: options.responseSchema ?? usageResponseSchema,
           responseSchemaDigest: run.responseSchemaDigest!,
           responseSchemaClassification: classification(run.responseSchemaDigest!),
           tools: [],

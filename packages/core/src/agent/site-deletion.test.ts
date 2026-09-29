@@ -37,6 +37,7 @@ const expectedTables = [
   "np_agent_oauth_grants",
   "np_agent_oauth_refresh_tokens",
   "np_agent_oauth_requests",
+  "np_agent_operator_plans",
   "np_agent_policies",
   "np_agent_preview_artifact_uploads",
   "np_agent_preview_artifacts",

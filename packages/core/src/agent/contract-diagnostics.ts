@@ -70,6 +70,7 @@ const AGENT_TABLES = [
   "np_agent_oauth_grants",
   "np_agent_oauth_refresh_tokens",
   "np_agent_oauth_requests",
+  "np_agent_operator_plans",
   "np_agent_policies",
   "np_agent_preview_artifact_uploads",
   "np_agent_preview_artifacts",
@@ -95,6 +96,13 @@ const AGENT_TABLES = [
 
 /** Critical state and same-site constraints whose absence weakens fail-closed diagnostics. */
 const AGENT_CONSTRAINTS = [
+  "np_agent_operator_plans_site_id_id_unique",
+  "np_agent_operator_plans_site_id_np_sites_id_fk",
+  "np_agent_operator_plans_audit_event_id_np_audit_events_id_fk",
+  "np_agent_operator_plans_invocation_unique",
+  "np_agent_operator_plans_invocation_fk",
+  "np_agent_operator_plans_bounds_check",
+  "np_agent_operator_plans_time_check",
   "np_agent_containments_site_id_id_unique",
   "np_agent_containments_site_id_np_sites_id_fk",
   "np_agent_containments_source_action_unique",

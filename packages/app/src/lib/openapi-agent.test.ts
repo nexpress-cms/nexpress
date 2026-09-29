@@ -37,7 +37,7 @@ describe("Agent HTTP OpenAPI projection", () => {
       },
     });
     expect(createHash("sha256").update(JSON.stringify(part)).digest("hex")).toMatchInlineSnapshot(
-      `"5305a0d409525c30b5ebc452375a35d15964dddb2d5fbfbb49e4be1ed7c3967d"`,
+      `"db603afbb5a3cc1847b19a66ed531d8c4c5725cd1a31085ecb10601f986dd5a3"`,
     );
   });
   it("permits unknown usage only for Runtime origins and preserves exact Gateway counters", () => {

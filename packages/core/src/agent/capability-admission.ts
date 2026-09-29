@@ -1,3 +1,15 @@
+import type { NpAgentOperatorCapabilityFacadeV1 } from "./operator-capability.js";
+import {
+  npIsAgentOperatorCapabilityIdV1,
+  npRequireAgentOpsStatusOutputV1,
+  type NpAgentOpsStatusOutputV1,
+  type NpAgentOpsPlanOutputV1,
+  type NpAgentAuditRunOutputV1,
+  npBuildAgentOperatorCapabilityDefinitionCanonicalV1,
+  type NpAgentOperatorCapabilityIdV1,
+  type NpAgentOperatorCapabilityInvocationRequestV1,
+  type NpAgentOperatorCapabilityInvocationResultV1,
+} from "../agent-contract/operator-capability-contract.js";
 import { npAgentAutonomyAllowsV1 } from "../agent-contract/runtime-policy.js";
 import type { NpAgentRuntimeChangeSetReferencesV1 } from "./changeset-service.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
@@ -104,6 +116,7 @@ export interface NpAgentCapabilityAdmissionOptionsV1 {
   registry: NpAgentReadCapabilityRegistryV1;
   resolveChangeSetCapabilities?: () => NpAgentChangeSetCapabilityFacadeV1 | null;
   resolveModerationCapabilities?: () => NpAgentModerationCapabilityFacadeV1 | null;
+  resolveOperatorCapabilities?: () => NpAgentOperatorCapabilityFacadeV1 | null;
   resolveGatewaySettings: (
     siteId: string,
   ) => NpAgentGatewaySettingsV1 | Promise<NpAgentGatewaySettingsV1>;
@@ -1131,6 +1144,29 @@ export function createAgentCapabilityAdmissionServiceV1(
     }
     return entries;
   }
+  async function operatorEntries() {
+    const facade = options.resolveOperatorCapabilities?.();
+    if (!facade) return [];
+    const entries = await Promise.all(facade.ids.map((id) => facade.entry(id)));
+    for (const [index, entry] of entries.entries()) {
+      const id = facade.ids[index];
+      const expected = npBuildAgentOperatorCapabilityDefinitionCanonicalV1(id);
+      if (
+        !npIsAgentOperatorCapabilityIdV1(id) ||
+        (index > 0 && facade.ids[index - 1] >= id) ||
+        serializeAgentCanonicalJson(entry.definitionCanonical) !==
+          serializeAgentCanonicalJson(expected) ||
+        serializeAgentCanonicalJson(entry.definition) !==
+          serializeAgentCanonicalJson(expected.capabilities[0]) ||
+        serializeAgentCanonicalJson(entry.canonical) !==
+          serializeAgentCanonicalJson(expected.capabilities[0]) ||
+        entry.capabilityFingerprint !==
+          (await npDigestAgentCapabilityRegistryCanonical(expected, expected.capabilities))
+      )
+        throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
+    }
+    return entries;
+  }
   const service = {
     async sourceEntries(context: Readonly<Omit<NpAgentRuntimeRunContextV1, "db">>) {
       const recipe = context.evidence.registry.recipes.find(
@@ -1139,6 +1175,7 @@ export function createAgentCapabilityAdmissionServiceV1(
       const entries = [
         ...options.registry.ids.map((id) => options.registry.get(id)),
         ...(context.staffUser ? await changeSetEntries() : []),
+        ...(context.staffUser ? await operatorEntries() : []),
       ];
       return entries
         .filter(
@@ -1152,13 +1189,15 @@ export function createAgentCapabilityAdmissionServiceV1(
                 mode.capabilityId === entry.definition.descriptor.id &&
                 npAgentAutonomyAllowsV1(
                   mode.mode,
-                  entry.definition.descriptor.risk === "read"
-                    ? "read"
-                    : ["changeset.apply", "changeset.schedule"].includes(
-                          entry.definition.descriptor.id,
-                        )
-                      ? "request-approval"
-                      : "propose",
+                  entry.definition.descriptor.id === "ops.plan"
+                    ? "propose"
+                    : entry.definition.descriptor.risk === "read"
+                      ? "read"
+                      : ["changeset.apply", "changeset.schedule"].includes(
+                            entry.definition.descriptor.id,
+                          )
+                        ? "request-approval"
+                        : "propose",
                 ),
             ) &&
             entry.definition.descriptor.requiredScopes.every((scope) =>
@@ -1173,6 +1212,8 @@ export function createAgentCapabilityAdmissionServiceV1(
         state: "succeeded";
         safeCode: null;
         references?: NpAgentRuntimeChangeSetReferencesV1;
+        operatorOutput?:
+          NpAgentOpsStatusOutputV1 | NpAgentOpsPlanOutputV1 | NpAgentAuditRunOutputV1;
       }[]
     > {
       npAssertAgentPreviewEffectsAllowed();
@@ -1189,6 +1230,8 @@ export function createAgentCapabilityAdmissionServiceV1(
         state: "succeeded";
         safeCode: null;
         references?: NpAgentRuntimeChangeSetReferencesV1;
+        operatorOutput?:
+          NpAgentOpsStatusOutputV1 | NpAgentOpsPlanOutputV1 | NpAgentAuditRunOutputV1;
       }[] = [];
       for (const row of rows.reverse()) {
         try {
@@ -1198,11 +1241,20 @@ export function createAgentCapabilityAdmissionServiceV1(
             if (projected) result.push(projected);
             continue;
           }
-          await currentRuntimeAction(context, row);
+          if (npIsAgentOperatorCapabilityIdV1(row.capabilityId)) {
+            const facade = options.resolveOperatorCapabilities?.();
+            const projected = await facade?.projectRuntimeAction(context, row.id);
+            if (projected) result.push(projected);
+            continue;
+          }
+          const current = await currentRuntimeAction(context, row);
           result.push({
             capabilityId: row.capabilityId as NpAgentInstalledCapabilityIdV1,
             state: "succeeded",
             safeCode: null,
+            ...(row.capabilityId === "ops.status"
+              ? { operatorOutput: npRequireAgentOpsStatusOutputV1(current.output) }
+              : {}),
           });
         } catch {
           /* Missing, expired, modified or currently hidden action evidence is not provider input. */
@@ -1274,6 +1326,42 @@ export function createAgentCapabilityAdmissionServiceV1(
           claim: input.claim,
           sequence: input.sequence,
           request: request as NpAgentChangeSetCapabilityInvocationRequestV1,
+        });
+      }
+      if (npIsAgentOperatorCapabilityIdV1(request.capabilityId)) {
+        const facade = options.resolveOperatorCapabilities?.();
+        if (!facade || !facade.ids.includes(request.capabilityId))
+          throw new NpAgentGatewayError(
+            "CAPABILITY_UNAVAILABLE",
+            404,
+            "Capability is unavailable.",
+          );
+        await options.runtimeAdmission.withCurrentRun(
+          {
+            siteId: input.siteId,
+            runId: input.runId,
+            ...(input.claim ? { claim: input.claim } : {}),
+          },
+          async (context) => {
+            if (
+              !context.staffUser ||
+              !(await service.sourceEntries(context)).some(
+                (entry) => entry.canonical.descriptor.id === request.capabilityId,
+              )
+            )
+              throw new NpAgentGatewayError(
+                "CAPABILITY_UNAVAILABLE",
+                404,
+                "Capability is unavailable.",
+              );
+          },
+        );
+        return facade.invokeRuntime({
+          siteId: input.siteId,
+          runId: input.runId,
+          ...(input.claim ? { claim: input.claim } : {}),
+          sequence: input.sequence,
+          request: request as NpAgentOperatorCapabilityInvocationRequestV1,
         });
       }
       const result = await options.runtimeAdmission.withCurrentRun(
@@ -1497,7 +1585,11 @@ export function createAgentCapabilityAdmissionServiceV1(
         await assertCurrentAuthentication(rawTx, authentication, authentication.scopes, nowFn);
       });
       const transport = descriptorTransport(authentication.authorizationContext.transport);
-      const extra = [...(await changeSetEntries()), ...(await moderationEntries())];
+      const extra = [
+        ...(await changeSetEntries()),
+        ...(await moderationEntries()),
+        ...(await operatorEntries()),
+      ];
       const all = [...options.registry.ids.map((id) => options.registry.get(id)), ...extra].sort(
         (a, b) => a.definition.descriptor.id.localeCompare(b.definition.descriptor.id),
       );
@@ -1546,18 +1638,43 @@ export function createAgentCapabilityAdmissionServiceV1(
     }): Promise<
       C extends NpAgentReadCapabilityIdV1
         ? NpAgentReadCapabilityInvocationResultV1<C>
-        : C extends NpAgentModerationCapabilityIdV1
-          ? NpAgentModerationCapabilityInvocationResultV1
-          : NpAgentChangeSetCapabilityInvocationResultV1 & {
-              task?: NpAgentMcpTaskV1;
-            }
+        : C extends NpAgentOperatorCapabilityIdV1
+          ? NpAgentOperatorCapabilityInvocationResultV1 & { task?: NpAgentMcpTaskV1 }
+          : C extends NpAgentModerationCapabilityIdV1
+            ? NpAgentModerationCapabilityInvocationResultV1
+            : NpAgentChangeSetCapabilityInvocationResultV1 & {
+                task?: NpAgentMcpTaskV1;
+              }
     > {
       type Result = C extends NpAgentReadCapabilityIdV1
         ? NpAgentReadCapabilityInvocationResultV1<C>
-        : C extends NpAgentModerationCapabilityIdV1
-          ? NpAgentModerationCapabilityInvocationResultV1
-          : NpAgentChangeSetCapabilityInvocationResultV1;
+        : C extends NpAgentOperatorCapabilityIdV1
+          ? NpAgentOperatorCapabilityInvocationResultV1 & { task?: NpAgentMcpTaskV1 }
+          : C extends NpAgentModerationCapabilityIdV1
+            ? NpAgentModerationCapabilityInvocationResultV1
+            : NpAgentChangeSetCapabilityInvocationResultV1;
       const request = npRequireAgentInstalledCapabilityInvocationRequestV1(input.request);
+      if (npIsAgentOperatorCapabilityIdV1(request.capabilityId)) {
+        const facade = options.resolveOperatorCapabilities?.();
+        const projection = await service.project({ authentication: input.authentication });
+        if (
+          !facade ||
+          (input.taskRequest && request.capabilityId !== "audit.run") ||
+          !projection.entries.some(
+            (entry) => entry.definition.descriptor.id === request.capabilityId,
+          )
+        )
+          throw new NpAgentGatewayError(
+            "CAPABILITY_UNAVAILABLE",
+            404,
+            "Capability is unavailable.",
+          );
+        return (await facade.invoke(
+          input.authentication,
+          request as NpAgentOperatorCapabilityInvocationRequestV1,
+          input.taskRequest,
+        )) as Result;
+      }
       if (npIsAgentModerationCapabilityIdV1(request.capabilityId)) {
         const facade = options.resolveModerationCapabilities?.();
         const projection = await service.project({ authentication: input.authentication });

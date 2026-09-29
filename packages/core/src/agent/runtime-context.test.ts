@@ -33,6 +33,11 @@ async function manualContextFixture() {
   };
   const manualInput = { topic: "Review user@example.test with sk-private123456" };
   const current = {
+    db: {
+      execute: vi
+        .fn()
+        .mockResolvedValue({ rows: [{ turns: "0", input: "0", output: "0", cost: "0" }] }),
+    },
     siteId: request.siteId,
     now: new Date("2026-09-12T00:00:00.000Z"),
     run: {
@@ -139,9 +144,9 @@ describe("Retained structured manual input", () => {
     expect(request.dataClass).toBe("sensitive-approved");
     expect(request.trustedContext).toEqual([]);
     expect(request.tools).toEqual([]);
-    expect(await service.verifyRequest(current, request)).toBe(true);
+    expect(await service.verifyRequest(current, request, { db: current.db })).toBe(true);
     current.run.manualInput = { topic: "changed after preparation" };
-    expect(await service.verifyRequest(current, request)).toBe(false);
+    expect(await service.verifyRequest(current, request, { db: current.db })).toBe(false);
   });
 
   it("rejects modified digest, schema binding and insufficient provider ceilings", async () => {
@@ -245,6 +250,11 @@ it("awaits installed capability discovery and contains a rejected async source",
   const schemaDigest = `cj1:sha256:${createHash("sha256").update("np.agent-runtime-schema.v1").update("\0").update(serializeAgentCanonicalJson(schema)).digest("base64url")}`;
   const runId = "018f0f30-cd7b-7cc2-8b16-8c052c259bd2";
   const current = {
+    db: {
+      execute: vi
+        .fn()
+        .mockResolvedValue({ rows: [{ turns: "0", input: "0", output: "0", cost: "0" }] }),
+    },
     siteId: "default",
     now: new Date("2026-09-12T00:00:00.000Z"),
     run: {
@@ -272,6 +282,7 @@ it("awaits installed capability discovery and contains a rejected async source",
     connection: { activeSecretVersionId: "secret-version", credentialVersion: 1 },
     connectionSnapshot: {},
     pricing: {},
+    limits: { maxInputTokens: 100, maxOutputTokens: 100 },
   } as unknown as NpAgentRuntimeRunContextV1;
   let reject!: (error: Error) => void;
   const pending = new Promise<never>((_resolve, onReject) => {
@@ -404,4 +415,60 @@ describe("Runtime ChangeSet action references", () => {
       }),
     ).toThrow();
   });
+});
+
+it("passes exact operational facts to the provider and rejects queued or mismatched outputs", () => {
+  const current = {
+    policy: {
+      effective: {
+        capabilityModes: [
+          { capabilityId: "ops.status", mode: "observe" },
+          { capabilityId: "audit.run", mode: "observe" },
+        ],
+      },
+    },
+  } as unknown as Pick<NpAgentRuntimeRunContextV1, "policy">;
+  const status = {
+    schemaVersion: "np.agent-ops-status.v1",
+    digest: `cj1:sha256:${"A".repeat(43)}`,
+    report: {
+      schemaVersion: "np.ops.v1",
+      ok: true,
+      status: "ready",
+      summary: { total: 1, errors: 0, warnings: 0 },
+      nextCommand: null,
+      projectNextCommand: null,
+      checks: [{ id: "jobs", label: "Jobs", state: "ok" }],
+    },
+  };
+  const outcome = {
+    capabilityId: "ops.status",
+    state: "succeeded",
+    safeCode: null,
+    operatorOutput: status,
+  };
+  expect(npProjectAgentRuntimeActionOutcomeV1(current, outcome)).toEqual(outcome);
+  const queued = {
+    schemaVersion: "np.agent-audit.v1",
+    auditId: "01990000-0000-7000-8000-000000000005",
+    state: "queued",
+    checks: [],
+    digest: null,
+  };
+  expect(() =>
+    npProjectAgentRuntimeActionOutcomeV1(current, {
+      ...outcome,
+      capabilityId: "audit.run",
+      operatorOutput: queued,
+    }),
+  ).toThrow();
+  expect(() =>
+    npProjectAgentRuntimeActionOutcomeV1(current, { ...outcome, capabilityId: "audit.run" }),
+  ).toThrow();
+  expect(() =>
+    npProjectAgentRuntimeActionOutcomeV1(current, {
+      ...outcome,
+      operatorOutput: { ...status, report: { ...status.report, locator: "/private" } },
+    }),
+  ).toThrow();
 });

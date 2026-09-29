@@ -659,6 +659,11 @@ upward-only decisions and their local notifications without changing authority.
 Other source evidence viewers, external notification delivery, automatic escalation,
 unknown execution outcomes and recipe/evaluation gates stay open.
 
+The [Operator diagnostics and planning flow](r6-operator-diagnostics-flow.md)
+records the explicitly installed status, bounded audit and plan-only artifact
+boundary. The approved three-action executor, additional scoped collectors,
+recipe setup and evaluations remain open; this slice does not close AP-602.
+
 ### R7 — Guardian and application security orchestration
 
 Outcome: application signals are correlated into incidents, with narrowly

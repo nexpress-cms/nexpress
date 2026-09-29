@@ -1,4 +1,9 @@
 import {
+  npIsAgentOperatorCapabilityIdV1,
+  npRequireAgentOperatorCapabilityInvocationResultV1,
+  type NpAgentOperatorCapabilityInvocationResultV1,
+} from "./operator-capability-contract.js";
+import {
   npIsAgentModerationCapabilityIdV1,
   npRequireAgentModerationCapabilityInvocationResultV1,
   type NpAgentModerationCapabilityInvocationResultV1,
@@ -198,12 +203,16 @@ export function npBuildAgentHttpInvocationSchemasV1(): {
       schemaVersion: {
         const: npIsAgentChangeSetCapabilityIdV1(id)
           ? "np.agent-changeset-invocation-result.v1"
-          : npIsAgentModerationCapabilityIdV1(id)
-            ? "np.agent-moderation-invocation-result.v1"
-            : "np.agent-read-invocation-result.v1",
+          : npIsAgentOperatorCapabilityIdV1(id)
+            ? "np.agent-operator-invocation-result.v1"
+            : npIsAgentModerationCapabilityIdV1(id)
+              ? "np.agent-moderation-invocation-result.v1"
+              : "np.agent-read-invocation-result.v1",
       },
       invocationId: { type: "string", format: "uuid" },
-      ...(!npIsAgentChangeSetCapabilityIdV1(id) && !npIsAgentModerationCapabilityIdV1(id)
+      ...(!npIsAgentChangeSetCapabilityIdV1(id) &&
+      !npIsAgentModerationCapabilityIdV1(id) &&
+      !npIsAgentOperatorCapabilityIdV1(id)
         ? { actionId: { type: "string", format: "uuid" } }
         : {}),
       capabilityId: { const: id },
@@ -232,11 +241,14 @@ export function npRequireAgentInstalledCapabilityInvocationResultV1(
 ):
   | NpAgentReadCapabilityInvocationResultV1
   | NpAgentChangeSetCapabilityInvocationResultV1
-  | NpAgentModerationCapabilityInvocationResultV1 {
+  | NpAgentModerationCapabilityInvocationResultV1
+  | NpAgentOperatorCapabilityInvocationResultV1 {
   const id =
     typeof value === "object" && value !== null
       ? Object.getOwnPropertyDescriptor(value, "capabilityId")?.value
       : undefined;
+  if (typeof id === "string" && npIsAgentOperatorCapabilityIdV1(id))
+    return npRequireAgentOperatorCapabilityInvocationResultV1(value);
   if (typeof id === "string" && npIsAgentModerationCapabilityIdV1(id))
     return npRequireAgentModerationCapabilityInvocationResultV1(value);
   return typeof id === "string" && npIsAgentChangeSetCapabilityIdV1(id)

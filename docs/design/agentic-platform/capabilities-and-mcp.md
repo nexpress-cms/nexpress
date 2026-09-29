@@ -1090,18 +1090,26 @@ interface NpAgentAuditRunInputV1 {
   maxTargets: number;
 }
 
-interface NpAgentAuditRunOutputV1 {
-  schemaVersion: "np.agent-audit.v1";
-  auditId: string;
-  state: "completed";
-  checks: Array<{
-    id: string;
-    family: NpAgentAuditCheckFamily;
-    status: "pass" | "warn" | "fail" | "unknown";
-    evidenceRefs: string[];
-  }>;
-  digest: string | null;
-}
+type NpAgentAuditRunOutputV1 =
+  | {
+      schemaVersion: "np.agent-audit.v1";
+      auditId: string;
+      state: "queued";
+      checks: [];
+      digest: null;
+    }
+  | {
+      schemaVersion: "np.agent-audit.v1";
+      auditId: string;
+      state: "completed";
+      checks: Array<{
+        id: string;
+        family: NpAgentAuditCheckFamily;
+        status: "pass" | "warn" | "fail" | "unknown";
+        evidenceRefs: string[];
+      }>;
+      digest: string;
+    };
 
 const npAgentOpsCheckFamilies = [
   "readiness",

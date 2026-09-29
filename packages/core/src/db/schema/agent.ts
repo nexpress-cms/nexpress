@@ -4399,3 +4399,41 @@ export const npAgentContainments = pgTable(
     ),
   ],
 );
+
+/** AP-602 imported owner plan artifact. Canonical body is private; invocation output is redacted. */
+export const npAgentOperatorPlans = pgTable(
+  "np_agent_operator_plans",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    invocationId: uuid("invocation_id").notNull(),
+    auditEventId: uuid("audit_event_id")
+      .notNull()
+      .references(() => npAuditEvents.id, { onDelete: "restrict" }),
+    operation: jsonb("operation").$type<NpAgentJsonObject>().notNull(),
+    contractId: text("contract_id").notNull(),
+    artifactCanonical: jsonb("artifact_canonical").$type<NpAgentJsonObject>().notNull(),
+    artifactDigest: text("artifact_digest").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (t) => [
+    unique("np_agent_operator_plans_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_operator_plans_invocation_unique").on(t.invocationId),
+    foreignKey({
+      name: "np_agent_operator_plans_invocation_fk",
+      columns: [t.siteId, t.invocationId],
+      foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_operator_plans_bounds_check",
+      sql`(length(${t.contractId}) between 1 and 128 and jsonb_typeof(${t.operation})='object' and octet_length(${t.operation}::text)<=4096 and jsonb_typeof(${t.artifactCanonical})='object' and octet_length(${t.artifactCanonical}::text)<=1048576 and ${t.artifactDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$') is true`,
+    ),
+    check(
+      "np_agent_operator_plans_time_check",
+      sql`(${t.expiresAt}>${t.createdAt} and ${t.expiresAt}<=${t.createdAt}+interval '24 hours') is true`,
+    ),
+  ],
+);

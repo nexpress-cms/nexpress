@@ -1,3 +1,12 @@
+import { npMeasureAgentRuntimeRunUsageV1 } from "./runtime-usage-capacity.js";
+import {
+  npRequireAgentOpsStatusOutputV1,
+  npRequireAgentOpsPlanOutputV1,
+  npRequireAgentAuditRunOutputV1,
+  type NpAgentOpsStatusOutputV1,
+  type NpAgentOpsPlanOutputV1,
+  type NpAgentAuditRunOutputV1,
+} from "../agent-contract/operator-capability-contract.js";
 import type { NpAgentRuntimeChangeSetReferencesV1 } from "./changeset-service.js";
 import {
   npRequireAgentRuntimeManualInputV1,
@@ -77,6 +86,7 @@ export interface NpAgentRuntimeContextCapabilitySourceV1 {
       state: "succeeded";
       safeCode: null;
       references?: NpAgentRuntimeChangeSetReferencesV1;
+      operatorOutput?: NpAgentOpsStatusOutputV1 | NpAgentOpsPlanOutputV1 | NpAgentAuditRunOutputV1;
     }[]
   >;
 }
@@ -163,7 +173,7 @@ export function npProjectAgentRuntimeActionOutcomeV1(
   const row = canonicalBodyRecord(
     cloneCanonicalRuntimeInput(value, path, 256000),
     path,
-    ["capabilityId", "state", "safeCode", "references"],
+    ["capabilityId", "state", "safeCode", "references", "operatorOutput"],
     ["capabilityId", "state", "safeCode"],
     state,
   );
@@ -176,7 +186,26 @@ export function npProjectAgentRuntimeActionOutcomeV1(
   )
     unavailable();
   const capabilityId = row.capabilityId as NpAgentCapabilityId;
+  if (
+    ["ops.status", "ops.plan", "audit.run"].includes(capabilityId) &&
+    row.operatorOutput === undefined
+  )
+    unavailable();
   let references: NpAgentRuntimeChangeSetReferencesV1 | undefined;
+  let operatorOutput:
+    NpAgentOpsStatusOutputV1 | NpAgentOpsPlanOutputV1 | NpAgentAuditRunOutputV1 | undefined;
+  if (row.operatorOutput !== undefined) {
+    if (capabilityId === "ops.status")
+      operatorOutput = npRequireAgentOpsStatusOutputV1(row.operatorOutput);
+    else if (capabilityId === "ops.plan")
+      operatorOutput = npRequireAgentOpsPlanOutputV1(row.operatorOutput);
+    else if (capabilityId === "audit.run") {
+      const audit = npRequireAgentAuditRunOutputV1(row.operatorOutput);
+      if (audit.state !== "completed") unavailable();
+      operatorOutput = audit;
+    } else unavailable();
+  }
+
   if (row.references !== undefined) {
     if (!capabilityId.startsWith("changeset.")) unavailable();
     const refs = canonicalBodyRecord(
@@ -295,6 +324,7 @@ export function npProjectAgentRuntimeActionOutcomeV1(
     state: "succeeded" as const,
     safeCode: null,
     ...(references ? { references } : {}),
+    ...(operatorOutput ? { operatorOutput } : {}),
   };
 }
 
@@ -359,13 +389,28 @@ function authorityDigest(context: Context): string {
 }
 
 async function build(
-  context: Context,
+  context: NpAgentRuntimeRunContextV1,
   input: Omit<NpAgentRuntimeContextPrepareInputV1, "evidence" | "claim">,
   source: NpAgentRuntimeContextCapabilitySourceV1 | undefined,
   sources: { trusted: Request["trustedContext"]; untrusted: Request["untrustedEvidence"] },
   timeoutSeconds?: number,
 ): Promise<Request> {
   const { run, evidence, connection, connectionSnapshot: snapshot, pricing } = context;
+  const used = await npMeasureAgentRuntimeRunUsageV1({
+    db: context.db,
+    siteId: context.siteId,
+    runId: run.id,
+    excludeProviderCallId: input.providerCallId,
+  });
+  const maxInputTokens = BigInt(context.limits.maxInputTokens) - used.input;
+  const maxOutputTokens = BigInt(context.limits.maxOutputTokens) - used.output;
+  if (maxInputTokens < 1n || maxOutputTokens < 1n)
+    throw new NpAgentGatewayError(
+      "RUNTIME_BUDGET_BLOCKED",
+      409,
+      "Runtime token budget is exhausted.",
+    );
+
   const recipe = evidence.registry.recipes.find(
     (entry) => entry.id === run.recipeId && entry.version === run.recipeVersion,
   );
@@ -513,8 +558,8 @@ async function build(
     responseSchemaClassification: classification(responseSchemaDigest),
     tools,
     limits: {
-      maxInputTokens: context.limits.maxInputTokens,
-      maxOutputTokens: context.limits.maxOutputTokens,
+      maxInputTokens: Number(maxInputTokens),
+      maxOutputTokens: Number(maxOutputTokens),
       timeoutSeconds: timeout,
     },
     pricing,
@@ -770,7 +815,7 @@ export function createAgentRuntimeContextV1(
           attestation.request !== hash("np.agent-runtime-context-request.v1", request)
         )
           return false;
-        if ((attestation.evidence.length || request.sequence > 1) && !transaction) return false;
+        if (!transaction) return false;
         const sources = transaction
           ? await readSources(
               { ...context, db: transaction.db },
@@ -782,7 +827,7 @@ export function createAgentRuntimeContextV1(
             )
           : { trusted: [], untrusted: [] };
         const expected = await build(
-          context,
+          { ...context, db: transaction.db },
           request,
           options.capabilities,
           sources,

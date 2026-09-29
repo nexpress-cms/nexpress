@@ -38,6 +38,9 @@ const TOOL_TO_CAPABILITY = Object.freeze({
   rollback_changeset: "changeset.rollback",
   quarantine_content: "moderation.quarantine",
   restore_content: "moderation.restore",
+  get_ops_status: "ops.status",
+  run_site_audit: "audit.run",
+  plan_ops_action: "ops.plan",
 } as const satisfies Record<string, NpAgentInstalledCapabilityIdV1>);
 
 type NpAgentMcpToolNameV1 = keyof typeof TOOL_TO_CAPABILITY;
@@ -345,7 +348,7 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
           execution: {
             taskSupport:
               options.tasks &&
-              ["changeset.apply", "changeset.schedule", "changeset.rollback"].includes(
+              ["changeset.apply", "changeset.schedule", "changeset.rollback", "audit.run"].includes(
                 descriptor.id,
               )
                 ? ("optional" as const)
@@ -458,7 +461,9 @@ export function createAgentMcpGatewayV1<TAuthentication extends NpAgentCapabilit
         }
         if (
           !options.tasks ||
-          !["changeset.apply", "changeset.schedule", "changeset.rollback"].includes(capabilityId)
+          !["changeset.apply", "changeset.schedule", "changeset.rollback", "audit.run"].includes(
+            capabilityId,
+          )
         )
           throw new NpAgentMcpGatewayProtocolErrorV1(-32601, "Method not found");
       }

@@ -106,6 +106,33 @@ describe("Agent capability registry", () => {
     ).toThrow();
   });
 
+  it("keeps operational status disabled until its host collector is installed", async () => {
+    const disabled = await createAgentReadCapabilityRegistryV1(executors);
+    expect(() => disabled.get("ops.status")).toThrow(NpAgentCapabilityRegistryError);
+    const enabled = await createAgentReadCapabilityRegistryV1({
+      ...executors,
+      "ops.status": () => {
+        throw new Error("Discovery cannot run host collectors");
+      },
+    });
+    expect(enabled.ids).toContain("ops.status");
+    expect(enabled.get("ops.status").definition.descriptor).toMatchObject({
+      requiredScopes: ["ops:read"],
+      scopeDerivation: "ops-selection",
+      execution: "inline",
+      idempotency: "none",
+      risk: "read",
+    });
+    expect(enabled.registryFingerprint).not.toBe(disabled.registryFingerprint);
+    expect(enabled.get("content.query").capabilityFingerprint).toBe(
+      disabled.get("content.query").capabilityFingerprint,
+    );
+    expect(() => enabled.get("ops.status").definition.parseInput({ families: [] })).toThrow();
+    expect(() =>
+      enabled.get("ops.status").definition.parseInput({ families: ["jobs"], siteId: "other" }),
+    ).toThrow();
+  });
+
   it("fails closed for unavailable capability ids", async () => {
     const registry = await createAgentReadCapabilityRegistryV1(executors);
     expect(() => registry.get("unknown" as never)).toThrow(NpAgentCapabilityRegistryError);

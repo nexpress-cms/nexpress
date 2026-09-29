@@ -12,6 +12,7 @@ import {
   type NpAgentMcpStoredTerminalResultV1,
   type NpAgentMcpTaskStatusV1,
   type NpAgentMcpTaskV1,
+  type NpAgentScope,
 } from "../agent-contract/index.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 import { getDb } from "../db/runtime.js";
@@ -42,6 +43,18 @@ export interface NpAgentMcpTaskRequestV1 {
   requestedTtlMs: number | null;
 }
 
+export interface NpAgentMcpTaskInvocationCancellationV1 {
+  requiredScopes: readonly NpAgentScope[];
+  minimumExposure: "read" | "propose" | "approved-execute";
+  mutate(input: {
+    db: Db;
+    authentication: NpAgentCapabilityAuthenticationV1;
+    siteId: string;
+    invocationId: string;
+    taskId: string;
+    now: Date;
+  }): Promise<boolean>;
+}
 export interface NpAgentMcpTaskServiceOptionsV1 {
   admission: NpAgentCapabilityAdmissionServiceV1;
   cursorKey: { id: string; key: Uint8Array };
@@ -277,6 +290,31 @@ export function createAgentMcpTaskServiceV1(options: NpAgentMcpTaskServiceOption
     throw new Error("Invalid Agent MCP task poll interval.");
   }
 
+  const invocationCancellations = new Map<string, NpAgentMcpTaskInvocationCancellationV1>();
+  const invocationReadGuards = new Map<
+    string,
+    (input: {
+      authentication: NpAgentCapabilityAuthenticationV1;
+      siteId: string;
+      invocationId: string;
+    }) => Promise<void>
+  >();
+  async function assertInvocationReadable(
+    authentication: NpAgentCapabilityAuthenticationV1,
+    row: TaskRow,
+  ) {
+    const [invocation] = await getDb()
+      .select({ operationId: npAgentInvocations.operationId })
+      .from(npAgentInvocations)
+      .where(
+        and(eq(npAgentInvocations.siteId, row.siteId), eq(npAgentInvocations.id, row.invocationId)),
+      )
+      .limit(1);
+    if (!invocation) return invalidParams();
+    const guard = invocationReadGuards.get(invocation.operationId);
+    if (!guard && invocation.operationId === "audit.run") return invalidParams();
+    await guard?.({ authentication, siteId: row.siteId, invocationId: row.invocationId });
+  }
   async function live(authentication: NpAgentCapabilityAuthenticationV1) {
     return options.admission.project({ authentication });
   }
@@ -311,6 +349,7 @@ export function createAgentMcpTaskServiceV1(options: NpAgentMcpTaskServiceOption
     if (forUpdate) query = query.for("update") as typeof query;
     const [row] = await query;
     if (!row) return invalidParams();
+    if (!forUpdate) await assertInvocationReadable(authentication, row);
     return row;
   }
 
@@ -425,6 +464,8 @@ export function createAgentMcpTaskServiceV1(options: NpAgentMcpTaskServiceOption
     ) {
       return invalidParams();
     }
+    if (invocation.operationId === "audit.run" && !invocationReadGuards.has("audit.run"))
+      return invalidParams();
     const expiresAt = new Date(now.getTime() + ttlMs);
     const [row] = await tx
       .insert(npAgentMcpTasks)
@@ -451,6 +492,24 @@ export function createAgentMcpTaskServiceV1(options: NpAgentMcpTaskServiceOption
   }
 
   return Object.freeze({
+    registerInvocationReadGuard(
+      operationId: string,
+      guard: (input: {
+        authentication: NpAgentCapabilityAuthenticationV1;
+        siteId: string;
+        invocationId: string;
+      }) => Promise<void>,
+      cancellation?: NpAgentMcpTaskInvocationCancellationV1,
+    ) {
+      if (
+        !/^[a-z][a-z0-9_.-]{0,127}$/u.test(operationId) ||
+        invocationReadGuards.has(operationId) ||
+        typeof guard !== "function"
+      )
+        throw new Error("Invalid or duplicate task invocation read guard.");
+      invocationReadGuards.set(operationId, guard);
+      if (cancellation) invocationCancellations.set(operationId, cancellation);
+    },
     admitInTransaction,
     async replayInTransaction(
       tx: Db,
@@ -586,6 +645,7 @@ export function createAgentMcpTaskServiceV1(options: NpAgentMcpTaskServiceOption
           .orderBy(desc(npAgentMcpTasks.createdAt), desc(npAgentMcpTasks.id))
           .limit(TASK_PAGE_SIZE + 1);
         const page = rows.slice(0, TASK_PAGE_SIZE);
+        for (const row of page) await assertInvocationReadable(authentication, row);
         const last = page.at(-1);
         return {
           tasks: page.map(taskProjection),
@@ -638,6 +698,62 @@ export function createAgentMcpTaskServiceV1(options: NpAgentMcpTaskServiceOption
       await consume(authentication, now, "cancel");
       const result = npRequireAgentMcpStoredTerminalResult(CANCELLED_RESULT);
       const terminalResultDigest = await npDigestAgentMcpTaskResultCanonical(result);
+      const retained = await findVisible(getDb(), authentication, taskId, now);
+      const [invocation] = await getDb()
+        .select({ operationId: npAgentInvocations.operationId })
+        .from(npAgentInvocations)
+        .where(
+          and(
+            eq(npAgentInvocations.siteId, retained.siteId),
+            eq(npAgentInvocations.id, retained.invocationId),
+          ),
+        )
+        .limit(1);
+      const cancellation = invocation
+        ? invocationCancellations.get(invocation.operationId)
+        : undefined;
+      if (cancellation) {
+        return options.admission.withCurrentAuthority({
+          authentication,
+          requiredScopes: cancellation.requiredScopes,
+          minimumExposure: cancellation.minimumExposure,
+          mutate: async (tx, time) => {
+            const row = await findVisible(tx, authentication, taskId, time, true);
+            if (
+              row.status !== "working" ||
+              !(await cancellation.mutate({
+                db: tx,
+                authentication,
+                siteId: row.siteId,
+                invocationId: row.invocationId,
+                taskId: row.id,
+                now: time,
+              }))
+            )
+              return invalidParams();
+            const [cancelled] = await tx
+              .update(npAgentMcpTasks)
+              .set({
+                status: "cancelled",
+                terminalResult: result,
+                terminalResultDigest,
+                safeStatusCode: "REQUEST_CANCELLED",
+                lastUpdatedAt: time,
+                cancelledAt: time,
+              })
+              .where(
+                and(
+                  eq(npAgentMcpTasks.id, row.id),
+                  eq(npAgentMcpTasks.status, "working"),
+                  gt(npAgentMcpTasks.expiresAt, time),
+                ),
+              )
+              .returning();
+            if (!cancelled) return invalidParams();
+            return taskProjection(cancelled);
+          },
+        });
+      }
       if (options.cancelInTransaction) {
         return options.admission.withCurrentAuthority({
           authentication,

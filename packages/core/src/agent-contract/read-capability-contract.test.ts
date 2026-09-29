@@ -18,6 +18,7 @@ describe("Agent read capability contract", () => {
       "content.query",
       "incident.get",
       "incident.list",
+      "ops.status",
       "schema.get",
       "site.inspect",
     ]);

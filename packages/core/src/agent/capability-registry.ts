@@ -226,7 +226,7 @@ export type NpAgentReadCapabilityExecutorsV1 = Pick<
   ReadExecutors,
   "content.query" | "schema.get" | "site.inspect"
 > &
-  Partial<Pick<ReadExecutors, "incident.get" | "incident.list">>;
+  Partial<Pick<ReadExecutors, "incident.get" | "incident.list" | "ops.status">>;
 
 function definition<C extends NpAgentReadCapabilityIdV1>(
   id: C,
@@ -320,6 +320,15 @@ export async function createAgentReadCapabilityRegistryV1(
         context: NpAgentReadRequirementContextV1,
       ) =>
         mergedRequirements("incident.list", input, context, requirementResolvers["incident.list"]),
+    });
+  const opsStatus = executors["ops.status"];
+  if (opsStatus)
+    definitions.push({
+      ...definition("ops.status", opsStatus),
+      deriveRequirements: (
+        input: NpAgentReadCapabilityInputMapV1["ops.status"],
+        context: NpAgentReadRequirementContextV1,
+      ) => mergedRequirements("ops.status", input, context, requirementResolvers["ops.status"]),
     });
   definitions.sort((a, b) => a.descriptor.id.localeCompare(b.descriptor.id));
   definitions.forEach(deepFreeze);

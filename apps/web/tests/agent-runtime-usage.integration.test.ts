@@ -1,3 +1,4 @@
+import { npMeasureAgentRuntimeRunUsageV1 } from "../../../packages/core/src/agent/runtime-usage-capacity.js";
 import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -293,6 +294,12 @@ describe.skipIf(skipIfNoTestDb())("Runtime provider usage ledger", () => {
       response,
     });
     expect(settled).toMatchObject({ state: "succeeded", reservationState: "reconciled" });
+    expect(await npMeasureAgentRuntimeRunUsageV1({ db: f.db, siteId, runId: f.runId })).toEqual({
+      turns: 1n,
+      input: 6n,
+      output: 3n,
+      cost: 11n,
+    });
     expect(
       await f.usage.reconcile({ siteId, providerCallId: request.providerCallId, response }),
     ).toEqual({ ...settled, replayed: true });
@@ -469,6 +476,32 @@ describe.skipIf(skipIfNoTestDb())("Runtime provider usage ledger", () => {
       providerCallId: request.providerCallId,
       response: await f.response(request, ambiguous(request)),
     });
+    const capacity = { db: f.db, siteId, runId: f.runId };
+    expect(await npMeasureAgentRuntimeRunUsageV1(capacity)).toEqual({
+      turns: 1n,
+      input: 10n,
+      output: 10n,
+      cost: 31n,
+    });
+    expect(
+      await npMeasureAgentRuntimeRunUsageV1({
+        ...capacity,
+        excludeProviderCallId: request.providerCallId,
+      }),
+    ).toEqual({
+      turns: 0n,
+      input: 0n,
+      output: 0n,
+      cost: 0n,
+    });
+    expect(
+      await npMeasureAgentRuntimeRunUsageV1({ ...capacity, excludeProviderCallId: randomUUID() }),
+    ).toEqual({
+      turns: 1n,
+      input: 10n,
+      output: 10n,
+      cost: 31n,
+    });
     const before = await f.call();
     expect(await f.usage.expire({ siteId })).toEqual({ examined: 0, released: 0, expired: 0 });
     await expect(
@@ -489,6 +522,12 @@ describe.skipIf(skipIfNoTestDb())("Runtime provider usage ledger", () => {
       inputTokensUtcDay: 10,
       outputTokensUtcDay: 10,
       costMicrosUtcDay: 31,
+    });
+    expect(await npMeasureAgentRuntimeRunUsageV1(capacity)).toEqual({
+      turns: 1n,
+      input: 10n,
+      output: 10n,
+      cost: 31n,
     });
     await f.controls.pause({ siteId, reason: "Contain unresolved spend" });
     const response = await f.response(request, success(request), decision);
