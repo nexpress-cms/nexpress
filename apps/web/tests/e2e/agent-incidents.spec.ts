@@ -3,12 +3,16 @@ import {
   npRequireAgentIncidentStudioDetailV1,
   npRequireAgentIncidentEvidenceV1,
   npRequireAgentIncidentAssignmentV1,
+  npRequireAgentIncidentNotificationsV1,
   type NpAgentIncidentEvidenceItemV1,
 } from "@nexpress/core/agent-contract";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/admin/agents/incidents/notifications*", (route) =>
+    route.fulfill({ status: 503, json: {} }),
+  );
   await page.route("**/api/admin/agents/incidents/*/assignment", (route) =>
     route.fulfill({ status: 503, json: {} }),
   );
@@ -133,7 +137,9 @@ test("incident list defaults to unresolved and filters without treating failures
   expect(queries.at(-1)?.has("severities")).toBe(false);
   unavailable = true;
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
-  await expect(page.getByRole("alert").filter({ hasText: "Request failed (503)" })).toBeVisible();
+  await expect(
+    page.getByRole("alert").filter({ hasText: /^Request failed \(503\)$/ }),
+  ).toBeVisible();
   await expect(page.getByText("No incidents match this view.")).toHaveCount(0);
 });
 
@@ -999,4 +1005,155 @@ test("incident assignment conceals unavailable configuration and clears stale or
     page.getByText("This incident is unavailable or you no longer have access.", { exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
+});
+
+function notifications(nextCursor: string | null = null) {
+  return npRequireAgentIncidentNotificationsV1({
+    schemaVersion: "np.agent-incident-notifications.v1",
+    items: [
+      {
+        notificationId: signalId,
+        incidentId: id,
+        incidentVersion: 1,
+        transition: "opened",
+        severity: "high",
+        status: "open",
+        summary: "Incident opened.",
+        adminPath: `/admin/agents/incidents/${id}`,
+        createdAt: at,
+      },
+    ],
+    nextCursor,
+  });
+}
+
+test("incident notifications preserve recorded facts across filters and link current incidents", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    32 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const queries: string[] = [];
+  await page.route("**/api/admin/agents/incidents?*", (route) =>
+    route.fulfill({
+      json: {
+        schemaVersion: "np.agent-incident-list.v1",
+        items: [],
+        nextCursor: null,
+      },
+    }),
+  );
+  await page.route("**/api/admin/agents/incidents/notifications*", (route) => {
+    const query = new URL(route.request().url()).search;
+    queries.push(query);
+    return route.fulfill({
+      json: query ? { ...notifications(), items: [] } : notifications("notification-page-2"),
+    });
+  });
+  const current = detail();
+  current.incident.status = "investigating";
+  current.incident.versionNumber = 2;
+  current.workflow!.availableTransitions = ["resolved", "dismissed"];
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({ json: current }),
+  );
+  await page.goto("/admin/agents/incidents");
+  const feed = page.getByRole("region", { name: "Incident notifications" });
+  await expect(feed.getByText("Recorded status: open · Recorded severity: high")).toBeVisible();
+  await page.getByRole("combobox", { name: "Incident status" }).click();
+  await page.getByRole("option", { name: "resolved", exact: true }).click();
+  await page.getByRole("button", { name: "Apply filters" }).click();
+  await expect(page).toHaveURL(/statuses=resolved/);
+  await expect(feed.getByText("Incident opened.", { exact: true })).toBeVisible();
+  expect(queries.every((query) => query === "")).toBe(true);
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+      await page.getByRole("button", { name: "Close navigation" }).last().click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`incident-notifications-${width}.png`),
+      fullPage: true,
+      animations: "disabled",
+    });
+  }
+  await feed.getByRole("button", { name: "Next notification page" }).click();
+  await expect(feed.getByText("No visible incident notifications.")).toBeVisible();
+  expect(queries.at(-1)).toBe("?cursor=notification-page-2");
+  await feed.getByRole("button", { name: "First notification page" }).click();
+  const link = feed.getByRole("link", { name: `Open incident ${id}` });
+  await expect(link).toHaveAttribute("href", `/admin/agents/incidents/${id}`);
+  await link.click();
+  await expect(page.getByRole("heading", { name: "Repeated links" })).toBeVisible();
+  await expect(page.getByText("Incident opened.", { exact: true })).toHaveCount(0);
+});
+
+test("incident notifications recover stale pages and clear access loss without inventing empty results", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    38 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  let listDenied = false;
+  await page.route("**/api/admin/agents/incidents?*", (route) =>
+    listDenied
+      ? route.fulfill({ status: 403, json: {} })
+      : route.fulfill({
+          json: {
+            schemaVersion: "np.agent-incident-list.v1",
+            items: [detail().incident],
+            nextCursor: null,
+          },
+        }),
+  );
+  let mode: "available" | "unavailable" | "denied" = "available";
+  await page.route("**/api/admin/agents/incidents/notifications*", (route) => {
+    if (new URL(route.request().url()).searchParams.has("cursor"))
+      return route.fulfill({
+        status: 400,
+        json: {
+          status: 400,
+          error: {
+            code: "INCIDENT_NOTIFICATIONS_CURSOR_INVALID",
+            message: "Invalid notification cursor.",
+          },
+        },
+      });
+    if (mode !== "available")
+      return route.fulfill({ status: mode === "unavailable" ? 503 : 403, json: {} });
+    return route.fulfill({ json: notifications("stale-page") });
+  });
+  await page.goto("/admin/agents/incidents");
+  const feed = page.getByRole("region", { name: "Incident notifications" });
+  await expect(feed.getByText("Incident opened.", { exact: true })).toBeVisible();
+  await feed.getByRole("button", { name: "Next notification page" }).click();
+  await expect(feed.getByRole("alert")).toContainText("Return to the first notification page");
+  await expect(feed.getByRole("link")).toHaveCount(0);
+  await feed.getByRole("button", { name: "First notification page" }).click();
+  await expect(feed.getByText("Incident opened.", { exact: true })).toBeVisible();
+  mode = "unavailable";
+  await feed.getByRole("button", { name: "Refresh notifications" }).click();
+  await expect(feed.getByRole("alert")).toContainText("Incident notifications are unavailable");
+  await expect(feed.getByText("No visible incident notifications.")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Repeated links", exact: true })).toBeVisible();
+  mode = "available";
+  await feed.getByRole("button", { name: "Refresh notifications" }).click();
+  await expect(feed.getByText("Incident opened.", { exact: true })).toBeVisible();
+  mode = "denied";
+  await feed.getByRole("button", { name: "Refresh notifications" }).click();
+  await expect(feed).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Repeated links", exact: true })).toHaveCount(0);
+  mode = "available";
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(feed.getByText("Incident opened.", { exact: true })).toBeVisible();
+  listDenied = true;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(feed).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Repeated links", exact: true })).toHaveCount(0);
 });

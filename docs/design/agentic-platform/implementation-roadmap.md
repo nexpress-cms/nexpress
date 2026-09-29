@@ -649,8 +649,11 @@ human approval and quarantine/restore execution. The
 [comment evidence flow](r6-incident-evidence-flow.md) connects retained observation
 metadata and current comment state to exact response target selection. The
 [assignment flow](r6-incident-assignment-flow.md) adds explicit same-site Agent
-designation and removal with versioned audit history. Other source evidence
-viewers, notification delivery and recipe/evaluation gates stay open.
+designation and removal with versioned audit history. The
+[Incident Admin notification flow](r6-incident-notifications-flow.md) records
+supported persisted transitions in an optional, current-ACL-filtered local feed.
+Other source evidence viewers, external notification delivery, escalation and
+failed-containment notification sources, and recipe/evaluation gates stay open.
 
 ### R7 — Guardian and application security orchestration
 

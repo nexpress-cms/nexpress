@@ -1,3 +1,4 @@
+import type { NpAgentIncidentNotificationsServiceV1 } from "./incident-notifications-service.js";
 import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
 import { npAgentModeratorFingerprintV1 } from "./moderator-detector.js";
 import { createHash } from "node:crypto";
@@ -66,6 +67,7 @@ export interface NpAgentIncidentWriteServiceOptionsV1 {
     incident: Incident;
     signal: NpAgentSignalEvidenceCanonicalV1;
   }): boolean | Promise<boolean>;
+  notifications?: Pick<NpAgentIncidentNotificationsServiceV1, "record">;
   now?: () => Date;
 }
 export interface NpAgentIncidentContainmentEventV1 {
@@ -328,26 +330,40 @@ export function createAgentIncidentWriteServiceV1(
           )
           .returning({ id: npAgentIncidents.id });
         if (updated.length !== 1) fail("INCIDENT_VERSION_CONFLICT");
-        await db.insert(npAgentIncidentTimeline).values({
-          siteId: canonical.siteId,
-          incidentId: incident.id,
-          sequence: await sequence(db, canonical.siteId, incident.id),
-          kind: created ? "observed" : "correlated",
-          sourceKind: "system",
-          sourceFingerprint: candidate.evidenceDigest,
-          signalId: signal.id,
-          summary: suppressed
-            ? "Additional matching signal retained beyond the incident detail limit."
-            : candidate.summary,
-          details: {
-            schemaVersion: "np.agent-incident-signal-entry.v1",
-            detectorId: canonical.detectorId,
-            detectorVersion: canonical.detectorVersion,
-            evidenceDigest: candidate.evidenceDigest,
-            disposition: suppressed ? "suppressed" : created ? "created" : "correlated",
-          },
-          createdAt: time,
-        });
+        const [notificationEntry] = await db
+          .insert(npAgentIncidentTimeline)
+          .values({
+            siteId: canonical.siteId,
+            incidentId: incident.id,
+            sequence: await sequence(db, canonical.siteId, incident.id),
+            kind: created ? "observed" : "correlated",
+            sourceKind: "system",
+            sourceFingerprint: candidate.evidenceDigest,
+            signalId: signal.id,
+            summary: suppressed
+              ? "Additional matching signal retained beyond the incident detail limit."
+              : candidate.summary,
+            details: {
+              schemaVersion: "np.agent-incident-signal-entry.v1",
+              transitionVersion: versionNumber,
+              severity: incident.severity,
+              detectorId: canonical.detectorId,
+              detectorVersion: canonical.detectorVersion,
+              evidenceDigest: candidate.evidenceDigest,
+              disposition: suppressed ? "suppressed" : created ? "created" : "correlated",
+            },
+            createdAt: time,
+          })
+          .returning({ id: npAgentIncidentTimeline.id });
+        if (created && notificationEntry && options.notifications)
+          await options.notifications.record({
+            db,
+            siteId: canonical.siteId,
+            incidentId: incident.id,
+            transitionVersion: versionNumber,
+            transition: "opened",
+            timelineId: notificationEntry.id,
+          });
         return {
           incidentId: incident.id,
           signalId: signal.id,

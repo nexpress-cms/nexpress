@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   staff: vi.fn(),
   ensure: vi.fn(),
   list: vi.fn(),
+  notifications: vi.fn(),
   get: vi.fn(),
   evidence: vi.fn(),
   assignment: vi.fn(),
@@ -565,5 +566,72 @@ describe("Incident assignment HTTP boundary", () => {
     mocks.staff.mockResolvedValue(staff);
     mocks.runtime.mockReturnValue(null);
     expect((await handleAgentIncidentAdminRequest(request(), "assignment", id)).status).toBe(503);
+  });
+});
+
+describe("Incident notification HTTP boundary", () => {
+  const page = {
+    schemaVersion: "np.agent-incident-notifications.v1",
+    items: [],
+    nextCursor: null,
+  };
+  it("binds a cursor-only read to current staff and preserves hidden-page continuation", async () => {
+    const cursor = `page2.${"a".repeat(43)}`;
+    mocks.notifications.mockResolvedValue({ ...page, nextCursor: cursor });
+    const response = await handleAgentIncidentAdminRequest(
+      request(`?cursor=${cursor}`),
+      "notifications",
+    );
+    expect(response.status).toBe(200);
+    expect(mocks.ensure).toHaveBeenCalledWith("read");
+    expect(mocks.notifications).toHaveBeenCalledWith({ ...staff, cursor });
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(await response.text()).toContain(cursor);
+    for (const query of [
+      "?siteId=foreign",
+      "?limit=100",
+      "?statuses=open",
+      "?cursor=a&cursor=b",
+      `?cursor=${"x".repeat(2049)}`,
+    ]) {
+      mocks.notifications.mockClear();
+      expect((await handleAgentIncidentAdminRequest(request(query), "notifications")).status).toBe(
+        400,
+      );
+      expect(mocks.notifications).not.toHaveBeenCalled();
+    }
+  });
+  it("rejects private fields and unbound or external destinations from installed services", async () => {
+    const item = {
+      notificationId: id,
+      incidentId: id,
+      incidentVersion: 1,
+      transition: "opened",
+      severity: "high",
+      status: "open",
+      summary: "Incident opened.",
+      adminPath: `/admin/agents/incidents/${id}`,
+      createdAt: "2026-09-01T00:00:00.000Z",
+    };
+    mocks.notifications.mockResolvedValue({ ...page, items: [item] });
+    expect((await handleAgentIncidentAdminRequest(request(), "notifications")).status).toBe(200);
+    for (const extra of [
+      { rawBody: "private-source" },
+      { adminPath: "https://outside.example/" },
+      { adminPath: "/admin/agents/incidents/10000000-0000-4000-8000-000000000002" },
+    ]) {
+      mocks.notifications.mockResolvedValue({ ...page, items: [{ ...item, ...extra }] });
+      const response = await handleAgentIncidentAdminRequest(request(), "notifications");
+      expect(response.status).toBe(500);
+      expect(await response.text()).not.toContain("private-source");
+    }
+  });
+  it("does not conflate denied access or missing service with an empty notification feed", async () => {
+    mocks.staff.mockRejectedValue(new NpForbiddenError("agent-studio", "manage"));
+    expect((await handleAgentIncidentAdminRequest(request(), "notifications")).status).toBe(403);
+    expect(mocks.notifications).not.toHaveBeenCalled();
+    mocks.staff.mockResolvedValue(staff);
+    mocks.runtime.mockReturnValue(null);
+    expect((await handleAgentIncidentAdminRequest(request(), "notifications")).status).toBe(503);
   });
 });

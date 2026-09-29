@@ -1,3 +1,4 @@
+import type { NpAgentIncidentNotificationsServiceV1 } from "./incident-notifications-service.js";
 import { createHash } from "node:crypto";
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
@@ -37,6 +38,7 @@ export interface NpAgentIncidentWorkflowServiceOptionsV1 {
   ): boolean | Promise<boolean>;
   /** Unresolved actions may precede containment creation. Missing owner fails closed. */
   canReviewAction?(input: Staff & { db: Db; action: Action }): boolean | Promise<boolean>;
+  notifications?: Pick<NpAgentIncidentNotificationsServiceV1, "record">;
   now?: () => Date;
 }
 export interface NpAgentIncidentWorkflowServiceV1 {
@@ -273,27 +275,41 @@ export function createAgentIncidentWorkflowServiceV1(
             const sequence = Number(seq?.n);
             if (!Number.isSafeInteger(sequence) || sequence > 2147483647)
               fail("INCIDENT_WORKFLOW_LIMIT_REACHED");
-            await db.insert(npAgentIncidentTimeline).values({
-              siteId: input.siteId,
-              incidentId: input.incidentId,
-              sequence,
-              kind: "state_transition",
-              sourceKind: "staff",
-              sourceId: input.actor.user.id,
-              sourceFingerprint: invocation.actorFingerprint,
-              auditEventId: invocation.auditEventId,
-              summary: `Incident ${command.transition}.`,
-              details: {
-                schemaVersion: "np.agent-incident-transition-entry.v1",
-                fromStatus: incident.status,
-                toStatus: command.transition,
-                resolutionCode: command.resolutionCode,
-                note: command.note,
-                containmentDisposition: command.containmentDisposition,
-                containmentReviewHash: command.containmentReviewHash,
-              },
-              createdAt: time,
-            });
+            const [notificationEntry] = await db
+              .insert(npAgentIncidentTimeline)
+              .values({
+                siteId: input.siteId,
+                incidentId: input.incidentId,
+                sequence,
+                kind: "state_transition",
+                sourceKind: "staff",
+                sourceId: input.actor.user.id,
+                sourceFingerprint: invocation.actorFingerprint,
+                auditEventId: invocation.auditEventId,
+                summary: `Incident ${command.transition}.`,
+                details: {
+                  schemaVersion: "np.agent-incident-transition-entry.v1",
+                  transitionVersion: versionNumber,
+                  severity: incident.severity,
+                  fromStatus: incident.status,
+                  toStatus: command.transition,
+                  resolutionCode: command.resolutionCode,
+                  note: command.note,
+                  containmentDisposition: command.containmentDisposition,
+                  containmentReviewHash: command.containmentReviewHash,
+                },
+                createdAt: time,
+              })
+              .returning({ id: npAgentIncidentTimeline.id });
+            if (notificationEntry && options.notifications)
+              await options.notifications.record({
+                db,
+                siteId: input.siteId,
+                incidentId: incident.id,
+                transitionVersion: versionNumber,
+                transition: command.transition,
+                timelineId: notificationEntry.id,
+              });
             return {
               resourceId: incident.id,
               output: {
