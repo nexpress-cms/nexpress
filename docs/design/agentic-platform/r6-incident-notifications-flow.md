@@ -22,8 +22,12 @@ Only existing persisted source transitions are supported:
 | Critical | Incident opened, investigating, resolved or dismissed |
 
 Correlation, feedback and assignment do not represent a new qualifying status
-transition. Existing owners do not yet record material severity escalation or
-failed-containment transitions, so this slice cannot produce those notifications.
+transition. This initial slice does not produce material severity escalation or
+failed-containment notifications. The subsequent
+[containment verification failure flow](r6-incident-containment-failure-flow.md)
+adds the narrowly verified rollback outcome. The
+[manual severity flow](r6-incident-severity-flow.md) adds explicit staff escalation
+notifications; automatic escalation and other failure sources remain separate.
 Historical timeline rows do not establish exact prior version/severity snapshots;
 installation does not invent a backfill from them.
 
@@ -60,7 +64,7 @@ read/unread or notification-only acknowledgement state.
 
 ## Boundaries and verification
 
-External delivery, severity-escalation and failed-containment source owners,
+External delivery, automatic severity escalation and additional failure sources,
 additional recipes and full R5/R6 acceptance remain separate. Versions,
 changesets, lockfile and schema remain unchanged.
 

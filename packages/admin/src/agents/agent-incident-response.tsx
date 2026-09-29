@@ -241,6 +241,15 @@ export function IncidentResponse({
                       : "Restore plan"}{" "}
                     · {plan.state}
                   </h4>
+                  {plan.state === "failed" ? (
+                    <p role="alert">
+                      {plan.capabilityId === "moderation.quarantine"
+                        ? "Quarantine action has a stored failed outcome."
+                        : "Restore action has a stored failed outcome."}{" "}
+                      Review its history, current containment and evidence before preparing another
+                      response.
+                    </p>
+                  ) : null}
                   <p>Action: {plan.actionId}</p>
                   <p id={`response-target-${plan.actionId}`}>
                     Target: {plan.target.kind} · {plan.target.collection} · {plan.target.id}

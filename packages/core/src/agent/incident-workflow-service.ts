@@ -1,3 +1,8 @@
+import {
+  npAgentIncidentSeverityOrderV1,
+  npRequireAgentIncidentSeverityInputV1,
+  type NpAgentIncidentSeverityInputV1,
+} from "../agent-contract/incident-severity-contract.js";
 import type { NpAgentIncidentNotificationsServiceV1 } from "./incident-notifications-service.js";
 import { createHash } from "node:crypto";
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
@@ -43,6 +48,9 @@ export interface NpAgentIncidentWorkflowServiceOptionsV1 {
 }
 export interface NpAgentIncidentWorkflowServiceV1 {
   get(input: Staff & { incidentId: string }): Promise<NpAgentIncidentWorkflowV1>;
+  escalate(
+    input: Staff & { incidentId: string; command: NpAgentIncidentSeverityInputV1 },
+  ): Promise<{ resourceId: string; replayed: boolean }>;
   transition(
     input: Staff & { incidentId: string; command: NpAgentIncidentTransitionInputV1 },
   ): Promise<{ resourceId: string; replayed: boolean }>;
@@ -163,6 +171,14 @@ export function createAgentIncidentWorkflowServiceV1(
       fail("INCIDENT_VERSION_CONFLICT");
     return {
       availableTransitions,
+      availableSeverities: terminal(incident.status)
+        ? []
+        : npAgentIncidentSeverityOrderV1.filter(
+            (severity): severity is "low" | "medium" | "high" | "critical" =>
+              severity !== "info" &&
+              npAgentIncidentSeverityOrderV1.indexOf(severity) >
+                npAgentIncidentSeverityOrderV1.indexOf(incident.severity),
+          ),
       containment: {
         reviewHash,
         total: rows.length,
@@ -188,6 +204,123 @@ export function createAgentIncidentWorkflowServiceV1(
   }
   return {
     get: (input) => transaction(input.siteId, (db) => snapshot(db, input)),
+    async escalate(input) {
+      npAssertAgentPreviewEffectsAllowed();
+      canonicalBodySiteId(input.siteId, "incident.siteId");
+      canonicalBodyUuid(input.incidentId, "incident.id");
+      const command = npRequireAgentIncidentSeverityInputV1(input.command);
+      return transaction(input.siteId, async (db) => {
+        await snapshot(db, input);
+        const result = await admission({
+          db,
+          siteId: input.siteId,
+          actor: input.actor,
+          operationId: "agents.incidents.escalate",
+          targetId: input.incidentId,
+          command,
+          mutate: async ({ db, command, invocationId, now: time }) => {
+            const [incident] = await db
+              .select()
+              .from(npAgentIncidents)
+              .where(
+                and(
+                  eq(npAgentIncidents.siteId, input.siteId),
+                  eq(npAgentIncidents.id, input.incidentId),
+                ),
+              )
+              .for("update")
+              .limit(1);
+            if (!incident) fail("INCIDENT_NOT_FOUND", 404);
+            if (incident.versionNumber !== command.expectedVersion)
+              fail("INCIDENT_VERSION_CONFLICT");
+            const workflow = await snapshot(db, input);
+            if (!workflow.availableSeverities?.includes(command.severity))
+              fail("INCIDENT_SEVERITY_INVALID");
+            const [invocation] = await db
+              .select()
+              .from(npAgentInvocations)
+              .where(
+                and(
+                  eq(npAgentInvocations.siteId, input.siteId),
+                  eq(npAgentInvocations.id, invocationId),
+                ),
+              )
+              .limit(1);
+            if (!invocation?.auditEventId) fail();
+            const versionNumber = incident.versionNumber + 1;
+            const changed = await db
+              .update(npAgentIncidents)
+              .set({ severity: command.severity, versionNumber, updatedAt: time })
+              .where(
+                and(
+                  eq(npAgentIncidents.siteId, input.siteId),
+                  eq(npAgentIncidents.id, input.incidentId),
+                  eq(npAgentIncidents.versionNumber, command.expectedVersion),
+                ),
+              )
+              .returning({ id: npAgentIncidents.id });
+            if (changed.length !== 1) fail("INCIDENT_VERSION_CONFLICT");
+            const [seq] = await db
+              .select({ n: sql<number>`coalesce(max(${npAgentIncidentTimeline.sequence}),0)+1` })
+              .from(npAgentIncidentTimeline)
+              .where(
+                and(
+                  eq(npAgentIncidentTimeline.siteId, input.siteId),
+                  eq(npAgentIncidentTimeline.incidentId, input.incidentId),
+                ),
+              );
+            const sequence = Number(seq?.n);
+            if (!Number.isSafeInteger(sequence) || sequence > 2147483647)
+              fail("INCIDENT_WORKFLOW_LIMIT_REACHED");
+            const [entry] = await db
+              .insert(npAgentIncidentTimeline)
+              .values({
+                siteId: input.siteId,
+                incidentId: incident.id,
+                sequence,
+                kind: "human_note",
+                sourceKind: "staff",
+                sourceId: input.actor.user.id,
+                sourceFingerprint: invocation.actorFingerprint,
+                auditEventId: invocation.auditEventId,
+                summary: "Staff raised Incident severity.",
+                details: {
+                  schemaVersion: "np.agent-incident-severity-entry.v1",
+                  transitionVersion: versionNumber,
+                  severity: command.severity,
+                  status: incident.status,
+                  fromSeverity: incident.severity,
+                  toSeverity: command.severity,
+                  note: command.note,
+                  invocationId,
+                },
+                createdAt: time,
+              })
+              .returning({ id: npAgentIncidentTimeline.id });
+            if (!entry) fail();
+            if (options.notifications)
+              await options.notifications.record({
+                db,
+                siteId: input.siteId,
+                incidentId: incident.id,
+                transitionVersion: versionNumber,
+                transition: "escalated",
+                timelineId: entry.id,
+              });
+            return {
+              resourceId: incident.id,
+              output: {
+                schemaVersion: "np.agent-incident-severity-result.v1",
+                incidentId: incident.id,
+                severity: command.severity,
+                versionNumber,
+              },
+            };
+          },
+        });
+        return { resourceId: result.resourceId, replayed: result.replayed };
+      });
+    },
     async transition(input) {
       npAssertAgentPreviewEffectsAllowed();
       canonicalBodySiteId(input.siteId, "incident.siteId");

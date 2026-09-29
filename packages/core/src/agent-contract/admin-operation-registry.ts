@@ -1,3 +1,4 @@
+import { npAgentIncidentSeverityInputSchemaV1 } from "./incident-severity-contract.js";
 import { npAgentIncidentAssignmentInputSchemaV1 } from "./incident-assignment-contract.js";
 import {
   npAgentIncidentResponsePlanInputSchemaV1,
@@ -594,6 +595,9 @@ export const npAgentAdminOperationRouteInventoryV1 = deepFreeze([
   operation("agents.incidents.assign", "POST", "/api/admin/agents/incidents/{id}/assignment", {
     preconditions: ROW,
   }),
+  operation("agents.incidents.escalate", "POST", "/api/admin/agents/incidents/{id}/severity", {
+    preconditions: ROW,
+  }),
   operation("agents.incidents.transition", "POST", "/api/admin/agents/incidents/{id}/transitions", {
     inputKind: "incident-transition",
     preconditions: ROW,
@@ -916,6 +920,8 @@ function buildInputSchema(seed: OperationSeed): NpAgentJsonSchema {
     return requireSchema(npAgentIncidentResponseExecuteInputSchemaV1);
   if (seed.id === "agents.incidents.assign")
     return requireSchema(npAgentIncidentAssignmentInputSchemaV1);
+  if (seed.id === "agents.incidents.escalate")
+    return requireSchema(npAgentIncidentSeverityInputSchemaV1);
   if (seed.id === "agents.incidents.transition")
     return requireSchema(npAgentIncidentTransitionInputSchemaV1);
   if (seed.id === "agents.incidents.feedback")

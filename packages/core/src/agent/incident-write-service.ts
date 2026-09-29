@@ -1,3 +1,5 @@
+import { getLogger } from "../observability/logger.js";
+import { npRequireIncidentContainmentFailure } from "./incident-containment-failure.js";
 import type { NpAgentIncidentNotificationsServiceV1 } from "./incident-notifications-service.js";
 import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
 import { npAgentModeratorFingerprintV1 } from "./moderator-detector.js";
@@ -93,6 +95,9 @@ export interface NpAgentIncidentWriteServiceV1 {
     command: NpAgentIncidentFeedbackInputV1;
   }): Promise<NpAgentAdminExecutionResultV1<NpAgentJsonObject>>;
   appendContainmentEvent(input: NpAgentIncidentContainmentEventV1): Promise<number>;
+  appendFailedContainmentEvent(
+    input: Omit<NpAgentIncidentContainmentEventV1, "containmentId" | "phase">,
+  ): Promise<number>;
 }
 function fail(code = "INCIDENT_EVIDENCE_INVALID", status = 409): never {
   throw new NpAgentGatewayError(code, status, "Incident operation is unavailable.");
@@ -626,6 +631,114 @@ export function createAgentIncidentWriteServiceV1(
           { isolationLevel: "serializable" },
         ),
       );
+    },
+    async appendFailedContainmentEvent(input) {
+      npAssertAgentPreviewEffectsAllowed();
+      const { db, siteId, incidentId, actionId, auditEventId } = input;
+      await npWithAgentRuntimeControlTransactionV1(siteId, async () => {}, db);
+      canonicalBodySiteId(siteId, "incident.siteId");
+      for (const id of [incidentId, actionId, auditEventId])
+        canonicalBodyUuid(id, "incident.reference");
+      const [incident] = await db
+        .select()
+        .from(npAgentIncidents)
+        .where(and(eq(npAgentIncidents.siteId, siteId), eq(npAgentIncidents.id, incidentId)))
+        .for("update")
+        .limit(1);
+      if (!incident) fail();
+      const { action, execution } = await npRequireIncidentContainmentFailure(input);
+      const [existing] = await db
+        .select()
+        .from(npAgentIncidentTimeline)
+        .where(
+          and(
+            eq(npAgentIncidentTimeline.siteId, siteId),
+            eq(npAgentIncidentTimeline.incidentId, incidentId),
+            eq(npAgentIncidentTimeline.actionId, actionId),
+            eq(npAgentIncidentTimeline.kind, "action"),
+          ),
+        )
+        .limit(1);
+      if (existing) {
+        if (
+          existing.details.schemaVersion !== "np.agent-incident-containment-failure-entry.v1" ||
+          existing.auditEventId !== auditEventId ||
+          existing.details.executionInvocationId !== execution.id ||
+          existing.sourceFingerprint !== action.inputHash ||
+          existing.sourceKind !== "system" ||
+          existing.details.outcome !== "rolled_back" ||
+          existing.details.phase !== "failed" ||
+          !Number.isInteger(existing.details.transitionVersion) ||
+          Number(existing.details.transitionVersion) > incident.versionNumber ||
+          Number(existing.details.transitionVersion) < 2 ||
+          typeof existing.details.severity !== "string" ||
+          !["info", "low", "medium", "high", "critical"].includes(existing.details.severity) ||
+          typeof existing.details.status !== "string" ||
+          !["open", "investigating", "contained", "monitoring", "resolved", "dismissed"].includes(
+            existing.details.status,
+          )
+        )
+          fail();
+        return incident.versionNumber;
+      }
+      const time = now(),
+        versionNumber = incident.versionNumber + 1;
+      const updated = await db
+        .update(npAgentIncidents)
+        .set({ versionNumber, updatedAt: time })
+        .where(
+          and(
+            eq(npAgentIncidents.siteId, siteId),
+            eq(npAgentIncidents.id, incidentId),
+            eq(npAgentIncidents.versionNumber, incident.versionNumber),
+          ),
+        )
+        .returning({ id: npAgentIncidents.id });
+      if (updated.length !== 1) fail("INCIDENT_VERSION_CONFLICT");
+      const [entry] = await db
+        .insert(npAgentIncidentTimeline)
+        .values({
+          siteId,
+          incidentId,
+          sequence: await sequence(db, siteId, incidentId),
+          kind: "action",
+          sourceKind: "system",
+          sourceFingerprint: action.inputHash,
+          actionId,
+          auditEventId,
+          summary: "Content quarantine verification failed; the attempt was rolled back.",
+          details: {
+            schemaVersion: "np.agent-incident-containment-failure-entry.v1",
+            phase: "failed",
+            outcome: "rolled_back",
+            executionInvocationId: execution.id,
+            transitionVersion: versionNumber,
+            severity: incident.severity,
+            status: incident.status,
+          },
+          createdAt: time,
+        })
+        .returning({ id: npAgentIncidentTimeline.id });
+      if (!entry) fail();
+      if (options.notifications) {
+        try {
+          await db.transaction((tx) =>
+            options.notifications!.record({
+              db: tx,
+              siteId,
+              incidentId,
+              transitionVersion: versionNumber,
+              transition: "containment_failed",
+              timelineId: entry.id,
+            }),
+          );
+        } catch {
+          getLogger().warn(
+            "Incident containment failure recorded; Admin notification could not be recorded.",
+          );
+        }
+      }
+      return versionNumber;
     },
     async appendContainmentEvent(input) {
       npAssertAgentPreviewEffectsAllowed();

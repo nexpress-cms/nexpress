@@ -1,3 +1,5 @@
+import { npRequireIncidentSeverityEvidence } from "./incident-severity-evidence.js";
+import { npRequireIncidentContainmentFailure } from "./incident-containment-failure.js";
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
@@ -50,6 +52,10 @@ export interface NpAgentIncidentNotificationsServiceV1 {
 }
 export interface NpAgentIncidentNotificationsServiceOptionsV1 {
   reads: NpAgentIncidentStaffReadServiceV1;
+  /** Required to expose failed-action outcomes. Recheck the current action target ACL. */
+  canReviewAction?(
+    input: Staff & { db: Db; incidentId: string; actionId: string },
+  ): boolean | Promise<boolean>;
   cursorHmacKey: Uint8Array;
   now?: () => Date;
 }
@@ -147,10 +153,39 @@ export function createAgentIncidentNotificationsServiceV1(
         incident.versionNumber !== input.transitionVersion ||
         entry.details.transitionVersion !== input.transitionVersion ||
         entry.details.severity !== incident.severity ||
-        incident.status !== (input.transition === "opened" ? "open" : input.transition)
+        (!["containment_failed", "escalated"].includes(input.transition) &&
+          incident.status !== (input.transition === "opened" ? "open" : input.transition))
       )
         fail();
-      if (input.transition === "opened") {
+      if (input.transition === "escalated") {
+        const change = await npRequireIncidentSeverityEvidence(input.db, entry);
+        if (change.toSeverity !== incident.severity || entry.details.status !== incident.status)
+          fail();
+      } else if (input.transition === "containment_failed") {
+        if (
+          entry.kind !== "action" ||
+          entry.sourceKind !== "system" ||
+          !entry.actionId ||
+          !entry.auditEventId ||
+          entry.details.schemaVersion !== "np.agent-incident-containment-failure-entry.v1" ||
+          entry.details.status !== incident.status ||
+          entry.details.phase !== "failed" ||
+          entry.details.outcome !== "rolled_back"
+        )
+          fail();
+        const { action, execution } = await npRequireIncidentContainmentFailure({
+          db: input.db,
+          siteId: input.siteId,
+          incidentId: input.incidentId,
+          actionId: entry.actionId,
+          auditEventId: entry.auditEventId,
+        });
+        if (
+          entry.details.executionInvocationId !== execution.id ||
+          entry.sourceFingerprint !== action.inputHash
+        )
+          fail();
+      } else if (input.transition === "opened") {
         if (
           input.transitionVersion !== 1 ||
           entry.kind !== "observed" ||
@@ -174,7 +209,8 @@ export function createAgentIncidentNotificationsServiceV1(
       if (
         severity !== "critical" &&
         !(input.transition === "opened" && ["medium", "high"].includes(severity)) &&
-        !(severity === "high" && input.transition === "resolved")
+        !(input.transition === "escalated" && ["medium", "high"].includes(severity)) &&
+        !(severity === "high" && ["resolved", "containment_failed"].includes(input.transition))
       )
         return;
       const id = randomUUID();
@@ -189,7 +225,12 @@ export function createAgentIncidentNotificationsServiceV1(
             transition: input.transition,
             severity,
             status: incident.status,
-            summary: `Incident ${input.transition}.`,
+            summary:
+              input.transition === "containment_failed"
+                ? "Incident containment failed."
+                : input.transition === "escalated"
+                  ? "Incident severity escalated."
+                  : `Incident ${input.transition}.`,
             adminPath: `/admin/agents/incidents/${incident.id}`,
             createdAt: time.toISOString(),
           },
@@ -319,6 +360,84 @@ export function createAgentIncidentNotificationsServiceV1(
         try {
           const item = await project(row);
           await options.reads.get({ incidentId: item.incidentId }, { ...input, transaction: db });
+          if (item.transition === "escalated") {
+            const entries = await db
+              .select()
+              .from(npAgentIncidentTimeline)
+              .where(
+                and(
+                  eq(npAgentIncidentTimeline.siteId, input.siteId),
+                  eq(npAgentIncidentTimeline.incidentId, item.incidentId),
+                  eq(npAgentIncidentTimeline.kind, "human_note"),
+                  sql`${npAgentIncidentTimeline.details}->>'transitionVersion' = ${String(item.incidentVersion)}`,
+                  sql`${npAgentIncidentTimeline.details}->>'schemaVersion' = 'np.agent-incident-severity-entry.v1'`,
+                ),
+              )
+              .limit(2);
+            const source = entries[0];
+            if (entries.length !== 1 || !source) continue;
+            const change = await npRequireIncidentSeverityEvidence(db, source);
+            if (
+              change.toSeverity !== item.severity ||
+              source.details.status !== item.status ||
+              source.createdAt.toISOString() !== item.createdAt
+            )
+              continue;
+          }
+          if (item.transition === "containment_failed") {
+            const entries = await db
+              .select()
+              .from(npAgentIncidentTimeline)
+              .where(
+                and(
+                  eq(npAgentIncidentTimeline.siteId, input.siteId),
+                  eq(npAgentIncidentTimeline.incidentId, item.incidentId),
+                  eq(npAgentIncidentTimeline.kind, "action"),
+                  sql`${npAgentIncidentTimeline.details}->>'transitionVersion' = ${String(item.incidentVersion)}`,
+                  sql`${npAgentIncidentTimeline.details}->>'schemaVersion' = 'np.agent-incident-containment-failure-entry.v1'`,
+                ),
+              )
+              .limit(2);
+            const source = entries[0];
+            if (
+              entries.length !== 1 ||
+              !source?.actionId ||
+              !source.auditEventId ||
+              !options.canReviewAction
+            )
+              continue;
+            const proof = await npRequireIncidentContainmentFailure({
+              db,
+              siteId: input.siteId,
+              incidentId: item.incidentId,
+              actionId: source.actionId,
+              auditEventId: source.auditEventId,
+            });
+            if (
+              source.details.severity !== item.severity ||
+              source.details.status !== item.status ||
+              source.sourceKind !== "system" ||
+              source.sourceFingerprint !== proof.action.inputHash ||
+              source.details.executionInvocationId !== proof.execution.id ||
+              source.details.phase !== "failed" ||
+              source.details.outcome !== "rolled_back" ||
+              source.createdAt.toISOString() !== item.createdAt
+            )
+              continue;
+            try {
+              if (
+                (await options.canReviewAction({
+                  ...input,
+                  db,
+                  incidentId: item.incidentId,
+                  actionId: source.actionId,
+                })) !== true
+              )
+                continue;
+            } catch {
+              continue;
+            }
+          }
           items.push(item);
         } catch (error) {
           if (error instanceof NpAgentGatewayError && [403, 404, 409].includes(error.status))

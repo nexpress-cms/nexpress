@@ -1,3 +1,9 @@
+import { npRequireIncidentSeverityEvidence } from "./incident-severity-evidence.js";
+import {
+  type NpAgentIncidentSeverityChangeV1,
+  type NpAgentIncidentSeverityInputV1,
+} from "../agent-contract/incident-severity-contract.js";
+import { npRequireIncidentContainmentFailure } from "./incident-containment-failure.js";
 import type { NpAgentIncidentNotificationsServiceV1 } from "./incident-notifications-service.js";
 import type { NpAgentIncidentAssignmentServiceV1 } from "./incident-assignment-service.js";
 import { npRequireAgentIncidentAssignmentEntryV1 } from "../agent-contract/incident-assignment-contract.js";
@@ -55,6 +61,9 @@ export interface NpAgentIncidentStudioServiceV1 {
   get(
     input: Staff & { incidentId: string; cursor?: string | null },
   ): Promise<NpAgentIncidentStudioDetailV1>;
+  escalate(
+    input: Staff & { incidentId: string; command: NpAgentIncidentSeverityInputV1 },
+  ): Promise<{ resourceId: string; replayed: boolean }>;
   transition(
     input: Staff & { incidentId: string; command: NpAgentIncidentTransitionInputV1 },
   ): Promise<{ resourceId: string; replayed: boolean }>;
@@ -306,7 +315,44 @@ export function createAgentIncidentStudioServiceV1(
           /* Inaccessible references stay absent. */
         }
       }
+      let containmentFailure:
+        { outcome: "rolled_back"; reasonCode: "CONTAINMENT_VERIFICATION_FAILED" } | undefined;
+      if (row.details.schemaVersion === "np.agent-incident-containment-failure-entry.v1") {
+        if ((!actionId && !approvalId) || !row.actionId || !row.auditEventId) continue;
+        try {
+          const source = await npRequireIncidentContainmentFailure({
+            db,
+            siteId: input.siteId,
+            incidentId: input.incidentId,
+            actionId: row.actionId,
+            auditEventId: row.auditEventId,
+          });
+          if (
+            row.sourceFingerprint !== source.action.inputHash ||
+            row.details.executionInvocationId !== source.execution.id ||
+            row.details.outcome !== "rolled_back" ||
+            row.details.phase !== "failed"
+          )
+            continue;
+          containmentFailure = {
+            outcome: "rolled_back",
+            reasonCode: "CONTAINMENT_VERIFICATION_FAILED",
+          };
+        } catch {
+          continue;
+        }
+      }
+      let severityChange: NpAgentIncidentSeverityChangeV1 | undefined;
+      if (row.details.schemaVersion === "np.agent-incident-severity-entry.v1") {
+        try {
+          severityChange = await npRequireIncidentSeverityEvidence(db, row);
+        } catch {
+          continue;
+        }
+      }
       timeline.push({
+        ...(containmentFailure ? { containmentFailure } : {}),
+        ...(severityChange ? { severityChange } : {}),
         id: row.id,
         sequence: row.sequence,
         kind: row.kind,
@@ -499,6 +545,15 @@ export function createAgentIncidentStudioServiceV1(
           "Incident response is unavailable.",
         );
       return options.response.restore(input);
+    },
+    escalate: async (input) => {
+      if (!options.workflow)
+        throw new NpAgentGatewayError(
+          "INCIDENT_WORKFLOW_DISABLED",
+          403,
+          "Incident workflow is unavailable.",
+        );
+      return options.workflow.escalate(input);
     },
     transition: async (input) => {
       if (!options.workflow)

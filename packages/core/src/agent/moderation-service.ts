@@ -25,6 +25,7 @@ import { withDeferredPostCommit, type NpTransaction } from "../collections/pipel
 import { withCurrentSite } from "../sites/context.js";
 import type { NpAuthUser } from "../config/types.js";
 import {
+  NpCommunityContainmentVerificationError,
   npInspectCommunityContentContainmentV1,
   npQuarantineCommunityContentV1,
   npRestoreCommunityContentV1,
@@ -132,7 +133,10 @@ export interface NpAgentModerationServiceOptionsV1 {
     incidentId: string;
     user: NpAuthUser;
   }) => Promise<boolean>;
-  incidents?: Pick<ReturnType<typeof createAgentIncidentWriteServiceV1>, "appendContainmentEvent">;
+  incidents?: Pick<ReturnType<typeof createAgentIncidentWriteServiceV1>, "appendContainmentEvent"> &
+    Partial<
+      Pick<ReturnType<typeof createAgentIncidentWriteServiceV1>, "appendFailedContainmentEvent">
+    >;
   now?: () => Date;
 }
 /** Installed only by the host. This first owner always requires fresh human approval. */
@@ -946,13 +950,107 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
       if (capabilityId === "moderation.quarantine") {
         const p = npRequireAgentQuarantineProposalV1(action.inputCanonical);
         containmentId = randomUUID();
-        const changed = await npQuarantineCommunityContentV1(db as unknown as NpTransaction, {
-          siteId,
-          target: target.target,
-          user: viewer,
-          expectedVersionDigest: p.expectedVersionDigest,
-          reasonCode: p.reasonCode,
-        });
+        let changed: Awaited<ReturnType<typeof npQuarantineCommunityContentV1>>;
+        try {
+          changed = await withDeferredPostCommit(() =>
+            db.transaction(async (tx) => {
+              const result = await npQuarantineCommunityContentV1(tx as unknown as NpTransaction, {
+                siteId,
+                target: target.target,
+                user: viewer,
+                expectedVersionDigest: p.expectedVersionDigest,
+                reasonCode: p.reasonCode,
+              });
+              const verified = await npInspectCommunityContentContainmentV1(
+                tx as unknown as NpTransaction,
+                {
+                  siteId,
+                  target: target.target,
+                  user: viewer,
+                },
+              );
+              if (verified.versionDigest !== result.installedVersionDigest)
+                throw new NpCommunityContainmentVerificationError();
+              return result;
+            }),
+          );
+        } catch (error) {
+          // Only a typed post-write mismatch, after the savepoint has rolled back,
+          // establishes failure. Permission, CAS, hook/DB and unknown errors still abort.
+          if (
+            !(error instanceof NpCommunityContainmentVerificationError) ||
+            (target.incidentId && !options.incidents?.appendFailedContainmentEvent)
+          )
+            throw error;
+          const errorCode = "CONTAINMENT_VERIFICATION_FAILED";
+          const evidence = [{ outcome: "rolled_back", reasonCode: errorCode }];
+          const resultDigest = digest("np.agent-moderation-result.v1", {
+            actionId,
+            state: "failed",
+            evidence,
+          });
+          const failedOutput = {
+            schemaVersion: "np.agent-direct-action.v1",
+            actionId,
+            state: "failed",
+            containmentId: null,
+            resultDigest,
+            verificationRefs: [],
+          };
+          const validated = npRequireAgentModerationCapabilityOutputV1(capabilityId, failedOutput);
+          const outputHash = digest("np.agent-capability-output.v1", validated);
+          await db
+            .update(npAgentActions)
+            .set({
+              state: "failed",
+              errorCode,
+              executionInvocationId: invocationId,
+              executionInvocationFingerprint: requestHash,
+              verifierId: "containment.verify",
+              verificationState: "failed",
+              verificationResultDigest: resultDigest,
+              verificationEvidence: evidence,
+              verifiedAt: time,
+              startedAt: time,
+              finishedAt: time,
+              outputRedacted: json(validated),
+              outputHash,
+            })
+            .where(eq(npAgentActions.id, actionId));
+          if (runId)
+            await db
+              .update(npAgentRuns)
+              .set({
+                state: "failed",
+                errorCode,
+                errorMessage:
+                  "Content quarantine verification failed; the attempt was rolled back.",
+                result: json(validated),
+                finishedAt: time,
+              })
+              .where(eq(npAgentRuns.id, runId));
+          await db
+            .update(npAuditEvents)
+            .set({
+              payload: sql`${npAuditEvents.payload} || ${JSON.stringify({
+                actionId,
+                invocationId,
+                requestHash,
+                outcome: "rolled_back",
+                errorCode,
+              })}::jsonb`,
+            })
+            .where(and(eq(npAuditEvents.siteId, siteId), eq(npAuditEvents.id, auditId)));
+          if (target.incidentId)
+            await options.incidents!.appendFailedContainmentEvent!({
+              db,
+              siteId,
+              incidentId: target.incidentId,
+              actionId,
+              auditEventId: auditId,
+            });
+          return { actionId, runId, output: json(validated), outputHash };
+        }
         resultVersion = changed.installedVersionDigest;
         originalStateDigest = digest("np.agent-moderation-original.v1", changed.originalState);
         state = "succeeded";
@@ -1013,11 +1111,14 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
           })
           .where(eq(npAgentActions.id, containment.sourceActionId));
       }
-      const verified = await npInspectCommunityContentContainmentV1(
-        db as unknown as NpTransaction,
-        { siteId, target: target.target, user: viewer },
-      );
-      if (verified.versionDigest !== resultVersion) throw conflict();
+      // Quarantine verification already belongs to the rollback-capable savepoint.
+      if (capabilityId === "moderation.restore") {
+        const verified = await npInspectCommunityContentContainmentV1(
+          db as unknown as NpTransaction,
+          { siteId, target: target.target, user: viewer },
+        );
+        if (verified.versionDigest !== resultVersion) throw conflict();
+      }
       const evidence = [{ containmentId, targetVersionDigest: resultVersion, originalStateDigest }];
       const resultDigest = digest("np.agent-moderation-result.v1", {
         actionId,

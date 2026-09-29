@@ -577,6 +577,86 @@ test("incident response prepares an exact target, waits for approval, and explic
   });
 });
 
+test("incident response shows a persisted failed quarantine after an unchanged unknown-outcome retry", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    44 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const result = responseDetail();
+  result.response!.plans = [{ ...responsePlan(), state: "approved", canExecute: true }];
+  const originalContainment = { ...result.workflow!.containment };
+  const commands: unknown[] = [];
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({
+      json: npRequireAgentIncidentStudioDetailV1(JSON.parse(JSON.stringify(result))),
+    }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/response-plan/execute`, (route) => {
+    commands.push(route.request().postDataJSON());
+    if (commands.length === 1) {
+      result.response!.plans[0]!.state = "failed";
+      result.response!.plans[0]!.canExecute = false;
+      result.incident.versionNumber += 1;
+      result.timeline.push({
+        id: actionId,
+        sequence: 3,
+        kind: "action",
+        createdAt: at,
+        approvalId: actionId,
+        actionId,
+        decision: null,
+        containmentFailure: {
+          outcome: "rolled_back",
+          reasonCode: "CONTAINMENT_VERIFICATION_FAILED",
+        },
+      });
+      return route.abort("failed");
+    }
+    return route.fulfill({ json: { resourceId: id, replayed: true } });
+  });
+  await page.goto(`/admin/agents/incidents/${id}`);
+  const response = page.getByRole("region", { name: "Response plans" });
+  await response.getByRole("button", { name: "Execute approved quarantine" }).click();
+  await expect(response.getByText(/The response outcome is unconfirmed/)).toBeVisible();
+  await expect(
+    response.getByText("Quarantine action has a stored failed outcome.", { exact: false }),
+  ).toHaveCount(0);
+  await response.getByRole("button", { name: "Retry unchanged response" }).click();
+  await expect(response.getByRole("heading", { name: "Quarantine plan · failed" })).toBeVisible();
+  await expect(response.getByRole("alert")).toContainText(
+    "Quarantine action has a stored failed outcome.",
+  );
+  await expect(
+    response.getByRole("button", { name: "Execute approved quarantine" }),
+  ).toBeDisabled();
+  await expect(response.getByRole("button", { name: "Retry unchanged response" })).toHaveCount(0);
+  await expect(page.getByText(/Containment: 2 total · 1 active · 0 restored/)).toBeVisible();
+  await expect(
+    page.getByText(
+      "Quarantine verification failed. The attempted content changes were rolled back.",
+    ),
+  ).toBeVisible();
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+      await page.getByRole("button", { name: "Close navigation" }).last().click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`incident-containment-failure-${width}.png`),
+      fullPage: true,
+      animations: "disabled",
+    });
+  }
+  expect(result.workflow!.containment).toEqual(originalContainment);
+  expect(commands).toHaveLength(2);
+  expect(commands[1]).toEqual(commands[0]);
+});
+
 test("incident response conflict and access loss remove stale plans before retry", async ({
   page,
 }, testInfo) => {
@@ -1036,6 +1116,24 @@ test("incident notifications preserve recorded facts across filters and link cur
   );
   await signInAsE2EAdmin(page);
   const queries: string[] = [];
+  const feedPage = notifications("notification-page-2");
+  feedPage.items.push({
+    ...feedPage.items[0]!,
+    notificationId: actionId,
+    incidentVersion: 2,
+    transition: "containment_failed",
+    status: "investigating",
+    summary: "Incident containment failed.",
+  });
+  feedPage.items.push({
+    ...feedPage.items[0]!,
+    notificationId: restoreActionId,
+    incidentVersion: 3,
+    transition: "escalated",
+    severity: "critical",
+    status: "investigating",
+    summary: "Incident severity escalated.",
+  });
   await page.route("**/api/admin/agents/incidents?*", (route) =>
     route.fulfill({
       json: {
@@ -1049,7 +1147,9 @@ test("incident notifications preserve recorded facts across filters and link cur
     const query = new URL(route.request().url()).search;
     queries.push(query);
     return route.fulfill({
-      json: query ? { ...notifications(), items: [] } : notifications("notification-page-2"),
+      json: query
+        ? { ...notifications(), items: [] }
+        : npRequireAgentIncidentNotificationsV1(feedPage),
     });
   });
   const current = detail();
@@ -1062,6 +1162,11 @@ test("incident notifications preserve recorded facts across filters and link cur
   await page.goto("/admin/agents/incidents");
   const feed = page.getByRole("region", { name: "Incident notifications" });
   await expect(feed.getByText("Recorded status: open · Recorded severity: high")).toBeVisible();
+  await expect(feed.getByText("Incident containment failed.", { exact: true })).toBeVisible();
+  await expect(feed.getByText("Incident severity escalated.", { exact: true })).toBeVisible();
+  await expect(
+    feed.getByText("Recorded status: investigating · Recorded severity: high"),
+  ).toBeVisible();
   await page.getByRole("combobox", { name: "Incident status" }).click();
   await page.getByRole("option", { name: "resolved", exact: true }).click();
   await page.getByRole("button", { name: "Apply filters" }).click();
@@ -1085,7 +1190,7 @@ test("incident notifications preserve recorded facts across filters and link cur
   await expect(feed.getByText("No visible incident notifications.")).toBeVisible();
   expect(queries.at(-1)).toBe("?cursor=notification-page-2");
   await feed.getByRole("button", { name: "First notification page" }).click();
-  const link = feed.getByRole("link", { name: `Open incident ${id}` });
+  const link = feed.getByRole("link", { name: `Open incident ${id}` }).last();
   await expect(link).toHaveAttribute("href", `/admin/agents/incidents/${id}`);
   await link.click();
   await expect(page.getByRole("heading", { name: "Repeated links" })).toBeVisible();
@@ -1156,4 +1261,140 @@ test("incident notifications recover stale pages and clear access loss without i
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expect(feed).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Repeated links", exact: true })).toHaveCount(0);
+});
+
+test("incident severity raises from current server choices, retries one identity and records a human decision", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    50 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const result = detail();
+  result.workflow!.availableSeverities = ["critical"];
+  const commands: Array<{
+    idempotencyKey: string;
+    expectedVersion: number;
+    severity: string;
+    note: string;
+  }> = [];
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({
+      json: npRequireAgentIncidentStudioDetailV1(JSON.parse(JSON.stringify(result))),
+    }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/severity`, (route) => {
+    commands.push(route.request().postDataJSON());
+    if (commands.length === 1) return route.abort("failed");
+    result.incident.severity = "critical";
+    result.incident.versionNumber += 1;
+    result.workflow!.availableSeverities = [];
+    result.timeline.push({
+      id: actionId,
+      sequence: 3,
+      kind: "human_note",
+      createdAt: at,
+      approvalId: null,
+      actionId: null,
+      decision: null,
+      severityChange: { fromSeverity: "high", toSeverity: "critical", note: commands[0]!.note },
+    });
+    return route.fulfill({ json: { resourceId: id, replayed: true } });
+  });
+  await page.goto(`/admin/agents/incidents/${id}`);
+  const severity = page.getByRole("region", { name: "Incident severity" });
+  await expect(severity.getByRole("button", { name: "Raise incident severity" })).toBeDisabled();
+  await severity.getByLabel("Severity change note").fill("  Human review <script>text</script>  ");
+  const refresh = page.waitForResponse(
+    (response) =>
+      response.url().endsWith(`/api/admin/agents/incidents/${id}`) &&
+      response.request().method() === "GET",
+  );
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await refresh;
+  await expect(page.getByRole("heading", { name: "Comment evidence", exact: true })).toHaveCount(1);
+  await expect(severity.getByLabel("Severity change note")).toHaveValue(
+    "  Human review <script>text</script>  ",
+  );
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+      await page.getByRole("button", { name: "Close navigation" }).last().click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`incident-severity-form-${width}.png`),
+      fullPage: true,
+      animations: "disabled",
+    });
+  }
+  await severity.getByRole("button", { name: "Raise incident severity" }).click();
+  await expect(severity.getByText(/outcome is unconfirmed/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Refresh", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Record feedback", exact: true })).toBeDisabled();
+  await severity.getByRole("button", { name: "Retry unchanged severity change" }).click();
+  await expect(page.getByText("Human severity change: high → critical")).toBeVisible();
+  await expect(page.getByText("Human review <script>text</script>", { exact: true })).toBeVisible();
+  await expect(severity.getByText("No severity increases are currently available.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Comment evidence", exact: true })).toHaveCount(1);
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+      await page.getByRole("button", { name: "Close navigation" }).last().click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`incident-severity-timeline-${width}.png`),
+      fullPage: true,
+      animations: "disabled",
+    });
+  }
+  expect(commands).toHaveLength(2);
+  expect(commands[1]).toEqual(commands[0]);
+  expect(commands[0]).toMatchObject({
+    expectedVersion: 1,
+    severity: "critical",
+    note: "Human review <script>text</script>",
+  });
+});
+
+test("incident severity conflicts discard stale decisions and access loss clears the view", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    56 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const result = detail();
+  result.workflow!.availableSeverities = ["critical"];
+  let status = 409;
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({ json: result }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/severity`, (route) =>
+    route.fulfill({ status, json: {} }),
+  );
+  await page.goto(`/admin/agents/incidents/${id}`);
+  await page.getByLabel("Severity change note").fill("Reviewed current evidence.");
+  await page.getByRole("button", { name: "Raise incident severity" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "current severity and evidence" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Retry unchanged severity change" })).toHaveCount(
+    0,
+  );
+  status = 403;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.getByLabel("Severity change note")).toHaveValue("");
+  await page.getByLabel("Severity change note").fill("Reviewed again.");
+  await page.getByRole("button", { name: "Raise incident severity" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "unavailable or you no longer have access" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
 });

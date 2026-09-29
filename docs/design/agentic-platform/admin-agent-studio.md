@@ -882,6 +882,10 @@ bundles, not only through color or icon.
    a linked incident according to correlation policy; the client never changes
    a terminal state itself.
 
+An authorized staff member may explicitly raise an active Incident’s severity
+with a bounded human reason. This leaves status and response authority unchanged;
+see the [manual severity flow](r6-incident-severity-flow.md).
+
 Guardian pages always include:
 
 > Guardian correlates NexPress application signals. It does not replace your
@@ -1117,7 +1121,7 @@ floor; and audit/redaction policy. Route registration, OpenAPI, Admin client,
 invocation admission, Doctor, and tests consume that map. An unmapped row is a
 startup/build error and must not be implemented ad hoc.
 
-`@nexpress/core/agent-contract` now implements that AP-001 boundary for all 55
+`@nexpress/core/agent-contract` now implements that AP-001 boundary for all 59
 rows. The registry composes existing JSON Schema, human capability, effect
 profile, API error, route-path, canonical JSON/digest, and invocation-request
 primitives instead of defining parallel versions. Its exhaustive analyzer,
@@ -1150,6 +1154,7 @@ a new generation with a new key and invalidate or supersede the old verifier.
 
 | Method and proposed path                                                                  | Purpose                                                                                               |
 | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `POST /api/admin/agents/incidents/{id}/severity`                                          | Raise severity with a version-bound human reason; preserve status and authority                       |
 | `POST /api/admin/agents/connections`                                                      | Create write-only connection metadata/secret                                                          |
 | `PATCH /api/admin/agents/connections/{id}`                                                | Validate and stage/activate exact non-secret config with version/hash precondition                    |
 | `POST /api/admin/agents/connections/{id}/oauth/start`                                     | Create state/PKCE-bound provider authorization and return its trusted URL                             |

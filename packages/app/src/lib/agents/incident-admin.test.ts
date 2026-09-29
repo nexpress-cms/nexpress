@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   assign: vi.fn(),
   feedback: vi.fn(),
   transition: vi.fn(),
+  escalate: vi.fn(),
   responsePlan: vi.fn(),
   responseExecute: vi.fn(),
   restore: vi.fn(),
@@ -79,6 +80,7 @@ describe("Incident Studio HTTP boundary", () => {
       "list",
       "feedback",
       "transition",
+      "escalate",
       "response-plan",
       "response-execute",
       "restore",
@@ -211,7 +213,29 @@ describe("Incident Studio HTTP boundary", () => {
     const response = await handleAgentIncidentAdminRequest(request(), "detail", id);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(detail);
+    const failure = {
+      ...detail.timeline[0],
+      kind: "action",
+      actionId: id,
+      containmentFailure: {
+        outcome: "rolled_back",
+        reasonCode: "CONTAINMENT_VERIFICATION_FAILED",
+      },
+    };
+    mocks.get.mockResolvedValue({ ...detail, timeline: [failure] });
+    const failedDetail = await handleAgentIncidentAdminRequest(request(), "detail", id);
+    expect(failedDetail.status).toBe(200);
+    expect(await failedDetail.json()).toEqual({ ...detail, timeline: [failure] });
     for (const output of [
+      {
+        ...detail,
+        timeline: [
+          {
+            ...failure,
+            containmentFailure: { ...failure.containmentFailure, rawError: "private-evidence" },
+          },
+        ],
+      },
       { ...detail, incident: { ...detail.incident, siteId: "other" } },
       { ...detail, incident: { ...detail.incident, id: "20000000-0000-4000-8000-000000000002" } },
       { ...detail, timeline: [{ ...detail.timeline[0], rawDetails: "private-evidence" }] },
@@ -320,6 +344,59 @@ describe("Incident transition HTTP boundary", () => {
     );
     expect(response.status).toBe(500);
     expect(await response.text()).not.toContain("private-transition-evidence");
+    expect(JSON.parse(response.headers.get(npApiErrorDiagnosticsHeader)!)).toMatchObject({
+      recovery: "check-outcome",
+    });
+  });
+});
+
+describe("Incident severity HTTP boundary", () => {
+  const escalation = {
+    schemaVersion: "np.agent-incident-severity-input.v1",
+    expectedVersion: 2,
+    severity: "high",
+    note: "관리자가 검토한 근거. ".repeat(150).trim(),
+    idempotencyKey: "incident-severity-attempt",
+  };
+  it("accepts bounded UTF-8 evidence and binds replay acknowledgements to the Incident", async () => {
+    mocks.escalate.mockResolvedValue({ resourceId: id, replayed: true, privateEvidence: "hidden" });
+    const response = await handleAgentIncidentAdminRequest(request("", escalation), "escalate", id);
+    expect(response.status).toBe(200);
+    expect(mocks.ensure).toHaveBeenCalledWith("write");
+    expect(mocks.escalate).toHaveBeenCalledWith({
+      ...staff,
+      incidentId: id,
+      command: { ...escalation, note: escalation.note.trim() },
+    });
+    expect(await response.json()).toEqual({ resourceId: id, replayed: true });
+    mocks.escalate.mockResolvedValue({
+      resourceId: "20000000-0000-4000-8000-000000000002",
+      replayed: true,
+    });
+    expect(
+      (await handleAgentIncidentAdminRequest(request("", escalation), "escalate", id)).status,
+    ).toBe(500);
+  });
+  it("rejects injected authority, invalid targets and unbounded evidence before dispatch", async () => {
+    for (const [query, body] of [
+      ["?siteId=other", escalation],
+      ["", { ...escalation, actor: { role: "admin" } }],
+      ["", { ...escalation, severity: "info" }],
+      ["", { ...escalation, expectedVersion: 0 }],
+      ["", { ...escalation, note: " " }],
+      ["", { ...escalation, note: "x".repeat(2001) }],
+    ] as const) {
+      expect(
+        (await handleAgentIncidentAdminRequest(request(query, body), "escalate", id)).status,
+      ).toBe(400);
+    }
+    expect(mocks.escalate).not.toHaveBeenCalled();
+  });
+  it("keeps unknown outcomes safe for exact retries", async () => {
+    mocks.escalate.mockRejectedValue(new Error("private-severity-evidence"));
+    const response = await handleAgentIncidentAdminRequest(request("", escalation), "escalate", id);
+    expect(response.status).toBe(500);
+    expect(await response.text()).not.toContain("private-severity-evidence");
     expect(JSON.parse(response.headers.get(npApiErrorDiagnosticsHeader)!)).toMatchObject({
       recovery: "check-outcome",
     });
@@ -613,8 +690,21 @@ describe("Incident notification HTTP boundary", () => {
       adminPath: `/admin/agents/incidents/${id}`,
       createdAt: "2026-09-01T00:00:00.000Z",
     };
-    mocks.notifications.mockResolvedValue({ ...page, items: [item] });
-    expect((await handleAgentIncidentAdminRequest(request(), "notifications")).status).toBe(200);
+    for (const observed of [
+      item,
+      {
+        ...item,
+        incidentVersion: 3,
+        transition: "containment_failed",
+        status: "investigating",
+        summary: "Incident containment failed.",
+      },
+    ]) {
+      mocks.notifications.mockResolvedValue({ ...page, items: [observed] });
+      const response = await handleAgentIncidentAdminRequest(request(), "notifications");
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual({ ...page, items: [observed] });
+    }
     for (const extra of [
       { rawBody: "private-source" },
       { adminPath: "https://outside.example/" },
