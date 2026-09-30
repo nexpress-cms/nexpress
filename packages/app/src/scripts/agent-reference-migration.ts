@@ -33,6 +33,7 @@ export function npAgentReferenceMigrationSqlV1(): string {
           (name) =>
             name !== "np_agent_containments" &&
             name !== "np_agent_operator_plans" &&
+            name !== "np_agent_operator_executions" &&
             !incidentTables.some((table) => table === name),
         ),
         "np_agent_site_deletion_sagas",
@@ -314,5 +315,41 @@ export async function npEnsureAgentReferenceMigrationV8(options: {
   const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
   if (added.length !== 1)
     throw new Error("Expected one generated Agent Operator plan reference migration.");
+  await writeFile(join(folder, added[0]), expected, "utf8");
+}
+
+/** Append Operator execution coverage without changing applied lifecycle SQL. */
+export function npAgentReferenceMigrationSqlV9(): string {
+  return (
+    "-- NexPress verified Operator execution source reference lifecycle v9\n" +
+    npAgentReferenceFenceTriggersSqlV1("np_agent_operator_executions") +
+    "\n"
+  );
+}
+export async function npEnsureAgentReferenceMigrationV9(options: {
+  migrationsFolder?: string;
+  createCustomMigration: () => Promise<void>;
+}): Promise<void> {
+  const folder = resolve(options.migrationsFolder ?? "./drizzle");
+  const files = (await readdir(folder)).filter((f) => f.endsWith(".sql")).sort();
+  const texts = await Promise.all(files.map((f) => readFile(join(folder, f), "utf8")));
+  if (!texts.some((text) => text.includes('CREATE TABLE "np_agent_operator_executions"'))) return;
+  if (!texts.some((text) => text.includes(marker)))
+    throw new Error("Agent Operator execution reference migration inventory is incomplete.");
+  const expected = npAgentReferenceMigrationSqlV9();
+  const existing = texts.filter((text) =>
+    text.includes("-- NexPress verified Operator execution source reference lifecycle v9"),
+  );
+  if (existing.length) {
+    if (existing.length !== 1 || existing[0] !== expected)
+      throw new Error(
+        "Agent Operator execution reference migration differs from its reviewed source.",
+      );
+    return;
+  }
+  await options.createCustomMigration();
+  const added = (await readdir(folder)).filter((f) => f.endsWith(".sql") && !files.includes(f));
+  if (added.length !== 1)
+    throw new Error("Expected one generated Agent Operator execution reference migration.");
   await writeFile(join(folder, added[0]), expected, "utf8");
 }

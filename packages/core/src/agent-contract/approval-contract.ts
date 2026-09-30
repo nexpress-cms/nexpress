@@ -1,4 +1,9 @@
 import {
+  npRequireAgentOpsPlanInputV1,
+  npAgentOpsPlanInputSchemaV1,
+  type NpAgentExecutableOpsPlanInputV1,
+} from "./operator-capability-contract.js";
+import {
   npRequireAgentRollbackDetailV1,
   type NpAgentRollbackDetailV1,
 } from "./rollback-contract.js";
@@ -114,7 +119,7 @@ export interface NpAgentApprovalDetailV1 {
   rollbackReview: NpAgentRollbackDetailV1 | null;
   actionReview?: NpAgentApprovalActionReviewV1;
 }
-export interface NpAgentApprovalActionReviewV1 {
+export interface NpAgentApprovalModerationActionReviewV1 {
   actionId: string;
   proposalHash: string;
   capabilityId: "moderation.quarantine" | "moderation.restore";
@@ -124,8 +129,70 @@ export interface NpAgentApprovalActionReviewV1 {
   incidentId: string | null;
   reasonCode: string | null;
 }
+export interface NpAgentApprovalOpsActionReviewV1 {
+  actionId: string;
+  proposalHash: string;
+  capabilityId: "ops.execute";
+  planId: string;
+  planDigest: string;
+  operation: NpAgentExecutableOpsPlanInputV1;
+  expiresAt: string;
+  checks: Array<{ id: string; status: "pass" | "warn" | "fail" }>;
+}
+export type NpAgentApprovalActionReviewV1 =
+  NpAgentApprovalModerationActionReviewV1 | NpAgentApprovalOpsActionReviewV1;
 function actionReview(value: unknown): NpAgentApprovalActionReviewV1 {
   const p = "agent.approval.actionReview";
+  if (
+    value &&
+    typeof value === "object" &&
+    "capabilityId" in value &&
+    value.capabilityId === "ops.execute"
+  ) {
+    const r = record(value, p, [
+      "actionId",
+      "proposalHash",
+      "capabilityId",
+      "planId",
+      "planDigest",
+      "operation",
+      "expiresAt",
+      "checks",
+    ]);
+    const operation = npRequireAgentOpsPlanInputV1(r.operation);
+    if (
+      operation.action !== "cache.revalidate" &&
+      operation.action !== "agent.run.retry" &&
+      operation.action !== "agent.run.cancel"
+    )
+      return failCanonicalBody(
+        "invalid-field",
+        p,
+        "Operator execution review requires executable action",
+      );
+    if (!Array.isArray(r.checks) || r.checks.length < 1 || r.checks.length > 128)
+      return failCanonicalBody("invalid-field", p, "Invalid Operator review checks");
+    const ids = new Set<string>();
+    const checks = r.checks.map((value) => {
+      const check = record(value, p + ".checks", ["id", "status"]);
+      const id = canonicalRuntimeText(check.id, p, 128);
+      if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]*$/u.test(id) || ids.has(id))
+        failCanonicalBody("invalid-field", p, "Invalid Operator review check id");
+      ids.add(id);
+      return { id, status: enumeration(check.status, p, ["pass", "warn", "fail"] as const) };
+    });
+    return {
+      actionId: canonicalBodyUuid(r.actionId, p),
+      proposalHash: canonicalBodySha256Digest(r.proposalHash, p),
+      capabilityId: "ops.execute",
+      planId: canonicalBodyUuid(r.planId, p),
+      planDigest: canonicalBodySha256Digest(r.planDigest, p),
+      operation,
+      expiresAt: canonicalBodyUtc(r.expiresAt, p),
+      checks,
+    };
+  }
+
   const r = record(value, p, [
     "actionId",
     "proposalHash",
@@ -808,20 +875,55 @@ const approvalDetailSchemaSource = JSON.parse(
       item: approvalItemSchema,
       review: nullable({ $ref: "#/$defs/approvalReview" }),
       rollbackReview: nullable({ $ref: "#/$defs/rollbackDetail" }),
-      actionReview: schema({
-        actionId: approvalUuidSchema,
-        proposalHash: digest,
-        capabilityId: { enum: ["moderation.quarantine", "moderation.restore"] },
-        target: schema({
-          kind: { enum: ["comment", "document"] },
-          collection: { type: "string", minLength: 1, maxLength: 128 },
-          id: { type: "string", minLength: 1, maxLength: 128 },
-        }),
-        expectedVersionDigest: digest,
-        containmentId: nullable(approvalUuidSchema),
-        incidentId: nullable(approvalUuidSchema),
-        reasonCode: nullable({ type: "string", minLength: 1, maxLength: 64 }),
-      }),
+      actionReview: {
+        oneOf: [
+          schema({
+            actionId: approvalUuidSchema,
+            proposalHash: digest,
+            capabilityId: { enum: ["moderation.quarantine", "moderation.restore"] },
+            target: schema({
+              kind: { enum: ["comment", "document"] },
+              collection: { type: "string", minLength: 1, maxLength: 128 },
+              id: { type: "string", minLength: 1, maxLength: 128 },
+            }),
+            expectedVersionDigest: digest,
+            containmentId: nullable(approvalUuidSchema),
+            incidentId: nullable(approvalUuidSchema),
+            reasonCode: nullable({ type: "string", minLength: 1, maxLength: 64 }),
+          }),
+          schema({
+            actionId: approvalUuidSchema,
+            proposalHash: digest,
+            capabilityId: { const: "ops.execute" },
+            planId: approvalUuidSchema,
+            planDigest: digest,
+            operation: {
+              oneOf: [
+                (npAgentOpsPlanInputSchemaV1.oneOf as unknown[])[0],
+                schema({
+                  action: { enum: ["agent.run.retry", "agent.run.cancel"] },
+                  target: schema({ kind: { const: "run" }, runId: approvalUuidSchema }),
+                }),
+              ],
+            },
+            expiresAt: utc,
+            checks: {
+              type: "array",
+              minItems: 1,
+              maxItems: 128,
+              items: schema({
+                id: {
+                  type: "string",
+                  minLength: 1,
+                  maxLength: 128,
+                  pattern: "^[A-Za-z0-9][A-Za-z0-9._:/@-]*$",
+                },
+                status: { enum: ["pass", "warn", "fail"] },
+              }),
+            },
+          }),
+        ],
+      },
     }),
     required: ["schemaVersion", "item", "review", "rollbackReview"],
     $schema: approvalReviewDialect,

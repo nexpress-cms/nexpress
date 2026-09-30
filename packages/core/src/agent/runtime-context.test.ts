@@ -105,6 +105,7 @@ async function manualContextFixture() {
   } as unknown as NpAgentRuntimeRunContextV1;
   const admission = {
     admit: vi.fn(),
+    retry: vi.fn(),
     withRunAuthority: vi.fn(),
     withCurrentRun: vi.fn((_input, execute) => execute(current)),
   } as NpAgentRuntimeAdmissionV1;
@@ -220,6 +221,7 @@ describe("Runtime context source boundary", () => {
     const withCurrentRun = vi.fn();
     const admission: NpAgentRuntimeAdmissionV1 = {
       admit: vi.fn(),
+      retry: vi.fn(),
       withCurrentRun,
       withRunAuthority: vi.fn(),
     };
@@ -291,6 +293,7 @@ it("awaits installed capability discovery and contains a rejected async source",
   const list = vi.fn(() => pending);
   const admission = {
     admit: vi.fn(),
+    retry: vi.fn(),
     withRunAuthority: vi.fn(),
     withCurrentRun: vi.fn((_input, execute) => execute(current)),
   } as NpAgentRuntimeAdmissionV1;
@@ -424,6 +427,7 @@ it("passes exact operational facts to the provider and rejects queued or mismatc
         capabilityModes: [
           { capabilityId: "ops.status", mode: "observe" },
           { capabilityId: "audit.run", mode: "observe" },
+          { capabilityId: "ops.execute", mode: "approved" },
         ],
       },
     },
@@ -448,6 +452,25 @@ it("passes exact operational facts to the provider and rejects queued or mismatc
     operatorOutput: status,
   };
   expect(npProjectAgentRuntimeActionOutcomeV1(current, outcome)).toEqual(outcome);
+  const execution = {
+    ...outcome,
+    capabilityId: "ops.execute",
+    operatorOutput: {
+      schemaVersion: "np.agent-ops-execution.v1",
+      planId: "01990000-0000-7000-8000-000000000005",
+      action: "cache.revalidate",
+      state: "succeeded",
+      resultDigest: status.digest,
+      verificationRefs: ["cache:applied"],
+    },
+  };
+  expect(npProjectAgentRuntimeActionOutcomeV1(current, execution)).toEqual(execution);
+  expect(() =>
+    npProjectAgentRuntimeActionOutcomeV1(current, {
+      ...execution,
+      operatorOutput: { ...execution.operatorOutput, state: "unknown" },
+    }),
+  ).toThrow();
   const queued = {
     schemaVersion: "np.agent-audit.v1",
     auditId: "01990000-0000-7000-8000-000000000005",

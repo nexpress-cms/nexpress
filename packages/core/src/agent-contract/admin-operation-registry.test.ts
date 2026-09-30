@@ -254,7 +254,7 @@ describe("Agent Admin operation registry v1", () => {
       npDigestAgentAdminOperationContractV1(npAgentAdminOperationRegistryV1[0]),
     ).resolves.toBe("cj1:sha256:5w3d7O1UDEv24p5vldtmuR6qREV8Q6UU4hYYp6aE1nA");
     await expect(npDigestAgentAdminOperationRegistryV1()).resolves.toBe(
-      "cj1:sha256:8P6GDTelfDs2ZJKm0dBh-8gTDUfQOxKrm5AgKliK9bg",
+      "cj1:sha256:5bRzvOysV9gaLGs7Rj3wGiN3yYNfVvFwxEtKRGe4r1g",
     );
 
     await expect(

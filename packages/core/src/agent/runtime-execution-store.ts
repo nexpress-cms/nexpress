@@ -1,8 +1,15 @@
 import { npDigestAgentRuntimeManualInputV1 } from "../agent-contract/runtime-manual-input.js";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, ne, isNotNull, or } from "drizzle-orm";
 import type { NpAgentCapabilityAdmissionServiceV1 } from "./capability-admission.js";
 import type { getDb } from "../db/runtime.js";
-import { npAgentRuns, npAgentProviderCalls, npAgentActions } from "../db/schema/agent.js";
+import {
+  npAgentRuns,
+  npAgentProviderCalls,
+  npAgentActions,
+  npAgentChangesets,
+  npAgentChangesetExecutions,
+  npAgentOperatorExecutions,
+} from "../db/schema/agent.js";
 import { npAuditEvents } from "../db/schema/community.js";
 import { npDigestAgentRunAdmissionCanonical } from "../agent-contract/canonical-run-admission.js";
 import {
@@ -98,6 +105,128 @@ export async function npRequireAgentRuntimeExecutionIntegrityV1(run: Run): Promi
     fail("RUNTIME_EXECUTION_INTEGRITY_INVALID");
   }
 }
+/** Shared commit fence under the existing site-control transaction and locked Run. */
+export async function npRequireAgentRuntimePreCommitV1(input: {
+  db: Db;
+  siteId: string;
+  runId: string;
+  executionId?: string;
+}): Promise<void> {
+  const { db, siteId, runId } = input;
+  const actions = await db
+    .select({ id: npAgentActions.id })
+    .from(npAgentActions)
+    .where(
+      and(
+        eq(npAgentActions.siteId, siteId),
+        eq(npAgentActions.runId, runId),
+        ne(npAgentActions.effectProfileId, "domain.read"),
+        or(
+          isNotNull(npAgentActions.startedAt),
+          inArray(npAgentActions.state, ["executing", "succeeded", "compensated"]),
+        ),
+      ),
+    )
+    .limit(1);
+  const changesets = await db
+    .select({ id: npAgentChangesetExecutions.id })
+    .from(npAgentChangesetExecutions)
+    .innerJoin(
+      npAgentChangesets,
+      and(
+        eq(npAgentChangesets.siteId, npAgentChangesetExecutions.siteId),
+        eq(npAgentChangesets.id, npAgentChangesetExecutions.changesetId),
+      ),
+    )
+    .where(and(eq(npAgentChangesets.siteId, siteId), eq(npAgentChangesets.runId, runId)))
+    .limit(1);
+  const operations = await db
+    .select({ id: npAgentOperatorExecutions.id })
+    .from(npAgentOperatorExecutions)
+    .where(
+      and(
+        eq(npAgentOperatorExecutions.siteId, siteId),
+        eq(npAgentOperatorExecutions.sourceRunId, runId),
+        isNotNull(npAgentOperatorExecutions.dispatchedAt),
+        input.executionId ? ne(npAgentOperatorExecutions.id, input.executionId) : undefined,
+      ),
+    )
+    .limit(1);
+  if (actions.length || changesets.length || operations.length)
+    fail("RUNTIME_COMMIT_BOUNDARY_PASSED");
+}
+const update = async (
+  db: Db,
+  run: Run,
+  at: Date,
+  patch: Partial<typeof npAgentRuns.$inferInsert>,
+) => {
+  await db
+    .update(npAgentRuns)
+    .set(patch)
+    .where(
+      and(
+        eq(npAgentRuns.siteId, run.siteId),
+        eq(npAgentRuns.id, run.id),
+        eq(npAgentRuns.attempt, run.attempt),
+      ),
+    );
+  await db.insert(npAuditEvents).values({
+    siteId: run.siteId,
+    actorKind: "system",
+    action: "agent.runtime.execution",
+    targetType: "agent-run",
+    targetId: run.id,
+    payload: {
+      fromState: run.state,
+      state: patch.state ?? run.state,
+      attempt: patch.attempt ?? run.attempt,
+    },
+    createdAt: at,
+  });
+};
+const finish = async (db: Db, run: Run, at: Date, state: string, errorCode: string | null) => {
+  await update(db, run, at, {
+    state,
+    leaseUntil: null,
+    runtimeRetryAt: null,
+    finishedAt: at,
+    errorCode,
+    errorMessage: errorCode ? "Agent runtime execution stopped." : null,
+  });
+  return { state };
+};
+/** Close a rejected/revoked/expired approval wait using the existing execution audit owner. */
+export async function npFailAgentRuntimeApprovalInTransactionV1(input: {
+  db: Db;
+  siteId: string;
+  runId: string;
+  now: Date;
+  errorCode: string;
+}): Promise<void> {
+  npAssertAgentPreviewEffectsAllowed();
+  identity(input);
+  if (!/^[A-Z][A-Z0-9_]{0,127}$/.test(input.errorCode)) fail("RUNTIME_ARGUMENT_INVALID", 400);
+  await npWithAgentRuntimeControlTransactionV1(
+    input.siteId,
+    async ({ db }) => {
+      const [run] = await db
+        .select()
+        .from(npAgentRuns)
+        .where(and(eq(npAgentRuns.siteId, input.siteId), eq(npAgentRuns.id, input.runId)))
+        .for("update")
+        .limit(1);
+      if (!run || run.origin !== "runtime") fail("RUNTIME_RESOURCE_UNAVAILABLE", 404);
+      await npRequireAgentRuntimeExecutionIntegrityV1(run);
+      if (!Number.isFinite(input.now.getTime()) || input.now < run.queuedAt)
+        fail("RUNTIME_ARGUMENT_INVALID", 400);
+      if (run.state === "failed" && run.errorCode === input.errorCode) return;
+      if (run.state !== "waiting_approval") fail();
+      await finish(db, run, input.now, "failed", input.errorCode);
+    },
+    input.db,
+  );
+}
 export interface NpAgentRuntimeExecutionStoreV1 {
   claim(input: Identity): Promise<{ state: string; claim: NpAgentRuntimeExecutionClaimV1 | null }>;
   claimApproval(
@@ -122,6 +251,7 @@ export interface NpAgentRuntimeExecutionStoreV1 {
   ): Promise<{ state: string }>;
   waitRetry(input: Claimed & { retryAt: string }): Promise<{ state: string }>;
   cancel(input: Identity): Promise<{ state: string }>;
+  cancelBeforeCommit(input: Identity & { db: Db; executionId: string }): Promise<{ state: string }>;
   recover(input: Identity): Promise<{ state: string; claim: null }>;
 }
 export function createAgentRuntimeExecutionStoreV1(options: {
@@ -190,47 +320,6 @@ export function createAgentRuntimeExecutionStoreV1(options: {
       run.finishedAt
     )
       fail();
-  };
-  const update = async (
-    db: Db,
-    run: Run,
-    at: Date,
-    patch: Partial<typeof npAgentRuns.$inferInsert>,
-  ) => {
-    await db
-      .update(npAgentRuns)
-      .set(patch)
-      .where(
-        and(
-          eq(npAgentRuns.siteId, run.siteId),
-          eq(npAgentRuns.id, run.id),
-          eq(npAgentRuns.attempt, run.attempt),
-        ),
-      );
-    await db.insert(npAuditEvents).values({
-      siteId: run.siteId,
-      actorKind: "system",
-      action: "agent.runtime.execution",
-      targetType: "agent-run",
-      targetId: run.id,
-      payload: {
-        fromState: run.state,
-        state: patch.state ?? run.state,
-        attempt: patch.attempt ?? run.attempt,
-      },
-      createdAt: at,
-    });
-  };
-  const finish = async (db: Db, run: Run, at: Date, state: string, errorCode: string | null) => {
-    await update(db, run, at, {
-      state,
-      leaseUntil: null,
-      runtimeRetryAt: null,
-      finishedAt: at,
-      errorCode,
-      errorMessage: errorCode ? "Agent runtime execution stopped." : null,
-    });
-    return { state };
   };
   const unresolved = async (db: Db, run: Run, context?: NpAgentRuntimeRunContextV1) => {
     const calls = await db
@@ -440,6 +529,15 @@ export function createAgentRuntimeExecutionStoreV1(options: {
         },
       );
     },
+    cancelBeforeCommit: (input) =>
+      options.admission.withRunAuthority(
+        { siteId: input.siteId, runId: input.runId, db: input.db },
+        async ({ db, run, now: at }) => {
+          if (terminal.includes(run.state)) fail("RUNTIME_EXECUTION_CONFLICT");
+          await npRequireAgentRuntimePreCommitV1(input);
+          return finish(db, run, at, "cancelled", "RUNTIME_CANCELLED");
+        },
+      ),
     cancel: (input) =>
       locked(closed(input), async (db, run, at) =>
         terminal.includes(run.state)

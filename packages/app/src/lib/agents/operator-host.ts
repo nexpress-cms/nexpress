@@ -1,3 +1,10 @@
+import {
+  npNormalizeCacheInvalidationRequest,
+  npInvalidateCache,
+  getOptionalCacheInvalidationAdapter,
+  type NpCacheInvalidationRequest,
+} from "@nexpress/core/cache";
+import { isDeepStrictEqual } from "node:util";
 import { npDigestAgentOpsStatusReportV1 } from "@nexpress/core/agent-contract";
 import { getCollectionConfig, getCollectionZodSchema } from "@nexpress/core/collections";
 import { NpError } from "@nexpress/core";
@@ -13,6 +20,8 @@ import type {
   NpAgentAuditCheckV1,
   NpAgentJsonObject,
   NpAgentOpsPlanInputV1,
+  NpAgentExecutableOpsPlanInputV1,
+  NpAgentOpsExecuteInputV1,
   NpAgentPlanOnlyOpsPlanInputV1,
   NpAgentOpsStatusInputV1,
   NpAgentOpsStatusOutputV1,
@@ -31,8 +40,12 @@ import {
 type Family = NpAgentOpsStatusInputV1["families"][number];
 type Check = NpOpsStatusV1["checks"][number];
 type Request = NpAgentReadCapabilityContextV1 & {
-  capabilityId: "ops.status" | "audit.run" | "ops.plan";
-  input: NpAgentOpsStatusInputV1 | NpAgentAuditRunInputV1 | NpAgentOpsPlanInputV1;
+  capabilityId: "ops.status" | "audit.run" | "ops.plan" | "ops.execute";
+  input:
+    | NpAgentOpsStatusInputV1
+    | NpAgentAuditRunInputV1
+    | NpAgentOpsPlanInputV1
+    | NpAgentOpsExecuteInputV1;
 };
 /** A scoped owner returns only measured states and opaque, retained evidence references. */
 export interface NpAgentOperatorScopedObservationV1 {
@@ -40,6 +53,19 @@ export interface NpAgentOperatorScopedObservationV1 {
   evidenceRefs: string[];
 }
 export interface NpAgentOperatorAppHostOptionsV1 {
+  /** Explicit deployment-owned route/tag resolver. Must return only the selected site's exact target. */
+  cacheTargets?(
+    request: NpAgentOperatorHostContextV1 & {
+      input: Extract<NpAgentExecutableOpsPlanInputV1, { action: "cache.revalidate" }>;
+    },
+  ): Promise<NpCacheInvalidationRequest>;
+  /** Real Core Runtime control owner, explicitly created and installed by the host. */
+  runtimeOperations?: {
+    plan: NonNullable<NpAgentOperatorHostV1["plan"]>;
+    execute: NonNullable<NpAgentOperatorHostV1["execute"]>;
+  };
+  /** Current staff target ACL; this must never substitute the original requester's access. */
+  authorizeApproval?: NonNullable<NpAgentOperatorHostV1["assertApprovalAccess"]>;
   /** Must enforce current site, caller and selected collection/item visibility. */
   authorize(request: Request): Promise<void>;
   /** Explicitly maps this site/caller to permission to inspect the whole deployment. */
@@ -100,6 +126,36 @@ function fixedCheck(family: Family, state?: Check["state"]): Check {
 }
 /** Explicit factory only; creating this adapter never enables an Agent, worker or provider. */
 export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOptionsV1) {
+  async function cacheArtifact(
+    request: NpAgentOperatorHostContextV1 & {
+      input: Extract<NpAgentExecutableOpsPlanInputV1, { action: "cache.revalidate" }>;
+    },
+  ) {
+    if (!options.cacheTargets) unavailable();
+    const adapter = getOptionalCacheInvalidationAdapter();
+    if (!adapter) unavailable();
+    const normalized = npNormalizeCacheInvalidationRequest(await options.cacheTargets(request));
+    const target = request.input.target;
+    if (
+      normalized.siteId !== request.siteId ||
+      normalized.source !==
+        (target.kind === "collection" || target.kind === "document" ? "collection" : target.kind) ||
+      normalized.collection !==
+        (target.kind === "collection" || target.kind === "document"
+          ? target.collection
+          : undefined) ||
+      normalized.documentSlug !== (target.kind === "document" ? target.documentSlug : undefined) ||
+      normalized.navigationLocation !== (target.kind === "navigation" ? target.location : undefined)
+    )
+      unavailable();
+    return JSON.parse(
+      JSON.stringify({
+        schemaVersion: "np.agent-operator-cache-plan.v1",
+        adapterKind: adapter.kind,
+        request: normalized,
+      }),
+    ) as NpAgentJsonObject;
+  }
   async function readFamily(family: Family, request: Request): Promise<Check> {
     const scoped = options.scopedReaders?.[family];
     if (scoped) {
@@ -172,6 +228,40 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
   }
   const host: NpAgentOperatorHostV1 = {
     assertAccess,
+    async assertApprovalAccess(request) {
+      if (!options.authorizeApproval) unavailable();
+      await options.authorizeApproval(request);
+    },
+    async execute(request) {
+      await assertAccess({ ...request, capabilityId: "ops.execute" });
+      if (request.input.action !== "cache.revalidate") {
+        if (!options.runtimeOperations) unavailable();
+        const result = await options.runtimeOperations.execute(request);
+        await assertAccess({ ...request, capabilityId: "ops.execute" });
+        return result;
+      }
+      const artifact = await cacheArtifact({ ...request, input: request.input });
+      if (
+        request.contractId !== "cache.invalidation" ||
+        !isDeepStrictEqual(artifact, request.artifact)
+      )
+        unavailable();
+      await assertAccess({ ...request, capabilityId: "ops.execute" });
+      if (request.abortSignal.aborted) unavailable();
+      const invalidation = npNormalizeCacheInvalidationRequest(artifact.request);
+      const result = await npInvalidateCache(invalidation);
+      await assertAccess({ ...request, capabilityId: "ops.execute" });
+      return {
+        state: result.status === "applied" ? "succeeded" : "failed",
+        evidence: {
+          status: result.status,
+          paths: { ...result.paths },
+          tags: { ...result.tags },
+          cdn: { ...result.cdn },
+        },
+        verificationRefs: [`operator-execution:${request.executionId}`],
+      };
+    },
     async audit(request) {
       const authorization: Request = { ...request, capabilityId: "audit.run" };
       await options.authorize(authorization);
@@ -237,11 +327,29 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
     },
     async plan(request) {
       await assertAccess({ ...request, capabilityId: "ops.plan" });
+      if (request.input.action === "cache.revalidate") {
+        const artifact = await cacheArtifact({ ...request, input: request.input });
+        await assertAccess({ ...request, capabilityId: "ops.plan" });
+        return {
+          artifact,
+          contractId: "cache.invalidation",
+          projectCommand: "",
+          checks: [
+            { id: "cache.adapter-configured", status: "pass" },
+            { id: "cache.site-targets", status: "pass" },
+          ],
+        };
+      }
       if (
-        ["cache.revalidate", "agent.run.retry", "agent.run.cancel"].includes(request.input.action)
-      )
-        unavailable();
-      const action = request.input.action as NpAgentPlanOnlyOpsPlanInputV1["action"];
+        request.input.action === "agent.run.retry" ||
+        request.input.action === "agent.run.cancel"
+      ) {
+        if (!options.runtimeOperations) unavailable();
+        const result = await options.runtimeOperations.plan(request);
+        await assertAccess({ ...request, capabilityId: "ops.plan" });
+        return result;
+      }
+      const action = request.input.action;
       const owner = options.planOwners?.[action];
       if (owner) {
         const result = await owner(request);

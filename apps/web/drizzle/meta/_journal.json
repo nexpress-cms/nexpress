@@ -463,6 +463,20 @@
       "when": 1790672515929,
       "tag": "0065_agent-operator-source-reference-lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1790685687779,
+      "tag": "0066_agent-operator-approved-execution",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1790685702428,
+      "tag": "0067_agent-operator-execution-reference-lifecycle",
+      "breakpoints": true
     }
   ]
 }

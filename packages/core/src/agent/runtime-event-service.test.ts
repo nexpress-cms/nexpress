@@ -17,6 +17,7 @@ describe("Runtime event effects in the sealed preview context", () => {
       const admit = vi.fn(() => Promise.reject(new Error("Unexpected Run admission")));
       const admission: NpAgentRuntimeAdmissionV1 = {
         admit,
+        retry: () => Promise.reject(new Error("Unexpected Run retry")),
         withCurrentRun: () => Promise.reject(new Error("Unexpected Run read")),
         withRunAuthority: () => Promise.reject(new Error("Unexpected authority read")),
       };

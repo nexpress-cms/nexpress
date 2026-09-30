@@ -4,6 +4,7 @@ import { createAgentRuntimeBreakersV1 } from "./runtime-breakers.js";
 import type { NpAgentRuntimeAdmissionV1 } from "./runtime-admission.js";
 const admission: NpAgentRuntimeAdmissionV1 = {
   admit: () => Promise.reject(new Error("unused")),
+  retry: () => Promise.reject(new Error("unused")),
   withCurrentRun: () => Promise.reject(new Error("unused")),
   withRunAuthority: () => Promise.reject(new Error("unused")),
 };

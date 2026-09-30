@@ -115,6 +115,85 @@ test.describe("Agent approval review", () => {
       });
     }
   });
+  test("shows exact Operator targets and keeps approval separate from execution", async ({
+    page,
+  }, testInfo) => {
+    await isolateE2ERateLimitBucket(page.context(), 245 + testInfo.retry);
+    await signInAsE2EAdmin(page);
+    let operation: unknown = {
+      action: "cache.revalidate",
+      target: { kind: "document", collection: "posts", documentSlug: "operator-review" },
+    };
+    await page.route(`**/api/admin/agents/approvals/${id}`, (route) =>
+      route.fulfill({
+        json: npRequireAgentApprovalDetailV1({
+          ...detail(),
+          item: {
+            ...item(),
+            target: {
+              kind: "action",
+              actionId: id,
+              runId: null,
+              agentId: null,
+              proposalHash: hash,
+            },
+            capabilityId: "ops.execute",
+            intendedOperation: null,
+            risk: "sensitive",
+            reauthentication: { mode: "recent", maxAgeSeconds: 300, assurance: "staff-primary" },
+            requester: { kind: "principal", id },
+            requiredScopes: ["ops:execute"],
+            approval: { ...item().approval, requiredHumanCapabilities: ["admin.manage"] },
+          },
+          actionReview: {
+            actionId: id,
+            proposalHash: hash,
+            capabilityId: "ops.execute",
+            planId: id,
+            planDigest: hash,
+            operation,
+            expiresAt: "2026-09-30T01:00:00.000Z",
+            checks: [{ id: "target.current-authority", status: "pass" }],
+          },
+        }),
+      }),
+    );
+    await page.goto(`/admin/agents/approvals/${id}`);
+    const facts = page.getByRole("region", { name: "Operator action" });
+    await expect(facts.getByRole("heading", { name: "Revalidate cache" })).toBeVisible();
+    await expect(
+      facts.getByText("Document: posts / operator-review", { exact: true }),
+    ).toBeVisible();
+    await expect(facts.getByLabel("Plan checks")).toContainText("target.current-authority: pass");
+    await expect(page.getByText(/through a separate execution request/)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /execute|revalidate|retry run|cancel run/i }),
+    ).toHaveCount(0);
+    for (const width of [390, 1280]) {
+      await page.setViewportSize({ width, height: 900 });
+      const closeNavigation = page.getByRole("button", { name: "Close navigation" }).last();
+      if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+        await closeNavigation.click();
+      await expect
+        .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+        .toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath(`operator-approval-${width}.png`),
+        fullPage: true,
+        animations: "disabled",
+      });
+    }
+    operation = { action: "agent.run.retry", target: { kind: "run", runId: id } };
+    await page.reload();
+    await expect(facts.getByRole("heading", { name: "Retry failed Agent run" })).toBeVisible();
+    await expect(facts.getByText(`Agent run: ${id}`, { exact: true })).toBeVisible();
+    operation = { action: "agent.run.cancel", target: { kind: "run", runId: id } };
+    await page.reload();
+    await expect(
+      facts.getByRole("heading", { name: "Cancel Agent run before commit" }),
+    ).toBeVisible();
+    await expect(facts.getByText(/only before its commit boundary/)).toBeVisible();
+  });
   test("distinguishes unavailable runtime from an authorized empty queue", async ({
     page,
   }, testInfo) => {

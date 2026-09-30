@@ -25,6 +25,7 @@ import {
   npAgentIncidents,
   npAgentContainments,
   npAgentOperatorPlans,
+  npAgentOperatorExecutions,
   npAgentConnectionAuthRequests,
   npAgentConnectionConfigVersions,
   npAgentConnectionOperations,
@@ -74,6 +75,7 @@ interface NpAgentSiteOwnedTableDescriptor {
  * from the frozen inventory and is handled only by the future saga commit.
  */
 export const npAgentSiteDeletionOrderV1 = Object.freeze([
+  "np_agent_operator_executions",
   "np_agent_operator_plans",
   "np_agent_notifications",
   "np_agent_feedback",
@@ -152,6 +154,11 @@ const descriptors: Record<
     siteId: npAgentIncidentSignals.siteId,
   },
   np_agent_signals: { table: npAgentSignals, id: npAgentSignals.id, siteId: npAgentSignals.siteId },
+  np_agent_operator_executions: {
+    table: npAgentOperatorExecutions,
+    id: npAgentOperatorExecutions.id,
+    siteId: npAgentOperatorExecutions.siteId,
+  },
   np_agent_operator_plans: {
     table: npAgentOperatorPlans,
     id: npAgentOperatorPlans.id,

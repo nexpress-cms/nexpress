@@ -298,6 +298,61 @@ function ApprovalActionFacts({
 }: {
   review: NonNullable<NpAgentApprovalDetailV1["actionReview"]>;
 }) {
+  if (review.capabilityId === "ops.execute") {
+    const operation = review.operation;
+    const target = operation.target;
+    const label =
+      operation.action === "cache.revalidate"
+        ? "Revalidate cache"
+        : operation.action === "agent.run.retry"
+          ? "Retry failed Agent run"
+          : "Cancel Agent run before commit";
+    const targetLabel =
+      target.kind === "site"
+        ? "Current site"
+        : target.kind === "collection"
+          ? `Collection: ${target.collection}`
+          : target.kind === "document"
+            ? `Document: ${target.collection} / ${target.documentSlug}`
+            : target.kind === "navigation"
+              ? `Navigation: ${target.location}`
+              : `Agent run: ${target.runId}`;
+    return (
+      <section className="space-y-3" aria-label="Operator action">
+        <h2 className="text-lg font-semibold">{label}</h2>
+        <p>
+          {operation.action === "cache.revalidate"
+            ? "Request cache revalidation for this exact target. Execution verifies the configured cache adapter’s result."
+            : operation.action === "agent.run.retry"
+              ? "Create a new run linked to this failed run after checking current authority, policy and budget again."
+              : "Cooperatively cancel this run only before its commit boundary. A run that has started committing requires a new review."}
+        </p>
+        <dl className="grid gap-2 text-sm">
+          <dt>Target</dt>
+          <dd className="break-all">{targetLabel}</dd>
+          <dt>Plan</dt>
+          <dd className="break-all">{review.planId}</dd>
+          <dt>Plan digest</dt>
+          <dd className="break-all">{review.planDigest}</dd>
+          <dt>Plan expires</dt>
+          <dd>
+            <Time value={review.expiresAt} />
+          </dd>
+          <dt>Action</dt>
+          <dd className="break-all">{review.actionId}</dd>
+          <dt>Proposal hash</dt>
+          <dd className="break-all">{review.proposalHash}</dd>
+        </dl>
+        <ul className="space-y-1 text-sm" aria-label="Plan checks">
+          {review.checks.map((check) => (
+            <li key={check.id} className="break-all">
+              {check.id}: {check.status}
+            </li>
+          ))}
+        </ul>
+      </section>
+    );
+  }
   const restore = review.capabilityId === "moderation.restore";
   return (
     <section className="space-y-3" aria-label="Content moderation action">
@@ -736,7 +791,7 @@ export function AgentApprovalDetailView({ id }: { id: string }) {
               </dl>
               <p>
                 {detail.actionReview
-                  ? "Approval records a human decision. Apply the approved action through a separate execution request, which rechecks current authority and this exact content version."
+                  ? "Approval records a human decision. Apply the approved action through a separate execution request, which rechecks current authority and this exact reviewed target and plan."
                   : "Approval records a human decision. Execute the approved operation from the current ChangeSet review after its authority and evidence checks."}
               </p>
             </section>

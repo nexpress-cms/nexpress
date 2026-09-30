@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { NpAgentJsonObject, NpAgentJsonSchema } from "./types.js";
 import { npRequireAgentProviderSchemaValueV1 } from "../agent/provider-auth-contract.js";
 import {
   npAgentAuditCheckFamilies,
@@ -6,6 +7,11 @@ import {
   npAgentAuditRunInputSchemaV1,
   npAgentOpsStatusInputSchemaV1,
   npAgentOpsPlanInputSchemaV1,
+  npAgentOpsPlanOutputSchemaV1,
+  npAgentOpsExecuteInputSchemaV1,
+  npAgentOpsExecuteOutputSchemaV1,
+  npRequireAgentOpsExecuteInputV1,
+  npRequireAgentOpsExecuteOutputV1,
   npAgentOperatorCapabilityDescriptorsV1,
   npBuildAgentOperatorCapabilityDefinitionCanonicalV1,
   npDigestAgentOpsStatusReportV1,
@@ -202,18 +208,156 @@ describe("Operator capability contracts", () => {
       execution: {
         kind: "agent-executable",
         approvalId: id,
-        approvalResource: `nexpress://approvals/${id}`,
+        approvalResource: `/admin/agents/approvals/${id}`,
       },
     };
     expect(npRequireAgentOpsPlanOutputV1(executable)).toEqual(executable);
+    const executionSchema = (npAgentOpsPlanOutputSchemaV1.properties as NpAgentJsonObject)
+      .execution as NpAgentJsonSchema;
+    npRequireAgentProviderSchemaValueV1(executionSchema, executable.execution);
+    for (const approvalResource of [
+      `nexpress://approvals/${id}`,
+      `https://example.test/admin/agents/approvals/${id}`,
+      `/admin/agents/approvals/${id}?redirect=other`,
+      "/admin/agents/approvals/not-a-uuid",
+    ])
+      expect(() =>
+        npRequireAgentProviderSchemaValueV1(executionSchema, {
+          ...executable.execution,
+          approvalResource,
+        }),
+      ).toThrow();
     for (const value of [
       { ...plan(), execution: executable.execution },
       { ...executable, execution: plan().execution },
       { ...plan(), expiresAt: "2026-09-29T21:00:00+09:00" },
       { ...plan(), execution: { ...plan().execution, projectCommand: "pnpm\nexecute" } },
       { ...executable, execution: { ...executable.execution, approvalResource: "not a resource" } },
+      {
+        ...executable,
+        execution: { ...executable.execution, approvalResource: `nexpress://approvals/${id}` },
+      },
+      {
+        ...executable,
+        execution: {
+          ...executable.execution,
+          approvalResource: "/admin/agents/approvals/01990000-0000-7000-8000-000000000002",
+        },
+      },
     ])
       expect(() => npRequireAgentOpsPlanOutputV1(value)).toThrow();
+  });
+
+  it("accepts only exact approved execution bindings and closed site-owned actions", () => {
+    const common = { planId: id, planDigest: digest, approvalId: id };
+    const cases: NpAgentJsonObject[] = [
+      { ...common, action: "cache.revalidate", target: { kind: "site" } },
+      {
+        ...common,
+        action: "cache.revalidate",
+        target: { kind: "collection", collection: "posts" },
+      },
+      {
+        ...common,
+        action: "cache.revalidate",
+        target: { kind: "document", collection: "posts", documentSlug: "first" },
+      },
+      { ...common, action: "cache.revalidate", target: { kind: "navigation", location: "header" } },
+      { ...common, action: "agent.run.retry", failedRunId: id },
+      { ...common, action: "agent.run.cancel", runId: id },
+    ];
+    for (const value of cases) {
+      expect(npRequireAgentOpsExecuteInputV1(value)).toEqual(value);
+      npRequireAgentProviderSchemaValueV1(npAgentOpsExecuteInputSchemaV1, value);
+      const request = {
+        schemaVersion: "np.agent-invocation-request.v1",
+        capabilityId: "ops.execute",
+        arguments: { input: value, idempotencyKey: "execute:1" },
+      };
+      expect(npRequireAgentOperatorCapabilityInvocationRequestV1(request)).toEqual(request);
+      const invalidBindings: NpAgentJsonObject[] = [
+        { ...value, approvalId: null },
+        { ...value, planId: "invalid" },
+        { ...value, planDigest: "unbound" },
+        { ...value, siteId: id },
+        { ...value, command: "pnpm ops:execute" },
+      ];
+      for (const invalid of invalidBindings) {
+        expect(() => npRequireAgentOpsExecuteInputV1(invalid)).toThrow();
+        expect(() =>
+          npRequireAgentProviderSchemaValueV1(npAgentOpsExecuteInputSchemaV1, invalid),
+        ).toThrow();
+      }
+    }
+    const invalidOperations: NpAgentJsonObject[] = [
+      { ...common, action: "restore.plan", target: { kind: "backup", manifestId: "backup-1" } },
+      { ...common, action: "agent.run.retry", runId: id },
+      { ...common, action: "agent.run.cancel", failedRunId: id },
+      { ...common, action: "agent.run.retry", failedRunId: id, runId: id },
+      { ...common, action: "cache.revalidate", target: { kind: "site", siteId: id } },
+      { ...common, action: "cache.revalidate", target: { kind: "path", path: "/admin" } },
+    ];
+    for (const invalid of invalidOperations) {
+      expect(() => npRequireAgentOpsExecuteInputV1(invalid)).toThrow();
+      expect(() =>
+        npRequireAgentProviderSchemaValueV1(npAgentOpsExecuteInputSchemaV1, invalid),
+      ).toThrow();
+    }
+    const definition = npBuildAgentOperatorCapabilityDefinitionCanonicalV1("ops.execute");
+    expect(definition.capabilities[0].descriptor).toMatchObject({
+      requiredScopes: ["ops:execute"],
+      risk: "sensitive",
+      approval: "human",
+      execution: "durable",
+      idempotency: "required",
+      effectProfiles: [
+        {
+          id: "ops.execute",
+          kind: "mutation",
+          reversibility: "none",
+          minimumGatewayExposure: "approved-execute",
+          verifierId: "ops.execute.verify",
+          compensatorId: null,
+        },
+      ],
+    });
+  });
+
+  it("keeps execution results terminal, bounded and evidence-only", () => {
+    const output = {
+      schemaVersion: "np.agent-ops-execution.v1",
+      planId: id,
+      action: "cache.revalidate",
+      state: "succeeded",
+      resultDigest: digest,
+      verificationRefs: ["audit:1"],
+    };
+    for (const state of ["succeeded", "failed", "conflicted"]) {
+      const value = { ...output, state };
+      expect(npRequireAgentOpsExecuteOutputV1(value)).toEqual(value);
+      npRequireAgentProviderSchemaValueV1(npAgentOpsExecuteOutputSchemaV1, value);
+      const result = {
+        schemaVersion: "np.agent-operator-invocation-result.v1",
+        capabilityId: "ops.execute",
+        invocationId: id,
+        output: value,
+      };
+      expect(npRequireAgentOperatorCapabilityInvocationResultV1(result)).toEqual(result);
+    }
+    for (const value of [
+      { ...output, state: "queued" },
+      { ...output, action: "queue.global.plan" },
+      { ...output, resultDigest: null },
+      { ...output, verificationRefs: ["audit:1", "audit:1"] },
+      { ...output, verificationRefs: Array.from({ length: 33 }, (_, i) => `audit:${i}`) },
+      { ...output, verificationRefs: ["unsafe reference"] },
+      { ...output, artifact: { credentials: "hidden" } },
+    ]) {
+      expect(() => npRequireAgentOpsExecuteOutputV1(value)).toThrow();
+      expect(() =>
+        npRequireAgentProviderSchemaValueV1(npAgentOpsExecuteOutputSchemaV1, value),
+      ).toThrow();
+    }
   });
 
   it("requires idempotency and binds selected invocation output to its capability", () => {

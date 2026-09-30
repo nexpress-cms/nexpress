@@ -661,8 +661,10 @@ unknown execution outcomes and recipe/evaluation gates stay open.
 
 The [Operator diagnostics and planning flow](r6-operator-diagnostics-flow.md)
 records the explicitly installed status, bounded audit and plan-only artifact
-boundary. The approved three-action executor, additional scoped collectors,
-recipe setup and evaluations remain open; this slice does not close AP-602.
+boundary. The [approved execution flow](r6-operator-execution-flow.md) connects the
+three closed operations to human approval, durable dispatch and Runtime
+continuation. Additional scoped collectors, recipe setup and evaluations
+remain open; these slices do not close AP-602.
 
 ### R7 — Guardian and application security orchestration
 
