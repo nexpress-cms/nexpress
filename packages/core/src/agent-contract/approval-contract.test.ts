@@ -121,6 +121,53 @@ describe("approval request, challenge and safe review contracts", () => {
       expect(() => npRequireAgentApprovalDetailV1({ ...detail, actionReview: invalid })).toThrow();
     expect(() => npRequireAgentApprovalDetailV1({ ...detail, item: item() })).toThrow();
   });
+  it("binds Operator approval review to executable plans and excludes private artifacts", () => {
+    const actionReview = {
+      capabilityId: "ops.execute",
+      actionId: id,
+      proposalHash: hash,
+      planId: id,
+      planDigest: hash,
+      operation: { action: "agent.run.retry", target: { kind: "run", runId: id } },
+      expiresAt: later,
+      checks: [{ id: "run.failed", status: "pass" }],
+    };
+    const detail = {
+      schemaVersion: "np.agent-approval-detail.v1",
+      item: {
+        ...item(),
+        target: { kind: "action", actionId: id, runId: id, agentId: null, proposalHash: hash },
+        capabilityId: "ops.execute",
+        intendedOperation: null,
+      },
+      review: null,
+      rollbackReview: null,
+      actionReview,
+    };
+    expect(npRequireAgentApprovalDetailV1(detail).actionReview).toEqual(actionReview);
+    for (const invalid of [
+      { ...actionReview, actionId: "018f0f30-cd7b-7cc2-8b16-8c052c259bd2" },
+      { ...actionReview, proposalHash: `cj1:sha256:${"B".repeat(43)}` },
+      { ...actionReview, planDigest: "unbound" },
+      {
+        ...actionReview,
+        operation: { action: "restore.plan", target: { kind: "backup", manifestId: "backup-1" } },
+      },
+      { ...actionReview, checks: [] },
+      { ...actionReview, checks: [...actionReview.checks, ...actionReview.checks] },
+      { ...actionReview, checks: [{ id: "invalid id", status: "pass" }] },
+      { ...actionReview, expiresAt: "2026-09-09T01:00:00+09:00" },
+      { ...actionReview, privateArtifact: { manifest: "private" } },
+    ])
+      expect(() => npRequireAgentApprovalDetailV1({ ...detail, actionReview: invalid })).toThrow();
+    expect(() =>
+      npRequireAgentApprovalDetailV1({
+        ...detail,
+        item: { ...detail.item, capabilityId: "moderation.restore" },
+      }),
+    ).toThrow();
+    expect(npAnalyzeAgentJsonSchema(npAgentApprovalDetailSchemaV1).ok).toBe(true);
+  });
   it("closes decision bodies and binds schedule time to intent", () => {
     expect(npRequireAgentChangeSetRequestApprovalInputV1(request)).toEqual(request);
     expect(

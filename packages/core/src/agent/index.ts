@@ -41,6 +41,7 @@ export * from "./preview-artifact-service.js";
 export * from "./changeset-capability.js";
 
 export * from "./approval-service.js";
+export * from "./approval-action-targets.js";
 
 export * from "./runtime-controls.js";
 export * from "./runtime-service.js";
@@ -96,4 +97,5 @@ export * from "./incident-assignment-service.js";
 
 export * from "./incident-notifications-service.js";
 export * from "./operator-service.js";
+export * from "./runtime-operator-controls.js";
 export * from "./operator-capability.js";

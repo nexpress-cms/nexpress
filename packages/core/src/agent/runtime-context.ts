@@ -2,6 +2,8 @@ import { npMeasureAgentRuntimeRunUsageV1 } from "./runtime-usage-capacity.js";
 import {
   npRequireAgentOpsStatusOutputV1,
   npRequireAgentOpsPlanOutputV1,
+  npRequireAgentOpsExecuteOutputV1,
+  type NpAgentOpsExecuteOutputV1,
   npRequireAgentAuditRunOutputV1,
   type NpAgentOpsStatusOutputV1,
   type NpAgentOpsPlanOutputV1,
@@ -86,7 +88,11 @@ export interface NpAgentRuntimeContextCapabilitySourceV1 {
       state: "succeeded";
       safeCode: null;
       references?: NpAgentRuntimeChangeSetReferencesV1;
-      operatorOutput?: NpAgentOpsStatusOutputV1 | NpAgentOpsPlanOutputV1 | NpAgentAuditRunOutputV1;
+      operatorOutput?:
+        | NpAgentOpsStatusOutputV1
+        | NpAgentOpsPlanOutputV1
+        | NpAgentAuditRunOutputV1
+        | NpAgentOpsExecuteOutputV1;
     }[]
   >;
 }
@@ -187,16 +193,22 @@ export function npProjectAgentRuntimeActionOutcomeV1(
     unavailable();
   const capabilityId = row.capabilityId as NpAgentCapabilityId;
   if (
-    ["ops.status", "ops.plan", "audit.run"].includes(capabilityId) &&
+    ["ops.status", "ops.plan", "audit.run", "ops.execute"].includes(capabilityId) &&
     row.operatorOutput === undefined
   )
     unavailable();
   let references: NpAgentRuntimeChangeSetReferencesV1 | undefined;
   let operatorOutput:
-    NpAgentOpsStatusOutputV1 | NpAgentOpsPlanOutputV1 | NpAgentAuditRunOutputV1 | undefined;
+    | NpAgentOpsStatusOutputV1
+    | NpAgentOpsPlanOutputV1
+    | NpAgentAuditRunOutputV1
+    | NpAgentOpsExecuteOutputV1
+    | undefined;
   if (row.operatorOutput !== undefined) {
     if (capabilityId === "ops.status")
       operatorOutput = npRequireAgentOpsStatusOutputV1(row.operatorOutput);
+    else if (capabilityId === "ops.execute")
+      operatorOutput = npRequireAgentOpsExecuteOutputV1(row.operatorOutput);
     else if (capabilityId === "ops.plan")
       operatorOutput = npRequireAgentOpsPlanOutputV1(row.operatorOutput);
     else if (capabilityId === "audit.run") {

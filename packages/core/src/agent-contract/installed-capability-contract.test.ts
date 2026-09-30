@@ -55,6 +55,7 @@ describe("installed framework capability projection", () => {
       "moderation.restore",
       "audit.run",
       "ops.plan",
+      "ops.execute",
     ]);
     for (const id of npAgentReadCapabilityIdsV1)
       expect(npAgentInstalledCapabilityDescriptorsV1[id]).toBe(
@@ -90,7 +91,7 @@ describe("installed framework capability projection", () => {
       createHash("sha256")
         .update(JSON.stringify(npAgentInstalledCapabilityDescriptorsV1))
         .digest("hex"),
-    ).toMatchInlineSnapshot(`"ba486952b131d404b46e3968eed9175339fdb70fe688a0881d78f846cd25ea9b"`);
+    ).toMatchInlineSnapshot(`"234dba89ce7cbfc7f90a89414bcb0d3879c57bceec563841833c1f6f59df9092"`);
   });
   it("reuses the whole wire and closes every workflow object", () => {
     expect(Object.keys(npAgentChangeSetWireSchemaV1.properties as object)).toEqual(

@@ -39,6 +39,12 @@ export function createAgentOperatorCapabilityFacadeV1(service: NpAgentOperatorSe
       });
       return { ...projected, ...(result.task ? { task: result.task } : {}) };
     },
+    inspectRuntimeApproval: (
+      ...args: Parameters<NpAgentOperatorServiceV1["inspectRuntimeApproval"]>
+    ) => service.inspectRuntimeApproval(...args),
+    resumeRuntimeApproval: (
+      ...args: Parameters<NpAgentOperatorServiceV1["resumeRuntimeApproval"]>
+    ) => service.resumeRuntimeApproval(...args),
     invokeRuntime: (...args: Parameters<NpAgentOperatorServiceV1["invokeRuntimeCapability"]>) =>
       service.invokeRuntimeCapability(...args),
     projectRuntimeAction: (...args: Parameters<NpAgentOperatorServiceV1["projectRuntimeAction"]>) =>

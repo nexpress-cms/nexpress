@@ -4409,6 +4409,7 @@ export const npAgentOperatorPlans = pgTable(
       .notNull()
       .references(() => npSites.id, { onDelete: "restrict" }),
     invocationId: uuid("invocation_id").notNull(),
+    approvalActionId: uuid("approval_action_id"),
     auditEventId: uuid("audit_event_id")
       .notNull()
       .references(() => npAuditEvents.id, { onDelete: "restrict" }),
@@ -4422,6 +4423,12 @@ export const npAgentOperatorPlans = pgTable(
   (t) => [
     unique("np_agent_operator_plans_site_id_id_unique").on(t.siteId, t.id),
     unique("np_agent_operator_plans_invocation_unique").on(t.invocationId),
+    unique("np_agent_operator_plans_approval_action_unique").on(t.approvalActionId),
+    foreignKey({
+      name: "np_agent_operator_plans_approval_action_fk",
+      columns: [t.siteId, t.approvalActionId],
+      foreignColumns: [npAgentActions.siteId, npAgentActions.id],
+    }).onDelete("restrict"),
     foreignKey({
       name: "np_agent_operator_plans_invocation_fk",
       columns: [t.siteId, t.invocationId],
@@ -4434,6 +4441,75 @@ export const npAgentOperatorPlans = pgTable(
     check(
       "np_agent_operator_plans_time_check",
       sql`(${t.expiresAt}>${t.createdAt} and ${t.expiresAt}<=${t.createdAt}+interval '24 hours') is true`,
+    ),
+  ],
+);
+
+/** Durable dispatch fence. Unknown external effects are retained and never auto-retried. */
+export const npAgentOperatorExecutions = pgTable(
+  "np_agent_operator_executions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    siteId: text("site_id")
+      .notNull()
+      .references(() => npSites.id, { onDelete: "restrict" }),
+    planId: uuid("plan_id").notNull(),
+    invocationId: uuid("invocation_id").notNull(),
+    actionId: uuid("action_id").notNull(),
+    sourceRunId: uuid("source_run_id"),
+    resultRunId: uuid("result_run_id"),
+    state: text("state").notNull(),
+    reservedAt: timestamp("reserved_at", { withTimezone: true, mode: "date" }).notNull(),
+    dispatchedAt: timestamp("dispatched_at", { withTimezone: true, mode: "date" }),
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
+    resultCanonical: jsonb("result_canonical").$type<NpAgentJsonObject>(),
+    evidenceCanonical: jsonb("evidence_canonical").$type<NpAgentJsonObject>(),
+    resultDigest: text("result_digest"),
+  },
+  (t) => [
+    unique("np_agent_operator_executions_site_id_id_unique").on(t.siteId, t.id),
+    unique("np_agent_operator_executions_plan_unique").on(t.planId),
+    unique("np_agent_operator_executions_invocation_unique").on(t.invocationId),
+    foreignKey({
+      name: "np_agent_operator_executions_plan_fk",
+      columns: [t.siteId, t.planId],
+      foreignColumns: [npAgentOperatorPlans.siteId, npAgentOperatorPlans.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_operator_executions_invocation_fk",
+      columns: [t.siteId, t.invocationId],
+      foreignColumns: [npAgentInvocations.siteId, npAgentInvocations.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_operator_executions_action_fk",
+      columns: [t.siteId, t.actionId],
+      foreignColumns: [npAgentActions.siteId, npAgentActions.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_operator_executions_source_run_fk",
+      columns: [t.siteId, t.sourceRunId],
+      foreignColumns: [npAgentRuns.siteId, npAgentRuns.id],
+    }).onDelete("restrict"),
+    foreignKey({
+      name: "np_agent_operator_executions_result_run_fk",
+      columns: [t.siteId, t.resultRunId],
+      foreignColumns: [npAgentRuns.siteId, npAgentRuns.id],
+    }).onDelete("restrict"),
+    check(
+      "np_agent_operator_executions_state_check",
+      sql`${t.state} in ('reserved','dispatching','succeeded','failed','conflicted','unknown')`,
+    ),
+    check(
+      "np_agent_operator_executions_body_check",
+      sql`((${t.resultCanonical} is null and ${t.resultDigest} is null) or (jsonb_typeof(${t.resultCanonical})='object' and octet_length(${t.resultCanonical}::text)<=65536 and ${t.resultDigest} ~ '^cj1:sha256:[A-Za-z0-9_-]{43}$')) is true and (${t.evidenceCanonical} is null or (jsonb_typeof(${t.evidenceCanonical})='object' and octet_length(${t.evidenceCanonical}::text)<=1048576))`,
+    ),
+    check(
+      "np_agent_operator_executions_time_check",
+      sql`(${t.dispatchedAt} is null or ${t.dispatchedAt}>=${t.reservedAt}) and (${t.finishedAt} is null or ${t.finishedAt}>=${t.reservedAt}) and (${t.state} not in ('succeeded','failed','conflicted') or (${t.finishedAt} is not null and ${t.resultCanonical} is not null))`,
+    ),
+    check(
+      "np_agent_operator_executions_run_check",
+      sql`${t.resultRunId} is null or (${t.sourceRunId} is not null and ${t.resultRunId}<>${t.sourceRunId})`,
     ),
   ],
 );

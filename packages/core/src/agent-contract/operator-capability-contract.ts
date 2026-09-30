@@ -15,7 +15,9 @@ import {
 import { cloneCanonicalRuntimeInput } from "./canonical-runtime-primitives.js";
 import { npRequireAgentCapabilityDescriptor, npRequireAgentContractResult } from "./contract.js";
 import { npRequireAgentCapabilityRegistryCanonical } from "./canonical-capability-registry.js";
+import { npAgentExecutableOpsActionIds } from "./types.js";
 import type {
+  NpAgentExecutableOpsActionId,
   NpAgentJsonObject,
   NpAgentJsonSchema,
   NpAgentJsonValue,
@@ -151,6 +153,25 @@ export type NpAgentOpsPlanOutputV1 = NpAgentOpsPlanOutputCommonV1 &
         };
       }
   );
+export interface NpAgentOpsExecuteCommonV1 {
+  planId: string;
+  planDigest: string;
+  approvalId: string;
+}
+export type NpAgentOpsExecuteInputV1 = NpAgentOpsExecuteCommonV1 &
+  (
+    | Extract<NpAgentOpsPlanInputV1, { action: "cache.revalidate" }>
+    | { action: "agent.run.retry"; failedRunId: string }
+    | { action: "agent.run.cancel"; runId: string }
+  );
+export interface NpAgentOpsExecuteOutputV1 {
+  schemaVersion: "np.agent-ops-execution.v1";
+  planId: string;
+  action: NpAgentExecutableOpsActionId;
+  state: "succeeded" | "failed" | "conflicted";
+  resultDigest: string;
+  verificationRefs: string[];
+}
 const actions = [
   "cache.revalidate",
   "agent.run.retry",
@@ -468,13 +489,15 @@ function planOutput(value: unknown): NpAgentOpsPlanOutputV1 {
   if (executablePlan(operation)) {
     const e = record(r.execution, ["kind", "approvalId", "approvalResource"]);
     if (e.kind !== "agent-executable") bad();
+    const approvalId = canonicalBodyUuid(e.approvalId, path);
+    if (e.approvalResource !== `/admin/agents/approvals/${approvalId}`) bad();
     return {
       ...common,
       operation,
       execution: {
         kind: "agent-executable",
-        approvalId: canonicalBodyUuid(e.approvalId, path),
-        approvalResource: token(e.approvalResource, 512),
+        approvalId,
+        approvalResource: `/admin/agents/approvals/${approvalId}`,
       },
     };
   }
@@ -491,6 +514,65 @@ function planOutput(value: unknown): NpAgentOpsPlanOutputV1 {
     },
   };
 }
+function executeInput(value: unknown): NpAgentOpsExecuteInputV1 {
+  const r = record(
+    value,
+    ["planId", "planDigest", "approvalId", "action"],
+    ["target", "failedRunId", "runId"],
+  );
+  const common = {
+    planId: canonicalBodyUuid(r.planId, path),
+    planDigest: canonicalBodySha256Digest(r.planDigest, path),
+    approvalId: canonicalBodyUuid(r.approvalId, path),
+  };
+  const keys = ["planId", "planDigest", "approvalId", "action"];
+  if (r.action === "cache.revalidate") {
+    record(r, [...keys, "target"]);
+    const operation = planInput({ action: r.action, target: r.target });
+    if (operation.action !== "cache.revalidate") return bad();
+    return { ...common, ...operation };
+  }
+  if (r.action === "agent.run.retry") {
+    record(r, [...keys, "failedRunId"]);
+    return {
+      ...common,
+      action: "agent.run.retry",
+      failedRunId: canonicalBodyUuid(r.failedRunId, path),
+    };
+  }
+  if (r.action === "agent.run.cancel") {
+    record(r, [...keys, "runId"]);
+    return { ...common, action: "agent.run.cancel", runId: canonicalBodyUuid(r.runId, path) };
+  }
+  return bad();
+}
+function executeOutput(value: unknown): NpAgentOpsExecuteOutputV1 {
+  const r = record(value, [
+    "schemaVersion",
+    "planId",
+    "action",
+    "state",
+    "resultDigest",
+    "verificationRefs",
+  ]);
+  if (r.schemaVersion !== "np.agent-ops-execution.v1") bad();
+  return {
+    schemaVersion: "np.agent-ops-execution.v1",
+    planId: canonicalBodyUuid(r.planId, path),
+    action: canonicalBodyEnum(r.action, path, new Set(npAgentExecutableOpsActionIds)),
+    state: canonicalBodyEnum(
+      r.state,
+      path,
+      new Set(["succeeded", "failed", "conflicted"] as const),
+    ),
+    resultDigest: canonicalBodySha256Digest(r.resultDigest, path),
+    verificationRefs: tokens(r.verificationRefs, 32),
+  };
+}
+export const npRequireAgentOpsExecuteInputV1 = (v: unknown) =>
+  npRequireAgentContractResult(analyze(v, executeInput));
+export const npRequireAgentOpsExecuteOutputV1 = (v: unknown) =>
+  npRequireAgentContractResult(analyze(v, executeOutput));
 export const npAnalyzeAgentOpsStatusInputV1 = (v: unknown) => analyze(v, statusInput);
 export const npAnalyzeAgentOpsStatusOutputV1 = (v: unknown) => analyze(v, statusOutput);
 export const npRequireAgentOpsStatusInputV1 = (v: unknown) =>
@@ -667,7 +749,12 @@ const executable = obj({
   execution: obj({
     kind: { const: "agent-executable" },
     approvalId: uuid,
-    approvalResource: { ...tok, maxLength: 512 },
+    approvalResource: {
+      type: "string",
+      minLength: 60,
+      maxLength: 60,
+      pattern: `^/admin/agents/approvals/${npAuthUuidPattern.replace(/^\^/u, "").replace(/\$$/u, "")}$`,
+    },
   }),
 });
 const handoff = obj({
@@ -694,16 +781,50 @@ export const npAgentOpsPlanOutputSchemaV1: NpAgentJsonSchema = {
   oneOf: [executable, handoff],
 };
 
-/** ops.status is installed by the existing read registry; these two require durable identity. */
-export const npAgentOperatorCapabilityIdsV1 = ["audit.run", "ops.plan"] as const;
+const executeCommon = { planId: uuid, planDigest: hash, approvalId: uuid };
+const executeBranches = [
+  obj({
+    ...executeCommon,
+    action: { const: "cache.revalidate" },
+    target: (planBranches[0].properties as NpAgentJsonObject).target,
+  }),
+  obj({ ...executeCommon, action: { const: "agent.run.retry" }, failedRunId: uuid }),
+  obj({ ...executeCommon, action: { const: "agent.run.cancel" }, runId: uuid }),
+];
+export const npAgentOpsExecuteInputSchemaV1: NpAgentJsonSchema = {
+  ...obj(
+    {
+      ...executeCommon,
+      action: choices(npAgentExecutableOpsActionIds),
+      target: (planBranches[0].properties as NpAgentJsonObject).target,
+      failedRunId: uuid,
+      runId: uuid,
+    },
+    [...Object.keys(executeCommon), "action"],
+  ),
+  oneOf: executeBranches,
+};
+export const npAgentOpsExecuteOutputSchemaV1 = obj({
+  schemaVersion: { const: "np.agent-ops-execution.v1" },
+  planId: uuid,
+  action: choices(npAgentExecutableOpsActionIds),
+  state: choices(["succeeded", "failed", "conflicted"]),
+  resultDigest: hash,
+  verificationRefs: { ...arr(tok, 32), uniqueItems: true },
+});
+
+/** ops.status is installed by the existing read registry; these require durable identity. */
+export const npAgentOperatorCapabilityIdsV1 = ["audit.run", "ops.plan", "ops.execute"] as const;
 export type NpAgentOperatorCapabilityIdV1 = (typeof npAgentOperatorCapabilityIdsV1)[number];
 export interface NpAgentOperatorCapabilityInputMapV1 {
   "audit.run": NpAgentAuditRunInputV1;
   "ops.plan": NpAgentOpsPlanInputV1;
+  "ops.execute": NpAgentOpsExecuteInputV1;
 }
 export interface NpAgentOperatorCapabilityOutputMapV1 {
   "audit.run": NpAgentAuditRunOutputV1;
   "ops.plan": NpAgentOpsPlanOutputV1;
+  "ops.execute": NpAgentOpsExecuteOutputV1;
 }
 export type NpAgentOperatorCapabilityInvocationRequestV1 = {
   [C in NpAgentOperatorCapabilityIdV1]: {
@@ -726,7 +847,11 @@ export function npRequireAgentOperatorCapabilityInputV1<C extends NpAgentOperato
 ): NpAgentOperatorCapabilityInputMapV1[C] {
   if (!npIsAgentOperatorCapabilityIdV1(id)) bad();
   return (
-    id === "audit.run" ? npRequireAgentAuditRunInputV1(value) : npRequireAgentOpsPlanInputV1(value)
+    id === "audit.run"
+      ? npRequireAgentAuditRunInputV1(value)
+      : id === "ops.plan"
+        ? npRequireAgentOpsPlanInputV1(value)
+        : npRequireAgentOpsExecuteInputV1(value)
   ) as NpAgentOperatorCapabilityInputMapV1[C];
 }
 export function npRequireAgentOperatorCapabilityOutputV1<C extends NpAgentOperatorCapabilityIdV1>(
@@ -737,7 +862,9 @@ export function npRequireAgentOperatorCapabilityOutputV1<C extends NpAgentOperat
   return (
     id === "audit.run"
       ? npRequireAgentAuditRunOutputV1(value)
-      : npRequireAgentOpsPlanOutputV1(value)
+      : id === "ops.plan"
+        ? npRequireAgentOpsPlanOutputV1(value)
+        : npRequireAgentOpsExecuteOutputV1(value)
   ) as NpAgentOperatorCapabilityOutputMapV1[C];
 }
 export function npRequireAgentOperatorCapabilityInvocationRequestV1(
@@ -798,6 +925,7 @@ function freeze<T>(value: T): T {
   return value;
 }
 function descriptor(id: NpAgentOperatorCapabilityIdV1): NpAgentCapabilityDescriptor {
+  const execute = id === "ops.execute";
   return npRequireAgentCapabilityDescriptor(
     JSON.parse(
       JSON.stringify({
@@ -805,31 +933,46 @@ function descriptor(id: NpAgentOperatorCapabilityIdV1): NpAgentCapabilityDescrip
         id,
         contractVersion: 1,
         source: "core",
-        title: id === "audit.run" ? "Run bounded site audit" : "Prepare operations plan",
-        description:
-          "Read authorized operations evidence and retain an exact audit or owner-generated plan without executing its effects.",
-        requiredScopes: [id === "audit.run" ? "audit:run" : "ops:plan"],
+        title:
+          id === "audit.run"
+            ? "Run bounded site audit"
+            : execute
+              ? "Execute approved operations plan"
+              : "Prepare operations plan",
+        description: execute
+          ? "Execute an exact human-approved site operation and verify its resulting state."
+          : "Read authorized operations evidence and retain an exact audit or owner-generated plan without executing its effects.",
+        requiredScopes: [id === "audit.run" ? "audit:run" : execute ? "ops:execute" : "ops:plan"],
         scopeDerivation: id === "audit.run" ? "audit-selection" : "ops-action",
-        risk: "read",
-        approval: "none",
+        risk: execute ? "sensitive" : "read",
+        approval: execute ? "human" : "none",
         effectProfiles: [
           {
-            id: "domain.read",
-            kind: "read",
+            id: execute ? "ops.execute" : "domain.read",
+            kind: execute ? "mutation" : "read",
             reversibility: "none",
-            minimumGatewayExposure: id === "audit.run" ? "read" : "propose",
-            verifierId: null,
+            minimumGatewayExposure:
+              id === "audit.run" ? "read" : execute ? "approved-execute" : "propose",
+            verifierId: execute ? "ops.execute.verify" : null,
             compensatorId: null,
           },
         ],
         bootstrapIntent: "write",
-        execution: id === "audit.run" ? "durable" : "either",
+        execution: id === "ops.plan" ? "either" : "durable",
         idempotency: "required",
         gateway: { transports: ["agent-http", "mcp-http", "stdio"] },
         inputSchema:
-          id === "audit.run" ? npAgentAuditRunInputSchemaV1 : npAgentOpsPlanInputSchemaV1,
+          id === "audit.run"
+            ? npAgentAuditRunInputSchemaV1
+            : execute
+              ? npAgentOpsExecuteInputSchemaV1
+              : npAgentOpsPlanInputSchemaV1,
         outputSchema:
-          id === "audit.run" ? npAgentAuditRunOutputSchemaV1 : npAgentOpsPlanOutputSchemaV1,
+          id === "audit.run"
+            ? npAgentAuditRunOutputSchemaV1
+            : execute
+              ? npAgentOpsExecuteOutputSchemaV1
+              : npAgentOpsPlanOutputSchemaV1,
       }),
     ),
   );
@@ -837,6 +980,7 @@ function descriptor(id: NpAgentOperatorCapabilityIdV1): NpAgentCapabilityDescrip
 export const npAgentOperatorCapabilityDescriptorsV1 = freeze({
   "audit.run": descriptor("audit.run"),
   "ops.plan": descriptor("ops.plan"),
+  "ops.execute": descriptor("ops.execute"),
 });
 export function npBuildAgentOperatorCapabilityDefinitionCanonicalV1(
   id: NpAgentOperatorCapabilityIdV1,

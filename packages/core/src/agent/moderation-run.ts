@@ -28,13 +28,14 @@ import { NpAgentGatewayError } from "./admin-admission.js";
 import type { NpAgentJsonObject, NpAgentTargetRef } from "../agent-contract/types.js";
 
 /** Caller already holds the shared site quota lock before principal authority locks. */
-export async function npMeasureModerationBudgetV1(input: {
+export async function npMeasureAgentDirectActionBudgetV1(input: {
   db: ReturnType<typeof getDb>;
   siteId: string;
   now: Date;
   target: NpAgentTargetRef;
   budget: NpAgentConcreteBudgetV1;
   reserveRun: boolean;
+  errorCode?: "MODERATION_BUDGET_BLOCKED" | "OPERATOR_BUDGET_BLOCKED";
 }) {
   const { db, siteId, now } = input;
   await npRequireAgentRuntimeUsageKnownV1({ db, siteId });
@@ -49,7 +50,7 @@ export async function npMeasureModerationBudgetV1(input: {
     .where(
       and(
         eq(npAgentActions.siteId, siteId),
-        sql`${npAgentActions.effectProfileId}<>'domain.read' and ${npAgentActions.state} in ('executing','succeeded','failed','compensated') and coalesce(${npAgentActions.startedAt},${npAgentActions.createdAt})>=${since}`,
+        sql`${npAgentActions.effectProfileId}<>'domain.read' and not (${npAgentActions.capabilityId}='ops.execute' and ${npAgentActions.executionInvocationId} is not null) and ${npAgentActions.state} in ('executing','succeeded','failed','compensated') and coalesce(${npAgentActions.startedAt},${npAgentActions.createdAt})>=${since}`,
       ),
     );
   const counters = {
@@ -76,11 +77,18 @@ export async function npMeasureModerationBudgetV1(input: {
     counters.directActionsSubjectRollingHour + 1 > budget.directActionsPerSubjectPerHour
   )
     throw new NpAgentGatewayError(
-      "MODERATION_BUDGET_BLOCKED",
+      input.errorCode ?? "OPERATOR_BUDGET_BLOCKED",
       409,
-      "Moderation budget is exhausted.",
+      "Direct action budget is exhausted.",
     );
   return counters;
+}
+
+/** Existing moderation owner retains its public failure code. */
+export function npMeasureModerationBudgetV1(
+  input: Parameters<typeof npMeasureAgentDirectActionBudgetV1>[0],
+) {
+  return npMeasureAgentDirectActionBudgetV1({ ...input, errorCode: "MODERATION_BUDGET_BLOCKED" });
 }
 
 /** A real one-action Gateway run; no provider, worker or Runtime identity is created. */

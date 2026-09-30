@@ -84,7 +84,7 @@ import type {
   NpAgentApprovalStatementCanonicalV1,
   NpAgentApprovalTargetV1,
 } from "../agent-contract/types.js";
-import type { NpAgentApprovalActionReviewV1 } from "../agent-contract/approval-contract.js";
+import type { NpAgentApprovalModerationActionReviewV1 } from "../agent-contract/approval-contract.js";
 
 type Db = ReturnType<typeof getDb>;
 type Action = typeof npAgentActions.$inferSelect;
@@ -368,7 +368,7 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
     row: Action,
     viewer: NpAuthUser,
     fresh = false,
-  ): Promise<NpAgentApprovalActionReviewV1> {
+  ): Promise<NpAgentApprovalModerationActionReviewV1> {
     const id = row.capabilityId as NpAgentModerationCapabilityIdV1;
     const target = await resolveTarget(db, row.siteId, id, row.inputCanonical, viewer, fresh);
     return {

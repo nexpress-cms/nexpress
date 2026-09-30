@@ -1,3 +1,4 @@
+import type * as CacheModule from "@nexpress/core/cache";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,7 +7,18 @@ import { registerCollection } from "@nexpress/core/collections";
 import { createAgentCoreReadCapabilityExecutorsV1 } from "@nexpress/core/agents";
 import type { NpAgentOperatorHostContextV1 } from "@nexpress/core/agents";
 import { getDb } from "../db";
-const mocks = vi.hoisted(() => ({ storage: vi.fn(), cache: vi.fn(), plugins: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  storage: vi.fn(),
+  cache: vi.fn(),
+  plugins: vi.fn(),
+  invalidate: vi.fn(),
+  adapter: vi.fn(),
+}));
+vi.mock("@nexpress/core/cache", async (original) => ({
+  ...(await original<typeof CacheModule>()),
+  npInvalidateCache: mocks.invalidate,
+  getOptionalCacheInvalidationAdapter: mocks.adapter,
+}));
 vi.mock("../system-health", () => ({
   checkStorageAdapter: mocks.storage,
   checkCacheInvalidation: mocks.cache,
@@ -227,6 +239,115 @@ describe("Operator host owner boundary", () => {
         ...context,
         planId: uuid,
         input: { action: "restore.plan", target: { kind: "backup", manifestId: "backup-one" } },
+      }),
+    ).rejects.toThrow("unavailable");
+  });
+  it("executes only the frozen site-owned cache targets and projects the actual adapter outcome", async () => {
+    mocks.adapter.mockReturnValue({ kind: "test-cache" });
+    mocks.invalidate.mockResolvedValue({
+      status: "applied",
+      paths: { requested: 0, succeeded: 0, failed: 0 },
+      tags: { requested: 1, succeeded: 1, failed: 0 },
+      cdn: { status: "not-configured", adapterKind: null },
+    });
+    const authorize = vi.fn().mockResolvedValue(undefined);
+    const cacheTargets = vi
+      .fn()
+      .mockResolvedValue({ source: "site", siteId: "default", tags: ["np:site:default"] });
+    const host = npCreateAgentOperatorAppHostV1({ authorize, cacheTargets });
+    const input = { action: "cache.revalidate" as const, target: { kind: "site" as const } };
+    const plan = await host.plan!({ ...context, input, planId: uuid });
+    expect(mocks.invalidate).not.toHaveBeenCalled();
+    const executed = await host.execute!({
+      ...context,
+      input,
+      artifact: plan.artifact,
+      contractId: plan.contractId,
+      executionId: uuid,
+    });
+    expect(executed.state).toBe("succeeded");
+    expect(executed.evidence).toMatchObject({
+      status: "applied",
+      tags: { requested: 1, succeeded: 1, failed: 0 },
+    });
+    expect(JSON.stringify(executed)).not.toContain("np:site:default");
+    expect(mocks.invalidate).toHaveBeenCalledTimes(1);
+    cacheTargets.mockResolvedValue({
+      source: "site",
+      siteId: "default",
+      tags: ["np:site:changed"],
+    });
+    await expect(
+      host.execute!({
+        ...context,
+        input,
+        artifact: plan.artifact,
+        contractId: plan.contractId,
+        executionId: uuid,
+      }),
+    ).rejects.toThrow("unavailable");
+    expect(mocks.invalidate).toHaveBeenCalledTimes(1);
+    cacheTargets.mockResolvedValue({ source: "site", siteId: "other", tags: ["np:site:other"] });
+    await expect(host.plan!({ ...context, input, planId: uuid })).rejects.toThrow("unavailable");
+  });
+  it("retains partial cache failure and requires independent approver authority", async () => {
+    mocks.adapter.mockReturnValue({ kind: "test-cache" });
+    mocks.invalidate.mockResolvedValue({
+      status: "partial",
+      paths: { requested: 1, succeeded: 0, failed: 1 },
+      tags: { requested: 1, succeeded: 1, failed: 0 },
+      cdn: { status: "not-configured", adapterKind: null },
+    });
+    const input = {
+      action: "cache.revalidate" as const,
+      target: { kind: "navigation" as const, location: "header" },
+    };
+    const host = npCreateAgentOperatorAppHostV1({
+      authorize: async () => {},
+      cacheTargets: () =>
+        Promise.resolve({
+          source: "navigation",
+          siteId: "default",
+          navigationLocation: "header",
+          paths: ["/default"],
+          tags: ["nx:nav:default:header"],
+        }),
+    });
+    const plan = await host.plan!({ ...context, input, planId: uuid });
+    const result = await host.execute!({
+      ...context,
+      input,
+      artifact: plan.artifact,
+      contractId: plan.contractId,
+      executionId: uuid,
+    });
+    expect(result.state).toBe("failed");
+    expect(result.evidence.status).toBe("partial");
+    await expect(
+      host.assertApprovalAccess!({
+        db: context.db,
+        siteId: "default",
+        staffUser: {
+          id: uuid,
+          email: "approver@example.test",
+          name: "Approver",
+          role: "admin",
+          tokenVersion: 1,
+        },
+        input,
+        artifact: plan.artifact,
+        contractId: plan.contractId,
+      }),
+    ).rejects.toThrow("unavailable");
+    const unavailable = npCreateAgentOperatorAppHostV1({ authorize: async () => {} });
+    await expect(unavailable.plan!({ ...context, input, planId: uuid })).rejects.toThrow(
+      "unavailable",
+    );
+    await expect(
+      unavailable.plan!({
+        ...context,
+        input: { action: "agent.run.cancel", target: { kind: "run", runId: uuid } },
+        planId: uuid,
       }),
     ).rejects.toThrow("unavailable");
   });
