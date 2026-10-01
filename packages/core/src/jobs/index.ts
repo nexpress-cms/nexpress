@@ -56,3 +56,9 @@ export {
   type NpRecentJobFailuresOptions,
   type NpRecentJobFailuresResult,
 } from "./job-diagnostics.js";
+
+export {
+  npCollectOperatorJobsObservationV1,
+  NP_OPERATOR_SITE_JOB_QUEUES_V1,
+  type NpOperatorJobsObservationV1,
+} from "./operator-observation.js";

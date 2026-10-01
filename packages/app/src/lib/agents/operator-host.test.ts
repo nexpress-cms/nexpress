@@ -1,3 +1,5 @@
+import type * as JobsModule from "@nexpress/core/jobs";
+import type * as MediaModule from "@nexpress/core/media";
 import type * as CacheModule from "@nexpress/core/cache";
 import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,6 +15,16 @@ const mocks = vi.hoisted(() => ({
   plugins: vi.fn(),
   invalidate: vi.fn(),
   adapter: vi.fn(),
+  jobs: vi.fn(),
+  media: vi.fn(),
+}));
+vi.mock("@nexpress/core/jobs", async (original) => ({
+  ...(await original<typeof JobsModule>()),
+  npCollectOperatorJobsObservationV1: mocks.jobs,
+}));
+vi.mock("@nexpress/core/media", async (original) => ({
+  ...(await original<typeof MediaModule>()),
+  npObserveMediaStorageV1: mocks.media,
 }));
 vi.mock("@nexpress/core/cache", async (original) => ({
   ...(await original<typeof CacheModule>()),
@@ -350,5 +362,148 @@ describe("Operator host owner boundary", () => {
         planId: uuid,
       }),
     ).rejects.toThrow("unavailable");
+  });
+});
+
+describe("Operator measured observation projection", () => {
+  const jobs = {
+    state: "observed",
+    siteId: "default",
+    source: "pg-boss",
+    generatedAt: "2026-09-30T00:00:00.000Z",
+    windowStart: "2026-09-29T00:00:00.000Z",
+    complete: true,
+    inspectedCount: 1,
+    created: 0,
+    active: 0,
+    retry: 0,
+    completed: 0,
+    failed: 1,
+    cancelled: 0,
+    oldestReadyAgeSeconds: null,
+    coveredQueues: ["agent.runExecute"],
+  };
+  it("retains bounded aggregate facts independently of receipt string count and rechecks authority", async () => {
+    mocks.jobs.mockResolvedValue(jobs);
+    const authorize = vi.fn(async () => {});
+    const host = npCreateAgentOperatorAppHostV1({
+      authorize,
+      observationOwners: { jobs: "pg-boss" },
+    });
+    const input = { families: ["jobs" as const], collections: [], maxTargets: 1 };
+    const output = await host.audit!({ ...context, auditId: uuid, input });
+    expect(output.checks[0]).toMatchObject({ family: "jobs", status: "fail" });
+    expect(output.checks[0]?.evidenceRefs).toEqual(
+      expect.arrayContaining([
+        "fact:failed:1",
+        "fact:inspectedCount:1",
+        "coverage:framework-site-payload",
+        "complete:true",
+      ]),
+    );
+    expect(mocks.jobs).toHaveBeenCalledWith({ siteId: "default", maxTargets: 1 });
+    expect(authorize).toHaveBeenCalledTimes(2);
+    mocks.jobs.mockResolvedValue({
+      ...jobs,
+      state: "unavailable",
+      complete: false,
+      inspectedCount: null,
+      failed: null,
+    });
+    const status = await host.status({ families: ["jobs"] }, context);
+    expect(status.report.checks[0]).toMatchObject({ state: "warn" });
+    expect(status.report.checks[0]?.detail).toContain("unknown");
+    expect(status.report.checks[0]?.detail).toContain("Excludes custom");
+    mocks.jobs.mockImplementation(() => {
+      authorize.mockRejectedValue(new Error("revoked"));
+      return Promise.resolve(jobs);
+    });
+    await expect(host.audit!({ ...context, auditId: uuid, input })).rejects.toThrow("revoked");
+  });
+  it("passes selected collection scope and remaining probe budget to the authorized media owner", async () => {
+    mocks.jobs.mockResolvedValue(jobs);
+    mocks.media.mockResolvedValue({
+      status: "truncated",
+      attemptedTargets: 1,
+      checkedTargets: 1,
+      presentTargets: 0,
+      missingTargets: 1,
+      unavailableObservations: 0,
+      evidenceDigest: "discarded-private-snapshot",
+    });
+    const selectMedia = vi.fn(() => Promise.resolve([uuid]));
+    const authorizeMedia = vi.fn(async () => {});
+    const adapter = {
+      kind: "test",
+      upload: vi.fn(),
+      delete: vi.fn(),
+      getUrl: vi.fn(),
+      exists: vi.fn(),
+      getStream: vi.fn(),
+    };
+    const host = npCreateAgentOperatorAppHostV1({
+      authorize: async () => {},
+      observationOwners: { jobs: "pg-boss", storage: { adapter, selectMedia, authorizeMedia } },
+    });
+    const result = await host.audit!({
+      ...context,
+      auditId: uuid,
+      input: { families: ["jobs", "storage"], collections: ["posts"], maxTargets: 2 },
+    });
+    expect(selectMedia).toHaveBeenCalledWith(expect.objectContaining({ siteId: "default" }), 1, [
+      "posts",
+    ]);
+    const call = mocks.media.mock.calls[0]?.[0];
+    expect(call).toMatchObject({ siteId: "default", mediaIds: [uuid], maxTargets: 1, adapter });
+    await call.authorizeMedia({ siteId: "default", mediaId: uuid });
+    expect(authorizeMedia).toHaveBeenCalledWith(
+      expect.objectContaining({ siteId: "default" }),
+      uuid,
+    );
+    expect(result.checks[1]).toMatchObject({
+      status: "fail",
+      evidenceRefs: expect.arrayContaining(["state:truncated", "fact:missing:1"]),
+    });
+    expect(JSON.stringify(result)).not.toContain("discarded-private-snapshot");
+    mocks.media.mockResolvedValue({
+      status: "complete",
+      attemptedTargets: 2,
+      checkedTargets: 2,
+      presentTargets: 2,
+      missingTargets: 0,
+      unavailableObservations: 0,
+    });
+    await expect(
+      host.audit!({
+        ...context,
+        auditId: uuid,
+        input: { families: ["storage"], collections: [], maxTargets: 1 },
+      }),
+    ).rejects.toThrow("unavailable");
+  });
+  it("labels readiness and backup claims even when manifests claim verification for missing artifacts", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "np-operator-observation-"));
+    directories.push(directory);
+    const timestamp = new Date().toISOString();
+    await writeFile(
+      join(directory, "record.json"),
+      JSON.stringify({
+        id: "record",
+        createdAt: timestamp,
+        database: { path: "does-not-exist.dump" },
+        verification: { verifiedAt: timestamp },
+      }),
+    );
+    const host = npCreateAgentOperatorAppHostV1({
+      authorize: async () => {},
+      authorizeDeployment: () => Promise.resolve(true),
+      backupEnv: { NP_BACKUP_DIR: directory },
+    });
+    const result = await host.status({ families: ["backup", "readiness"] }, context);
+    expect(result.report.checks[0]?.detail).toContain("manifest claim");
+    expect(result.report.checks[0]?.detail).toContain("were not verified");
+    expect(result.report.checks[1]?.detail).toContain("no database, queue, network");
+    expect(JSON.stringify(result)).not.toContain(directory);
+    expect(JSON.stringify(result)).not.toContain("does-not-exist.dump");
   });
 });

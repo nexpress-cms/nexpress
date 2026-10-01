@@ -34,7 +34,8 @@ targets. Family order is accepted as supplied; duplicates and unknown fields
 are rejected. The concrete contracts adapter reuses the existing `schema.get`
 executor's current collection ACL and digest, and resolves the current
 collection validation schema. It returns actual `schema:<digest>` references.
-Jobs, storage and plugin audits require explicit scoped readers. Content,
+Jobs, storage and plugin audits use explicitly installed scoped readers or the
+[bounded concrete observation owners](r6-operator-observations-flow.md). Content,
 links, SEO, accessibility and security collectors are not implemented here;
 unsupported families fail closed before enqueueing.
 

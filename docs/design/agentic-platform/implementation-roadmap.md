@@ -663,8 +663,10 @@ The [Operator diagnostics and planning flow](r6-operator-diagnostics-flow.md)
 records the explicitly installed status, bounded audit and plan-only artifact
 boundary. The [approved execution flow](r6-operator-execution-flow.md) connects the
 three closed operations to human approval, durable dispatch and Runtime
-continuation. Additional scoped collectors, recipe setup and evaluations
-remain open; these slices do not close AP-602.
+continuation. The [operational observations flow](r6-operator-observations-flow.md)
+connects bounded Jobs/media sources, plugin registry diagnostics and explicitly
+labeled backup/readiness evidence. Broader source coverage, recipe setup and
+evaluations remain open; these slices do not close AP-602.
 
 ### R7 — Guardian and application security orchestration
 
