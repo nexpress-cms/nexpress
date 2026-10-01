@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import type { Dirent, Stats } from "node:fs";
+import { constants, type Dirent, type Stats } from "node:fs";
 import * as fsPromises from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -21,6 +21,8 @@ const execFileAsync = promisify(execFile);
 // opaque to Next/Turbopack's standalone file tracer so it does not copy the project root.
 const FS_METHODS = {
   access: "access",
+  open: "open",
+  opendir: "opendir",
   cp: "cp",
   mkdir: "mkdir",
   readdir: "readdir",
@@ -30,6 +32,13 @@ const FS_METHODS = {
 } as const;
 
 export type OpsBackupMode = "create" | "status" | "list" | "verify";
+
+/** Host-controlled ceilings for read-only Agent observations. CLI defaults are unchanged. */
+export interface OpsBackupStatusBounds {
+  maxManifests: number;
+  maxManifestBytes: number;
+  maxDirectoryEntries: number;
+}
 
 export interface BackupManifest {
   id: string;
@@ -313,6 +322,65 @@ async function readManifestFile(file: string): Promise<BackupManifest | null> {
   }
 }
 
+function requireStatusBounds(bounds: OpsBackupStatusBounds): void {
+  if (
+    !Number.isSafeInteger(bounds.maxManifests) ||
+    bounds.maxManifests < 1 ||
+    bounds.maxManifests > 1000 ||
+    !Number.isSafeInteger(bounds.maxManifestBytes) ||
+    bounds.maxManifestBytes < 1 ||
+    bounds.maxManifestBytes > 1048576 ||
+    !Number.isSafeInteger(bounds.maxDirectoryEntries) ||
+    bounds.maxDirectoryEntries < 1 ||
+    bounds.maxDirectoryEntries > 10000
+  )
+    throw new Error("Backup status observation bounds are invalid.");
+}
+
+async function boundedStatusManifests(
+  backupDir: string,
+  bounds: OpsBackupStatusBounds,
+): Promise<BackupManifest[]> {
+  try {
+    const directory = await fsPromises[FS_METHODS.opendir](backupDir);
+    const manifests: BackupManifest[] = [];
+    let entries = 0;
+    for await (const entry of directory) {
+      if (++entries > bounds.maxDirectoryEntries) throw new Error();
+      if (!entry.name.endsWith(".json")) continue;
+      // A manifest replaced by a symlink or special file must not escape this bounded reader.
+      if (!entry.isFile() || manifests.length >= bounds.maxManifests) throw new Error();
+      const file = await fsPromises[FS_METHODS.open](
+        join(/* turbopackIgnore: true */ backupDir, entry.name),
+        constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+      );
+      try {
+        const stat = await file.stat();
+        if (!stat.isFile() || stat.size > bounds.maxManifestBytes) throw new Error();
+        const buffer = Buffer.alloc(bounds.maxManifestBytes + 1);
+        let bytes = 0;
+        while (bytes < buffer.length) {
+          const read = await file.read(buffer, bytes, buffer.length - bytes, bytes);
+          if (read.bytesRead === 0) break;
+          bytes += read.bytesRead;
+        }
+        if (bytes > bounds.maxManifestBytes) throw new Error();
+        const manifest = parseBackupManifest(
+          JSON.parse(buffer.subarray(0, bytes).toString("utf8")),
+        );
+        if (!manifest) throw new Error();
+        manifests.push(manifest);
+      } finally {
+        await file.close();
+      }
+    }
+    return manifests;
+  } catch {
+    // Never propagate filesystem paths, malformed JSON bodies, or provider details to an Agent host.
+    throw new Error("Backup status observation is unavailable or exceeds its bounds.");
+  }
+}
+
 async function pathExists(path: string): Promise<boolean> {
   try {
     await runtimeAccess(path);
@@ -565,7 +633,12 @@ export async function collectOpsBackupReport(args: {
   required?: boolean;
   env?: OpsBackupEnv;
   manifestId?: string | null;
+  statusBounds?: OpsBackupStatusBounds;
 }): Promise<OpsBackupJson> {
+  if (args.statusBounds) {
+    if (args.mode !== "status") throw new Error("Backup observation bounds require status mode.");
+    requireStatusBounds(args.statusBounds);
+  }
   const env = args.env ?? process.env;
   const backupDir = backupDirFromEnv(env);
   const maxAgeHours = maxAgeHoursFromEnv(env);
@@ -616,9 +689,19 @@ export async function collectOpsBackupReport(args: {
     });
   }
 
-  const files = await listManifestFiles(backupDir);
-  const parsed = await Promise.all(files.map(readManifestFile));
-  const manifests = parsed.filter((manifest): manifest is BackupManifest => Boolean(manifest));
+  const manifests = args.statusBounds
+    ? await boundedStatusManifests(backupDir, args.statusBounds)
+    : (await Promise.all((await listManifestFiles(backupDir)).map(readManifestFile))).filter(
+        (manifest): manifest is BackupManifest => Boolean(manifest),
+      );
+  if (args.statusBounds)
+    checks.push({
+      id: "backup.observation_basis",
+      state: "ok",
+      label: "Backup manifest records",
+      detail:
+        "Observed manifest declarations and freshness only; artifact availability and restore success were not verified by this observation.",
+    });
   const summaries = manifests.map(manifestSummary);
   const selectedManifest = selectBackupManifest(manifests, args.manifestId ?? "latest");
   const selectedSummary = selectedManifest ? manifestSummary(selectedManifest) : null;

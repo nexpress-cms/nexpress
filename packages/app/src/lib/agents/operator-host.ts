@@ -28,7 +28,6 @@ import type {
   NpOpsStatusV1,
 } from "@nexpress/core/agent-contract";
 import { collectOpsBackupReport, collectOpsBackupRestorePlan } from "../../scripts/ops-backup-core";
-import { collectRuntimeOpsPluginsStatus } from "../ops-plugins-runtime";
 import {
   checkCacheInvalidation,
   checkCollectionRuntime,
@@ -36,6 +35,12 @@ import {
   checkSiteUrl,
   checkStorageAdapter,
 } from "../system-health";
+
+import {
+  collectOperatorObservation,
+  type NpAgentOperatorObservationOwnersV1,
+} from "./operator-observations";
+export type { NpAgentOperatorObservationOwnersV1 } from "./operator-observations";
 
 type Family = NpAgentOpsStatusInputV1["families"][number];
 type Check = NpOpsStatusV1["checks"][number];
@@ -47,12 +52,16 @@ type Request = NpAgentReadCapabilityContextV1 & {
     | NpAgentOpsPlanInputV1
     | NpAgentOpsExecuteInputV1;
 };
-/** A scoped owner returns only measured states and opaque, retained evidence references. */
+/** A scoped owner returns measured states and retained references or safe inline audit facts. */
 export interface NpAgentOperatorScopedObservationV1 {
   state: "ok" | "warn" | "error";
   evidenceRefs: string[];
+  /** Measured entities inspected. Legacy readers default to one target per evidence reference. */
+  targetCount?: number;
 }
 export interface NpAgentOperatorAppHostOptionsV1 {
+  /** Concrete read-only owners. Absent sources remain unavailable. */
+  observationOwners?: NpAgentOperatorObservationOwnersV1;
   /** Explicit deployment-owned route/tag resolver. Must return only the selected site's exact target. */
   cacheTargets?(
     request: NpAgentOperatorHostContextV1 & {
@@ -156,6 +165,12 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
       }),
     ) as NpAgentJsonObject;
   }
+  function hasObservation(family: string): boolean {
+    return (
+      (family === "jobs" || family === "storage" || family === "plugins") &&
+      Boolean(options.observationOwners?.[family])
+    );
+  }
   async function readFamily(family: Family, request: Request): Promise<Check> {
     const scoped = options.scopedReaders?.[family];
     if (scoped) {
@@ -163,38 +178,69 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
       if (!["ok", "warn", "error"].includes(result.state)) return fixedCheck(family);
       return fixedCheck(family, result.state);
     }
+    if (
+      (family === "jobs" || family === "storage" || family === "plugins") &&
+      hasObservation(family)
+    ) {
+      if (family === "plugins" && !(await options.authorizeDeployment?.(request)))
+        return fixedCheck(family);
+      const observation = await collectOperatorObservation(
+        options.observationOwners!,
+        family,
+        request,
+        100,
+      );
+      return {
+        ...fixedCheck(family, observation.state),
+        ...(family === "storage" ? { label: "Selected site media objects" } : {}),
+        detail: observation.detail,
+      };
+    }
     if (!(await options.authorizeDeployment?.(request))) return fixedCheck(family);
     try {
       switch (family) {
         case "readiness":
-          return fixedCheck(
-            family,
-            observationState([
-              checkSiteUrl().state,
-              checkObservabilityAdapters().state,
-              checkCollectionRuntime().state,
-            ]),
-          );
+          return {
+            ...fixedCheck(
+              family,
+              observationState([
+                checkSiteUrl().state,
+                checkObservabilityAdapters().state,
+                checkCollectionRuntime().state,
+              ]),
+            ),
+            detail:
+              "Deployment configuration and in-process collection diagnostics only; no database, queue, network or external service health probe was performed.",
+          };
         case "storage":
           return fixedCheck(family, (await checkStorageAdapter()).state);
         case "cache":
           return fixedCheck(family, checkCacheInvalidation().state);
-        case "plugins":
-          return fixedCheck(
+        case "plugins": {
+          const observation = await collectOperatorObservation(
+            { plugins: true },
             family,
-            observationState(collectRuntimeOpsPluginsStatus().checks.map((check) => check.state)),
+            request,
+            100,
           );
+          return { ...fixedCheck(family, observation.state), detail: observation.detail };
+        }
         case "backup": {
           if (!options.backupEnv) return fixedCheck(family);
           const report = await collectOpsBackupReport({
             mode: "status",
             required: true,
             env: options.backupEnv,
+            statusBounds: { maxManifests: 100, maxManifestBytes: 65536, maxDirectoryEntries: 1000 },
           });
-          return fixedCheck(
-            family,
-            report.status === "blocked" ? "error" : report.status === "attention" ? "warn" : "ok",
-          );
+          return {
+            ...fixedCheck(
+              family,
+              report.status === "blocked" ? "error" : report.status === "attention" ? "warn" : "ok",
+            ),
+            detail:
+              "Bounded deployment backup manifest records and recorded freshness only. Recorded verification is a manifest claim; current artifact existence and restore success were not verified.",
+          };
         }
         default:
           return fixedCheck(family);
@@ -204,9 +250,17 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
     }
   }
   async function assertAccess(request: Parameters<NpAgentOperatorHostV1["assertAccess"]>[0]) {
+    request.abortSignal.throwIfAborted();
     await options.authorize(request);
     if (request.capabilityId === "audit.run" && "families" in request.input) {
       for (const family of request.input.families) {
+        if (
+          family === "plugins" &&
+          !options.auditReaders?.plugins &&
+          options.observationOwners?.plugins &&
+          !(await options.authorizeDeployment?.(request))
+        )
+          unavailable();
         if (
           family !== "contracts" &&
           family !== "jobs" &&
@@ -214,7 +268,11 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
           family !== "plugins"
         )
           unavailable();
-        if (!options.auditReaders?.[family] && !(family === "contracts" && options.readSchema))
+        if (
+          !options.auditReaders?.[family] &&
+          !hasObservation(family) &&
+          !(family === "contracts" && options.readSchema)
+        )
           unavailable();
       }
     }
@@ -263,7 +321,7 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
       };
     },
     async audit(request) {
-      const authorization: Request = { ...request, capabilityId: "audit.run" };
+      const authorization = { ...request, capabilityId: "audit.run" as const };
       await options.authorize(authorization);
       const supported = new Set(["contracts", "jobs", "storage", "plugins"]);
       // Audit never upgrades a configuration-only check into a measured content or security audit.
@@ -298,12 +356,30 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
           continue;
         }
         const reader = options.auditReaders?.[family];
-        if (!reader) unavailable();
-        const observation = await reader({
-          ...request,
-          input: { ...request.input, maxTargets: request.input.maxTargets - targets },
-        });
-        targets += observation.evidenceRefs.length;
+        const remaining = request.input.maxTargets - targets;
+        if (remaining < 1) unavailable();
+        let observation: NpAgentOperatorScopedObservationV1;
+        if (reader) {
+          observation = await reader({
+            ...request,
+            input: { ...request.input, maxTargets: remaining },
+          });
+        } else if (family !== "contracts" && hasObservation(family)) {
+          if (family === "plugins" && !(await options.authorizeDeployment?.(authorization)))
+            unavailable();
+          observation = await collectOperatorObservation(
+            options.observationOwners!,
+            family,
+            request,
+            remaining,
+            request.input.collections,
+          );
+          if (family === "plugins" && !(await options.authorizeDeployment?.(authorization)))
+            unavailable();
+        } else unavailable();
+        const count = observation.targetCount ?? observation.evidenceRefs.length;
+        if (!Number.isSafeInteger(count) || count < 0) unavailable();
+        targets += count;
         if (
           !["ok", "warn", "error"].includes(observation.state) ||
           observation.evidenceRefs.length === 0 ||
@@ -322,7 +398,7 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
           evidenceRefs: observation.evidenceRefs,
         });
       }
-      await options.authorize(authorization);
+      await assertAccess(authorization);
       return { checks };
     },
     async plan(request) {
@@ -388,7 +464,8 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
       await options.authorize(request);
       if (!(await options.authorizeDeployment?.(request))) {
         checks = checks.map((check, index) =>
-          options.scopedReaders?.[input.families[index]]
+          options.scopedReaders?.[input.families[index]] ||
+          (input.families[index] !== "plugins" && hasObservation(input.families[index]))
             ? check
             : fixedCheck(input.families[index]),
         );

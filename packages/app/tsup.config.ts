@@ -78,6 +78,7 @@ const scriptEntries = {
 };
 
 const libEntries = {
+  "lib/agents/operator-host": "src/lib/agents/operator-host.ts",
   "lib/agents/preview-http": "src/lib/agents/preview-http.ts",
   "lib/api-response": "src/lib/api-response.ts",
   "lib/active-theme-state": "src/lib/active-theme-state.ts",
