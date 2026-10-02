@@ -1,3 +1,4 @@
+import type * as WorkerObservationModule from "./operator-worker-observation";
 import type * as JobsModule from "@nexpress/core/jobs";
 import type * as MediaModule from "@nexpress/core/media";
 import type * as CacheModule from "@nexpress/core/cache";
@@ -17,6 +18,11 @@ const mocks = vi.hoisted(() => ({
   adapter: vi.fn(),
   jobs: vi.fn(),
   media: vi.fn(),
+  worker: vi.fn(),
+}));
+vi.mock("./operator-worker-observation", async (original) => ({
+  ...(await original<typeof WorkerObservationModule>()),
+  collectOperatorWorkerObservation: mocks.worker,
 }));
 vi.mock("@nexpress/core/jobs", async (original) => ({
   ...(await original<typeof JobsModule>()),
@@ -505,5 +511,79 @@ describe("Operator measured observation projection", () => {
     expect(result.report.checks[1]?.detail).toContain("no database, queue, network");
     expect(JSON.stringify(result)).not.toContain(directory);
     expect(JSON.stringify(result)).not.toContain("does-not-exist.dump");
+  });
+});
+
+describe("Operator recipe worker deployment boundary", () => {
+  it("keeps site observations separate and uses admitted thresholds for an opted-in worker owner", async () => {
+    mocks.worker.mockImplementation(async (input) => {
+      await input.authorize();
+      return {
+        checks: [
+          {
+            id: "operator.worker",
+            label: "Agent worker observation",
+            state: "warn",
+            detail: "Authorized deployment facts",
+          },
+        ],
+      };
+    });
+    const host = npCreateAgentOperatorAppHostV1({
+      authorize: async () => {},
+      authorizeDeployment: () => Promise.resolve(true),
+      workerDiagnostics: "pg-boss",
+      scopedReaders: { jobs: () => Promise.resolve({ state: "ok", evidenceRefs: [] }) },
+    });
+    const result = await host.status(
+      { families: ["jobs"] },
+      {
+        ...context,
+        runtimeRecipeSettings: {
+          recipeId: "operator.worker-not-draining",
+          recipeVersion: 1,
+          staleAfterSeconds: 600,
+          minimumPendingJobs: 10,
+          checkIds: ["operator.worker"],
+        },
+      },
+    );
+    expect(result.report.checks.map((check) => check.id)).toEqual([
+      "operator.jobs",
+      "operator.worker",
+    ]);
+    expect(mocks.worker).toHaveBeenCalledWith(
+      expect.objectContaining({ staleAfterSeconds: 600, minimumPendingJobs: 10 }),
+    );
+  });
+  it("never reads deployment workers without explicit access and redacts revoked access after reading", async () => {
+    let allowed = false;
+    const host = npCreateAgentOperatorAppHostV1({
+      authorize: async () => {},
+      authorizeDeployment: () => Promise.resolve(allowed),
+      workerDiagnostics: "pg-boss",
+      scopedReaders: { jobs: () => Promise.resolve({ state: "ok", evidenceRefs: [] }) },
+    });
+    const absent = await host.status({ families: ["jobs"] }, context);
+    expect(mocks.worker).not.toHaveBeenCalled();
+    expect(absent.report.checks[1]?.detail).toContain("unknown");
+    allowed = true;
+    mocks.worker.mockImplementation(() => {
+      allowed = false;
+      return Promise.resolve({
+        checks: [
+          {
+            id: "operator.worker",
+            label: "Agent worker observation",
+            state: "ok",
+            detail: "secret facts",
+          },
+        ],
+      });
+    });
+    const revoked = await host.status({ families: ["jobs"] }, context);
+    expect(revoked.report.checks[0]?.state).toBe("ok");
+    expect(revoked.report.checks[1]?.detail).toContain("unknown");
+    expect(JSON.stringify(revoked)).not.toContain("secret facts");
   });
 });

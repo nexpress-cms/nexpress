@@ -62,7 +62,18 @@ async function manualContextFixture() {
     evidence: {
       principal: {},
       version: {},
-      definition: { model: request.model },
+      definition: {
+        model: request.model,
+        settings: [
+          {
+            recipeId: "operator.worker-not-draining",
+            recipeVersion: 1,
+            staleAfterSeconds: 60,
+            minimumPendingJobs: 1,
+            checkIds: ["jobs.worker"],
+          },
+        ],
+      },
       registry: {
         recipes: [
           {
@@ -73,11 +84,12 @@ async function manualContextFixture() {
             triggerKinds: ["manual"],
             capabilityIds: [],
             instruction: {
-              templateId: request.instruction.templateId,
+              templateId: "operator.worker-not-draining",
               templateVersion: request.instruction.templateVersion,
               text: request.instruction.text,
               digest: instructionDigest,
             },
+            settingsSchema: { type: "object" },
             manualInputSchema: schema,
             responseSchema: request.responseSchema,
           },
@@ -143,11 +155,36 @@ describe("Retained structured manual input", () => {
       },
     ]);
     expect(request.dataClass).toBe("sensitive-approved");
-    expect(request.trustedContext).toEqual([]);
+    expect(request.trustedContext).toEqual([
+      expect.objectContaining({ id: "recipe-settings", kind: "server-fact" }),
+    ]);
     expect(request.tools).toEqual([]);
     expect(await service.verifyRequest(current, request, { db: current.db })).toBe(true);
     current.run.manualInput = { topic: "changed after preparation" };
     expect(await service.verifyRequest(current, request, { db: current.db })).toBe(false);
+  });
+
+  it("does not add shipped recipe facts to an existing custom Operator instruction", async () => {
+    const { current, service, input } = await manualContextFixture();
+    current.evidence.registry.recipes[0].instruction!.templateId = "custom.operator";
+    const request = await service.prepare(input);
+    expect(request.trustedContext).toEqual([]);
+  });
+
+  it("binds validated selected recipe settings and rejects changed or ambiguous settings", async () => {
+    const { current, service, input } = await manualContextFixture();
+    const request = await service.prepare(input);
+    const settings = current.evidence.definition.settings[0];
+    expect(request.trustedContext.find((entry) => entry.id === "recipe-settings")?.text).toBe(
+      serializeAgentCanonicalJson(settings),
+    );
+    if (settings.recipeId !== "operator.worker-not-draining") throw new Error("Unexpected recipe");
+    settings.minimumPendingJobs = 3;
+    expect(await service.verifyRequest(current, request, { db: current.db })).toBe(false);
+    current.evidence.definition.settings.push(settings);
+    await expect(
+      service.prepare({ ...input, providerCallId: "018f0f30-cd7b-7cc2-8b16-8c052c259bd4" }),
+    ).rejects.toThrow();
   });
 
   it("rejects modified digest, schema binding and insufficient provider ceilings", async () => {

@@ -1,3 +1,5 @@
+import { npRequireAgentRecipeSettingsV1 } from "../agent-contract/runtime-contract.js";
+import { npRequireAgentProviderSchemaValueV1 } from "./provider-auth-contract.js";
 import { npMeasureAgentRuntimeRunUsageV1 } from "./runtime-usage-capacity.js";
 import {
   npRequireAgentOpsStatusOutputV1,
@@ -496,6 +498,30 @@ async function build(
       ];
     },
   );
+  if (
+    recipe.id === "operator.worker-not-draining" &&
+    recipe.instruction.templateId === "operator.worker-not-draining"
+  ) {
+    const selectedSettings = evidence.definition.settings.filter(
+      (entry) => entry.recipeId === recipe.id && entry.recipeVersion === recipe.version,
+    );
+    if (selectedSettings.length !== 1) unavailable();
+    const recipeSettings = npRequireAgentRecipeSettingsV1(selectedSettings[0]);
+    const settingsText = serializeAgentCanonicalJson(recipeSettings);
+    npRequireAgentProviderSchemaValueV1(
+      recipe.settingsSchema,
+      JSON.parse(settingsText) as NpAgentJsonObject,
+      "agent.runtime.recipeSettings",
+    );
+    const settingsDigest = hash("np.agent-runtime-recipe-settings.v1", recipeSettings);
+    trustedContext.push({
+      id: "recipe-settings",
+      kind: "server-fact",
+      digest: settingsDigest,
+      classification: classification(settingsDigest, "internal-redacted"),
+      text: settingsText,
+    });
+  }
   trustedContext.push(...sources.trusted);
   trustedContext.sort(
     (left, right) => left.kind.localeCompare(right.kind) || left.id.localeCompare(right.id),

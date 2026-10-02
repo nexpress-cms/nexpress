@@ -33,6 +33,7 @@ import { npDigestAgentProviderRequestCanonical } from "../../../packages/core/sr
 import type { NpAgentBudgetV1 } from "../../../packages/core/src/agent-contract/wire-contract.js";
 import type { NpAgentConfigurationDefinitionV1 } from "../../../packages/core/src/agent-contract/runtime-contract.js";
 import type {
+  NpAgentRecipeDefinitionCanonicalV1,
   NpAgentJsonSchema,
   NpAgentProviderRequestCanonicalV1,
   NpAgentProviderResponseCanonicalV1,
@@ -85,6 +86,7 @@ export async function runtimeUsageFixture(
     documentCollection?: string;
     providerInference?: NpAgentConnectionAuthAdapterV1["inference"];
     responseSchema?: NpAgentJsonSchema;
+    recipe?: NpAgentRecipeDefinitionCanonicalV1;
   } = {},
 ) {
   const f = await runtimeFixture(options.budget ?? runtimeBudget());
@@ -241,6 +243,7 @@ export async function runtimeUsageFixture(
       ],
     };
   }
+  if (options.recipe) recipes.recipes = [options.recipe];
   const runtimeOptions = {
     ...f.options,
     recipes,

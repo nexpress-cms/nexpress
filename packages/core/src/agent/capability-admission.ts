@@ -711,6 +711,11 @@ export function createAgentCapabilityAdmissionServiceV1(
       transaction: context.db,
       staffUser: context.staffUser,
       runtimeResources: context.policy.effective.resources,
+      runtimeRecipeSettings: context.evidence.definition.settings.find(
+        (settings) =>
+          settings.recipeId === context.run.recipeId &&
+          settings.recipeVersion === context.run.recipeVersion,
+      ),
     });
     return { entry, output: entry.definition.parseOutput(current.output), invocation };
   }
@@ -976,6 +981,11 @@ export function createAgentCapabilityAdmissionServiceV1(
               transaction: runtime.db,
               staffUser: runtime.staffUser,
               runtimeResources: runtime.policy.effective.resources,
+              runtimeRecipeSettings: runtime.evidence.definition.settings.find(
+                (settings) =>
+                  settings.recipeId === runtime.run.recipeId &&
+                  settings.recipeVersion === runtime.run.recipeVersion,
+              ),
             }
           : {}),
       });

@@ -24,6 +24,7 @@ import {
   type NpAgentTrigger,
   type NpAgentRuntimeStudioEffectiveV1,
 } from "@nexpress/core/agent-contract";
+import { operatorSetupAvailable, operatorSetupDefinition } from "./agent-operator-setup.js";
 import { runtimeManualInput } from "./agent-runtime-manual-input.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentStudioApiError } from "./agent-studio-api.js";
@@ -365,6 +366,22 @@ function RuntimeConfigurationEditor({
         onSubmit={(event) => void submit(event)}
       >
         <fieldset disabled={busy || stale} className="min-w-0 space-y-6">
+          {!current && operatorSetupAvailable(catalog) ? (
+            <div className="space-y-2 rounded-md border p-3">
+              <p className="text-sm">
+                Configure an Operator to inspect operational evidence and propose a plan for review.
+                This replaces the draft’s recipe, permissions and budget. Provider selection remains
+                explicit; saving does not activate the Agent.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => update(operatorSetupDefinition(catalog, definition.name))}
+              >
+                Use Operator diagnostic setup
+              </Button>
+            </div>
+          ) : null}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="runtime-agent-name">Agent name</Label>
