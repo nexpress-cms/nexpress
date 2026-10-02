@@ -665,8 +665,11 @@ boundary. The [approved execution flow](r6-operator-execution-flow.md) connects 
 three closed operations to human approval, durable dispatch and Runtime
 continuation. The [operational observations flow](r6-operator-observations-flow.md)
 connects bounded Jobs/media sources, plugin registry diagnostics and explicitly
-labeled backup/readiness evidence. Broader source coverage, recipe setup and
-evaluations remain open; these slices do not close AP-602.
+labeled backup/readiness evidence. The [Operator recipe flow](r6-operator-recipe-flow.md)
+connects explicit Studio setup, deployment worker observations and owner-backed
+plan review with deterministic evaluation fixtures. Broader source coverage,
+longitudinal observations and model usefulness evaluations remain open; these
+slices do not close AP-602 or AP-606.
 
 ### R7 — Guardian and application security orchestration
 

@@ -87,3 +87,5 @@ export * from "./incident-assignment-contract.js";
 export * from "./incident-notifications-contract.js";
 
 export * from "./operator-capability-contract.js";
+
+export * from "./operator-recipe-contract.js";

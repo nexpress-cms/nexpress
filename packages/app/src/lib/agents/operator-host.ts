@@ -40,6 +40,10 @@ import {
   collectOperatorObservation,
   type NpAgentOperatorObservationOwnersV1,
 } from "./operator-observations";
+import {
+  collectOperatorWorkerObservation,
+  diagnoseOperatorWorkerObservation,
+} from "./operator-worker-observation";
 export type { NpAgentOperatorObservationOwnersV1 } from "./operator-observations";
 
 type Family = NpAgentOpsStatusInputV1["families"][number];
@@ -62,6 +66,8 @@ export interface NpAgentOperatorScopedObservationV1 {
 export interface NpAgentOperatorAppHostOptionsV1 {
   /** Concrete read-only owners. Absent sources remain unavailable. */
   observationOwners?: NpAgentOperatorObservationOwnersV1;
+  /** Explicit deployment-wide Agent queue/worker observation; requires authorizeDeployment. */
+  workerDiagnostics?: "pg-boss";
   /** Explicit deployment-owned route/tag resolver. Must return only the selected site's exact target. */
   cacheTargets?(
     request: NpAgentOperatorHostContextV1 & {
@@ -461,6 +467,33 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
       const request: Request = { ...context, capabilityId: "ops.status", input };
       await options.authorize(request);
       let checks = await Promise.all(input.families.map((family) => readFamily(family, request)));
+      const settings = context.runtimeRecipeSettings;
+      const thresholds =
+        settings?.recipeId === "operator.worker-not-draining"
+          ? {
+              staleAfterSeconds: settings.staleAfterSeconds,
+              minimumPendingJobs: settings.minimumPendingJobs,
+            }
+          : { staleAfterSeconds: 300, minimumPendingJobs: 1 };
+      let workerChecks: Check[] = [];
+      if (options.workerDiagnostics === "pg-boss" && input.families.includes("jobs")) {
+        workerChecks = diagnoseOperatorWorkerObservation(thresholds, {
+          paused: null,
+          backlog: null,
+          workers: null,
+        }).checks;
+        if (await options.authorizeDeployment?.(request)) {
+          const result = await collectOperatorWorkerObservation({
+            ...thresholds,
+            abortSignal: context.abortSignal,
+            authorize: async () => {
+              await options.authorize(request);
+              if (!(await options.authorizeDeployment?.(request))) unavailable();
+            },
+          });
+          workerChecks = result.checks;
+        }
+      }
       await options.authorize(request);
       if (!(await options.authorizeDeployment?.(request))) {
         checks = checks.map((check, index) =>
@@ -470,6 +503,15 @@ export function npCreateAgentOperatorAppHostV1(options: NpAgentOperatorAppHostOp
             : fixedCheck(input.families[index]),
         );
       }
+      // Append after family-indexed redaction: deployment facts never inherit a site reader's ACL.
+      if (workerChecks.length && !(await options.authorizeDeployment?.(request))) {
+        workerChecks = diagnoseOperatorWorkerObservation(thresholds, {
+          paused: null,
+          backlog: null,
+          workers: null,
+        }).checks;
+      }
+      checks.push(...workerChecks);
       const errors = checks.filter((check) => check.state === "error").length;
       const warnings = checks.filter((check) => check.state === "warn").length;
       const report: NpOpsStatusV1 = {

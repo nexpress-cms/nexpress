@@ -230,6 +230,7 @@ export function createAgentOperatorServiceV1(options: NpAgentOperatorServiceOpti
     capabilityIds.push("ops.execute");
   capabilityIds.sort();
   function context(actor: ActorContext, invocationId: string): NpAgentOperatorHostContextV1 {
+    const runtime = actor.runtime;
     return {
       db: actor.db,
       transaction: actor.db,
@@ -239,10 +240,15 @@ export function createAgentOperatorServiceV1(options: NpAgentOperatorServiceOpti
       invocationId,
       idempotencyKey: null,
       abortSignal: AbortSignal.timeout(30_000),
-      ...(actor.runtime
+      ...(runtime
         ? {
-            staffUser: actor.runtime.staffUser,
-            runtimeResources: actor.runtime.policy.effective.resources,
+            staffUser: runtime.staffUser,
+            runtimeResources: runtime.policy.effective.resources,
+            runtimeRecipeSettings: runtime.evidence.definition.settings.find(
+              (settings) =>
+                settings.recipeId === runtime.run.recipeId &&
+                settings.recipeVersion === runtime.run.recipeVersion,
+            ),
           }
         : {}),
     };

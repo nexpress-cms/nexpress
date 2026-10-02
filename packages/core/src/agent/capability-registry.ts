@@ -17,6 +17,7 @@ import {
   type NpAgentScope,
   type NpAgentPolicyRulesV1,
   type NpAgentTargetRef,
+  type NpAgentRecipeSettingsV1,
 } from "../agent-contract/index.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
 
@@ -59,6 +60,8 @@ export interface NpAgentReadDerivedRequirementsV1 {
 }
 
 export interface NpAgentReadCapabilityContextV1 extends NpAgentReadRequirementContextV1 {
+  /** Selected immutable recipe settings, supplied only by Runtime admission. */
+  runtimeRecipeSettings?: NpAgentRecipeSettingsV1;
   invocationId: string;
   idempotencyKey: null;
   abortSignal: AbortSignal;
