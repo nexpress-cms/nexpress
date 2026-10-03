@@ -669,7 +669,11 @@ labeled backup/readiness evidence. The [Operator recipe flow](r6-operator-recipe
 connects explicit Studio setup, deployment worker observations and owner-backed
 plan review with deterministic evaluation fixtures. Broader source coverage,
 longitudinal observations and model usefulness evaluations remain open; these
-slices do not close AP-602 or AP-606.
+slices do not close AP-602 or AP-606. The
+[Operator evaluation flow](r6-operator-evaluation-flow.md) adds a bounded offline
+benchmark, explicitly injected evaluation provider boundary and artifact review
+CLI. Its synthetic structured-diagnosis results do not establish real-model
+usefulness or close AP-606/R6.
 
 ### R7 — Guardian and application security orchestration
 

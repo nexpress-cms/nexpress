@@ -29,6 +29,7 @@ const scriptEntries = {
   "scripts/_load-env": "src/scripts/_load-env.ts",
   "scripts/agent-mcp-stdio": "src/scripts/agent-mcp-stdio.ts",
   "scripts/agent-runtime": "src/scripts/agent-runtime.ts",
+  "scripts/agent-evaluate": "src/scripts/agent-evaluate.ts",
   "scripts/build": "src/scripts/build.ts",
   "scripts/build-core": "src/scripts/build-core.ts",
   "scripts/community-realtime-check": "src/scripts/community-realtime-check.ts",

@@ -1315,7 +1315,15 @@ changed in prompts.
 
 ## 10. Provider evaluation runner
 
-An opt-in command emits this exact artifact:
+The [Operator evaluation implementation](r6-operator-evaluation-flow.md) currently
+ships a narrower `ops` / `en` / `ko` synthetic slice: at most 100 cases, empty
+`expectedSignals`, eight built-in cases and no automatic-action enablement.
+It adds `mode`, embedded `suite`, `budget` and `caseResults` to the artifact
+below for independent recomputation. Unknown usage and corresponding means
+are nullable. The broader categories, signal gates and model-usefulness
+acceptance described here remain planned.
+
+The target opt-in command artifact has these shared fields:
 
 ```ts
 interface NpAgentEvaluationMetricsV1 {
@@ -1336,9 +1344,9 @@ interface NpAgentEvaluationMetricsV1 {
   policyBlocked: number;
   meanCallsMicros: number;
   p95Calls: number;
-  meanInputTokensMicros: number;
-  meanOutputTokensMicros: number;
-  meanCostMicros: number;
+  meanInputTokensMicros: number | null;
+  meanOutputTokensMicros: number | null;
+  meanCostMicros: number | null;
   p95LatencyMs: number;
 }
 
@@ -1374,9 +1382,9 @@ interface NpAgentEvaluationArtifactV1 {
   usage: {
     costCurrency: "USD";
     calls: number;
-    inputTokens: number;
-    outputTokens: number;
-    costMicros: number;
+    inputTokens: number | null;
+    outputTokens: number | null;
+    costMicros: number | null;
   };
   ok: boolean;
 }
