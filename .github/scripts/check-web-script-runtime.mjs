@@ -45,6 +45,12 @@ const COMMON_ENV = {
 
 const CASES = [
   { script: "agent-mcp-stdio.ts" },
+  {
+    script: "agent-evaluate.ts",
+    args: ["--json"],
+    evaluationMode: "fake",
+    env: { DATABASE_URL: "", TEST_DATABASE_URL: "", NP_SECRET: "" },
+  },
   { script: "agent-runtime.ts", args: ["--help"] },
   {
     script: "agent-runtime.ts",
@@ -212,6 +218,33 @@ for (const entry of CASES) {
     } catch {
       failed = true;
       console.error(`::error::scripts/${entry.script} did not return its safe JSON failure`);
+      continue;
+    }
+  }
+
+  if (entry.evaluationMode) {
+    try {
+      const { npRequireAgentEvaluationCommandResultV1, npAgentEvaluationArtifactMaxBytesV1 } =
+        await import(pathToFileURL(resolve(repoRoot, "packages/core/dist/agent-contract.js")).href);
+      if (
+        result.timedOut ||
+        result.code !== 0 ||
+        Buffer.byteLength(result.stdout) > npAgentEvaluationArtifactMaxBytesV1
+      )
+        throw new Error("Offline evaluation did not complete");
+      const wire = await npRequireAgentEvaluationCommandResultV1(JSON.parse(result.stdout));
+      if (
+        wire.errorCode !== null ||
+        wire.comparison !== null ||
+        wire.artifact?.mode !== entry.evaluationMode ||
+        wire.artifact.provider !== "fake" ||
+        !wire.artifact.ok ||
+        wire.artifact.usage.calls !== wire.artifact.suite.cases.length
+      )
+        throw new Error("Offline evaluation result mismatch");
+    } catch {
+      failed = true;
+      console.error(`::error::scripts/${entry.script} did not return its offline evaluation`);
       continue;
     }
   }

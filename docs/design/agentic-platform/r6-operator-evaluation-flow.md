@@ -115,6 +115,8 @@ provider call or paid/network evaluation is part of this implementation gate.
   production build and the scaffold command journey. Installed Core contracts
   and runner, App evaluator JavaScript/declarations and project CLI bytes matched
   the verified producer files.
+- The reference script runtime smoke includes the evaluation entrypoint and
+  validates its successful fake report with DB/secret environment values empty.
 - Modified-file formatting, relative document links, credential/cast inspection
   and `git diff --check` passed. The implementation/config fingerprints matched
   the final code gate; the existing handoff edit was preserved byte-for-byte.
