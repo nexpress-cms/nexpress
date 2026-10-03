@@ -1,6 +1,11 @@
 import { spawn, spawnSync } from "node:child_process";
 import {
   npRequireAgentRuntimeOpsResultV1,
+  npRequireAgentEvaluationCommandResultV1,
+  npParseAgentEvaluationCommandArgsV1,
+  npDigestAgentEvaluationSuiteV1,
+  type NpAgentEvaluationCommandArgsV1,
+  type NpAgentEvaluationCommandResultV1,
   type NpAgentRuntimeOpsResultV1,
 } from "@nexpress/core/agent-contract";
 import { readFile, writeFile } from "node:fs/promises";
@@ -69,6 +74,7 @@ Usage:
   nexpress deploy plan --target <host> [--json]       Print a deployment bridge plan
   nexpress feedback [--json]                          Print a local PII-free support report and issue link
   nexpress agent connect --client <codex|claude> --transport <stdio|http>  Plan or apply a safe MCP connection
+  nexpress agent evaluate [--provider fake] [--dataset operator.v1] [--json]   Bounded offline evaluation
   nexpress agent runtime status|pause|resume --site <siteId> [--json]   Local runtime containment and recovery
   nexpress ops status [--json|--brief|--no-color]     Print read-only runtime status for operators and agents
   nexpress ops contracts [--json|--brief]             Print the shipped local ops contract registry
@@ -245,6 +251,7 @@ function runProjectScript(
   passthrough: string[],
   cwd: string,
 ): Promise<void> {
+  if (script === "agent:evaluate") return runEvaluationProjectScript(manager, passthrough, cwd);
   const runtimeJson =
     script === "agent:runtime" &&
     passthrough.includes("--json") &&
@@ -339,6 +346,113 @@ function runProjectScript(
     child.on("exit", (code) => {
       if (code === 0) resolveFn();
       else reject(new Error(`${manager} ${args.join(" ")} exited with code ${code ?? "null"}`));
+    });
+  });
+}
+
+async function runEvaluationProjectScript(
+  manager: "pnpm" | "npm" | "yarn",
+  passthrough: string[],
+  cwd: string,
+): Promise<void> {
+  if (passthrough.length === 1 && (passthrough[0] === "--help" || passthrough[0] === "-h")) {
+    process.stdout.write(
+      "nexpress agent evaluate [--provider fake] [--dataset operator.v1] [--out artifact] [--compare baseline] [--json]\nNetwork evaluation requires explicit model, call/token/cost limits, --confirm-network and a host-injected provider.\n",
+    );
+    return;
+  }
+  const json = passthrough.includes("--json");
+  const args = json ? passthrough : [...passthrough, "--json"];
+  const blocked = (): NpAgentEvaluationCommandResultV1 => ({
+    schemaVersion: "np.agent-eval-command.v1",
+    artifact: null,
+    comparison: null,
+    errorCode: "EVALUATION_UNAVAILABLE",
+  });
+  const emit = (result: NpAgentEvaluationCommandResultV1) =>
+    process.stdout.write(
+      `${json ? JSON.stringify(result) : result.errorCode ? `Agent evaluation unavailable (${result.errorCode}).` : `Agent evaluation ${result.artifact?.ok ? "passed" : "failed"}: ${result.artifact?.metrics.cases ?? 0} cases; ${result.artifact?.mode === "fake" ? "deterministic fixture correctness only; model usefulness is not measured" : "provider evaluation"}.${result.comparison ? (result.comparison.comparable ? " Comparison is compatible; use --json for metric deltas." : ` Comparison is not comparable (${result.comparison.reason}); no regression conclusion.`) : ""}`}\n`,
+    );
+  let input: NpAgentEvaluationCommandArgsV1;
+  try {
+    input = npParseAgentEvaluationCommandArgsV1(passthrough);
+  } catch {
+    emit({ ...blocked(), errorCode: "ARGUMENT_INVALID" });
+    throw new Error("Evaluation arguments invalid");
+  }
+  let yarnVersion: string | undefined;
+  if (manager === "yarn") {
+    const version = spawnSync(manager, ["--version"], {
+      cwd,
+      encoding: "utf8",
+      timeout: 10_000,
+      maxBuffer: 1024,
+    });
+    if (
+      version.error ||
+      version.status !== 0 ||
+      !/^\d+\.\d+\.\d+(?:[-+].*)?\s*$/.test(version.stdout)
+    ) {
+      emit(blocked());
+      throw new Error("Evaluation script unavailable");
+    }
+    yarnVersion = version.stdout.trim();
+  }
+  return new Promise((resolveFn, reject) => {
+    const child = spawn(manager, buildRunScriptArgs(manager, "agent:evaluate", args, yarnVersion), {
+      cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let finished = false;
+    child.stdout.on("data", (chunk: Buffer) => {
+      size += chunk.byteLength;
+      if (size <= 16_777_216) chunks.push(chunk);
+      else child.kill();
+    });
+    child.stderr.resume();
+    const finish = async (code: number | null) => {
+      if (finished) return;
+      finished = true;
+      let result = blocked();
+      try {
+        if (size > 16_777_216) throw new Error("Oversized evaluation result");
+        const parsed = await npRequireAgentEvaluationCommandResultV1(
+          JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown,
+        );
+        if (parsed.artifact) {
+          const { npCreateAgentOperatorEvaluationSuiteV1 } = await import("@nexpress/core/agents");
+          const suite = await npCreateAgentOperatorEvaluationSuiteV1();
+          if (
+            parsed.artifact.provider !== input.provider ||
+            parsed.artifact.model !== input.model ||
+            parsed.artifact.suite.id !== suite.id ||
+            parsed.artifact.suiteHash !== (await npDigestAgentEvaluationSuiteV1(suite)) ||
+            parsed.artifact.mode !== (input.provider === "fake" ? "fake" : "provider") ||
+            parsed.artifact.budget.maxCalls !== input.maxCalls ||
+            parsed.artifact.budget.maxInputTokens !== input.maxInputTokens ||
+            parsed.artifact.budget.maxOutputTokens !== input.maxOutputTokens ||
+            parsed.artifact.budget.maxCostMicros !== input.maxCostMicros ||
+            parsed.artifact.budget.timeoutMs !== 5000 ||
+            Boolean(parsed.comparison) !== Boolean(input.comparePath)
+          )
+            throw new Error("Mismatched evaluation result");
+        }
+        const failed = Boolean(parsed.errorCode || !parsed.artifact?.ok);
+        if ((code === 0 && !failed) || (code === 1 && failed)) result = parsed;
+      } catch {
+        /* Never expose child output, arguments or exception text. */
+      }
+      emit(result);
+      if (result.errorCode || !result.artifact?.ok) reject(new Error("Evaluation did not pass"));
+      else resolveFn();
+    };
+    child.on("error", () => {
+      void finish(null);
+    });
+    child.on("close", (code) => {
+      void finish(code);
     });
   });
 }
@@ -560,9 +674,14 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
   }
 
   if (args[0] === "agent") {
-    if (args[1] === "runtime") {
+    if (args[1] === "runtime" || args[1] === "evaluate") {
       try {
-        await projectScriptRunner(detectPackageManager(cwd), "agent:runtime", args.slice(2), cwd);
+        await projectScriptRunner(
+          detectPackageManager(cwd),
+          args[1] === "evaluate" ? "agent:evaluate" : "agent:runtime",
+          args.slice(2),
+          cwd,
+        );
         return 0;
       } catch {
         // The shared project runner already emitted one bounded result.

@@ -61,6 +61,7 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "scripts/_load-env.ts": utf8(loadEnvScriptTemplate()),
     "scripts/agent-mcp-stdio.ts": utf8(agentMcpStdioScriptTemplate()),
     "scripts/agent-runtime.ts": utf8(agentRuntimeScriptTemplate()),
+    "scripts/agent-evaluate.ts": utf8(agentEvaluateScriptTemplate()),
     "scripts/build.ts": utf8(buildScriptTemplate()),
     "scripts/deploy-plan.ts": utf8(deployPlanScriptTemplate()),
     "scripts/dev-notice.ts": utf8(devNoticeScriptTemplate()),
@@ -155,6 +156,7 @@ function packageJsonTemplate(config: TemplateConfig): string {
       scripts: {
         "agent:mcp": "tsx scripts/agent-mcp-stdio.ts",
         "agent:runtime": "tsx scripts/agent-runtime.ts",
+        "agent:evaluate": "tsx scripts/agent-evaluate.ts",
         predev: "tsx scripts/dev-notice.ts",
         dev: "next dev",
         prebuild: "pnpm schema:gen",
@@ -510,6 +512,13 @@ function agentMcpStdioScriptTemplate(): string {
     `  process.stderr.write(formatAgentMcpStdioFailureV1(error));\n` +
     `  process.exitCode = 1;\n` +
     `}\n`
+  );
+}
+
+function agentEvaluateScriptTemplate(): string {
+  return (
+    `import { runAgentEvaluateProcessV1 } from "@nexpress/app/scripts/agent-evaluate";\n\n` +
+    `process.exitCode = await runAgentEvaluateProcessV1();\n`
   );
 }
 
