@@ -5,6 +5,7 @@ import type { NpFieldConfig } from "../config/types.js";
 
 const mocks = vi.hoisted(() => ({
   findDocuments: vi.fn(),
+  readDocumentBase: vi.fn(),
   queryRows: [] as Array<{ id: string }>,
   getSiteById: vi.fn(),
   listEnabledPluginIds: vi.fn(),
@@ -42,6 +43,12 @@ vi.mock("../collections/index.js", () => ({
     return { ...collection, fields: [...collection.fields, ...mocks.fields] };
   },
   getCollectionTable: () => posts,
+}));
+
+vi.mock("./changeset-validation-resources.js", () => ({
+  createAgentChangeSetValidationResourceServiceV1: () => ({
+    readDocumentBase: mocks.readDocumentBase,
+  }),
 }));
 
 vi.mock("../db/runtime.js", () => ({
@@ -691,6 +698,139 @@ describe("Runtime read identity and document evidence", () => {
       ),
     ).rejects.toThrow();
     expect(resolveUser).not.toHaveBeenCalled();
+  });
+  function publisherRun(): NpAgentRuntimeRunContextV1 {
+    const value = run(true, true);
+    value.run.recipeVersion = 1;
+    value.run.queuedAt = new Date(requestedAt);
+    value.evidence.definition.settings = [
+      {
+        recipeId: "publisher.stale-content",
+        recipeVersion: 1,
+        collectionSlugs: ["posts"],
+        staleAfterDays: 180,
+        candidateLimit: 2,
+        batchSize: 1,
+      },
+    ];
+    return value;
+  }
+  function publisherDocument(id = request.documentId) {
+    return {
+      id,
+      siteId: "default",
+      slug: "old",
+      status: "published",
+      visibility: "public",
+      updatedAt: new Date("2025-01-01T00:00:00.000Z"),
+      title: "Visible",
+      secretNote: "never expose",
+    };
+  }
+  it("collects public stale candidates with existing owner bases and bounded projection", async () => {
+    const doc = publisherDocument();
+    mocks.findDocuments.mockResolvedValue({ docs: [doc] });
+    mocks.readDocumentBase.mockResolvedValue({
+      base: {
+        version: "revision:known:3:2025-01-01T00:00:00.000Z",
+        digest: `cj1:sha256:${"A".repeat(43)}`,
+      },
+      document: doc,
+    });
+    const result =
+      await createAgentCoreRuntimeDocumentEvidenceReaderV1(options).publisherCandidates(
+        publisherRun(),
+      );
+    expect(result).toMatchObject({
+      observedAt: requestedAt,
+      scanned: 1,
+      candidates: [
+        {
+          documentId: doc.id,
+          content: { title: "Visible" },
+          base: { version: "revision:known:3:2025-01-01T00:00:00.000Z" },
+        },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("never expose");
+    expect(JSON.stringify(result)).not.toContain("secretNote");
+    expect(mocks.findDocuments).toHaveBeenLastCalledWith(
+      "posts",
+      expect.objectContaining({
+        where: expect.objectContaining({ visibility: "public", status: ["published"] }),
+      }),
+      undefined,
+      expect.anything(),
+    );
+    expect(mocks.readDocumentBase).toHaveBeenCalledWith(
+      expect.objectContaining({
+        siteId: "default",
+        user: staffUser,
+        documentId: doc.id,
+        tx: expect.anything(),
+      }),
+    );
+    expect(mocks.queryParameters).toContain("2026-03-03T00:00:00.000Z");
+  });
+  it("excludes unwritable, nonpublic, cross-site and changed revisions before provider projection", async () => {
+    const doc = publisherDocument();
+    mocks.findDocuments.mockResolvedValue({ docs: [doc] });
+    const reader = createAgentCoreRuntimeDocumentEvidenceReaderV1(options);
+    for (const current of [
+      { ...doc, status: "draft" },
+      { ...doc, visibility: "private" },
+      { ...doc, siteId: "other" },
+      { ...doc, updatedAt: new Date(requestedAt) },
+      { ...doc, title: "Changed without timestamp" },
+    ]) {
+      mocks.readDocumentBase.mockResolvedValue({
+        base: { version: "owner", digest: `cj1:sha256:${"A".repeat(43)}` },
+        document: current,
+      });
+      expect((await reader.publisherCandidates(publisherRun())).candidates).toEqual([]);
+    }
+    mocks.readDocumentBase.mockRejectedValue(new Error("write denied"));
+    expect((await reader.publisherCandidates(publisherRun())).candidates).toEqual([]);
+    const denied = publisherRun();
+    denied.staffUser = null;
+    await expect(reader.publisherCandidates(denied)).rejects.toThrow();
+    const ceiling = publisherRun();
+    ceiling.policy.effective.resources.collections = [];
+    await expect(reader.publisherCandidates(ceiling)).rejects.toThrow();
+  });
+  it("caps inspected candidates and returned batch independently", async () => {
+    const first = publisherDocument(),
+      second = publisherDocument("01900000-0000-7000-8000-000000000099");
+    mocks.queryRows = [
+      { id: first.id },
+      { id: second.id },
+      { id: "01900000-0000-7000-8000-000000000088" },
+    ];
+    mocks.findDocuments.mockResolvedValue({ docs: [second, first] });
+    mocks.readDocumentBase.mockImplementation(({ documentId }: { documentId: string }) =>
+      Promise.resolve({
+        base: { version: "owner", digest: `cj1:sha256:${"A".repeat(43)}` },
+        document: documentId === first.id ? first : second,
+      }),
+    );
+    const current = publisherRun();
+    current.evidence.definition.settings[0] = {
+      recipeId: "publisher.stale-content",
+      recipeVersion: 1,
+      collectionSlugs: ["posts", "stories"],
+      staleAfterDays: 180,
+      candidateLimit: 2,
+      batchSize: 1,
+    };
+    current.policy.effective.resources.collections = ["posts", "stories"];
+    mocks.findDocuments.mockClear();
+    const result =
+      await createAgentCoreRuntimeDocumentEvidenceReaderV1(options).publisherCandidates(current);
+    expect(mocks.findDocuments).toHaveBeenCalledTimes(1);
+    expect(result.scanned).toBe(2);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.truncated).toBe(true);
+    expect(result.candidates[0].documentId).toBe(first.id);
   });
 });
 

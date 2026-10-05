@@ -679,6 +679,39 @@ export function createAgentChangeSetResourceServiceV1() {
         requiredScopes: [...scopes].sort(),
       };
     },
+    /** Current item read + update ACL, without inventing a proposed operation or draft. */
+    readDocumentForUpdate: async (input: {
+      tx: NpTransaction;
+      siteId: string;
+      user: NpAuthUser;
+      collection: string;
+      documentId: string;
+    }) => {
+      if (!npIsCanonicalSiteId(input.siteId)) throw invalid();
+      requireScopes(input.user, ["content:read", "content:draft"]);
+      return withCurrentSite(input.siteId, async () => {
+        const current = await persisted(
+          input.siteId,
+          input.user,
+          input.collection,
+          input.documentId,
+          input.tx,
+        );
+        try {
+          await npAssertCollectionWriteAccess(
+            current.config,
+            input.collection,
+            "update",
+            input.user,
+            npCollectionDocumentToWriteInput(current.document, current.config),
+            current.document,
+          );
+        } catch {
+          throw denied();
+        }
+        return current;
+      });
+    },
     prepare: async (
       input: NpAgentChangeSetPrepareResourceInputV1,
     ): Promise<NpAgentChangeSetPreparedResourceV1> => {

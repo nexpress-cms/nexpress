@@ -106,6 +106,13 @@ export function RuntimeRecipeFields({
   return (
     <fieldset className="space-y-3">
       <legend className="font-medium">{value.recipeId}</legend>
+      {value.recipeId === "publisher.stale-content" ? (
+        <p className="text-sm text-neutral-500">
+          Choose at least one collection explicitly before saving. Only content in these collections
+          is eligible for review. The Publisher prepares drafts and previews; applying changes
+          requires separate human approval.
+        </p>
+      ) : null}
       {"collectionSlugs" in value ? (
         <RuntimeStringList
           label="Collection slugs"

@@ -10,7 +10,7 @@ import {
 } from "../collections/pipeline.js";
 import { getCollectionConfig, getCollectionTable } from "../collections/registry.js";
 import type { PgTable } from "drizzle-orm/pg-core";
-import type { NpAuthUser } from "../config/types.js";
+import type { NpAuthUser, NpCollectionConfig } from "../config/types.js";
 import { npMedia, npMediaRefs } from "../db/schema/media.js";
 import { npNavigation, npRevisions, npSettings } from "../db/schema/system.js";
 import { npValidateNavigationItems } from "../navigation/contract.js";
@@ -173,6 +173,34 @@ function applyScopes(operation: NpAgentChangeSetOperationInput): NpAgentScope[] 
   }
 }
 
+async function documentVersion(
+  tx: NpTransaction,
+  collection: string,
+  documentId: string,
+  config: NpCollectionConfig,
+  document: Record<string, unknown>,
+  ordinal: number | null,
+): Promise<string> {
+  const timestamp = config.timestamps === false ? "untimestamped" : utc(document.updatedAt);
+  if (config.versions) {
+    const [head] = (await tx
+      .select({ id: npRevisions.id, version: npRevisions.version })
+      .from(npRevisions)
+      .where(
+        and(
+          eq(npRevisions.collection, collection),
+          eq(npRevisions.documentId, documentId),
+          ne(npRevisions.status, "autosave"),
+        )!,
+      )
+      .orderBy(desc(npRevisions.version))
+      .limit(1)) as Array<{ id: string; version: number }>;
+    if (!head || !Number.isSafeInteger(head.version) || head.version < 1)
+      fail("ROLLBACK_UNAVAILABLE", ordinal);
+    return `revision:${head.id}:${head.version.toString()}:${timestamp}`;
+  } else return `updated:${timestamp}`;
+}
+
 /** All reads use the caller's transaction. This service never opens a transaction or writes. */
 export function createAgentChangeSetValidationResourceServiceV1() {
   const resources = createAgentChangeSetResourceServiceV1();
@@ -206,27 +234,14 @@ export function createAgentChangeSetValidationResourceServiceV1() {
         if (!document) fail("RESOURCE_NOT_FOUND", input.ordinal);
         value = json(npSerializeCollectionDocument(document, inspected.document.config));
         semantic = semanticDocument(document);
-        const timestamp =
-          inspected.document.config.timestamps === false
-            ? "untimestamped"
-            : utc(document.updatedAt);
-        if (inspected.document.config.versions) {
-          const [head] = (await input.tx
-            .select({ id: npRevisions.id, version: npRevisions.version })
-            .from(npRevisions)
-            .where(
-              and(
-                eq(npRevisions.collection, operation.resource.collection),
-                eq(npRevisions.documentId, canonicalResourceKey.documentId),
-                ne(npRevisions.status, "autosave"),
-              )!,
-            )
-            .orderBy(desc(npRevisions.version))
-            .limit(1)) as Array<{ id: string; version: number }>;
-          if (!head || !Number.isSafeInteger(head.version) || head.version < 1)
-            fail("ROLLBACK_UNAVAILABLE", input.ordinal);
-          version = `revision:${head.id}:${head.version.toString()}:${timestamp}`;
-        } else version = `updated:${timestamp}`;
+        version = await documentVersion(
+          input.tx,
+          operation.resource.collection,
+          canonicalResourceKey.documentId,
+          inspected.document.config,
+          document,
+          input.ordinal,
+        );
       }
     } else if (operation.kind === "navigation") {
       const [row] = (await input.tx
@@ -642,6 +657,36 @@ export function createAgentChangeSetValidationResourceServiceV1() {
         }
       }
       return resourceHash(snapshot.siteId, key, snapshot.presence, semantic);
+    },
+    /** Snapshot-free current document base using the same version and semantic digest owner. */
+    readDocumentBase: async (input: {
+      tx: NpTransaction;
+      siteId: string;
+      user: NpAuthUser;
+      collection: string;
+      documentId: string;
+    }) => {
+      const current = await resources.readDocumentForUpdate(input);
+      if (
+        encoder.encode(serializeAgentCanonicalJson(json(current.document))).byteLength >
+        npAgentChangeSetLimits.snapshotBytes
+      )
+        fail("LIMIT_EXCEEDED", null);
+      const version = await documentVersion(
+        input.tx,
+        input.collection,
+        input.documentId,
+        current.config,
+        current.document,
+        null,
+      );
+      const digest = await resourceHash(
+        input.siteId,
+        { kind: "document", collection: input.collection, documentId: input.documentId },
+        "present",
+        semanticDocument(current.document),
+      );
+      return { base: { version, digest }, document: current.document };
     },
     readBase,
     validate,

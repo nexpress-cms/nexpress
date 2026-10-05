@@ -89,6 +89,7 @@ export * from "./incident-notifications-contract.js";
 export * from "./operator-capability-contract.js";
 
 export * from "./operator-recipe-contract.js";
+export * from "./publisher-recipe-contract.js";
 
 export * from "./evaluation-contract.js";
 

@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import type { NpAgentJsonSchema } from "../agent-contract/index.js";
+import { npAgentChangeSetCreateInputSchemaV1 } from "../agent-contract/changeset-capability-schema.js";
+import type { NpAgentJsonSchema, NpAgentJsonValue } from "../agent-contract/index.js";
 
 import {
   NpAgentConnectionAuthAdapterRegistryV1,
@@ -308,5 +309,142 @@ describe("Agent provider authentication contract", () => {
         snapshot: { ...snapshot, pricingCatalog: [] },
       }),
     ).rejects.toMatchObject({ code: "PROVIDER_CONFIG_INTEGRITY_FAILED" });
+  });
+});
+
+describe("provider schema compatibility with owner contracts", () => {
+  it("accepts real ChangeSet nested JSON patches and rich text without widening owner fields", () => {
+    const input = {
+      title: "Review content",
+      summary: null,
+      operations: [
+        {
+          clientOperationId: "description",
+          reason: "Improve clarity",
+          kind: "document",
+          operation: "update",
+          resource: { collection: "posts", documentId: connectionId },
+          base: {
+            version: "updated:2026-01-01T00:00:00.000Z",
+            digest: `cj1:sha256:${"A".repeat(43)}`,
+          },
+          input: {
+            patch: {
+              metadata: { tags: ["safe", { count: 2, enabled: true }] },
+              content: {
+                root: {
+                  type: "root",
+                  children: [{ type: "paragraph", children: [{ type: "text", text: "Reviewed" }] }],
+                },
+              },
+            },
+            targetStatus: "published",
+          },
+        },
+      ],
+    };
+    expect(() =>
+      npRequireAgentProviderSchemaValueV1(npAgentChangeSetCreateInputSchemaV1, input),
+    ).not.toThrow();
+    expect(() =>
+      npRequireAgentProviderSchemaValueV1(npAgentChangeSetCreateInputSchemaV1, {
+        ...input,
+        hidden: true,
+      }),
+    ).toThrow();
+    input.operations[0].resource.documentId = "not-a-uuid";
+    expect(() =>
+      npRequireAgentProviderSchemaValueV1(npAgentChangeSetCreateInputSchemaV1, input),
+    ).toThrow();
+  });
+  it("enforces canonical UUID/UTC formats, maxProperties and every matching property pattern", () => {
+    const schema: NpAgentJsonSchema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      maxProperties: 3,
+      additionalProperties: false,
+      properties: {
+        id: { type: "string", format: "uuid" },
+        at: { type: "string", format: "date-time" },
+      },
+      patternProperties: {
+        "^note": { type: "string", maxLength: 3 },
+        Text$: { type: "string", pattern: "^ok" },
+      },
+    };
+    const value = { id: connectionId, at: "2026-10-03T00:00:00.000Z", noteText: "ok" };
+    expect(() => npRequireAgentProviderSchemaValueV1(schema, value)).not.toThrow();
+    const invalidValues: NpAgentJsonValue[] = [
+      { ...value, id: "bad" },
+      { ...value, at: "2026-02-30T00:00:00.000Z" },
+      { ...value, at: "2026-10-03T00:00:00+00:00" },
+      { ...value, noteText: "bad" },
+      { ...value, noteMore: "ok" },
+      { extra: "ok" },
+    ];
+    for (const invalid of invalidValues) {
+      expect(() => npRequireAgentProviderSchemaValueV1(schema, invalid)).toThrow();
+    }
+    const overlapping: NpAgentJsonSchema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      additionalProperties: false,
+      properties: { noteText: { maxLength: 1 } },
+      patternProperties: { ".*": { type: "string" } },
+    };
+    expect(() => npRequireAgentProviderSchemaValueV1(overlapping, { noteText: "ok" })).toThrow();
+  });
+  it("does not execute schema array callbacks or accessors and rejects unusual array shapes", () => {
+    const callback = vi.fn(() => []);
+    const accessor = vi.fn(() => ({ type: "string" }));
+    const overridden = [{ type: "string" }];
+    Object.defineProperty(overridden, "map", { value: callback });
+    const accessed = [{ type: "string" }];
+    Object.defineProperty(accessed, "0", { get: accessor });
+    class SchemaArray extends Array<{ type: string }> {}
+    const unusual = new SchemaArray({ type: "string" });
+    for (const alternatives of [overridden, accessed, unusual, Array<{ type: string }>(1)]) {
+      const schema: NpAgentJsonSchema = {
+        $schema: "https://json-schema.org/draft/2020-12/schema",
+        type: "object",
+        additionalProperties: false,
+        properties: { value: { anyOf: alternatives } },
+      };
+      expect(() => npRequireAgentProviderSchemaValueV1(schema, { value: "safe" })).toThrow();
+    }
+    expect(callback).not.toHaveBeenCalled();
+    expect(accessor).not.toHaveBeenCalled();
+  });
+  it("rejects unsupported formats, malformed patterns, nonproductive references and excessive values", () => {
+    const rootSchema: NpAgentJsonSchema = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      additionalProperties: false,
+      properties: { value: {} },
+    };
+    const unsupportedSchemas: NpAgentJsonSchema[] = [
+      { ...rootSchema, properties: { value: { type: "string", format: "email" } } },
+      { ...rootSchema, maxProperties: -1 },
+      { ...rootSchema, patternProperties: { "[": { type: "string" } } },
+    ];
+    for (const schema of unsupportedSchemas) {
+      expect(() => npRequireAgentProviderSchemaValueV1(schema, { value: "value" })).toThrow();
+    }
+    const cycle: NpAgentJsonSchema = {
+      ...rootSchema,
+      $defs: { loop: { $ref: "#/$defs/loop" } },
+      properties: { value: { anyOf: [{ type: "string" }, { $ref: "#/$defs/loop" }] } },
+    };
+    expect(() => npRequireAgentProviderSchemaValueV1(cycle, { value: "value" })).toThrowError(
+      expect.objectContaining({ code: "PROVIDER_CONTRACT_INVALID" }),
+    );
+    let deep: NpAgentJsonValue = null;
+    for (let depth = 0; depth < 34; depth++) deep = { child: deep };
+    expect(() => npRequireAgentProviderSchemaValueV1(rootSchema, { value: deep })).toThrow();
+    expect(() =>
+      npRequireAgentProviderSchemaValueV1(rootSchema, {
+        value: Array.from({ length: 20001 }, () => null),
+      }),
+    ).toThrow();
   });
 });

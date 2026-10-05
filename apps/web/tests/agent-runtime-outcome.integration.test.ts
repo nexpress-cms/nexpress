@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { npAgentRuns } from "../../../packages/core/src/db/schema/agent.js";
 import { npCollectAgentRuntimeOutcomeV1 } from "../../../packages/core/src/agent/runtime-outcome-health.js";
 import {
@@ -32,7 +32,7 @@ describe.skipIf(skipIfNoTestDb())("Runtime outcome observation", () => {
     await ensureMigrated();
     client = await connect();
   });
-  afterEach(truncateAll);
+  beforeEach(truncateAll);
   afterAll(async () => {
     await client?.end();
     await closeTestDb();

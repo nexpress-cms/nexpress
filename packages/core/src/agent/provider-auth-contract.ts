@@ -6,6 +6,7 @@ import {
   npRequireAgentConnectionConfigCanonical,
   npRequireAgentConnectionDestinationCanonical,
   npRequireAgentJsonSchema,
+  npAgentContractLimits,
   type NpAgentConnectionDestinationCanonicalV1,
   type NpAgentConnectionDestinationDescriptorV1,
   type NpAgentConnectionKind,
@@ -18,6 +19,11 @@ import {
   type NpAgentProviderInvokeOutcomeV1,
 } from "../agent-contract/index.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
+import { cloneCanonicalRuntimeInput } from "../agent-contract/canonical-runtime-primitives.js";
+import {
+  canonicalBodyUuid,
+  canonicalBodyUtc,
+} from "../agent-contract/canonical-body-validation.js";
 import type {
   NpAgentConnectionCredentialEnvelopeV1,
   NpProviderCredentialLeaseV1,
@@ -446,14 +452,90 @@ function schemaTypeMatches(type: unknown, value: NpAgentJsonValue): boolean {
   }
 }
 
+/** Expand shared owner-schema fragments while rejecting object cycles and accessors. */
+function expandProviderSchema(
+  value: unknown,
+  path: string,
+  depth = 0,
+  work = { remaining: npAgentContractLimits.invocationNodes },
+  active = new WeakSet<object>(),
+): unknown {
+  if (depth > npAgentContractLimits.invocationDepth || --work.remaining < 0)
+    fail("PROVIDER_CONTRACT_INVALID", `${path} exceeds the supported schema bounds.`);
+  if (typeof value !== "object" || value === null) return value;
+  if (active.has(value)) fail("PROVIDER_CONTRACT_INVALID", `${path} has a cyclic schema object.`);
+  const prototype: unknown = Object.getPrototypeOf(value);
+  if (
+    (Array.isArray(value) && prototype !== Array.prototype) ||
+    (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null)
+  )
+    fail("PROVIDER_CONTRACT_INVALID", `${path} is not a plain schema object.`);
+  if (Object.getOwnPropertySymbols(value).length)
+    fail("PROVIDER_CONTRACT_INVALID", `${path} has schema symbol properties.`);
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  if (Object.values(descriptors).some((descriptor) => !("value" in descriptor)))
+    fail("PROVIDER_CONTRACT_INVALID", `${path} has schema accessors.`);
+  active.add(value);
+  try {
+    if (Array.isArray(value)) {
+      const length: unknown = descriptors.length?.value;
+      if (
+        typeof length !== "number" ||
+        !Number.isSafeInteger(length) ||
+        length < 0 ||
+        length > npAgentContractLimits.invocationArrayItems ||
+        Object.keys(descriptors).length !== length + 1
+      )
+        fail("PROVIDER_CONTRACT_INVALID", `${path} exceeds the supported array shape.`);
+      const result: unknown[] = [];
+      for (let index = 0; index < length; index++) {
+        const descriptor = descriptors[index.toString()];
+        if (!descriptor || !descriptor.enumerable)
+          fail("PROVIDER_CONTRACT_INVALID", `${path} has a sparse or hidden schema item.`);
+        result.push(expandProviderSchema(descriptor.value, path, depth + 1, work, active));
+      }
+      return result;
+    }
+    const entries = Object.entries(descriptors);
+    if (entries.length > npAgentContractLimits.invocationObjectProperties)
+      fail("PROVIDER_CONTRACT_INVALID", `${path} exceeds the supported schema bounds.`);
+    return Object.fromEntries(
+      entries.map(([key, descriptor]) => [
+        key,
+        expandProviderSchema(descriptor.value, path, depth + 1, work, active),
+      ]),
+    );
+  } finally {
+    active.delete(value);
+  }
+}
+
 /** A closed validator for the JSON-Schema subset used by provider configuration metadata. */
 export function npRequireAgentProviderSchemaValueV1(
   schemaValue: NpAgentJsonSchema,
   value: NpAgentJsonValue,
   path = "agent.provider.schemaValue",
 ): void {
-  requireSupportedSchema(schemaValue, path);
-  validateSchemaValue(schemaValue, value, path, schemaValue, new Set());
+  let schema: NpAgentJsonSchema;
+  let input: NpAgentJsonValue;
+  try {
+    schema = cloneCanonicalRuntimeInput(
+      expandProviderSchema(schemaValue, path),
+      path,
+      npAgentContractLimits.invocationBytes,
+    ) as NpAgentJsonSchema;
+  } catch {
+    fail("PROVIDER_CONTRACT_INVALID", `${path} exceeds the supported schema bounds.`);
+  }
+  try {
+    input = cloneCanonicalRuntimeInput(value, path, npAgentContractLimits.invocationBytes);
+  } catch {
+    fail("PROVIDER_CONFIG_SCHEMA_MISMATCH", `${path} exceeds the supported value bounds.`);
+  }
+  requireSupportedSchema(schema, path);
+  validateSchemaValue(schema, input, path, schema, new Set(), {
+    remaining: npAgentContractLimits.invocationNodes * 16,
+  });
 }
 
 function validateSchemaValue(
@@ -462,16 +544,21 @@ function validateSchemaValue(
   path: string,
   root: NpAgentJsonSchema,
   references: ReadonlySet<string>,
+  work: { remaining: number },
 ): void {
+  if (--work.remaining < 0)
+    fail("PROVIDER_CONTRACT_INVALID", `${path} exceeds the schema evaluation bound.`);
   const schema = schemaValue as Record<string, unknown>;
   if (typeof schema.$ref === "string") {
     const name = schema.$ref.slice("#/$defs/".length);
     const definitions = root.$defs as Record<string, NpAgentJsonSchema> | undefined;
     const referenced = definitions?.[name];
-    if (!referenced || references.has(name)) {
+    if (references.has(name))
+      fail("PROVIDER_CONTRACT_INVALID", `${path} has a nonproductive schema reference.`);
+    if (!referenced) {
       fail("PROVIDER_CONFIG_SCHEMA_MISMATCH", `${path} has an unresolved schema reference.`);
     }
-    validateSchemaValue(referenced, value, path, root, new Set([...references, name]));
+    validateSchemaValue(referenced, value, path, root, new Set([...references, name]), work);
   }
   if (Array.isArray(schema.allOf)) {
     schema.allOf.forEach((entry, index) =>
@@ -481,6 +568,7 @@ function validateSchemaValue(
         `${path}.allOf[${index.toString()}]`,
         root,
         references,
+        work,
       ),
     );
   }
@@ -493,10 +581,14 @@ function validateSchemaValue(
     let matches = 0;
     for (const alternative of alternatives) {
       try {
-        validateSchemaValue(alternative as NpAgentJsonSchema, value, path, root, references);
+        validateSchemaValue(alternative as NpAgentJsonSchema, value, path, root, references, work);
         matches += 1;
       } catch (error) {
-        if (!(error instanceof NpAgentProviderError)) throw error;
+        if (
+          !(error instanceof NpAgentProviderError) ||
+          error.code !== "PROVIDER_CONFIG_SCHEMA_MISMATCH"
+        )
+          throw error;
       }
     }
     if (matches === 0 || (Array.isArray(schema.oneOf) && matches !== 1)) {
@@ -526,6 +618,12 @@ function validateSchemaValue(
     fail("PROVIDER_CONFIG_SCHEMA_MISMATCH", `${path} has the wrong JSON type.`);
   }
   if (typeof value === "string") {
+    try {
+      if (schema.format === "uuid") canonicalBodyUuid(value, path);
+      if (schema.format === "date-time") canonicalBodyUtc(value, path);
+    } catch {
+      fail("PROVIDER_CONFIG_SCHEMA_MISMATCH", `${path} does not match its canonical format.`);
+    }
     if (typeof schema.minLength === "number" && value.length < schema.minLength)
       fail("PROVIDER_CONFIG_SCHEMA_MISMATCH", `${path} is too short.`);
     if (typeof schema.maxLength === "number" && value.length > schema.maxLength)
@@ -556,7 +654,8 @@ function validateSchemaValue(
           entry,
           `${path}[${index.toString()}]`,
           root,
-          references,
+          new Set(),
+          work,
         ),
       );
   }
@@ -567,18 +666,40 @@ function validateSchemaValue(
     for (const key of required)
       if (!Object.hasOwn(object, key))
         fail("PROVIDER_CONFIG_SCHEMA_MISMATCH", `${path}.${key} is required.`);
+    if (
+      typeof schema.maxProperties === "number" &&
+      Object.keys(object).length > schema.maxProperties
+    )
+      fail("PROVIDER_CONFIG_SCHEMA_MISMATCH", `${path} has too many properties.`);
+    const patterns = Object.entries(
+      (schema.patternProperties ?? {}) as Record<string, NpAgentJsonSchema>,
+    );
     for (const [key, entry] of Object.entries(object)) {
-      if (properties[key])
-        validateSchemaValue(properties[key], entry, `${path}.${key}`, root, references);
-      else if (schema.additionalProperties === false)
+      let matched = false;
+      if (Object.hasOwn(properties, key)) {
+        matched = true;
+        validateSchemaValue(properties[key], entry, `${path}.${key}`, root, new Set(), work);
+      }
+      for (const [pattern, child] of patterns) {
+        if (new RegExp(pattern, "u").test(key)) {
+          matched = true;
+          validateSchemaValue(child, entry, `${path}.${key}`, root, new Set(), work);
+        }
+      }
+      if (!matched && schema.additionalProperties === false)
         fail("PROVIDER_CONFIG_SCHEMA_MISMATCH", `${path}.${key} is not declared.`);
-      else if (schema.additionalProperties && typeof schema.additionalProperties === "object")
+      else if (
+        !matched &&
+        schema.additionalProperties &&
+        typeof schema.additionalProperties === "object"
+      )
         validateSchemaValue(
           schema.additionalProperties as NpAgentJsonSchema,
           entry,
           `${path}.${key}`,
           root,
-          references,
+          new Set(),
+          work,
         );
     }
   }
@@ -596,6 +717,9 @@ const SUPPORTED_SCHEMA_KEYS = new Set([
   "description",
   "enum",
   "items",
+  "format",
+  "maxProperties",
+  "patternProperties",
   "maximum",
   "maxItems",
   "maxLength",
@@ -616,6 +740,36 @@ function requireSupportedSchema(schemaValue: NpAgentJsonSchema, path: string): v
   for (const key of Object.keys(schema)) {
     if (!SUPPORTED_SCHEMA_KEYS.has(key)) {
       fail("PROVIDER_CONTRACT_INVALID", `${path}.${key} is not supported by the provider host.`);
+    }
+  }
+  if (schema.format !== undefined && schema.format !== "uuid" && schema.format !== "date-time")
+    fail("PROVIDER_CONTRACT_INVALID", `${path}.format is not supported.`);
+  if (
+    schema.maxProperties !== undefined &&
+    (!Number.isSafeInteger(schema.maxProperties) || Number(schema.maxProperties) < 0)
+  )
+    fail("PROVIDER_CONTRACT_INVALID", `${path}.maxProperties is invalid.`);
+  if (
+    schema.$ref !== undefined &&
+    (typeof schema.$ref !== "string" || !/^#\/\$defs\/[^/]+$/u.test(schema.$ref))
+  )
+    fail("PROVIDER_CONTRACT_INVALID", `${path} has an unsupported schema reference.`);
+  if (schema.patternProperties !== undefined) {
+    if (
+      typeof schema.patternProperties !== "object" ||
+      schema.patternProperties === null ||
+      Array.isArray(schema.patternProperties)
+    )
+      fail("PROVIDER_CONTRACT_INVALID", `${path}.patternProperties is invalid.`);
+    for (const [pattern, child] of Object.entries(schema.patternProperties)) {
+      try {
+        new RegExp(pattern, "u");
+      } catch {
+        fail("PROVIDER_CONTRACT_INVALID", `${path} has an invalid property pattern.`);
+      }
+      if (typeof child !== "object" || child === null || Array.isArray(child))
+        fail("PROVIDER_CONTRACT_INVALID", `${path} has an invalid property schema.`);
+      requireSupportedSchema(child as NpAgentJsonSchema, `${path}.patternProperties`);
     }
   }
   if (typeof schema.pattern === "string") {

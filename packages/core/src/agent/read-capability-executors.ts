@@ -1,3 +1,15 @@
+import { createAgentChangeSetValidationResourceServiceV1 } from "./changeset-validation-resources.js";
+import { npRequireAgentRecipeSettingsV1 } from "../agent-contract/runtime-contract.js";
+import {
+  NP_AGENT_PUBLISHER_PAYLOAD_BYTES,
+  NP_AGENT_PUBLISHER_DOCUMENT_BYTES,
+  npAnalyzeAgentPublisherContentV1,
+  npRankAgentPublisherCandidatesV1,
+  npRequireAgentPublisherRouteInventoryV1,
+  type NpAgentPublisherCandidatesV1,
+  type NpAgentPublisherCandidateV1,
+  type NpAgentPublisherRouteInventoryV1,
+} from "./publisher-content.js";
 import type { NpAgentIncidentServiceV1 } from "./incident-service.js";
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
@@ -83,6 +95,10 @@ export interface NpAgentCoreReadCapabilityOptionsV1 {
   incidentService?: NpAgentIncidentServiceV1;
   /** Explicit host-owned, site-authorized and redacted operational status collector. */
   opsStatus?: NpAgentReadCapabilityExecutorsV1["ops.status"];
+  /** Site-authorized canonical public routes. Absence/partial coverage never proves a broken link. */
+  publisherRouteInventory?: (
+    context: NpAgentRuntimeRunContextV1,
+  ) => Promise<NpAgentPublisherRouteInventoryV1>;
   cursorHmacKey: { id: string; key: Uint8Array };
   resolveUser: (userId: string) => NpAuthUser | null | Promise<NpAuthUser | null>;
   resolveBlockSchemas: (
@@ -723,6 +739,7 @@ async function queryContent(
   input: NpAgentContentQueryInputV1,
   context: ReadContext,
   options: NpAgentCoreReadCapabilityOptionsV1,
+  selectedCount?: (count: number) => void,
 ): Promise<NpAgentContentQueryOutputV1> {
   const config = getCollectionConfig(input.collection);
   const table = getCollectionTable(input.collection) as PgTable;
@@ -791,6 +808,7 @@ async function queryContent(
     .limit(input.limit + 1)
     .offset(offset)) as Array<{ id: string }>;
   const selected = rows.slice(0, input.limit);
+  selectedCount?.(selected.length);
   const ids = selected.map((row) => row.id);
   let docs: ContentRow[] = [];
   if (ids.length > 0) {
@@ -885,6 +903,7 @@ async function queryContent(
 }
 
 export interface NpAgentRuntimeDocumentEvidenceReaderV1 {
+  publisherCandidates(context: NpAgentRuntimeRunContextV1): Promise<NpAgentPublisherCandidatesV1>;
   read(
     context: NpAgentRuntimeRunContextV1,
     request: Extract<NpAgentEvidenceRequest, { kind: "document" }>,
@@ -907,6 +926,193 @@ export function createAgentCoreRuntimeDocumentEvidenceReaderV1(
 ): NpAgentRuntimeDocumentEvidenceReaderV1 {
   createAgentCoreReadCapabilityExecutorsV1(options);
   const reader: NpAgentRuntimeDocumentEvidenceReaderV1 = {
+    async publisherCandidates(context) {
+      const unavailable = (): never => {
+        throw new NpNotFoundError("publisher-candidates", "unavailable");
+      };
+      const { principal, definition } = context.evidence;
+      const user = context.staffUser;
+      if (
+        context.run.recipeId !== "publisher.stale-content" ||
+        !user ||
+        principal.authorityKind !== "user" ||
+        principal.authorityUserId !== user.id ||
+        !["content:read", "content:draft", "schema:read"].every((scope) =>
+          definition.scopes.includes(scope as "content:read" | "content:draft" | "schema:read"),
+        ) ||
+        !context.policy.effective.capabilityModes.some(
+          (entry) => entry.capabilityId === "content.query",
+        )
+      )
+        unavailable();
+      const settings = npRequireAgentRecipeSettingsV1(
+        definition.settings.find(
+          (entry) =>
+            entry.recipeId === "publisher.stale-content" &&
+            entry.recipeVersion === context.run.recipeVersion,
+        ),
+      );
+      if (settings.recipeId !== "publisher.stale-content") return unavailable();
+      const collections = context.policy.effective.resources.collections;
+      if (
+        settings.collectionSlugs.some((slug) => collections !== null && !collections.includes(slug))
+      )
+        unavailable();
+      const observedAt = context.run.queuedAt.toISOString(),
+        cutoff = new Date(
+          context.run.queuedAt.getTime() - settings.staleAfterDays * 86400000,
+        ).toISOString();
+      const readContext: ReadContext = {
+        siteId: context.siteId,
+        principal: {
+          kind: "runtime",
+          siteId: context.siteId,
+          principalId: principal.id,
+          runId: context.run.id,
+          authority: { kind: "user", userId: user!.id },
+          scopes: definition.scopes,
+        },
+        requestedAt: observedAt,
+        transaction: context.db,
+        staffUser: user,
+      };
+      const inventory = options.publisherRouteInventory
+        ? npRequireAgentPublisherRouteInventoryV1(
+            await options.publisherRouteInventory(context),
+            context.siteId,
+          )
+        : null;
+      const blocks = await exactBlockSchemas(context.siteId, options.resolveBlockSchemas);
+      const validationResources = createAgentChangeSetValidationResourceServiceV1();
+      const candidates: NpAgentPublisherCandidateV1[] = [];
+      let remaining = settings.candidateLimit,
+        scanned = 0,
+        truncated = false;
+      for (const [index, collection] of settings.collectionSlugs.entries()) {
+        if (remaining === 0) {
+          truncated = true;
+          break;
+        }
+        const config = getCollectionConfig(collection);
+        if (config.timestamps === false) unavailable();
+        const fields = safeFieldEntries(config.fields)
+          .map((field) => field.name)
+          .sort();
+        if (fields.length > 32) unavailable();
+        if (config.access?.read && !(await config.access.read({ user: user! }))) unavailable();
+        const schema = collectionSchema(
+          config,
+          new Map(blocks.map((block) => [block.type, block.schema])),
+        );
+        const output = await queryContent(
+          {
+            collection,
+            filter: { op: "lt", field: "updatedAt", value: cutoff },
+            fields,
+            audience: "public",
+            status: "published",
+            sort: [{ field: "updatedAt", direction: "asc" }],
+            limit: remaining,
+            cursor: null,
+          },
+          readContext,
+          options,
+          (count) => {
+            remaining -= count;
+          },
+        );
+        scanned += output.items.length;
+        truncated ||= output.nextCursor !== null;
+        for (const item of output.items) {
+          if (item.status !== "published" || item.updatedAt >= cutoff) continue;
+          try {
+            const current = await validationResources.readDocumentBase({
+              tx: context.db as unknown as NpTransaction,
+              siteId: context.siteId,
+              user: user!,
+              collection,
+              documentId: item.id,
+            });
+            if (
+              current.document.siteId !== context.siteId ||
+              current.document.status !== "published" ||
+              current.document.visibility !== "public" ||
+              dateIso(current.document.updatedAt) !== item.updatedAt
+            )
+              continue;
+            const currentContent = Object.fromEntries(
+              safeFieldEntries(config.fields).flatMap((field) => {
+                const value = current.document[field.name];
+                return value === undefined
+                  ? []
+                  : [
+                      [
+                        field.name,
+                        toJson(
+                          value,
+                          `content.${field.name}`,
+                          undefined,
+                          0,
+                          field.type === "group" || field.type === "array"
+                            ? field.fields
+                            : undefined,
+                        ),
+                      ],
+                    ];
+              }),
+            );
+            if (
+              serializeAgentCanonicalJson(currentContent) !== serializeAgentCanonicalJson(item.data)
+            ) {
+              truncated = true;
+              continue;
+            }
+            const candidate: NpAgentPublisherCandidateV1 = {
+              collection,
+              documentId: item.id,
+              base: current.base,
+              updatedAt: item.updatedAt,
+              locale: item.locale,
+              findings: npAnalyzeAgentPublisherContentV1({
+                fields: config.fields,
+                content: item.data,
+                cutoff,
+                inventory,
+              }),
+              schema,
+              content: item.data,
+            };
+            if (
+              Buffer.byteLength(
+                serializeAgentCanonicalJson({ schema, content: item.data }),
+                "utf8",
+              ) > NP_AGENT_PUBLISHER_DOCUMENT_BYTES
+            ) {
+              truncated = true;
+              continue;
+            }
+            candidates.push(candidate);
+          } catch {
+            truncated = true;
+          }
+        }
+        if (remaining === 0 && index < settings.collectionSlugs.length - 1) truncated = true;
+      }
+      const ranked = npRankAgentPublisherCandidatesV1(candidates);
+      const selected = ranked.slice(0, settings.batchSize);
+      const result = {
+        observedAt,
+        scanned,
+        truncated: truncated || ranked.length > selected.length,
+        candidates: selected,
+      };
+      if (
+        Buffer.byteLength(serializeAgentCanonicalJson(result), "utf8") >
+        NP_AGENT_PUBLISHER_PAYLOAD_BYTES
+      )
+        unavailable();
+      return result;
+    },
     projectText(collection, data) {
       const config = getCollectionConfig(collection);
       const fields = safeFieldEntries(config.fields);
