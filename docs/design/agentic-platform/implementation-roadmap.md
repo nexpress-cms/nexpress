@@ -678,7 +678,12 @@ slices do not close AP-602 or AP-606. The
 [Operator evaluation flow](r6-operator-evaluation-flow.md) adds a bounded offline
 benchmark, explicitly injected evaluation provider boundary and artifact review
 CLI. Its synthetic structured-diagnosis results do not establish real-model
-usefulness or close AP-606/R6.
+usefulness or close AP-606/R6. The
+[Publisher proposal evaluation and review flow](r6-publisher-evaluation-flow.md)
+adds bilingual synthetic content proposals, deterministic patch/evidence checks
+and exact-bound offline human labels with matched-cohort comparison. It grants
+no approval authority and leaves real-model usefulness and the full AP-606/R6
+gate open.
 
 ### R7 — Guardian and application security orchestration
 
