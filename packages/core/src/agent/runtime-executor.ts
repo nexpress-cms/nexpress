@@ -239,11 +239,12 @@ export function createAgentRuntimeExecutorV1(options: NpAgentRuntimeExecutorOpti
               capabilityId: decision.capabilityId,
               arguments: {
                 input: decision.arguments,
-                idempotencyKey: npAgentReadCapabilityIdsV1.some(
-                  (id) => id === decision.capabilityId,
-                )
-                  ? null
-                  : key(identity.runId, latest.sequence, "action"),
+                idempotencyKey:
+                  npAgentReadCapabilityIdsV1.some((id) => id === decision.capabilityId) ||
+                  decision.capabilityId === "changeset.get" ||
+                  decision.capabilityId === "changeset.list"
+                    ? null
+                    : key(identity.runId, latest.sequence, "action"),
               },
             });
             const actionSequence = await options.store.withClaim(claimed, async ({ db, run }) => {

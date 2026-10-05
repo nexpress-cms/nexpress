@@ -1,3 +1,8 @@
+import {
+  npAssertPublisherChangeSetDraftV1,
+  npAssertPublisherChangeSetRequestV1,
+} from "./publisher-changeset.js";
+import type { NpAgentRuntimeDocumentEvidenceReaderV1 } from "./read-capability-executors.js";
 import { npVerifyAgentChangeSetPlanEvidenceV1 } from "./changeset-plan-evidence.js";
 import { npReadCancelledChangeSetReleaseV1 } from "./cancelled-changeset-history.js";
 import {
@@ -222,6 +227,7 @@ import { createAgentCursorCodecV1 } from "./cursor.js";
 
 type Db = ReturnType<typeof getRootDb>;
 const runtimeChangeSetTransaction = new AsyncLocalStorage<Db>();
+const runtimeChangeSetContext = new AsyncLocalStorage<NpAgentRuntimeRunContextV1>();
 function getDb(): Db {
   return runtimeChangeSetTransaction.getStore() ?? getRootDb();
 }
@@ -241,6 +247,8 @@ export type NpAgentChangeSetActorV1 =
 export interface NpAgentChangeSetServiceOptionsV1 extends NpAgentAdminAdmissionOptionsV1 {
   cursorKey: Uint8Array;
   runtimeAdmission?: NpAgentRuntimeAdmissionV1;
+  /** Same explicitly installed framework reader used by Publisher Runtime context. */
+  publisherEvidence?: NpAgentRuntimeDocumentEvidenceReaderV1;
   /** Explicit host installation; no worker, queue, or runtime is created. */
   execution?: {
     resolveIntent: (input: { siteId: string }) => Promise<{ enabled: boolean; paused: boolean }>;
@@ -697,6 +705,7 @@ export function createAgentChangeSetServiceV1(
             const request = gatewayRequestContext.getStore();
             if (!request) throw denied();
             requireRuntimeMode(context, request);
+            await npAssertPublisherChangeSetRequestV1(context, request);
             if (!input.sequence) throw denied();
             const actions = await context.db
               .select({
@@ -718,7 +727,7 @@ export function createAgentChangeSetServiceV1(
                 : actions.length >= context.limits.maxCapabilityCalls
             )
               throw conflict();
-            return mutate(context.db, context.now);
+            return runtimeChangeSetContext.run(context, () => mutate(context.db, context.now));
           }),
       );
     }
@@ -1221,6 +1230,15 @@ export function createAgentChangeSetServiceV1(
         if (current.sourceInputHash !== inputHash) throw conflict();
         return current.id;
       }
+    }
+    if (!current && actor.source?.kind === "runtime") {
+      const context = runtimeChangeSetContext.getStore();
+      if (!context || context.run.id !== actor.runtime?.runId || context.db !== db) throw denied();
+      await npAssertPublisherChangeSetDraftV1({
+        context,
+        reader: options.publisherEvidence,
+        draft,
+      });
     }
     const previous = current ? await operations(db, current) : [];
     if (current)
@@ -4460,6 +4478,7 @@ export function createAgentChangeSetServiceV1(
       (context) =>
         runtimeChangeSetTransaction.run(context.db, async () => {
           requireRuntimeMode(context, request);
+          await npAssertPublisherChangeSetRequestV1(context, request);
           const approvedId =
             request.capabilityId === "changeset.apply" ||
             request.capabilityId === "changeset.schedule"

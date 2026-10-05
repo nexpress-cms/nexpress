@@ -249,9 +249,13 @@ describe("Runtime context source boundary", () => {
   });
 
   it("rejects a generic callback masquerading as the framework document reader", () => {
-    expect(npIsAgentRuntimeDocumentEvidenceReaderV1({ read: vi.fn(), projectText: vi.fn() })).toBe(
-      false,
-    );
+    expect(
+      npIsAgentRuntimeDocumentEvidenceReaderV1({
+        read: vi.fn(),
+        projectText: vi.fn(),
+        publisherCandidates: vi.fn(),
+      }),
+    ).toBe(false);
   });
 
   it("rejects over-bound or duplicate requests before touching current authority", async () => {

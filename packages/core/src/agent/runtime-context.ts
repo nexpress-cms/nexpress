@@ -499,8 +499,8 @@ async function build(
     },
   );
   if (
-    recipe.id === "operator.worker-not-draining" &&
-    recipe.instruction.templateId === "operator.worker-not-draining"
+    ["operator.worker-not-draining", "publisher.stale-content"].includes(recipe.id) &&
+    recipe.instruction.templateId === recipe.id
   ) {
     const selectedSettings = evidence.definition.settings.filter(
       (entry) => entry.recipeId === recipe.id && entry.recipeVersion === recipe.version,
@@ -632,6 +632,55 @@ async function readSources(
 ): Promise<{ trusted: Request["trustedContext"]; untrusted: Request["untrustedEvidence"] }> {
   const trusted: Request["trustedContext"] = [];
   const untrusted: Request["untrustedEvidence"] = [];
+  const recipe = context.evidence.registry.recipes.find(
+    (entry) => entry.id === context.run.recipeId && entry.version === context.run.recipeVersion,
+  );
+  if (recipe?.id === "publisher.stale-content" && recipe.instruction?.templateId === recipe.id) {
+    if (
+      !reader ||
+      !npIsAgentRuntimeDocumentEvidenceReaderV1(reader) ||
+      context.policy.effective.providerDataMaximum !== "sensitive-approved" ||
+      context.run.providerDataClassCeiling !== "sensitive-approved"
+    )
+      unavailable();
+    const selected = await reader.publisherCandidates(context);
+    const metadata = {
+      observedAt: selected.observedAt,
+      scanned: selected.scanned,
+      truncated: selected.truncated,
+      candidates: selected.candidates.map(
+        ({ collection, documentId, base, updatedAt, locale, findings }, index) => ({
+          evidenceId: `publisher-content-${index.toString().padStart(3, "0")}`,
+          collection,
+          documentId,
+          base,
+          updatedAt,
+          locale,
+          findings,
+        }),
+      ),
+    };
+    const digest = hash("np.agent-runtime-publisher-candidates.v1", metadata);
+    trusted.push({
+      id: "publisher-candidates",
+      kind: "server-fact",
+      digest,
+      classification: classification(digest, "sensitive-approved"),
+      text: serializeAgentCanonicalJson(metadata),
+    });
+    selected.candidates.forEach((candidate, index) => {
+      const source = { schema: candidate.schema, content: candidate.content };
+      const digest = hash("np.agent-runtime-publisher-content.v1", source);
+      untrusted.push({
+        id: `publisher-content-${index.toString().padStart(3, "0")}`,
+        kind: "content",
+        digest,
+        observedAt: candidate.updatedAt,
+        classification: classification(digest, "sensitive-approved"),
+        text: redactText(serializeAgentCanonicalJson(source)),
+      });
+    });
+  }
   for (const [index, request] of requests.entries()) {
     const id = `evidence-${index.toString().padStart(3, "0")}`;
     if (request.kind === "run") {

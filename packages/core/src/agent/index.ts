@@ -2,6 +2,12 @@ export * from "./admin-admission.js";
 export * from "./capability-registry.js";
 export * from "./capability-admission.js";
 export * from "./read-capability-executors.js";
+export type {
+  NpAgentPublisherCandidatesV1,
+  NpAgentPublisherCandidateV1,
+  NpAgentPublisherFindingV1,
+  NpAgentPublisherRouteInventoryV1,
+} from "./publisher-content.js";
 export * from "./connection-service.js";
 export * from "./connection-admin-service.js";
 export * from "./contract-diagnostics.js";

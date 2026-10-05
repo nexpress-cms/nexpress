@@ -24,6 +24,7 @@ import {
   type NpAgentTrigger,
   type NpAgentRuntimeStudioEffectiveV1,
 } from "@nexpress/core/agent-contract";
+import { publisherSetupAvailable, publisherSetupDefinition } from "./agent-publisher-setup.js";
 import { operatorSetupAvailable, operatorSetupDefinition } from "./agent-operator-setup.js";
 import { runtimeManualInput } from "./agent-runtime-manual-input.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
@@ -366,6 +367,25 @@ function RuntimeConfigurationEditor({
         onSubmit={(event) => void submit(event)}
       >
         <fieldset disabled={busy || stale} className="min-w-0 space-y-6">
+          {!current && publisherSetupAvailable(catalog) ? (
+            <div className="space-y-2 rounded-md border p-3">
+              <p className="text-sm">
+                Configure a Publisher to review selected collections and prepare ChangeSet drafts
+                and previews. This replaces the draft’s recipe, permissions and budget. Choose
+                collections and a provider explicitly. Applying changes requires a separate review
+                and fresh human approval. Content and schema evidence also require the current
+                policy to permit sensitive-approved provider data; this setup does not change
+                policy.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => update(publisherSetupDefinition(catalog, definition.name))}
+              >
+                Use Publisher content review setup
+              </Button>
+            </div>
+          ) : null}
           {!current && operatorSetupAvailable(catalog) ? (
             <div className="space-y-2 rounded-md border p-3">
               <p className="text-sm">
@@ -536,7 +556,16 @@ function RuntimeConfigurationEditor({
             Save writes only a draft. Review current readiness and policy hashes before the separate
             activation step. Trigger changes are reviewed and saved with activation.
           </p>
-          <Button type="submit" disabled={!selected.length}>
+          <Button
+            type="submit"
+            disabled={
+              !selected.length ||
+              definition.settings.some(
+                (setting) =>
+                  setting.recipeId === "publisher.stale-content" && !setting.collectionSlugs.length,
+              )
+            }
+          >
             {busy ? "Saving draft…" : "Save draft"}
           </Button>
         </fieldset>

@@ -1,3 +1,4 @@
+import type { NpTransaction } from "../collections/pipeline.js";
 import { npCreateEmptyRichTextContent } from "../fields/rich-text.js";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NpAuthUser, NpCollectionConfig } from "../config/types.js";
@@ -105,6 +106,44 @@ describe("ChangeSet resource acceptance", () => {
     vi.clearAllMocks();
     vi.mocked(getCollectionConfig).mockReturnValue(config);
     vi.mocked(npGetPersistedCollectionDocumentById).mockResolvedValue(null);
+  });
+  it("checks current item read and update authority for snapshot-free base acquisition", async () => {
+    const document = {
+      id,
+      siteId: "default",
+      status: "published",
+      visibility: "public",
+      title: "Current",
+      slug: "current",
+      createdAt: new Date("2025-01-01T00:00:00.000Z"),
+      updatedAt: new Date("2025-01-01T00:00:00.000Z"),
+      createdBy: null,
+      updatedBy: null,
+    };
+    vi.mocked(npGetPersistedCollectionDocumentById).mockResolvedValue(document);
+    const update = vi.fn(() => false);
+    vi.mocked(getCollectionConfig).mockReturnValue({
+      ...config,
+      fields: [{ name: "title", type: "text", required: true }],
+      access: { update },
+    });
+    const owner = createAgentChangeSetResourceServiceV1();
+    const request = {
+      tx: {} as NpTransaction,
+      siteId: "default",
+      user,
+      collection: "articles",
+      documentId: id,
+    };
+    await expect(owner.readDocumentForUpdate(request)).rejects.toThrow();
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({ user, doc: document }));
+    update.mockReturnValue(true);
+    await expect(owner.readDocumentForUpdate(request)).resolves.toMatchObject({ document });
+    vi.mocked(getCollectionConfig).mockReturnValue({
+      ...config,
+      access: { read: () => false, update },
+    });
+    await expect(owner.readDocumentForUpdate(request)).rejects.toThrow();
   });
   it("reuses exact collection defaults, slug and dates without creating a document", async () => {
     const operation = create({

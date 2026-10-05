@@ -632,6 +632,11 @@ Gate:
 - false-positive and usefulness thresholds in the evaluation doc are met on
   versioned fixtures.
 
+The [Publisher content review flow](r6-publisher-content-review-flow.md) records
+bounded stale-content/SEO/link evidence, current-base ChangeSet draft/preview,
+cross-run duplicate protection and the explicit Studio draft setup. Real-model
+quality and the full R6 evaluation gate remain open.
+
 The [AP-600 foundation flow](r6-incident-foundation-flow.md) records the shared
 persistence and explicitly installed read boundary. It does not close R5
 assistive-technology acceptance or the R6 recipe gate.
