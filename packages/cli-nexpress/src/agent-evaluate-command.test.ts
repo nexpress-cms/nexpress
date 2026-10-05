@@ -201,6 +201,8 @@ describe("nexpress agent evaluate wrapper", () => {
       ).rejects.toThrow("Mismatched evaluation result");
     }
   });
+  // These artifact workflows recompute canonical hashes and launch real npm children.
+  // The timeout bounds the whole workflow, not a product latency requirement.
   it("binds review results to requested source, labels and comparison before child execution", async () => {
     const source = await publisherArtifact();
     const template = await npBuildAgentEvaluationReviewArtifactV1(source);
@@ -269,7 +271,7 @@ describe("nexpress agent evaluate wrapper", () => {
       await expect(async () => verify(wrong)).rejects.toThrow("Mismatched review result");
     }
     expect(output.read()).not.toContain("private-");
-  });
+  }, 20_000);
   it("rejects a valid review when the child reports a failed exit", async () => {
     const source = await publisherArtifact();
     const artifact = await npBuildAgentEvaluationReviewArtifactV1(source);
@@ -294,7 +296,7 @@ describe("nexpress agent evaluate wrapper", () => {
     ).toBe(1);
     expect(JSON.parse(output.read()).errorCode).toBe("EVALUATION_UNAVAILABLE");
     expect(output.read()).not.toContain("private-");
-  });
+  }, 20_000);
   it("accepts only closed review safe errors and rejects source-output alias before launching child", async () => {
     const source = await publisherArtifact();
     const cwd = await project("");
@@ -323,5 +325,5 @@ describe("nexpress agent evaluate wrapper", () => {
     expect(JSON.parse(output.read()).errorCode).toBe("ARTIFACT_INVALID");
     expect(JSON.parse(await readFile(join(cwd, "source.json"), "utf8"))).toEqual(source);
     expect(output.read()).not.toContain("private-");
-  });
+  }, 20_000);
 });

@@ -17,6 +17,7 @@ afterEach(async () => {
   );
   vi.restoreAllMocks();
 });
+// Replays the actual 22-case detector repeatedly to verify independent artifact binding.
 it("independently binds Moderator detector and review results to requested inputs", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "np-moderator-cli-"));
   directories.push(cwd);
@@ -63,7 +64,7 @@ it("independently binds Moderator detector and review results to requested input
       cwd,
     ),
   ).rejects.toThrow();
-});
+}, 20_000);
 it("carries a real Moderator child result through the installed CLI boundary with closed output", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "np-moderator-child-"));
   directories.push(cwd);

@@ -27,6 +27,7 @@ async function run(argv: string[]) {
   expect(resolveProvider).not.toHaveBeenCalled();
   return { code, result: JSON.parse(output) };
 }
+// One complete file-based evaluation/review workflow, including repeated detector verification.
 it("runs the actual offline Moderator detector and saves, reviews and compares exact feedback", async () => {
   const dir = await mkdtemp(join(tmpdir(), "np-moderator-eval-"));
   directories.push(dir);
@@ -76,7 +77,7 @@ it("runs the actual offline Moderator detector and saves, reviews and compares e
   expect((await run(["--review", source, "--reviews", labels])).result.errorCode).toBe(
     "ARTIFACT_INVALID",
   );
-});
+}, 20_000);
 it("rejects provider, model and budget options for deterministic Moderator before any provider lookup", async () => {
   for (const flags of [
     ["--provider", "network"],

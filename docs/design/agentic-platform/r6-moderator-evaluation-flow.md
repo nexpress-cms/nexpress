@@ -110,7 +110,12 @@ repeatedly. They now call the actual parent verifier directly; real child succes
 closed errors, stderr suppression and exit-code checks remain. Child launches
 fell from sixteen to nine in that existing test file. Same-machine focused
 measurements were 11.79 to 6.94 seconds of test time, and 17.16 to 12.00 seconds
-wall time; these are not predictions of CI duration.
+wall time; these are not predictions of CI duration. PR CI `37355468624`
+then exposed the separate five-second default limit on complete artifact review
+workflows (three Publisher wrapper cases and the repeated Moderator verifier).
+These workflows and the matching multi-command App Moderator journey have a
+scoped twenty-second test deadline. Assertions, workload, provider timeouts and
+global test defaults are unchanged; the subprocess reduction remains in place.
 
 Release `37345688406` failed its Version PR CI bridge (`37345802991`), including
 an additional PostgreSQL reference-fence fixture race. A rejected implicit writer
