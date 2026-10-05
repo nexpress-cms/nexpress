@@ -66,6 +66,8 @@ describe.skipIf(skipIfNoTestDb())("Publisher recipe through actual Runtime owner
     expect(f.invoke).toHaveBeenCalledTimes(5);
   }, 60_000);
 
+  // Four persisted Runtime runs share the original and independently revised document base.
+  // Creation already stops after two provider turns; keep the full isolation story within 60s.
   it("blocks duplicate-base and cross-run draft access while allowing an independently revised base", async () => {
     const f = await fixture();
     const id = await f.document();
@@ -96,7 +98,7 @@ describe.skipIf(skipIfNoTestDb())("Publisher recipe through actual Runtime owner
     const changed = await f.rerun();
     expect(changed.result).toEqual({ state: "succeeded" });
     expect(await f.db.select().from(npAgentChangesets)).toHaveLength(2);
-  });
+  }, 60_000);
 
   it("finishes without a proposal for fresh, unpublished and other-site documents", async () => {
     const f = await fixture();

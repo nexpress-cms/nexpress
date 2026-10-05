@@ -1320,8 +1320,18 @@ ships a narrower `ops` / `en` / `ko` synthetic slice: at most 100 cases, empty
 `expectedSignals`, eight built-in cases and no automatic-action enablement.
 It adds `mode`, embedded `suite`, `budget` and `caseResults` to the artifact
 below for independent recomputation. Unknown usage and corresponding means
-are nullable. The broader categories, signal gates and model-usefulness
-acceptance described here remain planned.
+are nullable. Categories beyond `ops` and the bounded `publisher` slice, signal gates and
+model-usefulness acceptance described here remain planned.
+
+The [Publisher proposal evaluation and review implementation](r6-publisher-evaluation-flow.md)
+adds `publisher.v1`: twelve bilingual synthetic content cases, ChangeSet-shaped
+proposals and deterministic source/patch/evidence checks. Offline human
+accept/edit/reject labels bind the exact source, case and prediction hashes;
+unreviewed proposals stay separate. Review comparisons use the same matched
+reviewed case/prediction cohort and report unmatched coverage explicitly.
+Self-reported review labels grant no live approval and do not change the source
+artifact's `ok`. These extractive synthetic checks do not close AP-606 or the
+real-model usefulness gate.
 
 The target opt-in command artifact has these shared fields:
 

@@ -1,3 +1,8 @@
+import { npCreateAgentPublisherRecipeDefinitionV1 } from "../agent-contract/publisher-recipe-contract.js";
+import {
+  npCreateAgentPublisherEvaluationPredictionV1,
+  npAgentPublisherEvaluationBenchmarkInstructionV1,
+} from "../agent-contract/publisher-evaluation-contract.js";
 import { NpError } from "../errors.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
 import { npCreateAgentOperatorRecipeDefinitionV1 } from "../agent-contract/operator-recipe-contract.js";
@@ -5,7 +10,7 @@ import {
   npBuildAgentEvaluationArtifactV1,
   npDigestAgentEvaluationCaseV1,
   npDigestAgentEvaluationValueV1,
-  npAgentEvaluationPredictionSchemaV1,
+  npAgentEvaluationResponseSchemaV1,
   npAgentEvaluationBenchmarkInstructionV1,
   npRequireAgentEvaluationBudgetV1,
   npRequireAgentEvaluationPredictionV1,
@@ -187,7 +192,10 @@ export async function runAgentEvaluationV1(
       )
         throw new NpAgentEvaluationError("ARGUMENT_INVALID");
     }
-  const recipe = await npCreateAgentOperatorRecipeDefinitionV1();
+  const category = suite.cases[0].category;
+  const recipe = await (category === "publisher"
+    ? npCreateAgentPublisherRecipeDefinitionV1()
+    : npCreateAgentOperatorRecipeDefinitionV1());
   if (!recipe.instruction) throw new NpAgentEvaluationError("ARGUMENT_INVALID");
   const now = options.now ?? (() => new Date());
   const startedAt = now().toISOString();
@@ -230,8 +238,11 @@ export async function runAgentEvaluationV1(
         evidence: entry.evidence,
       }),
       instruction: { ...recipe.instruction },
-      responseSchema: structuredClone(npAgentEvaluationPredictionSchemaV1),
-      benchmarkInstruction: npAgentEvaluationBenchmarkInstructionV1,
+      responseSchema: structuredClone(npAgentEvaluationResponseSchemaV1(category)),
+      benchmarkInstruction:
+        category === "publisher"
+          ? npAgentPublisherEvaluationBenchmarkInstructionV1
+          : npAgentEvaluationBenchmarkInstructionV1,
     };
     let limit: NpAgentEvaluationReservationV1;
     try {
@@ -272,7 +283,13 @@ export async function runAgentEvaluationV1(
                 limits: { ...limit },
               }),
             )
-          : Promise.resolve({ prediction: fakePrediction(request), usage: zero() });
+          : Promise.resolve({
+              prediction:
+                category === "publisher"
+                  ? npCreateAgentPublisherEvaluationPredictionV1(request.case.evidence)
+                  : fakePrediction(request),
+              usage: zero(),
+            });
       const response = await Promise.race([operation, aborted]);
       if (!response || response.usage === null) {
         result.error = "USAGE_UNAVAILABLE";
@@ -299,7 +316,7 @@ export async function runAgentEvaluationV1(
       remaining.outputTokens -= usage.outputTokens;
       remaining.costMicros -= usage.costMicros;
       try {
-        result.prediction = npRequireAgentEvaluationPredictionV1(response.prediction);
+        result.prediction = npRequireAgentEvaluationPredictionV1(response.prediction, category);
         result.error = null;
       } catch {
         result.error = "STRUCTURED_OUTPUT_INVALID";

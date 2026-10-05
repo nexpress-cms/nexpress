@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { lstat, mkdir, open, rename, unlink } from "node:fs/promises";
+import { lstat, mkdir, open, rename, unlink, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import type { Writable } from "node:stream";
@@ -7,10 +7,16 @@ import {
   NpAgentEvaluationError,
   runAgentEvaluationV1,
   npCreateAgentOperatorEvaluationSuiteV1,
+  npCreateAgentPublisherEvaluationSuiteV1,
   type NpAgentEvaluationProviderV1,
 } from "@nexpress/core/agents";
 import {
   npAgentEvaluationArtifactMaxBytesV1,
+  npBuildAgentEvaluationReviewArtifactV1,
+  npRequireAgentEvaluationReviewArtifactV1,
+  npCompareAgentEvaluationReviewArtifactsV1,
+  type NpAgentEvaluationReviewArtifactV1,
+  type NpAgentEvaluationReviewComparisonV1,
   npCompareAgentEvaluationArtifactsV1,
   npRequireAgentEvaluationArtifactV1,
   npRequireAgentEvaluationBudgetV1,
@@ -26,7 +32,12 @@ import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
 export const AGENT_EVALUATE_HELP = `NexPress Agent evaluation
 
 pnpm agent:evaluate --provider fake --dataset operator.v1 --json
+pnpm agent:evaluate --provider fake --dataset publisher.v1 --out <artifact> --json
 nexpress agent evaluate --out <artifact> [--compare <previous-artifact>] [--json]
+nexpress agent evaluate --review <evaluation-artifact> [--reviews <labels.json>] [--compare <review-artifact>] [--out <review-artifact>] [--json]
+
+Review labels are self-reported offline evaluation data, never live approvals.
+Without --reviews, review mode emits evidence/proposals and binding fields with no labels.
 
 Fake mode checks deterministic fixtures; it does not measure model usefulness.
 Network evaluation requires a host-injected provider and explicit --provider, --model, --dataset,
@@ -115,6 +126,7 @@ export async function runAgentEvaluateProcessV1(
     } catch {
       throw new EvaluationCommandError("ARGUMENT_INVALID");
     }
+    if (input.reviewPath) return runReview(input, output);
     let budget: NpAgentEvaluationBudgetV1;
     try {
       budget = npRequireAgentEvaluationBudgetV1({
@@ -148,7 +160,10 @@ export async function runAgentEvaluateProcessV1(
     }
     const artifact = await npRequireAgentEvaluationArtifactV1(
       await runAgentEvaluationV1({
-        suite: await npCreateAgentOperatorEvaluationSuiteV1(),
+        suite:
+          input.dataset === "publisher.v1"
+            ? await npCreateAgentPublisherEvaluationSuiteV1()
+            : await npCreateAgentOperatorEvaluationSuiteV1(),
         mode: input.provider === "fake" ? "fake" : "provider",
         providerId: input.provider,
         model: input.model,
@@ -190,4 +205,67 @@ export async function runAgentEvaluateProcessV1(
     : `Agent evaluation ${result.artifact?.ok ? "passed" : "failed"}: ${result.artifact?.metrics.cases ?? 0} cases; ${result.artifact?.mode === "fake" ? "deterministic fixture correctness only; model usefulness is not measured" : "provider evaluation"}.${result.comparison ? (result.comparison.comparable ? " Comparison is compatible; use --json for metric deltas." : ` Comparison is not comparable (${result.comparison.reason}); no regression conclusion.`) : ""}`;
   output.write(`${(input?.json ?? argv.includes("--json")) ? JSON.stringify(result) : text}\n`);
   return result.errorCode || !result.artifact?.ok ? 1 : 0;
+}
+
+async function assertReviewOutputIsSeparate(input: NpAgentEvaluateCliInputV1): Promise<void> {
+  if (!input.outPath) return;
+  const destination = resolve(input.outPath);
+  const inputs = [input.reviewPath, input.reviewsPath, input.comparePath].filter(
+    (p): p is string => typeof p === "string",
+  );
+  if (inputs.some((p) => resolve(p) === destination)) throw new Error("Invalid review output");
+  const destinationStat = await stat(destination).catch((error: unknown) => {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
+      return null;
+    throw error;
+  });
+  if (destinationStat)
+    for (const path of inputs) {
+      const inputStat = await stat(resolve(path));
+      if (inputStat.dev === destinationStat.dev && inputStat.ino === destinationStat.ino)
+        throw new Error("Invalid review output");
+    }
+}
+async function runReview(
+  input: NpAgentEvaluateCliInputV1,
+  output: Pick<Writable, "write">,
+): Promise<number> {
+  let artifact: NpAgentEvaluationReviewArtifactV1 | null = null;
+  let comparison: NpAgentEvaluationReviewComparisonV1 | null = null;
+  let errorCode: "ARTIFACT_INVALID" | "ARTIFACT_UNAVAILABLE" | null = null;
+  try {
+    artifact = await npBuildAgentEvaluationReviewArtifactV1(
+      await readArtifactJson(input.reviewPath!),
+      input.reviewsPath ? await readArtifactJson(input.reviewsPath) : [],
+    );
+    if (input.comparePath)
+      comparison = await npCompareAgentEvaluationReviewArtifactsV1(
+        artifact,
+        await npRequireAgentEvaluationReviewArtifactV1(await readArtifactJson(input.comparePath)),
+      );
+  } catch {
+    errorCode = "ARTIFACT_INVALID";
+  }
+  if (!errorCode && input.outPath)
+    try {
+      await assertReviewOutputIsSeparate(input);
+      await writeArtifactJson(input.outPath, artifact);
+    } catch {
+      errorCode = "ARTIFACT_UNAVAILABLE";
+    }
+  if (errorCode) {
+    artifact = null;
+    comparison = null;
+  }
+  const result = {
+    schemaVersion: "np.agent-eval-review-command.v1",
+    artifact,
+    comparison,
+    errorCode,
+  };
+  const text = errorCode
+    ? `Agent evaluation review unavailable (${errorCode}).`
+    : `Offline Agent evaluation review: ${artifact?.summary.reviewed} reviewed; ${artifact?.summary.unreviewed} unreviewed; ${artifact?.summary.ineligible} without a reviewable proposal. Self-reported labels confer no approval authority.${comparison ? (comparison.comparable ? " Comparison uses the matched reviewed case/prediction cohort; use --json for rates and unmatched cases." : ` Comparison is not comparable (${comparison.reason}); no regression conclusion.`) : ""}`;
+  output.write(`${input.json ? JSON.stringify(result) : text}\n`);
+  return errorCode ? 1 : 0;
 }

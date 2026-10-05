@@ -3,7 +3,9 @@ import { npRequireAgentEvaluationBudgetV1 } from "./evaluation-contract.js";
 export interface NpAgentEvaluationCommandArgsV1 {
   provider: string;
   model: string;
-  dataset: "operator.v1";
+  dataset: "operator.v1" | "publisher.v1";
+  reviewPath?: string;
+  reviewsPath?: string | null;
   maxCalls: number;
   maxInputTokens: number;
   maxOutputTokens: number;
@@ -41,6 +43,8 @@ export function npParseAgentEvaluationCommandArgsV1(
         "--max-cost-micros",
         "--out",
         "--compare",
+        "--review",
+        "--reviews",
       ].includes(flag)
     ) {
       const value = argv[++i];
@@ -50,6 +54,15 @@ export function npParseAgentEvaluationCommandArgsV1(
   }
   const text = (flag: string): string | null =>
     typeof fields.get(flag) === "string" ? (fields.get(flag) as string) : null;
+  const reviewPath = text("--review");
+  if (
+    reviewPath &&
+    [...fields.keys()].some(
+      (flag) => !["--review", "--reviews", "--compare", "--out", "--json"].includes(flag),
+    )
+  )
+    invalid();
+  if (fields.has("--reviews") && !reviewPath) invalid();
   const provider = text("--provider") ?? "fake";
   const network = provider !== "fake";
   const model = text("--model") ?? (network ? "" : "deterministic-v1");
@@ -58,7 +71,8 @@ export function npParseAgentEvaluationCommandArgsV1(
     !/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,127}$/.test(model)
   )
     invalid();
-  if ((text("--dataset") ?? "operator.v1") !== "operator.v1") invalid();
+  const dataset = text("--dataset") ?? "operator.v1";
+  if (dataset !== "operator.v1" && dataset !== "publisher.v1") invalid();
   const budgetFlags = [
     "--max-calls",
     "--max-input-tokens",
@@ -93,7 +107,8 @@ export function npParseAgentEvaluationCommandArgsV1(
   return {
     provider,
     model,
-    dataset: "operator.v1",
+    dataset: dataset as "operator.v1" | "publisher.v1",
+    ...(reviewPath ? { reviewPath, reviewsPath: text("--reviews") } : {}),
     maxCalls: budget.maxCalls,
     maxInputTokens: budget.maxInputTokens,
     maxOutputTokens: budget.maxOutputTokens,

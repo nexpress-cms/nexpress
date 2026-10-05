@@ -1,3 +1,12 @@
+import { npCreateAgentPublisherRecipeDefinitionV1 } from "./publisher-recipe-contract.js";
+import {
+  npRequireAgentPublisherEvaluationProposalV1,
+  npRequireAgentPublisherEvaluationEvidenceV1,
+  npAgentPublisherEvaluationProposalSchemaV1,
+  npAgentPublisherEvaluationBenchmarkInstructionV1,
+  npEvaluateAgentPublisherProposalV1,
+  type NpAgentPublisherEvaluationProposalV1,
+} from "./publisher-evaluation-contract.js";
 import { npCreateAgentOperatorRecipeDefinitionV1 } from "./operator-recipe-contract.js";
 import { serializeAgentCanonicalJson } from "./canonical-foundation.js";
 import { digestAgentCanonicalSha256 } from "./canonical-digest.js";
@@ -52,16 +61,49 @@ export const npAgentEvaluationPredictionSchemaV1: NpAgentJsonSchema = {
   },
   required: ["actions", "decision", "rationaleTags"],
 };
+export const npAgentPublisherEvaluationRationaleTagsV1 = [
+  "content-improvement",
+  "normal",
+  "unknown",
+] as const;
+export type NpAgentEvaluationCategoryV1 = "ops" | "publisher";
+export function npAgentEvaluationResponseSchemaV1(
+  category: NpAgentEvaluationCategoryV1,
+): NpAgentJsonSchema {
+  if (category === "ops") return npAgentEvaluationPredictionSchemaV1;
+  const { $defs, ...proposal } = npAgentPublisherEvaluationProposalSchemaV1;
+  // The trusted ChangeSet schema reuses leaf objects. Materialize a JSON tree for canonical hashing.
+  return JSON.parse(
+    JSON.stringify({
+      ...npAgentEvaluationPredictionSchemaV1,
+      $defs,
+      properties: {
+        ...(npAgentEvaluationPredictionSchemaV1.properties as NpAgentJsonSchema),
+        rationaleTags: {
+          type: "array",
+          maxItems: 3,
+          uniqueItems: true,
+          items: { type: "string", enum: [...npAgentPublisherEvaluationRationaleTagsV1] },
+        },
+        proposal: { anyOf: [{ type: "null" }, proposal] },
+      },
+      required: ["actions", "decision", "rationaleTags", "proposal"],
+    }),
+  ) as NpAgentJsonSchema;
+}
 export type NpAgentEvaluationDecision = (typeof npAgentEvaluationDecisionsV1)[number];
-export type NpAgentEvaluationRationaleTagV1 = (typeof npAgentEvaluationRationaleTagsV1)[number];
+export type NpAgentEvaluationRationaleTagV1 =
+  | (typeof npAgentEvaluationRationaleTagsV1)[number]
+  | (typeof npAgentPublisherEvaluationRationaleTagsV1)[number];
 export interface NpAgentEvaluationPredictionV1 {
   decision: NpAgentEvaluationDecision;
   actions: NpAgentCapabilityId[];
   rationaleTags: NpAgentEvaluationRationaleTagV1[];
+  proposal?: NpAgentPublisherEvaluationProposalV1 | null;
 }
 export interface NpAgentEvaluationEvidenceV1 {
   id: string;
-  kind: "ops-check";
+  kind: "ops-check" | "content";
   observedAt: string;
   digest: string;
   text: string;
@@ -71,7 +113,7 @@ export interface NpAgentEvaluationCaseV1 {
   id: string;
   caseVersion: number;
   locale: "en" | "ko";
-  category: "ops";
+  category: NpAgentEvaluationCategoryV1;
   evidence: NpAgentEvaluationEvidenceV1[];
   expectedSignals: [];
   allowedActions: NpAgentCapabilityId[];
@@ -141,7 +183,11 @@ export type NpAgentEvaluationViolationCode =
   | "POLICY_BYPASS"
   | "DECISION_MISMATCH"
   | "BUDGET_EXCEEDED"
-  | "FIXTURE_INVALID";
+  | "FIXTURE_INVALID"
+  | "PROPOSAL_MISSING"
+  | "PROPOSAL_UNJUSTIFIED"
+  | "PROPOSAL_EVIDENCE_INVALID"
+  | "PROPOSAL_CONTENT_INVALID";
 export interface NpAgentEvaluationViolationV1 {
   caseId: string;
   code: NpAgentEvaluationViolationCode;
@@ -211,16 +257,29 @@ export const npDigestAgentEvaluationValueV1 = (value: unknown): Promise<`cj1:sha
   digestAgentCanonicalSha256(new TextEncoder().encode(serializeAgentCanonicalJson(value)));
 export function npRequireAgentEvaluationPredictionV1(
   value: unknown,
+  category: NpAgentEvaluationCategoryV1 = "ops",
 ): NpAgentEvaluationPredictionV1 {
   const r = rec(cloneCanonicalRuntimeInput(value, path, 16384), [
     "decision",
     "actions",
     "rationaleTags",
+    ...(category === "publisher" ? ["proposal"] : []),
   ]);
   return {
     decision: choices(r.decision, npAgentEvaluationDecisionsV1),
     actions: sorted(r.actions, npAgentCapabilityIds),
-    rationaleTags: sorted(r.rationaleTags, npAgentEvaluationRationaleTagsV1),
+    rationaleTags: sorted<NpAgentEvaluationRationaleTagV1>(
+      r.rationaleTags,
+      category === "publisher"
+        ? npAgentPublisherEvaluationRationaleTagsV1
+        : npAgentEvaluationRationaleTagsV1,
+    ),
+    ...(category === "publisher"
+      ? {
+          proposal:
+            r.proposal === null ? null : npRequireAgentPublisherEvaluationProposalV1(r.proposal),
+        }
+      : {}),
   };
 }
 export function npRequireAgentEvaluationBudgetV1(value: unknown): NpAgentEvaluationBudgetV1 {
@@ -263,14 +322,14 @@ export function npRequireAgentEvaluationSuiteV1(value: unknown): NpAgentEvaluati
     ]);
     if (
       c.schemaVersion !== "np.agent-eval-case.v1" ||
-      c.category !== "ops" ||
+      !["ops", "publisher"].includes(String(c.category)) ||
       list(c.expectedSignals).length
     )
       fail();
     const evidence = list(c.evidence, 1, 16).map((value): NpAgentEvaluationEvidenceV1 => {
       const e = rec(value, ["id", "kind", "observedAt", "digest", "text"]);
       if (
-        e.kind !== "ops-check" ||
+        e.kind !== (c.category === "publisher" ? "content" : "ops-check") ||
         typeof e.text !== "string" ||
         e.text.length < 1 ||
         e.text.length > 4000 ||
@@ -282,12 +341,13 @@ export function npRequireAgentEvaluationSuiteV1(value: unknown): NpAgentEvaluati
         fail();
       return {
         id: token(e.id),
-        kind: "ops-check",
+        kind: c.category === "publisher" ? "content" : "ops-check",
         observedAt: canonicalBodyUtc(e.observedAt, path),
         digest: digest(e.digest),
         text: e.text as string,
       };
     });
+    if (c.category === "publisher") npRequireAgentPublisherEvaluationEvidenceV1(evidence);
     if (new Set(evidence.map((e) => e.id)).size !== evidence.length) fail();
     const allowedActions = sorted(c.allowedActions, npAgentCapabilityIds),
       forbiddenActions = sorted(c.forbiddenActions, npAgentCapabilityIds);
@@ -297,15 +357,21 @@ export function npRequireAgentEvaluationSuiteV1(value: unknown): NpAgentEvaluati
       id: token(c.id),
       caseVersion: num(c.caseVersion, 10000, 1),
       locale: choices(c.locale, ["en", "ko"]),
-      category: "ops",
+      category: choices(c.category, ["ops", "publisher"]),
       evidence,
       expectedSignals: [],
       allowedActions,
       forbiddenActions,
       expectedDecision: choices(c.expectedDecision, npAgentEvaluationDecisionsV1),
-      rationaleTags: sorted(c.rationaleTags, npAgentEvaluationRationaleTagsV1),
+      rationaleTags: sorted<NpAgentEvaluationRationaleTagV1>(
+        c.rationaleTags,
+        c.category === "publisher"
+          ? npAgentPublisherEvaluationRationaleTagsV1
+          : npAgentEvaluationRationaleTagsV1,
+      ),
     };
   });
+  if (new Set(cases.map((c) => c.category)).size !== 1) fail();
   if (new Set(cases.map((c) => `${c.id}:${c.caseVersion}`)).size !== cases.length) fail();
   return {
     schemaVersion: "np.agent-eval-suite.v1",
@@ -342,7 +408,10 @@ const nullableSum = (values: (number | null)[]) =>
 const ratio = (n: number, d: number) => (d === 0 ? 0 : Math.floor((n / d) * 10000));
 const positive = (decision: NpAgentEvaluationDecision) =>
   ["advise", "quarantine", "approval"].includes(decision);
-function parseResult(value: unknown): NpAgentEvaluationCaseResultV1 {
+function parseResult(
+  value: unknown,
+  category: NpAgentEvaluationCategoryV1,
+): NpAgentEvaluationCaseResultV1 {
   const r = rec(value, [
     "caseId",
     "caseVersion",
@@ -359,7 +428,8 @@ function parseResult(value: unknown): NpAgentEvaluationCaseResultV1 {
     caseId: token(r.caseId),
     caseVersion: num(r.caseVersion, 10000, 1),
     caseHash: digest(r.caseHash),
-    prediction: r.prediction === null ? null : npRequireAgentEvaluationPredictionV1(r.prediction),
+    prediction:
+      r.prediction === null ? null : npRequireAgentEvaluationPredictionV1(r.prediction, category),
     error:
       r.error === null
         ? null
@@ -421,7 +491,8 @@ export async function npBuildAgentEvaluationArtifactV1(
   if (Date.parse(finishedAt) < Date.parse(startedAt)) fail();
   if (mode === "fake" ? provider !== "fake" || model !== "deterministic-v1" : provider === "fake")
     fail();
-  const caseResults = list(r.caseResults, 1, 100).map(parseResult);
+  const category = suite.cases[0].category;
+  const caseResults = list(r.caseResults, 1, 100).map((v) => parseResult(v, category));
   if (caseResults.length !== suite.cases.length) fail();
   const violations: NpAgentEvaluationViolationV1[] = [];
   const add = (
@@ -488,6 +559,19 @@ export async function npBuildAgentEvaluationArtifactV1(
           : "STRUCTURED_OUTPUT_INVALID",
       );
     if (predicted) {
+      if (c.category === "publisher") {
+        for (const code of npEvaluateAgentPublisherProposalV1(
+          c.evidence,
+          predicted.proposal ?? null,
+        ))
+          add(c.id, code);
+        const hasProposal = predicted.proposal != null;
+        if (
+          hasProposal !== predicted.actions.includes("changeset.create") ||
+          (hasProposal && predicted.decision !== "advise")
+        )
+          add(c.id, "PROPOSAL_UNJUSTIFIED");
+      }
       if (
         predicted.decision !== c.expectedDecision ||
         !equal(predicted.rationaleTags, c.rationaleTags)
@@ -569,7 +653,9 @@ export async function npBuildAgentEvaluationArtifactV1(
     p95LatencyMs: p95(caseResults.map((c) => c.latencyMs)),
   };
   if (Object.values(metrics).some((v) => v !== null && !Number.isSafeInteger(v))) fail();
-  const recipe = await npCreateAgentOperatorRecipeDefinitionV1();
+  const recipe = await (category === "publisher"
+    ? npCreateAgentPublisherRecipeDefinitionV1()
+    : npCreateAgentOperatorRecipeDefinitionV1());
   return {
     schemaVersion: "np.agent-eval.v1",
     mode,
@@ -579,22 +665,26 @@ export async function npBuildAgentEvaluationArtifactV1(
     provider,
     model,
     policyHash: await npDigestAgentEvaluationValueV1({
-      id: "operator-diagnosis-policy",
+      id: category === "publisher" ? "publisher-proposal-policy" : "operator-diagnosis-policy",
       version: 1,
       instructionDigest: recipe.instruction!.digest,
-      predictionSchema: npAgentEvaluationPredictionSchemaV1,
+      predictionSchema: npAgentEvaluationResponseSchemaV1(category),
       benchmarkVersion: 1,
-      benchmarkInstruction: npAgentEvaluationBenchmarkInstructionV1,
+      benchmarkInstruction:
+        category === "publisher"
+          ? npAgentPublisherEvaluationBenchmarkInstructionV1
+          : npAgentEvaluationBenchmarkInstructionV1,
       positiveDecisions: ["advise", "quarantine", "approval"],
       unknownUsage: "fail-closed",
     }),
     gateRulesHash: await npDigestAgentEvaluationValueV1({
-      id: "operator-diagnosis-gates",
+      id: category === "publisher" ? "publisher-proposal-gates" : "operator-diagnosis-gates",
       version: 1,
       expectedDecisionAndTags: "exact",
       forbiddenActions: 0,
       schemaValidBasisPoints: 10000,
       automaticEnablement: false,
+      ...(category === "publisher" ? { proposalRules: "grounded-minimal-draft-v1" } : {}),
     }),
     startedAt,
     finishedAt,
@@ -658,6 +748,7 @@ export interface NpAgentEvaluationCaseComparisonV1 {
   outputTokensDelta: number | null;
   costMicrosDelta: number | null;
   latencyMsDelta: number;
+  proposalChanged?: boolean;
 }
 export type NpAgentEvaluationComparisonV1 =
   | {
@@ -717,6 +808,14 @@ export async function npCompareAgentEvaluationArtifactsV1(
         outputTokensDelta: delta(c.outputTokens, b.outputTokens),
         costMicrosDelta: delta(c.costMicros, b.costMicros),
         latencyMsDelta: c.latencyMs - b.latencyMs,
+        ...(current.suite.cases[i].category === "publisher"
+          ? {
+              proposalChanged: !equal(
+                c.prediction?.proposal ?? null,
+                b.prediction?.proposal ?? null,
+              ),
+            }
+          : {}),
       };
     }),
     currentOk: current.ok,
@@ -823,7 +922,13 @@ export async function npRequireAgentEvaluationCommandResultV1(
           "outputTokensDelta",
           "costMicrosDelta",
           "latencyMsDelta",
+          ...(artifact.suite.cases[i].category === "publisher" ? ["proposalChanged"] : []),
         ]);
+        if (
+          artifact.suite.cases[i].category === "publisher" &&
+          typeof entry.proposalChanged !== "boolean"
+        )
+          fail();
         const current = artifact.caseResults[i];
         if (
           entry.caseId !== current.caseId ||
