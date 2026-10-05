@@ -138,6 +138,11 @@ preview polling does not accidentally construct a mutation-only invocation key.
   and reads a ready preview while preserving the published source row. It also
   covers replay, duplicate bases, cross-run access, changed revisions, arbitrary
   targets, stale bases, invalid patches and lost delegated authority.
+  Hosted CI exceeded the default 30-second limit for the complete five-turn
+  journey; isolated measurement completed it in 22.4 seconds, with about one
+  second spent preparing the fixture. That one end-to-end case now has a bounded
+  60-second budget. Its assertions, provider turns, real preview processing and
+  all other test timeouts are unchanged.
 - Final production Chromium acceptance: 27 cases passed, including Publisher
   setup at 390/1280-pixel widths, explicit provider/model selection, capped
   budgets, existing Operator setup, Runtime, Activity and ChangeSet review.

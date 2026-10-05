@@ -39,6 +39,8 @@ describe.skipIf(skipIfNoTestDb())("Publisher recipe through actual Runtime owner
   });
   afterAll(closeTestDb);
 
+  // Five persisted provider turns and real preview checks form one end-to-end story.
+  // Its bounded CI budget is separate from the 30s default for shorter operations.
   it("creates, validates and renders a bounded review proposal without changing public content; replay preserves its actions", async () => {
     const f = await fixture();
     const id = await f.document();
@@ -62,7 +64,7 @@ describe.skipIf(skipIfNoTestDb())("Publisher recipe through actual Runtime owner
     ]);
     expect(await run(f)).toEqual({ state: "succeeded" });
     expect(f.invoke).toHaveBeenCalledTimes(5);
-  });
+  }, 60_000);
 
   it("blocks duplicate-base and cross-run draft access while allowing an independently revised base", async () => {
     const f = await fixture();
