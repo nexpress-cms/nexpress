@@ -795,11 +795,15 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
       expect(
         (await observer.query(npAgentReferenceFenceCoverageSqlV1(tables))).rows[0].missing_count,
       ).toBe("0");
+      await writer.query("BEGIN");
       await expect(
         writer.query("INSERT INTO pgboss.old_queue VALUES(gen_random_uuid(),'old','created',$1)", [
           { sourceId },
         ]),
       ).rejects.toMatchObject({ code: "23514" });
+      // pg rejects on ErrorResponse before an implicit rollback has finished.
+      // Complete this writer transaction before testing the cleaner's NOWAIT lock.
+      await writer.query("ROLLBACK");
       await cleaner.query("BEGIN; LOCK TABLE pgboss.job IN SHARE MODE NOWAIT");
       await writer.query("BEGIN; SET LOCAL lock_timeout='100ms'");
       await expect(
@@ -810,6 +814,8 @@ describe.skipIf(!process.env.TEST_DATABASE_URL)("Agent reference fence PostgreSQ
       await writer.query("ROLLBACK");
       await cleaner.query("ROLLBACK");
     } finally {
+      await writer.query("ROLLBACK");
+      await cleaner.query("ROLLBACK");
       await observer.query("DROP SCHEMA pgboss CASCADE");
     }
   });

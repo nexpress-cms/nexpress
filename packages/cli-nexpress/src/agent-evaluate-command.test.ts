@@ -9,10 +9,12 @@ import {
 } from "@nexpress/core/agents";
 import {
   npBuildAgentEvaluationReviewArtifactV1,
+  npParseAgentEvaluationCommandArgsV1,
   npCompareAgentEvaluationReviewArtifactsV1,
   type NpAgentEvaluationArtifactV1,
 } from "@nexpress/core/agent-contract";
 import { runNexpressCli } from "./index.js";
+import { prepareEvaluationResultVerifier } from "./agent-evaluate-result.js";
 
 const directories: string[] = [];
 async function project(source: string): Promise<string> {
@@ -115,14 +117,11 @@ describe("nexpress agent evaluate wrapper", () => {
       0,
     );
     expect(JSON.parse(output)).toEqual(result);
-    output = "";
-    expect(
-      await runNexpressCli(
-        ["node", "nexpress", "agent", "evaluate", "--json", "--max-calls", "99"],
-        { cwd },
-      ),
-    ).toBe(1);
-    expect(JSON.parse(output).errorCode).toBe("EVALUATION_UNAVAILABLE");
+    const verify = await prepareEvaluationResultVerifier(
+      npParseAgentEvaluationCommandArgsV1(["--json", "--max-calls", "99"]),
+      cwd,
+    );
+    await expect(verify(result)).rejects.toThrow("Mismatched evaluation result");
   });
 
   it("rejects incomplete paid-run flags before starting a project script", async () => {
@@ -186,13 +185,24 @@ describe("nexpress agent evaluate wrapper", () => {
     const command = ["node", "nexpress", "agent", "evaluate", "--json"];
     expect(await runNexpressCli([...command, "--dataset", "publisher.v1"], { cwd })).toBe(0);
     expect(JSON.parse(output.read()).artifact.suiteHash).toBe(artifact.suiteHash);
+    expect(output.read()).not.toContain("private-");
     for (const args of [[], ["--dataset", "publisher.v1", "--max-calls", "99"]]) {
-      output.reset();
-      expect(await runNexpressCli([...command, ...args], { cwd })).toBe(1);
-      expect(JSON.parse(output.read()).errorCode).toBe("EVALUATION_UNAVAILABLE");
-      expect(output.read()).not.toContain("private-");
+      const verify = await prepareEvaluationResultVerifier(
+        npParseAgentEvaluationCommandArgsV1(args),
+        cwd,
+      );
+      await expect(
+        verify({
+          schemaVersion: "np.agent-eval-command.v1",
+          artifact,
+          comparison: null,
+          errorCode: null,
+        }),
+      ).rejects.toThrow("Mismatched evaluation result");
     }
   });
+  // These artifact workflows recompute canonical hashes and launch real npm children.
+  // The timeout bounds the whole workflow, not a product latency requirement.
   it("binds review results to requested source, labels and comparison before child execution", async () => {
     const source = await publisherArtifact();
     const template = await npBuildAgentEvaluationReviewArtifactV1(source);
@@ -245,20 +255,45 @@ describe("nexpress agent evaluate wrapper", () => {
       finishedAt: "2026-10-05T00:00:01.000Z",
     };
     const otherArtifact = await npBuildAgentEvaluationReviewArtifactV1(sourceChanged);
+    const verify = await prepareEvaluationResultVerifier(
+      npParseAgentEvaluationCommandArgsV1(command.slice(4)),
+      cwd,
+    );
+    // Inputs are captured before the child starts, even if it later overwrites a source.
+    await writeFile(join(cwd, "source.json"), JSON.stringify(sourceChanged));
+    await expect(verify(result)).resolves.toEqual(result);
     for (const wrong of [
       { ...result, artifact: { ...artifact, summary: { ...artifact.summary, accepted: 99 } } },
       { ...result, artifact: template },
       { ...result, comparison: null },
       { ...result, artifact: otherArtifact },
     ]) {
-      output.reset();
-      await emitFixture(cwd, wrong);
-      expect(await runNexpressCli(command, { cwd })).toBe(1);
-      expect(JSON.parse(output.read()).errorCode).toBe("EVALUATION_UNAVAILABLE");
+      await expect(async () => verify(wrong)).rejects.toThrow("Mismatched review result");
     }
-    output.reset();
-    await emitFixture(cwd, result, 1);
-    expect(await runNexpressCli(command, { cwd })).toBe(1);
+    expect(output.read()).not.toContain("private-");
+  }, 20_000);
+  it("rejects a valid review when the child reports a failed exit", async () => {
+    const source = await publisherArtifact();
+    const artifact = await npBuildAgentEvaluationReviewArtifactV1(source);
+    const cwd = await project("");
+    await writeFile(join(cwd, "source.json"), JSON.stringify(source));
+    await emitFixture(
+      cwd,
+      {
+        schemaVersion: "np.agent-eval-review-command.v1",
+        artifact,
+        comparison: null,
+        errorCode: null,
+      },
+      1,
+    );
+    const output = captureOutput();
+    expect(
+      await runNexpressCli(
+        ["node", "nexpress", "agent", "evaluate", "--review", "source.json", "--json"],
+        { cwd },
+      ),
+    ).toBe(1);
     expect(JSON.parse(output.read()).errorCode).toBe("EVALUATION_UNAVAILABLE");
     expect(output.read()).not.toContain("private-");
   }, 20_000);
@@ -290,5 +325,5 @@ describe("nexpress agent evaluate wrapper", () => {
     expect(JSON.parse(output.read()).errorCode).toBe("ARTIFACT_INVALID");
     expect(JSON.parse(await readFile(join(cwd, "source.json"), "utf8"))).toEqual(source);
     expect(output.read()).not.toContain("private-");
-  });
+  }, 20_000);
 });

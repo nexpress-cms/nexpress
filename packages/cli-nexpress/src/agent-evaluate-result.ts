@@ -3,6 +3,9 @@ import { open, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
+  npFormatAgentModeratorEvaluationCommandResultV1,
+  type NpAgentModeratorEvaluationCommandResultV1,
+  type NpAgentModeratorEvaluationReviewCommandResultV1,
   npAgentEvaluationArtifactMaxBytesV1,
   npRequireAgentEvaluationArtifactV1,
   npRequireAgentEvaluationCommandResultV1,
@@ -23,7 +26,11 @@ interface ReviewResult {
   comparison: NpAgentEvaluationReviewComparisonV1 | null;
   errorCode: "ARTIFACT_INVALID" | "ARTIFACT_UNAVAILABLE" | "EVALUATION_UNAVAILABLE" | null;
 }
-export type EvaluationResult = NpAgentEvaluationCommandResultV1 | ReviewResult;
+export type EvaluationResult =
+  | NpAgentEvaluationCommandResultV1
+  | ReviewResult
+  | NpAgentModeratorEvaluationCommandResultV1
+  | NpAgentModeratorEvaluationReviewCommandResultV1;
 export function blockedEvaluationResult(
   review: boolean,
   invalidArtifact = false,
@@ -39,10 +46,17 @@ export function evaluationResultFailed(result: EvaluationResult): boolean {
   return Boolean(
     result.errorCode ||
     !result.artifact ||
-    (result.schemaVersion === "np.agent-eval-command.v1" && !result.artifact.ok),
+    ((result.schemaVersion === "np.agent-eval-command.v1" ||
+      result.schemaVersion === "np.agent-moderator-eval-command.v1") &&
+      !result.artifact.ok),
   );
 }
 export function formatEvaluationResult(result: EvaluationResult): string {
+  if (
+    result.schemaVersion === "np.agent-moderator-eval-command.v1" ||
+    result.schemaVersion === "np.agent-moderator-eval-review-command.v1"
+  )
+    return npFormatAgentModeratorEvaluationCommandResultV1(result);
   if (result.errorCode) return `Agent evaluation unavailable (${result.errorCode}).`;
   if (result.schemaVersion === "np.agent-eval-review-command.v1") {
     return `Offline Agent evaluation review: ${result.artifact?.summary.reviewed} reviewed; ${result.artifact?.summary.unreviewed} unreviewed; ${result.artifact?.summary.ineligible} without a reviewable proposal. Self-reported labels confer no approval authority.${result.comparison ? (result.comparison.comparable ? " Comparison uses the matched reviewed case/prediction cohort; use --json for rates and unmatched cases." : ` Comparison is not comparable (${result.comparison.reason}); no regression conclusion.`) : ""}`;
@@ -100,8 +114,16 @@ export async function prepareEvaluationResultVerifier(
 ): Promise<(value: unknown) => Promise<EvaluationResult>> {
   if (input.reviewPath) {
     await separateReviewOutput(input, cwd);
+    const source = await readBoundedJson(input.reviewPath, cwd);
+    if (
+      source &&
+      typeof source === "object" &&
+      "schemaVersion" in source &&
+      source.schemaVersion === "np.agent-moderator-eval.v1"
+    )
+      return prepareModeratorVerifier(input, cwd, source);
     const expectedArtifact = await npBuildAgentEvaluationReviewArtifactV1(
-      await readBoundedJson(input.reviewPath, cwd),
+      source,
       input.reviewsPath ? await readBoundedJson(input.reviewsPath, cwd) : [],
     );
     const expectedComparison = input.comparePath
@@ -132,6 +154,7 @@ export async function prepareEvaluationResultVerifier(
       return Promise.resolve(expected);
     };
   }
+  if (input.dataset === "moderator.v1") return prepareModeratorVerifier(input, cwd);
   const baseline = input.comparePath
     ? await npRequireAgentEvaluationArtifactV1(await readBoundedJson(input.comparePath, cwd))
     : null;
@@ -166,5 +189,77 @@ export async function prepareEvaluationResultVerifier(
         throw new Error("Mismatched evaluation comparison");
     }
     return parsed;
+  };
+}
+
+async function prepareModeratorVerifier(
+  input: NpAgentEvaluationCommandArgsV1,
+  cwd: string,
+  reviewSource?: unknown,
+): Promise<(value: unknown) => Promise<EvaluationResult>> {
+  const {
+    runAgentModeratorEvaluationV1,
+    npRequireAgentModeratorEvaluationArtifactV1,
+    npCompareAgentModeratorEvaluationArtifactsV1,
+    npBuildAgentModeratorEvaluationReviewArtifactV1,
+    npRequireAgentModeratorEvaluationReviewArtifactV1,
+    npCompareAgentModeratorEvaluationReviewArtifactsV1,
+  } = await import("@nexpress/core/agents");
+  await separateReviewOutput(input, cwd);
+  let expected:
+    NpAgentModeratorEvaluationCommandResultV1 | NpAgentModeratorEvaluationReviewCommandResultV1;
+  if (input.reviewPath) {
+    const artifact = await npBuildAgentModeratorEvaluationReviewArtifactV1(
+      reviewSource,
+      input.reviewsPath ? await readBoundedJson(input.reviewsPath, cwd) : [],
+    );
+    const comparison = input.comparePath
+      ? await npCompareAgentModeratorEvaluationReviewArtifactsV1(
+          artifact,
+          await npRequireAgentModeratorEvaluationReviewArtifactV1(
+            await readBoundedJson(input.comparePath, cwd),
+          ),
+        )
+      : null;
+    expected = {
+      schemaVersion: "np.agent-moderator-eval-review-command.v1",
+      artifact,
+      comparison,
+      errorCode: null,
+    };
+  } else {
+    const artifact = await runAgentModeratorEvaluationV1();
+    const comparison = input.comparePath
+      ? await npCompareAgentModeratorEvaluationArtifactsV1(
+          artifact,
+          await npRequireAgentModeratorEvaluationArtifactV1(
+            await readBoundedJson(input.comparePath, cwd),
+          ),
+        )
+      : null;
+    expected = {
+      schemaVersion: "np.agent-moderator-eval-command.v1",
+      artifact,
+      comparison,
+      errorCode: null,
+    };
+  }
+  return async (value) => {
+    for (const errorCode of [
+      "ARTIFACT_INVALID",
+      "ARTIFACT_UNAVAILABLE",
+      "EVALUATION_UNAVAILABLE",
+    ] as const) {
+      const failure = {
+        schemaVersion: expected.schemaVersion,
+        artifact: null,
+        comparison: null,
+        errorCode,
+      };
+      if (isDeepStrictEqual(value, failure)) return Promise.resolve(failure);
+    }
+    // Deterministic detector results and review labels must match the exact requested inputs.
+    if (!isDeepStrictEqual(value, expected)) throw new Error("Mismatched Moderator result");
+    return Promise.resolve(expected);
   };
 }

@@ -96,3 +96,6 @@ export * from "./evaluation-contract.js";
 export * from "./evaluation-command-contract.js";
 export * from "./publisher-evaluation-contract.js";
 export * from "./evaluation-review-contract.js";
+export * from "./moderator-evaluation-contract.js";
+export * from "./moderator-evaluation-review-contract.js";
+export * from "./moderator-evaluation-command-contract.js";
