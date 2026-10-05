@@ -3,7 +3,7 @@ import { npRequireAgentEvaluationBudgetV1 } from "./evaluation-contract.js";
 export interface NpAgentEvaluationCommandArgsV1 {
   provider: string;
   model: string;
-  dataset: "operator.v1" | "publisher.v1";
+  dataset: "operator.v1" | "publisher.v1" | "moderator.v1";
   reviewPath?: string;
   reviewsPath?: string | null;
   maxCalls: number;
@@ -72,13 +72,22 @@ export function npParseAgentEvaluationCommandArgsV1(
   )
     invalid();
   const dataset = text("--dataset") ?? "operator.v1";
-  if (dataset !== "operator.v1" && dataset !== "publisher.v1") invalid();
+  if (dataset !== "operator.v1" && dataset !== "publisher.v1" && dataset !== "moderator.v1")
+    invalid();
   const budgetFlags = [
     "--max-calls",
     "--max-input-tokens",
     "--max-output-tokens",
     "--max-cost-micros",
   ];
+  if (
+    dataset === "moderator.v1" &&
+    (network ||
+      fields.has("--model") ||
+      fields.has("--confirm-network") ||
+      budgetFlags.some((flag) => fields.has(flag)))
+  )
+    invalid();
   if (
     network &&
     (!fields.has("--provider") ||
@@ -107,7 +116,7 @@ export function npParseAgentEvaluationCommandArgsV1(
   return {
     provider,
     model,
-    dataset: dataset as "operator.v1" | "publisher.v1",
+    dataset: dataset as "operator.v1" | "publisher.v1" | "moderator.v1",
     ...(reviewPath ? { reviewPath, reviewsPath: text("--reviews") } : {}),
     maxCalls: budget.maxCalls,
     maxInputTokens: budget.maxInputTokens,

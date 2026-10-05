@@ -1320,8 +1320,8 @@ ships a narrower `ops` / `en` / `ko` synthetic slice: at most 100 cases, empty
 `expectedSignals`, eight built-in cases and no automatic-action enablement.
 It adds `mode`, embedded `suite`, `budget` and `caseResults` to the artifact
 below for independent recomputation. Unknown usage and corresponding means
-are nullable. Categories beyond `ops` and the bounded `publisher` slice, signal gates and
-model-usefulness acceptance described here remain planned.
+are nullable. Provider categories beyond `ops` and the bounded `publisher` slice, production
+signal gates and model-usefulness acceptance described here remain planned.
 
 The [Publisher proposal evaluation and review implementation](r6-publisher-evaluation-flow.md)
 adds `publisher.v1`: twelve bilingual synthetic content cases, ChangeSet-shaped
@@ -1332,6 +1332,16 @@ reviewed case/prediction cohort and report unmatched coverage explicitly.
 Self-reported review labels grant no live approval and do not change the source
 artifact's `ok`. These extractive synthetic checks do not close AP-606 or the
 real-model usefulness gate.
+
+The [Moderator offline evaluation flow](r6-moderator-evaluation-flow.md) adds
+`moderator.v1` as a separate deterministic detector artifact. It replays 22
+synthetic bilingual cases through the actual repeated-link detector, independently
+checks expected signals and reports fixture-authored classification outcomes.
+Exact-bound offline `confirmed-spam`/`false-positive` reviews preserve unreviewed
+coverage and compare only matched reviewed predictions. Neither authored labels
+nor self-reported feedback constitute production precision or authorization.
+The fixed installed-version verifier does not accept historical changed detector
+predictions; longitudinal model/detector comparison remains open.
 
 The target opt-in command artifact has these shared fields:
 

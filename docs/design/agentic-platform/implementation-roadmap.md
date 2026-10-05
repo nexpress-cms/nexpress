@@ -683,7 +683,12 @@ usefulness or close AP-606/R6. The
 adds bilingual synthetic content proposals, deterministic patch/evidence checks
 and exact-bound offline human labels with matched-cohort comparison. It grants
 no approval authority and leaves real-model usefulness and the full AP-606/R6
-gate open.
+gate open. The
+[Moderator offline evaluation and feedback review flow](r6-moderator-evaluation-flow.md)
+adds actual repeated-link detector replay on bilingual synthetic cases and
+exact-bound offline feedback comparison. Deterministic signal conformance,
+synthetic classification and self-reported human labels remain separate;
+production precision and automatic-quarantine readiness are not established.
 
 ### R7 — Guardian and application security orchestration
 

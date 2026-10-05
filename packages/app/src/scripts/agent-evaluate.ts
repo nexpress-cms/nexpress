@@ -4,6 +4,12 @@ import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import type { Writable } from "node:stream";
 import {
+  runAgentModeratorEvaluationV1,
+  npRequireAgentModeratorEvaluationArtifactV1,
+  npCompareAgentModeratorEvaluationArtifactsV1,
+  npBuildAgentModeratorEvaluationReviewArtifactV1,
+  npRequireAgentModeratorEvaluationReviewArtifactV1,
+  npCompareAgentModeratorEvaluationReviewArtifactsV1,
   NpAgentEvaluationError,
   runAgentEvaluationV1,
   npCreateAgentOperatorEvaluationSuiteV1,
@@ -11,6 +17,9 @@ import {
   type NpAgentEvaluationProviderV1,
 } from "@nexpress/core/agents";
 import {
+  npFormatAgentModeratorEvaluationCommandResultV1,
+  type NpAgentModeratorEvaluationCommandResultV1,
+  type NpAgentModeratorEvaluationReviewCommandResultV1,
   npAgentEvaluationArtifactMaxBytesV1,
   npBuildAgentEvaluationReviewArtifactV1,
   npRequireAgentEvaluationReviewArtifactV1,
@@ -31,6 +40,7 @@ import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
 
 export const AGENT_EVALUATE_HELP = `NexPress Agent evaluation
 
+pnpm agent:evaluate --dataset moderator.v1 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset operator.v1 --json
 pnpm agent:evaluate --provider fake --dataset publisher.v1 --out <artifact> --json
 nexpress agent evaluate --out <artifact> [--compare <previous-artifact>] [--json]
@@ -39,6 +49,7 @@ nexpress agent evaluate --review <evaluation-artifact> [--reviews <labels.json>]
 Review labels are self-reported offline evaluation data, never live approvals.
 Without --reviews, review mode emits evidence/proposals and binding fields with no labels.
 
+Moderator runs the actual deterministic detector offline; network providers and explicit model/budget flags are unavailable.
 Fake mode checks deterministic fixtures; it does not measure model usefulness.
 Network evaluation requires a host-injected provider and explicit --provider, --model, --dataset,
 --max-calls, --max-input-tokens, --max-output-tokens, --max-cost-micros and --confirm-network.
@@ -127,6 +138,7 @@ export async function runAgentEvaluateProcessV1(
       throw new EvaluationCommandError("ARGUMENT_INVALID");
     }
     if (input.reviewPath) return runReview(input, output);
+    if (input.dataset === "moderator.v1") return runModerator(input, output);
     let budget: NpAgentEvaluationBudgetV1;
     try {
       budget = npRequireAgentEvaluationBudgetV1({
@@ -234,8 +246,16 @@ async function runReview(
   let comparison: NpAgentEvaluationReviewComparisonV1 | null = null;
   let errorCode: "ARTIFACT_INVALID" | "ARTIFACT_UNAVAILABLE" | null = null;
   try {
+    const source: unknown = await readArtifactJson(input.reviewPath!);
+    if (
+      source &&
+      typeof source === "object" &&
+      "schemaVersion" in source &&
+      source.schemaVersion === "np.agent-moderator-eval.v1"
+    )
+      return runModerator(input, output, source);
     artifact = await npBuildAgentEvaluationReviewArtifactV1(
-      await readArtifactJson(input.reviewPath!),
+      source,
       input.reviewsPath ? await readArtifactJson(input.reviewsPath) : [],
     );
     if (input.comparePath)
@@ -268,4 +288,82 @@ async function runReview(
     : `Offline Agent evaluation review: ${artifact?.summary.reviewed} reviewed; ${artifact?.summary.unreviewed} unreviewed; ${artifact?.summary.ineligible} without a reviewable proposal. Self-reported labels confer no approval authority.${comparison ? (comparison.comparable ? " Comparison uses the matched reviewed case/prediction cohort; use --json for rates and unmatched cases." : ` Comparison is not comparable (${comparison.reason}); no regression conclusion.`) : ""}`;
   output.write(`${input.json ? JSON.stringify(result) : text}\n`);
   return errorCode ? 1 : 0;
+}
+
+async function runModerator(
+  input: NpAgentEvaluateCliInputV1,
+  output: Pick<Writable, "write">,
+  reviewSource?: unknown,
+): Promise<number> {
+  let result:
+    NpAgentModeratorEvaluationCommandResultV1 | NpAgentModeratorEvaluationReviewCommandResultV1;
+  try {
+    if (input.reviewPath) {
+      const artifact = await npBuildAgentModeratorEvaluationReviewArtifactV1(
+        reviewSource,
+        input.reviewsPath ? await readArtifactJson(input.reviewsPath) : [],
+      );
+      const comparison = input.comparePath
+        ? await npCompareAgentModeratorEvaluationReviewArtifactsV1(
+            artifact,
+            await npRequireAgentModeratorEvaluationReviewArtifactV1(
+              await readArtifactJson(input.comparePath),
+            ),
+          )
+        : null;
+      result = {
+        schemaVersion: "np.agent-moderator-eval-review-command.v1",
+        artifact,
+        comparison,
+        errorCode: null,
+      };
+    } else {
+      const baseline = input.comparePath
+        ? await npRequireAgentModeratorEvaluationArtifactV1(
+            await readArtifactJson(input.comparePath),
+          )
+        : null;
+      const artifact = await runAgentModeratorEvaluationV1();
+      const comparison = baseline
+        ? await npCompareAgentModeratorEvaluationArtifactsV1(artifact, baseline)
+        : null;
+      result = {
+        schemaVersion: "np.agent-moderator-eval-command.v1",
+        artifact,
+        comparison,
+        errorCode: null,
+      };
+    }
+  } catch {
+    result = {
+      schemaVersion: input.reviewPath
+        ? "np.agent-moderator-eval-review-command.v1"
+        : "np.agent-moderator-eval-command.v1",
+      artifact: null,
+      comparison: null,
+      errorCode: "ARTIFACT_INVALID",
+    };
+  }
+  if (!result.errorCode && input.outPath) {
+    try {
+      // Preserve every input used to produce an evaluation or a review, including hardlink aliases.
+      await assertReviewOutputIsSeparate(input);
+      await writeArtifactJson(input.outPath, result.artifact);
+    } catch {
+      result = {
+        schemaVersion: result.schemaVersion,
+        artifact: null,
+        comparison: null,
+        errorCode: "ARTIFACT_UNAVAILABLE",
+      };
+    }
+  }
+  output.write(
+    `${input.json ? JSON.stringify(result) : npFormatAgentModeratorEvaluationCommandResultV1(result)}\n`,
+  );
+  return result.errorCode ||
+    !result.artifact ||
+    (result.schemaVersion === "np.agent-moderator-eval-command.v1" && !result.artifact.ok)
+    ? 1
+    : 0;
 }
