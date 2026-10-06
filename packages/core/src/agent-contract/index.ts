@@ -99,3 +99,6 @@ export * from "./evaluation-review-contract.js";
 export * from "./moderator-evaluation-contract.js";
 export * from "./moderator-evaluation-review-contract.js";
 export * from "./moderator-evaluation-command-contract.js";
+
+export * from "./operator-plan-evaluation-contract.js";
+export * from "./operator-plan-evaluation-review-contract.js";

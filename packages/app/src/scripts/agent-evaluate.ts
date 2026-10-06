@@ -13,6 +13,7 @@ import {
   NpAgentEvaluationError,
   runAgentEvaluationV1,
   npCreateAgentOperatorEvaluationSuiteV1,
+  npCreateAgentOperatorPlanEvaluationSuiteV1,
   npCreateAgentPublisherEvaluationSuiteV1,
   type NpAgentEvaluationProviderV1,
 } from "@nexpress/core/agents";
@@ -20,6 +21,11 @@ import {
   npFormatAgentModeratorEvaluationCommandResultV1,
   type NpAgentModeratorEvaluationCommandResultV1,
   type NpAgentModeratorEvaluationReviewCommandResultV1,
+  npBuildAgentOperatorPlanEvaluationReviewArtifactV1,
+  npRequireAgentOperatorPlanEvaluationReviewArtifactV1,
+  npCompareAgentOperatorPlanEvaluationReviewArtifactsV1,
+  type NpAgentOperatorPlanEvaluationReviewArtifactV1,
+  type NpAgentOperatorPlanEvaluationReviewComparisonV1,
   npAgentEvaluationArtifactMaxBytesV1,
   npBuildAgentEvaluationReviewArtifactV1,
   npRequireAgentEvaluationReviewArtifactV1,
@@ -42,6 +48,7 @@ export const AGENT_EVALUATE_HELP = `NexPress Agent evaluation
 
 pnpm agent:evaluate --dataset moderator.v1 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset operator.v1 --json
+pnpm agent:evaluate --provider fake --dataset operator-plan.v1 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset publisher.v1 --out <artifact> --json
 nexpress agent evaluate --out <artifact> [--compare <previous-artifact>] [--json]
 nexpress agent evaluate --review <evaluation-artifact> [--reviews <labels.json>] [--compare <review-artifact>] [--out <review-artifact>] [--json]
@@ -175,7 +182,9 @@ export async function runAgentEvaluateProcessV1(
         suite:
           input.dataset === "publisher.v1"
             ? await npCreateAgentPublisherEvaluationSuiteV1()
-            : await npCreateAgentOperatorEvaluationSuiteV1(),
+            : input.dataset === "operator-plan.v1"
+              ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
+              : await npCreateAgentOperatorEvaluationSuiteV1(),
         mode: input.provider === "fake" ? "fake" : "provider",
         providerId: input.provider,
         model: input.model,
@@ -254,8 +263,11 @@ async function runReview(
       source.schemaVersion === "np.agent-moderator-eval.v1"
     )
       return runModerator(input, output, source);
+    const evaluation = await npRequireAgentEvaluationArtifactV1(source);
+    if (evaluation.suite.cases[0].category === "ops-plan")
+      return runOperatorPlanReview(input, output, evaluation);
     artifact = await npBuildAgentEvaluationReviewArtifactV1(
-      source,
+      evaluation,
       input.reviewsPath ? await readArtifactJson(input.reviewsPath) : [],
     );
     if (input.comparePath)
@@ -366,4 +378,51 @@ async function runModerator(
     (result.schemaVersion === "np.agent-moderator-eval-command.v1" && !result.artifact.ok)
     ? 1
     : 0;
+}
+
+async function runOperatorPlanReview(
+  input: NpAgentEvaluateCliInputV1,
+  output: Pick<Writable, "write">,
+  source: NpAgentEvaluationArtifactV1,
+): Promise<number> {
+  let artifact: NpAgentOperatorPlanEvaluationReviewArtifactV1 | null = null;
+  let comparison: NpAgentOperatorPlanEvaluationReviewComparisonV1 | null = null;
+  let errorCode: "ARTIFACT_INVALID" | "ARTIFACT_UNAVAILABLE" | null = null;
+  try {
+    artifact = await npBuildAgentOperatorPlanEvaluationReviewArtifactV1(
+      source,
+      input.reviewsPath ? await readArtifactJson(input.reviewsPath) : [],
+    );
+    if (input.comparePath)
+      comparison = await npCompareAgentOperatorPlanEvaluationReviewArtifactsV1(
+        artifact,
+        await npRequireAgentOperatorPlanEvaluationReviewArtifactV1(
+          await readArtifactJson(input.comparePath),
+        ),
+      );
+  } catch {
+    errorCode = "ARTIFACT_INVALID";
+  }
+  if (!errorCode && input.outPath)
+    try {
+      await assertReviewOutputIsSeparate(input);
+      await writeArtifactJson(input.outPath, artifact);
+    } catch {
+      errorCode = "ARTIFACT_UNAVAILABLE";
+    }
+  if (errorCode) {
+    artifact = null;
+    comparison = null;
+  }
+  const result = {
+    schemaVersion: "np.agent-operator-plan-eval-review-command.v1",
+    artifact,
+    comparison,
+    errorCode,
+  };
+  const text = errorCode
+    ? `Operator plan review unavailable (${errorCode}).`
+    : `Offline Operator diagnosis/plan review: ${artifact?.summary.reviewed} reviewed; ${artifact?.summary.unreviewed} unreviewed; ${artifact?.summary.ineligible} without a reviewable proposal. Self-reported labels confer no approval authority.${comparison ? (comparison.comparable ? " Comparison uses the matched reviewed case/prediction cohort." : ` Comparison is not comparable (${comparison.reason}); no regression conclusion.`) : ""}`;
+  output.write(`${input.json ? JSON.stringify(result) : text}\n`);
+  return errorCode ? 1 : 0;
 }

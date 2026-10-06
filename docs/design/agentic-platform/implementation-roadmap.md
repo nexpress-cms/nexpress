@@ -689,6 +689,11 @@ adds actual repeated-link detector replay on bilingual synthetic cases and
 exact-bound offline feedback comparison. Deterministic signal conformance,
 synthetic classification and self-reported human labels remain separate;
 production precision and automatic-quarantine readiness are not established.
+The [Operator diagnosis and plan evaluation review flow](r6-operator-plan-evaluation-flow.md)
+adds bilingual synthetic diagnosis statements, exact requested queue-plan input
+checks and offline accept/edit/reject review with matched-cohort comparison.
+Its bounded statements and synthetic intent do not establish arbitrary natural
+language accuracy, live-model usefulness or full AP-602/AP-606/R6 acceptance.
 
 ### R7 — Guardian and application security orchestration
 
