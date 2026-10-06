@@ -1,3 +1,7 @@
+import {
+  npCreateAgentOperatorPlanEvaluationPredictionV1,
+  npAgentOperatorPlanEvaluationBenchmarkInstructionV1,
+} from "../agent-contract/operator-plan-evaluation-contract.js";
 import { npCreateAgentPublisherRecipeDefinitionV1 } from "../agent-contract/publisher-recipe-contract.js";
 import {
   npCreateAgentPublisherEvaluationPredictionV1,
@@ -242,7 +246,9 @@ export async function runAgentEvaluationV1(
       benchmarkInstruction:
         category === "publisher"
           ? npAgentPublisherEvaluationBenchmarkInstructionV1
-          : npAgentEvaluationBenchmarkInstructionV1,
+          : category === "ops-plan"
+            ? npAgentOperatorPlanEvaluationBenchmarkInstructionV1
+            : npAgentEvaluationBenchmarkInstructionV1,
     };
     let limit: NpAgentEvaluationReservationV1;
     try {
@@ -287,7 +293,9 @@ export async function runAgentEvaluationV1(
               prediction:
                 category === "publisher"
                   ? npCreateAgentPublisherEvaluationPredictionV1(request.case.evidence)
-                  : fakePrediction(request),
+                  : category === "ops-plan"
+                    ? npCreateAgentOperatorPlanEvaluationPredictionV1(request.case.evidence)
+                    : fakePrediction(request),
               usage: zero(),
             });
       const response = await Promise.race([operation, aborted]);

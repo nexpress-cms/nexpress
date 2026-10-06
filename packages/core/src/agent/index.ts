@@ -110,3 +110,5 @@ export * from "./evaluation.js";
 export * from "./operator-evaluation-fixtures.js";
 export * from "./publisher-evaluation-fixtures.js";
 export * from "./moderator-evaluation.js";
+
+export * from "./operator-plan-evaluation-fixtures.js";

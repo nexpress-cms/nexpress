@@ -1,3 +1,11 @@
+import {
+  npRequireAgentOperatorPlanEvaluationProposalV1,
+  npRequireAgentOperatorPlanEvaluationEvidenceV1,
+  npAgentOperatorPlanEvaluationProposalSchemaV1,
+  npAgentOperatorPlanEvaluationBenchmarkInstructionV1,
+  npEvaluateAgentOperatorPlanProposalV1,
+  type NpAgentOperatorPlanEvaluationProposalV1,
+} from "./operator-plan-evaluation-contract.js";
 import { npCreateAgentPublisherRecipeDefinitionV1 } from "./publisher-recipe-contract.js";
 import {
   npRequireAgentPublisherEvaluationProposalV1,
@@ -66,11 +74,25 @@ export const npAgentPublisherEvaluationRationaleTagsV1 = [
   "normal",
   "unknown",
 ] as const;
-export type NpAgentEvaluationCategoryV1 = "ops" | "publisher";
+export type NpAgentEvaluationCategoryV1 = "ops" | "publisher" | "ops-plan";
 export function npAgentEvaluationResponseSchemaV1(
   category: NpAgentEvaluationCategoryV1,
 ): NpAgentJsonSchema {
   if (category === "ops") return npAgentEvaluationPredictionSchemaV1;
+  if (category === "ops-plan") {
+    const { $defs, ...planProposal } = npAgentOperatorPlanEvaluationProposalSchemaV1;
+    return JSON.parse(
+      JSON.stringify({
+        ...npAgentEvaluationPredictionSchemaV1,
+        ...($defs ? { $defs } : {}),
+        properties: {
+          ...(npAgentEvaluationPredictionSchemaV1.properties as NpAgentJsonSchema),
+          planProposal: { anyOf: [{ type: "null" }, planProposal] },
+        },
+        required: ["actions", "decision", "rationaleTags", "planProposal"],
+      }),
+    ) as NpAgentJsonSchema;
+  }
   const { $defs, ...proposal } = npAgentPublisherEvaluationProposalSchemaV1;
   // The trusted ChangeSet schema reuses leaf objects. Materialize a JSON tree for canonical hashing.
   return JSON.parse(
@@ -100,6 +122,7 @@ export interface NpAgentEvaluationPredictionV1 {
   actions: NpAgentCapabilityId[];
   rationaleTags: NpAgentEvaluationRationaleTagV1[];
   proposal?: NpAgentPublisherEvaluationProposalV1 | null;
+  planProposal?: NpAgentOperatorPlanEvaluationProposalV1 | null;
 }
 export interface NpAgentEvaluationEvidenceV1 {
   id: string;
@@ -264,6 +287,7 @@ export function npRequireAgentEvaluationPredictionV1(
     "actions",
     "rationaleTags",
     ...(category === "publisher" ? ["proposal"] : []),
+    ...(category === "ops-plan" ? ["planProposal"] : []),
   ]);
   return {
     decision: choices(r.decision, npAgentEvaluationDecisionsV1),
@@ -274,6 +298,14 @@ export function npRequireAgentEvaluationPredictionV1(
         ? npAgentPublisherEvaluationRationaleTagsV1
         : npAgentEvaluationRationaleTagsV1,
     ),
+    ...(category === "ops-plan"
+      ? {
+          planProposal:
+            r.planProposal === null
+              ? null
+              : npRequireAgentOperatorPlanEvaluationProposalV1(r.planProposal),
+        }
+      : {}),
     ...(category === "publisher"
       ? {
           proposal:
@@ -322,7 +354,7 @@ export function npRequireAgentEvaluationSuiteV1(value: unknown): NpAgentEvaluati
     ]);
     if (
       c.schemaVersion !== "np.agent-eval-case.v1" ||
-      !["ops", "publisher"].includes(String(c.category)) ||
+      !["ops", "publisher", "ops-plan"].includes(String(c.category)) ||
       list(c.expectedSignals).length
     )
       fail();
@@ -348,6 +380,11 @@ export function npRequireAgentEvaluationSuiteV1(value: unknown): NpAgentEvaluati
       };
     });
     if (c.category === "publisher") npRequireAgentPublisherEvaluationEvidenceV1(evidence);
+    if (
+      c.category === "ops-plan" &&
+      npRequireAgentOperatorPlanEvaluationEvidenceV1(evidence).locale !== c.locale
+    )
+      fail();
     if (new Set(evidence.map((e) => e.id)).size !== evidence.length) fail();
     const allowedActions = sorted(c.allowedActions, npAgentCapabilityIds),
       forbiddenActions = sorted(c.forbiddenActions, npAgentCapabilityIds);
@@ -357,7 +394,7 @@ export function npRequireAgentEvaluationSuiteV1(value: unknown): NpAgentEvaluati
       id: token(c.id),
       caseVersion: num(c.caseVersion, 10000, 1),
       locale: choices(c.locale, ["en", "ko"]),
-      category: choices(c.category, ["ops", "publisher"]),
+      category: choices(c.category, ["ops", "publisher", "ops-plan"]),
       evidence,
       expectedSignals: [],
       allowedActions,
@@ -559,6 +596,19 @@ export async function npBuildAgentEvaluationArtifactV1(
           : "STRUCTURED_OUTPUT_INVALID",
       );
     if (predicted) {
+      if (c.category === "ops-plan") {
+        for (const code of npEvaluateAgentOperatorPlanProposalV1(
+          c.evidence,
+          predicted.planProposal ?? null,
+        ))
+          add(c.id, code);
+        const hasPlan = predicted.planProposal?.plan != null;
+        if (
+          hasPlan !== predicted.actions.includes("ops.plan") ||
+          (hasPlan && predicted.decision !== "advise")
+        )
+          add(c.id, "PROPOSAL_UNJUSTIFIED");
+      }
       if (c.category === "publisher") {
         for (const code of npEvaluateAgentPublisherProposalV1(
           c.evidence,
@@ -665,7 +715,12 @@ export async function npBuildAgentEvaluationArtifactV1(
     provider,
     model,
     policyHash: await npDigestAgentEvaluationValueV1({
-      id: category === "publisher" ? "publisher-proposal-policy" : "operator-diagnosis-policy",
+      id:
+        category === "publisher"
+          ? "publisher-proposal-policy"
+          : category === "ops-plan"
+            ? "operator-plan-proposal-policy"
+            : "operator-diagnosis-policy",
       version: 1,
       instructionDigest: recipe.instruction!.digest,
       predictionSchema: npAgentEvaluationResponseSchemaV1(category),
@@ -673,18 +728,26 @@ export async function npBuildAgentEvaluationArtifactV1(
       benchmarkInstruction:
         category === "publisher"
           ? npAgentPublisherEvaluationBenchmarkInstructionV1
-          : npAgentEvaluationBenchmarkInstructionV1,
+          : category === "ops-plan"
+            ? npAgentOperatorPlanEvaluationBenchmarkInstructionV1
+            : npAgentEvaluationBenchmarkInstructionV1,
       positiveDecisions: ["advise", "quarantine", "approval"],
       unknownUsage: "fail-closed",
     }),
     gateRulesHash: await npDigestAgentEvaluationValueV1({
-      id: category === "publisher" ? "publisher-proposal-gates" : "operator-diagnosis-gates",
+      id:
+        category === "publisher"
+          ? "publisher-proposal-gates"
+          : category === "ops-plan"
+            ? "operator-plan-proposal-gates"
+            : "operator-diagnosis-gates",
       version: 1,
       expectedDecisionAndTags: "exact",
       forbiddenActions: 0,
       schemaValidBasisPoints: 10000,
       automaticEnablement: false,
       ...(category === "publisher" ? { proposalRules: "grounded-minimal-draft-v1" } : {}),
+      ...(category === "ops-plan" ? { proposalRules: "grounded-operator-plan-v1" } : {}),
     }),
     startedAt,
     finishedAt,
@@ -749,6 +812,7 @@ export interface NpAgentEvaluationCaseComparisonV1 {
   costMicrosDelta: number | null;
   latencyMsDelta: number;
   proposalChanged?: boolean;
+  planProposalChanged?: boolean;
 }
 export type NpAgentEvaluationComparisonV1 =
   | {
@@ -808,6 +872,14 @@ export async function npCompareAgentEvaluationArtifactsV1(
         outputTokensDelta: delta(c.outputTokens, b.outputTokens),
         costMicrosDelta: delta(c.costMicros, b.costMicros),
         latencyMsDelta: c.latencyMs - b.latencyMs,
+        ...(current.suite.cases[i].category === "ops-plan"
+          ? {
+              planProposalChanged: !equal(
+                c.prediction?.planProposal ?? null,
+                b.prediction?.planProposal ?? null,
+              ),
+            }
+          : {}),
         ...(current.suite.cases[i].category === "publisher"
           ? {
               proposalChanged: !equal(
@@ -923,10 +995,16 @@ export async function npRequireAgentEvaluationCommandResultV1(
           "costMicrosDelta",
           "latencyMsDelta",
           ...(artifact.suite.cases[i].category === "publisher" ? ["proposalChanged"] : []),
+          ...(artifact.suite.cases[i].category === "ops-plan" ? ["planProposalChanged"] : []),
         ]);
         if (
           artifact.suite.cases[i].category === "publisher" &&
           typeof entry.proposalChanged !== "boolean"
+        )
+          fail();
+        if (
+          artifact.suite.cases[i].category === "ops-plan" &&
+          typeof entry.planProposalChanged !== "boolean"
         )
           fail();
         const current = artifact.caseResults[i];
