@@ -151,6 +151,12 @@ validation. The final CLI regression also runs the real entrypoint through a
 pipe with a report larger than 64 KiB; its three cases and CLI typecheck passed
 after that assertion was added. Prettier and `git diff --check` passed.
 
+The initial PR run exposed a twenty-second timeout in the combined CLI report
+workflow when its outer process loaded the TypeScript source through `tsx`.
+The pipe regression now invokes the built CLI directly, and its Turbo test task
+explicitly depends on the CLI build. This checks the shipped entrypoint without
+repeating source transformation in the child or increasing the timeout.
+
 A fresh external project installed all 40 packed public packages and passed
 typecheck. Its project script and installed CLI produced identical three-recipe
 reports with evaluation/review baselines and a synthetic acceptance label.

@@ -129,12 +129,7 @@ describe("installed unified evaluation report boundary", () => {
       (resolve, reject) => {
         const child = spawn(
           process.execPath,
-          [
-            "--import",
-            import.meta.resolve("tsx"),
-            fileURLToPath(new URL("./index.ts", import.meta.url)),
-            ...command.slice(2),
-          ],
+          [fileURLToPath(new URL("../dist/index.js", import.meta.url)), ...command.slice(2)],
           { cwd, stdio: ["ignore", "pipe", "pipe"] },
         );
         let stdout = "",
