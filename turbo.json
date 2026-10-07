@@ -68,10 +68,6 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
-    "@nexpress/cli#test": {
-      "dependsOn": ["build"],
-      "outputs": []
-    },
     "test:integration": {
       "dependsOn": ["^build"],
       "outputs": [],

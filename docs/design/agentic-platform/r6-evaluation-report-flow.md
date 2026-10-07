@@ -147,15 +147,17 @@ and `pnpm lint` (41 tasks). The workspace run includes 2,288 Core, 680 App,
 176 CLI and 174 Web unit cases. Report coverage adds seven Core cases, one App
 workflow and three CLI cases for evidence recomputation, missing/failed inputs,
 owner comparisons, review binding, bounded file reads, aliases and child-result
-validation. The final CLI regression also runs the real entrypoint through a
-pipe with a report larger than 64 KiB; its three cases and CLI typecheck passed
-after that assertion was added. Prettier and `git diff --check` passed.
+validation. The fresh-scaffold job additionally exercises the installed CLI and
+real project script through a pipe with a report larger than 64 KiB, comparing
+complete stdout and the saved file against independently reconstructed evidence.
+Prettier and `git diff --check` passed.
 
-The initial PR run exposed a twenty-second timeout in the combined CLI report
-workflow when its outer process loaded the TypeScript source through `tsx`.
-The pipe regression now invokes the built CLI directly, and its Turbo test task
-explicitly depends on the CLI build. This checks the shipped entrypoint without
-repeating source transformation in the child or increasing the timeout.
+Two initial PR runs exposed a twenty-second timeout when that whole installed
+process workflow was embedded in the parallel CLI unit suite, including after
+replacing source transformation with the built entrypoint. It now runs once in
+the existing fresh-scaffold job after installation. Unit tests retain source
+binding, forgery, exit-status and alias checks without duplicating installed
+process startup; their timeout remains unchanged.
 
 A fresh external project installed all 40 packed public packages and passed
 typecheck. Its project script and installed CLI produced identical three-recipe

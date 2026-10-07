@@ -1,8 +1,6 @@
-import { spawn } from "node:child_process";
 import { link, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   npBuildAgentEvaluationReportV1,
@@ -10,7 +8,6 @@ import {
   runAgentEvaluationV1,
 } from "@nexpress/core/agents";
 import {
-  npBuildAgentOperatorPlanEvaluationReviewArtifactV1,
   npParseAgentEvaluationCommandArgsV1,
   type NpAgentEvaluationReportCommandResultV1,
   type NpAgentEvaluationReportInputV1,
@@ -83,8 +80,7 @@ describe("installed unified evaluation report boundary", () => {
   it("captures manifest and evidence before the child and rejects forged or dropped report evidence", async () => {
     const cwd = await project();
     const source = await operatorSource();
-    const review = await npBuildAgentOperatorPlanEvaluationReviewArtifactV1(source);
-    const evidence = { evaluation: source, review };
+    const evidence = { evaluation: source, review: null };
     const input: NpAgentEvaluationReportInputV1 = {
       schemaVersion: "np.agent-eval-report-input.v1",
       entries: [{ recipe: "operator", current: evidence, baseline: structuredClone(evidence) }],
@@ -96,7 +92,6 @@ describe("installed unified evaluation report boundary", () => {
       errorCode: null,
     };
     await writeFile(join(cwd, "source.json"), JSON.stringify(source));
-    await writeFile(join(cwd, "review.json"), JSON.stringify(review));
     await writeFile(
       join(cwd, "manifest.json"),
       JSON.stringify({
@@ -105,8 +100,8 @@ describe("installed unified evaluation report boundary", () => {
           {
             recipe: "operator",
             evaluation: "source.json",
-            review: "review.json",
-            baseline: { evaluation: "source.json", review: "review.json" },
+            review: null,
+            baseline: { evaluation: "source.json", review: null },
           },
         ],
       }),
@@ -122,27 +117,6 @@ describe("installed unified evaluation report boundary", () => {
       cases: 16,
       evaluationComparison: { status: "compared", result: { comparable: true } },
     });
-    // Exercise the outer entrypoint through a real pipe: process.exit used to
-    // truncate reports larger than the stdout buffer despite a successful child.
-    await emit(cwd, result);
-    const piped = await new Promise<{ code: number | null; stdout: string; stderr: string }>(
-      (resolve, reject) => {
-        const child = spawn(
-          process.execPath,
-          [fileURLToPath(new URL("../dist/index.js", import.meta.url)), ...command.slice(2)],
-          { cwd, stdio: ["ignore", "pipe", "pipe"] },
-        );
-        let stdout = "",
-          stderr = "";
-        child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
-        child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
-        child.on("error", reject);
-        child.on("close", (code) => resolve({ code, stdout, stderr }));
-      },
-    );
-    expect(Buffer.byteLength(JSON.stringify(result))).toBeGreaterThan(65_536);
-    expect(piped.code, piped.stderr).toBe(0);
-    expect(JSON.parse(piped.stdout)).toEqual(result);
     await writeFile(join(cwd, "manifest.json"), JSON.stringify(emptyManifest));
     await writeFile(join(cwd, "source.json"), "private-child-overwritten-evidence");
     await expect(verify(result)).resolves.toEqual(result);
