@@ -4,6 +4,9 @@ import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import type { Writable } from "node:stream";
 import {
+  npBuildAgentEvaluationReportV1,
+  npReadAgentEvaluationReportInputV1,
+  npAssertAgentEvaluationReportOutputV1,
   runAgentModeratorEvaluationV1,
   npRequireAgentModeratorEvaluationArtifactV1,
   npCompareAgentModeratorEvaluationArtifactsV1,
@@ -18,6 +21,8 @@ import {
   type NpAgentEvaluationProviderV1,
 } from "@nexpress/core/agents";
 import {
+  npFormatAgentEvaluationReportV1,
+  type NpAgentEvaluationReportCommandResultV1,
   npFormatAgentModeratorEvaluationCommandResultV1,
   type NpAgentModeratorEvaluationCommandResultV1,
   type NpAgentModeratorEvaluationReviewCommandResultV1,
@@ -52,9 +57,12 @@ pnpm agent:evaluate --provider fake --dataset operator-plan.v1 --out <artifact> 
 pnpm agent:evaluate --provider fake --dataset publisher.v1 --out <artifact> --json
 nexpress agent evaluate --out <artifact> [--compare <previous-artifact>] [--json]
 nexpress agent evaluate --review <evaluation-artifact> [--reviews <labels.json>] [--compare <review-artifact>] [--out <review-artifact>] [--json]
+nexpress agent evaluate --report <manifest.json> [--out <report.json>] [--json]
 
 Review labels are self-reported offline evaluation data, never live approvals.
 Without --reviews, review mode emits evidence/proposals and binding fields with no labels.
+Report inputs resolve relative to the manifest. Exit zero means a report was generated,
+including missing or failed evidence; it does not establish model usefulness or full R6 acceptance.
 
 Moderator runs the actual deterministic detector offline; network providers and explicit model/budget flags are unavailable.
 Fake mode checks deterministic fixtures; it does not measure model usefulness.
@@ -145,6 +153,7 @@ export async function runAgentEvaluateProcessV1(
       throw new EvaluationCommandError("ARGUMENT_INVALID");
     }
     if (input.reviewPath) return runReview(input, output);
+    if (input.reportPath) return runReport(input, output);
     if (input.dataset === "moderator.v1") return runModerator(input, output);
     let budget: NpAgentEvaluationBudgetV1;
     try {
@@ -425,4 +434,38 @@ async function runOperatorPlanReview(
     : `Offline Operator diagnosis/plan review: ${artifact?.summary.reviewed} reviewed; ${artifact?.summary.unreviewed} unreviewed; ${artifact?.summary.ineligible} without a reviewable proposal. Self-reported labels confer no approval authority.${comparison ? (comparison.comparable ? " Comparison uses the matched reviewed case/prediction cohort." : ` Comparison is not comparable (${comparison.reason}); no regression conclusion.`) : ""}`;
   output.write(`${input.json ? JSON.stringify(result) : text}\n`);
   return errorCode ? 1 : 0;
+}
+
+async function runReport(
+  input: NpAgentEvaluateCliInputV1,
+  output: Pick<Writable, "write">,
+): Promise<number> {
+  let result: NpAgentEvaluationReportCommandResultV1;
+  try {
+    const loaded = await npReadAgentEvaluationReportInputV1(input.reportPath!);
+    const artifact = await npBuildAgentEvaluationReportV1(loaded.input);
+    result = { schemaVersion: "np.agent-eval-report-command.v1", artifact, errorCode: null };
+    if (input.outPath) {
+      try {
+        await npAssertAgentEvaluationReportOutputV1(input.outPath, loaded.sourcePaths);
+        await writeArtifactJson(input.outPath, artifact);
+      } catch {
+        result = {
+          schemaVersion: "np.agent-eval-report-command.v1",
+          artifact: null,
+          errorCode: "ARTIFACT_UNAVAILABLE",
+        };
+      }
+    }
+  } catch {
+    result = {
+      schemaVersion: "np.agent-eval-report-command.v1",
+      artifact: null,
+      errorCode: "ARTIFACT_INVALID",
+    };
+  }
+  output.write(
+    `${input.json ? JSON.stringify(result) : result.artifact ? npFormatAgentEvaluationReportV1(result.artifact) : `Evaluation report unavailable (${result.errorCode}).`}\n`,
+  );
+  return result.errorCode ? 1 : 0;
 }

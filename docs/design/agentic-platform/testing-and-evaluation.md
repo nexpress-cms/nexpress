@@ -1320,7 +1320,7 @@ ships a narrower `ops` / `en` / `ko` synthetic slice: at most 100 cases, empty
 `expectedSignals`, eight built-in cases and no automatic-action enablement.
 It adds `mode`, embedded `suite`, `budget` and `caseResults` to the artifact
 below for independent recomputation. Unknown usage and corresponding means
-are nullable. Provider categories beyond `ops` and the bounded `publisher` slice, production
+are nullable. Provider categories beyond `ops`, `ops-plan` and the bounded `publisher` slice, production
 signal gates and model-usefulness acceptance described here remain planned.
 
 The [Publisher proposal evaluation and review implementation](r6-publisher-evaluation-flow.md)
@@ -1342,6 +1342,16 @@ coverage and compare only matched reviewed predictions. Neither authored labels
 nor self-reported feedback constitute production precision or authorization.
 The fixed installed-version verifier does not accept historical changed detector
 predictions; longitudinal model/detector comparison remains open.
+
+The [Operator diagnosis and plan evaluation](r6-operator-plan-evaluation-flow.md)
+adds sixteen bilingual `operator-plan.v1` cases with bounded diagnosis statements,
+actual plan-input validation and exact-bound offline review. The
+[unified report and operating guide](r6-evaluation-report-flow.md) adds
+`--report <manifest.json>` to combine validated recipe artifacts and their review
+coverage without pooling their unlike rates. It preserves missing/failed
+evidence and comparison reasons, independently recomputes derived fields, and
+always leaves full R6 and model usefulness unestablished. Report command success
+means the report was generated, not that acceptance gates passed.
 
 The target opt-in command artifact has these shared fields:
 

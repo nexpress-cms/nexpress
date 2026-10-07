@@ -78,6 +78,7 @@ Usage:
   nexpress deploy plan --target <host> [--json]       Print a deployment bridge plan
   nexpress feedback [--json]                          Print a local PII-free support report and issue link
   nexpress agent connect --client <codex|claude> --transport <stdio|http>  Plan or apply a safe MCP connection
+  nexpress agent evaluate --report manifest.json [--out report.json] [--json]   Unified offline evaluation report
   nexpress agent evaluate [--provider fake] [--dataset operator.v1|operator-plan.v1|publisher.v1|moderator.v1] [--json]   Bounded offline evaluation
   nexpress agent runtime status|pause|resume --site <siteId> [--json]   Local runtime containment and recovery
   nexpress ops status [--json|--brief|--no-color]     Print read-only runtime status for operators and agents
@@ -361,14 +362,15 @@ async function runEvaluationProjectScript(
 ): Promise<void> {
   if (passthrough.length === 1 && (passthrough[0] === "--help" || passthrough[0] === "-h")) {
     process.stdout.write(
-      "nexpress agent evaluate [--provider fake] [--dataset operator.v1|operator-plan.v1|publisher.v1|moderator.v1] [--out artifact] [--compare baseline] [--json]\nnexpress agent evaluate --review artifact [--reviews labels.json] [--compare prior-review] [--out review-artifact] [--json]\nReview is offline and grants no approval authority. Moderator uses the actual offline detector with no network providers or explicit model/budget flags. Network evaluation requires explicit model, call/token/cost limits, --confirm-network and a host-injected provider.\n",
+      "nexpress agent evaluate [--provider fake] [--dataset operator.v1|operator-plan.v1|publisher.v1|moderator.v1] [--out artifact] [--compare baseline] [--json]\nnexpress agent evaluate --review artifact [--reviews labels.json] [--compare prior-review] [--out review-artifact] [--json]\nnexpress agent evaluate --report manifest.json [--out report.json] [--json]\nReport reads manifest-relative local files. Exit zero means report generation, including missing or failed evidence; model usefulness and full R6 acceptance remain unestablished.\nReview is offline and grants no approval authority. Moderator uses the actual offline detector with no network providers or explicit model/budget flags. Network evaluation requires explicit model, call/token/cost limits, --confirm-network and a host-injected provider.\n",
     );
     return;
   }
   const json = passthrough.includes("--json");
   const args = json ? passthrough : [...passthrough, "--json"];
   let review = false;
-  const blocked = () => blockedEvaluationResult(review);
+  let report = false;
+  const blocked = () => blockedEvaluationResult(review, false, report);
   const emit = (result: EvaluationResult) =>
     process.stdout.write(`${json ? JSON.stringify(result) : formatEvaluationResult(result)}\n`);
   let input: NpAgentEvaluationCommandArgsV1;
@@ -384,11 +386,12 @@ async function runEvaluationProjectScript(
     throw new Error("Evaluation arguments invalid");
   }
   review = Boolean(input.reviewPath);
+  report = Boolean(input.reportPath);
   let verifyResult: Awaited<ReturnType<typeof prepareEvaluationResultVerifier>>;
   try {
     verifyResult = await prepareEvaluationResultVerifier(input, cwd);
   } catch {
-    emit(blockedEvaluationResult(review, true));
+    emit(blockedEvaluationResult(review, true, report));
     throw new Error("Evaluation artifact invalid");
   }
   let yarnVersion: string | undefined;
@@ -1031,11 +1034,12 @@ function isDirectRun(): boolean {
 if (isDirectRun()) {
   runNexpressCli(process.argv)
     .then((code) => {
-      process.exit(code);
+      // Large JSON reports may still be buffered when the command resolves.
+      process.exitCode = code;
     })
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       process.stderr.write(`\nnexpress: ${message}\n`);
-      process.exit(1);
+      process.exitCode = 1;
     });
 }

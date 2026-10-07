@@ -694,6 +694,11 @@ adds bilingual synthetic diagnosis statements, exact requested queue-plan input
 checks and offline accept/edit/reject review with matched-cohort comparison.
 Its bounded statements and synthetic intent do not establish arbitrary natural
 language accuracy, live-model usefulness or full AP-602/AP-606/R6 acceptance.
+The [unified evaluation report and operating guide](r6-evaluation-report-flow.md)
+brings the three recipe owners' results, review coverage and compatible baseline
+comparisons into one independently recomputed offline artifact. Missing evidence
+and unreviewed cases stay explicit; report generation does not establish model
+usefulness, production readiness or full R6 acceptance.
 
 ### R7 — Guardian and application security orchestration
 
