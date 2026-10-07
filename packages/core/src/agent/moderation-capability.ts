@@ -13,6 +13,18 @@ import type { NpAgentCapabilityAuthenticationV1 } from "./capability-admission.j
 export function createAgentModerationCapabilityFacadeV1(service: NpAgentModerationServiceV1) {
   return {
     ids: npAgentModerationCapabilityIdsV1,
+    runtimeEnabled: service.runtimeEnabled,
+    invokeRuntime: (...args: Parameters<NpAgentModerationServiceV1["invokeRuntimeCapability"]>) =>
+      service.invokeRuntimeCapability(...args),
+    inspectRuntimeApproval: (
+      ...args: Parameters<NpAgentModerationServiceV1["inspectRuntimeApproval"]>
+    ) => service.inspectRuntimeApproval(...args),
+    resumeRuntimeApproval: (
+      ...args: Parameters<NpAgentModerationServiceV1["resumeRuntimeApproval"]>
+    ) => service.resumeRuntimeApproval(...args),
+    projectRuntimeAction: (
+      ...args: Parameters<NpAgentModerationServiceV1["projectRuntimeAction"]>
+    ) => service.projectRuntimeAction(...args),
     async entry(id: NpAgentModerationCapabilityIdV1) {
       const canonical = npBuildAgentModerationCapabilityDefinitionCanonicalV1(id);
       const definition = canonical.capabilities[0];

@@ -645,6 +645,10 @@ The [AP-601 Moderator flow](r6-moderator-flow.md) records observed-comment
 detection, approved content quarantine/restore and attributed feedback. Its
 explicit source, Gateway installation and evaluation boundaries remain open;
 local verification does not authorize automatic moderation or close R6.
+The optional [Moderator Runtime continuation flow](r6-moderator-runtime-flow.md)
+connects proposals to the same Run's signed human approval and exact execution,
+then projects only verified completed receipts to the provider. It does not
+enable automatic quarantine or supply production/model quality evidence.
 
 The [Incident Studio review flow](r6-incident-studio-flow.md) connects staff
 list/detail review, authorized history links, immutable feedback and explicit
