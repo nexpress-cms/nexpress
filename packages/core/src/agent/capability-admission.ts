@@ -13,6 +13,10 @@ import {
 } from "../agent-contract/operator-capability-contract.js";
 import { npAgentAutonomyAllowsV1 } from "../agent-contract/runtime-policy.js";
 import type { NpAgentRuntimeChangeSetReferencesV1 } from "./changeset-service.js";
+import type {
+  NpAgentContainmentCreateOutputV1,
+  NpAgentContainmentRestoreOutputV1,
+} from "../agent-contract/moderator-contract.js";
 import { npAssertAgentPreviewEffectsAllowed } from "./changeset-preview-overlay.js";
 import { npRuntimeAuthorizationContextV1 } from "./runtime-admission.js";
 import type {
@@ -1187,6 +1191,9 @@ export function createAgentCapabilityAdmissionServiceV1(
         ...options.registry.ids.map((id) => options.registry.get(id)),
         ...(context.staffUser ? await changeSetEntries() : []),
         ...(context.staffUser ? await operatorEntries() : []),
+        ...(context.staffUser && options.resolveModerationCapabilities?.()?.runtimeEnabled
+          ? await moderationEntries()
+          : []),
       ];
       return entries
         .filter(
@@ -1206,9 +1213,12 @@ export function createAgentCapabilityAdmissionServiceV1(
                       ? "propose"
                       : entry.definition.descriptor.risk === "read"
                         ? "read"
-                        : ["changeset.apply", "changeset.schedule"].includes(
-                              entry.definition.descriptor.id,
-                            )
+                        : [
+                              "changeset.apply",
+                              "changeset.schedule",
+                              "moderation.quarantine",
+                              "moderation.restore",
+                            ].includes(entry.definition.descriptor.id)
                           ? "request-approval"
                           : "propose",
                 ),
@@ -1225,6 +1235,7 @@ export function createAgentCapabilityAdmissionServiceV1(
         state: "succeeded";
         safeCode: null;
         references?: NpAgentRuntimeChangeSetReferencesV1;
+        moderationOutput?: NpAgentContainmentCreateOutputV1 | NpAgentContainmentRestoreOutputV1;
         operatorOutput?:
           | NpAgentOpsStatusOutputV1
           | NpAgentOpsPlanOutputV1
@@ -1246,6 +1257,7 @@ export function createAgentCapabilityAdmissionServiceV1(
         state: "succeeded";
         safeCode: null;
         references?: NpAgentRuntimeChangeSetReferencesV1;
+        moderationOutput?: NpAgentContainmentCreateOutputV1 | NpAgentContainmentRestoreOutputV1;
         operatorOutput?:
           | NpAgentOpsStatusOutputV1
           | NpAgentOpsPlanOutputV1
@@ -1263,6 +1275,14 @@ export function createAgentCapabilityAdmissionServiceV1(
           if (npIsAgentOperatorCapabilityIdV1(row.capabilityId)) {
             const facade = options.resolveOperatorCapabilities?.();
             const projected = await facade?.projectRuntimeAction(context, row.id);
+            if (projected) result.push(projected);
+            continue;
+          }
+          if (npIsAgentModerationCapabilityIdV1(row.capabilityId)) {
+            const facade = options.resolveModerationCapabilities?.();
+            const projected = facade?.runtimeEnabled
+              ? await facade.projectRuntimeAction(context, row.id)
+              : null;
             if (projected) result.push(projected);
             continue;
           }
@@ -1297,7 +1317,9 @@ export function createAgentCapabilityAdmissionServiceV1(
       const facade =
         action?.capabilityId === "ops.plan"
           ? options.resolveOperatorCapabilities?.()
-          : options.resolveChangeSetCapabilities?.();
+          : action && npIsAgentModerationCapabilityIdV1(action.capabilityId)
+            ? options.resolveModerationCapabilities?.()
+            : options.resolveChangeSetCapabilities?.();
       if (!context.staffUser || !action || !facade)
         throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
       return facade.inspectRuntimeApproval(context, requestActionId);
@@ -1334,7 +1356,9 @@ export function createAgentCapabilityAdmissionServiceV1(
       const facade =
         capabilityId === "ops.plan"
           ? options.resolveOperatorCapabilities?.()
-          : options.resolveChangeSetCapabilities?.();
+          : npIsAgentModerationCapabilityIdV1(capabilityId)
+            ? options.resolveModerationCapabilities?.()
+            : options.resolveChangeSetCapabilities?.();
       if (!facade)
         throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
       return facade.resumeRuntimeApproval(input);
@@ -1351,12 +1375,38 @@ export function createAgentCapabilityAdmissionServiceV1(
       if (!options.runtimeAdmission || !Number.isSafeInteger(input.sequence) || input.sequence < 1)
         throw new NpAgentGatewayError("CAPABILITY_UNAVAILABLE", 404, "Capability is unavailable.");
       const request = npRequireAgentInstalledCapabilityInvocationRequestV1(input.request);
-      if (npIsAgentModerationCapabilityIdV1(request.capabilityId))
-        throw new NpAgentGatewayError(
-          "CAPABILITY_UNAVAILABLE",
-          404,
-          "Runtime moderation is unavailable.",
+      if (npIsAgentModerationCapabilityIdV1(request.capabilityId)) {
+        const facade = options.resolveModerationCapabilities?.();
+        if (!facade?.runtimeEnabled || !facade.ids.includes(request.capabilityId))
+          throw new NpAgentGatewayError(
+            "CAPABILITY_UNAVAILABLE",
+            404,
+            "Capability is unavailable.",
+          );
+        await options.runtimeAdmission.withCurrentRun(
+          { siteId: input.siteId, runId: input.runId, claim: input.claim },
+          async (context) => {
+            if (
+              !context.staffUser ||
+              !(await service.sourceEntries(context)).some(
+                (entry) => entry.canonical.descriptor.id === request.capabilityId,
+              )
+            )
+              throw new NpAgentGatewayError(
+                "CAPABILITY_UNAVAILABLE",
+                404,
+                "Capability is unavailable.",
+              );
+          },
         );
+        return facade.invokeRuntime({
+          siteId: input.siteId,
+          runId: input.runId,
+          claim: input.claim,
+          sequence: input.sequence,
+          request: request as NpAgentModerationCapabilityInvocationRequestV1,
+        });
+      }
       if (npIsAgentChangeSetCapabilityIdV1(request.capabilityId)) {
         const facade = options.resolveChangeSetCapabilities?.();
         if (!facade || !facade.ids.includes(request.capabilityId))

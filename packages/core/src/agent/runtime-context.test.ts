@@ -536,3 +536,62 @@ it("passes exact operational facts to the provider and rejects queued or mismatc
     }),
   ).toThrow();
 });
+
+it("projects only completed moderation receipts without private restoration evidence", () => {
+  const current = {
+    policy: {
+      effective: {
+        capabilityModes: [
+          { capabilityId: "moderation.quarantine", mode: "approved" },
+          { capabilityId: "moderation.restore", mode: "approved" },
+          { capabilityId: "content.query", mode: "observe" },
+        ],
+      },
+    },
+  } as unknown as Pick<NpAgentRuntimeRunContextV1, "policy">;
+  const receipt = {
+    schemaVersion: "np.agent-direct-action.v1",
+    actionId: "01990000-0000-7000-8000-000000000005",
+    containmentId: "01990000-0000-7000-8000-000000000006",
+    resultDigest: `cj1:sha256:${"A".repeat(43)}`,
+    verificationRefs: ["moderation:applied"],
+  };
+  for (const [capabilityId, state] of [
+    ["moderation.quarantine", "succeeded"],
+    ["moderation.restore", "compensated"],
+  ]) {
+    const outcome = {
+      capabilityId,
+      state: "succeeded",
+      safeCode: null,
+      moderationOutput: { ...receipt, state },
+    };
+    expect(npProjectAgentRuntimeActionOutcomeV1(current, outcome)).toEqual(outcome);
+    for (const invalid of [
+      { ...outcome, moderationOutput: undefined },
+      { ...outcome, moderationOutput: { ...receipt, state: "failed" } },
+      { ...outcome, moderationOutput: { ...receipt, state: "approval_required" } },
+      {
+        ...outcome,
+        moderationOutput: { ...receipt, state, originalState: { status: "approved" } },
+      },
+      { ...outcome, capabilityId: "content.query" },
+      {
+        ...outcome,
+        capabilityId:
+          capabilityId === "moderation.restore" ? "moderation.quarantine" : "moderation.restore",
+      },
+    ]) {
+      expect(() => npProjectAgentRuntimeActionOutcomeV1(current, invalid)).toThrow();
+    }
+    const getter = vi.fn(() => "private");
+    const unsafe = Object.defineProperty({ ...receipt, state }, "originalState", {
+      enumerable: true,
+      get: getter,
+    });
+    expect(() =>
+      npProjectAgentRuntimeActionOutcomeV1(current, { ...outcome, moderationOutput: unsafe }),
+    ).toThrow();
+    expect(getter).not.toHaveBeenCalled();
+  }
+});

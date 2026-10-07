@@ -13,6 +13,13 @@ import {
 } from "../agent-contract/operator-capability-contract.js";
 import type { NpAgentRuntimeChangeSetReferencesV1 } from "./changeset-service.js";
 import {
+  npRequireAgentContainmentCreateOutputV1,
+  npRequireAgentContainmentRestoreOutputV1,
+  type NpAgentContainmentCreateOutputV1,
+  type NpAgentContainmentRestoreOutputV1,
+} from "../agent-contract/moderator-contract.js";
+import { npIsAgentModerationCapabilityIdV1 } from "../agent-contract/moderation-capability-contract.js";
+import {
   npRequireAgentRuntimeManualInputV1,
   npDigestAgentRuntimeManualInputV1,
 } from "../agent-contract/runtime-manual-input.js";
@@ -90,6 +97,7 @@ export interface NpAgentRuntimeContextCapabilitySourceV1 {
       state: "succeeded";
       safeCode: null;
       references?: NpAgentRuntimeChangeSetReferencesV1;
+      moderationOutput?: NpAgentContainmentCreateOutputV1 | NpAgentContainmentRestoreOutputV1;
       operatorOutput?:
         | NpAgentOpsStatusOutputV1
         | NpAgentOpsPlanOutputV1
@@ -181,7 +189,7 @@ export function npProjectAgentRuntimeActionOutcomeV1(
   const row = canonicalBodyRecord(
     cloneCanonicalRuntimeInput(value, path, 256000),
     path,
-    ["capabilityId", "state", "safeCode", "references", "operatorOutput"],
+    ["capabilityId", "state", "safeCode", "references", "operatorOutput", "moderationOutput"],
     ["capabilityId", "state", "safeCode"],
     state,
   );
@@ -200,6 +208,21 @@ export function npProjectAgentRuntimeActionOutcomeV1(
   )
     unavailable();
   let references: NpAgentRuntimeChangeSetReferencesV1 | undefined;
+  let moderationOutput:
+    NpAgentContainmentCreateOutputV1 | NpAgentContainmentRestoreOutputV1 | undefined;
+  if (npIsAgentModerationCapabilityIdV1(capabilityId) && row.moderationOutput === undefined)
+    unavailable();
+  if (row.moderationOutput !== undefined) {
+    if (capabilityId === "moderation.quarantine") {
+      const output = npRequireAgentContainmentCreateOutputV1(row.moderationOutput);
+      if (output.state !== "succeeded") unavailable();
+      moderationOutput = output;
+    } else if (capabilityId === "moderation.restore") {
+      const output = npRequireAgentContainmentRestoreOutputV1(row.moderationOutput);
+      if (output.state !== "compensated") unavailable();
+      moderationOutput = output;
+    } else unavailable();
+  }
   let operatorOutput:
     | NpAgentOpsStatusOutputV1
     | NpAgentOpsPlanOutputV1
@@ -339,6 +362,7 @@ export function npProjectAgentRuntimeActionOutcomeV1(
     safeCode: null,
     ...(references ? { references } : {}),
     ...(operatorOutput ? { operatorOutput } : {}),
+    ...(moderationOutput ? { moderationOutput } : {}),
   };
 }
 

@@ -3,6 +3,14 @@ import {
   npDigestAgentAuthorizationContextCanonical,
 } from "../agent-contract/canonical-authorization-context.js";
 import { npDigestAgentStaffSiteAuthorizationCanonical } from "../agent-contract/canonical-bodies.js";
+import {
+  npRuntimeAuthorizationContextV1,
+  type NpAgentRuntimeAdmissionV1,
+  type NpAgentRuntimeRunContextV1,
+  type NpAgentRuntimeExecutionClaimV1,
+} from "./runtime-admission.js";
+import type { NpAgentRuntimeApprovalInspectionV1 } from "./changeset-service.js";
+import { npFailAgentRuntimeApprovalInTransactionV1 } from "./runtime-execution-store.js";
 import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
 import {
   npResolveAgentBudgetV1,
@@ -73,6 +81,7 @@ import {
 import {
   npBuildAgentModerationCapabilityDefinitionCanonicalV1,
   npRequireAgentModerationCapabilityInputV1,
+  npRequireAgentModerationCapabilityInvocationRequestV1,
   npRequireAgentModerationCapabilityOutputV1,
   type NpAgentModerationCapabilityIdV1,
   type NpAgentModerationCapabilityInvocationRequestV1,
@@ -110,6 +119,7 @@ export interface NpAgentModerationServiceOptionsV1 {
     NpAgentCapabilityAdmissionServiceV1,
     "withCurrentAuthority" | "withStoredAuthority"
   >;
+  runtimeAdmission?: NpAgentRuntimeAdmissionV1;
   resolveBudget: (input: { db: Db; siteId: string }) => Promise<NpAgentConcreteBudgetV1>;
   resolveApprovals: () => NpAgentApprovalServiceV1;
   resolveTransportAudience: NpAgentGatewayServiceV1["getTransportAudience"];
@@ -318,6 +328,37 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
     if (fresh && inspected.versionDigest !== expectedVersionDigest) throw conflict();
     return { target, expectedVersionDigest, incidentId, containment };
   }
+  function runtimeAccess(
+    runtime: NpAgentRuntimeRunContextV1,
+    capabilityId: NpAgentModerationCapabilityIdV1,
+    sequence: number,
+  ) {
+    const recipe = runtime.evidence.registry.recipes.find(
+      (item) => item.id === runtime.run.recipeId && item.version === runtime.run.recipeVersion,
+    );
+    const mode = runtime.policy.effective.capabilityModes.find(
+      (item) => item.capabilityId === capabilityId,
+    )?.mode;
+    if (
+      !Number.isSafeInteger(sequence) ||
+      sequence < 1 ||
+      sequence > runtime.limits.maxCapabilityCalls ||
+      sequence > runtime.agentBudget.capabilityCallsPerRun ||
+      !recipe?.capabilityIds.includes(capabilityId) ||
+      !runtime.evidence.definition.scopes.includes("moderation:execute") ||
+      !mode ||
+      !npAgentAutonomyAllowsV1(mode, "request-approval") ||
+      runtime.evidence.principal.authorityKind !== "user" ||
+      !runtime.staffUser
+    )
+      throw unavailable();
+  }
+  async function budget(db: Db, siteId: string, runtime?: NpAgentRuntimeRunContextV1) {
+    return npResolveAgentBudgetV1(
+      await options.resolveBudget({ db, siteId }),
+      runtime ? [runtime.siteBudget, runtime.agentBudget] : [],
+    );
+  }
   async function policy(
     db: Db,
     siteId: string,
@@ -326,40 +367,48 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
     target: NpCommunityContentTargetV1,
     capabilityId: NpAgentModerationCapabilityIdV1,
     incidentId: string | null = null,
+    runtime?: NpAgentRuntimeRunContextV1,
+    targetCount = 1,
   ) {
     const source = principalId
       ? await options.resolvePolicy({ db, siteId, user: viewer, principalId, target })
       : await options.resolveStaffPolicy?.({ db, siteId, user: viewer, target });
     if (!source) throw unavailable();
     const resolved = npResolveAgentPolicyV1(source);
-    const mode = resolved.capabilityModes.find((item) => item.capabilityId === capabilityId)?.mode;
-    if (
-      !mode ||
-      !npAgentAutonomyAllowsV1(mode, "request-approval") ||
-      (resolved.resources.collections !== null &&
-        !resolved.resources.collections.includes(target.collection)) ||
-      resolved.automation.moderationTargetsPerRun < 1 ||
-      (resolved.risk.requirePreviewAtOrAbove !== null &&
-        { reversible: 1, sensitive: 2, destructive: 3 }[resolved.risk.requirePreviewAtOrAbove] <=
-          (capabilityId === "moderation.quarantine" ? 1 : 2))
-    )
-      throw unavailable();
-    if (incidentId !== null && resolved.resources.incidentCategories !== null) {
-      const [incident] = await db
-        .select()
-        .from(npAgentIncidents)
-        .where(and(eq(npAgentIncidents.siteId, siteId), eq(npAgentIncidents.id, incidentId)))
-        .limit(1);
+    const policies = runtime ? [resolved, runtime.policy.effective] : [resolved];
+    for (const resolved of policies) {
+      const mode = resolved.capabilityModes.find(
+        (item) => item.capabilityId === capabilityId,
+      )?.mode;
       if (
-        !incident ||
-        !resolved.resources.incidentCategories.some((category) => category === incident.category)
+        !mode ||
+        !npAgentAutonomyAllowsV1(mode, "request-approval") ||
+        (resolved.resources.collections !== null &&
+          !resolved.resources.collections.includes(target.collection)) ||
+        resolved.automation.moderationTargetsPerRun < targetCount ||
+        (resolved.risk.requirePreviewAtOrAbove !== null &&
+          { reversible: 1, sensitive: 2, destructive: 3 }[resolved.risk.requirePreviewAtOrAbove] <=
+            (capabilityId === "moderation.quarantine" ? 1 : 2))
       )
         throw unavailable();
+      if (incidentId !== null && resolved.resources.incidentCategories !== null) {
+        const [incident] = await db
+          .select()
+          .from(npAgentIncidents)
+          .where(and(eq(npAgentIncidents.siteId, siteId), eq(npAgentIncidents.id, incidentId)))
+          .limit(1);
+        if (
+          !incident ||
+          !resolved.resources.incidentCategories.some((category) => category === incident.category)
+        )
+          throw unavailable();
+      }
     }
     return [
       digest("np.agent-moderation-policy.v1", {
         resolved,
-        budget: npResolveAgentBudgetV1(await options.resolveBudget({ db, siteId })),
+        budget: await budget(db, siteId, runtime),
+        ...(runtime ? { runtimePolicy: runtime.policy.effective } : {}),
       }),
     ];
   }
@@ -390,10 +439,13 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
     row: Action,
     statement: NpAgentApprovalStatementCanonicalV1,
     viewer: NpAuthUser,
+    runtime?: NpAgentRuntimeRunContextV1,
+    fresh = true,
   ) {
     const original = await invocation(db, row.siteId, row.invocationId);
-    const facts = await review(db, row, viewer, true);
+    const facts = await review(db, row, viewer, fresh);
     if (
+      statement.approvalId !== row.approvalId ||
       statement.target.kind !== "action" ||
       statement.target.actionId !== row.id ||
       statement.target.proposalHash !== row.inputHash ||
@@ -417,6 +469,7 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
           facts.target,
           facts.capabilityId,
           facts.incidentId,
+          runtime,
         ),
       )
     )
@@ -520,7 +573,12 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
     siteId: string,
     target: NpAgentApprovalTargetV1,
     actor: NpAgentAdminActorV1 | undefined,
-    mutate: (db: Db, row: Action, viewer: NpAuthUser) => Promise<T>,
+    mutate: (
+      db: Db,
+      row: Action,
+      viewer: NpAuthUser,
+      runtime?: NpAgentRuntimeRunContextV1,
+    ) => Promise<T>,
   ) {
     if (target.kind !== "action") throw unavailable();
     const [seed] = await getDb()
@@ -530,6 +588,58 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
       .limit(1);
     if (!seed) throw unavailable();
     const original = await invocation(getDb(), siteId, seed.invocationId);
+    if (original.transport === "runtime") {
+      if (!original.runId || !options.runtimeAdmission) throw unavailable();
+      return withCurrentSite(siteId, () =>
+        options.runtimeAdmission!.withRunAuthority(
+          { siteId, runId: original.runId!, allowTerminal: true },
+          async (runtime) => {
+            const context = await npRuntimeAuthorizationContextV1(runtime);
+            if (
+              context.authorizationContextFingerprint !==
+                original.authorizationContextFingerprint ||
+              original.principalId !== runtime.evidence.principal.id ||
+              !runtime.staffUser
+            )
+              throw unavailable();
+            const row = await loadAction(runtime.db, siteId, target.actionId);
+            runtimeAccess(
+              runtime,
+              row.capabilityId as NpAgentModerationCapabilityIdV1,
+              row.sequence,
+            );
+            if (
+              row.runId !== runtime.run.id ||
+              target.runId !== row.runId ||
+              row.runFingerprint !== runtime.run.admissionFingerprint ||
+              row.inputHash !== target.proposalHash ||
+              row.invocationId !== original.id ||
+              row.invocationFingerprint !== original.requestHash ||
+              row.capabilityFingerprint !== original.contractFingerprint ||
+              !same(row.capabilityDefinitionBody, original.capabilityDefinitionBody) ||
+              !same(original.authorizationContextBody, context.authorizationContext) ||
+              !same(seed.inputCanonical, row.inputCanonical)
+            )
+              throw conflict();
+            if (actor) {
+              await npResolveAgentStaffSessionAuthorizationV1(
+                runtime.db,
+                siteId,
+                actor,
+                runtime.now,
+              );
+              await review(runtime.db, row, await user(runtime.db, siteId, actor.user.id));
+            }
+            return mutate(
+              runtime.db,
+              row,
+              await user(runtime.db, siteId, runtime.staffUser.id),
+              runtime,
+            );
+          },
+        ),
+      );
+    }
     if (original.actorKind === "staff")
       return withCurrentSite(siteId, () =>
         getDb().transaction(
@@ -604,7 +714,7 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
       withTarget(siteId, target, actor, (db, row, viewer) => review(db, row, viewer)),
     review: () => Promise.reject(unavailable()),
     withAuthority: async ({ siteId, target, actor, decision, mutate }) =>
-      withTarget(siteId, target, actor, (db, row, viewer) =>
+      withTarget(siteId, target, actor, (db, row, viewer, runtime) =>
         mutate(db, {
           verify: async (statement) => {
             if (
@@ -613,7 +723,7 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
               statement.requester.userId === actor.user.id
             )
               throw unavailable();
-            await assertStatement(db, row, statement, viewer);
+            await assertStatement(db, row, statement, viewer, runtime);
             if (!["approval_pending", "approved"].includes(row.state)) throw conflict();
           },
           transition: async (state) => {
@@ -631,7 +741,15 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
                 finishedAt: failed ? time : null,
               })
               .where(eq(npAgentActions.id, row.id));
-            if (failed && row.runId)
+            if (failed && row.runId && runtime)
+              await npFailAgentRuntimeApprovalInTransactionV1({
+                db,
+                siteId,
+                runId: row.runId,
+                now: time,
+                errorCode: decision === "reject" ? "APPROVAL_REJECTED" : "APPROVAL_REVOKED",
+              });
+            if (failed && row.runId && !runtime)
               await db
                 .update(npAgentRuns)
                 .set({
@@ -651,8 +769,8 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
         }),
       ),
     revalidate: async ({ siteId, statement }) =>
-      withTarget(siteId, statement.target, undefined, async (db, row, viewer) => {
-        await assertStatement(db, row, statement, viewer);
+      withTarget(siteId, statement.target, undefined, async (db, row, viewer, runtime) => {
+        await assertStatement(db, row, statement, viewer, runtime);
         const [approval] = await db
           .select()
           .from(npAgentApprovals)
@@ -665,6 +783,7 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
     expire: async ({ siteId, target, mutate }) => {
       if (target.kind !== "action") throw unavailable();
       return getDb().transaction(async (db) => {
+        await prepare(db, siteId);
         const row = await loadAction(db, siteId, target.actionId);
         return mutate(db, {
           verify: () => {
@@ -691,7 +810,16 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
                   sql`${npAgentActions.state} in ('approval_pending','approved')`,
                 ),
               );
-            if (row.runId)
+            const original = await invocation(db, siteId, row.invocationId);
+            if (row.runId && original.transport === "runtime")
+              await npFailAgentRuntimeApprovalInTransactionV1({
+                db,
+                siteId,
+                runId: row.runId,
+                now: time,
+                errorCode,
+              });
+            if (row.runId && original.transport !== "runtime")
               await db
                 .update(npAgentRuns)
                 .set({
@@ -726,6 +854,8 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
     capabilityId: NpAgentModerationCapabilityIdV1;
     parsed: ReturnType<typeof npRequireAgentModerationCapabilityInputV1>;
     idempotencyKey: string;
+    runtime?: NpAgentRuntimeRunContextV1;
+    sequence?: number;
   }) {
     const {
       db,
@@ -741,6 +871,7 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
       capabilityId,
       parsed,
       idempotencyKey,
+      runtime,
     } = input;
     const definition = await entry(capabilityId);
     const profile =
@@ -748,6 +879,23 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
     let actionId: string, runId: string | null, output: object;
     if (parsed.mode === "propose") {
       const target = await resolveTarget(db, siteId, capabilityId, parsed.proposal, viewer);
+      let targetCount = 1;
+      if (runtime) {
+        const prior = await db
+          .select({ targets: npAgentActions.targetRefs })
+          .from(npAgentActions)
+          .where(
+            and(
+              eq(npAgentActions.siteId, siteId),
+              eq(npAgentActions.runId, runtime.run.id),
+              sql`${npAgentActions.capabilityId} in ('moderation.quarantine','moderation.restore')`,
+            ),
+          )
+          .limit(1001);
+        // Each proposal reserves one target slot, including approvals that are still pending.
+        if (prior.length > 1000) throw unavailable();
+        targetCount = prior.length + 1;
+      }
       const policyHashes = await policy(
         db,
         siteId,
@@ -756,6 +904,8 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
         target.target,
         capabilityId,
         target.incidentId,
+        runtime,
+        targetCount,
       );
       const targetRef: NpAgentTargetRef =
         target.target.kind === "document"
@@ -769,25 +919,31 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
               collection: target.target.collection,
               commentId: target.target.id,
             };
-      const run = principalId
-        ? await npCreateModerationGatewayRunV1({
-            db,
-            siteId,
-            principalId: principalId,
-            invocationId,
-            capabilityId,
-            now: time,
-            target: targetRef,
-            budget: await options.resolveBudget({ db, siteId }),
-          })
-        : null;
-      if (!run)
+      const run = runtime
+        ? {
+            id: runtime.run.id,
+            fingerprint: runtime.run.admissionFingerprint,
+            deadlineAt: runtime.run.deadlineAt,
+          }
+        : principalId
+          ? await npCreateModerationGatewayRunV1({
+              db,
+              siteId,
+              principalId: principalId,
+              invocationId,
+              capabilityId,
+              now: time,
+              target: targetRef,
+              budget: await budget(db, siteId, runtime),
+            })
+          : null;
+      if (!run || runtime)
         await npMeasureModerationBudgetV1({
           db,
           siteId,
           now: time,
           target: targetRef,
-          budget: await options.resolveBudget({ db, siteId }),
+          budget: await budget(db, siteId, runtime),
           reserveRun: false,
         });
       const deadlineAt = run?.deadlineAt ?? new Date(time.getTime() + 900000);
@@ -800,7 +956,7 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
         actionId,
         invocationFingerprint: requestHash,
         runFingerprint: run?.fingerprint ?? null,
-        sequence: 1,
+        sequence: input.sequence ?? 1,
         capabilityId,
         capabilityContractVersion: 1,
         capabilityFingerprint: definition.fingerprint,
@@ -821,7 +977,7 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
         runFingerprint: run?.fingerprint ?? null,
         invocationId,
         invocationFingerprint: requestHash,
-        sequence: 1,
+        sequence: input.sequence ?? 1,
         capabilityId,
         capabilityContractVersion: 1,
         capabilityFingerprint: definition.fingerprint,
@@ -895,7 +1051,12 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
         original.principalId !== principalId ||
         (principalId === null && original.staffUserId !== viewer.id) ||
         original.authorizationContextFingerprint !== authorizationContextFingerprint ||
-        action.executionInvocationId
+        action.executionInvocationId ||
+        (runtime &&
+          (action.runId !== runtime.run.id ||
+            action.runFingerprint !== runtime.run.admissionFingerprint ||
+            action.sequence !== input.sequence ||
+            original.transport !== "runtime"))
       )
         throw conflict();
       const target = await resolveTarget(db, siteId, capabilityId, action.inputCanonical, viewer);
@@ -907,7 +1068,7 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
         .limit(1);
       if (!approval) throw unavailable();
       const checked = await options.resolveApprovals().verify(approval);
-      await assertStatement(db, action, checked.statement, viewer);
+      await assertStatement(db, action, checked.statement, viewer, runtime);
       await assertLiveApprover(db, action, approval, checked.statement);
       if (principalId && !runId) throw conflict();
       const [run] = await db
@@ -923,7 +1084,13 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
         .limit(1);
       if (
         runId &&
-        (!run || run.state !== "waiting_approval" || run.deadlineAt <= time || run.finishedAt)
+        (!run ||
+          (runtime
+            ? run.id !== runtime.run.id ||
+              !["running", "executing", "verifying"].includes(run.state)
+            : run.state !== "waiting_approval") ||
+          run.deadlineAt <= time ||
+          run.finishedAt)
       )
         throw conflict();
       await npMeasureModerationBudgetV1({
@@ -931,7 +1098,7 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
         siteId,
         now: time,
         target: action.targetRefs[0],
-        budget: await options.resolveBudget({ db, siteId }),
+        budget: await budget(db, siteId, runtime),
         reserveRun: false,
       });
       await options.resolveApprovals().consumeAction({
@@ -1017,7 +1184,7 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
               outputHash,
             })
             .where(eq(npAgentActions.id, actionId));
-          if (runId)
+          if (runId && !runtime)
             await db
               .update(npAgentRuns)
               .set({
@@ -1161,7 +1328,7 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
               }),
         })
         .where(eq(npAgentActions.id, actionId));
-      if (runId)
+      if (runId && !runtime)
         await db
           .update(npAgentRuns)
           .set({ state: "succeeded", result: json(output), finishedAt: time })
@@ -1187,12 +1354,23 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
       .where(eq(npAgentActions.id, actionId));
     return { actionId, runId, output: json(validated), outputHash };
   }
-  async function invokeCapability(input: {
-    authentication: NpAgentCapabilityAuthenticationV1;
+  async function invokeRequest(input: {
+    authentication?: NpAgentCapabilityAuthenticationV1;
+    runtime?: NpAgentRuntimeRunContextV1;
+    sequence?: number;
     request: NpAgentModerationCapabilityInvocationRequestV1;
   }): Promise<NpAgentModerationCapabilityInvocationResultV1> {
     npAssertAgentPreviewEffectsAllowed();
-    const { authentication, request } = input;
+    const { authentication, runtime } = input;
+    const request = npRequireAgentModerationCapabilityInvocationRequestV1(input.request);
+    if (!authentication && !runtime) throw unavailable();
+    const principalId = runtime?.evidence.principal.id ?? authentication!.principal.id;
+    const authorization = runtime
+      ? await npRuntimeAuthorizationContextV1(runtime)
+      : {
+          authorizationContext: authentication!.authorizationContext,
+          authorizationContextFingerprint: authentication!.authorizationContextFingerprint,
+        };
     const capabilityId = request.capabilityId;
     const parsed = npRequireAgentModerationCapabilityInputV1(capabilityId, request.arguments.input);
     const idempotencyKey = request.arguments.idempotencyKey;
@@ -1201,9 +1379,16 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
       !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(idempotencyKey)
     )
       throw conflict();
-    const auth = authentication.principal.authority;
-    if (auth.kind !== "user" || !auth.userId) throw unavailable();
-    const siteId = authentication.principal.siteId;
+    const userId = runtime
+      ? runtime.evidence.principal.authorityKind === "user"
+        ? runtime.evidence.principal.authorityUserId
+        : null
+      : authentication!.principal.authority.kind === "user"
+        ? authentication!.principal.authority.userId
+        : null;
+    if (!userId) throw unavailable();
+    const siteId = runtime?.siteId ?? authentication!.principal.siteId;
+    if (runtime) runtimeAccess(runtime, capabilityId, input.sequence!);
     const definition = await entry(capabilityId);
     const profile =
       capabilityId === "moderation.quarantine" ? "containment.create" : "containment.restore";
@@ -1211,8 +1396,8 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
       schemaVersion: "np.agent-idempotency-request.v1",
       siteId,
       actorKind: "principal",
-      actorFingerprint: authentication.authorizationContext.actor.actorFingerprint,
-      authorizationContextFingerprint: authentication.authorizationContextFingerprint,
+      actorFingerprint: authorization.authorizationContext.actor.actorFingerprint,
+      authorizationContextFingerprint: authorization.authorizationContextFingerprint,
       operationKind: "capability",
       operationId: capabilityId,
       contractVersion: 1,
@@ -1224,189 +1409,491 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
       input: json(parsed),
     });
     const requestHash = await npDigestAgentInvocationRequestCanonical(requestBody);
+    const mutate = async (
+      db: Db,
+      time: Date,
+    ): Promise<NpAgentModerationCapabilityInvocationResultV1> => {
+      await db.execute(
+        sql`select pg_advisory_xact_lock(hashtextextended(${`np.agent-moderation:${siteId}:${principalId}:${idempotencyKey}`},0))`,
+      );
+      const viewer = await user(db, siteId, userId);
+      const [prior] = await db
+        .select()
+        .from(npAgentInvocations)
+        .where(
+          and(
+            eq(npAgentInvocations.siteId, siteId),
+            eq(npAgentInvocations.actorFingerprint, requestBody.actorFingerprint),
+            eq(
+              npAgentInvocations.authorizationContextFingerprint,
+              authorization.authorizationContextFingerprint,
+            ),
+            eq(npAgentInvocations.operationId, capabilityId),
+            eq(npAgentInvocations.idempotencyKey, idempotencyKey),
+          ),
+        )
+        .limit(1);
+      if (prior) {
+        if (
+          prior.requestHash !== requestHash ||
+          prior.state !== "completed" ||
+          prior.expiresAt <= time ||
+          !prior.outputRedacted ||
+          prior.outputHash !== digest("np.agent-capability-output.v1", prior.outputRedacted)
+        )
+          throw conflict();
+        const action = await loadAction(db, siteId, prior.resultId!);
+        if (
+          runtime &&
+          (prior.runId !== runtime.run.id ||
+            action.runId !== runtime.run.id ||
+            action.runFingerprint !== runtime.run.admissionFingerprint ||
+            action.sequence !== input.sequence)
+        )
+          throw conflict();
+        // Replay still requires current target visibility and policy, but never repeats the mutation.
+        const proposal =
+          capabilityId === "moderation.quarantine"
+            ? npRequireAgentQuarantineProposalV1(action.inputCanonical)
+            : npRequireAgentRestoreProposalV1(action.inputCanonical);
+        const [containment] = action.containmentId
+          ? await db
+              .select()
+              .from(npAgentContainments)
+              .where(
+                and(
+                  eq(npAgentContainments.siteId, siteId),
+                  eq(npAgentContainments.id, action.containmentId),
+                ),
+              )
+              .limit(1)
+          : [];
+        const target =
+          "target" in proposal
+            ? proposal.target
+            : containment
+              ? npRequireAgentQuarantineProposalV1({
+                  target: containment.targetRef,
+                  incidentId: containment.incidentId,
+                  expectedVersionDigest: containment.targetVersionDigest,
+                  reasonCode: "RESTORE",
+                }).target
+              : null;
+        if (!target) throw conflict();
+        await npInspectCommunityContentContainmentV1(db as unknown as NpTransaction, {
+          siteId,
+          target,
+          user: viewer,
+        });
+        const retained = await review(db, action, viewer, false);
+        await policy(
+          db,
+          siteId,
+          viewer,
+          principalId,
+          target,
+          capabilityId,
+          retained.incidentId,
+          runtime,
+        );
+        return {
+          schemaVersion: "np.agent-moderation-invocation-result.v1",
+          invocationId: prior.id,
+          capabilityId,
+          output: npRequireAgentModerationCapabilityOutputV1(capabilityId, prior.outputRedacted),
+        };
+      }
+      const invocationId = randomUUID();
+      const [audit] = await db
+        .insert(npAuditEvents)
+        .values({
+          siteId,
+          actorKind: "agent-principal",
+          action: "agents.capability.invoke",
+          targetType: "agent-capability",
+          targetId: capabilityId,
+          payload: {
+            schemaVersion: "np.agent-capability-audit.v1",
+            capabilityId,
+            invocationId,
+            requestHash,
+            outcome: parsed.mode === "propose" ? "approval_required" : "executing",
+          },
+          createdAt: time,
+        })
+        .returning({ id: npAuditEvents.id });
+      if (!audit) throw conflict();
+      await db.insert(npAgentInvocations).values({
+        id: invocationId,
+        siteId,
+        actorKind: "principal",
+        principalId: principalId,
+        actorFingerprint: requestBody.actorFingerprint,
+        authorizationContextBody: authorization.authorizationContext,
+        authorizationContextFingerprint: authorization.authorizationContextFingerprint,
+        authorityRef: authorization.authorizationContext.authorityRef,
+        operationKind: "capability",
+        operationId: capabilityId,
+        contractVersion: 1,
+        contractFingerprint: definition.fingerprint,
+        capabilityDefinitionBody: definition.canonical,
+        effectProfileId: requestBody.effectProfile!.id,
+        effectContractVersion: 1,
+        transport: authorization.authorizationContext.transport,
+        mcpExecutionMode: ["mcp-service", "mcp-oauth"].includes(
+          authorization.authorizationContext.transport,
+        )
+          ? "normal"
+          : null,
+        idempotencyKey,
+        requestBody,
+        requestHash,
+        state: "started",
+        auditEventId: audit.id,
+        requestedAt: time,
+        expiresAt: new Date(time.getTime() + 365 * 86400000),
+      });
+      const result = await perform({
+        db,
+        siteId,
+        time,
+        viewer,
+        principalId: principalId,
+        actorFingerprint: requestBody.actorFingerprint,
+        authorizationContextFingerprint: authorization.authorizationContextFingerprint,
+        invocationId,
+        requestHash,
+        auditId: audit.id,
+        capabilityId,
+        parsed,
+        idempotencyKey,
+        runtime,
+        sequence: input.sequence,
+      });
+      await db
+        .update(npAgentInvocations)
+        .set({
+          state: "completed",
+          resultKind: "action",
+          resultId: result.actionId,
+          runId: result.runId,
+          outputRedacted: result.output,
+          outputHash: result.outputHash,
+          completedAt: time,
+        })
+        .where(eq(npAgentInvocations.id, invocationId));
+      return {
+        schemaVersion: "np.agent-moderation-invocation-result.v1",
+        invocationId,
+        capabilityId,
+        output: npRequireAgentModerationCapabilityOutputV1(capabilityId, result.output),
+      };
+    };
+    if (runtime) return mutate(runtime.db, runtime.now);
     return withCurrentSite(siteId, () =>
       withDeferredPostCommit(() =>
         options.admission.withCurrentAuthority({
-          authentication,
+          authentication: authentication!,
           requiredScopes: ["moderation:execute"],
           prepareTransaction: (db) => prepare(db, siteId),
           minimumExposure: parsed.mode === "propose" ? "propose" : "approved-execute",
-          mutate: async (db, time) => {
-            await db.execute(
-              sql`select pg_advisory_xact_lock(hashtextextended(${`np.agent-moderation:${siteId}:${authentication.principal.id}:${idempotencyKey}`},0))`,
-            );
-            const viewer = await user(db, siteId, auth.userId!);
-            const [prior] = await db
-              .select()
-              .from(npAgentInvocations)
-              .where(
-                and(
-                  eq(npAgentInvocations.siteId, siteId),
-                  eq(npAgentInvocations.actorFingerprint, requestBody.actorFingerprint),
-                  eq(
-                    npAgentInvocations.authorizationContextFingerprint,
-                    authentication.authorizationContextFingerprint,
-                  ),
-                  eq(npAgentInvocations.operationId, capabilityId),
-                  eq(npAgentInvocations.idempotencyKey, idempotencyKey),
-                ),
-              )
-              .limit(1);
-            if (prior) {
-              if (
-                prior.requestHash !== requestHash ||
-                prior.state !== "completed" ||
-                prior.expiresAt <= time ||
-                !prior.outputRedacted ||
-                prior.outputHash !== digest("np.agent-capability-output.v1", prior.outputRedacted)
-              )
-                throw conflict();
-              const action = await loadAction(db, siteId, prior.resultId!);
-              // Replay still requires current target visibility and policy, but never repeats the mutation.
-              const proposal =
-                capabilityId === "moderation.quarantine"
-                  ? npRequireAgentQuarantineProposalV1(action.inputCanonical)
-                  : npRequireAgentRestoreProposalV1(action.inputCanonical);
-              const [containment] = action.containmentId
-                ? await db
-                    .select()
-                    .from(npAgentContainments)
-                    .where(
-                      and(
-                        eq(npAgentContainments.siteId, siteId),
-                        eq(npAgentContainments.id, action.containmentId),
-                      ),
-                    )
-                    .limit(1)
-                : [];
-              const target =
-                "target" in proposal
-                  ? proposal.target
-                  : containment
-                    ? npRequireAgentQuarantineProposalV1({
-                        target: containment.targetRef,
-                        incidentId: containment.incidentId,
-                        expectedVersionDigest: containment.targetVersionDigest,
-                        reasonCode: "RESTORE",
-                      }).target
-                    : null;
-              if (!target) throw conflict();
-              await npInspectCommunityContentContainmentV1(db as unknown as NpTransaction, {
-                siteId,
-                target,
-                user: viewer,
-              });
-              const retained = await review(db, action, viewer, false);
-              await policy(
-                db,
-                siteId,
-                viewer,
-                authentication.principal.id,
-                target,
-                capabilityId,
-                retained.incidentId,
-              );
-              return {
-                schemaVersion: "np.agent-moderation-invocation-result.v1",
-                invocationId: prior.id,
-                capabilityId,
-                output: npRequireAgentModerationCapabilityOutputV1(
-                  capabilityId,
-                  prior.outputRedacted,
-                ),
-              };
-            }
-            const invocationId = randomUUID();
-            const [audit] = await db
-              .insert(npAuditEvents)
-              .values({
-                siteId,
-                actorKind: "agent-principal",
-                action: "agents.capability.invoke",
-                targetType: "agent-capability",
-                targetId: capabilityId,
-                payload: {
-                  schemaVersion: "np.agent-capability-audit.v1",
-                  capabilityId,
-                  invocationId,
-                  requestHash,
-                  outcome: parsed.mode === "propose" ? "approval_required" : "executing",
-                },
-                createdAt: time,
-              })
-              .returning({ id: npAuditEvents.id });
-            if (!audit) throw conflict();
-            await db.insert(npAgentInvocations).values({
-              id: invocationId,
-              siteId,
-              actorKind: "principal",
-              principalId: authentication.principal.id,
-              actorFingerprint: requestBody.actorFingerprint,
-              authorizationContextBody: authentication.authorizationContext,
-              authorizationContextFingerprint: authentication.authorizationContextFingerprint,
-              authorityRef: authentication.authorizationContext.authorityRef,
-              operationKind: "capability",
-              operationId: capabilityId,
-              contractVersion: 1,
-              contractFingerprint: definition.fingerprint,
-              capabilityDefinitionBody: definition.canonical,
-              effectProfileId: requestBody.effectProfile!.id,
-              effectContractVersion: 1,
-              transport: authentication.authorizationContext.transport,
-              mcpExecutionMode: ["mcp-service", "mcp-oauth"].includes(
-                authentication.authorizationContext.transport,
-              )
-                ? "normal"
-                : null,
-              idempotencyKey,
-              requestBody,
-              requestHash,
-              state: "started",
-              auditEventId: audit.id,
-              requestedAt: time,
-              expiresAt: new Date(time.getTime() + 365 * 86400000),
-            });
-            const result = await perform({
-              db,
-              siteId,
-              time,
-              viewer,
-              principalId: authentication.principal.id,
-              actorFingerprint: requestBody.actorFingerprint,
-              authorizationContextFingerprint: authentication.authorizationContextFingerprint,
-              invocationId,
-              requestHash,
-              auditId: audit.id,
-              capabilityId,
-              parsed,
-              idempotencyKey,
-            });
-            await db
-              .update(npAgentInvocations)
-              .set({
-                state: "completed",
-                resultKind: "action",
-                resultId: result.actionId,
-                runId: result.runId,
-                outputRedacted: result.output,
-                outputHash: result.outputHash,
-                completedAt: time,
-              })
-              .where(eq(npAgentInvocations.id, invocationId));
-            return {
-              schemaVersion: "np.agent-moderation-invocation-result.v1",
-              invocationId,
-              capabilityId,
-              output: npRequireAgentModerationCapabilityOutputV1(capabilityId, result.output),
-            };
-          },
+          mutate,
         }),
       ),
     );
   }
+  async function invokeCapability(input: {
+    authentication: NpAgentCapabilityAuthenticationV1;
+    request: NpAgentModerationCapabilityInvocationRequestV1;
+  }) {
+    return invokeRequest(input);
+  }
+  async function runtimeApprovalEvidence(
+    runtime: NpAgentRuntimeRunContextV1,
+    requestActionId: string,
+  ) {
+    return withCurrentSite(runtime.siteId, async () => {
+      const action = await loadAction(runtime.db, runtime.siteId, requestActionId);
+      const capabilityId = action.capabilityId as NpAgentModerationCapabilityIdV1;
+      runtimeAccess(runtime, capabilityId, action.sequence);
+      const context = await npRuntimeAuthorizationContextV1(runtime);
+      const original = await invocation(runtime.db, runtime.siteId, action.invocationId);
+      if (
+        !runtime.staffUser ||
+        !action.approvalId ||
+        action.runId !== runtime.run.id ||
+        action.runFingerprint !== runtime.run.admissionFingerprint ||
+        original.transport !== "runtime" ||
+        original.runId !== runtime.run.id ||
+        original.principalId !== runtime.evidence.principal.id ||
+        original.resultId !== action.id ||
+        original.operationId !== capabilityId ||
+        original.state !== "completed" ||
+        original.requestHash !== action.invocationFingerprint ||
+        original.authorizationContextFingerprint !== context.authorizationContextFingerprint ||
+        !same(original.authorizationContextBody, context.authorizationContext) ||
+        original.contractFingerprint !== action.capabilityFingerprint ||
+        !same(original.capabilityDefinitionBody, action.capabilityDefinitionBody) ||
+        original.outputHash !== digest("np.agent-capability-output.v1", original.outputRedacted)
+      )
+        throw conflict();
+      const initial = npRequireAgentModerationCapabilityInputV1(
+        capabilityId,
+        original.requestBody.input,
+      );
+      const proposal = npRequireAgentModerationCapabilityOutputV1(
+        capabilityId,
+        original.outputRedacted,
+      );
+      if (
+        initial.mode !== "propose" ||
+        !same(initial.proposal, action.inputCanonical) ||
+        proposal.state !== "approval_required" ||
+        proposal.actionId !== action.id ||
+        proposal.approvalId !== action.approvalId ||
+        proposal.proposalHash !== action.inputHash ||
+        proposal.runId !== runtime.run.id
+      )
+        throw conflict();
+      const [approval] = await runtime.db
+        .select()
+        .from(npAgentApprovals)
+        .where(
+          and(
+            eq(npAgentApprovals.siteId, runtime.siteId),
+            eq(npAgentApprovals.id, action.approvalId),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!approval) throw conflict();
+      const verified = await options.resolveApprovals().verify(approval);
+      const completed = ["succeeded", "compensated"].includes(action.state);
+      const viewer = await user(runtime.db, runtime.siteId, runtime.staffUser.id);
+      await assertStatement(runtime.db, action, verified.statement, viewer, runtime, !completed);
+      const request = npRequireAgentModerationCapabilityInvocationRequestV1({
+        schemaVersion: "np.agent-invocation-request.v1",
+        capabilityId,
+        arguments: {
+          idempotencyKey: digest("np.agent-runtime-approved-moderation-execution.v1", {
+            runId: runtime.run.id,
+            requestActionId,
+            approvalId: approval.id,
+            statementHash: approval.statementHash,
+          }),
+          input: {
+            mode: "execute_approved",
+            actionId: action.id,
+            approvalId: approval.id,
+            proposalHash: action.inputHash,
+          },
+        },
+      });
+      if (completed) {
+        if (approval.state !== "consumed" || !action.executionInvocationId) throw conflict();
+        const execution = await invocation(
+          runtime.db,
+          runtime.siteId,
+          action.executionInvocationId,
+        );
+        const expectedRequest = npRequireAgentInvocationRequestCanonical({
+          ...original.requestBody,
+          effectProfile: {
+            id: action.effectProfileId,
+            contractVersion: action.effectContractVersion,
+          },
+          input: json(request.arguments.input),
+        });
+        if (
+          execution.transport !== "runtime" ||
+          execution.runId !== runtime.run.id ||
+          execution.resultId !== action.id ||
+          execution.state !== "completed" ||
+          execution.idempotencyKey !== request.arguments.idempotencyKey ||
+          execution.operationKind !== "capability" ||
+          execution.operationId !== capabilityId ||
+          execution.effectProfileId !== action.effectProfileId ||
+          execution.effectContractVersion !== action.effectContractVersion ||
+          !same(execution.requestBody, expectedRequest) ||
+          execution.requestHash !==
+            (await npDigestAgentInvocationRequestCanonical(expectedRequest)) ||
+          execution.requestHash !== action.executionInvocationFingerprint ||
+          execution.authorizationContextFingerprint !== context.authorizationContextFingerprint ||
+          !same(execution.authorizationContextBody, context.authorizationContext) ||
+          execution.principalId !== original.principalId ||
+          execution.contractFingerprint !== action.capabilityFingerprint ||
+          !same(execution.capabilityDefinitionBody, action.capabilityDefinitionBody) ||
+          execution.outputHash !== action.outputHash ||
+          !same(execution.outputRedacted, action.outputRedacted) ||
+          action.outputHash !== digest("np.agent-capability-output.v1", action.outputRedacted) ||
+          action.verificationState !== "passed" ||
+          !action.verifiedAt ||
+          !action.finishedAt
+        )
+          throw conflict();
+        const output = npRequireAgentModerationCapabilityOutputV1(
+          capabilityId,
+          action.outputRedacted,
+        );
+        if (
+          output.state === "approval_required" ||
+          output.state === "failed" ||
+          output.actionId !== action.id ||
+          output.containmentId !== action.containmentId ||
+          output.resultDigest !== action.effectDigest ||
+          output.resultDigest !== action.verificationResultDigest ||
+          output.resultDigest !==
+            digest("np.agent-moderation-result.v1", {
+              actionId: action.id,
+              state: output.state,
+              evidence: action.verificationEvidence,
+            }) ||
+          !same(output.verificationRefs, [`containment:${action.containmentId}`])
+        )
+          throw conflict();
+        // Current visibility is required; the original pre-effect version is not required after success.
+        const facts = await review(runtime.db, action, viewer, false);
+        await npInspectCommunityContentContainmentV1(runtime.db as unknown as NpTransaction, {
+          siteId: runtime.siteId,
+          target: facts.target,
+          user: viewer,
+        });
+        const [containment] = await runtime.db
+          .select()
+          .from(npAgentContainments)
+          .where(
+            and(
+              eq(npAgentContainments.siteId, runtime.siteId),
+              eq(npAgentContainments.id, output.containmentId),
+            ),
+          )
+          .limit(1);
+        if (
+          !containment ||
+          (capabilityId === "moderation.quarantine"
+            ? containment.sourceActionId !== action.id
+            : containment.restoreActionId !== action.id || containment.state !== "restored")
+        )
+          throw conflict();
+        return {
+          status: "completed" as const,
+          requestActionId,
+          executionActionId: action.id,
+          executionSequence: action.sequence,
+          request,
+          output,
+        };
+      }
+      if (
+        !["approval_pending", "approved"].includes(action.state) ||
+        action.executionInvocationId ||
+        !["pending", "approved"].includes(approval.state) ||
+        approval.expiresAt <= runtime.now ||
+        (approval.state === "approved") !== (action.state === "approved") ||
+        !same(action.outputRedacted, original.outputRedacted) ||
+        action.outputHash !== original.outputHash
+      )
+        throw conflict();
+      if (approval.state === "approved")
+        await assertLiveApprover(runtime.db, action, approval, verified.statement);
+      return {
+        status: approval.state === "approved" ? ("ready" as const) : ("pending" as const),
+        requestActionId,
+        executionActionId: action.id,
+        executionSequence: action.sequence,
+        request,
+        output: null,
+      };
+    });
+  }
+  async function inspectRuntimeApproval(
+    runtime: NpAgentRuntimeRunContextV1,
+    requestActionId: string,
+  ): Promise<NpAgentRuntimeApprovalInspectionV1> {
+    const {
+      request: _request,
+      output: _output,
+      ...receipt
+    } = await runtimeApprovalEvidence(runtime, requestActionId);
+    return receipt;
+  }
+  async function invokeRuntimeCapability(input: {
+    siteId: string;
+    runId: string;
+    claim: NpAgentRuntimeExecutionClaimV1;
+    sequence: number;
+    request: NpAgentModerationCapabilityInvocationRequestV1;
+  }) {
+    npAssertAgentPreviewEffectsAllowed();
+    if (!options.runtimeAdmission || input.request.arguments.input.mode !== "propose")
+      throw unavailable();
+    return withCurrentSite(input.siteId, () =>
+      withDeferredPostCommit(() =>
+        options.runtimeAdmission!.withCurrentRun(
+          { siteId: input.siteId, runId: input.runId, claim: input.claim },
+          (runtime) => invokeRequest({ runtime, sequence: input.sequence, request: input.request }),
+        ),
+      ),
+    );
+  }
+  async function resumeRuntimeApproval(input: {
+    siteId: string;
+    runId: string;
+    claim: NpAgentRuntimeExecutionClaimV1;
+    sequence: number;
+    requestActionId: string;
+  }) {
+    npAssertAgentPreviewEffectsAllowed();
+    if (!options.runtimeAdmission) throw unavailable();
+    return withCurrentSite(input.siteId, () =>
+      withDeferredPostCommit(() =>
+        options.runtimeAdmission!.withCurrentRun(
+          { siteId: input.siteId, runId: input.runId, claim: input.claim },
+          async (runtime) => {
+            const evidence = await runtimeApprovalEvidence(runtime, input.requestActionId);
+            if (evidence.status === "pending" || evidence.executionSequence !== input.sequence)
+              throw conflict();
+            return invokeRequest({ runtime, sequence: input.sequence, request: evidence.request });
+          },
+        ),
+      ),
+    );
+  }
+  async function projectRuntimeAction(runtime: NpAgentRuntimeRunContextV1, actionId: string) {
+    const [action] = await runtime.db
+      .select()
+      .from(npAgentActions)
+      .where(
+        and(
+          eq(npAgentActions.siteId, runtime.siteId),
+          eq(npAgentActions.runId, runtime.run.id),
+          eq(npAgentActions.id, actionId),
+        ),
+      )
+      .limit(1);
+    if (
+      !action ||
+      !["moderation.quarantine", "moderation.restore"].includes(action.capabilityId) ||
+      !["succeeded", "compensated"].includes(action.state)
+    )
+      return null;
+    const evidence = await runtimeApprovalEvidence(runtime, actionId);
+    if (evidence.status !== "completed" || !evidence.output) throw conflict();
+    return {
+      capabilityId: action.capabilityId as NpAgentModerationCapabilityIdV1,
+      state: "succeeded" as const,
+      safeCode: null,
+      moderationOutput: evidence.output,
+    };
+  }
   return {
     capabilityIds: ["moderation.quarantine", "moderation.restore"] as const,
+    runtimeEnabled: Boolean(options.runtimeAdmission),
     invokeCapability,
+    invokeRuntimeCapability,
+    inspectRuntimeApproval,
+    resumeRuntimeApproval,
+    projectRuntimeAction,
     staff: {
       enabled: typeof options.resolveStaffPolicy === "function",
       async viewer(input: { db: Db; siteId: string; actor: NpAgentAdminActorV1 }) {
