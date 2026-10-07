@@ -112,3 +112,5 @@ export * from "./publisher-evaluation-fixtures.js";
 export * from "./moderator-evaluation.js";
 
 export * from "./operator-plan-evaluation-fixtures.js";
+export * from "./evaluation-report.js";
+export * from "./evaluation-report-files.js";

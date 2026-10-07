@@ -438,6 +438,11 @@ jobs:
           pnpm exec tsc --showConfig \
             | jq -e '.files | any(. == "./src/nexpress.config.ts")' >/dev/null
 
+      - name: Evaluation report smoke — installed CLI output
+        run: |
+          node "$GITHUB_WORKSPACE/.github/scripts/check-scaffold-evaluation-report.mjs" \
+            "$RUNNER_TEMP/scaffold/smoke-app"
+
       - name: Generate + apply fresh scaffold Agent foundation
         run: |
           cd "$RUNNER_TEMP/scaffold/smoke-app"

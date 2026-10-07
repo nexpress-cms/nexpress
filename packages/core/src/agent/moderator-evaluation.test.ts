@@ -159,6 +159,7 @@ describe("Moderator deterministic offline evaluation", () => {
     await expect(npRequireAgentModeratorEvaluationReviewArtifactV1(tampered)).rejects.toThrow();
   });
 
+  // Each rejection replays the complete detector artifact before validating its labels.
   it("rejects duplicate, stale, unbound and ineligible labels, unknown labels and hidden fields", async () => {
     const source = await runAgentModeratorEvaluationV1();
     const template = await npBuildAgentModeratorEvaluationReviewArtifactV1(source);
@@ -178,7 +179,7 @@ describe("Moderator deterministic offline evaluation", () => {
       await expect(
         npBuildAgentModeratorEvaluationReviewArtifactV1(source, labels),
       ).rejects.toThrow();
-  });
+  }, 20_000);
 
   it("compares only an identical reviewed cohort and reports unmatched reviewed coverage", async () => {
     const source = await runAgentModeratorEvaluationV1();

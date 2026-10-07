@@ -5,6 +5,7 @@ export interface NpAgentEvaluationCommandArgsV1 {
   model: string;
   dataset: "operator.v1" | "publisher.v1" | "moderator.v1" | "operator-plan.v1";
   reviewPath?: string;
+  reportPath?: string;
   reviewsPath?: string | null;
   maxCalls: number;
   maxInputTokens: number;
@@ -45,6 +46,7 @@ export function npParseAgentEvaluationCommandArgsV1(
         "--compare",
         "--review",
         "--reviews",
+        "--report",
       ].includes(flag)
     ) {
       const value = argv[++i];
@@ -55,6 +57,12 @@ export function npParseAgentEvaluationCommandArgsV1(
   const text = (flag: string): string | null =>
     typeof fields.get(flag) === "string" ? (fields.get(flag) as string) : null;
   const reviewPath = text("--review");
+  const reportPath = text("--report");
+  if (
+    reportPath &&
+    [...fields.keys()].some((flag) => !["--report", "--out", "--json"].includes(flag))
+  )
+    invalid();
   if (
     reviewPath &&
     [...fields.keys()].some(
@@ -123,6 +131,7 @@ export function npParseAgentEvaluationCommandArgsV1(
     model,
     dataset: dataset as "operator.v1" | "publisher.v1" | "moderator.v1" | "operator-plan.v1",
     ...(reviewPath ? { reviewPath, reviewsPath: text("--reviews") } : {}),
+    ...(reportPath ? { reportPath } : {}),
     maxCalls: budget.maxCalls,
     maxInputTokens: budget.maxInputTokens,
     maxOutputTokens: budget.maxOutputTokens,

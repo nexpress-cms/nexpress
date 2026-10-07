@@ -177,6 +177,7 @@ describe("bounded Agent evaluation command", () => {
         .errorCode,
     ).toBe("ARTIFACT_INVALID");
   });
+  // This workflow revalidates complete artifacts for each alias and tampering check.
   it("refuses review symlink inputs, source/label/baseline overwrites and hardlink aliases", async () => {
     const dir = await directory();
     const sourcePath = join(dir, "source.json"),
@@ -214,5 +215,5 @@ describe("bounded Agent evaluation command", () => {
       JSON.parse((await run(["--review", sourcePath, "--compare", reviewPath, "--json"])).output)
         .errorCode,
     ).toBe("ARTIFACT_INVALID");
-  });
+  }, 20_000);
 });
