@@ -17,6 +17,7 @@ import {
   runAgentEvaluationV1,
   npCreateAgentOperatorEvaluationSuiteV1,
   npCreateAgentOperatorPlanEvaluationSuiteV1,
+  npCreateAgentModeratorProposalEvaluationSuiteV1,
   npCreateAgentPublisherEvaluationSuiteV1,
   type NpAgentEvaluationProviderV1,
 } from "@nexpress/core/agents";
@@ -26,6 +27,11 @@ import {
   npFormatAgentModeratorEvaluationCommandResultV1,
   type NpAgentModeratorEvaluationCommandResultV1,
   type NpAgentModeratorEvaluationReviewCommandResultV1,
+  npBuildAgentModeratorProposalEvaluationReviewArtifactV1,
+  npRequireAgentModeratorProposalEvaluationReviewArtifactV1,
+  npCompareAgentModeratorProposalEvaluationReviewArtifactsV1,
+  type NpAgentModeratorProposalEvaluationReviewArtifactV1,
+  type NpAgentModeratorProposalEvaluationReviewComparisonV1,
   npBuildAgentOperatorPlanEvaluationReviewArtifactV1,
   npRequireAgentOperatorPlanEvaluationReviewArtifactV1,
   npCompareAgentOperatorPlanEvaluationReviewArtifactsV1,
@@ -52,6 +58,7 @@ import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
 export const AGENT_EVALUATE_HELP = `NexPress Agent evaluation
 
 pnpm agent:evaluate --dataset moderator.v1 --out <artifact> --json
+pnpm agent:evaluate --provider fake --dataset moderator-proposal.v1 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset operator.v1 --json
 pnpm agent:evaluate --provider fake --dataset operator-plan.v1 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset publisher.v1 --out <artifact> --json
@@ -64,7 +71,8 @@ Without --reviews, review mode emits evidence/proposals and binding fields with 
 Report inputs resolve relative to the manifest. Exit zero means a report was generated,
 including missing or failed evidence; it does not establish model usefulness or full R6 acceptance.
 
-Moderator runs the actual deterministic detector offline; network providers and explicit model/budget flags are unavailable.
+moderator.v1 runs the actual deterministic detector offline; network providers and explicit model/budget flags are unavailable.
+moderator-proposal.v1 checks the installed recipe response against synthetic observed evidence.
 Fake mode checks deterministic fixtures; it does not measure model usefulness.
 Network evaluation requires a host-injected provider and explicit --provider, --model, --dataset,
 --max-calls, --max-input-tokens, --max-output-tokens, --max-cost-micros and --confirm-network.
@@ -193,7 +201,9 @@ export async function runAgentEvaluateProcessV1(
             ? await npCreateAgentPublisherEvaluationSuiteV1()
             : input.dataset === "operator-plan.v1"
               ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
-              : await npCreateAgentOperatorEvaluationSuiteV1(),
+              : input.dataset === "moderator-proposal.v1"
+                ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
+                : await npCreateAgentOperatorEvaluationSuiteV1(),
         mode: input.provider === "fake" ? "fake" : "provider",
         providerId: input.provider,
         model: input.model,
@@ -273,6 +283,8 @@ async function runReview(
     )
       return runModerator(input, output, source);
     const evaluation = await npRequireAgentEvaluationArtifactV1(source);
+    if (evaluation.suite.cases[0].category === "moderator-proposal")
+      return runModeratorProposalReview(input, output, evaluation);
     if (evaluation.suite.cases[0].category === "ops-plan")
       return runOperatorPlanReview(input, output, evaluation);
     artifact = await npBuildAgentEvaluationReviewArtifactV1(
@@ -432,6 +444,53 @@ async function runOperatorPlanReview(
   const text = errorCode
     ? `Operator plan review unavailable (${errorCode}).`
     : `Offline Operator diagnosis/plan review: ${artifact?.summary.reviewed} reviewed; ${artifact?.summary.unreviewed} unreviewed; ${artifact?.summary.ineligible} without a reviewable proposal. Self-reported labels confer no approval authority.${comparison ? (comparison.comparable ? " Comparison uses the matched reviewed case/prediction cohort." : ` Comparison is not comparable (${comparison.reason}); no regression conclusion.`) : ""}`;
+  output.write(`${input.json ? JSON.stringify(result) : text}\n`);
+  return errorCode ? 1 : 0;
+}
+
+async function runModeratorProposalReview(
+  input: NpAgentEvaluateCliInputV1,
+  output: Pick<Writable, "write">,
+  source: NpAgentEvaluationArtifactV1,
+): Promise<number> {
+  let artifact: NpAgentModeratorProposalEvaluationReviewArtifactV1 | null = null;
+  let comparison: NpAgentModeratorProposalEvaluationReviewComparisonV1 | null = null;
+  let errorCode: "ARTIFACT_INVALID" | "ARTIFACT_UNAVAILABLE" | null = null;
+  try {
+    artifact = await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(
+      source,
+      input.reviewsPath ? await readArtifactJson(input.reviewsPath) : [],
+    );
+    if (input.comparePath)
+      comparison = await npCompareAgentModeratorProposalEvaluationReviewArtifactsV1(
+        artifact,
+        await npRequireAgentModeratorProposalEvaluationReviewArtifactV1(
+          await readArtifactJson(input.comparePath),
+        ),
+      );
+  } catch {
+    errorCode = "ARTIFACT_INVALID";
+  }
+  if (!errorCode && input.outPath)
+    try {
+      await assertReviewOutputIsSeparate(input);
+      await writeArtifactJson(input.outPath, artifact);
+    } catch {
+      errorCode = "ARTIFACT_UNAVAILABLE";
+    }
+  if (errorCode) {
+    artifact = null;
+    comparison = null;
+  }
+  const result = {
+    schemaVersion: "np.agent-moderator-proposal-eval-review-command.v1",
+    artifact,
+    comparison,
+    errorCode,
+  };
+  const text = errorCode
+    ? `Moderator proposal review unavailable (${errorCode}).`
+    : `Offline Moderator proposal review: ${artifact?.summary.reviewed} reviewed; ${artifact?.summary.unreviewed} unreviewed; ${artifact?.summary.ineligible} without a reviewable response. Self-reported labels confer no approval authority.${comparison ? (comparison.comparable ? " Comparison uses the matched reviewed case/prediction cohort." : ` Comparison is not comparable (${comparison.reason}); no regression conclusion.`) : ""}`;
   output.write(`${input.json ? JSON.stringify(result) : text}\n`);
   return errorCode ? 1 : 0;
 }

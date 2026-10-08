@@ -697,6 +697,10 @@ adds actual repeated-link detector replay on bilingual synthetic cases and
 exact-bound offline feedback comparison. Deterministic signal conformance,
 synthetic classification and self-reported human labels remain separate;
 production precision and automatic-quarantine readiness are not established.
+The [Moderator proposal evaluation and review flow](r6-moderator-proposal-evaluation-flow.md)
+adds the recipe's actual response schema, exact synthetic candidate grounding and
+reviewable abstentions as evidence separate from detector replay. It does not
+establish real-model usefulness or automatic-quarantine readiness.
 The [Operator diagnosis and plan evaluation review flow](r6-operator-plan-evaluation-flow.md)
 adds bilingual synthetic diagnosis statements, exact requested queue-plan input
 checks and offline accept/edit/reject review with matched-cohort comparison.

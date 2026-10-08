@@ -1,3 +1,8 @@
+import { npCreateAgentModeratorRecipeDefinitionV1 } from "../agent-contract/moderator-recipe-contract.js";
+import {
+  npCreateAgentModeratorProposalEvaluationPredictionV1,
+  npAgentModeratorProposalEvaluationBenchmarkInstructionV1,
+} from "../agent-contract/moderator-proposal-evaluation-contract.js";
 import {
   npCreateAgentOperatorPlanEvaluationPredictionV1,
   npAgentOperatorPlanEvaluationBenchmarkInstructionV1,
@@ -197,9 +202,11 @@ export async function runAgentEvaluationV1(
         throw new NpAgentEvaluationError("ARGUMENT_INVALID");
     }
   const category = suite.cases[0].category;
-  const recipe = await (category === "publisher"
-    ? npCreateAgentPublisherRecipeDefinitionV1()
-    : npCreateAgentOperatorRecipeDefinitionV1());
+  const recipe = await (category === "moderator-proposal"
+    ? npCreateAgentModeratorRecipeDefinitionV1()
+    : category === "publisher"
+      ? npCreateAgentPublisherRecipeDefinitionV1()
+      : npCreateAgentOperatorRecipeDefinitionV1());
   if (!recipe.instruction) throw new NpAgentEvaluationError("ARGUMENT_INVALID");
   const now = options.now ?? (() => new Date());
   const startedAt = now().toISOString();
@@ -244,11 +251,13 @@ export async function runAgentEvaluationV1(
       instruction: { ...recipe.instruction },
       responseSchema: structuredClone(npAgentEvaluationResponseSchemaV1(category)),
       benchmarkInstruction:
-        category === "publisher"
-          ? npAgentPublisherEvaluationBenchmarkInstructionV1
-          : category === "ops-plan"
-            ? npAgentOperatorPlanEvaluationBenchmarkInstructionV1
-            : npAgentEvaluationBenchmarkInstructionV1,
+        category === "moderator-proposal"
+          ? npAgentModeratorProposalEvaluationBenchmarkInstructionV1
+          : category === "publisher"
+            ? npAgentPublisherEvaluationBenchmarkInstructionV1
+            : category === "ops-plan"
+              ? npAgentOperatorPlanEvaluationBenchmarkInstructionV1
+              : npAgentEvaluationBenchmarkInstructionV1,
     };
     let limit: NpAgentEvaluationReservationV1;
     try {
@@ -291,11 +300,14 @@ export async function runAgentEvaluationV1(
             )
           : Promise.resolve({
               prediction:
-                category === "publisher"
-                  ? npCreateAgentPublisherEvaluationPredictionV1(request.case.evidence)
-                  : category === "ops-plan"
-                    ? npCreateAgentOperatorPlanEvaluationPredictionV1(request.case.evidence)
-                    : fakePrediction(request),
+                category === "moderator-proposal"
+                  ? npCreateAgentModeratorProposalEvaluationPredictionV1(request.case.evidence)
+                      .moderatorResponse
+                  : category === "publisher"
+                    ? npCreateAgentPublisherEvaluationPredictionV1(request.case.evidence)
+                    : category === "ops-plan"
+                      ? npCreateAgentOperatorPlanEvaluationPredictionV1(request.case.evidence)
+                      : fakePrediction(request),
               usage: zero(),
             });
       const response = await Promise.race([operation, aborted]);
@@ -324,7 +336,16 @@ export async function runAgentEvaluationV1(
       remaining.outputTokens -= usage.outputTokens;
       remaining.costMicros -= usage.costMicros;
       try {
-        result.prediction = npRequireAgentEvaluationPredictionV1(response.prediction, category);
+        result.prediction =
+          category === "moderator-proposal"
+            ? npRequireAgentEvaluationPredictionV1(
+                npCreateAgentModeratorProposalEvaluationPredictionV1(
+                  entry.evidence,
+                  response.prediction,
+                ),
+                category,
+              )
+            : npRequireAgentEvaluationPredictionV1(response.prediction, category);
         result.error = null;
       } catch {
         result.error = "STRUCTURED_OUTPUT_INVALID";

@@ -51,8 +51,15 @@ it("writes a recomputable report, retains missing evidence and never overwrites 
   expect(reported.result.schemaVersion).toBe("np.agent-eval-report-command.v1");
   const artifact = await npRequireAgentEvaluationReportV1(JSON.parse(await readFile(out, "utf8")));
   expect(artifact.fullR6).toBe("not-established");
-  expect(artifact.rows.map((row) => row.status)).toEqual(["missing", "present", "missing"]);
-  expect(artifact.rows[1].reviewComparison.result).toMatchObject({
+  expect(artifact.rows.map((row) => [row.recipe, row.status])).toEqual([
+    ["moderator", "missing"],
+    ["moderator-proposal", "missing"],
+    ["operator", "present"],
+    ["publisher", "missing"],
+  ]);
+  expect(
+    artifact.rows.find((row) => row.recipe === "operator")!.reviewComparison.result,
+  ).toMatchObject({
     comparable: false,
     reason: "NO_MATCHED_REVIEW_COHORT",
   });

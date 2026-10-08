@@ -1,6 +1,9 @@
 import { digestAgentCanonicalSha256 } from "./canonical-digest.js";
 import { npRequireAgentRecipeRegistryCanonical } from "./canonical-recipe-registry.js";
-import { npAgentQuarantineProposalSchemaV1 } from "./moderator-contract.js";
+import {
+  npAgentQuarantineProposalSchemaV1,
+  type NpAgentQuarantineProposalV1,
+} from "./moderator-contract.js";
 import type { NpAgentConfigurationDefinitionV1 } from "./runtime-contract.js";
 import type { NpAgentJsonSchema, NpAgentRecipeDefinitionCanonicalV1 } from "./types.js";
 
@@ -72,6 +75,47 @@ const object = (
   }) as NpAgentJsonSchema;
 const text = (maxLength: number) => ({ type: "string", minLength: 1, maxLength });
 
+export interface NpAgentModeratorRecipeCandidateV1 {
+  incidentId: string;
+  signalId: string;
+  sourceEventIds: string[];
+  detector: {
+    id: "moderator.repeated-link-spam";
+    version: 1;
+    advisory: true;
+    itemCount: number;
+    independentAccountCount: number;
+  };
+  proposal: NpAgentQuarantineProposalV1;
+}
+export interface NpAgentModeratorRecipeEvidenceV1 {
+  observedAt: string;
+  /** Authorized Incidents inspected; never a total that includes hidden rows. */
+  scanned: number;
+  truncated: boolean;
+  candidates: NpAgentModeratorRecipeCandidateV1[];
+}
+/** Same response schema used by Runtime and offline proposal evaluation. */
+export function npAgentModeratorRecipeResponseSchemaV1(): NpAgentJsonSchema {
+  return object({
+    task: { const: "interactive-capability" },
+    decision: {
+      oneOf: [
+        object({ kind: { const: "complete" }, summary: text(2000) }),
+        object({
+          kind: { const: "propose-capability" },
+          capabilityId: { const: "moderation.quarantine" },
+          rationale: text(2000),
+          arguments: object({
+            mode: { const: "propose" },
+            proposal: npAgentQuarantineProposalSchemaV1(),
+          }),
+        }),
+      ],
+    },
+  });
+}
+
 /** Host opt-in definition factory. A verified provider connection is selected separately. */
 export async function npCreateAgentModeratorRecipeDefinitionV1(): Promise<NpAgentRecipeDefinitionCanonicalV1> {
   const definition: NpAgentRecipeDefinitionCanonicalV1 = {
@@ -103,23 +147,7 @@ export async function npCreateAgentModeratorRecipeDefinitionV1(): Promise<NpAgen
       automaticConfidenceBasisPoints: { type: "integer", minimum: 0, maximum: 10000 },
     }),
     manualInputSchema: null,
-    responseSchema: object({
-      task: { const: "interactive-capability" },
-      decision: {
-        oneOf: [
-          object({ kind: { const: "complete" }, summary: text(2000) }),
-          object({
-            kind: { const: "propose-capability" },
-            capabilityId: { const: "moderation.quarantine" },
-            rationale: text(2000),
-            arguments: object({
-              mode: { const: "propose" },
-              proposal: npAgentQuarantineProposalSchemaV1(),
-            }),
-          }),
-        ],
-      },
-    }),
+    responseSchema: npAgentModeratorRecipeResponseSchemaV1(),
     instruction: {
       templateId: "moderator.repeated-link-spam",
       templateVersion: 1,

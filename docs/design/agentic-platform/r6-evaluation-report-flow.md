@@ -23,7 +23,11 @@ before running the project script and independently reconstructs its result.
 Each recipe occurs at most once. Operator requires the diagnosis/plan category
 from `operator-plan.v1`; legacy `operator.v1` tag-only results do not substitute
 for plan evaluation. Publisher uses its proposal artifact, and Moderator uses
-its deterministic detector artifact. A supplied review must bind the exact
+its deterministic detector artifact. The separate `moderator-proposal` entry uses
+[recipe response evaluation](r6-moderator-proposal-evaluation-flow.md); it never
+substitutes for detector evidence. New reports contain four rows. Historical
+three-row reports remain verifiable by independent reconstruction of their exact
+original projection. A supplied review must bind the exact
 supplied evaluation, even if another artifact has the same suite or predictions.
 The report preserves existing validators' scope; a hash establishes consistency,
 not the authenticity of an external provider run or reviewer identity.
@@ -34,6 +38,7 @@ Create versioned synthetic evaluation files using the existing commands:
 
 ```bash
 pnpm agent:evaluate --dataset moderator.v1 --out moderator.json --json
+pnpm agent:evaluate --dataset moderator-proposal.v1 --out moderator-proposal.json --json
 pnpm agent:evaluate --dataset operator-plan.v1 --out operator.json --json
 pnpm agent:evaluate --dataset publisher.v1 --out publisher.json --json
 ```
@@ -41,6 +46,7 @@ pnpm agent:evaluate --dataset publisher.v1 --out publisher.json --json
 Create review templates with `--review <evaluation.json> --out <template.json>`.
 Inspect the source and use the exact bindings when authoring labels. Follow the
 [Moderator feedback guide](r6-moderator-evaluation-flow.md#run-and-review),
+[Moderator response review](r6-moderator-proposal-evaluation-flow.md#run-and-review),
 [Operator review guide](r6-operator-plan-evaluation-flow.md#run-and-review), and
 [Publisher review guide](r6-publisher-evaluation-flow.md). A template contains no
 human judgments. Run `--review <evaluation.json> --reviews <labels.json> --out
@@ -57,6 +63,12 @@ use `null` when a review or baseline is absent:
     {
       "recipe": "moderator",
       "evaluation": "moderator.json",
+      "review": null,
+      "baseline": null
+    },
+    {
+      "recipe": "moderator-proposal",
+      "evaluation": "moderator-proposal.json",
       "review": null,
       "baseline": null
     },

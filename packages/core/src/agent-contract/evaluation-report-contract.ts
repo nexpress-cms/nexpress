@@ -25,8 +25,18 @@ import type {
   NpAgentOperatorPlanEvaluationReviewComparisonV1,
 } from "./operator-plan-evaluation-review-contract.js";
 
+import type {
+  NpAgentModeratorProposalEvaluationReviewArtifactV1,
+  NpAgentModeratorProposalEvaluationReviewComparisonV1,
+} from "./moderator-proposal-evaluation-review-contract.js";
+
 export const npAgentEvaluationReportMaxBytesV1 = 4 * 1024 * 1024;
-export const npAgentEvaluationReportRecipesV1 = ["moderator", "operator", "publisher"] as const;
+export const npAgentEvaluationReportRecipesV1 = [
+  "moderator",
+  "moderator-proposal",
+  "operator",
+  "publisher",
+] as const;
 export type NpAgentEvaluationReportRecipeV1 = (typeof npAgentEvaluationReportRecipesV1)[number];
 export interface NpAgentEvaluationReportManifestV1 {
   schemaVersion: "np.agent-eval-report-manifest.v1";
@@ -42,6 +52,7 @@ export interface NpAgentEvaluationReportEvidenceV1 {
   review:
     | NpAgentEvaluationReviewArtifactV1
     | NpAgentOperatorPlanEvaluationReviewArtifactV1
+    | NpAgentModeratorProposalEvaluationReviewArtifactV1
     | NpAgentModeratorEvaluationReviewArtifactV1
     | null;
 }
@@ -78,6 +89,7 @@ export interface NpAgentEvaluationReportRowV1 {
     result:
       | NpAgentEvaluationReviewComparisonV1
       | NpAgentOperatorPlanEvaluationReviewComparisonV1
+      | NpAgentModeratorProposalEvaluationReviewComparisonV1
       | NpAgentModeratorEvaluationReviewComparisonV1
       | null;
   };
@@ -129,7 +141,7 @@ export function npRequireAgentEvaluationReportManifestV1(
   if (
     r.schemaVersion !== "np.agent-eval-report-manifest.v1" ||
     !Array.isArray(r.entries) ||
-    r.entries.length > 3
+    r.entries.length > npAgentEvaluationReportRecipesV1.length
   )
     fail();
   const seen = new Set<string>();
@@ -167,7 +179,9 @@ export function npFormatAgentEvaluationReportV1(report: NpAgentEvaluationReportV
       lines.push(
         "matchedSignalExpectations" in metrics
           ? `  Synthetic detector: matched=${metrics.matchedSignalExpectations}; missing=${metrics.missingExpectedSignals}; unexpected=${metrics.unexpectedSignals}; falsePositive=${metrics.syntheticClassification.falsePositive}; falseNegative=${metrics.syntheticClassification.falseNegative}`
-          : `  Synthetic structured decisions: schemaValidBasisPoints=${metrics.schemaValidBasisPoints}; forbiddenActionProposals=${metrics.forbiddenActionProposals}; precisionBasisPoints=${metrics.precisionBasisPoints}; policyBlocked=${metrics.policyBlocked}`,
+          : row.recipe === "moderator-proposal"
+            ? `  Synthetic proposal/abstention conformance: schemaValidBasisPoints=${metrics.schemaValidBasisPoints}; forbiddenActionProposals=${metrics.forbiddenActionProposals}; fixtureDecisionPrecisionBasisPoints=${metrics.precisionBasisPoints}; policyBlocked=${metrics.policyBlocked}`
+            : `  Synthetic structured decisions: schemaValidBasisPoints=${metrics.schemaValidBasisPoints}; forbiddenActionProposals=${metrics.forbiddenActionProposals}; precisionBasisPoints=${metrics.precisionBasisPoints}; policyBlocked=${metrics.policyBlocked}`,
       );
     const summary = row.review.summary;
     lines.push(

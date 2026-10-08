@@ -1,4 +1,16 @@
 import {
+  npCreateAgentModeratorRecipeDefinitionV1,
+  npAgentModeratorRecipeResponseSchemaV1,
+} from "./moderator-recipe-contract.js";
+import {
+  npRequireAgentModeratorEvaluationResponseV1,
+  npRequireAgentModeratorProposalEvaluationEvidenceV1,
+  npAgentModeratorProposalEvaluationBenchmarkInstructionV1,
+  npCreateAgentModeratorProposalEvaluationPredictionV1,
+  npEvaluateAgentModeratorProposalV1,
+  type NpAgentModeratorEvaluationResponseV1,
+} from "./moderator-proposal-evaluation-contract.js";
+import {
   npRequireAgentOperatorPlanEvaluationProposalV1,
   npRequireAgentOperatorPlanEvaluationEvidenceV1,
   npAgentOperatorPlanEvaluationProposalSchemaV1,
@@ -74,10 +86,11 @@ export const npAgentPublisherEvaluationRationaleTagsV1 = [
   "normal",
   "unknown",
 ] as const;
-export type NpAgentEvaluationCategoryV1 = "ops" | "publisher" | "ops-plan";
+export type NpAgentEvaluationCategoryV1 = "ops" | "publisher" | "ops-plan" | "moderator-proposal";
 export function npAgentEvaluationResponseSchemaV1(
   category: NpAgentEvaluationCategoryV1,
 ): NpAgentJsonSchema {
+  if (category === "moderator-proposal") return npAgentModeratorRecipeResponseSchemaV1();
   if (category === "ops") return npAgentEvaluationPredictionSchemaV1;
   if (category === "ops-plan") {
     const { $defs, ...planProposal } = npAgentOperatorPlanEvaluationProposalSchemaV1;
@@ -122,11 +135,12 @@ export interface NpAgentEvaluationPredictionV1 {
   actions: NpAgentCapabilityId[];
   rationaleTags: NpAgentEvaluationRationaleTagV1[];
   proposal?: NpAgentPublisherEvaluationProposalV1 | null;
+  moderatorResponse?: NpAgentModeratorEvaluationResponseV1;
   planProposal?: NpAgentOperatorPlanEvaluationProposalV1 | null;
 }
 export interface NpAgentEvaluationEvidenceV1 {
   id: string;
-  kind: "ops-check" | "content";
+  kind: "ops-check" | "content" | "moderator-candidates";
   observedAt: string;
   digest: string;
   text: string;
@@ -288,6 +302,7 @@ export function npRequireAgentEvaluationPredictionV1(
     "rationaleTags",
     ...(category === "publisher" ? ["proposal"] : []),
     ...(category === "ops-plan" ? ["planProposal"] : []),
+    ...(category === "moderator-proposal" ? ["moderatorResponse"] : []),
   ]);
   return {
     decision: choices(r.decision, npAgentEvaluationDecisionsV1),
@@ -298,6 +313,9 @@ export function npRequireAgentEvaluationPredictionV1(
         ? npAgentPublisherEvaluationRationaleTagsV1
         : npAgentEvaluationRationaleTagsV1,
     ),
+    ...(category === "moderator-proposal"
+      ? { moderatorResponse: npRequireAgentModeratorEvaluationResponseV1(r.moderatorResponse) }
+      : {}),
     ...(category === "ops-plan"
       ? {
           planProposal:
@@ -354,14 +372,19 @@ export function npRequireAgentEvaluationSuiteV1(value: unknown): NpAgentEvaluati
     ]);
     if (
       c.schemaVersion !== "np.agent-eval-case.v1" ||
-      !["ops", "publisher", "ops-plan"].includes(String(c.category)) ||
+      !["ops", "publisher", "ops-plan", "moderator-proposal"].includes(String(c.category)) ||
       list(c.expectedSignals).length
     )
       fail();
     const evidence = list(c.evidence, 1, 16).map((value): NpAgentEvaluationEvidenceV1 => {
       const e = rec(value, ["id", "kind", "observedAt", "digest", "text"]);
       if (
-        e.kind !== (c.category === "publisher" ? "content" : "ops-check") ||
+        e.kind !==
+          (c.category === "publisher"
+            ? "content"
+            : c.category === "moderator-proposal"
+              ? "moderator-candidates"
+              : "ops-check") ||
         typeof e.text !== "string" ||
         e.text.length < 1 ||
         e.text.length > 4000 ||
@@ -373,12 +396,22 @@ export function npRequireAgentEvaluationSuiteV1(value: unknown): NpAgentEvaluati
         fail();
       return {
         id: token(e.id),
-        kind: c.category === "publisher" ? "content" : "ops-check",
+        kind:
+          c.category === "publisher"
+            ? "content"
+            : c.category === "moderator-proposal"
+              ? "moderator-candidates"
+              : "ops-check",
         observedAt: canonicalBodyUtc(e.observedAt, path),
         digest: digest(e.digest),
         text: e.text as string,
       };
     });
+    if (
+      c.category === "moderator-proposal" &&
+      npRequireAgentModeratorProposalEvaluationEvidenceV1(evidence).locale !== c.locale
+    )
+      fail();
     if (c.category === "publisher") npRequireAgentPublisherEvaluationEvidenceV1(evidence);
     if (
       c.category === "ops-plan" &&
@@ -394,7 +427,7 @@ export function npRequireAgentEvaluationSuiteV1(value: unknown): NpAgentEvaluati
       id: token(c.id),
       caseVersion: num(c.caseVersion, 10000, 1),
       locale: choices(c.locale, ["en", "ko"]),
-      category: choices(c.category, ["ops", "publisher", "ops-plan"]),
+      category: choices(c.category, ["ops", "publisher", "ops-plan", "moderator-proposal"]),
       evidence,
       expectedSignals: [],
       allowedActions,
@@ -596,6 +629,18 @@ export async function npBuildAgentEvaluationArtifactV1(
           : "STRUCTURED_OUTPUT_INVALID",
       );
     if (predicted) {
+      if (c.category === "moderator-proposal") {
+        for (const code of npEvaluateAgentModeratorProposalV1(
+          c.evidence,
+          predicted.moderatorResponse ?? null,
+        ))
+          add(c.id, code);
+        const derived = npCreateAgentModeratorProposalEvaluationPredictionV1(
+          c.evidence,
+          predicted.moderatorResponse,
+        );
+        if (!equal(derived, predicted)) add(c.id, "PROPOSAL_UNJUSTIFIED");
+      }
       if (c.category === "ops-plan") {
         for (const code of npEvaluateAgentOperatorPlanProposalV1(
           c.evidence,
@@ -703,9 +748,11 @@ export async function npBuildAgentEvaluationArtifactV1(
     p95LatencyMs: p95(caseResults.map((c) => c.latencyMs)),
   };
   if (Object.values(metrics).some((v) => v !== null && !Number.isSafeInteger(v))) fail();
-  const recipe = await (category === "publisher"
-    ? npCreateAgentPublisherRecipeDefinitionV1()
-    : npCreateAgentOperatorRecipeDefinitionV1());
+  const recipe = await (category === "moderator-proposal"
+    ? npCreateAgentModeratorRecipeDefinitionV1()
+    : category === "publisher"
+      ? npCreateAgentPublisherRecipeDefinitionV1()
+      : npCreateAgentOperatorRecipeDefinitionV1());
   return {
     schemaVersion: "np.agent-eval.v1",
     mode,
@@ -716,36 +763,45 @@ export async function npBuildAgentEvaluationArtifactV1(
     model,
     policyHash: await npDigestAgentEvaluationValueV1({
       id:
-        category === "publisher"
-          ? "publisher-proposal-policy"
-          : category === "ops-plan"
-            ? "operator-plan-proposal-policy"
-            : "operator-diagnosis-policy",
+        category === "moderator-proposal"
+          ? "moderator-proposal-policy"
+          : category === "publisher"
+            ? "publisher-proposal-policy"
+            : category === "ops-plan"
+              ? "operator-plan-proposal-policy"
+              : "operator-diagnosis-policy",
       version: 1,
       instructionDigest: recipe.instruction!.digest,
       predictionSchema: npAgentEvaluationResponseSchemaV1(category),
       benchmarkVersion: 1,
       benchmarkInstruction:
-        category === "publisher"
-          ? npAgentPublisherEvaluationBenchmarkInstructionV1
-          : category === "ops-plan"
-            ? npAgentOperatorPlanEvaluationBenchmarkInstructionV1
-            : npAgentEvaluationBenchmarkInstructionV1,
+        category === "moderator-proposal"
+          ? npAgentModeratorProposalEvaluationBenchmarkInstructionV1
+          : category === "publisher"
+            ? npAgentPublisherEvaluationBenchmarkInstructionV1
+            : category === "ops-plan"
+              ? npAgentOperatorPlanEvaluationBenchmarkInstructionV1
+              : npAgentEvaluationBenchmarkInstructionV1,
       positiveDecisions: ["advise", "quarantine", "approval"],
       unknownUsage: "fail-closed",
     }),
     gateRulesHash: await npDigestAgentEvaluationValueV1({
       id:
-        category === "publisher"
-          ? "publisher-proposal-gates"
-          : category === "ops-plan"
-            ? "operator-plan-proposal-gates"
-            : "operator-diagnosis-gates",
+        category === "moderator-proposal"
+          ? "moderator-proposal-gates"
+          : category === "publisher"
+            ? "publisher-proposal-gates"
+            : category === "ops-plan"
+              ? "operator-plan-proposal-gates"
+              : "operator-diagnosis-gates",
       version: 1,
       expectedDecisionAndTags: "exact",
       forbiddenActions: 0,
       schemaValidBasisPoints: 10000,
       automaticEnablement: false,
+      ...(category === "moderator-proposal"
+        ? { proposalRules: "exact-current-candidate-human-approval-v1" }
+        : {}),
       ...(category === "publisher" ? { proposalRules: "grounded-minimal-draft-v1" } : {}),
       ...(category === "ops-plan" ? { proposalRules: "grounded-operator-plan-v1" } : {}),
     }),
@@ -812,6 +868,7 @@ export interface NpAgentEvaluationCaseComparisonV1 {
   costMicrosDelta: number | null;
   latencyMsDelta: number;
   proposalChanged?: boolean;
+  moderatorResponseChanged?: boolean;
   planProposalChanged?: boolean;
 }
 export type NpAgentEvaluationComparisonV1 =
@@ -872,6 +929,14 @@ export async function npCompareAgentEvaluationArtifactsV1(
         outputTokensDelta: delta(c.outputTokens, b.outputTokens),
         costMicrosDelta: delta(c.costMicros, b.costMicros),
         latencyMsDelta: c.latencyMs - b.latencyMs,
+        ...(current.suite.cases[i].category === "moderator-proposal"
+          ? {
+              moderatorResponseChanged: !equal(
+                c.prediction?.moderatorResponse ?? null,
+                b.prediction?.moderatorResponse ?? null,
+              ),
+            }
+          : {}),
         ...(current.suite.cases[i].category === "ops-plan"
           ? {
               planProposalChanged: !equal(
@@ -995,6 +1060,9 @@ export async function npRequireAgentEvaluationCommandResultV1(
           "costMicrosDelta",
           "latencyMsDelta",
           ...(artifact.suite.cases[i].category === "publisher" ? ["proposalChanged"] : []),
+          ...(artifact.suite.cases[i].category === "moderator-proposal"
+            ? ["moderatorResponseChanged"]
+            : []),
           ...(artifact.suite.cases[i].category === "ops-plan" ? ["planProposalChanged"] : []),
         ]);
         if (
@@ -1005,6 +1073,11 @@ export async function npRequireAgentEvaluationCommandResultV1(
         if (
           artifact.suite.cases[i].category === "ops-plan" &&
           typeof entry.planProposalChanged !== "boolean"
+        )
+          fail();
+        if (
+          artifact.suite.cases[i].category === "moderator-proposal" &&
+          typeof entry.moderatorResponseChanged !== "boolean"
         )
           fail();
         const current = artifact.caseResults[i];

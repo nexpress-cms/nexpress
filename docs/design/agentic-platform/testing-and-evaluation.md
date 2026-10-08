@@ -1320,7 +1320,7 @@ ships a narrower `ops` / `en` / `ko` synthetic slice: at most 100 cases, empty
 `expectedSignals`, eight built-in cases and no automatic-action enablement.
 It adds `mode`, embedded `suite`, `budget` and `caseResults` to the artifact
 below for independent recomputation. Unknown usage and corresponding means
-are nullable. Provider categories beyond `ops`, `ops-plan` and the bounded `publisher` slice, production
+are nullable. Provider categories beyond `ops`, `ops-plan`, `moderator-proposal` and the bounded `publisher` slice, production
 signal gates and model-usefulness acceptance described here remain planned.
 
 The [Publisher proposal evaluation and review implementation](r6-publisher-evaluation-flow.md)
@@ -1342,6 +1342,13 @@ coverage and compare only matched reviewed predictions. Neither authored labels
 nor self-reported feedback constitute production precision or authorization.
 The fixed installed-version verifier does not accept historical changed detector
 predictions; longitudinal model/detector comparison remains open.
+
+The [Moderator recipe response evaluation](r6-moderator-proposal-evaluation-flow.md)
+adds sixteen bilingual `moderator-proposal.v1` synthetic metadata cases through the
+actual recipe instruction/schema. Exact candidate selection and required abstention
+are scored separately from detector conformance; self-reported accept/edit/reject
+reviews include parsed abstentions. This does not establish production spam
+precision, arbitrary prose truth or automatic-action readiness.
 
 The [Operator diagnosis and plan evaluation](r6-operator-plan-evaluation-flow.md)
 adds sixteen bilingual `operator-plan.v1` cases with bounded diagnosis statements,
