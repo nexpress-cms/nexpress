@@ -18,7 +18,7 @@ import {
   type RunbookId,
   type RunbookJson,
 } from "./runbook-core.js";
-import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
+import { readCommandOption, normalizePnpmPassthroughArgv } from "./ops-command-format.js";
 
 interface CapturedCommand {
   command: string;
@@ -75,15 +75,6 @@ Options:
 
 function shouldPrintHelp(argv: string[]): boolean {
   return argv.includes("--help") || argv.includes("-h");
-}
-
-function readOutArg(argv: string[]): string | null {
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === "--out") return argv[i + 1] ?? null;
-    if (arg?.startsWith("--out=")) return arg.slice("--out=".length);
-  }
-  return null;
 }
 
 function capture(manager: PackageManager, args: string[]): Promise<CapturedCommand> {
@@ -258,7 +249,7 @@ async function main(): Promise<void> {
 
   const manager = detectPackageManager(process.cwd());
   const evidence = await Promise.all(evidenceRuns(manager, RUNBOOK));
-  const outArg = readOutArg(ARGV);
+  const outArg = readCommandOption(ARGV, "--out");
   const artifactPath = outArg ? resolve(process.cwd(), outArg) : null;
   const report = buildRunbookJson({ runbook: RUNBOOK, evidence, artifactPath });
   if (artifactPath) await writeRunbookArtifact(report, artifactPath);

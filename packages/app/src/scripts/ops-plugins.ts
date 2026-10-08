@@ -1,5 +1,6 @@
 // Must be first so .env is available before plugin config imports run.
 import "./_load-env.js";
+import { readCommandOption } from "./ops-command-format.js";
 
 import {
   buildOpsPluginInspectJson,
@@ -53,15 +54,6 @@ function shouldPrintHelp(argv: string[]): boolean {
   return argv.includes("--help") || argv.includes("-h");
 }
 
-function readStringArg(name: string): string | null {
-  for (let i = 0; i < ARGV.length; i += 1) {
-    const arg = ARGV[i];
-    if (arg === name) return ARGV[i + 1] ?? null;
-    if (arg?.startsWith(`${name}=`)) return arg.slice(name.length + 1);
-  }
-  return null;
-}
-
 async function main(): Promise<void> {
   if (shouldPrintHelp(ARGV)) {
     printHelp();
@@ -73,7 +65,7 @@ async function main(): Promise<void> {
   if (COMMAND === "enable" || COMMAND === "disable") {
     const pluginId = positionals[1];
     if (!pluginId) throw new Error(`Usage: nexpress ops plugins ${COMMAND} <pluginId> [--json]`);
-    const siteId = readStringArg("--site");
+    const siteId = readCommandOption(ARGV, "--site");
     if (!siteId) {
       throw new Error(`Usage: nexpress ops plugins ${COMMAND} <pluginId> --site <siteId> [--json]`);
     }
@@ -82,8 +74,8 @@ async function main(): Promise<void> {
       pluginId,
       siteId,
       execute: ARGV.includes("--execute"),
-      approve: readStringArg("--approve"),
-      out: readStringArg("--out"),
+      approve: readCommandOption(ARGV, "--approve"),
+      out: readCommandOption(ARGV, "--out"),
     });
     if (JSON_MODE) {
       console.log(JSON.stringify(mutationReport, null, 2));

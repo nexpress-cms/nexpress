@@ -681,6 +681,64 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
     }
   }
 
+  async function loadConfiguredPluginsAndContributions(): Promise<void> {
+    const instance = requireDbInstance();
+    const configured = config.plugins ?? [];
+    const configuredIds = configured.map(resolvePluginId);
+
+    await syncPluginRegistrations(instance, configuredIds);
+    // Plugin code and registries are process-global. Every configured plugin
+    // must be loaded so two concurrent sites can use different activation
+    // sets; site-scoped dispatch and source filters decide what is active.
+    const pluginsWithContributions = configured.map((plugin) => ({
+      plugin,
+      blocks: pluginBlocks(plugin),
+      patterns: pluginPatterns(plugin),
+    }));
+    const themesWithContributions = (config.themes ?? []).map(themeContributions);
+    const pluginBlockTypes = new Set([
+      ...getDefaultBlocks().map((block) => block.type),
+      ...pluginsWithContributions.flatMap(({ blocks }) => blocks.map((block) => block.type)),
+    ]);
+    for (const { plugin, patterns } of pluginsWithContributions) {
+      assertKnownPatternBlockTypes(`plugin:${resolvePluginId(plugin)}`, patterns, pluginBlockTypes);
+    }
+    for (const { theme, blocks, patterns } of themesWithContributions) {
+      assertKnownPatternBlockTypes(
+        `theme:${theme.manifest.id}`,
+        patterns,
+        new Set([...pluginBlockTypes, ...blocks.map((block) => block.type)]),
+      );
+    }
+    await loadPlugins(configured);
+    // Stamp ownership and register every block before any pattern.
+    for (const { plugin, blocks } of pluginsWithContributions) {
+      const pluginId = resolvePluginId(plugin);
+      for (const block of blocks) {
+        registerBlock({ ...block, source: `plugin:${pluginId}` });
+      }
+    }
+    for (const { theme, blocks } of themesWithContributions) {
+      for (const block of blocks) {
+        registerBlock({
+          ...block,
+          source: `theme:${theme.manifest.id}`,
+        });
+      }
+    }
+    for (const { plugin, patterns } of pluginsWithContributions) {
+      const pluginId = resolvePluginId(plugin);
+      for (const pattern of patterns) {
+        registerPattern({ ...pattern, source: `plugin:${pluginId}` });
+      }
+    }
+    for (const { theme, patterns } of themesWithContributions) {
+      for (const pattern of patterns) {
+        registerPattern({ ...pattern, source: `theme:${theme.manifest.id}` });
+      }
+    }
+  }
+
   async function ensurePluginsLoaded(): Promise<void> {
     await ensureRead();
     assertActive();
@@ -688,84 +746,7 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
     if (pluginsLoadingPromise) return pluginsLoadingPromise;
 
     pluginsLoadingPromise = (async () => {
-      const instance = requireDbInstance();
-      const configured = config.plugins ?? [];
-      const configuredIds = configured.map(resolvePluginId);
-
-      await syncPluginRegistrations(instance, configuredIds);
-      // Plugin code and registries are process-global. Every configured plugin
-      // must be loaded so two concurrent sites can use different activation
-      // sets; site-scoped dispatch and source filters decide what is active.
-      const pluginsWithContributions = configured.map((plugin) => ({
-        plugin,
-        blocks: pluginBlocks(plugin),
-        patterns: pluginPatterns(plugin),
-      }));
-      const themesWithContributions = (config.themes ?? []).map(themeContributions);
-      const pluginBlockTypes = new Set([
-        ...getDefaultBlocks().map((block) => block.type),
-        ...pluginsWithContributions.flatMap(({ blocks }) => blocks.map((block) => block.type)),
-      ]);
-      for (const { plugin, patterns } of pluginsWithContributions) {
-        assertKnownPatternBlockTypes(
-          `plugin:${resolvePluginId(plugin)}`,
-          patterns,
-          pluginBlockTypes,
-        );
-      }
-      for (const { theme, blocks, patterns } of themesWithContributions) {
-        assertKnownPatternBlockTypes(
-          `theme:${theme.manifest.id}`,
-          patterns,
-          new Set([...pluginBlockTypes, ...blocks.map((block) => block.type)]),
-        );
-      }
-      await loadPlugins(configured);
-      // Push each configured plugin's blocks into the shared block
-      // registry so they appear in the admin's Add-block popover
-      // and resolve correctly during server render.
-      // `registerBlock` overwrites an existing source on HMR /
-      // re-bootstrap. Same-plugin duplicates were rejected above.
-      for (const { plugin, blocks } of pluginsWithContributions) {
-        const pluginId = resolvePluginId(plugin);
-        for (const block of blocks) {
-          // Phase F.4 — auto-stamp concrete source identity
-          // (`plugin:<pluginId>`) so the activation filter can
-          // distinguish each plugin's blocks. Author-supplied
-          // `source` is overridden unconditionally per design
-          // doc §4.4 ("authors don't pass source manually").
-          registerBlock({ ...block, source: `plugin:${pluginId}` });
-        }
-      }
-      // Phase F.4 — register theme-shipped blocks too. Themes are
-      // process-global installed (any of `config.themes` may be
-      // active on any site in this process); the registry stays
-      // append-only and the activation filter at admin/render
-      // layer scopes by site context.
-      //
-      // Phase F.5 — same for theme-shipped patterns; both use
-      // concrete `theme:<id>` source identity so the activation
-      // filter scopes them per site.
-      for (const { theme, blocks } of themesWithContributions) {
-        for (const block of blocks) {
-          registerBlock({
-            ...block,
-            source: `theme:${theme.manifest.id}`,
-          });
-        }
-      }
-      // Register patterns only after every referenced block is present.
-      for (const { plugin, patterns } of pluginsWithContributions) {
-        const pluginId = resolvePluginId(plugin);
-        for (const pattern of patterns) {
-          registerPattern({ ...pattern, source: `plugin:${pluginId}` });
-        }
-      }
-      for (const { theme, patterns } of themesWithContributions) {
-        for (const pattern of patterns) {
-          registerPattern({ ...pattern, source: `theme:${theme.manifest.id}` });
-        }
-      }
+      await loadConfiguredPluginsAndContributions();
       pluginsLoaded = true;
     })();
 
@@ -837,67 +818,7 @@ export function createBootstrap(options: NpBootstrapOptions): NpBootstrap {
       // Same invariant for patterns: drop removed or config-changed
       // contributions before rebuilding the process registry.
       resetSharedPatternRegistry();
-      const instance = requireDbInstance();
-      const configured = config.plugins ?? [];
-      const configuredIds = configured.map(resolvePluginId);
-
-      await syncPluginRegistrations(instance, configuredIds);
-      const pluginsWithContributions = configured.map((plugin) => ({
-        plugin,
-        blocks: pluginBlocks(plugin),
-        patterns: pluginPatterns(plugin),
-      }));
-      const themesWithContributions = (config.themes ?? []).map(themeContributions);
-      const pluginBlockTypes = new Set([
-        ...getDefaultBlocks().map((block) => block.type),
-        ...pluginsWithContributions.flatMap(({ blocks }) => blocks.map((block) => block.type)),
-      ]);
-      for (const { plugin, patterns } of pluginsWithContributions) {
-        assertKnownPatternBlockTypes(
-          `plugin:${resolvePluginId(plugin)}`,
-          patterns,
-          pluginBlockTypes,
-        );
-      }
-      for (const { theme, blocks, patterns } of themesWithContributions) {
-        assertKnownPatternBlockTypes(
-          `theme:${theme.manifest.id}`,
-          patterns,
-          new Set([...pluginBlockTypes, ...blocks.map((block) => block.type)]),
-        );
-      }
-      await loadPlugins(configured);
-      for (const { plugin, blocks } of pluginsWithContributions) {
-        const pluginId = resolvePluginId(plugin);
-        for (const block of blocks) {
-          // Same concrete-source stamping as `ensurePluginsLoaded`.
-          registerBlock({ ...block, source: `plugin:${pluginId}` });
-        }
-      }
-      // Re-register theme blocks + patterns after the registry
-      // resets above (resetSharedBlockRegistry / Pattern only
-      // reseed built-in defaults). Theme contributions don't
-      // change between reloads, but they live in the same
-      // process-global registries so we have to put them back.
-      for (const { theme, blocks } of themesWithContributions) {
-        for (const block of blocks) {
-          registerBlock({
-            ...block,
-            source: `theme:${theme.manifest.id}`,
-          });
-        }
-      }
-      for (const { plugin, patterns } of pluginsWithContributions) {
-        const pluginId = resolvePluginId(plugin);
-        for (const pattern of patterns) {
-          registerPattern({ ...pattern, source: `plugin:${pluginId}` });
-        }
-      }
-      for (const { theme, patterns } of themesWithContributions) {
-        for (const pattern of patterns) {
-          registerPattern({ ...pattern, source: `theme:${theme.manifest.id}` });
-        }
-      }
+      await loadConfiguredPluginsAndContributions();
       pluginsLoaded = true;
     })();
 

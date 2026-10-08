@@ -11,7 +11,7 @@ import {
   runOpsBackupRestoreApply,
   type OpsBackupMode,
 } from "./ops-backup-core.js";
-import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
+import { readCommandOption, normalizePnpmPassthroughArgv } from "./ops-command-format.js";
 
 const RAW_ARGV = process.argv.slice(2);
 const ARGV = normalizePnpmPassthroughArgv(RAW_ARGV);
@@ -85,15 +85,6 @@ function readPositional(index: number): string | null {
   return positionals[index] ?? null;
 }
 
-function readArgValue(name: string): string | null {
-  for (let i = 0; i < ARGV.length; i += 1) {
-    const arg = ARGV[i];
-    if (arg === name) return ARGV[i + 1] ?? null;
-    if (arg?.startsWith(`${name}=`)) return arg.slice(name.length + 1);
-  }
-  return null;
-}
-
 async function main(): Promise<void> {
   if (shouldPrintHelp(ARGV)) {
     printHelp();
@@ -118,8 +109,8 @@ async function main(): Promise<void> {
     const report = await runOpsBackupRestoreApply({
       manifestId: readPositional(2) ?? "latest",
       execute: ARGV.includes("--execute"),
-      approve: readArgValue("--approve"),
-      out: readArgValue("--out"),
+      approve: readCommandOption(ARGV, "--approve"),
+      out: readCommandOption(ARGV, "--out"),
     });
     if (JSON_MODE) {
       console.log(JSON.stringify(report, null, 2));
@@ -132,8 +123,8 @@ async function main(): Promise<void> {
   const report =
     MODE === "create"
       ? await createOpsBackupManifest({
-          databasePath: readArgValue("--database"),
-          mediaPath: readArgValue("--media"),
+          databasePath: readCommandOption(ARGV, "--database"),
+          mediaPath: readCommandOption(ARGV, "--media"),
           verified: VERIFIED_MODE,
           restoreVerified: RESTORE_VERIFIED_MODE,
         })

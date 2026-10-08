@@ -1,84 +1,73 @@
-import { describe, expect, it } from "vitest";
+import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { describe, expect, it, vi } from "vitest";
 
-import type { NpFieldConfig } from "../config/types.js";
+import type { NpCollectionConfig, NpFieldConfig } from "../config/types.js";
 
-// `hasPublishedAtField` is a module-private helper inside scheduled.ts.
-// Rather than pierce the abstraction, we re-implement its structural rule
-// here and test that the detection contract (a top-level field, including
-// layout-only row/collapsible wrappers, opts in) holds. If the
-// module's detection semantics change, this test must change with it —
-// which is the right pressure to have on a behaviour contract.
-function findPublishedAt(fields: NpFieldConfig[]): boolean {
-  for (const field of fields) {
-    if (field.type === "row" || field.type === "collapsible") {
-      if (findPublishedAt(field.fields)) return true;
-      continue;
+const { collections, update } = vi.hoisted(() => ({
+  collections: new Map<string, NpCollectionConfig>(),
+  update: vi.fn(),
+}));
+vi.mock("../db/runtime.js", () => ({ getDb: () => ({ update }) }));
+vi.mock("./registry.js", () => ({
+  getAllCollectionSlugs: () => [...collections.keys()],
+  getCollectionConfig: (slug: string) => collections.get(slug),
+  getCollectionTable: () => table,
+}));
+vi.mock("./pipeline.js", () => ({}));
+vi.mock("../jobs/queue.js", () => ({}));
+vi.mock("../plugins/host.js", () => ({}));
+
+import { publishScheduledDocuments } from "./scheduled.js";
+
+const table = pgTable("scheduled_selection", {
+  status: text("status"),
+  publishedAt: timestamp("published_at"),
+});
+
+describe("publishScheduledDocuments collection selection", () => {
+  it("scans declared top-level dates and framework-managed draft dates only", async () => {
+    const date: NpFieldConfig = { type: "date", name: "publishedAt" };
+    const inputs: Array<{
+      slug: string;
+      fields: NpFieldConfig[];
+      versions?: NpCollectionConfig["versions"];
+      selected: boolean;
+    }> = [
+      { slug: "date", fields: [date], selected: true },
+      { slug: "wrong-type", fields: [{ type: "text", name: "publishedAt" }], selected: false },
+      { slug: "wrong-name", fields: [{ type: "date", name: "scheduledFor" }], selected: false },
+      { slug: "row", fields: [{ type: "row", fields: [date] }], selected: true },
+      {
+        slug: "collapsible",
+        fields: [{ type: "collapsible", label: "Meta", fields: [date] }],
+        selected: true,
+      },
+      {
+        slug: "group",
+        fields: [{ type: "group", name: "publishing", fields: [date] }],
+        selected: false,
+      },
+      {
+        slug: "array",
+        fields: [{ type: "array", name: "drops", fields: [date] }],
+        selected: false,
+      },
+      { slug: "empty", fields: [], selected: false },
+      { slug: "drafts", fields: [], versions: { drafts: true }, selected: true },
+    ];
+    for (const { slug, fields, versions } of inputs) {
+      collections.set(slug, { slug, labels: { singular: slug, plural: slug }, fields, versions });
     }
-    if (field.type === "date" && field.name === "publishedAt") {
-      return true;
+    update.mockReturnValue({
+      set: () => ({ where: () => ({ returning: () => Promise.resolve([]) }) }),
+    });
+
+    const result = await publishScheduledDocuments(new Date("2026-10-01T00:00:00.000Z"));
+
+    expect(result.published).toBe(0);
+    for (const { slug, selected } of inputs) {
+      expect(result.byCollection[slug], slug).toEqual(selected ? [] : undefined);
     }
-  }
-  return false;
-}
-
-describe("publishedAt field detection contract", () => {
-  it("returns true for a top-level date field named publishedAt", () => {
-    expect(findPublishedAt([{ type: "date", name: "publishedAt" }])).toBe(true);
-  });
-
-  it("returns false when publishedAt exists but is not a date", () => {
-    expect(findPublishedAt([{ type: "text", name: "publishedAt" }])).toBe(false);
-  });
-
-  it("returns false for a date field with a different name", () => {
-    expect(findPublishedAt([{ type: "date", name: "scheduledFor" }])).toBe(false);
-  });
-
-  it("recurses into rows and collapsibles", () => {
-    expect(
-      findPublishedAt([
-        {
-          type: "row",
-          fields: [
-            { type: "date", name: "publishedAt" },
-            { type: "text", name: "title" },
-          ],
-        },
-      ]),
-    ).toBe(true);
-    expect(
-      findPublishedAt([
-        {
-          type: "collapsible",
-          label: "Meta",
-          fields: [{ type: "date", name: "publishedAt" }],
-        },
-      ]),
-    ).toBe(true);
-  });
-
-  it("does not treat stored group or array children as top-level columns", () => {
-    expect(
-      findPublishedAt([
-        {
-          type: "group",
-          name: "publishing",
-          fields: [{ type: "date", name: "publishedAt" }],
-        },
-      ]),
-    ).toBe(false);
-    expect(
-      findPublishedAt([
-        {
-          type: "array",
-          name: "drops",
-          fields: [{ type: "date", name: "publishedAt" }],
-        },
-      ]),
-    ).toBe(false);
-  });
-
-  it("returns false for an empty field list", () => {
-    expect(findPublishedAt([])).toBe(false);
+    expect(update).toHaveBeenCalledTimes(4);
   });
 });

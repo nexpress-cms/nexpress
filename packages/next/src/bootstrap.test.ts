@@ -94,6 +94,8 @@ describe("createBootstrap", () => {
     vi.mocked(host.loadPlugins).mockResolvedValue(undefined);
     vi.mocked(host.startProducer).mockResolvedValue(undefined);
     vi.mocked(host.syncPluginRegistrations).mockResolvedValue(undefined);
+    vi.mocked(blocks.registerBlock).mockReset();
+    vi.mocked(blocks.registerPattern).mockReset();
   });
 
   afterEach(() => {
@@ -380,11 +382,59 @@ describe("createBootstrap", () => {
     expect(host.startProducer).not.toHaveBeenCalled();
   });
 
-  it("reloads plugins only after boot and clears contributed registries", async () => {
-    const bootstrap = createBootstrap({ config: buildConfig(), generatedSchema: {} });
+  it("loads and reloads owned contributions with all blocks registered before patterns", async () => {
+    const pluginBlock = {
+      type: "reading-time.summary",
+      label: "Summary",
+      defaultProps: {},
+      propsSchema: [],
+      render: () => null,
+      source: "custom",
+    };
+    const themeBlock = { ...pluginBlock, type: "theme.summary" };
+    const pattern = {
+      id: "reading-time.summary",
+      label: "Summary",
+      blocks: [{ id: "summary", type: pluginBlock.type, props: {} }],
+      source: "custom",
+    };
+    const config = Object.assign({}, buildConfig(), {
+      plugins: [{ id: "reading-time", blocks: [pluginBlock], patterns: [pattern] }],
+      themes: [
+        {
+          manifest: { id: "test-theme" },
+          impl: { blocks: [themeBlock], patterns: [{ ...pattern, id: "theme.summary" }] },
+        },
+      ],
+    });
+    const events: string[] = [];
+    vi.mocked(host.syncPluginRegistrations).mockImplementation(() => {
+      events.push("sync");
+      return Promise.resolve();
+    });
+    vi.mocked(host.loadPlugins).mockImplementation(() => {
+      events.push("load");
+      return Promise.resolve();
+    });
+    vi.mocked(blocks.registerBlock).mockImplementation(({ source }) => {
+      events.push(`block:${source}`);
+    });
+    vi.mocked(blocks.registerPattern).mockImplementation(({ source }) => {
+      events.push(`pattern:${source}`);
+    });
+    const bootstrap = createBootstrap({ config, generatedSchema: {} });
 
     await bootstrap.reloadPlugins();
 
+    const registration = [
+      "sync",
+      "load",
+      "block:plugin:reading-time",
+      "block:theme:test-theme",
+      "pattern:plugin:reading-time",
+      "pattern:theme:test-theme",
+    ];
+    expect(events).toEqual([...registration, ...registration]);
     expect(host.loadPlugins).toHaveBeenCalledTimes(2);
     expect(host.teardownPlugins).toHaveBeenCalledOnce();
     expect(host.resetPlugins).toHaveBeenCalledOnce();
@@ -426,22 +476,7 @@ describe("createBootstrap", () => {
     expect(host.npCloseDbConnection).toHaveBeenCalledOnce();
   });
 
-  it("rejects malformed contributions before loading and stamps valid pattern sources", async () => {
-    const pattern = {
-      id: "reading-time.summary",
-      label: "Reading time summary",
-      blocks: [{ id: "template", type: "rich-text", props: {} }],
-    };
-    const goodConfig = Object.assign({}, buildConfig(), {
-      plugins: [{ id: "reading-time", patterns: [pattern] }],
-    });
-    await createBootstrap({ config: goodConfig, generatedSchema: {} }).ensureFor("plugins");
-    expect(blocks.registerPattern).toHaveBeenCalledWith({
-      ...pattern,
-      source: "plugin:reading-time",
-    });
-
-    vi.clearAllMocks();
+  it("rejects malformed contributions before loading", async () => {
     vi.mocked(blocks.npAnalyzeBlockDefinitions).mockReturnValueOnce([
       { code: "invalid-definition", index: 0, message: "block.render must be a function." },
     ] as never);
