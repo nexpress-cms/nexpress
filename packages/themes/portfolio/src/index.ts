@@ -1,4 +1,9 @@
-import { defineTheme, type NpThemeSeedPage, type NpThemeSeedPost } from "@nexpress/theme";
+import {
+  defineTheme,
+  npCreateSeedRichText,
+  type NpThemeSeedPage,
+  type NpThemeSeedPost,
+} from "@nexpress/theme";
 
 import { portfolioBlocks } from "./blocks.js";
 import { PortfolioMobileNav } from "./components/mobile-nav.js";
@@ -19,42 +24,6 @@ import { PagePressTemplate } from "./templates/page-press.js";
 import { PageStudioTemplate } from "./templates/page-studio.js";
 import { ProjectDetailTemplate } from "./templates/project-detail.js";
 import { ProjectIndexTemplate, type PortfolioProjectDoc } from "./templates/project-index.js";
-
-/**
- * Minimal NexPress rich-text v1 helper. Inlined so the
- * theme package stays free of an `@nexpress/editor` dependency
- * just for serialization.
- */
-function lexicalDoc(paragraphs: string[]): unknown {
-  const document = {
-    root: {
-      type: "root",
-      version: 1,
-      direction: null,
-      format: "",
-      indent: 0,
-      children: paragraphs.map((text) => ({
-        type: "paragraph",
-        version: 1,
-        direction: null,
-        format: "",
-        indent: 0,
-        children: [
-          {
-            type: "text",
-            version: 1,
-            detail: 0,
-            format: 0,
-            mode: "normal",
-            style: "",
-            text,
-          },
-        ],
-      })),
-    },
-  };
-  return { version: 1, document };
-}
 
 const ISO = (year: number, month = 1, day = 1): string =>
   new Date(Date.UTC(year, month - 1, day)).toISOString();
@@ -78,7 +47,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
     slug: "hanmi-gallery-complete-identity",
     excerpt:
       "Identity, custom display type, and signage for a contemporary gallery in Mapo. A one-year engagement covering everything from the wordmark to the door hardware.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "The Hanmi Gallery opened on a side street in Mapo in spring 2025 with a permanent collection of late-20th-century Korean photography and a programming calendar that runs four shows a year. We were brought on a year ahead to draw the identity, the signage, and a small in-house display typeface used across the wall labels.",
       "The wordmark is set in a single drawn pair of letters — H and G — at the size you'd want them to read across a gallery's facade. Underneath sits a quiet sans for the chrome (wall labels, ticketing, the website's tertiary type). The display face is used sparingly: titles, chapter markers, and the door numbers on the four ground-floor exhibit rooms.",
     ]),
@@ -99,7 +68,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
     title: "Aperture — <em>journal redesign</em>",
     excerpt:
       "Two-year redesign of an independent design journal's print + web surfaces. Editorial type system, custom display cuts, three issues shipped.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "Aperture is a quarterly design journal published from a desk in Bukchon-dong; its editors had been running on a custom Bembo + sans pairing they'd outgrown by their thirty-fourth issue. We redrew the editorial system from the ground up — body type, display, captions, and a small set of secondary cuts for the digital surface.",
       "Three issues have shipped under the new system. The fourth is in production. The editors say the most useful thing about the new type stack is that it survives bad paper.",
     ]),
@@ -119,7 +88,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
     title: "Ø Studio — <em>display typeface</em>",
     excerpt:
       "Three-weight display typeface released as a single OTF. Sold direct, no marketplace, no license tiers — one font, one price.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "Ø is a display sans we drew over the course of fourteen months for a project that ended up not needing it. Rather than shelve the drawings, we released the family as a single OTF at a flat price — three weights, no marketing kit, no license tiers.",
       "It is most useful at sizes you would normally describe in points rather than pixels: 96, 144, 216. At 12 it loses what makes it interesting.",
     ]),
@@ -139,7 +108,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
     title: "MoMA PS1 — <em>exhibit graphics</em>",
     excerpt:
       "Environmental graphics for a single autumn exhibition at MoMA PS1. Six-week engagement, six rooms, one set of large-format wall types.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "The exhibition opened in early autumn and ran through the end of the year. Our work covered the wall types — exhibition title, room markers, artist labels, and the small set of tertiary labels around the audio guide stations.",
       "Everything is set in a single drawn face. The labels are printed at three sizes; the rest of the system follows from there.",
     ]),
@@ -159,7 +128,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
     title: "Hanok Press — <em>book series</em>",
     excerpt:
       "Sixteen-volume editorial series on Korean vernacular architecture. Editorial system + cover series + a small set of in-text marginal marks.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "The Hanok Press series runs sixteen short-form titles on aspects of Korean vernacular architecture — courtyards, paper windows, roof tiles, ondol heating, and twelve others. Each volume is around 12,000 words and 64 pages.",
       "We designed the cover series as a system rather than sixteen individual covers: a fixed grid, a fixed display face, a shifting accent color drawn from each book's lead photograph.",
     ]),
@@ -180,7 +149,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
     title: "S\u014den Coffee — <em>packaging system</em>",
     excerpt:
       "Identity + 12-SKU packaging system for a small-batch coffee roaster. Two-color print on uncoated kraft, single bag size, twelve labels.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "S\u014den roasts in small batches out of a warehouse in Yeonnam-dong and sells through one shop and two cafes. They asked for a packaging system that could run twelve coffees off a single bag size and a two-color print, on the assumption (correct) that their best decisions would be made later, in the shop, not earlier, in the design.",
       "The system is a fixed bag, a fixed bag color, a fixed type stack — and twelve labels we redraw every season.",
     ]),
@@ -200,7 +169,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
     title: "City of Seoul — <em>centennial mark</em>",
     excerpt:
       "Bilingual centennial mark for a municipal centennial year. One mark, two scripts, four primary uses.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "The mark was drawn to read at four sizes — letterhead, a public banner along the river promenade, a small enamel pin, and a transit-station vinyl. It needed to work bilingually (Korean + English) at every size, with neither script reading as primary.",
       "We worked through forty-three rounds. The version that shipped is the thirty-eighth.",
     ]),
@@ -220,7 +189,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
     title: "Field Notebooks — <em>full rebrand</em>",
     excerpt:
       "Identity + packaging rebrand for an independent stationery line. Six product families, one new wordmark, three new pattern families.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "Field Notebooks have been made out of the same workshop for nine years and shipped under the same identity for seven. The rebrand was a full-package job: new wordmark, new product photography, new pattern families on the cover boards, and a stripped-down internal label that runs on three SKUs instead of the previous fifteen.",
       "The wordmark is set tighter than the old one and is a touch lighter at small sizes; the difference is visible on the spine more than on the cover.",
     ]),
@@ -240,7 +209,7 @@ const SEED_PROJECTS: NpThemeSeedPost[] = [
     title: "Pentagram (NY) — <em>collaborative type cut</em>",
     excerpt:
       "Eight-month collaboration with a New York office on a custom display cut. Three weights, one mock italic, used internally only.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "The office reached out about a custom display cut they wanted to use across their internal presentations and a small set of client deliverables. We split the work: they drew the master shapes, we drew the spacing and the secondary weights.",
       "The face is not for sale. Three of us in this studio still get to use it on the work we do for them; everyone else, including their clients, only ever sees the output.",
     ]),
@@ -283,7 +252,7 @@ const SEED_JOURNAL_POSTS: NpThemeSeedPost[] = [
     title: "Why the first round is never for approval",
     excerpt:
       "A studio note on keeping early identity work exploratory before the system starts asking for rules.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "The first round is for range, not approval. We use it to test the edges of the brief while the stakes are still low and the vocabulary is still flexible.",
       "The strongest projects usually keep one surprising artifact from that round. It may not survive intact, but it keeps the later system from collapsing into the obvious.",
     ]),
@@ -295,7 +264,7 @@ const SEED_JOURNAL_POSTS: NpThemeSeedPost[] = [
     title: "A shelf of paper that keeps saving us",
     excerpt:
       "Four paper samples, two binding references, and the dull magic of having physical constraints nearby.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "A good paper shelf is less about taste than memory. It keeps old constraints close enough that they can become useful again.",
       "The samples we return to most often are not precious. They are the ones that explain a production tradeoff at a glance.",
     ]),
@@ -307,7 +276,7 @@ const SEED_JOURNAL_POSTS: NpThemeSeedPost[] = [
     title: "On display type that refuses to behave at 12px",
     excerpt:
       "Not every typeface needs to be a system font. Some drawings are better when they stay loud.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "There is a temptation to make every custom display face behave everywhere. Usually that is a mistake.",
       "Some drawings are useful because they are specific. They start working at 96 points and get better as the room gets bigger.",
     ]),

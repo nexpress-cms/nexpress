@@ -34,7 +34,7 @@ import {
   scaffoldScheduledPlugin,
 } from "./scaffold-plugin-types.js";
 import { packageNameFromSlug, resolveScaffoldDependencyRanges } from "./scaffold-utils.js";
-import type { ScaffoldKind, ScaffoldResult } from "./scaffold-utils.js";
+import type { ScaffoldKind, ScaffoldOptions, ScaffoldResult } from "./scaffold-utils.js";
 import { packageNameFromThemeSlug, scaffoldTheme } from "./scaffold-theme.js";
 import { buildRunScriptArgs, resolveOpsScriptInvocation } from "./ops-command.js";
 import {
@@ -861,6 +861,7 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
         label: string;
         supportsInteractive: boolean;
         workspaceDir: "packages/plugins" | "packages/themes";
+        generate: (options: ScaffoldOptions) => Promise<ScaffoldResult>;
       }
     > = {
       "block-plugin": {
@@ -868,42 +869,49 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
         label: "block",
         supportsInteractive: true,
         workspaceDir: "packages/plugins",
+        generate: scaffoldBlockPlugin,
       },
       "hook-plugin": {
         kind: "hook",
         label: "content-hook",
         supportsInteractive: false,
         workspaceDir: "packages/plugins",
+        generate: scaffoldHookPlugin,
       },
       "route-plugin": {
         kind: "route",
         label: "API-route",
         supportsInteractive: false,
         workspaceDir: "packages/plugins",
+        generate: scaffoldRoutePlugin,
       },
       "page-plugin": {
         kind: "page",
         label: "public page-route",
         supportsInteractive: false,
         workspaceDir: "packages/plugins",
+        generate: scaffoldPagePlugin,
       },
       "admin-plugin": {
         kind: "admin",
         label: "admin-extension",
         supportsInteractive: false,
         workspaceDir: "packages/plugins",
+        generate: scaffoldAdminPlugin,
       },
       "scheduled-plugin": {
         kind: "scheduled",
         label: "scheduled-task",
         supportsInteractive: false,
         workspaceDir: "packages/plugins",
+        generate: scaffoldScheduledPlugin,
       },
       theme: {
         kind: "theme",
         label: "theme",
         supportsInteractive: false,
         workspaceDir: "packages/themes",
+        generate: scaffoldTheme,
       },
     };
 
@@ -950,37 +958,7 @@ export async function runNexpressCli(argv: string[], runtime: CliRuntime = {}): 
         : ["@nexpress/blocks", "@nexpress/plugin-sdk"],
     );
     try {
-      let result: ScaffoldResult;
-      switch (meta.kind) {
-        case "block":
-          result = await scaffoldBlockPlugin({ slug, outDir, dependencyRanges, interactive });
-          break;
-        case "hook":
-          result = await scaffoldHookPlugin({ slug, outDir, dependencyRanges });
-          break;
-        case "route":
-          result = await scaffoldRoutePlugin({ slug, outDir, dependencyRanges });
-          break;
-        case "page":
-          result = await scaffoldPagePlugin({ slug, outDir, dependencyRanges });
-          break;
-        case "admin":
-          result = await scaffoldAdminPlugin({ slug, outDir, dependencyRanges });
-          break;
-        case "scheduled":
-          result = await scaffoldScheduledPlugin({ slug, outDir, dependencyRanges });
-          break;
-        case "theme":
-          result = await scaffoldTheme({ slug, outDir, dependencyRanges });
-          break;
-        default: {
-          // Exhaustiveness check — adding a kind without updating the
-          // switch makes the type system complain here.
-          const _exhaustive: never = meta.kind;
-          void _exhaustive;
-          throw new Error(`unreachable: unhandled scaffold kind ${meta.kind as string}`);
-        }
-      }
+      const result = await meta.generate({ slug, outDir, dependencyRanges, interactive });
 
       const labelPrefix = meta.kind === "block" && interactive ? "interactive block" : meta.label;
       const packageName =

@@ -6,6 +6,13 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { packageNameFromThemeSlug, scaffoldTheme } from "./scaffold-theme.js";
 
+it("normalizes author-friendly slugs to theme package names", () => {
+  expect(packageNameFromThemeSlug("newsroom")).toBe("theme-newsroom");
+  expect(packageNameFromThemeSlug("theme-newsroom")).toBe("theme-newsroom");
+  expect(packageNameFromThemeSlug("@acme/newsroom")).toBe("@acme/theme-newsroom");
+  expect(packageNameFromThemeSlug("@acme/theme-newsroom")).toBe("@acme/theme-newsroom");
+});
+
 describe("scaffoldTheme", () => {
   let workdir: string;
 
@@ -15,13 +22,6 @@ describe("scaffoldTheme", () => {
 
   afterEach(async () => {
     await rm(workdir, { recursive: true, force: true });
-  });
-
-  it("normalizes author-friendly slugs to theme package names", () => {
-    expect(packageNameFromThemeSlug("newsroom")).toBe("theme-newsroom");
-    expect(packageNameFromThemeSlug("theme-newsroom")).toBe("theme-newsroom");
-    expect(packageNameFromThemeSlug("@acme/newsroom")).toBe("@acme/theme-newsroom");
-    expect(packageNameFromThemeSlug("@acme/theme-newsroom")).toBe("@acme/theme-newsroom");
   });
 
   it("writes a buildable baseline theme package", async () => {

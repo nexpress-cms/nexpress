@@ -19,6 +19,16 @@ export function normalizePnpmPassthroughArgv(argv: string[]): string[] {
   return argv[0] === "--" ? argv.slice(1) : argv;
 }
 
+/** Read the first option value; each command owns validation and defaults. */
+export function readCommandOption(argv: readonly string[], name: string): string | null {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === name) return argv[i + 1] ?? null;
+    if (arg?.startsWith(`${name}=`)) return arg.slice(name.length + 1);
+  }
+  return null;
+}
+
 export function isMatchingProjectCommand(command: string, projectCommand: string): boolean {
   return projectCommandCandidates(command).includes(projectCommand.trim().replace(/\s+/g, " "));
 }

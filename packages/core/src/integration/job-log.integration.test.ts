@@ -8,7 +8,8 @@ import {
   runInJobContext,
 } from "../jobs/job-log.js";
 import { getLogger } from "../observability/logger.js";
-import { closeTestDb, ensureMigrated, skipIfNoTestDb, truncateAll } from "./setup.js";
+import { npJobLogs } from "../db/schema/system.js";
+import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } from "./setup.js";
 
 async function waitForJobLog(jobId: string, message: string) {
   const deadline = Date.now() + 1000;
@@ -84,35 +85,27 @@ describe.skipIf(skipIfNoTestDb())("np_job_logs (Phase 20.3a integration)", () =>
     expect(c2[0]?.level).toBe("warn");
   });
 
-  it("countJobLogs returns the right total", async () => {
-    await runInJobContext("job-D", async () => {
-      await recordJobLog("info", "1");
-      await recordJobLog("info", "2");
-      await recordJobLog("error", "3");
-    });
+  it("counts only the requested job and preserves the inclusive timestamp boundary through pruning", async () => {
+    const db = await getTestDb();
+    const cutoff = new Date("2026-07-01T00:00:00.000Z");
+    const after = new Date(cutoff.getTime() + 1);
+    await db.insert(npJobLogs).values([
+      { jobId: "job-D", level: "info", message: "old", createdAt: new Date(cutoff.getTime() - 1) },
+      { jobId: "job-D", level: "info", message: "boundary", createdAt: cutoff },
+      { jobId: "job-D", level: "error", message: "new", createdAt: after },
+      { jobId: "job-other", level: "info", message: "other", createdAt: cutoff },
+    ]);
+
     expect(await countJobLogs("job-D")).toBe(3);
-  });
+    expect(await countJobLogs("missing")).toBe(0);
+    expect(await countJobLogs("job-D", cutoff)).toBe(2);
+    expect(await countJobLogs("job-D", after)).toBe(1);
+    expect(await countJobLogs("job-D", new Date(after.getTime() + 1))).toBe(0);
+    expect(await countJobLogs("job-other", cutoff)).toBe(1);
 
-  it("pruneJobLogsOlderThan deletes only rows past the cutoff", async () => {
-    await runInJobContext("job-E", async () => {
-      await recordJobLog("info", "old");
-    });
-
-    // Pretend everything is older than 1ms. The first sleep is to make
-    // sure the createdAt stamp falls before our cutoff window.
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    const cutoff = new Date();
-    await new Promise((resolve) => setTimeout(resolve, 5));
-
-    await runInJobContext("job-E", async () => {
-      await recordJobLog("info", "new");
-    });
-
-    const deleted = await pruneJobLogsOlderThan(cutoff);
-    expect(deleted).toBe(1);
-
-    const remaining = await listJobLogs("job-E");
-    expect(remaining).toHaveLength(1);
-    expect(remaining[0]?.message).toBe("new");
+    expect(await pruneJobLogsOlderThan(cutoff)).toBe(1);
+    expect((await listJobLogs("job-D")).map((row) => row.message)).toEqual(["boundary", "new"]);
+    expect(await countJobLogs("job-D")).toBe(2);
+    expect(await countJobLogs("job-other")).toBe(1);
   });
 });

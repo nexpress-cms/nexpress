@@ -17,7 +17,7 @@ describe("scaffoldBlockPlugin", () => {
     await rm(workdir, { recursive: true, force: true });
   });
 
-  it("writes the expected file set into a fresh directory", async () => {
+  it("writes one complete static package with consistent names and registration guidance", async () => {
     const result = await scaffoldBlockPlugin({ slug: "my-callout", outDir: workdir });
 
     // The files list is what the CLI prints to the operator. Stable so
@@ -30,14 +30,15 @@ describe("scaffoldBlockPlugin", () => {
       "tsup.config.ts",
     ]);
     expect(result.packageDir.endsWith("my-callout")).toBe(true);
-  });
-
-  it("derives package + identifier names from the slug consistently", async () => {
-    const result = await scaffoldBlockPlugin({ slug: "my-callout", outDir: workdir });
 
     const pkg = JSON.parse(await readFile(join(result.packageDir, "package.json"), "utf-8")) as {
       name: string;
       dependencies: Record<string, string>;
+      files: string[];
+      engines: Record<string, string>;
+      exports: Record<string, { types: string; import: string }>;
+      peerDependencies: Record<string, string>;
+      scripts: Record<string, string>;
     };
     // Unscoped slug → exactly the slug as the package name.
     expect(pkg.name).toBe("my-callout");
@@ -54,10 +55,7 @@ describe("scaffoldBlockPlugin", () => {
     expect(source).toContain("patterns: MyCalloutPatterns");
     expect(source).toContain("translatable: true");
     expect(source).toContain('visibleWhen: [["showBody", true]]');
-  });
 
-  it("documents CLI registration for local workspace plugins", async () => {
-    const result = await scaffoldBlockPlugin({ slug: "my-callout", outDir: workdir });
     const readme = await readFile(join(result.packageDir, "README.md"), "utf-8");
     expect(readme).toContain("From your NexPress project root");
     expect(readme).toContain("pnpm --filter my-callout build");
@@ -76,17 +74,6 @@ describe("scaffoldBlockPlugin", () => {
     expect(readme).toContain('import { defineConfig } from "@nexpress/core";');
     expect(readme).toContain('import myCalloutPlugin from "my-callout";');
     expect(readme).toContain("plugins: [myCalloutPlugin]");
-  });
-
-  it("keeps static block package metadata aligned with the shared plugin baseline", async () => {
-    const result = await scaffoldBlockPlugin({ slug: "baseline-block", outDir: workdir });
-    const pkg = JSON.parse(await readFile(join(result.packageDir, "package.json"), "utf-8")) as {
-      files: string[];
-      engines: Record<string, string>;
-      exports: Record<string, { types: string; import: string }>;
-      peerDependencies: Record<string, string>;
-      scripts: Record<string, string>;
-    };
 
     expect(pkg.files).toEqual(["dist"]);
     expect(pkg.engines.node).toBe(">=20.19.0");
@@ -95,6 +82,8 @@ describe("scaffoldBlockPlugin", () => {
       import: "./dist/index.js",
     });
     expect(pkg.peerDependencies.react).toBe("^19.0.0");
+    expect(result.interactive).toBe(false);
+    expect(pkg.exports["./client"]).toBeUndefined();
     expect(pkg.scripts).toEqual({
       build: "tsup",
       dev: "tsup --watch --no-clean",
@@ -182,16 +171,5 @@ describe("scaffoldBlockPlugin", () => {
     const selfShim = await readFile(join(result.packageDir, "src/self-shim.d.ts"), "utf-8");
     expect(selfShim).toContain('declare module "mixer/client"');
     expect(selfShim).toContain('export { MixerForm } from "./client.js";');
-  });
-
-  it("static (default) mode omits the client entry", async () => {
-    const result = await scaffoldBlockPlugin({ slug: "static-only", outDir: workdir });
-    expect(result.interactive).toBe(false);
-    expect(result.files).not.toContain("src/client.tsx");
-
-    const pkg = JSON.parse(await readFile(join(result.packageDir, "package.json"), "utf-8")) as {
-      exports: Record<string, unknown>;
-    };
-    expect(pkg.exports["./client"]).toBeUndefined();
   });
 });

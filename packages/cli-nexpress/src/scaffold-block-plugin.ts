@@ -1,50 +1,13 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
-
 import {
+  assertDirAvailable,
+  basePackageJson,
   baseTsconfig,
-  frameworkDependencyRanges,
+  deriveNames,
   resolveTsconfigExtends,
+  SERVER_TSUP_CONFIG,
+  writeScaffoldFiles,
   type ScaffoldDependencyRanges,
 } from "./scaffold-utils.js";
-
-/**
- * Author-friendly identifier derivation for new block plugins. The
- * generator takes a slug (`my-callout`, `@scope/my-callout`) and
- * produces:
- *   - `packageName`  — what shows up in package.json (`@nexpress/plugin-block-<slug>` if no scope, otherwise the input)
- *   - `dirName`      — the on-disk folder name
- *   - `pluginId`     — manifest id, hyphenated
- *   - `exportName`   — the JS export (camelCase + "Plugin")
- *   - `blockType`    — default block id (`<slug>.<slug>` would be silly — use `<slug>.example`)
- */
-function packageNameFromSlug(slug: string): string {
-  if (slug.startsWith("@")) return slug;
-  return slug;
-}
-
-function camelCase(input: string): string {
-  const parts = input
-    .replace(/^@[^/]+\//, "")
-    .split(/[^A-Za-z0-9]+/)
-    .filter((part) => part.length > 0);
-  if (parts.length === 0) return "plugin";
-  const [first, ...rest] = parts;
-  return (
-    (first ?? "").toLowerCase() +
-    rest.map((part) => part[0]?.toUpperCase() + part.slice(1).toLowerCase()).join("")
-  );
-}
-
-function pascalCase(input: string): string {
-  const lower = camelCase(input);
-  return lower[0]?.toUpperCase() + lower.slice(1);
-}
-
-function dirNameFromSlug(slug: string): string {
-  return slug.replace(/^@[^/]+\//, "");
-}
 
 export interface ScaffoldOptions {
   slug: string;
@@ -75,70 +38,23 @@ import type { ScaffoldResult } from "./scaffold-utils.js";
 
 export async function scaffoldBlockPlugin(options: ScaffoldOptions): Promise<ScaffoldResult> {
   const { slug, outDir, dependencyRanges, interactive = false } = options;
-  const dirName = dirNameFromSlug(slug);
-  const pluginDir = resolve(outDir, dirName);
-
-  if (existsSync(pluginDir)) {
-    throw new Error(
-      `Refusing to overwrite existing directory: ${pluginDir}. Pick a new slug or remove the directory first.`,
-    );
-  }
-
-  const packageName = packageNameFromSlug(slug);
-  const pluginId = dirName;
-  const identifier = camelCase(slug);
-  const exportName = `${identifier}Plugin`;
-  const blockTypeRoot = identifier;
-  const blockComponentName = pascalCase(slug);
+  const {
+    packageName,
+    pluginId,
+    pluginDir,
+    exportName,
+    identifier: blockTypeRoot,
+    componentName: blockComponentName,
+  } = deriveNames(slug, outDir);
+  assertDirAvailable(pluginDir);
 
   // ────────────── package.json ──────────────
-  const exportsBlock: Record<string, { types: string; import: string }> = {
-    ".": {
-      types: "./dist/index.d.ts",
-      import: "./dist/index.js",
-    },
-  };
-  if (interactive) {
-    exportsBlock["./client"] = {
-      types: "./dist/client.d.ts",
-      import: "./dist/client.js",
-    };
-  }
-  const packageJson =
-    JSON.stringify(
-      {
-        name: packageName,
-        version: "0.1.0",
-        description: `Block plugin: ${packageName}`,
-        license: "MIT",
-        type: "module",
-        main: "./dist/index.js",
-        types: "./dist/index.d.ts",
-        exports: exportsBlock,
-        files: ["dist"],
-        engines: { node: ">=20.19.0" },
-        peerDependencies: {
-          react: "^19.0.0",
-        },
-        dependencies: {
-          ...frameworkDependencyRanges(dependencyRanges),
-        },
-        devDependencies: {
-          "@types/node": "^22.0.0",
-          "@types/react": "^19.0.0",
-          tsup: "^8.5.0",
-          typescript: "^5.8.0",
-        },
-        scripts: {
-          build: "tsup",
-          dev: "tsup --watch --no-clean",
-          clean: "rm -rf dist",
-          typecheck: "tsc --noEmit",
-        },
-      },
-      null,
-      2,
-    ) + "\n";
+  const packageJson = basePackageJson(packageName, `Block plugin: ${packageName}`, {
+    dependencyRanges,
+    extraExports: interactive
+      ? { "./client": { types: "./dist/client.d.ts", import: "./dist/client.js" } }
+      : undefined,
+  });
 
   // ────────────── tsconfig.json ──────────────
   const tsconfig = baseTsconfig({
@@ -173,19 +89,7 @@ export default defineConfig({
   splitting: false,
 });
 `
-    : `import { defineConfig } from "tsup";
-
-const fast = process.env.NP_DEV_FAST === "1";
-
-export default defineConfig({
-  entry: ["src/index.tsx"],
-  format: ["esm"],
-  dts: !fast,
-  clean: true,
-  sourcemap: !fast,
-  external: ["react"],
-});
-`;
+    : SERVER_TSUP_CONFIG;
 
   // ────────────── README.md ──────────────
   const readme = `# ${packageName}
@@ -549,13 +453,8 @@ declare module "${packageName}/client" {
     files["src/self-shim.d.ts"] = selfShimSource;
   }
 
-  await mkdir(resolve(pluginDir, "src"), { recursive: true });
-  for (const [path, content] of Object.entries(files)) {
-    await writeFile(resolve(pluginDir, path), content, "utf-8");
-  }
-
   return {
-    files: Object.keys(files),
+    files: await writeScaffoldFiles(pluginDir, files),
     packageDir: pluginDir,
     kind: "block",
     interactive,

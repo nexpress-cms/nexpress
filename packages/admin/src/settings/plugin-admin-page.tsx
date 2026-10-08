@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Textarea } from "../ui/textarea.js";
 import { ZodForm, type ZodFormValue } from "../zod-form/index.js";
 import { PageHeader } from "../layout/page-header.js";
+import { getPluginConfigDefaultValues, usePluginConfigSave } from "./plugin-config.js";
 import { useForm } from "react-hook-form";
 
 interface ScheduleDef {
@@ -221,17 +222,13 @@ export function PluginAdminPage({
   initialAutoConfig,
 }: PluginAdminPageProps) {
   const hasAutoForm = configFields !== undefined;
-  const sections: Array<"autoForm" | "settings" | "widgets" | "actions" | "tables" | "schedules"> =
-    [];
-  if (hasAutoForm) sections.push("autoForm");
-  // G.1 § 5.1.1 — auto-form wins; the legacy admin.settings.fields
-  // form is hidden when configSchema is also declared. Host-side
-  // console.warn already names both sources for the operator.
-  if (admin.settings && !hasAutoForm) sections.push("settings");
-  if (admin.widgets?.length) sections.push("widgets");
-  if (admin.actions?.length) sections.push("actions");
-  if (admin.tables?.length) sections.push("tables");
-  if (schedules?.length) sections.push("schedules");
+  const hasContent =
+    hasAutoForm ||
+    admin.settings ||
+    admin.widgets?.length ||
+    admin.actions?.length ||
+    admin.tables?.length ||
+    schedules?.length;
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
@@ -284,7 +281,7 @@ export function PluginAdminPage({
         <SchedulesCard pluginId={pluginId} schedules={schedules} />
       ) : null}
 
-      {sections.length === 0 ? (
+      {!hasContent ? (
         <Card className="min-w-0">
           <CardContent className="break-words py-10 text-center text-sm text-muted-foreground">
             This plugin doesn&rsquo;t declare any admin extensions.
@@ -309,38 +306,16 @@ function ConfigAutoFormCard({
   initialValue: ZodFormValue;
 }) {
   const [value, setValue] = useState<ZodFormValue>(initialValue);
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
-
-  const handleSubmit = useCallback(async () => {
-    setSaving(true);
-    setToast(null);
-    try {
-      const response = await npFetch(`/api/admin/plugins/${encodeURIComponent(pluginId)}/config`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value }),
-      });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        setToast({
-          type: "error",
-          message: payload?.error?.message ?? "Failed to save config.",
-        });
-        return;
-      }
-      setToast({ type: "success", message: "Config saved." });
-    } catch (error) {
-      setToast({
-        type: "error",
-        message: error instanceof Error ? error.message : "Failed to save config.",
-      });
-    } finally {
-      setSaving(false);
-    }
-  }, [pluginId, value]);
+  const { saving, saved, errorMessage, save } = usePluginConfigSave(
+    pluginId,
+    "Failed to save config.",
+  );
+  const toast =
+    errorMessage !== null
+      ? { type: "error", message: errorMessage }
+      : saved
+        ? { type: "success", message: "Config saved." }
+        : null;
 
   return (
     <Card className="min-w-0">
@@ -370,7 +345,7 @@ function ConfigAutoFormCard({
             type="button"
             disabled={saving}
             onClick={() => {
-              void handleSubmit();
+              void save(value);
             }}
             className="w-full sm:w-auto"
           >
@@ -392,47 +367,25 @@ function SettingsCard({
   settings: NonNullable<AdminExtension["settings"]>;
   initialConfig: Record<string, unknown>;
 }) {
-  const defaultValues = useMemo(() => {
-    const result: Record<string, unknown> = { ...initialConfig };
-    for (const field of settings.fields) {
-      if (field.type === "row" || field.type === "collapsible") continue;
-      if (result[field.name] === undefined && field.defaultValue !== undefined) {
-        result[field.name] = field.defaultValue;
-      }
-    }
-    return result;
-  }, [settings.fields, initialConfig]);
+  const defaultValues = useMemo(
+    () => getPluginConfigDefaultValues(settings.fields, initialConfig),
+    [settings.fields, initialConfig],
+  );
 
   const form = useForm<Record<string, unknown>>({ defaultValues });
 
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
-
+  const { saving, saved, errorMessage, save } = usePluginConfigSave(
+    pluginId,
+    "Failed to save settings.",
+  );
+  const toast =
+    errorMessage !== null
+      ? { type: "error", message: errorMessage }
+      : saved
+        ? { type: "success", message: "Settings saved." }
+        : null;
   const onSubmit = form.handleSubmit(async (values) => {
-    setSaving(true);
-    setToast(null);
-    try {
-      const response = await npFetch(`/api/admin/plugins/${encodeURIComponent(pluginId)}/config`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: values }),
-      });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        setToast({ type: "error", message: payload?.error?.message ?? "Failed to save settings." });
-        return;
-      }
-      setToast({ type: "success", message: "Settings saved." });
-    } catch (error) {
-      setToast({
-        type: "error",
-        message: error instanceof Error ? error.message : "Failed to save settings.",
-      });
-    } finally {
-      setSaving(false);
-    }
+    await save(values);
   });
 
   return (

@@ -92,11 +92,4 @@ export async function npCloseErrorReporterAdapter(
   }
 }
 
-export async function npShutdownErrorReporter(): Promise<void> {
-  const adapter = currentAdapter;
-  const adapterKind = currentReporter.kind;
-  resetErrorReporter();
-  await npCloseErrorReporterAdapter(adapter, adapterKind);
-}
-
 export type { NpErrorReporter, NpErrorReportContext } from "./types.js";

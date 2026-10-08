@@ -13,8 +13,6 @@ import {
   NP_SHOP_ORDER_NOTIFICATION_PRIVATE_CONTRACT,
   NP_SHOP_ORDER_NOTIFICATION_STORAGE_CONTRACT,
   NpShopOrderNotificationContractError,
-  npAnalyzeShopOrderNotificationPrivate,
-  npAnalyzeShopOrderNotificationStorage,
   npProjectShopOrderNotification,
   npRequireShopOrderNotificationPrivate,
   npRequireShopOrderNotificationStorage,
@@ -860,22 +858,4 @@ export async function npRetryShopOrderNotifications(): Promise<number> {
     retried += updated.length;
   }
   return retried;
-}
-
-export function npAnalyzeShopOrderNotificationRowsForDoctor(rows: readonly StoredRow[]): {
-  invalid: number;
-  expiredPrivate: number;
-} {
-  let invalid = 0;
-  let expiredPrivate = 0;
-  const now = new Date();
-  for (const row of rows) {
-    if (row.key.startsWith(EVENT_KEY_PREFIX)) {
-      invalid += npAnalyzeShopOrderNotificationStorage(row.value).length > 0 ? 1 : 0;
-    } else if (row.key.startsWith(PRIVATE_KEY_PREFIX)) {
-      invalid += npAnalyzeShopOrderNotificationPrivate(row.value).length > 0 ? 1 : 0;
-      if (row.expiresAt !== null && row.expiresAt <= now) expiredPrivate += 1;
-    }
-  }
-  return { invalid, expiredPrivate };
 }

@@ -8,38 +8,13 @@ import { definePlugin } from "@nexpress/plugin-sdk";
 import { z } from "zod";
 
 /**
- * @nexpress/plugin-oauth-google — adds "Sign in with Google" via
- * the plugin lifecycle.
- *
- * Credentials can come from EITHER environment variables OR the
- * admin auto-form (G.1):
- *
- *   1. `NP_OAUTH_GOOGLE_CLIENT_ID` + `NP_OAUTH_GOOGLE_CLIENT_SECRET`
- *      env vars (12-factor; recommended for production secret
- *      management).
- *   2. The admin form at `/admin/plugins/oauth-google` (operator
- *      self-service; values persist to `np_settings`).
- *
- * **Env wins on a tie** — the admin form acts as a fallback so
- * existing deployments stay unchanged after upgrading.
- *
- * Honors `email_verified` strictly — never links unverified Google
- * addresses to existing NexPress users by email.
- *
- * The redirect URI registered in Google Cloud Console must be
- * exactly `${SITE_URL}/api/auth/oauth/google/callback` (staff)
- * or `${SITE_URL}/api/members/oauth/google/callback` (member).
- * Google OAuth web clients allow multiple Authorized redirect URIs,
- * so one client can cover both pools when both URLs are registered.
- *
- * Admin-form config is resolved inside the current site scope for every OAuth
- * request. Credential, scope, and activation changes therefore do not require
- * a plugin reload and cannot bleed across sites.
+ * Environment credentials take precedence as a complete pair. Site config is
+ * resolved per request so credential, scope and activation changes stay scoped.
+ * Only verified email addresses may link existing users. Google supports both
+ * staff and member callbacks; registration instructions live in ../README.md.
  */
 
-// Re-exports kept for back-compat with sites that imported the
-// factory from this package before the @nexpress/oauth-providers
-// split. New code should import from @nexpress/oauth-providers.
+// Preserve the original package imports; new consumers use @nexpress/oauth-providers.
 export { createGoogleOAuthProvider, fetchGoogleProfile, type GoogleOAuthOptions };
 
 const configSchema = z.object({
@@ -90,9 +65,7 @@ export const googleOAuthPlugin = definePlugin<GoogleOAuthConfig>({
   },
   configSchema,
   setup: (ctx) => {
-    // G.2.2 — credentials must come from a single source. See the
-    // GitHub plugin for the rationale; same partial-env-is-error
-    // rule applies here.
+    // Reject partial environment credentials rather than mixing env and site config.
     const envId = process.env.NP_OAUTH_GOOGLE_CLIENT_ID;
     const envSecret = process.env.NP_OAUTH_GOOGLE_CLIENT_SECRET;
     const envHasAny = Boolean(envId || envSecret);

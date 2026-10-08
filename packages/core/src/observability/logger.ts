@@ -192,11 +192,4 @@ export async function npCloseLoggerAdapter(
   }
 }
 
-export async function npShutdownLogger(): Promise<void> {
-  const adapter = currentAdapter;
-  const adapterKind = currentLogger.kind;
-  resetLogger();
-  await npCloseLoggerAdapter(adapter, adapterKind);
-}
-
 export type { NpLogContext, NpLogEvent, NpLogLevel, NpLogger, NpLoggerAdapter } from "./types.js";

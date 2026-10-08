@@ -25,26 +25,6 @@
  * non-zero status so the operator notices.
  */
 
-const IMPORTS_START = "// @nexpress:plugins-imports-start";
-const IMPORTS_END = "// @nexpress:plugins-imports-end";
-const LIST_START = "// @nexpress:plugins-list-start";
-const LIST_END = "// @nexpress:plugins-list-end";
-
-/**
- * Marker pair for theme imports and the `themes: [...]` array,
- * mirroring the plugin marker shape. `theme add <pkg>` from
- * `@nexpress/cli-nexpress` inserts the theme's `import` and its
- * identifier into these regions.
- *
- * Existing scaffolds without these markers fall through to
- * `kind: "no-markers"` exactly like the plugin path — the CLI
- * prints a snippet for manual paste and exits non-zero.
- */
-const THEMES_IMPORTS_START = "// @nexpress:themes-imports-start";
-const THEMES_IMPORTS_END = "// @nexpress:themes-imports-end";
-const THEMES_LIST_START = "// @nexpress:themes-list-start";
-const THEMES_LIST_END = "// @nexpress:themes-list-end";
-
 export interface PluginEntry {
   /** npm package name, e.g. `"@nexpress/reading-time"` or `"my-plugin"`. */
   packageName: string;
@@ -108,72 +88,68 @@ function findSpan(lines: string[], startMarker: string, endMarker: string): Mark
   return { startLine, endLine, indent };
 }
 
-function checkMarkers(
+type ConfigEntryKind = "plugins" | "themes";
+
+function readMarkerRegions(
   content: string,
-): { ok: true; lines: string[] } | { ok: false; missing: string[] } {
-  const lines = content.split("\n");
+  kind: ConfigEntryKind,
+):
+  | { kind: "ok"; lines: string[]; imports: MarkerSpan; list: MarkerSpan }
+  | Extract<EditOutcome, { kind: "no-markers" }> {
+  const importsStart = `// @nexpress:${kind}-imports-start`;
+  const importsEnd = `// @nexpress:${kind}-imports-end`;
+  const listStart = `// @nexpress:${kind}-list-start`;
+  const listEnd = `// @nexpress:${kind}-list-end`;
   const missing: string[] = [];
-  if (!content.includes(IMPORTS_START) || !content.includes(IMPORTS_END)) {
-    missing.push(`${IMPORTS_START} / ${IMPORTS_END}`);
+  for (const [start, end] of [
+    [importsStart, importsEnd],
+    [listStart, listEnd],
+  ]) {
+    if (!content.includes(start) || !content.includes(end)) missing.push(`${start} / ${end}`);
   }
-  if (!content.includes(LIST_START) || !content.includes(LIST_END)) {
-    missing.push(`${LIST_START} / ${LIST_END}`);
+  if (missing.length > 0) return { kind: "no-markers", missing };
+
+  const lines = content.split("\n");
+  const imports = findSpan(lines, importsStart, importsEnd);
+  const list = findSpan(lines, listStart, listEnd);
+  if (!imports || !list) {
+    return {
+      kind: "no-markers",
+      missing: [kind === "themes" ? "malformed theme marker pairs" : "malformed marker pairs"],
+    };
   }
-  if (missing.length > 0) return { ok: false, missing };
-  return { ok: true, lines };
+  return { kind: "ok", lines, imports, list };
 }
 
-/**
- * Inserts an import + plugin-list entry for `entry` into `content`.
- * Idempotent: a second call with the same entry is a `kind: "no-op"` because
- * the import line already exists.
- */
-export function addPluginToConfig(content: string, entry: PluginEntry): EditOutcome {
-  const check = checkMarkers(content);
-  if (!check.ok) return { kind: "no-markers", missing: check.missing };
-  const lines = check.lines;
-
-  const importsSpan = findSpan(lines, IMPORTS_START, IMPORTS_END);
-  const listSpan = findSpan(lines, LIST_START, LIST_END);
-  if (!importsSpan || !listSpan) {
-    // Marker pair found but order/structure broken — fail loudly.
-    return { kind: "no-markers", missing: ["malformed marker pairs"] };
-  }
-
-  const importLine = `${importsSpan.indent}import ${entry.identifier} from "${entry.packageName}";`;
-  const listLine = `${listSpan.indent}${entry.identifier},`;
-
-  // Idempotency: skip if either side already mentions the identifier.
-  const importsBlock = lines.slice(importsSpan.startLine + 1, importsSpan.endLine).join("\n");
+function addConfigEntry(content: string, entry: PluginEntry, kind: ConfigEntryKind): EditOutcome {
+  const regions = readMarkerRegions(content, kind);
+  if (regions.kind !== "ok") return regions;
+  const { lines, imports, list } = regions;
+  const importsBlock = lines.slice(imports.startLine + 1, imports.endLine).join("\n");
   if (importsBlock.includes(`from "${entry.packageName}"`)) {
     return { kind: "no-op", reason: `import for "${entry.packageName}" already present` };
   }
 
-  // Insert in reverse order so the listSpan indices we computed for `lines`
-  // stay valid after the imports edit (lower line numbers stay stable).
+  const binding = kind === "themes" ? `{ ${entry.identifier} }` : entry.identifier;
   const next = [...lines];
-  next.splice(listSpan.endLine, 0, listLine);
-  next.splice(importsSpan.endLine, 0, importLine);
-
+  // Keep the original import/list offsets while inserting both managed entries.
+  next.splice(list.endLine, 0, `${list.indent}${entry.identifier},`);
+  next.splice(
+    imports.endLine,
+    0,
+    `${imports.indent}import ${binding} from "${entry.packageName}";`,
+  );
   return { kind: "ok", content: next.join("\n") };
 }
 
-/**
- * Removes the matching import + plugin-list entry. Idempotent in the same
- * way as `addPluginToConfig` — if there's nothing to remove, returns
- * `kind: "no-op"` so the caller can decide whether that's an error.
- */
-export function removePluginFromConfig(content: string, entry: PluginEntry): EditOutcome {
-  const check = checkMarkers(content);
-  if (!check.ok) return { kind: "no-markers", missing: check.missing };
-  const lines = check.lines;
-
-  const importsSpan = findSpan(lines, IMPORTS_START, IMPORTS_END);
-  const listSpan = findSpan(lines, LIST_START, LIST_END);
-  if (!importsSpan || !listSpan) {
-    return { kind: "no-markers", missing: ["malformed marker pairs"] };
-  }
-
+function removeConfigEntry(
+  content: string,
+  entry: PluginEntry,
+  kind: ConfigEntryKind,
+): EditOutcome {
+  const regions = readMarkerRegions(content, kind);
+  if (regions.kind !== "ok") return regions;
+  const { lines, imports, list } = regions;
   const isImportLine = (line: string) =>
     /^\s*import\s+/.test(line) && line.includes(`"${entry.packageName}"`);
   const isListLine = (line: string) => new RegExp(`^\\s*${entry.identifier}\\s*,?\\s*$`).test(line);
@@ -181,24 +157,32 @@ export function removePluginFromConfig(content: string, entry: PluginEntry): Edi
   const next: string[] = [];
   let removed = false;
   for (let i = 0; i < lines.length; i++) {
-    const inImports = i > importsSpan.startLine && i < importsSpan.endLine;
-    const inList = i > listSpan.startLine && i < listSpan.endLine;
     const line = lines[i] ?? "";
-    if (inImports && isImportLine(line)) {
-      removed = true;
-      continue;
-    }
-    if (inList && isListLine(line)) {
+    if (
+      (i > imports.startLine && i < imports.endLine && isImportLine(line)) ||
+      (i > list.startLine && i < list.endLine && isListLine(line))
+    ) {
       removed = true;
       continue;
     }
     next.push(line);
   }
+  return removed
+    ? { kind: "ok", content: next.join("\n") }
+    : {
+        kind: "no-op",
+        reason: `no ${kind === "themes" ? "theme " : ""}entry for "${entry.packageName}" found`,
+      };
+}
 
-  if (!removed) {
-    return { kind: "no-op", reason: `no entry for "${entry.packageName}" found` };
-  }
-  return { kind: "ok", content: next.join("\n") };
+/** Insert a default import and plugin-list entry within the opted-in markers. */
+export function addPluginToConfig(content: string, entry: PluginEntry): EditOutcome {
+  return addConfigEntry(content, entry, "plugins");
+}
+
+/** Remove only marker-managed plugin entries; repeated removal is a no-op. */
+export function removePluginFromConfig(content: string, entry: PluginEntry): EditOutcome {
+  return removeConfigEntry(content, entry, "plugins");
 }
 
 /** Snippet the CLI prints when markers are missing — operator pastes it. */
@@ -279,110 +263,14 @@ export function packageToThemeIdentifier(packageName: string): string {
   return `${camelHead}Theme`;
 }
 
-function checkThemeMarkers(
-  content: string,
-): { ok: true; lines: string[] } | { ok: false; missing: string[] } {
-  const lines = content.split("\n");
-  const missing: string[] = [];
-  if (!content.includes(THEMES_IMPORTS_START) || !content.includes(THEMES_IMPORTS_END)) {
-    missing.push(`${THEMES_IMPORTS_START} / ${THEMES_IMPORTS_END}`);
-  }
-  if (!content.includes(THEMES_LIST_START) || !content.includes(THEMES_LIST_END)) {
-    missing.push(`${THEMES_LIST_START} / ${THEMES_LIST_END}`);
-  }
-  if (missing.length > 0) return { ok: false, missing };
-  return { ok: true, lines };
-}
-
-/**
- * Inserts an import + themes-list entry for `entry` into
- * `content`. Idempotent: a second call with the same entry is
- * `kind: "no-op"` because the import line already exists.
- *
- * The list entry is appended INSIDE the marker pair, i.e.
- * between `themes-list-start` and `themes-list-end`. Operators
- * typically nest the marker inside a `[...defaultThemes, …]`
- * spread so the resulting array reads:
- *
- *   themes: [
- *     ...defaultThemes,
- *     // @nexpress:themes-list-start
- *     magazineTheme,
- *     // @nexpress:themes-list-end
- *   ],
- *
- * Matches the plugin marker behaviour 1:1 so anyone who's
- * touched `plugin add` already knows the shape.
- */
+/** Insert a named import and theme-list entry within the opted-in markers. */
 export function addThemeToConfig(content: string, entry: ThemeEntry): EditOutcome {
-  const check = checkThemeMarkers(content);
-  if (!check.ok) return { kind: "no-markers", missing: check.missing };
-  const lines = check.lines;
-
-  const importsSpan = findSpan(lines, THEMES_IMPORTS_START, THEMES_IMPORTS_END);
-  const listSpan = findSpan(lines, THEMES_LIST_START, THEMES_LIST_END);
-  if (!importsSpan || !listSpan) {
-    return { kind: "no-markers", missing: ["malformed theme marker pairs"] };
-  }
-
-  // Match the plugin shape: use a `{ identifier }` named import
-  // because every reference theme ships its theme via a named
-  // export (`export const magazineTheme = defineTheme(...)`).
-  const importLine = `${importsSpan.indent}import { ${entry.identifier} } from "${entry.packageName}";`;
-  const listLine = `${listSpan.indent}${entry.identifier},`;
-
-  const importsBlock = lines.slice(importsSpan.startLine + 1, importsSpan.endLine).join("\n");
-  if (importsBlock.includes(`from "${entry.packageName}"`)) {
-    return { kind: "no-op", reason: `import for "${entry.packageName}" already present` };
-  }
-
-  const next = [...lines];
-  next.splice(listSpan.endLine, 0, listLine);
-  next.splice(importsSpan.endLine, 0, importLine);
-  return { kind: "ok", content: next.join("\n") };
+  return addConfigEntry(content, entry, "themes");
 }
 
-/**
- * Removes the matching theme import + themes-list entry. This is intentionally
- * marker-bounded for the same reason as `theme add`: arbitrary TypeScript
- * config files are too flexible to rewrite safely without opt-in anchors.
- */
+/** Remove only marker-managed theme entries; repeated removal is a no-op. */
 export function removeThemeFromConfig(content: string, entry: ThemeEntry): EditOutcome {
-  const check = checkThemeMarkers(content);
-  if (!check.ok) return { kind: "no-markers", missing: check.missing };
-  const lines = check.lines;
-
-  const importsSpan = findSpan(lines, THEMES_IMPORTS_START, THEMES_IMPORTS_END);
-  const listSpan = findSpan(lines, THEMES_LIST_START, THEMES_LIST_END);
-  if (!importsSpan || !listSpan) {
-    return { kind: "no-markers", missing: ["malformed theme marker pairs"] };
-  }
-
-  const isImportLine = (line: string) =>
-    /^\s*import\s+/.test(line) && line.includes(`"${entry.packageName}"`);
-  const isListLine = (line: string) => new RegExp(`^\\s*${entry.identifier}\\s*,?\\s*$`).test(line);
-
-  const next: string[] = [];
-  let removed = false;
-  for (let i = 0; i < lines.length; i++) {
-    const inImports = i > importsSpan.startLine && i < importsSpan.endLine;
-    const inList = i > listSpan.startLine && i < listSpan.endLine;
-    const line = lines[i] ?? "";
-    if (inImports && isImportLine(line)) {
-      removed = true;
-      continue;
-    }
-    if (inList && isListLine(line)) {
-      removed = true;
-      continue;
-    }
-    next.push(line);
-  }
-
-  if (!removed) {
-    return { kind: "no-op", reason: `no theme entry for "${entry.packageName}" found` };
-  }
-  return { kind: "ok", content: next.join("\n") };
+  return removeConfigEntry(content, entry, "themes");
 }
 
 /** Snippet printed when theme markers are missing. */

@@ -9,7 +9,7 @@ import {
   runOpsStorageMigrationApply,
   runOpsStorageTest,
 } from "./ops-storage-core.js";
-import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
+import { readCommandOption, normalizePnpmPassthroughArgv } from "./ops-command-format.js";
 
 const RAW_ARGV = process.argv.slice(2);
 const ARGV = normalizePnpmPassthroughArgv(RAW_ARGV);
@@ -56,17 +56,8 @@ function shouldPrintHelp(argv: string[]): boolean {
   return argv.includes("--help") || argv.includes("-h");
 }
 
-function readStringArg(name: string): string | null {
-  for (let i = 0; i < ARGV.length; i += 1) {
-    const arg = ARGV[i];
-    if (arg === name) return ARGV[i + 1] ?? null;
-    if (arg?.startsWith(`${name}=`)) return arg.slice(name.length + 1);
-  }
-  return null;
-}
-
 function readLimitArg(): number | undefined {
-  const raw = readStringArg("--limit");
+  const raw = readCommandOption(ARGV, "--limit");
   if (!raw) return undefined;
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) ? parsed : undefined;
@@ -112,7 +103,7 @@ async function main(): Promise<void> {
     SUBCOMMAND === "test"
       ? await runOpsStorageTest({
           execute: ARGV.includes("--execute"),
-          approve: readStringArg("--approve"),
+          approve: readCommandOption(ARGV, "--approve"),
         })
       : SUBCOMMAND === "missing-files" || SUBCOMMAND === "orphaned-files"
         ? await collectOpsStorageDriftList({
@@ -122,13 +113,13 @@ async function main(): Promise<void> {
         : SUBCOMMAND === "migrate"
           ? ARGV[1] === "apply"
             ? await runOpsStorageMigrationApply({
-                target: readStringArg("--target") ?? "s3",
+                target: readCommandOption(ARGV, "--target") ?? "s3",
                 execute: ARGV.includes("--execute"),
-                approve: readStringArg("--approve"),
-                out: readStringArg("--out"),
+                approve: readCommandOption(ARGV, "--approve"),
+                out: readCommandOption(ARGV, "--out"),
               })
             : await buildOpsStorageMigrationPlan({
-                target: readStringArg("--target") ?? "s3",
+                target: readCommandOption(ARGV, "--target") ?? "s3",
               })
           : await collectOpsStorageStatus(process.env, SUBCOMMAND);
   if (JSON_MODE) {

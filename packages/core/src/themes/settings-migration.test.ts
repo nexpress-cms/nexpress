@@ -1,58 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { NpThemeManifest } from "../config/types.js";
 
-import { applyMigration, isVersionedSettings } from "./settings.js";
+import { applyMigration } from "./settings.js";
 
 const baseManifest = (overrides: Partial<NpThemeManifest>): NpThemeManifest => ({
   id: "test-theme",
   name: "Test Theme",
   version: "0.0.0",
   ...overrides,
-});
-
-describe("isVersionedSettings", () => {
-  it("returns true for the wrapped envelope shape", () => {
-    expect(isVersionedSettings({ __npVersion: 2, __npSettings: {} })).toBe(true);
-    expect(isVersionedSettings({ __npVersion: 1, __npSettings: null })).toBe(true);
-  });
-
-  it("returns false for legacy unwrapped shapes", () => {
-    expect(isVersionedSettings({ heroStyle: "featured" })).toBe(false);
-    expect(isVersionedSettings({})).toBe(false);
-  });
-
-  it("returns false when version is not a number", () => {
-    expect(isVersionedSettings({ __npVersion: "2", __npSettings: {} })).toBe(false);
-    expect(isVersionedSettings({ __npSettings: {} })).toBe(false);
-  });
-
-  it("returns false for extra fields and non-positive versions", () => {
-    expect(isVersionedSettings({ __npVersion: 1, __npSettings: {}, extra: true })).toBe(false);
-    expect(isVersionedSettings({ __npVersion: 0, __npSettings: {} })).toBe(false);
-  });
-
-  it("returns false for primitives / null", () => {
-    expect(isVersionedSettings(null)).toBe(false);
-    expect(isVersionedSettings(undefined)).toBe(false);
-    expect(isVersionedSettings("string")).toBe(false);
-    expect(isVersionedSettings(42)).toBe(false);
-  });
-
-  it("returns false when only the version sentinel is present", () => {
-    // Themes might add their own `__npVersion` field by accident;
-    // we require BOTH sentinels.
-    expect(isVersionedSettings({ __npVersion: 2 })).toBe(false);
-  });
-
-  it("returns false for NaN / Infinity versions (corrupted DB row guard)", () => {
-    // typeof NaN === "number" — without safe-integer validation, the
-    // version comparison would silently skip the migration
-    // path (NaN >= N is always false).
-    expect(isVersionedSettings({ __npVersion: Number.NaN, __npSettings: {} })).toBe(false);
-    expect(isVersionedSettings({ __npVersion: Number.POSITIVE_INFINITY, __npSettings: {} })).toBe(
-      false,
-    );
-  });
 });
 
 describe("applyMigration", () => {

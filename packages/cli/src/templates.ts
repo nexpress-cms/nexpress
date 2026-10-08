@@ -58,33 +58,33 @@ export function getProjectFiles(config: TemplateConfig): Record<string, Template
     "src/collections/pages.ts": utf8(pagesCollectionTemplate()),
     "src/collections/posts.ts": utf8(postsCollectionTemplate()),
     "src/collections/tags.ts": utf8(tagsCollectionTemplate()),
-    "scripts/_load-env.ts": utf8(loadEnvScriptTemplate()),
+    "scripts/_load-env.ts": utf8(appScriptTemplate("_load-env")),
     "scripts/agent-mcp-stdio.ts": utf8(agentMcpStdioScriptTemplate()),
     "scripts/agent-runtime.ts": utf8(agentRuntimeScriptTemplate()),
     "scripts/agent-evaluate.ts": utf8(agentEvaluateScriptTemplate()),
-    "scripts/build.ts": utf8(buildScriptTemplate()),
-    "scripts/deploy-plan.ts": utf8(deployPlanScriptTemplate()),
-    "scripts/dev-notice.ts": utf8(devNoticeScriptTemplate()),
-    "scripts/doctor.ts": utf8(doctorScriptTemplate()),
+    "scripts/build.ts": utf8(appScriptTemplate("build")),
+    "scripts/deploy-plan.ts": utf8(appScriptTemplate("deploy-plan")),
+    "scripts/dev-notice.ts": utf8(appScriptTemplate("dev-notice")),
+    "scripts/doctor.ts": utf8(appScriptTemplate("doctor")),
     "scripts/generate-schema.ts": utf8(generateSchemaScriptTemplate()),
-    "scripts/generate-migrations.ts": utf8(generateMigrationsScriptTemplate()),
+    "scripts/generate-migrations.ts": utf8(appScriptTemplate("generate-migrations")),
     "scripts/gettext.ts": utf8(translationCliScriptTemplate("gettext")),
-    "scripts/ops-backup.ts": utf8(opsBackupScriptTemplate()),
-    "scripts/ops-contracts.ts": utf8(opsContractsScriptTemplate()),
-    "scripts/ops-health.ts": utf8(opsHealthScriptTemplate()),
-    "scripts/ops-jobs.ts": utf8(opsJobsScriptTemplate()),
-    "scripts/ops-migrate.ts": utf8(opsMigrateScriptTemplate()),
-    "scripts/ops-plugins.ts": utf8(opsPluginsScriptTemplate()),
-    "scripts/ops-preflight.ts": utf8(opsPreflightScriptTemplate()),
-    "scripts/ops-status.ts": utf8(opsStatusScriptTemplate()),
-    "scripts/ops-storage.ts": utf8(opsStorageScriptTemplate()),
-    "scripts/postinstall-notice.ts": utf8(postinstallNoticeScriptTemplate()),
-    "scripts/release.ts": utf8(releaseScriptTemplate()),
-    "scripts/runbook.ts": utf8(runbookScriptTemplate()),
-    "scripts/seed-admin.ts": utf8(seedAdminScriptTemplate()),
+    "scripts/ops-backup.ts": utf8(appScriptTemplate("ops-backup")),
+    "scripts/ops-contracts.ts": utf8(appScriptTemplate("ops-contracts")),
+    "scripts/ops-health.ts": utf8(appScriptTemplate("ops-health")),
+    "scripts/ops-jobs.ts": utf8(appScriptTemplate("ops-jobs")),
+    "scripts/ops-migrate.ts": utf8(appScriptTemplate("ops-migrate")),
+    "scripts/ops-plugins.ts": utf8(appScriptTemplate("ops-plugins")),
+    "scripts/ops-preflight.ts": utf8(appScriptTemplate("ops-preflight")),
+    "scripts/ops-status.ts": utf8(appScriptTemplate("ops-status")),
+    "scripts/ops-storage.ts": utf8(appScriptTemplate("ops-storage")),
+    "scripts/postinstall-notice.ts": utf8(appScriptTemplate("postinstall-notice")),
+    "scripts/release.ts": utf8(appScriptTemplate("release")),
+    "scripts/runbook.ts": utf8(appScriptTemplate("runbook")),
+    "scripts/seed-admin.ts": utf8(appScriptTemplate("seed-admin")),
     "scripts/seed-content.ts": utf8(seedContentScriptTemplate()),
-    "scripts/setup-server.ts": utf8(setupServerScriptTemplate()),
-    "scripts/run-migrations.ts": utf8(runMigrationsScriptTemplate()),
+    "scripts/setup-server.ts": utf8(appScriptTemplate("setup-server")),
+    "scripts/run-migrations.ts": utf8(appScriptTemplate("run-migrations")),
     "scripts/worker.ts": utf8(workerScriptTemplate()),
     "scripts/xliff.ts": utf8(translationCliScriptTemplate("xliff")),
   };
@@ -403,12 +403,8 @@ function generateSchemaScriptTemplate(): string {
   );
 }
 
-function generateMigrationsScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/generate-migrations";\n`;
-}
-
-function buildScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/build";\n`;
+function appScriptTemplate(name: string): string {
+  return `import "@nexpress/app/scripts/${name}";\n`;
 }
 
 function translationCliScriptTemplate(adapter: "gettext" | "xliff"): string {
@@ -531,10 +527,6 @@ function agentRuntimeScriptTemplate(): string {
   );
 }
 
-function seedAdminScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/seed-admin";\n`;
-}
-
 function seedContentScriptTemplate(): string {
   // Bootstrap via `@nexpress/next`'s `createBootstrap` directly,
   // NOT via `../src/lib/init-core` (which re-exports from
@@ -644,78 +636,6 @@ function seedContentScriptTemplate(): string {
     `  await shutdownAndExit(1);\n` +
     `});\n`
   );
-}
-
-function setupServerScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/setup-server";\n`;
-}
-
-function runMigrationsScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/run-migrations";\n`;
-}
-
-function doctorScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/doctor";\n`;
-}
-
-function opsStatusScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/ops-status";\n`;
-}
-
-function opsPreflightScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/ops-preflight";\n`;
-}
-
-function opsHealthScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/ops-health";\n`;
-}
-
-function opsBackupScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/ops-backup";\n`;
-}
-
-function opsContractsScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/ops-contracts";\n`;
-}
-
-function opsJobsScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/ops-jobs";\n`;
-}
-
-function opsMigrateScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/ops-migrate";\n`;
-}
-
-function opsPluginsScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/ops-plugins";\n`;
-}
-
-function opsStorageScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/ops-storage";\n`;
-}
-
-function releaseScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/release";\n`;
-}
-
-function runbookScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/runbook";\n`;
-}
-
-function deployPlanScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/deploy-plan";\n`;
-}
-
-function devNoticeScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/dev-notice";\n`;
-}
-
-function loadEnvScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/_load-env";\n`;
-}
-
-function postinstallNoticeScriptTemplate(): string {
-  return `import "@nexpress/app/scripts/postinstall-notice";\n`;
 }
 
 function dockerComposeTemplate(config: TemplateConfig): string {

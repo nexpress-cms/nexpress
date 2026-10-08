@@ -16,9 +16,12 @@ import { closeTestDb, ensureMigrated, getTestDb, skipIfNoTestDb, truncateAll } f
 import { pagesTable, postsTable, registerTestCollections } from "./fixtures.js";
 
 describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () => {
+  let passwordHash: string;
+
   beforeAll(async () => {
     await ensureMigrated();
     registerTestCollections();
+    passwordHash = await hashPassword("password12345");
   });
 
   beforeEach(async () => {
@@ -33,12 +36,11 @@ describe.skipIf(skipIfNoTestDb())("publishScheduledDocuments (integration)", () 
 
   async function seedUser(): Promise<NpAuthUser> {
     const db = await getTestDb();
-    const hash = await hashPassword("password12345");
     const [row] = await db
       .insert(npUsers)
       .values({
         email: "scheduler@example.com",
-        password: hash,
+        password: passwordHash,
         name: "Scheduler",
         role: "editor",
       })

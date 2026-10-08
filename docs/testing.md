@@ -30,13 +30,9 @@ partitions and exact coverage receipts; only a validated documentation-only PR
 may intentionally skip them. Gate logs explicitly distinguish these paths.
 Version PR dispatch and Dependabot's named-result checks retain their contracts.
 
-Local verification of this change: 62 repository tests passed both in the working
-checkout and a separate checkout with no build output after a frozen
-`--ignore-scripts` install. Real Git fixtures cover mixed commits, code-to-doc
-renames, document renames, modes and symlinks; result tests reject missing,
-skipped, failed or cancelled required full work. Actionlint 1.7.12 accepted the
-workflow. The hosted checks below separately verify routing and elapsed time;
-local installation/test timings are not substituted for Actions timings.
+Repository tests use real Git fixtures for scope classification and reject
+ambiguous scope, missing work, failed statuses and invalid coverage receipts.
+They also run after a frozen `--ignore-scripts` install without build output.
 
 ### Hosted route verification
 
@@ -45,23 +41,15 @@ After changing CI routing, verify both outcomes on a documentation-only PR:
 - An intentional formatting error must fail documentation validation and every required result gate, while application jobs remain skipped.
 - Correct the same change and require all named gates to succeed before merging the evidence update.
 
-On 2026-09-26, [PR #1493](https://github.com/nexpress-cms/nexpress/pull/1493)
-passed the full route before the workflow was merged. The documentation-only
-[verification PR #1494](https://github.com/nexpress-cms/nexpress/pull/1494) then
-exercised both branches of the result gates:
+[Verification PR #1494](https://github.com/nexpress-cms/nexpress/pull/1494)
+exercised both paths after the classifier shipped:
 
-- [Intentional format failure](https://github.com/nexpress-cms/nexpress/actions/runs/36236749703):
-  Prettier rejected `docs/testing.md`; all four named result gates failed and the
-  application jobs stayed skipped. No failed head was merged.
-- [Corrected document](https://github.com/nexpress-cms/nexpress/actions/runs/36236831760):
-  formatting and all 62 repository tests passed; all four named gates succeeded,
-  while full application jobs stayed skipped. Workflow creation to completion
-  was 40 seconds (10:47:13–10:47:53 UTC).
+- [Intentional format failure](https://github.com/nexpress-cms/nexpress/actions/runs/36236749703): all required result gates failed while application jobs stayed skipped.
+- [Corrected document](https://github.com/nexpress-cms/nexpress/actions/runs/36236831760): documentation validation and all required gates passed while application jobs stayed skipped.
 
-The preceding documentation PR #1492 took
-[17 minutes 3 seconds](https://github.com/nexpress-cms/nexpress/actions/runs/36208290554)
-with the old full pipeline. This is one observed hosted comparison, including
-scheduling/setup time, not a guaranteed latency or controlled benchmark.
+The corrected run took 40 seconds versus
+[17 minutes 3 seconds for the preceding full-pipeline docs PR](https://github.com/nexpress-cms/nexpress/actions/runs/36208290554).
+This single hosted comparison includes scheduling/setup and is not a latency guarantee.
 
 ## Unit tests (`pnpm test`)
 
@@ -183,28 +171,12 @@ node scripts/integration-partitions.mjs 2 --output /tmp/np-integration-results
 node scripts/integration-partitions.mjs --check-results /tmp/np-integration-results
 ```
 
-The original PR #1455 integration job took 28m14s, including 4m56s before tests;
-Web tests took 1,322.69s. The initial partition plan covers 163 files (83/80), with
-summed historical weights of 1,932,441/1,932,474ms. Two runners repeat the build,
-trading additional setup minutes for a shorter critical path. Actual hosted-run
-improvement must be measured after this workflow change runs in CI.
-
-Local acceptance on 2026-09-18 used the actual runner twice against separate
-throwaway databases on the same local PostgreSQL server, sequentially to avoid
-adding storage contention. Partition 1 passed Core 64 and Web 665 cases (82 files,
-plus the expected native-preview skip); partition 2 passed Web 784 cases (80 files)
-and Redis 16. The aggregate accepted all 163 Web files exactly once and each other
-package once. Web elapsed times were 360.40s and 325.29s; these local figures are
-not a hosted-CI speedup measurement. Native preview, production browser and packed
-scaffold jobs were unchanged and were not needlessly rerun for this CI-only change.
-
-The four runner regression tests passed, including incomplete/duplicate coverage,
-wrong commits/package ownership, unsuccessful statuses, missing database settings,
-and child failure/termination. Repository checks passed 59 tests; workspace
-verification reused all 113 unchanged application task results; lint reused all
-41 task results. Workflow YAML, formatting and diff checks passed. Self-review
-fixed artifact replacement for job reruns. Logs and receipts are under
-`/tmp/np-ci-partition-*` and `/tmp/np-ci-partitions-*`.
+Partitioning repeats build/setup on two runners to shorten the critical path.
+Historical durations balance work; they do not establish a hosted-CI speedup.
+Initial local acceptance used separate disposable databases and verified complete,
+non-overlapping coverage, with Redis and native-preview gating handled explicitly.
+Regression tests protect receipt completeness, commit/package ownership, required
+settings, child failures and rerun artifact replacement.
 
 ### One-time setup
 
@@ -283,49 +255,21 @@ describe.skipIf(skipIfNoTestDb())("my thing", () => {
 
 ### Current integration coverage
 
-> **Catalog drift warning.** The tables below were accurate through
-> Phase 13. Phases 14–19 added more integration files (worker
-> heartbeat, plugin schedules, site-scoped community/audit/storage,
-> notification preferences, etc.) that are NOT enumerated here. For
-> the live list, run `ls packages/core/src/integration/` and
-> `ls apps/web/tests/`. The categories (pipeline / CLI / API) still
-> describe the structure — it's only the per-file detail that drifts.
+Use the source inventory instead of a manually maintained per-file count:
 
-**Core pipeline (`packages/core/src/integration/`):**
+```bash
+rg --files packages/core/src/integration apps/web/tests -g '*.integration.test.ts' -g '*.integration.test.tsx'
+node scripts/integration-partitions.mjs --plan
+```
 
-| File                                         | Covers                                                                                                                                                                                                                               |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `plugin-storage.integration.test.ts`         | ctx.storage lifecycle, plugin/prefix isolation, append ordering, fractional TTL persistence and expiry via `np_plugin_storage`                                                                                                       |
-| `plugin-persistence.integration.test.ts` (5) | syncPluginRegistrations / updatePluginState upsert + idempotence                                                                                                                                                                     |
-| `reset-token.integration.test.ts` (5)        | create→consume flow: password hash rotates, tokenVersion bumps, sessions delete                                                                                                                                                      |
-| `pipeline.integration.test.ts`               | saveDocument create/partial-update, exact storage hydration, site-stamped save/delete follow-up jobs, monotonic revision pruning, findDocuments round-trip, and transactional document/revision deletion                             |
-| `scheduled.integration.test.ts` (8)          | pipeline coerces published+future → scheduled; framework-managed `publishedAt` columns participate in scheduling; publishScheduledDocuments scopes hooks and exact follow-up payloads to each document site, then remains idempotent |
-| `search-reindex.integration.test.ts`         | 101-row fixture crosses the fixed 100-row keyset boundary for both Postgres-vector and external-reference scans without whole-collection materialization                                                                             |
-| `ctx-settings.integration.test.ts` (6)       | settings.getSite/getPlugin/setPlugin round-trip; theme.setTokens merges; ON CONFLICT prevents row duplication; capability gate                                                                                                       |
-
-**CLI templates (`packages/cli/src/templates.test.ts`):**
-
-Guards the structural invariants verified by manually scaffolding +
-typechecking + `next build`. Tests catch regressions like the stub
-`generated/collections.ts` going missing, the worker template's
-top-level narrowing creeping back, or the admin login `onSubmit`
-losing its void wrapper. The generated tsconfig must declare consumer-local
-source roots, and `typecheck` / `build` must run schema codegen first so an
-ignored `src/db/generated/*.ts` file cannot disappear in a clean clone.
-
-**API routes (`apps/web/tests/`):**
-
-| File                                                    | Covers                                                                                                                                                                                              |
-| ------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `health.integration.test.ts` (1)                        | `/api/health` smoke (no DB)                                                                                                                                                                         |
-| `auth.integration.test.ts` (3)                          | `/api/auth/me` with valid/missing/tampered session cookie                                                                                                                                           |
-| `collections.integration.test.ts`                       | Collection CRUD plus exact revision/autosave wire contracts, partial validation, concurrency, and OpenAPI schemas                                                                                   |
-| `import-export.integration.test.ts` (18)                | exact v3 full/partial export, auth/query failures, definition-owned media, dry-run/projection, UUID idempotency, relationship ordering, atomic rollback, plugin cache, malformed state, and OpenAPI |
-| `translation-interchange-admin.integration.test.ts` (4) | Admin XLIFF/PO export, preview/apply, capability errors, and bounded upload rejection                                                                                                               |
-| `member-attachment.integration.test.ts` (5)             | signature validation, exact wire/OpenAPI, owner access/delete, public post visibility, reference deletion guard, and forum board/uploader policy                                                    |
-| `media-site-ownership.integration.test.ts` (3)          | site-stamped uploads/storage keys, cross-site read/list/delete/folder isolation, exact usage/cascade behavior, and doctor ownership diagnostics                                                     |
-| `member-profile-activity.integration.test.ts` (4)       | explicit collection opt-in, public member state, public/site visibility, stable exact document pagination, comment target anchors, and matching PII-free profile/activity HTTP wires                |
-| `community-realtime.integration.test.ts` (6)            | site/target/member-isolated invalidation outbox, monotonic sequence resume, foreign/malformed cursor containment, PII-free event projection, and bounded retention pruning                          |
+- **Core persistence and pipeline:** real storage/expiry, transactional content
+  writes, scheduling, search indexing and service lifecycle behavior.
+- **Shared-app API and domain flows:** direct route calls over PostgreSQL, including
+  authentication, ACLs, site isolation, revisions, import/export, media, community,
+  commerce and Agent lifecycle contracts.
+- **CLI templates and packed scaffolds:** template unit tests protect source roots,
+  generated-code wiring and dependency contracts; the packed journey proves fresh
+  consumer installation, migrations, module loading, extension lifecycle and build.
 
 The unit suites in `@nexpress/core`, `@nexpress/next`, and `@nexpress/app`
 also verify the exact bounded API error envelope, known code/status mapping,
@@ -431,14 +375,15 @@ are now part of the Playwright suite.
 
 `.github/workflows/ci.yml` runs on every pull request, manual
 `workflow_dispatch`, and selected `push: main` changes (docs-only and
-changeset-only pushes are ignored on `main`). It defines four jobs on Ubuntu
-(Node 22, pnpm 10.33):
+changeset-only pushes are ignored on `main`). It preserves four required result
+names; documentation-only validation or the corresponding full jobs satisfy them.
+Full jobs use Ubuntu, Node 22 and pnpm 10.33:
 
 1. `typecheck + build + test` — install → build → typecheck → `pnpm test`.
-2. `integration tests (Postgres)` — boots a Postgres 16 service container, sets
-   `TEST_DATABASE_URL=postgres://nexpress:nexpress@localhost:5432/nexpress_test`,
-   and runs `pnpm test:integration` (#275). Covers the pipeline /
-   write-path code that mock-based unit tests can't.
+2. `integration tests (Postgres)` — validates both PostgreSQL partition results
+   and their exact coverage receipts. Each runner uses isolated service containers
+   and the [partition runner](#ci-integration-partitions); persisted writes and
+   transaction behavior run against real PostgreSQL.
 3. `E2E (Playwright)` — separate Postgres service container (DB
    `nexpress_e2e`), `playwright install --with-deps chromium`,
    `pnpm build`, then `pnpm --filter @nexpress/web test:e2e` with

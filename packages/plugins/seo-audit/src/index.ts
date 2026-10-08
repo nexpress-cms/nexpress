@@ -2,31 +2,8 @@ import { isNpRichTextContent } from "@nexpress/core/fields";
 import { definePlugin } from "@nexpress/plugin-sdk";
 import { z } from "zod";
 
-/**
- * G.2.3 — operator-tunable thresholds via the framework's auto-form.
- *
- * Pre-G.2.3 the thresholds were hardcoded module-level constants
- * (TITLE_MIN / TITLE_MAX / DESCRIPTION_MIN / DESCRIPTION_MAX /
- * MIN_BODY_WORDS) AND the plugin declared an `admin.settings.fields`
- * form alongside — but the form's values were never read. Operators
- * could fill the form and nothing changed, which is worse than not
- * having the form at all. This release wires the operator config
- * into the audit logic via `ctx.config` and replaces the legacy
- * declarative form with the auto-form.
- */
-// Cross-field validation: a min/max pair where min > max is a
-// misconfiguration the audit logic can't recover from cleanly
-// (the "short-X" branch always wins for any value < min, so the
-// "long-X" branch is unreachable). Reject at save time so the
-// operator notices immediately rather than wondering why long-
-// title warnings never fire.
-//
-// Earlier versions of this plugin punted on `.refine()` on the
-// theory that the F.3 introspector would render an empty form;
-// that diagnosis was wrong. Zod 4 implements `.refine()` as a
-// `checks` array on the same object, NOT as an effects/pipe
-// wrapper, so `_def.type` stays `"object"` and the introspector
-// walks the shape unchanged.
+// Reject inverted thresholds when saving config; otherwise the short-content
+// branch masks long-content warnings. Zod object refinements preserve auto-form fields.
 const configSchema = z
   .object({
     titleMin: z
