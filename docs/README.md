@@ -1,8 +1,7 @@
 # docs/
 
-Two distinct kinds of documentation live here. The split is load-bearing:
-mistaking one for the other has bitten newcomers, which is what motivated
-issue #276.
+Live guides describe current behavior. Design and history records preserve
+decisions and evidence; their proposals are not automatically shipped features.
 
 ## Live guides — kept current
 
@@ -94,8 +93,11 @@ implementation history and follow-up notes.
 
 Files under [`design/`](design/) include historical planning snapshots and the
 [Agentic Platform implementation set](design/agentic-platform/README.md).
-Historical snapshots retain their original motivation and baseline; their file
-paths, signatures and examples may have drifted. They are not live instructions.
+Historical records retain motivation and decisions. The original core and
+plugin designs are now concise summaries linked to the owning live guides;
+obsolete code sketches, command transcripts and schedules remain in Git
+history. Other snapshots may still contain dated paths or examples and are not
+live instructions.
 
 The Agentic Platform directory also contains maintained feature-flow records and
 acceptance decisions. Those records identify implemented scope, verification and
@@ -110,8 +112,13 @@ records. Neither guide nor evidence record turns an unmet acceptance gate into a
 pass.
 
 The directory currently contains the agentic-platform implementation set plus
-the original core, community, plugin, WordPress-import, universal-content,
+core, community, plugin, WordPress-import, universal-content,
 theme-extension, member-surface, route, plugin-config, authoring-field-note,
-alias-removal, and Phase 23 planning snapshots, plus the original Korean
-product brief and summary. The directory listing is the authoritative
-inventory; none of these files supersedes a live guide above.
+alias-removal, and Phase 23 design records, plus the Korean product brief. The
+directory listing is the authoritative inventory; none of these files supersedes a live guide above.
+
+When consolidating documentation, keep one current contract per feature and
+link to it. Retain meaningful decisions, compatibility constraints, evidence
+and unresolved acceptance gates; remove duplicated implementation sketches and
+chronological logs. A dated proposal is not authority to change a live contract,
+and a cleanup must not turn an unmet gate into a pass.

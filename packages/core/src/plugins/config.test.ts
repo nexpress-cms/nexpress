@@ -1,41 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  applyPluginConfigMigration,
-  isVersionedPluginConfig,
-  pluginConfigCacheTag,
-} from "./config.js";
-
-describe("isVersionedPluginConfig", () => {
-  it("returns true for the wrapped envelope shape", () => {
-    expect(isVersionedPluginConfig({ __npVersion: 2, __npSettings: {} })).toBe(true);
-    expect(isVersionedPluginConfig({ __npVersion: 1, __npSettings: null })).toBe(true);
-  });
-
-  it("returns false for legacy unwrapped shapes", () => {
-    expect(isVersionedPluginConfig({ wordsPerMinute: 220 })).toBe(false);
-    expect(isVersionedPluginConfig({})).toBe(false);
-  });
-
-  it("returns false when version is not a number", () => {
-    expect(isVersionedPluginConfig({ __npVersion: "2", __npSettings: {} })).toBe(false);
-  });
-
-  it("returns false for extra fields and non-positive versions", () => {
-    expect(isVersionedPluginConfig({ __npVersion: 1, __npSettings: {}, extra: true })).toBe(false);
-    expect(isVersionedPluginConfig({ __npVersion: 0, __npSettings: {} })).toBe(false);
-  });
-
-  it("returns false for primitives / null", () => {
-    expect(isVersionedPluginConfig(null)).toBe(false);
-    expect(isVersionedPluginConfig(undefined)).toBe(false);
-    expect(isVersionedPluginConfig("string")).toBe(false);
-  });
-
-  it("returns false for NaN / Infinity (corrupted DB row guard)", () => {
-    expect(isVersionedPluginConfig({ __npVersion: Number.NaN, __npSettings: {} })).toBe(false);
-  });
-});
+import { applyPluginConfigMigration, pluginConfigCacheTag } from "./config.js";
 
 describe("applyPluginConfigMigration", () => {
   it("no-ops when stored version matches configVersion", () => {

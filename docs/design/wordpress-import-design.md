@@ -19,10 +19,9 @@
 
 ## 1. Why This Phase Exists
 
-The product summary (`docs/nexpress-summary.txt`) lists "Phase 5
-WordPress 마이그레이션 — 콘텐츠/미디어 이전" as one of the high-level
-roadmap pillars. Until an operator can move an existing WordPress
-site to NexPress without rebuilding content from scratch, the
+The [original product brief](nexpress.txt) identifies WordPress content and
+media migration as a product requirement. Until an operator can move an
+existing WordPress site to NexPress without rebuilding content from scratch, the
 "WordPress alternative" framing is aspirational at best. This phase
 delivers that path.
 

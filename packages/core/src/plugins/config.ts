@@ -10,56 +10,21 @@ import { npSettings } from "../db/schema/system.js";
 import { NpValidationError } from "../errors.js";
 import { getCurrentSiteId } from "../sites/context.js";
 import { getPluginRegistration } from "./host.js";
-import {
-  introspectThemeSettingsSchema,
-  type NpThemeSettingsField,
-} from "../themes/settings-schema.js";
+import { introspectThemeSettingsSchema } from "../themes/settings-schema.js";
 import { npAssertSettingValue } from "../settings/contract.js";
+import { settingsDefaultsFromFields } from "../settings/defaults.js";
 
 const DEFAULT_SITE = "default";
 const CONFIG_KEY_PREFIX = "plugin.config:";
-
-/**
- * G.1 — per-plugin operator config.
- *
- * Stored at `np_settings.(site_id, key="plugin.config:<pluginId>")`.
- * Mirrors theme settings storage exactly, including the `__npVersion` /
- * `__npSettings` envelope, so a future shared `getCachedSetting<T>(key)`
- * helper can read both surfaces. Cache invalidation rides a new
- * `np:plugin:<id>` tag (see `packages/next/src/cache.ts`).
- *
- * Per locked decision E (`docs/design/plugin-config-auto-form.md` § 2):
- * we store under `np_settings`, NOT `np_plugins.config` (the legacy
- * column was dropped in the same migration that introduced this module).
- */
 
 function configKey(pluginId: string): string {
   return `${CONFIG_KEY_PREFIX}${pluginId}`;
 }
 
-/**
- * Versioned envelope shape for persisted plugin config — identical to the
- * theme `NpVersionedSettings` shape. Two parallel definitions instead of a
- * shared one because (a) themes and plugins share zero schema surface
- * otherwise, (b) the type is only ~5 lines, and (c) collapsing them would
- * couple `themes/` and `plugins/` modules without functional benefit.
- */
+/** Persisted at `np_settings.(site_id, key="plugin.config:<pluginId>")`. */
 export interface NpVersionedPluginConfig {
   __npVersion: number;
   __npSettings: unknown;
-}
-
-export function isVersionedPluginConfig(value: unknown): value is NpVersionedPluginConfig {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const candidate = value as Partial<NpVersionedPluginConfig>;
-  return (
-    typeof candidate.__npVersion === "number" &&
-    Number.isSafeInteger(candidate.__npVersion) &&
-    candidate.__npVersion >= 1 &&
-    candidate.__npVersion <= 1_000_000 &&
-    Object.keys(candidate).length === 2 &&
-    "__npSettings" in candidate
-  );
 }
 
 /**
@@ -67,9 +32,6 @@ export function isVersionedPluginConfig(value: unknown): value is NpVersionedPlu
  * No-op when versions match or the plugin doesn't declare a migrator.
  * Migrator failures propagate so partially migrated config cannot be
  * accepted silently.
- *
- * Mirrors `applyMigration` in `packages/core/src/themes/settings.ts` line
- * for line.
  */
 export function applyPluginConfigMigration(
   registration: {
@@ -85,23 +47,6 @@ export function applyPluginConfigMigration(
   if (typeof migrate !== "function") return rawValue;
   npAssertAgentPreviewEffectsAllowed();
   return migrate(rawValue, fromVersion);
-}
-
-function defaultsFrom(fields: NpThemeSettingsField[]): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const f of fields) {
-    if (f.default !== undefined) {
-      out[f.name] = f.default;
-      continue;
-    }
-    if (f.type === "object") {
-      out[f.name] = defaultsFrom(f.fields);
-    }
-    if (f.type === "array") {
-      out[f.name] = [];
-    }
-  }
-  return out;
 }
 
 function requirePluginConfigObject(value: unknown, field: string): Record<string, unknown> {
@@ -168,7 +113,7 @@ export async function getPluginConfigWithStatus(pluginId: string): Promise<NpPlu
   if (!db) {
     return {
       pluginId,
-      value: schema ? defaultsFrom(introspectThemeSettingsSchema(schema)) : {},
+      value: schema ? settingsDefaultsFromFields(introspectThemeSettingsSchema(schema)) : {},
       hasPersisted: false,
     };
   }
@@ -205,7 +150,7 @@ export async function getPluginConfigWithStatus(pluginId: string): Promise<NpPlu
   }
 
   const fields = introspectThemeSettingsSchema(schema);
-  const defaults = defaultsFrom(fields);
+  const defaults = settingsDefaultsFromFields(fields);
 
   if (!row) {
     const parsed = schema.safeParse(defaults);
@@ -216,12 +161,7 @@ export async function getPluginConfigWithStatus(pluginId: string): Promise<NpPlu
     };
   }
 
-  // Exact versioned envelope + lazy migration. Mirrors
-  // `getThemeSettingsWithStatus` exactly. Registration is guaranteed
-  // defined here: schema is only truthy when registration exists
-  // (line ~152), and the `if (!schema) return` above narrows the rest
-  // of the function — but TS can't infer that across `?.` so we
-  // restate it for the migration helper.
+  // Validate the stored envelope before migration and schema parsing.
   npAssertSettingValue(configKey(pluginId), row.value);
   const versioned = row.value as NpVersionedPluginConfig;
   const storedVersion = versioned.__npVersion;
@@ -252,8 +192,6 @@ export async function getPluginConfigWithStatus(pluginId: string): Promise<NpPlu
  * writes to `np_settings` only; it doesn't import `next/cache`. The
  * admin API route (`PUT /api/admin/plugins/[id]/config`) busts
  * `np:plugin:<id>` after a successful write.
- *
- * Mirrors `setThemeSettings` in `packages/core/src/themes/settings.ts`.
  */
 export async function setPluginConfig(
   pluginId: string,
@@ -329,10 +267,7 @@ async function persistPluginConfigEnvelope(
   return value;
 }
 
-/** Cache tag for a plugin's config invalidation. Per the prefix policy
- *  in CLAUDE.md (Naming convention table) every framework-owned tag
- *  uses the `np` prefix. Distinct from the legacy `nx:theme:<siteId>`
- *  tag — see `docs/design/plugin-config-auto-form.md` § 7. */
+/** Cache tag for a plugin's config invalidation. */
 export function pluginConfigCacheTag(pluginId: string): string {
   return `np:plugin:${pluginId}`;
 }

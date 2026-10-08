@@ -1,8 +1,13 @@
 // Must be first so child scripts see the same environment shape.
 import "./_load-env.js";
+import {
+  commandText,
+  detectPackageManager,
+  runArgs,
+  type PackageManager,
+} from "./ops-package-manager.js";
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
@@ -14,8 +19,6 @@ import {
   type RunbookJson,
 } from "./runbook-core.js";
 import { normalizePnpmPassthroughArgv } from "./ops-command-format.js";
-
-type PackageManager = "pnpm" | "npm" | "yarn";
 
 interface CapturedCommand {
   command: string;
@@ -81,28 +84,6 @@ function readOutArg(argv: string[]): string | null {
     if (arg?.startsWith("--out=")) return arg.slice("--out=".length);
   }
   return null;
-}
-
-function detectPackageManager(cwd: string): PackageManager {
-  let current = cwd;
-  while (true) {
-    if (existsSync(resolve(current, "pnpm-lock.yaml"))) return "pnpm";
-    if (existsSync(resolve(current, "yarn.lock"))) return "yarn";
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return "npm";
-}
-
-function runArgs(manager: PackageManager, script: string, passthrough: string[]): string[] {
-  if (manager === "yarn") return [script, ...passthrough];
-  if (passthrough.includes("--json")) return ["--silent", "run", script, "--", ...passthrough];
-  return ["run", script, "--", ...passthrough];
-}
-
-function commandText(manager: PackageManager, args: string[]): string {
-  return `${manager} ${args.join(" ")}`;
 }
 
 function capture(manager: PackageManager, args: string[]): Promise<CapturedCommand> {

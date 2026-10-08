@@ -19,7 +19,7 @@
 4. [Shell, Slots, Templates](#4-shell-slots-templates)
 5. [Theme-owned CSS](#5-theme-owned-css)
 6. [Per-collection Page Templates](#6-per-collection-page-templates)
-7. [Dark Mode](#7-dark-mode)
+7. [Color Scheme (Light / Dark)](#7-color-scheme-light--dark)
 8. [Tokens vs Theme Code](#8-tokens-vs-theme-code)
 9. [Registering and Activating](#9-registering-and-activating)
 10. [Server vs Client Boundary](#10-server-vs-client-boundary)
@@ -96,7 +96,7 @@ packages/themes/mybrand/
 The `tsup.config.ts` ships ESM output. If your theme has a
 client component (e.g. an interactive nav drawer using
 `useState`), build it as a **separate entry** with a
-`"use client"` banner — see the [server/client boundary](#9-server-vs-client-boundary)
+`"use client"` banner — see the [server/client boundary](#10-server-vs-client-boundary)
 section.
 
 ---
@@ -217,7 +217,7 @@ core directly.
 If you want an interactive piece in your header (a search box, a
 member status widget), put it in a separate file with `"use client"`
 at the top and import it from your server header. See the
-[server/client boundary](#9-server-vs-client-boundary) section.
+[server/client boundary](#10-server-vs-client-boundary) section.
 
 ### Templates
 
@@ -631,7 +631,13 @@ slots fall through to the framework's generic content (the
 how built-in themes ship demo content that matches their visual
 language without forking the seeder.
 
+For plain paragraph text, `npCreateSeedRichText()` from `@nexpress/theme`
+creates the versioned `NpRichTextContent` envelope without loading the editor
+or Lexical runtime.
+
 ```ts
+import { defineTheme, npCreateSeedRichText } from "@nexpress/theme";
+
 export const magazineTheme = defineTheme({
   manifest: { id: "magazine" /* … */ },
   impl: {
@@ -652,7 +658,7 @@ export const magazineTheme = defineTheme({
         {
           title: "The lead piece",
           excerpt: "…",
-          content: lexicalDoc([/* … */]),
+          content: npCreateSeedRichText(["The opening paragraph.", "The next paragraph."]),
           publishedAt: "2026-05-01T00:00:00.000Z",
           tagNames: ["Politics"],
         },

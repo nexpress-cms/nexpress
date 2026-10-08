@@ -184,7 +184,6 @@ export {
   setPluginConfig,
   pluginConfigCacheTag,
   applyPluginConfigMigration,
-  isVersionedPluginConfig,
 } from "./config.js";
 
 export type { NpPluginConfigResult, NpVersionedPluginConfig } from "./config.js";

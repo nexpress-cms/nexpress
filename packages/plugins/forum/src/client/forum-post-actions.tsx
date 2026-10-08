@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import { readCookie } from "./cookie.js";
+
 interface ForumPostActionsProps {
   basePath: string;
   collectionSlug: string;
@@ -28,13 +30,6 @@ interface ForumPostActionsProps {
     unpin: string;
     moderationFailed: string;
   };
-}
-
-function readCookie(name: string): string | null {
-  if (typeof document === "undefined") return null;
-  const match = new RegExp(`(?:^|;\\s*)${name}=([^;]+)`).exec(document.cookie);
-  const value = match?.[1];
-  return value !== undefined ? decodeURIComponent(value) : null;
 }
 
 export function ForumPostActions({

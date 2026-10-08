@@ -1,4 +1,4 @@
-import { defineTheme, type NpThemeSeedPost } from "@nexpress/theme";
+import { defineTheme, npCreateSeedRichText, type NpThemeSeedPost } from "@nexpress/theme";
 
 import { DefaultFooter } from "./footer.js";
 import { defaultCategories, defaultPages } from "./seed-content.js";
@@ -14,48 +14,6 @@ import { PageSidebarTemplate } from "./templates/page-sidebar.js";
 import { PageWideTemplate } from "./templates/page-wide.js";
 import { PostDefaultTemplate } from "./templates/post-default.js";
 import { PostListTemplate } from "./templates/post-list.js";
-
-/**
- * Build a minimal NexPress rich-text v1 value from a list of
- * paragraphs. The framework's renderer reads `document → root → paragraph →
- * text`, so this is the smallest valid envelope that survives the
- * pipeline and renders as prose in the post-default template.
- *
- * Lives inline (not imported from `@nexpress/editor`) so the
- * theme package stays free of editor / Lexical dependencies — the
- * stable contract is small enough to author as a literal and avoids
- * pulling in the editor runtime just to call its serializer.
- */
-function lexicalDoc(paragraphs: string[]): unknown {
-  const document = {
-    root: {
-      type: "root",
-      version: 1,
-      direction: null,
-      format: "",
-      indent: 0,
-      children: paragraphs.map((text) => ({
-        type: "paragraph",
-        version: 1,
-        direction: null,
-        format: "",
-        indent: 0,
-        children: [
-          {
-            type: "text",
-            version: 1,
-            detail: 0,
-            format: 0,
-            mode: "normal",
-            style: "",
-            text,
-          },
-        ],
-      })),
-    },
-  };
-  return { version: 1, document };
-}
 
 const DAY = 1000 * 60 * 60 * 24;
 const SEED_NOW = new Date("2026-05-08T12:00:00.000Z");
@@ -76,7 +34,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     slug: "read-your-writes-without-the-asterisks",
     excerpt:
       "Postgres replicas are fast and cheap until a user writes a row, redirects, and reads stale data on a different replica. We rebuilt the routing layer to follow a write within the request, and kept p99 read latency under 12 ms.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "Read-replica routing is a cheap win for read-heavy workloads, but the moment a user writes a row and the next request lands on a different replica, you ship a stale view. The standard fixes — session affinity, " +
         "sticky cookies, replica lag thresholds — each have failure modes that are hard to reason about under load.",
       "We rebuilt routing as a small library that follows a write within the lifetime of the request that produced it. Writes go to the primary; subsequent reads in the same request are pinned to the primary; everything else flows to a replica. The lookup is one map operation per query.",
@@ -88,7 +46,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
   {
     title: "Why your index is fine and your query planner isn't.",
     excerpt: "Six query rewrites that survived a year in production — and the two that didn't.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "The first time the planner ignored a perfectly good index, I spent an hour writing increasingly specific `EXPLAIN ANALYZE` queries before I noticed the statistics were three days old. The second time, it was a parameter sniffing problem and the index was right; I just needed to teach the planner about it.",
       "This post walks through six rewrites — two `ROW_NUMBER()` cases, two correlated subqueries, a `LATERAL` join, and one CTE we ended up inlining — and the diagnostic we settled on for each. Three of the six are wins that survived a year of production traffic. Two regressed and got reverted. One is still in flight.",
     ]),
@@ -99,7 +57,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     title: "Typing the unknown: branded IDs without the runtime tax.",
     excerpt:
       "A pragmatic pattern for distinguishing `UserId` from `OrgId` in the type system, with no helpers and no `as` casts. The trick is doing the branding at the boundary so the rest of the codebase doesn't notice.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       'Branded primitives in TypeScript usually come with helpers — `brand(value, "UserId")`, a runtime tag, a `Brand<T, K>` type. The cost is real: every call site that produces an id needs the helper, every consumer needs to remember the brand, and `as` casts creep back in.',
       "The pattern that survived for us: brand the id at the boundary (the DB row, the URL parser, the form decoder) once, and let the rest of the codebase treat it as the branded type. No helpers, no runtime cost. The boundary is the one place a new contributor has to think about it.",
     ]),
@@ -110,7 +68,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     title: "Outbox isn't a queue — it's a contract between two writers.",
     excerpt:
       'Why every team eventually reinvents the transactional outbox, and how to pick the implementation that won\'t bite you. Spoiler: the answer is rarely "use Kafka".',
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "The outbox pattern shows up every time you need to do one thing in the database and a second thing somewhere else (a webhook, a search index, an email). The naive implementation — write the row, then do the second thing — is correct exactly until the second thing fails.",
       "Three implementations have lasted: a polling worker over an indexed `outbox` table; a logical-replication consumer; and a transactional CDC stream. Each has a different failure mode. This post walks through what we tried, what we picked, and why we'd pick differently for a smaller team.",
     ]),
@@ -121,7 +79,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     title: "Latency budgets are how you keep your roadmap honest.",
     excerpt:
       "A four-quarter look at one team's p99 budget — what it bought, and the work that fell off the plan because of it. The number itself was less interesting than the conversations it forced.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "We had two latency budgets — p50 and p99 — and a rule that said no feature could ship if it pushed either one over the line for more than a sprint. The rule was annoying. It was also the single most useful thing we put on the roadmap that year.",
       "A budget doesn't tell you which optimization to do next. It tells you which optimization you can't afford not to do. Three of the four quarters, the budget rejected a feature we wanted. Two of those features came back smaller; one stayed off the board.",
     ]),
@@ -132,7 +90,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     title: "Two cache stampedes I wish I'd seen coming.",
     excerpt:
       "A post-mortem on the day a featured-post invalidation pushed our origin from 200 rps to 18,000 in nine seconds. And the second time, six months later, when we caught it before any of the dashboards did.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "Stampedes don't look like what the textbooks describe. The first one we hit was a featured-post invalidation that triggered exactly one CDN miss per edge, which sounds fine until you remember the CDN has 400 edges. 18,000 requests/sec at the origin, all asking for the same warm key.",
       "The fix wasn't a bigger origin pool; it was an in-process single-flight with a 200 ms jitter. The second time it almost happened, the single-flight caught it. The dashboards didn't notice for forty minutes — which is its own lesson about which signals you actually need to monitor.",
     ]),
@@ -143,7 +101,7 @@ const SEED_POSTS: NpThemeSeedPost[] = [
     title: "RFC: shorter, smaller, more of them.",
     excerpt:
       "The RFC template our team converged on after eighteen months of over-scoped design docs and under-scoped Slack threads. Three sections, two pages, one decision per document.",
-    content: lexicalDoc([
+    content: npCreateSeedRichText([
       "The first version of our RFC template had eleven sections. The current version has three: the question, the options we considered, and the choice. Anything else — risks, alternatives, prior art — lives in the body of the answer or doesn't make it into the document at all.",
       "Shorter RFCs are easier to review, easier to revise, and easier to find six months later. The number of decisions we documented went up; the number of words we wrote about each one went down. The template is at the end of this post. Steal it.",
     ]),

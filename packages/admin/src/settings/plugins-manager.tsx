@@ -36,6 +36,11 @@ import { Input } from "../ui/input.js";
 import { Switch } from "../ui/switch.js";
 import { Textarea } from "../ui/textarea.js";
 import { PageHeader } from "../layout/page-header.js";
+import {
+  getPluginConfigDefaultValues,
+  savePluginConfig,
+  usePluginConfigSave,
+} from "./plugin-config.js";
 import { ZodForm, type ZodFormValue } from "../zod-form/index.js";
 
 interface PluginAdminSettings {
@@ -436,19 +441,7 @@ export function PluginsManager() {
     }
 
     try {
-      const response = await npFetch(
-        `/api/admin/plugins/${encodeURIComponent(configPlugin.id)}/config`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ value: parsed }),
-        },
-      );
-      const payload = (await response.json().catch(() => null)) as unknown;
-      if (!response.ok) {
-        setConfigError(getErrorMessage(payload, "Failed to save config."));
-        return;
-      }
+      await savePluginConfig(configPlugin.id, parsed, "Failed to save config.");
       setToast({ type: "success", message: `Updated ${configPlugin.name} config.` });
       setConfigPlugin(null);
       await loadPlugins();
@@ -758,29 +751,10 @@ function PluginAutoConfigForm({
   onCancel: () => void;
 }) {
   const [value, setValue] = useState<ZodFormValue>(initialConfig);
-  const [saving, setSaving] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { saving, errorMessage, save } = usePluginConfigSave(pluginId, "Failed to save settings.");
 
-  const save = async () => {
-    setSaving(true);
-    setErrorMessage(null);
-    try {
-      const response = await npFetch(`/api/admin/plugins/${encodeURIComponent(pluginId)}/config`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value }),
-      });
-      const payload = (await response.json().catch(() => null)) as unknown;
-      if (!response.ok) {
-        setErrorMessage(getErrorMessage(payload, "Failed to save settings."));
-        return;
-      }
-      onSaved();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to save settings.");
-    } finally {
-      setSaving(false);
-    }
+  const handleSave = async () => {
+    if (await save(value)) onSaved();
   };
 
   return (
@@ -809,7 +783,7 @@ function PluginAutoConfigForm({
           type="button"
           className="min-h-10 w-full sm:min-h-0 sm:w-auto"
           onClick={() => {
-            void save();
+            void handleSave();
           }}
           disabled={saving}
         >
@@ -841,43 +815,16 @@ function PluginConfigForm({
   onSaved: () => void;
   onCancel: () => void;
 }) {
-  const defaultValues = useMemo(() => {
-    const result: Record<string, unknown> = { ...initialConfig };
-    for (const field of settings.fields) {
-      if (field.type === "row" || field.type === "collapsible") continue;
-      if (result[field.name] === undefined && field.defaultValue !== undefined) {
-        result[field.name] = field.defaultValue;
-      }
-    }
-    return result;
-  }, [settings.fields, initialConfig]);
+  const defaultValues = useMemo(
+    () => getPluginConfigDefaultValues(settings.fields, initialConfig),
+    [settings.fields, initialConfig],
+  );
 
   const form = useForm<Record<string, unknown>>({ defaultValues });
-  const [saving, setSaving] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { saving, errorMessage, save } = usePluginConfigSave(pluginId, "Failed to save settings.");
 
   const onSubmit = form.handleSubmit(async (values) => {
-    setSaving(true);
-    setErrorMessage(null);
-    try {
-      const response = await npFetch(`/api/admin/plugins/${encodeURIComponent(pluginId)}/config`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: values }),
-      });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as {
-          error?: { message?: string };
-        } | null;
-        setErrorMessage(payload?.error?.message ?? "Failed to save settings.");
-        return;
-      }
-      onSaved();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Failed to save settings.");
-    } finally {
-      setSaving(false);
-    }
+    if (await save(values)) onSaved();
   });
 
   return (
