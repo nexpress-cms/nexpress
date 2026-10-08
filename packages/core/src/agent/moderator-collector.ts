@@ -223,7 +223,8 @@ export async function npReadAgentModeratorCommentSourceV1(source: EventRow) {
     outcome,
   };
 }
-async function readFact(
+/** Reuse the current domain ACL/version and the exact retained observation; never reconstruct stale facts. */
+export async function npReadAgentModeratorCommentFactV1(
   db: Db,
   source: EventRow,
   user: NpAuthUser,
@@ -312,7 +313,7 @@ export async function npResolveAgentModeratorCommentEvidenceV1(input: {
         )
         .limit(1);
       if (!source) return false;
-      const actual = await readFact(input.db, source, user);
+      const actual = await npReadAgentModeratorCommentFactV1(input.db, source, user);
       if (!actual || serializeAgentCanonicalJson(actual) !== serializeAgentCanonicalJson(expected))
         return false;
     }
@@ -380,7 +381,7 @@ export function createAgentModeratorCollectorV1(options: {
               !settings.collectionSlugs.includes(source.subject.collection)
             )
               continue;
-            const fact = await readFact(db, source, user);
+            const fact = await npReadAgentModeratorCommentFactV1(db, source, user);
             if (fact) facts.push(fact);
           }
           const candidates = await npDetectAgentRepeatedLinkSpamV1({

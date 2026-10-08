@@ -649,6 +649,10 @@ The optional [Moderator Runtime continuation flow](r6-moderator-runtime-flow.md)
 connects proposals to the same Run's signed human approval and exact execution,
 then projects only verified completed receipts to the provider. It does not
 enable automatic quarantine or supply production/model quality evidence.
+The [Moderator recipe and Studio flow](r6-moderator-recipe-flow.md) adds explicit
+setup and a bounded current-evidence source for exact quarantine proposals.
+Supporting evidence is rechecked before proposal and approved execution; the
+recipe has no automatic execution authority and leaves the full R6 gate open.
 
 The [Incident Studio review flow](r6-incident-studio-flow.md) connects staff
 list/detail review, authorized history links, immutable feedback and explicit
