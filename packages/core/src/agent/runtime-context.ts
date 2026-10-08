@@ -1,3 +1,7 @@
+import {
+  npIsAgentModeratorRecipeSourceV1,
+  type NpAgentModeratorRecipeSourceV1,
+} from "./moderator-recipe-source.js";
 import { npRequireAgentRecipeSettingsV1 } from "../agent-contract/runtime-contract.js";
 import { npRequireAgentProviderSchemaValueV1 } from "./provider-auth-contract.js";
 import { npMeasureAgentRuntimeRunUsageV1 } from "./runtime-usage-capacity.js";
@@ -111,6 +115,7 @@ export interface NpAgentRuntimeContextOptionsV1 {
   admission: NpAgentRuntimeAdmissionV1;
   capabilities?: NpAgentRuntimeContextCapabilitySourceV1;
   documentEvidence?: NpAgentRuntimeDocumentEvidenceReaderV1;
+  moderatorEvidence?: NpAgentModeratorRecipeSourceV1;
 }
 
 export interface NpAgentRuntimeContextPrepareInputV1 {
@@ -523,7 +528,11 @@ async function build(
     },
   );
   if (
-    ["operator.worker-not-draining", "publisher.stale-content"].includes(recipe.id) &&
+    [
+      "operator.worker-not-draining",
+      "publisher.stale-content",
+      "moderator.repeated-link-spam",
+    ].includes(recipe.id) &&
     recipe.instruction.templateId === recipe.id
   ) {
     const selectedSettings = evidence.definition.settings.filter(
@@ -653,12 +662,34 @@ async function readSources(
   sequence: number,
   capturedAt: string,
   capabilities: NpAgentRuntimeContextCapabilitySourceV1 | undefined,
+  moderatorEvidence: NpAgentModeratorRecipeSourceV1 | undefined,
 ): Promise<{ trusted: Request["trustedContext"]; untrusted: Request["untrustedEvidence"] }> {
   const trusted: Request["trustedContext"] = [];
   const untrusted: Request["untrustedEvidence"] = [];
   const recipe = context.evidence.registry.recipes.find(
     (entry) => entry.id === context.run.recipeId && entry.version === context.run.recipeVersion,
   );
+  if (
+    recipe?.id === "moderator.repeated-link-spam" &&
+    recipe.instruction?.templateId === recipe.id
+  ) {
+    if (
+      !moderatorEvidence ||
+      !npIsAgentModeratorRecipeSourceV1(moderatorEvidence) ||
+      context.policy.effective.providerDataMaximum !== "sensitive-approved" ||
+      context.run.providerDataClassCeiling !== "sensitive-approved"
+    )
+      unavailable();
+    const metadata = await moderatorEvidence.read(context, capturedAt);
+    const digest = hash("np.agent-runtime-moderator-candidates.v1", metadata);
+    trusted.push({
+      id: "moderator-candidates",
+      kind: "server-fact",
+      digest,
+      classification: classification(digest, "sensitive-approved"),
+      text: serializeAgentCanonicalJson(metadata),
+    });
+  }
   if (recipe?.id === "publisher.stale-content" && recipe.instruction?.templateId === recipe.id) {
     if (
       !reader ||
@@ -895,6 +926,7 @@ export function createAgentRuntimeContextV1(
               input.sequence,
               capturedAt,
               options.capabilities,
+              options.moderatorEvidence,
             );
             const request = await build(context, input, options.capabilities, sources);
             const attestation = {
@@ -935,6 +967,7 @@ export function createAgentRuntimeContextV1(
               request.sequence,
               attestation.capturedAt,
               options.capabilities,
+              options.moderatorEvidence,
             )
           : { trusted: [], untrusted: [] };
         const expected = await build(

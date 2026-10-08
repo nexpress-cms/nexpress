@@ -26,6 +26,7 @@ import {
 } from "@nexpress/core/agent-contract";
 import { publisherSetupAvailable, publisherSetupDefinition } from "./agent-publisher-setup.js";
 import { operatorSetupAvailable, operatorSetupDefinition } from "./agent-operator-setup.js";
+import { moderatorSetupAvailable, moderatorSetupDefinition } from "./agent-moderator-setup.js";
 import { runtimeManualInput } from "./agent-runtime-manual-input.js";
 import { AgentStudioFrame } from "./agent-studio-frame.js";
 import { AgentStudioApiError } from "./agent-studio-api.js";
@@ -386,6 +387,24 @@ function RuntimeConfigurationEditor({
               </Button>
             </div>
           ) : null}
+          {!current && moderatorSetupAvailable(catalog) ? (
+            <div className="space-y-2 rounded-md border p-3">
+              <p className="text-sm">
+                Configure a Moderator to review repeated-link spam evidence in selected collections
+                and propose quarantine for human approval. This replaces the draft’s recipe,
+                permissions and budget. Choose collections and a provider explicitly. Saving does
+                not activate the Agent; quarantine always requires human approval, and restoration
+                remains a separate staff review.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => update(moderatorSetupDefinition(catalog, definition.name))}
+              >
+                Use Moderator human approval setup
+              </Button>
+            </div>
+          ) : null}
           {!current && operatorSetupAvailable(catalog) ? (
             <div className="space-y-2 rounded-md border p-3">
               <p className="text-sm">
@@ -562,7 +581,9 @@ function RuntimeConfigurationEditor({
               !selected.length ||
               definition.settings.some(
                 (setting) =>
-                  setting.recipeId === "publisher.stale-content" && !setting.collectionSlugs.length,
+                  (setting.recipeId === "publisher.stale-content" ||
+                    setting.recipeId === "moderator.repeated-link-spam") &&
+                  !setting.collectionSlugs.length,
               )
             }
           >

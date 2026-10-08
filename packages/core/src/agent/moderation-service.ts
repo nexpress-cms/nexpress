@@ -1,4 +1,8 @@
 import {
+  npIsAgentModeratorRecipeSourceV1,
+  type NpAgentModeratorRecipeSourceV1,
+} from "./moderator-recipe-source.js";
+import {
   npRequireAgentAuthorizationContextCanonical,
   npDigestAgentAuthorizationContextCanonical,
 } from "../agent-contract/canonical-authorization-context.js";
@@ -120,6 +124,7 @@ export interface NpAgentModerationServiceOptionsV1 {
     "withCurrentAuthority" | "withStoredAuthority"
   >;
   runtimeAdmission?: NpAgentRuntimeAdmissionV1;
+  moderatorEvidence?: NpAgentModeratorRecipeSourceV1;
   resolveBudget: (input: { db: Db; siteId: string }) => Promise<NpAgentConcreteBudgetV1>;
   resolveApprovals: () => NpAgentApprovalServiceV1;
   resolveTransportAudience: NpAgentGatewayServiceV1["getTransportAudience"];
@@ -434,6 +439,32 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
           : null,
     };
   }
+  async function assertRecipeProposal(
+    runtime: NpAgentRuntimeRunContextV1,
+    capabilityId: string,
+    proposal: unknown,
+  ) {
+    const recipe = runtime.evidence.registry.recipes.find(
+      (entry) => entry.id === runtime.run.recipeId && entry.version === runtime.run.recipeVersion,
+    );
+    if (
+      recipe?.id !== "moderator.repeated-link-spam" ||
+      recipe.instruction?.templateId !== recipe.id
+    )
+      return;
+    if (
+      capabilityId !== "moderation.quarantine" ||
+      !options.moderatorEvidence ||
+      !npIsAgentModeratorRecipeSourceV1(options.moderatorEvidence)
+    )
+      throw unavailable();
+    const evidence = await options.moderatorEvidence.read(runtime);
+    if (
+      evidence.truncated ||
+      !evidence.candidates.some((candidate) => same(candidate.proposal, proposal))
+    )
+      throw conflict();
+  }
   async function assertStatement(
     db: Db,
     row: Action,
@@ -444,6 +475,8 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
   ) {
     const original = await invocation(db, row.siteId, row.invocationId);
     const facts = await review(db, row, viewer, fresh);
+    // Completed receipts retain authority checks without requiring pre-effect sources.
+    if (runtime && fresh) await assertRecipeProposal(runtime, row.capabilityId, row.inputCanonical);
     if (
       statement.approvalId !== row.approvalId ||
       statement.target.kind !== "action" ||
@@ -878,6 +911,7 @@ export function createAgentModerationServiceV1(options: NpAgentModerationService
       capabilityId === "moderation.quarantine" ? "containment.create" : "containment.restore";
     let actionId: string, runId: string | null, output: object;
     if (parsed.mode === "propose") {
+      if (runtime) await assertRecipeProposal(runtime, capabilityId, parsed.proposal);
       const target = await resolveTarget(db, siteId, capabilityId, parsed.proposal, viewer);
       let targetCount = 1;
       if (runtime) {
