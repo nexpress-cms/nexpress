@@ -228,6 +228,11 @@ function OverviewContent({ overview }: { overview: NpAgentStudioOverviewV1 }) {
         </CardContent>
       </Card>
       <Button asChild variant="outline">
+        <Link href="/admin/agents/evaluations">
+          Review evaluation artifacts <ArrowRight className="size-3.5" />
+        </Link>
+      </Button>
+      <Button asChild variant="outline">
         <Link href="/admin/agents/connections">
           Manage connections <ArrowRight className="size-3.5" />
         </Link>
