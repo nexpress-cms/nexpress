@@ -9,6 +9,7 @@ import { npCreateAgentModeratorProposalEvaluationSuiteV1 } from "./moderator-pro
 import {
   npBuildAgentEvaluationArtifactV1,
   npDigestAgentEvaluationValueV1,
+  npRequireAgentEvaluationSuiteV1,
   type NpAgentEvaluationArtifactV1,
 } from "../agent-contract/evaluation-contract.js";
 import { npRequireAgentEvaluationReviewArtifactV1 } from "../agent-contract/evaluation-review-contract.js";
@@ -55,19 +56,37 @@ const rebuild = (source: NpAgentEvaluationArtifactV1) => {
 beforeAll(async () => {
   const evaluate = async (
     suite: Awaited<ReturnType<typeof npCreateAgentPublisherEvaluationSuiteV1>>,
-  ) =>
-    runAgentEvaluationV1({
-      suite,
+    caseIds: string[],
+  ) => {
+    // Recipe owners already exercise their full datasets. Workbench composition
+    // needs representative abstention/proposal cases, not repeated full replay.
+    const cases = suite.cases.filter((entry) => caseIds.includes(entry.id));
+    if (cases.length !== caseIds.length) throw new Error("Missing workbench fixture case");
+    return runAgentEvaluationV1({
+      suite: npRequireAgentEvaluationSuiteV1({ ...suite, cases }),
       mode: "fake",
       providerId: "fake",
       model: "deterministic-v1",
       budget,
     });
-  publisher = await evaluate(await npCreateAgentPublisherEvaluationSuiteV1());
+  };
+  publisher = await evaluate(await npCreateAgentPublisherEvaluationSuiteV1(), [
+    "pub-001",
+    "pub-002",
+    "pub-003",
+  ]);
   sources = {
     publisher,
-    operator: await evaluate(await npCreateAgentOperatorPlanEvaluationSuiteV1()),
-    "moderator-proposal": await evaluate(await npCreateAgentModeratorProposalEvaluationSuiteV1()),
+    operator: await evaluate(await npCreateAgentOperatorPlanEvaluationSuiteV1(), [
+      "opn-001",
+      "opn-009",
+      "opn-010",
+    ]),
+    "moderator-proposal": await evaluate(await npCreateAgentModeratorProposalEvaluationSuiteV1(), [
+      "mp-en-one-current",
+      "mp-en-empty",
+      "mp-ko-one-current",
+    ]),
     moderator: await runAgentModeratorEvaluationV1(),
   };
 });

@@ -96,6 +96,14 @@ workbench checks covered five server-owner cases, eight Admin transport/state
 cases and four HTTP admission/error cases. The App checks and typecheck also
 passed after the final test-only import annotation correction.
 
+The initial PR CI run reached the default five-second limit in a composition
+test that replayed complete recipe datasets repeatedly. Workbench unit fixtures
+now select three existing representative cases per provider-style recipe,
+retaining proposals, abstentions, edits and exact baseline comparisons. The
+recipe owners still test their full datasets; no timeout or product limit was
+increased. Focused tests, the full Core unit suite, typecheck and affected lint
+were rerun for this test-only correction.
+
 The production Chromium suite passed 117 existing journeys. Its new workspace
 journey initially failed an exact cache-header assertion because the proxy adds
 `must-revalidate`; after checking the required `private` and `no-store` directives,
