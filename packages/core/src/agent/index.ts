@@ -119,5 +119,6 @@ export * from "./moderator-evaluation.js";
 
 export * from "./operator-plan-evaluation-fixtures.js";
 export * from "./evaluation-report.js";
+export * from "./evaluation-workbench.js";
 export * from "./evaluation-report-files.js";
 export * from "./moderator-proposal-evaluation-fixtures.js";

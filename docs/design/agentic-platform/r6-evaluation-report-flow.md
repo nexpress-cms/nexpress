@@ -139,6 +139,10 @@ the rows instead of treating command success as production readiness.
 
 ## Remaining acceptance and operating boundaries
 
+The [Admin evaluation review workspace](r6-evaluation-workbench-flow.md) provides
+bounded evaluation/review file imports, case labels and baseline comparisons,
+then exports the same owner artifacts without persistent review history.
+
 Full R6 requires the roadmap and [testing/evaluation gates](testing-and-evaluation.md#93-enablement-gates),
 including representative usefulness evidence and the relevant operational,
 recovery and production-shadow checks. This command cannot establish the

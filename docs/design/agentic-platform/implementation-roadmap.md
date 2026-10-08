@@ -712,6 +712,11 @@ comparisons into one independently recomputed offline artifact. Missing evidence
 and unreviewed cases stay explicit; report generation does not establish model
 usefulness, production readiness or full R6 acceptance.
 
+The [Admin evaluation review workspace](r6-evaluation-workbench-flow.md) connects
+these existing owners to bounded file imports, case review, baseline comparison
+and compatible artifact exports. Reviews remain offline and self-reported;
+no live approval, provider activation or R6 acceptance is inferred.
+
 ### R7 — Guardian and application security orchestration
 
 Outcome: application signals are correlated into incidents, with narrowly
