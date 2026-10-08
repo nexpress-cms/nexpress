@@ -333,42 +333,6 @@ export async function dispatchPluginRoute(ctx: {
 }
 
 /**
- * Synchronous variant for callers that have already resolved
- * the enabled state externally (e.g. tests, or surfaces that
- * don't gate on enable). Skips the `isPluginEnabled` await.
- */
-export function dispatchPluginRouteSync(ctx: {
-  localeAwarePath: string;
-  rawPath: string;
-  themeRoutes: ReadonlyArray<NpThemeRoute>;
-  enabled?: (pluginId: string) => boolean;
-}): NpPluginRouteMatch | null {
-  const entries = getPluginPageRoutes();
-  detectAndWarnPluginCollisions(ctx.themeRoutes, entries);
-
-  for (const { pluginId, route } of entries) {
-    if (ctx.enabled && !ctx.enabled(pluginId)) continue;
-    if (typeof route.component !== "function") continue;
-    const path = route.locale === "none" ? ctx.rawPath : ctx.localeAwarePath;
-    const params = npMatchPluginPageRoutePattern(route.pattern, path);
-    if (!params) continue;
-    return {
-      pluginId,
-      route: {
-        pattern: route.pattern,
-        component: route.component as ComponentType<NpRouteRenderProps>,
-        metadata: route.metadata as
-          ((ctx: NpRouteRenderProps) => Promise<Metadata> | Metadata) | undefined,
-        surface: route.surface,
-        locale: route.locale,
-      },
-      params,
-    };
-  }
-  return null;
-}
-
-/**
  * Build `NpRouteRenderProps` for a plugin-route match. Same
  * shape `buildRouteRenderProps` produces for theme routes; kept
  * as a separate function so the params type stays accurate

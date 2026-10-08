@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   invalidatePluginEnabled,
@@ -14,6 +14,7 @@ describe("enabled-gate cache invalidation race (#462)", () => {
 
   afterEach(() => {
     resetEnabledGate();
+    vi.restoreAllMocks();
   });
 
   it("does not re-cache a stale value when invalidate fires while a fetch is in flight", async () => {
@@ -67,17 +68,19 @@ describe("enabled-gate cache invalidation race (#462)", () => {
     expect(readC).toBe(false);
   });
 
-  it("a single uncontested fetch caches normally", async () => {
-    let calls = 0;
-    setFetchImplForTest(() => {
-      calls++;
-      return Promise.resolve(true);
-    });
+  it("caches an uncontested fetch until the five-second expiry", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(10_000);
+    const fetch = vi.fn().mockResolvedValueOnce(true).mockResolvedValue(false);
+    setFetchImplForTest(fetch);
 
     expect(await isPluginEnabled("foo")).toBe(true);
-    // Cache hit — no second fetch.
+    now.mockReturnValue(14_999);
     expect(await isPluginEnabled("foo")).toBe(true);
-    expect(calls).toBe(1);
+    expect(fetch).toHaveBeenCalledOnce();
+
+    now.mockReturnValue(15_000);
+    expect(await isPluginEnabled("foo")).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("keeps cache and invalidation isolated by site", async () => {
