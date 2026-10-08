@@ -104,3 +104,5 @@ export * from "./moderator-evaluation-command-contract.js";
 export * from "./operator-plan-evaluation-contract.js";
 export * from "./operator-plan-evaluation-review-contract.js";
 export * from "./evaluation-report-contract.js";
+export * from "./moderator-proposal-evaluation-contract.js";
+export * from "./moderator-proposal-evaluation-review-contract.js";

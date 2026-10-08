@@ -17,6 +17,11 @@ import {
   npCompareAgentOperatorPlanEvaluationReviewArtifactsV1,
 } from "../agent-contract/operator-plan-evaluation-review-contract.js";
 import {
+  npBuildAgentModeratorProposalEvaluationReviewArtifactV1,
+  npRequireAgentModeratorProposalEvaluationReviewArtifactV1,
+  npCompareAgentModeratorProposalEvaluationReviewArtifactsV1,
+} from "../agent-contract/moderator-proposal-evaluation-review-contract.js";
+import {
   npAgentEvaluationReportMaxBytesV1,
   npAgentEvaluationReportRecipesV1,
   type NpAgentEvaluationReportRecipeV1,
@@ -33,6 +38,10 @@ import {
   npCompareAgentModeratorEvaluationReviewArtifactsV1,
 } from "./moderator-evaluation.js";
 
+const legacyModeratorLimitation =
+  "Moderator artifacts require the installed deterministic implementation; historical changed predictions are unsupported.";
+const moderatorLimitation =
+  "Moderator detector artifacts require the installed deterministic implementation; historical changed detector predictions are unsupported. Moderator proposal checks measure synthetic grounding, abstention and permitted proposals separately from detector conformance and self-reported acceptance.";
 const path = "agent.evaluation.report";
 const fail = (): never => {
   throw new Error("Invalid bounded Agent evaluation report.");
@@ -57,7 +66,13 @@ async function evidence(
   if (
     evaluation.schemaVersion === "np.agent-eval.v1" &&
     evaluation.suite.cases.some(
-      (c) => c.category !== (recipe === "operator" ? "ops-plan" : "publisher"),
+      (c) =>
+        c.category !==
+        (recipe === "operator"
+          ? "ops-plan"
+          : recipe === "moderator-proposal"
+            ? "moderator-proposal"
+            : "publisher"),
     )
   )
     fail();
@@ -66,9 +81,11 @@ async function evidence(
       ? null
       : recipe === "moderator"
         ? await npRequireAgentModeratorEvaluationReviewArtifactV1(r.review)
-        : recipe === "operator"
-          ? await npRequireAgentOperatorPlanEvaluationReviewArtifactV1(r.review)
-          : await npRequireAgentEvaluationReviewArtifactV1(r.review);
+        : recipe === "moderator-proposal"
+          ? await npRequireAgentModeratorProposalEvaluationReviewArtifactV1(r.review)
+          : recipe === "operator"
+            ? await npRequireAgentOperatorPlanEvaluationReviewArtifactV1(r.review)
+            : await npRequireAgentEvaluationReviewArtifactV1(r.review);
   if (review && !equal(review.source, evaluation)) fail();
   return { evaluation, review };
 }
@@ -84,7 +101,7 @@ async function input(value: unknown): Promise<ValidatedInput> {
   if (
     r.schemaVersion !== "np.agent-eval-report-input.v1" ||
     !Array.isArray(r.entries) ||
-    r.entries.length > 3
+    r.entries.length > npAgentEvaluationReportRecipesV1.length
   )
     fail();
   const seen = new Set<string>();
@@ -150,23 +167,30 @@ async function row(
                     current.review,
                     baseline.review,
                   )
-                : recipe === "operator"
-                  ? await npCompareAgentOperatorPlanEvaluationReviewArtifactsV1(
+                : recipe === "moderator-proposal"
+                  ? await npCompareAgentModeratorProposalEvaluationReviewArtifactsV1(
                       current.review,
                       baseline.review,
                     )
-                  : await npCompareAgentEvaluationReviewArtifactsV1(
-                      current.review,
-                      baseline.review,
-                    ),
+                  : recipe === "operator"
+                    ? await npCompareAgentOperatorPlanEvaluationReviewArtifactsV1(
+                        current.review,
+                        baseline.review,
+                      )
+                    : await npCompareAgentEvaluationReviewArtifactsV1(
+                        current.review,
+                        baseline.review,
+                      ),
           };
   const coverage =
     current.review ??
     (recipe === "moderator"
       ? await npBuildAgentModeratorEvaluationReviewArtifactV1(current.evaluation)
-      : recipe === "operator"
-        ? await npBuildAgentOperatorPlanEvaluationReviewArtifactV1(current.evaluation)
-        : await npBuildAgentEvaluationReviewArtifactV1(current.evaluation));
+      : recipe === "moderator-proposal"
+        ? await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(current.evaluation)
+        : recipe === "operator"
+          ? await npBuildAgentOperatorPlanEvaluationReviewArtifactV1(current.evaluation)
+          : await npBuildAgentEvaluationReviewArtifactV1(current.evaluation));
   return {
     recipe,
     status: "present",
@@ -212,7 +236,7 @@ export async function npBuildAgentEvaluationReportV1(
       "Missing review files display eligibility and unreviewed counts derived from an empty review; no review artifact or labels are fabricated.",
       "Recipe metrics are not pooled. Review deltas use only the owner's matched reviewed cohort.",
       "Production shadow, operational acceptance, and the full R6 acceptance gate remain separate.",
-      "Moderator artifacts require the installed deterministic implementation; historical changed predictions are unsupported.",
+      moderatorLimitation,
     ],
   };
   const artifact = { ...body, artifactHash: await npDigestAgentEvaluationValueV1(body) };
@@ -233,6 +257,27 @@ export async function npRequireAgentEvaluationReportV1(
     "artifactHash",
   ]);
   const actual = await npBuildAgentEvaluationReportV1(r.input);
-  if (!equal(actual, r)) fail();
-  return actual;
+  if (equal(actual, r)) return actual;
+  // Reports written before the proposal row retain their original exact projection.
+  // Recompute all evidence and the legacy hash rather than trusting old derived fields.
+  if (actual.input.entries.some((entry) => entry.recipe === "moderator-proposal")) fail();
+  const body = {
+    schemaVersion: actual.schemaVersion,
+    authority: actual.authority,
+    input: actual.input,
+    rows: actual.rows,
+    fullR6: actual.fullR6,
+    modelUsefulness: actual.modelUsefulness,
+    limitations: actual.limitations,
+  };
+  const legacyBody = {
+    ...body,
+    rows: body.rows.filter((row) => row.recipe !== "moderator-proposal"),
+    limitations: body.limitations.map((limitation) =>
+      limitation === moderatorLimitation ? legacyModeratorLimitation : limitation,
+    ),
+  };
+  const legacy = { ...legacyBody, artifactHash: await npDigestAgentEvaluationValueV1(legacyBody) };
+  if (!equal(legacy, r)) fail();
+  return legacy;
 }

@@ -8,6 +8,11 @@ import {
   npFormatAgentModeratorEvaluationCommandResultV1,
   type NpAgentModeratorEvaluationCommandResultV1,
   type NpAgentModeratorEvaluationReviewCommandResultV1,
+  npBuildAgentModeratorProposalEvaluationReviewArtifactV1,
+  npRequireAgentModeratorProposalEvaluationReviewArtifactV1,
+  npCompareAgentModeratorProposalEvaluationReviewArtifactsV1,
+  type NpAgentModeratorProposalEvaluationReviewArtifactV1,
+  type NpAgentModeratorProposalEvaluationReviewComparisonV1,
   npBuildAgentOperatorPlanEvaluationReviewArtifactV1,
   npRequireAgentOperatorPlanEvaluationReviewArtifactV1,
   npCompareAgentOperatorPlanEvaluationReviewArtifactsV1,
@@ -39,9 +44,16 @@ interface OperatorPlanReviewResult {
   comparison: NpAgentOperatorPlanEvaluationReviewComparisonV1 | null;
   errorCode: "ARTIFACT_INVALID" | "ARTIFACT_UNAVAILABLE" | "EVALUATION_UNAVAILABLE" | null;
 }
+interface ModeratorProposalReviewResult {
+  schemaVersion: "np.agent-moderator-proposal-eval-review-command.v1";
+  artifact: NpAgentModeratorProposalEvaluationReviewArtifactV1 | null;
+  comparison: NpAgentModeratorProposalEvaluationReviewComparisonV1 | null;
+  errorCode: "ARTIFACT_INVALID" | "ARTIFACT_UNAVAILABLE" | "EVALUATION_UNAVAILABLE" | null;
+}
 export type EvaluationResult =
   | NpAgentEvaluationReportCommandResultV1
   | OperatorPlanReviewResult
+  | ModeratorProposalReviewResult
   | NpAgentEvaluationCommandResultV1
   | ReviewResult
   | NpAgentModeratorEvaluationCommandResultV1
@@ -86,9 +98,14 @@ export function formatEvaluationResult(result: EvaluationResult): string {
   if (result.errorCode) return `Agent evaluation unavailable (${result.errorCode}).`;
   if (
     result.schemaVersion === "np.agent-eval-review-command.v1" ||
-    result.schemaVersion === "np.agent-operator-plan-eval-review-command.v1"
+    result.schemaVersion === "np.agent-operator-plan-eval-review-command.v1" ||
+    result.schemaVersion === "np.agent-moderator-proposal-eval-review-command.v1"
   ) {
-    return `Offline Agent evaluation review: ${result.artifact?.summary.reviewed} reviewed; ${result.artifact?.summary.unreviewed} unreviewed; ${result.artifact?.summary.ineligible} without a reviewable proposal. Self-reported labels confer no approval authority.${result.comparison ? (result.comparison.comparable ? " Comparison uses the matched reviewed case/prediction cohort; use --json for rates and unmatched cases." : ` Comparison is not comparable (${result.comparison.reason}); no regression conclusion.`) : ""}`;
+    const reviewable =
+      result.schemaVersion === "np.agent-moderator-proposal-eval-review-command.v1"
+        ? "response"
+        : "proposal";
+    return `Offline Agent evaluation review: ${result.artifact?.summary.reviewed} reviewed; ${result.artifact?.summary.unreviewed} unreviewed; ${result.artifact?.summary.ineligible} without a reviewable ${reviewable}. Self-reported labels confer no approval authority.${result.comparison ? (result.comparison.comparable ? " Comparison uses the matched reviewed case/prediction cohort; use --json for rates and unmatched cases." : ` Comparison is not comparable (${result.comparison.reason}); no regression conclusion.`) : ""}`;
   }
   return `Agent evaluation ${result.artifact?.ok ? "passed" : "failed"}: ${result.artifact?.metrics.cases ?? 0} cases; ${result.artifact?.mode === "fake" ? "deterministic fixture correctness only; model usefulness is not measured" : "provider evaluation"}.${result.comparison ? (result.comparison.comparable ? " Comparison is compatible; use --json for metric deltas." : ` Comparison is not comparable (${result.comparison.reason}); no regression conclusion.`) : ""}`;
 }
@@ -180,6 +197,8 @@ export async function prepareEvaluationResultVerifier(
     )
       return prepareModeratorVerifier(input, cwd, source);
     const evaluation = await npRequireAgentEvaluationArtifactV1(source);
+    if (evaluation.suite.cases[0].category === "moderator-proposal")
+      return prepareModeratorProposalReviewVerifier(input, cwd, evaluation);
     if (evaluation.suite.cases[0].category === "ops-plan")
       return prepareOperatorPlanReviewVerifier(input, cwd, evaluation);
     const expectedArtifact = await npBuildAgentEvaluationReviewArtifactV1(
@@ -222,13 +241,16 @@ export async function prepareEvaluationResultVerifier(
     npCreateAgentOperatorEvaluationSuiteV1,
     npCreateAgentPublisherEvaluationSuiteV1,
     npCreateAgentOperatorPlanEvaluationSuiteV1,
+    npCreateAgentModeratorProposalEvaluationSuiteV1,
   } = await import("@nexpress/core/agents");
   const suite =
     input.dataset === "publisher.v1"
       ? await npCreateAgentPublisherEvaluationSuiteV1()
       : input.dataset === "operator-plan.v1"
         ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
-        : await npCreateAgentOperatorEvaluationSuiteV1();
+        : input.dataset === "moderator-proposal.v1"
+          ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
+          : await npCreateAgentOperatorEvaluationSuiteV1();
   const suiteHash = await npDigestAgentEvaluationSuiteV1(suite);
   return async (value) => {
     const parsed = await npRequireAgentEvaluationCommandResultV1(value);
@@ -364,6 +386,45 @@ async function prepareOperatorPlanReviewVerifier(
     }
     if (!isDeepStrictEqual(value, expected))
       throw new Error("Mismatched Operator plan review result");
+    return Promise.resolve(expected);
+  };
+}
+
+async function prepareModeratorProposalReviewVerifier(
+  input: NpAgentEvaluationCommandArgsV1,
+  cwd: string,
+  source: unknown,
+): Promise<(value: unknown) => Promise<EvaluationResult>> {
+  const artifact = await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(
+    source,
+    input.reviewsPath ? await readBoundedJson(input.reviewsPath, cwd) : [],
+  );
+  const comparison = input.comparePath
+    ? await npCompareAgentModeratorProposalEvaluationReviewArtifactsV1(
+        artifact,
+        await npRequireAgentModeratorProposalEvaluationReviewArtifactV1(
+          await readBoundedJson(input.comparePath, cwd),
+        ),
+      )
+    : null;
+  const expected: ModeratorProposalReviewResult = {
+    schemaVersion: "np.agent-moderator-proposal-eval-review-command.v1",
+    artifact,
+    comparison,
+    errorCode: null,
+  };
+  return async (value) => {
+    for (const errorCode of ["ARTIFACT_INVALID", "ARTIFACT_UNAVAILABLE"] as const) {
+      const failure: ModeratorProposalReviewResult = {
+        schemaVersion: expected.schemaVersion,
+        artifact: null,
+        comparison: null,
+        errorCode,
+      };
+      if (isDeepStrictEqual(value, failure)) return Promise.resolve(failure);
+    }
+    if (!isDeepStrictEqual(value, expected))
+      throw new Error("Mismatched Moderator proposal review result");
     return Promise.resolve(expected);
   };
 }

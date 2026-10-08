@@ -1,3 +1,11 @@
+import type {
+  NpAgentModeratorRecipeCandidateV1,
+  NpAgentModeratorRecipeEvidenceV1,
+} from "../agent-contract/moderator-recipe-contract.js";
+export type {
+  NpAgentModeratorRecipeCandidateV1,
+  NpAgentModeratorRecipeEvidenceV1,
+} from "../agent-contract/moderator-recipe-contract.js";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import { canonicalBodyUtc } from "../agent-contract/canonical-body-validation.js";
 import { serializeAgentCanonicalJson } from "../agent-contract/canonical-foundation.js";
@@ -7,7 +15,6 @@ import {
   npRequireAgentModeratorSettingsV1,
   npRequireAgentQuarantineProposalV1,
   type NpAgentModeratorFactV1,
-  type NpAgentQuarantineProposalV1,
 } from "../agent-contract/moderator-contract.js";
 import { npAgentAutonomyAllowsV1 } from "../agent-contract/runtime-policy.js";
 import { npAgentEvents, npAgentSignals } from "../db/schema/agent.js";
@@ -33,26 +40,6 @@ const MAXIMUM_EVENTS = 100;
 const MAXIMUM_CANDIDATES = 10;
 const issued = new WeakSet<object>();
 
-export interface NpAgentModeratorRecipeCandidateV1 {
-  incidentId: string;
-  signalId: string;
-  sourceEventIds: string[];
-  detector: {
-    id: "moderator.repeated-link-spam";
-    version: 1;
-    advisory: true;
-    itemCount: number;
-    independentAccountCount: number;
-  };
-  proposal: NpAgentQuarantineProposalV1;
-}
-export interface NpAgentModeratorRecipeEvidenceV1 {
-  observedAt: string;
-  /** Authorized Incidents inspected; never a total that includes hidden rows. */
-  scanned: number;
-  truncated: boolean;
-  candidates: NpAgentModeratorRecipeCandidateV1[];
-}
 export interface NpAgentModeratorRecipeSourceV1 {
   /** Admission supplies the current transaction and authority. The optional timestamp binds context revalidation. */
   read(

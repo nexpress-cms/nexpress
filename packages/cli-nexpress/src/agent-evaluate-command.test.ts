@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   runAgentEvaluationV1,
   npCreateAgentOperatorEvaluationSuiteV1,
@@ -12,6 +12,7 @@ import {
   npParseAgentEvaluationCommandArgsV1,
   npCompareAgentEvaluationReviewArtifactsV1,
   type NpAgentEvaluationArtifactV1,
+  type NpAgentEvaluationSuiteV1,
 } from "@nexpress/core/agent-contract";
 import { runNexpressCli } from "./index.js";
 import { prepareEvaluationResultVerifier } from "./agent-evaluate-result.js";
@@ -40,9 +41,9 @@ const unavailable = {
   comparison: null,
   errorCode: "PROVIDER_UNAVAILABLE",
 };
-async function publisherArtifact() {
+async function publisherArtifact(suite: NpAgentEvaluationSuiteV1) {
   return runAgentEvaluationV1({
-    suite: await npCreateAgentPublisherEvaluationSuiteV1(),
+    suite,
     mode: "fake",
     providerId: "fake",
     model: "deterministic-v1",
@@ -75,6 +76,21 @@ async function emitFixture(cwd: string, result: unknown, exit = 0) {
   );
 }
 describe("nexpress agent evaluate wrapper", () => {
+  let publisherSource: NpAgentEvaluationArtifactV1;
+  let reviewSource: NpAgentEvaluationArtifactV1;
+  beforeAll(async () => {
+    const suite = await npCreateAgentPublisherEvaluationSuiteV1();
+    publisherSource = await publisherArtifact(suite);
+    // Suite binding needs the full installed dataset. Review protocol binding needs
+    // one reviewable proposal and one abstention, not repeated full dataset replays.
+    reviewSource = await publisherArtifact({
+      ...suite,
+      cases: [
+        suite.cases.find((entry) => entry.expectedDecision === "advise")!,
+        suite.cases.find((entry) => entry.expectedDecision === "ignore")!,
+      ],
+    });
+  }, 20_000);
   it("passes explicit evaluation arguments through the existing project script boundary", async () => {
     const cwd = await project("");
     const runProjectScript = vi.fn(() => Promise.resolve(undefined));
@@ -173,7 +189,7 @@ describe("nexpress agent evaluate wrapper", () => {
     expect(output).toContain("EVALUATION_UNAVAILABLE");
   });
   it("accepts Publisher and rejects a suite or budget different from the request", async () => {
-    const artifact = await publisherArtifact();
+    const artifact = structuredClone(publisherSource);
     const cwd = await project("");
     await emitFixture(cwd, {
       schemaVersion: "np.agent-eval-command.v1",
@@ -200,11 +216,11 @@ describe("nexpress agent evaluate wrapper", () => {
         }),
       ).rejects.toThrow("Mismatched evaluation result");
     }
-  });
+  }, 20_000);
   // These artifact workflows recompute canonical hashes and launch real npm children.
   // The timeout bounds the whole workflow, not a product latency requirement.
   it("binds review results to requested source, labels and comparison before child execution", async () => {
-    const source = await publisherArtifact();
+    const source = structuredClone(reviewSource);
     const template = await npBuildAgentEvaluationReviewArtifactV1(source);
     const entry = template.entries.find((e) => e.eligible)!;
     const labels = [
@@ -273,7 +289,7 @@ describe("nexpress agent evaluate wrapper", () => {
     expect(output.read()).not.toContain("private-");
   }, 20_000);
   it("rejects a valid review when the child reports a failed exit", async () => {
-    const source = await publisherArtifact();
+    const source = structuredClone(reviewSource);
     const artifact = await npBuildAgentEvaluationReviewArtifactV1(source);
     const cwd = await project("");
     await writeFile(join(cwd, "source.json"), JSON.stringify(source));
@@ -298,7 +314,7 @@ describe("nexpress agent evaluate wrapper", () => {
     expect(output.read()).not.toContain("private-");
   }, 20_000);
   it("accepts only closed review safe errors and rejects source-output alias before launching child", async () => {
-    const source = await publisherArtifact();
+    const source = structuredClone(reviewSource);
     const cwd = await project("");
     await writeFile(join(cwd, "source.json"), JSON.stringify(source));
     const output = captureOutput();

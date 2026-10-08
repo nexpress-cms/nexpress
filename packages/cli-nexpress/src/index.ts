@@ -79,7 +79,7 @@ Usage:
   nexpress feedback [--json]                          Print a local PII-free support report and issue link
   nexpress agent connect --client <codex|claude> --transport <stdio|http>  Plan or apply a safe MCP connection
   nexpress agent evaluate --report manifest.json [--out report.json] [--json]   Unified offline evaluation report
-  nexpress agent evaluate [--provider fake] [--dataset operator.v1|operator-plan.v1|publisher.v1|moderator.v1] [--json]   Bounded offline evaluation
+  nexpress agent evaluate [--provider fake] [--dataset operator.v1|operator-plan.v1|publisher.v1|moderator.v1|moderator-proposal.v1] [--json]   Bounded offline evaluation
   nexpress agent runtime status|pause|resume --site <siteId> [--json]   Local runtime containment and recovery
   nexpress ops status [--json|--brief|--no-color]     Print read-only runtime status for operators and agents
   nexpress ops contracts [--json|--brief]             Print the shipped local ops contract registry
@@ -362,7 +362,7 @@ async function runEvaluationProjectScript(
 ): Promise<void> {
   if (passthrough.length === 1 && (passthrough[0] === "--help" || passthrough[0] === "-h")) {
     process.stdout.write(
-      "nexpress agent evaluate [--provider fake] [--dataset operator.v1|operator-plan.v1|publisher.v1|moderator.v1] [--out artifact] [--compare baseline] [--json]\nnexpress agent evaluate --review artifact [--reviews labels.json] [--compare prior-review] [--out review-artifact] [--json]\nnexpress agent evaluate --report manifest.json [--out report.json] [--json]\nReport reads manifest-relative local files. Exit zero means report generation, including missing or failed evidence; model usefulness and full R6 acceptance remain unestablished.\nReview is offline and grants no approval authority. Moderator uses the actual offline detector with no network providers or explicit model/budget flags. Network evaluation requires explicit model, call/token/cost limits, --confirm-network and a host-injected provider.\n",
+      "nexpress agent evaluate [--provider fake] [--dataset operator.v1|operator-plan.v1|publisher.v1|moderator.v1|moderator-proposal.v1] [--out artifact] [--compare baseline] [--json]\nnexpress agent evaluate --review artifact [--reviews labels.json] [--compare prior-review] [--out review-artifact] [--json]\nnexpress agent evaluate --report manifest.json [--out report.json] [--json]\nReport reads manifest-relative local files. Exit zero means report generation, including missing or failed evidence; model usefulness and full R6 acceptance remain unestablished.\nReview is offline and grants no approval authority. moderator.v1 uses the actual offline detector with no network providers or explicit model/budget flags. moderator-proposal.v1 checks recipe proposals and abstentions against synthetic observed evidence. Network evaluation requires explicit model, call/token/cost limits, --confirm-network and a host-injected provider.\n",
     );
     return;
   }
