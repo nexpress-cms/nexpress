@@ -1,3 +1,4 @@
+import { NP_INCIDENT_NOTIFICATION_RECOVERY_SCHEMA } from "./incident-notification-recovery.js";
 import { npRequireIncidentSeverityEvidence } from "./incident-severity-evidence.js";
 import {
   type NpAgentIncidentSeverityChangeV1,
@@ -279,6 +280,7 @@ export function createAgentIncidentStudioServiceV1(
           eq(npAgentIncidentTimeline.siteId, input.siteId),
           eq(npAgentIncidentTimeline.incidentId, incident.id),
           gt(npAgentIncidentTimeline.sequence, after),
+          sql`coalesce(${npAgentIncidentTimeline.details}->>'schemaVersion','') <> ${NP_INCIDENT_NOTIFICATION_RECOVERY_SCHEMA}`,
         ),
       )
       .orderBy(asc(npAgentIncidentTimeline.sequence))
@@ -352,6 +354,15 @@ export function createAgentIncidentStudioServiceV1(
       }
       timeline.push({
         ...(containmentFailure ? { containmentFailure } : {}),
+        ...(containmentFailure && options.notifications?.recoveryState
+          ? {
+              notificationRecovery: await options.notifications.recoveryState({
+                ...input,
+                db,
+                timelineId: row.id,
+              }),
+            }
+          : {}),
         ...(severityChange ? { severityChange } : {}),
         id: row.id,
         sequence: row.sequence,

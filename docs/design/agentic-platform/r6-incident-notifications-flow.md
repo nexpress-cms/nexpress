@@ -109,3 +109,7 @@ passed. The existing handoff was preserved.
 This is affected-slice validation, not full R5/R6 acceptance. Dedicated Redis,
 theme, native preview and spoken assistive-technology gates were not rerun;
 opt-in unit skips do not count as integration coverage.
+
+The optional [recording recovery flow](r6-incident-notification-recovery-flow.md)
+adds bounded retries for new confirmed containment failures. Other notification
+transitions retain their existing transaction and recording ownership.

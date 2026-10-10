@@ -1,3 +1,4 @@
+import type { NpAgentIncidentNotificationsServiceV1 } from "./incident-notifications-service.js";
 import { and, asc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import type { getDb } from "../db/runtime.js";
 import { npSites, npSettings } from "../db/schema/system.js";
@@ -28,6 +29,7 @@ export interface NpAgentRuntimeJobsOptionsV1 {
   coordinationSiteId: string;
   events: Pick<NpAgentRuntimeEventServiceV1, "dispatch" | "schedule">;
   executor: Pick<ReturnType<typeof createAgentRuntimeExecutorV1>, "process">;
+  incidentNotifications?: Pick<NpAgentIncidentNotificationsServiceV1, "recover">;
   now?: () => Date;
 }
 function unavailable(): never {
@@ -158,6 +160,13 @@ export function createAgentRuntimeJobsV1(options: NpAgentRuntimeJobsOptionsV1) {
     await fanout("eventSites", async (siteId) => {
       const rows = await pending(siteId);
       let failed = false;
+      if (options.incidentNotifications?.recover) {
+        try {
+          await options.incidentNotifications.recover({ siteId });
+        } catch {
+          failed = true;
+        }
+      }
       for (const event of rows.events) {
         try {
           await enqueue("agent:eventDispatch", { siteId, eventId: event.id });

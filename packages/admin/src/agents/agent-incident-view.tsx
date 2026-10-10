@@ -189,6 +189,53 @@ const timelineLabels: Record<string, string> = {
   notification: "Notification",
 };
 
+function IncidentNotificationRecovery({
+  recovery,
+}: {
+  recovery: NpAgentIncidentStudioDetailV1["timeline"][number]["notificationRecovery"];
+}) {
+  if (recovery === undefined) return null;
+  if (recovery === null) return <p>Local Admin notification recording evidence is unavailable.</p>;
+  return (
+    <div className="space-y-1 break-words">
+      <p className="font-medium">Local Admin notification recording</p>
+      <p>
+        {recovery.state === "pending"
+          ? "Recording pending. Retries require host maintenance."
+          : recovery.state === "sent"
+            ? "Local Admin notification recorded. This does not confirm external delivery."
+            : "Bounded recording recovery stopped."}
+      </p>
+      <p>Recording attempts: {recovery.attempts} of 5</p>
+      <p>
+        Last attempt:{" "}
+        {recovery.lastAttemptAt ? (
+          <time dateTime={recovery.lastAttemptAt}>{recovery.lastAttemptAt}</time>
+        ) : (
+          "No attempt recorded"
+        )}
+      </p>
+      {recovery.state === "pending" ? (
+        <p>
+          Next eligible attempt:{" "}
+          {recovery.nextAttemptAt ? (
+            <time dateTime={recovery.nextAttemptAt}>{recovery.nextAttemptAt}</time>
+          ) : (
+            "Unavailable"
+          )}
+        </p>
+      ) : null}
+      {recovery.lastErrorCode === "NOTIFICATION_RECORDING_FAILED" ? (
+        <p>NOTIFICATION_RECORDING_FAILED: The local Admin notification could not be recorded.</p>
+      ) : recovery.lastErrorCode === "SOURCE_EVIDENCE_INVALID" ? (
+        <p>
+          SOURCE_EVIDENCE_INVALID: Source evidence could not be verified for notification recording.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function AgentIncidentDetailView({ id }: { id: string }) {
   return <IncidentDetail key={id} id={id} />;
 }
@@ -439,10 +486,13 @@ function IncidentDetail({ id }: { id: string }) {
                       </div>
                     ) : null}
                     {entry.containmentFailure ? (
-                      <p>
-                        Quarantine verification failed. The attempted content changes were rolled
-                        back.
-                      </p>
+                      <div className="space-y-2">
+                        <p>
+                          Quarantine verification failed. The attempted content changes were rolled
+                          back.
+                        </p>
+                        <IncidentNotificationRecovery recovery={entry.notificationRecovery} />
+                      </div>
                     ) : null}
                     {entry.decision ? (
                       <div className="space-y-1 break-words">
