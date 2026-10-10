@@ -104,6 +104,23 @@ recipe owners still test their full datasets; no timeout or product limit was
 increased. Focused tests, the full Core unit suite, typecheck and affected lint
 were rerun for this test-only correction.
 
+PR #1523 subsequently passed all four checks on its exact head, including a
+single 118-journey Chromium run and the isolated native preview check. Later
+main and separate Version-PR CI runs again exceeded workbench test deadlines.
+The Release workflow failed its Version-PR CI bridge; it did not establish a
+publishing failure or authorize merging the Version PR.
+
+The companion [notification recording recovery bundle](r6-incident-notification-recovery-flow.md)
+removes seven more redundant workbench builds, shares immutable owner artifacts,
+checks replacement-label behavior once at the shared request seam and registers
+the four recipe round trips independently. An unsupported diagnosis binding uses
+one existing case; supported recipe round trips retain their representative cases
+and the full deterministic Moderator dataset. The test file has eight cases
+instead of five because the four existing recipe iterations now report separately.
+Timeouts and production behavior are unchanged. Focused checks, the full Core
+suite and the complete local workspace gate passed. Hosted CI for this companion
+bundle remains unestablished until it is pushed and checked.
+
 The production Chromium suite passed 117 existing journeys. Its new workspace
 journey initially failed an exact cache-header assertion because the proxy adds
 `must-revalidate`; after checking the required `private` and `no-store` directives,

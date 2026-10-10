@@ -19,6 +19,10 @@ import {
   type NpAgentIncidentWorkflowV1,
 } from "./incident-workflow-contract.js";
 import { npRequireAgentIncidentV1, type NpAgentIncidentV1 } from "./incident-contract.js";
+import {
+  npRequireAgentIncidentNotificationRecoveryV1,
+  type NpAgentIncidentNotificationRecoveryV1,
+} from "./incident-notification-recovery-contract.js";
 import { npAgentIncidentCategories, type NpAgentIncidentCategory } from "./types.js";
 import {
   canonicalBodyRecord,
@@ -65,6 +69,7 @@ export interface NpAgentIncidentStudioDetailV1 {
     severityChange?: NpAgentIncidentSeverityChangeV1;
     assignment?: NpAgentIncidentAssignmentEntryV1 | null;
     containmentFailure?: { outcome: "rolled_back"; reasonCode: "CONTAINMENT_VERIFICATION_FAILED" };
+    notificationRecovery?: NpAgentIncidentNotificationRecoveryV1 | null;
   }>;
   nextTimelineCursor: string | null;
   feedback: Array<{
@@ -94,6 +99,7 @@ export function npRequireAgentIncidentStudioDetailV1(
           k !== "response" &&
           k !== "assignment" &&
           k !== "containmentFailure" &&
+          k !== "notificationRecovery" &&
           k !== "severityChange" &&
           k !== "availableSeverities",
       ),
@@ -166,6 +172,7 @@ export function npRequireAgentIncidentStudioDetailV1(
       "decision",
       "assignment",
       "containmentFailure",
+      "notificationRecovery",
       "severityChange",
     ]);
     if (r.assignment != null && (r.kind !== "human_note" || r.decision !== null))
@@ -187,6 +194,14 @@ export function npRequireAgentIncidentStudioDetailV1(
         reasonCode: "CONTAINMENT_VERIFICATION_FAILED",
       };
     }
+    const notificationRecovery =
+      r.notificationRecovery === undefined
+        ? undefined
+        : r.notificationRecovery === null
+          ? null
+          : npRequireAgentIncidentNotificationRecoveryV1(r.notificationRecovery);
+    if (r.notificationRecovery !== undefined && !containmentFailure)
+      failCanonicalBody("invalid-field", path, "Invalid notification recovery binding");
     const severityChange =
       r.severityChange === undefined
         ? undefined
@@ -202,6 +217,7 @@ export function npRequireAgentIncidentStudioDetailV1(
     return {
       ...(severityChange ? { severityChange } : {}),
       ...(containmentFailure ? { containmentFailure } : {}),
+      ...(notificationRecovery === undefined ? {} : { notificationRecovery }),
       id: canonicalBodyUuid(r.id, path),
       sequence: canonicalBodyInteger(r.sequence, path, 1, 2147483647),
       kind: canonicalBodyEnum<(typeof npAgentIncidentTimelineKindsV1)[number]>(

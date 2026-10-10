@@ -669,6 +669,9 @@ The [containment verification failure flow](r6-incident-containment-failure-flow
 adds confirmed rollback outcomes, authorized history and local notifications.
 The [manual severity flow](r6-incident-severity-flow.md) adds audited staff
 upward-only decisions and their local notifications without changing authority.
+The optional [notification recording recovery flow](r6-incident-notification-recovery-flow.md)
+retains bounded local recording retries for new confirmed quarantine failures
+and connects them to host-owned maintenance and authorized Studio state.
 Other source evidence viewers, external notification delivery, automatic escalation,
 unknown execution outcomes and recipe/evaluation gates stay open.
 

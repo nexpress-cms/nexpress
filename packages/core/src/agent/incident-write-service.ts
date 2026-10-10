@@ -69,7 +69,7 @@ export interface NpAgentIncidentWriteServiceOptionsV1 {
     incident: Incident;
     signal: NpAgentSignalEvidenceCanonicalV1;
   }): boolean | Promise<boolean>;
-  notifications?: Pick<NpAgentIncidentNotificationsServiceV1, "record">;
+  notifications?: Pick<NpAgentIncidentNotificationsServiceV1, "record" | "recordFailure">;
   now?: () => Date;
 }
 export interface NpAgentIncidentContainmentEventV1 {
@@ -715,6 +715,10 @@ export function createAgentIncidentWriteServiceV1(
             transitionVersion: versionNumber,
             severity: incident.severity,
             status: incident.status,
+            ...(options.notifications?.recordFailure &&
+            ["high", "critical"].includes(incident.severity)
+              ? { notificationRecoveryRequested: true }
+              : {}),
           },
           createdAt: time,
         })
@@ -722,16 +726,31 @@ export function createAgentIncidentWriteServiceV1(
       if (!entry) fail();
       if (options.notifications) {
         try {
-          await db.transaction((tx) =>
-            options.notifications!.record({
-              db: tx,
-              siteId,
-              incidentId,
-              transitionVersion: versionNumber,
-              transition: "containment_failed",
-              timelineId: entry.id,
-            }),
-          );
+          if (
+            options.notifications.recordFailure &&
+            ["high", "critical"].includes(incident.severity)
+          ) {
+            await db.transaction((tx) =>
+              options.notifications!.recordFailure!({
+                db: tx,
+                siteId,
+                incidentId,
+                transitionVersion: versionNumber,
+                transition: "containment_failed",
+                timelineId: entry.id,
+              }),
+            );
+          } else
+            await db.transaction((tx) =>
+              options.notifications!.record({
+                db: tx,
+                siteId,
+                incidentId,
+                transitionVersion: versionNumber,
+                transition: "containment_failed",
+                timelineId: entry.id,
+              }),
+            );
         } catch {
           getLogger().warn(
             "Incident containment failure recorded; Admin notification could not be recorded.",

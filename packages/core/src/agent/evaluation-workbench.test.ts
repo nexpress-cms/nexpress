@@ -12,7 +12,10 @@ import {
   npRequireAgentEvaluationSuiteV1,
   type NpAgentEvaluationArtifactV1,
 } from "../agent-contract/evaluation-contract.js";
-import { npRequireAgentEvaluationReviewArtifactV1 } from "../agent-contract/evaluation-review-contract.js";
+import {
+  npBuildAgentEvaluationReviewArtifactV1,
+  npRequireAgentEvaluationReviewArtifactV1,
+} from "../agent-contract/evaluation-review-contract.js";
 import { npRequireAgentOperatorPlanEvaluationReviewArtifactV1 } from "../agent-contract/operator-plan-evaluation-review-contract.js";
 import { npRequireAgentModeratorProposalEvaluationReviewArtifactV1 } from "../agent-contract/moderator-proposal-evaluation-review-contract.js";
 import {
@@ -31,6 +34,10 @@ const budget = {
 };
 let sources: Record<NpAgentEvaluationReportRecipeV1, unknown>;
 let publisher: NpAgentEvaluationArtifactV1;
+const initialWorkbenches = new Map<
+  NpAgentEvaluationReportRecipeV1,
+  ReturnType<typeof npBuildAgentEvaluationWorkbenchV1>
+>();
 const input = (recipe: NpAgentEvaluationReportRecipeV1): NpAgentEvaluationWorkbenchRequestV1 => ({
   schemaVersion: "np.agent-eval-workbench-request.v1",
   recipe,
@@ -40,6 +47,16 @@ const input = (recipe: NpAgentEvaluationReportRecipeV1): NpAgentEvaluationWorkbe
   baselineReview: null,
   labels: null,
 });
+const initialWorkbench = (recipe: NpAgentEvaluationReportRecipeV1) => {
+  let workbench = initialWorkbenches.get(recipe);
+  if (!workbench) {
+    workbench = npBuildAgentEvaluationWorkbenchV1(input(recipe));
+    initialWorkbenches.set(recipe, workbench);
+  }
+  return workbench;
+};
+let emptyPublisherReview: Awaited<ReturnType<typeof npBuildAgentEvaluationReviewArtifactV1>>;
+let diagnosis: NpAgentEvaluationArtifactV1;
 const rebuild = (source: NpAgentEvaluationArtifactV1) => {
   const { mode, suite, provider, model, startedAt, finishedAt, budget, caseResults } = source;
   return npBuildAgentEvaluationArtifactV1({
@@ -89,12 +106,17 @@ beforeAll(async () => {
     ]),
     moderator: await runAgentModeratorEvaluationV1(),
   };
+  // Invalid-binding and comparison probes share immutable owner artifacts;
+  // workbench export and clearing behavior are exercised in the round trip.
+  emptyPublisherReview = await npBuildAgentEvaluationReviewArtifactV1(publisher, []);
+  diagnosis = await evaluate(await npCreateAgentOperatorEvaluationSuiteV1(), ["ops-001"]);
 });
 
 describe("offline evaluation workbench", () => {
-  it("round-trips all four owners, exact hashes and self-reported labels without live authority", async () => {
-    for (const recipe of ["publisher", "operator", "moderator-proposal", "moderator"] as const) {
-      const initial = await npBuildAgentEvaluationWorkbenchV1(input(recipe));
+  it.each(["publisher", "operator", "moderator-proposal", "moderator"] as const)(
+    "round-trips %s, exact hashes and self-reported labels without live authority",
+    async (recipe) => {
+      const initial = await initialWorkbench(recipe);
       expect(initial.authority).toBe("offline-self-reported-no-approval");
       expect(initial.sourceHash).toBe(await npDigestAgentEvaluationValueV1(sources[recipe]));
       expect(initial.reviewArtifactJson).toBeNull();
@@ -140,17 +162,21 @@ describe("offline evaluation workbench", () => {
         review: artifact,
       });
       expect(restored.reviewArtifactJson).toBe(result.reviewArtifactJson);
-      const cleared = await npBuildAgentEvaluationWorkbenchV1({
-        ...input(recipe),
-        review: artifact,
-        labels: [],
-      });
-      expect(JSON.parse(cleared.labelsJson!)).toEqual([]);
-    }
-  }, 20_000);
+      if (recipe === "publisher") {
+        // Replacement labels use the same request semantics for every owner.
+        const cleared = await npBuildAgentEvaluationWorkbenchV1({
+          ...input(recipe),
+          review: artifact,
+          labels: [],
+        });
+        expect(JSON.parse(cleared.labelsJson!)).toEqual([]);
+      }
+    },
+    20_000,
+  );
 
   it("exports a grounded edit and compares accept versus reject on the exact reviewed cohort", async () => {
-    const initial = await npBuildAgentEvaluationWorkbenchV1(input("publisher"));
+    const initial = await initialWorkbench("publisher");
     const index = publisher.caseResults.findIndex((result) =>
       result.prediction?.proposal?.draft.operations.some(
         (operation) =>
@@ -188,14 +214,13 @@ describe("offline evaluation workbench", () => {
     );
     expect(verified.summary.edited).toBe(1);
     expect(verified.labels[0].editedProposal).toEqual(proposal);
-    const accepted = await npBuildAgentEvaluationWorkbenchV1({
-      ...input("publisher"),
-      labels: [{ ...binding, outcome: "accept", editedProposal: null }],
-    });
+    const accepted = await npBuildAgentEvaluationReviewArtifactV1(publisher, [
+      { ...binding, outcome: "accept", editedProposal: null },
+    ]);
     const rejected = await npBuildAgentEvaluationWorkbenchV1({
       ...input("publisher"),
       baseline: structuredClone(publisher),
-      baselineReview: JSON.parse(accepted.reviewArtifactJson!),
+      baselineReview: accepted,
       labels: [{ ...binding, outcome: "reject", editedProposal: null }],
     });
     expect(rejected.summaryText).toContain("matchedCaseKeys=1");
@@ -248,11 +273,7 @@ describe("offline evaluation workbench", () => {
   });
 
   it("validates imported review and baseline bindings even when replacing all labels", async () => {
-    const workbench = await npBuildAgentEvaluationWorkbenchV1({
-      ...input("publisher"),
-      labels: [],
-    });
-    const review = JSON.parse(workbench.reviewArtifactJson!);
+    const review = structuredClone(emptyPublisherReview);
     const changed = structuredClone(publisher);
     changed.mode = "provider";
     changed.provider = "offline-stub";
@@ -287,11 +308,7 @@ describe("offline evaluation workbench", () => {
   });
 
   it("keeps compared evidence, missing review reasons and review coverage explicit", async () => {
-    const workbench = await npBuildAgentEvaluationWorkbenchV1({
-      ...input("publisher"),
-      labels: [],
-    });
-    const review = JSON.parse(workbench.reviewArtifactJson!);
+    const review = structuredClone(emptyPublisherReview);
     const result = await npBuildAgentEvaluationWorkbenchV1({
       ...input("publisher"),
       review,
@@ -309,13 +326,6 @@ describe("offline evaluation workbench", () => {
       baseline: structuredClone(publisher),
     });
     expect(missing.summaryText).toContain("missing-baseline-review");
-    const diagnosis = await runAgentEvaluationV1({
-      suite: await npCreateAgentOperatorEvaluationSuiteV1(),
-      mode: "fake",
-      providerId: "fake",
-      model: "deterministic-v1",
-      budget,
-    });
     await expect(
       npBuildAgentEvaluationWorkbenchV1({ ...input("operator"), evaluation: diagnosis }),
     ).rejects.toThrow();

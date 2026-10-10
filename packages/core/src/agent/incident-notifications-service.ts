@@ -1,3 +1,8 @@
+import {
+  npCreateIncidentNotificationRecovery,
+  npRequireIncidentNotificationRecoverySource,
+} from "./incident-notification-recovery.js";
+import type { NpAgentIncidentNotificationRecoveryV1 } from "../agent-contract/incident-notification-recovery-contract.js";
 import { npRequireIncidentSeverityEvidence } from "./incident-severity-evidence.js";
 import { npRequireIncidentContainmentFailure } from "./incident-containment-failure.js";
 import { randomUUID } from "node:crypto";
@@ -49,6 +54,12 @@ export interface NpAgentIncidentNotificationsServiceV1 {
   /** Trusted owner seam only, in the same transaction as its persisted transition. No backfill. */
   record(input: NpAgentIncidentNotificationRecordInputV1): Promise<void>;
   list(input: Staff & { cursor?: string | null }): Promise<NpAgentIncidentNotificationsV1>;
+  /** Optional explicit local recording recovery owner. No automatic registration. */
+  recordFailure?(input: NpAgentIncidentNotificationRecordInputV1): Promise<void>;
+  recover?(input: { siteId: string }): Promise<void>;
+  recoveryState?(
+    input: Staff & { db?: Db; incidentId: string; timelineId: string },
+  ): Promise<NpAgentIncidentNotificationRecoveryV1 | null>;
 }
 export interface NpAgentIncidentNotificationsServiceOptionsV1 {
   reads: NpAgentIncidentStaffReadServiceV1;
@@ -56,6 +67,8 @@ export interface NpAgentIncidentNotificationsServiceOptionsV1 {
   canReviewAction?(
     input: Staff & { db: Db; incidentId: string; actionId: string },
   ): boolean | Promise<boolean>;
+  /** Opt in only when the host also owns maintenance and current target visibility. */
+  recoverFailures?: boolean;
   cursorHmacKey: Uint8Array;
   now?: () => Date;
 }
@@ -122,179 +135,282 @@ export function createAgentIncidentNotificationsServiceV1(
       fail();
     return item;
   }
-  return {
-    async record(input) {
-      npAssertAgentPreviewEffectsAllowed();
-      canonicalBodySiteId(input.siteId, "notification.siteId");
-      canonicalBodyUuid(input.incidentId, "notification.incidentId");
-      canonicalBodyUuid(input.timelineId, "notification.timelineId");
-      canonicalBodyInteger(input.transitionVersion, "notification.version", 1, 2147483647);
-      const [incident] = await input.db
-        .select()
-        .from(npAgentIncidents)
-        .where(
-          and(eq(npAgentIncidents.siteId, input.siteId), eq(npAgentIncidents.id, input.incidentId)),
-        )
-        .limit(1);
-      const [entry] = await input.db
-        .select()
-        .from(npAgentIncidentTimeline)
-        .where(
-          and(
-            eq(npAgentIncidentTimeline.siteId, input.siteId),
-            eq(npAgentIncidentTimeline.incidentId, input.incidentId),
-            eq(npAgentIncidentTimeline.id, input.timelineId),
-          ),
-        )
-        .limit(1);
-      if (
-        !incident ||
-        !entry ||
-        incident.versionNumber !== input.transitionVersion ||
-        entry.details.transitionVersion !== input.transitionVersion ||
-        entry.details.severity !== incident.severity ||
-        (!["containment_failed", "escalated"].includes(input.transition) &&
-          incident.status !== (input.transition === "opened" ? "open" : input.transition))
+  async function write(
+    input: NpAgentIncidentNotificationRecordInputV1,
+    frozen = false,
+  ): Promise<void> {
+    npAssertAgentPreviewEffectsAllowed();
+    canonicalBodySiteId(input.siteId, "notification.siteId");
+    canonicalBodyUuid(input.incidentId, "notification.incidentId");
+    canonicalBodyUuid(input.timelineId, "notification.timelineId");
+    canonicalBodyInteger(input.transitionVersion, "notification.version", 1, 2147483647);
+    const [incident] = await input.db
+      .select()
+      .from(npAgentIncidents)
+      .where(
+        and(eq(npAgentIncidents.siteId, input.siteId), eq(npAgentIncidents.id, input.incidentId)),
       )
+      .limit(1);
+    const [entry] = await input.db
+      .select()
+      .from(npAgentIncidentTimeline)
+      .where(
+        and(
+          eq(npAgentIncidentTimeline.siteId, input.siteId),
+          eq(npAgentIncidentTimeline.incidentId, input.incidentId),
+          eq(npAgentIncidentTimeline.id, input.timelineId),
+        ),
+      )
+      .limit(1);
+    if (
+      !incident ||
+      !entry ||
+      (frozen
+        ? incident.versionNumber < input.transitionVersion
+        : incident.versionNumber !== input.transitionVersion) ||
+      entry.details.transitionVersion !== input.transitionVersion ||
+      (!frozen && entry.details.severity !== incident.severity) ||
+      (!["containment_failed", "escalated"].includes(input.transition) &&
+        incident.status !== (input.transition === "opened" ? "open" : input.transition))
+    )
+      fail();
+    if (input.transition === "escalated") {
+      const change = await npRequireIncidentSeverityEvidence(input.db, entry);
+      if (change.toSeverity !== incident.severity || entry.details.status !== incident.status)
         fail();
-      if (input.transition === "escalated") {
-        const change = await npRequireIncidentSeverityEvidence(input.db, entry);
-        if (change.toSeverity !== incident.severity || entry.details.status !== incident.status)
-          fail();
-      } else if (input.transition === "containment_failed") {
-        if (
-          entry.kind !== "action" ||
-          entry.sourceKind !== "system" ||
-          !entry.actionId ||
-          !entry.auditEventId ||
-          entry.details.schemaVersion !== "np.agent-incident-containment-failure-entry.v1" ||
-          entry.details.status !== incident.status ||
-          entry.details.phase !== "failed" ||
-          entry.details.outcome !== "rolled_back"
-        )
-          fail();
-        const { action, execution } = await npRequireIncidentContainmentFailure({
-          db: input.db,
-          siteId: input.siteId,
-          incidentId: input.incidentId,
-          actionId: entry.actionId,
-          auditEventId: entry.auditEventId,
-        });
-        if (
-          entry.details.executionInvocationId !== execution.id ||
-          entry.sourceFingerprint !== action.inputHash
-        )
-          fail();
-      } else if (input.transition === "opened") {
-        if (
-          input.transitionVersion !== 1 ||
-          entry.kind !== "observed" ||
-          entry.sourceKind !== "system" ||
-          entry.details.schemaVersion !== "np.agent-incident-signal-entry.v1" ||
-          entry.details.disposition !== "created" ||
-          !entry.signalId
-        )
-          fail();
-      } else if (
-        !["investigating", "resolved", "dismissed"].includes(input.transition) ||
-        entry.kind !== "state_transition" ||
-        entry.sourceKind !== "staff" ||
+    } else if (input.transition === "containment_failed") {
+      if (
+        entry.kind !== "action" ||
+        entry.sourceKind !== "system" ||
+        !entry.actionId ||
         !entry.auditEventId ||
-        entry.details.schemaVersion !== "np.agent-incident-transition-entry.v1" ||
-        entry.details.toStatus !== input.transition ||
-        entry.details.fromStatus === input.transition
+        entry.details.schemaVersion !== "np.agent-incident-containment-failure-entry.v1" ||
+        (!frozen && entry.details.status !== incident.status) ||
+        entry.details.phase !== "failed" ||
+        entry.details.outcome !== "rolled_back"
       )
         fail();
-      const severity = incident.severity;
-      if (
-        severity !== "critical" &&
-        !(input.transition === "opened" && ["medium", "high"].includes(severity)) &&
-        !(input.transition === "escalated" && ["medium", "high"].includes(severity)) &&
-        !(severity === "high" && ["resolved", "containment_failed"].includes(input.transition))
-      )
-        return;
-      const id = randomUUID();
-      const time = entry.createdAt;
-      const item = npRequireAgentIncidentNotificationsV1({
-        schemaVersion: "np.agent-incident-notifications.v1",
-        items: [
-          {
-            notificationId: id,
-            incidentId: incident.id,
-            incidentVersion: input.transitionVersion,
-            transition: input.transition,
-            severity,
-            status: incident.status,
-            summary:
-              input.transition === "containment_failed"
-                ? "Incident containment failed."
-                : input.transition === "escalated"
-                  ? "Incident severity escalated."
-                  : `Incident ${input.transition}.`,
-            adminPath: `/admin/agents/incidents/${incident.id}`,
-            createdAt: time.toISOString(),
-          },
-        ],
-        nextCursor: null,
-      }).items[0];
-      const { notificationId: _, createdAt: __, ...payloadRedacted } = item;
-      const deduplicationKey = key(incident.id, input.transitionVersion, input.transition);
-      const body = npRequireAgentNotificationDeliveryCanonical({
-        schemaVersion: "np.agent-notification-delivery.v1",
+      const { action, execution } = await npRequireIncidentContainmentFailure({
+        db: input.db,
         siteId: input.siteId,
-        notificationId: id,
-        channel: "admin",
-        source: {
-          incidentId: incident.id,
-          runId: null,
-          actionId: null,
-          transitionVersion: input.transitionVersion,
-        },
-        deduplicationKey,
-        payloadRedacted,
-        attempt: 0,
-        result: { state: "confirmed_local" },
-        observedAt: time.toISOString(),
+        incidentId: input.incidentId,
+        actionId: entry.actionId,
+        auditEventId: entry.auditEventId,
       });
-      await input.db
-        .insert(npAgentNotifications)
-        .values({
-          id,
-          siteId: input.siteId,
-          channel: "admin",
-          incidentId: incident.id,
-          transitionVersion: input.transitionVersion,
-          deduplicationKey,
-          state: "sent",
-          payloadRedacted,
-          attempts: 0,
-          deliveryDigestBody: body,
-          deliveryResultDigest: await npDigestAgentNotificationDeliveryCanonical(body),
-          sentAt: time,
-          createdAt: time,
-          updatedAt: time,
-        })
-        .onConflictDoNothing({
-          target: [npAgentNotifications.siteId, npAgentNotifications.deduplicationKey],
-        });
-      const [stored] = await input.db
-        .select()
-        .from(npAgentNotifications)
-        .where(
-          and(
-            eq(npAgentNotifications.siteId, input.siteId),
-            eq(npAgentNotifications.deduplicationKey, deduplicationKey),
-          ),
-        )
-        .limit(1);
-      if (!stored) fail();
-      const existing = await project(stored);
       if (
-        serializeAgentCanonicalJson({ ...existing, notificationId: id }) !==
-        serializeAgentCanonicalJson(item)
+        entry.details.executionInvocationId !== execution.id ||
+        entry.sourceFingerprint !== action.inputHash
       )
         fail();
-    },
+    } else if (input.transition === "opened") {
+      if (
+        input.transitionVersion !== 1 ||
+        entry.kind !== "observed" ||
+        entry.sourceKind !== "system" ||
+        entry.details.schemaVersion !== "np.agent-incident-signal-entry.v1" ||
+        entry.details.disposition !== "created" ||
+        !entry.signalId
+      )
+        fail();
+    } else if (
+      !["investigating", "resolved", "dismissed"].includes(input.transition) ||
+      entry.kind !== "state_transition" ||
+      entry.sourceKind !== "staff" ||
+      !entry.auditEventId ||
+      entry.details.schemaVersion !== "np.agent-incident-transition-entry.v1" ||
+      entry.details.toStatus !== input.transition ||
+      entry.details.fromStatus === input.transition
+    )
+      fail();
+    const historical = frozen
+      ? await npRequireIncidentNotificationRecoverySource(input.db, entry)
+      : null;
+    if (
+      frozen &&
+      (input.transition !== "containment_failed" ||
+        historical?.transitionVersion !== input.transitionVersion)
+    )
+      fail();
+    const severity = historical?.severity ?? incident.severity;
+    if (
+      severity !== "critical" &&
+      !(input.transition === "opened" && ["medium", "high"].includes(severity)) &&
+      !(input.transition === "escalated" && ["medium", "high"].includes(severity)) &&
+      !(severity === "high" && ["resolved", "containment_failed"].includes(input.transition))
+    )
+      return;
+    const id = randomUUID();
+    const time = entry.createdAt;
+    const item = npRequireAgentIncidentNotificationsV1({
+      schemaVersion: "np.agent-incident-notifications.v1",
+      items: [
+        {
+          notificationId: id,
+          incidentId: incident.id,
+          incidentVersion: input.transitionVersion,
+          transition: input.transition,
+          severity,
+          status: historical?.status ?? incident.status,
+          summary:
+            input.transition === "containment_failed"
+              ? "Incident containment failed."
+              : input.transition === "escalated"
+                ? "Incident severity escalated."
+                : `Incident ${input.transition}.`,
+          adminPath: `/admin/agents/incidents/${incident.id}`,
+          createdAt: time.toISOString(),
+        },
+      ],
+      nextCursor: null,
+    }).items[0];
+    const { notificationId: _, createdAt: __, ...payloadRedacted } = item;
+    const deduplicationKey = key(incident.id, input.transitionVersion, input.transition);
+    const body = npRequireAgentNotificationDeliveryCanonical({
+      schemaVersion: "np.agent-notification-delivery.v1",
+      siteId: input.siteId,
+      notificationId: id,
+      channel: "admin",
+      source: {
+        incidentId: incident.id,
+        runId: null,
+        actionId: null,
+        transitionVersion: input.transitionVersion,
+      },
+      deduplicationKey,
+      payloadRedacted,
+      attempt: 0,
+      result: { state: "confirmed_local" },
+      observedAt: time.toISOString(),
+    });
+    await input.db
+      .insert(npAgentNotifications)
+      .values({
+        id,
+        siteId: input.siteId,
+        channel: "admin",
+        incidentId: incident.id,
+        transitionVersion: input.transitionVersion,
+        deduplicationKey,
+        state: "sent",
+        payloadRedacted,
+        attempts: 0,
+        deliveryDigestBody: body,
+        deliveryResultDigest: await npDigestAgentNotificationDeliveryCanonical(body),
+        sentAt: time,
+        createdAt: time,
+        updatedAt: time,
+      })
+      .onConflictDoNothing({
+        target: [npAgentNotifications.siteId, npAgentNotifications.deduplicationKey],
+      });
+    const [stored] = await input.db
+      .select()
+      .from(npAgentNotifications)
+      .where(
+        and(
+          eq(npAgentNotifications.siteId, input.siteId),
+          eq(npAgentNotifications.deduplicationKey, deduplicationKey),
+        ),
+      )
+      .limit(1);
+    if (!stored) fail();
+    const existing = await project(stored);
+    if (
+      serializeAgentCanonicalJson({ ...existing, notificationId: id }) !==
+      serializeAgentCanonicalJson(item)
+    )
+      fail();
+  }
+  const recovery = options.recoverFailures
+    ? npCreateIncidentNotificationRecovery({
+        now,
+        record: (input) => write(input, true),
+        receipt: async (input) => {
+          const [stored] = await input.db
+            .select()
+            .from(npAgentNotifications)
+            .where(
+              and(
+                eq(npAgentNotifications.siteId, input.siteId),
+                eq(
+                  npAgentNotifications.deduplicationKey,
+                  key(input.incidentId, input.transitionVersion, "containment_failed"),
+                ),
+              ),
+            )
+            .limit(1);
+          if (!stored) return false;
+          const [entry] = await input.db
+            .select()
+            .from(npAgentIncidentTimeline)
+            .where(
+              and(
+                eq(npAgentIncidentTimeline.siteId, input.siteId),
+                eq(npAgentIncidentTimeline.incidentId, input.incidentId),
+                eq(npAgentIncidentTimeline.id, input.timelineId),
+              ),
+            )
+            .limit(1);
+          if (!entry) return false;
+          const source = await npRequireIncidentNotificationRecoverySource(input.db, entry);
+          const item = await project(stored);
+          return (
+            item.transition === "containment_failed" &&
+            item.incidentId === source.incidentId &&
+            item.incidentVersion === source.transitionVersion &&
+            item.severity === source.severity &&
+            item.status === source.status &&
+            item.createdAt === source.observedAt
+          );
+        },
+      })
+    : undefined;
+  return {
+    record: (input) => write(input),
+    ...(recovery
+      ? {
+          recordFailure: (input: NpAgentIncidentNotificationRecordInputV1) =>
+            recovery.recordFailure(input),
+          recover: (input: { siteId: string }) => recovery.recover(input),
+          recoveryState: async (
+            input: Staff & { db?: Db; incidentId: string; timelineId: string },
+          ) => {
+            const db = input.db ?? getDb();
+            await options.reads.get(
+              { incidentId: input.incidentId },
+              { ...input, transaction: db },
+            );
+            const auth = await npResolveAgentStaffSessionAuthorizationV1(
+              db,
+              input.siteId,
+              input.actor,
+              now(),
+            );
+            if (!auth.authority.capabilities.includes("admin.manage")) fail();
+            const [entry] = await db
+              .select()
+              .from(npAgentIncidentTimeline)
+              .where(
+                and(
+                  eq(npAgentIncidentTimeline.siteId, input.siteId),
+                  eq(npAgentIncidentTimeline.incidentId, input.incidentId),
+                  eq(npAgentIncidentTimeline.id, input.timelineId),
+                ),
+              )
+              .limit(1);
+            if (!entry?.actionId || !options.canReviewAction) return null;
+            try {
+              if (
+                (await options.canReviewAction({ ...input, db, actionId: entry.actionId })) !== true
+              )
+                return null;
+              return await recovery.state(db, entry);
+            } catch {
+              return null;
+            }
+          },
+        }
+      : {}),
     async list(input) {
       await options.reads.authorize(input);
       const db = getDb();

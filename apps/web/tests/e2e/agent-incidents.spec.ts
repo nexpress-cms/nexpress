@@ -608,6 +608,13 @@ test("incident response shows a persisted failed quarantine after an unchanged u
         approvalId: actionId,
         actionId,
         decision: null,
+        notificationRecovery: {
+          state: "pending",
+          attempts: 1,
+          lastAttemptAt: at,
+          nextAttemptAt: "2026-09-27T00:00:30.000Z",
+          lastErrorCode: "NOTIFICATION_RECORDING_FAILED",
+        },
         containmentFailure: {
           outcome: "rolled_back",
           reasonCode: "CONTAINMENT_VERIFICATION_FAILED",
@@ -639,6 +646,11 @@ test("incident response shows a persisted failed quarantine after an unchanged u
       "Quarantine verification failed. The attempted content changes were rolled back.",
     ),
   ).toBeVisible();
+  await expect(
+    page.getByText("Recording pending. Retries require host maintenance."),
+  ).toBeVisible();
+  await expect(page.getByText("Recording attempts: 1 of 5")).toBeVisible();
+  await expect(page.getByText("Next eligible attempt:")).toContainText("2026-09-27T00:00:30.000Z");
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
@@ -652,6 +664,21 @@ test("incident response shows a persisted failed quarantine after an unchanged u
       animations: "disabled",
     });
   }
+  result.timeline.at(-1)!.notificationRecovery = {
+    state: "sent",
+    attempts: 2,
+    lastAttemptAt: "2026-09-27T00:00:30.000Z",
+    nextAttemptAt: null,
+    lastErrorCode: null,
+  };
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(
+    page.getByText("Local Admin notification recorded. This does not confirm external delivery."),
+  ).toBeVisible();
+  await expect(page.getByText("Recording attempts: 2 of 5")).toBeVisible();
+  await expect(page.getByText("Recording pending. Retries require host maintenance.")).toHaveCount(
+    0,
+  );
   expect(result.workflow!.containment).toEqual(originalContainment);
   expect(commands).toHaveLength(2);
   expect(commands[1]).toEqual(commands[0]);
