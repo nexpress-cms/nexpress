@@ -379,7 +379,13 @@ function IncidentDetail({ id }: { id: string }) {
           ) : null}
           <IncidentResponse
             detail={detail}
-            choiceIndex={responseSelection?.detail === detail ? responseSelection.index : "0"}
+            choiceIndex={
+              responseSelection === null
+                ? "0"
+                : responseSelection.detail === detail
+                  ? responseSelection.index
+                  : ""
+            }
             onChoiceChange={(index) => setResponseSelection({ detail, index, fromEvidence: false })}
             disabled={writing || state.loading}
             onWriting={setWriting}

@@ -27,6 +27,53 @@ const page = {
   nextCursor: null,
 };
 describe("Incident comment evidence projection", () => {
+  it("separates a filed report from classifier verdicts and current resolution", () => {
+    const reported = {
+      ...item,
+      observed: {
+        ...item.observed,
+        spamVerdict: "unknown",
+        profanityVerdict: "unknown",
+        reportFiled: true,
+      },
+      current: { ...item.current, report: { status: "unresolved", resolvedAt: null } },
+    };
+    const reportPage = { ...page, items: [reported] };
+    expect(npRequireAgentIncidentEvidenceV1(reportPage)).toEqual(reportPage);
+    const resolved = {
+      ...reported,
+      current: {
+        ...reported.current,
+        report: { status: "resolved", resolvedAt: "2026-09-02T00:00:00.000Z" },
+      },
+      responseEligible: false,
+    };
+    expect(npRequireAgentIncidentEvidenceV1({ ...page, items: [resolved] }).items[0]).toEqual(
+      resolved,
+    );
+    for (const changed of [
+      { observed: { ...reported.observed, spamVerdict: "pass" } },
+      { observed: { ...item.observed, spamVerdict: "unknown", profanityVerdict: "unknown" } },
+      { current: item.current },
+      { current: { ...reported.current, report: { status: "resolved", resolvedAt: null } } },
+      { current: { ...resolved.current }, responseEligible: true },
+      {
+        current: {
+          ...reported.current,
+          report: { ...reported.current.report, reporterId: signalId },
+        },
+      },
+    ])
+      expect(() =>
+        npRequireAgentIncidentEvidenceV1({ ...page, items: [{ ...reported, ...changed }] }),
+      ).toThrow();
+    expect(() =>
+      npRequireAgentIncidentEvidenceV1({
+        ...page,
+        items: [{ ...item, current: reported.current }],
+      }),
+    ).toThrow();
+  });
   it("keeps observed facts separate from current state without inferring expiry", () => {
     expect(npRequireAgentIncidentEvidenceV1(page)).toEqual(page);
     for (const [state, status] of [

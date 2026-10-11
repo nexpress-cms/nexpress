@@ -58,3 +58,9 @@ export {
   resetCommunityModerationObserverV1,
 } from "../community/moderation-observer.js";
 export type { NpCommunityModerationObserverV1 } from "../community/moderation-observer.js";
+
+export {
+  setCommunityCommentReportObserverV1,
+  resetCommunityCommentReportObserverV1,
+} from "../community/report-observer.js";
+export type { NpCommunityCommentReportObserverV1 } from "../community/report-observer.js";
