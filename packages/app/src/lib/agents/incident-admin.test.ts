@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { NpForbiddenError } from "@nexpress/core";
 import { npApiErrorDiagnosticsHeader } from "@nexpress/core/api-contract";
+import { npRequireAgentIncidentEvidenceV1 } from "@nexpress/core/agent-contract";
 
 const mocks = vi.hoisted(() => ({
   runtime: vi.fn(),
@@ -509,6 +510,52 @@ describe("Incident evidence HTTP boundary", () => {
     items: [],
     nextCursor: null,
   };
+  it("round-trips filed report metadata through the shared parser and rejects private report fields", async () => {
+    const item = {
+      eventId: id,
+      signalIds: [id],
+      availability: "available",
+      target: { kind: "comment", collection: "comments", id },
+      observed: {
+        occurredAt: "2026-10-01T00:00:00.000Z",
+        retentionExpiresAt: "2026-10-02T00:00:00.000Z",
+        status: "visible",
+        spamVerdict: "unknown",
+        profanityVerdict: "unknown",
+        reportFiled: true,
+      },
+      current: {
+        state: "unchanged",
+        status: "visible",
+        editedAt: null,
+        versionDigest: `cj1:sha256:${"a".repeat(43)}`,
+        report: { status: "resolved", resolvedAt: "2026-10-01T01:00:00.000Z" },
+      },
+      responseEligible: false,
+    };
+    const projection = npRequireAgentIncidentEvidenceV1({ ...evidence, items: [item] });
+    mocks.evidence.mockResolvedValue(projection);
+    const response = await handleAgentIncidentAdminRequest(request(), "evidence", id);
+    expect(response.status).toBe(200);
+    const received = await response.json();
+    expect(npRequireAgentIncidentEvidenceV1(received)).toEqual(projection);
+    expect(received).toEqual({ ...evidence, items: [item] });
+    for (const privateItem of [
+      { ...item, observed: { ...item.observed, reporterId: "private-reporter" } },
+      {
+        ...item,
+        current: {
+          ...item.current,
+          report: { ...item.current.report, reason: "private-report-reason", reportId: id },
+        },
+      },
+    ]) {
+      mocks.evidence.mockResolvedValue({ ...evidence, items: [privateItem] });
+      const rejected = await handleAgentIncidentAdminRequest(request(), "evidence", id);
+      expect(rejected.status).toBe(500);
+      expect(await rejected.text()).not.toMatch(/private-reporter|private-report-reason/);
+    }
+  });
   it("decodes only a bounded cursor and returns the exact Incident-bound projection", async () => {
     mocks.evidence.mockResolvedValue(evidence);
     const response = await handleAgentIncidentAdminRequest(

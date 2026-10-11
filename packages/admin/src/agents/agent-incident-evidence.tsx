@@ -51,6 +51,9 @@ export function IncidentEvidence({
       staleTarget),
   );
   React.useEffect(() => {
+    onClearSelection();
+  }, [state.loading, evidence, onClearSelection]);
+  React.useEffect(() => {
     if (!state.failure && !mismatch) return;
     onClearSelection();
     if (runtimeAccessLost(state.failure)) onAccessLost(state.failure);
@@ -74,8 +77,9 @@ export function IncidentEvidence({
         Comment evidence
       </h3>
       <p className="text-sm text-neutral-500">
-        Compare recorded observation metadata with the comment’s current state. Comment content and
-        author details are not included. The current version is not a historical version.
+        Compare recorded observation or report metadata with the comment’s current state. Comment
+        content and author details are not included. The current version is not a historical
+        version.
       </p>
       <AgentRecoveryBoundary error={state.failure}>
         {state.loading ? <p role="status">Loading comment evidence…</p> : null}
@@ -116,14 +120,25 @@ export function IncidentEvidence({
                         </p>
                         <div className="grid gap-3 md:grid-cols-2">
                           <div className="space-y-1">
-                            <h4 className="font-medium">Recorded observation</h4>
+                            <h4 className="font-medium">
+                              {item.observed.reportFiled
+                                ? "Recorded report"
+                                : "Recorded observation"}
+                            </h4>
                             <p>Status: {item.observed.status}</p>
+                            {item.observed.reportFiled ? (
+                              <p>
+                                A report is an unverified claim. No spam or profanity verdict was
+                                recorded.
+                              </p>
+                            ) : (
+                              <p>
+                                Spam: {item.observed.spamVerdict} · Profanity:{" "}
+                                {item.observed.profanityVerdict}
+                              </p>
+                            )}
                             <p>
-                              Spam: {item.observed.spamVerdict} · Profanity:{" "}
-                              {item.observed.profanityVerdict}
-                            </p>
-                            <p>
-                              Observed:{" "}
+                              {item.observed.reportFiled ? "Filed: " : "Observed: "}
                               <time dateTime={item.observed.occurredAt}>
                                 {item.observed.occurredAt}
                               </time>
@@ -147,6 +162,22 @@ export function IncidentEvidence({
                             <p className="break-all">
                               Current version: {item.current.versionDigest}
                             </p>
+                            {item.current.report ? (
+                              <div className="space-y-1 pt-2">
+                                <h4 className="font-medium">Current report</h4>
+                                <p>Report status: {item.current.report.status}</p>
+                                <p>
+                                  Resolved:{" "}
+                                  {item.current.report.resolvedAt ? (
+                                    <time dateTime={item.current.report.resolvedAt}>
+                                      {item.current.report.resolvedAt}
+                                    </time>
+                                  ) : (
+                                    "Not resolved"
+                                  )}
+                                </p>
+                              </div>
+                            ) : null}
                           </div>
                         </div>
                         <Button

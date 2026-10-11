@@ -33,6 +33,7 @@ import {
   npResolveAgentStaffSessionAuthorizationV1,
 } from "./admin-admission.js";
 import { createAgentCursorCodecV1 } from "./cursor.js";
+import { npInspectAgentModeratorCommentReportSourceV1 } from "./moderator-report-source.js";
 
 type Db = ReturnType<typeof getDb>;
 type Facts = {
@@ -189,7 +190,74 @@ export function createAgentIncidentEvidenceServiceV1(options: {
     } catch {
       return missing;
     }
-    if (!checked) return missing;
+    if (!checked) {
+      let inspected;
+      try {
+        inspected = await npInspectAgentModeratorCommentReportSourceV1(db, source, facts.user);
+      } catch (error) {
+        if (
+          error instanceof NpForbiddenError ||
+          error instanceof NpNotFoundError ||
+          error instanceof NpValidationError
+        )
+          return missing;
+        throw error;
+      }
+      if (!inspected) return missing;
+      const { event } = inspected.source;
+      const hexDigest = Buffer.from(
+        source.eventHash.slice("cj1:sha256:".length),
+        "base64url",
+      ).toString("hex");
+      if (
+        group.refs.some(
+          (ref) =>
+            ref.digest !== hexDigest ||
+            ref.eventKind !== event.kind ||
+            ref.observedAt !== event.occurredAt,
+        )
+      )
+        return missing;
+      const { comment, report } = inspected;
+      const state =
+        comment.status === "hidden" || comment.status === "deleted"
+          ? comment.status
+          : inspected.unchanged
+            ? "unchanged"
+            : "changed";
+      return {
+        eventId: group.eventId,
+        signalIds: group.signalIds,
+        availability: "available",
+        target: {
+          kind: "comment",
+          collection: event.subject.collection,
+          id: event.subject.commentId,
+        },
+        observed: {
+          occurredAt: event.occurredAt,
+          retentionExpiresAt: source.expiresAt.toISOString(),
+          status: event.payload.status,
+          spamVerdict: "unknown",
+          profanityVerdict: "unknown",
+          reportFiled: true,
+        },
+        current: {
+          state,
+          status: comment.status,
+          editedAt: comment.editedAt?.toISOString() ?? null,
+          versionDigest: inspected.versionDigest,
+          report: {
+            status: report.resolvedAt === null ? "unresolved" : "resolved",
+            resolvedAt: report.resolvedAt?.toISOString() ?? null,
+          },
+        },
+        responseEligible:
+          state === "unchanged" &&
+          report.resolvedAt === null &&
+          !["resolved", "dismissed"].includes(facts.incident.status),
+      };
+    }
     const { event, outcome } = checked;
     const hexDigest = Buffer.from(
       source.eventHash.slice("cj1:sha256:".length),
@@ -279,7 +347,7 @@ export function createAgentIncidentEvidenceServiceV1(options: {
           incident.siteId !== context.siteId
         )
           return false;
-        // This source owner supports only its canonical comment observations, and never skips an unknown subject/ref.
+        // Every canonical comment observation or report must be readable; unknown subjects/refs are never skipped.
         if (
           incident.primarySubject !== null ||
           !signals.length ||

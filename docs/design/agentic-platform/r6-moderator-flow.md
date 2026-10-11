@@ -111,8 +111,11 @@ terminal containment pruning owner are not installed here.
 ## Explicit boundaries
 
 - The concrete collector captures comment creates and author edits. Historical
-  comments without exact source evidence, document/report collectors, and model
-  classification are not fabricated. Approved document quarantine/restore is
+  comments without exact source evidence, document/member report collectors, and model
+  classification are not fabricated. The subsequent
+  [comment report flow](r6-incident-comment-report-flow.md) adds actual filing
+  observations through a separate opt-in collector using the same advisory rule.
+  Approved document quarantine/restore is
   supported through its domain owner.
 - These effect capabilities support explicitly installed Gateway use and the
   [staff Incident response flow](r6-incident-response-flow.md). The optional

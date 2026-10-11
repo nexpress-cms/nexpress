@@ -81,8 +81,8 @@ export interface NpAgentModeratorFactV1 {
   memberId: string | null;
   targetVersionDigest: string;
   domainHashes: string[];
-  spamVerdict: "pass" | "flag" | "reject";
-  profanityVerdict: "pass" | "flag" | "reject";
+  spamVerdict: "pass" | "flag" | "reject" | "unknown";
+  profanityVerdict: "pass" | "flag" | "reject" | "unknown";
   evidence: NpAgentModeratorEvidenceV1;
 }
 export interface NpAgentModeratorSettingsV1 {
@@ -453,6 +453,18 @@ export const npRequireAgentModeratorFactV1 = (value: unknown): NpAgentModeratorF
         `${path}.evidence`,
         "must reference the exact document revision",
       );
+    if (
+      (raw.spamVerdict === "unknown" || raw.profanityVerdict === "unknown") &&
+      (raw.spamVerdict !== "unknown" ||
+        raw.profanityVerdict !== "unknown" ||
+        evidence.kind !== "event" ||
+        evidence.eventKind !== "community.content.reported")
+    )
+      failCanonicalBody(
+        "invalid-field",
+        `${path}.verdicts`,
+        "unknown verdicts must be a pair from an actual report observation",
+      );
     return {
       schemaVersion: literal(
         raw.schemaVersion,
@@ -476,12 +488,12 @@ export const npRequireAgentModeratorFactV1 = (value: unknown): NpAgentModeratorF
       spamVerdict: canonicalBodyEnum(
         raw.spamVerdict,
         `${path}.spamVerdict`,
-        new Set(["pass", "flag", "reject"] as const),
+        new Set(["pass", "flag", "reject", "unknown"] as const),
       ),
       profanityVerdict: canonicalBodyEnum(
         raw.profanityVerdict,
         `${path}.profanityVerdict`,
-        new Set(["pass", "flag", "reject"] as const),
+        new Set(["pass", "flag", "reject", "unknown"] as const),
       ),
       evidence,
     };

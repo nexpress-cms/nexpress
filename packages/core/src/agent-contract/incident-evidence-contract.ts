@@ -20,8 +20,10 @@ export interface NpAgentIncidentEvidenceItemV1 {
     occurredAt: string;
     retentionExpiresAt: string;
     status: "visible" | "pending";
-    spamVerdict: "pass" | "flag";
-    profanityVerdict: "pass" | "flag";
+    spamVerdict: "pass" | "flag" | "unknown";
+    profanityVerdict: "pass" | "flag" | "unknown";
+    /** A filed report records a claim, not a classifier verdict. */
+    reportFiled?: true;
   } | null;
   current: {
     /** Source comment match only; the digest below binds the current parent as well. */
@@ -29,6 +31,7 @@ export interface NpAgentIncidentEvidenceItemV1 {
     status: "visible" | "pending" | "hidden" | "deleted";
     editedAt: string | null;
     versionDigest: string;
+    report?: { status: "unresolved" | "resolved"; resolvedAt: string | null };
   } | null;
   responseEligible: boolean;
 }
@@ -43,8 +46,10 @@ export interface NpAgentIncidentEvidenceV1 {
 export function npRequireAgentIncidentEvidenceV1(value: unknown): NpAgentIncidentEvidenceV1 {
   const bad = (): never =>
     failCanonicalBody("invalid-field", "incident.evidence", "Invalid evidence projection");
-  const record = (v: unknown, keys: string[]) =>
-    canonicalBodyRecord(v, "incident.evidence", keys, keys, { seen: new WeakSet<object>() });
+  const record = (v: unknown, keys: string[], optional: string[] = []) =>
+    canonicalBodyRecord(v, "incident.evidence", [...keys, ...optional], keys, {
+      seen: new WeakSet<object>(),
+    });
   const r = record(cloneCanonicalRuntimeInput(value, "incident.evidence", 131072), [
     "schemaVersion",
     "incidentId",
@@ -103,13 +108,18 @@ export function npRequireAgentIncidentEvidenceV1(value: unknown): NpAgentInciden
       collection,
       id: canonicalBodyAscii(t.id, "evidence.target.id", 128),
     };
-    const o = record(x.observed, [
-      "occurredAt",
-      "retentionExpiresAt",
-      "status",
-      "spamVerdict",
-      "profanityVerdict",
-    ]);
+    const o = record(
+      x.observed,
+      ["occurredAt", "retentionExpiresAt", "status", "spamVerdict", "profanityVerdict"],
+      ["reportFiled"],
+    );
+    const reportFiled = o.reportFiled !== undefined;
+    if (
+      reportFiled
+        ? o.reportFiled !== true || o.spamVerdict !== "unknown" || o.profanityVerdict !== "unknown"
+        : o.spamVerdict === "unknown" || o.profanityVerdict === "unknown"
+    )
+      bad();
     const observed: NonNullable<NpAgentIncidentEvidenceItemV1["observed"]> = {
       occurredAt: canonicalBodyUtc(o.occurredAt, "evidence.observed.occurredAt"),
       retentionExpiresAt: canonicalBodyUtc(
@@ -124,15 +134,34 @@ export function npRequireAgentIncidentEvidenceV1(value: unknown): NpAgentInciden
       spamVerdict: canonicalBodyEnum(
         o.spamVerdict,
         "evidence.spamVerdict",
-        new Set(["pass", "flag"] as const),
+        new Set(["pass", "flag", "unknown"] as const),
       ),
       profanityVerdict: canonicalBodyEnum(
         o.profanityVerdict,
         "evidence.profanityVerdict",
-        new Set(["pass", "flag"] as const),
+        new Set(["pass", "flag", "unknown"] as const),
       ),
+      ...(reportFiled ? { reportFiled: true as const } : {}),
     };
-    const c = record(x.current, ["state", "status", "editedAt", "versionDigest"]);
+    const c = record(x.current, ["state", "status", "editedAt", "versionDigest"], ["report"]);
+    if (reportFiled !== (c.report !== undefined)) bad();
+    let report: NonNullable<NpAgentIncidentEvidenceItemV1["current"]>["report"];
+    if (reportFiled) {
+      const r = record(c.report, ["status", "resolvedAt"]);
+      report = {
+        status: canonicalBodyEnum(
+          r.status,
+          "evidence.report.status",
+          new Set(["unresolved", "resolved"] as const),
+        ),
+        resolvedAt:
+          r.resolvedAt === null
+            ? null
+            : canonicalBodyUtc(r.resolvedAt, "evidence.report.resolvedAt"),
+      };
+      if ((report.status === "unresolved") !== (report.resolvedAt === null)) bad();
+      if (report.resolvedAt !== null && report.resolvedAt < observed.occurredAt) bad();
+    }
     const current: NonNullable<NpAgentIncidentEvidenceItemV1["current"]> = {
       state: canonicalBodyEnum(
         c.state,
@@ -147,6 +176,7 @@ export function npRequireAgentIncidentEvidenceV1(value: unknown): NpAgentInciden
       editedAt:
         c.editedAt === null ? null : canonicalBodyUtc(c.editedAt, "evidence.current.editedAt"),
       versionDigest: canonicalBodySha256Digest(c.versionDigest, "evidence.current.versionDigest"),
+      ...(report ? { report } : {}),
     };
     if (
       current.state === "hidden" || current.state === "deleted"
@@ -156,6 +186,7 @@ export function npRequireAgentIncidentEvidenceV1(value: unknown): NpAgentInciden
       bad();
     if (current.state === "unchanged" && current.status !== observed.status) bad();
     if (x.responseEligible && current.state !== "unchanged") bad();
+    if (x.responseEligible && current.report?.status === "resolved") bad();
     return {
       eventId,
       signalIds,

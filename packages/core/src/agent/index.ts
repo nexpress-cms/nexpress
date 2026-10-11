@@ -122,3 +122,10 @@ export * from "./evaluation-report.js";
 export * from "./evaluation-workbench.js";
 export * from "./evaluation-report-files.js";
 export * from "./moderator-proposal-evaluation-fixtures.js";
+
+export {
+  createAgentModeratorCommentReportObserverV1,
+  createAgentModeratorCommentReportCollectorV1,
+  npResolveAgentModeratorCommentReportEvidenceV1,
+  type NpAgentModeratorCommentReportCollectorV1,
+} from "./moderator-report-source.js";

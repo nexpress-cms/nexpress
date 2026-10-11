@@ -65,9 +65,11 @@ remain shared with feedback, workflow and response execution.
 
 ## Remaining boundaries
 
-Only the installed canonical comment source is supported. Document/report evidence,
-model assessments, notifications and other recipe/evaluation gates remain
-separate. Explicit Agent designation is covered by the subsequent
+This slice supports the installed canonical comment observation source. The
+subsequent [comment report flow](r6-incident-comment-report-flow.md) extends the
+same owner with actual filing evidence and separate current resolution facts.
+Document/member report evidence, model assessments, notifications and other
+recipe/evaluation gates remain separate. Explicit Agent designation is covered by the subsequent
 [assignment flow](r6-incident-assignment-flow.md). Existing approval, execution and retention owners keep their
 semantics. Versions, changesets, lockfile and schema remain unchanged.
 
