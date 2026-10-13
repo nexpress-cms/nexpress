@@ -159,7 +159,10 @@ Observed 2026-10-14 KST:
   2,311, App 689, CLI 155 and Web 164 unit cases; `pnpm lint`: 41/41.
 - Production Chromium: 2/2, 21.2s, no retries or skips. The existing proposal
   journey and new actual detector review/export journey passed. The 320px
-  capture was inspected and had no horizontal overflow.
+  capture was inspected and had no horizontal overflow. A pre-merge check found
+  the new detector test sharing the Jobs rate-limit bucket; the test now uses
+  its own bucket. Both browser journeys passed again without retries (28.2s),
+  with the assertions and production limits unchanged.
 - Forty freshly packed packages installed outside the workspace: 54 stages,
   including V1 hash preservation, installed V2 evaluation/review/comparison,
   report and Workbench reconstruction, generated-project typecheck and build.

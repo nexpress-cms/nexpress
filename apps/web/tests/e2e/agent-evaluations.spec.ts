@@ -326,7 +326,7 @@ test("evaluation workspace labels actual report/mixed detector replay and explai
   const baseline = await runAgentModeratorEvaluationV1();
   await isolateE2ERateLimitBucket(
     page.context(),
-    170 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+    164 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
   );
   await signInAsE2EAdmin(page);
   const writes: string[] = [];
