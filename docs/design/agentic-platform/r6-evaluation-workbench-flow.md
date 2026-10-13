@@ -10,7 +10,7 @@ installation. Both the server page and processing endpoint require current
 
 Choose Moderator detector, Moderator proposal, Operator plan or Publisher. Import
 an evaluation artifact and optionally its current review, a baseline evaluation
-and the baseline's review. The supported datasets are `moderator.v1`,
+and the baseline's review. The supported datasets are `moderator.v1`, `moderator.v2`,
 `moderator-proposal.v1`, `moderator-proposal.v2`, `operator-plan.v1` and `publisher.v1`. The older
 `operator.v1` diagnosis artifact is outside the existing recipe report/review
 contract and is rejected; it remains usable through its existing CLI.
@@ -27,6 +27,11 @@ retain unverified target-count metadata in evidence, reviews and exports. They u
 the same Moderator proposal selection and abstention controls. A v1/v2 baseline
 remains explicitly incompatible (`SUITE_MISMATCH`); imported labels must bind the
 exact current source, rather than only a dataset name or case identifier.
+
+The [report/mixed detector replay](r6-moderator-evaluation-flow.md#report-and-mixed-detector-replay-moderatorv2)
+uses actual detector predictions with paired unknown report verdicts. Detector
+V1/V2 baselines remain incompatible (`INCOMPATIBLE_SUITE`); no cross-version
+cohort or regression delta is inferred.
 
 Moderator detector cases use confirmed-spam/false-positive labels. The other
 three owners use accept/edit/reject, including parsed Moderator abstentions.

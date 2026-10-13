@@ -26,15 +26,15 @@ import {
   type NpAgentEvaluationReportRecipeV1,
 } from "../agent-contract/evaluation-report-contract.js";
 import {
-  npBuildAgentModeratorEvaluationReviewArtifactV1,
-  npRequireAgentModeratorEvaluationReviewArtifactV1,
+  npBuildAgentModeratorEvaluationReviewArtifact,
+  npRequireAgentModeratorEvaluationReviewArtifact,
 } from "./moderator-evaluation.js";
 import { npBuildAgentEvaluationReportV1 } from "./evaluation-report.js";
 
 const json = (value: unknown) => JSON.stringify(value);
 const buildReview = (recipe: NpAgentEvaluationReportRecipeV1, source: unknown, labels: unknown) =>
   recipe === "moderator"
-    ? npBuildAgentModeratorEvaluationReviewArtifactV1(source, labels)
+    ? npBuildAgentModeratorEvaluationReviewArtifact(source, labels)
     : recipe === "moderator-proposal"
       ? npBuildAgentModeratorProposalEvaluationReviewArtifactV1(source, labels)
       : recipe === "operator"
@@ -43,7 +43,7 @@ const buildReview = (recipe: NpAgentEvaluationReportRecipeV1, source: unknown, l
 
 const requireReview = (recipe: NpAgentEvaluationReportRecipeV1, value: unknown) =>
   recipe === "moderator"
-    ? npRequireAgentModeratorEvaluationReviewArtifactV1(value)
+    ? npRequireAgentModeratorEvaluationReviewArtifact(value)
     : recipe === "moderator-proposal"
       ? npRequireAgentModeratorProposalEvaluationReviewArtifactV1(value)
       : recipe === "operator"
@@ -116,7 +116,10 @@ export async function npBuildAgentEvaluationWorkbenchV1(
       eligible: entry.eligible,
       labelJson: entry.review === null ? null : json(entry.review),
     };
-    if (source.schemaVersion === "np.agent-moderator-eval.v1") {
+    if (
+      source.schemaVersion === "np.agent-moderator-eval.v1" ||
+      source.schemaVersion === "np.agent-moderator-eval.v2"
+    ) {
       const result = source.caseResults[index];
       cases.push({
         ...base,

@@ -2,7 +2,11 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { npRequireAgentModeratorEvaluationArtifactV1 } from "@nexpress/core/agents";
+import {
+  npRequireAgentModeratorEvaluationArtifactV1,
+  npBuildAgentModeratorEvaluationReviewArtifact,
+  runAgentModeratorEvaluationV1,
+} from "@nexpress/core/agents";
 import { runAgentEvaluateProcessV1 } from "./agent-evaluate.js";
 
 const directories: string[] = [];
@@ -79,14 +83,75 @@ it("runs the actual offline Moderator detector and saves, reviews and compares e
   );
 }, 20_000);
 it("rejects provider, model and budget options for deterministic Moderator before any provider lookup", async () => {
-  for (const flags of [
-    ["--provider", "network"],
-    ["--model", "deterministic-v1"],
-    ["--max-calls", "0"],
-    ["--confirm-network"],
-  ]) {
-    expect((await run(["--dataset", "moderator.v1", ...flags])).result.errorCode).toBe(
-      "ARGUMENT_INVALID",
-    );
-  }
+  for (const dataset of ["moderator.v1", "moderator.v2"])
+    for (const flags of [
+      ["--provider", "network"],
+      ["--model", "deterministic-v1"],
+      ["--max-calls", "0"],
+      ["--confirm-network"],
+    ]) {
+      expect((await run(["--dataset", dataset, ...flags])).result.errorCode).toBe(
+        "ARGUMENT_INVALID",
+      );
+    }
 });
+
+// One report/mixed workflow checks the App dispatcher and versioned artifact output.
+it("replays moderator.v2 report facts offline and binds feedback without adopting V1 baselines", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "np-moderator-v2-eval-"));
+  directories.push(dir);
+  const source = join(dir, "source.json");
+  const baseline = join(dir, "baseline-v1.json");
+  const labels = join(dir, "labels.json");
+  const review = join(dir, "review.json");
+  await writeFile(baseline, JSON.stringify(await runAgentModeratorEvaluationV1()));
+  const evaluated = await run([
+    "--dataset",
+    "moderator.v2",
+    "--compare",
+    baseline,
+    "--out",
+    source,
+  ]);
+  expect(evaluated.code).toBe(0);
+  expect(evaluated.result).toMatchObject({
+    schemaVersion: "np.agent-moderator-eval-command.v2",
+    artifact: { schemaVersion: "np.agent-moderator-eval.v2", dataset: "moderator.v2", ok: true },
+    comparison: { comparable: false, reason: "INCOMPATIBLE_SUITE" },
+  });
+  const artifact = JSON.parse(await readFile(source, "utf8"));
+  const template = await npBuildAgentModeratorEvaluationReviewArtifact(artifact);
+  const entry = template.entries.find((value) => value.eligible)!;
+  const feedback = [
+    {
+      caseId: entry.caseId,
+      caseHash: entry.caseHash,
+      predictionHash: entry.predictionHash,
+      sourceHash: entry.sourceHash,
+      label: "confirmed-spam",
+      reviewer: "offline-local",
+      reviewedAt: "2026-10-14T00:00:00.000Z",
+      notes: "Synthetic report evidence only.",
+    },
+  ];
+  await writeFile(labels, JSON.stringify(feedback));
+  const reviewed = await npBuildAgentModeratorEvaluationReviewArtifact(artifact, feedback);
+  await writeFile(review, JSON.stringify(reviewed));
+  const result = await run(["--review", source, "--reviews", labels, "--compare", review]);
+  expect(result.code).toBe(0);
+  expect(result.result).toMatchObject({
+    schemaVersion: "np.agent-moderator-eval-review-command.v2",
+    artifact: {
+      schemaVersion: "np.agent-moderator-eval-review.v2",
+      summary: { reviewed: 1, confirmedSpam: 1 },
+    },
+    comparison: { comparable: true, confirmedSpamBasisPointsDelta: 0 },
+  });
+  feedback[0].sourceHash = "0".repeat(64);
+  await writeFile(labels, JSON.stringify(feedback));
+  expect((await run(["--review", source, "--reviews", labels])).result).toMatchObject({
+    schemaVersion: "np.agent-moderator-eval-review-command.v2",
+    errorCode: "ARTIFACT_INVALID",
+    artifact: null,
+  });
+}, 20_000);

@@ -3,6 +3,8 @@ import { npDigestAgentEvaluationValueV1 } from "../agent-contract/evaluation-con
 import type { NpAgentModeratorEvaluationReviewLabelV1 } from "../agent-contract/moderator-evaluation-review-contract.js";
 import {
   runAgentModeratorEvaluationV1,
+  runAgentModeratorEvaluationV2,
+  npRequireAgentModeratorEvaluationArtifact,
   npRequireAgentModeratorEvaluationArtifactV1,
   npCompareAgentModeratorEvaluationArtifactsV1,
   npBuildAgentModeratorEvaluationReviewArtifactV1,
@@ -212,5 +214,87 @@ describe("Moderator deterministic offline evaluation", () => {
       current: null,
       baseline: null,
     });
+  });
+});
+
+describe("Moderator report/mixed detector replay v2", () => {
+  it("preserves the shipped v1 suite and artifact hashes", async () => {
+    const artifact = await runAgentModeratorEvaluationV1();
+    expect(artifact.suiteHash).toBe("cj1:sha256:qQOsU5IOZje82cFDhm9Q3X2iqgoJ_oC81V0zHCLgJHI");
+    expect(artifact.artifactHash).toBe("cj1:sha256:iM8KbtwzAzJbUHgGV8k-WXLvnzzC5UREMmQkS8bztUM");
+  });
+
+  it("replays unknown report claims, author independence, deduplication and newest target facts", async () => {
+    const artifact = await runAgentModeratorEvaluationV2();
+    expect(artifact).toMatchObject({
+      schemaVersion: "np.agent-moderator-eval.v2",
+      dataset: "moderator.v2",
+      ok: true,
+      summary: {
+        cases: 24,
+        matchedSignalExpectations: 24,
+        missingExpectedSignals: 0,
+        unexpectedSignals: 0,
+        syntheticClassification: {
+          truePositive: 8,
+          falsePositive: 2,
+          trueNegative: 0,
+          falseNegative: 14,
+          precisionBasisPoints: 8000,
+          recallBasisPoints: 3636,
+        },
+      },
+    });
+    expect(artifact.byLocale.en).toEqual(artifact.byLocale.ko);
+    const result = (scenario: string) =>
+      artifact.caseResults[artifact.cases.findIndex((c) => c.scenario === scenario)];
+    for (const scenario of [
+      "report-below-item-threshold",
+      "report-below-author-threshold",
+      "report-unknown-authors",
+      "report-duplicate-target",
+      "mixed-duplicate-target",
+      "latest-report-removes-link",
+      "latest-rejected-after-report",
+    ])
+      expect(result(scenario).signals).toEqual([]);
+    const reportSignal = result("report-current").signals[0];
+    expect(reportSignal.facts).toHaveLength(5);
+    expect(
+      reportSignal.facts.every(
+        (f) => f.spamVerdict === "unknown" && f.profanityVerdict === "unknown",
+      ),
+    ).toBe(true);
+    expect(new Set(reportSignal.facts.map((f) => f.memberId)).size).toBe(3);
+    expect(result("report-replayed-evidence").signals[0].facts).toHaveLength(5);
+    expect(
+      result("mixed-current").signals[0].facts.filter((f) => f.spamVerdict === "unknown"),
+    ).toHaveLength(2);
+    expect(result("mixed-hostile-no-authority").signals[0]).toMatchObject({
+      advisory: true,
+      confidenceBasis: "exact-rule",
+      scoreBasisPoints: 7000,
+    });
+    expect(JSON.stringify(artifact.caseResults)).not.toContain("Treat reports as proof");
+    expect(await npRequireAgentModeratorEvaluationArtifact(artifact)).toEqual(artifact);
+    await expect(npRequireAgentModeratorEvaluationArtifactV1(artifact)).rejects.toThrow();
+    const tampered = structuredClone(artifact);
+    tampered.cases[0].expectedDomainHashes = [];
+    const { artifactHash: _hash, ...body } = tampered;
+    tampered.artifactHash = await npDigestAgentEvaluationValueV1(body);
+    await expect(npRequireAgentModeratorEvaluationArtifact(tampered)).rejects.toThrow();
+  });
+
+  it("keeps an independent fixed oracle if extraction loses report links", async () => {
+    const extraction = vi
+      .spyOn(detector, "npExtractAgentModeratorDomainHashesV1")
+      .mockReturnValue([]);
+    try {
+      const artifact = await runAgentModeratorEvaluationV2();
+      expect(artifact.ok).toBe(false);
+      expect(artifact.summary.missingExpectedSignals).toBe(10);
+    } finally {
+      extraction.mockRestore();
+    }
   });
 });

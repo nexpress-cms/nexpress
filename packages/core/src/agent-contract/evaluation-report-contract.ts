@@ -11,12 +11,12 @@ import type {
   NpAgentEvaluationReviewComparisonV1,
 } from "./evaluation-review-contract.js";
 import type {
-  NpAgentModeratorEvaluationArtifactV1,
+  NpAgentModeratorEvaluationArtifact,
   NpAgentModeratorEvaluationComparisonV1,
   NpAgentModeratorEvaluationSummaryV1,
 } from "./moderator-evaluation-contract.js";
 import type {
-  NpAgentModeratorEvaluationReviewArtifactV1,
+  NpAgentModeratorEvaluationReviewArtifact,
   NpAgentModeratorEvaluationReviewSummaryV1,
   NpAgentModeratorEvaluationReviewComparisonV1,
 } from "./moderator-evaluation-review-contract.js";
@@ -48,12 +48,12 @@ export interface NpAgentEvaluationReportManifestV1 {
   }[];
 }
 export interface NpAgentEvaluationReportEvidenceV1 {
-  evaluation: NpAgentEvaluationArtifactV1 | NpAgentModeratorEvaluationArtifactV1;
+  evaluation: NpAgentEvaluationArtifactV1 | NpAgentModeratorEvaluationArtifact;
   review:
     | NpAgentEvaluationReviewArtifactV1
     | NpAgentOperatorPlanEvaluationReviewArtifactV1
     | NpAgentModeratorProposalEvaluationReviewArtifactV1
-    | NpAgentModeratorEvaluationReviewArtifactV1
+    | NpAgentModeratorEvaluationReviewArtifact
     | null;
 }
 export interface NpAgentEvaluationReportInputV1 {

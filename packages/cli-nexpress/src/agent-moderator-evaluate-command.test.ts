@@ -4,6 +4,10 @@ import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   runAgentModeratorEvaluationV1,
+  runAgentModeratorEvaluationV2,
+  npBuildAgentModeratorEvaluationReviewArtifact,
+  npCompareAgentModeratorEvaluationArtifacts,
+  npCompareAgentModeratorEvaluationReviewArtifacts,
   npBuildAgentModeratorEvaluationReviewArtifactV1,
 } from "@nexpress/core/agents";
 import { npParseAgentEvaluationCommandArgsV1 } from "@nexpress/core/agent-contract";
@@ -65,12 +69,12 @@ it("independently binds Moderator detector and review results to requested input
     ),
   ).rejects.toThrow();
 }, 20_000);
-it("carries a real Moderator child result through the installed CLI boundary with closed output", async () => {
+it("carries a real Moderator V2 child result through the installed CLI boundary with closed output", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "np-moderator-child-"));
   directories.push(cwd);
-  const artifact = await runAgentModeratorEvaluationV1();
+  const artifact = await runAgentModeratorEvaluationV2();
   const result = {
-    schemaVersion: "np.agent-moderator-eval-command.v1",
+    schemaVersion: "np.agent-moderator-eval-command.v2",
     artifact,
     comparison: null,
     errorCode: null,
@@ -91,10 +95,97 @@ it("carries a real Moderator child result through the installed CLI boundary wit
   });
   expect(
     await runNexpressCli(
-      ["node", "nexpress", "agent", "evaluate", "--dataset", "moderator.v1", "--json"],
+      ["node", "nexpress", "agent", "evaluate", "--dataset", "moderator.v2", "--json"],
       { cwd },
     ),
   ).toBe(0);
   expect(JSON.parse(output)).toEqual(result);
   expect(output).not.toContain("private-marker");
 });
+
+it("binds detector V2 inputs and exact feedback while rejecting V1/V2 child substitution", async () => {
+  const cwd = await mkdtemp(join(tmpdir(), "np-moderator-v2-cli-"));
+  directories.push(cwd);
+  const v1 = await runAgentModeratorEvaluationV1();
+  const v2 = await runAgentModeratorEvaluationV2();
+  await writeFile(join(cwd, "baseline.json"), JSON.stringify(v1));
+  const result = {
+    schemaVersion: "np.agent-moderator-eval-command.v2",
+    artifact: v2,
+    comparison: await npCompareAgentModeratorEvaluationArtifacts(v2, v1),
+    errorCode: null,
+  };
+  const verify = await prepareEvaluationResultVerifier(
+    npParseAgentEvaluationCommandArgsV1([
+      "--dataset",
+      "moderator.v2",
+      "--compare",
+      "baseline.json",
+    ]),
+    cwd,
+  );
+  expect(await verify(result)).toEqual(result);
+  expect(result.comparison).toMatchObject({ comparable: false, reason: "INCOMPATIBLE_SUITE" });
+  await expect(verify({ ...result, artifact: v1 })).rejects.toThrow("Mismatched Moderator result");
+  await expect(verify({ ...result, comparison: null })).rejects.toThrow(
+    "Mismatched Moderator result",
+  );
+  const verifyV1 = await prepareEvaluationResultVerifier(
+    npParseAgentEvaluationCommandArgsV1(["--dataset", "moderator.v1"]),
+    cwd,
+  );
+  await expect(
+    verifyV1({ ...result, schemaVersion: "np.agent-moderator-eval-command.v1", comparison: null }),
+  ).rejects.toThrow("Mismatched Moderator result");
+
+  const template = await npBuildAgentModeratorEvaluationReviewArtifact(v2);
+  const entry = template.entries.find((value) => value.eligible)!;
+  const labels = [
+    {
+      caseId: entry.caseId,
+      caseHash: entry.caseHash,
+      predictionHash: entry.predictionHash,
+      sourceHash: entry.sourceHash,
+      label: "false-positive",
+      reviewer: "offline-local",
+      reviewedAt: "2026-10-14T00:00:00.000Z",
+      notes: "Synthetic review only.",
+    },
+  ];
+  const artifact = await npBuildAgentModeratorEvaluationReviewArtifact(v2, labels);
+  const reviewedResult = {
+    schemaVersion: "np.agent-moderator-eval-review-command.v2",
+    artifact,
+    comparison: await npCompareAgentModeratorEvaluationReviewArtifacts(artifact, artifact),
+    errorCode: null,
+  };
+  await Promise.all([
+    writeFile(join(cwd, "source.json"), JSON.stringify(v2)),
+    writeFile(join(cwd, "labels.json"), JSON.stringify(labels)),
+    writeFile(join(cwd, "review.json"), JSON.stringify(artifact)),
+  ]);
+  const verifyReview = await prepareEvaluationResultVerifier(
+    npParseAgentEvaluationCommandArgsV1([
+      "--review",
+      "source.json",
+      "--reviews",
+      "labels.json",
+      "--compare",
+      "review.json",
+    ]),
+    cwd,
+  );
+  expect(await verifyReview(reviewedResult)).toEqual(reviewedResult);
+  // Child file mutation cannot replace the source and labels captured before execution.
+  await Promise.all([
+    writeFile(join(cwd, "source.json"), JSON.stringify(v1)),
+    writeFile(join(cwd, "labels.json"), "[]"),
+  ]);
+  expect(await verifyReview(reviewedResult)).toEqual(reviewedResult);
+  for (const wrong of [
+    { ...reviewedResult, artifact: template },
+    { ...reviewedResult, comparison: null },
+    { ...reviewedResult, schemaVersion: "np.agent-moderator-eval-review-command.v1" },
+  ])
+    await expect(verifyReview(wrong)).rejects.toThrow("Mismatched Moderator result");
+}, 20_000);

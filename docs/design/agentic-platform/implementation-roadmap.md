@@ -704,8 +704,10 @@ and exact-bound offline human labels with matched-cohort comparison. It grants
 no approval authority and leaves real-model usefulness and the full AP-606/R6
 gate open. The
 [Moderator offline evaluation and feedback review flow](r6-moderator-evaluation-flow.md)
-adds actual repeated-link detector replay on bilingual synthetic cases and
-exact-bound offline feedback comparison. Deterministic signal conformance,
+adds actual repeated-link detector replay on bilingual synthetic observed,
+report and mixed cases with exact-bound offline feedback comparison. Its versioned
+report corpus preserves the original detector dataset and rejects cross-version
+baseline comparisons. Deterministic signal conformance,
 synthetic classification and self-reported human labels remain separate;
 production precision and automatic-quarantine readiness are not established.
 The [Moderator proposal evaluation and review flow](r6-moderator-proposal-evaluation-flow.md)
