@@ -31,6 +31,7 @@ import {
   npResolveAgentModeratorStaffUserV1,
 } from "./moderator-collector.js";
 import { npDetectAgentRepeatedLinkSpamV1 } from "./moderator-detector.js";
+import { npReadAgentModeratorCommentReportFactV1 } from "./moderator-report-source.js";
 import type { NpAgentRuntimeRunContextV1 } from "./runtime-admission.js";
 
 const RECIPE = "moderator.repeated-link-spam";
@@ -202,7 +203,10 @@ export function createAgentModeratorRecipeSourceV1(options: {
             if (sources.length !== new Set(ids).size) return [];
             const facts: NpAgentModeratorFactV1[] = [];
             for (const source of sources) {
-              const fact = await npReadAgentModeratorCommentFactV1(context.db, source, user);
+              const fact =
+                source.kind === "community.content.reported"
+                  ? await npReadAgentModeratorCommentReportFactV1(context.db, source, user)
+                  : await npReadAgentModeratorCommentFactV1(context.db, source, user);
               if (
                 !fact ||
                 fact.subject.kind !== "comment" ||
@@ -231,6 +235,11 @@ export function createAgentModeratorRecipeSourceV1(options: {
                 candidate.evidenceDigest === signal.evidenceDigest,
             );
             if (!match) return [];
+            const reportItemCount = match.facts.filter(
+              (fact) =>
+                fact.evidence.kind === "event" &&
+                fact.evidence.eventKind === "community.content.reported",
+            ).length;
             for (const fact of match.facts) {
               if (fact.subject.kind !== "comment") return [];
               found.push({
@@ -243,6 +252,9 @@ export function createAgentModeratorRecipeSourceV1(options: {
                   advisory: true,
                   itemCount: match.facts.length,
                   independentAccountCount: new Set(match.facts.map((entry) => entry.memberId)).size,
+                  ...(reportItemCount > 0
+                    ? { reportClaims: { unverified: true as const, itemCount: reportItemCount } }
+                    : {}),
                 },
                 proposal: npRequireAgentQuarantineProposalV1({
                   incidentId: incident.id,

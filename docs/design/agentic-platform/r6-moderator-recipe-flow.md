@@ -70,6 +70,10 @@ review or new valid evidence, not a batch of automatic quarantines.
 
 ## Acceptance boundary
 
+The subsequent [comment report recipe flow](r6-moderator-report-recipe-flow.md)
+extends the same source with actual filing evidence and explicitly unverified
+claim counts, preserving this recipe's definition and approval owners.
+
 The local journey uses real observed comment writes, the collector/detector,
 Incident owner, Runtime, PostgreSQL and signed human approval with a deterministic
 local provider. This establishes orchestration and refusal behavior, not actual
