@@ -11,7 +11,7 @@ installation. Both the server page and processing endpoint require current
 Choose Moderator detector, Moderator proposal, Operator plan or Publisher. Import
 an evaluation artifact and optionally its current review, a baseline evaluation
 and the baseline's review. The supported datasets are `moderator.v1`,
-`moderator-proposal.v1`, `operator-plan.v1` and `publisher.v1`. The older
+`moderator-proposal.v1`, `moderator-proposal.v2`, `operator-plan.v1` and `publisher.v1`. The older
 `operator.v1` diagnosis artifact is outside the existing recipe report/review
 contract and is rejected; it remains usable through its existing CLI.
 
@@ -21,6 +21,12 @@ labels, so a new label cannot hide an invalid imported review or baseline. The
 screen shows evidence, predictions, deterministic scores, review eligibility and
 the existing report's comparison and coverage explanations. Other recipe report
 rows remain explicitly missing when this workspace processes one recipe.
+
+The [report/mixed proposal fixtures](r6-moderator-proposal-evaluation-flow.md#report-and-mixed-source-fixtures)
+retain unverified target-count metadata in evidence, reviews and exports. They use
+the same Moderator proposal selection and abstention controls. A v1/v2 baseline
+remains explicitly incompatible (`SUITE_MISMATCH`); imported labels must bind the
+exact current source, rather than only a dataset name or case identifier.
 
 Moderator detector cases use confirmed-spam/false-positive labels. The other
 three owners use accept/edit/reject, including parsed Moderator abstentions.

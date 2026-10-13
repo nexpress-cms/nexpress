@@ -710,7 +710,9 @@ synthetic classification and self-reported human labels remain separate;
 production precision and automatic-quarantine readiness are not established.
 The [Moderator proposal evaluation and review flow](r6-moderator-proposal-evaluation-flow.md)
 adds the recipe's actual response schema, exact synthetic candidate grounding and
-reviewable abstentions as evidence separate from detector replay. It does not
+reviewable abstentions as evidence separate from detector replay. Its versioned
+report/mixed source fixtures retain unverified claim counts through the CLI,
+review/report and Admin workspace while preserving the original dataset. It does not
 establish real-model usefulness or automatic-quarantine readiness.
 The [Operator diagnosis and plan evaluation review flow](r6-operator-plan-evaluation-flow.md)
 adds bilingual synthetic diagnosis statements, exact requested queue-plan input

@@ -5,7 +5,10 @@ import { runAgentEvaluationV1 } from "./evaluation.js";
 import { npCreateAgentOperatorPlanEvaluationSuiteV1 } from "./operator-plan-evaluation-fixtures.js";
 import { npCreateAgentOperatorEvaluationSuiteV1 } from "./operator-evaluation-fixtures.js";
 import { npCreateAgentPublisherEvaluationSuiteV1 } from "./publisher-evaluation-fixtures.js";
-import { npCreateAgentModeratorProposalEvaluationSuiteV1 } from "./moderator-proposal-evaluation-fixtures.js";
+import {
+  npCreateAgentModeratorProposalEvaluationSuiteV1,
+  npCreateAgentModeratorProposalEvaluationSuiteV2,
+} from "./moderator-proposal-evaluation-fixtures.js";
 import {
   npBuildAgentEvaluationArtifactV1,
   npDigestAgentEvaluationValueV1,
@@ -16,12 +19,12 @@ import {
   npBuildAgentEvaluationReviewArtifactV1,
   npRequireAgentEvaluationReviewArtifactV1,
 } from "../agent-contract/evaluation-review-contract.js";
-import { npRequireAgentOperatorPlanEvaluationReviewArtifactV1 } from "../agent-contract/operator-plan-evaluation-review-contract.js";
-import { npRequireAgentModeratorProposalEvaluationReviewArtifactV1 } from "../agent-contract/moderator-proposal-evaluation-review-contract.js";
 import {
-  runAgentModeratorEvaluationV1,
-  npRequireAgentModeratorEvaluationReviewArtifactV1,
-} from "./moderator-evaluation.js";
+  npBuildAgentModeratorProposalEvaluationReviewArtifactV1,
+  npRequireAgentModeratorProposalEvaluationReviewArtifactV1,
+} from "../agent-contract/moderator-proposal-evaluation-review-contract.js";
+import { npRequireAgentModeratorProposalEvaluationEvidenceV1 } from "../agent-contract/moderator-proposal-evaluation-contract.js";
+import { runAgentModeratorEvaluationV1 } from "./moderator-evaluation.js";
 import type { NpAgentEvaluationReportRecipeV1 } from "../agent-contract/evaluation-report-contract.js";
 import type { NpAgentEvaluationWorkbenchRequestV1 } from "../agent-contract/evaluation-workbench-contract.js";
 
@@ -34,6 +37,7 @@ const budget = {
 };
 let sources: Record<NpAgentEvaluationReportRecipeV1, unknown>;
 let publisher: NpAgentEvaluationArtifactV1;
+let reported: NpAgentEvaluationArtifactV1;
 const initialWorkbenches = new Map<
   NpAgentEvaluationReportRecipeV1,
   ReturnType<typeof npBuildAgentEvaluationWorkbenchV1>
@@ -106,6 +110,11 @@ beforeAll(async () => {
     ]),
     moderator: await runAgentModeratorEvaluationV1(),
   };
+  reported = await evaluate(await npCreateAgentModeratorProposalEvaluationSuiteV2(), [
+    "mp-en-report-current",
+    "mp-en-mixed-current",
+    "mp-en-mixed-stale",
+  ]);
   // Invalid-binding and comparison probes share immutable owner artifacts;
   // workbench export and clearing behavior are exercised in the round trip.
   emptyPublisherReview = await npBuildAgentEvaluationReviewArtifactV1(publisher, []);
@@ -114,7 +123,7 @@ beforeAll(async () => {
 
 describe("offline evaluation workbench", () => {
   it.each(["publisher", "operator", "moderator-proposal", "moderator"] as const)(
-    "round-trips %s, exact hashes and self-reported labels without live authority",
+    "exports %s, exact hashes and self-reported labels without live authority",
     async (recipe) => {
       const initial = await initialWorkbench(recipe);
       expect(initial.authority).toBe("offline-self-reported-no-approval");
@@ -139,29 +148,23 @@ describe("offline evaluation workbench", () => {
       ];
       const result = await npBuildAgentEvaluationWorkbenchV1({ ...input(recipe), labels });
       const artifact = JSON.parse(result.reviewArtifactJson!);
-      const verified =
-        recipe === "moderator"
-          ? await npRequireAgentModeratorEvaluationReviewArtifactV1(artifact)
-          : recipe === "moderator-proposal"
-            ? await npRequireAgentModeratorProposalEvaluationReviewArtifactV1(artifact)
-            : recipe === "operator"
-              ? await npRequireAgentOperatorPlanEvaluationReviewArtifactV1(artifact)
-              : await npRequireAgentEvaluationReviewArtifactV1(artifact);
-      expect(JSON.parse(result.labelsJson!)).toEqual(verified.labels);
-      expect(JSON.parse(result.cases.find((c) => c.caseId === target.caseId)!.labelJson!)).toEqual(
-        verified.labels[0],
-      );
+      // The report owner independently validates the embedded review and source.
+      // Match the separate review export to it instead of replaying the same
+      // fixed detector suite again through a second review validator.
       const report = await npRequireAgentEvaluationReportV1(JSON.parse(result.reportArtifactJson));
+      expect(report.input.entries[0].current.review).toEqual(artifact);
+      expect(report.input.entries[0].current.review).toMatchObject({ labels });
+      expect(JSON.parse(result.labelsJson!)).toEqual(labels);
+      expect(JSON.parse(result.cases.find((c) => c.caseId === target.caseId)!.labelJson!)).toEqual(
+        labels[0],
+      );
       expect(report.rows.filter((r) => r.status === "present").map((r) => r.recipe)).toEqual([
         recipe,
       ]);
       expect(report.fullR6).toBe("not-established");
       expect(result.summaryText).toContain("missing-baseline");
-      const restored = await npBuildAgentEvaluationWorkbenchV1({
-        ...input(recipe),
-        review: artifact,
-      });
-      expect(restored.reviewArtifactJson).toBe(result.reviewArtifactJson);
+      // Shared review reimport is exercised once by the report/mixed round trip
+      // below and the production browser journey, not once per recipe format.
       if (recipe === "publisher") {
         // Replacement labels use the same request semantics for every owner.
         const cleared = await npBuildAgentEvaluationWorkbenchV1({
@@ -175,8 +178,97 @@ describe("offline evaluation workbench", () => {
     20_000,
   );
 
+  it("round-trips report and mixed evidence, rejects ungrounded/stale labels and explains v1 comparison", async () => {
+    const template = await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(reported);
+    const reviewed = template.entries.filter((entry) => entry.caseId !== "mp-en-mixed-current");
+    expect(reviewed.map((entry) => entry.response?.decision.kind)).toEqual([
+      "propose-capability",
+      "complete",
+    ]);
+    const labels = reviewed.map((entry) => ({
+      caseId: entry.caseId,
+      caseHash: entry.caseHash,
+      predictionHash: entry.predictionHash,
+      sourceHash: entry.sourceHash,
+      outcome: "accept" as const,
+      editedProposal: null,
+      reviewer: "offline report reviewer",
+      reviewedAt: "2026-10-13T00:00:00.000Z",
+      notes: "Synthetic selection and abstention, never a live spam verdict or approval.",
+    }));
+    const baseline = await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(
+      sources["moderator-proposal"],
+    );
+    const result = await npBuildAgentEvaluationWorkbenchV1({
+      ...input("moderator-proposal"),
+      evaluation: reported,
+      baseline: structuredClone(baseline.source),
+      baselineReview: baseline,
+      labels,
+    });
+    expect(result.authority).toBe("offline-self-reported-no-approval");
+    expect(result.fixtureGate).toBe("passed");
+    expect(result.sourceHash).toBe(template.sourceHash);
+    const review = await npRequireAgentModeratorProposalEvaluationReviewArtifactV1(
+      JSON.parse(result.reviewArtifactJson!),
+    );
+    expect(JSON.parse(result.labelsJson!)).toEqual(review.labels);
+    expect(review.summary).toMatchObject({ reviewed: 2, accepted: 2, unreviewed: 1 });
+    for (const [index, entry] of result.cases.entries()) {
+      const evidence = JSON.parse(entry.evidenceJson);
+      expect(evidence).toEqual(reported.suite.cases[index].evidence);
+      expect(review.entries[index].evidence).toEqual(evidence);
+      const facts = npRequireAgentModeratorProposalEvaluationEvidenceV1(evidence);
+      expect(facts.snapshot?.candidates[0].detector.reportClaims).toEqual({
+        unverified: true,
+        itemCount: index === 0 ? 5 : 2,
+      });
+    }
+    expect(
+      npRequireAgentModeratorProposalEvaluationEvidenceV1(baseline.entries[0].evidence).snapshot
+        ?.candidates[0].detector,
+    ).not.toHaveProperty("reportClaims");
+    const report = await npRequireAgentEvaluationReportV1(JSON.parse(result.reportArtifactJson));
+    const row = report.rows.find((entry) => entry.recipe === "moderator-proposal");
+    expect(row?.evaluationComparison.result).toMatchObject({
+      comparable: false,
+      reason: "SUITE_MISMATCH",
+    });
+    expect(row?.reviewComparison.result).toMatchObject({
+      comparable: false,
+      reason: "SUITE_MISMATCH",
+      matchedCaseKeys: [],
+      acceptBasisPointsDelta: null,
+    });
+    expect(report.fullR6).toBe("not-established");
+    const restored = await npBuildAgentEvaluationWorkbenchV1({
+      ...input("moderator-proposal"),
+      evaluation: reported,
+      review,
+    });
+    expect(restored.reviewArtifactJson).toBe(result.reviewArtifactJson);
+    const ungrounded = structuredClone(reviewed[0].response);
+    if (ungrounded?.decision.kind !== "propose-capability")
+      throw new Error("Missing report proposal fixture");
+    ungrounded.decision.arguments.proposal.target.id = "00000000-0000-4000-8000-999999999999";
+    await expect(
+      npBuildAgentEvaluationWorkbenchV1({
+        ...input("moderator-proposal"),
+        evaluation: reported,
+        labels: [{ ...labels[0], outcome: "edit", editedProposal: ungrounded }],
+      }),
+    ).rejects.toThrow();
+    await expect(
+      npBuildAgentEvaluationWorkbenchV1({
+        ...input("moderator-proposal"),
+        evaluation: reported,
+        review: baseline,
+        labels: [],
+      }),
+    ).rejects.toThrow();
+  });
+
   it("exports a grounded edit and compares accept versus reject on the exact reviewed cohort", async () => {
-    const initial = await initialWorkbench("publisher");
     const index = publisher.caseResults.findIndex((result) =>
       result.prediction?.proposal?.draft.operations.some(
         (operation) =>
@@ -185,8 +277,18 @@ describe("offline evaluation workbench", () => {
           typeof operation.input.patch.seoDescription === "string",
       ),
     );
-    const target = initial.cases[index];
-    const proposal = structuredClone(publisher.caseResults[index].prediction?.proposal);
+    if (index < 0) throw new Error("Missing Publisher edit fixture");
+    // One reviewed prediction is sufficient for edit and matched-cohort deltas.
+    // Other cases retain the three-case failure/unreviewed coverage fixture.
+    const source = await rebuild({
+      ...publisher,
+      suite: { ...publisher.suite, cases: [publisher.suite.cases[index]] },
+      caseResults: [publisher.caseResults[index]],
+    });
+    const request = { ...input("publisher"), evaluation: source };
+    const initial = await npBuildAgentEvaluationWorkbenchV1(request);
+    const target = initial.cases[0];
+    const proposal = structuredClone(source.caseResults[0].prediction?.proposal);
     if (!proposal) throw new Error("Missing Publisher edit fixture");
     const operation = proposal.draft.operations[0];
     if (
@@ -206,7 +308,7 @@ describe("offline evaluation workbench", () => {
       notes: "Grounded edit",
     };
     const edited = await npBuildAgentEvaluationWorkbenchV1({
-      ...input("publisher"),
+      ...request,
       labels: [{ ...binding, outcome: "edit", editedProposal: proposal }],
     });
     const verified = await npRequireAgentEvaluationReviewArtifactV1(
@@ -214,12 +316,12 @@ describe("offline evaluation workbench", () => {
     );
     expect(verified.summary.edited).toBe(1);
     expect(verified.labels[0].editedProposal).toEqual(proposal);
-    const accepted = await npBuildAgentEvaluationReviewArtifactV1(publisher, [
+    const accepted = await npBuildAgentEvaluationReviewArtifactV1(source, [
       { ...binding, outcome: "accept", editedProposal: null },
     ]);
     const rejected = await npBuildAgentEvaluationWorkbenchV1({
-      ...input("publisher"),
-      baseline: structuredClone(publisher),
+      ...request,
+      baseline: structuredClone(source),
       baselineReview: accepted,
       labels: [{ ...binding, outcome: "reject", editedProposal: null }],
     });

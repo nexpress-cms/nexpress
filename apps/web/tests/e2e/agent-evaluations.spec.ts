@@ -4,11 +4,13 @@ import {
   npBuildAgentModeratorProposalEvaluationReviewArtifactV1,
   npRequireAgentModeratorProposalEvaluationReviewArtifactV1,
   npRequireAgentEvaluationWorkbenchResultV1,
+  npRequireAgentEvaluationSuiteV1,
+  npRequireAgentModeratorProposalEvaluationEvidenceV1,
   type NpAgentEvaluationArtifactV1,
   type NpAgentModeratorProposalEvaluationReviewArtifactV1,
 } from "@nexpress/core/agent-contract";
 import {
-  npCreateAgentModeratorProposalEvaluationSuiteV1,
+  npCreateAgentModeratorProposalEvaluationSuiteV2,
   npRequireAgentEvaluationReportV1,
   runAgentEvaluationV1,
 } from "@nexpress/core/agents";
@@ -18,8 +20,14 @@ import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 let evaluation: NpAgentEvaluationArtifactV1;
 let importedReview: NpAgentModeratorProposalEvaluationReviewArtifactV1;
 test.beforeAll(async () => {
+  const suite = await npCreateAgentModeratorProposalEvaluationSuiteV2();
+  // Full dataset conformance belongs to the fixture owner. This composition
+  // journey retains report selection, mixed selection and retained abstention.
+  const ids = ["mp-en-report-current", "mp-en-mixed-current", "mp-en-mixed-stale"];
+  const cases = suite.cases.filter((entry) => ids.includes(entry.id));
+  if (cases.length !== ids.length) throw new Error("Missing report/mixed workspace fixture.");
   evaluation = await runAgentEvaluationV1({
-    suite: await npCreateAgentModeratorProposalEvaluationSuiteV1(),
+    suite: npRequireAgentEvaluationSuiteV1({ ...suite, cases }),
     mode: "fake",
     providerId: "fake",
     model: "deterministic-v1",
@@ -92,7 +100,7 @@ async function downloadJson(page: Page, kind: "labels" | "review" | "report"): P
   return JSON.parse(await readFile(path, "utf8"));
 }
 
-test("evaluation workspace reviews actual proposal and abstention artifacts without granting authority", async ({
+test("evaluation workspace reviews synthetic report proposals and mixed abstentions without granting authority", async ({
   page,
 }, testInfo) => {
   await isolateE2ERateLimitBucket(
@@ -150,9 +158,19 @@ test("evaluation workspace reviews actual proposal and abstention artifacts with
     importedReview,
   );
   const initial = await recompute(page, "Validate imports");
-  expect(initial.cases).toHaveLength(16);
+  expect(initial.cases).toHaveLength(3);
+  expect(evaluation.suite.version).toBe(2);
   expect(initial.authority).toBe("offline-self-reported-no-approval");
   expect(initial.fixtureGate).toBe("passed");
+  for (const [index, entry] of initial.cases.entries()) {
+    const evidence = JSON.parse(entry.evidenceJson);
+    expect(evidence).toEqual(evaluation.suite.cases[index].evidence);
+    const facts = npRequireAgentModeratorProposalEvaluationEvidenceV1(evidence);
+    expect(facts.snapshot?.candidates[0].detector.reportClaims).toEqual({
+      unverified: true,
+      itemCount: index === 0 ? 5 : 2,
+    });
+  }
   const proposal = importedReview.entries.find((entry) => entry.review !== null)!;
   const abstention = importedReview.entries.find(
     (entry) => entry.response?.decision.kind === "complete",
@@ -167,12 +185,24 @@ test("evaluation workspace reviews actual proposal and abstention artifacts with
   await expect(page.getByLabel("Reviewer (self-reported)", { exact: true })).toHaveValue(
     "imported-reviewer",
   );
+  await expect(
+    page.getByRole("heading", { name: "Evidence", exact: true }).locator(".."),
+  ).toContainText("reportClaims");
+  await expect(
+    page.getByRole("heading", { name: "Evidence", exact: true }).locator(".."),
+  ).toContainText("unverified");
   await page
     .getByLabel("Case", { exact: true })
     .selectOption(`${abstention.caseId}@${abstention.caseVersion}`);
   await expect(
     page.getByRole("heading", { name: "Prediction", exact: true }).locator(".."),
   ).toContainText('"kind": "complete"');
+  await expect(
+    page.getByRole("heading", { name: "Evidence", exact: true }).locator(".."),
+  ).toContainText("stale");
+  await expect(
+    page.getByRole("heading", { name: "Evidence", exact: true }).locator(".."),
+  ).toContainText("reportClaims");
   await page.getByLabel("Outcome", { exact: true }).selectOption("accept");
   await page.getByLabel("Reviewer (self-reported)", { exact: true }).fill("browser-reviewer");
   await page
@@ -190,17 +220,16 @@ test("evaluation workspace reviews actual proposal and abstention artifacts with
     importedReview.labels[0],
   );
 
-  // A well-formed JSON response that violates the recipe reaches the real owner verifier.
+  // A syntactically valid proposal for an absent target reaches the grounding verifier.
   await page
     .getByLabel("Case", { exact: true })
     .selectOption(`${proposal.caseId}@${proposal.caseVersion}`);
   await page.getByLabel("Outcome", { exact: true }).selectOption("edit");
-  await page.getByLabel("Edited proposal JSON", { exact: true }).fill(
-    JSON.stringify({
-      task: "interactive-capability",
-      decision: { kind: "execute-capability", capabilityId: "moderation.restore" },
-    }),
-  );
+  const ungrounded = structuredClone(proposal.response);
+  if (ungrounded?.decision.kind !== "propose-capability")
+    throw new Error("Missing report proposal fixture.");
+  ungrounded.decision.arguments.proposal.target.id = "00000000-0000-4000-8000-999999999999";
+  await page.getByLabel("Edited proposal JSON", { exact: true }).fill(JSON.stringify(ungrounded));
   const invalidResponse = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname === "/api/admin/agents/evaluations" &&
@@ -236,7 +265,7 @@ test("evaluation workspace reviews actual proposal and abstention artifacts with
   expect(review).toEqual(
     await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(evaluation, labels),
   );
-  expect(review.summary).toMatchObject({ reviewed: 2, accepted: 1, edited: 1, unreviewed: 14 });
+  expect(review.summary).toMatchObject({ reviewed: 2, accepted: 1, edited: 1, unreviewed: 1 });
   expect(review.labels.find((label) => label.caseId === abstention.caseId)).toEqual(
     acceptedReview.labels.find((label) => label.caseId === abstention.caseId),
   );
@@ -249,7 +278,9 @@ test("evaluation workspace reviews actual proposal and abstention artifacts with
     unmatchedBaselineCaseKeys: [],
   });
   expect(JSON.parse(edited.reportArtifactJson)).toEqual(report);
-  await expect(page.getByText("2 / 16 eligible cases reviewed", { exact: false })).toBeVisible();
+  expect(report.fullR6).toBe("not-established");
+  expect(review.source.suite).toEqual(evaluation.suite);
+  await expect(page.getByText("2 / 3 eligible cases reviewed", { exact: false })).toBeVisible();
   await expect(page.locator("pre").filter({ hasText: "matchedCaseKeys=1" }).first()).toContainText(
     "unmatchedCurrentCaseKeys=1",
   );

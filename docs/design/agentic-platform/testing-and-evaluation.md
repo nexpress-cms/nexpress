@@ -1350,6 +1350,15 @@ are scored separately from detector conformance; self-reported accept/edit/rejec
 reviews include parsed abstentions. This does not establish production spam
 precision, arbitrary prose truth or automatic-action readiness.
 
+`moderator-proposal.v2` adds twenty-four bilingual synthetic report/mixed source
+cases while freezing the v1 suite hash. Exact unverified report target counts,
+current candidate grounding and handled/changed/missing/incomplete-source
+abstention use the existing owners. CLI child selection is bound to the requested
+version; cross-version baselines remain `SUITE_MISMATCH`. Offline review/report
+and Workbench exports retain their exact source/case/prediction bindings. These
+availability labels do not reproduce real report resolution or Runtime
+attestation and do not count as production spam quality or automatic-action gates.
+
 The [Operator diagnosis and plan evaluation](r6-operator-plan-evaluation-flow.md)
 adds sixteen bilingual `operator-plan.v1` cases with bounded diagnosis statements,
 actual plan-input validation and exact-bound offline review. The

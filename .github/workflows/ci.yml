@@ -116,7 +116,9 @@ jobs:
         run: pnpm typecheck
 
       - name: Test
-        run: pnpm test
+        # Each Vitest package already runs files in parallel. Bound the workspace
+        # fan-out as in local verify so competing pools do not consume deadlines.
+        run: pnpm test --concurrency=2
 
   # #275 — the critical write path (pipeline.ts at 2,185 lines and
   # everything around it) is exercised primarily by `pnpm test:integration`
