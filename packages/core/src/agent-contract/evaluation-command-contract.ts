@@ -7,6 +7,7 @@ export interface NpAgentEvaluationCommandArgsV1 {
     | "operator.v1"
     | "publisher.v1"
     | "moderator.v1"
+    | "moderator.v2"
     | "operator-plan.v1"
     | "moderator-proposal.v1"
     | "moderator-proposal.v2";
@@ -90,6 +91,7 @@ export function npParseAgentEvaluationCommandArgsV1(
     dataset !== "operator.v1" &&
     dataset !== "publisher.v1" &&
     dataset !== "moderator.v1" &&
+    dataset !== "moderator.v2" &&
     dataset !== "operator-plan.v1" &&
     dataset !== "moderator-proposal.v1" &&
     dataset !== "moderator-proposal.v2"
@@ -102,7 +104,7 @@ export function npParseAgentEvaluationCommandArgsV1(
     "--max-cost-micros",
   ];
   if (
-    dataset === "moderator.v1" &&
+    (dataset === "moderator.v1" || dataset === "moderator.v2") &&
     (network ||
       fields.has("--model") ||
       fields.has("--confirm-network") ||
@@ -141,6 +143,7 @@ export function npParseAgentEvaluationCommandArgsV1(
       | "operator.v1"
       | "publisher.v1"
       | "moderator.v1"
+      | "moderator.v2"
       | "operator-plan.v1"
       | "moderator-proposal.v1"
       | "moderator-proposal.v2",

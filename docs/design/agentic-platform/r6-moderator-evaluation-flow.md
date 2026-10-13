@@ -37,7 +37,7 @@ suite. Editing expectations, observations, predictions, summary or authority
 cannot make an artifact valid by recomputing its hash. Hashes establish binding,
 not reviewer identity or cryptographic signatures.
 
-This initial version only accepts the exact installed suite and implementation's
+Each version only accepts its exact installed suite and implementation's
 recomputed output. Evaluation comparison checks same-version replay; it cannot
 compare a historical implementation whose predictions changed. Historical
 multi-version detector acceptance needs a separately versioned verifier. Human
@@ -101,6 +101,81 @@ cannot be overwritten through an output path or hardlink alias. The installed
 CLI captures inputs before launching the child and independently checks the exact
 expected result; child stderr, unknown fields and mismatched exit status are not
 passed through.
+
+## Report and mixed detector replay (`moderator.v2`)
+
+`moderator.v2` adds 24 synthetic cases, twelve per locale, to the actual detector
+replay owner. The original 22-case `moderator.v1` suite, artifact hashes and strict
+V1 APIs remain unchanged. This detector dataset is separate from
+`moderator-proposal.v2`, which tests recipe response grounding on synthetic
+metadata projections.
+
+Report-only facts carry paired `unknown` spam/profanity verdicts. Their
+`memberId` is the comment author; filing a report never adds an independent
+account or establishes a classifier verdict. The suite checks exact thresholds,
+insufficient items/authors, unknown authors, repeated event evidence, distinct
+reports of one target, observation/report duplicates, newer report snapshots
+that remove a link, and later rejected observations. Legitimate repeated
+references and hostile prose retain separate authored intent labels. Expected
+domain hashes are fixed independently of the extractor under test.
+
+The new evaluation/review envelopes are `np.agent-moderator-eval.v2` and
+`np.agent-moderator-eval-review.v2`, with case version 2. Unsuffixed replay,
+review and comparison APIs dispatch to the exact shipped V1 or V2 suite; the
+original suffixed V1 APIs reject V2 artifacts. A recomputed hash cannot validate
+caller-edited observations, predictions or expectations. This supports both
+installed datasets, not historical implementations with changed predictions.
+
+```bash
+pnpm agent:evaluate --dataset moderator.v2 --out reports.json --json
+nexpress agent evaluate --dataset moderator.v2 --compare reports.json --json
+nexpress agent evaluate --review reports.json --out report-review.json --json
+```
+
+The same deterministic-only provider/model/budget restrictions apply. CLI child
+results must match the requested dataset exactly. Reviews retain exact source,
+case and prediction bindings, and missing labels remain unreviewed. The shared
+report and Admin Workbench import, label and export both detector versions.
+A V1/V2 baseline reports `INCOMPATIBLE_SUITE`, with no cohort rates or deltas.
+
+All 24 cases can match deterministic expectations while synthetic classification
+still reports eight true positives, two false positives and fourteen false
+negatives. These counts describe authored fixtures, not production precision.
+Ten signals are eligible for offline review; fourteen cases have no reviewable
+signal. Report resolution, ACLs and attestation remain the live report recipe's
+existing PostgreSQL owners; the offline benchmark neither reads those records
+nor claims to exercise that authority boundary.
+
+### Report/mixed replay verification
+
+Observed 2026-10-14 KST:
+
+- Focused Core replay/report/Workbench: 26 cases; App command: 9;
+  CLI boundary: 13. Independent review found no material correctness issue.
+  The Workbench result validator now explicitly accepts detector review V2;
+  original V1 evaluation and review serialized bytes were compared with the
+  previous implementation and preserved.
+- Final `pnpm verify --concurrency=2`: 113/113 tasks in 7m40s, including Core
+  2,311, App 689, CLI 155 and Web 164 unit cases; `pnpm lint`: 41/41.
+- Production Chromium: 2/2, 21.2s, no retries or skips. The existing proposal
+  journey and new actual detector review/export journey passed. The 320px
+  capture was inspected and had no horizontal overflow. A pre-merge check found
+  the new detector test sharing the Jobs rate-limit bucket; the test now uses
+  its own bucket. Both browser journeys passed again without retries (28.2s),
+  with the assertions and production limits unchanged.
+- Forty freshly packed packages installed outside the workspace: 54 stages,
+  including V1 hash preservation, installed V2 evaluation/review/comparison,
+  report and Workbench reconstruction, generated-project typecheck and build.
+  Six installed Core/App/CLI runtime/declaration files matched the producer.
+- Existing Redis units retain 13 passes / 3 environment-dependent skips.
+  Full PostgreSQL integration, live Redis, theme integration and native preview
+  were not rerun for this offline-only change. The browser used a newly migrated
+  isolated PostgreSQL database; that is not a report-resolution SQL acceptance
+  run. Its temporary server was stopped after verification.
+
+Logs and consumer-path references use `/tmp/np-detector-*`. Source files stayed
+unchanged across the final code gates, browser and packed-consumer checks.
+These results do not close AP-606, production precision or full R6 acceptance.
 
 ## CI follow-up in this bundle
 

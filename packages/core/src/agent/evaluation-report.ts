@@ -31,11 +31,11 @@ import {
   type NpAgentEvaluationReportV1,
 } from "../agent-contract/evaluation-report-contract.js";
 import {
-  npBuildAgentModeratorEvaluationReviewArtifactV1,
-  npRequireAgentModeratorEvaluationArtifactV1,
-  npRequireAgentModeratorEvaluationReviewArtifactV1,
-  npCompareAgentModeratorEvaluationArtifactsV1,
-  npCompareAgentModeratorEvaluationReviewArtifactsV1,
+  npBuildAgentModeratorEvaluationReviewArtifact,
+  npRequireAgentModeratorEvaluationArtifact,
+  npRequireAgentModeratorEvaluationReviewArtifact,
+  npCompareAgentModeratorEvaluationArtifacts,
+  npCompareAgentModeratorEvaluationReviewArtifacts,
 } from "./moderator-evaluation.js";
 
 const legacyModeratorLimitation =
@@ -61,7 +61,7 @@ async function evidence(
   const r = record(value, ["evaluation", "review"]);
   const evaluation =
     recipe === "moderator"
-      ? await npRequireAgentModeratorEvaluationArtifactV1(r.evaluation)
+      ? await npRequireAgentModeratorEvaluationArtifact(r.evaluation)
       : await npRequireAgentEvaluationArtifactV1(r.evaluation);
   if (
     evaluation.schemaVersion === "np.agent-eval.v1" &&
@@ -80,7 +80,7 @@ async function evidence(
     r.review === null
       ? null
       : recipe === "moderator"
-        ? await npRequireAgentModeratorEvaluationReviewArtifactV1(r.review)
+        ? await npRequireAgentModeratorEvaluationReviewArtifact(r.review)
         : recipe === "moderator-proposal"
           ? await npRequireAgentModeratorProposalEvaluationReviewArtifactV1(r.review)
           : recipe === "operator"
@@ -146,7 +146,7 @@ async function row(
         status: "compared",
         result:
           recipe === "moderator"
-            ? await npCompareAgentModeratorEvaluationArtifactsV1(
+            ? await npCompareAgentModeratorEvaluationArtifacts(
                 current.evaluation,
                 baseline.evaluation,
               )
@@ -163,7 +163,7 @@ async function row(
             status: "compared",
             result:
               recipe === "moderator"
-                ? await npCompareAgentModeratorEvaluationReviewArtifactsV1(
+                ? await npCompareAgentModeratorEvaluationReviewArtifacts(
                     current.review,
                     baseline.review,
                   )
@@ -185,7 +185,7 @@ async function row(
   const coverage =
     current.review ??
     (recipe === "moderator"
-      ? await npBuildAgentModeratorEvaluationReviewArtifactV1(current.evaluation)
+      ? await npBuildAgentModeratorEvaluationReviewArtifact(current.evaluation)
       : recipe === "moderator-proposal"
         ? await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(current.evaluation)
         : recipe === "operator"

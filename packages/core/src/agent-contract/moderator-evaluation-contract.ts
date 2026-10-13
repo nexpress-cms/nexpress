@@ -65,3 +65,29 @@ export interface NpAgentModeratorEvaluationComparisonV1 {
   baseline: NpAgentModeratorEvaluationSummaryV1 | null;
   matchedSignalExpectationsDelta: number | null;
 }
+
+/** Report/mixed synthetic facts; detector and live Fact contracts remain v1. */
+export const npAgentModeratorEvaluationDatasetV2 = "moderator.v2" as const;
+export interface NpAgentModeratorEvaluationCaseV2 extends Omit<
+  NpAgentModeratorEvaluationCaseV1,
+  "caseVersion"
+> {
+  caseVersion: 2;
+}
+export interface NpAgentModeratorEvaluationCaseResultV2 extends Omit<
+  NpAgentModeratorEvaluationCaseResultV1,
+  "caseVersion"
+> {
+  caseVersion: 2;
+}
+export interface NpAgentModeratorEvaluationArtifactV2 extends Omit<
+  NpAgentModeratorEvaluationArtifactV1,
+  "schemaVersion" | "dataset" | "cases" | "caseResults"
+> {
+  schemaVersion: "np.agent-moderator-eval.v2";
+  dataset: "moderator.v2";
+  cases: NpAgentModeratorEvaluationCaseV2[];
+  caseResults: NpAgentModeratorEvaluationCaseResultV2[];
+}
+export type NpAgentModeratorEvaluationArtifact =
+  NpAgentModeratorEvaluationArtifactV1 | NpAgentModeratorEvaluationArtifactV2;

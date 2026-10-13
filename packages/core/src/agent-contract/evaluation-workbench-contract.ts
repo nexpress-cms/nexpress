@@ -242,16 +242,17 @@ export function npRequireAgentEvaluationWorkbenchResultV1(
       fail();
     const artifact: unknown = JSON.parse(json(r.reviewArtifactJson));
     const reviewVersions = {
-      moderator: "np.agent-moderator-eval-review.v1",
-      "moderator-proposal": "np.agent-moderator-proposal-eval-review.v1",
-      operator: "np.agent-operator-plan-eval-review.v1",
-      publisher: "np.agent-eval-review.v1",
+      moderator: ["np.agent-moderator-eval-review.v1", "np.agent-moderator-eval-review.v2"],
+      "moderator-proposal": ["np.agent-moderator-proposal-eval-review.v1"],
+      operator: ["np.agent-operator-plan-eval-review.v1"],
+      publisher: ["np.agent-eval-review.v1"],
     };
     if (
       typeof artifact !== "object" ||
       artifact === null ||
       !("schemaVersion" in artifact) ||
-      artifact.schemaVersion !== reviewVersions[selectedRecipe] ||
+      typeof artifact.schemaVersion !== "string" ||
+      !reviewVersions[selectedRecipe].includes(artifact.schemaVersion) ||
       !("artifactHash" in artifact) ||
       !("sourceHash" in artifact) ||
       artifact.sourceHash !== sourceHash ||

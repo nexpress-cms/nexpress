@@ -24,9 +24,16 @@ import {
   npRequireAgentModeratorProposalEvaluationReviewArtifactV1,
 } from "../agent-contract/moderator-proposal-evaluation-review-contract.js";
 import { npRequireAgentModeratorProposalEvaluationEvidenceV1 } from "../agent-contract/moderator-proposal-evaluation-contract.js";
-import { runAgentModeratorEvaluationV1 } from "./moderator-evaluation.js";
+import {
+  runAgentModeratorEvaluationV1,
+  runAgentModeratorEvaluationV2,
+  npBuildAgentModeratorEvaluationReviewArtifact,
+} from "./moderator-evaluation.js";
 import type { NpAgentEvaluationReportRecipeV1 } from "../agent-contract/evaluation-report-contract.js";
-import type { NpAgentEvaluationWorkbenchRequestV1 } from "../agent-contract/evaluation-workbench-contract.js";
+import {
+  npRequireAgentEvaluationWorkbenchResultV1,
+  type NpAgentEvaluationWorkbenchRequestV1,
+} from "../agent-contract/evaluation-workbench-contract.js";
 
 const budget = {
   maxCalls: 100,
@@ -267,6 +274,85 @@ describe("offline evaluation workbench", () => {
       }),
     ).rejects.toThrow();
   });
+
+  it("reviews actual report/mixed detector replay and keeps a v1 baseline outside the matched cohort", async () => {
+    const evaluation = await runAgentModeratorEvaluationV2();
+    const request = { ...input("moderator"), evaluation };
+    const initial = await npBuildAgentEvaluationWorkbenchV1(request);
+    expect(initial.fixtureGate).toBe("passed");
+    expect(initial.cases.every((entry) => entry.caseVersion === 2)).toBe(true);
+    for (const [index, entry] of initial.cases.entries()) {
+      expect(JSON.parse(entry.evidenceJson)).toEqual(evaluation.cases[index]);
+      expect(JSON.parse(entry.predictionJson)).toEqual(evaluation.caseResults[index].signals);
+    }
+    const index = evaluation.cases.findIndex(
+      (entry, index) =>
+        entry.observations.some(
+          ({ fact }) =>
+            fact.evidence.kind === "event" &&
+            fact.evidence.eventKind === "community.content.reported",
+        ) && initial.cases[index].eligible,
+    );
+    if (index < 0) throw new Error("Missing eligible report detector fixture");
+    const target = initial.cases[index];
+    expect(target.allowedOutcomes).toEqual(["confirmed-spam", "false-positive"]);
+    const labels = [
+      {
+        caseId: target.caseId,
+        caseHash: target.caseHash,
+        predictionHash: target.predictionHash,
+        sourceHash: target.sourceHash,
+        label: "false-positive",
+        reviewer: "offline detector reviewer",
+        reviewedAt: "2026-10-14T00:00:00.000Z",
+        notes: "Self-reported synthetic review; reports are unverified claims.",
+      },
+    ];
+    const baseline = await npBuildAgentModeratorEvaluationReviewArtifact(sources.moderator);
+    const result = await npBuildAgentEvaluationWorkbenchV1({
+      ...request,
+      labels,
+      baseline: structuredClone(baseline.source),
+      baselineReview: baseline,
+    });
+    const artifact = JSON.parse(result.reviewArtifactJson!);
+    const report = await npRequireAgentEvaluationReportV1(JSON.parse(result.reportArtifactJson));
+    expect(artifact.schemaVersion).toBe("np.agent-moderator-eval-review.v2");
+    expect(artifact.source.dataset).toBe("moderator.v2");
+    expect(() =>
+      npRequireAgentEvaluationWorkbenchResultV1({
+        ...result,
+        reviewArtifactJson: JSON.stringify({
+          ...artifact,
+          schemaVersion: "np.agent-moderator-eval-review.v3",
+        }),
+      }),
+    ).toThrow();
+    expect(report.input.entries[0].current.review).toEqual(artifact);
+    expect(JSON.parse(result.labelsJson!)).toEqual(labels);
+    expect(artifact.summary).toMatchObject({ reviewed: 1, falsePositive: 1 });
+    expect(report.rows[0].evaluationComparison.result).toMatchObject({
+      comparable: false,
+      reason: "INCOMPATIBLE_SUITE",
+      matchedSignalExpectationsDelta: null,
+    });
+    expect(report.rows[0].reviewComparison.result).toMatchObject({
+      comparable: false,
+      reason: "INCOMPATIBLE_SUITE",
+      matchedCaseKeys: [],
+      confirmedSpamBasisPointsDelta: null,
+      falsePositiveBasisPointsDelta: null,
+    });
+    expect(report.fullR6).toBe("not-established");
+    const restored = await npBuildAgentEvaluationWorkbenchV1({ ...request, review: artifact });
+    expect(restored.reviewArtifactJson).toBe(result.reviewArtifactJson);
+    await expect(
+      npBuildAgentEvaluationWorkbenchV1({
+        ...request,
+        labels: [{ ...labels[0], sourceHash: baseline.sourceHash }],
+      }),
+    ).rejects.toThrow();
+  }, 20_000);
 
   it("exports a grounded edit and compares accept versus reject on the exact reviewed cohort", async () => {
     const index = publisher.caseResults.findIndex((result) =>
