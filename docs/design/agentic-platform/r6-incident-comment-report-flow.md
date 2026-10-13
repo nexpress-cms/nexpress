@@ -74,6 +74,10 @@ source removal or integrity loss is unavailable, never inferred expiry or deleti
 
 ## Remaining boundaries
 
+The subsequent [Moderator report recipe flow](r6-moderator-report-recipe-flow.md)
+connects these retained facts to the existing recipe's current-evidence and
+human approval checks without turning reports into classifier verdicts.
+
 Document/member report collectors, general document evidence, classifier/model
 assessments, automatic moderation, external notification delivery and full R6
 evaluation remain separate. Existing approval, capability, policy, retention and

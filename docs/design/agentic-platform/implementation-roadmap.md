@@ -653,6 +653,9 @@ The [Moderator recipe and Studio flow](r6-moderator-recipe-flow.md) adds explici
 setup and a bounded current-evidence source for exact quarantine proposals.
 Supporting evidence is rechecked before proposal and approved execution; the
 recipe has no automatic execution authority and leaves the full R6 gate open.
+The [comment report recipe flow](r6-moderator-report-recipe-flow.md) extends that
+same source with actual report claims and current resolution checks across
+context attestation, proposal and approved execution.
 
 The [Incident Studio review flow](r6-incident-studio-flow.md) connects staff
 list/detail review, authorized history links, immutable feedback and explicit

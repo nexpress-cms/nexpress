@@ -85,6 +85,8 @@ export interface NpAgentModeratorRecipeCandidateV1 {
     advisory: true;
     itemCount: number;
     independentAccountCount: number;
+    /** Distinct reported targets, not reporter independence or classifier verdicts. */
+    reportClaims?: { unverified: true; itemCount: number };
   };
   proposal: NpAgentQuarantineProposalV1;
 }
