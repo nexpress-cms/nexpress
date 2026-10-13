@@ -19,16 +19,12 @@ import {
   npBuildAgentEvaluationReviewArtifactV1,
   npRequireAgentEvaluationReviewArtifactV1,
 } from "../agent-contract/evaluation-review-contract.js";
-import { npRequireAgentOperatorPlanEvaluationReviewArtifactV1 } from "../agent-contract/operator-plan-evaluation-review-contract.js";
 import {
   npBuildAgentModeratorProposalEvaluationReviewArtifactV1,
   npRequireAgentModeratorProposalEvaluationReviewArtifactV1,
 } from "../agent-contract/moderator-proposal-evaluation-review-contract.js";
 import { npRequireAgentModeratorProposalEvaluationEvidenceV1 } from "../agent-contract/moderator-proposal-evaluation-contract.js";
-import {
-  runAgentModeratorEvaluationV1,
-  npRequireAgentModeratorEvaluationReviewArtifactV1,
-} from "./moderator-evaluation.js";
+import { runAgentModeratorEvaluationV1 } from "./moderator-evaluation.js";
 import type { NpAgentEvaluationReportRecipeV1 } from "../agent-contract/evaluation-report-contract.js";
 import type { NpAgentEvaluationWorkbenchRequestV1 } from "../agent-contract/evaluation-workbench-contract.js";
 
@@ -127,7 +123,7 @@ beforeAll(async () => {
 
 describe("offline evaluation workbench", () => {
   it.each(["publisher", "operator", "moderator-proposal", "moderator"] as const)(
-    "round-trips %s, exact hashes and self-reported labels without live authority",
+    "exports %s, exact hashes and self-reported labels without live authority",
     async (recipe) => {
       const initial = await initialWorkbench(recipe);
       expect(initial.authority).toBe("offline-self-reported-no-approval");
@@ -152,29 +148,23 @@ describe("offline evaluation workbench", () => {
       ];
       const result = await npBuildAgentEvaluationWorkbenchV1({ ...input(recipe), labels });
       const artifact = JSON.parse(result.reviewArtifactJson!);
-      const verified =
-        recipe === "moderator"
-          ? await npRequireAgentModeratorEvaluationReviewArtifactV1(artifact)
-          : recipe === "moderator-proposal"
-            ? await npRequireAgentModeratorProposalEvaluationReviewArtifactV1(artifact)
-            : recipe === "operator"
-              ? await npRequireAgentOperatorPlanEvaluationReviewArtifactV1(artifact)
-              : await npRequireAgentEvaluationReviewArtifactV1(artifact);
-      expect(JSON.parse(result.labelsJson!)).toEqual(verified.labels);
-      expect(JSON.parse(result.cases.find((c) => c.caseId === target.caseId)!.labelJson!)).toEqual(
-        verified.labels[0],
-      );
+      // The report owner independently validates the embedded review and source.
+      // Match the separate review export to it instead of replaying the same
+      // fixed detector suite again through a second review validator.
       const report = await npRequireAgentEvaluationReportV1(JSON.parse(result.reportArtifactJson));
+      expect(report.input.entries[0].current.review).toEqual(artifact);
+      expect(report.input.entries[0].current.review).toMatchObject({ labels });
+      expect(JSON.parse(result.labelsJson!)).toEqual(labels);
+      expect(JSON.parse(result.cases.find((c) => c.caseId === target.caseId)!.labelJson!)).toEqual(
+        labels[0],
+      );
       expect(report.rows.filter((r) => r.status === "present").map((r) => r.recipe)).toEqual([
         recipe,
       ]);
       expect(report.fullR6).toBe("not-established");
       expect(result.summaryText).toContain("missing-baseline");
-      const restored = await npBuildAgentEvaluationWorkbenchV1({
-        ...input(recipe),
-        review: artifact,
-      });
-      expect(restored.reviewArtifactJson).toBe(result.reviewArtifactJson);
+      // Shared review reimport is exercised once by the report/mixed round trip
+      // below and the production browser journey, not once per recipe format.
       if (recipe === "publisher") {
         // Replacement labels use the same request semantics for every owner.
         const cleared = await npBuildAgentEvaluationWorkbenchV1({

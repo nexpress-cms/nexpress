@@ -380,6 +380,10 @@ names; documentation-only validation or the corresponding full jobs satisfy them
 Full jobs use Ubuntu, Node 22 and pnpm 10.33:
 
 1. `typecheck + build + test` — install → build → typecheck → `pnpm test`.
+   The full job runs `pnpm test --concurrency=2`: workspace packages share a
+   bounded fan-out while each package retains its existing file parallelism.
+   This avoids overlapping Vitest pools consuming test deadlines; test counts,
+   assertions and timeout values are unchanged.
 2. `integration tests (Postgres)` — validates both PostgreSQL partition results
    and their exact coverage receipts. Each runner uses isolated service containers
    and the [partition runner](#ci-integration-partitions); persisted writes and

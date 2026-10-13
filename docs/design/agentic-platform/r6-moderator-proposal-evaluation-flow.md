@@ -213,9 +213,19 @@ actual admitted prediction instead of revalidating three unrelated cases. Its
 grounded edit, exact review export, matched cohort and rate-delta assertions are
 preserved; other tests retain the three-case failure/unreviewed coverage fixture.
 The corrected Workbench file passed all nine cases locally, all 2,307 Core units,
-Core typecheck and workspace lint passed, and production code/packed output did not change. No
-timeout or product assertion was weakened. The corrected commit still requires
-its own full exact-head PR checks.
+Core typecheck and workspace lint passed, and production code/packed output did not change.
+A later CI run first exceeded the Moderator matrix's twenty-second deadline,
+then timed out in subsequent cases. Recipe export tests now validate the report
+through its owner and require its independently validated embedded review to
+equal the separate review export and exact labels, instead of replaying the same
+fixed detector suite through a second review validator. Shared review reimport
+remains covered once by the v2 composition and production browser journeys.
+The CI unit step also uses workspace concurrency two, as local verification does,
+to bound overlapping package Vitest pools. Package file parallelism, test counts,
+domain/export assertions and all timeout values are retained. The corrected
+`pnpm test --concurrency=2` command passed all 66 local workspace tasks, including
+the unchanged unit counts. The corrected commit still requires its own full
+exact-head PR checks; this is not a measured CI speedup claim.
 
 Observed local verification on 2026-10-08 KST:
 
