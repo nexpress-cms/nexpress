@@ -279,7 +279,6 @@ describe("offline evaluation workbench", () => {
   });
 
   it("exports a grounded edit and compares accept versus reject on the exact reviewed cohort", async () => {
-    const initial = await initialWorkbench("publisher");
     const index = publisher.caseResults.findIndex((result) =>
       result.prediction?.proposal?.draft.operations.some(
         (operation) =>
@@ -288,8 +287,18 @@ describe("offline evaluation workbench", () => {
           typeof operation.input.patch.seoDescription === "string",
       ),
     );
-    const target = initial.cases[index];
-    const proposal = structuredClone(publisher.caseResults[index].prediction?.proposal);
+    if (index < 0) throw new Error("Missing Publisher edit fixture");
+    // One reviewed prediction is sufficient for edit and matched-cohort deltas.
+    // Other cases retain the three-case failure/unreviewed coverage fixture.
+    const source = await rebuild({
+      ...publisher,
+      suite: { ...publisher.suite, cases: [publisher.suite.cases[index]] },
+      caseResults: [publisher.caseResults[index]],
+    });
+    const request = { ...input("publisher"), evaluation: source };
+    const initial = await npBuildAgentEvaluationWorkbenchV1(request);
+    const target = initial.cases[0];
+    const proposal = structuredClone(source.caseResults[0].prediction?.proposal);
     if (!proposal) throw new Error("Missing Publisher edit fixture");
     const operation = proposal.draft.operations[0];
     if (
@@ -309,7 +318,7 @@ describe("offline evaluation workbench", () => {
       notes: "Grounded edit",
     };
     const edited = await npBuildAgentEvaluationWorkbenchV1({
-      ...input("publisher"),
+      ...request,
       labels: [{ ...binding, outcome: "edit", editedProposal: proposal }],
     });
     const verified = await npRequireAgentEvaluationReviewArtifactV1(
@@ -317,12 +326,12 @@ describe("offline evaluation workbench", () => {
     );
     expect(verified.summary.edited).toBe(1);
     expect(verified.labels[0].editedProposal).toEqual(proposal);
-    const accepted = await npBuildAgentEvaluationReviewArtifactV1(publisher, [
+    const accepted = await npBuildAgentEvaluationReviewArtifactV1(source, [
       { ...binding, outcome: "accept", editedProposal: null },
     ]);
     const rejected = await npBuildAgentEvaluationWorkbenchV1({
-      ...input("publisher"),
-      baseline: structuredClone(publisher),
+      ...request,
+      baseline: structuredClone(source),
       baselineReview: accepted,
       labels: [{ ...binding, outcome: "reject", editedProposal: null }],
     });

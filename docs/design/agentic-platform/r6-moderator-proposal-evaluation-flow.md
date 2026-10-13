@@ -207,6 +207,16 @@ No real model/provider was invoked. These results do not establish spam quality,
 automatic moderation readiness or full R6 acceptance. Logs use
 `/tmp/np-report-eval-*`.
 
+PR CI exposed an existing Publisher Workbench comparison test exceeding its
+unchanged ten-second deadline. That edit/accept/reject comparison now uses one
+actual admitted prediction instead of revalidating three unrelated cases. Its
+grounded edit, exact review export, matched cohort and rate-delta assertions are
+preserved; other tests retain the three-case failure/unreviewed coverage fixture.
+The corrected Workbench file passed all nine cases locally, all 2,307 Core units,
+Core typecheck and workspace lint passed, and production code/packed output did not change. No
+timeout or product assertion was weakened. The corrected commit still requires
+its own full exact-head PR checks.
+
 Observed local verification on 2026-10-08 KST:
 
 - Focused Core evaluator and existing recipe regressions: 45 cases passed. Review
