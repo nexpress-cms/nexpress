@@ -4,7 +4,12 @@ export interface NpAgentEvaluationCommandArgsV1 {
   provider: string;
   model: string;
   dataset:
-    "operator.v1" | "publisher.v1" | "moderator.v1" | "operator-plan.v1" | "moderator-proposal.v1";
+    | "operator.v1"
+    | "publisher.v1"
+    | "moderator.v1"
+    | "operator-plan.v1"
+    | "moderator-proposal.v1"
+    | "moderator-proposal.v2";
   reviewPath?: string;
   reportPath?: string;
   reviewsPath?: string | null;
@@ -86,7 +91,8 @@ export function npParseAgentEvaluationCommandArgsV1(
     dataset !== "publisher.v1" &&
     dataset !== "moderator.v1" &&
     dataset !== "operator-plan.v1" &&
-    dataset !== "moderator-proposal.v1"
+    dataset !== "moderator-proposal.v1" &&
+    dataset !== "moderator-proposal.v2"
   )
     invalid();
   const budgetFlags = [
@@ -136,7 +142,8 @@ export function npParseAgentEvaluationCommandArgsV1(
       | "publisher.v1"
       | "moderator.v1"
       | "operator-plan.v1"
-      | "moderator-proposal.v1",
+      | "moderator-proposal.v1"
+      | "moderator-proposal.v2",
     ...(reviewPath ? { reviewPath, reviewsPath: text("--reviews") } : {}),
     ...(reportPath ? { reportPath } : {}),
     maxCalls: budget.maxCalls,

@@ -4,10 +4,13 @@ import { join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   npCreateAgentModeratorProposalEvaluationSuiteV1,
+  npCreateAgentModeratorProposalEvaluationSuiteV2,
+  npBuildAgentEvaluationReportV1,
   runAgentEvaluationV1,
 } from "@nexpress/core/agents";
 import {
   npBuildAgentModeratorProposalEvaluationReviewArtifactV1,
+  npCompareAgentEvaluationArtifactsV1,
   npCompareAgentModeratorProposalEvaluationReviewArtifactsV1,
   npParseAgentEvaluationCommandArgsV1,
   type NpAgentModeratorProposalEvaluationReviewLabelV1,
@@ -25,9 +28,15 @@ afterEach(async () => {
   );
   vi.restoreAllMocks();
 });
-async function fixture() {
-  return runAgentEvaluationV1({
-    suite: await npCreateAgentModeratorProposalEvaluationSuiteV1(),
+const fixtures = new Map<number, Awaited<ReturnType<typeof runAgentEvaluationV1>>>();
+async function fixture(version: 1 | 2 = 1) {
+  const cached = fixtures.get(version);
+  if (cached) return structuredClone(cached);
+  const artifact = await runAgentEvaluationV1({
+    suite:
+      version === 1
+        ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
+        : await npCreateAgentModeratorProposalEvaluationSuiteV2(),
     mode: "fake",
     providerId: "fake",
     model: "deterministic-v1",
@@ -39,40 +48,76 @@ async function fixture() {
       timeoutMs: 5000,
     },
   });
+  fixtures.set(version, artifact);
+  return structuredClone(artifact);
 }
 async function directory() {
   const cwd = await mkdtemp(join(tmpdir(), "np-moderator-proposal-cli-"));
   directories.push(cwd);
   return cwd;
 }
-it("binds Moderator proposal results to the requested installed suite and budget", async () => {
+it("binds both Moderator proposal dataset versions and self-comparisons to the exact requested installed suite", async () => {
   const cwd = await directory();
-  const artifact = await fixture();
-  const result = {
-    schemaVersion: "np.agent-eval-command.v1",
-    artifact,
-    comparison: null,
-    errorCode: null,
-  };
-  const verify = await prepareEvaluationResultVerifier(
-    npParseAgentEvaluationCommandArgsV1(["--dataset", "moderator-proposal.v1"]),
-    cwd,
-  );
-  expect(await verify(result)).toEqual(result);
+  const v1 = await fixture();
+  const v2 = await fixture(2);
+  for (const [version, artifact, otherArtifact] of [
+    [1, v1, v2],
+    [2, v2, v1],
+  ] as const) {
+    const baseline = `baseline-${version}.json`;
+    await writeFile(join(cwd, baseline), JSON.stringify(artifact));
+    const result = {
+      schemaVersion: "np.agent-eval-command.v1",
+      artifact,
+      comparison: await npCompareAgentEvaluationArtifactsV1(artifact, artifact),
+      errorCode: null,
+    };
+    const verify = await prepareEvaluationResultVerifier(
+      npParseAgentEvaluationCommandArgsV1([
+        "--dataset",
+        `moderator-proposal.v${version}`,
+        "--compare",
+        baseline,
+      ]),
+      cwd,
+    );
+    expect(await verify(result)).toEqual(result);
+    expect(result.comparison).toMatchObject({ comparable: true, violationDelta: 0 });
+    // Even the same suite ID cannot substitute a differently versioned dataset.
+    await expect(
+      verify({
+        ...result,
+        artifact: otherArtifact,
+        comparison: await npCompareAgentEvaluationArtifactsV1(otherArtifact, otherArtifact),
+      }),
+    ).rejects.toThrow("Mismatched evaluation result");
+    await expect(verify({ ...result, comparison: null })).rejects.toThrow(
+      "Mismatched evaluation comparison",
+    );
+    await expect(verify({ ...result, detail: "private-child-marker" })).rejects.toThrow();
+  }
+  const incompatible = await npCompareAgentEvaluationArtifactsV1(v2, v1);
+  expect(incompatible).toEqual({ comparable: false, reason: "SUITE_MISMATCH" });
   for (const args of [[], ["--dataset", "moderator-proposal.v1", "--max-calls", "99"]]) {
     const other = await prepareEvaluationResultVerifier(
       npParseAgentEvaluationCommandArgsV1(args),
       cwd,
     );
-    await expect(other(result)).rejects.toThrow("Mismatched evaluation result");
+    await expect(
+      other({
+        schemaVersion: "np.agent-eval-command.v1",
+        artifact: v1,
+        comparison: null,
+        errorCode: null,
+      }),
+    ).rejects.toThrow("Mismatched evaluation result");
   }
-  await expect(verify({ ...result, detail: "private-child-marker" })).rejects.toThrow();
 }, 20_000);
 // Captures inputs independently, then exercises one actual npm child through the CLI boundary.
 // The timeout covers repeated bounded hash verification, not product latency.
-it("binds Moderator proposal review output to exact source, labels and comparison before child execution", async () => {
+it("binds report-evidence Moderator proposal review output to exact source, labels and comparison before child execution", async () => {
   const cwd = await directory();
-  const source = await fixture();
+  const source = await fixture(2);
   const template = await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(source);
   const entry = template.entries.find(
     (e) => e.eligible && e.response?.decision.kind === "complete",
@@ -161,4 +206,54 @@ it("binds Moderator proposal review output to exact source, labels and compariso
     { ...result, detail: "private-child-marker" },
   ])
     await expect(verify(wrong)).rejects.toThrow("Mismatched Moderator proposal review result");
+}, 20_000);
+
+it("independently reconstructs V2 report evidence and keeps incompatible V1 baselines explicit", async () => {
+  const cwd = await directory();
+  const evaluation = await fixture(2);
+  const baseline = await fixture();
+  const review = await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(evaluation);
+  const input = {
+    schemaVersion: "np.agent-eval-report-input.v1" as const,
+    entries: [
+      {
+        recipe: "moderator-proposal" as const,
+        current: { evaluation, review },
+        baseline: { evaluation: baseline, review: null },
+      },
+    ],
+  };
+  const artifact = await npBuildAgentEvaluationReportV1(input);
+  const result = { schemaVersion: "np.agent-eval-report-command.v1", artifact, errorCode: null };
+  await Promise.all([
+    writeFile(join(cwd, "source.json"), JSON.stringify(evaluation)),
+    writeFile(join(cwd, "review.json"), JSON.stringify(review)),
+    writeFile(join(cwd, "baseline.json"), JSON.stringify(baseline)),
+    writeFile(
+      join(cwd, "manifest.json"),
+      JSON.stringify({
+        schemaVersion: "np.agent-eval-report-manifest.v1",
+        entries: [
+          {
+            recipe: "moderator-proposal",
+            evaluation: "source.json",
+            review: "review.json",
+            baseline: { evaluation: "baseline.json", review: null },
+          },
+        ],
+      }),
+    ),
+  ]);
+  const verify = await prepareEvaluationResultVerifier(
+    npParseAgentEvaluationCommandArgsV1(["--report", "manifest.json"]),
+    cwd,
+  );
+  expect(await verify(result)).toEqual(result);
+  expect(
+    artifact.rows.find((row) => row.recipe === "moderator-proposal")?.evaluationComparison.result,
+  ).toEqual({ comparable: false, reason: "SUITE_MISMATCH" });
+  expect(artifact.fullR6).toBe("not-established");
+  expect(() => verify({ ...result, artifact: { ...artifact, fullR6: "passed" } })).toThrow(
+    "Mismatched evaluation report result",
+  );
 }, 20_000);

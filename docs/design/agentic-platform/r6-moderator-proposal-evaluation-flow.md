@@ -5,6 +5,11 @@ against versioned synthetic evidence projections. `moderator-proposal.v1` adds
 sixteen Korean/English cases: three selection and five abstention cases per
 locale. It complements the actual detector replay in `moderator.v1`.
 
+`moderator-proposal.v2` adds twenty-four Korean/English synthetic report and mixed
+observation/report cases. The v1 factory, sixteen cases and canonical suite hash
+remain unchanged. Both versions use the same installed recipe instruction,
+response schema and offline review/report owners.
+
 ## Response and evidence owners
 
 The shared evaluation runner supplies the recipe's actual instruction and response
@@ -47,6 +52,39 @@ fixture conformance, not model usefulness. The existing explicit evaluation-prov
 injection, confirmation and budget contracts also apply to this dataset; implementation
 and local verification use only deterministic local stubs. No provider calls,
 credentials, activation, database access or capabilities are needed by these commands.
+
+### Report and mixed source fixtures
+
+The optional `detector.reportClaims` projection matches the
+[report recipe source](r6-moderator-report-recipe-flow.md): exactly
+`{ unverified: true, itemCount }`, where the integer count is `1..detector.itemCount`.
+It counts distinct reported targets, not raw report rows, independent reporters,
+classifier verdicts or approval. Unexpected keys, private report details, verified
+claims, null values and invalid counts are rejected, never silently removed.
+Observation-only evidence still omits the field.
+
+The new suite has twelve cases per locale: current report and mixed candidates,
+hostile notes on each, resolved reports, changed targets, resolved mixed evidence,
+stale mixed evidence, empty or missing sources, truncated scans and unavailable
+mixed evidence. Four cases per locale admit an exact candidate; eight require
+abstention. The facts envelope's existing availability/scan labels describe these
+synthetic states. They do not replay a real report resolution, deduplication,
+author independence check, ACL change or Runtime attestation; those remain owned
+by the actual recipe's PostgreSQL acceptance tests.
+
+The v2 factory uses suite id `moderator-proposal-review`, version 2 and case
+version 2. Evaluation commands select each version explicitly and validate the
+requested suite hash across the installed child boundary. A v1/v2 baseline reports
+`SUITE_MISMATCH`, with no pooled comparison deltas. Exact source/case/prediction
+bindings continue to prevent labels from being reused against different evidence.
+Workbench imports and exports retain the marker through the existing generic
+composition, without a new UI action or live moderation authority.
+
+```bash
+pnpm agent:evaluate --dataset moderator-proposal.v2 --out reports.json --json
+nexpress agent evaluate --dataset moderator-proposal.v2 --compare reports.json --json
+nexpress agent evaluate --review reports.json --out report-review-template.json --json
+```
 
 ## Run and review
 
@@ -123,6 +161,51 @@ sample, confidence-bound and production-shadow requirements. No migrations,
 versions, changesets or lockfile changes are included.
 
 ## Verification
+
+Observed report/mixed extension verification on 2026-10-13 KST:
+
+- Existing v1 suite canonical hash remains
+  `cj1:sha256:PekLjRb2nqaNolY_zLLbLqztyj9QwTae6PbabuJPYec`.
+  The full v2 fake replay covers 24 cases: eight exact selections and sixteen
+  abstentions. Invalid/private/verified claims are rejected. Poisoned expected
+  answers do not alter predictions, and neither hostile notes nor retained
+  candidates override availability or scan fences.
+- Focused Core evaluation/Workbench and App/CLI workflows passed 25 cases across
+  five files. Representative composition fixtures avoid replaying the full suite
+  for each binding mutation. Tests cover either mixed candidate, grounded edits,
+  stale labels, exact requested CLI suite hashes and explicit cross-version
+  comparison refusal. Existing response-schema and v1 behavior tests remain.
+- `pnpm verify --concurrency=2`: 113 tasks passed in 7m33.589s, including builds,
+  typechecks, 62 repository checks and all units. Core passed 2,307, App 688,
+  CLI 154, Admin 191 and Web 164 cases. Final `pnpm lint`: 41 tasks passed.
+  An early parallel lint read incomplete Core declarations and retained a stale
+  CLI diagnostic; after the dependency build and clearing that generated cache,
+  uncached CLI lint and the final workspace lint both passed without source changes.
+- The existing production Chromium Workbench journey passed once, without retries
+  or skips. It imports three factory-derived v2 cases, preserves exact imported
+  labels, reviews a retained abstention, rejects an ungrounded edit, exports
+  independently validated review/report JSON and retains CSRF/admission guards.
+  The 320px capture was visually inspected; the overflow assertion passed.
+- Forty fresh public tarballs passed 54 stages outside the workspace, including
+  installed CLI v2 evaluation/self-comparison, v1 project evaluation, proposal and
+  abstention reviews, exact review comparison, an incompatible v1 report baseline,
+  Workbench round trip, generated-project typecheck and production build. Six
+  shipped Core/App/CLI runtime/declaration files matched producer bytes. The CLI
+  is a binary-only package and does not emit declarations. Evaluation commands ran
+  without database or secret environment; the later build/typecheck used only
+  offline placeholder configuration.
+- Independent read-only review and self-review found no material regression.
+  Modified code/test hashes stayed fixed through the final gates. Formatting,
+  relative feature-document links and `git diff --check` passed. Versions,
+  changesets, lockfile, schema and the pre-existing handoff edit are unchanged.
+
+Ordinary units retained 13 Redis passes and three opt-in skips. Separate
+PostgreSQL integration, live Redis, theme and native preview suites were not
+repeated for this offline extension. The browser used an isolated local database
+for existing staff admission, not live report resolution or Runtime attestation.
+No real model/provider was invoked. These results do not establish spam quality,
+automatic moderation readiness or full R6 acceptance. Logs use
+`/tmp/np-report-eval-*`.
 
 Observed local verification on 2026-10-08 KST:
 

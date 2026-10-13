@@ -134,13 +134,14 @@ export function npRequireAgentModeratorProposalEvaluationEvidenceV1(
           "detector",
           "proposal",
         ]);
-        const d = record(c.detector, [
-          "id",
-          "version",
-          "advisory",
-          "itemCount",
-          "independentAccountCount",
-        ]);
+        const detectorKeys = ["id", "version", "advisory", "itemCount", "independentAccountCount"];
+        const d = canonicalBodyRecord(
+          c.detector,
+          path,
+          [...detectorKeys, "reportClaims"],
+          detectorKeys,
+          { seen: new WeakSet() },
+        );
         if (
           d.id !== "moderator.repeated-link-spam" ||
           d.version !== 1 ||
@@ -157,6 +158,16 @@ export function npRequireAgentModeratorProposalEvaluationEvidenceV1(
         const incidentId = canonicalBodyUuid(c.incidentId, path);
         const proposal = npRequireAgentQuarantineProposalV1(c.proposal);
         if (proposal.incidentId !== incidentId || proposal.target.kind !== "comment") fail();
+        const itemCount = canonicalBodyInteger(d.itemCount, path, 1, 100);
+        let reportClaims: { unverified: true; itemCount: number } | undefined;
+        if (Object.hasOwn(d, "reportClaims")) {
+          const claims = record(d.reportClaims, ["unverified", "itemCount"]);
+          if (claims.unverified !== true) fail();
+          reportClaims = {
+            unverified: true,
+            itemCount: canonicalBodyInteger(claims.itemCount, path, 1, itemCount),
+          };
+        }
         return {
           incidentId,
           signalId: canonicalBodyUuid(c.signalId, path),
@@ -165,8 +176,9 @@ export function npRequireAgentModeratorProposalEvaluationEvidenceV1(
             id: d.id,
             version: d.version,
             advisory: d.advisory,
-            itemCount: canonicalBodyInteger(d.itemCount, path, 1, 100),
+            itemCount,
             independentAccountCount: canonicalBodyInteger(d.independentAccountCount, path, 1, 100),
+            ...(reportClaims ? { reportClaims } : {}),
           },
           proposal,
         };
