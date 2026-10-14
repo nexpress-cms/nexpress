@@ -129,3 +129,9 @@ export {
   npResolveAgentModeratorCommentReportEvidenceV1,
   type NpAgentModeratorCommentReportCollectorV1,
 } from "./moderator-report-source.js";
+
+export {
+  createAgentModeratorCombinedCommentCollectorV1,
+  type NpAgentModeratorCombinedCommentCollectorV1,
+} from "./moderator-combined-collector.js";
+export { npResolveAgentModeratorCombinedCommentEvidenceV1 } from "./moderator-comment-evidence.js";

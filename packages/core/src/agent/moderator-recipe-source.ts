@@ -26,12 +26,9 @@ import {
   type NpAgentIncidentReadContextV1,
   type NpAgentIncidentServiceV1,
 } from "./incident-service.js";
-import {
-  npReadAgentModeratorCommentFactV1,
-  npResolveAgentModeratorStaffUserV1,
-} from "./moderator-collector.js";
+import { npResolveAgentModeratorStaffUserV1 } from "./moderator-collector.js";
+import { npReadAgentModeratorCommentEvidenceFactV1 } from "./moderator-comment-evidence.js";
 import { npDetectAgentRepeatedLinkSpamV1 } from "./moderator-detector.js";
-import { npReadAgentModeratorCommentReportFactV1 } from "./moderator-report-source.js";
 import type { NpAgentRuntimeRunContextV1 } from "./runtime-admission.js";
 
 const RECIPE = "moderator.repeated-link-spam";
@@ -203,10 +200,11 @@ export function createAgentModeratorRecipeSourceV1(options: {
             if (sources.length !== new Set(ids).size) return [];
             const facts: NpAgentModeratorFactV1[] = [];
             for (const source of sources) {
-              const fact =
-                source.kind === "community.content.reported"
-                  ? await npReadAgentModeratorCommentReportFactV1(context.db, source, user)
-                  : await npReadAgentModeratorCommentFactV1(context.db, source, user);
+              const fact = await npReadAgentModeratorCommentEvidenceFactV1(
+                context.db,
+                source,
+                user,
+              );
               if (
                 !fact ||
                 fact.subject.kind !== "comment" ||
