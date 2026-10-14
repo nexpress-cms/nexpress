@@ -106,8 +106,10 @@ This bundle adds document report Incidents and staff response. The subsequent
 retained sources to the existing Moderator recipe and human approval continuation.
 Separate comment/document Signals may correlate into one Incident under the
 existing fingerprint; staff and recipe review check every source. Member
-restriction/report sources, combined comment/document collection, model-quality
-thresholds, automatic action and the full R6 gate remain separate. No schema,
+restriction/report sources, model-quality thresholds, automatic action and the
+full R6 gate remain separate. The subsequent
+[content collection flow](r6-moderator-content-collection-flow.md) combines document
+and comment sources through one bounded scan. No schema,
 version, changeset, lockfile, credential, external delivery or activation change
 is introduced. The existing handoff edit is preserved.
 

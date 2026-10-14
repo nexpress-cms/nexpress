@@ -132,8 +132,11 @@ export {
 
 export {
   createAgentModeratorCombinedCommentCollectorV1,
+  createAgentModeratorCombinedContentCollectorV1,
   type NpAgentModeratorCombinedCommentCollectorV1,
+  type NpAgentModeratorCombinedContentCollectorV1,
 } from "./moderator-combined-collector.js";
+export { npResolveAgentModeratorCombinedContentEvidenceV1 } from "./moderator-content-evidence.js";
 export { npResolveAgentModeratorCombinedCommentEvidenceV1 } from "./moderator-comment-evidence.js";
 
 export {

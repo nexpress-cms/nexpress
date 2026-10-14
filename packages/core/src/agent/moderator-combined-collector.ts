@@ -18,6 +18,7 @@ import {
   type NpAgentModeratorCollectionResultV1,
 } from "./moderator-collector.js";
 import { npReadAgentModeratorCommentEvidenceFactV1 } from "./moderator-comment-evidence.js";
+import { npReadAgentModeratorContentEvidenceFactV1 } from "./moderator-content-evidence.js";
 import {
   npAgentModeratorWindowStartedAtV1,
   npDetectAgentRepeatedLinkSpamV1,
@@ -32,12 +33,32 @@ export interface NpAgentModeratorCombinedCommentCollectorV1 {
   }): Promise<NpAgentModeratorCollectionResultV1>;
 }
 
-/** Explicit host invocation; one closed window and one 100-event bound across both source owners. */
-export function createAgentModeratorCombinedCommentCollectorV1(options: {
+export type NpAgentModeratorCombinedContentCollectorV1 = NpAgentModeratorCombinedCommentCollectorV1;
+
+interface CollectorOptions {
   staffUserId: string;
   incidents: NpAgentIncidentWriteServiceV1;
   now?: () => Date;
-}): NpAgentModeratorCombinedCommentCollectorV1 {
+}
+
+/** Explicit host invocation; one closed window and one 100-event bound across both source owners. */
+export function createAgentModeratorCombinedCommentCollectorV1(
+  options: CollectorOptions,
+): NpAgentModeratorCombinedCommentCollectorV1 {
+  return createCombinedCollector(options, false);
+}
+
+/** Explicit host invocation; one global 100-event bound across all three existing source owners. */
+export function createAgentModeratorCombinedContentCollectorV1(
+  options: CollectorOptions,
+): NpAgentModeratorCombinedContentCollectorV1 {
+  return createCombinedCollector(options, true);
+}
+
+function createCombinedCollector(
+  options: CollectorOptions,
+  includeDocuments: boolean,
+): NpAgentModeratorCombinedContentCollectorV1 {
   canonicalBodyUuid(options.staffUserId, "moderator.staffUserId");
   if (typeof options.incidents?.observe !== "function")
     throw new Error("Moderator Incident write owner is required.");
@@ -80,6 +101,12 @@ export function createAgentModeratorCombinedCommentCollectorV1(options: {
                     eq(npAgentEvents.sourceComponent, "community.comment-reports"),
                     eq(npAgentEvents.kind, "community.content.reported"),
                   ),
+                  includeDocuments
+                    ? and(
+                        eq(npAgentEvents.sourceComponent, "community.document-reports"),
+                        eq(npAgentEvents.kind, "community.content.reported"),
+                      )
+                    : undefined,
                 ),
                 gte(npAgentEvents.occurredAt, start),
                 lt(npAgentEvents.occurredAt, end),
@@ -96,11 +123,14 @@ export function createAgentModeratorCombinedCommentCollectorV1(options: {
           const facts: NpAgentModeratorFactV1[] = [];
           for (const source of sources) {
             if (
-              source.subject?.kind !== "comment" ||
+              (source.subject?.kind !== "comment" &&
+                (!includeDocuments || source.subject?.kind !== "document")) ||
               !settings.collectionSlugs.includes(source.subject.collection)
             )
               continue;
-            const fact = await npReadAgentModeratorCommentEvidenceFactV1(db, source, user);
+            const fact = includeDocuments
+              ? await npReadAgentModeratorContentEvidenceFactV1(db, source, user)
+              : await npReadAgentModeratorCommentEvidenceFactV1(db, source, user);
             if (fact) facts.push(fact);
           }
           const candidates = await npDetectAgentRepeatedLinkSpamV1({
