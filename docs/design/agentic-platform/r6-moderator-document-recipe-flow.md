@@ -21,8 +21,9 @@ references are not dropped to manufacture a supported subset.
 
 Separate comment and document Signals may correlate into one Incident under the
 existing fingerprint. Both Signals remain mandatory. This source extension does
-not add a combined comment/document collector or let sub-threshold separate
-campaigns manufacture a Signal. Existing collection owners, author independence,
+not add a combined comment/document collector. The subsequent
+[combined content flow](r6-moderator-content-collection-flow.md) joins real
+sub-threshold activity through one explicitly invoked collector. Existing collection owners, author independence,
 target deduplication and advisory scoring remain unchanged.
 
 Each admitted candidate copies the actual fact's target kind, collection, ID and
@@ -71,8 +72,7 @@ collection, dispatch, activation or provider work. Absent installation stays
 disabled. There is no new route, worker, credential, provider call, public API,
 manual-input format, schema, version, changeset or lockfile change.
 
-Member report/restriction sources, combined comment/document collection,
-document-specific versioned proposal evaluations, real-model quality, automatic
+Member report/restriction sources, document-specific versioned proposal evaluations, real-model quality, automatic
 moderation and the full R6 acceptance gate remain open. Local fake-provider
 journeys establish orchestration and refusal behavior; they do not establish
 production false-positive or usefulness thresholds.

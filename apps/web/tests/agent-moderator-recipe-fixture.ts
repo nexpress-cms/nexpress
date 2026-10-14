@@ -9,8 +9,12 @@ import {
   createAgentModeratorCollectorV1,
   createAgentModeratorCommentObserverV1,
 } from "../../../packages/core/src/agent/moderator-collector.js";
-import { createAgentModeratorCombinedCommentCollectorV1 } from "../../../packages/core/src/agent/moderator-combined-collector.js";
+import {
+  createAgentModeratorCombinedCommentCollectorV1,
+  createAgentModeratorCombinedContentCollectorV1,
+} from "../../../packages/core/src/agent/moderator-combined-collector.js";
 import { npResolveAgentModeratorCombinedCommentEvidenceV1 } from "../../../packages/core/src/agent/moderator-comment-evidence.js";
+import { npResolveAgentModeratorCombinedContentEvidenceV1 } from "../../../packages/core/src/agent/moderator-content-evidence.js";
 import {
   createAgentModeratorCommentReportCollectorV1,
   createAgentModeratorCommentReportObserverV1,
@@ -115,8 +119,15 @@ export async function moderatorRecipeFixture(
     sourceAvailable?: boolean;
     itemCount?: number;
     bootstrapClockAheadSeconds?: number;
+    contentCounts?: { documents: number; observedComments: number; reportedComments: number };
     source?:
-      "observations" | "reports" | "mixed" | "combined" | "document-reports" | "document-mixed";
+      | "observations"
+      | "reports"
+      | "mixed"
+      | "combined"
+      | "document-reports"
+      | "document-mixed"
+      | "content-combined";
   } = {},
 ) {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -196,9 +207,12 @@ export async function moderatorRecipeFixture(
   });
   const incidents = createAgentIncidentWriteServiceV1({
     resolveEvidence: ({ db, candidate }) => {
-      const resolve = candidate.facts.every((fact) => fact.subject.kind === "document")
-        ? npResolveAgentModeratorDocumentReportEvidenceV1
-        : npResolveAgentModeratorCombinedCommentEvidenceV1;
+      const resolve =
+        options.source === "content-combined"
+          ? npResolveAgentModeratorCombinedContentEvidenceV1
+          : candidate.facts.every((fact) => fact.subject.kind === "document")
+            ? npResolveAgentModeratorDocumentReportEvidenceV1
+            : npResolveAgentModeratorCombinedCommentEvidenceV1;
       return resolve({ db, candidate, staffUserId: runtime.actor.actor.user.id });
     },
     now: runtime.options.now,
@@ -312,7 +326,7 @@ export async function moderatorRecipeFixture(
       })),
     )
     .returning();
-  const [document] = await runtime.db
+  let [document] = await runtime.db
     .insert(discussionsTable)
     .values({
       siteId,
@@ -337,7 +351,9 @@ export async function moderatorRecipeFixture(
   resetCommunityCommentReportObserverV1();
   resetCommunityDocumentReportObserverV1();
   const source = options.source ?? "observations";
-  const documentSource = source === "document-reports" || source === "document-mixed";
+  const contentSource = source === "content-combined";
+  const documentSource =
+    source === "document-reports" || source === "document-mixed" || contentSource;
   const originalCollection = getCollectionConfig("discussions");
   if (documentSource)
     registerCollection("discussions", discussionsTable, {
@@ -352,7 +368,7 @@ export async function moderatorRecipeFixture(
     setCommunityModerationObserverV1(createAgentModeratorCommentObserverV1({ events }));
   if (documentSource)
     setCommunityDocumentReportObserverV1(createAgentModeratorDocumentReportObserverV1({ events }));
-  else if (source !== "observations")
+  if (contentSource || (!documentSource && source !== "observations"))
     setCommunityCommentReportObserverV1(createAgentModeratorCommentReportObserverV1({ events }));
   const reporters =
     source === "observations"
@@ -401,7 +417,75 @@ export async function moderatorRecipeFixture(
   const comments: Awaited<ReturnType<typeof write>>[] = [];
   let windowStartedAt: string | null = null;
   let observedCount = 0;
-  if (documentSource) {
+  if (contentSource) {
+    const counts = options.contentCounts ?? {
+      documents: 3,
+      observedComments: 2,
+      reportedComments: 0,
+    };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      for (let index = 0; index < counts.documents; index++) {
+        const target = await writeDocument(index);
+        documents.push(target);
+        reports.push(
+          await withCurrentSite(siteId, () =>
+            fileReport({
+              targetType: "discussions",
+              targetId: String(target.id),
+              reporterId: reporters[index % reporters.length]!.id,
+              reason: "Unverified document claim: private-report-reason@example.test",
+            }),
+          ),
+        );
+      }
+      for (let index = 0; index < counts.observedComments + counts.reportedComments; index++) {
+        const observed = index < counts.observedComments;
+        resetCommunityModerationObserverV1();
+        if (observed)
+          setCommunityModerationObserverV1(createAgentModeratorCommentObserverV1({ events }));
+        const comment = await write(counts.documents + index);
+        comments.push(comment);
+        if (!observed)
+          reports.push(
+            await withCurrentSite(siteId, () =>
+              fileReport({
+                targetType: "comment",
+                targetId: comment.id,
+                reporterId: reporters[index % reporters.length]!.id,
+                reason: "Unverified comment claim: private-report-reason@example.test",
+              }),
+            ),
+          );
+      }
+      const timestamps = [...comments, ...reports].map((entry) => entry.createdAt);
+      windowStartedAt = npAgentModeratorWindowStartedAtV1(timestamps[0]!.toISOString());
+      if (
+        timestamps.every(
+          (time) => npAgentModeratorWindowStartedAtV1(time.toISOString()) === windowStartedAt,
+        )
+      )
+        break;
+      if (attempt === 2) throw new Error("Could not prepare one bounded mixed content window");
+      // Delete the actual parent and document targets through their owners;
+      // their historical Events remain immutable and cannot form a retry campaign.
+      for (const target of documents)
+        await withCurrentSite(siteId, () =>
+          deleteMemberDocument("discussions", String(target.id), String(target.memberAuthorId)),
+        );
+      await withCurrentSite(siteId, () =>
+        deleteMemberDocument("discussions", document.id, document.memberAuthorId!),
+      );
+      const replacement = await writeDocument(0, "Ordinary retry discussion");
+      [document] = await runtime.db
+        .select()
+        .from(discussionsTable)
+        .where(eq(discussionsTable.id, String(replacement.id)));
+      documents.length = 0;
+      comments.length = 0;
+      reports.length = 0;
+      windowStartedAt = null;
+    }
+  } else if (documentSource) {
     // Document/report owners supply their real timestamps. Invalidate discarded
     // targets through their owners if a batch crosses a bucket; retain Events.
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -532,7 +616,10 @@ export async function moderatorRecipeFixture(
       reports.push(extra);
     }
   }
-  if (!windowStartedAt || (documentSource ? documents.length : comments.length) !== itemCount)
+  if (
+    !windowStartedAt ||
+    (!contentSource && (documentSource ? documents.length : comments.length) !== itemCount)
+  )
     throw new Error("Could not prepare one bounded observation window");
   const closedAt = Date.parse(windowStartedAt) + 600_001;
   // Bootstrap already advances its clock. Near a real bucket boundary the
@@ -540,13 +627,15 @@ export async function moderatorRecipeFixture(
   runtime.advance(Math.max(0, closedAt - runtime.options.now().getTime()) / 1000);
   vi.setSystemTime(runtime.options.now());
   const collector = (
-    source === "document-reports"
-      ? createAgentModeratorDocumentReportCollectorV1
-      : source === "combined"
-        ? createAgentModeratorCombinedCommentCollectorV1
-        : source === "reports"
-          ? createAgentModeratorCommentReportCollectorV1
-          : createAgentModeratorCollectorV1
+    contentSource
+      ? createAgentModeratorCombinedContentCollectorV1
+      : source === "document-reports"
+        ? createAgentModeratorDocumentReportCollectorV1
+        : source === "combined"
+          ? createAgentModeratorCombinedCommentCollectorV1
+          : source === "reports"
+            ? createAgentModeratorCommentReportCollectorV1
+            : createAgentModeratorCollectorV1
   )({
     staffUserId: runtime.actor.actor.user.id,
     incidents,

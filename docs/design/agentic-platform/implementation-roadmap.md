@@ -690,7 +690,11 @@ human approval quarantine/restore. The
 [document report recipe flow](r6-moderator-document-recipe-flow.md) connects those
 current sources and correlated comment/document Incidents to the existing
 Moderator Runtime proposal, human approval and completed receipt. Member report
-sources, combined comment/document collection and real-model quality remain open.
+sources and real-model quality remain open. The
+[combined content collection flow](r6-moderator-content-collection-flow.md)
+joins sub-threshold document and comment activity through one global 100-Event
+scan and complete mixed-candidate resolver, preserving the same recipe and human
+approval owners.
 
 The [Operator diagnostics and planning flow](r6-operator-diagnostics-flow.md)
 records the explicitly installed status, bounded audit and plan-only artifact
