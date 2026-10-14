@@ -113,9 +113,12 @@ Construction does not observe, collect, enqueue, activate or call a provider.
 Absent owners remain disabled. Schema, versions, changesets and lockfile are
 unchanged, and no new worker, credentials or real provider calls are introduced.
 
-This connects retained comment report evidence to the existing recipe. General
-document/member report sources, production/model quality thresholds, automatic
-moderation and the full R6 evaluation gate remain open.
+This connects retained comment report evidence to the existing recipe. The
+subsequent [document report recipe flow](r6-moderator-document-recipe-flow.md)
+adds actual document reports and correlated comment/document Incident review.
+Member report sources, combined comment/document collection, production/model
+quality thresholds, automatic moderation and the full R6 evaluation gate remain
+open.
 
 ## Verification
 

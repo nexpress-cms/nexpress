@@ -101,11 +101,11 @@ flow and checks the installed containment version.
 
 ## Remaining boundaries
 
-This bundle adds document report Incidents and staff response, not a new Runtime
-recipe. The installed Moderator recipe source remains comment-only. Separate
-comment/document Signals may correlate into one Incident under the existing
-fingerprint; staff review checks every source. The comment-only recipe does not
-discard document references to manufacture a smaller supported campaign. Member
+This bundle adds document report Incidents and staff response. The subsequent
+[document report recipe flow](r6-moderator-document-recipe-flow.md) connects those
+retained sources to the existing Moderator recipe and human approval continuation.
+Separate comment/document Signals may correlate into one Incident under the
+existing fingerprint; staff and recipe review check every source. Member
 restriction/report sources, combined comment/document collection, model-quality
 thresholds, automatic action and the full R6 gate remain separate. No schema,
 version, changeset, lockfile, credential, external delivery or activation change
