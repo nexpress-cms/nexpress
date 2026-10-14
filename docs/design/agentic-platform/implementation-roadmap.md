@@ -681,6 +681,10 @@ and connects them to host-owned maintenance and authorized Studio state.
 Other source evidence viewers, external notification delivery, automatic escalation,
 unknown execution outcomes and recipe/evaluation gates stay open.
 
+The [member report review flow](r6-incident-member-report-flow.md) adds transactional
+filing observations, bounded unscored advisory Incidents and current global
+account/site-report evidence. It supplies no account response authority.
+
 The [comment report evidence flow](r6-incident-comment-report-flow.md) adds actual
 transactional filing observations, bounded advisory collection and current-ACL
 review/response selection. Report claims do not establish classifier verdicts or
@@ -689,8 +693,8 @@ adds actual document filing observations, current Studio review and existing sta
 human approval quarantine/restore. The
 [document report recipe flow](r6-moderator-document-recipe-flow.md) connects those
 current sources and correlated comment/document Incidents to the existing
-Moderator Runtime proposal, human approval and completed receipt. Member report
-sources and real-model quality remain open. The
+Moderator Runtime proposal, human approval and completed receipt. Member account
+response policy and real-model quality remain open. The
 [combined content collection flow](r6-moderator-content-collection-flow.md)
 joins sub-threshold document and comment activity through one global 100-Event
 scan and complete mixed-candidate resolver, preserving the same recipe and human

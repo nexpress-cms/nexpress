@@ -145,3 +145,6 @@ export {
   npResolveAgentModeratorDocumentReportEvidenceV1,
   type NpAgentModeratorDocumentReportCollectorV1,
 } from "./moderator-document-report-source.js";
+
+export * from "./moderator-member-report-source.js";
+export * from "./incident-member-report-evidence-service.js";

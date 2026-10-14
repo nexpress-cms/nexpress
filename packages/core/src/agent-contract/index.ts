@@ -108,3 +108,6 @@ export * from "./moderator-proposal-evaluation-contract.js";
 export * from "./moderator-proposal-evaluation-review-contract.js";
 export * from "./evaluation-workbench-contract.js";
 export * from "./incident-notification-recovery-contract.js";
+
+export * from "./incident-member-report-contract.js";
+export * from "./moderator-member-report-contract.js";

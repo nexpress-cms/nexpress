@@ -70,3 +70,9 @@ export {
   resetCommunityDocumentReportObserverV1,
 } from "../community/document-report-observer.js";
 export type { NpCommunityDocumentReportObserverV1 } from "../community/document-report-observer.js";
+
+export {
+  setCommunityMemberReportObserverV1,
+  resetCommunityMemberReportObserverV1,
+} from "../community/member-report-observer.js";
+export type { NpCommunityMemberReportObserverV1 } from "../community/member-report-observer.js";

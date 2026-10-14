@@ -2,9 +2,11 @@ import { expect, test } from "@playwright/test";
 import {
   npRequireAgentIncidentStudioDetailV1,
   npRequireAgentIncidentEvidenceV1,
+  npRequireAgentIncidentMemberReportEvidenceV1,
   npRequireAgentIncidentAssignmentV1,
   npRequireAgentIncidentNotificationsV1,
   type NpAgentIncidentEvidenceItemV1,
+  type NpAgentIncidentMemberReportEvidenceItemV1,
 } from "@nexpress/core/agent-contract";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
@@ -1105,6 +1107,191 @@ test("document report evidence reviews actual visibility, selects the exact targ
   await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Prepare response plan" })).toHaveCount(0);
   expect(prepared).toHaveLength(1);
+});
+
+test("member report evidence separates an unverified claim from current account and site report states without account actions", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    174 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const memberId = "b1111111-1111-4111-8111-111111111111";
+  const result = detail();
+  result.incident.primarySubject = { kind: "member", memberId };
+  result.incident.category = "abuse";
+  result.incident.severity = "info";
+  result.incident.title = "Member report review";
+  result.incident.summary = "A filed member report requires human review.";
+  result.incident.eventCount = 1;
+  result.signals = [
+    {
+      id: signalId,
+      detectorId: "moderator.member-report-review",
+      detectorVersion: 1,
+      confidenceBasis: "external",
+      scoreBasisPoints: null,
+      category: "abuse",
+      createdAt: at,
+    },
+  ];
+  result.timeline = result.timeline.slice(0, 1);
+  result.workflow = null;
+  result.feedbackAvailable = false;
+  result.response = null;
+  const memberDetail = npRequireAgentIncidentStudioDetailV1(result);
+  const filed: NpAgentIncidentMemberReportEvidenceItemV1 = {
+    eventId: id,
+    signalIds: [signalId],
+    availability: "available",
+    target: { kind: "member", id: memberId },
+    observed: {
+      occurredAt: at,
+      retentionExpiresAt: "2026-09-28T00:00:00.000Z",
+      status: "active",
+      claim: "unverified",
+    },
+    current: {
+      state: "unchanged",
+      status: "active",
+      updatedAt: at,
+      versionDigest: targetDigest,
+      report: { status: "unresolved", resolvedAt: null },
+    },
+    responseEligible: false,
+  };
+  const unavailable: NpAgentIncidentMemberReportEvidenceItemV1 = {
+    eventId: actionId,
+    signalIds: [signalId],
+    availability: "unavailable",
+    target: null,
+    observed: null,
+    current: null,
+    responseEligible: false,
+  };
+  const cursor = "sealed-member-report-page";
+  let cursorInvalid = false;
+  let evidenceVersion = 1;
+  let evidenceStatus = 200;
+  const posts: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().includes("/api/admin/agents/"))
+      posts.push(request.url());
+  });
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({ json: memberDetail }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/member-report-evidence*`, (route) => {
+    const paged = new URL(route.request().url()).searchParams.has("cursor");
+    if (paged && cursorInvalid)
+      return route.fulfill({
+        status: 400,
+        json: {
+          status: 400,
+          error: {
+            code: "INCIDENT_MEMBER_REPORT_EVIDENCE_CURSOR_INVALID",
+            message: "Member report evidence cursor is invalid.",
+          },
+        },
+      });
+    return route.fulfill({
+      status: evidenceStatus,
+      json:
+        evidenceStatus === 200
+          ? npRequireAgentIncidentMemberReportEvidenceV1({
+              schemaVersion: "np.agent-incident-member-report-evidence.v1",
+              incidentId: id,
+              incidentVersion: evidenceVersion,
+              items: paged ? [unavailable] : [filed],
+              nextCursor: paged ? null : cursor,
+            })
+          : {},
+    });
+  });
+  await page.goto(`/admin/agents/incidents/${id}`);
+  const evidence = page.getByRole("region", { name: "Member report evidence" });
+  await expect(evidence.getByRole("heading", { name: "Filed member report" })).toBeVisible();
+  await expect(evidence.getByText(`Member: ${memberId}`, { exact: true })).toBeVisible();
+  await expect(
+    evidence.getByText("Recorded account status: active", { exact: true }),
+  ).toBeVisible();
+  await expect(evidence.getByText("Global account status: active", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Site report status: unresolved", { exact: true })).toBeVisible();
+  await expect(
+    evidence.getByText("Claim: unverified. No abuse assessment was recorded.", { exact: true }),
+  ).toBeVisible();
+  await expect(evidence.getByText(/References can retain evidence/)).toBeVisible();
+  await expect(page.getByText("Report evidence basis: external", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Abuse assessment score: Not assessed", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("region", { name: "Content evidence" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Response plans" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", {
+      name: /Select for response plan|Prepare response plan|Execute approved/,
+    }),
+  ).toHaveCount(0);
+  await page.setViewportSize({ width: 320, height: 900 });
+  if (await page.locator('[data-np-admin-sidebar][data-open="true"]').count())
+    await page.getByRole("button", { name: "Close navigation" }).last().click();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+    .toBe(true);
+  await evidence.screenshot({
+    path: testInfo.outputPath("incident-member-report-evidence-320.png"),
+    animations: "disabled",
+  });
+  filed.current!.state = "changed";
+  filed.current!.status = "suspended";
+  filed.current!.updatedAt = "2026-09-27T01:00:00.000Z";
+  filed.current!.versionDigest = `cj1:sha256:${"b".repeat(43)}`;
+  filed.current!.report = { status: "resolved", resolvedAt: "2026-09-27T01:00:00.000Z" };
+  await evidence.getByRole("button", { name: "Refresh member report evidence" }).click();
+  await expect(
+    evidence.getByText("Compared with filed account state: changed", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    evidence.getByText("Global account status: suspended", { exact: true }),
+  ).toBeVisible();
+  await expect(evidence.getByText("Site report status: resolved", { exact: true })).toBeVisible();
+  await expect(
+    evidence.getByText("Recorded account status: active", { exact: true }),
+  ).toBeVisible();
+  await evidence.getByRole("button", { name: "Next member report page" }).click();
+  await expect(
+    evidence.getByText(/Its current account state and retention outcome cannot be determined/),
+  ).toBeVisible();
+  await expect(evidence.getByRole("heading", { name: "Current member" })).toHaveCount(0);
+  await evidence.getByRole("button", { name: "First member report page" }).click();
+  cursorInvalid = true;
+  await evidence.getByRole("button", { name: "Next member report page" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "This incident or its evidence changed" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Member report review", exact: true }),
+  ).toHaveCount(0);
+  cursorInvalid = false;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(evidence.getByRole("heading", { name: "Current member" })).toBeVisible();
+  evidenceVersion = 2;
+  await evidence.getByRole("button", { name: "Refresh member report evidence" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "This incident or its evidence changed" }),
+  ).toBeVisible();
+  evidenceVersion = 1;
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(evidence.getByRole("heading", { name: "Current member" })).toBeVisible();
+  evidenceStatus = 403;
+  await evidence.getByRole("button", { name: "Refresh member report evidence" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Member report review", exact: true }),
+  ).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Current member" })).toHaveCount(0);
+  await expect(page.getByText(memberId, { exact: false })).toHaveCount(0);
+  expect(posts).toEqual([]);
 });
 
 test("incident evidence failure clears its selection, stale generations require review, and access loss clears detail", async ({

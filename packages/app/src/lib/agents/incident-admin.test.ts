@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { NpForbiddenError } from "@nexpress/core";
 import { npApiErrorDiagnosticsHeader } from "@nexpress/core/api-contract";
-import { npRequireAgentIncidentEvidenceV1 } from "@nexpress/core/agent-contract";
+import {
+  npRequireAgentIncidentEvidenceV1,
+  npRequireAgentIncidentMemberReportEvidenceV1,
+} from "@nexpress/core/agent-contract";
 
 const mocks = vi.hoisted(() => ({
   runtime: vi.fn(),
@@ -12,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   notifications: vi.fn(),
   get: vi.fn(),
   evidence: vi.fn(),
+  memberReportEvidence: vi.fn(),
   assignment: vi.fn(),
   assign: vi.fn(),
   feedback: vi.fn(),
@@ -646,6 +650,130 @@ describe("Incident evidence HTTP boundary", () => {
       recovery: "retry-read",
     });
     expect(mocks.evidence).not.toHaveBeenCalled();
+  });
+});
+
+describe("Incident member report evidence HTTP boundary", () => {
+  const item = {
+    eventId: id,
+    signalIds: [id],
+    availability: "available",
+    target: { kind: "member", id },
+    observed: {
+      occurredAt: "2026-10-01T00:00:00.000Z",
+      retentionExpiresAt: "2026-10-02T00:00:00.000Z",
+      status: "active",
+      claim: "unverified",
+    },
+    current: {
+      state: "changed",
+      status: "suspended",
+      updatedAt: "2026-10-01T01:00:00.000Z",
+      versionDigest: `cj1:sha256:${"a".repeat(43)}`,
+      report: { status: "resolved", resolvedAt: "2026-10-01T01:00:00.000Z" },
+    },
+    responseEligible: false,
+  };
+  const evidence = {
+    schemaVersion: "np.agent-incident-member-report-evidence.v1",
+    incidentId: id,
+    incidentVersion: 2,
+    items: [item],
+    nextCursor: null,
+  };
+  it("reads the current staff-bound member projection without dispatching content evidence or writes", async () => {
+    const projection = npRequireAgentIncidentMemberReportEvidenceV1(evidence);
+    mocks.memberReportEvidence.mockResolvedValue(projection);
+    const response = await handleAgentIncidentAdminRequest(
+      request("?cursor=sealed-member-cursor"),
+      "member-report-evidence",
+      id,
+    );
+    expect(response.status).toBe(200);
+    expect(npRequireAgentIncidentMemberReportEvidenceV1(await response.json())).toEqual(projection);
+    expect(mocks.memberReportEvidence).toHaveBeenCalledWith({
+      ...staff,
+      incidentId: id,
+      cursor: "sealed-member-cursor",
+    });
+    expect(mocks.ensure).toHaveBeenCalledWith("read");
+    expect(mocks.evidence).not.toHaveBeenCalled();
+    expect(mocks.responsePlan).not.toHaveBeenCalled();
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  });
+  it("rejects changed response identity, private fields, and account action eligibility", async () => {
+    for (const malformed of [
+      { ...evidence, incidentId: "20000000-0000-4000-8000-000000000002" },
+      {
+        ...evidence,
+        items: [{ ...item, observed: { ...item.observed, reporterId: "private-reporter" } }],
+      },
+      {
+        ...evidence,
+        items: [{ ...item, current: { ...item.current, profile: "private-profile" } }],
+      },
+      {
+        ...evidence,
+        items: [
+          {
+            ...item,
+            current: {
+              ...item.current,
+              report: { ...item.current.report, reason: "private-reason" },
+            },
+          },
+        ],
+      },
+      { ...evidence, items: [{ ...item, responseEligible: true }] },
+    ]) {
+      mocks.memberReportEvidence.mockResolvedValue(malformed);
+      const rejected = await handleAgentIncidentAdminRequest(
+        request(),
+        "member-report-evidence",
+        id,
+      );
+      expect(rejected.status).toBe(500);
+      expect(await rejected.text()).not.toMatch(/private-reporter|private-profile|private-reason/);
+    }
+  });
+  it("rejects injected filters, ambiguous cursors and invalid IDs before the member owner", async () => {
+    for (const [query, target] of [
+      ["?siteId=other", id],
+      ["?limit=1", id],
+      ["?cursor=a&cursor=b", id],
+      ["?cursor=" + "x".repeat(2049), id],
+      ["", "invalid-id"],
+    ])
+      expect(
+        (await handleAgentIncidentAdminRequest(request(query), "member-report-evidence", target))
+          .status,
+      ).toBe(400);
+    expect(mocks.memberReportEvidence).not.toHaveBeenCalled();
+  });
+  it("keeps authorization, absent optional owner and empty pages distinct", async () => {
+    mocks.staff.mockRejectedValueOnce(new NpForbiddenError("incident", "read"));
+    expect(
+      (await handleAgentIncidentAdminRequest(request(), "member-report-evidence", id)).status,
+    ).toBe(403);
+    expect(mocks.runtime).not.toHaveBeenCalled();
+    mocks.runtime.mockReturnValue({ incidents: { ...mocks, memberReportEvidence: undefined } });
+    const unavailable = await handleAgentIncidentAdminRequest(
+      request(),
+      "member-report-evidence",
+      id,
+    );
+    expect(unavailable.status).toBe(503);
+    expect(JSON.parse(unavailable.headers.get(npApiErrorDiagnosticsHeader)!)).toMatchObject({
+      recovery: "retry-read",
+    });
+    expect(mocks.memberReportEvidence).not.toHaveBeenCalled();
+    mocks.runtime.mockReturnValue({ incidents: mocks });
+    mocks.memberReportEvidence.mockResolvedValue({ ...evidence, items: [] });
+    const empty = await handleAgentIncidentAdminRequest(request(), "member-report-evidence", id);
+    expect(empty.status).toBe(200);
+    expect(await empty.json()).toEqual({ ...evidence, items: [] });
   });
 });
 

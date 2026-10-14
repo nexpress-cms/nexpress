@@ -1,17 +1,17 @@
+import { npObserveIncidentCandidate } from "./incident-observation-service.js";
 import { getLogger } from "../observability/logger.js";
 import { npRequireIncidentContainmentFailure } from "./incident-containment-failure.js";
 import type { NpAgentIncidentNotificationsServiceV1 } from "./incident-notifications-service.js";
 import { npWithAgentRuntimeControlTransactionV1 } from "./runtime-controls.js";
 import { npAgentModeratorFingerprintV1 } from "./moderator-detector.js";
 import { createHash } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../db/runtime.js";
 import {
   npAgentActions,
   npAgentContainments,
   npAgentFeedback,
   npAgentIncidents,
-  npAgentIncidentSignals,
   npAgentIncidentTimeline,
   npAgentInvocations,
   npAgentSignals,
@@ -168,219 +168,14 @@ export function createAgentIncidentWriteServiceV1(
         }) !== candidate.fingerprint
       )
         fail();
-      const time = now();
-      if (Date.parse(canonical.window.endedAt) > time.getTime()) fail();
-      const run = async (db: Db): Promise<NpAgentIncidentObservationResultV1> => {
-        await db.execute(
-          sql`select pg_advisory_xact_lock(hashtextextended(${`np.agent-incident:${canonical.siteId}:${canonical.category}:${candidate.fingerprint}`},0))`,
-        );
-        // The callback only receives a clone; it cannot rewrite the stored facts.
-        if ((await options.resolveEvidence({ db, candidate: structuredClone(candidate) })) !== true)
-          fail();
-        const [existing] = await db
-          .select()
-          .from(npAgentSignals)
-          .where(
-            and(
-              eq(npAgentSignals.siteId, canonical.siteId),
-              eq(npAgentSignals.detectorId, canonical.detectorId),
-              eq(npAgentSignals.detectorVersion, canonical.detectorVersion),
-              eq(npAgentSignals.evidenceDigest, candidate.evidenceDigest),
-              eq(npAgentSignals.fingerprint, candidate.fingerprint),
-            ),
-          )
-          .limit(1);
-        if (existing) {
-          if (
-            existing.fingerprint !== candidate.fingerprint ||
-            !existing.incidentId ||
-            (await npDigestAgentSignalEvidenceCanonical(signalCanonical(existing))) !==
-              candidate.evidenceDigest
-          )
-            fail();
-          const [incident] = await db
-            .select()
-            .from(npAgentIncidents)
-            .where(
-              and(
-                eq(npAgentIncidents.siteId, canonical.siteId),
-                eq(npAgentIncidents.id, existing.incidentId),
-              ),
-            )
-            .limit(1);
-          if (!incident) fail();
-          return {
-            incidentId: incident.id,
-            signalId: existing.id,
-            versionNumber: incident.versionNumber,
-            disposition: "replayed",
-          };
-        }
-        let [incident] = await db
-          .select()
-          .from(npAgentIncidents)
-          .where(
-            and(
-              eq(npAgentIncidents.siteId, canonical.siteId),
-              eq(npAgentIncidents.category, canonical.category),
-              eq(npAgentIncidents.fingerprint, candidate.fingerprint),
-              inArray(npAgentIncidents.status, [
-                "open",
-                "investigating",
-                "contained",
-                "monitoring",
-              ]),
-            ),
-          )
-          .for("update")
-          .limit(1);
-        const created = !incident;
-        if (!incident) {
-          [incident] = await db
-            .insert(npAgentIncidents)
-            .values({
-              siteId: canonical.siteId,
-              category: canonical.category,
-              status: "open",
-              severity: candidate.severity,
-              fingerprint: candidate.fingerprint,
-              title: candidate.title,
-              summary: candidate.summary,
-              primarySubject: canonical.subject,
-              firstObservedAt: new Date(canonical.window.startedAt),
-              lastObservedAt: new Date(canonical.window.endedAt),
-              createdAt: time,
-              updatedAt: time,
-            })
-            .returning();
-        }
-        if (!incident) fail();
-        const suppressed = incident.signalCount >= 100;
-        const [signal] = await db
-          .insert(npAgentSignals)
-          .values({
-            siteId: canonical.siteId,
-            detectorId: canonical.detectorId,
-            detectorVersion: canonical.detectorVersion,
-            category: canonical.category,
-            severity: candidate.severity,
-            confidenceBasis: candidate.confidenceBasis,
-            scoreBasisPoints: candidate.scoreBasisPoints,
-            fingerprint: candidate.fingerprint,
-            subject: canonical.subject,
-            evidence: canonical.evidence,
-            evidenceDigest: candidate.evidenceDigest,
-            status: suppressed ? "suppressed" : "attached",
-            incidentId: incident.id,
-            windowStartedAt: new Date(canonical.window.startedAt),
-            windowEndedAt: new Date(canonical.window.endedAt),
-            expiresAt: new Date(time.getTime() + 30 * 86400000),
-            createdAt: time,
-            updatedAt: time,
-          })
-          .returning();
-        if (!signal) fail();
-        if (!suppressed)
-          await db
-            .insert(npAgentIncidentSignals)
-            .values({ siteId: canonical.siteId, incidentId: incident.id, signalId: signal.id });
-        const retained = suppressed
-          ? []
-          : await db
-              .select({ evidence: npAgentSignals.evidence })
-              .from(npAgentIncidentSignals)
-              .innerJoin(
-                npAgentSignals,
-                and(
-                  eq(npAgentSignals.siteId, npAgentIncidentSignals.siteId),
-                  eq(npAgentSignals.id, npAgentIncidentSignals.signalId),
-                ),
-              )
-              .where(
-                and(
-                  eq(npAgentIncidentSignals.siteId, canonical.siteId),
-                  eq(npAgentIncidentSignals.incidentId, incident.id),
-                ),
-              )
-              .limit(101);
-        if (retained.length > 100) fail("INCIDENT_LIMIT_REACHED");
-        const eventCount = suppressed
-          ? incident.eventCount
-          : new Set(
-              retained.flatMap(({ evidence }) =>
-                evidence.filter((item) => item.kind === "event").map((item) => item.eventId),
-              ),
-            ).size;
-        const versionNumber = created ? 1 : incident.versionNumber + 1;
-        const updated = await db
-          .update(npAgentIncidents)
-          .set({
-            signalCount: incident.signalCount + (suppressed ? 0 : 1),
-            eventCount: Math.max(incident.eventCount, eventCount),
-            versionNumber,
-            firstObservedAt: new Date(
-              Math.min(incident.firstObservedAt.getTime(), Date.parse(canonical.window.startedAt)),
-            ),
-            lastObservedAt: new Date(
-              Math.max(incident.lastObservedAt.getTime(), Date.parse(canonical.window.endedAt)),
-            ),
-            updatedAt: time,
-          })
-          .where(
-            and(
-              eq(npAgentIncidents.siteId, canonical.siteId),
-              eq(npAgentIncidents.id, incident.id),
-              eq(npAgentIncidents.versionNumber, incident.versionNumber),
-            ),
-          )
-          .returning({ id: npAgentIncidents.id });
-        if (updated.length !== 1) fail("INCIDENT_VERSION_CONFLICT");
-        const [notificationEntry] = await db
-          .insert(npAgentIncidentTimeline)
-          .values({
-            siteId: canonical.siteId,
-            incidentId: incident.id,
-            sequence: await sequence(db, canonical.siteId, incident.id),
-            kind: created ? "observed" : "correlated",
-            sourceKind: "system",
-            sourceFingerprint: candidate.evidenceDigest,
-            signalId: signal.id,
-            summary: suppressed
-              ? "Additional matching signal retained beyond the incident detail limit."
-              : candidate.summary,
-            details: {
-              schemaVersion: "np.agent-incident-signal-entry.v1",
-              transitionVersion: versionNumber,
-              severity: incident.severity,
-              detectorId: canonical.detectorId,
-              detectorVersion: canonical.detectorVersion,
-              evidenceDigest: candidate.evidenceDigest,
-              disposition: suppressed ? "suppressed" : created ? "created" : "correlated",
-            },
-            createdAt: time,
-          })
-          .returning({ id: npAgentIncidentTimeline.id });
-        if (created && notificationEntry && options.notifications)
-          await options.notifications.record({
-            db,
-            siteId: canonical.siteId,
-            incidentId: incident.id,
-            transitionVersion: versionNumber,
-            transition: "opened",
-            timelineId: notificationEntry.id,
-          });
-        return {
-          incidentId: incident.id,
-          signalId: signal.id,
-          versionNumber,
-          disposition: suppressed ? "suppressed" : created ? "created" : "correlated",
-        };
-      };
-      return npWithAgentRuntimeControlTransactionV1(
-        canonical.siteId,
-        ({ db }) => run(db),
-        supplied.transaction,
-      );
+      return npObserveIncidentCandidate({
+        candidate,
+        resolveEvidence: (db) =>
+          options.resolveEvidence({ db, candidate: structuredClone(candidate) }),
+        now,
+        notifications: options.notifications,
+        transaction: supplied.transaction,
+      });
     },
     async feedback(input) {
       npAssertAgentPreviewEffectsAllowed();
