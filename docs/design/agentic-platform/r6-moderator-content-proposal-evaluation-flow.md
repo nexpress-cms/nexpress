@@ -83,9 +83,9 @@ schema, UI authority, browser persistence or application bootstrap is introduced
 ## Acceptance boundary
 
 This bundle adds a synthetic proposal benchmark, not detector replay for document
-facts or production spam precision. Member sources, document-specific detector
-benchmarks, live-model quality, automatic moderation and full AP-606/R6 acceptance
-remain open. The per-policy/per-locale reviewed sample, confidence-bound and
+facts or production spam precision. The [content detector corpus](r6-moderator-content-evaluation-flow.md) separately
+adds bounded synthetic document/comment replay. Member sources, live-model
+quality, automatic moderation and full AP-606/R6 acceptance remain open. The per-policy/per-locale reviewed sample, confidence-bound and
 production-shadow requirements in
 [testing and evaluation](testing-and-evaluation.md#93-enablement-gates) still apply.
 

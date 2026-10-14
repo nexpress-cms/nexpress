@@ -82,7 +82,8 @@ export function evaluationResultFailed(result: EvaluationResult): boolean {
     !result.artifact ||
     ((result.schemaVersion === "np.agent-eval-command.v1" ||
       result.schemaVersion === "np.agent-moderator-eval-command.v1" ||
-      result.schemaVersion === "np.agent-moderator-eval-command.v2") &&
+      result.schemaVersion === "np.agent-moderator-eval-command.v2" ||
+      result.schemaVersion === "np.agent-moderator-eval-command.v3") &&
       !result.artifact.ok),
   );
 }
@@ -95,7 +96,9 @@ export function formatEvaluationResult(result: EvaluationResult): string {
     result.schemaVersion === "np.agent-moderator-eval-command.v1" ||
     result.schemaVersion === "np.agent-moderator-eval-review-command.v1" ||
     result.schemaVersion === "np.agent-moderator-eval-command.v2" ||
-    result.schemaVersion === "np.agent-moderator-eval-review-command.v2"
+    result.schemaVersion === "np.agent-moderator-eval-review-command.v2" ||
+    result.schemaVersion === "np.agent-moderator-eval-command.v3" ||
+    result.schemaVersion === "np.agent-moderator-eval-review-command.v3"
   )
     return npFormatAgentModeratorEvaluationCommandResult(result);
   if (result.errorCode) return `Agent evaluation unavailable (${result.errorCode}).`;
@@ -197,7 +200,8 @@ export async function prepareEvaluationResultVerifier(
       typeof source === "object" &&
       "schemaVersion" in source &&
       (source.schemaVersion === "np.agent-moderator-eval.v1" ||
-        source.schemaVersion === "np.agent-moderator-eval.v2")
+        source.schemaVersion === "np.agent-moderator-eval.v2" ||
+        source.schemaVersion === "np.agent-moderator-eval.v3")
     )
       return prepareModeratorVerifier(input, cwd, source);
     const evaluation = await npRequireAgentEvaluationArtifactV1(source);
@@ -237,7 +241,11 @@ export async function prepareEvaluationResultVerifier(
       return Promise.resolve(expected);
     };
   }
-  if (input.dataset === "moderator.v1" || input.dataset === "moderator.v2")
+  if (
+    input.dataset === "moderator.v1" ||
+    input.dataset === "moderator.v2" ||
+    input.dataset === "moderator.v3"
+  )
     return prepareModeratorVerifier(input, cwd);
   const baseline = input.comparePath
     ? await npRequireAgentEvaluationArtifactV1(await readBoundedJson(input.comparePath, cwd))
@@ -298,6 +306,7 @@ async function prepareModeratorVerifier(
   const {
     runAgentModeratorEvaluationV1,
     runAgentModeratorEvaluationV2,
+    runAgentModeratorEvaluationV3,
     npRequireAgentModeratorEvaluationArtifact,
     npCompareAgentModeratorEvaluationArtifacts,
     npBuildAgentModeratorEvaluationReviewArtifact,
@@ -321,17 +330,21 @@ async function prepareModeratorVerifier(
         )
       : null;
     expected = {
-      ...(artifact.schemaVersion === "np.agent-moderator-eval-review.v2"
-        ? { schemaVersion: "np.agent-moderator-eval-review-command.v2" as const, artifact }
-        : { schemaVersion: "np.agent-moderator-eval-review-command.v1" as const, artifact }),
+      ...(artifact.schemaVersion === "np.agent-moderator-eval-review.v3"
+        ? { schemaVersion: "np.agent-moderator-eval-review-command.v3" as const, artifact }
+        : artifact.schemaVersion === "np.agent-moderator-eval-review.v2"
+          ? { schemaVersion: "np.agent-moderator-eval-review-command.v2" as const, artifact }
+          : { schemaVersion: "np.agent-moderator-eval-review-command.v1" as const, artifact }),
       comparison,
       errorCode: null,
     };
   } else {
     const artifact =
-      input.dataset === "moderator.v2"
-        ? await runAgentModeratorEvaluationV2()
-        : await runAgentModeratorEvaluationV1();
+      input.dataset === "moderator.v3"
+        ? await runAgentModeratorEvaluationV3()
+        : input.dataset === "moderator.v2"
+          ? await runAgentModeratorEvaluationV2()
+          : await runAgentModeratorEvaluationV1();
     const comparison = input.comparePath
       ? await npCompareAgentModeratorEvaluationArtifacts(
           artifact,
@@ -341,9 +354,11 @@ async function prepareModeratorVerifier(
         )
       : null;
     expected = {
-      ...(artifact.dataset === "moderator.v2"
-        ? { schemaVersion: "np.agent-moderator-eval-command.v2" as const, artifact }
-        : { schemaVersion: "np.agent-moderator-eval-command.v1" as const, artifact }),
+      ...(artifact.dataset === "moderator.v3"
+        ? { schemaVersion: "np.agent-moderator-eval-command.v3" as const, artifact }
+        : artifact.dataset === "moderator.v2"
+          ? { schemaVersion: "np.agent-moderator-eval-command.v2" as const, artifact }
+          : { schemaVersion: "np.agent-moderator-eval-command.v1" as const, artifact }),
       comparison,
       errorCode: null,
     };

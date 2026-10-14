@@ -23,9 +23,12 @@ before running the project script and independently reconstructs its result.
 Each recipe occurs at most once. Operator requires the diagnosis/plan category
 from `operator-plan.v1`; legacy `operator.v1` tag-only results do not substitute
 for plan evaluation. Publisher uses its proposal artifact, and Moderator uses
-its deterministic detector artifact from `moderator.v1` or `moderator.v2`.
-The latter replays report/mixed synthetic facts through the actual detector;
-V1/V2 baselines report `INCOMPATIBLE_SUITE` with no comparable cohort or delta. The separate `moderator-proposal` entry uses
+its deterministic detector artifact from `moderator.v1`, `moderator.v2` or
+`moderator.v3`. V2 replays report/mixed comment facts; the
+[content detector corpus](r6-moderator-content-evaluation-flow.md) adds document
+reports and combined document/comment facts through the same actual detector.
+Different corpus versions report `INCOMPATIBLE_SUITE` with no comparable cohort
+or delta. The separate `moderator-proposal` entry uses
 [recipe response evaluation](r6-moderator-proposal-evaluation-flow.md); it never
 substitutes for detector evidence. New reports contain four rows. Historical
 three-row reports remain verifiable by independent reconstruction of their exact
@@ -44,7 +47,7 @@ without pooled comparison deltas.
 Create versioned synthetic evaluation files using the existing commands:
 
 ```bash
-pnpm agent:evaluate --dataset moderator.v2 --out moderator.json --json
+pnpm agent:evaluate --dataset moderator.v3 --out moderator.json --json
 pnpm agent:evaluate --dataset moderator-proposal.v1 --out moderator-proposal.json --json
 pnpm agent:evaluate --dataset operator-plan.v1 --out operator.json --json
 pnpm agent:evaluate --dataset publisher.v1 --out publisher.json --json

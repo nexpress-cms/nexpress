@@ -13,8 +13,8 @@ import {
   npCreateAgentModeratorProposalEvaluationSuiteV3,
   npRequireAgentEvaluationReportV1,
   runAgentEvaluationV1,
-  runAgentModeratorEvaluationV1,
   runAgentModeratorEvaluationV2,
+  runAgentModeratorEvaluationV3,
 } from "@nexpress/core/agents";
 import { signInAsE2EAdmin } from "./fixtures/auth-helpers.js";
 import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
@@ -353,11 +353,11 @@ test("evaluation workspace reviews synthetic document and mixed content proposal
   expect(new Set(writes)).toEqual(new Set(["/api/admin/agents/evaluations"]));
 });
 
-test("evaluation workspace labels actual report/mixed detector replay and explains an incompatible v1 baseline", async ({
+test("evaluation workspace labels actual document/comment detector replay and explains an incompatible v2 baseline", async ({
   page,
 }, testInfo) => {
-  const detector = await runAgentModeratorEvaluationV2();
-  const baseline = await runAgentModeratorEvaluationV1();
+  const detector = await runAgentModeratorEvaluationV3();
+  const baseline = await runAgentModeratorEvaluationV2();
   await isolateE2ERateLimitBucket(
     page.context(),
     164 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
@@ -370,35 +370,34 @@ test("evaluation workspace labels actual report/mixed detector replay and explai
   });
   await page.goto("/admin/agents/evaluations");
   await page.getByLabel("Recipe", { exact: true }).selectOption("moderator");
-  await importArtifact(page, "Evaluation artifact (required)", "detector-v2.json", detector);
+  await importArtifact(page, "Evaluation artifact (required)", "detector-v3.json", detector);
   await importArtifact(
     page,
     "Baseline evaluation artifact (optional)",
-    "detector-v1.json",
+    "detector-v2.json",
     baseline,
   );
   const initial = await recompute(page, "Validate imports");
   expect(initial.authority).toBe("offline-self-reported-no-approval");
   expect(initial.fixtureGate).toBe("passed");
-  const index = detector.cases.findIndex((entry, index) => {
-    const events = new Set(
-      entry.observations.map(({ fact }) =>
-        fact.evidence.kind === "event" ? fact.evidence.eventKind : null,
-      ),
-    );
-    return (
-      events.has("community.content.reported") &&
-      events.has("community.content.created") &&
-      initial.cases[index].eligible
-    );
-  });
+  expect(initial.cases).toHaveLength(32);
+  const index = detector.cases.findIndex((entry) => entry.id === "mod3-en-combined-current");
   if (index < 0) throw new Error("Missing eligible mixed detector fixture.");
   const selected = initial.cases[index];
-  await page.getByLabel("Case", { exact: true }).selectOption(`${selected.caseId}@2`);
+  expect(selected).toMatchObject({ caseVersion: 3, eligible: true });
+  const selectedEvidence = JSON.parse(selected.evidenceJson);
+  expect(selectedEvidence).toEqual(detector.cases[index]);
+  const prediction = detector.caseResults[index].signals;
+  expect(JSON.parse(selected.predictionJson)).toEqual(prediction);
+  expect(prediction[0].facts.filter((fact) => fact.subject.kind === "document")).toHaveLength(3);
+  expect(prediction[0].facts.filter((fact) => fact.subject.kind === "comment")).toHaveLength(2);
+  await page.getByLabel("Case", { exact: true }).selectOption(`${selected.caseId}@3`);
   const evidence = page.getByRole("heading", { name: "Evidence", exact: true }).locator("..");
   await expect(evidence).toContainText("community.content.reported");
   await expect(evidence).toContainText("community.content.created");
   await expect(evidence).toContainText('"spamVerdict": "unknown"');
+  await expect(evidence).toContainText('"kind": "document"');
+  await expect(evidence).toContainText('"kind": "comment"');
   await expect(page.getByLabel("Outcome", { exact: true })).toContainText("false-positive");
   await page.getByLabel("Outcome", { exact: true }).selectOption("false-positive");
   await page
@@ -417,9 +416,9 @@ test("evaluation workspace labels actual report/mixed detector replay and explai
   expect(JSON.parse(result.reviewArtifactJson!)).toEqual(review);
   expect(JSON.parse(result.labelsJson!)).toEqual(labels);
   expect(review).toMatchObject({
-    schemaVersion: "np.agent-moderator-eval-review.v2",
+    schemaVersion: "np.agent-moderator-eval-review.v3",
     authority: "offline-self-reported-no-approval",
-    source: { dataset: "moderator.v2" },
+    source: { dataset: "moderator.v3" },
     summary: { reviewed: 1, falsePositive: 1 },
     labels: [{ caseId: selected.caseId, sourceHash: selected.sourceHash, label: "false-positive" }],
   });
@@ -430,5 +429,15 @@ test("evaluation workspace labels actual report/mixed detector replay and explai
   });
   expect(report.fullR6).toBe("not-established");
   await expect(page.locator("pre").filter({ hasText: "INCOMPATIBLE_SUITE" }).first()).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 900 });
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
+    .toBe(true);
+  const screenshot = testInfo.outputPath("detector-content-review-320.png");
+  await page.screenshot({ path: screenshot, fullPage: true, animations: "disabled" });
+  await testInfo.attach("detector-content-review-320", {
+    path: screenshot,
+    contentType: "image/png",
+  });
   expect(new Set(writes)).toEqual(new Set(["/api/admin/agents/evaluations"]));
 });

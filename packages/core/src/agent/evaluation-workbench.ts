@@ -118,7 +118,8 @@ export async function npBuildAgentEvaluationWorkbenchV1(
     };
     if (
       source.schemaVersion === "np.agent-moderator-eval.v1" ||
-      source.schemaVersion === "np.agent-moderator-eval.v2"
+      source.schemaVersion === "np.agent-moderator-eval.v2" ||
+      source.schemaVersion === "np.agent-moderator-eval.v3"
     ) {
       const result = source.caseResults[index];
       cases.push({

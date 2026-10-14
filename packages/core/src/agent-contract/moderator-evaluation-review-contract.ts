@@ -2,6 +2,7 @@ import type { NpAgentModeratorFeedbackLabelV1 } from "./moderator-contract.js";
 import type {
   NpAgentModeratorEvaluationArtifactV1,
   NpAgentModeratorEvaluationArtifactV2,
+  NpAgentModeratorEvaluationArtifactV3,
 } from "./moderator-evaluation-contract.js";
 
 export interface NpAgentModeratorEvaluationReviewLabelV1 {
@@ -70,5 +71,21 @@ export interface NpAgentModeratorEvaluationReviewArtifactV2 extends Omit<
   source: NpAgentModeratorEvaluationArtifactV2;
   entries: NpAgentModeratorEvaluationReviewEntryV2[];
 }
+export interface NpAgentModeratorEvaluationReviewEntryV3 extends Omit<
+  NpAgentModeratorEvaluationReviewEntryV1,
+  "caseVersion"
+> {
+  caseVersion: 3;
+}
+export interface NpAgentModeratorEvaluationReviewArtifactV3 extends Omit<
+  NpAgentModeratorEvaluationReviewArtifactV1,
+  "schemaVersion" | "source" | "entries"
+> {
+  schemaVersion: "np.agent-moderator-eval-review.v3";
+  source: NpAgentModeratorEvaluationArtifactV3;
+  entries: NpAgentModeratorEvaluationReviewEntryV3[];
+}
 export type NpAgentModeratorEvaluationReviewArtifact =
-  NpAgentModeratorEvaluationReviewArtifactV1 | NpAgentModeratorEvaluationReviewArtifactV2;
+  | NpAgentModeratorEvaluationReviewArtifactV1
+  | NpAgentModeratorEvaluationReviewArtifactV2
+  | NpAgentModeratorEvaluationReviewArtifactV3;

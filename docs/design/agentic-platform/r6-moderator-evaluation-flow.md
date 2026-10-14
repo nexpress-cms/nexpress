@@ -177,6 +177,15 @@ Logs and consumer-path references use `/tmp/np-detector-*`. Source files stayed
 unchanged across the final code gates, browser and packed-consumer checks.
 These results do not close AP-606, production precision or full R6 acceptance.
 
+## Document/comment detector replay (`moderator.v3`)
+
+The [content detector evaluation](r6-moderator-content-evaluation-flow.md) adds 32
+bilingual synthetic cases with document reports and combined document/comment
+facts. It preserves both earlier corpus/artifact hashes, uses the same actual v1
+detector and exact offline feedback owners, and connects the new version through
+CLI, Admin workspace and unified report. Synthetic classification and signal
+conformance remain separate; incompatible earlier baselines have no pooled delta.
+
 ## CI follow-up in this bundle
 
 After PR #1512, main CI `37345688341` timed out in evaluation CLI tests. The

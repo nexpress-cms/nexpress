@@ -9,6 +9,7 @@ import {
   npAssertAgentEvaluationReportOutputV1,
   runAgentModeratorEvaluationV1,
   runAgentModeratorEvaluationV2,
+  runAgentModeratorEvaluationV3,
   npRequireAgentModeratorEvaluationArtifact,
   npCompareAgentModeratorEvaluationArtifacts,
   npBuildAgentModeratorEvaluationReviewArtifact,
@@ -62,6 +63,7 @@ export const AGENT_EVALUATE_HELP = `NexPress Agent evaluation
 
 pnpm agent:evaluate --dataset moderator.v1 --out <artifact> --json
 pnpm agent:evaluate --dataset moderator.v2 --out <artifact> --json
+pnpm agent:evaluate --dataset moderator.v3 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset moderator-proposal.v1 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset moderator-proposal.v2 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset moderator-proposal.v3 --out <artifact> --json
@@ -79,7 +81,8 @@ including missing or failed evidence; it does not establish model usefulness or 
 
 moderator.v1 preserves the original observed-content detector fixtures.
 moderator.v2 adds unverified report and mixed facts to actual detector replay; report claims establish no spam verdict or approval authority.
-Both moderator datasets run the actual deterministic detector offline; network providers and explicit model/budget flags are unavailable.
+moderator.v3 adds synthetic document reports and document/comment mixed targets to actual detector replay; reporter counts confer no author independence or verdict authority.
+All moderator detector datasets run the actual deterministic detector offline; network providers and explicit model/budget flags are unavailable.
 moderator-proposal.v1 checks the installed recipe response against synthetic observed evidence.
 moderator-proposal.v2 adds synthetic unverified report and mixed evidence; reports confer no verdict or approval authority.
 moderator-proposal.v3 adds exact document/comment targets to synthetic document-report and mixed evidence; reports confer no verdict or approval authority.
@@ -172,7 +175,11 @@ export async function runAgentEvaluateProcessV1(
     }
     if (input.reviewPath) return runReview(input, output);
     if (input.reportPath) return runReport(input, output);
-    if (input.dataset === "moderator.v1" || input.dataset === "moderator.v2")
+    if (
+      input.dataset === "moderator.v1" ||
+      input.dataset === "moderator.v2" ||
+      input.dataset === "moderator.v3"
+    )
       return runModerator(input, output);
     let budget: NpAgentEvaluationBudgetV1;
     try {
@@ -295,7 +302,8 @@ async function runReview(
       typeof source === "object" &&
       "schemaVersion" in source &&
       (source.schemaVersion === "np.agent-moderator-eval.v1" ||
-        source.schemaVersion === "np.agent-moderator-eval.v2")
+        source.schemaVersion === "np.agent-moderator-eval.v2" ||
+        source.schemaVersion === "np.agent-moderator-eval.v3")
     )
       return runModerator(input, output, source);
     const evaluation = await npRequireAgentEvaluationArtifactV1(source);
@@ -346,14 +354,21 @@ async function runModerator(
 ): Promise<number> {
   let result:
     NpAgentModeratorEvaluationCommandResult | NpAgentModeratorEvaluationReviewCommandResult;
-  const version2 = input.reviewPath
-    ? Boolean(
-        reviewSource &&
-        typeof reviewSource === "object" &&
-        "schemaVersion" in reviewSource &&
-        reviewSource.schemaVersion === "np.agent-moderator-eval.v2",
-      )
-    : input.dataset === "moderator.v2";
+  const sourceVersion =
+    reviewSource && typeof reviewSource === "object" && "schemaVersion" in reviewSource
+      ? reviewSource.schemaVersion
+      : null;
+  const version = input.reviewPath
+    ? sourceVersion === "np.agent-moderator-eval.v3"
+      ? 3
+      : sourceVersion === "np.agent-moderator-eval.v2"
+        ? 2
+        : 1
+    : input.dataset === "moderator.v3"
+      ? 3
+      : input.dataset === "moderator.v2"
+        ? 2
+        : 1;
   try {
     if (input.reviewPath) {
       const artifact = await npBuildAgentModeratorEvaluationReviewArtifact(
@@ -369,9 +384,11 @@ async function runModerator(
           )
         : null;
       result = {
-        ...(artifact.schemaVersion === "np.agent-moderator-eval-review.v2"
-          ? { schemaVersion: "np.agent-moderator-eval-review-command.v2" as const, artifact }
-          : { schemaVersion: "np.agent-moderator-eval-review-command.v1" as const, artifact }),
+        ...(artifact.schemaVersion === "np.agent-moderator-eval-review.v3"
+          ? { schemaVersion: "np.agent-moderator-eval-review-command.v3" as const, artifact }
+          : artifact.schemaVersion === "np.agent-moderator-eval-review.v2"
+            ? { schemaVersion: "np.agent-moderator-eval-review-command.v2" as const, artifact }
+            : { schemaVersion: "np.agent-moderator-eval-review-command.v1" as const, artifact }),
         comparison,
         errorCode: null,
       };
@@ -380,16 +397,20 @@ async function runModerator(
         ? await npRequireAgentModeratorEvaluationArtifact(await readArtifactJson(input.comparePath))
         : null;
       const artifact =
-        input.dataset === "moderator.v2"
-          ? await runAgentModeratorEvaluationV2()
-          : await runAgentModeratorEvaluationV1();
+        input.dataset === "moderator.v3"
+          ? await runAgentModeratorEvaluationV3()
+          : input.dataset === "moderator.v2"
+            ? await runAgentModeratorEvaluationV2()
+            : await runAgentModeratorEvaluationV1();
       const comparison = baseline
         ? await npCompareAgentModeratorEvaluationArtifacts(artifact, baseline)
         : null;
       result = {
-        ...(artifact.dataset === "moderator.v2"
-          ? { schemaVersion: "np.agent-moderator-eval-command.v2" as const, artifact }
-          : { schemaVersion: "np.agent-moderator-eval-command.v1" as const, artifact }),
+        ...(artifact.dataset === "moderator.v3"
+          ? { schemaVersion: "np.agent-moderator-eval-command.v3" as const, artifact }
+          : artifact.dataset === "moderator.v2"
+            ? { schemaVersion: "np.agent-moderator-eval-command.v2" as const, artifact }
+            : { schemaVersion: "np.agent-moderator-eval-command.v1" as const, artifact }),
         comparison,
         errorCode: null,
       };
@@ -397,12 +418,16 @@ async function runModerator(
   } catch {
     result = {
       schemaVersion: input.reviewPath
-        ? version2
-          ? "np.agent-moderator-eval-review-command.v2"
-          : "np.agent-moderator-eval-review-command.v1"
-        : version2
-          ? "np.agent-moderator-eval-command.v2"
-          : "np.agent-moderator-eval-command.v1",
+        ? version === 3
+          ? "np.agent-moderator-eval-review-command.v3"
+          : version === 2
+            ? "np.agent-moderator-eval-review-command.v2"
+            : "np.agent-moderator-eval-review-command.v1"
+        : version === 3
+          ? "np.agent-moderator-eval-command.v3"
+          : version === 2
+            ? "np.agent-moderator-eval-command.v2"
+            : "np.agent-moderator-eval-command.v1",
       artifact: null,
       comparison: null,
       errorCode: "ARTIFACT_INVALID",
@@ -428,7 +453,8 @@ async function runModerator(
   return result.errorCode ||
     !result.artifact ||
     ((result.schemaVersion === "np.agent-moderator-eval-command.v1" ||
-      result.schemaVersion === "np.agent-moderator-eval-command.v2") &&
+      result.schemaVersion === "np.agent-moderator-eval-command.v2" ||
+      result.schemaVersion === "np.agent-moderator-eval-command.v3") &&
       !result.artifact.ok)
     ? 1
     : 0;
