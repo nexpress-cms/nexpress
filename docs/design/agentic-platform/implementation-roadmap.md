@@ -655,7 +655,10 @@ Supporting evidence is rechecked before proposal and approved execution; the
 recipe has no automatic execution authority and leaves the full R6 gate open.
 The [comment report recipe flow](r6-moderator-report-recipe-flow.md) extends that
 same source with actual report claims and current resolution checks across
-context attestation, proposal and approved execution.
+context attestation, proposal and approved execution. Its explicitly invoked
+combined collector joins sub-threshold observation/report activity under one
+100-Event bound and reuses the current source owners before storing a mixed
+Signal.
 
 The [Incident Studio review flow](r6-incident-studio-flow.md) connects staff
 list/detail review, authorized history links, immutable feedback and explicit

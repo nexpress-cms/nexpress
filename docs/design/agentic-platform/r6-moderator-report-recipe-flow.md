@@ -32,6 +32,59 @@ Raw report reasons, report IDs, reporter/member identities, comment text/HTML an
 link domains remain outside provider metadata. The provider can only select an
 exact admitted proposal; it cannot provide evidence or manufacture a target.
 
+## Combined observed and reported collection
+
+`createAgentModeratorCombinedCommentCollectorV1` reads the two existing comment
+source owners in one explicitly invoked, closed ten-minute window. Three current
+observed targets and two distinct report-only targets can now reach the existing
+five-item/three-author detector threshold even when neither separate collector
+would produce a Signal. The original observation-only and report-only collectors
+remain available with their original contracts.
+
+One ordered SQL scan matches the exact source-component/event-kind pairs and
+bounds the entire combined batch at 100 source Events. A 101st Event rejects the
+window before fact inspection or Incident writes; this is not two independent
+100-Event allowances. Selected collections and current source eligibility use
+the existing readers. Resolved, edited, hidden, inaccessible or missing current
+facts do not become evidence. Historical corruption fails closed. The detector
+still deduplicates targets, uses current comment authors rather than reporters,
+and retains unknown report verdict pairs and advisory scores. Contradictory
+same-time snapshots remain rejected by the existing detector; collection does
+not reinterpret them as compatible observations.
+
+`npResolveAgentModeratorCombinedCommentEvidenceV1` is the corresponding
+host-injected Incident evidence resolver. It dispatches every retained Event to
+its original owner and compares the complete current fact with its exact
+candidate fact. It never validates a smaller subset of an invalid Signal.
+The writer retains its canonical hash/fingerprint checks, transaction and
+idempotency. Source reads, all candidate writes and final staff authorization
+recheck share the existing Runtime control transaction; failure rolls back the
+whole collection invocation. Collection does not change content, resolve a
+report, dispatch a Run or invoke a provider.
+
+Hosts wire the matching resolver and collector explicitly:
+
+```ts
+const incidents = createAgentIncidentWriteServiceV1({
+  resolveEvidence: ({ db, candidate }) =>
+    npResolveAgentModeratorCombinedCommentEvidenceV1({ db, candidate, staffUserId }),
+});
+const collector = createAgentModeratorCombinedCommentCollectorV1({ staffUserId, incidents });
+await collector.collect({ siteId, windowStartedAt, settings });
+```
+
+Both APIs are exported from `@nexpress/core/agents`. The surrounding host still
+owns bootstrap, observers, the current authorized staff identity and settings;
+construction performs no installation or work. No automatic worker is added.
+
+The recipe source shares the same source dispatch helper. One Signal can now
+retain both observed and reported facts. Its report claim count describes only
+retained reported targets, not every filing or an authoritative spam label.
+Every original reference is rechecked before proposals and approved execution;
+resolving a supporting report invalidates the whole candidate campaign. Existing
+separate observation/report Signals attached to one Incident remain fully
+validated as before.
+
 ## Current facts across dispatch and approval
 
 Context attestation already rereads the source before provider dispatch. The same
@@ -65,6 +118,65 @@ document/member report sources, production/model quality thresholds, automatic
 moderation and the full R6 evaluation gate remain open.
 
 ## Verification
+
+### Combined collection acceptance
+
+Local acceptance on 2026-10-14 KST, based on `d1d69014` (PR #1529; its main
+CI and Release subsequently passed):
+
+- Final `pnpm verify`: 113 successful tasks, including Core 2,311, shared App
+  689, CLI 155, Admin 191 and Web 164 unit cases. `pnpm lint`: 41 successful
+  tasks. Focused detector/collector/report-source checks passed all 13 cases.
+- Actual PostgreSQL 18: 77 cases across ten affected suites passed without
+  skips, including five theme cases and one explicitly enabled native preview.
+  The combined collector has four cases covering real 3-observation/2-report
+  campaigns, duplicate target and reporter handling, current source integrity
+  and ACL checks, the global 101-Event refusal and transactional rollback after
+  staff demotion. Extra rows in the capacity test are canonical persistence
+  fixtures, not claims of actual report filings.
+- All 16 recipe cases passed. The two new combined journeys use real observed
+  Events and filed reports: human approval leads to exactly-once quarantine and
+  a redacted completion receipt, while resolving a retained supporting report
+  invalidates the entire campaign and refuses approved execution without
+  consuming approval or changing content. Provider invocations are test mocks.
+- Fresh scaffold: 40 public packages packed and installed outside the workspace
+  through 46 successful stages. The installed combined collector and resolver
+  exports, interface typecheck and production build passed. Construction
+  performed no automatic work, the existing offline v2 evaluation passed, and
+  six installed Core/App/CLI runtime/declaration files matched workspace bytes.
+- Production Chromium: the existing Moderator setup journey passed without
+  retries; 390/1280 captures were visually inspected. This is a fixture-backed
+  HTTP/browser regression. Actual combined source persistence and approved
+  recipe execution are established by the PostgreSQL journeys above.
+- Self-review and independent read-only review found no remaining material
+  regression. Fixture preparation handles real bucket rollover without editing
+  historical evidence; invalid retry targets are deleted through the content
+  owner. The supporting-report refusal test selects a retained Signal reference
+  rather than a detector-discarded duplicate.
+
+An initial integration invocation included an extra `--`, so Vitest ignored the
+intended file/worker bounds and ran unrelated suites with excessive concurrency;
+existing Publisher/approval cases timed out before that run was stopped. The
+corrected invocation used `pnpm --filter @nexpress/web exec vitest run` with the
+ten explicit files and two workers; all 77 cases above passed after the complete
+dependency build. The two previously timed-out suites were then rerun with two
+workers: all 15 Publisher recipe/approval-resume cases passed without skips.
+Total completed PostgreSQL verification is 92 cases. The interrupted run is not
+acceptance evidence.
+
+Redis unit cases passed (13); three live cases skipped because no local Redis
+server was available. Versions, changesets, lockfile and schema remain unchanged.
+These results cover combined collection and its existing recipe flow, not
+real-model quality or the full R6 gate. No real provider call or activation was
+performed. The existing handoff edit was preserved.
+
+The final repository checks passed all 62 cases. Formatting, relative
+documentation links, final source hashes and `git diff --check` were checked.
+Local acceptance does not replace exact-head PR checks.
+
+Logs: `/tmp/np-mixed-collection-{verify,lint,core-unit,pg-final-corrected,pg-timeout-recheck,browser,consumer,repo-final}.log`.
+
+### Original report recipe acceptance
 
 Local acceptance on 2026-10-13 KST, based on `37e1ae5f` (PR #1525's subsequent
 main CI and Release both passed before this bundle started):

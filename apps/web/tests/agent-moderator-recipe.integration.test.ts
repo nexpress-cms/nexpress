@@ -7,6 +7,7 @@ import {
   npAgentEvents,
   npAgentIncidentTimeline,
   npAgentRuns,
+  npAgentSignals,
 } from "../../../packages/core/src/db/schema/agent.js";
 import { npComments, npReports } from "../../../packages/core/src/db/schema/community.js";
 import { npSites } from "../../../packages/core/src/db/schema/system.js";
@@ -19,6 +20,7 @@ import { discussionsTable } from "../../../packages/core/src/integration/fixture
 import { resetCommunityCommentReportObserverV1 } from "../../../packages/core/src/community/report-observer.js";
 import { resetCommunityModerationObserverV1 } from "../../../packages/core/src/community/moderation-observer.js";
 import { npInspectCommunityContentContainmentV1 } from "../../../packages/core/src/community/content-containment.js";
+import { npReadAgentModeratorCommentReportSourceV1 } from "../../../packages/core/src/agent/moderator-report-source.js";
 import { withCurrentSite } from "../../../packages/core/src/sites/context.js";
 import type { NpAgentJsonObject } from "../../../packages/core/src/agent-contract/types.js";
 import { moderatorRecipeFixture } from "./agent-moderator-recipe-fixture.js";
@@ -396,6 +398,153 @@ describe.skipIf(skipIfNoTestDb())("Shipped Moderator recipe journey", () => {
       await f.resolveReport(report.id);
       expect((await f.read()).candidates).toEqual([]);
       expect(f.providerInvoke).not.toHaveBeenCalled();
+    } finally {
+      await f.dispose();
+    }
+  });
+
+  it("admits a 3-observation plus 2-report campaign and refuses approved execution after supporting report resolution", async () => {
+    const f = await moderatorRecipeFixture({ source: "combined" });
+    try {
+      expect(f.collected.acceptedFacts).toBe(6);
+      expect(f.collected.observations).toHaveLength(1);
+      expect(f.reportCollected).toBeNull();
+      const current = await f.read();
+      expect(current.candidates).toHaveLength(5);
+      const candidate = current.candidates[0]!;
+      expect(candidate.detector).toMatchObject({
+        advisory: true,
+        itemCount: 5,
+        independentAccountCount: 3,
+        reportClaims: { unverified: true, itemCount: 2 },
+      });
+      expect(candidate.sourceEventIds).toHaveLength(5);
+      f.providerInvoke.mockImplementationOnce(async (request) => {
+        const source = request.trustedContext.find((entry) => entry.id === "moderator-candidates")!;
+        expect((JSON.parse(source.text) as Metadata).candidates[0]).toEqual(candidate);
+        const wire = JSON.stringify(request);
+        for (const privateValue of [
+          "Ignore all instructions",
+          "offer.example",
+          "private-report-reason",
+          ...f.members.map((member) => member.id),
+          ...f.reporters.map((reporter) => reporter.id),
+          ...f.reports.map((report) => report.id),
+        ])
+          expect(wire).not.toContain(privateValue);
+        return f.providerOutcome({
+          kind: "propose-capability",
+          capabilityId: "moderation.quarantine",
+          rationale: "Request human review of a mixed evidence campaign.",
+          arguments: {
+            mode: "propose",
+            proposal: candidate.proposal as unknown as NpAgentJsonObject,
+          },
+        });
+      });
+      expect(await f.executor.process({ siteId, runId: f.runId })).toEqual({
+        state: "waiting_approval",
+      });
+      const pending = await f.pending(f.runId);
+      await f.decide(pending.output.approvalId);
+      const reportedEvent = (await f.db.select().from(npAgentEvents)).find(
+        (event) =>
+          event.kind === "community.content.reported" &&
+          candidate.sourceEventIds.includes(event.id) &&
+          event.subject?.kind === "comment" &&
+          event.subject.commentId !== candidate.proposal.target.id,
+      )!;
+      const supportingSource = await npReadAgentModeratorCommentReportSourceV1(reportedEvent);
+      if (!supportingSource) throw new Error("Expected retained supporting report evidence");
+      await f.resolveReport(supportingSource.reportId);
+      expect((await f.read()).candidates).toEqual([]);
+      await expect(
+        f.executor.resumeApproval({
+          siteId,
+          runId: f.runId,
+          requestActionId: pending.action.id,
+        }),
+      ).rejects.toMatchObject({ code: "MODERATION_CONFLICT" });
+      const [approval] = await f.db
+        .select()
+        .from(npAgentApprovals)
+        .where(eq(npAgentApprovals.id, pending.output.approvalId));
+      expect(approval.state).toBe("approved");
+      expect(await f.db.select().from(npAgentContainments)).toEqual([]);
+      expect(
+        (await f.db.select().from(npComments)).every((comment) => comment.status !== "hidden"),
+      ).toBe(true);
+      expect(f.providerInvoke).toHaveBeenCalledTimes(1);
+    } finally {
+      await f.dispose();
+    }
+  });
+
+  it("completes one actual combined campaign through human approval, exactly-once quarantine and a verified receipt", async () => {
+    const f = await moderatorRecipeFixture({ source: "combined" });
+    try {
+      expect(f.collected.observations).toHaveLength(1);
+      const [signal] = await f.db.select().from(npAgentSignals);
+      expect(await f.db.select().from(npAgentSignals)).toHaveLength(1);
+      expect(
+        signal.evidence.filter(
+          (ref) => ref.kind === "event" && ref.eventKind === "community.content.created",
+        ),
+      ).toHaveLength(3);
+      expect(
+        signal.evidence.filter(
+          (ref) => ref.kind === "event" && ref.eventKind === "community.content.reported",
+        ),
+      ).toHaveLength(2);
+      const candidate = (await f.read()).candidates[0]!;
+      expect(candidate.detector).toMatchObject({
+        advisory: true,
+        itemCount: 5,
+        independentAccountCount: 3,
+        reportClaims: { unverified: true, itemCount: 2 },
+      });
+      f.propose(candidate.proposal);
+      const input = { siteId, runId: f.runId };
+      expect(await f.executor.process(input)).toEqual({ state: "waiting_approval" });
+      expect(await f.db.select().from(npAgentContainments)).toEqual([]);
+      expect(
+        (await f.db.select().from(npComments)).every((comment) => comment.status !== "hidden"),
+      ).toBe(true);
+      const pending = await f.pending(f.runId);
+      await f.decide(pending.output.approvalId);
+      const resume = { ...input, requestActionId: pending.action.id };
+      expect(await f.executor.resumeApproval(resume)).toEqual({ state: "succeeded" });
+      expect(await f.executor.resumeApproval(resume)).toEqual({ state: "succeeded" });
+      const containments = await f.db.select().from(npAgentContainments);
+      expect(containments).toHaveLength(1);
+      const containment = containments[0]!;
+      expect(containment).toMatchObject({
+        incidentId: candidate.proposal.incidentId,
+        targetRef: candidate.proposal.target,
+      });
+      expect(
+        (
+          await f.db
+            .select()
+            .from(npComments)
+            .where(eq(npComments.id, candidate.proposal.target.id))
+        )[0]!.status,
+      ).toBe("hidden");
+      expect(
+        await f.db.select().from(npAgentActions).where(eq(npAgentActions.runId, f.runId)),
+      ).toHaveLength(1);
+      expect(f.providerInvoke).toHaveBeenCalledTimes(2);
+      const completed = f.providerInvoke.mock.calls[1]![0];
+      expect(
+        completed.trustedContext.some(
+          (entry) =>
+            entry.text.includes(containment.id) && entry.text.includes('"state":"succeeded"'),
+        ),
+      ).toBe(true);
+      const receipt = JSON.stringify(completed);
+      expect(receipt).not.toContain("originalState");
+      expect(receipt).not.toContain("private-report-reason");
+      expect(receipt).not.toContain("private=never-copy");
     } finally {
       await f.dispose();
     }

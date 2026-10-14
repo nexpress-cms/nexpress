@@ -8,12 +8,12 @@ import { createAgentRuntimeEventServiceV1 } from "../../../packages/core/src/age
 import {
   createAgentModeratorCollectorV1,
   createAgentModeratorCommentObserverV1,
-  npResolveAgentModeratorCommentEvidenceV1,
 } from "../../../packages/core/src/agent/moderator-collector.js";
+import { createAgentModeratorCombinedCommentCollectorV1 } from "../../../packages/core/src/agent/moderator-combined-collector.js";
+import { npResolveAgentModeratorCombinedCommentEvidenceV1 } from "../../../packages/core/src/agent/moderator-comment-evidence.js";
 import {
   createAgentModeratorCommentReportCollectorV1,
   createAgentModeratorCommentReportObserverV1,
-  npResolveAgentModeratorCommentReportEvidenceV1,
 } from "../../../packages/core/src/agent/moderator-report-source.js";
 import { fileReport, resolveReport } from "../../../packages/core/src/community/reports.js";
 import {
@@ -21,7 +21,7 @@ import {
   resetCommunityCommentReportObserverV1,
 } from "../../../packages/core/src/community/report-observer.js";
 import { npAgentModeratorWindowStartedAtV1 } from "../../../packages/core/src/agent/moderator-detector.js";
-import { createComment } from "../../../packages/core/src/community/comments.js";
+import { createComment, deleteComment } from "../../../packages/core/src/community/comments.js";
 import {
   setCommunityModerationObserverV1,
   resetCommunityModerationObserverV1,
@@ -96,7 +96,7 @@ export async function moderatorRecipeFixture(
   options: {
     sourceAvailable?: boolean;
     itemCount?: number;
-    source?: "observations" | "reports" | "mixed";
+    source?: "observations" | "reports" | "mixed" | "combined";
   } = {},
 ) {
   vi.useFakeTimers({ toFake: ["Date"] });
@@ -173,14 +173,12 @@ export async function moderatorRecipeFixture(
     now: runtime.options.now,
   });
   const incidents = createAgentIncidentWriteServiceV1({
-    resolveEvidence: ({ db, candidate }) => {
-      const resolve = candidate.canonicalEvidence.evidence.every(
-        (ref) => ref.kind === "event" && ref.eventKind === "community.content.reported",
-      )
-        ? npResolveAgentModeratorCommentReportEvidenceV1
-        : npResolveAgentModeratorCommentEvidenceV1;
-      return resolve({ db, candidate, staffUserId: runtime.actor.actor.user.id });
-    },
+    resolveEvidence: ({ db, candidate }) =>
+      npResolveAgentModeratorCombinedCommentEvidenceV1({
+        db,
+        candidate,
+        staffUserId: runtime.actor.actor.user.id,
+      }),
     now: runtime.options.now,
   });
   const incidentReader = createAgentIncidentServiceV1({
@@ -350,12 +348,19 @@ export async function moderatorRecipeFixture(
   const itemCount = options.itemCount ?? 5;
   const comments: Awaited<ReturnType<typeof write>>[] = [];
   let windowStartedAt: string | null = null;
+  let observedCount = 0;
   // PostgreSQL owns comment timestamps. If real writes straddle a ten-minute
   // boundary, collect a fresh full bucket without rewriting evidence or time.
   for (let index = 0; comments.length < itemCount && index < itemCount * 2; index++) {
+    const reportOnly = source === "combined" && observedCount >= 3;
+    if (source === "combined") {
+      resetCommunityModerationObserverV1();
+      if (!reportOnly)
+        setCommunityModerationObserverV1(createAgentModeratorCommentObserverV1({ events }));
+    }
     const comment = await write(index);
     const report =
-      source === "observations"
+      source === "observations" || (source === "combined" && !reportOnly)
         ? null
         : await withCurrentSite(siteId, () =>
             fileReport({
@@ -371,18 +376,29 @@ export async function moderatorRecipeFixture(
     if (
       source === "mixed" &&
       npAgentModeratorWindowStartedAtV1(comment.createdAt.toISOString()) !== bucket
-    )
+    ) {
+      // Preserve the historical Event while making an incomplete retry target
+      // ineligible through the real content owner.
+      await withCurrentSite(siteId, () =>
+        deleteComment({ commentId: comment.id, memberId: comment.memberId }),
+      );
       continue;
+    }
     if (bucket !== windowStartedAt) {
       windowStartedAt = bucket;
       comments.length = 0;
       reports.length = 0;
+      observedCount = 0;
     }
     comments.push(comment);
     if (report) reports.push(report);
+    else observedCount++;
     // The extra reporter belongs to the same real time bucket, including a
     // boundary crossed between the first target and its second actual report.
-    if (source !== "observations" && comments.length === 1) {
+    if (
+      (source !== "observations" && source !== "combined" && comments.length === 1) ||
+      (source === "combined" && reports.length === 1)
+    ) {
       const extra = await withCurrentSite(siteId, () =>
         fileReport({
           targetType: "comment",
@@ -392,9 +408,13 @@ export async function moderatorRecipeFixture(
         }),
       );
       if (npAgentModeratorWindowStartedAtV1(extra.createdAt.toISOString()) !== bucket) {
+        await withCurrentSite(siteId, () =>
+          deleteComment({ commentId: comment.id, memberId: comment.memberId }),
+        );
         windowStartedAt = null;
         comments.length = 0;
         reports.length = 0;
+        observedCount = 0;
         continue;
       }
       reports.push(extra);
@@ -406,9 +426,11 @@ export async function moderatorRecipeFixture(
   runtime.advance((closedAt - runtime.options.now().getTime()) / 1000);
   vi.setSystemTime(runtime.options.now());
   const collector = (
-    source === "reports"
-      ? createAgentModeratorCommentReportCollectorV1
-      : createAgentModeratorCollectorV1
+    source === "combined"
+      ? createAgentModeratorCombinedCommentCollectorV1
+      : source === "reports"
+        ? createAgentModeratorCommentReportCollectorV1
+        : createAgentModeratorCollectorV1
   )({
     staffUserId: runtime.actor.actor.user.id,
     incidents,
