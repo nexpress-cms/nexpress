@@ -1359,6 +1359,13 @@ and Workbench exports retain their exact source/case/prediction bindings. These
 availability labels do not reproduce real report resolution or Runtime
 attestation and do not count as production spam quality or automatic-action gates.
 
+The [content proposal extension](r6-moderator-content-proposal-evaluation-flow.md)
+adds `moderator-proposal.v3` with a separate v2 facts envelope for exact document
+and comment targets. Both earlier suite hashes and strict V1 evidence helpers
+remain unchanged. The shared recipe response, offline review/report and Admin
+workspace preserve target kinds, current synthetic availability and exact source
+bindings without adding live approval or detector/model-quality evidence.
+
 The [Operator diagnosis and plan evaluation](r6-operator-plan-evaluation-flow.md)
 adds sixteen bilingual `operator-plan.v1` cases with bounded diagnosis statements,
 actual plan-input validation and exact-bound offline review. The

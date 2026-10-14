@@ -34,6 +34,11 @@ supplied evaluation, even if another artifact has the same suite or predictions.
 The report preserves existing validators' scope; a hash establishes consistency,
 not the authenticity of an external provider run or reviewer identity.
 
+The [content proposal dataset](r6-moderator-content-proposal-evaluation-flow.md)
+extends that separate row with document/comment candidates. Exact v3 sources and
+reviews retain their versioned facts; incompatible earlier suites remain explicit
+without pooled comparison deltas.
+
 ## Produce and review evidence
 
 Create versioned synthetic evaluation files using the existing commands:

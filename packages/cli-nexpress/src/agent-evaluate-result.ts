@@ -248,17 +248,20 @@ export async function prepareEvaluationResultVerifier(
     npCreateAgentOperatorPlanEvaluationSuiteV1,
     npCreateAgentModeratorProposalEvaluationSuiteV1,
     npCreateAgentModeratorProposalEvaluationSuiteV2,
+    npCreateAgentModeratorProposalEvaluationSuiteV3,
   } = await import("@nexpress/core/agents");
   const suite =
     input.dataset === "publisher.v1"
       ? await npCreateAgentPublisherEvaluationSuiteV1()
       : input.dataset === "operator-plan.v1"
         ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
-        : input.dataset === "moderator-proposal.v2"
-          ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
-          : input.dataset === "moderator-proposal.v1"
-            ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
-            : await npCreateAgentOperatorEvaluationSuiteV1();
+        : input.dataset === "moderator-proposal.v3"
+          ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
+          : input.dataset === "moderator-proposal.v2"
+            ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
+            : input.dataset === "moderator-proposal.v1"
+              ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
+              : await npCreateAgentOperatorEvaluationSuiteV1();
   const suiteHash = await npDigestAgentEvaluationSuiteV1(suite);
   return async (value) => {
     const parsed = await npRequireAgentEvaluationCommandResultV1(value);

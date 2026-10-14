@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import {
   npCreateAgentModeratorProposalEvaluationSuiteV1,
   npCreateAgentModeratorProposalEvaluationSuiteV2,
+  npCreateAgentModeratorProposalEvaluationSuiteV3,
   npBuildAgentEvaluationReportV1,
   runAgentEvaluationV1,
 } from "@nexpress/core/agents";
@@ -29,14 +30,16 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 const fixtures = new Map<number, Awaited<ReturnType<typeof runAgentEvaluationV1>>>();
-async function fixture(version: 1 | 2 = 1) {
+async function fixture(version: 1 | 2 | 3 = 1) {
   const cached = fixtures.get(version);
   if (cached) return structuredClone(cached);
   const artifact = await runAgentEvaluationV1({
     suite:
-      version === 1
-        ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
-        : await npCreateAgentModeratorProposalEvaluationSuiteV2(),
+      version === 3
+        ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
+        : version === 2
+          ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
+          : await npCreateAgentModeratorProposalEvaluationSuiteV1(),
     mode: "fake",
     providerId: "fake",
     model: "deterministic-v1",
@@ -115,9 +118,19 @@ it("binds both Moderator proposal dataset versions and self-comparisons to the e
 }, 20_000);
 // Captures inputs independently, then exercises one actual npm child through the CLI boundary.
 // The timeout covers repeated bounded hash verification, not product latency.
-it("binds report-evidence Moderator proposal review output to exact source, labels and comparison before child execution", async () => {
+it("binds content-evidence Moderator proposal review output to exact source, labels and comparison before child execution", async () => {
   const cwd = await directory();
-  const source = await fixture(2);
+  const content = await fixture(3);
+  const source = await runAgentEvaluationV1({
+    suite: {
+      ...content.suite,
+      cases: [content.suite.cases.find((c) => c.id === "mp-en-content-unavailable")!],
+    },
+    mode: "fake",
+    providerId: "fake",
+    model: "deterministic-v1",
+    budget: content.budget,
+  });
   const template = await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(source);
   const entry = template.entries.find(
     (e) => e.eligible && e.response?.decision.kind === "complete",
@@ -256,4 +269,71 @@ it("independently reconstructs V2 report evidence and keeps incompatible V1 base
   expect(() => verify({ ...result, artifact: { ...artifact, fullR6: "passed" } })).toThrow(
     "Mismatched evaluation report result",
   );
+}, 20_000);
+
+// One cached V3 replay, then actual installed-child verification of each emitted artifact.
+it("binds requested V3 content evaluation and self-comparison while refusing V1/V2 child substitutions", async () => {
+  const cwd = await directory();
+  const artifact = await fixture(3);
+  expect(artifact.suite).toMatchObject({ id: "moderator-proposal-review", version: 3 });
+  expect(artifact.ok).toBe(true);
+  expect(
+    artifact.caseResults.some((c) => {
+      const decision = c.prediction?.moderatorResponse?.decision;
+      return (
+        decision?.kind === "propose-capability" &&
+        decision.arguments.proposal.target.kind === "document"
+      );
+    }),
+  ).toBe(true);
+  await Promise.all([
+    writeFile(join(cwd, "baseline.json"), JSON.stringify(artifact)),
+    writeFile(
+      join(cwd, "package.json"),
+      JSON.stringify({
+        private: true,
+        scripts: { "agent:evaluate": "node evaluate.mjs" },
+      }),
+    ),
+    writeFile(join(cwd, "package-lock.json"), "{}"),
+  ]);
+  const args = ["--dataset", "moderator-proposal.v3", "--compare", "baseline.json", "--json"];
+  let output = "";
+  vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    output += String(chunk);
+    return true;
+  });
+  const result = {
+    schemaVersion: "np.agent-eval-command.v1",
+    artifact,
+    comparison: await npCompareAgentEvaluationArtifactsV1(artifact, artifact),
+    errorCode: null,
+  };
+  const emitChild = (value: unknown) =>
+    writeFile(
+      join(cwd, "evaluate.mjs"),
+      `process.stderr.write("private-child-marker");process.stdout.write(${JSON.stringify(JSON.stringify(value))});`,
+    );
+  await emitChild(result);
+  expect(await runNexpressCli(["node", "nexpress", "agent", "evaluate", ...args], { cwd })).toBe(0);
+  expect(JSON.parse(output)).toEqual(result);
+  expect(result.comparison).toMatchObject({ comparable: true, violationDelta: 0 });
+  expect(output).not.toContain("private-child-marker");
+  for (const version of [1, 2] as const) {
+    const legacy = await fixture(version);
+    const comparison = await npCompareAgentEvaluationArtifactsV1(legacy, artifact);
+    expect(comparison).toEqual({ comparable: false, reason: "SUITE_MISMATCH" });
+    await emitChild({ ...result, artifact: legacy, comparison });
+    output = "";
+    expect(await runNexpressCli(["node", "nexpress", "agent", "evaluate", ...args], { cwd })).toBe(
+      1,
+    );
+    expect(JSON.parse(output)).toEqual({
+      schemaVersion: "np.agent-eval-command.v1",
+      artifact: null,
+      comparison: null,
+      errorCode: "EVALUATION_UNAVAILABLE",
+    });
+    expect(output).not.toContain("private-child-marker");
+  }
 }, 20_000);
