@@ -5,9 +5,12 @@ import { afterEach, expect, it, vi } from "vitest";
 import {
   npRequireAgentEvaluationArtifactV1,
   npRequireAgentModeratorProposalEvaluationReviewArtifactV1,
+  npRequireAgentModeratorProposalEvaluationEvidence,
+  type NpAgentModeratorProposalEvaluationReviewLabelV1,
 } from "@nexpress/core/agent-contract";
 import {
   npCreateAgentModeratorProposalEvaluationSuiteV1,
+  npCreateAgentModeratorProposalEvaluationSuiteV2,
   runAgentEvaluationV1,
   npRequireAgentEvaluationReportV1,
 } from "@nexpress/core/agents";
@@ -170,6 +173,153 @@ it("evaluates unverified report/mixed evidence, reviews it and reports a V1 base
   expect(accepted.result.artifact.summary).toMatchObject({ reviewed: 1, accepted: 1 });
   const legacy = await runAgentEvaluationV1({
     suite: await npCreateAgentModeratorProposalEvaluationSuiteV1(),
+    mode: "fake",
+    providerId: "fake",
+    model: "deterministic-v1",
+    budget: source.budget,
+  });
+  await Promise.all([
+    writeFile(baselinePath, JSON.stringify(legacy)),
+    writeFile(
+      manifestPath,
+      JSON.stringify({
+        schemaVersion: "np.agent-eval-report-manifest.v1",
+        entries: [
+          {
+            recipe: "moderator-proposal",
+            evaluation: "source.json",
+            review: "review.json",
+            baseline: { evaluation: "baseline.json", review: null },
+          },
+        ],
+      }),
+    ),
+  ]);
+  const reported = await run(["--report", manifestPath]);
+  expect(reported.code).toBe(0);
+  const report = await npRequireAgentEvaluationReportV1(reported.result.artifact);
+  expect(report.rows.find((row) => row.recipe === "moderator-proposal")).toMatchObject({
+    status: "present",
+    fixtureGate: "passed",
+    review: { status: "present" },
+    evaluationComparison: {
+      status: "compared",
+      result: { comparable: false, reason: "SUITE_MISMATCH" },
+    },
+  });
+  expect(report.fullR6).toBe("not-established");
+  expect(report.modelUsefulness).toBe("not-established");
+}, 20_000);
+
+// Replay V3 once, then use three actual factory cases for file review/report bindings.
+it("evaluates content proposals and reviews exact document/comment edits and abstention with an incompatible V2 baseline", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "np-moderator-content-proposal-"));
+  directories.push(dir);
+  const sourcePath = join(dir, "source.json");
+  const labelsPath = join(dir, "labels.json");
+  const reviewPath = join(dir, "review.json");
+  const manifestPath = join(dir, "manifest.json");
+  const baselinePath = join(dir, "baseline.json");
+  const evaluated = await run(["--dataset", "moderator-proposal.v3"]);
+  expect(evaluated.code).toBe(0);
+  const completeSource = await npRequireAgentEvaluationArtifactV1(evaluated.result.artifact);
+  expect(completeSource.suite).toMatchObject({ id: "moderator-proposal-review", version: 3 });
+  expect(completeSource.ok).toBe(true);
+  expect(completeSource.metrics.cases).toBe(24);
+  expect(completeSource.suite.cases.every((c) => c.caseVersion === 3)).toBe(true);
+  const source = await runAgentEvaluationV1({
+    suite: {
+      ...completeSource.suite,
+      cases: [
+        "mp-en-document-current",
+        "mp-ko-content-mixed-hostile",
+        "mp-en-content-unavailable",
+      ].map((id) => completeSource.suite.cases.find((c) => c.id === id)!),
+    },
+    mode: "fake",
+    providerId: "fake",
+    model: "deterministic-v1",
+    budget: completeSource.budget,
+  });
+  await writeFile(sourcePath, JSON.stringify(source));
+  const template = await run(["--review", sourcePath]);
+  expect(template.code).toBe(0);
+  const review = await npRequireAgentModeratorProposalEvaluationReviewArtifactV1(
+    template.result.artifact,
+  );
+  const document = review.entries.find((e) => e.caseId === "mp-en-document-current")!;
+  const mixed = review.entries.find((e) => e.caseId === "mp-ko-content-mixed-hostile")!;
+  const abstention = review.entries.find((e) => e.caseId === "mp-en-content-unavailable")!;
+  expect(document.response?.decision).toMatchObject({
+    kind: "propose-capability",
+    arguments: { proposal: { target: { kind: "document" } } },
+  });
+  expect(mixed.response?.decision).toMatchObject({
+    kind: "propose-capability",
+    arguments: { proposal: { target: { kind: "comment" } } },
+  });
+  expect(abstention.response?.decision.kind).toBe("complete");
+  const mixedCase = source.suite.cases.find((c) => c.id === mixed.caseId)!;
+  const evidence = npRequireAgentModeratorProposalEvaluationEvidence(mixedCase.evidence);
+  const documentCandidate = evidence.snapshot!.candidates.find(
+    (c) => c.proposal.target.kind === "document",
+  )!;
+  if (mixed.response?.decision.kind !== "propose-capability")
+    throw new Error("Expected an actual admitted content proposal");
+  const edited = {
+    ...mixed.response,
+    decision: {
+      ...mixed.response.decision,
+      arguments: { ...mixed.response.decision.arguments, proposal: documentCandidate.proposal },
+    },
+  };
+  const label = (
+    entry: typeof document,
+    outcome: NpAgentModeratorProposalEvaluationReviewLabelV1["outcome"],
+    editedProposal: NpAgentModeratorProposalEvaluationReviewLabelV1["editedProposal"] = null,
+  ): NpAgentModeratorProposalEvaluationReviewLabelV1 => {
+    return {
+      caseId: entry.caseId,
+      caseHash: entry.caseHash,
+      predictionHash: entry.predictionHash,
+      sourceHash: entry.sourceHash,
+      outcome,
+      reviewer: "offline-local",
+      reviewedAt: "2026-10-14T00:00:00.000Z",
+      notes: "Exact synthetic content target or abstention reviewed; no live approval.",
+      editedProposal,
+    };
+  };
+  const labels = [
+    label(document, "accept"),
+    label(mixed, "edit", edited),
+    label(abstention, "accept"),
+  ];
+  await writeFile(labelsPath, JSON.stringify(labels));
+  const accepted = await run([
+    "--review",
+    sourcePath,
+    "--reviews",
+    labelsPath,
+    "--out",
+    reviewPath,
+  ]);
+  expect(accepted.code).toBe(0);
+  expect(accepted.result.artifact.summary).toMatchObject({ reviewed: 3, accepted: 2, edited: 1 });
+  expect(accepted.result.artifact.source).toEqual(source);
+  const compared = await run([
+    "--review",
+    sourcePath,
+    "--reviews",
+    labelsPath,
+    "--compare",
+    reviewPath,
+  ]);
+  expect(compared.code).toBe(0);
+  expect(compared.result.comparison).toMatchObject({ comparable: true, acceptBasisPointsDelta: 0 });
+  const legacySuite = await npCreateAgentModeratorProposalEvaluationSuiteV2();
+  const legacy = await runAgentEvaluationV1({
+    suite: { ...legacySuite, cases: [legacySuite.cases[0]] },
     mode: "fake",
     providerId: "fake",
     model: "deterministic-v1",

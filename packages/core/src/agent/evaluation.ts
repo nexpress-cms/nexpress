@@ -1,6 +1,6 @@
 import { npCreateAgentModeratorRecipeDefinitionV1 } from "../agent-contract/moderator-recipe-contract.js";
 import {
-  npCreateAgentModeratorProposalEvaluationPredictionV1,
+  npCreateAgentModeratorProposalEvaluationPrediction,
   npAgentModeratorProposalEvaluationBenchmarkInstructionV1,
 } from "../agent-contract/moderator-proposal-evaluation-contract.js";
 import {
@@ -301,7 +301,7 @@ export async function runAgentEvaluationV1(
           : Promise.resolve({
               prediction:
                 category === "moderator-proposal"
-                  ? npCreateAgentModeratorProposalEvaluationPredictionV1(request.case.evidence)
+                  ? npCreateAgentModeratorProposalEvaluationPrediction(request.case.evidence)
                       .moderatorResponse
                   : category === "publisher"
                     ? npCreateAgentPublisherEvaluationPredictionV1(request.case.evidence)
@@ -339,7 +339,7 @@ export async function runAgentEvaluationV1(
         result.prediction =
           category === "moderator-proposal"
             ? npRequireAgentEvaluationPredictionV1(
-                npCreateAgentModeratorProposalEvaluationPredictionV1(
+                npCreateAgentModeratorProposalEvaluationPrediction(
                   entry.evidence,
                   response.prediction,
                 ),

@@ -13,7 +13,7 @@ import {
 } from "./evaluation-contract.js";
 import {
   npRequireAgentModeratorEvaluationResponseV1,
-  npEvaluateAgentModeratorProposalV1,
+  npEvaluateAgentModeratorProposal,
   npAgentModeratorEvaluationResponseMeaningfulValueV1,
   type NpAgentModeratorEvaluationResponseV1,
 } from "./moderator-proposal-evaluation-contract.js";
@@ -162,7 +162,7 @@ export async function npBuildAgentModeratorProposalEvaluationReviewArtifactV1(
           npAgentModeratorEvaluationResponseMeaningfulValueV1(editedProposal),
           npAgentModeratorEvaluationResponseMeaningfulValueV1(target.response),
         ) ||
-        npEvaluateAgentModeratorProposalV1(target.evidence, editedProposal).length
+        npEvaluateAgentModeratorProposal(target.evidence, editedProposal).length
       )
         fail();
     } else if (r.editedProposal !== null) fail();

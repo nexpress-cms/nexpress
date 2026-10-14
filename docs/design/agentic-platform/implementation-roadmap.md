@@ -729,6 +729,10 @@ reviewable abstentions as evidence separate from detector replay. Its versioned
 report/mixed source fixtures retain unverified claim counts through the CLI,
 review/report and Admin workspace while preserving the original dataset. It does not
 establish real-model usefulness or automatic-quarantine readiness.
+The [content proposal evaluation flow](r6-moderator-content-proposal-evaluation-flow.md)
+adds separately versioned document/comment candidates and their exact offline
+selection, abstention, review and comparison while preserving both earlier suites.
+Document detector benchmarks and live-model quality remain open.
 The [Operator diagnosis and plan evaluation review flow](r6-operator-plan-evaluation-flow.md)
 adds bilingual synthetic diagnosis statements, exact requested queue-plan input
 checks and offline accept/edit/reject review with matched-cohort comparison.

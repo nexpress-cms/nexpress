@@ -20,6 +20,7 @@ import {
   npCreateAgentOperatorPlanEvaluationSuiteV1,
   npCreateAgentModeratorProposalEvaluationSuiteV1,
   npCreateAgentModeratorProposalEvaluationSuiteV2,
+  npCreateAgentModeratorProposalEvaluationSuiteV3,
   npCreateAgentPublisherEvaluationSuiteV1,
   type NpAgentEvaluationProviderV1,
 } from "@nexpress/core/agents";
@@ -63,6 +64,7 @@ pnpm agent:evaluate --dataset moderator.v1 --out <artifact> --json
 pnpm agent:evaluate --dataset moderator.v2 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset moderator-proposal.v1 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset moderator-proposal.v2 --out <artifact> --json
+pnpm agent:evaluate --provider fake --dataset moderator-proposal.v3 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset operator.v1 --json
 pnpm agent:evaluate --provider fake --dataset operator-plan.v1 --out <artifact> --json
 pnpm agent:evaluate --provider fake --dataset publisher.v1 --out <artifact> --json
@@ -80,6 +82,7 @@ moderator.v2 adds unverified report and mixed facts to actual detector replay; r
 Both moderator datasets run the actual deterministic detector offline; network providers and explicit model/budget flags are unavailable.
 moderator-proposal.v1 checks the installed recipe response against synthetic observed evidence.
 moderator-proposal.v2 adds synthetic unverified report and mixed evidence; reports confer no verdict or approval authority.
+moderator-proposal.v3 adds exact document/comment targets to synthetic document-report and mixed evidence; reports confer no verdict or approval authority.
 Fake mode checks deterministic fixtures; it does not measure model usefulness.
 Network evaluation requires a host-injected provider and explicit --provider, --model, --dataset,
 --max-calls, --max-input-tokens, --max-output-tokens, --max-cost-micros and --confirm-network.
@@ -209,11 +212,13 @@ export async function runAgentEvaluateProcessV1(
             ? await npCreateAgentPublisherEvaluationSuiteV1()
             : input.dataset === "operator-plan.v1"
               ? await npCreateAgentOperatorPlanEvaluationSuiteV1()
-              : input.dataset === "moderator-proposal.v2"
-                ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
-                : input.dataset === "moderator-proposal.v1"
-                  ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
-                  : await npCreateAgentOperatorEvaluationSuiteV1(),
+              : input.dataset === "moderator-proposal.v3"
+                ? await npCreateAgentModeratorProposalEvaluationSuiteV3()
+                : input.dataset === "moderator-proposal.v2"
+                  ? await npCreateAgentModeratorProposalEvaluationSuiteV2()
+                  : input.dataset === "moderator-proposal.v1"
+                    ? await npCreateAgentModeratorProposalEvaluationSuiteV1()
+                    : await npCreateAgentOperatorEvaluationSuiteV1(),
         mode: input.provider === "fake" ? "fake" : "provider",
         providerId: input.provider,
         model: input.model,

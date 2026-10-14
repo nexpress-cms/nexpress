@@ -10,6 +10,12 @@ observation/report cases. The v1 factory, sixteen cases and canonical suite hash
 remain unchanged. Both versions use the same installed recipe instruction,
 response schema and offline review/report owners.
 
+The subsequent [document and comment proposal dataset](r6-moderator-content-proposal-evaluation-flow.md)
+adds `moderator-proposal.v3` with a separately versioned content facts envelope,
+exact mixed-target selection and the same review/CLI/Workbench/report owners.
+The original v1/v2 suite hashes and strict v1 comment-only evidence helpers remain
+unchanged.
+
 ## Response and evidence owners
 
 The shared evaluation runner supplies the recipe's actual instruction and response

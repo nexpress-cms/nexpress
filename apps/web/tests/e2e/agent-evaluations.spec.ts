@@ -5,12 +5,12 @@ import {
   npRequireAgentModeratorProposalEvaluationReviewArtifactV1,
   npRequireAgentEvaluationWorkbenchResultV1,
   npRequireAgentEvaluationSuiteV1,
-  npRequireAgentModeratorProposalEvaluationEvidenceV1,
+  npRequireAgentModeratorProposalEvaluationEvidenceV2,
   type NpAgentEvaluationArtifactV1,
   type NpAgentModeratorProposalEvaluationReviewArtifactV1,
 } from "@nexpress/core/agent-contract";
 import {
-  npCreateAgentModeratorProposalEvaluationSuiteV2,
+  npCreateAgentModeratorProposalEvaluationSuiteV3,
   npRequireAgentEvaluationReportV1,
   runAgentEvaluationV1,
   runAgentModeratorEvaluationV1,
@@ -22,12 +22,16 @@ import { isolateE2ERateLimitBucket } from "./fixtures/rate-limit.js";
 let evaluation: NpAgentEvaluationArtifactV1;
 let importedReview: NpAgentModeratorProposalEvaluationReviewArtifactV1;
 test.beforeAll(async () => {
-  const suite = await npCreateAgentModeratorProposalEvaluationSuiteV2();
+  const suite = await npCreateAgentModeratorProposalEvaluationSuiteV3();
   // Full dataset conformance belongs to the fixture owner. This composition
-  // journey retains report selection, mixed selection and retained abstention.
-  const ids = ["mp-en-report-current", "mp-en-mixed-current", "mp-en-mixed-stale"];
+  // journey retains document selection, mixed targets and retained abstention.
+  const ids = [
+    "mp-en-document-current",
+    "mp-en-content-mixed-current",
+    "mp-en-content-mixed-stale",
+  ];
   const cases = suite.cases.filter((entry) => ids.includes(entry.id));
-  if (cases.length !== ids.length) throw new Error("Missing report/mixed workspace fixture.");
+  if (cases.length !== ids.length) throw new Error("Missing document/content workspace fixture.");
   evaluation = await runAgentEvaluationV1({
     suite: npRequireAgentEvaluationSuiteV1({ ...suite, cases }),
     mode: "fake",
@@ -106,7 +110,7 @@ async function downloadJson(
   return JSON.parse(await readFile(path, "utf8"));
 }
 
-test("evaluation workspace reviews synthetic report proposals and mixed abstentions without granting authority", async ({
+test("evaluation workspace reviews synthetic document and mixed content proposals without granting authority", async ({
   page,
 }, testInfo) => {
   await isolateE2ERateLimitBucket(
@@ -165,19 +169,31 @@ test("evaluation workspace reviews synthetic report proposals and mixed abstenti
   );
   const initial = await recompute(page, "Validate imports");
   expect(initial.cases).toHaveLength(3);
-  expect(evaluation.suite.version).toBe(2);
+  expect(evaluation.suite.version).toBe(3);
   expect(initial.authority).toBe("offline-self-reported-no-approval");
   expect(initial.fixtureGate).toBe("passed");
   for (const [index, entry] of initial.cases.entries()) {
     const evidence = JSON.parse(entry.evidenceJson);
     expect(evidence).toEqual(evaluation.suite.cases[index].evidence);
-    const facts = npRequireAgentModeratorProposalEvaluationEvidenceV1(evidence);
+    const facts = npRequireAgentModeratorProposalEvaluationEvidenceV2(evidence);
+    expect(facts.snapshot?.candidates[0].proposal.target.kind).toBe("document");
     expect(facts.snapshot?.candidates[0].detector.reportClaims).toEqual({
       unverified: true,
-      itemCount: index === 0 ? 5 : 2,
+      itemCount: index === 0 ? 5 : 3,
     });
+    if (index > 0)
+      expect(facts.snapshot?.candidates.map((candidate) => candidate.proposal.target.kind)).toEqual(
+        ["document", "comment"],
+      );
   }
   const proposal = importedReview.entries.find((entry) => entry.review !== null)!;
+  expect(proposal.response).toMatchObject({
+    decision: { arguments: { proposal: { target: { kind: "document" } } } },
+  });
+  const mixed = importedReview.entries.find(
+    (entry) => entry.caseId === "mp-en-content-mixed-current",
+  );
+  if (!mixed) throw new Error("Missing mixed content review fixture.");
   const abstention = importedReview.entries.find(
     (entry) => entry.response?.decision.kind === "complete",
   );
@@ -233,7 +249,7 @@ test("evaluation workspace reviews synthetic report proposals and mixed abstenti
   await page.getByLabel("Outcome", { exact: true }).selectOption("edit");
   const ungrounded = structuredClone(proposal.response);
   if (ungrounded?.decision.kind !== "propose-capability")
-    throw new Error("Missing report proposal fixture.");
+    throw new Error("Missing document proposal fixture.");
   ungrounded.decision.arguments.proposal.target.id = "00000000-0000-4000-8000-999999999999";
   await page.getByLabel("Edited proposal JSON", { exact: true }).fill(JSON.stringify(ungrounded));
   const invalidResponse = page.waitForResponse(
@@ -255,13 +271,22 @@ test("evaluation workspace reviews synthetic report proposals and mixed abstenti
   );
   expect(retained).toEqual(acceptedReview);
 
+  // A document-to-comment edit must copy another exact target admitted by this campaign.
+  const alternative = structuredClone(mixed.response);
+  const comment = npRequireAgentModeratorProposalEvaluationEvidenceV2(
+    mixed.evidence,
+  ).snapshot?.candidates.find((candidate) => candidate.proposal.target.kind === "comment");
+  if (alternative?.decision.kind !== "propose-capability" || !comment)
+    throw new Error("Missing admitted comment alternative.");
+  alternative.decision.arguments.proposal = comment.proposal;
+  await page
+    .getByLabel("Case", { exact: true })
+    .selectOption(`${mixed.caseId}@${mixed.caseVersion}`);
   await page.getByLabel("Outcome", { exact: true }).selectOption("edit");
-  await page.getByLabel("Edited proposal JSON", { exact: true }).fill(
-    JSON.stringify({
-      task: "interactive-capability",
-      decision: { kind: "complete", summary: "Reviewer abstains on the synthetic proposal." },
-    }),
-  );
+  await page
+    .getByLabel("Reviewer (self-reported)", { exact: true })
+    .fill("browser-content-reviewer");
+  await page.getByLabel("Edited proposal JSON", { exact: true }).fill(JSON.stringify(alternative));
   const edited = await recompute(page, "Apply and recompute");
   const labels = await downloadJson(page, "labels");
   const review = await npRequireAgentModeratorProposalEvaluationReviewArtifactV1(
@@ -271,7 +296,13 @@ test("evaluation workspace reviews synthetic report proposals and mixed abstenti
   expect(review).toEqual(
     await npBuildAgentModeratorProposalEvaluationReviewArtifactV1(evaluation, labels),
   );
-  expect(review.summary).toMatchObject({ reviewed: 2, accepted: 1, edited: 1, unreviewed: 1 });
+  expect(review.summary).toMatchObject({ reviewed: 3, accepted: 2, edited: 1, unreviewed: 0 });
+  expect(review.labels.find((label) => label.caseId === proposal.caseId)).toEqual(
+    importedReview.labels[0],
+  );
+  expect(review.labels.find((label) => label.caseId === mixed.caseId)?.editedProposal).toEqual(
+    alternative,
+  );
   expect(review.labels.find((label) => label.caseId === abstention.caseId)).toEqual(
     acceptedReview.labels.find((label) => label.caseId === abstention.caseId),
   );
@@ -280,15 +311,18 @@ test("evaluation workspace reviews synthetic report proposals and mixed abstenti
   expect(row?.reviewComparison.status).toBe("compared");
   expect(row?.reviewComparison.result).toMatchObject({
     matchedCaseKeys: [`${proposal.caseId}@${proposal.caseVersion}`],
-    unmatchedCurrentCaseKeys: [`${abstention.caseId}@${abstention.caseVersion}`],
+    unmatchedCurrentCaseKeys: [
+      `${mixed.caseId}@${mixed.caseVersion}`,
+      `${abstention.caseId}@${abstention.caseVersion}`,
+    ],
     unmatchedBaselineCaseKeys: [],
   });
   expect(JSON.parse(edited.reportArtifactJson)).toEqual(report);
   expect(report.fullR6).toBe("not-established");
   expect(review.source.suite).toEqual(evaluation.suite);
-  await expect(page.getByText("2 / 3 eligible cases reviewed", { exact: false })).toBeVisible();
+  await expect(page.getByText("3 / 3 eligible cases reviewed", { exact: false })).toBeVisible();
   await expect(page.locator("pre").filter({ hasText: "matchedCaseKeys=1" }).first()).toContainText(
-    "unmatchedCurrentCaseKeys=1",
+    "unmatchedCurrentCaseKeys=2",
   );
 
   await page.setViewportSize({ width: 320, height: 900 });

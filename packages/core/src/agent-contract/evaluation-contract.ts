@@ -4,10 +4,10 @@ import {
 } from "./moderator-recipe-contract.js";
 import {
   npRequireAgentModeratorEvaluationResponseV1,
-  npRequireAgentModeratorProposalEvaluationEvidenceV1,
+  npRequireAgentModeratorProposalEvaluationEvidence,
   npAgentModeratorProposalEvaluationBenchmarkInstructionV1,
-  npCreateAgentModeratorProposalEvaluationPredictionV1,
-  npEvaluateAgentModeratorProposalV1,
+  npCreateAgentModeratorProposalEvaluationPrediction,
+  npEvaluateAgentModeratorProposal,
   type NpAgentModeratorEvaluationResponseV1,
 } from "./moderator-proposal-evaluation-contract.js";
 import {
@@ -409,7 +409,7 @@ export function npRequireAgentEvaluationSuiteV1(value: unknown): NpAgentEvaluati
     });
     if (
       c.category === "moderator-proposal" &&
-      npRequireAgentModeratorProposalEvaluationEvidenceV1(evidence).locale !== c.locale
+      npRequireAgentModeratorProposalEvaluationEvidence(evidence).locale !== c.locale
     )
       fail();
     if (c.category === "publisher") npRequireAgentPublisherEvaluationEvidenceV1(evidence);
@@ -630,12 +630,12 @@ export async function npBuildAgentEvaluationArtifactV1(
       );
     if (predicted) {
       if (c.category === "moderator-proposal") {
-        for (const code of npEvaluateAgentModeratorProposalV1(
+        for (const code of npEvaluateAgentModeratorProposal(
           c.evidence,
           predicted.moderatorResponse ?? null,
         ))
           add(c.id, code);
-        const derived = npCreateAgentModeratorProposalEvaluationPredictionV1(
+        const derived = npCreateAgentModeratorProposalEvaluationPrediction(
           c.evidence,
           predicted.moderatorResponse,
         );

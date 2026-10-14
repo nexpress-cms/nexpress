@@ -39,6 +39,15 @@ export interface NpAgentModeratorProposalEvaluationFactsV1 {
   snapshot: NpAgentModeratorRecipeEvidenceV1 | null;
   note: string;
 }
+/** Synthetic document/comment projections; existing v1 facts remain comment-only. */
+export interface NpAgentModeratorProposalEvaluationFactsV2 extends Omit<
+  NpAgentModeratorProposalEvaluationFactsV1,
+  "schemaVersion"
+> {
+  schemaVersion: "np.agent-moderator-proposal-eval-facts.v2";
+}
+export type NpAgentModeratorProposalEvaluationFacts =
+  NpAgentModeratorProposalEvaluationFactsV1 | NpAgentModeratorProposalEvaluationFactsV2;
 type Evidence = readonly { id: string; text: string }[];
 export const npAgentModeratorProposalEvaluationBenchmarkInstructionV1 = [
   "Return only the installed Moderator interactive-capability response, using its exact response schema and instruction. This is an offline single-turn synthetic benchmark, never a Runtime transcript, attestation, approval or execution.",
@@ -101,6 +110,24 @@ export function npRequireAgentModeratorEvaluationResponseV1(
 export function npRequireAgentModeratorProposalEvaluationEvidenceV1(
   evidence: Evidence,
 ): NpAgentModeratorProposalEvaluationFactsV1 {
+  const facts = requireEvidence(evidence);
+  if (facts.schemaVersion !== "np.agent-moderator-proposal-eval-facts.v1") fail();
+  return facts;
+}
+export function npRequireAgentModeratorProposalEvaluationEvidenceV2(
+  evidence: Evidence,
+): NpAgentModeratorProposalEvaluationFactsV2 {
+  const facts = requireEvidence(evidence);
+  if (facts.schemaVersion !== "np.agent-moderator-proposal-eval-facts.v2") fail();
+  return facts;
+}
+/** Dispatch by the exact facts version, never by the selected target or note. */
+export function npRequireAgentModeratorProposalEvaluationEvidence(
+  evidence: Evidence,
+): NpAgentModeratorProposalEvaluationFacts {
+  return requireEvidence(evidence);
+}
+function requireEvidence(evidence: Evidence): NpAgentModeratorProposalEvaluationFacts {
   if (
     evidence.length !== 1 ||
     evidence[0].id !== "moderator-candidates" ||
@@ -115,7 +142,8 @@ export function npRequireAgentModeratorProposalEvaluationEvidenceV1(
     "note",
   ]);
   if (
-    r.schemaVersion !== "np.agent-moderator-proposal-eval-facts.v1" ||
+    (r.schemaVersion !== "np.agent-moderator-proposal-eval-facts.v1" &&
+      r.schemaVersion !== "np.agent-moderator-proposal-eval-facts.v2") ||
     (r.locale !== "en" && r.locale !== "ko") ||
     (r.availability !== "current" && r.availability !== "unavailable" && r.availability !== "stale")
   )
@@ -157,7 +185,12 @@ export function npRequireAgentModeratorProposalEvaluationEvidenceV1(
         if (new Set(sourceEventIds).size !== sourceEventIds.length) fail();
         const incidentId = canonicalBodyUuid(c.incidentId, path);
         const proposal = npRequireAgentQuarantineProposalV1(c.proposal);
-        if (proposal.incidentId !== incidentId || proposal.target.kind !== "comment") fail();
+        if (
+          proposal.incidentId !== incidentId ||
+          (r.schemaVersion === "np.agent-moderator-proposal-eval-facts.v1" &&
+            proposal.target.kind !== "comment")
+        )
+          fail();
         const itemCount = canonicalBodyInteger(d.itemCount, path, 1, 100);
         let reportClaims: { unverified: true; itemCount: number } | undefined;
         if (Object.hasOwn(d, "reportClaims")) {
@@ -168,6 +201,7 @@ export function npRequireAgentModeratorProposalEvaluationEvidenceV1(
             itemCount: canonicalBodyInteger(claims.itemCount, path, 1, itemCount),
           };
         }
+        if (proposal.target.kind === "document" && !reportClaims) fail();
         return {
           incidentId,
           signalId: canonicalBodyUuid(c.signalId, path),
@@ -204,7 +238,7 @@ export function npRequireAgentModeratorProposalEvaluationEvidenceV1(
     note: text(r.note, 1000, true),
   };
 }
-function candidates(facts: NpAgentModeratorProposalEvaluationFactsV1) {
+function candidates(facts: NpAgentModeratorProposalEvaluationFacts) {
   return facts.availability === "current" && facts.snapshot && !facts.snapshot.truncated
     ? facts.snapshot.candidates
     : [];
@@ -215,6 +249,18 @@ export function npEvaluateAgentModeratorProposalV1(
   response: NpAgentModeratorEvaluationResponseV1 | null,
 ): Array<"PROPOSAL_MISSING" | "PROPOSAL_UNJUSTIFIED" | "PROPOSAL_EVIDENCE_INVALID"> {
   const facts = npRequireAgentModeratorProposalEvaluationEvidenceV1(evidence);
+  return evaluate(facts, response);
+}
+export function npEvaluateAgentModeratorProposal(
+  evidence: Evidence,
+  response: NpAgentModeratorEvaluationResponseV1 | null,
+): Array<"PROPOSAL_MISSING" | "PROPOSAL_UNJUSTIFIED" | "PROPOSAL_EVIDENCE_INVALID"> {
+  return evaluate(npRequireAgentModeratorProposalEvaluationEvidence(evidence), response);
+}
+function evaluate(
+  facts: NpAgentModeratorProposalEvaluationFacts,
+  response: NpAgentModeratorEvaluationResponseV1 | null,
+): Array<"PROPOSAL_MISSING" | "PROPOSAL_UNJUSTIFIED" | "PROPOSAL_EVIDENCE_INVALID"> {
   if (!response) return ["PROPOSAL_MISSING"];
   const parsed = npRequireAgentModeratorEvaluationResponseV1(response);
   if (parsed.decision.kind === "complete") return [];
@@ -236,9 +282,26 @@ export function npCreateAgentModeratorProposalEvaluationPredictionV1(
   response?: unknown,
 ): NpAgentEvaluationPredictionV1 {
   const facts = npRequireAgentModeratorProposalEvaluationEvidenceV1(evidence);
+  return createPrediction(facts, response, arguments.length === 1);
+}
+export function npCreateAgentModeratorProposalEvaluationPrediction(
+  evidence: Evidence,
+  response?: unknown,
+): NpAgentEvaluationPredictionV1 {
+  return createPrediction(
+    npRequireAgentModeratorProposalEvaluationEvidence(evidence),
+    response,
+    arguments.length === 1,
+  );
+}
+function createPrediction(
+  facts: NpAgentModeratorProposalEvaluationFacts,
+  response: unknown,
+  fake: boolean,
+): NpAgentEvaluationPredictionV1 {
   const admitted = candidates(facts);
   const moderatorResponse = npRequireAgentModeratorEvaluationResponseV1(
-    arguments.length === 1
+    fake
       ? {
           task: "interactive-capability",
           decision: admitted.length

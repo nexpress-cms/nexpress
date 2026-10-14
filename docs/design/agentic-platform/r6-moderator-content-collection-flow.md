@@ -90,8 +90,10 @@ one quarantine.
 
 ## Remaining boundaries
 
-Member report/restriction sources, document-specific versioned proposal
-benchmarks, production/model quality, automatic moderation and full R6 acceptance
+The subsequent [content proposal benchmark](r6-moderator-content-proposal-evaluation-flow.md)
+adds versioned synthetic document/comment response evaluation. Member
+report/restriction sources, document-specific detector benchmarks,
+production/model quality, automatic moderation and full R6 acceptance
 remain open. Real local source and fake-provider journeys establish orchestration
 and refusal behavior, not model usefulness or false-positive thresholds. No
 schema, migration, version, changeset, lockfile, credential, provider call,

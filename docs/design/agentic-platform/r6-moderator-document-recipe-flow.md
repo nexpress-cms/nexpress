@@ -72,8 +72,10 @@ collection, dispatch, activation or provider work. Absent installation stays
 disabled. There is no new route, worker, credential, provider call, public API,
 manual-input format, schema, version, changeset or lockfile change.
 
-Member report/restriction sources, document-specific versioned proposal evaluations, real-model quality, automatic
-moderation and the full R6 acceptance gate remain open. Local fake-provider
+The subsequent [content proposal evaluation](r6-moderator-content-proposal-evaluation-flow.md)
+adds versioned synthetic document/comment response fixtures. Member
+report/restriction sources, document-specific detector benchmarks, real-model
+quality, automatic moderation and the full R6 acceptance gate remain open. Local fake-provider
 journeys establish orchestration and refusal behavior; they do not establish
 production false-positive or usefulness thresholds.
 
