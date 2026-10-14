@@ -1,4 +1,9 @@
 import {
+  npCollectionDocumentStatuses,
+  npCollectionDocumentVisibilities,
+  type NpCollectionDocumentVisibility,
+} from "../collection-contract/types.js";
+import {
   canonicalBodyRecord,
   canonicalBodyInteger,
   canonicalBodyIdentifier,
@@ -15,20 +20,25 @@ export interface NpAgentIncidentEvidenceItemV1 {
   eventId: string;
   signalIds: string[];
   availability: "available" | "unavailable";
-  target: { kind: "comment"; collection: string; id: string } | null;
+  target: { kind: "comment" | "document"; collection: string; id: string } | null;
   observed: {
     occurredAt: string;
     retentionExpiresAt: string;
-    status: "visible" | "pending";
+    status: "visible" | "pending" | "published";
+    /** Present only for document report evidence. */
+    visibility?: NpCollectionDocumentVisibility;
     spamVerdict: "pass" | "flag" | "unknown";
     profanityVerdict: "pass" | "flag" | "unknown";
     /** A filed report records a claim, not a classifier verdict. */
     reportFiled?: true;
   } | null;
   current: {
-    /** Source comment match only; the digest below binds the current parent as well. */
+    /** Source match; comment digests also bind their current parent. */
     state: "unchanged" | "changed" | "hidden" | "deleted";
-    status: "visible" | "pending" | "hidden" | "deleted";
+    status: "visible" | "hidden" | "deleted" | (typeof npCollectionDocumentStatuses)[number];
+    /** Actual document envelope; never inferred from a comment state. */
+    visibility?: NpCollectionDocumentVisibility;
+    moderationHidden?: boolean;
     editedAt: string | null;
     versionDigest: string;
     report?: { status: "unresolved" | "resolved"; resolvedAt: string | null };
@@ -104,16 +114,29 @@ export function npRequireAgentIncidentEvidenceV1(value: unknown): NpAgentInciden
     const t = record(x.target, ["kind", "collection", "id"]);
     const collection = canonicalBodyIdentifier(t.collection, "evidence.collection", 96);
     const target: NonNullable<NpAgentIncidentEvidenceItemV1["target"]> = {
-      kind: canonicalBodyEnum(t.kind, "evidence.target.kind", new Set(["comment"] as const)),
+      kind: canonicalBodyEnum(
+        t.kind,
+        "evidence.target.kind",
+        new Set(["comment", "document"] as const),
+      ),
       collection,
       id: canonicalBodyAscii(t.id, "evidence.target.id", 128),
     };
+    const isDocument = target.kind === "document";
     const o = record(
       x.observed,
-      ["occurredAt", "retentionExpiresAt", "status", "spamVerdict", "profanityVerdict"],
+      [
+        "occurredAt",
+        "retentionExpiresAt",
+        "status",
+        "spamVerdict",
+        "profanityVerdict",
+        ...(isDocument ? ["visibility"] : []),
+      ],
       ["reportFiled"],
     );
     const reportFiled = o.reportFiled !== undefined;
+    if (isDocument && !reportFiled) bad();
     if (
       reportFiled
         ? o.reportFiled !== true || o.spamVerdict !== "unknown" || o.profanityVerdict !== "unknown"
@@ -129,7 +152,7 @@ export function npRequireAgentIncidentEvidenceV1(value: unknown): NpAgentInciden
       status: canonicalBodyEnum(
         o.status,
         "evidence.observed.status",
-        new Set(["visible", "pending"] as const),
+        isDocument ? new Set(["published"] as const) : new Set(["visible", "pending"] as const),
       ),
       spamVerdict: canonicalBodyEnum(
         o.spamVerdict,
@@ -141,9 +164,29 @@ export function npRequireAgentIncidentEvidenceV1(value: unknown): NpAgentInciden
         "evidence.profanityVerdict",
         new Set(["pass", "flag", "unknown"] as const),
       ),
+      ...(isDocument
+        ? {
+            visibility: canonicalBodyEnum(
+              o.visibility,
+              "evidence.observed.visibility",
+              new Set(["public"] as const),
+            ),
+          }
+        : {}),
       ...(reportFiled ? { reportFiled: true as const } : {}),
     };
-    const c = record(x.current, ["state", "status", "editedAt", "versionDigest"], ["report"]);
+    const c = record(
+      x.current,
+      [
+        "state",
+        "status",
+        "editedAt",
+        "versionDigest",
+        ...(isDocument ? ["visibility", "moderationHidden"] : []),
+      ],
+      ["report"],
+    );
+    if (isDocument && typeof c.moderationHidden !== "boolean") bad();
     if (reportFiled !== (c.report !== undefined)) bad();
     let report: NonNullable<NpAgentIncidentEvidenceItemV1["current"]>["report"];
     if (reportFiled) {
@@ -171,14 +214,41 @@ export function npRequireAgentIncidentEvidenceV1(value: unknown): NpAgentInciden
       status: canonicalBodyEnum(
         c.status,
         "evidence.current.status",
-        new Set(["visible", "pending", "hidden", "deleted"] as const),
+        isDocument
+          ? new Set(npCollectionDocumentStatuses)
+          : new Set(["visible", "pending", "hidden", "deleted"] as const),
       ),
       editedAt:
         c.editedAt === null ? null : canonicalBodyUtc(c.editedAt, "evidence.current.editedAt"),
       versionDigest: canonicalBodySha256Digest(c.versionDigest, "evidence.current.versionDigest"),
+      ...(isDocument
+        ? {
+            visibility: canonicalBodyEnum(
+              c.visibility,
+              "evidence.current.visibility",
+              new Set(npCollectionDocumentVisibilities),
+            ),
+            moderationHidden: c.moderationHidden as boolean,
+          }
+        : {}),
       ...(report ? { report } : {}),
     };
-    if (
+    if (isDocument) {
+      if (current.state === "deleted" || (current.state === "hidden") !== current.moderationHidden)
+        bad();
+      if (
+        current.state === "unchanged" &&
+        (current.visibility !== observed.visibility || current.moderationHidden !== false)
+      )
+        bad();
+      if (
+        x.responseEligible &&
+        (current.status !== "published" ||
+          current.visibility !== "public" ||
+          current.moderationHidden !== false)
+      )
+        bad();
+    } else if (
       current.state === "hidden" || current.state === "deleted"
         ? current.status !== current.state
         : !["visible", "pending"].includes(current.status)

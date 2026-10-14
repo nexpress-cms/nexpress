@@ -323,6 +323,33 @@ export async function npInspectCommunityCommentEvidenceV1(
   return { versionDigest: version(input, loaded), comment: loaded.comment };
 }
 
+/** Server-only document review uses the same current ACL, lock and version owner. */
+export async function npInspectCommunityDocumentEvidenceV1(
+  tx: NpTransaction,
+  input: NpCommunityContentContainmentInputV1,
+): Promise<{
+  document: Record<string, unknown>;
+  config: NpCollectionConfig;
+  versionDigest: string;
+  eligible: boolean;
+}> {
+  if (input.target.kind !== "document") conflict();
+  const loaded = await load(tx, input);
+  let eligible = true;
+  try {
+    originalState(loaded);
+  } catch (error) {
+    if (!(error instanceof NpValidationError)) throw error;
+    eligible = false;
+  }
+  return {
+    document: loaded.document,
+    config: loaded.config,
+    versionDigest: version(input, loaded),
+    eligible,
+  };
+}
+
 /** Wrap the caller's entire transaction in withDeferredPostCommit, never only this callback. */
 export async function npQuarantineCommunityContentV1(
   tx: NpTransaction,

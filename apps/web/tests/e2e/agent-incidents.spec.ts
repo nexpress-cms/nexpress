@@ -806,7 +806,7 @@ test("incident evidence separates observed and current facts, pages safely, and 
     return route.fulfill({ json: { resourceId: id, replayed: false } });
   });
   await page.goto(`/admin/agents/incidents/${id}`);
-  const evidence = page.getByRole("region", { name: "Comment evidence" });
+  const evidence = page.getByRole("region", { name: "Content evidence" });
   const response = page.getByRole("region", { name: "Response plans" });
   await expect(evidence.getByRole("heading", { name: "Recorded observation" })).toHaveCount(4);
   await expect(
@@ -914,7 +914,7 @@ test("incident report evidence keeps claims separate from current resolution and
     return route.fulfill({ json: { resourceId: id, replayed: false } });
   });
   await page.goto(`/admin/agents/incidents/${id}`);
-  const evidence = page.getByRole("region", { name: "Comment evidence" });
+  const evidence = page.getByRole("region", { name: "Content evidence" });
   const response = page.getByRole("region", { name: "Response plans" });
   await expect(evidence.getByRole("heading", { name: "Recorded report" })).toHaveCount(3);
   await expect(evidence.getByText(/A report is an unverified claim/)).toHaveCount(3);
@@ -956,12 +956,155 @@ test("incident report evidence keeps claims separate from current resolution and
   );
   filed.current.report = { status: "resolved", resolvedAt };
   filed.responseEligible = false;
-  await evidence.getByRole("button", { name: "Refresh comment evidence" }).click();
+  await evidence.getByRole("button", { name: "Refresh content evidence" }).click();
   await expect(evidence.getByText("Report status: resolved", { exact: true })).toHaveCount(2);
   await expect(selects.first()).toBeDisabled();
   await expect(response.getByRole("button", { name: "Prepare response plan" })).toBeDisabled();
   await expect(page.getByText(`Incident ${id} · Version 1`, { exact: true })).toBeVisible();
   expect(prepared).toBe(0);
+});
+
+test("document report evidence reviews actual visibility, selects the exact target, and clears resolved or inaccessible evidence", async ({
+  page,
+}, testInfo) => {
+  await isolateE2ERateLimitBucket(
+    page.context(),
+    168 + testInfo.retry + testInfo.repeatEachIndex * (testInfo.project.retries + 1),
+  );
+  await signInAsE2EAdmin(page);
+  const documentTarget = { kind: "document" as const, collection: "posts", id: signalId };
+  const result = responseDetail();
+  result.response!.choices.push({
+    ...result.response!.choices[0]!,
+    target: documentTarget,
+  });
+  const filed: NpAgentIncidentEvidenceItemV1 = {
+    eventId: id,
+    signalIds: [signalId],
+    availability: "available",
+    target: documentTarget,
+    observed: {
+      occurredAt: at,
+      retentionExpiresAt: "2026-09-28T00:00:00.000Z",
+      status: "published",
+      visibility: "public",
+      spamVerdict: "unknown",
+      profanityVerdict: "unknown",
+      reportFiled: true,
+    },
+    current: {
+      state: "unchanged",
+      status: "published",
+      visibility: "public",
+      moderationHidden: false,
+      editedAt: at,
+      versionDigest: targetDigest,
+      report: { status: "unresolved", resolvedAt: null },
+    },
+    responseEligible: true,
+  };
+  const hidden: NpAgentIncidentEvidenceItemV1 = {
+    ...structuredClone(filed),
+    eventId: actionId,
+    target: { ...documentTarget, id: actionId },
+    current: {
+      ...structuredClone(filed.current!),
+      state: "hidden",
+      status: "pending",
+      moderationHidden: true,
+    },
+    responseEligible: false,
+  };
+  const privateDocument: NpAgentIncidentEvidenceItemV1 = {
+    ...structuredClone(filed),
+    eventId: containmentId,
+    target: { ...documentTarget, id: containmentId },
+    current: {
+      ...structuredClone(filed.current!),
+      state: "changed",
+      status: "draft",
+      visibility: "private",
+      editedAt: "2026-09-27T01:00:00.000Z",
+    },
+    responseEligible: false,
+  };
+  let evidenceStatus = 200;
+  const prepared: unknown[] = [];
+  await page.route(`**/api/admin/agents/incidents/${id}`, (route) =>
+    route.fulfill({ json: result }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/evidence*`, (route) =>
+    route.fulfill({
+      status: evidenceStatus,
+      json: evidenceStatus === 200 ? evidencePage([filed, hidden, privateDocument]) : {},
+    }),
+  );
+  await page.route(`**/api/admin/agents/incidents/${id}/response-plan`, (route) => {
+    prepared.push(route.request().postDataJSON());
+    return route.fulfill({ json: { resourceId: id, replayed: false } });
+  });
+  await page.goto(`/admin/agents/incidents/${id}`);
+  const evidence = page.getByRole("region", { name: "Content evidence" });
+  const response = page.getByRole("region", { name: "Response plans" });
+  const rows = evidence.locator("li");
+  await expect(evidence.getByRole("heading", { name: "Current document" })).toHaveCount(3);
+  await expect(evidence.getByRole("heading", { name: "Recorded report" })).toHaveCount(3);
+  await expect(evidence.getByText(/A report is an unverified claim/)).toHaveCount(3);
+  await expect(evidence.getByText(/Spam:|Profanity:/)).toHaveCount(0);
+  await expect(
+    rows.first().getByText(`Document: posts · ${signalId}`, { exact: true }),
+  ).toBeVisible();
+  await expect(rows.first().getByText("Visibility: public", { exact: true })).toHaveCount(2);
+  await expect(rows.first().getByText("Moderation hidden: No", { exact: true })).toBeVisible();
+  await expect(rows.nth(1).getByText("Moderation hidden: Yes", { exact: true })).toBeVisible();
+  await expect(rows.nth(2).getByText("Status: draft", { exact: true })).toBeVisible();
+  await expect(rows.nth(2).getByText("Visibility: private", { exact: true })).toBeVisible();
+  const selects = evidence.getByRole("button", { name: "Select for response plan" });
+  await expect(selects.first()).toBeEnabled();
+  await expect(selects.nth(1)).toBeDisabled();
+  await expect(selects.nth(2)).toBeDisabled();
+  await selects.first().click();
+  await expect(response.getByRole("combobox", { name: "Response target" })).toHaveText(
+    "Quarantine document 2",
+  );
+  expect(prepared).toHaveLength(0);
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))
+      await page.getByRole("button", { name: "Close navigation" }).last().click();
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
+      .toBe(true);
+    await evidence.screenshot({
+      path: testInfo.outputPath(`incident-document-report-evidence-${width}.png`),
+      animations: "disabled",
+    });
+  }
+  await response.getByRole("button", { name: "Prepare response plan" }).click();
+  await expect.poll(() => prepared.length).toBe(1);
+  expect(prepared[0]).toMatchObject({
+    expectedVersion: 1,
+    capabilityId: "moderation.quarantine",
+    proposal: { target: documentTarget, expectedVersionDigest: targetDigest },
+  });
+  await expect(response.getByRole("button", { name: "Prepare response plan" })).toBeDisabled();
+  await selects.first().click();
+  filed.current!.report = { status: "resolved", resolvedAt: "2026-09-27T01:00:00.000Z" };
+  filed.responseEligible = false;
+  await evidence.getByRole("button", { name: "Refresh content evidence" }).click();
+  await expect(rows.first().getByText("Report status: resolved", { exact: true })).toBeVisible();
+  await expect(selects.first()).toBeDisabled();
+  await expect(response.getByRole("button", { name: "Prepare response plan" })).toBeDisabled();
+  filed.current!.report = { status: "unresolved", resolvedAt: null };
+  filed.responseEligible = true;
+  await evidence.getByRole("button", { name: "Refresh content evidence" }).click();
+  await selects.first().click();
+  evidenceStatus = 403;
+  await evidence.getByRole("button", { name: "Refresh content evidence" }).click();
+  await expect(page.getByRole("heading", { name: "Current document" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Prepare response plan" })).toHaveCount(0);
+  expect(prepared).toHaveLength(1);
 });
 
 test("incident evidence failure clears its selection, stale generations require review, and access loss clears detail", async ({
@@ -1015,16 +1158,16 @@ test("incident evidence failure clears its selection, stale generations require 
   await page.goto(`/admin/agents/incidents/${id}`);
   await page.getByRole("button", { name: "Select for response plan" }).click();
   evidenceStatus = 503;
-  await page.getByRole("button", { name: "Refresh comment evidence" }).click();
+  await page.getByRole("button", { name: "Refresh content evidence" }).click();
   await expect(
-    page.getByRole("alert").filter({ hasText: "Comment evidence is unavailable" }),
+    page.getByRole("alert").filter({ hasText: "Content evidence is unavailable" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Repeated links" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Recorded observation" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Prepare response plan" })).toBeDisabled();
   evidenceStatus = 200;
   staleTarget = true;
-  await page.getByRole("button", { name: "Refresh comment evidence" }).click();
+  await page.getByRole("button", { name: "Refresh content evidence" }).click();
   await expect(
     page.getByRole("alert").filter({ hasText: "This incident or its evidence changed" }),
   ).toBeVisible();
@@ -1033,7 +1176,7 @@ test("incident evidence failure clears its selection, stale generations require 
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await page.getByRole("button", { name: "Select for response plan" }).click();
   evidenceVersion = 2;
-  await page.getByRole("button", { name: "Refresh comment evidence" }).click();
+  await page.getByRole("button", { name: "Refresh content evidence" }).click();
   await expect(
     page.getByRole("alert").filter({ hasText: "This incident or its evidence changed" }),
   ).toBeVisible();
@@ -1050,7 +1193,7 @@ test("incident evidence failure clears its selection, stale generations require 
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await page.getByRole("button", { name: "Select for response plan" }).click();
   evidenceStatus = 403;
-  await page.getByRole("button", { name: "Refresh comment evidence" }).click();
+  await page.getByRole("button", { name: "Refresh content evidence" }).click();
   await expect(page.getByRole("heading", { name: "Repeated links" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Current comment" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Prepare response plan" })).toHaveCount(0);
@@ -1446,7 +1589,7 @@ test("incident severity raises from current server choices, retries one identity
   );
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await refresh;
-  await expect(page.getByRole("heading", { name: "Comment evidence", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Content evidence", exact: true })).toHaveCount(1);
   await expect(severity.getByLabel("Severity change note")).toHaveValue(
     "  Human review <script>text</script>  ",
   );
@@ -1471,7 +1614,7 @@ test("incident severity raises from current server choices, retries one identity
   await expect(page.getByText("Human severity change: high → critical")).toBeVisible();
   await expect(page.getByText("Human review <script>text</script>", { exact: true })).toBeVisible();
   await expect(severity.getByText("No severity increases are currently available.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Comment evidence", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Content evidence", exact: true })).toHaveCount(1);
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     if (width < 1024 && (await page.locator('[data-np-admin-sidebar][data-open="true"]').count()))

@@ -64,3 +64,9 @@ export {
   resetCommunityCommentReportObserverV1,
 } from "../community/report-observer.js";
 export type { NpCommunityCommentReportObserverV1 } from "../community/report-observer.js";
+
+export {
+  setCommunityDocumentReportObserverV1,
+  resetCommunityDocumentReportObserverV1,
+} from "../community/document-report-observer.js";
+export type { NpCommunityDocumentReportObserverV1 } from "../community/document-report-observer.js";
