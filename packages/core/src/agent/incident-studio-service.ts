@@ -1,3 +1,4 @@
+import type { NpAgentIncidentMemberReportEvidenceServiceV1 } from "./incident-member-report-evidence-service.js";
 import { NP_INCIDENT_NOTIFICATION_RECOVERY_SCHEMA } from "./incident-notification-recovery.js";
 import { npRequireIncidentSeverityEvidence } from "./incident-severity-evidence.js";
 import {
@@ -55,6 +56,7 @@ export interface NpAgentIncidentStudioServiceV1 {
   assignment: NpAgentIncidentAssignmentServiceV1["get"];
   assign: NpAgentIncidentAssignmentServiceV1["assign"];
   evidence: NpAgentIncidentEvidenceServiceV1["get"];
+  memberReportEvidence?: NpAgentIncidentMemberReportEvidenceServiceV1["get"];
   responsePlan: NpAgentIncidentResponseServiceV1["responsePlan"];
   responseExecute: NpAgentIncidentResponseServiceV1["responseExecute"];
   restore: NpAgentIncidentResponseServiceV1["restore"];
@@ -78,6 +80,7 @@ export interface NpAgentIncidentStudioServiceOptionsV1 {
   workflow?: NpAgentIncidentWorkflowServiceV1;
   response?: NpAgentIncidentResponseServiceV1;
   evidence?: NpAgentIncidentEvidenceServiceV1;
+  memberReportEvidence?: NpAgentIncidentMemberReportEvidenceServiceV1;
   assignment?: NpAgentIncidentAssignmentServiceV1;
   notifications?: NpAgentIncidentNotificationsServiceV1;
   activity?: NpAgentActivityServiceV1;
@@ -426,7 +429,11 @@ export function createAgentIncidentStudioServiceV1(
           .limit(100)
       : [];
     let response = null;
-    if (options.response) {
+    const memberReports =
+      incident.primarySubject?.kind === "member" &&
+      signals.length > 0 &&
+      signals.every((signal) => signal.detectorId === "moderator.member-report-review");
+    if (options.response && !memberReports) {
       try {
         response = await options.response.get(input);
       } catch (error) {
@@ -518,6 +525,15 @@ export function createAgentIncidentStudioServiceV1(
           "Incident assignment is unavailable.",
         );
       return options.assignment.assign(input);
+    },
+    memberReportEvidence: (input) => {
+      if (!options.memberReportEvidence)
+        throw new NpAgentGatewayError(
+          "INCIDENT_EVIDENCE_UNAVAILABLE",
+          503,
+          "Member report evidence is unavailable.",
+        );
+      return options.memberReportEvidence.get(input);
     },
     evidence: (input) => {
       if (!options.evidence)

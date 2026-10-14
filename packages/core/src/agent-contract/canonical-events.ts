@@ -272,6 +272,19 @@ function parseEventPayload(
       currentRole: parseCanonicalAscii(record.currentRole, `${path}.currentRole`, 96),
     };
   }
+  if (kind === "community.member.reported") {
+    const record = payloadRecord(value, path, ["kind", "memberId", "memberStatus", "claim"], state);
+    return {
+      kind,
+      memberId: parseCanonicalUuid(record.memberId, `${path}.memberId`),
+      memberStatus: canonicalBodyEnum(
+        record.memberStatus,
+        `${path}.memberStatus`,
+        new Set(["active"] as const),
+      ),
+      claim: canonicalBodyEnum(record.claim, `${path}.claim`, new Set(["unverified"] as const)),
+    };
+  }
   if (kind.startsWith("community.content.")) {
     const record = payloadRecord(
       value,

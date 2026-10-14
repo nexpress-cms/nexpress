@@ -83,6 +83,8 @@ function payload(kind: NpAgentEventKind): NpAgentEventPayload {
         verdictCode: kind === "community.content.created" ? null : "REVIEWED",
         status: "visible",
       };
+    case "community.member.reported":
+      return { kind, memberId: uuidA, memberStatus: "active", claim: "unverified" };
     case "content.document.changed":
     case "content.document.published":
       return {
@@ -198,8 +200,8 @@ function expectIssue(result: NpAgentContractResult<unknown>, code: string, path:
 }
 
 describe("Agent event and signal-evidence canonical bodies", () => {
-  it("publishes the closed 21-kind inventory and exact field fixtures", () => {
-    expect(npAgentEventKinds).toHaveLength(21);
+  it("publishes the closed 22-kind inventory and exact field fixtures", () => {
+    expect(npAgentEventKinds).toHaveLength(22);
     expect(new Set(npAgentEventKinds).size).toBe(npAgentEventKinds.length);
     expect(npAgentEventCanonicalIncludedKeysV1).toHaveLength(12);
     expect(npAgentSignalEvidenceCanonicalIncludedKeysV1).toHaveLength(8);

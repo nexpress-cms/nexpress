@@ -1093,6 +1093,12 @@ export type NpAgentEventPayload =
       status: "visible" | "pending" | "quarantined" | "hidden" | "deleted";
     }
   | {
+      kind: "community.member.reported";
+      memberId: string;
+      memberStatus: "active";
+      claim: "unverified";
+    }
+  | {
       kind: "content.document.changed" | "content.document.published";
       collection: string;
       documentId: string;
@@ -1163,6 +1169,7 @@ export const npAgentEventKinds = [
   "community.content.created",
   "community.content.moderated",
   "community.content.reported",
+  "community.member.reported",
   "content.document.changed",
   "content.document.published",
   "jobs.backlog.threshold",

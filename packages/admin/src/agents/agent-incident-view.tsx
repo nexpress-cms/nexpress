@@ -252,9 +252,11 @@ function IncidentDetail({ id }: { id: string }) {
   } | null>(null);
   const clearEvidenceSelection = React.useCallback(() => {
     setResponseSelection((selection) =>
-      selection?.fromEvidence ? { ...selection, index: "", fromEvidence: false } : selection,
+      selection && (detail?.incident.primarySubject?.kind === "member" || selection.fromEvidence)
+        ? { ...selection, index: "", fromEvidence: false }
+        : selection,
     );
-  }, []);
+  }, [detail?.incident.primarySubject?.kind]);
   const clearDetail = state.clear;
   const evidenceAccessLost = React.useCallback(
     (error: unknown) => {
@@ -333,23 +335,34 @@ function IncidentDetail({ id }: { id: string }) {
               <p>No visible signals.</p>
             ) : (
               <ul className="space-y-2">
-                {detail.signals.map((signal) => (
-                  <li key={signal.id} className="rounded-lg border p-3 text-sm">
-                    <p>
-                      {signal.category} · Detector {signal.detectorId} · Version{" "}
-                      {signal.detectorVersion}
-                    </p>
-                    <p>Deterministic confidence basis: {signal.confidenceBasis}</p>
-                    <p>
-                      Deterministic score:{" "}
-                      {signal.scoreBasisPoints === null
-                        ? "Unknown"
-                        : `${signal.scoreBasisPoints} basis points`}
-                    </p>
-                    <p>Signal {signal.id}</p>
-                    <time dateTime={signal.createdAt}>{signal.createdAt}</time>
-                  </li>
-                ))}
+                {detail.signals.map((signal) => {
+                  const memberReport = signal.detectorId === "moderator.member-report-review";
+                  return (
+                    <li key={signal.id} className="break-words rounded-lg border p-3 text-sm">
+                      <p>
+                        {signal.category} · Detector {signal.detectorId} · Version{" "}
+                        {signal.detectorVersion}
+                      </p>
+                      <p>
+                        {memberReport ? "Report evidence basis" : "Deterministic confidence basis"}:{" "}
+                        {signal.confidenceBasis}
+                      </p>
+                      <p>
+                        {memberReport ? "Abuse assessment score" : "Deterministic score"}:{" "}
+                        {signal.scoreBasisPoints === null
+                          ? memberReport
+                            ? "Not assessed"
+                            : "Unknown"
+                          : `${signal.scoreBasisPoints} basis points`}
+                      </p>
+                      {memberReport ? (
+                        <p>A filed report is an unverified claim requiring human review.</p>
+                      ) : null}
+                      <p>Signal {signal.id}</p>
+                      <time dateTime={signal.createdAt}>{signal.createdAt}</time>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </section>
@@ -377,31 +390,35 @@ function IncidentDetail({ id }: { id: string }) {
               onConflict={assignmentConflict}
             />
           ) : null}
-          <IncidentResponse
-            detail={detail}
-            choiceIndex={
-              responseSelection === null
-                ? "0"
-                : responseSelection.detail === detail
-                  ? responseSelection.index
-                  : ""
-            }
-            onChoiceChange={(index) => setResponseSelection({ detail, index, fromEvidence: false })}
-            disabled={writing || state.loading}
-            onWriting={setWriting}
-            onSuccess={() => {
-              setCursor(null);
-              state.reload();
-            }}
-            onAccessLost={(error) =>
-              state.clear("This incident is unavailable or you no longer have access.", error)
-            }
-            onConflict={() =>
-              state.clear(
-                "This response plan or its target changed. Reload and review the current evidence before preparing or executing a response.",
-              )
-            }
-          />
+          {detail.incident.primarySubject?.kind !== "member" ? (
+            <IncidentResponse
+              detail={detail}
+              choiceIndex={
+                responseSelection === null
+                  ? "0"
+                  : responseSelection.detail === detail
+                    ? responseSelection.index
+                    : ""
+              }
+              onChoiceChange={(index) =>
+                setResponseSelection({ detail, index, fromEvidence: false })
+              }
+              disabled={writing || state.loading}
+              onWriting={setWriting}
+              onSuccess={() => {
+                setCursor(null);
+                state.reload();
+              }}
+              onAccessLost={(error) =>
+                state.clear("This incident is unavailable or you no longer have access.", error)
+              }
+              onConflict={() =>
+                state.clear(
+                  "This response plan or its target changed. Reload and review the current evidence before preparing or executing a response.",
+                )
+              }
+            />
+          ) : null}
           <IncidentSeverity
             key={`${detail.incident.id}:${detail.incident.versionNumber}`}
             detail={detail}

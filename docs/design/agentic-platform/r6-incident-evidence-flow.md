@@ -69,8 +69,10 @@ This slice supports the installed canonical comment observation source. The
 subsequent [comment report flow](r6-incident-comment-report-flow.md) extends the
 same owner with actual filing evidence and separate current resolution facts.
 The [document report flow](r6-incident-document-report-flow.md) extends current
-document evidence and existing staff response. Member report evidence, model
-assessments, notifications and other recipe/evaluation gates remain separate.
+document evidence and existing staff response. The separate
+[member report review flow](r6-incident-member-report-flow.md) connects unverified
+member claims to current global account/site-report facts without response
+authority. Model assessments and other recipe/evaluation gates remain separate.
 Explicit Agent designation is covered by the subsequent
 [assignment flow](r6-incident-assignment-flow.md). Existing approval, execution
 and retention owners keep their semantics. Versions, changesets, lockfile and schema remain unchanged.

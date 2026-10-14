@@ -35,6 +35,7 @@ import { getCurrentSiteId, requireSiteId } from "../sites/context.js";
 import { NP_DEFAULT_SITE_ID } from "../sites/registry.js";
 
 import { recordAuditEvent } from "./audit.js";
+import { npWriteObservedMemberReportV1 } from "./member-report-observer.js";
 import { npWriteObservedDocumentReportV1 } from "./document-report-observer.js";
 import { npWriteObservedCommentReportV1 } from "./report-observer.js";
 import { memberCapabilities, withMemberWrite } from "./can.js";
@@ -261,9 +262,11 @@ async function doFileReport(input: FileReportInput): Promise<NpReportRow> {
     throw new NpForbiddenError("report", "cross-site");
   }
   const writeObservedReport =
-    input.targetType === "comment"
-      ? npWriteObservedCommentReportV1
-      : npWriteObservedDocumentReportV1;
+    input.targetType === "member"
+      ? npWriteObservedMemberReportV1
+      : input.targetType === "comment"
+        ? npWriteObservedCommentReportV1
+        : npWriteObservedDocumentReportV1;
   const checkedRow = await writeObservedReport({
     siteId,
     targetType: input.targetType,

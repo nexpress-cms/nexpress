@@ -9,20 +9,31 @@ import { AgentStudioApiError } from "./agent-studio-api.js";
 import { runtimeAccessLost, useRuntimeResource } from "./agent-runtime-api.js";
 import { AgentRecoveryBoundary } from "./agent-recovery.js";
 import { Button } from "../ui/button.js";
+import { IncidentMemberReportEvidence } from "./agent-incident-member-report-evidence.js";
 
-export function IncidentEvidence({
-  detail,
-  onSelect,
-  onClearSelection,
-  onAccessLost,
-  onConflict,
-}: {
+interface IncidentEvidenceProps {
   detail: NpAgentIncidentStudioDetailV1;
   onSelect: (index: string) => void;
   onClearSelection: () => void;
   onAccessLost: (error: unknown) => void;
   onConflict: () => void;
-}) {
+}
+
+export function IncidentEvidence(props: IncidentEvidenceProps) {
+  return props.detail.incident.primarySubject?.kind === "member" ? (
+    <IncidentMemberReportEvidence {...props} />
+  ) : (
+    <IncidentContentEvidence {...props} />
+  );
+}
+
+function IncidentContentEvidence({
+  detail,
+  onSelect,
+  onClearSelection,
+  onAccessLost,
+  onConflict,
+}: IncidentEvidenceProps) {
   const [cursor, setCursor] = React.useState<string | null>(null);
   const path = `/api/admin/agents/incidents/${encodeURIComponent(detail.incident.id)}/evidence${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`;
   const state = useRuntimeResource(path, npRequireAgentIncidentEvidenceV1);

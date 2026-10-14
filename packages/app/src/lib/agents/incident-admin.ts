@@ -5,6 +5,7 @@ import {
   npRequireAgentIncidentListOutputV1,
   npRequireAgentIncidentStudioDetailV1,
   npRequireAgentIncidentEvidenceV1,
+  npRequireAgentIncidentMemberReportEvidenceV1,
   npRequireAgentIncidentNotificationsV1,
   npRequireAgentIncidentAssignmentV1,
   npRequireAgentIncidentAssignmentInputV1,
@@ -65,6 +66,7 @@ export async function handleAgentIncidentAdminRequest(
     | "notifications"
     | "detail"
     | "evidence"
+    | "member-report-evidence"
     | "assignment"
     | "assign"
     | "feedback"
@@ -75,9 +77,14 @@ export async function handleAgentIncidentAdminRequest(
     | "restore",
   id?: string,
 ): Promise<Response> {
-  const mutation = !["list", "detail", "evidence", "assignment", "notifications"].includes(
-    operation,
-  );
+  const mutation = ![
+    "list",
+    "detail",
+    "evidence",
+    "member-report-evidence",
+    "assignment",
+    "notifications",
+  ].includes(operation);
   const headers = {
     "cache-control": "private, no-store",
     "referrer-policy": "no-referrer",
@@ -115,6 +122,16 @@ export async function handleAgentIncidentAdminRequest(
         if (assignment.incidentId !== incidentId)
           throw new Error("Incident assignment response binding is invalid.");
         result = assignment;
+      } else if (operation === "member-report-evidence") {
+        const cursor = query(request, true).cursor;
+        if (!service.memberReportEvidence)
+          throw new NpServiceUnavailableError("Member report evidence is unavailable.");
+        const evidence = npRequireAgentIncidentMemberReportEvidenceV1(
+          await service.memberReportEvidence({ ...staff, incidentId, cursor }),
+        );
+        if (evidence.incidentId !== incidentId)
+          throw new Error("Member report evidence response binding is invalid.");
+        result = evidence;
       } else if (operation === "evidence") {
         const evidence = npRequireAgentIncidentEvidenceV1(
           await service.evidence({ ...staff, incidentId, cursor: query(request, true).cursor }),

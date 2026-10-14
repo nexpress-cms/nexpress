@@ -477,6 +477,13 @@
       "when": 1790685702428,
       "tag": "0067_agent-operator-execution-reference-lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1791977590435,
+      "tag": "0068_tricky_rhodey",
+      "breakpoints": true
     }
   ]
 }
