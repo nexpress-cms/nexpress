@@ -78,7 +78,9 @@ The subsequent [Moderator report recipe flow](r6-moderator-report-recipe-flow.md
 connects these retained facts to the existing recipe's current-evidence and
 human approval checks without turning reports into classifier verdicts.
 
-Document/member report collectors, general document evidence, classifier/model
+The [document report evidence flow](r6-incident-document-report-flow.md) subsequently
+adds document filing, current evidence and staff response through the same owners.
+Member report collectors, document Runtime recipe sources, classifier/model
 assessments, automatic moderation, external notification delivery and full R6
 evaluation remain separate. Existing approval, capability, policy, retention and
 execution semantics are preserved. Versions, changesets, lockfile and schema are

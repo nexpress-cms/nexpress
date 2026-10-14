@@ -556,6 +556,45 @@ describe("Incident evidence HTTP boundary", () => {
       expect(await rejected.text()).not.toMatch(/private-reporter|private-report-reason/);
     }
   });
+  it("returns actual document state through the same metadata-only evidence route", async () => {
+    const item = {
+      eventId: id,
+      signalIds: [id],
+      availability: "available",
+      target: { kind: "document", collection: "discussions", id },
+      observed: {
+        occurredAt: "2026-10-01T00:00:00.000Z",
+        retentionExpiresAt: "2026-10-02T00:00:00.000Z",
+        status: "published",
+        visibility: "public",
+        spamVerdict: "unknown",
+        profanityVerdict: "unknown",
+        reportFiled: true,
+      },
+      current: {
+        state: "hidden",
+        status: "pending",
+        visibility: "public",
+        moderationHidden: true,
+        editedAt: "2026-10-01T01:00:00.000Z",
+        versionDigest: `cj1:sha256:${"a".repeat(43)}`,
+        report: { status: "unresolved", resolvedAt: null },
+      },
+      responseEligible: false,
+    };
+    mocks.evidence.mockResolvedValue({ ...evidence, items: [item] });
+    const response = await handleAgentIncidentAdminRequest(request(), "evidence", id);
+    expect(response.status).toBe(200);
+    expect(npRequireAgentIncidentEvidenceV1(await response.json()).items[0]).toEqual(item);
+    expect(mocks.evidence).toHaveBeenCalledWith({ ...staff, incidentId: id, cursor: null });
+    mocks.evidence.mockResolvedValue({
+      ...evidence,
+      items: [{ ...item, current: { ...item.current, body: "private-document-body" } }],
+    });
+    const denied = await handleAgentIncidentAdminRequest(request(), "evidence", id);
+    expect(denied.status).toBe(500);
+    expect(await denied.text()).not.toContain("private-document-body");
+  });
   it("decodes only a bounded cursor and returns the exact Incident-bound projection", async () => {
     mocks.evidence.mockResolvedValue(evidence);
     const response = await handleAgentIncidentAdminRequest(

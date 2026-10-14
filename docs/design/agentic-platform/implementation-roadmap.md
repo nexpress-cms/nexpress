@@ -684,7 +684,10 @@ unknown execution outcomes and recipe/evaluation gates stay open.
 The [comment report evidence flow](r6-incident-comment-report-flow.md) adds actual
 transactional filing observations, bounded advisory collection and current-ACL
 review/response selection. Report claims do not establish classifier verdicts or
-automatic moderation readiness; document/member report sources remain open.
+automatic moderation readiness. The [document report evidence flow](r6-incident-document-report-flow.md)
+adds actual document filing observations, current Studio review and existing staff
+human approval quarantine/restore; member report sources and document Runtime
+recipe evaluation remain open.
 
 The [Operator diagnostics and planning flow](r6-operator-diagnostics-flow.md)
 records the explicitly installed status, bounded audit and plan-only artifact

@@ -26,7 +26,7 @@ const page = {
   items: [item],
   nextCursor: null,
 };
-describe("Incident comment evidence projection", () => {
+describe("Incident content evidence projection", () => {
   it("separates a filed report from classifier verdicts and current resolution", () => {
     const reported = {
       ...item,
@@ -71,6 +71,69 @@ describe("Incident comment evidence projection", () => {
       npRequireAgentIncidentEvidenceV1({
         ...page,
         items: [{ ...item, current: reported.current }],
+      }),
+    ).toThrow();
+  });
+  it("requires actual document publication, visibility and hidden state without exposing document content", () => {
+    const document = {
+      ...item,
+      target: { kind: "document", collection: "discussions", id },
+      observed: {
+        ...item.observed,
+        status: "published",
+        visibility: "public",
+        spamVerdict: "unknown",
+        profanityVerdict: "unknown",
+        reportFiled: true,
+      },
+      current: {
+        ...item.current,
+        status: "published",
+        visibility: "public",
+        moderationHidden: false,
+        editedAt: "2026-09-01T00:00:00.000Z",
+        report: { status: "unresolved", resolvedAt: null },
+      },
+    };
+    expect(npRequireAgentIncidentEvidenceV1({ ...page, items: [document] }).items[0]).toEqual(
+      document,
+    );
+    for (const current of [
+      { ...document.current, state: "changed", status: "pending", visibility: "private" },
+      { ...document.current, state: "hidden", status: "pending", moderationHidden: true },
+      {
+        ...document.current,
+        report: { status: "resolved", resolvedAt: "2026-09-02T00:00:00.000Z" },
+      },
+    ])
+      expect(
+        npRequireAgentIncidentEvidenceV1({
+          ...page,
+          items: [{ ...document, current, responseEligible: false }],
+        }).items[0].current,
+      ).toEqual(current);
+    for (const changed of [
+      { observed: { ...document.observed, visibility: "private" } },
+      { observed: { ...document.observed, status: "pending" } },
+      { observed: { ...document.observed, reportFiled: undefined } },
+      { current: { ...document.current, moderationHidden: undefined } },
+      { current: { ...document.current, visibility: "private" } },
+      {
+        current: { ...document.current, state: "hidden", moderationHidden: false },
+        responseEligible: false,
+      },
+      { current: { ...document.current, state: "deleted" }, responseEligible: false },
+      { current: { ...document.current, state: "changed", status: "pending" } },
+      { current: { ...document.current, memberAuthorId: signalId } },
+      { observed: { ...document.observed, body: "private document body" } },
+    ])
+      expect(() =>
+        npRequireAgentIncidentEvidenceV1({ ...page, items: [{ ...document, ...changed }] }),
+      ).toThrow();
+    expect(() =>
+      npRequireAgentIncidentEvidenceV1({
+        ...page,
+        items: [{ ...item, observed: { ...item.observed, visibility: "public" } }],
       }),
     ).toThrow();
   });

@@ -34,6 +34,12 @@ import {
 } from "./admin-admission.js";
 import { createAgentCursorCodecV1 } from "./cursor.js";
 import { npInspectAgentModeratorCommentReportSourceV1 } from "./moderator-report-source.js";
+import { npInspectAgentModeratorDocumentReportSourceV1 } from "./moderator-document-report-source.js";
+import {
+  npCollectionDocumentStatuses,
+  npCollectionDocumentVisibilities,
+} from "../collection-contract/types.js";
+import { canonicalBodyEnum } from "../agent-contract/canonical-body-validation.js";
 
 type Db = ReturnType<typeof getDb>;
 type Facts = {
@@ -189,6 +195,84 @@ export function createAgentIncidentEvidenceServiceV1(options: {
       checked = await npReadAgentModeratorCommentSourceV1(source);
     } catch {
       return missing;
+    }
+    if (!checked && source.sourceComponent === "community.document-reports") {
+      let inspected;
+      try {
+        inspected = await npInspectAgentModeratorDocumentReportSourceV1(db, source, facts.user);
+      } catch (error) {
+        if (
+          error instanceof NpForbiddenError ||
+          error instanceof NpNotFoundError ||
+          error instanceof NpValidationError
+        )
+          return missing;
+        throw error;
+      }
+      if (!inspected) return missing;
+      const { event } = inspected.source;
+      const hexDigest = Buffer.from(
+        source.eventHash.slice("cj1:sha256:".length),
+        "base64url",
+      ).toString("hex");
+      if (
+        group.refs.some(
+          (ref) =>
+            ref.digest !== hexDigest ||
+            ref.eventKind !== event.kind ||
+            ref.observedAt !== event.occurredAt,
+        )
+      )
+        return missing;
+      const { document, config, report } = inspected;
+      const hiddenField = config.community?.moderation?.hiddenField;
+      const moderationHidden = hiddenField ? document[hiddenField] : undefined;
+      if (typeof moderationHidden !== "boolean") return missing;
+      const state = moderationHidden ? "hidden" : inspected.unchanged ? "unchanged" : "changed";
+      return {
+        eventId: group.eventId,
+        signalIds: group.signalIds,
+        availability: "available",
+        target: {
+          kind: "document",
+          collection: event.subject.collection,
+          id: event.subject.documentId,
+        },
+        observed: {
+          occurredAt: event.occurredAt,
+          retentionExpiresAt: source.expiresAt.toISOString(),
+          status: "published",
+          visibility: "public",
+          spamVerdict: "unknown",
+          profanityVerdict: "unknown",
+          reportFiled: true,
+        },
+        current: {
+          state,
+          status: canonicalBodyEnum(
+            document.status,
+            "evidence.document.status",
+            new Set(npCollectionDocumentStatuses),
+          ),
+          visibility: canonicalBodyEnum(
+            document.visibility,
+            "evidence.document.visibility",
+            new Set(npCollectionDocumentVisibilities),
+          ),
+          moderationHidden,
+          editedAt: document.updatedAt instanceof Date ? document.updatedAt.toISOString() : null,
+          versionDigest: inspected.versionDigest,
+          report: {
+            status: report.resolvedAt === null ? "unresolved" : "resolved",
+            resolvedAt: report.resolvedAt?.toISOString() ?? null,
+          },
+        },
+        responseEligible:
+          state === "unchanged" &&
+          inspected.eligible &&
+          report.resolvedAt === null &&
+          !["resolved", "dismissed"].includes(facts.incident.status),
+      };
     }
     if (!checked) {
       let inspected;
@@ -347,7 +431,7 @@ export function createAgentIncidentEvidenceServiceV1(options: {
           incident.siteId !== context.siteId
         )
           return false;
-        // Every canonical comment observation or report must be readable; unknown subjects/refs are never skipped.
+        // Every canonical content observation or report must be readable; unknown subjects/refs are never skipped.
         if (
           incident.primarySubject !== null ||
           !signals.length ||
