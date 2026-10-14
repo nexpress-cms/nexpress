@@ -10,7 +10,7 @@ installation. Both the server page and processing endpoint require current
 
 Choose Moderator detector, Moderator proposal, Operator plan or Publisher. Import
 an evaluation artifact and optionally its current review, a baseline evaluation
-and the baseline's review. The supported datasets are `moderator.v1`, `moderator.v2`,
+and the baseline's review. The supported datasets are `moderator.v1`, `moderator.v2`, `moderator.v3`,
 `moderator-proposal.v1`, `moderator-proposal.v2`, `moderator-proposal.v3`,
 `operator-plan.v1` and `publisher.v1`. The older
 `operator.v1` diagnosis artifact is outside the existing recipe report/review
@@ -38,6 +38,11 @@ The [report/mixed detector replay](r6-moderator-evaluation-flow.md#report-and-mi
 uses actual detector predictions with paired unknown report verdicts. Detector
 V1/V2 baselines remain incompatible (`INCOMPATIBLE_SUITE`); no cross-version
 cohort or regression delta is inferred.
+
+The [document/comment detector corpus](r6-moderator-content-evaluation-flow.md)
+adds exact v3 source/review import, labels and exports under the same Moderator
+detector controls. Its mixed facts retain both target kinds, unknown report
+verdicts and actual author independence; earlier corpora remain incompatible.
 
 Moderator detector cases use confirmed-spam/false-positive labels. The other
 three owners use accept/edit/reject, including parsed Moderator abstentions.

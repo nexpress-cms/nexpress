@@ -732,7 +732,12 @@ establish real-model usefulness or automatic-quarantine readiness.
 The [content proposal evaluation flow](r6-moderator-content-proposal-evaluation-flow.md)
 adds separately versioned document/comment candidates and their exact offline
 selection, abstention, review and comparison while preserving both earlier suites.
-Document detector benchmarks and live-model quality remain open.
+The [content detector evaluation flow](r6-moderator-content-evaluation-flow.md)
+adds a separate 32-case bilingual document/comment replay corpus with actual
+threshold, author independence, target-kind deduplication and newest-fact checks.
+It preserves both earlier detector artifacts and keeps CLI/Workbench/report
+feedback bound to exact predictions. Member sources, production precision,
+longitudinal comparison and live-model quality remain open.
 The [Operator diagnosis and plan evaluation review flow](r6-operator-plan-evaluation-flow.md)
 adds bilingual synthetic diagnosis statements, exact requested queue-plan input
 checks and offline accept/edit/reject review with matched-cohort comparison.

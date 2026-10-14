@@ -242,7 +242,11 @@ export function npRequireAgentEvaluationWorkbenchResultV1(
       fail();
     const artifact: unknown = JSON.parse(json(r.reviewArtifactJson));
     const reviewVersions = {
-      moderator: ["np.agent-moderator-eval-review.v1", "np.agent-moderator-eval-review.v2"],
+      moderator: [
+        "np.agent-moderator-eval-review.v1",
+        "np.agent-moderator-eval-review.v2",
+        "np.agent-moderator-eval-review.v3",
+      ],
       "moderator-proposal": ["np.agent-moderator-proposal-eval-review.v1"],
       operator: ["np.agent-operator-plan-eval-review.v1"],
       publisher: ["np.agent-eval-review.v1"],

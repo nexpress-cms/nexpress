@@ -1343,6 +1343,13 @@ nor self-reported feedback constitute production precision or authorization.
 The fixed installed-version verifier does not accept historical changed detector
 predictions; longitudinal model/detector comparison remains open.
 
+The [document/comment detector extension](r6-moderator-content-evaluation-flow.md)
+adds `moderator.v3`: 32 bilingual cases through the same actual v1 detector,
+including mixed thresholds, target-kind separation, duplicate filing/observation
+facts, author independence and newest edits/rejections. V1/V2 hashes remain
+unchanged. The fixed independent oracle, synthetic legitimate false positives
+and exact offline review/report bindings do not establish production quality.
+
 The [Moderator recipe response evaluation](r6-moderator-proposal-evaluation-flow.md)
 adds sixteen bilingual `moderator-proposal.v1` synthetic metadata cases through the
 actual recipe instruction/schema. Exact candidate selection and required abstention

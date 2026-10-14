@@ -13,6 +13,9 @@ import {
   npAgentModeratorEvaluationArtifactMaxBytesV1,
   type NpAgentModeratorEvaluationArtifactV1,
   type NpAgentModeratorEvaluationArtifactV2,
+  type NpAgentModeratorEvaluationArtifactV3,
+  type NpAgentModeratorEvaluationCaseV3,
+  type NpAgentModeratorEvaluationCaseResultV3,
   type NpAgentModeratorEvaluationArtifact,
   type NpAgentModeratorEvaluationCaseV2,
   type NpAgentModeratorEvaluationCaseResultV2,
@@ -25,6 +28,7 @@ import type {
   NpAgentModeratorEvaluationReviewArtifactV1,
   NpAgentModeratorEvaluationReviewArtifact,
   NpAgentModeratorEvaluationReviewEntryV2,
+  NpAgentModeratorEvaluationReviewEntryV3,
   NpAgentModeratorEvaluationReviewComparisonV1,
   NpAgentModeratorEvaluationReviewEntryV1,
   NpAgentModeratorEvaluationReviewSummaryV1,
@@ -33,6 +37,7 @@ import { npDetectAgentRepeatedLinkSpamV1 } from "./moderator-detector.js";
 import {
   createAgentModeratorEvaluationCasesV1,
   createAgentModeratorEvaluationCasesV2,
+  createAgentModeratorEvaluationCasesV3,
 } from "./moderator-evaluation-fixtures.js";
 
 const path = "agent.moderatorEvaluation";
@@ -51,8 +56,16 @@ const rate = (numerator: number, denominator: number) =>
   denominator === 0 ? null : Math.round((numerator * 10_000) / denominator);
 
 function summarize(
-  cases: (NpAgentModeratorEvaluationCaseV1 | NpAgentModeratorEvaluationCaseV2)[],
-  results: (NpAgentModeratorEvaluationCaseResultV1 | NpAgentModeratorEvaluationCaseResultV2)[],
+  cases: (
+    | NpAgentModeratorEvaluationCaseV1
+    | NpAgentModeratorEvaluationCaseV2
+    | NpAgentModeratorEvaluationCaseV3
+  )[],
+  results: (
+    | NpAgentModeratorEvaluationCaseResultV1
+    | NpAgentModeratorEvaluationCaseResultV2
+    | NpAgentModeratorEvaluationCaseResultV3
+  )[],
 ): NpAgentModeratorEvaluationSummaryV1 {
   let truePositive = 0,
     falsePositive = 0,
@@ -183,6 +196,52 @@ export async function runAgentModeratorEvaluationV2(): Promise<NpAgentModeratorE
   return artifact;
 }
 
+export async function runAgentModeratorEvaluationV3(): Promise<NpAgentModeratorEvaluationArtifactV3> {
+  const cases = await createAgentModeratorEvaluationCasesV3();
+  const caseResults: NpAgentModeratorEvaluationCaseResultV3[] = [];
+  for (const fixture of cases) {
+    const signals = (
+      await npDetectAgentRepeatedLinkSpamV1({
+        siteId: fixture.siteId,
+        windowStartedAt: fixture.windowStartedAt,
+        settings: fixture.settings,
+        facts: fixture.observations.map((o) => o.fact),
+      })
+    ).map(npRequireAgentModeratorSignalCandidateV1);
+    caseResults.push({
+      caseId: fixture.id,
+      caseVersion: fixture.caseVersion,
+      caseHash: await npDigestAgentEvaluationValueV1(fixture),
+      predictionHash: await npDigestAgentEvaluationValueV1(signals),
+      signals,
+      expectedSignalsMatched: equal(
+        signals.map((s) => s.domainHash).sort(),
+        fixture.expectedDomainHashes,
+      ),
+    });
+  }
+  const byLocale = (locale: "en" | "ko") =>
+    summarize(
+      cases.filter((c) => c.locale === locale),
+      caseResults.filter((_, i) => cases[i].locale === locale),
+    );
+  const body = {
+    schemaVersion: "np.agent-moderator-eval.v3" as const,
+    dataset: "moderator.v3" as const,
+    mode: "deterministic-offline" as const,
+    authority: "advisory-no-activation" as const,
+    suiteHash: await npDigestAgentEvaluationValueV1(cases),
+    cases,
+    caseResults,
+    summary: summarize(cases, caseResults),
+    byLocale: { en: byLocale("en"), ko: byLocale("ko") },
+    ok: caseResults.every((r) => r.expectedSignalsMatched),
+  };
+  const artifact = { ...body, artifactHash: await npDigestAgentEvaluationValueV1(body) };
+  clone(artifact);
+  return artifact;
+}
+
 /** Replays the fixed versioned suite independently; caller-authored expectations are never trusted. */
 export async function npRequireAgentModeratorEvaluationArtifactV1(
   value: unknown,
@@ -204,7 +263,9 @@ export async function npRequireAgentModeratorEvaluationArtifact(
       ? await runAgentModeratorEvaluationV1()
       : schema === "np.agent-moderator-eval.v2"
         ? await runAgentModeratorEvaluationV2()
-        : fail();
+        : schema === "np.agent-moderator-eval.v3"
+          ? await runAgentModeratorEvaluationV3()
+          : fail();
   if (!equal(input, actual)) fail();
   return actual;
 }
@@ -240,7 +301,11 @@ const boundedText = (value: unknown, maximum: number, required = false): string 
   return value as string;
 };
 function reviewSummary(
-  entries: (NpAgentModeratorEvaluationReviewEntryV1 | NpAgentModeratorEvaluationReviewEntryV2)[],
+  entries: (
+    | NpAgentModeratorEvaluationReviewEntryV1
+    | NpAgentModeratorEvaluationReviewEntryV2
+    | NpAgentModeratorEvaluationReviewEntryV3
+  )[],
 ): NpAgentModeratorEvaluationReviewSummaryV1 {
   const eligible = entries.filter((e) => e.eligible).length;
   const confirmedSpam = entries.filter((e) => e.review?.label === "confirmed-spam").length;
@@ -267,7 +332,9 @@ export async function npBuildAgentModeratorEvaluationReviewArtifact(
   const labels = clone(labelsValue);
   if (!Array.isArray(labels) || labels.length > source.cases.length) fail();
   const entries: (
-    NpAgentModeratorEvaluationReviewEntryV1 | NpAgentModeratorEvaluationReviewEntryV2
+    | NpAgentModeratorEvaluationReviewEntryV1
+    | NpAgentModeratorEvaluationReviewEntryV2
+    | NpAgentModeratorEvaluationReviewEntryV3
   )[] = source.caseResults.map((r) => ({
     caseId: r.caseId,
     caseVersion: r.caseVersion,
@@ -328,17 +395,29 @@ export async function npBuildAgentModeratorEvaluationReviewArtifact(
           ),
           summary: body.summary,
         }
-      : {
-          schemaVersion: "np.agent-moderator-eval-review.v2" as const,
-          authority: body.authority,
-          source,
-          sourceHash: body.sourceHash,
-          labels: body.labels,
-          entries: entries.filter(
-            (e): e is NpAgentModeratorEvaluationReviewEntryV2 => e.caseVersion === 2,
-          ),
-          summary: body.summary,
-        };
+      : source.schemaVersion === "np.agent-moderator-eval.v2"
+        ? {
+            schemaVersion: "np.agent-moderator-eval-review.v2" as const,
+            authority: body.authority,
+            source,
+            sourceHash: body.sourceHash,
+            labels: body.labels,
+            entries: entries.filter(
+              (e): e is NpAgentModeratorEvaluationReviewEntryV2 => e.caseVersion === 2,
+            ),
+            summary: body.summary,
+          }
+        : {
+            schemaVersion: "np.agent-moderator-eval-review.v3" as const,
+            authority: body.authority,
+            source,
+            sourceHash: body.sourceHash,
+            labels: body.labels,
+            entries: entries.filter(
+              (e): e is NpAgentModeratorEvaluationReviewEntryV3 => e.caseVersion === 3,
+            ),
+            summary: body.summary,
+          };
   const artifact = {
     ...versionedBody,
     artifactHash: await npDigestAgentEvaluationValueV1(versionedBody),
@@ -364,7 +443,10 @@ export async function npRequireAgentModeratorEvaluationReviewArtifact(
   return actual;
 }
 const caseKey = (
-  entry: NpAgentModeratorEvaluationReviewEntryV1 | NpAgentModeratorEvaluationReviewEntryV2,
+  entry:
+    | NpAgentModeratorEvaluationReviewEntryV1
+    | NpAgentModeratorEvaluationReviewEntryV2
+    | NpAgentModeratorEvaluationReviewEntryV3,
 ) => `${entry.caseId}@${entry.caseVersion}`;
 export async function npCompareAgentModeratorEvaluationReviewArtifacts(
   currentValue: unknown,

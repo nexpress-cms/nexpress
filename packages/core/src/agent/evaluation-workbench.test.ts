@@ -324,7 +324,7 @@ describe("offline evaluation workbench", () => {
         ...result,
         reviewArtifactJson: JSON.stringify({
           ...artifact,
-          schemaVersion: "np.agent-moderator-eval-review.v3",
+          schemaVersion: "np.agent-moderator-eval-review.v4",
         }),
       }),
     ).toThrow();

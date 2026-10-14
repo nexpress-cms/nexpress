@@ -89,5 +89,30 @@ export interface NpAgentModeratorEvaluationArtifactV2 extends Omit<
   cases: NpAgentModeratorEvaluationCaseV2[];
   caseResults: NpAgentModeratorEvaluationCaseResultV2[];
 }
+/** Document/comment mixed synthetic facts; detector and live Fact contracts remain v1. */
+export const npAgentModeratorEvaluationDatasetV3 = "moderator.v3" as const;
+export interface NpAgentModeratorEvaluationCaseV3 extends Omit<
+  NpAgentModeratorEvaluationCaseV1,
+  "caseVersion"
+> {
+  caseVersion: 3;
+}
+export interface NpAgentModeratorEvaluationCaseResultV3 extends Omit<
+  NpAgentModeratorEvaluationCaseResultV1,
+  "caseVersion"
+> {
+  caseVersion: 3;
+}
+export interface NpAgentModeratorEvaluationArtifactV3 extends Omit<
+  NpAgentModeratorEvaluationArtifactV1,
+  "schemaVersion" | "dataset" | "cases" | "caseResults"
+> {
+  schemaVersion: "np.agent-moderator-eval.v3";
+  dataset: "moderator.v3";
+  cases: NpAgentModeratorEvaluationCaseV3[];
+  caseResults: NpAgentModeratorEvaluationCaseResultV3[];
+}
 export type NpAgentModeratorEvaluationArtifact =
-  NpAgentModeratorEvaluationArtifactV1 | NpAgentModeratorEvaluationArtifactV2;
+  | NpAgentModeratorEvaluationArtifactV1
+  | NpAgentModeratorEvaluationArtifactV2
+  | NpAgentModeratorEvaluationArtifactV3;
