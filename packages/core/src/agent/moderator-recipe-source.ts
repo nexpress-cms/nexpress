@@ -29,6 +29,7 @@ import {
 import { npResolveAgentModeratorStaffUserV1 } from "./moderator-collector.js";
 import { npReadAgentModeratorCommentEvidenceFactV1 } from "./moderator-comment-evidence.js";
 import { npDetectAgentRepeatedLinkSpamV1 } from "./moderator-detector.js";
+import { npReadAgentModeratorDocumentReportFactV1 } from "./moderator-document-report-source.js";
 import type { NpAgentRuntimeRunContextV1 } from "./runtime-admission.js";
 
 const RECIPE = "moderator.repeated-link-spam";
@@ -200,14 +201,13 @@ export function createAgentModeratorRecipeSourceV1(options: {
             if (sources.length !== new Set(ids).size) return [];
             const facts: NpAgentModeratorFactV1[] = [];
             for (const source of sources) {
-              const fact = await npReadAgentModeratorCommentEvidenceFactV1(
-                context.db,
-                source,
-                user,
-              );
+              const fact =
+                source.kind === "community.content.reported" &&
+                source.sourceComponent === "community.document-reports"
+                  ? await npReadAgentModeratorDocumentReportFactV1(context.db, source, user)
+                  : await npReadAgentModeratorCommentEvidenceFactV1(context.db, source, user);
               if (
                 !fact ||
-                fact.subject.kind !== "comment" ||
                 !settings.collectionSlugs.includes(fact.subject.collection) ||
                 (resources.collections !== null &&
                   !resources.collections.includes(fact.subject.collection)) ||
@@ -239,7 +239,6 @@ export function createAgentModeratorRecipeSourceV1(options: {
                 fact.evidence.eventKind === "community.content.reported",
             ).length;
             for (const fact of match.facts) {
-              if (fact.subject.kind !== "comment") return [];
               found.push({
                 incidentId: incident.id,
                 signalId: signal.id,
@@ -256,11 +255,18 @@ export function createAgentModeratorRecipeSourceV1(options: {
                 },
                 proposal: npRequireAgentQuarantineProposalV1({
                   incidentId: incident.id,
-                  target: {
-                    kind: "comment",
-                    collection: fact.subject.collection,
-                    id: fact.subject.commentId,
-                  },
+                  target:
+                    fact.subject.kind === "comment"
+                      ? {
+                          kind: "comment",
+                          collection: fact.subject.collection,
+                          id: fact.subject.commentId,
+                        }
+                      : {
+                          kind: "document",
+                          collection: fact.subject.collection,
+                          id: fact.subject.documentId,
+                        },
                   expectedVersionDigest: fact.targetVersionDigest,
                   reasonCode: "REPEATED_LINK_SPAM",
                 }),

@@ -72,7 +72,9 @@ review or new valid evidence, not a batch of automatic quarantines.
 
 The subsequent [comment report recipe flow](r6-moderator-report-recipe-flow.md)
 extends the same source with actual filing evidence and explicitly unverified
-claim counts, preserving this recipe's definition and approval owners.
+claim counts, preserving this recipe's definition and approval owners. The
+[document report extension](r6-moderator-document-recipe-flow.md) uses those same
+owners for actual documents and correlated comment/document Incidents.
 
 The local journey uses real observed comment writes, the collector/detector,
 Incident owner, Runtime, PostgreSQL and signed human approval with a deterministic
